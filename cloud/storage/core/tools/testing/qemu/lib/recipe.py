@@ -240,8 +240,14 @@ def _parse_args(argv):
         "--num-request-queues",
         default=1,
         help="Number of request queues for virtiofs")
-    parser.add_argument("--reconnect", default="$QEMU_RECONNECT")
-    parser.add_argument("--virtiofs-migration", default="$QEMU_VIRTIOFS_MIGRATION")
+    parser.add_argument(
+        "--reconnect",
+        default="$QEMU_CHARDEV_RECONNECT",
+        help="Reconnect timeout for virtiofs chardev socket")
+    parser.add_argument(
+        "--virtiofs-migration",
+        default="$QEMU_VIRTIOFS_MIGRATION",
+        help="virtiofs migration mode, for example 'external'")
 
     args = parser.parse_args(argv)
     if args.instance_count == "$QEMU_INSTANCE_COUNT":
@@ -434,7 +440,7 @@ def _get_num_request_queues(args):
 
 
 def _get_reconnect(args):
-    if not args.reconnect or args.reconnect == "$QEMU_RECONNECT":
+    if not args.reconnect or args.reconnect == "$QEMU_CHARDEV_RECONNECT":
         return None
     return int(args.reconnect)
 

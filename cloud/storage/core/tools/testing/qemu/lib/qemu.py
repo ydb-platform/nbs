@@ -89,7 +89,7 @@ class Qemu:
                  use_virtiofs_server=False,
                  num_request_queues=1,
                  is_arm=None,
-                 reconnect=None,
+                 chardev_reconnect=None,
                  virtiofs_migration=None,
                  qemu_bios=None):
 
@@ -115,8 +115,8 @@ class Qemu:
         self.qemu_options = qemu_options
         self.num_request_queues = num_request_queues
 
-        self.reconnect = reconnect if reconnect is not None else 0
-        self.migration = f",migration={virtiofs_migration}" if virtiofs_migration else ""
+        self.chardev_reconnect_option = f",reconnect={chardev_reconnect}" if chardev_reconnect else ""
+        self.virtiofs_migration_option = f",migration={virtiofs_migration}" if virtiofs_migration else ""
 
         self.virtio_options = self._get_virtio_options(self.virtio, vhost_socket)
         self.enable_kvm = enable_kvm
@@ -158,12 +158,12 @@ class Qemu:
 
         cmd = [
             "-chardev",
-            f"socket,id=vhost0,path={vhost_socket},reconnect={self.reconnect}",
+            f"socket,id=vhost0,path={vhost_socket}{self.chardev_reconnect_option}",
         ]
         cmd += [
             "-device",
             "vhost-user-fs-pci,chardev=vhost0,id=vhost-user-fs0,tag=fs0,"
-            f"num-request-queues={self.num_request_queues},queue-size=512{self.migration}",
+            f"num-request-queues={self.num_request_queues},queue-size=512{self.virtiofs_migration_option}",
         ]
         return cmd
 
@@ -293,12 +293,12 @@ class Qemu:
             if self.use_virtiofs_server:
                 cmd += [
                     "-chardev",
-                    f"socket,id={tag},path={vhost_socket},reconnect={self.reconnect}",
+                    f"socket,id={tag},path={vhost_socket},reconnect={self.chardev_reconnect_option}",
                 ]
                 cmd += [
                     "-device",
                     f"vhost-user-fs-pci,chardev={tag},id=vhost-user-{tag},tag={tag},"
-                    f"queue-size=512{self.migration}",
+                    f"queue-size=512{self.virtiofs_migration_option}",
                 ]
             else:
                 cmd += ["-virtfs",
