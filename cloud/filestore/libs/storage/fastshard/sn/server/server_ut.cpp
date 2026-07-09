@@ -1,20 +1,21 @@
 #include <cloud/filestore/libs/storage/fastshard/ipc/ipc.h>
 #include <cloud/filestore/libs/storage/fastshard/sn/iface/storage_node.h>
 #include <cloud/filestore/libs/storage/fastshard/sn/server/server.h>
+#include <cloud/filestore/libs/storage/fastshard/testlib/fake_storage_node.h>
+#include <cloud/filestore/libs/storage/fastshard/testlib/silk_env.h>
+
+#include <library/cpp/testing/common/network.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/protos/device.pb.h>
 
 #include <silk/fibers/fiber.h>
 #include <silk/fibers/future.h>
-#include <silk/util/init.h>
 
 #include <gtest/gtest.h>
 
 #include <util/generic/string.h>
-#include <util/generic/vector.h>
 #include <util/string/builder.h>
-#include <util/system/spinlock.h>
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -31,99 +32,9 @@ using silk::FiberScheduler;
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
-// Silk test environment.
-
-class TSilkEnv: public ::testing::Environment
-{
-public:
-    void SetUp() override
-    {
-        silk::initialize();
-        FiberScheduler::initialize();
-    }
-
-    void TearDown() override
-    {
-        FiberScheduler::destroy();
-        silk::destroy();
-    }
-};
 
 [[maybe_unused]] auto* const gEnv =
-    ::testing::AddGlobalTestEnvironment(new TSilkEnv);
-
-////////////////////////////////////////////////////////////////////////////////
-// Pick a free port on loopback.
-
-ui16 GetFreePort()
-{
-    int fd = ::socket(AF_INET, SOCK_STREAM, 0);
-    sockaddr_in addr{};
-    addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    addr.sin_port = 0;
-    ::bind(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr));
-    socklen_t len = sizeof(addr);
-    ::getsockname(fd, reinterpret_cast<sockaddr*>(&addr), &len);
-    ui16 port = ntohs(addr.sin_port);
-    ::close(fd);
-    return port;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// A fake storage node that records every call and returns preconfigured
-// responses.
-
-struct TFakeStorageNode: public IStorageNode
-{
-    TAdaptiveLock Lock;
-
-    TVector<NCloud::NProto::TAcquireDevicesRequest> AcquireCalls;
-    TVector<NCloud::NProto::TReleaseDevicesRequest> ReleaseCalls;
-    TVector<NCloud::NProto::TReadPagesRequest> ReadCalls;
-    TVector<NCloud::NProto::TWriteLogRecordRequest> WriteCalls;
-
-    NCloud::NProto::TAcquireDevicesResponse AcquireResp;
-    NCloud::NProto::TReleaseDevicesResponse ReleaseResp;
-    NCloud::NProto::TReadPagesResponse ReadResp;
-    NCloud::NProto::TWriteLogRecordResponse WriteResp;
-
-    NThreading::TFuture<NCloud::NProto::TAcquireDevicesResponse> AcquireDevices(
-        NCloud::NProto::TAcquireDevicesRequest request) override
-    {
-        with_lock (Lock) {
-            AcquireCalls.push_back(std::move(request));
-        }
-        return NThreading::MakeFuture(AcquireResp);
-    }
-
-    NThreading::TFuture<NCloud::NProto::TReleaseDevicesResponse> ReleaseDevices(
-        NCloud::NProto::TReleaseDevicesRequest request) override
-    {
-        with_lock (Lock) {
-            ReleaseCalls.push_back(std::move(request));
-        }
-        return NThreading::MakeFuture(ReleaseResp);
-    }
-
-    NThreading::TFuture<NCloud::NProto::TReadPagesResponse> ReadPages(
-        NCloud::NProto::TReadPagesRequest request) override
-    {
-        with_lock (Lock) {
-            ReadCalls.push_back(std::move(request));
-        }
-        return NThreading::MakeFuture(ReadResp);
-    }
-
-    NThreading::TFuture<NCloud::NProto::TWriteLogRecordResponse> WriteLogRecord(
-        NCloud::NProto::TWriteLogRecordRequest request) override
-    {
-        with_lock (Lock) {
-            WriteCalls.push_back(std::move(request));
-        }
-        return NThreading::MakeFuture(WriteResp);
-    }
-};
+    ::testing::AddGlobalTestEnvironment(MakeSilkTestEnv());
 
 ////////////////////////////////////////////////////////////////////////////////
 // Fiber-friendly non-blocking connect to loopback.
@@ -195,12 +106,12 @@ TDeviceProtocolResponse SendRecv(int fd, const TDeviceProtocolRequest& req)
 struct TServerFixture
 {
     std::shared_ptr<TFakeStorageNode> Storage;
-    ui16 Port;
+    NTesting::TPortHolder Port;
     IServerPtr Server;
 
     TServerFixture()
         : Storage(std::make_shared<TFakeStorageNode>())
-        , Port(GetFreePort())
+        , Port(NTesting::GetFreePort())
         , Server(CreateServer(Port, Storage))
     {
         Server->Start();

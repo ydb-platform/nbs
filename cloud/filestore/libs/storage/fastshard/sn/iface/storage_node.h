@@ -2,8 +2,6 @@
 
 #include <cloud/storage/core/protos/device.pb.h>
 
-#include <library/cpp/threading/future/future.h>
-
 #include <memory>
 
 namespace NCloud::NFileStore::NStorage::NFastShard {
@@ -22,17 +20,18 @@ namespace NCloud::NFileStore::NStorage::NFastShard {
  * decoded off the wire by the sn server. One method per case of the
  * TDeviceProtocolRequest.Request oneof — see SN_METHODS above.
  *
- * All methods take a concrete request proto and return a future for the
- * matching response proto. The server invokes them from a silk fiber
- * that WaitFiber-blocks on the returned future, so implementations may
- * finish synchronously (return MakeFuture(...)) or asynchronously.
+ * All methods are synchronous: the caller (server dispatch, or the
+ * client's Exchange path) always runs inside a silk fiber, so a slow
+ * implementation just cooperatively suspends the fiber.
+ * Implementations that need to wait on external I/O should do so via
+ * silk primitives (FiberFuture::wait, FiberScheduler::poll, etc.).
  */
 struct IStorageNode
 {
     virtual ~IStorageNode() = default;
 
 #define SN_DECLARE_METHOD(name, ...)                                           \
-    virtual NThreading::TFuture<NCloud::NProto::T##name##Response> name(       \
+    virtual NCloud::NProto::T##name##Response name(                            \
         NCloud::NProto::T##name##Request request) = 0;                         \
 // SN_DECLARE_METHOD
 

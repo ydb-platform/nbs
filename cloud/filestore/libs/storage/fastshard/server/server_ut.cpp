@@ -3,6 +3,9 @@
 #include <cloud/filestore/libs/storage/fastshard/server/server.h>
 #include <cloud/filestore/libs/storage/fastshard/server/protos/fastshard.pb.h>
 #include <cloud/filestore/libs/storage/fastshard/impl/mem/memshard.h>
+#include <cloud/filestore/libs/storage/fastshard/testlib/silk_env.h>
+
+#include <library/cpp/testing/common/network.h>
 
 #include <cloud/filestore/private/api/unsafe_protos/unsafe.pb.h>
 #include <cloud/filestore/public/api/protos/node.pb.h>
@@ -11,14 +14,8 @@
 
 #include <silk/fibers/fiber.h>
 #include <silk/fibers/future.h>
-#include <silk/util/init.h>
 
 #include <gtest/gtest.h>
-
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <unistd.h>
 
 using namespace NCloud::NFileStore::NStorage::NFastShard;
 using namespace NCloud::NFileStore::NStorage::NFastShard::NProtoSrv;
@@ -31,56 +28,20 @@ namespace {
 
 constexpr TDuration WaitTimeout = TDuration::Seconds(5);
 
-////////////////////////////////////////////////////////////////////////////////
-// Silk test environment.
-
-class TSilkEnv : public ::testing::Environment
-{
-public:
-    void SetUp() override
-    {
-        silk::initialize();
-        FiberScheduler::initialize();
-    }
-    void TearDown() override
-    {
-        FiberScheduler::destroy();
-        silk::destroy();
-    }
-};
-
 [[maybe_unused]] auto* const gEnv =
-    ::testing::AddGlobalTestEnvironment(new TSilkEnv);
-
-////////////////////////////////////////////////////////////////////////////////
-// Pick a free port.
-
-ui16 GetFreePort()
-{
-    int fd = ::socket(AF_INET, SOCK_STREAM, 0);
-    sockaddr_in addr{};
-    addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    addr.sin_port = 0;
-    ::bind(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr));
-    socklen_t len = sizeof(addr);
-    ::getsockname(fd, reinterpret_cast<sockaddr*>(&addr), &len);
-    ui16 port = ntohs(addr.sin_port);
-    ::close(fd);
-    return port;
-}
+    ::testing::AddGlobalTestEnvironment(MakeSilkTestEnv());
 
 ////////////////////////////////////////////////////////////////////////////////
 // Test fixture that runs the server in a fiber.
 
 struct TServerFixture
 {
-    ui16 Port;
+    NTesting::TPortHolder Port;
     IServerPtr Server;
     FiberFuture ServerFuture;
 
     TServerFixture()
-        : Port(GetFreePort())
+        : Port(NTesting::GetFreePort())
         , Server(CreateServer(Port))
     {}
 

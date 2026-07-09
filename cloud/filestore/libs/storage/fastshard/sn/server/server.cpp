@@ -155,24 +155,6 @@ private:
 using THandlerRegistryPtr = std::shared_ptr<THandlerRegistry>;
 
 ////////////////////////////////////////////////////////////////////////////////
-// Bridge NThreading::TFuture to silk FiberFuture.
-
-template <typename T>
-T WaitFiber(const NThreading::TFuture<T>& future)
-{
-    FiberFuture fiberFuture;
-    future.Subscribe([&fiberFuture](const auto&) {
-        fiberFuture.set(0);
-    });
-    fiberFuture.wait();
-    try {
-        return future.GetValue();
-    } catch (...) {
-        Y_ABORT("unexpected: %s", CurrentExceptionMessage().c_str());
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
 // Request dispatch.
 
 TDeviceProtocolResponse Dispatch(
@@ -184,8 +166,7 @@ TDeviceProtocolResponse Dispatch(
     switch (req.GetRequestCase()) {
 #define DISPATCH_REQUEST(name, ...)                                            \
         case TDeviceProtocolRequest::k##name: {                                \
-            auto result = WaitFiber(storage.name(req.Get##name()));            \
-            *resp.Mutable##name() = std::move(result);                         \
+            *resp.Mutable##name() = storage.name(req.Get##name());             \
             break;                                                             \
         }                                                                      \
 // DISPATCH_REQUEST
