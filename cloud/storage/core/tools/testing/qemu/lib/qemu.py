@@ -293,7 +293,7 @@ class Qemu:
             if self.use_virtiofs_server:
                 cmd += [
                     "-chardev",
-                    f"socket,id={tag},path={vhost_socket},reconnect={self.chardev_reconnect_option}",
+                    f"socket,id={tag},path={vhost_socket}{self.chardev_reconnect_option}",
                 ]
                 cmd += [
                     "-device",
