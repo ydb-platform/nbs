@@ -241,7 +241,8 @@ def _parse_args(argv):
         default=1,
         help="Number of request queues for virtiofs")
     parser.add_argument(
-        "--reconnect",
+        "--chardev-reconnect",
+        dest="chardev_reconnect",
         default="$QEMU_CHARDEV_RECONNECT",
         help="Reconnect timeout for virtiofs chardev socket")
     parser.add_argument(
@@ -440,9 +441,10 @@ def _get_num_request_queues(args):
 
 
 def _get_chardev_reconnect(args):
-    if not args.reconnect or args.reconnect == "$QEMU_CHARDEV_RECONNECT":
+    if (not args.chardev_reconnect or
+            args.chardev_reconnect == "$QEMU_CHARDEV_RECONNECT"):
         return None
-    return int(args.reconnect)
+    return int(args.chardev_reconnect)
 
 
 def _get_virtiofs_migration(args):

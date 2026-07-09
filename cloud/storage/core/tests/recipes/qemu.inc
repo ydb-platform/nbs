@@ -22,8 +22,8 @@ IF (NOT QEMU_SSH_KEY)
     DATA(arcadia/cloud/storage/core/tools/testing/qemu/keys)
 ENDIF()
 
-IF (NOT QEMU_RECONNECT)
-    SET(QEMU_RECONNECT 0)
+IF (NOT QEMU_CHARDEV_RECONNECT)
+    SET(QEMU_CHARDEV_RECONNECT 0)
 ENDIF()
 
 DEPENDS(
@@ -57,7 +57,7 @@ USE_RECIPE(
     --invoke-test $QEMU_INVOKE_TEST
     --use-virtiofs-server $QEMU_USE_VIRTIOFS_SERVER
     --num-request-queues $QEMU_NUM_REQUEST_QUEUES
-    --reconnect $QEMU_RECONNECT
+    --chardev-reconnect $QEMU_CHARDEV_RECONNECT
     --virtiofs-migration $QEMU_VIRTIOFS_MIGRATION
 )
 
