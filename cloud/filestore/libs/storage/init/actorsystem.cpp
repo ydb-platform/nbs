@@ -246,9 +246,9 @@ public:
                     systemCounters,
                     metricsRegistry,
                     fastShardServer,
-                    config->GetFakeReadFailuresEnabled() ?
+                    config->GetFakeTxPageFaultsEnabled() ?
                         CreateRescheduler({
-                            .ProbabilityPercentage = config->GetFakeReadFailuresProbabilityPercentage(),
+                            .ProbabilityPercentage = config->GetFakeTxPageFaultsProbabilityPercentage(),
                             .RandomSeed = std::nullopt
                         }) : nullptr);
                 return actor.release();

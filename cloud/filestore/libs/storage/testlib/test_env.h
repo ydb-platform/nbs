@@ -78,9 +78,9 @@ struct TTestEnvConfig
     NActors::NLog::EPriority LogPriority_Others = NActors::NLog::PRI_WARN;
 
     // This controls probability that read will be restarted
-    bool PageFaultFakesEnabled = true;
-    float PageFaultProbabilityPercentage = 1;
-    std::optional<ui64> PageFaultRandomSeed = std::nullopt;
+    bool FakePageFaultsEnabled = true;
+    float FakePageFaultsProbabilityPercentage = 1;
+    std::optional<ui64> FakePageFaultsRandomSeed = std::nullopt;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

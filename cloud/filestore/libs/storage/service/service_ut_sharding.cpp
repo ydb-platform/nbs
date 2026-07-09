@@ -371,7 +371,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     config.SetAutomaticallyCreatedShardSize(fsConfig.ShardBlockCount * 4_KB); \
     config.SetShardAllocationUnit(fsConfig.ShardBlockCount * 4_KB);           \
                                                                               \
-    TTestEnv env({.PageFaultFakesEnabled = false}, config);                   \
+    TTestEnv env({.FakePageFaultsEnabled = false}, config);                   \
                                                                               \
     ui32 nodeIdx = env.AddDynamicNode();                                      \
                                                                               \
@@ -1583,7 +1583,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST(ShouldNotReturnInvalidShardNoErrorForDirectShardRequests)
     {
-        TTestEnv env({.PageFaultFakesEnabled = false}, config);
+        TTestEnv env({.FakePageFaultsEnabled = false}, config);
 
         ui32 nodeIdx = env.AddDynamicNode();
 
@@ -3048,7 +3048,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetAutomaticShardCreationEnabled(true);
         TStorageConfig storageConfig(config);
 
-        TTestEnv env({.PageFaultFakesEnabled = false}, config);
+        TTestEnv env({.FakePageFaultsEnabled = false}, config);
 
         ui32 nodeIdx = env.AddDynamicNode();
 
@@ -3126,7 +3126,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         TStorageConfig storageConfig(config);
 
-        TTestEnv env({.PageFaultFakesEnabled = false}, config);
+        TTestEnv env({.FakePageFaultsEnabled = false}, config);
 
         ui32 nodeIdx = env.AddDynamicNode();
 
@@ -4153,7 +4153,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetAutomaticShardCreationEnabled(true);
         config.SetShardAllocationUnit(1_GB);
         config.SetAutomaticallyCreatedShardSize(2_GB);
-        TTestEnv env({.PageFaultFakesEnabled = false}, config);
+        TTestEnv env({.FakePageFaultsEnabled = false}, config);
 
         ui32 nodeIdx = env.AddDynamicNode();
 
@@ -4177,7 +4177,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetAutomaticShardCreationEnabled(true);
         config.SetShardAllocationUnit(1_GB);
         config.SetAutomaticallyCreatedShardSize(2_GB);
-        TTestEnv env({.PageFaultFakesEnabled = false}, config);
+        TTestEnv env({.FakePageFaultsEnabled = false}, config);
 
         ui32 nodeIdx = env.AddDynamicNode();
 
@@ -4194,7 +4194,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetAutomaticShardCreationEnabled(true);
         config.SetShardAllocationUnit(1_GB);
         config.SetAutomaticallyCreatedShardSize(2_GB);
-        TTestEnv env({.PageFaultFakesEnabled = false}, config);
+        TTestEnv env({.FakePageFaultsEnabled = false}, config);
 
         ui32 nodeIdx = env.AddDynamicNode();
 
@@ -4357,7 +4357,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetShardAllocationUnit(1_GB);
         config.SetAutomaticallyCreatedShardSize(2_GB);
         config.SetMaxShardManagementRequestsInFlight(2);
-        TTestEnv env({.PageFaultFakesEnabled = false}, config);
+        TTestEnv env({.FakePageFaultsEnabled = false}, config);
 
         ui32 nodeIdx = env.AddDynamicNode();
 
@@ -4414,7 +4414,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetShardAllocationUnit(1_GB);
         config.SetAutomaticallyCreatedShardSize(2_GB);
         config.SetMaxShardManagementRequestsInFlight(0);
-        TTestEnv env({.PageFaultFakesEnabled = false}, config);
+        TTestEnv env({.FakePageFaultsEnabled = false}, config);
 
         ui32 nodeIdx = env.AddDynamicNode();
 
@@ -4468,7 +4468,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetAutomaticShardCreationEnabled(true);
         config.SetShardAllocationUnit(1_GB);
         config.SetAutomaticallyCreatedShardSize(2_GB);
-        TTestEnv env({.PageFaultFakesEnabled = false}, config);
+        TTestEnv env({.FakePageFaultsEnabled = false}, config);
 
         ui32 nodeIdx = env.AddDynamicNode();
 
@@ -4609,7 +4609,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetAutomaticallyCreatedShardSize(2_GB);
         config.SetMaxShardManagementRequestsInFlight(1);
         config.SetStrictFileSystemSizeEnforcementEnabled(true);
-        TTestEnv env({.PageFaultFakesEnabled = false}, config);
+        TTestEnv env({.FakePageFaultsEnabled = false}, config);
 
         ui32 nodeIdx = env.AddDynamicNode();
 
@@ -4683,7 +4683,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetShardAllocationUnit(1_GB);
         config.SetAutomaticallyCreatedShardSize(2_GB);
         config.SetMaxShardManagementRequestsInFlight(0);
-        TTestEnv env({.PageFaultFakesEnabled = false}, config);
+        TTestEnv env({.FakePageFaultsEnabled = false}, config);
 
         ui32 nodeIdx = env.AddDynamicNode();
 
@@ -4735,7 +4735,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetAutomaticShardCreationEnabled(true);
         config.SetShardAllocationUnit(1_GB);
         config.SetAutomaticallyCreatedShardSize(2_GB);
-        TTestEnv env({.PageFaultFakesEnabled = false}, config);
+        TTestEnv env({.FakePageFaultsEnabled = false}, config);
 
         ui32 nodeIdx = env.AddDynamicNode();
 
@@ -4939,7 +4939,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST(ShouldValidateShardList)
     {
-        TTestEnv env({.PageFaultFakesEnabled = false}, config);
+        TTestEnv env({.FakePageFaultsEnabled = false}, config);
 
         ui32 nodeIdx = env.AddDynamicNode();
 
@@ -5235,7 +5235,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST(ShouldCreateSessionDirectlyInShard)
     {
-        TTestEnv env({.PageFaultFakesEnabled = false}, config);
+        TTestEnv env({.FakePageFaultsEnabled = false}, config);
 
         ui32 nodeIdx = env.AddDynamicNode();
 
@@ -5275,7 +5275,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetAutomaticShardCreationEnabled(true);
         config.SetShardAllocationUnit(1_GB);
         config.SetAutomaticallyCreatedShardSize(2_GB);
-        TTestEnv env({.PageFaultFakesEnabled = false}, config);
+        TTestEnv env({.FakePageFaultsEnabled = false}, config);
 
         ui32 nodeIdx = env.AddDynamicNode();
 
@@ -5436,7 +5436,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetShardBalancerDesiredFreeSpaceReserve(1_MB);
         config.SetShardBalancerPrecisionBytes(4_KB);
 
-        TTestEnv env({.PageFaultFakesEnabled = false}, config);
+        TTestEnv env({.FakePageFaultsEnabled = false}, config);
 
         ui32 nodeIdx = env.AddDynamicNode();
 
@@ -5567,7 +5567,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetAutomaticShardCreationEnabled(true);
         config.SetShardAllocationUnit(4_TB);
         config.SetAutomaticallyCreatedShardSize(5_TB);
-        TTestEnv env({.PageFaultFakesEnabled = false}, config);
+        TTestEnv env({.FakePageFaultsEnabled = false}, config);
 
         ui32 nodeIdx = env.AddDynamicNode();
 
@@ -5935,7 +5935,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetShardAllocationUnit(1_GB);
         config.SetStrictFileSystemSizeEnforcementEnabled(true);
 
-        TTestEnv env({.PageFaultFakesEnabled = false}, config);
+        TTestEnv env({.FakePageFaultsEnabled = false}, config);
 
         ui32 nodeIdx = env.AddDynamicNode();
 
@@ -6049,7 +6049,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetShardAllocationUnit(1_GB);
         config.SetStrictFileSystemSizeEnforcementEnabled(true);
 
-        TTestEnv env({.PageFaultFakesEnabled = false}, config);
+        TTestEnv env({.FakePageFaultsEnabled = false}, config);
 
         ui32 nodeIdx = env.AddDynamicNode();
 
@@ -6123,7 +6123,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // mode
         config.SetStrictFileSystemSizeEnforcementEnabled(false);
 
-        TTestEnv env({.PageFaultFakesEnabled = false}, config);
+        TTestEnv env({.FakePageFaultsEnabled = false}, config);
 
         ui32 nodeIdx = env.AddDynamicNode();
 
@@ -6342,7 +6342,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         const TString fsId = "test";
         const ui64 blockCount = 1'000;
 
-        TTestEnv env({.PageFaultFakesEnabled = false}, config);
+        TTestEnv env({.FakePageFaultsEnabled = false}, config);
         ui32 nodeIdx = env.AddDynamicNode();
         TServiceClient service(env.GetRuntime(), nodeIdx);
 
@@ -6410,7 +6410,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         const TString fsId = "test";
         const ui64 blockCount = 1'000;
 
-        TTestEnv env({.PageFaultFakesEnabled = false}, config);
+        TTestEnv env({.FakePageFaultsEnabled = false}, config);
         ui32 nodeIdx = env.AddDynamicNode();
         TServiceClient service(env.GetRuntime(), nodeIdx);
 
@@ -8144,7 +8144,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         const TString fsId = "test";
 
-        TTestEnv env({.PageFaultFakesEnabled = false}, config);
+        TTestEnv env({.FakePageFaultsEnabled = false}, config);
 
         ui32 nodeIdx = env.AddDynamicNode();
 
@@ -8248,7 +8248,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         const TString fsId = "test";
 
-        TTestEnv env({.PageFaultFakesEnabled = false}, config);
+        TTestEnv env({.FakePageFaultsEnabled = false}, config);
 
         ui32 nodeIdx = env.AddDynamicNode();
 
@@ -8295,7 +8295,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         const TString fsId = "test";
 
-        TTestEnv env({.PageFaultFakesEnabled = false}, config);
+        TTestEnv env({.FakePageFaultsEnabled = false}, config);
 
         ui32 nodeIdx = env.AddDynamicNode();
 
@@ -8363,7 +8363,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         const TString fsId = "test";
 
-        TTestEnv env({.PageFaultFakesEnabled = false}, config);
+        TTestEnv env({.FakePageFaultsEnabled = false}, config);
 
         ui32 nodeIdx = env.AddDynamicNode();
 
@@ -8567,7 +8567,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             .MainFsBlockCount = fsSize
         };
 
-        TTestEnv env({.PageFaultFakesEnabled = false}, config);
+        TTestEnv env({.FakePageFaultsEnabled = false}, config);
 
         ui32 nodeIdx = env.AddDynamicNode();
 
@@ -9334,7 +9334,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         const TString fsId = "testfilesystem-filesystem1234id";
 
-        TTestEnv env({.PageFaultFakesEnabled = false}, config);
+        TTestEnv env({.FakePageFaultsEnabled = false}, config);
         ui32 nodeIdx = env.AddDynamicNode();
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore(fsId, fsSize);
@@ -9546,7 +9546,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST(ShouldValidateFilesystemIdDuringCreation)
     {
-        TTestEnv env({.PageFaultFakesEnabled = false}, config);
+        TTestEnv env({.FakePageFaultsEnabled = false}, config);
         ui32 nodeIdx = env.AddDynamicNode();
         TServiceClient service(env.GetRuntime(), nodeIdx);
 
@@ -9615,7 +9615,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         {
             // Create a filesystem without shards.
-            TTestEnv env({.PageFaultFakesEnabled = false}, config);
+            TTestEnv env({.FakePageFaultsEnabled = false}, config);
 
             ui32 nodeIdx = env.AddDynamicNode();
 

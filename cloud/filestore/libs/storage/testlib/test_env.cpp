@@ -475,10 +475,10 @@ ui64 TTestEnv::BootIndexTablet(ui32 nodeIdx)
             SystemCounters,
             Registry,
             nullptr /* fastShardServer */,
-            Config.PageFaultFakesEnabled ?
+            Config.FakePageFaultsEnabled ?
                 CreateRescheduler({
-                    .ProbabilityPercentage = Config.PageFaultProbabilityPercentage,
-                    .RandomSeed = Config.PageFaultRandomSeed
+                    .ProbabilityPercentage = Config.FakePageFaultsProbabilityPercentage,
+                    .RandomSeed = Config.FakePageFaultsRandomSeed
                 }) : nullptr);
         return actor.release();
     };
@@ -612,10 +612,10 @@ void TTestEnv::SetupLocalServiceConfig(
             SystemCounters,
             Registry,
             nullptr /* fastShardServer */,
-            Config.PageFaultFakesEnabled ?
+            Config.FakePageFaultsEnabled ?
                 CreateRescheduler({
-                    .ProbabilityPercentage = Config.PageFaultProbabilityPercentage,
-                    .RandomSeed = Config.PageFaultRandomSeed
+                    .ProbabilityPercentage = Config.FakePageFaultsProbabilityPercentage,
+                    .RandomSeed = Config.FakePageFaultsRandomSeed
                 }) : nullptr);
         return actor.release();
     };

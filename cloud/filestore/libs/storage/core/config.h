@@ -438,8 +438,8 @@ public:
     ui32 GetSoftBackpressureMaxWriteIops() const;
     ui32 GetSoftBackpressureMaxReadIops() const;
 
-    bool GetFakeReadFailuresEnabled() const;
-    float GetFakeReadFailuresProbabilityPercentage() const;
+    bool GetFakeTxPageFaultsEnabled() const;
+    float GetFakeTxPageFaultsProbabilityPercentage() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

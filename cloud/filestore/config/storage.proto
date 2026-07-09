@@ -847,6 +847,6 @@ message TStorageConfig
     optional bool AsyncDestroyReadOnlyHandleEnabled = 525;
     
     // Enables injecting of errors in TIndexTabletDatabase. Must be only used in tests!
-    optional bool FakeReadFailuresEnabled = 526;
-    optional float FakeReadFailuresProbabilityPercentage = 527;
+    optional bool FakeTxPageFaultsEnabled = 526;
+    optional float FakeTxPageFaultsProbabilityPercentage = 527;
 }
