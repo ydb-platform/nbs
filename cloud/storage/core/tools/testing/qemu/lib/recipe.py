@@ -105,7 +105,7 @@ def start_instance(args, inst_index):
                 shared_nic_port=args.shared_nic_port,
                 use_virtiofs_server=use_virtiofs_server,
                 num_request_queues=_get_num_request_queues(args),
-                reconnect=_get_reconnect(args),
+                chardev_reconnect=_get_chardev_reconnect(args),
                 virtiofs_migration=_get_virtiofs_migration(args))
 
     qemu.set_mount_paths(mount_paths)
@@ -439,7 +439,7 @@ def _get_num_request_queues(args):
     return int(args.num_request_queues)
 
 
-def _get_reconnect(args):
+def _get_chardev_reconnect(args):
     if not args.reconnect or args.reconnect == "$QEMU_CHARDEV_RECONNECT":
         return None
     return int(args.reconnect)
