@@ -471,7 +471,7 @@ def github_client(github_token: str | None = None) -> Github:
 
 def github_client_from_env() -> Github:
     github_token = os.environ.get("GITHUB_TOKEN")
-    if github_token is None:
+    if github_token is None or not github_token.strip():
         raise Exception("GITHUB_TOKEN environment variable is not set")
 
     return github_client(github_token)
