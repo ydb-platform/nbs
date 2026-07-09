@@ -116,4 +116,9 @@ message TFileSystemConfig
     // may observe the effects of newer writes before older ones.
     // With parallel writes off, only sequential writes will be optimized.
     optional bool ServerWriteBackCacheFlushWritesInParallelEnabled = 34;
+
+    // Invalidate the xattr cache when a create path returns a newly created
+    // inode. Needed only for backends that may reuse inode ids (local
+    // filestore); not needed for the ydb-based backend.
+    optional bool XAttrCacheInvalidateOnCreateEnabled = 35;
 }

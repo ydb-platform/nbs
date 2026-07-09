@@ -1277,6 +1277,8 @@ private:
         if (features.GetXAttrCacheTimeout()) {
             config.SetXAttrCacheTimeout(features.GetXAttrCacheTimeout());
         }
+        config.SetXAttrCacheInvalidateOnCreateEnabled(
+            features.GetXAttrCacheInvalidateOnCreateEnabled());
         config.SetAsyncDestroyHandleEnabled(
             features.GetAsyncDestroyHandleEnabled());
         config.SetAsyncHandleOperationPeriod(

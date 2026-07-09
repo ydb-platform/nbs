@@ -7,6 +7,8 @@
 #include <util/generic/string.h>
 #include <util/string/builder.h>
 
+#include <sys/stat.h>
+
 namespace NCloud::NFileStore::NVhost {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -224,6 +226,90 @@ struct TLookupRequest
         In->Header.opcode = FUSE_LOOKUP;
         In->Header.nodeid = nodeId;
         strcpy(In->Body, name.c_str());
+    }
+
+    void SetResult() override
+    {
+        Result.SetValue(Out->Body.nodeid);
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TMkDirRequest
+    : public TRequestBase<fuse_mkdir_in, fuse_entry_out, ui64>
+{
+    TMkDirRequest(const TString& name, ui64 parentNodeId, ui32 mode = 0755)
+    {
+        In = TIn::Create(name.size() + 1);
+        In->Header.opcode = FUSE_MKDIR;
+        In->Header.nodeid = parentNodeId;
+        In->Body.mode = mode;
+        strcpy((char*)In->Data(), name.c_str());
+    }
+
+    void SetResult() override
+    {
+        Result.SetValue(Out->Body.nodeid);
+    }
+};
+
+struct TMkNodeRequest
+    : public TRequestBase<fuse_mknod_in, fuse_entry_out, ui64>
+{
+    TMkNodeRequest(
+            const TString& name,
+            ui64 parentNodeId,
+            ui32 mode = S_IFREG | 0644,
+            ui32 rdev = 0)
+    {
+        In = TIn::Create(name.size() + 1);
+        In->Header.opcode = FUSE_MKNOD;
+        In->Header.nodeid = parentNodeId;
+        In->Body.mode = mode;
+        In->Body.rdev = rdev;
+        strcpy((char*)In->Data(), name.c_str());
+    }
+
+    void SetResult() override
+    {
+        Result.SetValue(Out->Body.nodeid);
+    }
+};
+
+struct TSymLinkRequest
+    : public TRequestBase<void, fuse_entry_out, ui64>
+{
+    TSymLinkRequest(
+            const TString& name,
+            const TString& target,
+            ui64 parentNodeId)
+    {
+        In = TIn::Create(name.size() + target.size() + 2);
+        In->Header.opcode = FUSE_SYMLINK;
+        In->Header.nodeid = parentNodeId;
+
+        char* data = static_cast<char*>(In->Data());
+        strcpy(data, name.c_str());
+        strcpy(data + name.size() + 1, target.c_str());
+    }
+
+    void SetResult() override
+    {
+        Result.SetValue(Out->Body.nodeid);
+    }
+};
+
+struct TLinkRequest
+    : public TRequestBase<fuse_link_in, fuse_entry_out, ui64>
+{
+    TLinkRequest(const TString& name, ui64 nodeId, ui64 parentNodeId)
+    {
+        In = TIn::Create(name.size() + 1);
+        In->Header.opcode = FUSE_LINK;
+        In->Header.nodeid = parentNodeId;
+        In->Body.oldnodeid = nodeId;
+        strcpy((char*)In->Data(), name.c_str());
     }
 
     void SetResult() override

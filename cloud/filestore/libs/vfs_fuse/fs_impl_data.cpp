@@ -176,7 +176,10 @@ void TFileSystem::Create(
                     req,
                     response.GetHandle(),
                     response.GetNodeAttr(),
-                    version);
+                    version,
+                    HasFlag(
+                        flags,
+                        NProto::TCreateHandleRequest::E_CREATE));
             }
         });
 }
