@@ -105,7 +105,7 @@ def start_instance(args, inst_index):
                 shared_nic_port=args.shared_nic_port,
                 use_virtiofs_server=use_virtiofs_server,
                 num_request_queues=_get_num_request_queues(args),
-                reconnect=_get_reconnect(args),
+                chardev_reconnect=_get_chardev_reconnect(args),
                 virtiofs_migration=_get_virtiofs_migration(args))
 
     qemu.set_mount_paths(mount_paths)
@@ -240,8 +240,15 @@ def _parse_args(argv):
         "--num-request-queues",
         default=1,
         help="Number of request queues for virtiofs")
-    parser.add_argument("--reconnect", default="$QEMU_RECONNECT")
-    parser.add_argument("--virtiofs-migration", default="$QEMU_VIRTIOFS_MIGRATION")
+    parser.add_argument(
+        "--chardev-reconnect",
+        dest="chardev_reconnect",
+        default="$QEMU_CHARDEV_RECONNECT",
+        help="Reconnect timeout for virtiofs chardev socket")
+    parser.add_argument(
+        "--virtiofs-migration",
+        default="$QEMU_VIRTIOFS_MIGRATION",
+        help="virtiofs migration mode, for example 'external'")
 
     args = parser.parse_args(argv)
     if args.instance_count == "$QEMU_INSTANCE_COUNT":
@@ -433,10 +440,11 @@ def _get_num_request_queues(args):
     return int(args.num_request_queues)
 
 
-def _get_reconnect(args):
-    if not args.reconnect or args.reconnect == "$QEMU_RECONNECT":
+def _get_chardev_reconnect(args):
+    if (not args.chardev_reconnect or
+            args.chardev_reconnect == "$QEMU_CHARDEV_RECONNECT"):
         return None
-    return int(args.reconnect)
+    return int(args.chardev_reconnect)
 
 
 def _get_virtiofs_migration(args):

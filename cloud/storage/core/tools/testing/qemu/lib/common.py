@@ -152,8 +152,8 @@ def get_virtiofs_migration():
     return None
 
 
-def get_reconnect():
-    reconnect = _get_env_value("QEMU_RECONNECT")
+def get_chardev_reconnect():
+    reconnect = _get_env_value("QEMU_CHARDEV_RECONNECT")
     if reconnect is not None:
         return int(reconnect)
 
