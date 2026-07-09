@@ -273,7 +273,8 @@ Y_UNIT_TEST_SUITE(Interconnect) {
         outgoingHandshakeFailures->Notice.store(0, std::memory_order_relaxed);
         outgoingHandshakeFailures->Debug.store(0, std::memory_order_relaxed);
         outgoingHandshakeFailures->HoldByErrorNotice.store(0, std::memory_order_relaxed);
-        outgoingHandshakeFailures->HoldByErrorDebug.store(0, std::memory_order_relaxed);        cluster.StopNode(1);
+        outgoingHandshakeFailures->HoldByErrorDebug.store(0, std::memory_order_relaxed);
+        cluster.StopNode(1);
         Sleep(TDuration::Seconds(10));
 
         const ui32 noticeLogCount = outgoingHandshakeFailures->Notice.load(std::memory_order_relaxed);
@@ -290,6 +291,7 @@ Y_UNIT_TEST_SUITE(Interconnect) {
             TStringBuilder() << "expected one or two notice-level ICP32 hold-by-error transition log records in 10 seconds, got "
                 << holdByErrorNoticeLogCount);
         UNIT_ASSERT_C(holdByErrorDebugLogCount > 0,
-            "expected repeated ICP32 hold-by-error transition log records to be demoted to debug");    }
+            "expected repeated ICP32 hold-by-error transition log records to be demoted to debug");
+    }
 
 }
