@@ -1,12 +1,15 @@
 import logging
-import yatest.common as common
 import time
+
+import yatest.common as common
 
 from .common import (
     get_mount_paths,
     get_qemu_bios,
     get_qemu_firmware,
     get_qemu_kvm,
+    get_reconnect,
+    get_virtiofs_migration,
 )
 from .qemu import Qemu
 
@@ -32,7 +35,9 @@ class QemuWithMigration:
             qemu_options=[],
             vhost_socket="",
             enable_kvm=True,
-            use_virtiofs_server=True)
+            use_virtiofs_server=True,
+            reconnect=get_reconnect(),
+            virtiofs_migration=get_virtiofs_migration())
 
         self.socket_generator = socket_generator
 
