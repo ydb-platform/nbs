@@ -271,12 +271,6 @@ void TIndexTabletActor::OnTabletDead(
         ctx.Send(actor, new TEvents::TEvPoisonPill());
     }
 
-    auto writeBatch = DequeueWriteBatch();
-    for (const auto& request: writeBatch) {
-        TRequestInfo& requestInfo = *request.RequestInfo;
-        requestInfo.CancelRoutine(ctx, requestInfo);
-    }
-
     WorkerActors.clear();
     UnregisterFileStore(ctx);
 
@@ -575,6 +569,15 @@ bool TIndexTabletActor::CanUseUnconfirmedData() const
     }
 
     return true;
+}
+
+bool TIndexTabletActor::IsTabletConsideredOverloaded() const
+{
+    if (Config->GetAllowTabletOverload()) {
+        return false;
+    }
+
+    return IsTabletOverloaded(*Config, *SystemCounters, Metrics.CPUUsageRate);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

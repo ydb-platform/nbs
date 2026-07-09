@@ -46,7 +46,7 @@ private:
     TDeque<std::unique_ptr<TPendingWriteDataRequest>> PendingRequests;
     TDeque<std::unique_ptr<TCachedWriteDataRequest>> UnflushedRequests;
     TDeque<std::unique_ptr<TCachedWriteDataRequest>> FlushedRequests;
-    TDisjointIntervalMap<ui64, TCachedWriteDataRequest*> CachedData;
+    TDisjointIntervalMapWithStats<ui64, TCachedWriteDataRequest*> CachedData;
 
     // Cached data extends the node size but until the data is flushed,
     // the changes are not visible to the tablet. FileSystem requests that
@@ -60,11 +60,15 @@ public:
 
     std::unique_ptr<TPendingWriteDataRequest> DequeuePendingRequest();
 
+    // This method updates CachedData stats returned by
+    // GetCachedDataContiguousIntervalCount(), GetCachedDataByteCount()
     void EnqueueUnflushedRequest(
         std::unique_ptr<TCachedWriteDataRequest> request);
 
     TCachedWriteDataRequest* MoveFrontUnflushedRequestToFlushed();
 
+    // This method updates CachedData stats returned by
+    // GetCachedDataContiguousIntervalCount(), GetCachedDataByteCount()
     std::unique_ptr<TCachedWriteDataRequest> DequeueFlushedRequest();
 
     bool Empty() const;
@@ -72,6 +76,7 @@ public:
     bool HasPendingRequests() const;
 
     bool HasUnflushedRequests() const;
+    size_t GetUnflushedRequestsCount() const;
     ui64 GetMinUnflushedSequenceId() const;
     ui64 GetMaxUnflushedSequenceId() const;
 
@@ -94,6 +99,9 @@ public:
 
     ui64 GetMaxWrittenOffset() const;
     void ResetMaxWrittenOffset();
+
+    size_t GetCachedDataContiguousIntervalCount() const;
+    ui64 GetCachedDataByteCount() const;
 };
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

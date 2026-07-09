@@ -129,6 +129,11 @@ bool TNodeCache::HasUnflushedRequests() const
     return !UnflushedRequests.empty();
 }
 
+size_t TNodeCache::GetUnflushedRequestsCount() const
+{
+    return UnflushedRequests.size();
+}
+
 ui64 TNodeCache::GetMinUnflushedSequenceId() const
 {
     Y_ABORT_UNLESS(!UnflushedRequests.empty());
@@ -247,6 +252,16 @@ void TNodeCache::ResetMaxWrittenOffset()
 {
     Y_ABORT_UNLESS(FlushedRequests.empty());
     MaxWrittenOffset = CachedData.empty() ? 0 : CachedData.rbegin()->second.End;
+}
+
+size_t TNodeCache::GetCachedDataContiguousIntervalCount() const
+{
+    return CachedData.GetContiguousIntervalCount();
+}
+
+ui64 TNodeCache::GetCachedDataByteCount() const
+{
+    return CachedData.GetIntervalSum();
 }
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

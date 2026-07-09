@@ -27,6 +27,7 @@ public:
     [[nodiscard]] TString GetDevicesSourceUri() const;
     [[nodiscard]] TString GetStateCacheFilePath() const;
     [[nodiscard]] TDuration GetUpdateDevicesInterval() const;
+    [[nodiscard]] TDuration GetUpdateCountersInterval() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;

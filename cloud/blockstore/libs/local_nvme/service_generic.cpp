@@ -7,6 +7,7 @@ namespace NCloud::NBlockStore {
 ILocalNVMeServicePtr CreateLocalNVMeService(
     TLocalNVMeConfigPtr config,
     ILoggingServicePtr logging,
+    IMonitoringServicePtr monitoring,
     ILocalNVMeDeviceProviderPtr deviceProvider,
     NNvme::INvmeManagerPtr nvmeManager,
     TExecutorPtr executor,
@@ -15,6 +16,7 @@ ILocalNVMeServicePtr CreateLocalNVMeService(
     Y_UNUSED(
         config,
         logging,
+        monitoring,
         deviceProvider,
         nvmeManager,
         executor,

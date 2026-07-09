@@ -6,4 +6,5 @@ RECURSE(
     ipc
     server
     sn
+    testlib
 )

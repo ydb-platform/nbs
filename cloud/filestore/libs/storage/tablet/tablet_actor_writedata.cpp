@@ -168,16 +168,6 @@ void TIndexTabletActor::HandleWriteData(
     requestInfo->StartedTs = ctx.Now();
 
     auto blockBuffer = CreateBlockBuffer(range, std::move(buffer));
-    if (Config->GetWriteBatchEnabled()) {
-        auto request = std::make_unique<TWriteRequest>(
-            std::move(requestInfo),
-            msg->Record,
-            range,
-            std::move(blockBuffer));
-
-        EnqueueWriteBatch<TEvService::TWriteDataMethod>(ctx, std::move(request));
-        return;
-    }
 
     AddInFlightRequest<TEvService::TWriteDataMethod>(*requestInfo);
 

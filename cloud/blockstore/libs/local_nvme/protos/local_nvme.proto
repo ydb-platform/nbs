@@ -31,6 +31,9 @@ message TNVMeDevice
 
     // NUMA node.
     optional uint32 NumaNode = 8;
+
+    // Firmware revision of NVMe.
+    string FirmwareRev = 9;
 }
 
 // List of NVMe devices.

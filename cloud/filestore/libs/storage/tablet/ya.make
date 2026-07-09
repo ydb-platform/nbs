@@ -83,7 +83,6 @@ SRCS(
     tablet_actor_unsafe_node_ops.cpp
     tablet_actor_updateconfig.cpp
     tablet_actor_waitready.cpp
-    tablet_actor_writebatch.cpp
     tablet_actor_writeblob.cpp
     tablet_actor_writedata.cpp
     tablet_actor_write_compactionmap.cpp

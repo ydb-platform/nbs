@@ -56,6 +56,17 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+inline bool IsTabletOverloaded(
+    const TStorageConfig& config,
+    const TSystemCounters& systemCounters,
+    ui32 tabletActorCpuUsageRate)
+{
+    const ui64 cl = systemCounters.CpuLack.load(std::memory_order_relaxed);
+    return tabletActorCpuUsageRate >=
+               config.GetTabletActorCpuUsageOverloadThreshold() ||
+           cl >= config.GetCpuLackOverloadThreshold();
+}
+
 inline void BuildBackendInfo(
     const TStorageConfig& config,
     const TSystemCounters& systemCounters,
@@ -63,11 +74,8 @@ inline void BuildBackendInfo(
     ui32 tabletActorCpuUsageRate,
     NProto::TBackendInfo* backendInfo)
 {
-    const ui64 cl = systemCounters.CpuLack.load(std::memory_order_relaxed);
     backendInfo->SetIsOverloaded(
-        tabletActorCpuUsageRate
-            >= config.GetTabletActorCpuUsageOverloadThreshold()
-        || cl >= config.GetCpuLackOverloadThreshold());
+        IsTabletOverloaded(config, systemCounters, tabletActorCpuUsageRate));
 
     const ui32 fastShardPort = config.GetFastShardServerPort();
     if (fastShardPort) {
@@ -313,30 +321,6 @@ private:
         std::unique_ptr<TEvIndexTablet::TEvCreateSessionResponse> response,
         TVector<TString> shardIds);
     void RestartCheckpointDestruction(const NActors::TActorContext& ctx);
-
-    template <typename TMethod>
-    void EnqueueWriteBatch(
-        const NActors::TActorContext& ctx,
-        std::unique_ptr<TWriteRequest> request)
-    {
-        request->RequestInfo->CancelRoutine = [] (
-            const NActors::TActorContext& ctx,
-            TRequestInfo& requestInfo)
-        {
-            auto response = std::make_unique<typename TMethod::TResponse>(
-                MakeError(E_REJECTED, "tablet is shutting down"));
-
-            NCloud::Reply(ctx, requestInfo, std::move(response));
-        };
-
-        if (TIndexTabletState::EnqueueWriteBatch(std::move(request))) {
-            if (auto timeout = Config->GetWriteBatchTimeout()) {
-                ctx.Schedule(timeout, new TEvIndexTabletPrivate::TEvWriteBatchRequest());
-            } else {
-                ctx.Send(SelfId(), new TEvIndexTabletPrivate::TEvWriteBatchRequest());
-            }
-        }
-    }
 
     void EnqueueFlushIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueBlobIndexOpIfNeeded(const NActors::TActorContext& ctx);
@@ -591,6 +575,7 @@ private:
 
     NProto::TError IsDataOperationAllowed() const;
     bool CanUseUnconfirmedData() const;
+    bool IsTabletConsideredOverloaded() const;
 
     ui32 ScaleCompactionThreshold(ui32 t) const;
     TCompactionInfo GetCompactionInfo() const;

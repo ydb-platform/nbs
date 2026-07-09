@@ -7,8 +7,6 @@ SRCS(
 PEERDIR(
     cloud/storage/core/libs/common
     cloud/storage/core/protos
-
-    library/cpp/threading/future
 )
 
 END()

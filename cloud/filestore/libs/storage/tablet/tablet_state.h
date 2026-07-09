@@ -979,9 +979,6 @@ public:
     //
 
 public:
-    bool EnqueueWriteBatch(std::unique_ptr<TWriteRequest> request);
-    TWriteRequestList DequeueWriteBatch();
-
     bool GenerateBlobId(
         ui64 commitId,
         ui32 blobSize,

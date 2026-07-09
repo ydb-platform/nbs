@@ -79,8 +79,6 @@ public:
     TDuration GetEstablishSessionTimeout() const;
     TDuration GetIdleSessionTimeout() const;
 
-    bool GetWriteBatchEnabled() const;
-    TDuration GetWriteBatchTimeout() const;
     ui32 GetWriteBlobThreshold() const;
 
     ui32 GetMaxBlobSize() const;
@@ -391,6 +389,7 @@ public:
 
     ui32 GetCpuLackOverloadThreshold() const;
     ui32 GetTabletActorCpuUsageOverloadThreshold() const;
+    [[nodiscard]] bool GetAllowTabletOverload() const;
 
     ui32 GetMaxTabletStep() const;
 

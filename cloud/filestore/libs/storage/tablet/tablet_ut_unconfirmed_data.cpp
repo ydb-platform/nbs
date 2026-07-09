@@ -307,6 +307,85 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
         AssertStorageStats(tablet, 0, 0);
     }
 
+    Y_UNIT_TEST(ShouldNotEnableUnconfirmedFlowWhenTabletIsOverloaded)
+    {
+        constexpr ui32 block = 4_KB;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1);
+        storageConfig.SetAddingUnconfirmedDataEnabled(true);
+        storageConfig.SetUnconfirmedDataCountHardLimit(10);
+        storageConfig.SetCpuLackOverloadThreshold(50);
+
+        TTestEnv env({}, std::move(storageConfig));
+        auto systemCounters = env.GetSystemCounters();
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        systemCounters->CpuLack.store(60);
+        auto gbi = tablet.GenerateBlobIds(id, handle, 0, block);
+        UNIT_ASSERT(!gbi->Record.GetUnconfirmedFlowEnabled());
+        AssertStorageStats(tablet, 0, 0);
+
+        systemCounters->CpuLack.store(30);
+        gbi = tablet.GenerateBlobIds(id, handle, 0, block);
+        UNIT_ASSERT(gbi->Record.GetUnconfirmedFlowEnabled());
+        GenerateBlobIdsPutBlobAndConfirm(
+            env,
+            tablet,
+            *gbi,
+            TString(block, 'a'));
+
+        UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(
+            ReadData(tablet, handle, block, 0),
+            block,
+            'a');
+    }
+
+    Y_UNIT_TEST(ShouldEnableUnconfirmedFlowOnOverloadIfTabletOverloadAllowed)
+    {
+        constexpr ui32 block = 4_KB;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1);
+        storageConfig.SetAddingUnconfirmedDataEnabled(true);
+        storageConfig.SetUnconfirmedDataCountHardLimit(10);
+        storageConfig.SetCpuLackOverloadThreshold(50);
+        storageConfig.SetAllowTabletOverload(true);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.GetSystemCounters()->CpuLack.store(60);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        auto gbi = tablet.GenerateBlobIds(id, handle, 0, block);
+        UNIT_ASSERT(gbi->Record.GetUnconfirmedFlowEnabled());
+        GenerateBlobIdsPutBlobAndConfirm(
+            env,
+            tablet,
+            *gbi,
+            TString(block, 'a'));
+
+        UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(
+            ReadData(tablet, handle, block, 0),
+            block,
+            'a');
+    }
+
     Y_UNIT_TEST(ShouldConfirmUnalignedHeadAndTailData)
     {
         constexpr ui32 block = 4_KB;
