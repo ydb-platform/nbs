@@ -1519,6 +1519,7 @@ NProto::TError TDiskRegistryState::ReplaceDeviceWithoutDiskStateUpdate(
             << " -> " << targetDevice.GetDeviceUUID() << ", manual=" << manual
             << (deviceReplacementId ? ", replacement device selected manually" : "")
             << ", original message=" << message.Quote());
+        historyItem.SetReplicaId(diskId);
         disk.History.push_back(historyItem);
 
         if (disk.MasterDiskId) {
@@ -6739,6 +6740,7 @@ NProto::TError TDiskRegistryState::AbortMigrationAndReplaceDevice(
         TStringBuilder() << "Migration was aborted due to lagging. Device "
                          << sourceId << " was replaced by " << targetId);
 
+    historyItem.SetReplicaId(diskId);
     auto* masterDiskState = Disks.FindPtr(disk.MasterDiskId);
     Y_DEBUG_ABORT_UNLESS(masterDiskState);
     if (masterDiskState) {
@@ -7793,6 +7795,14 @@ NProto::TError TDiskRegistryState::MarkReplacementDevice(
                              << " no more marked as a replacement device");
     }
 
+    for (ui32 i = 0; i <= disk->ReplicaCount; ++i) {
+        const TString rid = diskId + "/" + ToString(i);
+        const auto* replica = Disks.FindPtr(rid);
+        if (replica && Count(replica->Devices, deviceId)) {
+            historyItem.SetReplicaId(rid);
+            break;
+        }
+    }
     disk->History.push_back(std::move(historyItem));
 
     UpdateAndReallocateDisk(db, diskId, *disk);

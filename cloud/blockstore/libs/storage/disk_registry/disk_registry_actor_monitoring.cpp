@@ -1155,10 +1155,14 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
             out << "History";
         }
 
+        const bool isMirrorDisk = !info.Replicas.empty();
         TABLE_SORTABLE_CLASS("table table-bordered") {
             TABLEHEAD() {
                 TABLER() {
                     TABLEH() { out << "Timestamp"; }
+                    if (isMirrorDisk) {
+                        TABLEH() { out << "Replica"; }
+                    }
                     TABLEH() { out << "Message"; }
                 }
             }
@@ -1168,6 +1172,14 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
                     TABLED() {
                         out << TInstant::MicroSeconds(hi.GetTimestamp())
                             << " (" << hi.GetTimestamp() << ")";
+                    }
+                    if (isMirrorDisk) {
+                        TABLED() {
+                            const TString& replicaId = hi.GetReplicaId();
+                            if (!replicaId.empty()) {
+                                DumpDiskLink(out, TabletID(), replicaId);
+                            }
+                        }
                     }
                     TABLED() {
                         PRE() {
