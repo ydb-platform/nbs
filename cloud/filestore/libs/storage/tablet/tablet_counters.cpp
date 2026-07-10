@@ -467,6 +467,7 @@ void TTabletMetrics::UpdatePerformanceMetrics(
             return;
         }
 
+	    Cerr << "rpp.RPS=" << rpp.RPS << Endl;
         load += rm.RPS(now) / rpp.RPS;
         ui64 expectedLatencyUs = 1'000'000 / rpp.RPS;
         if (rpp.Throughput) {
