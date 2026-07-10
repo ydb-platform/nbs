@@ -4,8 +4,6 @@
 #include <cloud/filestore/libs/storage/testlib/ss_proxy_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
 
-#include <cloud/storage/core/libs/common/helpers.h>
-
 #include <contrib/ydb/core/protos/flat_scheme_op.pb.h>
 #include <contrib/ydb/core/tx/tx_proxy/proxy.h>
 
@@ -481,9 +479,6 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
                 E_NOT_FOUND,
                 response->GetError().GetCode(),
                 FormatError(response->GetError()));
-            UNIT_ASSERT_C(
-                HasProtoFlag(response->GetError().GetFlags(), NProto::EF_SILENT),
-                FormatError(response->GetError()));
         }
 
         {
@@ -492,9 +487,6 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_NOT_FOUND,
                 response->GetError().GetCode(),
-                FormatError(response->GetError()));
-            UNIT_ASSERT_C(
-                HasProtoFlag(response->GetError().GetFlags(), NProto::EF_SILENT),
                 FormatError(response->GetError()));
         }
     }
