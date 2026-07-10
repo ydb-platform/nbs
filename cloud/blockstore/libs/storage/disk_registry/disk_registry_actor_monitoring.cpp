@@ -825,6 +825,51 @@ void TDiskRegistryActor::RenderAgentHtmlInfo(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+using TReplicaHistoryEntry = std::pair<TString, NProto::TDiskHistoryItem>;
+
+TVector<TReplicaHistoryEntry> CollectDiskHistory(
+    const TDiskRegistryState& state,
+    const TString& diskId,
+    const TDiskInfo& info)
+{
+    TVector<TReplicaHistoryEntry> result;
+
+    if (info.Replicas.empty()) {
+        for (const auto& hi: info.History) {
+            result.emplace_back(TString{}, hi);
+        }
+        return result;
+    }
+
+    for (ui32 i = 0; i <= info.Replicas.size(); ++i) {
+        const TString replicaId = diskId + "/" + ToString(i);
+        TDiskInfo replicaInfo;
+        if (HasError(state.GetDiskInfo(replicaId, replicaInfo))) {
+            continue;
+        }
+        for (auto& hi: replicaInfo.History) {
+            result.emplace_back(replicaId, std::move(hi));
+        }
+    }
+
+    for (const auto& hi: info.History) {
+        result.emplace_back(TString{}, hi);
+    }
+
+    StableSortUniqueBy(
+        result,
+        [](const auto& e)
+        {
+            return std::make_pair(
+                e.second.GetTimestamp(),
+                e.second.GetMessage());
+        });
+
+    return result;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 void TDiskRegistryActor::HandleHttpInfo_RenderDiskHtmlInfo(
     const TActorContext& ctx,
     const TCgiParameters& params,
@@ -1156,30 +1201,7 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
         }
 
         const bool isMirrorDisk = !info.Replicas.empty();
-        TVector<NProto::TDiskHistoryItem> allHistory = info.History;
-
-        if (isMirrorDisk) {
-            for (ui32 i = 0; i <= info.Replicas.size(); ++i) {
-                const TString replicaId = id + "/" + ToString(i);
-                TDiskInfo replicaInfo;
-                if (HasError(State->GetDiskInfo(replicaId, replicaInfo))) {
-                    continue;
-                }
-                for (auto& hi: replicaInfo.History) {
-                    if (hi.GetReplicaId().empty()) {
-                        hi.SetReplicaId(replicaId);
-                    }
-                }
-                allHistory.insert(
-                    allHistory.end(),
-                    std::make_move_iterator(replicaInfo.History.begin()),
-                    std::make_move_iterator(replicaInfo.History.end()));
-            }
-            SortUniqueBy(
-                allHistory,
-                [](const auto& h)
-                { return std::make_pair(h.GetTimestamp(), h.GetMessage()); });
-        }
+        const auto allHistory = CollectDiskHistory(*State, id, info);
 
         TABLE_SORTABLE_CLASS("table table-bordered") {
             TABLEHEAD() {
@@ -1192,7 +1214,7 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
                 }
             }
 
-            for (const auto& hi: allHistory) {
+            for (const auto& [replicaId, hi]: allHistory) {
                 TABLER() {
                     TABLED() {
                         out << TInstant::MicroSeconds(hi.GetTimestamp())
@@ -1200,7 +1222,6 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
                     }
                     if (isMirrorDisk) {
                         TABLED() {
-                            const TString& replicaId = hi.GetReplicaId();
                             if (!replicaId.empty()) {
                                 DumpDiskLink(out, TabletID(), replicaId);
                             }

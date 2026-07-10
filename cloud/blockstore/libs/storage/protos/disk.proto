@@ -249,7 +249,6 @@ message TDiskHistoryItem
 {
     uint64 Timestamp = 1;
     string Message = 2;
-    string ReplicaId = 3;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
