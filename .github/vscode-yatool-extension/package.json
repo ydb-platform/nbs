@@ -1,0 +1,58 @@
+{
+  "name": "vscode-yatool-extension",
+  "displayName": "Yatool ya.make helpers",
+  "description": "Basic navigation and validation helpers for yatool ya.make files.",
+  "version": "0.0.1",
+  "publisher": "local",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onLanguage:yamake",
+    "onCommand:yatool.refreshDiagnostics"
+  ],
+  "main": "./extension.js",
+  "scripts": {
+    "check": "node --check extension.js",
+    "package": "vsce package --no-dependencies --allow-missing-repository --out vscode-yatool-extension.vsix"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "yatool.refreshDiagnostics",
+        "title": "Yatool: Refresh ya.make Diagnostics"
+      }
+    ],
+    "languages": [
+      {
+        "id": "yamake",
+        "aliases": [
+          "ya.make",
+          "Yatool Makelist"
+        ],
+        "filenames": [
+          "ya.make"
+        ],
+        "extensions": [
+          ".inc"
+        ],
+        "filenamePatterns": [
+          "*.make.inc",
+          "*.ya.make.inc"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "yamake",
+        "scopeName": "source.yamake",
+        "path": "./syntaxes/yamake.tmLanguage.json"
+      }
+    ]
+  }
+}

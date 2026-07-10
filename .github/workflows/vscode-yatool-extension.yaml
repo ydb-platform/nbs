@@ -1,0 +1,69 @@
+name: Build VS Code yatool extension
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/vscode-yatool-extension/**"
+      - ".github/workflows/vscode-yatool-extension.yaml"
+    types:
+      - "opened"
+      - "synchronize"
+      - "reopened"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/vscode-yatool-extension/**"
+      - ".github/workflows/vscode-yatool-extension.yaml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  package:
+    runs-on: [self-hosted, "self-hosted", "runner_light"]
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v7
+        with:
+          submodules: false
+          sparse-checkout: |
+            .github/vscode-yatool-extension
+          clean: true
+
+      - name: disable sparse checkout (workaround for actions/checkout/issues/2249)
+        if: ${{ always() }}
+        run: git config core.sparseCheckout false
+        continue-on-error: true
+
+      - name: setup node
+        uses: actions/setup-node@v6.3.0
+        with:
+          node-version: "22"
+
+      - name: install packager
+        working-directory: .github/vscode-yatool-extension
+        run: npm install --no-save --no-package-lock @vscode/vsce
+
+      - name: check extension syntax
+        working-directory: .github/vscode-yatool-extension
+        run: npm run check
+
+      - name: package extension
+        working-directory: .github/vscode-yatool-extension
+        run: npm run package
+
+      - name: upload vsix
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: vscode-yatool-extension
+          path: .github/vscode-yatool-extension/vscode-yatool-extension.vsix
+          if-no-files-found: error

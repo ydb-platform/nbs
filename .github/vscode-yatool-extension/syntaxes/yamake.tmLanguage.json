@@ -1,0 +1,45 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Yatool Makelist",
+  "scopeName": "source.yamake",
+  "patterns": [
+    {
+      "name": "comment.line.number-sign.yamake",
+      "match": "#.*$"
+    },
+    {
+      "name": "keyword.control.yamake",
+      "match": "\\b(IF|ELSE|ELSEIF|ENDIF|END)\\b"
+    },
+    {
+      "name": "support.function.macro.yamake",
+      "match": "\\b[A-Za-z_][A-Za-z0-9_-]*(?=\\s*\\()"
+    },
+    {
+      "name": "variable.other.yamake",
+      "match": "\\$\\{[A-Za-z_][A-Za-z0-9_]*\\}|\\$\\([A-Za-z_][A-Za-z0-9_]*\\)"
+    },
+    {
+      "name": "string.quoted.double.yamake",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "name": "constant.character.escape.yamake",
+          "match": "\\\\."
+        }
+      ]
+    },
+    {
+      "name": "string.quoted.single.yamake",
+      "begin": "'",
+      "end": "'",
+      "patterns": [
+        {
+          "name": "constant.character.escape.yamake",
+          "match": "\\\\."
+        }
+      ]
+    }
+  ]
+}

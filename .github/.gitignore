@@ -1,3 +1,5 @@
 .ansible_vault_password
 .vscode/
+!vscode-yatool-extension/.vscode/
+!vscode-yatool-extension/.vscode/launch.json
 .env
