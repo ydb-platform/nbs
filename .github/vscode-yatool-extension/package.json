@@ -17,7 +17,7 @@
   ],
   "main": "./extension.js",
   "scripts": {
-    "check": "node --check extension.js",
+    "check": "node --check extension.js && node --check macroMetadata.js && node --check makelistParser.js && node --check pathResolver.js && node --check resourceMappings.js",
     "package": "vsce package --no-dependencies --allow-missing-repository --out vscode-yatool-extension.vsix"
   },
   "contributes": {
@@ -36,9 +36,6 @@
         ],
         "filenames": [
           "ya.make"
-        ],
-        "extensions": [
-          ".inc"
         ],
         "filenamePatterns": [
           "*.make.inc",

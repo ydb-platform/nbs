@@ -6,14 +6,20 @@ Small VS Code extension for navigating common path-bearing `ya.make` macros.
 
 - Document links for `INCLUDE(...)`.
 - Document links for local `DATA(...)` arguments such as `arcadia/cloud/...`.
+- Document links and Go to Definition for `DEPENDS(...)`.
+- Document links and Go to Definition for `ADDINCL(...)` include directories.
+- Document links and Go to Definition for `SRCS(...)`, `PY_SRCS(...)`, `TEST_SRCS(...)`, `GO_TEST_SRCS(...)`, `GO_XTEST_SRCS(...)`, `GO_GRPC_GATEWAY_SRCS(...)`, `JOIN_SRCS(...)`, `FILES(...)`, `SUPPRESSIONS(...)`, `EXPORTS_SCRIPT(...)`, and `GENERATE_ENUM_SERIALIZATION(...)` source files.
+- Document links and Go to Definition for `RESOURCE(...)` source files.
+- Document links and Go to Definition for `UNITTEST_FOR(...)`, `GO_TEST_FOR(...)`, and `DYNAMIC_LIBRARY_FROM(...)` module references.
 - Document links for `RECURSE(...)`, `RECURSE_FOR_TESTS(...)`, `RECURSE_ROOT_RELATIVE(...)`, and `PEERDIR(...)`.
+- Document links and Go to Definition for `USE_RECIPE(...)`; recipe module-name suffixes resolve to declaring `ya.make.inc` / `ya.make` files when possible.
 - Go to definition and hover information for `FROM_SANDBOX(...)` numeric resource ids found in `build/ext_mapping.conf.json` or `build/mapping.conf.json`.
-- Hover hints for common macros such as `PY3TEST`, `SPLIT_FACTOR`, `PEERDIR`, `RECURSE`, `RECURSE_FOR_TESTS`, `INCLUDE`, `DATA`, `TEST_SRCS`, `DEPENDS`, and `SET`.
+- Hover hints for all macro names currently found under `cloud/`, plus resource ids in `FROM_SANDBOX(...)`.
 - Diagnostics for missing resolved paths.
 - Diagnostics when `INCLUDE(...)` resolves to a directory.
 - Diagnostics when module-directory macros do not resolve to a directory with `ya.make`.
 - Basic syntax diagnostics for unclosed macro calls.
-- Basic syntax highlighting for `ya.make` and `.inc` files.
+- Basic syntax highlighting for `ya.make`, `*.make.inc`, and `*.ya.make.inc` files. Bare `.inc` files are not claimed globally, but opened `.inc` files that look like ymake fragments are switched to `yamake` automatically.
 
 Supported path forms:
 
@@ -22,10 +28,29 @@ Supported path forms:
 - `INCLUDE(relative/file.inc)`
 - `DATA(arcadia/path/to/data)`
 - `DATA(${ARCADIA_ROOT}/path/to/data)`
+- `DEPENDS(root/relative/module)`
+- `ADDINCL(root/relative/include/dir)`
+- `RESOURCE(static/file.css runtime/key)`
+- `SRCS(source.cpp)`
+- `PY_SRCS(package/module.py)`
+- `TEST_SRCS(test_module.py)`
+- `GO_TEST_SRCS(test_file.go)`
+- `GO_XTEST_SRCS(external_test.go)`
+- `GO_GRPC_GATEWAY_SRCS(service.proto)`
+- `JOIN_SRCS(joined.cpp input1.cpp input2.cpp)`
+- `GENERATE_ENUM_SERIALIZATION(options.h)`
+- `EXPORTS_SCRIPT(plugin.symlist)`
+- `FILES(start.sh stop.sh)`
+- `SUPPRESSIONS(tsan.supp)`
+- `RUN_PYTHON3(${CURDIR}/script.py args...)`
+- `UNITTEST_FOR(root/relative/library)`
+- `GO_TEST_FOR(root/relative/go/module)`
+- `DYNAMIC_LIBRARY_FROM(root/relative/module)`
 - `RECURSE(relative/module)`
 - `RECURSE_FOR_TESTS(relative/test/module)`
 - `RECURSE_ROOT_RELATIVE(root/relative/module)`
 - `PEERDIR(root/relative/module)`
+- `USE_RECIPE(root/relative/recipe-module [args...])`
 - `FROM_SANDBOX(FILE 12500613127 RENAME RESOURCE OUT_NOAUTO rootfs.img)`
 
 Remote or non-filesystem data forms such as `sbr://...` and `ext:...` are ignored by this first version.
