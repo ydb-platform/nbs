@@ -123,10 +123,11 @@ func scanFilesystemSnapshotState(res persistence.Result) (state filesystemSnapsh
 
 func scanFilesystemSnapshotStates(ctx context.Context, res persistence.Result) ([]filesystemSnapshotState, error) {
 	var states []filesystemSnapshotState
-	// TODO: NextResultSet(ctx) drops the error returned by NextResultSetErr(ctx).
+	// NOTE: YDB SDK's NextResultSet(ctx) drops the error returned by NextResultSetErr(ctx).
 	// If ctx is cancelled during iteration, the YDB SDK can return ctx.Err()
-	// without storing it in res.Err(), so this scanner may incorrectly observe
-	// an empty result. See:
+	// without storing it in res.Err(), so we must check ctx.Err() after iteration
+	// to avoid incorrectly treating the result as empty.
+	// See:
 	// https://github.com/ydb-platform/ydb-go-sdk/blob/v3.54.3/internal/table/scanner/result.go#L149-L205
 	// https://github.com/ydb-platform/ydb-go-sdk/blob/v3.54.3/internal/table/scanner/scanner.go#L219-L235
 	for res.NextResultSet(ctx) {
