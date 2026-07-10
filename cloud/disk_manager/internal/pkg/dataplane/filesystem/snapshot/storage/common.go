@@ -123,6 +123,12 @@ func scanFilesystemSnapshotState(res persistence.Result) (state filesystemSnapsh
 
 func scanFilesystemSnapshotStates(ctx context.Context, res persistence.Result) ([]filesystemSnapshotState, error) {
 	var states []filesystemSnapshotState
+	// TODO: NextResultSet(ctx) drops the error returned by NextResultSetErr(ctx).
+	// If ctx is cancelled during iteration, the YDB SDK can return ctx.Err()
+	// without storing it in res.Err(), so this scanner may incorrectly observe
+	// an empty result. See:
+	// https://github.com/ydb-platform/ydb-go-sdk/blob/v3.54.3/internal/table/scanner/result.go#L149-L205
+	// https://github.com/ydb-platform/ydb-go-sdk/blob/v3.54.3/internal/table/scanner/scanner.go#L219-L235
 	for res.NextResultSet(ctx) {
 		for res.NextRow() {
 			state, err := scanFilesystemSnapshotState(res)
@@ -137,6 +143,10 @@ func scanFilesystemSnapshotStates(ctx context.Context, res persistence.Result) (
 	// NOTE: always check query result after iteration.
 	if res.Err() != nil {
 		return nil, errors.NewRetriableError(res.Err())
+	}
+
+	if ctx.Err() != nil {
+		return nil, errors.NewRetriableError(ctx.Err())
 	}
 
 	return states, nil
