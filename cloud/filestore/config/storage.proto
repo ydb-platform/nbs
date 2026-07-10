@@ -842,4 +842,10 @@ message TStorageConfig
     // Enables the RDMA side channel for tablet-proxied requests in
     // filestore-server and filestore-vhost.
     optional bool TabletDirectRdmaEnabled = 524;
+
+    // Enables random BS proxy request failures in the tablet interceptor.
+    // This is intended for testing retry/recovery paths.
+    optional bool FakeBSProxyFailuresEnabled = 525;
+    // Random BS proxy failure probability in percents.
+    optional double FakeBSProxyFailuresProbabilityPercentage = 526;
 }

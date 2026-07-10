@@ -379,6 +379,9 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(SoftBackpressureMaxReadBandwidth,              ui32,    30 * 1024     )\
     xxx(SoftBackpressureMaxWriteIops,                  ui32,    10'000        )\
     xxx(SoftBackpressureMaxReadIops,                   ui32,    100'000       )\
+                                                                               \
+    xxx(FakeBSProxyFailuresEnabled,                    bool,    false         )\
+    xxx(FakeBSProxyFailuresProbabilityPercentage,      double,  0.0           )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \
