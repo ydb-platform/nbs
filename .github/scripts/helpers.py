@@ -11,7 +11,7 @@ import inspect
 import time
 from dataclasses import dataclass
 import datetime
-from typing import Callable, List, Tuple
+from typing import Any, Callable, List, Tuple
 from urllib.parse import quote, urlparse
 
 from github import Auth as GithubAuth, Github
@@ -483,21 +483,13 @@ def github_runner_repo(github: Github):
     return github.get_repo("actions/runner")
 
 
-@retry(
-    attempts=GITHUB_API_RETRY_ATTEMPTS,
-    interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
-    retry_exceptions=PYGITHUB_RETRY_EXCEPTIONS,
-)
-def get_pull_request_from_event(
-    github_token: str,
-    event_path: str,
-) -> PullRequest:
-    gh = github_client(github_token)
+def load_github_event() -> dict[str, Any]:
+    with open(os.environ["GITHUB_EVENT_PATH"], encoding="utf-8") as fp:
+        return json.load(fp)
 
-    with open(event_path, encoding="utf-8") as fp:
-        event = json.load(fp)
 
-    return gh.create_from_raw_data(PullRequest, event["pull_request"])
+def pull_request_from_event(github: Github, event: dict[str, Any]) -> PullRequest:
+    return github.create_from_raw_data(PullRequest, event["pull_request"])
 
 
 def git_release_payload(release: GitRelease) -> dict:

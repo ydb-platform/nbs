@@ -515,58 +515,25 @@ def test_parse_actions_job_url_extracts_run_and_job_ids() -> None:
     assert h.parse_actions_job_url("https://github.com/org/repo/actions/runs/1") is None
 
 
-def test_get_pull_request_from_event_uses_github_event_payload(
-    monkeypatch,
-    tmp_path,
-):
+def test_load_github_event(monkeypatch, tmp_path):
     event_path = tmp_path / "event.json"
     event_path.write_text(json.dumps({"pull_request": {"number": 42}}))
+    monkeypatch.setenv("GITHUB_EVENT_PATH", str(event_path))
+
+    assert h.load_github_event() == {"pull_request": {"number": 42}}
+
+
+def test_pull_request_from_event_uses_github_event_payload():
+    event = {"pull_request": {"number": 42}}
 
     class FakeGithub:
         def create_from_raw_data(self, cls, data):
             assert cls.__name__ == "PullRequest"
             return SimpleNamespace(number=data["number"])
 
-    def fake_github_client(token):
-        assert token == "token"
-        return FakeGithub()
-
-    monkeypatch.setattr(h, "github_client", fake_github_client)
-
-    pr = h.get_pull_request_from_event("token", str(event_path))
+    pr = h.pull_request_from_event(FakeGithub(), event)
 
     assert pr.number == 42
-
-
-def test_get_pull_request_from_event_retries_github_failures(
-    monkeypatch,
-    tmp_path,
-):
-    event_path = tmp_path / "event.json"
-    event_path.write_text(json.dumps({"pull_request": {"number": 42}}))
-    calls = []
-    sleeps = []
-
-    class FakeGithub:
-        def create_from_raw_data(self, cls, data):
-            assert cls.__name__ == "PullRequest"
-            calls.append(data["number"])
-            if len(calls) == 1:
-                raise h.requests.exceptions.Timeout("temporary")
-            return SimpleNamespace(number=data["number"])
-
-    def fake_github_client(token):
-        assert token == "token"
-        return FakeGithub()
-
-    monkeypatch.setattr(h, "github_client", fake_github_client)
-    monkeypatch.setattr(h.time, "sleep", sleeps.append)
-
-    pr = h.get_pull_request_from_event("token", str(event_path))
-
-    assert pr.number == 42
-    assert calls == [42, 42]
-    assert sleeps == [h.GITHUB_API_RETRY_INTERVAL_SEC]
 
 
 def test_resolve_github_runner_release_treats_empty_as_latest(monkeypatch):

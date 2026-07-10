@@ -5,7 +5,13 @@ import argparse
 import json
 import os
 
-from ..helpers import find_current_job_url, get_pull_request_from_event, setup_logger
+from ..helpers import (
+    find_current_job_url,
+    github_client_from_env,
+    load_github_event,
+    pull_request_from_event,
+    setup_logger,
+)
 from . import generate_summary as gs
 
 
@@ -76,9 +82,9 @@ def main() -> None:
     ):
         return
 
-    pr = get_pull_request_from_event(
-        os.environ["GITHUB_TOKEN"],
-        os.environ["GITHUB_EVENT_PATH"],
+    pr = pull_request_from_event(
+        github_client_from_env(),
+        load_github_event(),
     )
     run_number = int(os.environ.get("GITHUB_RUN_NUMBER", "0"))
 

@@ -8,8 +8,10 @@ import os
 from ..helpers import (
     PYGITHUB_RETRY_EXCEPTIONS,
     get_jobs_raw,
-    get_pull_request_from_event,
+    github_client_from_env,
+    load_github_event,
     parse_actions_job_url,
+    pull_request_from_event,
     setup_logger,
 )
 from . import generate_summary as gs
@@ -67,9 +69,9 @@ def main() -> None:
     ):
         return
 
-    pr = get_pull_request_from_event(
-        os.environ["GITHUB_TOKEN"],
-        os.environ["GITHUB_EVENT_PATH"],
+    pr = pull_request_from_event(
+        github_client_from_env(),
+        load_github_event(),
     )
     run_number = int(os.environ.get("GITHUB_RUN_NUMBER", "0"))
     job_conclusion_cache: dict[str, str | None] = {}

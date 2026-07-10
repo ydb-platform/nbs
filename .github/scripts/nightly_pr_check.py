@@ -20,11 +20,13 @@ from jinja2 import Environment, FileSystemLoader, StrictUndefined
 from .helpers import (
     find_current_job_url,
     get_build_preset_from_workflow_name,
-    github_client,
     get_s3_report_uri,
     get_s3_report_url,
     get_s3_workflow_reports_path,
+    github_client_from_env,
+    load_github_event,
     parse_s3_path,
+    pull_request_from_event,
     retry,
     setup_logger,
 )
@@ -106,19 +108,6 @@ class CancellationRequested(BaseException):
 
 def request_cancellation(signum: int, _frame: Any) -> None:  # noqa: U101
     raise CancellationRequested(f"received signal {signum}")
-
-
-def load_event() -> dict[str, Any]:
-    with open(os.environ["GITHUB_EVENT_PATH"], encoding="utf-8") as fp:
-        return json.load(fp)
-
-
-def get_github_context(
-    gh, repository: str, event: dict[str, Any]
-) -> tuple[Repository, PullRequest]:
-    repo = gh.get_repo(repository)
-    pr = gh.create_from_raw_data(PullRequest, event["pull_request"])
-    return repo, pr
 
 
 def selected_workflows(labels: set[str]) -> list[WorkflowRun]:
@@ -849,8 +838,9 @@ def load_context(gh) -> tuple[
 ]:
     token = os.environ["GITHUB_TOKEN"]
     repository = os.environ["GITHUB_REPOSITORY"]
-    event = load_event()
-    repo, pr_object = get_github_context(gh, repository, event)
+    event = load_github_event()
+    repo = gh.get_repo(repository)
+    pr_object = pull_request_from_event(gh, event)
     pr = event["pull_request"]
     pr_number = int(pr["number"])
     head_ref = pr["head"]["ref"]
@@ -934,7 +924,7 @@ def main() -> int:
     signal.signal(signal.SIGTERM, request_cancellation)
 
     args = parse_args()
-    gh = github_client(os.environ["GITHUB_TOKEN"])
+    gh = github_client_from_env()
     if args.mode == "cancel":
         return cancel_mode(gh)
 

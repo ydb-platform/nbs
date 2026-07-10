@@ -21,7 +21,12 @@ from xml.etree import ElementTree as ET
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
-from ..helpers import get_pull_request_from_event, setup_logger
+from ..helpers import (
+    github_client_from_env,
+    load_github_event,
+    pull_request_from_event,
+    setup_logger,
+)
 from .junit_utils import get_property_value, iter_xml_files
 
 LOGGER = logging.getLogger(__name__)
@@ -1402,9 +1407,9 @@ def main() -> None:
         return
 
     run_number = int(os.environ.get("GITHUB_RUN_NUMBER", "0"))
-    pr = get_pull_request_from_event(
-        os.environ["GITHUB_TOKEN"],
-        os.environ["GITHUB_EVENT_PATH"],
+    pr = pull_request_from_event(
+        github_client_from_env(),
+        load_github_event(),
     )
     if args.update_workload_status_only:
         update_pr_comment_workload_status(
