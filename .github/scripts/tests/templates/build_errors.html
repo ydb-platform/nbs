@@ -88,6 +88,16 @@
     {% endfor %}
     {% endif %}
 
+    {% if resource_fetch_errors %}
+    <h2>Resource fetch errors</h2>
+    {% for error in resource_fetch_errors %}
+    <div class="panel">
+        <h3>{{ error.resource }}</h3>
+        <pre>{{ error.message }}</pre>
+    </div>
+    {% endfor %}
+    {% endif %}
+
     {% if target_sections %}
     <h2>Failed build targets</h2>
     {% for section in target_sections %}
