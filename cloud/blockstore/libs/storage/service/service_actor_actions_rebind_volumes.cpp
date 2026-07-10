@@ -90,8 +90,8 @@ void TRebindVolumesActor::Bootstrap(const TActorContext& ctx)
         auto request = std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
             diskId,
             op,
-            NProto::SOURCE_MANUAL
-        );
+                NProto::SOURCE_MANUAL,
+                RebindRequest.GetUseGentlePreemption());
 
         NCloud::Send(ctx, MakeStorageServiceId(), std::move(request));
     }

@@ -613,6 +613,64 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         UNIT_ASSERT_VALUES_EQUAL(diskIds.count("vol1"), 1);
     }
 
+    Y_UNIT_TEST(ShouldRebindLocalVolumesWithGentlePreemption)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        ui32 nodeIdx = SetupTestEnv(env, std::move(config));
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateVolume("vol0");   // local
+        service.CreateVolume("vol1");   // local
+        service.CreateVolume("vol2");   // remote
+        service.CreateVolume("vol3");   // not mounted
+
+        service.MountVolume("vol0");
+        service.MountVolume("vol1");
+        service.MountVolume(
+            "vol2",
+            TString(),   // instanceId
+            TString(),   // token
+            NProto::IPC_GRPC,
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_REMOTE);
+
+        TSet<TString> diskIds;
+
+        env.GetRuntime().SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvService::EvChangeVolumeBindingRequest: {
+                        auto* msg = event->Get<
+                            TEvService::TEvChangeVolumeBindingRequest>();
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            static_cast<ui32>(
+                                TEvService::TChangeVolumeBindingRequest::
+                                    EChangeBindingOp::RELEASE_TO_HIVE),
+                            static_cast<ui32>(msg->Action));
+                        UNIT_ASSERT(msg->UseGentlePreemption);
+
+                        diskIds.insert(msg->DiskId);
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        NPrivateProto::TRebindVolumesRequest request;
+        request.SetBinding(2);   // REMOTE
+        request.SetUseGentlePreemption(true);
+
+        TString buf;
+        google::protobuf::util::MessageToJsonString(request, &buf);
+
+        service.ExecuteAction("rebindvolumes", buf);
+
+        UNIT_ASSERT_VALUES_EQUAL(2, diskIds.size());
+        UNIT_ASSERT_VALUES_EQUAL(diskIds.count("vol0"), 1);
+        UNIT_ASSERT_VALUES_EQUAL(diskIds.count("vol1"), 1);
+    }
+
     Y_UNIT_TEST(ShouldDrainNode)
     {
         TTestEnv env;
