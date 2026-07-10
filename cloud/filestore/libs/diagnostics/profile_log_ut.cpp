@@ -70,6 +70,16 @@ TString LockInfoToString(const NProto::TProfileLogLockInfo& lockInfo)
         << "," << lockInfo.GetConflictedLength();
 }
 
+TString ListNodesInfoToString(
+    const NProto::TProfileLogListNodesInfo& listNodesInfo)
+{
+    return TStringBuilder() << listNodesInfo.GetNodeId()
+        << "," << listNodesInfo.GetMaxBytes()
+        << "," << listNodesInfo.GetRequestCookie()
+        << "," << listNodesInfo.GetResponseCookie()
+        << "," << listNodesInfo.GetNameCount();
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TEventProcessor
@@ -110,6 +120,10 @@ struct TEventProcessor
                 if (r.HasLockInfo()) {
                     FlatMessages.back() += TStringBuilder() <<
                         "\t" << LockInfoToString(r.GetLockInfo());
+                }
+                if (r.HasListNodesInfo()) {
+                    FlatMessages.back() += TStringBuilder() <<
+                        "\t" << ListNodesInfoToString(r.GetListNodesInfo());
                 }
                 if (r.RangesSize() > 0) {
                     FlatMessages.back() += TStringBuilder() <<
@@ -293,6 +307,22 @@ struct TRequestInfoBuilder
         return *this;
     }
 
+    auto& AddListNodesInfo(
+        ui64 nodeId,
+        ui32 maxBytes,
+        TString requestCookie,
+        TString responseCookie,
+        ui64 nameCount)
+    {
+        auto listNodesInfo = R.MutableListNodesInfo();
+        listNodesInfo->SetNodeId(nodeId);
+        listNodesInfo->SetMaxBytes(maxBytes);
+        listNodesInfo->SetRequestCookie(std::move(requestCookie));
+        listNodesInfo->SetResponseCookie(std::move(responseCookie));
+        listNodesInfo->SetNameCount(nameCount);
+        return *this;
+    }
+
     auto Build() const
     {
         return R;
@@ -455,6 +485,33 @@ Y_UNIT_TEST_SUITE(TProfileLogTest)
         UNIT_ASSERT_VALUES_EQUAL(3, flushes->Val());
         UNIT_ASSERT(discards);
         UNIT_ASSERT_VALUES_EQUAL(0, discards->Val());
+    }
+
+    Y_UNIT_TEST_F(TestDumpListNodesInfo, TEnv)
+    {
+        ProfileLog->Write({
+            "fs-list",
+            TRequestInfoBuilder()
+                .SetTimestamp(TInstant::Seconds(7))
+                .SetDuration(TDuration::MilliSeconds(125))
+                .SetRequestType(27)
+                .SetError(0)
+                .AddListNodesInfo(
+                    42,
+                    4096,
+                    "request-cookie",
+                    "response-cookie",
+                    3)
+                .Build()
+        });
+
+        ProcessLog();
+
+        UNIT_ASSERT_VALUES_EQUAL(1, EventProcessor.FlatMessages.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "fs-list\t7000000\t27\t125000\t0\t42,4096,request-cookie,response-"
+            "cookie,3",
+            EventProcessor.FlatMessages[0]);
     }
 
     Y_UNIT_TEST(TestRecordLimits)

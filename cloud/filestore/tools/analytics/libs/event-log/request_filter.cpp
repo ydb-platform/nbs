@@ -110,6 +110,17 @@ public:
                 }
             }
 
+            if (profileLogRequest.HasListNodesInfo()) {
+                const auto& listNodesInfo = profileLogRequest.GetListNodesInfo();
+                if (listNodesInfo.HasNodeId() &&
+                    listNodesInfo.GetNodeId() == NodeId)
+                {
+                    answer.MutableRequests()->Add(
+                        NProto::TProfileLogRequestInfo(profileLogRequest));
+                    continue;
+                }
+            }
+
             if (profileLogRequest.HasLockInfo()) {
                 const auto& lockInfo = profileLogRequest.GetLockInfo();
                 if (lockInfo.HasNodeId() && lockInfo.GetNodeId() == NodeId) {

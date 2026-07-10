@@ -464,27 +464,28 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
     Y_UNIT_TEST(ShouldListNodesRequestInitializeFieldsCorrectly)
     {
         const auto nodeId = 12;
+        const auto maxBytes = 4096;
+        const TString cookie = "request-cookie";
 
         NProto::TListNodesRequest req;
         req.SetNodeId(nodeId);
+        req.SetMaxBytes(maxBytes);
+        req.SetCookie(cookie);
 
         NProto::TProfileLogRequestInfo profileLogRequest;
         InitProfileLogRequestInfo(profileLogRequest, req);
 
         UNIT_ASSERT_VALUES_EQUAL(0, profileLogRequest.RangesSize());
-        UNIT_ASSERT(profileLogRequest.HasNodeInfo());
+        UNIT_ASSERT(!profileLogRequest.HasNodeInfo());
         UNIT_ASSERT(!profileLogRequest.HasLockInfo());
+        UNIT_ASSERT(profileLogRequest.HasListNodesInfo());
 
-        const auto& nodeInfo = profileLogRequest.GetNodeInfo();
-        UNIT_ASSERT(!nodeInfo.HasParentNodeId());
-        UNIT_ASSERT(!nodeInfo.HasNodeName());
-        UNIT_ASSERT(!nodeInfo.HasNewParentNodeId());
-        UNIT_ASSERT(!nodeInfo.HasNewNodeName());
-        UNIT_ASSERT(!nodeInfo.HasFlags());
-        UNIT_ASSERT(!nodeInfo.HasMode());
-        UNIT_ASSERT_VALUES_EQUAL(nodeId, nodeInfo.GetNodeId());
-        UNIT_ASSERT(!nodeInfo.HasHandle());
-        UNIT_ASSERT(!nodeInfo.HasSize());
+        const auto& listNodesInfo = profileLogRequest.GetListNodesInfo();
+        UNIT_ASSERT_VALUES_EQUAL(nodeId, listNodesInfo.GetNodeId());
+        UNIT_ASSERT_VALUES_EQUAL(maxBytes, listNodesInfo.GetMaxBytes());
+        UNIT_ASSERT_VALUES_EQUAL(cookie, listNodesInfo.GetRequestCookie());
+        UNIT_ASSERT(!listNodesInfo.HasResponseCookie());
+        UNIT_ASSERT(!listNodesInfo.HasNameCount());
     }
 
     Y_UNIT_TEST(ShouldReadLinkRequestInitializeFieldsCorrectly)
@@ -874,29 +875,28 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
     Y_UNIT_TEST(ShouldListNodesResponseInitializeFieldsCorrectly)
     {
         const std::array<TString, 3> names = {"name_1", "name_2", "name_3"};
+        const TString cookie = "response-cookie";
 
         NProto::TListNodesResponse res;
         for (const auto& name : names) {
             res.AddNames(name);
         }
+        res.SetCookie(cookie);
 
         NProto::TProfileLogRequestInfo profileLogRequest;
         FinalizeProfileLogRequestInfo(profileLogRequest, res);
 
         UNIT_ASSERT_VALUES_EQUAL(0, profileLogRequest.RangesSize());
-        UNIT_ASSERT(profileLogRequest.HasNodeInfo());
+        UNIT_ASSERT(!profileLogRequest.HasNodeInfo());
         UNIT_ASSERT(!profileLogRequest.HasLockInfo());
+        UNIT_ASSERT(profileLogRequest.HasListNodesInfo());
 
-        const auto& nodeInfo = profileLogRequest.GetNodeInfo();
-        UNIT_ASSERT(!nodeInfo.HasParentNodeId());
-        UNIT_ASSERT(!nodeInfo.HasNodeName());
-        UNIT_ASSERT(!nodeInfo.HasNewParentNodeId());
-        UNIT_ASSERT(!nodeInfo.HasNewNodeName());
-        UNIT_ASSERT(!nodeInfo.HasFlags());
-        UNIT_ASSERT(!nodeInfo.HasMode());
-        UNIT_ASSERT(!nodeInfo.HasNodeId());
-        UNIT_ASSERT(!nodeInfo.HasHandle());
-        UNIT_ASSERT_VALUES_EQUAL(names.size(), nodeInfo.GetSize());
+        const auto& listNodesInfo = profileLogRequest.GetListNodesInfo();
+        UNIT_ASSERT(!listNodesInfo.HasNodeId());
+        UNIT_ASSERT(!listNodesInfo.HasMaxBytes());
+        UNIT_ASSERT(!listNodesInfo.HasRequestCookie());
+        UNIT_ASSERT_VALUES_EQUAL(cookie, listNodesInfo.GetResponseCookie());
+        UNIT_ASSERT_VALUES_EQUAL(names.size(), listNodesInfo.GetNameCount());
     }
 
     Y_UNIT_TEST(ShouldSetNodeAttrResponseInitializeFieldsCorrectly)
