@@ -188,7 +188,7 @@ func (c *httpClient) RequestsCount() uint64 {
 
 func (c *httpClient) head(
 	ctx context.Context,
-) (resp *http.Response, err error) {
+) (*http.Response, error) {
 
 	logging.Debug(
 		ctx,
@@ -196,10 +196,11 @@ func (c *httpClient) head(
 		removeParametersFromURL(c.url),
 	)
 
-	resp, err = c.client.Head(c.url)
+	resp, err := c.client.Head(c.url)
 	if resp != nil {
 		c.metrics.OnHttpStatus("head", resp.StatusCode)
 	}
+
 	if err != nil {
 		// NBS-3324: should it be retriable?
 		return nil, errors.NewRetriableError(err)
@@ -223,7 +224,7 @@ func (c *httpClient) body(
 	ctx context.Context,
 	start, end uint64, // Half-open interval [start:end).
 	etag string,
-) (_ io.ReadCloser, err error) {
+) (io.ReadCloser, error) {
 
 	req, err := http.NewRequest(http.MethodGet, c.url, nil)
 	if err != nil {
@@ -242,6 +243,7 @@ func (c *httpClient) body(
 	// Use closed interval [start, last] for range request.
 	last := end - 1
 	req.Header.Set("RANGE", fmt.Sprintf("bytes=%v-%v", start, last))
+	var resp *http.Response
 
 	logging.Debug(
 		ctx,
@@ -253,10 +255,11 @@ func (c *httpClient) body(
 	)
 
 	// TODO: try to use http2 streams NBS-3253.
-	resp, err := c.client.Do(req)
+	resp, err = c.client.Do(req)
 	if resp != nil {
 		c.metrics.OnHttpStatus("get", resp.StatusCode)
 	}
+
 	if err != nil {
 		return nil, errors.NewRetriableErrorf(
 			"range [%v:%v]: %v",

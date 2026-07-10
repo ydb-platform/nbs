@@ -83,26 +83,23 @@ func (m *requestMetrics) stat() func(*error) {
 type urlMetricsImpl struct {
 	registry    common_metrics.Registry
 	requests    map[string]*requestMetrics
-	requestsMu  sync.Mutex
+	requestsMutex  sync.Mutex
 	requestSize common_metrics.Histogram
 	cacheHits   common_metrics.Counter
 }
 
 func newMetricsImpl(registry common_metrics.Registry) *urlMetricsImpl {
-	subRegistry := registry.WithTags(map[string]string{
-		"component": "url_source",
-	})
 	return &urlMetricsImpl{
-		registry:    subRegistry,
+		registry:    registry,
 		requests:    make(map[string]*requestMetrics),
-		requestSize: subRegistry.Histogram("requestSize", requestSizeBuckets()),
-		cacheHits:   subRegistry.Counter("cacheHits"),
+		requestSize: registry.Histogram("requestSize", requestSizeBuckets()),
+		cacheHits:   registry.Counter("cacheHits"),
 	}
 }
 
 func (m *urlMetricsImpl) requestMetrics(request string) *requestMetrics {
-	m.requestsMu.Lock()
-	defer m.requestsMu.Unlock()
+	m.requestsMutex.Lock()
+	defer m.requestsMutex.Unlock()
 
 	requestMetrics, ok := m.requests[request]
 	if !ok {

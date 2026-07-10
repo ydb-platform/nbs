@@ -88,7 +88,11 @@ func (c *Cache) Read(
 		chunkStart := (start / c.chunkSize) * c.chunkSize
 		bytesRead, ok := c.readChunk(start, chunkStart, data)
 
-		if !ok {
+		if ok {
+			if c.onCacheHit != nil {
+				c.onCacheHit()
+			}
+		} else {
 			// We read at most one chunk, so we will retrieve at most 2 chunks and
 			// save them to cache (in case the read data crosses the border between
 			// two chunks).
@@ -101,10 +105,6 @@ func (c *Cache) Read(
 
 			bytesRead = retrievedChunk.read(start, data)
 			c.put(retrievedChunk)
-		} else {
-			if c.onCacheHit != nil {
-				c.onCacheHit()
-			}
 		}
 
 		data = data[bytesRead:]
