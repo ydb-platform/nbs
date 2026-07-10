@@ -453,7 +453,6 @@ NProto::TError TIndexTabletActor::ValidateWriteRequest(
 {
     auto error = ValidateRange(range, Config->GetMaxFileBlocks());
     if (HasError(error)) {
-        std::cerr << "MYAGKOV: validate write request failed" << std::endl;
         return error;
     }
 
