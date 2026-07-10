@@ -29,6 +29,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(PipeClientMinRetryTime,        TDuration, TDuration::Seconds(1)       )\
     xxx(PipeClientMaxRetryTime,        TDuration, TDuration::Seconds(4)       )\
                                                                                \
+    xxx(TabletDirectRdmaEnabled,       bool,      false                       )\
+                                                                               \
     xxx(EstablishSessionTimeout,       TDuration, TDuration::Seconds(30)      )\
     xxx(IdleSessionTimeout,            TDuration, TDuration::Hours(1)         )\
                                                                                \

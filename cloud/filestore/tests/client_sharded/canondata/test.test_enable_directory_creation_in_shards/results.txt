@@ -15,6 +15,7 @@ FileStore {
     AsyncHandleOperationPeriod: 50
     HasXAttrs: true
     MaxFuseLoopThreads: 1
+    TabletDirectRdmaEnabled: false
   }
   ShardFileSystemIds: "fs0_s1"
 }

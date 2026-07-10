@@ -839,6 +839,10 @@ message TStorageConfig
     // the unconfirmed data flow.
     optional bool AllowTabletOverload = 523;
 
+    // Enables the RDMA side channel for tablet-proxied requests in
+    // filestore-server and filestore-vhost.
+    optional bool TabletDirectRdmaEnabled = 524;
+
     // Pass data buffer to the tablet as a message payload
-    optional bool ExternalWriteDataPayloadEnabled = 524;
+    optional bool ExternalWriteDataPayloadEnabled = 525;
 }

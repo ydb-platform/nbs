@@ -76,6 +76,8 @@ public:
     TDuration GetPipeClientMinRetryTime() const;
     TDuration GetPipeClientMaxRetryTime() const;
 
+    bool GetTabletDirectRdmaEnabled() const;
+
     TDuration GetEstablishSessionTimeout() const;
     TDuration GetIdleSessionTimeout() const;
 
