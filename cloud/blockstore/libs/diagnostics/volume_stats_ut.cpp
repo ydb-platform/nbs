@@ -1216,18 +1216,18 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             "instance",
             NCloud::NProto::STORAGE_MEDIA_SSD);
 
-        auto volumeCounters = monitoring->GetCounters()
+        auto sliCounters = monitoring->GetCounters()
             ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "server_volume")
+            ->GetSubgroup("component", "sli_volume")
             ->GetSubgroup("host", "cluster")
             ->GetSubgroup("volume", "test1")
             ->GetSubgroup("instance", "instance")
             ->GetSubgroup("cloud", DefaultCloudId)
             ->GetSubgroup("folder", DefaultFolderId);
 
-        auto observed = volumeCounters->GetCounter("ObservedSeconds");
-        auto available = volumeCounters->GetCounter("AvailableSeconds");
-        auto healthy = volumeCounters->GetCounter("HealthySeconds");
+        auto observed = sliCounters->GetCounter("ObservedSeconds");
+        auto available = sliCounters->GetCounter("AvailableSeconds");
+        auto healthy = sliCounters->GetCounter("HealthySeconds");
 
         // A healthy, served volume advances all three counters by the real time
         // elapsed since it was mounted (seeded at mount time).
@@ -1286,7 +1286,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
 
         auto observed2 = monitoring->GetCounters()
             ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "server_volume")
+            ->GetSubgroup("component", "sli_volume")
             ->GetSubgroup("host", "cluster")
             ->GetSubgroup("volume", "test2")
             ->GetSubgroup("instance", "instance2")
@@ -1324,18 +1324,18 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             NCloud::NProto::STORAGE_MEDIA_SSD);
         auto volumeInfo = volumeStats->GetVolumeInfo("test1", "client1");
 
-        auto volumeCounters = monitoring->GetCounters()
+        auto sliCounters = monitoring->GetCounters()
             ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "server_volume")
+            ->GetSubgroup("component", "sli_volume")
             ->GetSubgroup("host", "cluster")
             ->GetSubgroup("volume", "test1")
             ->GetSubgroup("instance", "instance")
             ->GetSubgroup("cloud", DefaultCloudId)
             ->GetSubgroup("folder", DefaultFolderId);
 
-        auto observed = volumeCounters->GetCounter("ObservedSeconds");
-        auto available = volumeCounters->GetCounter("AvailableSeconds");
-        auto healthy = volumeCounters->GetCounter("HealthySeconds");
+        auto observed = sliCounters->GetCounter("ObservedSeconds");
+        auto available = sliCounters->GetCounter("AvailableSeconds");
+        auto healthy = sliCounters->GetCounter("HealthySeconds");
 
         // One healthy interval: everything advances.
         timer->AdvanceTime(TDuration::Seconds(15));
@@ -1396,18 +1396,18 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             NCloud::NProto::STORAGE_MEDIA_SSD);
         auto volumeInfo = volumeStats->GetVolumeInfo("test1", "client1");
 
-        auto volumeCounters = monitoring->GetCounters()
+        auto sliCounters = monitoring->GetCounters()
             ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "server_volume")
+            ->GetSubgroup("component", "sli_volume")
             ->GetSubgroup("host", "cluster")
             ->GetSubgroup("volume", "test1")
             ->GetSubgroup("instance", "instance")
             ->GetSubgroup("cloud", DefaultCloudId)
             ->GetSubgroup("folder", DefaultFolderId);
 
-        auto observed = volumeCounters->GetCounter("ObservedSeconds");
-        auto available = volumeCounters->GetCounter("AvailableSeconds");
-        auto healthy = volumeCounters->GetCounter("HealthySeconds");
+        auto observed = sliCounters->GetCounter("ObservedSeconds");
+        auto available = sliCounters->GetCounter("AvailableSeconds");
+        auto healthy = sliCounters->GetCounter("HealthySeconds");
 
         // One healthy interval: everything advances.
         timer->AdvanceTime(TDuration::Seconds(15));
@@ -1474,16 +1474,16 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             "instance",
             NCloud::NProto::STORAGE_MEDIA_SSD);
 
-        auto volumeCounters = monitoring->GetCounters()
+        auto sliCounters = monitoring->GetCounters()
             ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "server_volume")
+            ->GetSubgroup("component", "sli_volume")
             ->GetSubgroup("host", "cluster")
             ->GetSubgroup("volume", "test1")
             ->GetSubgroup("instance", "instance")
             ->GetSubgroup("cloud", DefaultCloudId)
             ->GetSubgroup("folder", DefaultFolderId);
 
-        auto observed = volumeCounters->GetCounter("ObservedSeconds");
+        auto observed = sliCounters->GetCounter("ObservedSeconds");
 
         // One accounted interval while served.
         timer->AdvanceTime(TDuration::Seconds(15));

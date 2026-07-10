@@ -542,6 +542,14 @@ private:
         DiagnosticsConfig->GetExecutionTimeSizeClasses();
 
     TDynamicCountersPtr Counters;
+    // Separate, narrow counters tree (component=sli_volume) for the
+    // cumulative availability counters (ObservedSeconds/AvailableSeconds/
+    // HealthySeconds) only. component=server_volume also carries ~200-280
+    // other per-volume perf counters, so a UA scrape of the whole subtree
+    // just to reach our ~3 sensors is wasteful; this sibling group lets UA
+    // pull only what SLI needs. Only populated for EServerStats - client-side
+    // stats keep the previous (nested) placement, see RegisterInstance().
+    TDynamicCountersPtr SliCounters;
     std::shared_ptr<NUserCounter::IUserCounterSupplier> UserCounters;
     std::unique_ptr<TSufferCounters> SufferCounters;
     std::unique_ptr<TSufferCounters> SmoothSufferCounters;
@@ -1126,12 +1134,24 @@ private:
                 ->GetSubgroup("folder", volumeConfig.GetFolderId());
         info->RequestCounters.Register(*countersGroup);
         info->HasDowntimeCounter = countersGroup->GetCounter("HasDowntime");
+
+        // component=sli_volume for server-side stats (see SliCounters
+        // comment); client-side stats keep the old nested placement.
+        auto sliCountersGroup = SliCounters
+            ? SliCounters
+                  ->GetSubgroup("volume", volumeConfig.GetDiskId())
+                  ->GetSubgroup(
+                      "instance",
+                      realInstanceId.GetRealInstanceId())
+                  ->GetSubgroup("cloud", volumeConfig.GetCloudId())
+                  ->GetSubgroup("folder", volumeConfig.GetFolderId())
+            : countersGroup;
         info->ObservedSecondsCounter =
-            countersGroup->GetCounter("ObservedSeconds", true);
+            sliCountersGroup->GetCounter("ObservedSeconds", true);
         info->AvailableSecondsCounter =
-            countersGroup->GetCounter("AvailableSeconds", true);
+            sliCountersGroup->GetCounter("AvailableSeconds", true);
         info->HealthySecondsCounter =
-            countersGroup->GetCounter("HealthySeconds", true);
+            sliCountersGroup->GetCounter("HealthySeconds", true);
 
         auto reportZeroBlocksMetrics =
             !DiagnosticsConfig
@@ -1161,6 +1181,11 @@ private:
         Counters->GetSubgroup("volume", volumeBase->Volume.GetDiskId())->
             RemoveSubgroup("instance", realInstanceId.GetRealInstanceId());
 
+        if (SliCounters) {
+            SliCounters->GetSubgroup("volume", volumeBase->Volume.GetDiskId())->
+                RemoveSubgroup("instance", realInstanceId.GetRealInstanceId());
+        }
+
         NUserCounter::UnregisterServerVolumeInstance(
             *UserCounters,
             volumeBase->Volume.GetCloudId(),
@@ -1176,6 +1201,10 @@ private:
         }
 
         Counters->RemoveSubgroup("volume", volumeBase->Volume.GetDiskId());
+
+        if (SliCounters) {
+            SliCounters->RemoveSubgroup("volume", volumeBase->Volume.GetDiskId());
+        }
     }
 
     void InitCounters()
@@ -1216,6 +1245,10 @@ private:
                             ->GetCounter("DownDisks");
                     ++mk;
                 }
+
+                SliCounters = Counters
+                    ->GetSubgroup("component", "sli_volume")
+                    ->GetSubgroup("host", "cluster");
 
                 Counters = Counters->GetSubgroup("component", "server_volume");
                 break;
