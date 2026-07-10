@@ -79,7 +79,7 @@ func RegisterForExecution(
 			httpClientTimeout:         httpClientTimeout,
 			httpClientMinRetryTimeout: httpClientMinRetryTimeout,
 			httpClientMaxRetryTimeout: httpClientMaxRetryTimeout,
-			metricsRegistry:                urlMetricsRegistry,
+			metricsRegistry:           urlMetricsRegistry,
 		}
 	})
 	if err != nil {

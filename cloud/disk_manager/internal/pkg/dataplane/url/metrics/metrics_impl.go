@@ -32,11 +32,11 @@ func requestSizeBuckets() common_metrics.Buckets {
 ////////////////////////////////////////////////////////////////////////////////
 
 type requestMetrics struct {
-	registry    common_metrics.Registry
-	errors      common_metrics.Counter
-	requestTime common_metrics.Timer
-	responses   map[int]common_metrics.Counter
-	responsesMu sync.Mutex
+	registry       common_metrics.Registry
+	errors         common_metrics.Counter
+	requestTime    common_metrics.Timer
+	responses      map[int]common_metrics.Counter
+	responsesMutex sync.Mutex
 }
 
 func newRequestMetrics(registry common_metrics.Registry) *requestMetrics {
@@ -49,8 +49,8 @@ func newRequestMetrics(registry common_metrics.Registry) *requestMetrics {
 }
 
 func (m *requestMetrics) getOrNewResponseCounter(statusCode int) common_metrics.Counter {
-	m.responsesMu.Lock()
-	defer m.responsesMu.Unlock()
+	m.responsesMutex.Lock()
+	defer m.responsesMutex.Unlock()
 
 	if c, ok := m.responses[statusCode]; ok {
 		return c
@@ -81,11 +81,11 @@ func (m *requestMetrics) stat() func(*error) {
 ////////////////////////////////////////////////////////////////////////////////
 
 type urlMetricsImpl struct {
-	registry    common_metrics.Registry
-	requests    map[string]*requestMetrics
-	requestsMutex  sync.Mutex
-	requestSize common_metrics.Histogram
-	cacheHits   common_metrics.Counter
+	registry      common_metrics.Registry
+	requests      map[string]*requestMetrics
+	requestsMutex sync.Mutex
+	requestSize   common_metrics.Histogram
+	cacheHits     common_metrics.Counter
 }
 
 func newMetricsImpl(registry common_metrics.Registry) *urlMetricsImpl {
