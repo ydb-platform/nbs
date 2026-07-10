@@ -853,6 +853,8 @@ public:
     [[nodiscard]] bool GetVerifyRecreatedBlobMetasOnCleanup() const;
 
     [[nodiscard]] bool GetUseRecreatedBlobMetasOnCleanup() const;
+
+    [[nodiscard]] bool GetAllowGentlePreemptionForRebindVolumesAction() const;
 };
 
 ui64 GetAllocationUnit(

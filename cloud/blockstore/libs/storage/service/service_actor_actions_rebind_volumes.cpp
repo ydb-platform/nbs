@@ -33,6 +33,7 @@ private:
     const TRequestInfoPtr RequestInfo;
     const NPrivateProto::TRebindVolumesRequest RebindRequest;
     const TVector<TString> DiskIds;
+    const bool UseGentlePreemption;
     ui32 Responses = 0;
 
     NProto::TError Error;
@@ -41,7 +42,8 @@ public:
     TRebindVolumesActor(
         TRequestInfoPtr requestInfo,
         NPrivateProto::TRebindVolumesRequest rebindRequest,
-        TVector<TString> diskIds);
+        TVector<TString> diskIds,
+        bool useGentlePreemption);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -61,10 +63,12 @@ private:
 TRebindVolumesActor::TRebindVolumesActor(
         TRequestInfoPtr requestInfo,
         NPrivateProto::TRebindVolumesRequest rebindRequest,
-        TVector<TString> diskIds)
+        TVector<TString> diskIds,
+        const bool useGentlePreemption)
     : RequestInfo(std::move(requestInfo))
     , RebindRequest(std::move(rebindRequest))
     , DiskIds(std::move(diskIds))
+    , UseGentlePreemption(useGentlePreemption)
 {}
 
 void TRebindVolumesActor::Bootstrap(const TActorContext& ctx)
@@ -87,11 +91,12 @@ void TRebindVolumesActor::Bootstrap(const TActorContext& ctx)
             op = TRequest::EChangeBindingOp::RELEASE_TO_HIVE;
         }
 
-        auto request = std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
-            diskId,
-            op,
+        auto request =
+            std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
+                diskId,
+                op,
                 NProto::SOURCE_MANUAL,
-                RebindRequest.GetUseGentlePreemption());
+                UseGentlePreemption);
 
         NCloud::Send(ctx, MakeStorageServiceId(), std::move(request));
     }
@@ -210,10 +215,15 @@ TResultOrError<IActorPtr> TServiceActor::CreateRebindVolumesActionActor(
     State.SetIsManuallyPreemptedVolumesTrackingDisabled(
         binding == NProto::BINDING_REMOTE);
 
+    const auto useGentlePreemption =
+        rebindRequest.GetUseGentlePreemption() &&
+        Config->GetAllowGentlePreemptionForRebindVolumesAction();
+
     return {std::make_unique<TRebindVolumesActor>(
         std::move(requestInfo),
         std::move(rebindRequest),
-        std::move(localDiskIds))};
+        std::move(localDiskIds),
+        useGentlePreemption)};
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

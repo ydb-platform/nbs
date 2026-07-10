@@ -617,6 +617,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
     {
         TTestEnv env;
         NProto::TStorageServiceConfig config;
+        config.SetAllowGentlePreemptionForRebindVolumesAction(true);
         ui32 nodeIdx = SetupTestEnv(env, std::move(config));
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
