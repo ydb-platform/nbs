@@ -82,6 +82,10 @@ private:
     void HandleListTabletBootInfoBackups(
         const TEvHiveProxy::TEvListTabletBootInfoBackupsRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
+
+    void HandleGetTabletBootInfos(
+        const TEvHiveProxy::TEvGetTabletBootInfosRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
 };
 
 }   // namespace NCloud::NStorage
