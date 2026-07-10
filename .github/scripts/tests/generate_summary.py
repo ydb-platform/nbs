@@ -21,7 +21,7 @@ from xml.etree import ElementTree as ET
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
-from ..helpers import setup_logger
+from ..helpers import github_client, setup_logger
 from .junit_utils import get_property_value, iter_xml_files
 
 LOGGER = logging.getLogger(__name__)
@@ -1347,10 +1347,9 @@ def main() -> None:
     ):
         return
 
-    from github import Auth as GithubAuth, Github
     from github.PullRequest import PullRequest
 
-    gh = Github(auth=GithubAuth.Token(os.environ["GITHUB_TOKEN"]))
+    gh = github_client(os.environ["GITHUB_TOKEN"])
 
     with open(os.environ["GITHUB_EVENT_PATH"]) as fp:
         event = json.load(fp)

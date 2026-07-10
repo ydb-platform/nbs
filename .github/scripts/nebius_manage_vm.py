@@ -1,4 +1,5 @@
 import argparse
+import inspect
 import math
 import os
 from pathlib import Path
@@ -22,9 +23,9 @@ from .helpers import (
     GITHUB_API_RETRY_INTERVAL_SEC,
     GITHUB_RUNNER_LATEST_VERSION,
     fetch_github_team_public_keys,
+    github_client_from_env,
     resolve_github_runner_release,
 )
-from github import Auth as GithubAuth
 from github import Github
 from github.Repository import Repository
 from github.SelfHostedActionsRunnerToken import SelfHostedActionsRunnerToken
@@ -196,15 +197,15 @@ def generate_cloud_init_script(
 
 
 def resolve_runner_release_for_update(
+    github: Github,
     version: str,
-    github_token: str,
     override_existing_runner: str,
 ) -> tuple[str, dict[str, str]]:
     if not truthy(override_existing_runner):
         logger.info("Runner update is disabled, skipping GitHub runner release lookup")
         return "", {}
 
-    release = resolve_github_runner_release(version, github_token)
+    release = resolve_github_runner_release(github, version)
     logger.info(
         "Resolved GitHub runner release for update: version=%s sha256_by_arch=%s",
         release.version,
@@ -234,12 +235,8 @@ if not hasattr(Repository, "create_self_hosted_runner_registration_token"):
     interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
     retry_exceptions=PYGITHUB_RETRY_EXCEPTIONS + (ValueError,),
 )
-def get_runner_token(
-    github_repo_owner: str, github_repo: str, github_token: str
-) -> str:
-    repo = Github(auth=GithubAuth.Token(github_token)).get_repo(
-        f"{github_repo_owner}/{github_repo}"
-    )
+def get_runner_token(github: Github, github_repo_owner: str, github_repo: str) -> str:
+    repo = github.get_repo(f"{github_repo_owner}/{github_repo}")
     registration_token = repo.create_self_hosted_runner_registration_token()
     token = registration_token.token
     expires_at = registration_token.expires_at
@@ -254,14 +251,14 @@ def get_runner_token(
 
 
 def find_runner_by_name(
-    client: Github, github_repo_owner: str, github_repo: str, vm_id: str
+    github: Github, github_repo_owner: str, github_repo: str, vm_id: str
 ) -> Optional[str]:
     logger.info(
         "Checking whether VM %s is registered as Github Runner",
         vm_id,
     )
 
-    runners = client.get_repo(
+    runners = github.get_repo(
         f"{github_repo_owner}/{github_repo}"
     ).get_self_hosted_runners()
 
@@ -285,9 +282,9 @@ def find_runner_by_name(
     retry_result=lambda result: result is None,
 )
 def wait_runner_by_name(
-    client: Github, github_repo_owner: str, github_repo: str, vm_id: str
+    github: Github, github_repo_owner: str, github_repo: str, vm_id: str
 ) -> Optional[str]:
-    return find_runner_by_name(client, github_repo_owner, github_repo, vm_id)
+    return find_runner_by_name(github, github_repo_owner, github_repo, vm_id)
 
 
 def build_disk_request(
@@ -347,16 +344,19 @@ async def create_disk(sdk: SDK, args: argparse.Namespace) -> str:
     return request.resource_id
 
 
-def report_create_vm_final_failure(exception: BaseException) -> None:
+def report_create_vm_final_failure(
+    exception: BaseException, call_args: inspect.BoundArguments
+) -> None:
+    del call_args
+
     if os.environ.get("GITHUB_EVENT_NAME") != "pull_request":
         return
 
     pr_number = int(os.environ.get("GITHUB_REF").split("/")[-1])
     repo_name = os.environ.get("GITHUB_REPOSITORY")
-    github_token = os.environ.get("GITHUB_TOKEN")
+    github = github_client_from_env()
     comment = f"VM creation failed after 30 minutes: {exception}"
-    gh = Github(auth=GithubAuth.Token(github_token))
-    repo = gh.get_repo(repo_name)
+    repo = github.get_repo(repo_name)
     pr = repo.get_pull(pr_number)
     pr.create_issue_comment(comment)
 
@@ -485,18 +485,16 @@ async def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
         disk_size=args.disk_size,
     )
 
-    GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
-
-    gh = Github(auth=GithubAuth.Token(GITHUB_TOKEN))
+    github = github_client_from_env()
 
     runner_registration_token = get_runner_token(
-        args.github_repo_owner, args.github_repo, GITHUB_TOKEN
+        github, args.github_repo_owner, args.github_repo
     )
 
     ssh_keys = []
     if args.github_org and args.github_team_slug:
         ssh_keys = fetch_github_team_public_keys(
-            gh, args.github_org, args.github_team_slug
+            github, args.github_org, args.github_team_slug
         )
     else:
         logger.info(
@@ -516,8 +514,8 @@ async def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
         github_runner_version,
         github_runner_sha256_by_arch,
     ) = resolve_runner_release_for_update(
+        github,
         args.github_runner_version,
-        GITHUB_TOKEN,
         args.github_override_existing_runner,
     )
 
@@ -609,7 +607,7 @@ async def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
         # VM to avoid orphaned resources
         try:
             runner_id = wait_runner_by_name(
-                gh, args.github_repo_owner, args.github_repo, instance_id
+                github, args.github_repo_owner, args.github_repo, instance_id
             )
         except Exception:
             logger.error(
@@ -639,8 +637,8 @@ async def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
     interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
     retry_exceptions=PYGITHUB_RETRY_EXCEPTIONS,
 )
-def get_self_hosted_runner(client: Github, repo: str, runner_id: str):
-    return client.get_repo(repo).get_self_hosted_runner(runner_id)
+def get_self_hosted_runner(github: Github, repo: str, runner_id: str):
+    return github.get_repo(repo).get_self_hosted_runner(runner_id)
 
 
 @retry(
@@ -648,14 +646,14 @@ def get_self_hosted_runner(client: Github, repo: str, runner_id: str):
     interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
     retry_exceptions=PYGITHUB_RETRY_EXCEPTIONS,
 )
-def remove_self_hosted_runner(client: Github, repo: str, runner_id: str) -> bool:
-    return client.get_repo(repo).remove_self_hosted_runner(runner_id)
+def remove_self_hosted_runner(github: Github, repo: str, runner_id: str) -> bool:
+    return github.get_repo(repo).remove_self_hosted_runner(runner_id)
 
 
 def remove_runner_from_github(
-    client: Github, github_repo_owner: str, github_repo: str, vm_id: str, apply: bool
+    github: Github, github_repo_owner: str, github_repo: str, vm_id: str, apply: bool
 ) -> str:
-    runner_id = find_runner_by_name(client, github_repo_owner, github_repo, vm_id)
+    runner_id = find_runner_by_name(github, github_repo_owner, github_repo, vm_id)
     repo = os.environ.get("GITHUB_REPOSITORY")
 
     if runner_id is None:
@@ -664,7 +662,7 @@ def remove_runner_from_github(
         logger.info("Runner with name %s not found, skipping", vm_id)
         return "not_found"
 
-    runner = get_self_hosted_runner(client, repo, runner_id)
+    runner = get_self_hosted_runner(github, repo, runner_id)
     if runner is None:
         logger.info("Runner with name %s not found, skipping", vm_id)
         return "not_found"
@@ -680,7 +678,7 @@ def remove_runner_from_github(
         return "busy"
 
     if apply:
-        result = remove_self_hosted_runner(client, repo, runner_id)
+        result = remove_self_hosted_runner(github, repo, runner_id)
 
         if not result:
             # removed throwing exception here, because removing VM is more important
@@ -891,12 +889,10 @@ async def remove_vm(sdk: SDK, args: argparse.Namespace):
         await search_vm_cleanup_candidates_by_labels(sdk, args)
         return
 
-    GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
-
-    gh = Github(auth=GithubAuth.Token(GITHUB_TOKEN))
+    github = github_client_from_env()
 
     result = remove_runner_from_github(
-        gh, args.github_repo_owner, args.github_repo, args.id, args.apply
+        github, args.github_repo_owner, args.github_repo, args.id, args.apply
     )
     if result == "not_found":
         logger.info("Runner with name %s not found in github, we can continue", args.id)
