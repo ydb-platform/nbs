@@ -1,22 +1,6 @@
 name: Build VS Code yatool extension
 
 on:
-  pull_request:
-    branches:
-      - main
-    paths:
-      - ".github/vscode-yatool-extension/**"
-      - ".github/workflows/vscode-yatool-extension.yaml"
-    types:
-      - "opened"
-      - "synchronize"
-      - "reopened"
-  push:
-    branches:
-      - main
-    paths:
-      - ".github/vscode-yatool-extension/**"
-      - ".github/workflows/vscode-yatool-extension.yaml"
   workflow_dispatch:
 
 permissions:
