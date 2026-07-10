@@ -138,6 +138,91 @@ func TestExportWritesChunksAtTheirOffsets(t *testing.T) {
 	snapshotStorage.AssertNumberOfCalls(t, "ReadChunk", 2)
 }
 
+func TestExportToWriterWritesRawImageStream(t *testing.T) {
+	ctx := newContext()
+
+	entries := []storage.ChunkMapEntry{
+		{ChunkIndex: 0, ChunkID: "chunk-0", StoredInS3: true},
+		{ChunkIndex: 1, ChunkID: ""}, // Zero chunk.
+		{ChunkIndex: 2, ChunkID: "chunk-2"},
+	}
+
+	const partialLastChunkSize = 123
+	snapshotSize := uint64(2*chunkSize + partialLastChunkSize)
+	snapshotStorage := mocks.NewStorageMock()
+	snapshotStorage.On("CheckSnapshotReady", mock.Anything, "snapshot").Return(
+		storage.SnapshotMeta{Size: snapshotSize, ChunkCount: 3},
+		nil,
+	)
+	entryChannel, errorChannel := newChunkMapChannels(entries, nil)
+	snapshotStorage.On("ReadChunkMap", mock.Anything, "snapshot", uint32(0)).Return(
+		entryChannel,
+		errorChannel,
+	)
+	snapshotStorage.On("ReadChunk", mock.Anything, mock.Anything).Run(
+		fillChunkOnRead,
+	).Return(nil)
+
+	var dst bytes.Buffer
+
+	stats, err := ExportToWriter(ctx, snapshotStorage, "snapshot", &dst)
+	require.NoError(t, err)
+
+	require.Equal(t, snapshotSize, stats.Size)
+	require.Equal(t, uint32(2), stats.DataChunkCount)
+	require.Equal(t, uint32(1), stats.ZeroChunkCount)
+
+	expected := make([]byte, int(snapshotSize))
+	for i := 0; i < chunkSize; i++ {
+		expected[i] = chunkDataByte(0)
+	}
+	for i := 2 * chunkSize; i < len(expected); i++ {
+		expected[i] = chunkDataByte(2)
+	}
+	require.Equal(t, expected, dst.Bytes())
+
+	// Zero chunk should not be read from the storage.
+	snapshotStorage.AssertNumberOfCalls(t, "ReadChunk", 2)
+}
+
+func TestExportToWriterWritesMissingChunksAsZeroes(t *testing.T) {
+	ctx := newContext()
+
+	entries := []storage.ChunkMapEntry{
+		{ChunkIndex: 0, ChunkID: "chunk-0"},
+	}
+
+	snapshotStorage := mocks.NewStorageMock()
+	snapshotStorage.On("CheckSnapshotReady", mock.Anything, "snapshot").Return(
+		storage.SnapshotMeta{Size: 2 * chunkSize, ChunkCount: 2},
+		nil,
+	)
+	entryChannel, errorChannel := newChunkMapChannels(entries, nil)
+	snapshotStorage.On("ReadChunkMap", mock.Anything, "snapshot", uint32(0)).Return(
+		entryChannel,
+		errorChannel,
+	)
+	snapshotStorage.On("ReadChunk", mock.Anything, mock.Anything).Run(
+		fillChunkOnRead,
+	).Return(nil)
+
+	var dst bytes.Buffer
+
+	stats, err := ExportToWriter(ctx, snapshotStorage, "snapshot", &dst)
+	require.NoError(t, err)
+
+	require.Equal(t, uint64(2*chunkSize), stats.Size)
+	require.Equal(t, uint32(1), stats.DataChunkCount)
+	require.Equal(t, uint32(1), stats.ZeroChunkCount)
+
+	expected := make([]byte, 2*chunkSize)
+	for i := 0; i < chunkSize; i++ {
+		expected[i] = chunkDataByte(0)
+	}
+	require.Equal(t, expected, dst.Bytes())
+	snapshotStorage.AssertNumberOfCalls(t, "ReadChunk", 1)
+}
+
 func TestExportFailsOnChunkReadError(t *testing.T) {
 	ctx := newContext()
 

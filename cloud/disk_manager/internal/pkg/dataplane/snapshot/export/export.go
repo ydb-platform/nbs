@@ -34,40 +34,25 @@ type Destination interface {
 }
 
 type Stats struct {
-	// Snapshot virtual size in bytes, the destination is truncated to it.
+	// Snapshot virtual size in bytes.
 	Size uint64
 	// Number of chunks read from the storage.
 	DataChunkCount uint32
-	// Number of zero chunks (they are never stored, only listed in chunk map).
+	// Number of zero chunks emitted or skipped during export.
 	ZeroChunkCount uint32
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Export reads all chunks of the snapshot (or image) snapshotID from
-// snapshotStorage, verifies their checksums and writes them to dst at
-// chunkIndex*chunkSize offsets. In the end dst is truncated to the snapshot
-// virtual size. The result is a raw disk image. Incremental snapshots don't
-// need any special handling: their chunk map is complete, unchanged chunks
-// are shallow copies of the base snapshot chunks.
-func Export(
+func checkSnapshotReadyForExport(
 	ctx context.Context,
 	snapshotStorage storage.Storage,
 	snapshotID string,
-	dst Destination,
-	workerCount int,
-) (Stats, error) {
-
-	if workerCount <= 0 {
-		return Stats{}, task_errors.NewNonRetriableErrorf(
-			"workerCount must be positive, got %v",
-			workerCount,
-		)
-	}
+) (storage.SnapshotMeta, error) {
 
 	meta, err := snapshotStorage.CheckSnapshotReady(ctx, snapshotID)
 	if err != nil {
-		return Stats{}, err
+		return storage.SnapshotMeta{}, err
 	}
 
 	if meta.Encryption.GetMode() != types.EncryptionMode_NO_ENCRYPTION {
@@ -85,6 +70,38 @@ func Export(
 		meta.Size,
 		meta.ChunkCount,
 	)
+
+	return meta, nil
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Export reads all chunks of the snapshot (or image) snapshotID from
+// snapshotStorage, verifies their checksums and writes them to dst at
+// chunkIndex*chunkSize offsets. In the end dst is truncated to the snapshot
+// virtual size. The result is a raw disk image. Zero chunks may be absent
+// from the chunk map; they are left as holes and materialized by truncation.
+// Incremental snapshots don't need any special handling: unchanged chunks
+// are shallow copies of the base snapshot chunks.
+func Export(
+	ctx context.Context,
+	snapshotStorage storage.Storage,
+	snapshotID string,
+	dst Destination,
+	workerCount int,
+) (Stats, error) {
+
+	if workerCount <= 0 {
+		return Stats{}, task_errors.NewNonRetriableErrorf(
+			"workerCount must be positive, got %v",
+			workerCount,
+		)
+	}
+
+	meta, err := checkSnapshotReadyForExport(ctx, snapshotStorage, snapshotID)
+	if err != nil {
+		return Stats{}, err
+	}
 
 	var dataChunkCount, zeroChunkCount, processedChunkCount atomic.Uint32
 
@@ -158,6 +175,123 @@ func Export(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// ExportToWriter reads the snapshot (or image) snapshotID and writes it to dst as
+// a sequential raw disk image stream. Unlike Export, it can write to non-seekable
+// destinations such as stdout, so zero chunks are written explicitly,
+// including zero chunks that are absent from the chunk map.
+func ExportToWriter(
+	ctx context.Context,
+	snapshotStorage storage.Storage,
+	snapshotID string,
+	dst io.Writer,
+) (Stats, error) {
+
+	meta, err := checkSnapshotReadyForExport(ctx, snapshotStorage, snapshotID)
+	if err != nil {
+		return Stats{}, err
+	}
+
+	readCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	entries, entriesErrors := snapshotStorage.ReadChunkMap(
+		readCtx,
+		snapshotID,
+		0, // milestoneChunkIndex
+	)
+
+	data := make([]byte, chunkSize)
+	zeroes := make([]byte, chunkSize)
+	var dataChunkCount, zeroChunkCount, nextChunkIndex uint32
+
+	writeZeroChunk := func(chunkIndex uint32) error {
+		zeroChunkCount++
+		return writeStreamChunk(dst, zeroes, chunkIndex, meta.Size)
+	}
+
+	for entry := range entries {
+		if entry.ChunkIndex < nextChunkIndex {
+			return Stats{}, task_errors.NewNonRetriableErrorf(
+				"chunk map is not ordered: got chunk index %v after %v chunks",
+				entry.ChunkIndex,
+				nextChunkIndex,
+			)
+		}
+		if entry.ChunkIndex >= meta.ChunkCount {
+			return Stats{}, task_errors.NewNonRetriableErrorf(
+				"chunk index %v is outside snapshot chunk count %v",
+				entry.ChunkIndex,
+				meta.ChunkCount,
+			)
+		}
+
+		for nextChunkIndex < entry.ChunkIndex {
+			err = writeZeroChunk(nextChunkIndex)
+			if err != nil {
+				return Stats{}, err
+			}
+			nextChunkIndex++
+			logExportProgress(ctx, nextChunkIndex, meta.ChunkCount)
+		}
+
+		if len(entry.ChunkID) == 0 {
+			err = writeZeroChunk(entry.ChunkIndex)
+		} else {
+			chunk := dataplane_common.Chunk{
+				ID:         entry.ChunkID,
+				Index:      entry.ChunkIndex,
+				StoredInS3: entry.StoredInS3,
+				Data:       data,
+			}
+
+			err = snapshotStorage.ReadChunk(readCtx, &chunk)
+			if err == nil {
+				dataChunkCount++
+				err = writeStreamChunk(dst, data, entry.ChunkIndex, meta.Size)
+			}
+		}
+		if err != nil {
+			return Stats{}, err
+		}
+
+		nextChunkIndex++
+		logExportProgress(ctx, nextChunkIndex, meta.ChunkCount)
+	}
+
+	err = <-entriesErrors
+	if err != nil {
+		return Stats{}, err
+	}
+
+	for nextChunkIndex < meta.ChunkCount {
+		err = writeZeroChunk(nextChunkIndex)
+		if err != nil {
+			return Stats{}, err
+		}
+		nextChunkIndex++
+		logExportProgress(ctx, nextChunkIndex, meta.ChunkCount)
+	}
+
+	return Stats{
+		Size:           meta.Size,
+		DataChunkCount: dataChunkCount,
+		ZeroChunkCount: zeroChunkCount,
+	}, nil
+}
+
+func logExportProgress(ctx context.Context, processedChunkCount uint32, chunkCount uint32) {
+	if processedChunkCount%logProgressChunkCount == 0 {
+		logging.Info(
+			ctx,
+			"exported %v/%v chunks",
+			processedChunkCount,
+			chunkCount,
+		)
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func exportChunk(
 	ctx context.Context,
 	snapshotStorage storage.Storage,
@@ -180,4 +314,43 @@ func exportChunk(
 
 	_, err = dst.WriteAt(data, int64(entry.ChunkIndex)*chunkSize)
 	return err
+}
+
+func writeStreamChunk(
+	dst io.Writer,
+	data []byte,
+	chunkIndex uint32,
+	size uint64,
+) error {
+
+	offset := uint64(chunkIndex) * chunkSize
+	if offset >= size {
+		return task_errors.NewNonRetriableErrorf(
+			"chunk index %v is outside snapshot size %v",
+			chunkIndex,
+			size,
+		)
+	}
+
+	length := uint64(len(data))
+	if offset+length > size {
+		length = size - offset
+	}
+
+	return writeAll(dst, data[:int(length)])
+}
+
+func writeAll(dst io.Writer, data []byte) error {
+	for len(data) != 0 {
+		n, err := dst.Write(data)
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return io.ErrShortWrite
+		}
+		data = data[n:]
+	}
+
+	return nil
 }

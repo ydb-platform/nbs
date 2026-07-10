@@ -15,16 +15,21 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/util"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
+	logzap "github.com/ydb-platform/nbs/library/go/core/log/zap"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
+
+func newStderrLogger(level logging.Level) logging.Logger {
+	config := logzap.ConsoleConfig(level)
+	config.OutputPaths = []string{"stderr"}
+	return logzap.Must(config)
+}
 
 func exportSnapshot(
 	ctx context.Context,
 	config *server_config.ServerConfig,
 	snapshotID string,
-	outputFilePath string,
-	workerCount int,
 ) error {
 
 	snapshotConfig := config.GetDataplaneConfig().GetSnapshotConfig()
@@ -68,35 +73,20 @@ func exportSnapshot(
 		return err
 	}
 
-	// os.Create truncates an existing file, so zero chunks that Export skips
-	// are guaranteed to read back as zeroes.
-	file, err := os.Create(outputFilePath)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	stats, err := export.Export(
+	stats, err := export.ExportToWriter(
 		ctx,
 		snapshotStorage,
 		snapshotID,
-		file,
-		workerCount,
+		os.Stdout,
 	)
-	if err != nil {
-		return err
-	}
-
-	err = file.Sync()
 	if err != nil {
 		return err
 	}
 
 	logging.Info(
 		ctx,
-		"exported snapshot %v to %v: size %v bytes, %v data chunks, %v zero chunks",
+		"exported snapshot %v to stdout: size %v bytes, %v data chunks, %v zero chunks",
 		snapshotID,
-		outputFilePath,
 		stats.Size,
 		stats.DataChunkCount,
 		stats.ZeroChunkCount,
@@ -109,14 +99,12 @@ func exportSnapshot(
 func main() {
 	var configFilePath string
 	var snapshotID string
-	var outputFilePath string
-	var workerCount int
 	var verbose bool
 	config := &server_config.ServerConfig{}
 
 	rootCmd := &cobra.Command{
 		Use:   "disk-manager-export-snapshot",
-		Short: "Exports a snapshot (or an image) from the dataplane storage into a local raw image file",
+		Short: "Exports a snapshot (or an image) from the dataplane storage to stdout as a raw image stream",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			return util.ParseProto(configFilePath, config)
 		},
@@ -128,14 +116,12 @@ func main() {
 
 			ctx := logging.SetLogger(
 				context.Background(),
-				logging.NewStderrLogger(level),
+				newStderrLogger(level),
 			)
 			return exportSnapshot(
 				ctx,
 				config,
 				snapshotID,
-				outputFilePath,
-				workerCount,
 			)
 		},
 	}
@@ -152,18 +138,6 @@ func main() {
 		"",
 		"ID of the snapshot (or image) to export",
 	)
-	rootCmd.Flags().StringVar(
-		&outputFilePath,
-		"output",
-		"",
-		"Path to the output raw image file",
-	)
-	rootCmd.Flags().IntVar(
-		&workerCount,
-		"worker-count",
-		32,
-		"Number of chunks to read concurrently",
-	)
 	rootCmd.Flags().BoolVarP(
 		&verbose,
 		"verbose",
@@ -172,14 +146,12 @@ func main() {
 		"Enable verbose logging",
 	)
 
-	for _, flagName := range []string{"snapshot-id", "output"} {
-		err := rootCmd.MarkFlagRequired(flagName)
-		if err != nil {
-			log.Fatalf("Error: %v", err)
-		}
+	err := rootCmd.MarkFlagRequired("snapshot-id")
+	if err != nil {
+		log.Fatalf("Error: %v", err)
 	}
 
-	if err := rootCmd.Execute(); err != nil {
+	if err = rootCmd.Execute(); err != nil {
 		log.Fatalf("Error: %v", err)
 	}
 }
