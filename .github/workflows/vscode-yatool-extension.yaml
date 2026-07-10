@@ -41,6 +41,10 @@ jobs:
         working-directory: .github/vscode-yatool-extension
         run: npm run check
 
+      - name: run extension tests
+        working-directory: .github/vscode-yatool-extension
+        run: npm test
+
       - name: package extension
         working-directory: .github/vscode-yatool-extension
         run: npm run package
