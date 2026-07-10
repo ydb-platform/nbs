@@ -41,6 +41,7 @@ struct TEvService
         const TString DiskId;
         const EChangeBindingOp Action;
         const NProto::EPreemptionSource Source;
+        const bool UseGentlePreemption = false;
 
         TChangeVolumeBindingRequest(
                 TString diskId,
@@ -49,6 +50,17 @@ struct TEvService
             : DiskId(std::move(diskId))
             , Action(action)
             , Source(source)
+        {}
+
+        TChangeVolumeBindingRequest(
+            TString diskId,
+            EChangeBindingOp action,
+            NProto::EPreemptionSource source,
+            bool useGentlePreemption)
+            : DiskId(std::move(diskId))
+            , Action(action)
+            , Source(source)
+            , UseGentlePreemption(useGentlePreemption)
         {}
     };
 

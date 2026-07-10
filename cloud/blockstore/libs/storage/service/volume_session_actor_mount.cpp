@@ -391,6 +391,8 @@ struct TMountRequestParams
     NProto::EVolumeBinding BindingType = NProto::BINDING_REMOTE;
     NProto::EPreemptionSource PreemptionSource = NProto::SOURCE_NONE;
 
+    bool UseGentlePreemption = false;
+
     bool IsLocalMounter = false;
     bool RejectOnAddClientTimeout = false;
 
@@ -453,8 +455,6 @@ private:
 
     void GentlyReleaseVolume(const TActorContext& ctx);
     void GentlyPullVolume(const TActorContext& ctx);
-
-    bool GentlePreemptionAllowed() const;
 
 private:
     STFUNC(StateWork);
@@ -902,12 +902,6 @@ void TMountRequestActor::GentlyPullVolume(const TActorContext& ctx)
         Config->GetVolumeBalancerGentlePreemptionTimeout());
 }
 
-bool TMountRequestActor::GentlePreemptionAllowed() const
-{
-    return Config->GetVolumeBalancerGentlePreemptionEnabled() &&
-           Params.PreemptionSource == NProto::SOURCE_BALANCER;
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 void TMountRequestActor::NotifyAndDie(const TActorContext& ctx)
@@ -962,7 +956,7 @@ void TMountRequestActor::HandleVolumeAddClientResponse(
         }
 
         if (!VolumeStarted && MountMode == NProto::VOLUME_MOUNT_LOCAL) {
-            if (GentlePreemptionAllowed()) {
+            if (Params.UseGentlePreemption) {
                 GentlyPullVolume(ctx);
             } else {
                 RequestVolumeStart(ctx);
@@ -991,7 +985,7 @@ void TMountRequestActor::HandleVolumeAddClientResponse(
         const bool mayStopVolume = Params.IsLocalMounter || VolumeStarted;
 
         if (mayStopVolume && MountMode == NProto::VOLUME_MOUNT_REMOTE) {
-            if (GentlePreemptionAllowed()) {
+            if (Params.UseGentlePreemption) {
                 GentlyReleaseVolume(ctx);
             } else {
                 RequestVolumeStop(ctx);
@@ -1472,6 +1466,7 @@ void TVolumeSessionActor::HandleInternalMountVolume(
         .StartVolumeActor = StartVolumeActor,
         .BindingType = bindingType,
         .PreemptionSource = msg->PreemptionSource,
+        .UseGentlePreemption = msg->UseGentlePreemption,
         .IsLocalMounter = clientInfo &&
             clientInfo->VolumeMountMode == NProto::VOLUME_MOUNT_LOCAL,
         .RejectOnAddClientTimeout = Config->GetRejectMountOnAddClientTimeout(),

@@ -34,6 +34,7 @@ private:
     const TString DiskId;
     const EChangeBindingOp Action;
     const NProto::EPreemptionSource Source;
+    const bool UseGentlePreemption;
 
 public:
     TDelayChangeBindingActor(
@@ -42,15 +43,16 @@ public:
             TDuration delay,
             TString diskId,
             EChangeBindingOp action,
-            NProto::EPreemptionSource source)
+        NProto::EPreemptionSource source,
+        const bool useGentlePreemption)
         : RequestInfo(std::move(requestInfo))
         , SessionActor(sessionActor)
         , Delay(delay)
         , DiskId(std::move(diskId))
         , Action(action)
         , Source(source)
-    {
-    }
+        , UseGentlePreemption(useGentlePreemption)
+    {}
 
     void Bootstrap(const TActorContext& ctx)
     {
@@ -70,7 +72,8 @@ private:
                 std::move(RequestInfo->CallContext),
                 DiskId,
                 Action,
-                Source);
+                Source,
+                UseGentlePreemption);
 
         NCloud::SendWithUndeliveryTracking(
             ctx,
@@ -218,7 +221,8 @@ void TServiceActor::HandleChangeVolumeBinding(
         delayInterval,
         std::move(msg->DiskId),
         msg->Action,
-        msg->Source);
+        msg->Source,
+        msg->UseGentlePreemption);
 
     volume->RebindingIsInflight = true;
 }
