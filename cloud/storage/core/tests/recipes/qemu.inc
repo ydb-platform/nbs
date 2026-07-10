@@ -22,10 +22,6 @@ IF (NOT QEMU_SSH_KEY)
     DATA(arcadia/cloud/storage/core/tools/testing/qemu/keys)
 ENDIF()
 
-IF (NOT QEMU_CHARDEV_RECONNECT)
-    SET(QEMU_CHARDEV_RECONNECT 0)
-ENDIF()
-
 DEPENDS(
     cloud/storage/core/tests/recipes/qemu
 )
