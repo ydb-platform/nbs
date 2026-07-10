@@ -1156,6 +1156,31 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
         }
 
         const bool isMirrorDisk = !info.Replicas.empty();
+        TVector<NProto::TDiskHistoryItem> allHistory = info.History;
+
+        if (isMirrorDisk) {
+            for (ui32 i = 0; i <= info.Replicas.size(); ++i) {
+                const TString replicaId = id + "/" + ToString(i);
+                TDiskInfo replicaInfo;
+                if (HasError(State->GetDiskInfo(replicaId, replicaInfo))) {
+                    continue;
+                }
+                for (auto& hi: replicaInfo.History) {
+                    if (hi.GetReplicaId().empty()) {
+                        hi.SetReplicaId(replicaId);
+                    }
+                }
+                allHistory.insert(
+                    allHistory.end(),
+                    std::make_move_iterator(replicaInfo.History.begin()),
+                    std::make_move_iterator(replicaInfo.History.end()));
+            }
+            SortUniqueBy(
+                allHistory,
+                [](const auto& h)
+                { return std::make_pair(h.GetTimestamp(), h.GetMessage()); });
+        }
+
         TABLE_SORTABLE_CLASS("table table-bordered") {
             TABLEHEAD() {
                 TABLER() {
@@ -1167,7 +1192,7 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
                 }
             }
 
-            for (const auto& hi: info.History) {
+            for (const auto& hi: allHistory) {
                 TABLER() {
                     TABLED() {
                         out << TInstant::MicroSeconds(hi.GetTimestamp())
@@ -1181,11 +1206,7 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
                             }
                         }
                     }
-                    TABLED() {
-                        PRE() {
-                            out << hi.GetMessage();
-                        }
-                    }
+                    TABLED() { out << hi.GetMessage(); }
                 }
             }
         }
