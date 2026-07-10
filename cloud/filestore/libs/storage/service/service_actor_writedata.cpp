@@ -106,7 +106,7 @@ void PrepareWriteDataRequestPayload(
 
     auto rope = CreateRope(record.GetIovecs());
     TString buffer;
-    const auto bytesToCopy = NFileStore::CalculateByteCount(request);
+    const auto bytesToCopy = NFileStore::CalculateByteCount(record);
     buffer.ReserveAndResize(bytesToCopy);
     auto bytesCopied =
         TRopeUtils::SafeMemcpy(buffer.begin(), rope.Begin(), bytesToCopy);
