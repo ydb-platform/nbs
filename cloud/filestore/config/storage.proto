@@ -838,4 +838,10 @@ message TStorageConfig
     // If enabled, tablet overload is ignored when deciding whether to use
     // the unconfirmed data flow.
     optional bool AllowTabletOverload = 523;
+
+    // Enables random BS proxy request failures in the tablet interceptor.
+    // This is intended for testing retry/recovery paths.
+    optional bool FakeBSProxyFailuresEnabled = 527;
+    // Random BS proxy failure probability in percents.
+    optional double FakeBSProxyFailuresProbabilityPercentage = 528;
 }

@@ -348,7 +348,9 @@ void TIndexTabletActor::CompleteTx_LoadState(
 
     ScheduleUpdateCounters(ctx);
 
-    EnsureBSProxyInterceptors(ctx, *Info());
+    if (Config->GetFakeBSProxyFailuresEnabled()) {
+        InstallBSProxyInterceptors(ctx, *Info(), TBSProxyInterceptorConfig(*Config));
+    }
 
     if (args.FileSystem.GetIsFastShard()) {
         BecomeAux(ctx, STATE_ADAPTER);
