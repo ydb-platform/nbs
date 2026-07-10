@@ -15,6 +15,20 @@ const {
 const { parseMakelist, positionAtOffset, stripQuotes } = require("./makelistParser");
 
 const MODULE_REFERENCE_MODIFIERS = new Set(["ADDINCL", "GLOBAL"]);
+const RESOURCE_ARG_KEYWORDS = new Set(["DONT_PARSE", "FORCE_TEXT"]);
+const GENERATED_OUTPUT_KEYWORDS = new Set(["OUT", "OUT_NOAUTO"]);
+const RUN_MACRO_ARG_KEYWORDS = new Set([
+  "CWD",
+  "ENV",
+  "IN",
+  "IN_NOAUTO",
+  "IN_NOPARSE",
+  "OUT",
+  "OUT_NOAUTO",
+  "STDERR",
+  "STDOUT",
+  "TOOL",
+]);
 
 function isDirectory(stat) {
   return Boolean(stat.type & vscode.FileType.Directory);
@@ -29,6 +43,7 @@ function collectPathRefs(document, parsed = parseMakelist(document.getText())) {
   const calls = parsed.calls;
   const refs = [];
   const sourceRoots = collectSourceRoots(document, workspaceFolder.uri, parsed);
+  const generatedOutputs = collectGeneratedOutputs(parsed);
   let conditionalDepth = 0;
 
   for (const call of calls) {
@@ -77,6 +92,7 @@ function collectPathRefs(document, parsed = parseMakelist(document.getText())) {
         candidateTargets: resolved.candidateTargets,
         linkTarget: resolved.linkTarget,
         displayTarget: resolved.displayTarget || arg.value,
+        generatedOutput: generatedOutputs.has(stripQuotes(arg.value)),
         inConditional,
         unresolvedReason: resolved.unresolvedReason,
       });
@@ -266,7 +282,7 @@ function filterResourceFileArguments(args) {
   for (const arg of args) {
     const value = stripQuotes(arg.value);
     const keyword = value.toUpperCase();
-    if (!value || keyword === "FORCE_TEXT") {
+    if (!value || RESOURCE_ARG_KEYWORDS.has(keyword)) {
       continue;
     }
     if (value === "-" || value.startsWith("-") || value.includes("=")) {
@@ -280,6 +296,32 @@ function filterResourceFileArguments(args) {
   }
 
   return result;
+}
+
+function collectGeneratedOutputs(parsed) {
+  const outputs = new Set();
+
+  for (const call of parsed.calls) {
+    let collecting = false;
+    for (const arg of call.args) {
+      const value = stripQuotes(arg.value);
+      const keyword = value.toUpperCase();
+      if (GENERATED_OUTPUT_KEYWORDS.has(keyword)) {
+        collecting = true;
+        continue;
+      }
+      if (collecting && RUN_MACRO_ARG_KEYWORDS.has(keyword)) {
+        collecting = GENERATED_OUTPUT_KEYWORDS.has(keyword);
+        continue;
+      }
+      if (!collecting || !value || value.startsWith("-") || value.includes("=") || value.includes("$")) {
+        continue;
+      }
+      outputs.add(value);
+    }
+  }
+
+  return outputs;
 }
 
 function filterArchiveFileArguments(args) {

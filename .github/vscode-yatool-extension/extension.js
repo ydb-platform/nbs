@@ -194,7 +194,7 @@ async function validateDocument(document) {
   }
 
   for (const ref of refs) {
-    if (ref.inConditional) {
+    if (ref.inConditional || ref.generatedOutput) {
       continue;
     }
 

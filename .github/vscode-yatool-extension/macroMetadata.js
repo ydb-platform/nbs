@@ -6,7 +6,6 @@ const MACRO_KIND = {
   DYNAMIC_LIBRARY_FROM: "module-reference-root-relative",
   EXPORTS_SCRIPT: "source-file",
   FILES: "source-file",
-  GENERATE_ENUM_SERIALIZATION: "source-file",
   GO_GRPC_GATEWAY_SRCS: "source-file",
   GO_TEST_SRCS: "source-file",
   GO_TEST_FOR: "module-reference-root-relative",
@@ -31,7 +30,6 @@ const PATH_MACROS = new Set(Object.keys(MACRO_KIND));
 const SOURCE_FILE_MACROS = new Set([
   "EXPORTS_SCRIPT",
   "FILES",
-  "GENERATE_ENUM_SERIALIZATION",
   "GO_GRPC_GATEWAY_SRCS",
   "GO_TEST_SRCS",
   "GO_XTEST_SRCS",
@@ -59,7 +57,7 @@ const SOURCE_ARG_KEYWORDS = new Set([
   "RENAME",
   "TOP_LEVEL",
 ]);
-const SOURCE_ARG_KEYWORDS_WITH_VALUE = new Set(["NAMESPACE", "OBJECT_DEPENDS", "PREFIX", "RENAME"]);
+const SOURCE_ARG_KEYWORDS_WITH_VALUE = new Set(["CYTHON_DIRECTIVE", "NAMESPACE", "OBJECT_DEPENDS", "PREFIX", "RENAME"]);
 const DIRECTORY_ARG_KEYWORDS = new Set(["GLOBAL", "LOCAL", "ONE_LEVEL"]);
 const DIRECTORY_ARG_KEYWORDS_WITH_VALUE = new Set(["FOR"]);
 const UNSUPPORTED_DATA_PREFIXES = ["sbr://", "ext:", "http://", "https://"];
@@ -89,7 +87,7 @@ const MODULE_DECLARATION_MACROS = new Set([
 const MACRO_DOCS = {
   ADDINCL: {
     usage: "ADDINCL([FOR <lang>] [GLOBAL dir]* dirlist)",
-    text: "Adds directories to include/import search paths for the current project. For C/C++ this becomes `-I<path>`; `FOR <lang>` targets another language and `GLOBAL` propagates the include path to dependent projects.",
+    text: "Adds directories to include/import search paths for the current project. For C/C++ this becomes `-I<path>`; `FOR <lang>` targets another language and `GLOBAL` propagates the include path to dependent projects. `ADDINCL` can also appear inside `PEERDIR(...)` before a peer path, where it means that peer is also used as an include root.",
   },
   ALLOCATOR: {
     usage: "ALLOCATOR(alloc)",
@@ -296,8 +294,8 @@ const MACRO_DOCS = {
     text: "Declares a package aggregation module.",
   },
   PEERDIR: {
-    usage: "PEERDIR(dirs...)",
-    text: "Declares module dependencies. Library peers are linked into executable/shared targets that depend on this module.",
+    usage: "PEERDIR([ADDINCL] [GLOBAL] dirs...)",
+    text: "Declares module dependencies. Library peers are linked into executable/shared targets that depend on this module. `ADDINCL path` is an inline modifier: it still declares `path` as a peer, and additionally adds that peer's include directory to this module's include search path. `GLOBAL` propagates the following peer dependency to dependants where supported.",
   },
   PROGRAM: {
     usage: "PROGRAM([progname])",

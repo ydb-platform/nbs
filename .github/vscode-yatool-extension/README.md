@@ -8,7 +8,7 @@ Small VS Code extension for navigating common path-bearing `ya.make` macros.
 - Document links for local `DATA(...)` arguments such as `arcadia/cloud/...`.
 - Document links and Go to Definition for `DEPENDS(...)`.
 - Document links and Go to Definition for `ADDINCL(...)` include directories.
-- Document links and Go to Definition for `SRCS(...)`, `PY_SRCS(...)`, `TEST_SRCS(...)`, `GO_TEST_SRCS(...)`, `GO_XTEST_SRCS(...)`, `GO_GRPC_GATEWAY_SRCS(...)`, `JOIN_SRCS(...)`, `FILES(...)`, `SUPPRESSIONS(...)`, `EXPORTS_SCRIPT(...)`, and `GENERATE_ENUM_SERIALIZATION(...)` source files.
+- Document links and Go to Definition for `SRCS(...)`, `PY_SRCS(...)`, `TEST_SRCS(...)`, `GO_TEST_SRCS(...)`, `GO_XTEST_SRCS(...)`, `GO_GRPC_GATEWAY_SRCS(...)`, `JOIN_SRCS(...)`, `FILES(...)`, `SUPPRESSIONS(...)`, and `EXPORTS_SCRIPT(...)` source files.
 - Document links and Go to Definition for `RESOURCE(...)` source files.
 - Document links and Go to Definition for `UNITTEST_FOR(...)`, `GO_TEST_FOR(...)`, and `DYNAMIC_LIBRARY_FROM(...)` module references.
 - Document links for `RECURSE(...)`, `RECURSE_FOR_TESTS(...)`, `RECURSE_ROOT_RELATIVE(...)`, and `PEERDIR(...)`.
@@ -38,7 +38,6 @@ Supported path forms:
 - `GO_XTEST_SRCS(external_test.go)`
 - `GO_GRPC_GATEWAY_SRCS(service.proto)`
 - `JOIN_SRCS(joined.cpp input1.cpp input2.cpp)`
-- `GENERATE_ENUM_SERIALIZATION(options.h)`
 - `EXPORTS_SCRIPT(plugin.symlist)`
 - `FILES(start.sh stop.sh)`
 - `SUPPRESSIONS(tsan.supp)`
