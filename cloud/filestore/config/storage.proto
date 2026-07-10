@@ -840,5 +840,5 @@ message TStorageConfig
     optional bool AllowTabletOverload = 523;
 
     // Pass data buffer to the tablet as a message payload
-    optional bool ExternalWriteDataPayload = 524;
+    optional bool ExternalWriteDataPayloadEnabled = 524;
 }

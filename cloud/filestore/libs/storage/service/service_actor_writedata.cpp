@@ -173,7 +173,7 @@ private:
     TRope Rope;
 
     const bool UseThreeStageWrite = false;
-    const bool ExternalWriteDataPayload = false;
+    const bool ExternalWriteDataPayloadEnabled = false;
 
 public:
     TWriteDataActor(
@@ -188,7 +188,7 @@ public:
         ITraceSerializerPtr traceSerializer,
         NCloud::NProto::EStorageMediaKind mediaKind,
         bool useThreeStageWrite,
-        bool externalWriteDataPayload)
+        bool externalWriteDataPayloadEnabled)
         : WriteRequest(std::move(request))
         , Range(range)
         , BlobRange(Range.AlignedSubRange())
@@ -201,7 +201,7 @@ public:
         , TraceSerializer(std::move(traceSerializer))
         , MediaKind(mediaKind)
         , UseThreeStageWrite(useThreeStageWrite)
-        , ExternalWriteDataPayload(externalWriteDataPayload)
+        , ExternalWriteDataPayloadEnabled(externalWriteDataPayloadEnabled)
     {}
 
     void Bootstrap(const TActorContext& ctx)
@@ -875,7 +875,9 @@ private:
 
         auto request = std::make_unique<TEvService::TEvWriteDataRequest>();
         request->Record = std::move(WriteRequest);
-        PrepareWriteDataRequestPayload(*request, ExternalWriteDataPayload);
+        PrepareWriteDataRequestPayload(
+            *request,
+            ExternalWriteDataPayloadEnabled);
         if (isFallback) {
             request->Record.MutableHeaders()->SetThrottlingDisabled(true);
         }
@@ -1092,7 +1094,7 @@ void TStorageServiceActor::HandleWriteData(
         TraceSerializer,
         session->MediaKind,
         threeStageWriteEnabled,
-        filestore.GetFeatures().GetExternalWriteDataPayload());
+        filestore.GetFeatures().GetExternalWriteDataPayloadEnabled());
     NCloud::Register(ctx, std::move(actor));
 }
 

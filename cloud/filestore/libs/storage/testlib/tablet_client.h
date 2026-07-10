@@ -890,7 +890,7 @@ public:
         request->Record.SetHandle(handle);
         request->Record.SetOffset(offset);
         TString buffer = CreateBuffer(len, fill);
-        if (StorageConfig.GetExternalWriteDataPayload()) {
+        if (StorageConfig.GetExternalWriteDataPayloadEnabled()) {
             request->AddPayload(TRope(std::move(buffer)));
         } else {
             request->Record.SetBuffer(std::move(buffer));
@@ -912,7 +912,7 @@ public:
         request->Record.SetHandle(handle);
         request->Record.SetOffset(offset);
         TString buffer(data, len);
-        if (StorageConfig.GetExternalWriteDataPayload()) {
+        if (StorageConfig.GetExternalWriteDataPayloadEnabled()) {
             request->AddPayload(TRope(std::move(buffer)));
         } else {
             request->Record.SetBuffer(std::move(buffer));

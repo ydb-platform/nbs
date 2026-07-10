@@ -9069,7 +9069,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
     {
         NProto::TStorageConfig storageConfig;
         storageConfig.SetExternalReadDataPayload(true);
-        storageConfig.SetExternalWriteDataPayload(true);
+        storageConfig.SetExternalWriteDataPayloadEnabled(true);
 
         TTestEnv env({} /* config */, storageConfig);
 

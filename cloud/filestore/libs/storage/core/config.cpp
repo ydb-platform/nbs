@@ -378,7 +378,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(SoftBackpressureMaxWriteIops,                  ui32,    10'000        )\
     xxx(SoftBackpressureMaxReadIops,                   ui32,    100'000       )\
                                                                                \
-    xxx(ExternalWriteDataPayload,               bool,   false                 )\
+    xxx(ExternalWriteDataPayloadEnabled,               bool,    false         )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \

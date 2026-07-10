@@ -121,7 +121,8 @@ void FillFeatures(
         config.GetStatFileStoreCacheTTL().MilliSeconds());
 
     features->SetExternalReadDataPayload(config.GetExternalReadDataPayload());
-    features->SetExternalWriteDataPayload(config.GetExternalWriteDataPayload());
+    features->SetExternalWriteDataPayloadEnabled(
+        config.GetExternalWriteDataPayloadEnabled());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -208,7 +209,7 @@ void ProcessAdapterModeFeatures(NProto::TFileStoreFeatures& f)
     // Disabling external read/write data payloads for the whole FS for
     // simplicity if at least one shard is configured in adapter mode.
     f.SetExternalReadDataPayload(false);
-    f.SetExternalWriteDataPayload(false);
+    f.SetExternalWriteDataPayloadEnabled(false);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

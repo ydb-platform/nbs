@@ -4836,7 +4836,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         config.SetThreeStageWriteEnabled(false);
         config.SetUnalignedThreeStageWriteEnabled(false);
         config.SetZeroCopyWriteEnabled(true);
-        config.SetExternalWriteDataPayload(true);
+        config.SetExternalWriteDataPayloadEnabled(true);
         config.SetExternalReadDataPayload(true);
         TestZeroCopyWrite(config, 4_KB, std::vector<ui64>(64, 4_KB));
     }
@@ -4847,7 +4847,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         config.SetThreeStageWriteEnabled(true);
         config.SetUnalignedThreeStageWriteEnabled(false);
         config.SetZeroCopyWriteEnabled(true);
-        config.SetExternalWriteDataPayload(true);
+        config.SetExternalWriteDataPayloadEnabled(true);
         config.SetExternalReadDataPayload(true);
         TestZeroCopyWrite(config, 111, std::vector<ui64>(64, 4_KB));
     }
@@ -5205,7 +5205,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(TestWriteWithExternalPayload)
     {
         NProto::TStorageConfig config;
-        config.SetExternalWriteDataPayload(true);
+        config.SetExternalWriteDataPayloadEnabled(true);
         TTestEnv env({}, std::move(config));
 
         ui32 nodeIdx = env.AddDynamicNode();
