@@ -12,6 +12,7 @@ import (
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	disk_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos"
 	filesystem_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem/protos"
+	filesystem_snapshot_service_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem_snapshot/protos"
 	images_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images/protos"
 	placementgroup_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/placementgroup/protos"
 	pools_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/protos"
@@ -49,10 +50,12 @@ var requestProtoByTaskType = map[string]func() proto.Message{
 	"disks.UnassignDisk":                            func() proto.Message { return &disk_protos.UnassignDiskRequest{} },
 	"disks.MigrateDisk":                             func() proto.Message { return &disk_protos.MigrateDiskRequest{} },
 	"filesystem.CreateFilesystem":                   func() proto.Message { return &filesystem_protos.CreateFilesystemRequest{} },
+	"filesystem.CreateFilesystemFromSnapshot":       func() proto.Message { return &filesystem_protos.CreateFilesystemFromSnapshotRequest{} },
 	"filesystem.CreateExternalFilesystem":           func() proto.Message { return &filesystem_protos.CreateFilesystemRequest{} },
 	"filesystem.DeleteFilesystem":                   func() proto.Message { return &filesystem_protos.DeleteFilesystemRequest{} },
 	"filesystem.DeleteExternalFilesystem":           func() proto.Message { return &filesystem_protos.DeleteFilesystemRequest{} },
 	"filesystem.ResizeFilesystem":                   func() proto.Message { return &filesystem_protos.ResizeFilesystemRequest{} },
+	"filesystem_snapshot.CreateFilesystemSnapshot":  func() proto.Message { return &filesystem_snapshot_service_protos.CreateFilesystemSnapshotRequest{} },
 	"images.CreateImageFromURL":                     func() proto.Message { return &images_protos.CreateImageFromURLRequest{} },
 	"images.CreateImageFromImage":                   func() proto.Message { return &images_protos.CreateImageFromImageRequest{} },
 	"images.CreateImageFromSnapshot":                func() proto.Message { return &images_protos.CreateImageFromSnapshotRequest{} },
@@ -105,10 +108,12 @@ var stateProtoByTaskType = map[string]func() proto.Message{
 	"disks.UnassignDisk":                            func() proto.Message { return &disk_protos.UnassignDiskTaskState{} },
 	"disks.MigrateDisk":                             func() proto.Message { return &disk_protos.MigrateDiskTaskState{} },
 	"filesystem.CreateFilesystem":                   func() proto.Message { return &filesystem_protos.CreateFilesystemTaskState{} },
+	"filesystem.CreateFilesystemFromSnapshot":       func() proto.Message { return &filesystem_protos.CreateFilesystemFromSnapshotTaskState{} },
 	"filesystem.CreateExternalFilesystem":           func() proto.Message { return &filesystem_protos.CreateFilesystemTaskState{} },
 	"filesystem.DeleteFilesystem":                   func() proto.Message { return &filesystem_protos.DeleteFilesystemTaskState{} },
 	"filesystem.DeleteExternalFilesystem":           func() proto.Message { return &filesystem_protos.DeleteFilesystemTaskState{} },
 	"filesystem.ResizeFilesystem":                   func() proto.Message { return &filesystem_protos.ResizeFilesystemTaskState{} },
+	"filesystem_snapshot.CreateFilesystemSnapshot":  func() proto.Message { return &filesystem_snapshot_service_protos.CreateFilesystemSnapshotTaskState{} },
 	"images.CreateImageFromURL":                     func() proto.Message { return &images_protos.CreateImageFromURLTaskState{} },
 	"images.CreateImageFromImage":                   func() proto.Message { return &images_protos.CreateImageFromImageTaskState{} },
 	"images.CreateImageFromSnapshot":                func() proto.Message { return &images_protos.CreateImageFromSnapshotTaskState{} },

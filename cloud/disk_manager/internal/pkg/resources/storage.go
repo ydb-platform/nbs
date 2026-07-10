@@ -76,6 +76,7 @@ type SnapshotMeta struct {
 type FilesystemMeta struct {
 	ID            string        `json:"id"`
 	ZoneID        string        `json:"zone_id"`
+	SrcSnapshotID string        `json:"src_snapshot_id"`
 	BlocksCount   uint64        `json:"blocks_count"`
 	BlockSize     uint32        `json:"block_size"`
 	Kind          string        `json:"kind"`

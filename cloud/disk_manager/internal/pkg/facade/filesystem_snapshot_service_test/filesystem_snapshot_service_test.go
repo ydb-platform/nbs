@@ -7,7 +7,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
@@ -59,19 +58,43 @@ func copyFilesystemThroughSnapshot(
 	snapshotID string,
 ) {
 
-	taskID := testcommon.ScheduleCreateSnapshotFromFilesystem(
-		t, ctx, "zone-a", srcFilesystemID, "", snapshotID,
+	operation, err := client.CreateFilesystemSnapshot(
+		testcommon.GetRequestContext(t, ctx),
+		&disk_manager.CreateFilesystemSnapshotRequest{
+			Src: &disk_manager.FilesystemId{
+				ZoneId:       "zone-a",
+				FilesystemId: srcFilesystemID,
+			},
+			FilesystemSnapshotId: snapshotID,
+			FolderId:             "folder",
+		},
 	)
-	testcommon.WaitOperationEnded(t, ctx, taskID, time.Second*200)
-	testcommon.RequireTaskHasNoError(t, ctx, taskID)
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
 
-	createFilesystem(t, ctx, client, dstFilesystemID)
-
-	taskID = testcommon.ScheduleTransferFromSnapshotToFilesystem(
-		t, ctx, "zone-a", dstFilesystemID, snapshotID,
+	operation, err = client.CreateFilesystem(
+		testcommon.GetRequestContext(t, ctx),
+		&disk_manager.CreateFilesystemRequest{
+			FilesystemId: &disk_manager.FilesystemId{
+				ZoneId:       "zone-a",
+				FilesystemId: dstFilesystemID,
+			},
+			BlockSize: 4096,
+			Size:      filesystemSize,
+			Kind:      disk_manager.FilesystemKind_FILESYSTEM_KIND_SSD,
+			CloudId:   "cloud",
+			FolderId:  "folder",
+			Src: &disk_manager.CreateFilesystemRequest_SrcSnapshotId{
+				SrcSnapshotId: snapshotID,
+			},
+		},
 	)
-	testcommon.WaitOperationEnded(t, ctx, taskID, time.Second*200)
-	testcommon.RequireTaskHasNoError(t, ctx, taskID)
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
 }
 
 type comparableNode struct {
@@ -178,6 +201,8 @@ func TestCreateFilesystemSnapshot(t *testing.T) {
 	defer func() {
 		_ = client.Close()
 	}()
+
+	createFilesystem(t, ctx, client, "test-filesystem-id")
 
 	reqCtx := testcommon.GetRequestContext(t, ctx)
 	operation, err := client.CreateFilesystemSnapshot(

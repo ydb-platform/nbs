@@ -9,6 +9,10 @@ SRCS(
     service.go
 )
 
+GO_TEST_SRCS(
+    create_filesystem_snapshot_task_test.go
+)
+
 END()
 
 RECURSE_FOR_TESTS(
@@ -17,4 +21,5 @@ RECURSE_FOR_TESTS(
 
 RECURSE(
     config
+    protos
 )
