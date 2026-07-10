@@ -2,6 +2,7 @@
 
 #include <cloud/filestore/libs/storage/core/config.h>
 
+#include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/ss_proxy/ss_proxy.h>
 
 namespace NCloud::NFileStore::NStorage {
@@ -90,14 +91,18 @@ NProto::TError TranslateSchemeShardError(const NProto::TError& e)
     ui32 code = e.GetCode();
     switch (code) {
         case MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPathDoesNotExist): {
-            code = E_NOT_FOUND;
-            break;
+            auto error = MakeError(
+                E_NOT_FOUND,
+                TStringBuilder() << "ss error: " << FormatError(e));
+            // "Path not found" is an expected, well-known outcome (e.g.
+            // filesystem was never created or already destroyed) and should be
+            // considered silent
+            SetErrorProtoFlag(error, NProto::EF_SILENT);
+            return error;
         }
 
         default: return e;
     }
-
-    return MakeError(code, TStringBuilder() << "ss error: " << FormatError(e));
 }
 
 }   // namespace NCloud::NFileStore::NStorage
