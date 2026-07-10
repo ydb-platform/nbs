@@ -1227,7 +1227,11 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
                             }
                         }
                     }
-                    TABLED() { out << hi.GetMessage(); }
+                    TABLED() {
+                        PRE() {
+                            out << hi.GetMessage();
+                        }
+                    }
                 }
             }
         }
