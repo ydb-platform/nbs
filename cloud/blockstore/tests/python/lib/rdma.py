@@ -58,11 +58,28 @@ class GuestClient:
             "cloud/blockstore/tools/testing/rdma-test/rdma-test"
         )
 
+    def get_last_interface(self):
+        result = self.execute(
+            "ip -o link show | "
+            "sed -n 's/^[0-9]\\+: \\([^:@]*\\).*/\\1/p' | "
+            "grep -v '^lo$' | "
+            "tail -n 1"
+        )
+
+        output = result.stdout
+        if isinstance(output, bytes):
+            output = output.decode("utf-8")
+
+        interface = output.strip()
+        if not interface:
+            raise RuntimeError("Failed to determine guest network interface")
+
+        logger.info("Use guest interface %s for RDMA setup", interface)
+        return interface
+
 
 def setup_rdma():
     ssh_key = os.getenv("QEMU_SSH_KEY")
-    interface = "ens5"  # Ubuntu 24.04
-    # interface = "enp0s4"  # Ubuntu 26.04
 
     clients = []
     for index, local_ip in enumerate(["192.168.1.1", "192.168.1.2"]):
@@ -72,6 +89,7 @@ def setup_rdma():
                 local_ip=local_ip, ssh_user="qemu", ssh_port=port, ssh_key=ssh_key
             )
         )
+        interface = clients[-1].get_last_interface()
 
         setup_cmds = [
             "ip address",
