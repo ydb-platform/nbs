@@ -44,6 +44,7 @@ void TIndexTabletActor::HandleWriteData(
                 msg->Record.MutableBuffer()->begin(),
                 payload.begin(),
                 payload.size());
+            msg->StripPayload();
         }
     }
 
