@@ -2,6 +2,8 @@
 
 #include <cloud/blockstore/libs/storage/api/service.h>
 
+#include <cloud/storage/core/libs/common/format.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -224,10 +226,9 @@ void TDiskRegistryActor::DestroyBrokenDisks(const TActorContext& ctx)
     LOG_INFO(
         ctx,
         TBlockStoreComponents::DISK_REGISTRY,
-        "%s Scheduled broken disks destruction, now: %lu, deadline: %lu",
+        "%s Scheduled broken disks destruction after %s",
         LogTitle.GetWithTime().c_str(),
-        ctx.Now().MicroSeconds(),
-        deadline.MicroSeconds());
+        FormatDuration(deadline - ctx.Now()).c_str());
 
     ctx.Schedule(deadline, request.release());
 }

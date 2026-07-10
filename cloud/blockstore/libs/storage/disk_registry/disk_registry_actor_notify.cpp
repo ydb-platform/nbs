@@ -3,6 +3,8 @@
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 
+#include <cloud/storage/core/libs/common/format.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -263,10 +265,9 @@ void TDiskRegistryActor::ReallocateDisks(const TActorContext& ctx)
         LOG_INFO(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY,
-            "%s Scheduled disks notification, now: %lu, deadline: %lu",
+            "%s Scheduled disks notification after %s",
             LogTitle.GetWithTime().c_str(),
-            ctx.Now().MicroSeconds(),
-            deadline.MicroSeconds());
+            FormatDuration(deadline - ctx.Now()).c_str());
 
         ctx.Schedule(deadline, request.release());
     } else {

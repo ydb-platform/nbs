@@ -1,5 +1,7 @@
 #include "disk_registry_actor.h"
 
+#include <cloud/storage/core/libs/common/format.h>
+
 #include <contrib/ydb/core/base/appdata.h>
 
 #include <util/generic/algorithm.h>
@@ -208,9 +210,9 @@ void TDiskRegistryActor::CompleteLoadState(
         LOG_INFO(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY,
-            "%s Schedule the initial agents rejection phase to %s",
+            "%s Schedule the initial agents rejection phase after %s",
             LogTitle.GetWithTime().c_str(),
-            ToString(deadline).c_str());
+            FormatDuration(deadline - ctx.Now()).c_str());
 
         auto request =
             std::make_unique<TEvDiskRegistryPrivate::TEvAgentConnectionLost>();

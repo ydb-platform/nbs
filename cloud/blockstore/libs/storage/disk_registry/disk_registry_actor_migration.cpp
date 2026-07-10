@@ -3,6 +3,8 @@
 #include <cloud/blockstore/libs/common/safe_debug_print.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 
+#include <cloud/storage/core/libs/common/format.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -337,10 +339,9 @@ void TDiskRegistryActor::StartMigration(const NActors::TActorContext& ctx)
         LOG_INFO(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY,
-            "%s Scheduled device migration, now: %lu, deadline: %lu",
+            "%s Scheduled device migration after %s",
             LogTitle.GetWithTime().c_str(),
-            ctx.Now().MicroSeconds(),
-            deadline.MicroSeconds());
+            FormatDuration(deadline - ctx.Now()).c_str());
 
         ctx.Schedule(
             deadline,

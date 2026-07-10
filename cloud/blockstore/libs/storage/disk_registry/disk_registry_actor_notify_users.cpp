@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/notify/iface/notify.h>
 #include <cloud/blockstore/libs/storage/disk_registry/model/user_notification.h>
+
 #include <cloud/storage/core/libs/common/format.h>
 
 #include <util/generic/yexception.h>
@@ -397,10 +398,9 @@ void TDiskRegistryActor::NotifyUsers(const NActors::TActorContext& ctx)
         LOG_INFO(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY,
-            "%s Scheduled users notification, now: %lu, deadline: %lu",
+            "%s Scheduled users notification after %s",
             LogTitle.GetWithTime().c_str(),
-            ctx.Now().MicroSeconds(),
-            deadline.MicroSeconds());
+            FormatDuration(deadline - ctx.Now()).c_str());
 
         ctx.Schedule(deadline, request.release());
     } else {

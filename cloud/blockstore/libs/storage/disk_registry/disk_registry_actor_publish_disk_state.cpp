@@ -3,6 +3,8 @@
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/logbroker/iface/logbroker.h>
 
+#include <cloud/storage/core/libs/common/format.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -27,10 +29,9 @@ void TDiskRegistryActor::PublishDiskStates(const TActorContext& ctx)
         LOG_INFO(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY,
-            "%s Scheduled disk state updates publication, now: %lu, deadline: %lu",
+            "%s Scheduled disk state updates publication after %s",
             LogTitle.GetWithTime().c_str(),
-            ctx.Now().MicroSeconds(),
-            deadline.MicroSeconds());
+            FormatDuration(deadline - ctx.Now()).c_str());
 
         ctx.Schedule(
             deadline,
