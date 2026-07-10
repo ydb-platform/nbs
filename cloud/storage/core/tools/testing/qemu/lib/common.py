@@ -157,7 +157,7 @@ def get_chardev_reconnect():
     if reconnect is not None:
         return int(reconnect)
 
-    return 0
+    return None
 
 
 def get_qemu_kvm():
