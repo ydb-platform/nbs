@@ -144,7 +144,7 @@ void TCleanupActor::HandleDescribeVolumeResponse(
         LOG_DEBUG(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY_WORKER,
-            "%s Disk %s still in SchemeShard, keeping",
+            "%s Disk %s is still present in SchemeShard, keep it",
             LogTitle.GetWithTime().c_str(),
             id.Quote().c_str());
     }
@@ -178,9 +178,10 @@ void TCleanupActor::HandleDeallocateDiskResponse(
         LOG_INFO(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY_WORKER,
-            "%s Deallocate disk %s succeeded",
+            "%s Deallocate disk %s result: %s",
             LogTitle.GetWithTime().c_str(),
-            id.Quote().c_str());
+            id.Quote().c_str(),
+            FormatError(msg->GetError()).c_str());
     }
 
     if (!PendingRequests) {

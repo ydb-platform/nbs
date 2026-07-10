@@ -197,9 +197,10 @@ void TNotifyActor::HandleNotifyUserEventResponse(
         LOG_INFO(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY,
-            "%s Users notification succeeded: %s",
+            "%s Users notification succeeded: %s, Error=%s",
             LogTitle.GetWithTime().c_str(),
-            ToString(notif).c_str());
+            ToString(notif).c_str(),
+            FormatError(error).c_str());
 
         Succeeded.push_back(MakeNotificationKey(notif));
     }
@@ -258,7 +259,7 @@ void TDiskRegistryActor::HandleNotifyUserEvent(
         LOG_WARN(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY,
-            "%s Disk not found, cancel notification of event %s",
+            "%s Disk not found. Cancel notification of the event %s.",
             LogTitle.GetWithTime().c_str(),
             ToString(notif).c_str());
 
@@ -274,7 +275,7 @@ void TDiskRegistryActor::HandleNotifyUserEvent(
         LOG_WARN(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY,
-            "%s Unexpected error %s for disk %s, try send notification anyway",
+            "%s Unexpected error %s for disk %s. Try send notification anyway.",
             LogTitle.GetWithTime().c_str(),
             FormatError(error).c_str(),
             diskId.Quote().c_str());
@@ -284,7 +285,7 @@ void TDiskRegistryActor::HandleNotifyUserEvent(
         LOG_WARN(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY,
-            "%s Empty Cloud Id for disk %s, postpone notification",
+            "%s Empty Cloud Id for disk %s. Postpone notification.",
             LogTitle.GetWithTime().c_str(),
             diskId.Quote().c_str());
 
@@ -303,7 +304,7 @@ void TDiskRegistryActor::HandleNotifyUserEvent(
         LOG_WARN(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY,
-            "%s Bad event: %s, dropping",
+            "%s Bad event: %s. Drop it.",
             LogTitle.GetWithTime().c_str(),
             FormatError(eventOrError.GetError()).c_str());
 

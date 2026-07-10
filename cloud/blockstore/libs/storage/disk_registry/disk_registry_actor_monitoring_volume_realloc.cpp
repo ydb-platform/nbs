@@ -175,7 +175,7 @@ void TDiskRegistryActor::HandleHttpInfo_VolumeRealloc(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::DISK_REGISTRY,
-        "%s Initiate volume reallocation via monpage: volume %s",
+        "%s Initiate volume reallocation from monitoring page: volume %s",
         LogTitle.GetWithTime().c_str(),
         diskId.Quote().data());
 

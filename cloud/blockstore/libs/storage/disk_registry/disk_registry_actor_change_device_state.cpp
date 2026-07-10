@@ -238,7 +238,7 @@ void TDiskRegistryActor::HandleHttpInfo_ChangeDeviseState(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::DISK_REGISTRY,
-        "%s Change state of device[%s] from %s to %s via monpage",
+        "%s Change state of device[%s] on monitoring page from %s to %s",
         LogTitle.GetWithTime().c_str(),
         deviceUUID.Quote().c_str(),
         EDeviceState_Name(device.GetState()).c_str(),

@@ -251,7 +251,7 @@ void TDiskRegistryActor::CompleteLoadState(
         LOG_INFO(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY,
-            "%s Found devices without agent, trying to remove them: "
+            "%s Found devices without agent and try to remove them: "
             "DeviceUUIDs=%s",
             LogTitle.GetWithTime().c_str(),
             JoinSeq(" ", orphanDevices).c_str());

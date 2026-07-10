@@ -121,7 +121,7 @@ void TNotifyActor::ReallocateDisks(const TActorContext& ctx)
         LOG_INFO(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY_WORKER,
-            "%s Notifying volume %s",
+            "%s Notifying volume: DiskId=%s",
             LogTitle.GetWithTime().c_str(),
             diskId.Quote().c_str());
 
@@ -178,7 +178,7 @@ void TNotifyActor::HandleReallocateDiskResponse(
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY_WORKER,
-            "%s Volume notification failed for %s: %s",
+            "%s Volume notification failed: DiskId=%s, Error=%s",
             LogTitle.GetWithTime().c_str(),
             diskId.Quote().c_str(),
             msg->Record.GetError().GetMessage().Quote().c_str());
@@ -186,7 +186,7 @@ void TNotifyActor::HandleReallocateDiskResponse(
         LOG_INFO(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY_WORKER,
-            "%s Volume notification succeeded for %s",
+            "%s Volume notification succeeded: DiskId=%s",
             LogTitle.GetWithTime().c_str(),
             diskId.Quote().c_str());
 

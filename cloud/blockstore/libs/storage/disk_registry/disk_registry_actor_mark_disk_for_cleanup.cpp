@@ -26,7 +26,7 @@ void TDiskRegistryActor::HandleMarkDiskForCleanup(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::DISK_REGISTRY,
-        "%s Mark disk for cleanup: %s",
+        "%s mark disk %s for cleanup",
         LogTitle.GetWithTime().c_str(),
         diskId.Quote().data());
 

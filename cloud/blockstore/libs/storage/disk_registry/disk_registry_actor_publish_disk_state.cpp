@@ -27,7 +27,7 @@ void TDiskRegistryActor::PublishDiskStates(const TActorContext& ctx)
         LOG_INFO(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY,
-            "%s Scheduled disk state publication, now: %lu, deadline: %lu",
+            "%s Scheduled disk state updates publication, now: %lu, deadline: %lu",
             LogTitle.GetWithTime().c_str(),
             ctx.Now().MicroSeconds(),
             deadline.MicroSeconds());
@@ -56,7 +56,7 @@ void TDiskRegistryActor::HandlePublishDiskStates(
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::DISK_REGISTRY,
-        "%s Disk state updates request. Updates=%d",
+        "%s Disk state updates request. Updates=%lu",
         LogTitle.GetWithTime().c_str(),
         State->GetDiskStateUpdates().size());
 

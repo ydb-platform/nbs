@@ -357,7 +357,7 @@ void TDiskRegistryActor::HandleHttpInfo_SendCmsHostRequest(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::DISK_REGISTRY,
-        "%s Send CMS request %s for agent[%s] via monpage (dryRun=%s)",
+        "%s Send CMS request %s for agent[%s] from monitoring page (dryRun=%s)",
         LogTitle.GetWithTime().c_str(),
         NProto::TAction_EType_Name(actionType).c_str(),
         agentId.c_str(),
@@ -436,7 +436,7 @@ void TDiskRegistryActor::HandleHttpInfo_SendCmsDeviceRequest(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::DISK_REGISTRY,
-        "%s Send CMS request %s for path[%s] on agent[%s] via monpage "
+        "%s Send CMS request %s for path[%s] on agent[%s] from monitoring page "
         "(dryRun=%s)",
         LogTitle.GetWithTime().c_str(),
         NProto::TAction_EType_Name(actionType).c_str(),
