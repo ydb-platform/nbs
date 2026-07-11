@@ -30,6 +30,7 @@ func exportSnapshot(
 	ctx context.Context,
 	config *server_config.ServerConfig,
 	snapshotID string,
+	readWorkerCount int,
 ) error {
 
 	snapshotConfig := config.GetDataplaneConfig().GetSnapshotConfig()
@@ -73,11 +74,12 @@ func exportSnapshot(
 		return err
 	}
 
-	stats, err := export.ExportToWriter(
+	stats, err := export.ExportToWriterWithReadWorkers(
 		ctx,
 		snapshotStorage,
 		snapshotID,
 		os.Stdout,
+		readWorkerCount,
 	)
 	if err != nil {
 		return err
@@ -99,6 +101,7 @@ func exportSnapshot(
 func main() {
 	var configFilePath string
 	var snapshotID string
+	var readWorkerCount int
 	var verbose bool
 	config := &server_config.ServerConfig{}
 
@@ -122,6 +125,7 @@ func main() {
 				ctx,
 				config,
 				snapshotID,
+				readWorkerCount,
 			)
 		},
 	}
@@ -137,6 +141,12 @@ func main() {
 		"snapshot-id",
 		"",
 		"ID of the snapshot (or image) to export",
+	)
+	rootCmd.Flags().IntVar(
+		&readWorkerCount,
+		"read-workers",
+		export.DefaultStreamReadWorkerCount,
+		"Number of parallel chunk read workers",
 	)
 	rootCmd.Flags().BoolVarP(
 		&verbose,

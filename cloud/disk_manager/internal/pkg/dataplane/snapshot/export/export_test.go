@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -182,6 +183,87 @@ func TestExportToWriterWritesRawImageStream(t *testing.T) {
 	require.Equal(t, expected, dst.Bytes())
 
 	// Zero chunk should not be read from the storage.
+	snapshotStorage.AssertNumberOfCalls(t, "ReadChunk", 2)
+}
+
+func TestExportToWriterReadsChunksConcurrently(t *testing.T) {
+	ctx := newContext()
+
+	entries := []storage.ChunkMapEntry{
+		{ChunkIndex: 0, ChunkID: "chunk-0", StoredInS3: true},
+		{ChunkIndex: 1, ChunkID: "chunk-1", StoredInS3: true},
+	}
+
+	snapshotStorage := mocks.NewStorageMock()
+	snapshotStorage.On("CheckSnapshotReady", mock.Anything, "snapshot").Return(
+		storage.SnapshotMeta{Size: 2 * chunkSize, ChunkCount: 2},
+		nil,
+	)
+	entryChannel, errorChannel := newChunkMapChannels(entries, nil)
+	snapshotStorage.On("ReadChunkMap", mock.Anything, "snapshot", uint32(0)).Return(
+		entryChannel,
+		errorChannel,
+	)
+
+	readStarted := make(chan uint32, len(entries))
+	releaseReads := make(chan struct{})
+	snapshotStorage.On("ReadChunk", mock.Anything, mock.Anything).Run(
+		func(args mock.Arguments) {
+			chunk := args.Get(1).(*dataplane_common.Chunk)
+			readStarted <- chunk.Index
+			<-releaseReads
+			fillChunkOnRead(args)
+		},
+	).Return(nil)
+
+	var dst bytes.Buffer
+	type exportResult struct {
+		stats Stats
+		err   error
+	}
+	result := make(chan exportResult, 1)
+
+	go func() {
+		stats, err := ExportToWriterWithReadWorkers(
+			ctx,
+			snapshotStorage,
+			"snapshot",
+			&dst,
+			2, // readWorkerCount
+		)
+		result <- exportResult{stats: stats, err: err}
+	}()
+
+	started := make(map[uint32]bool)
+	for len(started) < len(entries) {
+		select {
+		case chunkIndex := <-readStarted:
+			started[chunkIndex] = true
+		case <-time.After(time.Second):
+			close(releaseReads)
+			t.Fatal("timed out waiting for concurrent chunk reads")
+		}
+	}
+	close(releaseReads)
+
+	select {
+	case res := <-result:
+		require.NoError(t, res.err)
+		require.Equal(t, uint32(2), res.stats.DataChunkCount)
+		require.Equal(t, uint32(0), res.stats.ZeroChunkCount)
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for export to finish")
+	}
+
+	expected := make([]byte, 2*chunkSize)
+	for i := 0; i < chunkSize; i++ {
+		expected[i] = chunkDataByte(0)
+	}
+	for i := chunkSize; i < 2*chunkSize; i++ {
+		expected[i] = chunkDataByte(1)
+	}
+	require.Equal(t, expected, dst.Bytes())
+
 	snapshotStorage.AssertNumberOfCalls(t, "ReadChunk", 2)
 }
 

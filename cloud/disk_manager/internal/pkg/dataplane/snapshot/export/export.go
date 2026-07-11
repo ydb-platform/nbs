@@ -23,6 +23,12 @@ const chunkSize = 4 * 1024 * 1024
 // Progress is logged after each logProgressChunkCount processed chunks.
 const logProgressChunkCount = 1024
 
+// DefaultStreamReadWorkerCount controls parallel chunk reads for non-seekable
+// stream exports. Stdout still receives chunks in strict index order.
+const DefaultStreamReadWorkerCount = 16
+
+const streamReadAheadMultiplier = 4
+
 ////////////////////////////////////////////////////////////////////////////////
 
 // Destination receives the exported snapshot data, e.g. *os.File.
@@ -186,6 +192,33 @@ func ExportToWriter(
 	dst io.Writer,
 ) (Stats, error) {
 
+	return ExportToWriterWithReadWorkers(
+		ctx,
+		snapshotStorage,
+		snapshotID,
+		dst,
+		DefaultStreamReadWorkerCount,
+	)
+}
+
+// ExportToWriterWithReadWorkers is ExportToWriter with configurable parallel
+// chunk readers. It reads data chunks concurrently, but writes the raw stream to
+// dst in chunk index order.
+func ExportToWriterWithReadWorkers(
+	ctx context.Context,
+	snapshotStorage storage.Storage,
+	snapshotID string,
+	dst io.Writer,
+	readWorkerCount int,
+) (Stats, error) {
+
+	if readWorkerCount <= 0 {
+		return Stats{}, task_errors.NewNonRetriableErrorf(
+			"readWorkerCount must be positive, got %v",
+			readWorkerCount,
+		)
+	}
+
 	meta, err := checkSnapshotReadyForExport(ctx, snapshotStorage, snapshotID)
 	if err != nil {
 		return Stats{}, err
@@ -194,82 +227,172 @@ func ExportToWriter(
 	readCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	entries, entriesErrors := snapshotStorage.ReadChunkMap(
+	entriesByIndex, hasEntry, err := readStreamChunkMap(
 		readCtx,
+		snapshotStorage,
 		snapshotID,
-		0, // milestoneChunkIndex
+		meta.ChunkCount,
 	)
+	if err != nil {
+		return Stats{}, err
+	}
 
-	data := make([]byte, chunkSize)
-	zeroes := make([]byte, chunkSize)
+	type streamReadResult struct {
+		chunkIndex uint32
+		data       []byte
+		err        error
+	}
+
+	readAheadChunkCount := readWorkerCount * streamReadAheadMultiplier
+	if readAheadChunkCount < readWorkerCount {
+		readAheadChunkCount = readWorkerCount
+	}
+
+	jobs := make(chan storage.ChunkMapEntry)
+	results := make(chan streamReadResult, readAheadChunkCount)
+
+	errGroup, groupCtx := errgroup.WithContext(readCtx)
+	for i := 0; i < readWorkerCount; i++ {
+		errGroup.Go(func() error {
+			for {
+				var entry storage.ChunkMapEntry
+				var ok bool
+
+				select {
+				case <-groupCtx.Done():
+					return groupCtx.Err()
+				case entry, ok = <-jobs:
+					if !ok {
+						return nil
+					}
+				}
+
+				data := make([]byte, chunkSize)
+				chunk := dataplane_common.Chunk{
+					ID:         entry.ChunkID,
+					Index:      entry.ChunkIndex,
+					StoredInS3: entry.StoredInS3,
+					Data:       data,
+				}
+
+				err := snapshotStorage.ReadChunk(groupCtx, &chunk)
+				if err != nil {
+					data = nil
+				}
+
+				select {
+				case results <- streamReadResult{
+					chunkIndex: entry.ChunkIndex,
+					data:       data,
+					err:        err,
+				}:
+				case <-groupCtx.Done():
+					return groupCtx.Err()
+				}
+			}
+		})
+	}
+
+	jobsClosed := false
+	workersDone := false
+	defer func() {
+		if !jobsClosed {
+			close(jobs)
+		}
+		cancel()
+		if !workersDone {
+			_ = errGroup.Wait()
+		}
+	}()
+
 	var dataChunkCount, zeroChunkCount, nextChunkIndex uint32
+	var scheduledChunkIndex uint32
+	inFlightReads := 0
+	readyChunks := make(map[uint32][]byte)
+	zeroes := make([]byte, chunkSize)
+
+	scheduleReads := func() error {
+		for scheduledChunkIndex < meta.ChunkCount && inFlightReads < readAheadChunkCount {
+			entry := entriesByIndex[scheduledChunkIndex]
+			if hasEntry[scheduledChunkIndex] && len(entry.ChunkID) != 0 {
+				select {
+				case jobs <- entry:
+					inFlightReads++
+				case <-readCtx.Done():
+					return readCtx.Err()
+				}
+			}
+
+			scheduledChunkIndex++
+		}
+
+		return nil
+	}
 
 	writeZeroChunk := func(chunkIndex uint32) error {
 		zeroChunkCount++
 		return writeStreamChunk(dst, zeroes, chunkIndex, meta.Size)
 	}
 
-	for entry := range entries {
-		if entry.ChunkIndex < nextChunkIndex {
-			return Stats{}, task_errors.NewNonRetriableErrorf(
-				"chunk map is not ordered: got chunk index %v after %v chunks",
-				entry.ChunkIndex,
-				nextChunkIndex,
-			)
-		}
-		if entry.ChunkIndex >= meta.ChunkCount {
-			return Stats{}, task_errors.NewNonRetriableErrorf(
-				"chunk index %v is outside snapshot chunk count %v",
-				entry.ChunkIndex,
-				meta.ChunkCount,
-			)
+	for nextChunkIndex < meta.ChunkCount {
+		if err := scheduleReads(); err != nil {
+			return Stats{}, err
 		}
 
-		for nextChunkIndex < entry.ChunkIndex {
+		entry := entriesByIndex[nextChunkIndex]
+		if !hasEntry[nextChunkIndex] || len(entry.ChunkID) == 0 {
 			err = writeZeroChunk(nextChunkIndex)
 			if err != nil {
 				return Stats{}, err
 			}
+
 			nextChunkIndex++
 			logExportProgress(ctx, nextChunkIndex, meta.ChunkCount)
+			continue
 		}
 
-		if len(entry.ChunkID) == 0 {
-			err = writeZeroChunk(entry.ChunkIndex)
-		} else {
-			chunk := dataplane_common.Chunk{
-				ID:         entry.ChunkID,
-				Index:      entry.ChunkIndex,
-				StoredInS3: entry.StoredInS3,
-				Data:       data,
+		data, ready := readyChunks[nextChunkIndex]
+		for !ready {
+			select {
+			case result := <-results:
+				inFlightReads--
+				if result.err != nil {
+					return Stats{}, result.err
+				}
+
+				if result.chunkIndex == nextChunkIndex {
+					data = result.data
+					ready = true
+				} else {
+					readyChunks[result.chunkIndex] = result.data
+				}
+			case <-readCtx.Done():
+				return Stats{}, readCtx.Err()
 			}
 
-			err = snapshotStorage.ReadChunk(readCtx, &chunk)
-			if err == nil {
-				dataChunkCount++
-				err = writeStreamChunk(dst, data, entry.ChunkIndex, meta.Size)
+			if err := scheduleReads(); err != nil {
+				return Stats{}, err
 			}
 		}
+
+		delete(readyChunks, nextChunkIndex)
+		err = writeStreamChunk(dst, data, nextChunkIndex, meta.Size)
 		if err != nil {
 			return Stats{}, err
 		}
 
+		dataChunkCount++
 		nextChunkIndex++
 		logExportProgress(ctx, nextChunkIndex, meta.ChunkCount)
 	}
 
-	err = <-entriesErrors
+	close(jobs)
+	jobsClosed = true
+
+	err = errGroup.Wait()
+	workersDone = true
 	if err != nil {
 		return Stats{}, err
-	}
-
-	for nextChunkIndex < meta.ChunkCount {
-		err = writeZeroChunk(nextChunkIndex)
-		if err != nil {
-			return Stats{}, err
-		}
-		nextChunkIndex++
-		logExportProgress(ctx, nextChunkIndex, meta.ChunkCount)
 	}
 
 	return Stats{
@@ -277,6 +400,55 @@ func ExportToWriter(
 		DataChunkCount: dataChunkCount,
 		ZeroChunkCount: zeroChunkCount,
 	}, nil
+}
+
+func readStreamChunkMap(
+	ctx context.Context,
+	snapshotStorage storage.Storage,
+	snapshotID string,
+	chunkCount uint32,
+) ([]storage.ChunkMapEntry, []bool, error) {
+
+	entries, entriesErrors := snapshotStorage.ReadChunkMap(
+		ctx,
+		snapshotID,
+		0, // milestoneChunkIndex
+	)
+
+	entriesByIndex := make([]storage.ChunkMapEntry, int(chunkCount))
+	hasEntry := make([]bool, int(chunkCount))
+
+	var lastEntryIndex uint32
+	hasLastEntry := false
+
+	for entry := range entries {
+		if hasLastEntry && entry.ChunkIndex <= lastEntryIndex {
+			return nil, nil, task_errors.NewNonRetriableErrorf(
+				"chunk map is not ordered: got chunk index %v after %v chunks",
+				entry.ChunkIndex,
+				lastEntryIndex+1,
+			)
+		}
+		if entry.ChunkIndex >= chunkCount {
+			return nil, nil, task_errors.NewNonRetriableErrorf(
+				"chunk index %v is outside snapshot chunk count %v",
+				entry.ChunkIndex,
+				chunkCount,
+			)
+		}
+
+		entriesByIndex[entry.ChunkIndex] = entry
+		hasEntry[entry.ChunkIndex] = true
+		lastEntryIndex = entry.ChunkIndex
+		hasLastEntry = true
+	}
+
+	err := <-entriesErrors
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return entriesByIndex, hasEntry, nil
 }
 
 func logExportProgress(ctx context.Context, processedChunkCount uint32, chunkCount uint32) {

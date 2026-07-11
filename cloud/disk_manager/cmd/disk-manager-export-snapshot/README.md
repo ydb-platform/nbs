@@ -61,6 +61,12 @@ disk-manager-export-snapshot \
   chunks.
 * Progress is logged every 1024 chunks (4 GiB of data). `-v` additionally logs
   every chunk read.
+* `--read-workers` controls how many data chunks are read in parallel from
+  S3/YDB before being written to stdout in order. Default is 16. Increase it
+  if S3 latency/bandwidth is the bottleneck; decrease it to reduce memory and
+  storage pressure. The prefetch window is four times larger than the worker
+  count, so buffered chunk data is bounded at roughly
+  `--read-workers * 4 * 4 MiB`.
 
 ## Result
 
