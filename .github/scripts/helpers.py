@@ -7,6 +7,7 @@ import requests
 import re
 import asyncio
 import functools
+import inspect
 import time
 from dataclasses import dataclass
 import datetime
@@ -219,9 +220,11 @@ def retry(
     retry_exceptions: tuple[type[BaseException], ...] = (Exception,),
     retry_result: Callable[[object], bool] | None = None,
     attempt_arg: str | None = None,
-    on_final_exception: Callable[[BaseException], None] | None = None,
+    on_final_exception: Callable[..., None] | None = None,
 ) -> callable:
     def decorator(func: callable) -> callable:
+        func_signature = inspect.signature(func)
+
         def build_call_kwargs(kwargs: dict, attempt: int) -> dict:
             call_kwargs = dict(kwargs)
             if attempt_arg:
@@ -262,6 +265,20 @@ def retry(
                 interval_sec,
             )
 
+        def call_final_exception_handler(
+            exception: BaseException, args: tuple, kwargs: dict
+        ) -> None:
+            if not on_final_exception:
+                return
+
+            parameters = inspect.signature(on_final_exception).parameters
+            if len(parameters) == 1:
+                on_final_exception(exception)
+            else:
+                on_final_exception(
+                    exception, func_signature.bind_partial(*args, **kwargs)
+                )
+
         if asyncio.iscoroutinefunction(func):
 
             @functools.wraps(func)
@@ -272,8 +289,7 @@ def retry(
                     except retry_exceptions as e:
                         if attempt == attempts:
                             log_final_exception(e)
-                            if on_final_exception:
-                                on_final_exception(e)
+                            call_final_exception_handler(e, args, kwargs)
                             raise
 
                         log_retry_exception(attempt, e)
@@ -304,8 +320,7 @@ def retry(
                 except retry_exceptions as e:
                     if attempt == attempts:
                         log_final_exception(e)
-                        if on_final_exception:
-                            on_final_exception(e)
+                        call_final_exception_handler(e, args, kwargs)
                         raise
 
                     log_retry_exception(attempt, e)
@@ -341,8 +356,8 @@ def fetch_repo_variable(github_client, github_repository: str, variable_name: st
     interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
     retry_exceptions=PYGITHUB_RETRY_EXCEPTIONS,
 )
-def fetch_github_team(gh: Github, github_org: str, team_slug: str) -> Team:
-    org = gh.get_organization(github_org)
+def fetch_github_team(github: Github, github_org: str, team_slug: str) -> Team:
+    org = github.get_organization(github_org)
     return org.get_team_by_slug(team_slug)
 
 
@@ -365,10 +380,10 @@ def fetch_github_member_public_keys(member: NamedUser) -> list[str]:
 
 
 def fetch_github_team_public_keys(
-    gh: Github, github_org: str, team_slug: str
+    github: Github, github_org: str, team_slug: str
 ) -> list[str]:
     logger = logging.getLogger(__name__)
-    team = fetch_github_team(gh, github_org, team_slug)
+    team = fetch_github_team(github, github_org, team_slug)
     members: list[NamedUser] = fetch_github_team_members(team)
 
     ssh_keys: list[str] = []
@@ -454,6 +469,18 @@ def github_client(github_token: str | None = None) -> Github:
     return Github()
 
 
+def github_client_from_env() -> Github:
+    github_token = os.environ.get("GITHUB_TOKEN")
+    if github_token is None or not github_token.strip():
+        raise Exception("GITHUB_TOKEN environment variable is not set")
+
+    return github_client(github_token)
+
+
+def github_runner_repo(github: Github):
+    return github.get_repo("actions/runner")
+
+
 def git_release_payload(release: GitRelease) -> dict:
     return {
         "tag_name": release.tag_name,
@@ -467,11 +494,9 @@ def git_release_payload(release: GitRelease) -> dict:
     interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
     retry_exceptions=PYGITHUB_RETRY_EXCEPTIONS,
 )
-def get_github_runner_release(
-    version: str, github_token: str | None = None
-) -> GithubRunnerRelease:
+def get_github_runner_release(github: Github, version: str) -> GithubRunnerRelease:
     normalized_version = normalize_github_runner_version(version)
-    repo = github_client(github_token).get_repo("actions/runner")
+    repo = github_runner_repo(github)
     release = repo.get_release(f"v{normalized_version}")
     return extract_github_runner_release(git_release_payload(release))
 
@@ -482,27 +507,25 @@ def get_github_runner_release(
     retry_exceptions=PYGITHUB_RETRY_EXCEPTIONS,
 )
 def get_latest_github_runner_release(
-    github_token: str | None = None,
+    github: Github,
 ) -> GithubRunnerRelease:
-    repo = github_client(github_token).get_repo("actions/runner")
+    repo = github_runner_repo(github)
     release = repo.get_latest_release()
     return extract_github_runner_release(git_release_payload(release))
 
 
-def get_latest_github_runner_version(github_token: str | None = None) -> str:
-    return get_latest_github_runner_release(github_token).version
+def get_latest_github_runner_version(github: Github) -> str:
+    return get_latest_github_runner_release(github).version
 
 
-def resolve_github_runner_version(version: str, github_token: str | None = None) -> str:
-    return resolve_github_runner_release(version, github_token).version
+def resolve_github_runner_version(github: Github, version: str) -> str:
+    return resolve_github_runner_release(github, version).version
 
 
-def resolve_github_runner_release(
-    version: str, github_token: str | None = None
-) -> GithubRunnerRelease:
+def resolve_github_runner_release(github: Github, version: str) -> GithubRunnerRelease:
     if (version or "").strip().lower() in ("", GITHUB_RUNNER_LATEST_VERSION):
-        return get_latest_github_runner_release(github_token)
-    return get_github_runner_release(version, github_token)
+        return get_latest_github_runner_release(github)
+    return get_github_runner_release(github, version)
 
 
 def vm_suffix_for_component(component: str) -> str:

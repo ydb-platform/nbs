@@ -2,8 +2,7 @@ import os
 import asyncio
 import argparse
 from dataclasses import dataclass
-from .helpers import setup_logger, convert_size, fetch_repo_variable
-from github import Github
+from .helpers import setup_logger, convert_size, fetch_repo_variable, github_client
 from nebius.sdk import SDK
 from nebius.aio.cli_config import Config
 from nebius.aio.service_error import RequestError
@@ -137,7 +136,7 @@ async def remove_image_by_id(service: ImageServiceClient, image_id: str) -> None
 async def main(
     sdk: SDK,
     options: ManageImagesOptions,
-    github_client_factory=Github,
+    github_client_factory=github_client,
     image_service_factory=ImageServiceClient,
 ) -> None:
     github = github_client_factory(options.github_token)

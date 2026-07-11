@@ -350,7 +350,29 @@ def test_extract_github_runner_release_rejects_missing_tag_name():
         h.extract_github_runner_release(payload)
 
 
-def test_get_github_runner_release_fetches_release_by_tag(monkeypatch):
+def test_github_client_from_env_uses_github_token(monkeypatch):
+    calls = []
+    github = object()
+
+    def fake_github_client(token):
+        calls.append(token)
+        return github
+
+    monkeypatch.setenv("GITHUB_TOKEN", "token")
+    monkeypatch.setattr(h, "github_client", fake_github_client)
+
+    assert h.github_client_from_env() is github
+    assert calls == ["token"]
+
+
+def test_github_client_from_env_requires_github_token(monkeypatch):
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+
+    with pytest.raises(Exception, match="GITHUB_TOKEN environment variable is not set"):
+        h.github_client_from_env()
+
+
+def test_get_github_runner_release_fetches_release_by_tag():
     class FakeRepo:
         def get_release(self, tag):
             assert tag == "v2.331.0"
@@ -368,19 +390,13 @@ def test_get_github_runner_release_fetches_release_by_tag(monkeypatch):
             assert repo == "actions/runner"
             return FakeRepo()
 
-    def fake_github_client(token):
-        assert token == "token"
-        return FakeGithub()
-
-    monkeypatch.setattr(h, "github_client", fake_github_client)
-
-    release = h.get_github_runner_release("v2.331.0", "token")
+    release = h.get_github_runner_release(FakeGithub(), "v2.331.0")
 
     assert release.version == "2.331.0"
     assert release.sha256_by_arch["x64"] == "a" * 64
 
 
-def test_get_latest_github_runner_release_fetches_latest(monkeypatch):
+def test_get_latest_github_runner_release_fetches_latest():
     class FakeRepo:
         def get_latest_release(self):
             payload = make_runner_release_payload("2.332.0")
@@ -397,13 +413,7 @@ def test_get_latest_github_runner_release_fetches_latest(monkeypatch):
             assert repo == "actions/runner"
             return FakeRepo()
 
-    def fake_github_client(token):
-        assert token == "token"
-        return FakeGithub()
-
-    monkeypatch.setattr(h, "github_client", fake_github_client)
-
-    release = h.get_latest_github_runner_release("token")
+    release = h.get_latest_github_runner_release(FakeGithub())
 
     assert release.version == "2.332.0"
     assert release.sha256_by_arch["arm64"] == "b" * 64
@@ -437,25 +447,27 @@ def test_get_jobs_raw_fetches_workflow_jobs_with_pygithub(monkeypatch):
 
 def test_resolve_github_runner_release_treats_empty_as_latest(monkeypatch):
     calls = []
+    github = object()
 
-    def fake_get_latest(github_token):
-        calls.append(github_token)
+    def fake_get_latest(received_github):
+        calls.append(received_github)
         return h.GithubRunnerRelease(version="2.332.0", sha256_by_arch={})
 
     monkeypatch.setattr(h, "get_latest_github_runner_release", fake_get_latest)
 
-    assert h.resolve_github_runner_release("", "token").version == "2.332.0"
-    assert calls == ["token"]
+    assert h.resolve_github_runner_release(github, "").version == "2.332.0"
+    assert calls == [github]
 
 
 def test_resolve_github_runner_release_fetches_pinned_version(monkeypatch):
     calls = []
+    github = object()
 
-    def fake_get_release(version, github_token):
-        calls.append((version, github_token))
+    def fake_get_release(received_github, version):
+        calls.append((received_github, version))
         return h.GithubRunnerRelease(version="2.331.0", sha256_by_arch={})
 
     monkeypatch.setattr(h, "get_github_runner_release", fake_get_release)
 
-    assert h.resolve_github_runner_release("v2.331.0", "token").version == "2.331.0"
-    assert calls == [("v2.331.0", "token")]
+    assert h.resolve_github_runner_release(github, "v2.331.0").version == "2.331.0"
+    assert calls == [(github, "v2.331.0")]

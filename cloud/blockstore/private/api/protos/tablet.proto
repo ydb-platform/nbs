@@ -28,3 +28,25 @@ message TKillTabletRequest
 
 message TKillTabletResponse
 {}
+
+////////////////////////////////////////////////////////////////////////////////
+// TabletBootInfo — single tablet's boot info for Get/Set.
+
+message TTabletBootInfoProto
+{
+    // NKikimrTabletBase::TTabletStorageInfo serialized to bytes.
+    // There is a serialized field used because we don't want to depend on YDB.
+    bytes SerializedTabletStorageInfo = 1;
+    uint64 SuggestedGeneration = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// GetTabletBootInfos request/response.
+
+message TGetTabletBootInfosRequest
+{}
+
+message TGetTabletBootInfosResponse
+{
+    repeated TTabletBootInfoProto TabletBootInfos = 1;
+}

@@ -93,6 +93,7 @@ void TServiceActor::HandleExecuteAction(
         {"getstorageconfig",                  &TServiceActor::CreateGetStorageConfigActor                  },
         {"backuppathdescriptions",            &TServiceActor::CreateBackupPathDescriptionsActor            },
         {"backuptabletbootinfos",             &TServiceActor::CreateBackupTabletBootInfosActor             },
+        {"gettabletbootinfos",                &TServiceActor::CreateGetTabletBootInfosActor                },
         {"getclustercapacity",                &TServiceActor::CreateGetClusterCapacityActor                },
         {"setvhostdiscardenabledflag",        &TServiceActor::CreateSetVhostDiscardFlagActionActor         },
         {"getlinkstatus",                     &TServiceActor::CreateGetLinkStatusActionActor               },

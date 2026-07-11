@@ -813,6 +813,23 @@ struct TTestEnv
             sender,
             request.release()));
     }
+
+    TEvHiveProxy::TGetTabletBootInfosResponse SendGetTabletBootInfos(
+        const TActorId& sender,
+        ui32 errorCode)
+    {
+        Runtime.Send(new IEventHandle(
+            MakeHiveProxyServiceId(),
+            sender,
+            new TEvHiveProxy::TEvGetTabletBootInfosRequest()));
+        auto ev =
+            Runtime.GrabEdgeEvent<TEvHiveProxy::TEvGetTabletBootInfosResponse>(
+                sender);
+        UNIT_ASSERT(ev);
+        const auto* msg = ev->Get();
+        UNIT_ASSERT_VALUES_EQUAL(msg->GetStatus(), errorCode);
+        return *msg;
+    }
 };
 
 }   // namespace
@@ -1878,6 +1895,59 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
 
             env.SendListTabletBootInfoBackups(sender, S_OK);
         }
+    }
+
+    Y_UNIT_TEST(GetTabletBootInfosEmpty)
+    {
+        TString backupFilePath = "GetEmpty.tablet_boot_info_backup.txt";
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime, backupFilePath, /*fallbackMode=*/false);
+
+        auto sender = runtime.AllocateEdgeActor();
+
+        auto result = env.SendGetTabletBootInfos(sender, S_OK);
+        UNIT_ASSERT(result.TabletBootInfos.empty());
+    }
+
+    Y_UNIT_TEST(GetTabletBootInfosAfterBoot)
+    {
+        TString backupFilePath = "GetAfterBoot.tablet_boot_info_backup.txt";
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime, backupFilePath, /*fallbackMode=*/false);
+
+        TTabletStorageInfoPtr expected = CreateTestTabletInfo(
+            FakeTablet2,
+            TTabletTypes::BlockStorePartition);
+        env.HiveState->StorageInfos[FakeTablet2] = expected;
+
+        auto sender = runtime.AllocateEdgeActor();
+
+        auto bootResult =
+            env.SendBootExternalRequest(sender, FakeTablet2, S_OK);
+        UNIT_ASSERT(bootResult.StorageInfo);
+        UNIT_ASSERT_VALUES_EQUAL(1u, bootResult.SuggestedGeneration);
+
+        auto getResult = env.SendGetTabletBootInfos(sender, S_OK);
+        UNIT_ASSERT_VALUES_EQUAL(1, getResult.TabletBootInfos.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            FakeTablet2,
+            getResult.TabletBootInfos[0].StorageInfoProto.GetTabletID());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1u,
+            getResult.TabletBootInfos[0].SuggestedGeneration);
+    }
+
+    Y_UNIT_TEST(GetWithoutBackupFilePath)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime, /*backupFilePath=*/"", /*fallbackMode=*/false);
+
+        auto sender = runtime.AllocateEdgeActor();
+
+        auto result = env.SendGetTabletBootInfos(sender, E_PRECONDITION_FAILED);
+        UNIT_ASSERT(result.TabletBootInfos.empty());
     }
 }
 

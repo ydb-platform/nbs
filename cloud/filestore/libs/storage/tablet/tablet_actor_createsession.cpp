@@ -97,6 +97,8 @@ void FillFeatures(
     features->SetGuestHandleKillPrivV2Enabled(
         config.GetGuestHandleKillPrivV2Enabled());
 
+    features->SetTabletDirectRdmaEnabled(config.GetTabletDirectRdmaEnabled());
+
     // TODO(#5670) posix acl is not yet fully supported in tablet based
     // filestore
     features->SetGuestPosixAclEnabled(false);
