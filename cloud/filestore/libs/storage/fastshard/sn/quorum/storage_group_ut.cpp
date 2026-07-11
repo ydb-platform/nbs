@@ -171,7 +171,18 @@ TEST(NaiveGroupTest, RoundRobinsRead)
         +[](int*) noexcept -> int {
             TStorageFixture fx;
 
+            TVector<NProto::TReadPagesResponse> readResponses(
+                TStorageFixture::NodeCount);
+            for (ui32 i = 0; i < TStorageFixture::NodeCount; ++i) {
+                auto* pg = readResponses[i].AddPageGroups();
+                pg->SetFirstPageNo(111);
+                pg->AddContent(TStringBuilder() << "aaa" << i);
+                fx.StorageNodes[i]->ReadResp = readResponses[i];
+            }
+
             for (ui32 i = 0; i < 10 * TStorageFixture::NodeCount; ++i) {
+                const ui32 snIndex = i % TStorageFixture::NodeCount;
+
                 {
                     NProto::TReadPagesRequest request;
                     request.SetDeviceUUID("dev");
@@ -184,9 +195,12 @@ TEST(NaiveGroupTest, RoundRobinsRead)
                     auto response = fx.Group->ReadPages(request);
                     EXPECT_EQ(S_OK, response.GetError().GetCode())
                         << response.GetError().GetMessage();
+                    EXPECT_STREQ(
+                        readResponses[snIndex].ShortUtf8DebugString().c_str(),
+                        response.ShortUtf8DebugString().c_str());
                 }
 
-                auto& sn = fx.StorageNodes[i % TStorageFixture::NodeCount];
+                auto& sn = fx.StorageNodes[snIndex];
                 const ui32 cnt = 1 + i / TStorageFixture::NodeCount;
                 EXPECT_EQ(cnt, sn->ReadCalls.size());
                 EXPECT_EQ("dev", sn->ReadCalls[cnt - 1].GetDeviceUUID());
