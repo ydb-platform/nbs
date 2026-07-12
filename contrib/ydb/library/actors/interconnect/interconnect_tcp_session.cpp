@@ -41,6 +41,7 @@ namespace NActors {
         , OutputCounter(0ULL)
         , ZcProcessor(proxy->Common->Settings.SocketSendOptimization == ESocketSendOptimization::IC_MSG_ZEROCOPY)
     {
+        Proxy->Metrics->SetPeerScopeId(Params.PeerScopeId);
         Proxy->Metrics->SetConnected(0);
         PartUpdateTimestamp = GetCycleCountFast();
         ReceiveContext.Reset(new TReceiveContext);
@@ -104,6 +105,10 @@ namespace NActors {
             }
         }
         return false;
+    }
+
+    bool TInterconnectSessionTCP::HasRdmaState() const {
+        return Params.UseRdma || RdmaQp || RdmaInflightDataAmount;
     }
 
     void TInterconnectSessionTCP::Handle(TEvTerminate::TPtr& ev) {
@@ -192,6 +197,7 @@ namespace NActors {
         }
 
         SetOutputStuckFlag(true);
+        Proxy->Metrics->UpdateNumEventsInQueueHistogram(NumEventsInQueue);
         ++NumEventsInQueue;
         if (State == EState::Idle) {
             UpdateState(EState::Utilized);
@@ -348,6 +354,7 @@ namespace NActors {
         }
 
         LostConnectionWatchdog.Disarm();
+        Proxy->Metrics->SetPeerScopeId(Params.PeerScopeId);
         Proxy->Metrics->SetConnected(1);
         LOG_INFO(*TlsActivationContext, NActorsServices::INTERCONNECT_STATUS, "[%u] connected", Proxy->PeerNodeId);
         if (Proxy->Common->Settings.MergePerHostCounters) {
@@ -548,6 +555,11 @@ namespace NActors {
 
     void TInterconnectSessionTCP::StartHandshake() {
         LOG_INFO_IC_SESSION("ICS15", "start handshake");
+        if (HasRdmaState()) {
+            LOG_NOTICE_IC_SESSION("ICRDMA", "start initial handshake instead of graceful reconnect for RDMA session");
+            IActor::InvokeOtherActor(*Proxy, &TInterconnectProxyTCP::StartInitialHandshake);
+            return;
+        }
         IActor::InvokeOtherActor(*Proxy, &TInterconnectProxyTCP::StartResumeHandshake, ReceiveContext->LockLastPacketSerialToConfirm());
     }
 

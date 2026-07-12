@@ -431,6 +431,7 @@ message TInterconnectConfig {
         PER_DATA_CENTER = 2;
         NO_MERGE = 3;
         PER_HOST = 4;
+        PER_SCOPE_CLASS = 5;
     }
 
     enum EEncryptionMode {
@@ -489,6 +490,8 @@ message TInterconnectConfig {
     optional ERdmaCqMode RdmaCqMode = 55;
     optional uint32 RdmaMemPoolSizeLimitMb = 56 [default = 4096];
     optional bool UseKernelKeepAlive = 58 [default = false];
+    optional uint32 RdmaPayloadCopySizeThreshold = 60 [default = 65536]; // 0 disables copying RDMA payload to regular memory
+    optional uint32 MaxRdmaRetryBackoffLevel = 61 [default = 8]; // 5s * 2^8 = 1280s, about 21 minutes by default
 
     // ballast is added to IC handshake frames to ensure correctness of jumbo frames transmission over network
     optional uint32 HandshakeBallastSize = 14;
@@ -1431,6 +1434,16 @@ message TImmediateControlsConfig {
             MinValue: 1,
             MaxValue: 1024,
             DefaultValue: 10 }];
+        optional uint64 SyncLogMaxDiskAmount = 49 [(ControlOptions) = {
+            Description: "Maximum amount of SyncLog data stored on disk in bytes; effective chunk count is max(2, amount / PDisk chunk size)",
+            MinValue: 0,
+            MaxValue: 1099511627776,
+            DefaultValue: 0 }];
+        optional uint64 SyncLogMaxMemAmount = 50 [(ControlOptions) = {
+            Description: "Maximum amount of SyncLog data stored in memory in bytes; effective page count is max(2, amount / append block size)",
+            MinValue: 0,
+            MaxValue: 1073741824,
+            DefaultValue: 67108864 }];
 
         optional uint64 BurstThresholdNsHDD = 6 [(ControlOptions) = {
             Description: "Minumum operation queue size that is considered a burst, setting for HDD",
@@ -1595,6 +1608,30 @@ message TImmediateControlsConfig {
             MinValue: 0,
             MaxValue: 10000000000, // 10 GB/s
             DefaultValue: 0 }];
+
+        optional uint64 MaxInProgressStartupDataSyncCount = 43 [(ControlOptions) = {
+          Description: "Maximum number of simultaneous startup data sync processes; 0 means no limit",
+          MinValue: 0,
+          MaxValue: 10000,
+          DefaultValue: 0 }];
+
+        optional uint64 MaxInProgressStartupDataSyncPerPDiskCount = 44 [(ControlOptions) = {
+          Description: "Maximum number of simultaneous startup data sync processes per PDisk; 0 means no limit",
+          MinValue: 0,
+          MaxValue: 10000,
+          DefaultValue: 0 }];
+
+        optional uint64 MaxInProgressLocalRecoveryCount = 45 [(ControlOptions) = {
+          Description: "Maximum number of simultaneous local recovery processes; 0 means no limit",
+          MinValue: 0,
+          MaxValue: 10000,
+          DefaultValue: 0 }];
+
+        optional uint64 MaxInProgressLocalRecoveryPerPDiskCount = 46 [(ControlOptions) = {
+          Description: "Maximum number of simultaneous local recovery processes per PDisk; 0 means no limit",
+          MinValue: 0,
+          MaxValue: 10000,
+          DefaultValue: 0 }];
     }
 
     message TTabletControls {
@@ -1908,6 +1945,19 @@ message THiveConfig {
         optional double Priority = 2;
     }
 
+    message THiveTabletAllowedMetrics {
+        enum EAllowedMetricValue {
+            Default = 0;  // Not configured, take from hive defaults
+            Disabled = 1; // Explicitly disabled
+            Enabled = 2;  // Explicitly enabled
+        }
+
+        repeated NKikimrTabletBase.TTabletTypes.EType TabletType = 1;
+        optional EAllowedMetricValue CPU = 2;
+        optional EAllowedMetricValue Memory = 3;
+        optional EAllowedMetricValue Network = 4;
+    }
+
     optional uint64 MaxTabletsScheduled = 2 [default = 100];
     optional uint64 MaxResourceCounter = 3 [default = 100000000];
     optional uint64 MaxResourceCPU = 4 [default = 10000000];
@@ -1993,6 +2043,7 @@ message THiveConfig {
     optional uint64 NodeRestartsForPenalty = 85 [default = 3];
     repeated TBootPriority TabletTypeToBootPriority = 87;
     optional uint64 MaxDeleteTabletInProgress = 90 [default = 100];
+    repeated THiveTabletAllowedMetrics DefaultTabletAllowedMetrics = 92;
 }
 
 message THealthCheckConfig {

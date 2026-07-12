@@ -83,10 +83,7 @@ public:
 private:
     using TActorBase = TActor<TNodeBroker>;
 
-    // See issue #5356 or ask Mikhail Montsev (@svartmetal) for details.
-    // MIN_LEASE_DURATION reduced from 300 to 30 seconds for better testing
-    // (see cloud/filestore/tests/lease_expiration test)
-    static constexpr TDuration MIN_LEASE_DURATION = TDuration::Seconds(30);
+    static constexpr TDuration MIN_LEASE_DURATION = TDuration::Minutes(5);
 
 
     struct TNodeInfo : public TEvInterconnect::TNodeInfo {

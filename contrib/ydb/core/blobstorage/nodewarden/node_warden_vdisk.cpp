@@ -210,6 +210,8 @@ namespace NKikimr::NStorage {
             vdiskConfig->EnableSyncLogChunkCompression = EnableSyncLogChunkCompressionSSD;
             vdiskConfig->MaxSyncLogChunksInFlight = MaxSyncLogChunksInFlightSSD;
         }
+        vdiskConfig->SyncLogMaxDiskAmount = SyncLogMaxDiskAmount;
+        vdiskConfig->SyncLogMaxMemAmount = SyncLogMaxMemAmount;
 
         vdiskConfig->ThrottlingDryRun = ThrottlingDryRun;
         vdiskConfig->ThrottlingMinLevel0SstCount = ThrottlingMinLevel0SstCount;
@@ -254,6 +256,10 @@ namespace NKikimr::NStorage {
         vdiskConfig->BalancingTimeToSleepIfNothingToDo = TDuration::Seconds(Cfg->BlobStorageConfig.GetVDiskBalancingConfig().GetSecondsToSleepIfNothingToDo());
 
         vdiskConfig->EnableDeepScrubbing = EnableDeepScrubbing;
+
+        if (Cfg->VDiskConfigPreprocessor) {
+            Cfg->VDiskConfigPreprocessor(*vdiskConfig);
+        }
 
         // issue initial report to whiteboard before creating actor to avoid races
         Send(WhiteboardId, new NNodeWhiteboard::TEvWhiteboard::TEvVDiskStateUpdate(vdiskId, groupInfo->GetStoragePoolName(),

@@ -202,6 +202,8 @@ namespace NKikimr::NStorage {
         TControlWrapper EnableSyncLogChunkCompressionSSD;
         TControlWrapper MaxSyncLogChunksInFlightHDD;
         TControlWrapper MaxSyncLogChunksInFlightSSD;
+        TControlWrapper SyncLogMaxDiskAmount;
+        TControlWrapper SyncLogMaxMemAmount;
         TControlWrapper DefaultHugeGarbagePerMille;
         TControlWrapper HugeDefragFreeSpaceBorderPerMille;
         TControlWrapper MaxChunksToDefragInflight;
@@ -226,6 +228,10 @@ namespace NKikimr::NStorage {
         TControlWrapper ThrottlingMinLogChunkCount;
         TControlWrapper ThrottlingMaxLogChunkCount;
 
+        TControlWrapper MaxInProgressStartupDataSyncCount;
+        TControlWrapper MaxInProgressStartupDataSyncPerPDiskCount;
+        TControlWrapper MaxInProgressLocalRecoveryCount;
+        TControlWrapper MaxInProgressLocalRecoveryPerPDiskCount;
         TControlWrapper MaxInProgressSyncCount;
 
         TControlWrapper MaxCommonLogChunksHDD;
@@ -246,7 +252,7 @@ namespace NKikimr::NStorage {
         TControlWrapper PredictedDelayMultiplier;
         TControlWrapper PredictedDelayMultiplierHDD;
         TControlWrapper PredictedDelayMultiplierSSD;
-
+    
         TControlWrapper MaxNumOfSlowDisks;
         TControlWrapper MaxNumOfSlowDisksHDD;
         TControlWrapper MaxNumOfSlowDisksSSD;

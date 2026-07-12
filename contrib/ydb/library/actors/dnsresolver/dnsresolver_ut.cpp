@@ -49,7 +49,7 @@ Y_UNIT_TEST_SUITE(DnsResolver) {
     Y_UNIT_TEST(ResolveYandexRu) {
         for (auto addTrailingDot : { true, false }) {
             for (auto type : { EDnsResolverType::Ares, EDnsResolverType::Libc }) {
-                TSimpleDnsResolverOptions options { .Type = type, .AddTrailingDot = addTrailingDot };
+                TSimpleDnsResolverOptions options { .Type = type, .AddTrailingDot = addTrailingDot }; 
                 TTestActorRuntimeBase runtime;
                 runtime.Initialize();
                 auto sender = runtime.AllocateEdgeActor();

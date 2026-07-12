@@ -16,6 +16,7 @@ ENDIF()
 SRCS(
     acceleration.cpp
     assimilation.cpp
+    backpressure.cpp
     block_race.cpp
     counting_events.cpp
     deadlines.cpp
@@ -57,6 +58,7 @@ PEERDIR(
     contrib/ydb/core/blobstorage/ut_blobstorage/lib
     contrib/ydb/core/blobstorage/vdisk/common
     contrib/ydb/core/blobstorage/vdisk/scrub
+    contrib/ydb/core/blobstorage/vdisk/synclog
 )
 
 END()
@@ -70,6 +72,7 @@ RECURSE_FOR_TESTS(
     ut_donor
     ut_group_reconfiguration
     ut_huge
+    ut_startup_brokers
     ut_read_only_vdisk
     ut_osiris
     ut_replication

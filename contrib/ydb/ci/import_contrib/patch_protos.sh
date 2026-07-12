@@ -32,4 +32,3 @@ from contrib.ydb.public.api import protos  # noqa
 sys.modules["ydb._grpc.common.protos"] = sys.modules["contrib.ydb.public.api.protos"]' > $FOLDER/public/sdk/python3/ydb/_grpc/common/__init__.py || true
 
 echo "Patching protos completed."
-

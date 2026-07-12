@@ -13,6 +13,7 @@ ENDIF()
 
 PEERDIR(
     contrib/libs/double-conversion
+    library/cpp/streams/zstd
     library/cpp/string_utils/quote
     contrib/ydb/core/kqp/ut/common
     contrib/ydb/core/tx/schemeshard/ut_helpers

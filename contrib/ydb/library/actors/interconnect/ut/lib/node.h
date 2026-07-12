@@ -38,7 +38,8 @@ public:
           bool withTls = false, std::function<IActor*(ui32)> checkerFactory = {},
           NInterconnect::NRdma::ECqMode rdmaCqMode = NInterconnect::NRdma::ECqMode::EVENT,
           bool withRdma = true,
-          std::function<void(ui32, TInterconnectSettings&)> settingsCustomizer = {}) {
+          std::function<void(ui32, TInterconnectSettings&)> settingsCustomizer = {},
+          TLogBackendFactory logBackendFactory = {}) {
         TActorSystemSetup setup;
         setup.NodeId = nodeId;
         setup.ExecutorsCount = 2;
@@ -105,7 +106,7 @@ public:
             }
         }
 
-        setup.LocalServices.emplace_back(MakePollerActorId(), TActorSetupCmd(CreatePollerActor(),
+        setup.LocalServices.emplace_back(MakePollerActorId(), TActorSetupCmd(CreatePollerActor(counters),
             TMailboxType::ReadAsFilled, 0));
         setup.LocalServices.emplace_back(NInterconnect::NRdma::MakeCqActorId(),
             TActorSetupCmd(NInterconnect::NRdma::CreateCqActor(-1, 1024, rdmaCqMode, nullptr),
@@ -204,5 +205,9 @@ public:
 
     TInterconnectSettings& MutableInterconnectSettings() {
         return Common->Settings;
+    }
+
+    std::shared_ptr<NInterconnect::NRdma::IMemPool> GetRdmaMemPool() const {
+        return Common->RdmaMemPool;
     }
 };
