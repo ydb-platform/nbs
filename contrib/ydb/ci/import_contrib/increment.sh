@@ -42,4 +42,3 @@ echo "Removing new files in blacklist folders..."
 
 echo 'arc status'
 (cd $ARC_ROOT && arc status | cat)
-

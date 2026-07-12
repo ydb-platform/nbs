@@ -917,7 +917,7 @@ namespace NKikimr {
         struct TEvConfigureScaleRecommenderReply : TEventPB<TEvConfigureScaleRecommenderReply,
             NKikimrHive::TEvConfigureScaleRecommenderReply, EvConfigureScaleRecommenderReply> {};
 
-            struct TEvDrainNodeAck: TEventLocal<TEvDrainNodeAck, EvDrainNodeAck>
+        struct TEvDrainNodeAck: TEventLocal<TEvDrainNodeAck, EvDrainNodeAck>
         {
             TEvDrainNodeAck() = default;
         };

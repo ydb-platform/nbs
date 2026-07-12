@@ -39,6 +39,7 @@ struct TEnvironmentSetup {
         const bool Encryption = false;
         const std::function<void(ui32, TNodeWardenConfig&)> ConfigPreprocessor;
         const std::function<void(TTestActorSystem&)> PrepareRuntime;
+        const std::function<void(TVDiskConfig&)> VDiskConfigPreprocessor;
         const ui32 ControllerNodeId = 1;
         const bool Cache = false;
         const ui32 NumDataCenters = 0;
@@ -434,6 +435,7 @@ struct TEnvironmentSetup {
                 config->BlobStorageConfig.MutableServiceSet()->AddAvailabilityDomains(DomainId);
                 config->VDiskReplPausedAtStart = Settings.VDiskReplPausedAtStart;
                 config->UseActorSystemTimeInBSQueue = Settings.UseActorSystemTimeInBSQueue;
+                config->VDiskConfigPreprocessor = Settings.VDiskConfigPreprocessor;
                 if (Settings.ConfigPreprocessor) {
                     Settings.ConfigPreprocessor(nodeId, *config);
                 }
@@ -483,6 +485,11 @@ struct TEnvironmentSetup {
                 ADD_ICB_CONTROL("VDiskControls.DefragThrottlerBytesRate", 0, 0, 10'000'000'000, 0);
                 ADD_ICB_CONTROL("PDiskControls.MaxActiveCompactionsPerPDisk", 0, 0, 1'000'000, 0);
 
+                ADD_ICB_CONTROL("VDiskControls.MaxInProgressStartupDataSyncCount", 0, 0, 10'000, 0);
+                ADD_ICB_CONTROL("VDiskControls.MaxInProgressStartupDataSyncPerPDiskCount", 0, 0, 10'000, 0);
+                ADD_ICB_CONTROL("VDiskControls.MaxInProgressLocalRecoveryCount", 0, 0, 10'000, 0);
+                ADD_ICB_CONTROL("VDiskControls.MaxInProgressLocalRecoveryPerPDiskCount", 0, 0, 10'000, 0);
+                ADD_ICB_CONTROL("VDiskControls.MaxInProgressSyncCount", 0, 0, 1'000, 0);
                 ADD_ICB_CONTROL("VDiskControls.MaxChunksToDefragInflight", 10, 1, 50, 10);
                 ADD_ICB_CONTROL("VDiskControls.DefaultHugeGarbagePerMille", 300, 0, 1000, 300);
                 ADD_ICB_CONTROL("VDiskControls.GarbageThresholdToRunFullCompactionPerMille", 0, 0, 300, 0);
@@ -722,7 +729,7 @@ struct TEnvironmentSetup {
         return nullptr;
     }
 
-    TActorId CreateQueueActor(const TVDiskID& vdiskId, NKikimrBlobStorage::EVDiskQueueId queueId, ui32 index) {
+    TActorId CreateQueueActor(const TVDiskID& vdiskId, NKikimrBlobStorage::EVDiskQueueId queueId, ui32 index, ui32 nodeId = 0) {
         TBSProxyContextPtr bspctx = MakeIntrusive<TBSProxyContext>(MakeIntrusive<::NMonitoring::TDynamicCounters>());
         auto flowRecord = MakeIntrusive<NBackpressure::TFlowRecord>();
         auto groupInfo = GetGroupInfo(vdiskId.GroupID.GetRawId());
@@ -730,9 +737,9 @@ struct TEnvironmentSetup {
             MakeIntrusive<::NMonitoring::TDynamicCounters>(), bspctx,
             NBackpressure::TQueueClientId(NBackpressure::EQueueClientType::DSProxy, index), TStringBuilder()
             << "test# " << index, 0, false, TDuration::Seconds(60), flowRecord, NMonitoring::TCountableBase::EVisibility::Private));
-        const ui32 nodeId = Settings.ControllerNodeId;
-        const TActorId edge = Runtime->AllocateEdgeActor(nodeId, __FILE__, __LINE__);
-        const TActorId actorId = Runtime->Register(actor.release(), edge, {}, {}, nodeId);
+        const ui32 chosenNodeId = nodeId ? nodeId : Settings.ControllerNodeId;
+        const TActorId edge = Runtime->AllocateEdgeActor(chosenNodeId, __FILE__, __LINE__);
+        const TActorId actorId = Runtime->Register(actor.release(), edge, {}, {}, chosenNodeId);
         const TInstant deadline = Runtime->GetClock() + TDuration::Minutes(1);
         for (;;) {
             auto ev = WaitForEdgeActorEvent<TEvProxyQueueState>(edge, false, deadline);

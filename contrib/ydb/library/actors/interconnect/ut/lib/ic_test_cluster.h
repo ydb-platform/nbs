@@ -45,7 +45,8 @@ public:
     TTestICCluster(ui32 numNodes = 1, NActors::TChannelsConfig channelsConfig = NActors::TChannelsConfig(),
                    TTrafficInterrupterSettings* tiSettings = nullptr, TIntrusivePtr<NLog::TSettings> loggerSettings = nullptr, Flags flags = EMPTY,
                    TCheckerFactory checkerFactory = {}, TDuration deadPeerTimeout = TDuration::Seconds(2), ui32 inflight = TNode::DefaultInflight(),
-                   std::function<void(ui32, NActors::TInterconnectSettings&)> settingsCustomizer = {})
+                   std::function<void(ui32, NActors::TInterconnectSettings&)> settingsCustomizer = {},
+                   TNode::TLogBackendFactory logBackendFactory = {})
         : NumNodes(numNodes)
         , DeadPeerTimeout(deadPeerTimeout)
         , Counters(new NMonitoring::TDynamicCounters)
@@ -86,7 +87,8 @@ public:
                 flags & USE_ZC ? ESocketSendOptimization::IC_MSG_ZEROCOPY : ESocketSendOptimization::DISABLED,
                 flags & USE_TLS, checkerFactory, flags & RDMA_POLLING_CQ ? NInterconnect::NRdma::ECqMode::POLLING : NInterconnect::NRdma::ECqMode::EVENT,
                 !(flags & DISABLE_RDMA),
-                settingsCustomizer));
+                settingsCustomizer,
+                LogBackendFactory));
         }
     }
 
@@ -104,6 +106,10 @@ public:
         return Nodes[id].Get();
     }
 
+    NMonitoring::TDynamicCounterPtr GetCounters() const {
+        return Counters;
+    }
+
     void StartBlackhole(ui32 nodeId) {
         auto it = InterrupterByNode.find(nodeId);
         Y_ABORT_UNLESS(it != InterrupterByNode.end());
@@ -114,6 +120,10 @@ public:
         auto it = InterrupterByNode.find(nodeId);
         Y_ABORT_UNLESS(it != InterrupterByNode.end());
         it->second->StopBlackhole();
+    }
+
+    void StopNode(ui32 nodeId) {
+        Nodes.at(nodeId)->Stop();
     }
 
     ~TTestICCluster() {
@@ -161,7 +171,7 @@ public:
             NThreading::TPromise<TString> Promise;
         };
 
-        IActor* actor = new TGetHttpInfoActor(Nodes[me]->InterconnectProxy(peer), promise);
+        IActor* actor = new TGetHttpInfoActor(Nodes[me]->InterconnectProxy(peer), promise); 
         Nodes[me]->RegisterActor(actor);
 
         return promise.GetFuture();
