@@ -381,11 +381,6 @@ private:
         if (!Rope.empty()) {
             ropeIt += offset;
         }
-
-        IRcBufAllocator* allocator = ctx.ActorSystem()->GetRcBufAllocator();
-        if (!allocator) {
-            allocator = GetDefaultRcBufAllocator();
-        }
         for (const auto& blob: GenerateBlobIdsResponse.GetBlobs()) {
             NKikimr::TLogoBlobID blobId =
                 LogoBlobIDFromLogoBlobID(blob.GetBlobId());
@@ -406,10 +401,12 @@ private:
             InFlightBSRequests.back()->Start(ctx.Now());
 
             std::unique_ptr<TEvBlobStorage::TEvPut> request;
+
             if (!iovecs.empty()) {
                 // TODO(myagkov): Implement TEvPut with TRope as a buffer
                 // to remove unnecessary memcpy
-                auto putData = allocator->AllocRcBuf(blobId.BlobSize(), 0, 0);
+                TString putData;
+                putData.ReserveAndResize(blobId.BlobSize());
                 auto bytesCopied = TRopeUtils::SafeMemcpy(
                     &putData[0],
                     ropeIt,
