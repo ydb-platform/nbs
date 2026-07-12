@@ -9065,12 +9065,13 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
                 << rebootTracker.GetGenerationCount());
     }
 
-    TABLET_TEST(ShouldPassReadDataAsPayload)
+    TABLET_TEST(ShouldPassDataAsPayload)
     {
         NProto::TStorageConfig storageConfig;
         storageConfig.SetExternalReadDataPayload(true);
+        storageConfig.SetExternalWriteDataPayloadEnabled(true);
 
-        TTestEnv env({} /* config */, std::move(storageConfig));
+        TTestEnv env({} /* config */, storageConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -9079,7 +9080,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             env.GetRuntime(),
             nodeIdx,
             tabletId,
-            tabletConfig);
+            tabletConfig,
+            true /*updateConfig*/,
+            storageConfig);
         tablet.InitSession("client", "session");
 
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
