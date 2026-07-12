@@ -26,6 +26,7 @@ void TIndexTabletActor::HandleWriteData(
 {
     auto* msg = ev->Get();
 
+    size_t BufferSize = msg->Record.GetBuffer().size();
     if (msg->GetPayloadCount() > 0 && msg->GetPayload(0).size() != 0) {
         if (!msg->Record.GetBuffer().empty()) {
             TStringStream error;
@@ -38,13 +39,7 @@ void TIndexTabletActor::HandleWriteData(
                   << ", Payload size: " << msg->GetPayload(0).size();
             ReportWriteDataRequestWithBufferAndPayload(error.Str());
         } else {
-            auto& payload = msg->GetPayload(0);
-            msg->Record.MutableBuffer()->ReserveAndResize(payload.size());
-            TRopeUtils::Memcpy(
-                msg->Record.MutableBuffer()->begin(),
-                payload.begin(),
-                payload.size());
-            msg->StripPayload();
+            BufferSize = msg->GetPayload(0).size();
         }
     }
 
@@ -59,7 +54,7 @@ void TIndexTabletActor::HandleWriteData(
     TString& buffer = *msg->Record.MutableBuffer();
     const TByteRange range(
         msg->Record.GetOffset(),
-        buffer.size(),
+        BufferSize,
         GetBlockSize()
     );
 
@@ -189,8 +184,6 @@ void TIndexTabletActor::HandleWriteData(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    auto blockBuffer = CreateBlockBuffer(range, std::move(buffer));
-
     AddInFlightRequest<TEvService::TWriteDataMethod>(*requestInfo);
 
     ExecuteTx<TWriteData>(
@@ -199,8 +192,9 @@ void TIndexTabletActor::HandleWriteData(
         Config->GetWriteBlobThreshold(),
         msg->Record,
         range,
-        std::move(blockBuffer),
-        std::move(profileLogRequest));
+        std::move(buffer),
+        std::move(profileLogRequest),
+        msg->GetPayloadCount() > 0 ? msg->GetPayload(0) : TRope());
 }
 
 void TIndexTabletActor::HandleWriteDataCompleted(
@@ -305,6 +299,18 @@ void TIndexTabletActor::ExecuteTx_WriteData(
     TTransactionContext& tx,
     TTxIndexTablet::TWriteData& args)
 {
+    if (!args.BlockBuffer) {
+        if (args.Buffer.empty()) {
+            args.Buffer.ReserveAndResize(args.Payload.size());
+            TRopeUtils::Memcpy(
+                args.Buffer.begin(),
+                args.Payload.begin(),
+                args.Payload.size());
+        }
+
+        args.BlockBuffer = CreateBlockBuffer(args.ByteRange, std::move(args.Buffer));
+    }
+
     FILESTORE_VALIDATE_TX_ERROR(WriteData, args);
 
     Y_UNUSED(ctx);
@@ -350,7 +356,7 @@ void TIndexTabletActor::ExecuteTx_WriteData(
             args.NodeId,
             args.CommitId,
             b,
-            args.Buffer->GetBlock(b - args.ByteRange.FirstAlignedBlock()));
+            args.BlockBuffer->GetBlock(b - args.ByteRange.FirstAlignedBlock()));
     }
 
     if (args.ByteRange.UnalignedHeadLength()) {
@@ -359,7 +365,7 @@ void TIndexTabletActor::ExecuteTx_WriteData(
             args.NodeId,
             args.CommitId,
             args.ByteRange.Offset,
-            args.Buffer->GetUnalignedHead()
+            args.BlockBuffer->GetUnalignedHead()
         );
     }
 
@@ -383,14 +389,14 @@ void TIndexTabletActor::ExecuteTx_WriteData(
                 args.NodeId,
                 args.CommitId,
                 args.ByteRange.LastBlock(),
-                args.Buffer->GetUnalignedTail());
+                args.BlockBuffer->GetUnalignedTail());
         } else {
             WriteFreshBytes(
                 db,
                 args.NodeId,
                 args.CommitId,
                 args.ByteRange.UnalignedTailOffset(),
-                args.Buffer->GetUnalignedTail());
+                args.BlockBuffer->GetUnalignedTail());
         }
     }
 
@@ -472,7 +478,7 @@ void TIndexTabletActor::CompleteTx_WriteData(
                 InvalidCommitId
             };
 
-            builder.Accept(block, blocksCount, blockOffset, *args.Buffer);
+            builder.Accept(block, blocksCount, blockOffset, *args.BlockBuffer);
         });
 
     auto blobs = builder.Finish();
