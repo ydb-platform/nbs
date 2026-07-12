@@ -148,6 +148,7 @@ def add_config(config, package):
 def has_config(config, package):
     return package in config
 
+
 def config_matches_version(git_tag, minver, maxver):
     git_tag_version = git_tag_version_key(git_tag)
     if git_tag_version is None:
