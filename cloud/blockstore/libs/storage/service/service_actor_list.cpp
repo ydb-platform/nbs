@@ -21,15 +21,14 @@ class TDescribeActor final
 {
 private:
     const TRequestInfoPtr RequestInfo;
-    const TString Path;
     TVector<TString> Volumes;
-    size_t RequestsCompleted = 0;
-    size_t RequestsScheduled = 0;
+    TDeque<TString> PendingPaths;
+    size_t RequestsInFlight = 0;
 
 public:
     TDescribeActor(
         TRequestInfoPtr requestInfo,
-        TString path);
+        TString rootPath);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -50,27 +49,30 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TDescribeActor::TDescribeActor(
-        TRequestInfoPtr requestInfo,
-        TString path)
+TDescribeActor::TDescribeActor(TRequestInfoPtr requestInfo, TString rootPath)
     : RequestInfo(std::move(requestInfo))
-    , Path(std::move(path))
-{}
+{
+    PendingPaths.emplace_back(std::move(rootPath));
+}
 
 void TDescribeActor::Bootstrap(const TActorContext& ctx)
 {
-    DescribePath(ctx, Path);
+    TString root = std::move(PendingPaths.front());
+    PendingPaths.pop_front();
+    DescribePath(ctx, root);
     Become(&TThis::StateWork);
 }
 
 void TDescribeActor::DescribePath(const TActorContext& ctx, const TString& path)
 {
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
         "Sending describe request for path %s",
         path.Quote().data());
 
     auto request = std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(path);
-    RequestsScheduled++;
+    ++RequestsInFlight;
 
     NCloud::Send(
         ctx,
@@ -107,15 +109,17 @@ void TDescribeActor::HandleDescribeResponse(
     const TEvSSProxy::TEvDescribeSchemeResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    RequestsCompleted++;
+    --RequestsInFlight;
 
     const auto* msg = ev->Get();
 
     const auto& error = msg->GetError();
     if (FAILED(error.GetCode())) {
-        LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::SERVICE,
             "Path %s: describe failed: %s",
-            Path.Quote().data(),
+            msg->Path.Quote().data(),
             FormatError(error).data());
 
         ReplyAndDie(
@@ -130,7 +134,7 @@ void TDescribeActor::HandleDescribeResponse(
         const auto& descr = pathDescription.GetChildren(i);
 
         if (descr.GetPathType() == NKikimrSchemeOp::EPathTypeDir) {
-            DescribePath(ctx, msg->Path + "/" + descr.GetName());
+            PendingPaths.emplace_back(msg->Path + "/" + descr.GetName());
             continue;
         }
 
@@ -139,18 +143,20 @@ void TDescribeActor::HandleDescribeResponse(
         }
     }
 
-    if (RequestsCompleted != RequestsScheduled) {
-        Y_DEBUG_ABORT_UNLESS(RequestsCompleted < RequestsScheduled);
+    if (RequestsInFlight == 0 && PendingPaths.empty()) {
+        auto response = std::make_unique<TEvService::TEvListVolumesResponse>();
+        for (const auto& volume: Volumes) {
+            *response->Record.MutableVolumes()->Add() = volume;
+        }
+        ReplyAndDie(ctx, std::move(response));
         return;
     }
 
-    auto response = std::make_unique<TEvService::TEvListVolumesResponse>();
-
-    for (const auto& volume : Volumes) {
-        *response->Record.MutableVolumes()->Add() = volume;
+    if (RequestsInFlight == 0 && !PendingPaths.empty()) {
+        TString next = std::move(PendingPaths.front());
+        PendingPaths.pop_front();
+        DescribePath(ctx, next);
     }
-
-    ReplyAndDie(ctx, std::move(response));
 }
 
 }   // namespace
