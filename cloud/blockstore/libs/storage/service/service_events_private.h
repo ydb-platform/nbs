@@ -217,6 +217,7 @@ struct TEvServicePrivate
         NProto::TMountVolumeRequest Record;
         NProto::EVolumeBinding BindingType = NProto::BINDING_NOT_SET;
         NProto::EPreemptionSource PreemptionSource = NProto::SOURCE_NONE;
+        bool UseGentlePreemption = false;
 
         TInternalMountVolumeRequest() = default;
 

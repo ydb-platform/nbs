@@ -5900,7 +5900,6 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         NProto::TStorageServiceConfig config;
         config.SetBalancerActionDelayInterval(0);
-        config.SetVolumeBalancerGentlePreemptionEnabled(true);
 
         ui32 nodeIdx1 = SetupTestEnv(env, config);
         auto& runtime = env.GetRuntime();
@@ -5978,7 +5977,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                 std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
                     DefaultDiskId,
                     EChangeBindingOp::RELEASE_TO_HIVE,
-                    NProto::EPreemptionSource::SOURCE_BALANCER);
+                    NProto::EPreemptionSource::SOURCE_BALANCER,
+                    true);
             service.SendRequest(MakeStorageServiceId(), std::move(request));
         }
 
@@ -6022,7 +6022,6 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         NProto::TStorageServiceConfig config;
         config.SetBalancerActionDelayInterval(0);
-        config.SetVolumeBalancerGentlePreemptionEnabled(true);
 
         ui32 nodeIdx1 = SetupTestEnv(env, config);
         auto& runtime = env.GetRuntime();
@@ -6107,7 +6106,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                 std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
                     DefaultDiskId,
                     EChangeBindingOp::ACQUIRE_FROM_HIVE,
-                    NProto::EPreemptionSource::SOURCE_BALANCER);
+                    NProto::EPreemptionSource::SOURCE_BALANCER,
+                    true);
             service.SendRequest(MakeStorageServiceId(), std::move(request));
 
             runtime.DispatchEvents({}, TDuration::Seconds(5));
@@ -6153,7 +6153,6 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         NProto::TStorageServiceConfig config;
         config.SetBalancerActionDelayInterval(0);
-        config.SetVolumeBalancerGentlePreemptionEnabled(true);
 
         ui32 nodeIdx = SetupTestEnv(env, config);
         TServiceClient service(env.GetRuntime(), nodeIdx);
@@ -6173,7 +6172,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                 std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
                     DefaultDiskId,
                     EChangeBindingOp::RELEASE_TO_HIVE,
-                    NProto::EPreemptionSource::SOURCE_BALANCER);
+                    NProto::EPreemptionSource::SOURCE_BALANCER,
+                    true);
             service.SendRequest(MakeStorageServiceId(), std::move(request));
             auto response =
                 service
@@ -6188,7 +6188,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                 std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
                     DefaultDiskId,
                     EChangeBindingOp::ACQUIRE_FROM_HIVE,
-                    NProto::EPreemptionSource::SOURCE_BALANCER);
+                    NProto::EPreemptionSource::SOURCE_BALANCER,
+                    true);
             service.SendRequest(MakeStorageServiceId(), std::move(request));
             auto response =
                 service

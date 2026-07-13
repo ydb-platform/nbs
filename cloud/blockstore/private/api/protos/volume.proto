@@ -158,6 +158,9 @@ message TRebindVolumesRequest
 {
     // EVolumeBinding, see libs/storage/service/service_state.h
     uint32 Binding = 1;
+
+    // If true, no direct volume kill happens during rebind
+    bool UseGentlePreemption = 2;
 };
 
 message TRebindVolumesResponse
