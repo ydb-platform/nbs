@@ -242,14 +242,6 @@ class FilestoreDaemonConfigGenerator:
             profile.Read.Throughput = 1_000_000
             profile.Write.RPS = 10
             profile.Write.Throughput = 1_000_000
-            profile.ListNodes.RPS = 10
-            profile.GetNodeAttr.RPS = 10
-            profile.CreateHandle.RPS = 10
-            profile.DestroyHandle.RPS = 10
-            profile.CreateNode.RPS = 10
-            profile.RenameNode.RPS = 10
-            profile.UnlinkNode.RPS = 10
-            profile.StatFileStore.RPS = 10
 
         config.ProfileLogTimeThreshold = 100
         config.MetricsUpdateInterval = 100
