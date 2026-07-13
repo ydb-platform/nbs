@@ -883,7 +883,6 @@ void TDiskRegistryActor::RenderAgentHtmlInfo(
     }
 }
 
-
 ////////////////////////////////////////////////////////////////////////////////
 
 void TDiskRegistryActor::HandleHttpInfo_RenderDiskHtmlInfo(
