@@ -1,12 +1,2 @@
 SamplingRate: 100000
 SlowRequestSamplingRate: 1000
-SSDFileSystemPerformanceProfile {
-    Read {
-        RPS: 10
-        Throughput: 1000000
-    }
-    Write {
-          RPS: 20
-          Throughput: 10000000
-      }
-}
