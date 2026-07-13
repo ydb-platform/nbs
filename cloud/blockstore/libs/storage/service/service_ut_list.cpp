@@ -69,7 +69,7 @@ Y_UNIT_TEST_SUITE(TServiceListVolumesTest)
 
         auto request = service.CreateListVolumesRequest();
         request->Record.SetMaxConcurrency(concurrency);
-        service.SendListVolumesRequest(std::move(request));
+        service.SendRequest(MakeStorageServiceId(), std::move(request));
         auto response = service.RecvListVolumesResponse();
 
         UNIT_ASSERT_C(
