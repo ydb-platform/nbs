@@ -256,21 +256,20 @@ Y_UNIT_TEST_SUITE(TDiskAgentJournalledDeviceTest)
             proto.MutableHeaders()->SetClientId(clientId);
             proto.SetDeviceUUID(uuid);
             proto.SetLogSequenceNumber(1);
-            // proto.SetPageSize(4_KB); // ???
             auto& groups = *proto.MutablePageGroups();
 
             {
                 auto& group = *groups.Add();
                 group.SetFirstPageNo(0x10);
-                group.MutableContent()->Add()->resize(8_KB, 'A');
-                group.MutableContent()->Add()->resize(8_KB, 'B');
+                group.MutableContent()->Add()->resize(DefaultBlockSize, 'A');
+                group.MutableContent()->Add()->resize(DefaultBlockSize, 'B');
             }
 
             {
                 auto& group = *groups.Add();
                 group.SetFirstPageNo(0x20);
-                group.MutableContent()->Add()->resize(16_KB, 'X');
-                group.MutableContent()->Add()->resize(16_KB, 'Y');
+                group.MutableContent()->Add()->resize(DefaultBlockSize, 'X');
+                group.MutableContent()->Add()->resize(DefaultBlockSize, 'Y');
             }
             return request;
         }();

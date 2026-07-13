@@ -25,7 +25,6 @@ constexpr NProto::EVolumeAccessMode DefaultAccessMode =
     NProto::VOLUME_ACCESS_READ_WRITE;
 constexpr ui64 DefaultMountSeqNumber = 0;
 constexpr ui64 DefaultVolumeGeneration = 0;
-constexpr ui32 DefaultBlockSize = 4_KB;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -37,18 +36,59 @@ void CopyHeaders(
     dst.SetRequestTimeout(src.GetRequestTimeout());
 }
 
-auto CreateWriteBlocksRequest(NCloud::NProto::TDevicePageGroup&& group)
-    -> std::shared_ptr<NProto::TWriteBlocksRequest>
+auto CreateWriteBlocksRequest(
+    NCloud::NProto::TDevicePageGroup&& group,
+    ui32 blockSize) -> std::shared_ptr<NProto::TWriteBlocksRequest>
 {
     auto request = std::make_shared<NProto::TWriteBlocksRequest>();
 
     request->SetStartIndex(group.GetFirstPageNo());
-    request->SetBlockSize(DefaultBlockSize);
+    request->SetBlockSize(blockSize);
 
     NProto::TIOVector& blocks = *request->MutableBlocks();
     *blocks.MutableBuffers() = std::move(*group.MutableContent());
 
     return request;
+}
+
+auto ValidateWriteLogRecordRequest(
+    const NCloud::NProto::TWriteLogRecordRequest& request)
+    -> TResultOrError<ui32>
+{
+    ui32 blockSize = 0;
+
+    if (request.PageGroupsSize() == 0) {
+        return MakeError(E_ARGUMENT, "nothing to write");
+    }
+
+    for (const auto& group: request.GetPageGroups()) {
+        if (group.ContentSize() == 0) {
+            return MakeError(E_ARGUMENT, "empty page group");
+        }
+
+        for (TStringBuf block: group.GetContent()) {
+            if (block.empty()) {
+                return MakeError(
+                    E_ARGUMENT,
+                    "invalid page data: block must not be empty");
+            }
+
+            if (blockSize == 0) {
+                blockSize = block.size();
+                continue;
+            }
+
+            if (blockSize != block.size()) {
+                return MakeError(
+                    E_ARGUMENT,
+                    TStringBuilder() << "invalid page data: block size "
+                                        "mismatch: expected "
+                                     << blockSize << ", got " << block.size());
+            }
+        }
+    }
+
+    return blockSize;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -221,9 +261,14 @@ public:
     {
         // TODO(sharpeye): check LogSequenceNumber
 
-        if (request.PageGroupsSize() == 0) {
+        ui32 requestBlockSize = 0;
+        if (auto [bs, error] = ValidateWriteLogRecordRequest(request);
+            HasError(error))
+        {
             return MakeFuture<NCloud::NProto::TWriteLogRecordResponse>(
-                TErrorResponse(E_ARGUMENT, "nothing to write"));
+                TErrorResponse(error));
+        } else {
+            requestBlockSize = bs;
         }
 
         auto [storageAdapter, error] = DeviceClient->AccessDevice(
@@ -236,8 +281,6 @@ public:
                 TErrorResponse(error));
         }
 
-        const ui32 requestBlockSize = DefaultBlockSize;
-
         TVector<TFuture<NProto::TWriteBlocksResponse>> futures;
         futures.reserve(request.PageGroupsSize());
 
@@ -245,7 +288,7 @@ public:
             futures.push_back(storageAdapter->WriteBlocks(
                 now,
                 CreateCallContext(),
-                CreateWriteBlocksRequest(std::move(group)),
+                CreateWriteBlocksRequest(std::move(group), requestBlockSize),
                 requestBlockSize,
                 TStringBuf()   // dataBuffer
                 ));
