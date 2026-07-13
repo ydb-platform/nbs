@@ -33,6 +33,7 @@ public:
 
     ui32 GetXAttrCacheLimit() const;
     TDuration GetXAttrCacheTimeout() const;
+    bool GetXAttrCacheInvalidateOnCreateEnabled() const;
 
     ui32 GetMaxBufferSize() const;
     ui32 GetPreferredBlockSize() const;
