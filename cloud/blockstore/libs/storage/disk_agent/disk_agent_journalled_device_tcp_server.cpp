@@ -51,11 +51,27 @@ auto CreateWriteBlocksRequest(
     return request;
 }
 
+auto CreateReadBlocksRequest(const NCloud::NProto::TDevicePageGroupRef& group)
+    -> std::shared_ptr<NProto::TReadBlocksRequest>
+{
+    auto request = std::make_shared<NProto::TReadBlocksRequest>();
+
+    request->SetStartIndex(group.GetFirstPageNo());
+    request->SetBlocksCount(group.GetPageCount());
+    request->SetBlockSize(group.GetPageSize());
+
+    return request;
+}
+
 auto ValidateWriteLogRecordRequest(
     const NCloud::NProto::TWriteLogRecordRequest& request)
     -> TResultOrError<ui32>
 {
     ui32 blockSize = 0;
+
+    if (request.GetDeviceUUID().empty()) {
+        return MakeError(E_ARGUMENT, "empty device UUID");
+    }
 
     if (request.PageGroupsSize() == 0) {
         return MakeError(E_ARGUMENT, "nothing to write");
@@ -89,6 +105,32 @@ auto ValidateWriteLogRecordRequest(
     }
 
     return blockSize;
+}
+
+auto ValidateReadPagesRequest(const NCloud::NProto::TReadPagesRequest& request)
+    -> NProto::TError
+{
+    if (request.GetDeviceUUID().empty()) {
+        return MakeError(E_ARGUMENT, "device UUID must not be empty");
+    }
+
+    if (request.PageGroupRefsSize() == 0) {
+        return MakeError(E_ARGUMENT, "nothing to read");
+    }
+
+    for (const auto& group: request.GetPageGroupRefs()) {
+        if (group.GetPageCount() == 0) {
+            return MakeError(
+                E_ARGUMENT,
+                "page group ref must contain at least one page");
+        }
+
+        if (group.GetPageSize() == 0) {
+            return MakeError(E_ARGUMENT, "page size must be greater than zero");
+        }
+    }
+
+    return {};
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -245,13 +287,68 @@ public:
         NCloud::NProto::TReadPagesRequest request)
         -> TFuture<NCloud::NProto::TReadPagesResponse> final
     {
-        Y_UNUSED(now);
-        Y_UNUSED(request);
+        if (auto error = ValidateReadPagesRequest(request); HasError(error)) {
+            return MakeFuture<NCloud::NProto::TReadPagesResponse>(
+                TErrorResponse(error));
+        }
 
-        return MakeFuture(
-            ErrorResponse<NCloud::NProto::TReadPagesResponse>(
-                E_NOT_IMPLEMENTED,
-                ""));
+        auto [storageAdapter, error] = DeviceClient->AccessDevice(
+            request.GetDeviceUUID(),
+            request.GetHeaders().GetClientId(),
+            DefaultAccessMode);
+
+        if (HasError(error)) {
+            return MakeFuture<NCloud::NProto::TReadPagesResponse>(
+                TErrorResponse(error));
+        }
+
+        auto response = std::make_shared<NCloud::NProto::TReadPagesResponse>();
+
+        TVector<TFuture<NProto::TReadBlocksResponse>> futures;
+        futures.reserve(request.PageGroupRefsSize());
+
+        for (const auto& group: request.GetPageGroupRefs()) {
+            futures.push_back(storageAdapter->ReadBlocks(
+                now,
+                CreateCallContext(),
+                CreateReadBlocksRequest(group),
+                group.GetPageSize(),
+                TStringBuf()   // dataBuffer
+                ));
+        }
+
+        auto all = WaitAll(futures);
+
+        return all.Apply(
+            [futures,
+             request = std::move(request)](const TFuture<void>& future) mutable
+                -> NCloud::NProto::TReadPagesResponse
+            {
+                if (future.HasException()) {
+                    return TErrorResponse(ResultOrError(future).GetError());
+                }
+
+                NCloud::NProto::TReadPagesResponse response;
+                auto& groups = *response.MutablePageGroups();
+                groups.Reserve(futures.size());
+
+                for (size_t i = 0; i != futures.size(); ++i) {
+                    NProto::TReadBlocksResponse sub = futures[i].ExtractValue();
+                    if (HasError(sub)) {
+                        return TErrorResponse(sub.GetError());
+                    }
+
+                    auto& group = *groups.Add();
+
+                    group.SetFirstPageNo(
+                        request.GetPageGroupRefs(0).GetFirstPageNo());
+
+                    *group.MutableContent() =
+                        std::move(*sub.MutableBlocks()->MutableBuffers());
+                }
+
+                return response;
+            });
     }
 
     [[nodiscard]] auto WriteLogRecord(
@@ -298,23 +395,20 @@ public:
 
         return all.Apply(
             [futures](const TFuture<void>& future) mutable
+                -> NCloud::NProto::TWriteLogRecordResponse
             {
-                NCloud::NProto::TWriteLogRecordResponse response;
-                auto& error = *response.MutableError();
-
                 if (future.HasException()) {
-                    error.CopyFrom(ResultOrError(future).GetError());
-                } else {
-                    for (auto& future: futures) {
-                        const auto& sub = future.GetValue();
-                        if (HasError(sub)) {
-                            error.CopyFrom(sub.GetError());
-                            break;
-                        }
+                    return TErrorResponse(ResultOrError(future).GetError());
+                }
+
+                for (const auto& future: futures) {
+                    const auto& sub = future.GetValue();
+                    if (HasError(sub)) {
+                        return TErrorResponse(sub.GetError());
                     }
                 }
 
-                return response;
+                return {};
             });
     }
 };
