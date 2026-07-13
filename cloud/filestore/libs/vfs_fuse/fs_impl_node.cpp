@@ -52,7 +52,8 @@ void TFileSystem::Lookup(
                         error,
                         req,
                         response.GetNode(),
-                        version);
+                        version,
+                        false /* newNodeCreated */);
                 } else if (error.GetCode() == E_FS_NAMETOOLONG) {
                     self->ReplyError(*callContext, error, req, ENAMETOOLONG);
                 } else {
@@ -135,7 +136,8 @@ void TFileSystem::MkDir(
                     error,
                     req,
                     response.GetNode(),
-                    1 /* version */);
+                    1 /* version */,
+                    true /* newNodeCreated */);
             }
         });
 }
@@ -240,7 +242,8 @@ void TFileSystem::MkNode(
                     error,
                     req,
                     response.GetNode(),
-                    1 /* version */);
+                    1 /* version */,
+                    true /* newNodeCreated */);
             }
         });
 }
@@ -369,7 +372,8 @@ void TFileSystem::SymLink(
                     error,
                     req,
                     response.GetNode(),
-                    1 /* version */);
+                    1 /* version */,
+                    true /* newNodeCreated */);
             }
         });
 }
@@ -413,7 +417,8 @@ void TFileSystem::Link(
                     error,
                     req,
                     response.GetNode(),
-                    1 /* version */);
+                    1 /* version */,
+                    false /* newNodeCreated */);
             }
         });
 }

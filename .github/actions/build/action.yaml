@@ -40,6 +40,10 @@ inputs:
     required: false
     default: "yes"
     description: "use network cache"
+  network_retry_attempts:
+    required: false
+    default: "2"
+    description: "Number of attempts for ya make when resource or network fetches fail"
 outputs:
   build_error_log_url:
     description: "URL to Markdown summary of ya build errors"
@@ -84,7 +88,7 @@ runs:
     - name: build
       shell: bash --noprofile --norc -eo pipefail -x {0}
       env:
-        NUMBER_OF_RETRIES: ${{ inputs.number_of_retries }}
+        NETWORK_RETRY_ATTEMPTS: ${{ inputs.network_retry_attempts }}
         BUILD_PRESET: ${{ inputs.build_preset }}
         BUILD_TARGET: ${{ inputs.build_target }}
         BUILD_THREADS: ${{ inputs.build_threads }}
@@ -220,16 +224,41 @@ runs:
         else
             echo "/home/github/.ya/tools/ not found"
         fi
-        date
-        EXIT_CODE_FILE=$(mktemp)
-        set +e
-        {
-            ./ya make "${extra_params[@]}"
-            echo $? > "$EXIT_CODE_FILE"
-        } |& tee "$TMP_DIR/ya_make_output.txt"
-        set -e
-        YA_MAKE_EXIT_CODE=$(< "$EXIT_CODE_FILE")
-        rm -f "$EXIT_CODE_FILE"
+        RETRIES="${NETWORK_RETRY_ATTEMPTS:-1}"
+        if ! [[ "$RETRIES" =~ ^[0-9]+$ ]] || [ "$RETRIES" -lt 1 ]; then
+            echo "::warning::Invalid NETWORK_RETRY_ATTEMPTS=${NETWORK_RETRY_ATTEMPTS:-}; using 1"
+            RETRIES=1
+        fi
+
+        function should_retry_ya_build() {
+            grep -E -q "Unable to fetch resource|Network unreachable|Truncated tar archive detected|unresolved patterns:[[:space:]]*[A-Z][A-Za-z0-9_:-]*([[:space:]]*,|[[:space:]]*$)" "$TMP_DIR/ya_make_output.txt"
+        }
+
+        YA_MAKE_EXIT_CODE=1
+        attempt=0
+        while [ "$attempt" -lt "$RETRIES" ]; do
+            attempt=$((attempt + 1))
+            echo "ya build attempt ${attempt}/${RETRIES}"
+            date
+            EXIT_CODE_FILE=$(mktemp)
+            set +e
+            {
+                ./ya make "${extra_params[@]}"
+                echo $? > "$EXIT_CODE_FILE"
+            } |& tee "$TMP_DIR/ya_make_output.txt"
+            set -e
+            YA_MAKE_EXIT_CODE=$(< "$EXIT_CODE_FILE")
+            rm -f "$EXIT_CODE_FILE"
+            if [ "$YA_MAKE_EXIT_CODE" = "0" ]; then
+                break
+            fi
+            if [ "$attempt" -lt "$RETRIES" ] && should_retry_ya_build; then
+                echo "::warning::ya build attempt ${attempt}/${RETRIES} failed with exit code ${YA_MAKE_EXIT_CODE}; retrying"
+                sleep 30
+            else
+                break
+            fi
+        done
         echo "YA_MAKE_EXIT_CODE=$YA_MAKE_EXIT_CODE" >> "$GITHUB_ENV"
         date
     - name: Summarize build errors
@@ -244,6 +273,7 @@ runs:
         python3 -m scripts.tests.ya_build_errors \
             --evlog "$TMP_DIR/ya_evlog.jsonl" \
             --log "$TMP_DIR/ya_log.txt" \
+            --ya-make-output "$TMP_DIR/ya_make_output.txt" \
             --ya-make-output-url "${S3_WEBSITE_PREFIX}/build_logs/${COMPONENT_DIR}ya_make_output.txt" \
             --ya-log-url "${S3_WEBSITE_PREFIX}/build_logs/${COMPONENT_DIR}ya_log.txt" \
             --evlog-url "${S3_WEBSITE_PREFIX}/build_logs/${COMPONENT_DIR}ya_evlog.jsonl" \

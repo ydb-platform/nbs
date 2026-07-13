@@ -2,13 +2,10 @@ import argparse
 import os
 import sys
 
-from github import Auth as GithubAuth
-from github import Github
-
 try:
-    from .helpers import fetch_github_team_public_keys, setup_logger
+    from .helpers import fetch_github_team_public_keys, github_client, setup_logger
 except ImportError:
-    from helpers import fetch_github_team_public_keys, setup_logger
+    from helpers import fetch_github_team_public_keys, github_client, setup_logger
 
 
 def parse_args():
@@ -40,7 +37,7 @@ def main() -> int:
         print(f"Missing required arguments: {', '.join(missing_args)}", file=sys.stderr)
         return 2
 
-    gh = Github(auth=GithubAuth.Token(args.github_token))
+    gh = github_client(args.github_token)
     for key in fetch_github_team_public_keys(
         gh, args.github_org, args.github_team_slug
     ):

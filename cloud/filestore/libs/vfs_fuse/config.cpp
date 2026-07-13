@@ -23,6 +23,7 @@ namespace {
                                                                                \
     xxx(XAttrCacheLimit,        ui32,           512                           )\
     xxx(XAttrCacheTimeout,      TDuration,      TDuration::Seconds(15)        )\
+    xxx(XAttrCacheInvalidateOnCreateEnabled,    bool, false                   )\
                                                                                \
     xxx(MaxBufferSize,          ui32,           4_MB                          )\
                                                                                \

@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"os"
 	"testing"
 	"time"
@@ -346,6 +347,69 @@ func TestCheckFilesystemSnapshotReady(t *testing.T) {
 	err = f.storage.CheckFilesystemSnapshotReady(f.ctx, "snapshot")
 	require.Error(t, err)
 	require.ErrorIs(t, err, errors.NewEmptyNonRetriableError())
+}
+
+func TestCheckFilesystemSnapshotReadyWithCancellationDoesNotReturnNonRetriableError(
+	t *testing.T,
+) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	snapshotID := "snapshot"
+	created, err := f.storage.CreateFilesystemSnapshot(
+		f.ctx,
+		FilesystemSnapshotMeta{
+			ID:           snapshotID,
+			CreateTaskID: "create",
+			Filesystem: &types.Filesystem{
+				ZoneId:       "zone",
+				FilesystemId: "fs",
+			},
+		},
+	)
+	require.NoError(t, err)
+	require.NotNil(t, created)
+	require.False(t, created.Ready)
+
+	err = f.storage.FilesystemSnapshotCreated(f.ctx, snapshotID, 100, 200, 5)
+	require.NoError(t, err)
+
+	err = f.storage.CheckFilesystemSnapshotReady(f.ctx, snapshotID)
+	require.NoError(t, err)
+
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	for i := 0; i < 200; i++ {
+		runCtx, cancel := context.WithCancel(f.ctx)
+		delay := time.Duration(rng.Intn(50)+1) * time.Millisecond
+		timer := time.AfterFunc(delay, cancel)
+
+		err = f.storage.CheckFilesystemSnapshotReady(runCtx, snapshotID)
+
+		timer.Stop()
+		cancel()
+
+		if err == nil {
+			continue
+		}
+
+		require.False(
+			t,
+			errors.Is(err, errors.NewEmptyNonRetriableError()),
+			"iteration %v returned non-retriable error after cancelling after %v: %v",
+			i,
+			delay,
+			err,
+		)
+		require.True(
+			t,
+			errors.Is(err, context.Canceled) ||
+				errors.Is(err, errors.NewEmptyRetriableError()),
+			"iteration %v returned unexpected error after cancelling after %v: %v",
+			i,
+			delay,
+			err,
+		)
+	}
 }
 
 func TestLockUnlockFilesystemSnapshot(t *testing.T) {

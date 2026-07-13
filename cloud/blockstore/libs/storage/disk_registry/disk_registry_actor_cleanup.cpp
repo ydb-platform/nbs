@@ -16,6 +16,7 @@ class TCleanupActor final
 {
 private:
     const TActorId Owner;
+    const TChildLogTitle LogTitle;
     const TRequestInfoPtr Request;
     const TVector<TString> DiskIds;
 
@@ -24,6 +25,7 @@ private:
 public:
     TCleanupActor(
         const TActorId& owner,
+        const TLogTitle& logTitle,
         TRequestInfoPtr request,
         TVector<TString> disks);
 
@@ -54,9 +56,13 @@ private:
 
 TCleanupActor::TCleanupActor(
         const TActorId& owner,
+        const TLogTitle& logTitle,
         TRequestInfoPtr request,
         TVector<TString> diskIds)
     : Owner(owner)
+    , LogTitle(logTitle.GetChildWithTags(
+          GetCycleCount(),
+          {{"TCleanupActor", std::monostate{}}}))
     , Request(std::move(request))
     , DiskIds(std::move(diskIds))
 {}
@@ -105,8 +111,12 @@ void TCleanupActor::DeallocateDisk(const TActorContext& ctx, ui64 index)
 
     const auto& id = DiskIds[index];
 
-    LOG_INFO_S(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
-        "Deallocate disk " << id.Quote());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY_WORKER,
+        "%s Deallocate disk %s",
+        LogTitle.GetWithTime().c_str(),
+        id.Quote().c_str());
 
     auto request = std::make_unique<TEvDiskRegistry::TEvDeallocateDiskRequest>();
     request->Record.SetDiskId(id);
@@ -131,8 +141,12 @@ void TCleanupActor::HandleDescribeVolumeResponse(
         DeallocateDisk(ctx, index);
     } else {
         const auto& id = DiskIds[index];
-        LOG_DEBUG_S(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
-            "Disk " << id.Quote() << " is still present in SchemeShard, keep it");
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY_WORKER,
+            "%s Disk %s is still present in SchemeShard, keep it",
+            LogTitle.GetWithTime().c_str(),
+            id.Quote().c_str());
     }
 
     if (!PendingRequests) {
@@ -153,13 +167,21 @@ void TCleanupActor::HandleDeallocateDiskResponse(
     const auto& id = DiskIds[index];
 
     if (HasError(msg->GetError())) {
-        LOG_ERROR_S(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
-            "Deallocate disk " << id.Quote() << " error: " <<
-            FormatError(msg->GetError()));
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY_WORKER,
+            "%s Deallocate disk %s error: %s",
+            LogTitle.GetWithTime().c_str(),
+            id.Quote().c_str(),
+            FormatError(msg->GetError()).c_str());
     } else {
-        LOG_INFO_S(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
-            "Deallocate disk " << id.Quote() << " result: " <<
-            FormatError(msg->GetError()));
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY_WORKER,
+            "%s Deallocate disk %s result: %s",
+            LogTitle.GetWithTime().c_str(),
+            id.Quote().c_str(),
+            FormatError(msg->GetError()).c_str());
     }
 
     if (!PendingRequests) {
@@ -209,6 +231,7 @@ void TDiskRegistryActor::HandleCleanupDisks(
     auto actor = NCloud::Register<TCleanupActor>(
         ctx,
         SelfId(),
+        LogTitle,
         CreateRequestInfo(
             ev->Sender,
             ev->Cookie,

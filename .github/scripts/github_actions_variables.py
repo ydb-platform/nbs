@@ -1,20 +1,17 @@
 import argparse
 import os
 
-from github import Github
-
-from .helpers import fetch_repo_variable, setup_logger
+from .helpers import fetch_repo_variable, github_client, setup_logger
 
 logger = setup_logger()
 
 
 def update_variable(
-    github_token: str,
+    github,
     github_repository: str,
     variable_name: str,
     value: str,
 ) -> None:
-    github = Github(github_token)
     _, variable = fetch_repo_variable(github, github_repository, variable_name)
     old_value = variable.value
 
@@ -49,9 +46,10 @@ def main():
         help="New variable value.",
     )
     args = parser.parse_args()
+    github = github_client(args.github_token)
 
     update_variable(
-        github_token=args.github_token,
+        github=github,
         github_repository=args.github_repo,
         variable_name=args.variable_name,
         value=args.value,

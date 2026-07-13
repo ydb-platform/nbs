@@ -591,6 +591,37 @@ Y_UNIT_TEST_SUITE(TServerTest)
             counters->GetCounter("Errors/Fatal")->GetAtomic());
     }
 
+    Y_UNIT_TEST(ShouldNotHitFatalErrorMetricOnNotFound)
+    {
+        TBootstrap<TServerSetup> bootstrap;
+        bootstrap.Service->GetFileStoreInfoHandler = [] (auto, auto) {
+            return MakeFuture<NProto::TGetFileStoreInfoResponse>(
+                TErrorResponse(E_NOT_FOUND, "no such filesystem"));
+        };
+
+        bootstrap.CreateClient();
+        bootstrap.Start();
+
+        auto future = bootstrap.Clients[0]->GetFileStoreInfo(
+            MakeIntrusive<TCallContext>("fs"),
+            std::make_shared<NProto::TGetFileStoreInfoRequest>());
+
+        auto response = future.GetValueSync();
+        UNIT_ASSERT(HasError(response));
+        UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, response.GetError().GetCode());
+        bootstrap.Stop();
+
+        auto counters = bootstrap.Counters
+            ->FindSubgroup("component", "server_ut")
+            ->FindSubgroup("request", "GetFileStoreInfo");
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            counters->GetCounter("Errors")->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            counters->GetCounter("Errors/Fatal")->GetAtomic());
+    }
+
     Y_UNIT_TEST(ShouldHandleAuthRequests)
     {
         TTestServerBuilder serverConfigBuilder;

@@ -2,10 +2,10 @@
 import os
 import asyncio
 import argparse
-from github import Github
 from tabulate import tabulate
 from .helpers import (
     setup_logger,
+    github_client,
     get_jobs_raw,
     compact_workflow_name,
     compact_job_name,
@@ -65,7 +65,7 @@ async def main():
     service = InstanceServiceClient(sdk)
     operation_service = service.operation_service()
 
-    g = Github(token)
+    g = github_client(token)
     repo = g.get_repo(f"{args.owner}/{args.repo}")
 
     # Fetch self-hosted runners

@@ -1,5 +1,7 @@
 #include "disk_registry_actor.h"
 
+#include <cloud/storage/core/libs/common/format.h>
+
 #include <contrib/ydb/core/base/appdata.h>
 
 #include <util/generic/algorithm.h>
@@ -205,10 +207,12 @@ void TDiskRegistryActor::CompleteLoadState(
     if (TDuration timeout = Config->GetNonReplicatedAgentMaxTimeout()) {
         const auto deadline = timeout.ToDeadLine(ctx.Now());
 
-        LOG_INFO_S(
+        LOG_INFO(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY,
-            "Schedule the initial agents rejection phase to " << deadline);
+            "%s Schedule the initial agents rejection phase after %s",
+            LogTitle.GetWithTime().c_str(),
+            FormatDuration(deadline - ctx.Now()).c_str());
 
         auto request =
             std::make_unique<TEvDiskRegistryPrivate::TEvAgentConnectionLost>();
@@ -249,8 +253,9 @@ void TDiskRegistryActor::CompleteLoadState(
         LOG_INFO(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY,
-            "Found devices without agent and try to remove them: "
+            "%s Found devices without agent and try to remove them: "
             "DeviceUUIDs=%s",
+            LogTitle.GetWithTime().c_str(),
             JoinSeq(" ", orphanDevices).c_str());
 
         ExecuteTx<TRemoveOrphanDevices>(ctx, std::move(orphanDevices));

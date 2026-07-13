@@ -60,7 +60,8 @@ message TFileStoreFeatures
     uint32 StatFileStoreCacheTTL = 45; // in ms
     bool ExternalReadDataPayload = 46;
     optional bool TabletDirectRdmaEnabled = 47;
-    bool ExternalWriteDataPayloadEnabled = 48;
+    bool XAttrCacheInvalidateOnCreateEnabled = 48;
+    bool ExternalWriteDataPayloadEnabled = 49;
 }
 
 message TFileStore
