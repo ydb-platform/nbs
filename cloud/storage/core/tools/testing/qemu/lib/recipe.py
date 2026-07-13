@@ -306,8 +306,12 @@ def _get_qemu_bios(args):
         qemu_bios = yatest.common.source_path(args.qemu_bios)
 
     if not os.path.exists(qemu_bios):
-        qemu_bindir = os.path.dirname(os.path.dirname(os.path.dirname(_get_qemu_kvm(args))))
-        qemu_bios = os.path.join(qemu_bindir, args.qemu_bios)
+        qemu_firmware = _get_qemu_firmware(args)
+        qemu_firmware_suffix = os.path.join("usr", "share", "qemu")
+        qemu_bios_path = args.qemu_bios
+        if qemu_bios_path.startswith(qemu_firmware_suffix + os.path.sep):
+            qemu_bios_path = os.path.relpath(qemu_bios_path, qemu_firmware_suffix)
+        qemu_bios = os.path.join(qemu_firmware, qemu_bios_path)
 
     if not os.path.exists(qemu_bios):
         raise QemuKvmRecipeException(
