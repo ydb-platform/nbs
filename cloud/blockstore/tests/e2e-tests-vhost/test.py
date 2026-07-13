@@ -61,7 +61,6 @@ def init(stored_endpoints_path=None):
     def run(*args, **kwargs):
         args = [BLOCKSTORE_CLIENT_PATH,
                 *args,
-                "--grpc-trace",
                 "--config",
                 str(client_config_path)]
         script_input = kwargs.get("input")
