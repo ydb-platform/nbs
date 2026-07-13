@@ -1,6 +1,6 @@
 PROGRAM(filestore-server)
 
-ALLOCATOR(TCMALLOC_256K)
+ALLOCATOR(TCMALLOC_NUMA_256K)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/binaries_dependency.inc)
 
