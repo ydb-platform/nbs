@@ -120,11 +120,7 @@ def is_arm():
 
 
 def _get_env_value(name):
-    value = os.getenv(name)
-    if value and value not in ("${}".format(name), "${{{}}}".format(name)):
-        return value
-
-    return None
+    return os.getenv(name) or None
 
 
 def _get_env_path(name, *relative_roots):
