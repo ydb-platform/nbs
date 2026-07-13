@@ -14,11 +14,11 @@ ELSE()
     )
 ENDIF()
 
-    PEERDIR(
-        cloud/filestore/libs/storage/fastshard/sn/iface
+PEERDIR(
+    cloud/filestore/libs/storage/fastshard/sn/iface
 
-        cloud/storage/core/libs/common
-    )
+    cloud/storage/core/libs/common
+)
 
 END()
 
