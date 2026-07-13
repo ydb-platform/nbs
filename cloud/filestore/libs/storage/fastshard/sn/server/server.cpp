@@ -399,8 +399,7 @@ int AcceptFiberMain(TAcceptParams* params) noexcept
         FiberScheduler::poll(sfd, POLLIN, nullptr, &shutdownFuture);
 
         FiberFuture* futures[] = {&acceptFuture, &shutdownFuture};
-        uint64_t which =
-            FiberFuture::waitForMultiple(futures, std::size(futures));
+        ui64 which = FiberFuture::waitForMultiple(futures, std::size(futures));
 
         if (which == 1) {
             acceptFuture.cancel();
@@ -466,7 +465,7 @@ public:
     void Stop() override
     {
         if (ShutdownFd >= 0) {
-            uint64_t one = 1;
+            ui64 one = 1;
             if (::write(ShutdownFd, &one, sizeof(one)) < 0) {
                 SILK_ERROR("shutdown write: %s", ::strerror(errno));
             }
