@@ -451,6 +451,10 @@ private:
         ui64 diskThreshold,
         const NActors::TActorContext& ctx);
 
+    TDuration ComputeGarbageCompactionExecTime(
+        const NActors::TActorContext& ctx,
+        bool throttlingAllowed);
+
     bool IsCompactRangePending(
         const TString& operationId,
         ui32& ranges) const;

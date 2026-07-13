@@ -3690,18 +3690,20 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         DoShouldAutomaticallyRunGarbageCompactionForSuperDirtyRanges(true);
     }
 
-    void CheckGarbageCompactionExecTimePerSecondLimit(
-        ui32 softLimit,
-        ui32 hardLimit,
+    void CheckInterpolatedGarbageCompactionExecTimePerSecond(
+        ui32 throttleBelowFillPercentage,
+        ui32 stopThrottlingAboveFillPercentage,
         ui32 fillPercentage,
-        ui32 expectedExecTimeLimit)
+        ui32 expectedExecTime)
     {
         auto config = DefaultConfig();
         config.SetV1GarbageCompactionEnabled(true);
         config.SetEnableDynamicGarbageCompactionThrottling(true);
-        config.SetGarbageCompactionThrottlingSoftLimit(softLimit);
-        config.SetGarbageCompactionThrottlingHardLimit(hardLimit);
-        config.SetMinGarbageCompactionExecTimePerSecondLimit(200);
+        config.SetThrottleGarbageCompactionBelowFillPercentage(
+            throttleBelowFillPercentage);
+        config.SetStopGarbageCompactionThrottlingAboveFillPercentage(
+            stopThrottlingAboveFillPercentage);
+        config.SetMinGarbageCompactionExecTimePerSecond(200);
         config.SetCompactionGarbageThreshold(20);
         config.SetCompactionRangeGarbageThreshold(20);
         config.SetMinCompactionDelay(0);
@@ -3765,17 +3767,17 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
 
         UNIT_ASSERT_VALUES_EQUAL(
-            expectedExecTimeLimit,
+            expectedExecTime,
             garbageCompactionExecTimePerSecondLimit);
     }
 
     Y_UNIT_TEST(ShouldCalculateGarbageCompactionExecTimePerSecondLimit)
     {
-        CheckGarbageCompactionExecTimePerSecondLimit(80, 160, 70, 200);
-        CheckGarbageCompactionExecTimePerSecondLimit(80, 160, 90, 300);
-        CheckGarbageCompactionExecTimePerSecondLimit(80, 160, 120, 600);
-        CheckGarbageCompactionExecTimePerSecondLimit(80, 160, 180, 1000);
-        CheckGarbageCompactionExecTimePerSecondLimit(120, 120, 120, 200);
+        CheckInterpolatedGarbageCompactionExecTimePerSecond(80, 160, 70, 200);
+        CheckInterpolatedGarbageCompactionExecTimePerSecond(80, 160, 90, 300);
+        CheckInterpolatedGarbageCompactionExecTimePerSecond(80, 160, 120, 600);
+        CheckInterpolatedGarbageCompactionExecTimePerSecond(80, 160, 180, 1000);
+        CheckInterpolatedGarbageCompactionExecTimePerSecond(120, 120, 120, 200);
     }
 
     Y_UNIT_TEST(CompactionShouldTakeCareOfFreshBlocks)
@@ -10858,14 +10860,14 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         // real blocks per disk: 1024 * 10 = 10240
         // total blocks per disk: = 1024 * 3 = 3072
         // garbage percentage: 100 * (10 - 3) * 1024 / 3072 ~ 233
-        // percentage more threshold: 100 * (233 - 203) / 203 ~ 15
+        // percentage more threshold: 100 * (233 - 203) / 203 ~ 14.8
 
 
-        // 15 > 14, so should increment and compact 2 ranges
+        // 14.8 > 13, so should increment and compact 2 ranges
         CheckIncrementAndDecrementCompactionPerRun(
-                1, 1000, 99999, 203, 99999, 5, 14, 5, 2);
+                1, 1000, 99999, 203, 99999, 5, 13, 5, 2);
 
-        // 15 < 16, so should decrement and compact only 1 range
+        // 14.8 < 16, so should decrement and compact only 1 range
         CheckIncrementAndDecrementCompactionPerRun(
                 2, 1000, 99999, 203, 99999, 7, 30, 16, 1);
     }

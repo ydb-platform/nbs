@@ -1192,11 +1192,13 @@ STFUNC(TCompactionActor::StateWork)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+static constexpr double MaxPercentage = 1'000;
+static constexpr TDuration NoThrottleExecTimePerSecond = TDuration::Seconds(1);
+
 ui32 GetPercentage(ui64 numerator, ui64 denominator)
 {
     const double p = numerator * 100. / Max(denominator, 1UL);
-    const double MAX_P = 1'000;
-    return Min(std::round(p), MAX_P);
+    return static_cast<ui32>(Min(p, MaxPercentage));
 }
 
 ui32 GetExcessPercentage(ui64 numerator, ui64 denominator)
@@ -1207,8 +1209,14 @@ ui32 GetExcessPercentage(ui64 numerator, ui64 denominator)
 
 ui64 GetDiskBlockCount(const TPartitionState& state)
 {
-    return state.GetMixedBlocksCount() + state.GetMergedBlocksCount() -
-           state.GetCleanupQueue().GetQueueBlocks();
+    const ui64 mixedAndMergedBlocks =
+        state.GetMixedBlocksCount() + state.GetMergedBlocksCount();
+    const ui64 queueBlocks = state.GetCleanupQueue().GetQueueBlocks();
+    Y_DEBUG_ABORT_UNLESS(mixedAndMergedBlocks >= queueBlocks);
+
+    return mixedAndMergedBlocks < queueBlocks
+               ? 0
+               : mixedAndMergedBlocks - queueBlocks;
 }
 
 ui32 GetDiskFillPercentage(const TPartitionState& state)
@@ -1217,31 +1225,30 @@ ui32 GetDiskFillPercentage(const TPartitionState& state)
     return GetPercentage(GetDiskBlockCount(state), diskSizeInBlocks);
 }
 
-TDuration GetGarbageCompactionExecTimePerSecondLimit(
-    ui32 softLimit,
-    ui32 hardLimit,
-    TDuration minGarbageCompactionExecTimePerSecondLimit,
+TDuration InterpolateCompactionExecTime(
+    ui32 throttleBelowFillPercentage,
+    ui32 stopThrottlingAboveFillPercentage,
+    TDuration minExecTimePerSecond,
     ui32 diskFillPercentage)
 {
-    Y_DEBUG_ABORT_UNLESS(softLimit <= hardLimit);
     Y_DEBUG_ABORT_UNLESS(
-        minGarbageCompactionExecTimePerSecondLimit.GetValue() > 0);
+        throttleBelowFillPercentage <= stopThrottlingAboveFillPercentage);
+    Y_DEBUG_ABORT_UNLESS(minExecTimePerSecond.GetValue() > 0);
+    Y_DEBUG_ABORT_UNLESS(minExecTimePerSecond <= NoThrottleExecTimePerSecond);
 
-    if (diskFillPercentage <= softLimit) {
-        return minGarbageCompactionExecTimePerSecondLimit;
+    if (diskFillPercentage <= throttleBelowFillPercentage) {
+        return minExecTimePerSecond;
+    }
+    if (diskFillPercentage >= stopThrottlingAboveFillPercentage) {
+        return NoThrottleExecTimePerSecond;
     }
 
-    if (diskFillPercentage >= hardLimit) {
-        // No throttling.
-        return TDuration::Seconds(1);
-    }
-
-    // Linear interpolation on [softLimit, hardLimit] range.
-    return minGarbageCompactionExecTimePerSecondLimit +
-           (TDuration::Seconds(1) -
-            minGarbageCompactionExecTimePerSecondLimit) *
-               (static_cast<double>(diskFillPercentage) - softLimit) /
-               (hardLimit - softLimit);
+    // Position of diskFillPercentage within the throttling band, in [0, 1].
+    const double t =
+        static_cast<double>(diskFillPercentage - throttleBelowFillPercentage) /
+        (stopThrottlingAboveFillPercentage - throttleBelowFillPercentage);
+    return minExecTimePerSecond +
+           (NoThrottleExecTimePerSecond - minExecTimePerSecond) * t;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1600,6 +1607,64 @@ void TPartitionActor::ChangeRangeCountPerRunIfNeeded(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TDuration TPartitionActor::ComputeGarbageCompactionExecTime(
+    const TActorContext& ctx,
+    bool throttlingAllowed)
+{
+    const ui32 throttleBelowFillPercentage =
+        Config->GetThrottleGarbageCompactionBelowFillPercentage();
+    const ui32 stopThrottlingAboveFillPercentage =
+        Config->GetStopGarbageCompactionThrottlingAboveFillPercentage();
+    const TDuration minExecTimePerSecond =
+        Config->GetMinGarbageCompactionExecTimePerSecond();
+
+    // Fall back to the static budget unless the dynamic config is valid.
+    TDuration execTimePerSecond = Config->GetMaxCompactionExecTimePerSecond();
+
+    TString configError;
+    if (throttleBelowFillPercentage > stopThrottlingAboveFillPercentage) {
+        configError =
+            "ThrottleGarbageCompactionBelowFillPercentage > "
+            "StopGarbageCompactionThrottlingAboveFillPercentage";
+    } else if (stopThrottlingAboveFillPercentage > MaxPercentage) {
+        configError = TStringBuilder()
+            << "StopGarbageCompactionThrottlingAboveFillPercentage is greater "
+               "than "
+            << MaxPercentage;
+    } else if (minExecTimePerSecond.GetValue() == 0) {
+        configError = "MinGarbageCompactionExecTimePerSecond is zero";
+    } else if (minExecTimePerSecond > NoThrottleExecTimePerSecond) {
+        configError =
+            "MinGarbageCompactionExecTimePerSecond exceeds one second";
+    } else if (Config->GetIgnoringZeroedCompactionEnabled()) {
+        configError =
+            "Ignoring zeroed compaction and dynamic garbage compaction are "
+            "enabled simultaneously";
+    }
+
+    if (configError) {
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s Invalid garbage compaction throttling config: %s",
+            LogTitle.GetWithTime().c_str(),
+            configError.c_str());
+    } else {
+        execTimePerSecond = InterpolateCompactionExecTime(
+            throttleBelowFillPercentage,
+            stopThrottlingAboveFillPercentage,
+            minExecTimePerSecond,
+            GetDiskFillPercentage(*State));
+    }
+
+    PartCounters->Simple.GarbageCompactionExecTimePerSecondLimit.Set(
+        throttlingAllowed ? execTimePerSecond.MilliSeconds() : 0);
+
+    return execTimePerSecond;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
 {
     if (CompactionMapLoadState) {
@@ -1672,46 +1737,11 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
     }
 
     if (IsDynamicGarbageCompactionThrottlingEnabled() &&
-        !Config->GetIgnoringZeroedCompactionEnabled() &&
         info->Mode == TEvPartitionPrivate::GarbageCompaction)
     {
-        const ui32 softLimit =
-            Config->GetGarbageCompactionThrottlingSoftLimit();
-        const ui32 hardLimit =
-            Config->GetGarbageCompactionThrottlingHardLimit();
-        const auto minGarbageCompactionExecTimePerSecondLimit =
-            Config->GetMinGarbageCompactionExecTimePerSecondLimit();
-
-        if (softLimit > hardLimit) {
-            LOG_WARN(
-                ctx,
-                TBlockStoreComponents::PARTITION,
-                "%s Invalid garbage compaction throttling config: "
-                "GarbageCompactionThrottlingSoftLimit (%u) > "
-                "GarbageCompactionThrottlingHardLimit (%u)",
-                LogTitle.GetWithTime().c_str(),
-                softLimit,
-                hardLimit);
-        } else if (minGarbageCompactionExecTimePerSecondLimit.GetValue() == 0) {
-            LOG_WARN(
-                ctx,
-                TBlockStoreComponents::PARTITION,
-                "%s Invalid garbage compaction throttling config: "
-                "MinGarbageCompactionExecTimePerSecondLimit is zero",
-                LogTitle.GetWithTime().c_str());
-        } else {
-            maxCompactionExecTimePerSecond =
-                GetGarbageCompactionExecTimePerSecondLimit(
-                    softLimit,
-                    hardLimit,
-                    minGarbageCompactionExecTimePerSecondLimit,
-                    GetDiskFillPercentage(*State));
-        }
-
-        PartCounters->Simple.GarbageCompactionExecTimePerSecondLimit.Set(
-            info->ThrottlingAllowed
-                ? maxCompactionExecTimePerSecond.MilliSeconds()
-                : 0);
+        maxCompactionExecTimePerSecond = ComputeGarbageCompactionExecTime(
+            ctx,
+            info->ThrottlingAllowed);
     }
 
     if (info->ThrottlingAllowed) {

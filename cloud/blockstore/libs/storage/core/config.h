@@ -102,12 +102,12 @@ public:
     TDuration GetMinCompactionDelay() const;
     TDuration GetMaxCompactionExecTimePerSecond() const;
     TDuration GetMaxCompactionExecTimePerSecondForZeroed() const;
-    TDuration GetMinGarbageCompactionExecTimePerSecondLimit() const;
+    TDuration GetMinGarbageCompactionExecTimePerSecond() const;
     ui32 GetCompactionScoreHistorySize() const;
     ui32 GetCompactionScoreLimitForThrottling() const;
     bool GetEnableDynamicGarbageCompactionThrottling() const;
-    ui32 GetGarbageCompactionThrottlingSoftLimit() const;
-    ui32 GetGarbageCompactionThrottlingHardLimit() const;
+    ui32 GetThrottleGarbageCompactionBelowFillPercentage() const;
+    ui32 GetStopGarbageCompactionThrottlingAboveFillPercentage() const;
     ui64 GetTargetCompactionBytesPerOp() const;
     [[nodiscard]] ui32 GetMaxSkippedBlobsDuringCompaction() const;
     [[nodiscard]] ui32 GetMaxSkippedBlobsDuringCompactionHDD() const;
