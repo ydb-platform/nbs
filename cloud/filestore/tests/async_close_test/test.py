@@ -1,7 +1,7 @@
 import json
 import logging
 import os
-from time import sleep
+from time import monotonic, sleep
 
 from retrying import retry
 
@@ -17,6 +17,7 @@ RETRY_COUNT = 3
 WAIT_TIMEOUT_MS = 1000  # 1sec
 OPEN_HANDLE_COUNT = 10000
 MAX_WAIT_SECONDS = 600
+MAX_NO_PROGRESS_SECONDS = 30
 
 
 @retry(stop_max_attempt_number=RETRY_COUNT, wait_fixed=WAIT_TIMEOUT_MS)
@@ -27,8 +28,9 @@ def get_handles_count(filestore_client: client.Client, logger) -> int:
 
     try:
         stats = json.loads(res.Output)
-        handles_count = stats.get("Stats", {}).get("UsedHandlesCount", 0)
-    except (json.JSONDecodeError, AttributeError, TypeError) as e:
+        handles_count = int(
+            stats.get("Stats", {}).get("UsedHandlesCount", 0))
+    except (json.JSONDecodeError, AttributeError, TypeError, ValueError) as e:
         logger.error(f"Failed to parse getstoragestats answer: {e}")
         raise
 
@@ -56,26 +58,38 @@ def test():
     # Check that test script successfully finished.
     assert 0 == res.returncode
 
-    prev = -1
     with client.CreateClient(
             f"localhost:{server_port}", log=logger) as filestore_client:
 
         # Check that after test script finishes,
         # handles count in server is not zero.
         # It means that async handle destroying is working
-        assert 0 != get_handles_count(filestore_client, logger), (
+        handles_count = get_handles_count(filestore_client, logger)
+        assert 0 != handles_count, (
             "Expected non-zero handles count after script run, got 0")
 
         # Check that after file is closed, handles are eventually freed
-        for _ in range(MAX_WAIT_SECONDS):
-            handles_count = get_handles_count(filestore_client, logger)
-            logger.info(f"Handles count: {handles_count}")
-            if handles_count == 0:
-                logger.info("All handles are destroyed")
-                break
-            if handles_count == prev:
-                raise AssertionError(f"Handles count stuck at {handles_count}")
-            prev = handles_count
+        started_at = monotonic()
+        last_progress_at = started_at
+
+        while handles_count != 0:
+            now = monotonic()
+            if now - started_at >= MAX_WAIT_SECONDS:
+                raise AssertionError(
+                    f"Handles were not destroyed within {MAX_WAIT_SECONDS} "
+                    f"seconds; {handles_count} handles remain")
+            if now - last_progress_at >= MAX_NO_PROGRESS_SECONDS:
+                raise AssertionError(
+                    f"Handles count did not decrease for "
+                    f"{MAX_NO_PROGRESS_SECONDS} seconds; "
+                    f"{handles_count} handles remain")
+
             sleep(1)
 
-        assert 0 == handles_count
+            prev_handles_count = handles_count
+            handles_count = get_handles_count(filestore_client, logger)
+            logger.info(f"Handles count: {handles_count}")
+            if handles_count < prev_handles_count:
+                last_progress_at = monotonic()
+
+        logger.info("All handles are destroyed")
