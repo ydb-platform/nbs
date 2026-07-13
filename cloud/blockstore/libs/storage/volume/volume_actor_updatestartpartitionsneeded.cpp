@@ -4,6 +4,8 @@
 
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
+
+#include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/verify.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -45,15 +47,33 @@ void TVolumeActor::ExecuteResetStartPartitionsNeeded(
                 GCCompletedPartitions.push_back(args.PartitionTabletId);
                 return;
             }
-            LOG_INFO(
-                ctx,
-                TBlockStoreComponents::VOLUME,
-                "%s Stopping partitions after gc finished",
-                LogTitle.GetWithTime().c_str());
 
-            StopPartitions(ctx, {});
-            State->Reset();
-            PartitionsStartedReason = EPartitionsStartedReason::NOT_STARTED;
+            const auto gracePeriod = TDuration::MilliSeconds(
+                Config->GetStopPartitionsAfterGcGracePeriod());
+
+            if (gracePeriod != TDuration::Zero()) {
+                LOG_INFO(
+                    ctx,
+                    TBlockStoreComponents::VOLUME,
+                    "%s Scheduling partition stop after %s grace period",
+                    LogTitle.GetWithTime().c_str(),
+                    FormatDuration(gracePeriod).c_str());
+
+                StopPartitionsAfterGcScheduled = true;
+                ctx.Schedule(
+                    gracePeriod,
+                    new TEvVolumePrivate::TEvStopPartitionsAfterGc());
+            } else {
+                LOG_INFO(
+                    ctx,
+                    TBlockStoreComponents::VOLUME,
+                    "%s Stopping partitions after gc finished",
+                    LogTitle.GetWithTime().c_str());
+
+                StopPartitions(ctx, {});
+                State->Reset();
+                PartitionsStartedReason = EPartitionsStartedReason::NOT_STARTED;
+            }
         }
         TVolumeDatabase db(tx.DB);
         State->SetStartPartitionsNeeded(false);
@@ -91,6 +111,50 @@ void TVolumeActor::HandleGarbageCollectorCompleted(
         ExecuteTx(ctx, CreateTx<TResetStartPartitionsNeeded>(
             requestInfo, partitionTabletId));
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TVolumeActor::HandleStopPartitionsAfterGc(
+    const TEvVolumePrivate::TEvStopPartitionsAfterGc::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+
+    StopPartitionsAfterGcScheduled = false;
+
+    if (PartitionsStartedReason != EPartitionsStartedReason::STARTED_FOR_GC) {
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s Grace period expired but partitions are no longer in gc mode "
+            "(reason: %d), skipping stop",
+            LogTitle.GetWithTime().c_str(),
+            static_cast<int>(PartitionsStartedReason));
+        return;
+    }
+
+    if (State && State->HasActiveClients(ctx.Now())) {
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s Grace period expired but a client has connected, skipping stop",
+            LogTitle.GetWithTime().c_str());
+        PartitionsStartedReason = EPartitionsStartedReason::STARTED_FOR_USE;
+        return;
+    }
+
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Grace period expired, stopping partitions after gc",
+        LogTitle.GetWithTime().c_str());
+
+    StopPartitions(ctx, {});
+    if (State) {
+        State->Reset();
+    }
+    PartitionsStartedReason = EPartitionsStartedReason::NOT_STARTED;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

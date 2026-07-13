@@ -11377,6 +11377,147 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         UNIT_ASSERT(deadActors.contains(firstFollower));
     }
+
+    Y_UNIT_TEST(ShouldDeferStopPartitionsAfterGcWhenGracePeriodSet)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetStopPartitionsAfterGcGracePeriod(5000);
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TVolumeClient volume(*runtime);
+
+        bool externalBootHappened = false;
+        bool garbageCollectorCompleted = false;
+        bool partitionsStopped = false;
+
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartition::EvWaitReadyResponse: {
+                        externalBootHappened = true;
+                        break;
+                    }
+                    case TEvPartition::EvGarbageCollectorCompleted: {
+                        garbageCollectorCompleted = true;
+                        break;
+                    }
+                    case TEvBootstrapper::EvStop: {
+                        partitionsStopped = true;
+                        break;
+                    }
+                }
+                return false;
+            });
+
+        volume.UpdateVolumeConfig();
+        volume.RebootTablet();
+
+        UNIT_ASSERT(externalBootHappened);
+        UNIT_ASSERT(garbageCollectorCompleted);
+        UNIT_ASSERT(partitionsStopped);
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            false);
+
+        volume.AddClient(clientInfo);
+        volume.RemoveClient(clientInfo.GetClientId());
+
+        externalBootHappened = false;
+        garbageCollectorCompleted = false;
+        partitionsStopped = false;
+
+        volume.RebootTablet();
+
+        // Partitions started for GC
+        UNIT_ASSERT(externalBootHappened);
+        UNIT_ASSERT(garbageCollectorCompleted);
+        // Partitions should NOT be stopped yet — grace period active
+        UNIT_ASSERT(!partitionsStopped);
+
+        // Advance time past the grace period
+        runtime->AdvanceCurrentTime(TDuration::Seconds(6));
+
+        TDispatchOptions options;
+        options.FinalEvents.emplace_back(TEvBootstrapper::EvStop);
+        runtime->DispatchEvents(options, TDuration::MilliSeconds(100));
+
+        // Now partitions should be stopped
+        UNIT_ASSERT(partitionsStopped);
+    }
+
+    Y_UNIT_TEST(ShouldNotStopPartitionsIfClientConnectsDuringGracePeriod)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetStopPartitionsAfterGcGracePeriod(5000);
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TVolumeClient volume(*runtime);
+
+        bool externalBootHappened = false;
+        bool garbageCollectorCompleted = false;
+        bool partitionsStopped = false;
+
+        runtime->SetEventFilter(
+            [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartition::EvWaitReadyResponse: {
+                        externalBootHappened = true;
+                        break;
+                    }
+                    case TEvPartition::EvGarbageCollectorCompleted: {
+                        garbageCollectorCompleted = true;
+                        break;
+                    }
+                    case TEvBootstrapper::EvStop: {
+                        partitionsStopped = true;
+                        break;
+                    }
+                }
+                return false;
+            }
+        );
+
+        volume.UpdateVolumeConfig();
+        volume.RebootTablet();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            false);
+
+        volume.AddClient(clientInfo);
+        volume.RemoveClient(clientInfo.GetClientId());
+
+        externalBootHappened = false;
+        garbageCollectorCompleted = false;
+        partitionsStopped = false;
+
+        volume.RebootTablet();
+
+        // Partitions started for GC
+        UNIT_ASSERT(externalBootHappened);
+        UNIT_ASSERT(garbageCollectorCompleted);
+        // Partitions should NOT be stopped — grace period active
+        UNIT_ASSERT(!partitionsStopped);
+
+        // Client connects during grace period — AddClient triggers
+        // StartPartitionsIfNeeded which upgrades STARTED_FOR_GC to
+        // STARTED_FOR_USE and clears StopPartitionsAfterGcScheduled
+        volume.AddClient(clientInfo);
+
+        // Advance time past the grace period
+        runtime->AdvanceCurrentTime(TDuration::Seconds(6));
+
+        TDispatchOptions options;
+        options.FinalEvents.emplace_back(TEvBootstrapper::EvStop);
+        runtime->DispatchEvents(options, TDuration::MilliSeconds(100));
+
+        // Partitions must NOT be stopped because they were upgraded to USE
+        UNIT_ASSERT(!partitionsStopped);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

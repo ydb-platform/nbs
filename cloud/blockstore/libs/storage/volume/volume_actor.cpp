@@ -1167,6 +1167,7 @@ STFUNC(TVolumeActor::StateWork)
             HandleWaitReadyResponse);
         HFunc(TEvPartition::TEvBackpressureReport, HandleBackpressureReport);
         HFunc(TEvPartition::TEvGarbageCollectorCompleted, HandleGarbageCollectorCompleted);
+        HFunc(TEvVolumePrivate::TEvStopPartitionsAfterGc, HandleStopPartitionsAfterGc);
 
         HFunc(TEvVolume::TEvPreparePartitionMigrationRequest, HandlePreparePartitionMigration);
 

@@ -853,6 +853,8 @@ public:
     [[nodiscard]] bool GetVerifyRecreatedBlobMetasOnCleanup() const;
 
     [[nodiscard]] bool GetUseRecreatedBlobMetasOnCleanup() const;
+
+    [[nodiscard]] ui32 GetStopPartitionsAfterGcGracePeriod() const;
 };
 
 ui64 GetAllocationUnit(

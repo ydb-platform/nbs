@@ -189,6 +189,7 @@ void TVolumeActor::StartPartitionsIfNeeded(const TActorContext& ctx)
             }
             case EPartitionsStartedReason::STARTED_FOR_GC: {
                 PartitionsStartedReason = EPartitionsStartedReason::STARTED_FOR_USE;
+                StopPartitionsAfterGcScheduled = false;
                 return;
             }
             case EPartitionsStartedReason::STARTED_FOR_USE: {

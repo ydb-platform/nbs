@@ -1621,4 +1621,10 @@ message TStorageServiceConfig
 
     // Use read or recreated compaction blob metas during cleanup.
     optional bool UseRecreatedBlobMetasOnCleanup = 513;
+
+    // Grace period (in milliseconds) before stopping partitions after GC
+    // completion when the volume has no active clients. If a client connects
+    // during this period, partitions stay up and are upgraded to STARTED_FOR_USE
+    // without a costly reboot. 0 means disabled (stop immediately, old behavior).
+    optional uint32 StopPartitionsAfterGcGracePeriod = 514;
 }

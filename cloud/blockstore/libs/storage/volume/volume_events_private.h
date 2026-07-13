@@ -547,6 +547,7 @@ struct TEvVolumePrivate
         EvCreateLinkFinished,
         EvDiskRegistryDeviceOperationStarted,
         EvDiskRegistryDeviceOperationFinished,
+        EvStopPartitionsAfterGc,
 
         EvEnd
     };
@@ -651,6 +652,9 @@ struct TEvVolumePrivate
     using TEvDiskRegistryDeviceOperationFinished = TRequestEvent<
         TDiskRegistryDeviceOperationFinished,
         EvDiskRegistryDeviceOperationFinished>;
+
+    using TEvStopPartitionsAfterGc =
+        TRequestEvent<TEmpty, EvStopPartitionsAfterGc>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -412,6 +412,7 @@ private:
     ui64 PartitionRestartCounter = 0;
 
     TVector<ui64> GCCompletedPartitions;
+    bool StopPartitionsAfterGcScheduled = false;
 
     std::optional<TOutdatedLeaderDestruction> OutdatedLeaderDestruction;
 
@@ -1086,6 +1087,10 @@ private:
 
     void HandleGarbageCollectorCompleted(
         const NPartition::TEvPartition::TEvGarbageCollectorCompleted::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleStopPartitionsAfterGc(
+        const TEvVolumePrivate::TEvStopPartitionsAfterGc::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleWakeup(
