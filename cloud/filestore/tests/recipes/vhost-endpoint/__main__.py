@@ -84,6 +84,7 @@ def start(argv):
         })
 
     set_env("NFS_VHOST_SOCKET_COUNT", args.endpoint_count)
+    set_env("FILESTORE_SHARD_COUNT", args.shard_count)
     for i in range(args.endpoint_count):
         socket = create_endpoint(
             client,

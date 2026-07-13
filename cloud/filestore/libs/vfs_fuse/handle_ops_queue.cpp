@@ -18,6 +18,34 @@ IModuleStatsPtr THandleOpsQueue::GetModuleStats() const
     return Stats;
 }
 
+THandleOpsQueue::EResult THandleOpsQueue::AddCreateRequest(
+    const NProto::TCreateHandleRequest& createHandleRequest,
+    ui64 nodeId,
+    ui64 handle,
+    ui64 requestId)
+{
+    NProto::TQueueEntry request;
+    auto* queued = request.MutableQueuedCreateHandleRequest();
+    *queued->MutableRequest() = createHandleRequest;
+    queued->SetHandle(handle);
+    queued->SetNodeId(nodeId);
+    queued->SetRequestId(requestId);
+
+    TString result;
+    if (!request.SerializeToString(&result)) {
+        Stats->IncrementSerializationErrorCount();
+        return THandleOpsQueue::EResult::SerializationError;
+    }
+
+    if (!RequestsToProcess.PushBack(result)) {
+        Stats->IncrementOverflowErrorCount();
+        return THandleOpsQueue::EResult::QueueOverflow;
+    }
+
+    Stats->SetEntryCount(RequestsToProcess.Size());
+    return THandleOpsQueue::EResult::Ok;
+}
+
 THandleOpsQueue::EResult THandleOpsQueue::AddDestroyRequest(
     ui64 nodeId,
     ui64 handle)

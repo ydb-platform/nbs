@@ -993,7 +993,8 @@ private:
 
             THandleOpsQueuePtr handleOpsQueue;
             if (FileSystemConfig->GetAsyncDestroyHandleEnabled() ||
-                FileSystemConfig->GetAsyncDestroyReadOnlyHandleEnabled())
+                FileSystemConfig->GetAsyncDestroyReadOnlyHandleEnabled() ||
+                FileSystemConfig->GetAsyncCreateHandleEnabled())
             {
                 if (Config->GetHandleOpsQueuePath()) {
                     auto path = TFsPath(Config->GetHandleOpsQueuePath()) /
@@ -1238,6 +1239,7 @@ private:
                 SessionState,
                 this);
 
+            FileSystem->Init();
             FuseLoop->Start();
         } catch (const TServiceError& e) {
             error = MakeError(e.GetCode(), TString(e.GetMessage()));
@@ -1295,6 +1297,8 @@ private:
             features.GetAsyncDestroyHandleEnabled());
         config.SetAsyncDestroyReadOnlyHandleEnabled(
             features.GetAsyncDestroyReadOnlyHandleEnabled());
+        config.SetAsyncCreateHandleEnabled(
+            features.GetAsyncCreateHandleEnabled());
         config.SetAsyncHandleOperationPeriod(
             features.GetAsyncHandleOperationPeriod());
 
@@ -1391,8 +1395,6 @@ private:
             conn->want |= FUSE_CAP_POSIX_ACL;
             conn->want |= FUSE_CAP_DONT_MASK;
         }
-
-        FileSystem->Init();
     }
 
     void StopAsyncOnCompletionQueueStopped(TPromise<void> stopCompleted)

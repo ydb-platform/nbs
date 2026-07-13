@@ -63,6 +63,7 @@ message TFileStoreFeatures
     bool XAttrCacheInvalidateOnCreateEnabled = 48;
     bool AsyncDestroyReadOnlyHandleEnabled = 49;
     bool ExternalWriteDataPayloadEnabled = 50;
+    bool AsyncCreateHandleEnabled = 51;
 }
 
 message TFileStore

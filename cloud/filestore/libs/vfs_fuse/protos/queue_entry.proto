@@ -4,10 +4,19 @@ import "cloud/filestore/public/api/protos/data.proto";
 
 package NCloud.NFileStore.NProto;
 
+message TQueuedCreateHandleRequest
+{
+    TCreateHandleRequest Request = 1;
+    uint64 Handle = 2;
+    uint64 NodeId = 3;
+    uint64 RequestId = 4;
+}
+
 message TQueueEntry
 {
      oneof Request {
           TCreateHandleRequest CreateHandleRequest = 1;
           TDestroyHandleRequest DestroyHandleRequest = 2;
+          TQueuedCreateHandleRequest QueuedCreateHandleRequest = 3;
     }
 }

@@ -87,7 +87,7 @@ TFileSystem::~TFileSystem()
 
 void TFileSystem::Init()
 {
-    STORAGE_INFO("scheduling destroy handle queue processing");
+    STORAGE_INFO("scheduling handle ops queue processing");
     ScheduleProcessHandleOpsQueue();
 }
 
@@ -376,45 +376,82 @@ void TFileSystem::CompleteAsyncDestroyHandle(
     const auto& error = response.GetError();
     RequestStats->RequestCompleted(callContext, error);
 
-    // If destroy request failed, we need to retry it.
-    // Otherwise, remove it from queue.
     if (HasError(error)) {
         STORAGE_ERROR(
             "DestroyHandle request failed: "
             << "filesystem " << Config->GetFileSystemId()
             << " error: " << FormatError(error));
-        if (GetErrorKind(error) != EErrorKind::ErrorRetriable) {
-            ReportAsyncDestroyHandleFailed();
-            with_lock (HandleOpsQueueLock) {
-                HandleOpsQueue->PopFront();
-            }
+        if (GetErrorKind(error) == EErrorKind::ErrorRetriable) {
+            ScheduleProcessHandleOpsQueue();
+            return;
         }
-    } else {
-        with_lock (HandleOpsQueueLock) {
-            HandleOpsQueue->PopFront();
+        ReportAsyncDestroyHandleFailed();
+    }
+
+    with_lock (HandleOpsQueueLock) {
+        HandleOpsQueue->PopFront();
+    }
+    RetryDelayedRelease();
+    ScheduleProcessHandleOpsQueue();
+}
+
+void TFileSystem::CompleteAsyncCreateHandle(
+    TCallContext& callContext,
+    const NProto::TConfirmCreateHandleResponse& response)
+{
+    const auto& error = response.GetError();
+    RequestStats->RequestCompleted(callContext, error);
+
+    if (HasError(error)) {
+        STORAGE_ERROR(
+            "ConfirmCreateHandle request failed: "
+            << "filesystem " << Config->GetFileSystemId()
+            << " error: " << FormatError(error));
+        if (GetErrorKind(error) == EErrorKind::ErrorRetriable) {
+            ScheduleProcessHandleOpsQueue();
+            return;
         }
-        with_lock (DelayedReleaseQueueLock) {
-            if (!DelayedReleaseQueue.empty()) {
-                const auto& nextRequest = DelayedReleaseQueue.front();
-                if (ProcessAsyncRelease(
-                        nextRequest.CallContext,
-                        nextRequest.Req,
-                        nextRequest.Ino,
-                        nextRequest.Fh,
-                        nextRequest.WriteBackCacheError))
-                {
-                    DelayedReleaseQueue.pop();
-                }
+        ReportHandleOpsQueueProcessError(
+            TStringBuilder()
+            << "ConfirmCreateHandle failed permanently, filesystem: "
+            << Config->GetFileSystemId()
+            << " error: " << FormatError(error));
+    }
+
+    with_lock (HandleOpsQueueLock) {
+        HandleOpsQueue->PopFront();
+    }
+    RetryDelayedRelease();
+    ScheduleProcessHandleOpsQueue();
+}
+
+void TFileSystem::RetryDelayedRelease()
+{
+    with_lock (DelayedReleaseQueueLock) {
+        if (!DelayedReleaseQueue.empty()) {
+            const auto& request = DelayedReleaseQueue.front();
+            if (ProcessAsyncRelease(
+                    request.CallContext,
+                    request.Req,
+                    request.Ino,
+                    request.Fh,
+                    request.WriteBackCacheError))
+            {
+                DelayedReleaseQueue.pop();
             }
         }
     }
-    ScheduleProcessHandleOpsQueue();
 }
 
 void TFileSystem::ProcessHandleOpsQueue()
 {
     TGuard g{HandleOpsQueueLock};
     if (HandleOpsQueue->Empty()) {
+        // A release can be appended to DelayedReleaseQueue after a queue
+        // completion has already checked it. Retry here as well to avoid
+        // leaving that release stranded until another entry completes.
+        g.Release();
+        RetryDelayedRelease();
         ScheduleProcessHandleOpsQueue();
         return;
     }
@@ -455,8 +492,35 @@ void TFileSystem::ProcessHandleOpsQueue()
                         self->CompleteAsyncDestroyHandle(*callContext, response);
                     }
                 });
+    } else if (entry.HasQueuedCreateHandleRequest()) {
+        const auto& requestInfo = entry.GetQueuedCreateHandleRequest();
+        auto request = CreateConfirmRequest(
+            requestInfo.GetRequest(),
+            requestInfo.GetNodeId(),
+            requestInfo.GetHandle(),
+            requestInfo.GetRequestId());
+
+        STORAGE_DEBUG(
+            "Process create handle confirmation request: "
+            << "filesystem " << Config->GetFileSystemId() << " #"
+            << requestInfo.GetNodeId() << " @" << requestInfo.GetHandle());
+
+        auto callContext = MakeIntrusive<TCallContext>(
+            Config->GetFileSystemId(),
+            CreateRequestId());
+        callContext->RequestType = EFileStoreRequest::ConfirmCreateHandle;
+        RequestStats->RequestStarted(Log, *callContext);
+
+        Session->ConfirmCreateHandle(callContext, std::move(request))
+            .Subscribe(
+                [ptr = weak_from_this(), callContext](const auto& future)
+                {
+                    const auto& response = future.GetValue();
+                    if (auto self = ptr.lock()) {
+                        self->CompleteAsyncCreateHandle(*callContext, response);
+                    }
+                });
     } else {
-        // TODO(#1541): process create handle
         ReportHandleOpsQueueProcessError(
             TStringBuilder() << "Unexpected TQueueEntry in queue, filesystem: "
                              << Config->GetFileSystemId());
