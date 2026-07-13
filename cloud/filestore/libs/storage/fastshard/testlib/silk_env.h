@@ -1,6 +1,10 @@
 #pragma once
 
-#include <gtest/gtest.h>
+namespace testing {
+
+class Environment;
+
+}   // namespace testing
 
 namespace NCloud::NFileStore::NStorage::NFastShard {
 
@@ -17,6 +21,7 @@ namespace NCloud::NFileStore::NStorage::NFastShard {
  *         ::testing::AddGlobalTestEnvironment(MakeSilkTestEnv());
  *
  * @return - Owning pointer, hand to ::testing::AddGlobalTestEnvironment.
+ *           In stub builds this returns nullptr, which gtest ignores.
  */
 ::testing::Environment* MakeSilkTestEnv();
 
