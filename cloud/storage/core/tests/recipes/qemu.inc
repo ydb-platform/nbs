@@ -1,12 +1,12 @@
 IF (NOT QEMU_BIN)
     DEPENDS(cloud/storage/core/tools/testing/qemu/bin)
-    INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tools/testing/qemu/bin/qemu-params.inc)
 ENDIF()
 
 IF (NOT QEMU_FIRMWARE)
     DEPENDS(cloud/storage/core/tools/testing/qemu/bin)
-    INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tools/testing/qemu/bin/qemu-params.inc)
 ENDIF()
+
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tools/testing/qemu/bin/qemu-params.inc)
 
 IF (NOT QEMU_ROOTFS)
     SET(QEMU_ROOTFS cloud/storage/core/tools/testing/qemu/image-noble/rootfs.img)
