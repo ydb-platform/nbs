@@ -222,7 +222,7 @@ private:
 
 TBSProxyInterceptorConfig::TBSProxyInterceptorConfig(const TStorageConfig& config)
     : RandomFailuresEnabled(config.GetFakeBSProxyFailuresEnabled())
-    , FailureProbability(config.GetFakeBSProxyFailuresProbabilityPercentage())
+    , FailureProbability(1)
     , RandomFailureSeed(RandomNumber<ui64>())
 {
 }
