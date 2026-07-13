@@ -7,7 +7,6 @@ on:
     paths:
       - ".github/**"
       - "!.github/vscode-yatool-extension/**"
-      - "!.github/workflows/vscode-yatool-extension.yaml"
     types:
       - "opened"
       - "synchronize"

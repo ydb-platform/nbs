@@ -5,10 +5,10 @@ const { MACRO_DOCS } = require("./macroMetadata");
 const { parseMakelist } = require("./makelistParser");
 const {
   collectPathRefs,
+  findDirectYaMake,
   findExistingDirectoryUri,
   findExistingFileUri,
   findModuleReferenceTarget,
-  findOwnerYaMake,
   findPathRefAtPosition,
   isDirectory,
   isModuleDirectoryKind,
@@ -159,7 +159,8 @@ function looksLikeYaMakeFragment(document) {
   const parsed = parseMakelist(text);
 
   for (const call of parsed.calls) {
-    if (MACRO_DOCS[call.name] && isAtLineStartIgnoringWhitespace(text, call.nameStart)) {
+    const rawName = text.slice(call.nameStart, call.nameEnd);
+    if (rawName === call.name && MACRO_DOCS[call.name] && isAtLineStartIgnoringWhitespace(text, call.nameStart)) {
       return true;
     }
   }
@@ -179,6 +180,7 @@ function isAtLineStartIgnoringWhitespace(text, offset) {
 }
 
 async function validateDocument(document) {
+  const documentVersion = document.version;
   const parsed = parseMakelist(document.getText());
   const refs = collectPathRefs(document, parsed);
   const foundDiagnostics = [];
@@ -251,8 +253,7 @@ async function validateDocument(document) {
           new vscode.Diagnostic(ref.range, `${ref.macro} path resolves to a file, expected a directory.`, vscode.DiagnosticSeverity.Error),
         );
       } else if (isModuleDirectoryKind(ref.kind)) {
-        const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
-        const owner = await findOwnerYaMake(ref.target, workspaceFolder && workspaceFolder.uri);
+        const owner = await findDirectYaMake(ref.target);
         if (!owner) {
           foundDiagnostics.push(
             new vscode.Diagnostic(ref.range, `${ref.macro} path does not contain ya.make: ${ref.displayTarget}`, vscode.DiagnosticSeverity.Warning),
@@ -266,7 +267,9 @@ async function validateDocument(document) {
     }
   }
 
-  diagnostics.set(document.uri, foundDiagnostics);
+  if (document.version === documentVersion) {
+    diagnostics.set(document.uri, foundDiagnostics);
+  }
 }
 
 function findMacroAtPosition(document, position) {
@@ -291,6 +294,9 @@ function formatMacroHover(macroName) {
 }
 
 module.exports = {
+  __testing: {
+    looksLikeYaMakeFragment,
+  },
   activate,
   deactivate,
 };

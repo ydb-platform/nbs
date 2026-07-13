@@ -557,7 +557,7 @@ async function resolveLinkTarget(ref, workspaceUri) {
     return owner || ref.linkTarget || ref.target;
   }
 
-  const owner = await findOwnerYaMake(ref.target, workspaceUri);
+  const owner = await findDirectYaMake(ref.target);
   return owner || ref.linkTarget || ref.target;
 }
 
@@ -577,7 +577,7 @@ async function resolveRefLocation(ref, workspaceUri) {
   }
 
   if (isModuleDirectoryKind(ref.kind)) {
-    const owner = await findOwnerYaMake(ref.target, workspaceUri);
+    const owner = await findDirectYaMake(ref.target);
     return owner ? new vscode.Location(owner, new vscode.Position(0, 0)) : undefined;
   }
 
@@ -669,6 +669,16 @@ async function findExistingDirectoryUri(uris) {
   return undefined;
 }
 
+async function findDirectYaMake(uri) {
+  const candidate = vscode.Uri.joinPath(uri, "ya.make");
+  try {
+    await vscode.workspace.fs.stat(candidate);
+    return candidate;
+  } catch (error) {
+    return undefined;
+  }
+}
+
 function uniqueUris(uris) {
   const seen = new Set();
   const result = [];
@@ -738,6 +748,7 @@ module.exports = {
   collectPathRefs,
   findExistingDirectoryUri,
   findExistingFileUri,
+  findDirectYaMake,
   findModuleReferenceTarget,
   findOwnerYaMake,
   findPathRefAtPosition,

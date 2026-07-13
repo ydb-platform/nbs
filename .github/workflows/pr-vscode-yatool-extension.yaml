@@ -1,0 +1,138 @@
+name: Check VS Code yatool extension
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/vscode-yatool-extension/**"
+      - ".github/workflows/vscode-yatool-extension.yaml"
+      - ".github/workflows/pr-vscode-yatool-extension.yaml"
+    types:
+      - "opened"
+      - "synchronize"
+      - "reopened"
+      - "labeled"
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  check-running-allowed:
+    runs-on: [self-hosted, "self-hosted", "runner_light"]
+    outputs:
+      result: ${{ steps.allow-local.outputs.result || steps.check-ownership-membership.outputs.result }}
+    steps:
+      - name: Allow local act run
+        if: ${{ env.ACT == 'true' }}
+        id: allow-local
+        run: echo "result=true" >> "$GITHUB_OUTPUT"
+
+      - name: checkout workflow scripts
+        if: ${{ env.ACT != 'true' }}
+        uses: actions/checkout@v7
+        with:
+          submodules: false
+          sparse-checkout: ".github"
+          clean: true
+          ref: ${{ github.event.pull_request.base.sha }}
+
+      - name: disable sparse checkout (workaround for actions/checkout/issues/2249)
+        if: ${{ env.ACT != 'true' }}
+        run: git config core.sparseCheckout false
+        continue-on-error: true
+
+      - name: Check if running extension checks is allowed
+        if: ${{ env.ACT != 'true' }}
+        id: check-ownership-membership
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          script: |
+            const checkOwnershipMembership = require('./.github/scripts/check-ownership-membership.js');
+            return await checkOwnershipMembership({ github, context, core });
+
+      - name: comment-if-waiting-on-ok
+        if: >-
+          ${{
+            env.ACT != 'true' &&
+            steps.check-ownership-membership.outputs.result == 'false' &&
+            github.event.action == 'opened'
+          }}
+        uses: actions/github-script@v9
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: 'Hi! Thank you for contributing!\nThe VS Code extension checks will run after a maintainer adds an `ok-to-test` label to this PR manually. Thank you for your patience!'
+            });
+
+      - name: cleanup-labels
+        if: ${{ env.ACT != 'true' }}
+        uses: actions/github-script@v9
+        with:
+          script: |
+            let labelsToRemove = ['ok-to-test', 'recheck'];
+            const prNumber = context.payload.pull_request.number;
+            const prLabels = new Set(context.payload.pull_request.labels.map(l => l.name));
+            for await (const label of labelsToRemove.filter(l => prLabels.has(l))) {
+              core.info(`remove label=${label} for pr=${prNumber}`);
+              try {
+                await github.rest.issues.removeLabel({
+                  ...context.repo,
+                  issue_number: prNumber,
+                  name: label
+                });
+              } catch(error) {
+                if (error.status && error.status != 404) {
+                  throw error;
+                }
+              }
+            }
+
+  check-trigger-label:
+    needs:
+      - check-running-allowed
+    uses: ./.github/workflows/check-test-launch-label.yaml
+
+  check:
+    needs:
+      - check-running-allowed
+      - check-trigger-label
+    if: needs.check-running-allowed.outputs.result == 'true' && needs.check-trigger-label.outputs.allowed == 'true'
+    runs-on: [self-hosted, "self-hosted", "runner_light"]
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v7
+        with:
+          submodules: false
+          sparse-checkout: |
+            .github/vscode-yatool-extension
+          clean: true
+
+      - name: disable sparse checkout (workaround for actions/checkout/issues/2249)
+        if: ${{ always() }}
+        run: git config core.sparseCheckout false
+        continue-on-error: true
+
+      - name: setup node
+        uses: actions/setup-node@v6.3.0
+        with:
+          node-version: "22"
+
+      - name: check extension syntax
+        working-directory: .github/vscode-yatool-extension
+        run: npm run check
+
+      - name: run extension tests
+        working-directory: .github/vscode-yatool-extension
+        run: npm test

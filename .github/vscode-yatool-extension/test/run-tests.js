@@ -52,14 +52,32 @@ class Uri {
 }
 
 const workspaceRoot = Uri.file("/repo");
+const existingDirectories = new Set([
+  "/repo/contrib/python/PySocks",
+  "/repo/contrib/python/PySocks/py3",
+]);
+const existingFiles = new Set([
+  "/repo/contrib/python/PySocks/ya.make",
+]);
 const vscodeMock = {
-  FileType: { Directory: 2 },
+  FileType: { File: 1, Directory: 2 },
   Position,
   Range,
   Uri,
   workspace: {
     getWorkspaceFolder() {
       return { uri: workspaceRoot };
+    },
+    fs: {
+      async stat(uri) {
+        if (existingDirectories.has(uri.path)) {
+          return { type: vscodeMock.FileType.Directory };
+        }
+        if (existingFiles.has(uri.path)) {
+          return { type: vscodeMock.FileType.File };
+        }
+        throw new Error(`ENOENT: ${uri.path}`);
+      },
     },
   },
 };
@@ -72,7 +90,8 @@ Module._load = function load(request, parent, isMain) {
   return originalLoad.call(this, request, parent, isMain);
 };
 
-const { collectPathRefs } = require("../pathResolver");
+const { collectPathRefs, resolveRefLocation } = require("../pathResolver");
+const { __testing: extensionTesting } = require("../extension");
 
 function makeDocument(relativePath, text) {
   const uri = Uri.file(path.posix.join(workspaceRoot.path, relativePath));
@@ -190,17 +209,35 @@ function testGeneratedEnumSerializationIsHoverOnly() {
   assert.deepStrictEqual(refs, []);
 }
 
-for (const test of [
-  testPeerDirAddinclModifier,
-  testResourceDontParseOption,
-  testPySrcsCythonDirective,
-  testGeneratedOutputsAreMarked,
-  testGeneratedOutputsMatchResolvedPath,
-  testGoTestSourcesSkipValidation,
-  testConditionalRefsAreMarked,
-  testGeneratedEnumSerializationIsHoverOnly,
-]) {
-  test();
+function testIncAutodetectRequiresUppercaseMacroSpelling() {
+  const cInc = makeDocument("contrib/python/numpy/py3/numpy/core/src/umath/funcs.inc", "    if (!one) {\n        return;\n    }\n");
+  const yaInc = makeDocument("cloud/filestore/tests/recipes/service-kikimr.inc", "DEPENDS(cloud/filestore/apps/server)\n");
+  assert.strictEqual(extensionTesting.looksLikeYaMakeFragment(cInc), false);
+  assert.strictEqual(extensionTesting.looksLikeYaMakeFragment(yaInc), true);
 }
 
-console.log("All yatool extension tests passed.");
+async function testModuleDirectoryDoesNotUseAncestorYaMake() {
+  const refs = refsFor("RECURSE(py3)\n", "contrib/python/PySocks/ya.make");
+  assert.strictEqual(refs.length, 1);
+  const location = await resolveRefLocation(refs[0], workspaceRoot);
+  assert.strictEqual(location, undefined);
+}
+
+(async () => {
+  for (const test of [
+    testPeerDirAddinclModifier,
+    testResourceDontParseOption,
+    testPySrcsCythonDirective,
+    testGeneratedOutputsAreMarked,
+    testGeneratedOutputsMatchResolvedPath,
+    testGoTestSourcesSkipValidation,
+    testConditionalRefsAreMarked,
+    testGeneratedEnumSerializationIsHoverOnly,
+    testIncAutodetectRequiresUppercaseMacroSpelling,
+    testModuleDirectoryDoesNotUseAncestorYaMake,
+  ]) {
+    await test();
+  }
+
+  console.log("All yatool extension tests passed.");
+})();
