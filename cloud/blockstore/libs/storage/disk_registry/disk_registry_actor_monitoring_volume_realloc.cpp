@@ -172,8 +172,11 @@ void TDiskRegistryActor::HandleHttpInfo_VolumeRealloc(
         return;
     }
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "Initiate volume reallocation from monitoring page: volume %s",
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Initiate volume reallocation from monitoring page: volume %s",
+        LogTitle.GetWithTime().c_str(),
         diskId.Quote().data());
 
     auto actor = NCloud::Register<THttpVolumeReallocActor>(
