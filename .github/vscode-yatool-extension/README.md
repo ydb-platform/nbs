@@ -18,6 +18,7 @@ Small VS Code extension for navigating common path-bearing `ya.make` macros.
 - Diagnostics for missing resolved paths.
 - Diagnostics when `INCLUDE(...)` resolves to a directory.
 - Diagnostics when module-directory macros do not resolve to a directory with `ya.make`.
+- Missing-file diagnostics are skipped for generated outputs and Go test source macros that are often stripped from vendor checkouts.
 - Basic syntax diagnostics for unclosed macro calls.
 - Basic syntax highlighting for `ya.make`, `*.make.inc`, and `*.ya.make.inc` files. Bare `.inc` files are not claimed globally, but opened `.inc` files that look like ymake fragments are switched to `yamake` automatically.
 

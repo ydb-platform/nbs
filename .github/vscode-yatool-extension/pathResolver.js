@@ -17,6 +17,7 @@ const { parseMakelist, positionAtOffset, stripQuotes } = require("./makelistPars
 const MODULE_REFERENCE_MODIFIERS = new Set(["ADDINCL", "GLOBAL"]);
 const RESOURCE_ARG_KEYWORDS = new Set(["DONT_PARSE", "FORCE_TEXT"]);
 const GENERATED_OUTPUT_KEYWORDS = new Set(["OUT", "OUT_NOAUTO"]);
+const GO_TEST_SOURCE_MACROS = new Set(["GO_TEST_SRCS", "GO_XTEST_SRCS"]);
 const RUN_MACRO_ARG_KEYWORDS = new Set([
   "CWD",
   "ENV",
@@ -43,7 +44,7 @@ function collectPathRefs(document, parsed = parseMakelist(document.getText())) {
   const calls = parsed.calls;
   const refs = [];
   const sourceRoots = collectSourceRoots(document, workspaceFolder.uri, parsed);
-  const generatedOutputs = collectGeneratedOutputs(parsed);
+  const generatedOutputs = collectGeneratedOutputs(document, workspaceFolder.uri, parsed);
   let conditionalDepth = 0;
 
   for (const call of calls) {
@@ -92,8 +93,9 @@ function collectPathRefs(document, parsed = parseMakelist(document.getText())) {
         candidateTargets: resolved.candidateTargets,
         linkTarget: resolved.linkTarget,
         displayTarget: resolved.displayTarget || arg.value,
-        generatedOutput: generatedOutputs.has(stripQuotes(arg.value)),
+        generatedOutput: isGeneratedOutput(arg.value, resolved, generatedOutputs),
         inConditional,
+        skipValidation: GO_TEST_SOURCE_MACROS.has(call.name),
         unresolvedReason: resolved.unresolvedReason,
       });
     }
@@ -298,8 +300,12 @@ function filterResourceFileArguments(args) {
   return result;
 }
 
-function collectGeneratedOutputs(parsed) {
-  const outputs = new Set();
+function collectGeneratedOutputs(document, workspaceUri, parsed) {
+  const outputs = {
+    basenames: new Set(),
+    paths: new Set(),
+    values: new Set(),
+  };
 
   for (const call of parsed.calls) {
     let collecting = false;
@@ -317,11 +323,48 @@ function collectGeneratedOutputs(parsed) {
       if (!collecting || !value || value.startsWith("-") || value.includes("=") || value.includes("$")) {
         continue;
       }
-      outputs.add(value);
+      rememberGeneratedOutput(outputs, document, workspaceUri, value);
     }
   }
 
   return outputs;
+}
+
+function rememberGeneratedOutput(outputs, document, workspaceUri, value) {
+  outputs.values.add(value);
+  outputs.basenames.add(path.posix.basename(value));
+
+  const uri = resolveGeneratedOutputUri(document, workspaceUri, value);
+  if (uri) {
+    outputs.paths.add(uri.path);
+  }
+}
+
+function resolveGeneratedOutputUri(document, workspaceUri, value) {
+  if (value.startsWith("${ARCADIA_ROOT}/")) {
+    return joinUri(workspaceUri, normalizeRelativePath(value.slice("${ARCADIA_ROOT}/".length)));
+  }
+  if (value.startsWith("arcadia/")) {
+    return joinUri(workspaceUri, normalizeRelativePath(value.slice("arcadia/".length)));
+  }
+  if (value.startsWith("${CURDIR}/")) {
+    const documentDir = document.uri.with({ path: path.posix.dirname(document.uri.path) });
+    return joinUri(documentDir, normalizeRelativePath(value.slice("${CURDIR}/".length)));
+  }
+  if (path.posix.isAbsolute(value)) {
+    return vscode.Uri.file(value);
+  }
+  const documentDir = document.uri.with({ path: path.posix.dirname(document.uri.path) });
+  return joinUri(documentDir, normalizeRelativePath(value));
+}
+
+function isGeneratedOutput(rawValue, resolved, generatedOutputs) {
+  const value = stripQuotes(rawValue);
+  return (
+    generatedOutputs.values.has(value) ||
+    generatedOutputs.basenames.has(path.posix.basename(value)) ||
+    Boolean(resolved.uri && generatedOutputs.paths.has(resolved.uri.path))
+  );
 }
 
 function filterArchiveFileArguments(args) {

@@ -149,6 +149,32 @@ SRCS(
   assert.strictEqual(checkedIn.generatedOutput, false);
 }
 
+function testGeneratedOutputsMatchResolvedPath() {
+  const refs = refsFor(`
+RUN_PYTHON3(
+    tool.py
+    OUT_NOAUTO llvm-symbolizer
+)
+
+RESOURCE(
+    yt/yt/library/ytprof/bundle/llvm-symbolizer
+    llvm-symbolizer
+)
+`, "yt/yt/library/ytprof/bundle/ya.make");
+  assert.strictEqual(refs.length, 2);
+  assert.strictEqual(refs[1].displayTarget, "yt/yt/library/ytprof/bundle/llvm-symbolizer");
+  assert.strictEqual(refs[1].generatedOutput, true);
+}
+
+function testGoTestSourcesSkipValidation() {
+  const refs = refsFor(`
+GO_TEST_SRCS(missing_internal_test.go)
+GO_XTEST_SRCS(missing_external_test.go)
+`);
+  assert.deepStrictEqual(displays(refs), ["missing_internal_test.go", "missing_external_test.go"]);
+  assert.deepStrictEqual(refs.map((ref) => ref.skipValidation), [true, true]);
+}
+
 function testConditionalRefsAreMarked() {
   const refs = refsFor(`
 IF (OS_EMSCRIPTEN)
@@ -169,6 +195,8 @@ for (const test of [
   testResourceDontParseOption,
   testPySrcsCythonDirective,
   testGeneratedOutputsAreMarked,
+  testGeneratedOutputsMatchResolvedPath,
+  testGoTestSourcesSkipValidation,
   testConditionalRefsAreMarked,
   testGeneratedEnumSerializationIsHoverOnly,
 ]) {
