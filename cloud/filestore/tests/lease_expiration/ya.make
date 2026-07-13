@@ -36,4 +36,6 @@ DEPENDS(
 
 DATA(arcadia/cloud/storage/core/tools/testing/qemu/keys)
 
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tools/testing/qemu/bin/qemu-params.inc)
+
 END()

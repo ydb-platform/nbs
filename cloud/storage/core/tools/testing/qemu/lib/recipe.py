@@ -213,7 +213,9 @@ def _parse_args(argv):
     parser.add_argument(
         "--qemu-firmware", help="Path to qemu firmware directory (Arcadia related)")
     parser.add_argument(
-        "--qemu-bios", help="Path to qemu bios file (Arcadia related)")
+        "--qemu-bios",
+        default=os.getenv("QEMU_BIOS"),
+        help="Path to qemu bios file (Arcadia related)")
     parser.add_argument(
         "--kernel", help="Path to kernel image (Arcadia related)")
     parser.add_argument(
@@ -243,11 +245,11 @@ def _parse_args(argv):
     parser.add_argument(
         "--chardev-reconnect",
         dest="chardev_reconnect",
-        default="$QEMU_CHARDEV_RECONNECT",
+        default=os.getenv("QEMU_CHARDEV_RECONNECT"),
         help="Reconnect timeout for virtiofs chardev socket")
     parser.add_argument(
         "--virtiofs-migration",
-        default="$QEMU_VIRTIOFS_MIGRATION",
+        default=os.getenv("QEMU_VIRTIOFS_MIGRATION"),
         help="virtiofs migration mode, for example 'external'")
 
     args = parser.parse_args(argv)
@@ -295,7 +297,7 @@ def _get_qemu_firmware(args):
 
 
 def _get_qemu_bios(args):
-    if not args.qemu_bios or args.qemu_bios == "$QEMU_BIOS":
+    if not args.qemu_bios:
         return get_qemu_bios()
 
     if os.path.isabs(args.qemu_bios) and os.path.exists(args.qemu_bios):
@@ -306,8 +308,12 @@ def _get_qemu_bios(args):
         qemu_bios = yatest.common.source_path(args.qemu_bios)
 
     if not os.path.exists(qemu_bios):
-        qemu_bindir = os.path.dirname(os.path.dirname(os.path.dirname(_get_qemu_kvm(args))))
-        qemu_bios = os.path.join(qemu_bindir, args.qemu_bios)
+        qemu_firmware = _get_qemu_firmware(args)
+        qemu_firmware_suffix = os.path.join("usr", "share", "qemu")
+        qemu_bios_path = args.qemu_bios
+        if qemu_bios_path.startswith(qemu_firmware_suffix + os.path.sep):
+            qemu_bios_path = os.path.relpath(qemu_bios_path, qemu_firmware_suffix)
+        qemu_bios = os.path.join(qemu_firmware, qemu_bios_path)
 
     if not os.path.exists(qemu_bios):
         raise QemuKvmRecipeException(
@@ -317,7 +323,7 @@ def _get_qemu_bios(args):
 
 
 def _get_rootfs(args):
-    if args.rootfs == "$QEMU_ROOTFS":
+    if not args.rootfs or args.rootfs == "$QEMU_ROOTFS":
         raise QemuKvmRecipeException(
             "Rootfs image is not set for the recipe, please, follow the docs to know how to fix it")
     rootfs = yatest.common.build_path(args.rootfs)
@@ -441,15 +447,13 @@ def _get_num_request_queues(args):
 
 
 def _get_chardev_reconnect(args):
-    if (not args.chardev_reconnect or
-            args.chardev_reconnect == "$QEMU_CHARDEV_RECONNECT"):
+    if not args.chardev_reconnect:
         return None
     return int(args.chardev_reconnect)
 
 
 def _get_virtiofs_migration(args):
-    if (not args.virtiofs_migration or
-            args.virtiofs_migration == "$QEMU_VIRTIOFS_MIGRATION"):
+    if not args.virtiofs_migration:
         return None
     return args.virtiofs_migration
 
