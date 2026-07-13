@@ -83,8 +83,10 @@ public:
 private:
     using TActorBase = TActor<TNodeBroker>;
 
-    static constexpr TDuration MIN_LEASE_DURATION = TDuration::Minutes(5);
-
+    // See issue #5356 or ask Mikhail Montsev (@svartmetal) for details.
+    // MIN_LEASE_DURATION reduced from 300 to 30 seconds for better testing
+    // (see cloud/filestore/tests/lease_expiration test)
+    static constexpr TDuration MIN_LEASE_DURATION = TDuration::Seconds(30);
 
     struct TNodeInfo : public TEvInterconnect::TNodeInfo {
         TNodeInfo() = delete;
@@ -463,8 +465,8 @@ private:
      * NodeBroker in-memory state is divided into two parts to take advantage of pipelining:
      *
      *  1) Dirty - state that is read and updated only during Execute() of LocalDB transactions.
-     *  2) Committed - state that is updated only in Complete() of LocalDB transactions. 
-     *     This state is safe to use when responding to requests, its data is persistently stored. 
+     *  2) Committed - state that is updated only in Complete() of LocalDB transactions.
+     *     This state is safe to use when responding to requests, its data is persistently stored.
      */
     TDirtyState Dirty;
     TState Committed;
