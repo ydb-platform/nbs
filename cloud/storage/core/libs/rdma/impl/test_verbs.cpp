@@ -163,6 +163,12 @@ struct TTestVerbs
         };
     }
 
+    TMemoryWindowPtr CreateMemoryWindow(ibv_pd* pd) override
+    {
+        Y_UNUSED(pd);
+        return NullPtr;
+    }
+
     struct TCompletionChannel
         : ibv_comp_channel
     {

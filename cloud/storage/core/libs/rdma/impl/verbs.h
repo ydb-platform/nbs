@@ -1,6 +1,7 @@
 #pragma once
 
 #include "public.h"
+#include "work_queue.h"
 
 #include <util/datetime/base.h>
 #include <util/generic/string.h>
@@ -26,6 +27,7 @@ RDMA_DECLARE_PTR(Context, ibv_context, ibv_close_device);
 RDMA_DECLARE_PTR(DeviceList, ibv_device*, ibv_free_device_list);
 RDMA_DECLARE_PTR(ProtectionDomain, ibv_pd, ibv_dealloc_pd);
 RDMA_DECLARE_PTR(MemoryRegion, ibv_mr, ibv_dereg_mr);
+RDMA_DECLARE_PTR(MemoryWindow, ibv_mw, ibv_dealloc_mw);
 RDMA_DECLARE_PTR(CompletionChannel, ibv_comp_channel, ibv_destroy_comp_channel);
 RDMA_DECLARE_PTR(CompletionQueue, ibv_cq, ibv_destroy_cq);
 RDMA_DECLARE_PTR(AddressInfo, rdma_addrinfo, rdma_freeaddrinfo);
@@ -70,6 +72,7 @@ struct IVerbs
         void* addr,
         size_t length,
         int flags) = 0;
+    virtual TMemoryWindowPtr CreateMemoryWindow(ibv_pd* pd) = 0;
 
     virtual TCompletionChannelPtr CreateCompletionChannel(
         ibv_context* context) = 0;
@@ -149,3 +152,39 @@ TString PrintConnectionParams(const rdma_conn_param* param);
 TString PrintCompletion(ibv_wc* wc);
 
 }   // namespace NCloud::NStorage::NRdma::NVerbs
+
+inline IOutputStream& operator<<(IOutputStream& out, ibv_wr_opcode opcode)
+{
+    static const char* string[] = {
+        "RDMA_WRITE",
+        "RDMA_WRITE_WITH_IMM",
+        "SEND",
+        "SEND_WITH_IMM",
+        "RDMA_READ",
+        "ATOMIC_CMP_AND_SWP",
+        "ATOMIC_FETCH_AND_ADD",
+        "LOCAL_INV",
+        "BIND_MW",
+        "SEND_WITH_INV",
+        "TSO",
+        "DRIVER1",
+        "FLUSH",
+        "ATOMIC_WRITE",
+    };
+
+    if ((size_t)opcode < Y_ARRAY_SIZE(string)) {
+        return out << string[(size_t)opcode];
+    }
+
+    return out << "UNKNOWN";
+}
+
+inline IOutputStream& operator<<(IOutputStream& out, ibv_wc_opcode opcode)
+{
+    return out << NCloud::NStorage::NRdma::NVerbs::GetOpcodeName(opcode);
+}
+
+inline IOutputStream& operator<<(IOutputStream& out, const ibv_send_wr& send)
+{
+    return out << send.opcode << " " << NCloud::NStorage::NRdma::TWorkRequestId(send.wr_id);
+}

@@ -80,6 +80,15 @@ struct TVerbs
         return WrapPtr(mr);
     }
 
+    TMemoryWindowPtr CreateMemoryWindow(ibv_pd* pd) override
+    {
+        auto* mw = ibv_alloc_mw(pd, IBV_MW_TYPE_2);
+        if (!mw) {
+            RDMA_THROW_ERROR("ibv_alloc_mw");
+        }
+        return WrapPtr(mw);
+    }
+
     TCompletionChannelPtr CreateCompletionChannel(ibv_context* context) override
     {
         auto* channel = ibv_create_comp_channel(context);
@@ -404,6 +413,11 @@ IVerbsPtr CreateVerbs()
     return std::make_shared<TVerbs>();
 }
 
+int DestroyId(rdma_cm_id* id)
+{
+    return rdma_destroy_id(id);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 const char* GetOpcodeName(ibv_wc_opcode opcode)
@@ -540,11 +554,6 @@ TString PrintCompletion(ibv_wc* wc)
         << " status=" << GetStatusString(wc->status)
         << " vendor_err=" << wc->vendor_err
         << "]";
-}
-
-int DestroyId(rdma_cm_id* id)
-{
-    return rdma_destroy_id(id);
 }
 
 }   // namespace NCloud::NStorage::NRdma::NVerbs

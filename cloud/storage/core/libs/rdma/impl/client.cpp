@@ -75,6 +75,32 @@ using TCompletionPollerPtr = std::unique_ptr<TCompletionPoller>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum class ERequestState
+{
+    BindInBuffer,
+    BindOutBuffer,
+    SendRequest,
+    RecvResponse,
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+inline IOutputStream& operator<<(IOutputStream& out, ERequestState state)
+{
+    static const char* string[] = {
+        "BindInBuffer",
+        "BindOutBuffer",
+        "SendRequest",
+        "RecvResponse",
+    };
+    if (static_cast<size_t>(state) < Y_ARRAY_SIZE(string)) {
+        return out << string[static_cast<size_t>(state)];
+    }
+    return out << "Undefined";
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TRequest
     : TClientRequest
     , TListNode<TRequest>
@@ -89,6 +115,11 @@ struct TRequest
 
     TPooledBuffer InBuffer{};
     TPooledBuffer OutBuffer{};
+
+    NVerbs::TMemoryWindowPtr InMemoryWindow = NVerbs::NullPtr;
+    NVerbs::TMemoryWindowPtr OutMemoryWindow = NVerbs::NullPtr;
+
+    ERequestState State;
 
     TRequest(
             std::weak_ptr<TClientEndpoint> endpoint,
@@ -472,14 +503,11 @@ private:
     TWorkQueue<TSendWr> SendQueue;
     TWorkQueue<TRecvWr> RecvQueue;
 
-    union {
-        const ui64 Id = RandomNumber(Max<ui64>());
-        struct {
-            const ui32 RecvMagic;
-            const ui32 SendMagic;
-        };
-    };
+    const ui64 Id = RandomNumber(Max<ui64>());
     ui16 Generation = Max<ui16>();
+
+    const ui32 RecvMagic = RandomNumber(Max<ui32>());
+    const ui32 SendMagic = RecvMagic ^ (1u << 31);
 
     TLockFreeList<TRequest> InputRequests;
     TLockFreeList<TClientRequestId> CancelRequests;
@@ -559,7 +587,11 @@ private:
     // called from CQ thread
     void HandleQueuedRequests() noexcept;
     void SendRequest(TRequestPtr req, TSendWr* send) noexcept;
+    void SendRequest(TRequest* req, TSendWr* send) noexcept;
     void SendRequestCompleted(TSendWr* send) noexcept;
+    void BindInBuffer(TRequest* req, TSendWr* send) noexcept;
+    void BindOutBuffer(TRequest* req, TSendWr* send) noexcept;
+    void BindCompleted(TSendWr* send) noexcept;
     void RecvResponse(TRecvWr* recv) noexcept;
     void RecvResponseCompleted(TRecvWr* recv) noexcept;
     void AbortRequest(TRequestPtr req, ui32 err, const TString& msg) noexcept;
@@ -828,9 +860,12 @@ TResultOrError<TClientRequestPtr> TClientEndpoint::AllocateRequest(
         with_lock (AllocationLock) {
             if (requestBytes) {
                 req->InBuffer = SendBuffers.AcquireBuffer(requestBytes);
+                req->InMemoryWindow = Verbs->CreateMemoryWindow(Connection->pd);
             }
+
             if (responseBytes) {
                 req->OutBuffer = RecvBuffers.AcquireBuffer(responseBytes);
+                req->OutMemoryWindow = Verbs->CreateMemoryWindow(Connection->pd);
             }
         }
     } catch (...) {
@@ -1088,7 +1123,7 @@ int TClientEndpoint::ValidateCompletion(ibv_wc* wc) noexcept
             SendQueue.Push(send);
             return -1;
         }
-        if (wc->opcode != IBV_WC_SEND) {
+        if (wc->opcode != IBV_WC_SEND && wc->opcode != IBV_WC_BIND_MW) {
             RDMA_ERROR(
                 send << " unexpected opcode "
                      << NVerbs::GetOpcodeName(wc->opcode));
@@ -1144,6 +1179,13 @@ void TClientEndpoint::HandleCompletionEvent(ibv_wc* wc) noexcept
     }
 
     switch (wc->opcode) {
+        case IBV_WC_BIND_MW: {
+            TSendWr* send = &SendWrs[id.Index];
+            RDMA_TRACE(wc->opcode << " " << id << " completed")
+            BindCompleted(send);
+            break;
+        }
+
         case IBV_WC_SEND: {
             TSendWr* send = &SendWrs[id.Index];
             RDMA_TRACE(send << " completed");
@@ -1164,29 +1206,165 @@ void TClientEndpoint::HandleCompletionEvent(ibv_wc* wc) noexcept
     }
 }
 
-void TClientEndpoint::SendRequest(TRequestPtr req, TSendWr* send) noexcept
+void TClientEndpoint::SendRequest(TRequestPtr request, TSendWr* send) noexcept
 {
-    req->ReqId = ActiveRequests.CreateId();
+    // hand request over to simplify error handling
+    auto* req = request.get();
+    request->ReqId = ActiveRequests.CreateId();
+    ActiveRequests.Push(std::move(request));
 
-    auto* requestMsg = send->Message();
-    Zero(*requestMsg);
+    send->context = reinterpret_cast<void*>(static_cast<uintptr_t>(req->ReqId));
 
-    InitMessageHeader(requestMsg, NegotiatedProtocolVersion);
+    auto* msg = send->Message();
+    Zero(*msg);
 
-    requestMsg->ReqId = req->ReqId;
-    requestMsg->In = req->InBuffer;
-    requestMsg->Out = req->OutBuffer;
+    InitMessageHeader(msg, NegotiatedProtocolVersion);
+
+    msg->ReqId = req->ReqId;
+    msg->In = req->InBuffer;
+    msg->Out = req->OutBuffer;
+
+    if (Config.UseMemoryWindows) {
+        BindInBuffer(req, send);
+    } else {
+        SendRequest(req, send);
+    }
+}
+
+void TClientEndpoint::BindInBuffer(TRequest* req, TSendWr* send) noexcept
+{
+    req->State = ERequestState::BindInBuffer;
+
+    ibv_send_wr wr = {
+        .wr_id = send->wr.wr_id,
+        .opcode = IBV_WR_BIND_MW,
+        .bind_mw = {
+            .mw = req->InMemoryWindow.get(),
+            .rkey = req->InMemoryWindow->rkey,
+            .bind_info = {
+                .mr = req->InBuffer.GetMemoryRegion(),
+                .addr = req->InBuffer.Address,
+                .length = req->InBuffer.Length,
+                .mw_access_flags = IBV_ACCESS_REMOTE_READ,
+            },
+        },
+    };
+
+    try {
+        Verbs->PostSend(Connection->qp, &wr);
+        RDMA_TRACE("bind request " << reqId << " input buffer");
+        RDMA_TRACE(wr << "[request=" << req->ReqId << "]" << " posted");
+    }
+    catch (const TServiceError& e) {
+        RDMA_ERROR(wr << " " << e.what());
+        SendQueue.Push(send);
+        Counters->Error();
+        Disconnect();
+        return;
+    }
+
+    LWTRACK(
+        BindInBufferStarted,
+        req->CallContext->LWOrbit,
+        req->CallContext->RequestId);
+}
+
+void TClientEndpoint::BindOutBuffer(TRequest* req, TSendWr* send) noexcept
+{
+    req->State = ERequestState::BindOutBuffer;
+
+    ibv_send_wr wr = {
+        .wr_id = send->wr.wr_id,
+        .opcode = IBV_WR_BIND_MW,
+        .bind_mw = {
+            .mw = req->OutMemoryWindow.get(),
+            .rkey = req->OutMemoryWindow->rkey,
+            .bind_info = {
+                .mr = req->OutBuffer.GetMemoryRegion(),
+                .addr = req->OutBuffer.Address,
+                .length = req->OutBuffer.Length,
+                .mw_access_flags = IBV_ACCESS_REMOTE_WRITE,
+            },
+        },
+    };
+
+    try {
+        Verbs->PostSend(Connection->qp, &wr);
+        RDMA_TRACE(wr << " posted");
+    }
+    catch (const TServiceError& e) {
+        RDMA_ERROR(wr << " " << e.what());
+        SendQueue.Push(send);
+        Counters->Error();
+        Disconnect();
+        return;
+    }
+
+    LWTRACK(
+        BindOutBufferStarted,
+        req->CallContext->LWOrbit,
+        req->CallContext->RequestId);
+}
+
+void TClientEndpoint::BindCompleted(TSendWr* send) noexcept
+{
+    const ui32 reqId =
+        SafeCast<ui32>(reinterpret_cast<uintptr_t>(send->context));
+
+    if (auto* req = ActiveRequests.Get(reqId)) {
+        switch (req->State) {
+            case ERequestState::BindInBuffer:
+                LWTRACK(
+                    BindInBufferCompleted,
+                    req->CallContext->LWOrbit,
+                    req->CallContext->RequestId);
+
+                RDMA_DEBUG(
+                    "change request #" << req->ReqId << " input buffer rkey: "
+                                       << req->InBuffer.RKey << " -> "
+                                       << req->InMemoryWindow->rkey);
+
+                send->Message()->In.RKey = req->InMemoryWindow->rkey;
+                BindOutBuffer(req, send);
+                break;
+
+            case ERequestState::BindOutBuffer:
+                LWTRACK(
+                    BindOutBufferCompleted,
+                    req->CallContext->LWOrbit,
+                    req->CallContext->RequestId);
+
+                RDMA_DEBUG(
+                    "change request #" << req->ReqId << " output buffer rkey: "
+                                       << req->OutBuffer.RKey << " -> "
+                                       << req->OutMemoryWindow->rkey);
+
+                send->Message()->Out.RKey = req->OutMemoryWindow->rkey;
+                SendRequest(req, send);
+                break;
+
+            default:
+                Counters->Error();
+                RDMA_ERROR(
+                    "bind " << send->wr << " completed in unexpected state "
+                            << req->State);
+        }
+    }
+    // request has been cancelled before bind completed
+}
+
+void TClientEndpoint::SendRequest(TRequest* req, TSendWr* send) noexcept
+{
+    req->State = ERequestState::SendRequest;
 
     try {
         Verbs->PostSend(Connection->qp, &send->wr);
         RDMA_TRACE(send << " posted");
-
-    } catch (const TServiceError& e) {
+    }
+    catch (const TServiceError& e) {
         RDMA_ERROR(send << " " << e.what());
         SendQueue.Push(send);
         Counters->Error();
-        Counters->RequestEnqueued();
-        QueuedRequests.Enqueue(std::move(req));
         Disconnect();
         return;
     }
@@ -1197,9 +1375,6 @@ void TClientEndpoint::SendRequest(TRequestPtr req, TSendWr* send) noexcept
         req->CallContext->RequestId);
 
     Counters->SendRequestStarted();
-
-    send->context = reinterpret_cast<void*>(static_cast<uintptr_t>(req->ReqId));
-    ActiveRequests.Push(std::move(req));
 }
 
 void TClientEndpoint::SendRequestCompleted(TSendWr* send) noexcept
@@ -1215,6 +1390,8 @@ void TClientEndpoint::SendRequestCompleted(TSendWr* send) noexcept
             SendRequestCompleted,
             req->CallContext->LWOrbit,
             req->CallContext->RequestId);
+
+        req->State = ERequestState::RecvResponse;
     }
     // request has already been completed
 }
