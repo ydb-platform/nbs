@@ -4,7 +4,7 @@ namespace NCloud::NFileStore::NStorage::NFastShard {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IStorageNodePtr CreateStorageNodeClient(TString host, ui16 port)
+IStorageNodePtr CreateNaiveFileStorageNode(TString host, ui16 port)
 {
     Y_UNUSED(host);
     Y_UNUSED(port);

@@ -4,7 +4,9 @@
 
 #include <silk/fibers/fiber.h>
 
+#include <util/generic/algorithm.h>
 #include <util/generic/string.h>
+#include <util/generic/utility.h>
 #include <util/generic/vector.h>
 #include <util/generic/yexception.h>
 #include <util/string/builder.h>
@@ -27,6 +29,145 @@ NCloud::NProto::TError MakeIoError(int err, TStringBuf op)
     return MakeError(
         MAKE_SYSTEM_ERROR(err),
         TStringBuilder() << "sn/impl " << op << ": " << ::strerror(err));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+constexpr bool MulOverflowsU64(ui64 a, ui64 b)
+{
+    return a != 0 && b > Max<ui64>() / a;
+}
+
+constexpr bool AddOverflowsU64(ui64 a, ui64 b)
+{
+    return a > Max<ui64>() - b;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+NCloud::NProto::TError ValidateReadRequest(
+    const NCloud::NProto::TReadPagesRequest& req)
+{
+    for (size_t i = 0; i < req.PageGroupRefsSize(); ++i) {
+        const auto& ref = req.GetPageGroupRefs(i);
+        const ui64 firstPageNo = ref.GetFirstPageNo();
+        const ui64 pageCount = ref.GetPageCount();
+        const ui64 pageSize = ref.GetPageSize();
+        if (MulOverflowsU64(pageCount, pageSize)) {
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder()
+                    << "sn/impl read: PageCount * PageSize overflows ui64"
+                       " at ref " << i
+                    << " (PageCount=" << pageCount
+                    << ", PageSize=" << pageSize << ")");
+        }
+        if (MulOverflowsU64(firstPageNo, pageSize)) {
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder()
+                    << "sn/impl read: FirstPageNo * PageSize overflows"
+                       " ui64 at ref " << i
+                    << " (FirstPageNo=" << firstPageNo
+                    << ", PageSize=" << pageSize << ")");
+        }
+    }
+    return {};
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+NCloud::NProto::TError ValidateWriteRequest(
+    const NCloud::NProto::TWriteLogRecordRequest& req)
+{
+    //
+    // Two invariants:
+    //   1. All content pages across the whole request share one size.
+    //      The impl derives per-group offsets from that single value, so
+    //      any mismatch would silently misplace bytes on disk.
+    //   2. Page-index intervals [FirstPageNo, FirstPageNo+ContentSize)
+    //      of distinct groups do not overlap. Overlap would mean two
+    //      concurrent writes race for the same disk range with unspecified
+    //      ordering.
+    // Also guards against FirstPageNo*pageSize overflow.
+    //
+
+    struct TInterval
+    {
+        ui64 Start = 0;
+        ui64 End = 0;
+        size_t GroupIndex = 0;
+    };
+
+    ui64 pageSize = 0;
+    TVector<TInterval> intervals;
+    intervals.reserve(req.PageGroupsSize());
+
+    for (size_t i = 0; i < req.PageGroupsSize(); ++i) {
+        const auto& pg = req.GetPageGroups(i);
+        const size_t pageCount = pg.ContentSize();
+        if (pageCount == 0) {
+            continue;
+        }
+        for (size_t k = 0; k < pageCount; ++k) {
+            const ui64 sz = pg.GetContent(k).size();
+            if (pageSize == 0) {
+                pageSize = sz;
+            } else if (sz != pageSize) {
+                return MakeError(
+                    E_ARGUMENT,
+                    TStringBuilder()
+                        << "sn/impl write: page size mismatch: expected "
+                        << pageSize << ", got " << sz
+                        << " at group " << i << " content " << k);
+            }
+        }
+        const ui64 firstPageNo = pg.GetFirstPageNo();
+        if (MulOverflowsU64(firstPageNo, pageSize)) {
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder()
+                    << "sn/impl write: FirstPageNo * pageSize overflows"
+                       " ui64 at group " << i
+                    << " (FirstPageNo=" << firstPageNo
+                    << ", pageSize=" << pageSize << ")");
+        }
+        if (AddOverflowsU64(firstPageNo, static_cast<ui64>(pageCount))) {
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder()
+                    << "sn/impl write: FirstPageNo + pageCount overflows"
+                       " ui64 at group " << i
+                    << " (FirstPageNo=" << firstPageNo
+                    << ", pageCount=" << pageCount << ")");
+        }
+        const ui64 endPageNo = firstPageNo + pageCount;
+        intervals.push_back({firstPageNo, endPageNo, i});
+    }
+
+    if (intervals.size() > 1) {
+        Sort(
+            intervals,
+            [](const TInterval& a, const TInterval& b) {
+                return a.Start < b.Start;
+            });
+        for (size_t i = 1; i < intervals.size(); ++i) {
+            if (intervals[i].Start < intervals[i - 1].End) {
+                return MakeError(
+                    E_ARGUMENT,
+                    TStringBuilder()
+                        << "sn/impl write: overlapping page intervals:"
+                           " group " << intervals[i - 1].GroupIndex
+                        << " [" << intervals[i - 1].Start << ", "
+                        << intervals[i - 1].End << ") vs group "
+                        << intervals[i].GroupIndex
+                        << " [" << intervals[i].Start << ", "
+                        << intervals[i].End << ")");
+            }
+        }
+    }
+
+    return {};
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -63,6 +204,11 @@ public:
     {
         NCloud::NProto::TReadPagesResponse resp;
 
+        if (auto err = ValidateReadRequest(request); HasError(err)) {
+            *resp.MutableError() = std::move(err);
+            return resp;
+        }
+
         //
         // One op per PageGroupRef. Each op reads PageCount*PageSize bytes
         // into its own contiguous buffer via a single io_uring read. Ops
@@ -73,10 +219,11 @@ public:
         struct TReadOp
         {
             ui64 FirstPageNo = 0;
-            ui32 PageCount = 0;
+            ui64 PageCount = 0;
             ui32 PageSize = 0;
             TString Buffer;
             iovec Iov{};
+            ui64 BytesRead = 0;
             FiberScheduler::IoFuture Future;
         };
 
@@ -95,8 +242,7 @@ public:
             op.FirstPageNo = ref.GetFirstPageNo();
             op.PageCount = ref.GetPageCount();
             op.PageSize = ref.GetPageSize();
-            op.Buffer.ReserveAndResize(
-                static_cast<size_t>(op.PageCount) * op.PageSize);
+            op.Buffer.ReserveAndResize(op.PageCount * op.PageSize);
             op.Iov.iov_base = op.Buffer.begin();
             op.Iov.iov_len = op.Buffer.size();
             const ui64 offset = op.FirstPageNo * op.PageSize;
@@ -105,7 +251,7 @@ public:
                 &op.Iov,
                 1 /* iov_len */,
                 offset,
-                nullptr /* bytesRead */,
+                &op.BytesRead,
                 &op.Future);
         }
 
@@ -133,10 +279,31 @@ public:
             return resp;
         }
 
+        //
+        // io_uring reports 0 for a nonnegative pread even if the kernel
+        // returned fewer bytes than requested (short read past EOF, torn
+        // read, etc). Silk exposes the actual count via bytesRead, so we
+        // must compare it against the requested length before treating
+        // the buffer as populated.
+        //
+
+        for (auto& op: ops) {
+            if (op.BytesRead != op.Iov.iov_len) {
+                *resp.MutableError() = MakeError(
+                    E_IO,
+                    TStringBuilder()
+                        << "sn/impl read: short read at offset "
+                        << op.FirstPageNo * op.PageSize
+                        << ": got " << op.BytesRead
+                        << " of " << op.Iov.iov_len << " bytes");
+                return resp;
+            }
+        }
+
         for (auto& op: ops) {
             auto* pg = resp.AddPageGroups();
             pg->SetFirstPageNo(op.FirstPageNo);
-            for (ui32 i = 0; i < op.PageCount; ++i) {
+            for (ui64 i = 0; i < op.PageCount; ++i) {
                 pg->AddContent(
                     op.Buffer.substr(
                         static_cast<size_t>(i) * op.PageSize,
@@ -151,6 +318,11 @@ public:
     {
         NCloud::NProto::TWriteLogRecordResponse resp;
 
+        if (auto err = ValidateWriteRequest(request); HasError(err)) {
+            *resp.MutableError() = std::move(err);
+            return resp;
+        }
+
         //
         // One gather write per PageGroup. The Content pages of a group
         // occupy contiguous file offsets starting at FirstPageNo*pageSize,
@@ -161,6 +333,8 @@ public:
         struct TWriteOp
         {
             TVector<iovec> Iov;
+            ui64 TotalLen = 0;
+            ui64 BytesWritten = 0;
             FiberScheduler::IoFuture Future;
         };
 
@@ -187,14 +361,15 @@ public:
                 auto& content = *pg.MutableContent(k);
                 op.Iov[k].iov_base = content.begin();
                 op.Iov[k].iov_len = content.size();
+                op.TotalLen += content.size();
             }
             const ui64 offset = pg.GetFirstPageNo() * pageSize;
             FiberScheduler::write(
                 fd,
                 op.Iov.data(),
-                static_cast<uint32_t>(op.Iov.size()),
+                op.Iov.size(),
                 offset,
-                nullptr /* bytesWritten */,
+                &op.BytesWritten,
                 &op.Future);
             ++submitted;
         }
@@ -227,7 +402,33 @@ public:
 
         if (firstErr != 0) {
             *resp.MutableError() = MakeIoError(firstErr, "write");
+            return resp;
         }
+
+        //
+        // Symmetric with ReadPages: writev may complete with a positive
+        // short count under quota / fsize-limit conditions and silk
+        // reports success. If BytesWritten falls below TotalLen only a
+        // prefix reached the file, so any later read of this group would
+        // see a mix of new and stale bytes -- refuse to acknowledge.
+        //
+
+        for (size_t i = 0; i < n; ++i) {
+            const auto& op = ops[i];
+            if (op.Iov.empty()) {
+                continue;
+            }
+            if (op.BytesWritten != op.TotalLen) {
+                *resp.MutableError() = MakeError(
+                    E_IO,
+                    TStringBuilder()
+                        << "sn/impl write: short write: "
+                        << op.BytesWritten << " of "
+                        << op.TotalLen << " bytes");
+                return resp;
+            }
+        }
+
         return resp;
     }
 
