@@ -957,6 +957,108 @@ def test_update_pr_comment_workload_check_retries_lost_concurrent_edit(
     assert gs.get_comment_revision(existing.body) == 2
 
 
+def test_update_pr_comment_workload_check_retries_lost_rerun_reset(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(gs, "WORKLOAD_COMMENT_EDIT_VERIFY_DELAY_SECONDS", 0)
+
+    class FakeHead:
+        sha = "abc123"
+
+    class FakeComment:
+        id = 1001
+
+        def __init__(self, body: str) -> None:
+            self.body = body
+            self.edits = []
+
+        def edit(self, body: str) -> None:
+            self.edits.append(body)
+            self.body = initial_body if len(self.edits) == 1 else body
+
+    class FakePR:
+        number = 77
+        head = FakeHead()
+
+        def __init__(self, comment: FakeComment) -> None:
+            self._comment = comment
+
+        def get_issue_comments(self) -> list[FakeComment]:
+            return [self._comment]
+
+        def create_issue_comment(self, body: str) -> None:  # noqa: U100
+            raise AssertionError("should not create a new comment")
+
+    initial_body = "\n".join(
+        [
+            (
+                "<!-- status pr=77, run=12, build_preset=linux, "
+                "dry_run=False, revision=0 -->"
+            ),
+            gs.WORKLOAD_CHECKS_START,
+            gs.get_workload_check_line(
+                "blockstore",
+                "completed",
+                "https://github.example/job/old",
+            ),
+            gs.WORKLOAD_CHECKS_END,
+        ]
+    )
+    existing = FakeComment(initial_body)
+    pr = FakePR(existing)
+
+    gs.update_pr_comment_workload_check(
+        run_number=12,
+        pr=pr,
+        build_preset="linux",
+        component="blockstore",
+        is_dry_run=False,
+        workload_check_status="running",
+        job_url="https://github.example/job/new",
+    )
+
+    assert len(existing.edits) == 2
+    assert gs.get_workload_check_status(existing.body, "blockstore") == "running"
+    assert "https://github.example/job/new" in existing.body
+    assert "https://github.example/job/old" not in existing.body
+
+
+def test_workload_check_reset_verification_requires_exact_status_and_job_url() -> None:
+    running_body = "\n".join(
+        [
+            gs.WORKLOAD_CHECKS_START,
+            gs.get_workload_check_line(
+                "blockstore",
+                "running",
+                "https://github.example/job/old",
+            ),
+            gs.WORKLOAD_CHECKS_END,
+        ]
+    )
+
+    assert not gs.is_workload_check_update_applied(
+        running_body,
+        "blockstore",
+        "running",
+        "https://github.example/job/new",
+        require_exact_match=True,
+    )
+
+    cancelled_body = "\n".join(
+        [
+            gs.WORKLOAD_CHECKS_START,
+            gs.get_workload_check_line("blockstore", "cancelled"),
+            gs.WORKLOAD_CHECKS_END,
+        ]
+    )
+    assert not gs.is_workload_check_update_applied(
+        cancelled_body,
+        "blockstore",
+        "completed",
+        require_exact_match=True,
+    )
+
+
 def test_update_workload_check_block_allows_rerun_to_reset_completed_status() -> None:
     body = "\n".join(
         [

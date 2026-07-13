@@ -907,10 +907,25 @@ def is_workload_check_update_applied(
     body: str,
     component: str,
     status: str,
+    job_url: str = "",
+    require_exact_match: bool = False,
 ) -> bool:
     current_status = get_workload_check_status(body, component)
     if current_status is None:
         return False
+
+    if require_exact_match:
+        if current_status != status:
+            return False
+
+        match = get_workload_check_line_match(body, component)
+        if match is None:
+            return False
+        current_job_url_match = re.search(r"\]\((?P<url>[^)]+)\)", match.group(0))
+        current_job_url = (
+            current_job_url_match.group("url") if current_job_url_match else ""
+        )
+        return not job_url or current_job_url == job_url
 
     return (
         WORKLOAD_CHECK_STATUS_ORDER[current_status]
@@ -1295,6 +1310,8 @@ def update_pr_comment_workload_check(
             body,
             component,
             workload_check_status,
+            job_url,
+            require_exact_match=workload_check_status in ("running", "completed"),
         ),
         operation=f"workload check {component} -> {workload_check_status}",
     )
