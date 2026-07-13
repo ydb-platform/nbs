@@ -18,6 +18,7 @@
 #include <cloud/filestore/public/api/protos/server.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -806,6 +807,15 @@ private:
                 TString(TMethod::RequestName),
                 ts.TotalTime.MicroSeconds(),
                 ts.ExecutionTime.MicroSeconds());
+
+            // Ids in public API requests come from the client, so E_NOT_FOUND
+            // is an expected outcome here (e.g. filesystem was never created
+            // or already destroyed) - report it as silent so it isn't counted
+            // as a fatal error. Internal lookups of entities that must exist
+            // don't go through this handler and stay loud.
+            if (Error.GetCode() == E_NOT_FOUND) {
+                SetErrorProtoFlag(Error, NCloud::NProto::EF_SILENT);
+            }
 
             AppCtx.Stats->RequestCompleted(Log, *CallContext, Error);
 
