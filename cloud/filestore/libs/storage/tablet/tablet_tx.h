@@ -124,6 +124,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(SetHasXAttrs,                       __VA_ARGS__)                       \
                                                                                \
     xxx(CreateHandle,                       __VA_ARGS__)                       \
+    xxx(ConfirmCreateHandle,                __VA_ARGS__)                       \
     xxx(DestroyHandle,                      __VA_ARGS__)                       \
                                                                                \
     xxx(AcquireLock,                        __VA_ARGS__)                       \
@@ -1902,6 +1903,42 @@ struct TTxIndexTablet
             Completed = false;
 
             // deliberately not calling TProfileAware::Clear()
+        }
+    };
+
+    struct TConfirmCreateHandle
+        : TTxIndexTabletBase
+        , TErrorAware
+        , TSessionAware
+    {
+        const TRequestInfoPtr RequestInfo;
+        const NProto::TConfirmCreateHandleRequest Request;
+        const ui64 NodeId;
+        const ui64 Handle;
+        const ui32 Flags;
+        const ui64 CreateRequestId;
+
+        ui64 ReadCommitId = InvalidCommitId;
+        TMaybe<IIndexTabletDatabase::TNode> Node;
+
+        TConfirmCreateHandle(
+                TRequestInfoPtr requestInfo,
+                NProto::TConfirmCreateHandleRequest request)
+            : TSessionAware(request)
+            , RequestInfo(std::move(requestInfo))
+            , Request(std::move(request))
+            , NodeId(Request.GetNodeId())
+            , Handle(Request.GetHandle())
+            , Flags(Request.GetFlags())
+            , CreateRequestId(Request.GetRequestId())
+        {}
+
+        void Clear() override
+        {
+            TErrorAware::Clear();
+
+            ReadCommitId = InvalidCommitId;
+            Node.Clear();
         }
     };
 

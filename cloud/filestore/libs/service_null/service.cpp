@@ -190,6 +190,16 @@ struct TNullFileStore final
         return MakeFuture(response);
     }
 
+    TFuture<NProto::TConfirmCreateHandleResponse> ConfirmCreateHandle(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TConfirmCreateHandleRequest> request) override
+    {
+        Y_UNUSED(callContext);
+        Y_UNUSED(request);
+
+        return MakeFuture(NProto::TConfirmCreateHandleResponse{});
+    }
+
     TFuture<NProto::TReadDataResponse> ReadData(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TReadDataRequest> request) override

@@ -31,6 +31,7 @@ namespace {
                                                                                \
     xxx(AsyncDestroyHandleEnabled,          bool,       false                 )\
     xxx(AsyncDestroyReadOnlyHandleEnabled,  bool,       false                 )\
+    xxx(AsyncCreateHandleEnabled,           bool,       false                 )\
     xxx(AsyncHandleOperationPeriod, TDuration,  TDuration::MilliSeconds(50)   )\
                                                                                \
     xxx(DirectIoEnabled,            bool,       false                         )\

@@ -8,6 +8,31 @@ THandleOpsQueue::THandleOpsQueue(const TString& filePath, ui32 size)
     : RequestsToProcess(filePath, size, 0, EFileRingBufferVersion::V5)
 {}
 
+THandleOpsQueue::EResult THandleOpsQueue::AddCreateRequest(
+    const NProto::TCreateHandleRequest& createHandleRequest,
+    ui64 nodeId,
+    ui64 handle,
+    ui64 requestId)
+{
+    NProto::TQueueEntry request;
+    auto* queued = request.MutableQueuedCreateHandleRequest();
+    *queued->MutableRequest() = createHandleRequest;
+    queued->SetHandle(handle);
+    queued->SetNodeId(nodeId);
+    queued->SetRequestId(requestId);
+
+    TString result;
+    if (!request.SerializeToString(&result)) {
+        return THandleOpsQueue::EResult::SerializationError;
+    }
+
+    if (!RequestsToProcess.PushBack(result)) {
+        return THandleOpsQueue::EResult::QueueOverflow;
+    }
+
+    return THandleOpsQueue::EResult::Ok;
+}
+
 THandleOpsQueue::EResult THandleOpsQueue::AddDestroyRequest(
     ui64 nodeId,
     ui64 handle)

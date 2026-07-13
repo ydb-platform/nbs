@@ -62,6 +62,7 @@ message TFileStoreFeatures
     optional bool TabletDirectRdmaEnabled = 47;
     bool XAttrCacheInvalidateOnCreateEnabled = 48;
     bool AsyncDestroyReadOnlyHandleEnabled = 49;
+    bool AsyncCreateHandleEnabled = 50;
 }
 
 message TFileStore

@@ -17,6 +17,7 @@ UseMixedBlocksInsteadOfAliveBlocksInCompaction: true
 MixedBlocksOffloadedRangesCapacity: 1024
 CalculateCleanupScoreBasedOnUsedBlocksCount: true
 AsyncDestroyHandleEnabled: true
+AsyncCreateHandleEnabled: true
 LazyXAttrsEnabled: true
 ServerWriteBackCacheEnabled: true
 MaxBackground: 16384

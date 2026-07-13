@@ -857,6 +857,21 @@ public:
         return request;
     }
 
+    auto CreateConfirmCreateHandleRequest(
+        ui64 node,
+        ui64 handle,
+        ui32 flags,
+        ui64 requestId = 0)
+    {
+        auto request =
+            CreateSessionRequest<TEvService::TEvConfirmCreateHandleRequest>();
+        request->Record.SetNodeId(node);
+        request->Record.SetHandle(handle);
+        request->Record.SetFlags(flags);
+        request->Record.SetRequestId(requestId);
+        return request;
+    }
+
     auto CreateDestroyHandleRequest(ui64 handle)
     {
         auto request = CreateSessionRequest<TEvService::TEvDestroyHandleRequest>();

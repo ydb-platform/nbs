@@ -25,6 +25,11 @@ public:
 
     explicit THandleOpsQueue(const TString& filePath, ui32 size);
 
+    EResult AddCreateRequest(
+        const NProto::TCreateHandleRequest& request,
+        ui64 nodeId,
+        ui64 handle,
+        ui64 requestId);
     EResult AddDestroyRequest(ui64 nodeId, ui64 handle);
     std::optional<NProto::TQueueEntry> Front();
     void PopFront();
