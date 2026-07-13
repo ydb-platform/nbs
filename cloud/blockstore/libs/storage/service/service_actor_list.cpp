@@ -21,6 +21,7 @@ class TDescribeActor final
 {
 private:
     const TRequestInfoPtr RequestInfo;
+    const size_t MaxConcurrency;
     TVector<TString> Volumes;
     TDeque<TString> PendingPaths;
     size_t RequestsInFlight = 0;
@@ -28,7 +29,8 @@ private:
 public:
     TDescribeActor(
         TRequestInfoPtr requestInfo,
-        TString rootPath);
+        TString rootPath,
+        size_t maxConcurrency);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -49,17 +51,23 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TDescribeActor::TDescribeActor(TRequestInfoPtr requestInfo, TString rootPath)
+TDescribeActor::TDescribeActor(
+    TRequestInfoPtr requestInfo,
+    TString rootPath,
+    size_t maxConcurrency)
     : RequestInfo(std::move(requestInfo))
+    , MaxConcurrency(maxConcurrency)
 {
     PendingPaths.emplace_back(std::move(rootPath));
 }
 
 void TDescribeActor::Bootstrap(const TActorContext& ctx)
 {
-    TString root = std::move(PendingPaths.front());
-    PendingPaths.pop_front();
-    DescribePath(ctx, root);
+    while (!PendingPaths.empty() && RequestsInFlight < MaxConcurrency) {
+        TString path = std::move(PendingPaths.front());
+        PendingPaths.pop_front();
+        DescribePath(ctx, path);
+    }
     Become(&TThis::StateWork);
 }
 
@@ -143,19 +151,18 @@ void TDescribeActor::HandleDescribeResponse(
         }
     }
 
-    if (RequestsInFlight == 0 && PendingPaths.empty()) {
+    while (RequestsInFlight < MaxConcurrency && !PendingPaths.empty()) {
+        TString next = std::move(PendingPaths.front());
+        PendingPaths.pop_front();
+        DescribePath(ctx, next);
+    }
+
+    if (RequestsInFlight == 0) {
         auto response = std::make_unique<TEvService::TEvListVolumesResponse>();
         for (const auto& volume: Volumes) {
             *response->Record.MutableVolumes()->Add() = volume;
         }
         ReplyAndDie(ctx, std::move(response));
-        return;
-    }
-
-    if (RequestsInFlight == 0 && !PendingPaths.empty()) {
-        TString next = std::move(PendingPaths.front());
-        PendingPaths.pop_front();
-        DescribePath(ctx, next);
     }
 }
 
@@ -185,7 +192,8 @@ void TServiceActor::HandleListVolumes(
     NCloud::Register<TDescribeActor>(
         ctx,
         std::move(requestInfo),
-        Config->GetSchemeShardDir());
+        Config->GetSchemeShardDir(),
+        Config->GetListVolumesConcurrency());
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

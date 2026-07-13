@@ -36,6 +36,51 @@ Y_UNIT_TEST_SUITE(TServiceListVolumesTest)
         UNIT_ASSERT_VALUES_EQUAL(volumes, expected);
     }
 
+    Y_UNIT_TEST(ShouldListVolumesBoundedConcurrency)
+    {
+        constexpr size_t concurrency = 8;
+
+        NProto::TStorageServiceConfig config;
+        config.SetListVolumesConcurrency(concurrency);
+
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env, std::move(config));
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+
+        for (int i = 0; i < 20; ++i) {
+            service.CreateVolume("vol-seq-" + ToString(i));
+        }
+
+        size_t inFlight = 0;
+        size_t maxInFlight = 0;
+
+        runtime.SetObserverFunc(
+            [&inFlight, &maxInFlight](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvSSProxy::EvDescribeSchemeRequest:
+                        maxInFlight = Max(maxInFlight, ++inFlight);
+                        break;
+                    case TEvSSProxy::EvDescribeSchemeResponse:
+                        inFlight -= (inFlight > 0);
+                        break;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        auto response = service.ListVolumes();
+
+        UNIT_ASSERT_C(
+            SUCCEEDED(response->GetStatus()),
+            response->GetErrorReason());
+        UNIT_ASSERT_C(
+            maxInFlight <= concurrency,
+            TStringBuilder() << "maxInFlight=" << maxInFlight
+                             << " exceeds ListVolumesConcurrency=" << concurrency);
+    }
+
     Y_UNIT_TEST(ShouldFailListVolumesIfDescribeSchemeFails)
     {
         TTestEnv env;
