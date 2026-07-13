@@ -181,15 +181,15 @@ void TServiceActor::HandleListVolumes(
     const auto* msg = ev->Get();
     const auto& request = msg->Record;
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     const size_t maxConcurrency =
         request.GetMaxConcurrency() > 0 ? request.GetMaxConcurrency() : 1;
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
         "Listing volumes: %s",
         Config->GetSchemeShardDir().Quote().data());
 
