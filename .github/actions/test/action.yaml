@@ -338,6 +338,10 @@ runs:
                 FAIL_CHECKER_RC=1
             fi
             DO_RETRY=0
+            ATTEMPT_TIMED_OUT=0
+            if [ "$RC" -eq 124 ]; then
+                ATTEMPT_TIMED_OUT=1
+            fi
             case $RC in
                 0)
                     echo "ya test successfully finished, no errors"
@@ -352,6 +356,7 @@ runs:
                 137)
                     if [ "$YA_MAKE_ATTEMPT_ELAPSED_SECONDS" -ge "$ATTEMPT_TIMEOUT_SECONDS" ]; then
                         echo "ya test returned $RC after timeout killed it with SIGKILL"
+                        ATTEMPT_TIMED_OUT=1
                         DO_RETRY=1
                         RETRY_FLAG="-X"
                     else
@@ -444,9 +449,9 @@ runs:
                     echo "BUILD_FAILED_COUNT=$BUILD_FAILED_COUNT_TMP" | tee -a "$GITHUB_ENV"
                     BUILD_FAILED_COUNT=$BUILD_FAILED_COUNT_TMP
                 fi
-                FAIL_CHECKER_RC=$(< "$FAIL_CHECKER_EXIT_CODE_FILE")
+                JUNIT_FAIL_CHECKER_RC=$(< "$FAIL_CHECKER_EXIT_CODE_FILE")
                 rm -f "$FAIL_CHECKER_EXIT_CODE_FILE"
-                if [ "$FAIL_CHECKER_RC" -ne 0 ]; then
+                if [ "$JUNIT_FAIL_CHECKER_RC" -ne 0 ]; then
                     NEED_COPYING=1
                     echo "::group::Copy-failed-tests-data"
                     PYTHONPATH="$PYTHONPATH:$GITHUB_WORKSPACE/.github" \
@@ -456,8 +461,13 @@ runs:
                     done
                     echo "::endgroup::"
                 fi
-                if [ "$FAIL_CHECKER_RC" -eq 237 ]; then
+                if [ "$JUNIT_FAIL_CHECKER_RC" -eq 237 ]; then
                     BUILD_FAILED=1
+                fi
+                if [ "$ATTEMPT_TIMED_OUT" -eq 1 ]; then
+                    echo "Keeping ya make timeout exit code $RC instead of JUnit checker exit code $JUNIT_FAIL_CHECKER_RC"
+                else
+                    FAIL_CHECKER_RC="$JUNIT_FAIL_CHECKER_RC"
                 fi
             fi
             if [ "$NEED_COPYING" -ne "0" ]; then
