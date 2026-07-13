@@ -1121,6 +1121,8 @@ func GetCounter(
 		}
 	}
 
+	t.Logf("counter with name %s, labels %v is not found", name, labels)
+	t.Logf("Metric families: %v", metricFamilies)
 	return 0, false
 }
 

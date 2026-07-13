@@ -628,7 +628,7 @@ func testCreateQCOW2ImageFromURL(t *testing.T) {
 		t, "responses", map[string]string{
 			"component": "url_source",
 			"method":    "head",
-			"status":    "206",
+			"status":    "200",
 		},
 	)[0], float64(0))
 }
