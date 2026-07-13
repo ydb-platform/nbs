@@ -151,7 +151,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TJDServerBackend final: public IServerBackend
+class TJournalledDeviceHandler final: public IServerBackend
 {
 private:
     TActorSystem* ActorSystem = nullptr;
@@ -159,7 +159,7 @@ private:
     const TDeviceClientPtr DeviceClient;
 
 public:
-    TJDServerBackend(
+    TJournalledDeviceHandler(
         TActorSystem* actorSystem,
         const TActorId& diskAgentActorId,
         TDeviceClientPtr deviceClient)
@@ -365,7 +365,7 @@ void TDiskAgentActor::StartJournalledDeviceTcpServer(
             listenAddress,
             Logging,
             Executor,
-            std::make_shared<TJDServerBackend>(
+            std::make_shared<TJournalledDeviceHandler>(
                 TActivationContext::ActorSystem(),
                 ctx.SelfID,
                 State->GetDeviceClient()));
