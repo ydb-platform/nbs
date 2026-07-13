@@ -3,6 +3,8 @@
 #include <silk/fibers/fiber.h>
 #include <silk/util/init.h>
 
+#include <gtest/gtest.h>
+
 namespace NCloud::NFileStore::NStorage::NFastShard {
 
 namespace {

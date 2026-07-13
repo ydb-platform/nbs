@@ -61,7 +61,8 @@ message TFileStoreFeatures
     bool ExternalReadDataPayload = 46;
     optional bool TabletDirectRdmaEnabled = 47;
     bool XAttrCacheInvalidateOnCreateEnabled = 48;
-    bool ExternalWriteDataPayloadEnabled = 49;
+    bool AsyncDestroyReadOnlyHandleEnabled = 49;
+    bool ExternalWriteDataPayloadEnabled = 50;
 }
 
 message TFileStore

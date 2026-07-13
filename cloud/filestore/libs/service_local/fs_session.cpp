@@ -41,6 +41,8 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
             Config->GetGuestWriteBackCacheEnabled());
         features->SetAsyncDestroyHandleEnabled(
             Config->GetAsyncDestroyHandleEnabled());
+        features->SetAsyncDestroyReadOnlyHandleEnabled(
+            Config->GetAsyncDestroyReadOnlyHandleEnabled());
         features->SetAsyncHandleOperationPeriod(
             Config->GetAsyncHandleOperationPeriod().MilliSeconds());
         // The local service publishes only the legacy ZeroCopyEnabled feature,

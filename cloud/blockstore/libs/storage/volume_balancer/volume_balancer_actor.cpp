@@ -209,10 +209,13 @@ void TVolumeBalancerActor::PullVolumeFromHive(
         "Pull volume %s from hive",
         volume.data());
 
-    auto pullRequest = std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
-        volume,
-        TEvService::TEvChangeVolumeBindingRequest::EChangeBindingOp::ACQUIRE_FROM_HIVE,
-        NProto::EPreemptionSource::SOURCE_BALANCER);
+    auto pullRequest =
+        std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
+            volume,
+            TEvService::TEvChangeVolumeBindingRequest::EChangeBindingOp::
+                ACQUIRE_FROM_HIVE,
+            NProto::EPreemptionSource::SOURCE_BALANCER,
+            StorageConfig->GetVolumeBalancerGentlePreemptionEnabled());
     NCloud::Send(ctx, ServiceActorId, std::move(pullRequest));
 
     PullCount->Add(1);
@@ -228,10 +231,13 @@ void TVolumeBalancerActor::SendVolumeToHive(
         "Push volume %s to hive",
         volume.data());
 
-    auto pushRequest = std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
-        volume,
-        TEvService::TEvChangeVolumeBindingRequest::EChangeBindingOp::RELEASE_TO_HIVE,
-        NProto::EPreemptionSource::SOURCE_BALANCER);
+    auto pushRequest =
+        std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
+            volume,
+            TEvService::TEvChangeVolumeBindingRequest::EChangeBindingOp::
+                RELEASE_TO_HIVE,
+            NProto::EPreemptionSource::SOURCE_BALANCER,
+            StorageConfig->GetVolumeBalancerGentlePreemptionEnabled());
     NCloud::Send(ctx, ServiceActorId, std::move(pushRequest));
 
     PushCount->Add(1);
