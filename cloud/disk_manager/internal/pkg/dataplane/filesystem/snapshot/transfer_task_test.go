@@ -411,6 +411,7 @@ func TestValidateConfigRejectsZeroLimits(t *testing.T) {
 	restoreHardlinksBatchSize := uint32(0)
 	fetchNodesFromStorageLimit := uint32(0)
 	snapshotDataDeletionLimit := uint64(0)
+	snapshotCollectionInflightLimit := uint32(0)
 
 	err := validateConfig(&snapshot_config.FilesystemSnapshotConfig{
 		RestoreHardlinksBatchSize: &restoreHardlinksBatchSize,
@@ -424,6 +425,11 @@ func TestValidateConfigRejectsZeroLimits(t *testing.T) {
 
 	err = validateConfig(&snapshot_config.FilesystemSnapshotConfig{
 		SnapshotDataDeletionLimit: &snapshotDataDeletionLimit,
+	})
+	require.Error(t, err)
+
+	err = validateConfig(&snapshot_config.FilesystemSnapshotConfig{
+		SnapshotCollectionInflightLimit: &snapshotCollectionInflightLimit,
 	})
 	require.Error(t, err)
 }

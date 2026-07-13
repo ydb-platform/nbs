@@ -40,6 +40,12 @@ func validateConfig(config *snapshot_config.FilesystemSnapshotConfig) error {
 		)
 	}
 
+	if config.GetSnapshotCollectionInflightLimit() == 0 {
+		return errors.NewNonRetriableErrorf(
+			"SnapshotCollectionInflightLimit should not be zero",
+		)
+	}
+
 	return nil
 }
 
