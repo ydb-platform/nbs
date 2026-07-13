@@ -259,7 +259,9 @@ struct TBootstrap
         proto.SetDebug(true);
         proto.SetSocketPath(SocketPath);
         proto.SetFileSystemId(FileSystemId);
-        if (featuresConfig.GetAsyncDestroyHandleEnabled()) {
+        if (featuresConfig.GetAsyncDestroyHandleEnabled() ||
+            featuresConfig.GetAsyncDestroyReadOnlyHandleEnabled())
+        {
             proto.SetHandleOpsQueuePath(TempDir.Path() / "HandleOpsQueue");
             proto.SetHandleOpsQueueSize(handleOpsQueueSize);
         }
@@ -3055,10 +3057,15 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             bootstrap.Stop();
         };
 
-        auto future =
-            bootstrap.Fuse->SendRequest<TReleaseRequest>(nodeId1, handle1);
+        auto future = bootstrap.Fuse->SendRequest<TReleaseRequest>(
+            nodeId1,
+            handle1,
+            O_RDONLY);
         UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
-        future = bootstrap.Fuse->SendRequest<TReleaseRequest>(nodeId2, handle2);
+        future = bootstrap.Fuse->SendRequest<TReleaseRequest>(
+            nodeId2,
+            handle2,
+            O_RDONLY);
         UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
         releaseFinished = true;
 
@@ -3069,6 +3076,101 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         responsePromise2.SetValue(NProto::TDestroyHandleResponse{});
 
         UNIT_ASSERT_VALUES_EQUAL(2U, handlerCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            AtomicGet(counters->GetCounter("InProgress")->GetAtomic()));
+    }
+
+    Y_UNIT_TEST(ShouldProcessReadOnlyDestroyHandleRequestsAsynchronously)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetAsyncDestroyReadOnlyHandleEnabled(true);
+        auto scheduler = std::make_shared<TTestScheduler>();
+        TBootstrap bootstrap(CreateWallClockTimer(), scheduler, features);
+
+        const ui64 readOnlyHandle = 2;
+        const ui64 readOnlyNodeId = 10;
+        const ui64 writeHandle = 5;
+        const ui64 writeNodeId = 11;
+        std::atomic_bool readOnlyReleaseFinished = false;
+        std::atomic_bool writeReleaseFinished = false;
+        std::atomic_uint handlerCalled = 0;
+        auto counters = bootstrap.Counters->FindSubgroup("component", "fs_ut")
+                            ->FindSubgroup("request", "DestroyHandle");
+        auto readOnlyResponsePromise =
+            NewPromise<NProto::TDestroyHandleResponse>();
+        auto writeResponsePromise =
+            NewPromise<NProto::TDestroyHandleResponse>();
+        bootstrap.Service->SetHandlerDestroyHandle(
+            [&,
+             readOnlyResponsePromise,
+             writeResponsePromise](auto callContext, auto request) mutable
+            {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    1,
+                    AtomicGet(counters->GetCounter("InProgress")->GetAtomic()));
+
+                UNIT_ASSERT_VALUES_EQUAL(
+                    FileSystemId,
+                    callContext->FileSystemId);
+
+                ++handlerCalled;
+                if (request->GetHandle() == readOnlyHandle) {
+                    UNIT_ASSERT(readOnlyReleaseFinished);
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        readOnlyNodeId,
+                        request->GetNodeId());
+                    return readOnlyResponsePromise;
+                }
+
+                if (request->GetHandle() == writeHandle) {
+                    UNIT_ASSERT(!writeReleaseFinished);
+                    UNIT_ASSERT_VALUES_EQUAL(writeNodeId, request->GetNodeId());
+                    return writeResponsePromise;
+                }
+
+                UNIT_ASSERT_C(false, "Unexpected DestroyHandle request");
+                return NewPromise<NProto::TDestroyHandleResponse>();
+            });
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        auto future = bootstrap.Fuse->SendRequest<TReleaseRequest>(
+            readOnlyNodeId,
+            readOnlyHandle,
+            O_RDONLY);
+        UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
+        readOnlyReleaseFinished = true;
+        UNIT_ASSERT_VALUES_EQUAL(0U, handlerCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            AtomicGet(counters->GetCounter("InProgress")->GetAtomic()));
+
+        scheduler->RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(1U, handlerCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            AtomicGet(counters->GetCounter("InProgress")->GetAtomic()));
+        readOnlyResponsePromise.SetValue(NProto::TDestroyHandleResponse{});
+
+        future = bootstrap.Fuse->SendRequest<TReleaseRequest>(
+            writeNodeId,
+            writeHandle,
+            O_WRONLY);
+        UNIT_ASSERT_EXCEPTION(
+            future.GetValue(ExceptionWaitTimeout),
+            yexception);
+        UNIT_ASSERT_VALUES_EQUAL(2U, handlerCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            AtomicGet(counters->GetCounter("InProgress")->GetAtomic()));
+
+        writeResponsePromise.SetValue(NProto::TDestroyHandleResponse{});
+        UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
+        writeReleaseFinished = true;
         UNIT_ASSERT_VALUES_EQUAL(
             0,
             AtomicGet(counters->GetCounter("InProgress")->GetAtomic()));
@@ -3110,8 +3212,10 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             bootstrap.Stop();
         };
 
-        auto future =
-            bootstrap.Fuse->SendRequest<TReleaseRequest>(nodeId, handle);
+        auto future = bootstrap.Fuse->SendRequest<TReleaseRequest>(
+            nodeId,
+            handle,
+            O_RDONLY);
         UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
 
         destroyFinished.GetFuture().Wait(WaitTimeout);
@@ -3145,8 +3249,10 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             bootstrap.Stop();
         };
 
-        auto future =
-            bootstrap.Fuse->SendRequest<TReleaseRequest>(nodeId, handle);
+        auto future = bootstrap.Fuse->SendRequest<TReleaseRequest>(
+            nodeId,
+            handle,
+            O_RDONLY);
         UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
 
         scheduler->RunAllScheduledTasks();
@@ -3204,15 +3310,19 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         auto counters = bootstrap.Counters
             ->FindSubgroup("component", "fs_ut")
             ->FindSubgroup("request", "DestroyHandle");
-        auto future =
-            bootstrap.Fuse->SendRequest<TReleaseRequest>(nodeId1, handle1);
+        auto future = bootstrap.Fuse->SendRequest<TReleaseRequest>(
+            nodeId1,
+            handle1,
+            O_RDONLY);
         UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
         UNIT_ASSERT_VALUES_EQUAL(
             0,
             AtomicGet(counters->GetCounter("InProgress")->GetAtomic()));
 
-        future =
-            bootstrap.Fuse->SendRequest<TReleaseRequest>(nodeId2, handle2);
+        future = bootstrap.Fuse->SendRequest<TReleaseRequest>(
+            nodeId2,
+            handle2,
+            O_RDONLY);
 
         // Second request should wait until the first request is processed.
         UNIT_ASSERT_EXCEPTION(
@@ -3751,8 +3861,10 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         // should not write (flush) data from cache immediately
         UNIT_ASSERT_VALUES_EQUAL(0, writeDataCalled.load());
 
-        auto future =
-            bootstrap.Fuse->SendRequest<TReleaseRequest>(nodeId, handleId);
+        auto future = bootstrap.Fuse->SendRequest<TReleaseRequest>(
+            nodeId,
+            handleId,
+            O_WRONLY);
         UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
         UNIT_ASSERT_VALUES_EQUAL(1, destroyHandleCalled.load());
         // cache should be flushed
@@ -5378,12 +5490,18 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT(writeDSync->Out->Header.error);
 
         // 4. Release - should fail because data is dropped
-        auto release = std::make_shared<TReleaseRequest>(NodeId, NodeId + 1);
+        auto release = std::make_shared<TReleaseRequest>(
+            NodeId,
+            NodeId + 1,
+            O_WRONLY);
         UNIT_ASSERT(bootstrap.Fuse->SendRequest(release).Wait(WaitTimeout));
         UNIT_ASSERT(release->Out->Header.error);
 
         // 5. Release again - success because of no data in the cache
-        auto release2 = std::make_shared<TReleaseRequest>(NodeId, NodeId + 1);
+        auto release2 = std::make_shared<TReleaseRequest>(
+            NodeId,
+            NodeId + 1,
+            O_WRONLY);
         UNIT_ASSERT(bootstrap.Fuse->SendRequest(release2).Wait(WaitTimeout));
         UNIT_ASSERT(!release2->Out->Header.error);
     }
