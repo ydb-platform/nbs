@@ -1,10 +1,15 @@
 import json
 import os
+import time
 
 import yatest.common as common
 
 from cloud.filestore.tests.python.lib.client import FilestoreCliClient
-from cloud.filestore.tests.python.lib.common import fetch_counters, filter_counters
+from cloud.filestore.tests.python.lib.common import (
+    fetch_counters,
+    filter_counters,
+    shutdown,
+)
 from cloud.filestore.tests.python.lib.fs import (
     FsItem,
     fill_fs,
@@ -368,3 +373,85 @@ def test_force_directory_creation_in_shards():
 
     ret = common.canonical_file(results_path, local=True)
     return ret
+
+
+def test_diagnose_shards_with_postgresql_build():
+    client, client_nocheck, _ = __init_test()
+    blocks_count = 4 * int(SHARD_SIZE / BLOCK_SIZE)
+    mount_pid = None
+    workload = None
+    workload_log = os.path.join(common.output_path(), "postgresql_build.log")
+    wokrload_timeout_seconds = 60
+    poll_interval_seconds = 5
+    poll_deadline_seconds = 60
+    top_n_shards = 2
+
+    try:
+        client.create(
+            "fs0",
+            "test_cloud",
+            "test_folder",
+            BLOCK_SIZE,
+            blocks_count)
+        client.resize("fs0", blocks_count, shard_count=4)
+
+        topology = json.loads(client.execute_action(
+            "getfilesystemtopology",
+            {"FileSystemId": "fs0"}))
+        assert len(topology["ShardFileSystemIds"]) == 4
+
+        mount_dir = os.path.join(common.output_path(), "mnt")
+        os.mkdir(mount_dir)
+        mount_pid = client.mount("fs0", mount_dir)
+
+        script_path = common.source_path(
+            "cloud/filestore/tests/client_sharded/postgresql_build.sh")
+
+        env = os.environ.copy()
+        env["MOUNT_PATH"] = mount_dir
+        env["TIMEOUT_SECONDS"] = str(wokrload_timeout_seconds)
+        env["LOG_PATH"] = workload_log
+
+        workload = common.execute(
+            ["bash", script_path],
+            env=env,
+            cwd=common.output_path(),
+            wait=False,
+            check_exit_code=False)
+
+        active_shards = None
+        deadline = time.time() + poll_deadline_seconds
+
+        while time.time() < deadline:
+            time.sleep(poll_interval_seconds)
+
+            payload = json.loads(client.diagnose_shards("fs0", top=top_n_shards))
+            normalized = [
+                {
+                    "shard_id": shard["shard_id"],
+                    "current_load": 1 if shard["current_load"] > 0 else 0,
+                }
+                for shard in payload["shards"]
+            ]
+            active = [shard for shard in normalized if shard["current_load"] == 1]
+
+            if len(active) == top_n_shards:
+                active_shards = active
+                break
+
+            if not workload.running:
+                workload.wait(check_exit_code=False)
+                break
+
+        if workload is not None and workload.running:
+            workload.wait(check_exit_code=False)
+
+        assert active_shards is not None, (
+            "No active shards detected. See workload log: {}".format(
+                workload_log))
+    finally:
+        if workload is not None and workload.running:
+            workload.kill()
+        if mount_pid is not None:
+            shutdown(mount_pid)
+        client_nocheck.destroy("fs0")

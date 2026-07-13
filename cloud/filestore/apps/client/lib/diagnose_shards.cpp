@@ -1,5 +1,7 @@
 #include "command.h"
 
+#include <library/cpp/json/json_writer.h>
+
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 #include <google/protobuf/util/json_util.h>
@@ -14,9 +16,18 @@ class TDiagnoseShardsCommand final
     : public TFileStoreCommand
 {
 private:
+    struct TShardRow
+    {
+        TString ShardId;
+        ui64 CurrentLoad = 0;
+        ui32 Suffer = 0;
+        ui64 UsedBlocksCount = 0;
+        ui64 TotalBlocksCount = 0;
+        ui64 UsedNodesCount = 0;
+    };
+
     ui32 Top = 10;
-    TString SortBy = "load"; // enum
-    //bool IncludeMain = false;
+    TString SortBy = "load";
 
 public:
     TDiagnoseShardsCommand()
@@ -73,7 +84,7 @@ public:
     bool Execute() override
     {
         if (SortBy != "load") {
-          ythrow yexception() << "unsupported --sort-by: " << SortBy;
+            ythrow yexception() << "unsupported --sort-by: " << SortBy;
         }
 
         NProtoPrivate::TGetStorageStatsRequest request;
@@ -83,16 +94,6 @@ public:
         NProtoPrivate::TGetStorageStatsResponse response;
         ExecuteAction("getstoragestats", request, &response);
         CheckResponse(response);
-
-        struct TShardRow
-        {
-            TString ShardId;
-            ui64 CurrentLoad = 0;
-            ui32 Suffer = 0;
-            ui64 UsedBlocksCount = 0;
-            ui64 TotalBlocksCount = 0;
-            ui64 UsedNodesCount = 0;
-        };
 
         TVector<TShardRow> rows;
 
@@ -111,10 +112,45 @@ public:
         }
 
         Sort(rows, [] (const TShardRow& l, const TShardRow& r) {
-            return l.CurrentLoad > r.CurrentLoad;
+            if (l.CurrentLoad != r.CurrentLoad) {
+                return l.CurrentLoad > r.CurrentLoad;
+            }
+
+            if (l.Suffer != r.Suffer) {
+                return l.Suffer > r.Suffer;
+            }
+
+            return l.ShardId < r.ShardId;
         });
 
         const size_t limit = Min<size_t>(Top, rows.size());
+
+        if (JsonOutput) {
+            NJson::TJsonValue resultJson(NJson::JSON_MAP);
+            NJson::TJsonValue shardsJson(NJson::JSON_ARRAY);
+
+            resultJson["filesystem_id"] = FileSystemId;
+            resultJson["shard_count"] = static_cast<ui64>(rows.size());
+
+            for (size_t i = 0; i < limit; ++i) {
+                const auto& row = rows[i];
+
+                NJson::TJsonValue shardJson(NJson::JSON_MAP);
+                shardJson["shard_id"] = row.ShardId;
+                shardJson["current_load"] = row.CurrentLoad;
+                shardJson["suffer"] = row.Suffer;
+                shardJson["used_blocks_count"] = row.UsedBlocksCount;
+                shardJson["total_blocks_count"] = row.TotalBlocksCount;
+                shardJson["used_nodes_count"] = row.UsedNodesCount;
+
+                shardsJson.AppendValue(std::move(shardJson));
+            }
+
+            resultJson["shards"] = std::move(shardsJson);
+            NJson::WriteJson(&Cout, &resultJson, false, true, true);
+
+            return true;
+        }
 
         Cout << "Filesystem: " << FileSystemId << Endl;
         Cout << "Shard count: " << rows.size() << Endl;
@@ -133,7 +169,6 @@ public:
         }
 
         return true;
-
     }
 };
 

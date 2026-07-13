@@ -237,6 +237,20 @@ class FilestoreDaemonConfigGenerator:
     def __generate_diag_txt(self):
         config = TDiagnosticsConfig()
 
+        def fill_performance_profile(profile):
+            profile.Read.RPS = 10
+            profile.Read.Throughput = 1_000_000
+            profile.Write.RPS = 10
+            profile.Write.Throughput = 1_000_000
+            profile.ListNodes.RPS = 10
+            profile.GetNodeAttr.RPS = 10
+            profile.CreateHandle.RPS = 10
+            profile.DestroyHandle.RPS = 10
+            profile.CreateNode.RPS = 10
+            profile.RenameNode.RPS = 10
+            profile.UnlinkNode.RPS = 10
+            profile.StatFileStore.RPS = 10
+
         config.ProfileLogTimeThreshold = 100
         config.MetricsUpdateInterval = 100
         config.DumpTracksInterval = 100
@@ -247,6 +261,8 @@ class FilestoreDaemonConfigGenerator:
         config.RequestThresholds.add(Default=1000)
         config.RequestThresholds.add(Default=1000, MediaKind=STORAGE_MEDIA_HDD)
         config.LWTraceShuttleCount = 50000
+        fill_performance_profile(config.HDDFileSystemPerformanceProfile)
+        fill_performance_profile(config.SSDFileSystemPerformanceProfile)
 
         return config
 
