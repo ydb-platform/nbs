@@ -1508,6 +1508,66 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         UNIT_ASSERT_VALUES_EQUAL(15, observed->Val());
     }
 
+    Y_UNIT_TEST(ShouldTrackClientAvailabilityCountersInSliVolume)
+    {
+        auto timer = std::make_shared<TTestTimer>();
+        const auto config =
+            std::make_shared<TDiagnosticsConfig>(NProto::TDiagnosticsConfig());
+
+        auto monitoring = CreateMonitoringServiceStub();
+
+        // Client-side stats must place the cumulative availability counters in
+        // the same narrow component=sli_volume tree as the server, so a
+        // monitoring agent on the compute host can scrape only these sensors.
+        auto volumeStats = CreateVolumeStats(
+            monitoring,
+            config,
+            TDuration::Max(),
+            EVolumeStatsType::EClientStats,
+            timer);
+
+        Mount(
+            volumeStats,
+            "test1",
+            "client1",
+            "instance",
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+
+        auto sliCounters = monitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "sli_volume")
+            ->GetSubgroup("host", "cluster")
+            ->GetSubgroup("volume", "test1")
+            ->GetSubgroup("instance", "instance")
+            ->GetSubgroup("cloud", DefaultCloudId)
+            ->GetSubgroup("folder", DefaultFolderId)
+            ->GetSubgroup("type", "network-ssd");
+
+        auto observed = sliCounters->GetCounter("ObservedSeconds");
+        auto available = sliCounters->GetCounter("AvailableSeconds");
+        auto healthy = sliCounters->GetCounter("HealthySeconds");
+
+        // A healthy, served volume advances all three counters by the real
+        // time elapsed since it was mounted, exactly like the server path.
+        timer->AdvanceTime(TDuration::Seconds(15));
+        volumeStats->UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(15, observed->Val());
+        UNIT_ASSERT_VALUES_EQUAL(15, available->Val());
+        UNIT_ASSERT_VALUES_EQUAL(15, healthy->Val());
+
+        // The counters must live in the narrow sli_volume tree, not nested in
+        // the wide component=client_volume per-volume group.
+        auto clientVolume = monitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "client_volume")
+            ->GetSubgroup("host", "cluster")
+            ->GetSubgroup("volume", "test1")
+            ->GetSubgroup("instance", "instance")
+            ->GetSubgroup("cloud", DefaultCloudId)
+            ->GetSubgroup("folder", DefaultFolderId);
+        UNIT_ASSERT(!clientVolume->FindCounter("ObservedSeconds"));
+    }
+
     Y_UNIT_TEST(ShouldAlterVolume)
     {
         auto inactivityTimeout = TDuration::MilliSeconds(10);

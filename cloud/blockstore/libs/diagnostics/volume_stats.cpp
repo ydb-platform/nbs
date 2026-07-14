@@ -544,12 +544,13 @@ private:
     TDynamicCountersPtr Counters;
     // Separate, narrow counters tree (component=sli_volume) for the
     // cumulative availability counters (ObservedSeconds/AvailableSeconds/
-    // HealthySeconds) only. component=server_volume also carries ~200-280
-    // other per-volume perf counters, so scraping the whole subtree just to
-    // reach our ~3 sensors is wasteful; this sibling group lets a monitoring
-    // agent pull only these specific counters. Only populated for
-    // EServerStats - client-side stats keep the previous (nested)
-    // placement, see RegisterInstance().
+    // HealthySeconds) only. The main per-volume tree (component=
+    // server_volume / client_volume) also carries ~200-280 other per-volume
+    // perf counters, so scraping the whole subtree just to reach our ~3
+    // sensors is wasteful; this sibling group lets a monitoring agent pull
+    // only these specific counters. Populated for both EServerStats and
+    // EClientStats in InitCounters; see RegisterInstance() for the per-volume
+    // subgroup layout.
     TDynamicCountersPtr SliCounters;
     std::shared_ptr<NUserCounter::IUserCounterSupplier> UserCounters;
     std::unique_ptr<TSufferCounters> SufferCounters;
@@ -1136,8 +1137,9 @@ private:
         info->RequestCounters.Register(*countersGroup);
         info->HasDowntimeCounter = countersGroup->GetCounter("HasDowntime");
 
-        // component=sli_volume for server-side stats (see SliCounters
-        // comment); client-side stats keep the old nested placement.
+        // When the narrow component=sli_volume tree is available (see
+        // SliCounters comment) register the cumulative counters there;
+        // otherwise fall back to the nested per-volume group.
         // "type" uses MediaKindToComputeType (not MediaKindToStatsString, the
         // convention used by the DownDisks aggregate below) to produce the
         // same disk-type spelling ("network-ssd", ...) this helper already
@@ -1265,6 +1267,10 @@ private:
                 break;
             }
             case EVolumeStatsType::EClientStats: {
+                SliCounters = Counters
+                    ->GetSubgroup("component", "sli_volume")
+                    ->GetSubgroup("host", "cluster");
+
                 Counters = Counters->GetSubgroup("component", "client_volume");
                 break;
             }
