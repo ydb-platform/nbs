@@ -111,7 +111,7 @@ auto ValidateReadPagesRequest(const NCloud::NProto::TReadPagesRequest& request)
     -> NProto::TError
 {
     if (request.GetDeviceUUID().empty()) {
-        return MakeError(E_ARGUMENT, "device UUID must not be empty");
+        return MakeError(E_ARGUMENT, "empty device UUID");
     }
 
     if (request.PageGroupRefsSize() == 0) {

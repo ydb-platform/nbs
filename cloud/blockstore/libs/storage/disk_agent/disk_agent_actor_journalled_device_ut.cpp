@@ -269,7 +269,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentJournalledDeviceTest)
                  {
                      auto& group = *groups.Add();
                      group.SetFirstPageNo(0x10);
-                     group.MutableContent()->Add();
+                     group.MutableContent()->Add();   // an empty block
                  }
              },
              MakeError(
@@ -290,7 +290,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentJournalledDeviceTest)
                      auto& group = *groups.Add();
                      group.SetFirstPageNo(0x20);
                      group.MutableContent()->Add()->resize(4_KB, 'A');
-                     group.MutableContent()->Add();
+                     group.MutableContent()->Add();   // an empty block
                      group.MutableContent()->Add()->resize(4_KB, 'A');
                  }
              },
@@ -374,6 +374,158 @@ Y_UNIT_TEST_SUITE(TDiskAgentJournalledDeviceTest)
                 return std::make_pair(
                     response.GetRequestId(),
                     response.GetWriteLogRecord().GetError());
+            });
+
+        SortBy(errors, [](const auto& p) { return p.first; });
+
+        for (size_t i = 0; i != errors.size(); ++i) {
+            const auto& [requestId, error] = errors[i];
+            UNIT_ASSERT_VALUES_EQUAL(i + 1, requestId);
+
+            const auto& [_, expectedError] = testCases[i];
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                expectedError.GetCode(),
+                error.GetCode(),
+                "#" << (i + 1) << ": " << FormatError(expectedError) << " !~ "
+                    << FormatError(error));
+
+            UNIT_ASSERT_STRING_CONTAINS_C(
+                error.GetMessage(),
+                expectedError.GetMessage(),
+                "#" << (i + 1) << ": " << FormatError(expectedError) << " !~ "
+                    << FormatError(error));
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldValidateReadPagesRequest, TFixture)
+    {
+        const TString clientId = "client-id";
+        const TString uuid = "unknown";
+
+        auto env =
+            TTestEnvBuilder(*Runtime).With(CreateDiskAgentConfig()).Build();
+
+        TDiskAgentClient diskAgent(*Runtime);
+        diskAgent.WaitReady();
+
+        TTestClient client{Port};
+
+        using TPrepareFunc =
+            std::function<void(NCloud::NProto::TReadPagesRequest&)>;
+
+        const std::tuple<TPrepareFunc, NProto::TError> testCases[]{
+            {[&](auto&) {}, MakeError(E_ARGUMENT, "empty device UUID")},
+            {[&](auto& proto) { proto.SetDeviceUUID(uuid); },
+             MakeError(E_ARGUMENT, "nothing to read")},
+            {[&](auto& proto)
+             {
+                 proto.SetDeviceUUID(uuid);
+                 proto.MutablePageGroupRefs()->Add();
+             },
+             MakeError(
+                 E_ARGUMENT,
+                 "page group ref must contain at least one page")},
+            {[&](auto& proto)
+             {
+                 proto.SetDeviceUUID(uuid);
+                 auto& groups = *proto.MutablePageGroupRefs();
+
+                 {
+                     auto& group = *groups.Add();
+                     group.SetFirstPageNo(0x10);
+                     group.SetPageSize(DefaultBlockSize);
+                     group.SetPageCount(1);
+                 }
+
+                 {
+                     auto& group = *groups.Add();
+                     group.SetFirstPageNo(0x20);
+                     group.SetPageSize(DefaultBlockSize);
+                     group.SetPageCount(0);
+                 }
+             },
+             MakeError(
+                 E_ARGUMENT,
+                 "page group ref must contain at least one page")},
+            {[&](auto& proto)
+             {
+                 proto.SetDeviceUUID(uuid);
+                 auto& groups = *proto.MutablePageGroupRefs();
+
+                 {
+                     auto& group = *groups.Add();
+                     group.SetFirstPageNo(0x10);
+                     group.SetPageSize(DefaultBlockSize);
+                     group.SetPageCount(1);
+                 }
+
+                 {
+                     auto& group = *groups.Add();
+                     group.SetFirstPageNo(0x20);
+                     group.SetPageSize(0);
+                     group.SetPageCount(1);
+                 }
+             },
+             MakeError(E_ARGUMENT, "page size must be greater than zero")},
+            {[&](auto& proto)
+             {
+                 proto.SetDeviceUUID(uuid);
+                 auto& groups = *proto.MutablePageGroupRefs();
+
+                 {
+                     auto& group = *groups.Add();
+                     group.SetFirstPageNo(0x10);
+                     group.SetPageSize(DefaultBlockSize);
+                     group.SetPageCount(1);
+                 }
+
+                 {
+                     auto& group = *groups.Add();
+                     group.SetFirstPageNo(0x20);
+                     group.SetPageSize(DefaultBlockSize);
+                     group.SetPageCount(1);
+                 }
+             },
+             MakeError(E_ARGUMENT, "empty client id")},
+            {[&](auto& proto)
+             {
+                 proto.MutableHeaders()->SetClientId(clientId);
+                 proto.SetDeviceUUID(uuid);
+
+                 auto& group = *proto.MutablePageGroupRefs()->Add();
+                 group.SetFirstPageNo(0x10);
+                 group.SetPageSize(DefaultBlockSize);
+                 group.SetPageCount(1);
+             },
+             MakeError(E_NOT_FOUND, "Device " + uuid.Quote() + " not found")},
+        };
+
+        for (ui64 i = 0; i != std::size(testCases); ++i) {
+            const auto& [prepare, _] = testCases[i];
+
+            NCloud::NProto::TDeviceProtocolRequest request;
+            request.SetRequestId(i + 1);
+            auto& proto = *request.MutableReadPages();
+            prepare(proto);
+            client.Send(request);
+        }
+
+        Runtime->DispatchEvents(TDispatchOptions(), 10ms);
+
+        TVector<std::pair<ui64, NProto::TError>> errors(std::size(testCases));
+        std::generate_n(
+            errors.begin(),
+            std::size(testCases),
+            [&]
+            {
+                auto response = client.Receive();
+                UNIT_ASSERT_EQUAL(
+                    NProto::TDeviceProtocolResponse::ResponseCase::kReadPages,
+                    response.GetResponseCase());
+
+                return std::make_pair(
+                    response.GetRequestId(),
+                    response.GetReadPages().GetError());
             });
 
         SortBy(errors, [](const auto& p) { return p.first; });
