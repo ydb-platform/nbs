@@ -313,6 +313,25 @@ struct TBootstrap
             ->FindSubgroup("module", "DirectoryHandles");
     }
 
+    NMonitoring::TDynamicCountersPtr GetHandleOpsQueueCounters() const
+    {
+        return Counters
+            ->FindSubgroup("component", TString{MetricsComponent} + "_fs")
+            ->FindSubgroup("host", "cluster")
+            ->FindSubgroup("filesystem", FileSystemId)
+            ->FindSubgroup("client", "")
+            ->FindSubgroup("cloud", "")
+            ->FindSubgroup("folder", "")
+            ->FindSubgroup("module", "HandleOpsQueue");
+    }
+
+    NMonitoring::TDynamicCountersPtr GetAggregateHandleOpsQueueCounters() const
+    {
+        return Counters
+            ->FindSubgroup("component", TString{MetricsComponent})
+            ->FindSubgroup("module", "HandleOpsQueue");
+    }
+
     ~TBootstrap()
     {
         Stop();
@@ -3307,6 +3326,46 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             bootstrap.Stop();
         };
 
+        auto moduleCounters = bootstrap.GetHandleOpsQueueCounters();
+        auto aggregateModuleCounters =
+            bootstrap.GetAggregateHandleOpsQueueCounters();
+        bootstrap.ModuleStatsRegistry->UpdateStats(true);
+
+        auto entryCount = moduleCounters->FindCounter("EntryCount");
+        UNIT_ASSERT(entryCount);
+        auto capacityBytes = moduleCounters->FindCounter("CapacityBytes");
+        UNIT_ASSERT(capacityBytes);
+        auto overflowErrorCount =
+            moduleCounters->FindCounter("OverflowErrorCount");
+        UNIT_ASSERT(overflowErrorCount);
+        auto serializationErrorCount =
+            moduleCounters->FindCounter("SerializationErrorCount");
+        UNIT_ASSERT(serializationErrorCount);
+        auto parseErrorCount =
+            moduleCounters->FindCounter("ParseErrorCount");
+        UNIT_ASSERT(parseErrorCount);
+
+        auto aggregateOverflowErrorCount =
+            aggregateModuleCounters->FindCounter("OverflowErrorCount");
+        UNIT_ASSERT(aggregateOverflowErrorCount);
+        auto aggregateSerializationErrorCount =
+            aggregateModuleCounters->FindCounter("SerializationErrorCount");
+        UNIT_ASSERT(aggregateSerializationErrorCount);
+        auto aggregateParseErrorCount =
+            aggregateModuleCounters->FindCounter("ParseErrorCount");
+        UNIT_ASSERT(aggregateParseErrorCount);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, entryCount->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(20, capacityBytes->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(0, overflowErrorCount->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(0, serializationErrorCount->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(0, parseErrorCount->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(0, aggregateOverflowErrorCount->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            aggregateSerializationErrorCount->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(0, aggregateParseErrorCount->GetAtomic());
+
         auto counters = bootstrap.Counters
             ->FindSubgroup("component", "fs_ut")
             ->FindSubgroup("request", "DestroyHandle");
@@ -3315,6 +3374,10 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             handle1,
             O_RDONLY);
         UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
+        bootstrap.ModuleStatsRegistry->UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(1, entryCount->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(20, capacityBytes->GetAtomic());
+
         UNIT_ASSERT_VALUES_EQUAL(
             0,
             AtomicGet(counters->GetCounter("InProgress")->GetAtomic()));
@@ -3328,6 +3391,16 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_EXCEPTION(
             future.GetValue(ExceptionWaitTimeout),
             yexception);
+        bootstrap.ModuleStatsRegistry->UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(1, entryCount->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(1, overflowErrorCount->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(0, serializationErrorCount->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(0, parseErrorCount->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(1, aggregateOverflowErrorCount->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            aggregateSerializationErrorCount->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(0, aggregateParseErrorCount->GetAtomic());
         UNIT_ASSERT_VALUES_EQUAL(
             1,
             AtomicGet(counters->GetCounter("InProgress")->GetAtomic()));
