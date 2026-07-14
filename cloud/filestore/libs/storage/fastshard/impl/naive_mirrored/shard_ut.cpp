@@ -1,3 +1,4 @@
+#include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/storage/fastshard/iface/fs.h>
 #include <cloud/filestore/libs/storage/fastshard/impl/naive_mirrored/shard.h>
 #include <cloud/filestore/libs/storage/fastshard/sn/impl/storage_node.h>
@@ -19,6 +20,7 @@
 
 using namespace NCloud;
 using namespace NFileStore;
+using namespace NFileStore::NProto;
 using namespace NStorage::NFastShard;
 using silk::FiberScheduler;
 
@@ -99,6 +101,17 @@ struct TStorageFixture
     }
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+TString GenerateValidateData(ui32 size, ui32 seed = 0)
+{
+    TString data(size, 0);
+    for (ui32 i = 0; i < size; ++i) {
+        data[i] = 'A' + ((i + seed) % ('Z' - 'A' + 1));
+    }
+    return data;
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -109,18 +122,68 @@ TEST(NaiveMirroredShardTest, WritesAndReadsFiles)
 
     auto shard = CreateNaiveMirroredFileSystemShard(ShardNo, fx.Config);
 
+    const TString file1 = "file1";
+    const TString file2 = "file2";
+    const TString file3 = "file3";
+    const ui32 mode = 0644;
+
+    const ui32 createHandleFlags
+        = ProtoFlag(TCreateHandleRequest::E_CREATE)
+        | ProtoFlag(TCreateHandleRequest::E_READ)
+        | ProtoFlag(TCreateHandleRequest::E_WRITE);
+
+    ui64 nodeId = 0;
+    {
+        TCreateNodeRequest request;
+        request.SetNodeId(RootNodeId);
+        request.SetName(file1);
+        request.MutableFile()->SetMode(mode);
+        auto f = shard->CreateNode(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+        nodeId = response.GetNode().GetId();
+    }
+
     ui64 handle = 0;
     {
-        NFileStore::NProto::TCreateHandleRequest request;
+        TCreateHandleRequest request;
+        request.SetNodeId(nodeId);
+        request.SetFlags(createHandleFlags);
         auto f = shard->CreateHandle(request);
         auto response = f.GetValueSync();
         EXPECT_EQ(S_OK, response.GetError().GetCode())
             << FormatError(response.GetError());
         handle = response.GetHandle();
+        EXPECT_TRUE(handle != 0);
+    }
+
+    const auto expectedData = GenerateValidateData(4_KB);
+    {
+        TWriteDataRequest request;
+        request.SetHandle(handle);
+        request.SetOffset(0);
+        *request.MutableBuffer() = expectedData;
+        auto f = shard->WriteData(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
     }
 
     {
-        NFileStore::NProto::TDestroyHandleRequest request;
+        TReadDataRequest request;
+        request.SetHandle(handle);
+        request.SetOffset(0);
+        request.SetLength(4_KB);
+        auto f = shard->ReadData(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+        EXPECT_STREQ(expectedData.c_str(), response.GetBuffer().c_str());
+    }
+
+    {
+        TDestroyHandleRequest request;
         request.SetHandle(handle);
         auto f = shard->DestroyHandle(request);
         auto response = f.GetValueSync();
