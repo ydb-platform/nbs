@@ -53,7 +53,10 @@ struct TTestStats
     {
         ui64 Requests = 0;
         ui64 RequestBytes = 0;
+        // Reported in the final results
         TLatencyHistogram Hist;
+        // Reset after each progress report, reported in progress reports
+        TLatencyHistogram IntervalHist;
     };
 
     TString Name;
@@ -484,7 +487,7 @@ public:
             // prevent race between this thread and main thread
             // destroying test instance right after setvalue()
             auto result = Result;
-            result.SetValue(GetStats());
+            result.SetValue(GetStats(false));
         } catch(...) {
             STORAGE_ERROR("%s test has failed: %s",
                 MakeTestTag().c_str(), CurrentExceptionMessage().c_str());
@@ -700,6 +703,7 @@ private:
             stats.RequestBytes += request->RequestBytes;
             RequestBytes += request->RequestBytes;
             stats.Hist.RecordValue(request->Elapsed);
+            stats.IntervalHist.RecordValue(request->Elapsed);
         }
     }
 
@@ -712,7 +716,7 @@ private:
             const auto requestsCompleted = RequestsCompleted - LastRequestsCompleted;
             const auto requestBytes = RequestBytes - LastRequestBytes;
 
-            auto stats = GetStats();
+            auto stats = GetStats(true);
             STORAGE_INFO(
                 "%s current rate: %ld r/s, bandwidth: %s/s; stats:\n%s",
                 MakeTestTag().c_str(),
@@ -728,19 +732,28 @@ private:
         }
     }
 
-    NProto::TTestStats GetStats()
+    // With sinceLastReport latencies cover only the requests completed after
+    // the previous progress report; otherwise they cover the whole run.
+    NProto::TTestStats GetStats(bool sinceLastReport)
     {
         NProto::TTestStats results;
         results.SetName(Config.GetName());
         results.SetSuccess(TestStats.Success);
 
         auto* stats = results.MutableStats();
-        for (const auto& pair: TestStats.ActionStats) {
+        for (auto& pair: TestStats.ActionStats) {
             auto* action = stats->Add();
             action->SetAction(NProto::EAction_Name(pair.first));
             action->SetCount(pair.second.Requests);
             action->SetRequestBytes(pair.second.RequestBytes);
-            FillLatency(pair.second.Hist, *action->MutableLatency());
+            if (sinceLastReport) {
+                FillLatency(
+                    pair.second.IntervalHist,
+                    *action->MutableLatency());
+                pair.second.IntervalHist.Reset();
+            } else {
+                FillLatency(pair.second.Hist, *action->MutableLatency());
+            }
         }
 
         // TODO report some stats for the files generated during the shooting
