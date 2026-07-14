@@ -1,5 +1,3 @@
-    MESSAGE(WARNING "qqqrecp QEMU_CHARDEV_RECONNECT=${QEMU_CHARDEV_RECONNECT}")
-
 IF (NOT QEMU_BIN)
     DEPENDS(cloud/storage/core/tools/testing/qemu/bin)
 ENDIF()
