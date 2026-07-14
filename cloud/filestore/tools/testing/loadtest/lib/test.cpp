@@ -12,6 +12,7 @@
 #include <cloud/filestore/libs/service/request.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/common/timer.h>
@@ -712,11 +713,14 @@ private:
             const auto requestBytes = RequestBytes - LastRequestBytes;
 
             auto stats = GetStats();
-            STORAGE_INFO("%s current rate: %ld r/s, bandwidth: %ld bytes/s; stats:\n%s",
+            STORAGE_INFO(
+                "%s current rate: %ld r/s, bandwidth: %s/s; stats:\n%s",
                 MakeTestTag().c_str(),
                 (ui64)(requestsCompleted / elapsed.SecondsFloat()),
-                (ui64)(requestBytes / elapsed.SecondsFloat()),
-                NProtobufJson::Proto2Json(stats, {.FormatOutput = true}).c_str());
+                FormatByteSize((ui64)(requestBytes / elapsed.SecondsFloat()))
+                    .c_str(),
+                NProtobufJson::Proto2Json(stats, {.FormatOutput = true})
+                    .c_str());
 
             LastReportTs = now;
             LastRequestsCompleted = RequestsCompleted;
