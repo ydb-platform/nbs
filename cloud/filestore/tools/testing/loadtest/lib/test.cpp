@@ -278,8 +278,8 @@ private:
     TInstant LastReportTs;
     ui64 LastRequestsCompleted = 0;
 
-    ui64 BytesTransferred = 0;
-    ui64 LastBytesTransferred = 0;
+    ui64 RequestBytes = 0;
+    ui64 LastRequestBytes = 0;
 
     IRequestGeneratorPtr RequestGenerator;
     TRequestsCompletionQueue CompletionQueue;
@@ -697,7 +697,7 @@ private:
             auto& stats = TestStats.ActionStats[request->Action];
             ++stats.Requests;
             stats.RequestBytes += request->RequestBytes;
-            BytesTransferred += request->RequestBytes;
+            RequestBytes += request->RequestBytes;
             stats.Hist.RecordValue(request->Elapsed);
         }
     }
@@ -709,18 +709,18 @@ private:
 
         if (elapsed > ReportInterval) {
             const auto requestsCompleted = RequestsCompleted - LastRequestsCompleted;
-            const auto bytesTransferred = BytesTransferred - LastBytesTransferred;
+            const auto requestBytes = RequestBytes - LastRequestBytes;
 
             auto stats = GetStats();
             STORAGE_INFO("%s current rate: %ld r/s, bandwidth: %ld bytes/s; stats:\n%s",
                 MakeTestTag().c_str(),
                 (ui64)(requestsCompleted / elapsed.Seconds()),
-                (ui64)(bytesTransferred / elapsed.SecondsFloat()),
+                (ui64)(requestBytes / elapsed.SecondsFloat()),
                 NProtobufJson::Proto2Json(stats, {.FormatOutput = true}).c_str());
 
             LastReportTs = now;
             LastRequestsCompleted = RequestsCompleted;
-            LastBytesTransferred = BytesTransferred;
+            LastRequestBytes = RequestBytes;
         }
     }
 
