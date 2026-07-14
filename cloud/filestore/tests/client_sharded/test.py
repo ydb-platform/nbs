@@ -6,10 +6,7 @@ import yatest.common as common
 
 from cloud.filestore.tools.testing.loadtest.protos.loadtest_pb2 import TTestGraph, ACTION_WRITE, ACTION_READ
 from cloud.filestore.tests.python.lib.client import FilestoreCliClient
-from cloud.filestore.tests.python.lib.common import (
-    fetch_counters,
-    filter_counters,
-)
+from cloud.filestore.tests.python.lib.common import fetch_counters, filter_counters
 from cloud.filestore.tests.python.lib.fs import (
     FsItem,
     fill_fs,
