@@ -1186,7 +1186,7 @@ private:
                      .CloudId = response.GetFileStore().GetCloudId(),
                      .FolderId = response.GetFileStore().GetFolderId(),
                      .SessionId = SessionId,
-                     .ModuleStats = handleOpsQueue->CreateModuleStats()});
+                     .ModuleStats = handleOpsQueue->GetModuleStats()});
             }
 
             FileSystem = CreateFileSystem(

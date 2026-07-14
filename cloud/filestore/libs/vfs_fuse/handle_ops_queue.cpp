@@ -13,7 +13,7 @@ THandleOpsQueue::THandleOpsQueue(const TString& filePath, ui32 size)
     Stats->SetEntryCount(RequestsToProcess.Size());
 }
 
-IModuleStatsPtr THandleOpsQueue::CreateModuleStats() const
+IModuleStatsPtr THandleOpsQueue::GetModuleStats() const
 {
     return Stats;
 }

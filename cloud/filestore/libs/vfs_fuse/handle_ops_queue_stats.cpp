@@ -23,8 +23,6 @@ void THandleOpsQueueStats::RegisterCounters(
     const IMetricsRegistryPtr& localMetricsRegistry,
     const IMetricsRegistryPtr& aggregatableMetricsRegistry)
 {
-    Y_UNUSED(aggregatableMetricsRegistry);
-
     auto self = shared_from_this();
 
     localMetricsRegistry->Register(
@@ -34,17 +32,18 @@ void THandleOpsQueueStats::RegisterCounters(
         {CreateSensor("CapacityBytes")},
         CreateMetric([self] { return static_cast<i64>(self->CapacityBytes); }),
         EAggregationType::AT_MAX);
-    localMetricsRegistry->Register(
+
+    aggregatableMetricsRegistry->Register(
         {CreateSensor("OverflowErrorCount")},
         CreateMetric([self] { return self->OverflowErrorCount.Get(); }),
         EAggregationType::AT_SUM,
         EMetricType::MT_DERIVATIVE);
-    localMetricsRegistry->Register(
+    aggregatableMetricsRegistry->Register(
         {CreateSensor("SerializationErrorCount")},
         CreateMetric([self] { return self->SerializationErrorCount.Get(); }),
         EAggregationType::AT_SUM,
         EMetricType::MT_DERIVATIVE);
-    localMetricsRegistry->Register(
+    aggregatableMetricsRegistry->Register(
         {CreateSensor("ParseErrorCount")},
         CreateMetric([self] { return self->ParseErrorCount.Get(); }),
         EAggregationType::AT_SUM,

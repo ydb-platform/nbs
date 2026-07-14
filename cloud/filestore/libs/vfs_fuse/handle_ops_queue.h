@@ -27,7 +27,7 @@ public:
 
     explicit THandleOpsQueue(const TString& filePath, ui32 size);
 
-    IModuleStatsPtr CreateModuleStats() const;
+    IModuleStatsPtr GetModuleStats() const;
 
     EResult AddDestroyRequest(ui64 nodeId, ui64 handle);
     std::optional<NProto::TQueueEntry> Front();
