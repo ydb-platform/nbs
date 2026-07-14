@@ -26,34 +26,6 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define FILESTORE_FILESYSTEM_STATS(xxx, ...)                                   \
-    xxx(LastNodeId,             __VA_ARGS__)                                   \
-    xxx(LastLockId,             __VA_ARGS__)                                   \
-    xxx(LastCollectCommitId,    __VA_ARGS__)                                   \
-    xxx(LastXAttr,              __VA_ARGS__)                                   \
-    xxx(HasXAttrs,              __VA_ARGS__)                                   \
-                                                                               \
-    xxx(UsedNodesCount,         __VA_ARGS__)                                   \
-    xxx(UsedSessionsCount,      __VA_ARGS__)                                   \
-    xxx(UsedHandlesCount,       __VA_ARGS__)                                   \
-    xxx(UsedLocksCount,         __VA_ARGS__)                                   \
-    xxx(UsedBlocksCount,        __VA_ARGS__)                                   \
-                                                                               \
-    xxx(FreshBlocksCount,           __VA_ARGS__)                               \
-    xxx(MixedBlocksCount,           __VA_ARGS__)                               \
-    xxx(MixedBlobsCount,            __VA_ARGS__)                               \
-    xxx(DeletionMarkersCount,       __VA_ARGS__)                               \
-    xxx(GarbageQueueSize,           __VA_ARGS__)                               \
-    xxx(GarbageBlocksCount,         __VA_ARGS__)                               \
-    xxx(CheckpointNodesCount,       __VA_ARGS__)                               \
-    xxx(CheckpointBlocksCount,      __VA_ARGS__)                               \
-    xxx(CheckpointBlobsCount,       __VA_ARGS__)                               \
-    xxx(FreshBytesCount,            __VA_ARGS__)                               \
-    xxx(AttrsUsedBytesCount,        __VA_ARGS__)                               \
-    xxx(DeletedFreshBytesCount,     __VA_ARGS__)                               \
-    xxx(LargeDeletionMarkersCount,  __VA_ARGS__)                               \
-// FILESTORE_FILESYSTEM_STATS
-
 #define FILESTORE_DUPCACHE_REQUESTS(xxx, ...)                                  \
     xxx(CreateHandle,   __VA_ARGS__)                                           \
     xxx(CreateNode,     __VA_ARGS__)                                           \
@@ -64,7 +36,7 @@ namespace NCloud::NFileStore::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 class TIndexTabletDatabase
-    : public INodeIndexTabletDatabase
+    : public IIndexTabletDatabase
     , public NKikimr::NIceDb::TNiceDb
 {
 public:
@@ -72,21 +44,22 @@ public:
         : NKikimr::NIceDb::TNiceDb(database)
     {}
 
-    void InitSchema();
+    void InitSchema() override;
 
     //
     // FileSystem
     //
 
-    void WriteFileSystem(const NProto::TFileSystem& fileSystem);
-    bool ReadFileSystem(NProto::TFileSystem& fileSystem);
-    bool ReadFileSystemStats(NProto::TFileSystemStats& stats);
+    void WriteFileSystem(const NProto::TFileSystem& fileSystem) override;
+    bool ReadFileSystem(NProto::TFileSystem& fileSystem) override;
+    bool ReadFileSystemStats(NProto::TFileSystemStats& stats) override;
 
-    void WriteStorageConfig(const NProto::TStorageConfig& storageConfig);
-    bool ReadStorageConfig(TMaybe<NProto::TStorageConfig>& storageConfig);
+    void WriteStorageConfig(
+        const NProto::TStorageConfig& storageConfig) override;
+    bool ReadStorageConfig(TMaybe<NProto::TStorageConfig>& storageConfig) override;
 
 #define FILESTORE_DECLARE_STATS(name, ...)                                     \
-    void Write##name(ui64 value);                                              \
+    void Write##name(ui64 value) override;                                     \
 // FILESTORE_DECLARE_STATS
 
 FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
@@ -94,19 +67,19 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
 #undef FILESTORE_DECLARE_STATS
 
     bool ReadTabletStorageInfo(
-        NCloud::NProto::TTabletStorageInfo& tabletStorageInfo);
+        NCloud::NProto::TTabletStorageInfo& tabletStorageInfo) override;
     void WriteTabletStorageInfo(
-        const NCloud::NProto::TTabletStorageInfo& tabletStorageInfo);
+        const NCloud::NProto::TTabletStorageInfo& tabletStorageInfo) override;
 
     //
     // Nodes
     //
 
-    virtual void WriteNode(
+    void WriteNode(
         ui64 nodeId,
         ui64 commitId,
-        const NProto::TNode& attrs);
-    virtual void DeleteNode(ui64 nodeId);
+        const NProto::TNode& attrs) override;
+    void DeleteNode(ui64 nodeId) override;
     bool ReadNode(
         ui64 nodeId,
         ui64 commitId,
@@ -121,13 +94,13 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
     // Nodes_Ver
     //
 
-    virtual void WriteNodeVer(
+    void WriteNodeVer(
         ui64 nodeId,
         ui64 minCommitId,
         ui64 maxCommitId,
-        const NProto::TNode& attrs);
+        const NProto::TNode& attrs) override;
 
-    virtual void DeleteNodeVer(ui64 nodeId, ui64 commitId);
+    void DeleteNodeVer(ui64 nodeId, ui64 commitId) override;
 
     bool ReadNodeVer(
         ui64 nodeId,
@@ -138,14 +111,14 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
     // NodeAttrs
     //
 
-    virtual void WriteNodeAttr(
+    void WriteNodeAttr(
         ui64 nodeId,
         ui64 commitId,
         const TString& name,
         const TString& value,
-        ui64 version);
+        ui64 version) override;
 
-    virtual void DeleteNodeAttr(ui64 nodeId, const TString& name);
+    void DeleteNodeAttr(ui64 nodeId, const TString& name) override;
 
     bool ReadNodeAttr(
         ui64 nodeId,
@@ -162,18 +135,18 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
     // NodeAttrs_Ver
     //
 
-    virtual void WriteNodeAttrVer(
+    void WriteNodeAttrVer(
         ui64 nodeId,
         ui64 minCommitId,
         ui64 maxCommitId,
         const TString& name,
         const TString& value,
-        ui64 version);
+        ui64 version) override;
 
-    virtual void DeleteNodeAttrVer(
+    void DeleteNodeAttrVer(
         ui64 nodeId,
         ui64 commitId,
-        const TString& name);
+        const TString& name) override;
 
     bool ReadNodeAttrVer(
         ui64 nodeId,
@@ -190,11 +163,11 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
     // NodeRefs
     //
 
-    virtual void WriteNodeRef(
+    void WriteNodeRef(
         const TNodeRef& nodeRef,
-        bool markExhaustive);
+        bool markExhaustive) override;
 
-    virtual void DeleteNodeRef(ui64 nodeId, const TString& name);
+    void DeleteNodeRef(ui64 nodeId, const TString& name) override;
 
     bool ReadNodeRef(
         ui64 nodeId,
@@ -244,19 +217,19 @@ public:
     // NodeRefs_Ver
     //
 
-    virtual void WriteNodeRefVer(
+    void WriteNodeRefVer(
         ui64 nodeId,
         ui64 minCommitId,
         ui64 maxCommitId,
         const TString& name,
         ui64 childNode,
         const TString& shardId,
-        const TString& shardNodeName);
+        const TString& shardNodeName) override;
 
-    virtual void DeleteNodeRefVer(
+    void DeleteNodeRefVer(
         ui64 nodeId,
         ui64 commitId,
-        const TString& name);
+        const TString& name) override;
 
     bool ReadNodeRefVer(
         ui64 nodeId,
@@ -273,58 +246,62 @@ public:
     // TruncateQueue
     //
 
-    void WriteTruncateQueueEntry(ui64 nodeId, TByteRange range);
-    void DeleteTruncateQueueEntry(ui64 id);
-    bool ReadTruncateQueue(TVector<NProto::TTruncateEntry>& entries);
+    void WriteTruncateQueueEntry(ui64 nodeId, TByteRange range) override;
+    void DeleteTruncateQueueEntry(ui64 id) override;
+    bool ReadTruncateQueue(TVector<NProto::TTruncateEntry>& entries) override;
 
     //
     // Sessions
     //
 
-    void WriteSession(const NProto::TSession& session);
-    void DeleteSession(const TString& sessionId);
-    bool ReadSessions(TVector<NProto::TSession>& sessions);
+    void WriteSession(const NProto::TSession& session) override;
+    void DeleteSession(const TString& sessionId) override;
+    bool ReadSessions(TVector<NProto::TSession>& sessions) override;
 
     //
     // SessionHandles
     //
 
-    void WriteSessionHandle(const NProto::TSessionHandle& handle);
-    void DeleteSessionHandle(const TString& sessionId, ui64 handle);
-    bool ReadSessionHandles(TVector<NProto::TSessionHandle>& handles);
+    void WriteSessionHandle(const NProto::TSessionHandle& handle) override;
+    void DeleteSessionHandle(const TString& sessionId, ui64 handle) override;
+    bool ReadSessionHandles(TVector<NProto::TSessionHandle>& handles) override;
 
     bool ReadSessionHandles(
         const TString& sessionId,
-        TVector<NProto::TSessionHandle>& handles);
+        TVector<NProto::TSessionHandle>& handles) override;
 
     //
     // SessionLocks
     //
 
-    void WriteSessionLock(const NProto::TSessionLock& lock);
-    void DeleteSessionLock(const TString& sessionId, ui64 lockId);
-    bool ReadSessionLocks(TVector<NProto::TSessionLock>& locks);
+    void WriteSessionLock(const NProto::TSessionLock& lock) override;
+    void DeleteSessionLock(const TString& sessionId, ui64 lockId) override;
+    bool ReadSessionLocks(TVector<NProto::TSessionLock>& locks) override;
 
     bool ReadSessionLocks(
         const TString& sessionId,
-        TVector<NProto::TSessionLock>& locks);
+        TVector<NProto::TSessionLock>& locks) override;
 
     //
     // SessionDuplicateCache
     //
 
-    void WriteSessionDupCacheEntry(const NProto::TDupCacheEntry& entry);
-    void DeleteSessionDupCacheEntry(const TString& sessionId, ui64 entryId);
-    bool ReadSessionDupCacheEntries(TVector<NProto::TDupCacheEntry>& entries);
+    void WriteSessionDupCacheEntry(
+        const NProto::TDupCacheEntry& entry) override;
+    void DeleteSessionDupCacheEntry(
+        const TString& sessionId,
+        ui64 entryId) override;
+    bool ReadSessionDupCacheEntries(TVector<NProto::TDupCacheEntry>& entries) override;
 
 
     //
     // SessionHistory
     //
 
-    void WriteSessionHistoryEntry(const NProto::TSessionHistoryEntry& entry);
-    void DeleteSessionHistoryEntry(ui64 entryId);
-    bool ReadSessionHistoryEntries(TVector<NProto::TSessionHistoryEntry>& entries);
+    void WriteSessionHistoryEntry(
+        const NProto::TSessionHistoryEntry& entry) override;
+    void DeleteSessionHistoryEntry(ui64 entryId) override;
+    bool ReadSessionHistoryEntries(TVector<NProto::TSessionHistoryEntry>& entries) override;
 
 
     //
@@ -335,26 +312,20 @@ public:
         ui64 nodeId,
         ui64 commitId,
         ui64 offset,
-        TStringBuf data);
+        TStringBuf data) override;
 
     void WriteFreshBytesDeletionMarker(
         ui64 nodeId,
         ui64 commitId,
         ui64 offset,
-        ui64 len);
+        ui64 len) override;
 
-    void DeleteFreshBytes(ui64 nodeId, ui64 commitId, ui64 offset);
+    void DeleteFreshBytes(
+        ui64 nodeId,
+        ui64 commitId,
+        ui64 offset) override;
 
-    struct TFreshBytesEntry
-    {
-        ui64 NodeId;
-        ui64 MinCommitId;
-        ui64 Offset;
-        TString Data;
-        ui64 Len;
-    };
-
-    bool ReadFreshBytes(TVector<TFreshBytesEntry>& bytes);
+    bool ReadFreshBytes(TVector<TFreshBytesEntry>& bytes) override;
 
     //
     // FreshBlocks
@@ -364,26 +335,20 @@ public:
         ui64 nodeId,
         ui64 commitId,
         ui32 blockIndex,
-        TStringBuf blockData);
+        TStringBuf blockData) override;
 
     void MarkFreshBlockDeleted(
         ui64 nodeId,
         ui64 minCommitId,
         ui64 maxCommitId,
-        ui32 blockIndex);
+        ui32 blockIndex) override;
 
-    void DeleteFreshBlock(ui64 nodeId, ui64 commitId, ui32 blockIndex);
+    void DeleteFreshBlock(
+        ui64 nodeId,
+        ui64 commitId,
+        ui32 blockIndex) override;
 
-    struct TFreshBlock
-    {
-        ui64 NodeId;
-        ui32 BlockIndex;
-        ui64 MinCommitId;
-        ui64 MaxCommitId;
-        TString BlockData;
-    };
-
-    bool ReadFreshBlocks(TVector<TFreshBlock>& blocks);
+    bool ReadFreshBlocks(TVector<TFreshBlock>& blocks) override;
 
     //
     // MixedBlocks
@@ -394,15 +359,17 @@ public:
         const TPartialBlobId& blobId,
         const TBlockList& blockList,
         ui32 garbageBlocks,
-        ui32 checkpointBlocks);
+        ui32 checkpointBlocks) override;
 
-    void DeleteMixedBlocks(ui32 rangeId, const TPartialBlobId& blobId);
+    void DeleteMixedBlocks(
+        ui32 rangeId,
+        const TPartialBlobId& blobId) override;
 
     bool ReadMixedBlocks(
         ui32 rangeId,
         const TPartialBlobId& blobId,
         TMaybe<TMixedBlob>& blob,
-        IAllocator* alloc);
+        IAllocator* alloc) override;
 
     bool ReadMixedBlocks(
         ui32 rangeId,
@@ -418,13 +385,13 @@ public:
         ui64 nodeId,
         ui64 commitId,
         ui32 blockIndex,
-        ui32 blocksCount);
+        ui32 blocksCount) override;
 
     void DeleteDeletionMarker(
         ui32 rangeId,
         ui64 nodeId,
         ui64 commitId,
-        ui32 blockIndex);
+        ui32 blockIndex) override;
 
     bool ReadDeletionMarkers(
         ui32 rangeId,
@@ -438,53 +405,53 @@ public:
         ui64 nodeId,
         ui64 commitId,
         ui32 blockIndex,
-        ui32 blocksCount);
+        ui32 blocksCount) override;
 
     void DeleteLargeDeletionMarker(
         ui64 nodeId,
         ui64 commitId,
-        ui32 blockIndex);
+        ui32 blockIndex) override;
 
-    bool ReadLargeDeletionMarkers(TVector<TDeletionMarker>& deletionMarkers);
+    bool ReadLargeDeletionMarkers(TVector<TDeletionMarker>& deletionMarkers) override;
 
     //
     // OrphanNodes
     //
 
-    void WriteOrphanNode(ui64 nodeId);
-    void DeleteOrphanNode(ui64 nodeId);
-    bool ReadOrphanNodes(TVector<ui64>& nodeIds);
+    void WriteOrphanNode(ui64 nodeId) override;
+    void DeleteOrphanNode(ui64 nodeId) override;
+    bool ReadOrphanNodes(TVector<ui64>& nodeIds) override;
 
     //
     // NewBlobs
     //
 
-    void WriteNewBlob(const TPartialBlobId& blobId);
-    void DeleteNewBlob(const TPartialBlobId& blobId);
-    bool ReadNewBlobs(TVector<TPartialBlobId>& blobIds);
+    void WriteNewBlob(const TPartialBlobId& blobId) override;
+    void DeleteNewBlob(const TPartialBlobId& blobId) override;
+    bool ReadNewBlobs(TVector<TPartialBlobId>& blobIds) override;
 
     //
     // GarbageBlobs
     //
 
-    void WriteGarbageBlob(const TPartialBlobId& blobId);
-    void DeleteGarbageBlob(const TPartialBlobId& blobId);
-    bool ReadGarbageBlobs(TVector<TPartialBlobId>& blobIds);
+    void WriteGarbageBlob(const TPartialBlobId& blobId) override;
+    void DeleteGarbageBlob(const TPartialBlobId& blobId) override;
+    bool ReadGarbageBlobs(TVector<TPartialBlobId>& blobIds) override;
 
     //
     // Checkpoints
     //
 
-    void WriteCheckpoint(const NProto::TCheckpoint& checkpoint);
-    void DeleteCheckpoint(const TString& checkpointId);
-    bool ReadCheckpoints(TVector<NProto::TCheckpoint>& checkpoints);
+    void WriteCheckpoint(const NProto::TCheckpoint& checkpoint) override;
+    void DeleteCheckpoint(const TString& checkpointId) override;
+    bool ReadCheckpoints(TVector<NProto::TCheckpoint>& checkpoints) override;
 
     //
     // CheckpointNodes
     //
 
-    void WriteCheckpointNode(ui64 checkpointId, ui64 nodeId);
-    void DeleteCheckpointNode(ui64 checkpointId, ui64 nodeId);
+    void WriteCheckpointNode(ui64 checkpointId, ui64 nodeId) override;
+    void DeleteCheckpointNode(ui64 checkpointId, ui64 nodeId) override;
 
     bool ReadCheckpointNodes(
         ui64 checkpointId,
@@ -498,23 +465,17 @@ public:
     void WriteCheckpointBlob(
         ui64 checkpointId,
         ui32 rangeId,
-        const TPartialBlobId& blobId);
+        const TPartialBlobId& blobId) override;
 
     void DeleteCheckpointBlob(
         ui64 checkpointId,
         ui32 rangeId,
-        const TPartialBlobId& blobId);
-
-    struct TCheckpointBlob
-    {
-        ui32 RangeId = 0;
-        TPartialBlobId BlobId;
-    };
+        const TPartialBlobId& blobId) override;
 
     bool ReadCheckpointBlobs(
         ui64 checkpointId,
         TVector<TCheckpointBlob>& blobs,
-        size_t maxCount = 100);
+        size_t maxCount) override;
 
     //
     // CompactionMap
@@ -524,58 +485,56 @@ public:
         ui32 rangeId,
         ui32 blobsCount,
         ui32 deletionsCount,
-        ui32 garbageBlocksCount);
+        ui32 garbageBlocksCount) override;
     void WriteCompactionMap(
         ui32 rangeId,
         ui32 blobsCount,
         ui32 deletionsCount,
-        ui32 garbageBlocksCount);
-    bool ReadCompactionMap(TVector<TCompactionRangeInfo>& compactionMap);
+        ui32 garbageBlocksCount) override;
+    bool ReadCompactionMap(TVector<TCompactionRangeInfo>& compactionMap) override;
+
     bool ReadCompactionMap(
         TVector<TCompactionRangeInfo>& compactionMap,
         ui32 firstRangeId,
         ui32 rangeCount,
-        bool prechargeAll);
+        bool prechargeAll) override;
 
     //
     // OpLog
     //
 
-    void WriteOpLogEntry(const NProto::TOpLogEntry& entry);
-    void DeleteOpLogEntry(ui64 entryId);
-    bool ReadOpLogEntry(ui64 entryId, TMaybe<NProto::TOpLogEntry>& entry);
-    bool ReadOpLog(TVector<NProto::TOpLogEntry>& opLog);
+    void WriteOpLogEntry(const NProto::TOpLogEntry& entry) override;
+    void DeleteOpLogEntry(ui64 entryId) override;
+    bool ReadOpLogEntry(ui64 entryId, TMaybe<NProto::TOpLogEntry>& entry) override;
+    bool ReadOpLog(TVector<NProto::TOpLogEntry>& opLog) override;
 
     //
     // ResponseLog
     //
 
-    void WriteResponseLogEntry(const NProtoPrivate::TResponseLogEntry& entry);
-    void DeleteResponseLogEntry(ui64 clientTabletId, ui64 requestId);
+    void WriteResponseLogEntry(
+        const NProtoPrivate::TResponseLogEntry& entry) override;
+    void DeleteResponseLogEntry(
+        ui64 clientTabletId,
+        ui64 requestId) override;
     bool ReadResponseLogEntry(
         ui64 clientTabletId,
         ui64 requestId,
-        TMaybe<NProtoPrivate::TResponseLogEntry>& entry);
+        TMaybe<NProtoPrivate::TResponseLogEntry>& entry) override;
     bool ReadResponseLog(
-        TVector<NProtoPrivate::TResponseLogEntry>& responseLog);
+        TVector<NProtoPrivate::TResponseLogEntry>& responseLog) override;
 
     //
     // UnconfirmedData
     //
 
-    struct TUnconfirmedDataEntry
-    {
-        ui64 CommitId = 0;
-        NProto::TUnconfirmedData Data;
-    };
-
     void WriteUnconfirmedData(
         ui64 commitId,
-        const NProto::TUnconfirmedData& data);
+        const NProto::TUnconfirmedData& data) override;
 
-    void DeleteUnconfirmedData(ui64 commitId);
+    void DeleteUnconfirmedData(ui64 commitId) override;
 
-    bool ReadUnconfirmedData(TVector<TUnconfirmedDataEntry>& entries);
+    bool ReadUnconfirmedData(TVector<TUnconfirmedDataEntry>& entries) override;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
