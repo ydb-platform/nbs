@@ -489,7 +489,7 @@ public:
             // prevent race between this thread and main thread
             // destroying test instance right after setvalue()
             auto result = Result;
-            result.SetValue(GetStats(false));
+            result.SetValue(GetStats(false /* sinceLastReport */));
         } catch(...) {
             STORAGE_ERROR("%s test has failed: %s",
                 MakeTestTag().c_str(), CurrentExceptionMessage().c_str());
@@ -719,7 +719,7 @@ private:
             const auto requestsCompleted = RequestsCompleted - LastRequestsCompleted;
             const auto requestBytes = RequestBytes - LastRequestBytes;
 
-            auto stats = GetStats(true);
+            auto stats = GetStats(true /* sinceLastReport */);
             STORAGE_INFO(
                 "%s current rate: %ld r/s, bandwidth: %s/s; stats:\n%s",
                 MakeTestTag().c_str(),
