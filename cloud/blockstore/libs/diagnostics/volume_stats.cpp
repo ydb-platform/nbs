@@ -260,7 +260,8 @@ private:
     // Cumulative per-volume availability counters (derivative/RATE, seconds).
     // Nested: ObservedSeconds >= AvailableSeconds >= HealthySeconds. Consumers
     // compute availability = Available/Observed and quality = Healthy/Observed
-    // over a window. Advance only while the volume is served.
+    // over a window. Advance only while the volume is being served, 
+    // until the counters are trimmed.
     TDynamicCounters::TCounterPtr ObservedSecondsCounter;
     TDynamicCounters::TCounterPtr AvailableSecondsCounter;
     TDynamicCounters::TCounterPtr HealthySecondsCounter;
@@ -960,18 +961,29 @@ public:
                 if (instance->ObservedSecondsCounter &&
                     now > instance->AvailabilityLastUpdateTime)
                 {
-                    const ui64 seconds =
-                        (now - instance->AvailabilityLastUpdateTime).Seconds();
-                    if (seconds) {
-                        *instance->ObservedSecondsCounter += seconds;
-                        if (isAvailable && instance->AvailableSecondsCounter) {
-                            *instance->AvailableSecondsCounter += seconds;
+                    const auto elapsed =
+                        now - instance->AvailabilityLastUpdateTime;
+                    if (elapsed > UpdateCountersInterval) {
+                        // A forward gap larger than the publish interval means
+                        // stats were not updated for a long time (thread
+                        // starvation, a suspended process, or a wall-clock
+                        // jump). Crediting the whole gap would count that
+                        // "stall" time as availability, so drop this increment
+                        // and just resync the timestamp.
+                        instance->AvailabilityLastUpdateTime = now;
+                    } else {
+                        const ui64 seconds = elapsed.Seconds();
+                        if (seconds) {
+                            *instance->ObservedSecondsCounter += seconds;
+                            if (isAvailable && instance->AvailableSecondsCounter) {
+                                *instance->AvailableSecondsCounter += seconds;
+                            }
+                            if (isHealthy && instance->HealthySecondsCounter) {
+                                *instance->HealthySecondsCounter += seconds;
+                            }
+                            instance->AvailabilityLastUpdateTime +=
+                                TDuration::Seconds(seconds);
                         }
-                        if (isHealthy && instance->HealthySecondsCounter) {
-                            *instance->HealthySecondsCounter += seconds;
-                        }
-                        instance->AvailabilityLastUpdateTime +=
-                            TDuration::Seconds(seconds);
                     }
                 }
             }

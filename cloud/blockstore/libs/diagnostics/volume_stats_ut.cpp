@@ -1303,6 +1303,53 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         UNIT_ASSERT_VALUES_EQUAL(5, observed2->Val());
     }
 
+    Y_UNIT_TEST(ShouldNotCreditLargeGapAsAvailability)
+    {
+        auto timer = std::make_shared<TTestTimer>();
+        const auto config =
+            std::make_shared<TDiagnosticsConfig>(NProto::TDiagnosticsConfig());
+
+        auto monitoring = CreateMonitoringServiceStub();
+
+        auto volumeStats = CreateVolumeStats(
+            monitoring,
+            config,
+            TDuration::Max(),
+            EVolumeStatsType::EServerStats,
+            timer);
+
+        Mount(
+            volumeStats,
+            "test1",
+            "client1",
+            "instance",
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+
+        auto sliCounters = monitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "sli_volume")
+            ->GetSubgroup("host", "cluster")
+            ->GetSubgroup("volume", "test1")
+            ->GetSubgroup("instance", "instance")
+            ->GetSubgroup("cloud", DefaultCloudId)
+            ->GetSubgroup("folder", DefaultFolderId)
+            ->GetSubgroup("type", "network-ssd");
+
+        auto observed = sliCounters->GetCounter("ObservedSeconds");
+
+        // A gap larger than the publish interval (e.g. stats were not updated
+        // for a long time / the clock jumped forward) must not be credited as
+        // availability: the increment is dropped and the timestamp resynced.
+        timer->AdvanceTime(TDuration::Seconds(60));
+        volumeStats->UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(0, observed->Val());
+
+        // A normal tick after the resync is accounted as usual.
+        timer->AdvanceTime(TDuration::Seconds(10));
+        volumeStats->UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(10, observed->Val());
+    }
+
     Y_UNIT_TEST(ShouldNotAdvanceAvailableSecondsDuringDowntime)
     {
         auto timer = std::make_shared<TTestTimer>();
@@ -1495,17 +1542,22 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         volumeStats->UpdateStats(true);
         UNIT_ASSERT_VALUES_EQUAL(15, observed->Val());
 
-        // Unmount is a no-op; the instance is only removed by TrimVolumes once
-        // it has been inactive longer than the timeout (now - LastRemountTime
-        // = 15s > 10s).
+        // Unmount alone is a no-op for this class: the instance (and therefore
+        // its counter) is not removed until TrimVolumes fires, so it must
+        // still be present and still accrue on the next tick.
         volumeStats->UnmountVolume("test1", "client1");
-        volumeStats->TrimVolumes();
-
-        // After the instance is trimmed it is no longer iterated, so the
-        // counter must stop advancing.
         timer->AdvanceTime(TDuration::Seconds(15));
         volumeStats->UpdateStats(true);
-        UNIT_ASSERT_VALUES_EQUAL(15, observed->Val());
+        UNIT_ASSERT(sliCounters->FindCounter("ObservedSeconds"));
+        UNIT_ASSERT_VALUES_EQUAL(30, observed->Val());
+
+        // The instance has now been inactive longer than the timeout
+        // (now - LastRemountTime = 30s > 10s), so TrimVolumes removes it and
+        // the counter stops advancing.
+        volumeStats->TrimVolumes();
+        timer->AdvanceTime(TDuration::Seconds(15));
+        volumeStats->UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(30, observed->Val());
     }
 
     Y_UNIT_TEST(ShouldTrackClientAvailabilityCountersInSliVolume)
