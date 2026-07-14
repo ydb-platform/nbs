@@ -174,7 +174,7 @@ bool TIndexTabletActor::ValidateTx_ListNodes(
 
 bool TIndexTabletActor::PrepareTx_ListNodes(
     const NActors::TActorContext& ctx,
-    IIndexTabletDatabase& db,
+    INodeIndexTabletDatabase& db,
     TTxIndexTablet::TListNodes& args)
 {
     Y_UNUSED(ctx);

@@ -79,7 +79,7 @@ bool TIndexTabletActor::PrepareTx_PrepareUnlinkDirectoryNode(
         return true;
     }
 
-    TVector<IIndexTabletDatabase::TNodeRef> refs;
+    TVector<INodeIndexTabletDatabase::TNodeRef> refs;
     // 1 entry is enough to prevent deletion
     ready = ReadNodeRefs(
         db,

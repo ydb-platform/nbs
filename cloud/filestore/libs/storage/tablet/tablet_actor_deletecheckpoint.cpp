@@ -86,7 +86,7 @@ bool TIndexTabletActor::PrepareTx_DeleteCheckpoint(
 
             if (ready) {
                 for (ui64 nodeId: args.NodeIds) {
-                    TMaybe<IIndexTabletDatabase::TNode> node;
+                    TMaybe<INodeIndexTabletDatabase::TNode> node;
                     if (!db.ReadNodeVer(nodeId, args.CommitId, node)) {
                         ready = false;
                     }
@@ -123,7 +123,7 @@ bool TIndexTabletActor::PrepareTx_DeleteCheckpoint(
                         }
                     }
 
-                    TMaybe<IIndexTabletDatabase::TMixedBlob> mixedBlob;
+                    TMaybe<INodeIndexTabletDatabase::TMixedBlob> mixedBlob;
                     if (!db.ReadMixedBlocks(
                             blob.RangeId,
                             blob.BlobId,

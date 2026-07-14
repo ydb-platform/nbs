@@ -25,7 +25,7 @@ namespace NCloud::NFileStore::NStorage {
  * and ReadDeletionMarkers which are not supposed to be used in the inode index.
  * But they are needed for the ReadData operation.
  */
-class IIndexTabletDatabase
+class INodeIndexTabletDatabase
 {
 public:
     struct TNode
@@ -78,7 +78,7 @@ public:
         ui64 Version;
     };
 
-    virtual ~IIndexTabletDatabase() = default;
+    virtual ~INodeIndexTabletDatabase() = default;
 
     //
     // Nodes
@@ -162,7 +162,7 @@ public:
         ui64 startNodeId,
         const TString& startCookie,
         ui64 maxCount,
-        TVector<IIndexTabletDatabase::TNodeRef>& refs,
+        TVector<INodeIndexTabletDatabase::TNodeRef>& refs,
         ui64& nextNodeId,
         TString& nextCookie) = 0;
 

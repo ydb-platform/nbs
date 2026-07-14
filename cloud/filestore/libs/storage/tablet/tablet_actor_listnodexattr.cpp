@@ -78,7 +78,7 @@ bool TIndexTabletActor::ValidateTx_ListNodeXAttr(
 
 bool TIndexTabletActor::PrepareTx_ListNodeXAttr(
     const TActorContext& ctx,
-    IIndexTabletDatabase& db,
+    INodeIndexTabletDatabase& db,
     TTxIndexTablet::TListNodeXAttr& args)
 {
     Y_UNUSED(ctx);
