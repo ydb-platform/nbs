@@ -38,7 +38,7 @@ Y_UNIT_TEST_SUITE(TServiceListVolumesTest)
 
     Y_UNIT_TEST(ShouldListVolumesBoundedConcurrency)
     {
-        constexpr ui32 concurrency = 1;
+        constexpr ui32 concurrency = 4;
 
         TTestEnv env;
         ui32 nodeIdx = SetupTestEnv(env);

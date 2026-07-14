@@ -97,14 +97,6 @@ void TDescribeActor::DescribePath(const TActorContext& ctx, const TString& path)
         RequestInfo->Cookie);
 }
 
-void TDescribeActor::DispatchPending(const TActorContext& ctx)
-{
-    while (RequestsInFlight < MaxConcurrency && !PendingPaths.empty()) {
-        DescribePath(ctx, PendingPaths.front());
-        PendingPaths.pop_front();
-    }
-}
-
 void TDescribeActor::ReplyAndDie(
     const TActorContext& ctx,
     std::unique_ptr<TEvService::TEvListVolumesResponse> response)
@@ -193,7 +185,7 @@ void TServiceActor::HandleListVolumes(
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     const size_t maxConcurrency =
-        request.GetMaxConcurrency() > 0 ? request.GetMaxConcurrency() : 1;
+        request.GetMaxConcurrency() > 0 ? request.GetMaxConcurrency() : 100;
 
     LOG_DEBUG(
         ctx,
