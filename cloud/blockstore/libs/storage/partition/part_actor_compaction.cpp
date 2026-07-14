@@ -1591,13 +1591,13 @@ void TPartitionActor::ChangeRangeCountPerRunIfNeeded(
     const auto compactionRangeCountPerRun =
         State->GetCompactionRangeCountPerRun();
 
-    if (thresholdPercentage > countPerRunIncreasingThreshold
-        && compactionRangeCountPerRun <
-        Config->GetMaxCompactionRangeCountPerRun())
+    if (thresholdPercentage > countPerRunIncreasingThreshold &&
+        compactionRangeCountPerRun < Config->GetMaxCompactionRangeCountPerRun())
     {
         State->IncrementCompactionRangeCountPerRun();
         State->SetLastCompactionRangeCountPerRunTime(ctx.Now());
-    } else if (thresholdPercentage < countPerRunDecreasingThreshold &&
+    } else if (
+        thresholdPercentage < countPerRunDecreasingThreshold &&
         compactionRangeCountPerRun > 1)
     {
         State->DecrementCompactionRangeCountPerRun();
@@ -1627,7 +1627,8 @@ TDuration TPartitionActor::ComputeGarbageCompactionExecTime(
             "ThrottleGarbageCompactionBelowFillPercentage > "
             "StopGarbageCompactionThrottlingAboveFillPercentage";
     } else if (stopThrottlingAboveFillPercentage > MaxPercentage) {
-        configError = TStringBuilder()
+        configError =
+            TStringBuilder()
             << "StopGarbageCompactionThrottlingAboveFillPercentage is greater "
                "than "
             << MaxPercentage;
@@ -1739,9 +1740,8 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
     if (IsDynamicGarbageCompactionThrottlingEnabled() &&
         info->Mode == TEvPartitionPrivate::GarbageCompaction)
     {
-        maxCompactionExecTimePerSecond = ComputeGarbageCompactionExecTime(
-            ctx,
-            info->ThrottlingAllowed);
+        maxCompactionExecTimePerSecond =
+            ComputeGarbageCompactionExecTime(ctx, info->ThrottlingAllowed);
     }
 
     if (info->ThrottlingAllowed) {

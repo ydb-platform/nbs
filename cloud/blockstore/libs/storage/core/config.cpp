@@ -211,15 +211,15 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
             TDuration,                                                         \
             TDuration::Seconds(1)                                             )\
     xxx(MaxCompactionExecTimePerSecondForZeroed, TDuration, TDuration::Zero() )\
-    xxx(CompactionScoreHistorySize,             ui32, 10                      )\
-    xxx(CompactionScoreLimitForThrottling,      ui32, 300                     )\
+    xxx(CompactionScoreHistorySize,             ui32,   10                    )\
+    xxx(CompactionScoreLimitForThrottling,      ui32,   300                   )\
     xxx(EnableDynamicGarbageCompactionThrottling,           bool, false       )\
     xxx(ThrottleGarbageCompactionBelowFillPercentage,       ui32, 120         )\
     xxx(StopGarbageCompactionThrottlingAboveFillPercentage, ui32, 200         )\
-    xxx(TargetCompactionBytesPerOp,             ui64, 64_KB                   )\
-    xxx(MaxSkippedBlobsDuringCompaction,        ui32, 3                       )\
-    xxx(MaxSkippedBlobsDuringCompactionHDD,     ui32, 3                       )\
-    xxx(IncrementalCompactionEnabled,           bool, false                   )\
+    xxx(TargetCompactionBytesPerOp,             ui64,   64_KB                 )\
+    xxx(MaxSkippedBlobsDuringCompaction,        ui32,   3                     )\
+    xxx(MaxSkippedBlobsDuringCompactionHDD,     ui32,   3                     )\
+    xxx(IncrementalCompactionEnabled,           bool,   false                 )\
     xxx(CompactionCountPerRunIncreasingThreshold, ui32, 0                     )\
     xxx(CompactionCountPerRunDecreasingThreshold, ui32, 0                     )\
     xxx(CompactionRangeCountPerRun,             ui32,   3                     )\
