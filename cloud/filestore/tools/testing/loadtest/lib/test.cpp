@@ -51,7 +51,10 @@ struct TTestStats
     struct TStats
     {
         ui64 Requests = 0;
+        // Whole-run distribution, reported in the final results
         TLatencyHistogram Hist;
+        // Reset after each progress report, reported in progress reports
+        TLatencyHistogram IntervalHist;
     };
 
     TString Name;
@@ -693,6 +696,7 @@ private:
             auto& stats = TestStats.ActionStats[request->Action];
             ++stats.Requests;
             stats.Hist.RecordValue(request->Elapsed);
+            stats.IntervalHist.RecordValue(request->Elapsed);
         }
     }
 
@@ -704,7 +708,7 @@ private:
         if (elapsed > ReportInterval) {
             const auto requestsCompleted = RequestsCompleted - LastRequestsCompleted;
 
-            auto stats = GetStats();
+            auto stats = GetStats(true);
             STORAGE_INFO("%s current rate: %ld r/s; stats:\n%s",
                 MakeTestTag().c_str(),
                 (ui64)(requestsCompleted / elapsed.Seconds()),
@@ -715,18 +719,25 @@ private:
         }
     }
 
-    NProto::TTestStats GetStats()
+    // With sinceLastReport latencies cover only the requests completed after
+    // the previous progress report; otherwise they cover the whole run.
+    NProto::TTestStats GetStats(bool sinceLastReport = false)
     {
         NProto::TTestStats results;
         results.SetName(Config.GetName());
         results.SetSuccess(TestStats.Success);
 
         auto* stats = results.MutableStats();
-        for (const auto& pair: TestStats.ActionStats) {
+        for (auto& pair: TestStats.ActionStats) {
             auto* action = stats->Add();
             action->SetAction(NProto::EAction_Name(pair.first));
             action->SetCount(pair.second.Requests);
-            FillLatency(pair.second.Hist, *action->MutableLatency());
+            if (sinceLastReport) {
+                FillLatency(pair.second.IntervalHist, *action->MutableLatency());
+                pair.second.IntervalHist.Reset();
+            } else {
+                FillLatency(pair.second.Hist, *action->MutableLatency());
+            }
         }
 
         // TODO report some stats for the files generated during the shooting
