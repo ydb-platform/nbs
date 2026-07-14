@@ -12,7 +12,6 @@
 #include <util/string/builder.h>
 #include <util/string/cast.h>
 
-
 namespace NCloud::NFeatures {
 
 ////////////////////////////////////////////////////////////////////////////////
