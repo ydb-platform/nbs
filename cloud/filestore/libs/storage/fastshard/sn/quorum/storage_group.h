@@ -22,8 +22,8 @@ struct IStorageGroup
     virtual ~IStorageGroup() = default;
 
 #define SN_DECLARE_METHOD(name, ...)                                           \
-    virtual NProto::T##name##Response name(                                    \
-        NProto::T##name##Request request) = 0;                                 \
+    virtual NCloud::NProto::T##name##Response name(                            \
+        NCloud::NProto::T##name##Request request) = 0;                         \
 // SN_DECLARE_METHOD
 
     SN_METHODS(SN_DECLARE_METHOD)

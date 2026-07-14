@@ -131,7 +131,7 @@ NThreading::TFuture<IAsyncEndpointPtr> TAsyncClient::Connect(
             .Port = port,
             .Promise = promise,
         },
-        nullptr);
+        nullptr /* future */);
     if (r) {
         promise.SetValue(nullptr);
     }
