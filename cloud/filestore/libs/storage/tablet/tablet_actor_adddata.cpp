@@ -133,9 +133,9 @@ bool TIndexTabletActor::ValidateAddDataRequest(
     }
     ui64 commitId = GetCurrentCommitId();
 
-    TIndexTabletDatabase db(tx.DB);
+    auto db = CreateIndexTabletDatabase(tx.DB);
 
-    if (!ReadNode(db, args.NodeId, commitId, args.Node)) {
+    if (!ReadNode(*db, args.NodeId, commitId, args.Node)) {
         return false;
     }
 

@@ -39,11 +39,11 @@ void TIndexTabletActor::ExecuteTx_SetHasXAttrs(
     TTransactionContext& tx,
     TTxIndexTablet::TSetHasXAttrs& args)
 {
-    TIndexTabletDatabase db(tx.DB);
+    auto db = CreateIndexTabletDatabase(tx.DB);
 
     // Write only if the value is changed
     if (args.IsToBeChanged) {
-        WriteHasXAttrs(db, EHasXAttrsFromBool(args.Request.GetValue()));
+        WriteHasXAttrs(*db, EHasXAttrsFromBool(args.Request.GetValue()));
     }
     LOG_DEBUG(
         ctx,

@@ -285,7 +285,7 @@ void TIndexTabletActor::ExecuteTx_UpdateConfig(
     TTransactionContext& tx,
     TTxIndexTablet::TUpdateConfig& args)
 {
-    TIndexTabletDatabase db(tx.DB);
+    auto db = CreateIndexTabletDatabase(tx.DB);
 
     ApplyStorageConfigOverrides(
         ctx,
@@ -297,7 +297,7 @@ void TIndexTabletActor::ExecuteTx_UpdateConfig(
         *Config,
         args.FileSystem.GetPerformanceProfile());
 
-    UpdateConfig(db, *Config, args.FileSystem, config);
+    UpdateConfig(*db, *Config, args.FileSystem, config);
 }
 
 void TIndexTabletActor::CompleteTx_UpdateConfig(
@@ -393,7 +393,7 @@ void TIndexTabletActor::ExecuteTx_ConfigureShards(
 {
     Y_UNUSED(ctx);
 
-    TIndexTabletDatabase db(tx.DB);
+    auto db = CreateIndexTabletDatabase(tx.DB);
 
     auto config = GetFileSystem();
     *config.MutableShardFileSystemIds() =
@@ -414,7 +414,7 @@ void TIndexTabletActor::ExecuteTx_ConfigureShards(
         LogTag.c_str(),
         config.ShortDebugString().c_str());
 
-    UpdateConfig(db, *Config, config, GetThrottlingConfig());
+    UpdateConfig(*db, *Config, config, GetThrottlingConfig());
 }
 
 void TIndexTabletActor::CompleteTx_ConfigureShards(
@@ -515,7 +515,7 @@ void TIndexTabletActor::ExecuteTx_ConfigureAsShard(
 {
     Y_UNUSED(ctx);
 
-    TIndexTabletDatabase db(tx.DB);
+    auto db = CreateIndexTabletDatabase(tx.DB);
 
     auto config = GetFileSystem();
     config.SetShardNo(args.Request.GetShardNo());
@@ -534,7 +534,7 @@ void TIndexTabletActor::ExecuteTx_ConfigureAsShard(
     *config.MutableFastShardConfig() =
         std::move(*args.Request.MutableFastShardConfig());
 
-    UpdateConfig(db, *Config, config, GetThrottlingConfig());
+    UpdateConfig(*db, *Config, config, GetThrottlingConfig());
 }
 
 void TIndexTabletActor::CompleteTx_ConfigureAsShard(

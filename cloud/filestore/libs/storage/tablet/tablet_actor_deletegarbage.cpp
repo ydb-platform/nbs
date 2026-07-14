@@ -82,7 +82,7 @@ void TIndexTabletActor::ExecuteTx_DeleteGarbage(
 {
     Y_UNUSED(ctx);
 
-    TIndexTabletDatabase db(tx.DB);
+    auto db = CreateIndexTabletDatabase(tx.DB);
 
     const ui32 maxBlobsPerTx = Config->GetMaxDeleteGarbageBlobsPerTx();
     Crop(args.NewBlobs, args.RemainingNewBlobs, maxBlobsPerTx);
@@ -95,7 +95,7 @@ void TIndexTabletActor::ExecuteTx_DeleteGarbage(
         args.ProfileLogRequest);
 
     DeleteGarbage(
-        db,
+        *db,
         args.CollectCommitId,
         args.NewBlobs,
         args.GarbageBlobs);

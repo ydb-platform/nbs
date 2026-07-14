@@ -337,7 +337,7 @@ protected:
 //
 // This macro also provides TryExecuteTx function that will run the whole
 // transaction and call CompleteTx_ if it was successful.
-#define FILESTORE_IMPLEMENT_RO_TRANSACTION(name, ns, dbType, dbIfaceType)      \
+#define FILESTORE_IMPLEMENT_RO_TRANSACTION(name, ns, dbIfaceType)              \
     struct T##name                                                             \
     {                                                                          \
         using TArgs = ns::T##name;                                             \
@@ -355,8 +355,9 @@ protected:
         {                                                                      \
             TCPUUsageTimerGuard t(target.AccessCPUUsageTimer());               \
             if (target.ValidateTx_##name(ctx, args)) {                         \
-                dbType db(tx.DB, args.NodeUpdates);                            \
-                return target.PrepareTx_##name(ctx, db, args);                 \
+                auto db = target.CreateIndexTabletDatabaseProxy(               \
+                    tx.DB, args.NodeUpdates);                                  \
+                return target.PrepareTx_##name(ctx, *db, args);                \
             }                                                                  \
             return true;                                                       \
         }                                                                      \

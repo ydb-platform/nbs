@@ -56,14 +56,14 @@ void TIndexTabletActor::ExecuteTx_AddDataUnconfirmed(
         return;
     }
 
-    TIndexTabletDatabase db(tx.DB);
+    auto db = CreateIndexTabletDatabase(tx.DB);
 
     auto& data = UnconfirmedDataInProgress[args.CommitId].Data;
 
     data.SetNodeId(args.NodeId);
 
     // Write serialized proto to DB for crash recovery
-    db.WriteUnconfirmedData(args.CommitId, data);
+    db->WriteUnconfirmedData(args.CommitId, data);
 
     LOG_DEBUG(
         ctx,

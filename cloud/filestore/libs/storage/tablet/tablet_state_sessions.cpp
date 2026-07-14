@@ -124,7 +124,7 @@ void TIndexTabletState::LoadSessions(
 }
 
 TSession* TIndexTabletState::CreateSession(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     const TString& clientId,
     const TString& sessionId,
     const TString& checkpointId,
@@ -379,7 +379,7 @@ void TIndexTabletState::OrphanSession(const TActorId& owner, TInstant deadline)
 }
 
 void TIndexTabletState::ResetSession(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     TSession* session,
     const TMaybe<TString>& state)
 {
@@ -419,7 +419,7 @@ void TIndexTabletState::ResetSession(
 }
 
 void TIndexTabletState::RemoveSession(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     const TString& sessionId)
 {
     auto* session = FindSession(sessionId);
@@ -520,7 +520,7 @@ const TSessionHistoryList& TIndexTabletState::GetSessionHistoryList() const
 }
 
 void TIndexTabletState::AddSessionHistoryEntry(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     const TSessionHistoryEntry& entry,
     size_t maxEntryCount)
 {
@@ -767,7 +767,7 @@ void TIndexTabletState::ChangeNodeCounters(
 }
 
 TSessionHandle* TIndexTabletState::CreateHandle(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     TSession* session,
     ui64 nodeId,
     ui64 commitId,
@@ -793,7 +793,7 @@ TSessionHandle* TIndexTabletState::CreateHandle(
 // method for testing purposes, such as verifying the response to handles with
 // an incorrect shard number.
 TSessionHandle* TIndexTabletState::UnsafeCreateHandle(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     TSession* session,
     ui64 handleId,
     ui64 nodeId,
@@ -814,7 +814,7 @@ TSessionHandle* TIndexTabletState::UnsafeCreateHandle(
 }
 
 void TIndexTabletState::DestroyHandle(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     TSessionHandle* handle)
 {
     db.DeleteSessionHandle(
@@ -893,7 +893,7 @@ void TIndexTabletState::RemoveLock(TSessionLock* lock)
 }
 
 TRangeLockOperationResult TIndexTabletState::AcquireLock(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     TSession* session,
     ui64 handle,
     const TLockRange& range)
@@ -934,7 +934,7 @@ TRangeLockOperationResult TIndexTabletState::AcquireLock(
 }
 
 TRangeLockOperationResult TIndexTabletState::ReleaseLock(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     TSession* session,
     const TLockRange& range)
 {
@@ -988,7 +988,7 @@ TRangeLockOperationResult TIndexTabletState::TestLock(
 }
 
 void TIndexTabletState::ReleaseLocks(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     ui64 handle)
 {
     TSmallVec<TSessionLock*> locks;
@@ -1005,7 +1005,7 @@ void TIndexTabletState::ReleaseLocks(
 
 #define FILESTORE_IMPLEMENT_DUPCACHE(name, ...)                                \
 void TIndexTabletState::AddDupCacheEntry(                                      \
-    TIndexTabletDatabase& db,                                                  \
+    IIndexTabletDatabase& db,                                                  \
     TSession* session,                                                         \
     ui64 requestId,                                                            \
     const NProto::T##name##Response& response,                                 \
@@ -1053,7 +1053,7 @@ FILESTORE_DUPCACHE_REQUESTS(FILESTORE_IMPLEMENT_DUPCACHE)
 #undef FILESTORE_IMPLEMENT_DUPCACHE
 
 void TIndexTabletState::PatchDupCacheEntry(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     const TString& sessionId,
     ui64 requestId,
     NProto::TCreateNodeResponse response)
@@ -1078,7 +1078,7 @@ void TIndexTabletState::PatchDupCacheEntry(
 }
 
 void TIndexTabletState::PatchDupCacheEntry(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     const TString& sessionId,
     ui64 requestId,
     NProto::TRenameNodeResponse response)

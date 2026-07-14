@@ -28,9 +28,9 @@ void TIndexTabletActor::ExecuteTx_InitSchema(
 {
     Y_UNUSED(ctx, args);
 
-    TIndexTabletDatabase db(tx.DB);
+    auto db = CreateIndexTabletDatabase(tx.DB);
 
-    db.InitSchema();
+    db->InitSchema();
 }
 
 void TIndexTabletActor::CompleteTx_InitSchema(

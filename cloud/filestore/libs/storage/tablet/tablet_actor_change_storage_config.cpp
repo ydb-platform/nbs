@@ -15,9 +15,9 @@ bool TIndexTabletActor::PrepareTx_ChangeStorageConfig(
     TTransactionContext& tx,
     TTxIndexTablet::TChangeStorageConfig& args)
 {
-    TIndexTabletDatabase db(tx.DB);
+    auto db = CreateIndexTabletDatabase(tx.DB);
     if (args.MergeWithStorageConfigFromTabletDB) {
-        return db.ReadStorageConfig(args.StorageConfigFromDB);
+        return db->ReadStorageConfig(args.StorageConfigFromDB);
     }
     return true;
 }
@@ -27,16 +27,16 @@ void TIndexTabletActor::ExecuteTx_ChangeStorageConfig(
     TTransactionContext& tx,
     TTxIndexTablet::TChangeStorageConfig& args)
 {
-    TIndexTabletDatabase db(tx.DB);
+    auto db = CreateIndexTabletDatabase(tx.DB);
     if (args.StorageConfigFromDB.Defined()) {
         auto* config = args.StorageConfigFromDB.Get();
         config->MergeFrom(args.StorageConfigNew);
-        db.WriteStorageConfig(*config);
+        db->WriteStorageConfig(*config);
         args.ResultStorageConfig = std::move(*config);
         return;
     }
     args.ResultStorageConfig = args.StorageConfigNew;
-    db.WriteStorageConfig(args.StorageConfigNew);
+    db->WriteStorageConfig(args.StorageConfigNew);
 }
 
 void TIndexTabletActor::CompleteTx_ChangeStorageConfig(
