@@ -51,6 +51,8 @@ struct TTestStats
     struct TStats
     {
         ui64 Requests = 0;
+        // Resets after each progress report
+        ui64 IntervalRequests = 0;
         // Whole-run distribution, reported in the final results
         TLatencyHistogram Hist;
         // Reset after each progress report, reported in progress reports
@@ -695,6 +697,7 @@ private:
 
             auto& stats = TestStats.ActionStats[request->Action];
             ++stats.Requests;
+            ++stats.IntervalRequests;
             stats.Hist.RecordValue(request->Elapsed);
             stats.IntervalHist.RecordValue(request->Elapsed);
         }
@@ -729,12 +732,19 @@ private:
 
         auto* stats = results.MutableStats();
         for (auto& pair: TestStats.ActionStats) {
+            if (sinceLastReport && pair.second.IntervalRequests == 0) {
+                // Skip reporting latencies for actions that have not been
+                // executed since the last report
+                continue;
+            }
+
             auto* action = stats->Add();
             action->SetAction(NProto::EAction_Name(pair.first));
             action->SetCount(pair.second.Requests);
             if (sinceLastReport) {
                 FillLatency(pair.second.IntervalHist, *action->MutableLatency());
                 pair.second.IntervalHist.Reset();
+                pair.second.IntervalRequests = 0;
             } else {
                 FillLatency(pair.second.Hist, *action->MutableLatency());
             }
