@@ -7,6 +7,97 @@ import pytest
 from . import mirror_yatool_resources as mirror
 
 
+def write_bootstrap_script(
+    path: Path,
+    resources: tuple[tuple[str, str, str], ...] = (
+        ("linux", "8580483288", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+    ),
+) -> Path:
+    platforms = []
+    for platform, resource_id, md5 in resources:
+        platforms.append(f"""        "{platform}": {{
+            "md5": "{md5}",
+            "urls": [f"{{REGISTRY_ENDPOINT}}/{resource_id}"]
+        }}""")
+    path.write_text(
+        """import os
+
+REGISTRY_ENDPOINT = os.environ.get(
+    "YA_REGISTRY_ENDPOINT", "https://devtools-registry.s3.yandex.net"
+)
+# Start of mapping
+PLATFORM_MAP = {
+    "data": {
+"""
+        + ",\n".join(platforms)
+        + """
+    }
+}
+# End of mapping
+""",
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_load_bootstrap_config_extracts_all_platform_resources(
+    tmp_path: Path,
+) -> None:
+    bootstrap_script = write_bootstrap_script(
+        tmp_path / "ya",
+        (
+            ("linux", "8580483288", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+            ("darwin", "8580479378", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
+        ),
+    )
+
+    config = mirror.load_bootstrap_config(bootstrap_script)
+
+    assert config.registry_endpoint == "https://devtools-registry.s3.yandex.net"
+    assert config.resources == {
+        "8580483288": mirror.BootstrapResource(
+            source_url="https://devtools-registry.s3.yandex.net/8580483288",
+            md5="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        ),
+        "8580479378": mirror.BootstrapResource(
+            source_url="https://devtools-registry.s3.yandex.net/8580479378",
+            md5="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        ),
+    }
+
+
+def test_localize_bootstrap_script_replaces_only_default_endpoint(
+    tmp_path: Path,
+) -> None:
+    bootstrap_script = write_bootstrap_script(tmp_path / "ya")
+    config = mirror.load_bootstrap_config(bootstrap_script)
+
+    localized = mirror.localize_bootstrap_script(
+        config, "https://mirror.example/resources/"
+    )
+
+    assert '"YA_REGISTRY_ENDPOINT", "https://mirror.example/resources"' in localized
+    assert 'f"{REGISTRY_ENDPOINT}/8580483288"' in localized
+
+
+def test_extract_platform_map_rejects_executable_python() -> None:
+    source = """# Start of mapping
+PLATFORM_MAP = {
+    "data": {
+        "linux": {
+            "md5": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "urls": [f"{REGISTRY_ENDPOINT}/8580483288"]
+        }
+    },
+    "unexpected": dangerous_function()
+}
+# End of mapping
+"""
+
+    with pytest.raises(ValueError, match="not in the expected format"):
+        mirror.extract_platform_map(source, "https://devtools-registry.s3.yandex.net")
+
+
 def test_validate_source_url_accepts_devtools_registry_resource() -> None:
     url = "https://devtools-registry.s3.yandex.net/6277415836"
 
@@ -104,6 +195,7 @@ def test_main_skips_already_localized_resources(
         ),
         encoding="utf-8",
     )
+    bootstrap_script = write_bootstrap_script(tmp_path / "ya")
     patch_out = tmp_path / "localize.patch"
     summary_out = tmp_path / "summary.md"
     uploaded: list[str] = []
@@ -113,7 +205,9 @@ def test_main_skips_already_localized_resources(
         del attempts
         downloaded.append(url)
         dst.write_bytes(b"resource")
-        return "md5"
+        if url.endswith("/8580483288"):
+            return "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        return "mapping-md5"
 
     def fake_upload_resource(
         s3: object, bucket: str, key: str, path: Path, md5: str
@@ -140,6 +234,8 @@ def test_main_skips_already_localized_resources(
             "mirror_yatool_resources.py",
             "--mapping",
             str(mapping),
+            "--bootstrap-script",
+            str(bootstrap_script),
             "--local-base-url",
             local_base_url,
             "--patch-out",
@@ -151,11 +247,65 @@ def test_main_skips_already_localized_resources(
 
     assert mirror.main() == 0
 
-    assert downloaded == ["https://devtools-registry.s3.yandex.net/6277415837"]
-    assert uploaded == ["6277415837"]
+    assert downloaded == [
+        "https://devtools-registry.s3.yandex.net/6277415837",
+        "https://devtools-registry.s3.yandex.net/8580483288",
+    ]
+    assert uploaded == ["6277415837", "8580483288"]
     summary = summary_out.read_text(encoding="utf-8")
-    assert "Uploaded or refreshed: `1`" in summary
+    assert "Bootstrap resources in ya: `1`" in summary
+    assert "Uploaded or refreshed: `2`" in summary
     assert "Already up to date: `1`" in summary
+    patch = patch_out.read_text(encoding="utf-8")
+    assert f'+    "YA_REGISTRY_ENDPOINT", "{local_base_url}"' in patch
+
+
+def test_main_rejects_bootstrap_resource_with_wrong_md5(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    mapping = tmp_path / "mapping.conf.json"
+    mapping.write_text('{"resources": {}}', encoding="utf-8")
+    bootstrap_script = write_bootstrap_script(tmp_path / "ya")
+
+    def fake_download(url: str, dst: Path, attempts: int) -> str:
+        del url, attempts
+        dst.write_bytes(b"corrupted")
+        return "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+    def fail_upload(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise AssertionError("a bootstrap resource with the wrong md5 must not upload")
+
+    def fake_make_s3_client(endpoint_url: str | None) -> object:
+        del endpoint_url
+        return object()
+
+    def fake_get_existing_md5(s3: object, bucket: str, key: str) -> str:
+        del s3, bucket, key
+        return ""
+
+    monkeypatch.setattr(mirror, "make_s3_client", fake_make_s3_client)
+    monkeypatch.setattr(mirror, "get_existing_md5", fake_get_existing_md5)
+    monkeypatch.setattr(mirror, "download", fake_download)
+    monkeypatch.setattr(mirror, "upload_resource", fail_upload)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "mirror_yatool_resources.py",
+            "--mapping",
+            str(mapping),
+            "--bootstrap-script",
+            str(bootstrap_script),
+            "--patch-out",
+            str(tmp_path / "localize.patch"),
+            "--summary-out",
+            str(tmp_path / "summary.md"),
+        ],
+    )
+
+    with pytest.raises(ValueError, match="bootstrap resource 8580483288 md5 mismatch"):
+        mirror.main()
 
 
 def test_main_skip_upload_does_not_download_resources(
@@ -174,6 +324,7 @@ def test_main_skip_upload_does_not_download_resources(
         ),
         encoding="utf-8",
     )
+    bootstrap_script = write_bootstrap_script(tmp_path / "ya")
     patch_out = tmp_path / "localize.patch"
     summary_out = tmp_path / "summary.md"
 
@@ -189,6 +340,8 @@ def test_main_skip_upload_does_not_download_resources(
             "mirror_yatool_resources.py",
             "--mapping",
             str(mapping),
+            "--bootstrap-script",
+            str(bootstrap_script),
             "--local-base-url",
             local_base_url,
             "--patch-out",

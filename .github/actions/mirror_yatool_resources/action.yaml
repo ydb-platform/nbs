@@ -6,6 +6,10 @@ inputs:
     description: Path to mapping.conf.json in the working directory.
     required: false
     default: build/mapping.conf.json
+  bootstrap_script:
+    description: Path to the ya bootstrap script in the working directory.
+    required: false
+    default: ya
   base_mapping:
     description: Optional trusted base mapping path for patch generation.
     required: false
@@ -45,6 +49,7 @@ runs:
       working-directory: ${{ inputs.working_directory }}
       env:
         BASE_MAPPING: ${{ inputs.base_mapping }}
+        BOOTSTRAP_SCRIPT: ${{ inputs.bootstrap_script }}
         BUCKET: ${{ inputs.bucket }}
         LOCAL_BASE_URL: ${{ inputs.local_base_url }}
         MAPPING: ${{ inputs.mapping }}
@@ -55,6 +60,7 @@ runs:
         mkdir -p "$OUTPUT_DIR"
         args=(
             --mapping "$MAPPING"
+            --bootstrap-script "$BOOTSTRAP_SCRIPT"
             --bucket "$BUCKET"
             --endpoint-url "$S3_ENDPOINT_URL"
             --local-base-url "$LOCAL_BASE_URL"

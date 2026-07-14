@@ -31,6 +31,7 @@ jobs:
             .github/actions/mirror_yatool_resources
             .github/scripts
             build/mapping.conf.json
+            ya
           fetch-depth: 1
           clean: true
           ref: ${{ github.sha }}
@@ -57,6 +58,7 @@ jobs:
         uses: ./.github/actions/mirror_yatool_resources
         with:
           mapping: build/mapping.conf.json
+          bootstrap_script: ya
           bucket: ${{ env.YATOOL_RESOURCES_BUCKET }}
           endpoint_url: ${{ vars.POOLED_LIGHT_AWS_ENDPOINT }}
           local_base_url: https://${{ env.YATOOL_RESOURCES_BUCKET }}.${{ vars.POOLED_LIGHT_AWS_WEBSITE_SUFFIX }}
