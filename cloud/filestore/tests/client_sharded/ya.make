@@ -8,10 +8,12 @@ TEST_SRCS(
 
 DEPENDS(
     cloud/filestore/apps/client
+    cloud/filestore/tools/testing/loadtest/bin
 )
 
 PEERDIR(
     cloud/filestore/tests/python/lib
+    cloud/filestore/tools/testing/loadtest/protos
 )
 
 SET(
