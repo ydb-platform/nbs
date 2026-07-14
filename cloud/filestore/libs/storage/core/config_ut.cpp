@@ -117,10 +117,64 @@ Y_UNIT_TEST_SUITE(TStorageConfigTest)
             TDuration::MilliSeconds(2500),
             config.GetPipeClientMinRetryTime());
         UNIT_ASSERT_VALUES_EQUAL(1234567890123, config.GetTenantHiveTabletId());
-        UNIT_ASSERT_VALUES_EQUAL(true, config.GetNewCleanupEnabled());
+        UNIT_ASSERT(config.GetNewCleanupEnabled());
         UNIT_ASSERT_VALUES_EQUAL(
             static_cast<int>(NCloud::NProto::AUTHORIZATION_REQUIRE),
             static_cast<int>(config.GetAuthorizationMode()));
+    }
+
+    Y_UNIT_TEST(ShouldOverrideBooleanFieldWithExplicitFalse)
+    {
+        const TString cloudName = "test-cloud";
+        NCloud::NProto::TFeaturesConfig featuresConfigProto;
+        AddWhitelistedFeature(
+            featuresConfigProto,
+            "NewCleanupEnabled",
+            cloudName)
+            .SetValue("false");
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetNewCleanupEnabled(true);
+
+        TStorageConfig config(storageConfig);
+        config.SetFeaturesConfig(
+            NFeatures::TFeaturesConfig(featuresConfigProto));
+
+        NProto::TError error =
+            config.SetCloudFolderEntity(cloudName, "folder", "entity");
+        UNIT_ASSERT_C(!HasError(error), error.GetMessage());
+        UNIT_ASSERT(!config.GetNewCleanupEnabled());
+    }
+
+    Y_UNIT_TEST(ShouldReturnErrorForInvalidBooleanFeatureValue)
+    {
+        const TString cloudName = "test-cloud";
+        NCloud::NProto::TFeaturesConfig featuresConfigProto;
+        AddWhitelistedFeature(
+            featuresConfigProto,
+            "NewCleanupEnabled",
+            cloudName)
+            .SetValue("not-a-bool");
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetNewCleanupEnabled(true);
+
+        TStorageConfig config(storageConfig);
+        config.SetFeaturesConfig(
+            NFeatures::TFeaturesConfig(featuresConfigProto));
+
+        NProto::TError error =
+            config.SetCloudFolderEntity(cloudName, "folder", "entity");
+
+        UNIT_ASSERT(HasError(error));
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
+        UNIT_ASSERT_C(
+            error.GetMessage().Contains("not-a-bool"),
+            error.GetMessage());
+        UNIT_ASSERT_C(
+            error.GetMessage().Contains("NewCleanupEnabled"),
+            error.GetMessage());
+        UNIT_ASSERT(config.GetNewCleanupEnabled());
     }
 
     Y_UNIT_TEST(ShouldReturnErrorForInvalidFeatureFieldValue)
@@ -149,6 +203,33 @@ Y_UNIT_TEST_SUITE(TStorageConfigTest)
             error.GetMessage().Contains("PipeClientRetryCount"),
             error.GetMessage());
         UNIT_ASSERT_VALUES_EQUAL(4, config.GetPipeClientRetryCount());
+    }
+
+    Y_UNIT_TEST(ShouldNotAllowToSetRepeatedFieldViaFeaturesConfig)
+    {
+        const TString cloudName = "test-cloud";
+        NCloud::NProto::TFeaturesConfig featuresConfigProto;
+        AddWhitelistedFeature(
+            featuresConfigProto,
+            "DestroyFilestoreDenyList",
+            cloudName)
+            .SetValue("akjdalihjsd");
+
+        TStorageConfig config;
+        config.SetFeaturesConfig(
+            NFeatures::TFeaturesConfig(featuresConfigProto));
+
+        NProto::TError error =
+            config.SetCloudFolderEntity(cloudName, "folder", "entity");
+
+        UNIT_ASSERT(HasError(error));
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
+        UNIT_ASSERT_C(
+            error.GetMessage().Contains("DestroyFilestoreDenyList"),
+            error.GetMessage());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            config.GetDestroyFilestoreDenyList().size());
     }
 }
 
