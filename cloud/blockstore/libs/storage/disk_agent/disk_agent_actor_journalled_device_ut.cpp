@@ -345,6 +345,25 @@ Y_UNIT_TEST_SUITE(TDiskAgentJournalledDeviceTest)
                  }
              },
              MakeError(E_NOT_FOUND, "Device " + uuid.Quote() + " not found")},
+            {[&](auto& proto)
+             {
+                 proto.MutableHeaders()->SetClientId(clientId);
+                 proto.SetDeviceUUID(FileDevices[0].GetDeviceId());
+
+                 auto& groups = *proto.MutablePageGroups();
+
+                 {
+                     auto& group = *groups.Add();
+                     group.SetFirstPageNo(0x10);
+                     group.MutableContent()->Add()->resize(
+                         DefaultBlockSize,
+                         'A');
+                     group.MutableContent()->Add()->resize(
+                         DefaultBlockSize,
+                         'B');
+                 }
+             },
+             MakeError(E_BS_INVALID_SESSION, "not acquired by client")},
         };
 
         for (ui64 i = 0; i != std::size(testCases); ++i) {
@@ -492,12 +511,45 @@ Y_UNIT_TEST_SUITE(TDiskAgentJournalledDeviceTest)
                  proto.MutableHeaders()->SetClientId(clientId);
                  proto.SetDeviceUUID(uuid);
 
-                 auto& group = *proto.MutablePageGroupRefs()->Add();
-                 group.SetFirstPageNo(0x10);
-                 group.SetPageSize(DefaultBlockSize);
-                 group.SetPageCount(1);
+                 auto& groups = *proto.MutablePageGroupRefs();
+
+                 {
+                     auto& group = *groups.Add();
+                     group.SetFirstPageNo(0x10);
+                     group.SetPageSize(DefaultBlockSize);
+                     group.SetPageCount(1);
+                 }
+
+                 {
+                     auto& group = *groups.Add();
+                     group.SetFirstPageNo(0x20);
+                     group.SetPageSize(DefaultBlockSize);
+                     group.SetPageCount(1);
+                 }
              },
              MakeError(E_NOT_FOUND, "Device " + uuid.Quote() + " not found")},
+            {[&](auto& proto)
+             {
+                 proto.MutableHeaders()->SetClientId(clientId);
+                 proto.SetDeviceUUID(FileDevices[0].GetDeviceId());
+
+                 auto& groups = *proto.MutablePageGroupRefs();
+
+                 {
+                     auto& group = *groups.Add();
+                     group.SetFirstPageNo(0x10);
+                     group.SetPageSize(DefaultBlockSize);
+                     group.SetPageCount(1);
+                 }
+
+                 {
+                     auto& group = *groups.Add();
+                     group.SetFirstPageNo(0x20);
+                     group.SetPageSize(DefaultBlockSize);
+                     group.SetPageCount(1);
+                 }
+             },
+             MakeError(E_BS_INVALID_SESSION, "not acquired by client")},
         };
 
         for (ui64 i = 0; i != std::size(testCases); ++i) {
