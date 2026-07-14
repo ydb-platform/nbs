@@ -209,13 +209,13 @@ private:
 
 using namespace NThreading;
 
-class TMirrorUnsafeFileSystemShard: public IFileSystemShard
+class TNaiveMirroredFileSystemShard: public IFileSystemShard
 {
 private:
     std::shared_ptr<TFiberShardImpl> FiberShard;
 
 public:
-    TMirrorUnsafeFileSystemShard(
+    TNaiveMirroredFileSystemShard(
             ui32 shardNo,
             NProtoPrivate::TPersistentFastShardConfig config)
         : FiberShard(
@@ -259,11 +259,11 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IFileSystemShardPtr CreateMirrorUnsafeFileSystemShard(
+IFileSystemShardPtr CreateNaiveMirroredFileSystemShard(
     ui32 shardNo,
     const NProtoPrivate::TPersistentFastShardConfig& config)
 {
-    return std::make_shared<TMirrorUnsafeFileSystemShard>(shardNo, config);
+    return std::make_shared<TNaiveMirroredFileSystemShard>(shardNo, config);
 }
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard

@@ -1,4 +1,4 @@
 RECURSE(
     mem
-    mirror_unsafe
+    naive_mirrored
 )

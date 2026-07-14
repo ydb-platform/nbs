@@ -1,5 +1,5 @@
 #include <cloud/filestore/libs/storage/fastshard/iface/fs.h>
-#include <cloud/filestore/libs/storage/fastshard/impl/mirror_unsafe/shard.h>
+#include <cloud/filestore/libs/storage/fastshard/impl/naive_mirrored/shard.h>
 #include <cloud/filestore/libs/storage/fastshard/sn/impl/storage_node.h>
 #include <cloud/filestore/libs/storage/fastshard/sn/server/server.h>
 #include <cloud/filestore/libs/storage/fastshard/testlib/fake_storage_node.h>
@@ -64,7 +64,7 @@ struct TStorageNodeFixture
     IServerPtr Server;
 
     TStorageNodeFixture()
-        : File(TTempFileHandle::InCurrentDir("impl-mirror_unsafe-ut"))
+        : File(TTempFileHandle::InCurrentDir("impl-naive_mirrored-ut"))
         , Port(NTesting::GetFreePort())
     {
         File.Resize(FileSize);
@@ -103,11 +103,11 @@ struct TStorageFixture
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TEST(NaiveGroupTest, MirrorsAcquireReleaseRequests)
+TEST(NaiveMirroredShardTest, WritesAndReadsFiles)
 {
     TStorageFixture fx;
 
-    auto shard = CreateMirrorUnsafeFileSystemShard(ShardNo, fx.Config);
+    auto shard = CreateNaiveMirroredFileSystemShard(ShardNo, fx.Config);
 
     ui64 handle = 0;
     {
