@@ -37,6 +37,7 @@ public:
             .StoreResult(&Top);
         Opts.AddLongOption("sort-by", "way of sorting")
             .RequiredArgument("STR")
+            .Choices({"load"})
             .StoreResult(&SortBy);
     }
 
@@ -74,7 +75,7 @@ private:
 
         if (!parsed) {
             responseProto->MutableError()->CopyFrom(MakeError(
-                E_FAIL,
+                E_BADMSG,
                 TStringBuilder() << "failed to parse response json: "
                     << result.GetOutput()));
         }
@@ -83,10 +84,6 @@ private:
 public:
     bool Execute() override
     {
-        if (SortBy != "load") {
-            ythrow yexception() << "unsupported --sort-by: " << SortBy;
-        }
-
         NProtoPrivate::TGetStorageStatsRequest request;
         request.SetFileSystemId(FileSystemId);
         request.SetCacheTTL(0); // disable caching
@@ -130,7 +127,7 @@ public:
             NJson::TJsonValue shardsJson(NJson::JSON_ARRAY);
 
             resultJson["filesystem_id"] = FileSystemId;
-            resultJson["shard_count"] = static_cast<ui64>(rows.size());
+            resultJson["shard_count"] = rows.size();
 
             for (size_t i = 0; i < limit; ++i) {
                 const auto& row = rows[i];
