@@ -491,7 +491,7 @@ struct TTestSpdkEnv final
 
 struct TTestEnv
 {
-    NActors::TTestActorRuntime& Runtime;
+    NActors::TTestActorRuntime* Runtime = nullptr;
     TDiskRegistryState::TPtr DiskRegistryState;
     IFileIOServicePtr FileIOService;
     NNvme::INvmeManagerPtr NvmeManager;
@@ -500,6 +500,13 @@ struct TTestEnv
     ITaskQueuePtr BackgroundThreadPool;
 
     THashSet<NActors::TActorId> Actors;
+
+    explicit TTestEnv(NActors::TTestActorRuntime& runtime);
+
+    TTestEnv(const TTestEnv&) = delete;
+    TTestEnv(TTestEnv&&) = default;
+    TTestEnv& operator = (const TTestEnv&) = delete;
+    TTestEnv& operator = (TTestEnv&&) = default;
 
     ~TTestEnv();
 };

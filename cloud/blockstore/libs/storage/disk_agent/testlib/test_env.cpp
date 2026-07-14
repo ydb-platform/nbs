@@ -254,15 +254,27 @@ NSpdk::ISpdkDevicePtr TTestSpdkTarget::GetDevice(const TString& name)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TTestEnv::TTestEnv(NActors::TTestActorRuntime& runtime)
+    : Runtime(&runtime)
+{}
+
 TTestEnv::~TTestEnv()
 {
-    for (const auto& actorId: Actors) {
-        Runtime.Send(actorId, TActorId(), new TEvents::TEvPoisonPill());
+    if (!Runtime) {
+        return;
     }
 
-    Runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
+    if (Actors) {
+        for (const auto& actorId: Actors) {
+            Runtime->Send(actorId, TActorId(), new TEvents::TEvPoisonPill());
+        }
 
-    BackgroundThreadPool->Stop();
+        Runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+    }
+
+    if (BackgroundThreadPool) {
+        BackgroundThreadPool->Stop();
+    }
 
     if (FileIOService) {
         FileIOService->Stop();
@@ -272,7 +284,7 @@ TTestEnv::~TTestEnv()
 ////////////////////////////////////////////////////////////////////////////////
 
 TTestEnvBuilder::TTestEnvBuilder(TTestActorRuntime& runtime)
-        : Runtime(runtime)
+    : Runtime(runtime)
 {}
 
 TTestEnvBuilder& TTestEnvBuilder::With(NSpdk::ISpdkEnvPtr spdk)
@@ -463,15 +475,15 @@ TTestEnv TTestEnvBuilder::Build()
         &NKikimr::CreateFlatBsController,
         0));
 
-    return TTestEnv{
-        .Runtime = Runtime,
-        .DiskRegistryState = std::move(DiskRegistryState),
-        .FileIOService = FileIOService,
-        .NvmeManager = NvmeManager,
-        .DiskAgentActorId = firstDiskAgentActorId,
-        .BackgroundThreadPool = std::move(backgroundThreadPool),
-        .Actors = std::move(actors),
-    };
+    TTestEnv env{Runtime};
+    env.DiskRegistryState = std::move(DiskRegistryState);
+    env.FileIOService = FileIOService;
+    env.NvmeManager = NvmeManager;
+    env.DiskAgentActorId = firstDiskAgentActorId;
+    env.BackgroundThreadPool = std::move(backgroundThreadPool);
+    env.Actors = std::move(actors);
+
+    return env;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
