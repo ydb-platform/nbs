@@ -41,25 +41,36 @@ void TUserStatsActor::RegisterPages(const NActors::TActorContext& ctx)
     if (mon) {
         auto* rootPage = mon->RegisterIndexPage(Path, Title);
 
-        const auto registerActorPage = [&] (
-            const TString& relPath,
-            const TString& title,
-            bool preTag)
-        {
-            mon->RegisterActorPage(
-                rootPage,
-                relPath,
-                title,
-                preTag,
-                ctx.ActorSystem(),
-                SelfId(),
-                false);
-        };
-
-        registerActorPage("user_stats/human", "UserStats", true);
-        registerActorPage("user_stats/json", TString(), false);
-        registerActorPage("user_stats/spack", TString(), false);
-        registerActorPage("user_stats/prometheus", TString(), false);
+        mon->RegisterActorPage({
+            .Title = "UserStats",
+            .RelPath = "user_stats/human",
+            .ActorSystem = ctx.ActorSystem(),
+            .Index = rootPage,
+            .PreTag = true,
+            .ActorId = SelfId(),
+            .UseAuth = false,
+        });
+        mon->RegisterActorPage({
+            .RelPath = "user_stats/json",
+            .ActorSystem = ctx.ActorSystem(),
+            .Index = rootPage,
+            .ActorId = SelfId(),
+            .UseAuth = false,
+        });
+        mon->RegisterActorPage({
+            .RelPath = "user_stats/spack",
+            .ActorSystem = ctx.ActorSystem(),
+            .Index = rootPage,
+            .ActorId = SelfId(),
+            .UseAuth = false,
+        });
+        mon->RegisterActorPage({
+            .RelPath = "user_stats/prometheus",
+            .ActorSystem = ctx.ActorSystem(),
+            .Index = rootPage,
+            .ActorId = SelfId(),
+            .UseAuth = false,
+        });
     }
 }
 
@@ -159,7 +170,7 @@ void TUserStatsActor::HandleHttpInfo(
         *ev,
         std::make_unique<NActors::NMon::TEvHttpInfoRes>(
             out.Str(),
-            0,
+            0,  // subReqId
             responseFormat));
 }
 
