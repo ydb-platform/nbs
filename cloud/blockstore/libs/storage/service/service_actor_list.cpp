@@ -36,8 +36,8 @@ public:
     void Bootstrap(const TActorContext& ctx);
 
 private:
-    void DescribePath(const TActorContext& ctx, const TString& path);
     void ContinueDescribing(const TActorContext& ctx);
+    void DescribePath(const TActorContext& ctx, const TString& path);
 
     void ReplyAndDie(
         const TActorContext& ctx,

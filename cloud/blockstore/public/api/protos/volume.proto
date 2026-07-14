@@ -650,7 +650,7 @@ message TListVolumesRequest
     THeaders Headers = 1;
 
     // Maximum number of concurrent DescribeScheme requests during traversal.
-    // 0 means sequential (default).
+    // 0 means use server default.
     uint32 MaxConcurrency = 2;
 }
 

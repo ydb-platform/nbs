@@ -25,7 +25,7 @@ public:
     {
         Opts.AddLongOption(
                 "max-concurrency",
-                "max concurrent schemeshard requests (0 = sequential)")
+                "max concurrent schemeshard requests (0 = server default)")
             .OptionalArgument("NUM")
             .StoreResult(&MaxConcurrency);
     }
