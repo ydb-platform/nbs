@@ -182,4 +182,10 @@ def setup_coredumps(ssh):
 
 def process_coredumps(ssh):
     """Run guest-side core dump backtrace collection."""
-    ssh('sudo /process_coredumps.sh')
+    ssh(
+        'if sudo test -x /process_coredumps.sh; then '
+        'sudo /process_coredumps.sh; '
+        'else '
+        "echo 'Skipping coredump processing: /process_coredumps.sh is not installed'; "
+        'fi'
+    )

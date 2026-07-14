@@ -342,7 +342,22 @@ class Qemu:
             **daemon_log_files(prefix="qemu-bin", id=0, cwd=yatest.common.output_path()))
         self.qemu_bin.start()
 
-        self.qmp = QmpClient(self.qmp_socket)
+        try:
+            self.qmp = QmpClient(
+                self.qmp_socket,
+                vm_proc=self.qemu_bin.daemon.process,
+            )
+        except Exception:
+            logger.exception("Failed to initialize QMP; killing qemu")
+            try:
+                self.qemu_bin.kill()
+            except Exception:
+                logger.exception("Failed to kill qemu after QMP initialization failure")
+            finally:
+                # A failed start must not make a later call return the pid of a
+                # dead or only partially initialized process.
+                self.qemu_bin = None
+            raise
 
         return self.qemu_bin.daemon.process.pid
 
