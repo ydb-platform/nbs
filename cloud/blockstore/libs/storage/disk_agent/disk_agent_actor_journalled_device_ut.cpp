@@ -1,4 +1,5 @@
 #include "disk_agent.h"
+
 #include "disk_agent_actor.h"
 
 #include <cloud/blockstore/libs/storage/disk_agent/testlib/test_env.h>
@@ -231,6 +232,168 @@ Y_UNIT_TEST_SUITE(TDiskAgentJournalledDeviceTest)
             const auto& error = response.GetReleaseDevices().GetError();
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldValidateWriteLogRecordRequest, TFixture)
+    {
+        const TString clientId = "client-id";
+        const TString uuid = "unknown";
+
+        auto env =
+            TTestEnvBuilder(*Runtime).With(CreateDiskAgentConfig()).Build();
+
+        TDiskAgentClient diskAgent(*Runtime);
+        diskAgent.WaitReady();
+
+        TTestClient client{Port};
+
+        using TPrepareFunc =
+            std::function<void(NCloud::NProto::TWriteLogRecordRequest&)>;
+
+        const std::tuple<TPrepareFunc, NProto::TError> testCases[]{
+            {[&](auto&) {}, MakeError(E_ARGUMENT, "empty device UUID")},
+            {[&](auto& proto) { proto.SetDeviceUUID(uuid); },
+             MakeError(E_ARGUMENT, "nothing to write")},
+            {[&](auto& proto)
+             {
+                 proto.SetDeviceUUID(uuid);
+                 proto.MutablePageGroups()->Add();
+             },
+             MakeError(E_ARGUMENT, "empty page group")},
+            {[&](auto& proto)
+             {
+                 proto.SetDeviceUUID(uuid);
+                 auto& groups = *proto.MutablePageGroups();
+
+                 {
+                     auto& group = *groups.Add();
+                     group.SetFirstPageNo(0x10);
+                     group.MutableContent()->Add();
+                 }
+             },
+             MakeError(
+                 E_ARGUMENT,
+                 "invalid page data: block must not be empty")},
+            {[&](auto& proto)
+             {
+                 proto.SetDeviceUUID(uuid);
+                 auto& groups = *proto.MutablePageGroups();
+
+                 {
+                     auto& group = *groups.Add();
+                     group.SetFirstPageNo(0x10);
+                     group.MutableContent()->Add()->resize(4_KB, 'A');
+                 }
+
+                 {
+                     auto& group = *groups.Add();
+                     group.SetFirstPageNo(0x20);
+                     group.MutableContent()->Add()->resize(4_KB, 'A');
+                     group.MutableContent()->Add();
+                     group.MutableContent()->Add()->resize(4_KB, 'A');
+                 }
+             },
+             MakeError(
+                 E_ARGUMENT,
+                 "invalid page data: block must not be empty")},
+            {[&](auto& proto)
+             {
+                 proto.SetDeviceUUID(uuid);
+                 auto& groups = *proto.MutablePageGroups();
+
+                 {
+                     auto& group = *groups.Add();
+                     group.SetFirstPageNo(0x10);
+                     group.MutableContent()->Add()->resize(4_KB, 'A');
+                     group.MutableContent()->Add()->resize(8_KB, 'B');
+                 }
+             },
+             MakeError(E_ARGUMENT, "invalid page data: block size mismatch")},
+            {[&](auto& proto)
+             {
+                 proto.SetDeviceUUID(uuid);
+                 auto& groups = *proto.MutablePageGroups();
+
+                 {
+                     auto& group = *groups.Add();
+                     group.SetFirstPageNo(0x10);
+                     group.MutableContent()->Add()->resize(
+                         DefaultBlockSize,
+                         'A');
+                     group.MutableContent()->Add()->resize(
+                         DefaultBlockSize,
+                         'B');
+                 }
+             },
+             MakeError(E_ARGUMENT, "empty client id")},
+            {[&](auto& proto)
+             {
+                 proto.MutableHeaders()->SetClientId(clientId);
+                 proto.SetDeviceUUID(uuid);
+                 auto& groups = *proto.MutablePageGroups();
+
+                 {
+                     auto& group = *groups.Add();
+                     group.SetFirstPageNo(0x10);
+                     group.MutableContent()->Add()->resize(
+                         DefaultBlockSize,
+                         'A');
+                     group.MutableContent()->Add()->resize(
+                         DefaultBlockSize,
+                         'B');
+                 }
+             },
+             MakeError(E_NOT_FOUND, "Device " + uuid.Quote() + " not found")},
+        };
+
+        for (ui64 i = 0; i != std::size(testCases); ++i) {
+            const auto& [prepare, _] = testCases[i];
+
+            NCloud::NProto::TDeviceProtocolRequest request;
+            request.SetRequestId(i + 1);
+            auto& proto = *request.MutableWriteLogRecord();
+            prepare(proto);
+            client.Send(request);
+        }
+
+        Runtime->DispatchEvents(TDispatchOptions(), 10ms);
+
+        TVector<std::pair<ui64, NProto::TError>> errors(std::size(testCases));
+        std::generate_n(
+            errors.begin(),
+            std::size(testCases),
+            [&]
+            {
+                auto response = client.Receive();
+                UNIT_ASSERT_EQUAL(
+                    NProto::TDeviceProtocolResponse::ResponseCase::
+                        kWriteLogRecord,
+                    response.GetResponseCase());
+
+                return std::make_pair(
+                    response.GetRequestId(),
+                    response.GetWriteLogRecord().GetError());
+            });
+
+        SortBy(errors, [](const auto& p) { return p.first; });
+
+        for (size_t i = 0; i != errors.size(); ++i) {
+            const auto& [requestId, error] = errors[i];
+            UNIT_ASSERT_VALUES_EQUAL(i + 1, requestId);
+
+            const auto& [_, expectedError] = testCases[i];
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                expectedError.GetCode(),
+                error.GetCode(),
+                "#" << (i + 1) << ": " << FormatError(expectedError) << " !~ "
+                    << FormatError(error));
+
+            UNIT_ASSERT_STRING_CONTAINS_C(
+                error.GetMessage(),
+                expectedError.GetMessage(),
+                "#" << (i + 1) << ": " << FormatError(expectedError) << " !~ "
+                    << FormatError(error));
         }
     }
 
