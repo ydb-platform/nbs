@@ -13,6 +13,7 @@ compare the profile log and the actual result ( S_OK E_FS_NOENT ...)
 #include <cloud/filestore/libs/client/session.h>
 #include <cloud/filestore/libs/diagnostics/events/profile_events.ev.pb.h>
 #include <cloud/filestore/libs/service/context.h>
+#include <cloud/filestore/libs/service/request.h>
 #include <cloud/filestore/public/api/protos/data.pb.h>
 #include <cloud/filestore/public/api/protos/node.pb.h>
 #include <cloud/filestore/tools/analytics/libs/event-log/dump.h>
@@ -139,6 +140,7 @@ private:
         ssize_t EventMessageNumber = 0;
         const NCloud::NFileStore::NProto::TProfileLogRequestInfo LogRequest;
         TString Description;
+        ui64 RequestBytes = 0;
     };
 
     TFuture<TCompletedRequest> DoAccessNode(
@@ -376,7 +378,8 @@ private:
             .Started = Started,
             .EventMessageNumber = EventMessageNumber,
             .LogRequest = logRequest,
-            .Description = ToString(handle)};
+            .Description = ToString(handle),
+            .RequestBytes = CalculateByteCount(*request)};
 
         auto self = weak_from_this();
         return Session->ReadData(CreateCallContext(), std::move(request))
@@ -402,7 +405,11 @@ private:
             const auto& response = future.GetValue();
             CompareResponse(info, response.GetError().GetCode());
             CheckResponse(response);
-            return {NProto::ACTION_READ, info.Started, response.GetError()};
+            return {
+                NProto::ACTION_READ,
+                info.Started,
+                response.GetError(),
+                info.RequestBytes};
         } catch (const TServiceError& e) {
             CompareResponse(info, e.GetCode());
             return {
@@ -477,7 +484,8 @@ private:
             .Started = Started,
             .EventMessageNumber = EventMessageNumber,
             .LogRequest = logRequest,
-            .Description = ToString(handleLog)};
+            .Description = ToString(handleLog),
+            .RequestBytes = CalculateByteCount(*request)};
 
         const auto self = weak_from_this();
         return Session->WriteData(CreateCallContext(), std::move(request))
@@ -503,7 +511,11 @@ private:
             const auto& response = future.GetValue();
             CompareResponse(info, response.GetError().GetCode());
             CheckResponse(response);
-            return {NProto::ACTION_WRITE, info.Started, response.GetError()};
+            return {
+                NProto::ACTION_WRITE,
+                info.Started,
+                response.GetError(),
+                info.RequestBytes};
         } catch (const TServiceError& e) {
             CompareResponse(info, e.GetCode());
             return {

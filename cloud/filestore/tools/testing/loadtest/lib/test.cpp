@@ -51,6 +51,7 @@ struct TTestStats
     struct TStats
     {
         ui64 Requests = 0;
+        ui64 RequestBytes = 0;
         TLatencyHistogram Hist;
     };
 
@@ -276,6 +277,9 @@ private:
 
     TInstant LastReportTs;
     ui64 LastRequestsCompleted = 0;
+
+    ui64 BytesTransferred = 0;
+    ui64 LastBytesTransferred = 0;
 
     IRequestGeneratorPtr RequestGenerator;
     TRequestsCompletionQueue CompletionQueue;
@@ -692,6 +696,8 @@ private:
 
             auto& stats = TestStats.ActionStats[request->Action];
             ++stats.Requests;
+            stats.RequestBytes += request->RequestBytes;
+            BytesTransferred += request->RequestBytes;
             stats.Hist.RecordValue(request->Elapsed);
         }
     }
@@ -703,15 +709,18 @@ private:
 
         if (elapsed > ReportInterval) {
             const auto requestsCompleted = RequestsCompleted - LastRequestsCompleted;
+            const auto bytesTransferred = BytesTransferred - LastBytesTransferred;
 
             auto stats = GetStats();
-            STORAGE_INFO("%s current rate: %ld r/s; stats:\n%s",
+            STORAGE_INFO("%s current rate: %ld r/s, bandwidth: %ld bytes/s; stats:\n%s",
                 MakeTestTag().c_str(),
                 (ui64)(requestsCompleted / elapsed.Seconds()),
+                (ui64)(bytesTransferred / elapsed.SecondsFloat()),
                 NProtobufJson::Proto2Json(stats, {.FormatOutput = true}).c_str());
 
             LastReportTs = now;
             LastRequestsCompleted = RequestsCompleted;
+            LastBytesTransferred = BytesTransferred;
         }
     }
 
@@ -726,6 +735,7 @@ private:
             auto* action = stats->Add();
             action->SetAction(NProto::EAction_Name(pair.first));
             action->SetCount(pair.second.Requests);
+            action->SetRequestBytes(pair.second.RequestBytes);
             FillLatency(pair.second.Hist, *action->MutableLatency());
         }
 

@@ -2,6 +2,7 @@
 
 #include <cloud/filestore/libs/client/session.h>
 #include <cloud/filestore/libs/service/context.h>
+#include <cloud/filestore/libs/service/request.h>
 #include <cloud/filestore/public/api/protos/data.pb.h>
 #include <cloud/filestore/public/api/protos/node.pb.h>
 
@@ -403,6 +404,8 @@ private:
         request->SetOffset(byteOffset);
         request->SetLength(ReadBytes);
 
+        const auto requestBytes = CalculateByteCount(*request);
+
         auto self = weak_from_this();
         return Session->ReadData(CreateCallContext(), std::move(request)).Apply(
             [=] (const TFuture<NProto::TReadDataResponse>& future){
@@ -411,8 +414,8 @@ private:
                         future,
                         handleInfo,
                         started,
-                        byteOffset
-                    );
+                        byteOffset,
+                        requestBytes);
                 }
 
                 return TCompletedRequest{
@@ -426,7 +429,8 @@ private:
         const TFuture<NProto::TReadDataResponse>& future,
         THandleInfo handleInfo,
         TInstant started,
-        ui64 byteOffset)
+        ui64 byteOffset,
+        ui64 requestBytes)
     {
         try {
             const auto& response = future.GetValue();
@@ -464,7 +468,11 @@ private:
                 HandleInfos.emplace_back(std::move(handleInfo));
             }
 
-            return {NProto::ACTION_READ, started, response.GetError()};
+            return {
+                NProto::ACTION_READ,
+                started,
+                response.GetError(),
+                requestBytes};
         } catch (const TServiceError& e)  {
             auto error = MakeError(e.GetCode(), TString{e.GetMessage()});
             STORAGE_ERROR("read for %s has failed: %s",
@@ -527,11 +535,17 @@ private:
         }
         *request->MutableBuffer() = std::move(buffer);
 
+        const auto requestBytes = CalculateByteCount(*request);
+
         auto self = weak_from_this();
         return Session->WriteData(CreateCallContext(), std::move(request)).Apply(
             [=] (const TFuture<NProto::TWriteDataResponse>& future){
                 if (auto ptr = self.lock()) {
-                    return ptr->HandleWrite(future, handleInfo, started);
+                    return ptr->HandleWrite(
+                        future,
+                        handleInfo,
+                        started,
+                        requestBytes);
                 }
 
                 return TCompletedRequest{
@@ -545,7 +559,8 @@ private:
     TCompletedRequest HandleWrite(
         const TFuture<NProto::TWriteDataResponse>& future,
         THandleInfo handleInfo,
-        TInstant started)
+        TInstant started,
+        ui64 requestBytes)
     {
         try {
             const auto& response = future.GetValue();
@@ -555,7 +570,11 @@ private:
                 HandleInfos.emplace_back(std::move(handleInfo));
             }
 
-            return {NProto::ACTION_WRITE, started, response.GetError()};
+            return {
+                NProto::ACTION_WRITE,
+                started,
+                response.GetError(),
+                requestBytes};
         } catch (const TServiceError& e)  {
             auto error = MakeError(e.GetCode(), TString{e.GetMessage()});
             STORAGE_ERROR("write on %s has failed: %s",
