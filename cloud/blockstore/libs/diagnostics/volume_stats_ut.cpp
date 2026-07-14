@@ -1216,7 +1216,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             "instance",
             NCloud::NProto::STORAGE_MEDIA_SSD);
 
-        auto sliCounters = monitoring->GetCounters()
+        auto availabilityCounters = monitoring->GetCounters()
             ->GetSubgroup("counters", "blockstore")
             ->GetSubgroup("component", "sli_volume")
             ->GetSubgroup("host", "cluster")
@@ -1226,9 +1226,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             ->GetSubgroup("folder", DefaultFolderId)
             ->GetSubgroup("type", "network-ssd");
 
-        auto observed = sliCounters->GetCounter("ObservedSeconds");
-        auto available = sliCounters->GetCounter("AvailableSeconds");
-        auto healthy = sliCounters->GetCounter("HealthySeconds");
+        auto observed = availabilityCounters->GetCounter("ObservedSeconds");
+        auto available = availabilityCounters->GetCounter("AvailableSeconds");
+        auto healthy = availabilityCounters->GetCounter("HealthySeconds");
 
         // A healthy, served volume advances all three counters by the real time
         // elapsed since it was mounted (seeded at mount time).
@@ -1325,7 +1325,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             "instance",
             NCloud::NProto::STORAGE_MEDIA_SSD);
 
-        auto sliCounters = monitoring->GetCounters()
+        auto availabilityCounters = monitoring->GetCounters()
             ->GetSubgroup("counters", "blockstore")
             ->GetSubgroup("component", "sli_volume")
             ->GetSubgroup("host", "cluster")
@@ -1335,7 +1335,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             ->GetSubgroup("folder", DefaultFolderId)
             ->GetSubgroup("type", "network-ssd");
 
-        auto observed = sliCounters->GetCounter("ObservedSeconds");
+        auto observed = availabilityCounters->GetCounter("ObservedSeconds");
 
         // A gap larger than the publish interval (e.g. stats were not updated
         // for a long time / the clock jumped forward) must not be credited as
@@ -1373,7 +1373,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             NCloud::NProto::STORAGE_MEDIA_SSD);
         auto volumeInfo = volumeStats->GetVolumeInfo("test1", "client1");
 
-        auto sliCounters = monitoring->GetCounters()
+        auto availabilityCounters = monitoring->GetCounters()
             ->GetSubgroup("counters", "blockstore")
             ->GetSubgroup("component", "sli_volume")
             ->GetSubgroup("host", "cluster")
@@ -1383,9 +1383,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             ->GetSubgroup("folder", DefaultFolderId)
             ->GetSubgroup("type", "network-ssd");
 
-        auto observed = sliCounters->GetCounter("ObservedSeconds");
-        auto available = sliCounters->GetCounter("AvailableSeconds");
-        auto healthy = sliCounters->GetCounter("HealthySeconds");
+        auto observed = availabilityCounters->GetCounter("ObservedSeconds");
+        auto available = availabilityCounters->GetCounter("AvailableSeconds");
+        auto healthy = availabilityCounters->GetCounter("HealthySeconds");
 
         // One healthy interval: everything advances.
         timer->AdvanceTime(TDuration::Seconds(15));
@@ -1446,7 +1446,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             NCloud::NProto::STORAGE_MEDIA_SSD);
         auto volumeInfo = volumeStats->GetVolumeInfo("test1", "client1");
 
-        auto sliCounters = monitoring->GetCounters()
+        auto availabilityCounters = monitoring->GetCounters()
             ->GetSubgroup("counters", "blockstore")
             ->GetSubgroup("component", "sli_volume")
             ->GetSubgroup("host", "cluster")
@@ -1456,9 +1456,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             ->GetSubgroup("folder", DefaultFolderId)
             ->GetSubgroup("type", "network-ssd");
 
-        auto observed = sliCounters->GetCounter("ObservedSeconds");
-        auto available = sliCounters->GetCounter("AvailableSeconds");
-        auto healthy = sliCounters->GetCounter("HealthySeconds");
+        auto observed = availabilityCounters->GetCounter("ObservedSeconds");
+        auto available = availabilityCounters->GetCounter("AvailableSeconds");
+        auto healthy = availabilityCounters->GetCounter("HealthySeconds");
 
         // One healthy interval: everything advances.
         timer->AdvanceTime(TDuration::Seconds(15));
@@ -1525,7 +1525,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             "instance",
             NCloud::NProto::STORAGE_MEDIA_SSD);
 
-        auto sliCounters = monitoring->GetCounters()
+        auto availabilityCounters = monitoring->GetCounters()
             ->GetSubgroup("counters", "blockstore")
             ->GetSubgroup("component", "sli_volume")
             ->GetSubgroup("host", "cluster")
@@ -1535,7 +1535,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             ->GetSubgroup("folder", DefaultFolderId)
             ->GetSubgroup("type", "network-ssd");
 
-        auto observed = sliCounters->GetCounter("ObservedSeconds");
+        auto observed = availabilityCounters->GetCounter("ObservedSeconds");
 
         // One accounted interval while served.
         timer->AdvanceTime(TDuration::Seconds(15));
@@ -1548,7 +1548,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         volumeStats->UnmountVolume("test1", "client1");
         timer->AdvanceTime(TDuration::Seconds(15));
         volumeStats->UpdateStats(true);
-        UNIT_ASSERT(sliCounters->FindCounter("ObservedSeconds"));
+        UNIT_ASSERT(availabilityCounters->FindCounter("ObservedSeconds"));
         UNIT_ASSERT_VALUES_EQUAL(30, observed->Val());
 
         // The instance has now been inactive longer than the timeout
@@ -1585,7 +1585,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             "instance",
             NCloud::NProto::STORAGE_MEDIA_SSD);
 
-        auto sliCounters = monitoring->GetCounters()
+        auto availabilityCounters = monitoring->GetCounters()
             ->GetSubgroup("counters", "blockstore")
             ->GetSubgroup("component", "sli_volume")
             ->GetSubgroup("host", "cluster")
@@ -1595,9 +1595,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             ->GetSubgroup("folder", DefaultFolderId)
             ->GetSubgroup("type", "network-ssd");
 
-        auto observed = sliCounters->GetCounter("ObservedSeconds");
-        auto available = sliCounters->GetCounter("AvailableSeconds");
-        auto healthy = sliCounters->GetCounter("HealthySeconds");
+        auto observed = availabilityCounters->GetCounter("ObservedSeconds");
+        auto available = availabilityCounters->GetCounter("AvailableSeconds");
+        auto healthy = availabilityCounters->GetCounter("HealthySeconds");
 
         // A healthy, served volume advances all three counters by the real
         // time elapsed since it was mounted, exactly like the server path.

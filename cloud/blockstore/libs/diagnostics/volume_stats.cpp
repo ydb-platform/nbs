@@ -552,7 +552,7 @@ private:
     // only these specific counters. Populated for both EServerStats and
     // EClientStats in InitCounters; see RegisterInstance() for the per-volume
     // subgroup layout.
-    TDynamicCountersPtr SliCounters;
+    TDynamicCountersPtr AvailabilityCounters;
     std::shared_ptr<NUserCounter::IUserCounterSupplier> UserCounters;
     std::unique_ptr<TSufferCounters> SufferCounters;
     std::unique_ptr<TSufferCounters> SmoothSufferCounters;
@@ -1149,9 +1149,8 @@ private:
         info->RequestCounters.Register(*countersGroup);
         info->HasDowntimeCounter = countersGroup->GetCounter("HasDowntime");
 
-        // When the narrow component=sli_volume tree is available (see
-        // SliCounters comment) register the cumulative counters there;
-        // otherwise fall back to the nested per-volume group.
+        // Register the cumulative counters in the narrow component=sli_volume
+        // tree (see AvailabilityCounters comment).
         // "type" uses MediaKindToComputeType (not MediaKindToStatsString, the
         // convention used by the DownDisks aggregate below) to produce the
         // same disk-type spelling ("network-ssd", ...) this helper already
@@ -1159,24 +1158,21 @@ private:
         // StorageMediaKind is immutable for the lifetime of a volume (unlike
         // cloud/folder, which AlterVolume can change), so this extra level
         // needs no re-registration/aliasing handling.
-        auto sliCountersGroup = SliCounters
-            ? SliCounters
-                  ->GetSubgroup("volume", volumeConfig.GetDiskId())
-                  ->GetSubgroup(
-                      "instance",
-                      realInstanceId.GetRealInstanceId())
-                  ->GetSubgroup("cloud", volumeConfig.GetCloudId())
-                  ->GetSubgroup("folder", volumeConfig.GetFolderId())
-                  ->GetSubgroup(
-                      "type",
-                      MediaKindToComputeType(volumeConfig.GetStorageMediaKind()))
-            : countersGroup;
+        auto availabilityCountersGroup =
+            AvailabilityCounters
+                ->GetSubgroup("volume", volumeConfig.GetDiskId())
+                ->GetSubgroup("instance", realInstanceId.GetRealInstanceId())
+                ->GetSubgroup("cloud", volumeConfig.GetCloudId())
+                ->GetSubgroup("folder", volumeConfig.GetFolderId())
+                ->GetSubgroup(
+                    "type",
+                    MediaKindToComputeType(volumeConfig.GetStorageMediaKind()));
         info->ObservedSecondsCounter =
-            sliCountersGroup->GetCounter("ObservedSeconds", true);
+            availabilityCountersGroup->GetCounter("ObservedSeconds", true);
         info->AvailableSecondsCounter =
-            sliCountersGroup->GetCounter("AvailableSeconds", true);
+            availabilityCountersGroup->GetCounter("AvailableSeconds", true);
         info->HealthySecondsCounter =
-            sliCountersGroup->GetCounter("HealthySeconds", true);
+            availabilityCountersGroup->GetCounter("HealthySeconds", true);
 
         auto reportZeroBlocksMetrics =
             !DiagnosticsConfig
@@ -1206,10 +1202,9 @@ private:
         Counters->GetSubgroup("volume", volumeBase->Volume.GetDiskId())->
             RemoveSubgroup("instance", realInstanceId.GetRealInstanceId());
 
-        if (SliCounters) {
-            SliCounters->GetSubgroup("volume", volumeBase->Volume.GetDiskId())->
-                RemoveSubgroup("instance", realInstanceId.GetRealInstanceId());
-        }
+        AvailabilityCounters
+            ->GetSubgroup("volume", volumeBase->Volume.GetDiskId())
+            ->RemoveSubgroup("instance", realInstanceId.GetRealInstanceId());
 
         NUserCounter::UnregisterServerVolumeInstance(
             *UserCounters,
@@ -1227,9 +1222,9 @@ private:
 
         Counters->RemoveSubgroup("volume", volumeBase->Volume.GetDiskId());
 
-        if (SliCounters) {
-            SliCounters->RemoveSubgroup("volume", volumeBase->Volume.GetDiskId());
-        }
+        AvailabilityCounters->RemoveSubgroup(
+            "volume",
+            volumeBase->Volume.GetDiskId());
     }
 
     void InitCounters()
@@ -1271,7 +1266,7 @@ private:
                     ++mk;
                 }
 
-                SliCounters = Counters
+                AvailabilityCounters = Counters
                     ->GetSubgroup("component", "sli_volume")
                     ->GetSubgroup("host", "cluster");
 
@@ -1279,7 +1274,7 @@ private:
                 break;
             }
             case EVolumeStatsType::EClientStats: {
-                SliCounters = Counters
+                AvailabilityCounters = Counters
                     ->GetSubgroup("component", "sli_volume")
                     ->GetSubgroup("host", "cluster");
 
