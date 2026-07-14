@@ -867,18 +867,17 @@ ui64 TClientEndpoint::SendRequest(
     req->CallContext = std::move(callContext);
 
     auto clientReqId = GetNewReqId();
-
-    LWTRACK(
-        RequestEnqueued,
-        req->CallContext->LWOrbit,
-        req->CallContext->RequestId);
+    req->ClientReqId = clientReqId;
 
     if (!CheckState(EEndpointState::Connected)) {
         AbortRequest(std::move(req), E_RDMA_UNAVAILABLE, "endpoint is unavailable");
         return clientReqId;
     }
 
-    req->ClientReqId = clientReqId;
+    LWTRACK(
+        RequestEnqueued,
+        req->CallContext->LWOrbit,
+        req->CallContext->RequestId);
 
     Counters->RequestEnqueued();
     InputRequests.Enqueue(std::move(req));
@@ -886,6 +885,7 @@ ui64 TClientEndpoint::SendRequest(
     if (WaitMode == EWaitMode::Poll) {
         RequestEvent.Set();
     }
+
     return clientReqId;
 }
 
@@ -907,22 +907,27 @@ bool TClientEndpoint::HandleInputRequests() noexcept
 
 void TClientEndpoint::HandleQueuedRequests() noexcept
 {
-    if (!CheckState(EEndpointState::Connected)) {
-        return;
-    }
-
     while (QueuedRequests) {
-        auto* send = SendQueue.Pop();
-        if (!send) {
-            // no more WRs available
-            break;
+        if (CheckState(EEndpointState::Connected)) {
+            auto* send = SendQueue.Pop();
+            if (!send) {
+                // no more WRs available
+                break;
+            }
+
+            auto req = QueuedRequests.Dequeue();
+            Y_ABORT_UNLESS(req);
+
+            Counters->RequestDequeued();
+            SendRequest(std::move(req), send);
         }
+        else {
+            auto req = QueuedRequests.Dequeue();
+            Y_ABORT_UNLESS(req);
 
-        auto req = QueuedRequests.Dequeue();
-        Y_ABORT_UNLESS(req);
-
-        Counters->RequestDequeued();
-        SendRequest(std::move(req), send);
+            Counters->RequestDequeued();
+            AbortRequest(std::move(req), E_RDMA_UNAVAILABLE, "endpoint is unavailable");
+        }
     }
 }
 
@@ -1008,6 +1013,10 @@ void TClientEndpoint::AbortRequests() noexcept
         AbortRequestsEvent.Clear();
     }
 
+    if (!CheckState(EEndpointState::Disconnecting)) {
+        return;
+    }
+
     auto requests = InputRequests.DequeueAll();
     if (requests) {
         QueuedRequests.Append(std::move(requests));
@@ -1016,13 +1025,12 @@ void TClientEndpoint::AbortRequests() noexcept
     while (QueuedRequests) {
         auto req = QueuedRequests.Dequeue();
         Y_ABORT_UNLESS(req);
-        RDMA_DEBUG("abort request " << req->ReqId);
         Counters->RequestDequeued();
         AbortRequest(std::move(req), E_RDMA_UNAVAILABLE, "endpoint is unavailable");
     }
 
     while (auto req = ActiveRequests.Pop()) {
-        RDMA_DEBUG("request " << req->ReqId << " aborted");
+        RDMA_DEBUG("abort request " << req->ReqId);
         Counters->RequestAborted();
         AbortRequest(std::move(req), E_RDMA_UNAVAILABLE, "endpoint is unavailable");
     }
