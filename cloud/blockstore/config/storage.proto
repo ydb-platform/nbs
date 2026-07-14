@@ -1625,4 +1625,8 @@ message TStorageServiceConfig
     // If false (default), UseGentlePreemption param
     // for RebindVolumes action is ignored
     optional bool AllowGentlePreemptionForRebindVolumesAction = 514;
+
+    // Maximum number of concurrent DescribeScheme requests during ListVolumes
+    // traversal. 0 means use this default.
+    optional uint32 ListVolumesConcurrency = 515;
 }

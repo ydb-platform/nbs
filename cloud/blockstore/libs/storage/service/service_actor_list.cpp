@@ -184,8 +184,9 @@ void TServiceActor::HandleListVolumes(
     auto requestInfo =
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
-    const size_t maxConcurrency =
-        request.GetMaxConcurrency() > 0 ? request.GetMaxConcurrency() : 100;
+    const size_t maxConcurrency = request.GetMaxConcurrency() > 0
+                                      ? request.GetMaxConcurrency()
+                                      : Config->GetListVolumesConcurrency();
 
     LOG_DEBUG(
         ctx,
