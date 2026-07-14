@@ -79,7 +79,6 @@ public:
     [[nodiscard]] NProto::TStorageServiceConfig GetStorageConfigProto() const;
 
     TString GetSchemeShardDir() const;
-    [[nodiscard]] ui32 GetListVolumesConcurrency() const;
     ui32 GetWriteBlobThreshold() const;
     ui32 GetWriteBlobThresholdSSD() const;
     [[nodiscard]] ui32 GetWriteMixedBlobThresholdHDD() const;

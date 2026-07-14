@@ -16,21 +16,34 @@ namespace {
 class TListVolumesCommand final
     : public TCommand
 {
+private:
+    ui32 MaxConcurrency = 0;
+
 public:
     TListVolumesCommand(IBlockStorePtr client)
         : TCommand(std::move(client))
-    {}
+    {
+        Opts.AddLongOption(
+                "max-concurrency",
+                "max concurrent schemeshard requests (0 = sequential)")
+            .OptionalArgument("NUM")
+            .StoreResult(&MaxConcurrency);
+    }
 
 protected:
     bool DoExecute() override
     {
         auto& output = GetOutputStream();
 
+        auto request = std::make_shared<NProto::TListVolumesRequest>();
+        if (MaxConcurrency > 0) {
+            request->SetMaxConcurrency(MaxConcurrency);
+        }
+
         STORAGE_DEBUG("Sending ListVolumes request");
         auto result = WaitFor(ClientEndpoint->ListVolumes(
             MakeIntrusive<TCallContext>(),
-            std::make_shared<NProto::TListVolumesRequest>()
-        ));
+            std::move(request)));
 
         STORAGE_DEBUG("Received ListVolumes response");
         if (Proto) {

@@ -25,6 +25,7 @@ private:
     TVector<TString> Volumes;
     TDeque<TString> PendingPaths;
     size_t RequestsInFlight = 0;
+    size_t TotalRequestsScheduled = 0;
 
 public:
     TDescribeActor(
@@ -36,6 +37,7 @@ public:
 
 private:
     void DescribePath(const TActorContext& ctx, const TString& path);
+    void ContinueDescribing(const TActorContext& ctx);
 
     void ReplyAndDie(
         const TActorContext& ctx,
@@ -63,20 +65,26 @@ TDescribeActor::TDescribeActor(
 
 void TDescribeActor::Bootstrap(const TActorContext& ctx)
 {
-    while (!PendingPaths.empty() && RequestsInFlight < MaxConcurrency) {
-        TString path = std::move(PendingPaths.front());
-        PendingPaths.pop_front();
-        DescribePath(ctx, path);
-    }
+    ContinueDescribing(ctx);
     Become(&TThis::StateWork);
+}
+
+void TDescribeActor::ContinueDescribing(const TActorContext& ctx)
+{
+    while (RequestsInFlight < MaxConcurrency && !PendingPaths.empty()) {
+        DescribePath(ctx, PendingPaths.front());
+        PendingPaths.pop_front();
+    }
 }
 
 void TDescribeActor::DescribePath(const TActorContext& ctx, const TString& path)
 {
-    LOG_DEBUG(
+    ++TotalRequestsScheduled;
+    LOG_INFO(
         ctx,
         TBlockStoreComponents::SERVICE,
-        "Sending describe request for path %s",
+        "Sending describe request #%zu for path %s",
+        TotalRequestsScheduled,
         path.Quote().data());
 
     auto request = std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(path);
@@ -123,7 +131,7 @@ void TDescribeActor::HandleDescribeResponse(
 
     const auto& error = msg->GetError();
     if (FAILED(error.GetCode())) {
-        LOG_DEBUG(
+        LOG_ERROR(
             ctx,
             TBlockStoreComponents::SERVICE,
             "Path %s: describe failed: %s",
@@ -151,11 +159,7 @@ void TDescribeActor::HandleDescribeResponse(
         }
     }
 
-    while (RequestsInFlight < MaxConcurrency && !PendingPaths.empty()) {
-        TString next = std::move(PendingPaths.front());
-        PendingPaths.pop_front();
-        DescribePath(ctx, next);
-    }
+    ContinueDescribing(ctx);
 
     if (RequestsInFlight == 0) {
         auto response = std::make_unique<TEvService::TEvListVolumesResponse>();
@@ -182,8 +186,8 @@ void TServiceActor::HandleListVolumes(
         ev->Cookie,
         msg->CallContext);
 
-    // TODO: filter?
-    Y_UNUSED(request);
+    const size_t maxConcurrency =
+        request.GetMaxConcurrency() > 0 ? request.GetMaxConcurrency() : 1;
 
     LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
         "Listing volumes: %s",
@@ -193,7 +197,7 @@ void TServiceActor::HandleListVolumes(
         ctx,
         std::move(requestInfo),
         Config->GetSchemeShardDir(),
-        Config->GetListVolumesConcurrency());
+        maxConcurrency);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

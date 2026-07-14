@@ -648,6 +648,10 @@ message TListVolumesRequest
 {
     // Optional request headers.
     THeaders Headers = 1;
+
+    // Maximum number of concurrent DescribeScheme requests during traversal.
+    // 0 means sequential (default).
+    uint32 MaxConcurrency = 2;
 }
 
 message TListVolumesResponse
