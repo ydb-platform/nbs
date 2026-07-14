@@ -8,7 +8,12 @@ import yatest.common
 import yatest.common.network
 
 from contrib.ydb.tests.library.harness.daemon import Daemon
-from .common import get_qemu_bios, is_arm as is_arm_host
+from .common import (
+    get_chardev_reconnect,
+    get_qemu_bios,
+    get_virtiofs_migration,
+    is_arm as is_arm_host,
+)
 from .qmp import QmpClient
 
 logger = logging.getLogger(__name__)
@@ -114,6 +119,11 @@ class Qemu:
         self.virtio = virtio
         self.qemu_options = qemu_options
         self.num_request_queues = num_request_queues
+
+        if chardev_reconnect is None:
+            chardev_reconnect = get_chardev_reconnect()
+        if virtiofs_migration is None:
+            virtiofs_migration = get_virtiofs_migration()
 
         self.chardev_reconnect_option = f",reconnect={chardev_reconnect}" if chardev_reconnect else ""
         self.virtiofs_migration_option = f",migration={virtiofs_migration}" if virtiofs_migration else ""
