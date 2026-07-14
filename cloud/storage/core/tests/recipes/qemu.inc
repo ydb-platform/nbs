@@ -1,3 +1,5 @@
+    MESSAGE(WARNING "qqqrecp QEMU_CHARDEV_RECONNECT=${QEMU_CHARDEV_RECONNECT}")
+
 IF (NOT QEMU_BIN)
     DEPENDS(cloud/storage/core/tools/testing/qemu/bin)
 ENDIF()
@@ -36,35 +38,25 @@ REQUIREMENTS(
     ram:16
 )
 
-IF (QEMU_BIOS != "")
-    SET(QEMU_BIOS_ARG --qemu-bios $QEMU_BIOS)
-ENDIF()
-IF (QEMU_CHARDEV_RECONNECT != "")
-    SET(QEMU_CHARDEV_RECONNECT_ARG --chardev-reconnect $QEMU_CHARDEV_RECONNECT)
-ENDIF()
-IF (QEMU_VIRTIOFS_MIGRATION != "")
-    SET(QEMU_VIRTIOFS_MIGRATION_ARG --virtiofs-migration $QEMU_VIRTIOFS_MIGRATION)
-ENDIF()
-
 USE_RECIPE(
     cloud/storage/core/tests/recipes/qemu/qemu-recipe
-    --qemu-bin $QEMU_BIN
-    --qemu-firmware $QEMU_FIRMWARE
-    ${QEMU_BIOS_ARG}
-    --qemu-options $QEMU_OPTIONS
-    --rootfs $QEMU_ROOTFS
-    --proc $QEMU_PROC
-    --mem $QEMU_MEM
-    --ssh-key $QEMU_SSH_KEY
-    --ssh-user $QEMU_SSH_USER
-    --virtio $QEMU_VIRTIO
-    --enable-kvm $QEMU_ENABLE_KVM
-    --instance-count $QEMU_INSTANCE_COUNT
-    --invoke-test $QEMU_INVOKE_TEST
-    --use-virtiofs-server $QEMU_USE_VIRTIOFS_SERVER
-    --num-request-queues $QEMU_NUM_REQUEST_QUEUES
-    ${QEMU_CHARDEV_RECONNECT_ARG}
-    ${QEMU_VIRTIOFS_MIGRATION_ARG}
+    --qemu-bin "$QEMU_BIN"
+    --qemu-firmware "$QEMU_FIRMWARE"
+    --qemu-bios "$QEMU_BIOS"
+    --qemu-options "$QEMU_OPTIONS"
+    --rootfs "$QEMU_ROOTFS"
+    --proc "$QEMU_PROC"
+    --mem "$QEMU_MEM"
+    --ssh-key "$QEMU_SSH_KEY"
+    --ssh-user "$QEMU_SSH_USER"
+    --virtio "$QEMU_VIRTIO"
+    --enable-kvm "$QEMU_ENABLE_KVM"
+    --instance-count "$QEMU_INSTANCE_COUNT"
+    --invoke-test "$QEMU_INVOKE_TEST"
+    --use-virtiofs-server "$QEMU_USE_VIRTIOFS_SERVER"
+    --num-request-queues "$QEMU_NUM_REQUEST_QUEUES"
+    --chardev-reconnect "$QEMU_CHARDEV_RECONNECT"
+    --virtiofs-migration "$QEMU_VIRTIOFS_MIGRATION"
 )
 
 REQUIREMENTS(kvm)
