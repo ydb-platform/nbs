@@ -40,6 +40,7 @@ public:
         TContext* WqOwner = nullptr;
 
         bool PropagateAffinityToKernelWorkers = false;
+        ui32 Flags = 0;
     };
 
     explicit TContext(TParams params);
