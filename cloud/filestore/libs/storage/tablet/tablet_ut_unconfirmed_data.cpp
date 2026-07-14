@@ -29,27 +29,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Reschedules transactions with probability 1/Ratio, to exercise the recovery
-// confirmation path under transaction restarts/reorderings.
-class TRandomTxRescheduler final
-    : public ITxRescheduler
-{
-private:
-    const ui32 Ratio;
-
-public:
-    explicit TRandomTxRescheduler(ui32 ratio)
-        : Ratio(ratio)
-    {}
-
-    bool ShouldReschedule() override
-    {
-        return Ratio > 0 && RandomNumber<ui32>(Ratio) == 0;
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 class TTestProfileLog: public IProfileLog
 {
 public:
@@ -1479,10 +1458,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
             storageConfig.SetAddingUnconfirmedDataEnabled(true);
             storageConfig.SetUnconfirmedDataCountHardLimit(10);
 
-            TTestEnv env({}, std::move(storageConfig));
-            // Inject a rescheduler so recovery confirmation is exercised under
-            // transaction restarts/reorderings.
-            env.SetTxRescheduler(std::make_shared<TRandomTxRescheduler>(3));
+            TTestEnv env({.FakePageFaultsProbabilityPercentage = 5}, std::move(storageConfig));
             ui32 nodeIdx = env.AddDynamicNode();
             ui64 tabletId = env.BootIndexTablet(nodeIdx);
 

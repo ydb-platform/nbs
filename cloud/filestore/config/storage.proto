@@ -848,4 +848,8 @@ message TStorageConfig
 
     // Pass data buffer to the tablet as a message payload
     optional bool ExternalWriteDataPayloadEnabled = 526;
+
+    // Enables injecting of errors in TIndexTabletDatabase. Must be only used in tests!
+    optional bool FakeTxPageFaultsEnabled = 527;
+    optional double FakeTxPageFaultsProbabilityPercentage = 528;
 }
