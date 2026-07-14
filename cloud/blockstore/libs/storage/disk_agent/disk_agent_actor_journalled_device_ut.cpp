@@ -11,6 +11,7 @@
 #include <library/cpp/protobuf/util/pb_io.h>
 
 #include <util/folder/tempdir.h>
+#include <util/random/random.h>
 
 #include <chrono>
 #include <optional>
@@ -122,6 +123,7 @@ public:
 
         const ui32 wireSize = HostToInet(static_cast<ui32>(payload.size()));
         UNIT_ASSERT_GT(wireSize, 0);
+
         Out.Write(&wireSize, sizeof(wireSize));
         Out.Write(payload.data(), payload.size());
     }
@@ -130,6 +132,7 @@ public:
     {
         NProto::TDeviceProtocolResponse response;
         ui32 wireSize = 0;
+
         In.LoadOrFail(&wireSize, sizeof(wireSize));
 
         const ui32 size = InetToHost(wireSize);
@@ -704,7 +707,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentJournalledDeviceTest)
     Y_UNIT_TEST_F(ShouldReadPages, TFixture)
     {
         const TString clientId = "client-id";
-        // const ui64 requestId = 42;
+        const auto& device = FileDevices[0];
+        const ui64 blocksCount = device.GetFileSize() / device.GetBlockSize();
+        const ui32 requestsCount = 100;
 
         auto env =
             TTestEnvBuilder(*Runtime).With(CreateDiskAgentConfig()).Build();
@@ -714,8 +719,121 @@ Y_UNIT_TEST_SUITE(TDiskAgentJournalledDeviceTest)
 
         TTestClient client{Port};
 
+        auto blockData = [](ui64 blockIndex)
         {
-            //
+            return 'A' + blockIndex % 26;
+        };
+
+        // Prepare data
+        {
+            auto block = std::make_unique<char[]>(device.GetBlockSize());
+
+            TFile file(device.GetPath(), EOpenModeFlag::OpenExisting);
+
+            for (ui64 i = 0; i != blocksCount; ++i) {
+                std::memset(block.get(), blockData(i), device.GetBlockSize());
+                file.Write(block.get(), device.GetBlockSize());
+            }
+        }
+
+        // Acquire device
+
+        {
+            NCloud::NProto::TDeviceProtocolRequest request;
+            auto& proto = *request.MutableAcquireDevices();
+            proto.MutableHeaders()->SetClientId(clientId);
+            *proto.MutableDeviceUUIDs()->Add() = device.GetDeviceId();
+            client.Send(request);
+        }
+
+        Runtime->DispatchEvents(TDispatchOptions(), 10ms);
+
+        {
+            auto response = client.Receive();
+            UNIT_ASSERT_EQUAL(
+                NProto::TDeviceProtocolResponse::ResponseCase::kAcquireDevices,
+                response.GetResponseCase());
+            const auto& error = response.GetAcquireDevices().GetError();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+        }
+
+        for (ui32 i = 0; i != requestsCount; ++i) {
+            // Send request
+
+            const ui64 requestId = i + 1;
+
+            NCloud::NProto::TDeviceProtocolRequest request;
+            request.SetRequestId(requestId);
+
+            auto& readPagesRequest = *request.MutableReadPages();
+
+            readPagesRequest.MutableHeaders()->SetClientId(clientId);
+            readPagesRequest.SetDeviceUUID(device.GetDeviceId());
+
+            const ui64 groupsCount = 1 + RandomNumber<ui64>(8);
+
+            auto& groupRefs = *readPagesRequest.MutablePageGroupRefs();
+            for (ui64 j = 0; j != groupsCount; ++j) {
+                auto& group = *groupRefs.Add();
+
+                group.SetFirstPageNo(RandomNumber<ui64>(blocksCount));
+                group.SetPageSize(device.GetBlockSize());
+                group.SetPageCount(
+                    1 +
+                    RandomNumber<ui64>(blocksCount - group.GetFirstPageNo()));
+            }
+
+            client.Send(request);
+
+            Runtime->DispatchEvents(TDispatchOptions(), 10ms);
+
+            // Check response
+
+            auto response = client.Receive();
+            UNIT_ASSERT_VALUES_EQUAL(requestId, response.GetRequestId());
+            UNIT_ASSERT_EQUAL(
+                NProto::TDeviceProtocolResponse::ResponseCase::kReadPages,
+                response.GetResponseCase());
+
+            const auto& readPagesResponse = response.GetReadPages();
+            const auto& error = readPagesResponse.GetError();
+            const auto& groups = readPagesResponse.GetPageGroups();
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                groupsCount,
+                readPagesResponse.PageGroupsSize());
+
+            for (size_t i = 0; i != groupsCount; ++i) {
+                const auto& groupRef = groupRefs[i];
+                const auto& group = groups[i];
+
+                UNIT_ASSERT_VALUES_EQUAL(
+                    groupRef.GetFirstPageNo(),
+                    group.GetFirstPageNo());
+
+                UNIT_ASSERT_VALUES_EQUAL(
+                    groupRef.GetPageCount(),
+                    group.ContentSize());
+
+                for (ui64 j = 0; j != group.ContentSize(); ++j) {
+                    const ui64 blockIndex = group.GetFirstPageNo() + j;
+
+                    TStringBuf block = group.GetContent(j);
+
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        groupRef.GetPageSize(),
+                        block.size());
+
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        block.size(),
+                        std::ranges::count(block, blockData(blockIndex)));
+                }
+            }
         }
     }
 }

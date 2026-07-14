@@ -341,7 +341,7 @@ public:
                     auto& group = *groups.Add();
 
                     group.SetFirstPageNo(
-                        request.GetPageGroupRefs(0).GetFirstPageNo());
+                        request.GetPageGroupRefs(i).GetFirstPageNo());
 
                     *group.MutableContent() =
                         std::move(*sub.MutableBlocks()->MutableBuffers());
