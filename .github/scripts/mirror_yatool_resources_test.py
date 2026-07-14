@@ -106,7 +106,6 @@ def test_main_skips_already_localized_resources(
     )
     patch_out = tmp_path / "localize.patch"
     summary_out = tmp_path / "summary.md"
-    comment_out = tmp_path / "comment.md"
     uploaded: list[str] = []
     downloaded: list[str] = []
 
@@ -147,8 +146,6 @@ def test_main_skips_already_localized_resources(
             str(patch_out),
             "--summary-out",
             str(summary_out),
-            "--comment-out",
-            str(comment_out),
         ],
     )
 
@@ -179,7 +176,6 @@ def test_main_skip_upload_does_not_download_resources(
     )
     patch_out = tmp_path / "localize.patch"
     summary_out = tmp_path / "summary.md"
-    comment_out = tmp_path / "comment.md"
 
     def fail_download(url: str, dst: Path, attempts: int) -> str:
         del url, dst, attempts
@@ -199,8 +195,6 @@ def test_main_skip_upload_does_not_download_resources(
             str(patch_out),
             "--summary-out",
             str(summary_out),
-            "--comment-out",
-            str(comment_out),
             "--skip-upload",
         ],
     )

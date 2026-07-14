@@ -70,7 +70,6 @@ jobs:
           path: |
             ${{ runner.temp }}/yatool-resource-mirror/localize-yatool-resources.patch
             ${{ runner.temp }}/yatool-resource-mirror/summary.md
-            ${{ runner.temp }}/yatool-resource-mirror/comment.md
 
       - name: Show summary
         if: ${{ always() }}

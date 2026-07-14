@@ -18,8 +18,6 @@ import boto3
 from botocore.exceptions import ClientError
 
 DEFAULT_LOCAL_BASE_URL = "https://storage.eu-north2.nebius.cloud/nbs-yatool-resources"
-COMMENT_MARKER = "<!-- nbs-yatool-resources-mirror -->"
-MAX_EMBEDDED_PATCH_BYTES = 52000
 ALLOWED_SOURCE_HOSTS = frozenset({"devtools-registry.s3.yandex.net"})
 
 
@@ -235,8 +233,8 @@ def write_summary(
         f"Resources in mapping: `{total}`",
         f"Uploaded or refreshed: `{len(uploaded)}`",
         f"Already up to date: `{len(skipped)}`",
-        f"Added in PR mapping: `{len(added)}`",
-        f"Removed in PR mapping: `{len(removed)}`",
+        f"Added relative to base mapping: `{len(added)}`",
+        f"Removed relative to base mapping: `{len(removed)}`",
         f"Patch file: `{patch_out}`",
         "",
     ]
@@ -252,53 +250,6 @@ def write_summary(
     summary_out.write_text("\n".join(lines), encoding="utf-8")
 
 
-def write_comment(comment_out: Path, summary_out: Path, patch_out: Path) -> None:
-    summary = summary_out.read_text(encoding="utf-8")
-    patch = patch_out.read_text(encoding="utf-8")
-    body = [COMMENT_MARKER, summary.strip(), ""]
-    if len(patch.encode("utf-8")) <= MAX_EMBEDDED_PATCH_BYTES:
-        body += [
-            "<details>",
-            "<summary>Resource localization patch</summary>",
-            "",
-            "```diff",
-            patch.rstrip(),
-            "```",
-            "",
-            "</details>",
-        ]
-    else:
-        body += [
-            "The generated patch is too large for a reliable PR comment.",
-            "It is attached to this workflow run as `yatool-resource-localization-patch`.",
-        ]
-    comment_out.write_text("\n".join(body) + "\n", encoding="utf-8")
-
-
-def upsert_pr_comment(comment_file: Path) -> None:
-    from scripts.tests import generate_summary as gs
-
-    body = comment_file.read_text(encoding="utf-8")
-    pr = gs.get_pull_request_from_github_env()
-    comment = gs.find_pr_comment(pr, COMMENT_MARKER)
-    if comment is None:
-        pr.create_issue_comment(body)
-        return
-
-    def replace_comment_body(current_body: str) -> str:
-        del current_body
-        return body
-
-    gs.edit_pr_comment(
-        pr=pr,
-        header_prefix=COMMENT_MARKER,
-        update_body=replace_comment_body,
-        is_applied=lambda current_body: current_body == body
-        or current_body == gs.bump_comment_revision(body),
-        operation="yatool resources mirror comment",
-    )
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--mapping", type=Path, default=Path("build/mapping.conf.json"))
@@ -308,9 +259,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--local-base-url", default=DEFAULT_LOCAL_BASE_URL)
     parser.add_argument("--patch-out", type=Path, required=True)
     parser.add_argument("--summary-out", type=Path, required=True)
-    parser.add_argument("--comment-out", type=Path, required=True)
     parser.add_argument("--download-attempts", type=int, default=3)
-    parser.add_argument("--post-comment", action="store_true")
     parser.add_argument("--skip-upload", action="store_true")
     return parser.parse_args()
 
@@ -325,7 +274,6 @@ def main() -> int:
 
     args.patch_out.parent.mkdir(parents=True, exist_ok=True)
     args.summary_out.parent.mkdir(parents=True, exist_ok=True)
-    args.comment_out.parent.mkdir(parents=True, exist_ok=True)
 
     localized_text = localize_mapping(args.mapping, local_base_url)
     write_patch(args.mapping, localized_text, args.patch_out)
@@ -364,9 +312,6 @@ def main() -> int:
         patch_out=args.patch_out,
         local_base_url=local_base_url,
     )
-    write_comment(args.comment_out, args.summary_out, args.patch_out)
-    if args.post_comment:
-        upsert_pr_comment(args.comment_out)
     return 0
 
 

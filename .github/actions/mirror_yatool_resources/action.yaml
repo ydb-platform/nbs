@@ -21,12 +21,8 @@ inputs:
     description: Public base URL for mirrored resources.
     required: true
   output_dir:
-    description: Directory for generated patch, summary, and comment files.
+    description: Directory for generated patch and summary files.
     required: true
-  post_comment:
-    description: Whether to post/update the PR comment.
-    required: false
-    default: "false"
   skip_upload:
     description: Whether to skip S3 uploads.
     required: false
@@ -50,12 +46,9 @@ runs:
       env:
         BASE_MAPPING: ${{ inputs.base_mapping }}
         BUCKET: ${{ inputs.bucket }}
-        GITHUB_TOKEN: ${{ github.token }}
         LOCAL_BASE_URL: ${{ inputs.local_base_url }}
         MAPPING: ${{ inputs.mapping }}
         OUTPUT_DIR: ${{ inputs.output_dir }}
-        POST_COMMENT: ${{ inputs.post_comment }}
-        PYTHONPATH: ${{ github.workspace }}/.github
         S3_ENDPOINT_URL: ${{ inputs.endpoint_url }}
         SKIP_UPLOAD: ${{ inputs.skip_upload }}
       run: |
@@ -67,15 +60,11 @@ runs:
             --local-base-url "$LOCAL_BASE_URL"
             --patch-out "$OUTPUT_DIR/localize-yatool-resources.patch"
             --summary-out "$OUTPUT_DIR/summary.md"
-            --comment-out "$OUTPUT_DIR/comment.md"
         )
         if [ -n "$BASE_MAPPING" ] && [ -s "$BASE_MAPPING" ]; then
             args+=(--base-mapping "$BASE_MAPPING")
         fi
         if [ "$SKIP_UPLOAD" = "true" ]; then
             args+=(--skip-upload)
-        fi
-        if [ "$POST_COMMENT" = "true" ]; then
-            args+=(--post-comment)
         fi
         python3 "$GITHUB_WORKSPACE/.github/scripts/mirror_yatool_resources.py" "${args[@]}"
