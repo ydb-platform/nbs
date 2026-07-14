@@ -101,8 +101,8 @@ void TIndexTabletActor::ExecuteTx_AcquireLock(
 
     auto result = TestLock(session, handle, range);
     if (result.Succeeded()) {
-        TIndexTabletDatabase db(tx.DB);
-        result = AcquireLock(db, session, handle->GetHandle(), range);
+        auto db = CreateIndexTabletDatabase(tx.DB);
+        result = AcquireLock(*db, session, handle->GetHandle(), range);
     }
     args.Error = std::move(result.Error);
 }

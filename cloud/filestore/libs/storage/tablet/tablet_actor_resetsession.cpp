@@ -90,7 +90,7 @@ bool TIndexTabletActor::PrepareTx_ResetSession(
         args.SessionSeqNo,
         args.Request.GetSessionState().size());
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
     bool ready = true;
     auto commitId = GetCurrentCommitId();
@@ -101,7 +101,7 @@ bool TIndexTabletActor::PrepareTx_ResetSession(
         }
 
         TMaybe<INodeIndexTabletDatabase::TNode> node;
-        if (!ReadNode(db, handle.GetNodeId(), commitId, node)) {
+        if (!ReadNode(*db, handle.GetNodeId(), commitId, node)) {
             ready = false;
         } else {
             TABLET_VERIFY(node);
@@ -120,7 +120,7 @@ void TIndexTabletActor::ExecuteTx_ResetSession(
     TTransactionContext& tx,
     TTxIndexTablet::TResetSession& args)
 {
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
     auto* session = FindSession(args.SessionId);
     if (!session) {
@@ -140,7 +140,7 @@ void TIndexTabletActor::ExecuteTx_ResetSession(
     auto handle = session->Handles.begin();
     while (handle != session->Handles.end()) {
         auto nodeId = handle->GetNodeId();
-        DestroyHandle(db, &*(handle++));
+        DestroyHandle(*db, &*(handle++));
 
         LOG_INFO(ctx, TFileStoreComponents::TABLET,
             "%s Removing handle upon session reset s:%s n:%lu",
@@ -158,13 +158,13 @@ void TIndexTabletActor::ExecuteTx_ResetSession(
                 it->Attrs.GetSize());
 
             auto e = RemoveNode(
-                db,
+                *db,
                 *it,
                 it->MinCommitId,
                 commitId);
 
             if (HasError(e)) {
-                WriteOrphanNode(db, TStringBuilder()
+                WriteOrphanNode(*db, TStringBuilder()
                     << "DestroySession: " << args.SessionId
                     << ", RemoveNode: " << nodeId
                     << ", Error: " << FormatError(e), nodeId);
@@ -172,7 +172,7 @@ void TIndexTabletActor::ExecuteTx_ResetSession(
         }
     }
 
-    ResetSession(db, session, args.Request.GetSessionState());
+    ResetSession(*db, session, args.Request.GetSessionState());
 
     EnqueueTruncateIfNeeded(ctx);
 }

@@ -426,12 +426,12 @@ bool TIndexTabletActor::PrepareTx_PrepareRenameNodeInSource(
 
     FILESTORE_VALIDATE_DUPTX_SESSION(RenameNode, args);
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
     args.CommitId = GetCurrentCommitId();
 
     // validate parent node exists
-    if (!ReadNode(db, args.ParentNodeId, args.CommitId, args.ParentNode)) {
+    if (!ReadNode(*db, args.ParentNodeId, args.CommitId, args.ParentNode)) {
         return false;   // not ready
     }
 
@@ -444,7 +444,7 @@ bool TIndexTabletActor::PrepareTx_PrepareRenameNodeInSource(
 
     // validate old ref exists
     if (!ReadNodeRef(
-            db,
+            *db,
             args.ParentNodeId,
             args.CommitId,
             args.Name,
@@ -483,7 +483,7 @@ void TIndexTabletActor::ExecuteTx_PrepareRenameNodeInSource(
         return; // nothing to do
     }
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
@@ -504,12 +504,12 @@ void TIndexTabletActor::ExecuteTx_PrepareRenameNodeInSource(
             args.ChildRef->ShardNodeName,
             args.NewParentShardId);
 
-    WriteOpLogEntry(db, args.OpLogEntry);
+    WriteOpLogEntry(*db, args.OpLogEntry);
 
     // update old parent timestamps
     auto parent = CopyAttrs(args.ParentNode->Attrs, E_CM_CMTIME);
     UpdateNode(
-        db,
+        *db,
         args.ParentNode->NodeId,
         args.ParentNode->MinCommitId,
         args.CommitId,
@@ -525,7 +525,7 @@ void TIndexTabletActor::ExecuteTx_PrepareRenameNodeInSource(
     }
 
     AddDupCacheEntry(
-        db,
+        *db,
         session,
         args.RequestId,
         NProto::TRenameNodeResponse{},
@@ -698,13 +698,13 @@ bool TIndexTabletActor::PrepareTx_CommitRenameNodeInSource(
 {
     Y_UNUSED(ctx);
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
     args.CommitId = GetCurrentCommitId();
 
     // validate old ref exists
     if (!ReadNodeRef(
-            db,
+            *db,
             args.Request.GetNodeId(),
             args.CommitId,
             args.Request.GetName(),
@@ -731,7 +731,7 @@ void TIndexTabletActor::ExecuteTx_CommitRenameNodeInSource(
 {
     Y_UNUSED(ctx);
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
@@ -745,14 +745,14 @@ void TIndexTabletActor::ExecuteTx_CommitRenameNodeInSource(
         NProto::TRenameNodeResponse response;
         *response.MutableError() = args.Response.GetError();
         PatchDupCacheEntry(
-            db,
+            *db,
             args.SessionId,
             args.RequestId,
             std::move(response));
         args.Error = args.Response.GetError();
     } else {
         RemoveNodeRef(
-            db,
+            *db,
             args.Request.GetNodeId(),
             args.ChildRef->MinCommitId,
             args.CommitId,
@@ -768,7 +768,7 @@ void TIndexTabletActor::ExecuteTx_CommitRenameNodeInSource(
         if (isExchange) {
             // create source ref to target node
             CreateNodeRef(
-                db,
+                *db,
                 args.Request.GetNodeId(),
                 args.CommitId,
                 args.Request.GetName(),
@@ -778,7 +778,7 @@ void TIndexTabletActor::ExecuteTx_CommitRenameNodeInSource(
         }
     }
 
-    DeleteOpLogEntry(db, args.OpLogEntryId);
+    DeleteOpLogEntry(*db, args.OpLogEntryId);
 }
 
 void TIndexTabletActor::CompleteTx_CommitRenameNodeInSource(

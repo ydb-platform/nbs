@@ -63,7 +63,7 @@ bool TIndexTabletActor::PrepareTx_FilterAliveNodes(
 {
     Y_UNUSED(ctx);
 
-    TIndexTabletDatabase db(tx.DB);
+    auto db = CreateIndexTabletDatabase(tx.DB);
 
     args.CommitId = GetCurrentCommitId();
     TMaybe<INodeIndexTabletDatabase::TNode> node;
@@ -71,7 +71,7 @@ bool TIndexTabletActor::PrepareTx_FilterAliveNodes(
     bool ready = true;
 
     for (const auto nodeId: args.Nodes) {
-        if (!ReadNode(db, nodeId, args.CommitId, node)) {
+        if (!ReadNode(*db, nodeId, args.CommitId, node)) {
             ready = false;
             continue;
         }

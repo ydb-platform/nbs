@@ -602,7 +602,7 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
         FILESTORE_VALIDATE_DUPTX_SESSION(CreateNode, args);
     }
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
     args.CommitId = GetCurrentCommitId();
 
@@ -614,7 +614,7 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
     }
 
     // validate parent node exists
-    if (!ReadNode(db, args.ParentNodeId, args.CommitId, args.ParentNode)) {
+    if (!ReadNode(*db, args.ParentNodeId, args.CommitId, args.ParentNode)) {
         return false;   // not ready
     }
 
@@ -657,7 +657,7 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
         TMaybe<INodeIndexTabletDatabase::TNodeRef> childRef;
 
         if (!ReadNodeRef(
-                db,
+                *db,
                 args.ParentNodeId,
                 args.CommitId,
                 args.Name,
@@ -685,7 +685,7 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
         //
         // Note: for the cases where the ShardId is set, the target node
         // already exists and its link count is updated, no need to validate it
-        if (!ReadNode(db, args.TargetNodeId, args.CommitId, args.ChildNode)) {
+        if (!ReadNode(*db, args.TargetNodeId, args.CommitId, args.ChildNode)) {
             return false;   // not ready
         }
 
@@ -736,7 +736,7 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
         }
     }
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
@@ -746,7 +746,7 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
     if (args.TargetNodeId == InvalidNodeId) {
         if (args.ShardId.empty()) {
             args.ChildNodeId = CreateNode(
-                db,
+                *db,
                 args.CommitId,
                 args.Attrs);
 
@@ -788,7 +788,7 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
                     << args.OpLogEntry.ShortUtf8DebugString().Quote());
             }
 
-            WriteOpLogEntry(db, args.OpLogEntry);
+            WriteOpLogEntry(*db, args.OpLogEntry);
         }
     } else {
         // hard link
@@ -799,7 +799,7 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
             auto attrs =
                 CopyAttrs(args.ChildNode->Attrs, E_CM_CMTIME | E_CM_REF);
             UpdateNode(
-                db,
+                *db,
                 args.ChildNodeId,
                 args.ChildNode->MinCommitId,
                 args.CommitId,
@@ -813,7 +813,7 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
     // update parents cmtime
     auto parent = CopyAttrs(args.ParentNode->Attrs, E_CM_CMTIME);
     UpdateNode(
-        db,
+        *db,
         args.ParentNode->NodeId,
         args.ParentNode->MinCommitId,
         args.CommitId,
@@ -826,7 +826,7 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
         // If this NodeRef is for a newly created directory, we can say that its
         // contents are exhaustively stored in the in-memory state
         CreateNodeRef(
-            db,
+            *db,
             args.ParentNodeId,
             args.CommitId,
             args.Name,
@@ -863,7 +863,7 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
     //  dupcache
     if (!BehaveAsShard(args.Request.GetHeaders())) {
         AddDupCacheEntry(
-            db,
+            *db,
             session,
             args.RequestId,
             args.Response,
@@ -1082,13 +1082,13 @@ void TIndexTabletActor::ExecuteTx_CommitNodeCreationInShard(
 {
     Y_UNUSED(ctx);
 
-    TIndexTabletDatabase db(tx.DB);
+    auto db = CreateIndexTabletDatabase(tx.DB);
     PatchDupCacheEntry(
-        db,
+        *db,
         args.SessionId,
         args.RequestId,
         std::move(args.Response));
-    DeleteOpLogEntry(db, args.EntryId);
+    DeleteOpLogEntry(*db, args.EntryId);
 }
 
 void TIndexTabletActor::CompleteTx_CommitNodeCreationInShard(

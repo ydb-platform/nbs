@@ -248,9 +248,9 @@ bool TIndexTabletActor::PrepareTx_WriteData(
         args.NodeId,
         args.ByteRange.Describe().c_str());
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
-    if (!ReadNode(db, args.NodeId, args.CommitId, args.Node)) {
+    if (!ReadNode(*db, args.NodeId, args.CommitId, args.Node)) {
         return false;
     }
 
@@ -291,7 +291,7 @@ void TIndexTabletActor::ExecuteTx_WriteData(
         return;
     }
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
@@ -300,7 +300,7 @@ void TIndexTabletActor::ExecuteTx_WriteData(
     }
 
     MarkFreshBlocksDeleted(
-        db,
+        *db,
         args.NodeId,
         args.CommitId,
         args.ByteRange.FirstAlignedBlock(),
@@ -312,7 +312,7 @@ void TIndexTabletActor::ExecuteTx_WriteData(
         BlockGroupSize,
         [&] (ui32 blockOffset, ui32 blocksCount) {
             MarkMixedBlocksDeleted(
-                db,
+                *db,
                 args.NodeId,
                 args.CommitId,
                 args.ByteRange.FirstAlignedBlock() + blockOffset,
@@ -324,7 +324,7 @@ void TIndexTabletActor::ExecuteTx_WriteData(
             ++b)
     {
         WriteFreshBlock(
-            db,
+            *db,
             args.NodeId,
             args.CommitId,
             b,
@@ -333,7 +333,7 @@ void TIndexTabletActor::ExecuteTx_WriteData(
 
     if (args.ByteRange.UnalignedHeadLength()) {
         WriteFreshBytes(
-            db,
+            *db,
             args.NodeId,
             args.CommitId,
             args.ByteRange.Offset,
@@ -345,26 +345,26 @@ void TIndexTabletActor::ExecuteTx_WriteData(
         if (args.Node->Attrs.GetSize() <= args.ByteRange.End()) {
             // it's safe to write at the end of file fresh block w 0s at the end
             MarkFreshBlocksDeleted(
-                db,
+                *db,
                 args.NodeId,
                 args.CommitId,
                 args.ByteRange.LastBlock(),
                 1);
             MarkMixedBlocksDeleted(
-                db,
+                *db,
                 args.NodeId,
                 args.CommitId,
                 args.ByteRange.LastBlock(),
                 1);
             WriteFreshBlock(
-                db,
+                *db,
                 args.NodeId,
                 args.CommitId,
                 args.ByteRange.LastBlock(),
                 args.Buffer->GetUnalignedTail());
         } else {
             WriteFreshBytes(
-                db,
+                *db,
                 args.NodeId,
                 args.CommitId,
                 args.ByteRange.UnalignedTailOffset(),
@@ -378,7 +378,7 @@ void TIndexTabletActor::ExecuteTx_WriteData(
     }
 
     UpdateNode(
-        db,
+        *db,
         args.NodeId,
         args.Node->MinCommitId,
         args.CommitId,

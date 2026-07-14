@@ -94,11 +94,11 @@ bool TIndexTabletActor::PrepareTx_Cleanup(
 {
     InitTabletProfileLogRequestInfo(args.ProfileLogRequest, ctx.Now());
 
-    TIndexTabletDatabase db(tx.DB);
+    auto db = CreateIndexTabletDatabase(tx.DB);
 
     args.CommitId = GetCurrentCommitId();
 
-    return LoadMixedBlocks(db, args.RangeId);
+    return LoadMixedBlocks(*db, args.RangeId);
 }
 
 void TIndexTabletActor::ExecuteTx_Cleanup(
@@ -112,10 +112,10 @@ void TIndexTabletActor::ExecuteTx_Cleanup(
     // before this tx completes
     AcquireCollectBarrier(args.CollectBarrier);
 
-    TIndexTabletDatabase db(tx.DB);
+    auto db = CreateIndexTabletDatabase(tx.DB);
 
     args.ProcessedDeletionMarkerCount =
-        CleanupBlockDeletions(db, args.RangeId, args.ProfileLogRequest);
+        CleanupBlockDeletions(*db, args.RangeId, args.ProfileLogRequest);
 }
 
 void TIndexTabletActor::CompleteTx_Cleanup(

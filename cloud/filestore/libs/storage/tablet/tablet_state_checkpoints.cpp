@@ -38,7 +38,7 @@ ui64 TIndexTabletState::GetReadCommitId(const TString& checkpointId) const
 }
 
 TCheckpoint* TIndexTabletState::CreateCheckpoint(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     const TString& checkpointId,
     ui64 nodeId,
     ui64 commitId)
@@ -59,7 +59,7 @@ TCheckpoint* TIndexTabletState::CreateCheckpoint(
 }
 
 void TIndexTabletState::MarkCheckpointDeleted(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     TCheckpoint* checkpoint)
 {
     Impl->Checkpoints.MarkCheckpointDeleted(checkpoint);
@@ -68,7 +68,7 @@ void TIndexTabletState::MarkCheckpointDeleted(
 }
 
 void TIndexTabletState::RemoveCheckpointNodes(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     TCheckpoint* checkpoint,
     const TVector<ui64>& nodes)
 {
@@ -81,7 +81,7 @@ void TIndexTabletState::RemoveCheckpointNodes(
 }
 
 void TIndexTabletState::RemoveCheckpointBlob(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     TCheckpoint* checkpoint,
     ui32 rangeId,
     const TPartialBlobId& blobId)
@@ -91,7 +91,7 @@ void TIndexTabletState::RemoveCheckpointBlob(
 }
 
 void TIndexTabletState::RemoveCheckpoint(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     TCheckpoint* checkpoint)
 {
     db.DeleteCheckpoint(checkpoint->GetCheckpointId());
@@ -100,7 +100,7 @@ void TIndexTabletState::RemoveCheckpoint(
 }
 
 void TIndexTabletState::AddCheckpointNode(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     ui64 checkpointId,
     ui64 nodeId)
 {
@@ -109,7 +109,7 @@ void TIndexTabletState::AddCheckpointNode(
 }
 
 void TIndexTabletState::AddCheckpointBlob(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     ui64 checkpointId,
     ui32 rangeId,
     const TPartialBlobId& blobId)

@@ -71,9 +71,9 @@ void TIndexTabletActor::ExecuteTx_ReleaseLock(
 
     auto range = MakeLockRange(args.Request, handle->GetNodeId());
 
-    TIndexTabletDatabase db(tx.DB);
+    auto db = CreateIndexTabletDatabase(tx.DB);
 
-    auto result = ReleaseLock(db, session, range);
+    auto result = ReleaseLock(*db, session, range);
 
     if (result.Failed()) {
         if (result.IncompatibleHolds<ELockOrigin>()) {
