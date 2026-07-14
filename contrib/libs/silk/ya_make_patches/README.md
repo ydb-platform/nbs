@@ -34,9 +34,10 @@ ya_make_patches/
 ├── apply.sh                          # The install/update script
 ├── README.md                         # This file
 ├── patches/                          # Source patches applied in order
-│   ├── 01-memory-pool-type-traits.patch
+│   ├── 01-gitignore.patch
 │   ├── 02-fiber-uring24-compat.patch
-│   └── 03-init-skip-rseq-init.patch
+│   ├── 03-init-skip-rseq-init.patch
+│   └── 04-fiber-cxa-get-globals-arcadia-libcxxrt.patch
 └── overlay/                          # Files copied verbatim into silk tree
     ├── ya.make
     ├── include/sys/rseq.h            # Stub for ya include checker
@@ -47,9 +48,9 @@ ya_make_patches/
 
 ## What each patch does
 
-- **01-memory-pool-type-traits**: adds `#include <type_traits>` to
-  `memory-pool.h`. Required because the repo's libc++ doesn't transitively
-  pull it in via `<memory>`.
+- **01-gitignore**: appends `*.orig` and `contrib/` to silk's `.gitignore`
+  so a re-run of `apply.sh` doesn't leave patch-created `.orig` backup
+  files or vendored contrib trees behind in a fresh silk checkout.
 - **02-fiber-uring24-compat**: casts the `io_uring_enter2` arg pointer to
   `sigset_t*`. Silk targets liburing 2.9 where the arg is `void*`; the repo
   has 2.4 where it is `sigset_t*`. The cast is safe because the kernel
@@ -57,9 +58,16 @@ ya_make_patches/
 - **03-init-skip-rseq-init**: removes the `rseq_init()` call from
   `silk::initialize()`. The repo's older librseq auto-registers via
   constructor and doesn't expose `rseq_init()` publicly.
+- **04-fiber-cxa-get-globals-arcadia-libcxxrt**: gates silk's Itanium ABI
+  `__cxxabiv1::__cxa_get_globals` redeclaration on
+  `!defined(Y_CXA_EH_GLOBALS_COMPLETE)`. Arcadia's libcxxrt already
+  declares that symbol in `<cxxabi.h>` without `noexcept` and marks the
+  fact with `Y_CXA_EH_GLOBALS_COMPLETE`; silk's `noexcept`-tagged
+  redeclaration then clashes on the exception specification.
 
 If a future silk version is built against a newer liburing or librseq, the
-corresponding patch can be dropped.
+corresponding patch can be dropped. Patch 04 can be dropped once silk
+upstream either drops the redeclaration or gates it on Arcadia's macro.
 
 ## Dependencies referenced by the overlay ya.make files
 
