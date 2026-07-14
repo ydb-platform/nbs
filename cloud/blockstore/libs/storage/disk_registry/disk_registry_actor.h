@@ -91,7 +91,9 @@ private:
     bool UsersNotificationInProgress = false;
     bool DiskStatesPublicationInProgress = false;
     bool AutomaticallyReplacedDevicesDeletionInProgress = false;
+    THashSet<TString> SecureEraseScheduledPools;
     THashSet<TString> SecureEraseInProgressPerPool;
+    THashMap<TString, TInstant> DeviceCleanupStartTs;
     bool StartMigrationInProgress = false;
 
     TVector<TString> DisksBeingDestroyed;

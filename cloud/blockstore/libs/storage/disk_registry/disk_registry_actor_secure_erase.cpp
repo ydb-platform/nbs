@@ -342,6 +342,10 @@ void TDiskRegistryActor::CompleteCleanupDevices(
     for (const auto& diskId: args.SyncDeallocatedDisks) {
         ReplyToPendingDeallocations(ctx, diskId);
     }
+
+    for (const auto& uuid: args.Devices) {
+        DeviceCleanupStartTs.erase(uuid);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -349,6 +353,11 @@ void TDiskRegistryActor::CompleteCleanupDevices(
 void TDiskRegistryActor::SecureErase(const TActorContext& ctx)
 {
     auto dirtyDevices = State->GetDirtyDevices();
+
+    for (const auto& device: dirtyDevices) {
+        DeviceCleanupStartTs.emplace(device.GetDeviceUUID(), ctx.Now());
+    }
+
     EraseIf(
         dirtyDevices,
         [this](auto& device) { return !State->CanSecureErase(device); });
@@ -389,11 +398,12 @@ void TDiskRegistryActor::SecureErase(const TActorContext& ctx)
             [&poolName](const auto& device)
             { return poolName == device.GetPoolName(); });
 
-        auto [_, alreadyInProgress] =
-            SecureEraseInProgressPerPool.insert(poolName);
-        if (!alreadyInProgress) {
+        if (SecureEraseScheduledPools.contains(poolName) ||
+            SecureEraseInProgressPerPool.contains(poolName))
+        {
             continue;
         }
+        SecureEraseScheduledPools.insert(poolName);
 
         auto request =
             std::make_unique<TEvDiskRegistryPrivate::TEvSecureEraseRequest>(
@@ -452,6 +462,13 @@ void TDiskRegistryActor::HandleSecureErase(
         "%s Received SecureErase request. DirtyDevices: %s",
         LogTitle.GetWithTime().c_str(),
         MakeDevicesNamesString(msg->DirtyDevices).c_str());
+
+    SecureEraseScheduledPools.erase(msg->PoolName);
+    SecureEraseInProgressPerPool.insert(msg->PoolName);
+
+    for (const auto& device: msg->DirtyDevices) {
+        DeviceCleanupStartTs[device.GetDeviceUUID()] = ctx.Now();
+    }
 
     auto actor = NCloud::Register<TSecureEraseActor>(
         ctx,

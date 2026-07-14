@@ -2491,26 +2491,31 @@ void TDiskRegistryActor::RenderDirtyDevicesCleanupOverviewDetailed(
     TVector<TDirtyDeviceEntry> broken;
     TVector<TDirtyDeviceEntry> blocked;
     for (const auto& device: dirtyDevices) {
+        const TString uuid = device.GetDeviceUUID();
+        TInstant stateTs;
+        if (const auto* ts = DeviceCleanupStartTs.FindPtr(uuid)) {
+            stateTs = *ts;
+        }
         TDirtyDeviceEntry entry{
-            .Uuid = device.GetDeviceUUID(),
-            .StateTs = TInstant::MicroSeconds(device.GetStateTs()),
+            .Uuid = uuid,
+            .StateTs = stateTs,
             .PoolName = device.GetPoolName(),
             .StateMessage = device.GetStateMessage(),
         };
-
+        const NProto::TAgentConfig* agent =
+            State->FindAgent(device.GetNodeId());
         if (device.GetState() == NProto::DEVICE_STATE_ERROR) {
+            if (agent) {
+                entry.AgentId = agent->GetAgentId();
+            }
             broken.push_back(std::move(entry));
             continue;
         }
-
         if (device.GetState() != NProto::DEVICE_STATE_ONLINE &&
             device.GetState() != NProto::DEVICE_STATE_WARNING)
         {
             continue;
         }
-
-        const NProto::TAgentConfig* agent =
-            State->FindAgent(device.GetNodeId());
         if (!agent) {
             waiting.push_back(std::move(entry));
         } else if (agent->GetState() == NProto::AGENT_STATE_UNAVAILABLE) {
@@ -2530,9 +2535,11 @@ void TDiskRegistryActor::RenderDirtyDevicesCleanupOverviewDetailed(
     }
 
     HTML (out) {
+        const auto now = TInstant::Now();
         auto renderTable = [&](const TString& title,
                                const TVector<TDirtyDeviceEntry>& rows,
-                               bool agentRed)
+                               bool agentRed,
+                               bool showCleanupTime)
         {
             TAG (TH3) {
                 out << title << " (" << rows.size() << ")";
@@ -2560,7 +2567,9 @@ void TDiskRegistryActor::RenderDirtyDevicesCleanupOverviewDetailed(
                             out << "In state since";
                         }
                         TABLEH () {
-                            out << "Time in state";
+                            out
+                                << (showCleanupTime ? "Time in cleanup"
+                                                    : "Time in state");
                         }
                     }
                 }
@@ -2587,23 +2596,39 @@ void TDiskRegistryActor::RenderDirtyDevicesCleanupOverviewDetailed(
                             out << e.StateMessage;
                         }
                         TABLED () {
-                            out << e.StateTs.FormatGmTime(
-                                "%Y-%m-%d %H:%M:%S UTC");
+                            if (e.StateTs) {
+                                out << e.StateTs.FormatGmTime(
+                                    "%Y-%m-%d %H:%M:%S UTC");
+                            } else {
+                                out << "N/A";
+                            }
                         }
                         TABLED () {
-                            out << FormatDuration(TInstant::Now() - e.StateTs);
+                            if (showCleanupTime) {
+                                const auto* cleanupTs =
+                                    DeviceCleanupStartTs.FindPtr(e.Uuid);
+                                if (cleanupTs) {
+                                    out << FormatDuration(now - *cleanupTs);
+                                } else {
+                                    out << "N/A";
+                                }
+                            } else if (e.StateTs) {
+                                out << FormatDuration(now - e.StateTs);
+                            } else {
+                                out << "N/A";
+                            }
                         }
                     }
                 }
             }
         };
 
-        renderTable("Clean up in progress", processing, false);
-        renderTable("Ready for cleanup", cleaning, false);
-        renderTable("Waiting for cleanup", waiting, false);
-        renderTable("Agent unavailable", agentDown, true);
-        renderTable("Cleanup blocked", blocked, false);
-        renderTable("Device broken", broken, false);
+        renderTable("Clean up in progress", processing, false, true);
+        renderTable("Ready for cleanup", cleaning, false, false);
+        renderTable("Waiting for cleanup", waiting, false, false);
+        renderTable("Agent unavailable", agentDown, true, false);
+        renderTable("Cleanup blocked", blocked, false, false);
+        renderTable("Device broken", broken, false, false);
     }
 }
 
