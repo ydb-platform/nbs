@@ -532,10 +532,10 @@ void TIndexTabletActor::ExecuteTx_DeleteUnconfirmedData(
 {
     Y_UNUSED(ctx);
 
-    TIndexTabletDatabase db(tx.DB);
+    auto db = CreateIndexTabletDatabase(tx.DB);
 
     for (ui64 commitId: args.CommitIds) {
-        db.DeleteUnconfirmedData(commitId);
+        db->DeleteUnconfirmedData(commitId);
         UnconfirmedData.erase(commitId);
         const bool released = TryReleaseCollectBarrier(commitId);
         TABLET_VERIFY(released);

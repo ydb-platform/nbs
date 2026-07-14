@@ -53,9 +53,9 @@ void TIndexTabletActor::ExecuteTx_DeleteResponseLogEntries(
 {
     Y_UNUSED(ctx);
 
-    TIndexTabletDatabase db(tx.DB);
+    auto db = CreateIndexTabletDatabase(tx.DB);
     for (const auto& x: args.InternalRequestIds) {
-        DeleteResponseLogEntry(db, x.ClientTabletId, x.RequestId);
+        DeleteResponseLogEntry(*db, x.ClientTabletId, x.RequestId);
     }
 }
 
@@ -111,8 +111,8 @@ bool TIndexTabletActor::PrepareTx_GetResponseLogEntry(
 {
     Y_UNUSED(ctx);
 
-    TIndexTabletDatabase db(tx.DB);
-    return db.ReadResponseLogEntry(
+    auto db = CreateIndexTabletDatabase(tx.DB);
+    return db->ReadResponseLogEntry(
         args.ClientTabletId,
         args.RequestId,
         args.Entry);
@@ -194,8 +194,8 @@ void TIndexTabletActor::ExecuteTx_WriteResponseLogEntry(
 {
     Y_UNUSED(ctx);
 
-    TIndexTabletDatabase db(tx.DB);
-    WriteResponseLogEntry(db, args.Entry);
+    auto db = CreateIndexTabletDatabase(tx.DB);
+    WriteResponseLogEntry(*db, args.Entry);
 }
 
 void TIndexTabletActor::CompleteTx_WriteResponseLogEntry(

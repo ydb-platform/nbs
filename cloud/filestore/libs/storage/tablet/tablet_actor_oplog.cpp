@@ -228,8 +228,8 @@ void TIndexTabletActor::ExecuteTx_DeleteOpLogEntry(
 {
     Y_UNUSED(ctx);
 
-    TIndexTabletDatabase db(tx.DB);
-    DeleteOpLogEntry(db, args.EntryId);
+    auto db = CreateIndexTabletDatabase(tx.DB);
+    DeleteOpLogEntry(*db, args.EntryId);
 }
 
 void TIndexTabletActor::CompleteTx_DeleteOpLogEntry(
@@ -280,8 +280,8 @@ bool TIndexTabletActor::PrepareTx_GetOpLogEntry(
 {
     Y_UNUSED(ctx);
 
-    TIndexTabletDatabase db(tx.DB);
-    return db.ReadOpLogEntry(args.EntryId, args.Entry);
+    auto db = CreateIndexTabletDatabase(tx.DB);
+    return db->ReadOpLogEntry(args.EntryId, args.Entry);
 }
 
 void TIndexTabletActor::ExecuteTx_GetOpLogEntry(
@@ -342,8 +342,8 @@ bool TIndexTabletActor::PrepareTx_ListOpLogEntries(
 {
     Y_UNUSED(ctx);
 
-    TIndexTabletDatabase db(tx.DB);
-    return db.ReadOpLog(args.Entries);
+    auto db = CreateIndexTabletDatabase(tx.DB);
+    return db->ReadOpLog(args.Entries);
 }
 
 void TIndexTabletActor::ExecuteTx_ListOpLogEntries(
@@ -422,9 +422,9 @@ void TIndexTabletActor::ExecuteTx_WriteOpLogEntry(
         return;
     }
 
-    TIndexTabletDatabase db(tx.DB);
+    auto db = CreateIndexTabletDatabase(tx.DB);
     args.Entry.SetEntryId(commitId);
-    WriteOpLogEntry(db, args.Entry);
+    WriteOpLogEntry(*db, args.Entry);
 }
 
 void TIndexTabletActor::CompleteTx_WriteOpLogEntry(

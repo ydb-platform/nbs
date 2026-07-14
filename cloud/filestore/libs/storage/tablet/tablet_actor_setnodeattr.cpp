@@ -93,12 +93,12 @@ bool TIndexTabletActor::PrepareTx_SetNodeAttr(
 
     FILESTORE_VALIDATE_TX_SESSION(SetNodeAttr, args);
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
     args.CommitId = GetCurrentCommitId();
 
     // validate target node exists
-    if (!ReadNode(db, args.NodeId, args.CommitId, args.Node)) {
+    if (!ReadNode(*db, args.NodeId, args.CommitId, args.Node)) {
         return false;   // not ready
     }
 
@@ -129,7 +129,7 @@ void TIndexTabletActor::ExecuteTx_SetNodeAttr(
 {
     FILESTORE_VALIDATE_TX_ERROR(SetNodeAttr, args);
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
@@ -170,7 +170,7 @@ void TIndexTabletActor::ExecuteTx_SetNodeAttr(
     }
     if (HasFlag(flags, NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE)) {
         auto e = Truncate(
-            db,
+            *db,
             args.NodeId,
             args.CommitId,
             attrs.GetSize(),
@@ -185,7 +185,7 @@ void TIndexTabletActor::ExecuteTx_SetNodeAttr(
     }
 
     UpdateNode(
-        db,
+        *db,
         args.NodeId,
         args.Node->MinCommitId,
         args.CommitId,

@@ -307,14 +307,14 @@ public:
     }
 
     void UpdateConfig(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         const TStorageConfig& config,
         const NProto::TFileSystem& fileSystem,
         const TThrottlerConfig& throttlerConfig);
 
-    void SetFrozen(TIndexTabletDatabase& db, bool frozen);
+    void SetFrozen(IIndexTabletDatabase& db, bool frozen);
 
-    void SetCompressNodeRef(TIndexTabletDatabase& db, bool compressNodeRef);
+    void SetCompressNodeRef(IIndexTabletDatabase& db, bool compressNodeRef);
 
     //
     // FileSystem
@@ -470,19 +470,19 @@ public:                                                                        \
         return FileSystemStats.Get##name();                                    \
     }                                                                          \
 private:                                                                       \
-    void Set##name(TIndexTabletDatabase& db, ui64 value)                       \
+    void Set##name(IIndexTabletDatabase& db, ui64 value)                       \
     {                                                                          \
         FileSystemStats.Set##name(value);                                      \
         db.Write##name(value);                                                 \
     }                                                                          \
-    ui64 Increment##name(TIndexTabletDatabase& db, size_t delta = 1)           \
+    ui64 Increment##name(IIndexTabletDatabase& db, size_t delta = 1)           \
     {                                                                          \
         ui64 value = SafeIncrement(FileSystemStats.Get##name(), delta);        \
         FileSystemStats.Set##name(value);                                      \
         db.Write##name(value);                                                 \
         return value;                                                          \
     }                                                                          \
-    ui64 Decrement##name(TIndexTabletDatabase& db, size_t delta = 1)           \
+    ui64 Decrement##name(IIndexTabletDatabase& db, size_t delta = 1)           \
     {                                                                          \
         ui64 value = SafeDecrement(FileSystemStats.Get##name(), delta);        \
         FileSystemStats.Set##name(value);                                      \
@@ -537,18 +537,18 @@ private:
 
 public:
     void CreateNodeWithId(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         ui64 nodeId,
         ui64 commitId,
         const NProto::TNode& attrs);
 
     ui64 CreateNode(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         ui64 commitId,
         const NProto::TNode& attrs);
 
     void UpdateNode(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         ui64 nodeId,
         ui64 minCommitId,
         ui64 maxCommitId,
@@ -556,13 +556,13 @@ public:
         const NProto::TNode& prevAttrs);
 
     [[nodiscard]] NProto::TError RemoveNode(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         const INodeIndexTabletDatabase::TNode& node,
         ui64 minCommitId,
         ui64 maxCommitId);
 
     [[nodiscard]] NProto::TError UnlinkNode(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         ui64 parentNodeId,
         const TString& name,
         const INodeIndexTabletDatabase::TNode& node,
@@ -571,7 +571,7 @@ public:
         bool removeNodeRef);
 
     void UnlinkExternalNode(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         ui64 parentNodeId,
         const TString& name,
         const TString& shardId,
@@ -586,14 +586,14 @@ public:
         TMaybe<INodeIndexTabletDatabase::TNode>& node);
 
     void RewriteNode(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         ui64 nodeId,
         ui64 minCommitId,
         ui64 maxCommitId,
         const NProto::TNode& attrs);
 
     void WriteOrphanNode(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         const TString& message,
         ui64 nodeId);
 
@@ -605,7 +605,7 @@ public:
 
 private:
     void UpdateUsedBlocksCount(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         ui64 currentSize,
         ui64 prevSize);
 
@@ -615,14 +615,14 @@ private:
 
 public:
     ui64 CreateNodeAttr(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         ui64 nodeId,
         ui64 commitId,
         const TString& name,
         const TString& value);
 
     ui64 UpdateNodeAttr(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         ui64 nodeId,
         ui64 minCommitId,
         ui64 maxCommitId,
@@ -630,7 +630,7 @@ public:
         const TString& newValue);
 
     void RemoveNodeAttr(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         ui64 nodeId,
         ui64 minCommitId,
         ui64 maxCommitId,
@@ -650,7 +650,7 @@ public:
         TVector<INodeIndexTabletDatabase::TNodeAttr>& attrs);
 
     void RewriteNodeAttr(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         ui64 nodeId,
         ui64 minCommitId,
         ui64 maxCommitId,
@@ -668,7 +668,7 @@ public:
         False = 2
     };
 
-    void WriteHasXAttrs(TIndexTabletDatabase& db, EHasXAttrs hasXAttrs);
+    void WriteHasXAttrs(IIndexTabletDatabase& db, EHasXAttrs hasXAttrs);
 
     //
     // NodeRefs
@@ -676,7 +676,7 @@ public:
 
 public:
     void CreateNodeRef(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         ui64 nodeId,
         ui64 commitId,
         const TString& childName,
@@ -686,7 +686,7 @@ public:
         bool markExhaustive = false);
 
     void RemoveNodeRef(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         ui64 nodeId,
         ui64 minCommitId,
         ui64 maxCommitId,
@@ -730,7 +730,7 @@ public:
         ui64 bytesToPrecharge);
 
     void RewriteNodeRef(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         ui64 nodeId,
         ui64 minCommitId,
         ui64 maxCommitId,
@@ -760,7 +760,7 @@ public:
         const NProto::TSessionOptions& sessionOptions);
 
     TSession* CreateSession(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         const TString& clientId,
         const TString& sessionId,
         const TString& checkpointId,
@@ -771,7 +771,7 @@ public:
         const NProto::TSessionOptions& sessionOptions);
 
     void RemoveSession(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         const TString& sessionId);
 
     TSession* FindSession(const TString& sessionId) const;
@@ -794,7 +794,7 @@ public:
         const NActors::TActorId& pipeServer) const;
     void RemoveSessionByPipeServer(const NActors::TActorId& pipeServer);
     void OrphanSession(const NActors::TActorId& owner, TInstant inactivityDeadline);
-    void ResetSession(TIndexTabletDatabase& db, TSession* session, const TMaybe<TString>& state);
+    void ResetSession(IIndexTabletDatabase& db, TSession* session, const TMaybe<TString>& state);
 
     TVector<TSession*> GetTimedOutSessions(TInstant now) const;
     TVector<TSession*> GetSessionsToNotify(const NProto::TSessionEvent& event) const;
@@ -802,7 +802,7 @@ public:
 
     const TSessionHistoryList& GetSessionHistoryList() const;
     void AddSessionHistoryEntry(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         const TSessionHistoryEntry& entry, size_t maxEntryCount);
 
     using TCreateSessionRequests =
@@ -834,14 +834,14 @@ private:
 
 public:
     TSessionHandle* CreateHandle(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         TSession* session,
         ui64 nodeId,
         ui64 commitId,
         ui32 flags);
 
     TSessionHandle* UnsafeCreateHandle(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         TSession* session,
         ui64 handleId,
         ui64 nodeId,
@@ -849,7 +849,7 @@ public:
         ui32 flags);
 
     void DestroyHandle(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         TSessionHandle* handle);
 
     TSessionHandle* FindHandle(ui64 handle) const;
@@ -871,13 +871,13 @@ private:
 
 public:
     TRangeLockOperationResult AcquireLock(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         TSession* session,
         ui64 handle,
         const TLockRange& range);
 
     TRangeLockOperationResult ReleaseLock(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         TSession* session,
         const TLockRange& range);
 
@@ -886,7 +886,7 @@ public:
         const TSessionHandle* handle,
         const TLockRange& range) const;
 
-    void ReleaseLocks(TIndexTabletDatabase& db, ui64 handle);
+    void ReleaseLocks(IIndexTabletDatabase& db, ui64 handle);
 
 private:
     TSessionLock* FindLock(ui64 lockId) const;
@@ -905,7 +905,7 @@ private:
 #define FILESTORE_DECLARE_DUPCACHE(name, ...)                                   \
 public:                                                                         \
     void AddDupCacheEntry(                                                      \
-        TIndexTabletDatabase& db,                                               \
+        IIndexTabletDatabase& db,                                               \
         TSession* session,                                                      \
         ui64 requestId,                                                         \
         const NProto::T##name##Response& response,                              \
@@ -921,13 +921,13 @@ FILESTORE_DUPCACHE_REQUESTS(FILESTORE_DECLARE_DUPCACHE)
 #undef FILESTORE_DECLARE_DUPCACHE
 
     void PatchDupCacheEntry(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         const TString& sessionId,
         ui64 requestId,
         NProto::TCreateNodeResponse response);
 
     void PatchDupCacheEntry(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         const TString& sessionId,
         ui64 requestId,
         NProto::TRenameNodeResponse response);
@@ -942,10 +942,10 @@ FILESTORE_DUPCACHE_REQUESTS(FILESTORE_DECLARE_DUPCACHE)
 
 public:
     void WriteOpLogEntry(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         const NProto::TOpLogEntry& e);
 
-    void DeleteOpLogEntry(TIndexTabletDatabase& db, ui64 entryId);
+    void DeleteOpLogEntry(IIndexTabletDatabase& db, ui64 entryId);
 
     ui64 GetOpLogEntryCount() const;
 
@@ -959,13 +959,13 @@ public:
         ui64 requestId) const;
 
     void WriteResponseLogEntry(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         const NProtoPrivate::TResponseLogEntry& e);
 
     void CommitResponseLogEntry(NProtoPrivate::TResponseLogEntry e);
 
     void DeleteResponseLogEntry(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         ui64 clientTabletId,
         ui64 requestId);
 
@@ -1007,7 +1007,7 @@ public:
     //
 
 public:
-    void ConfirmedDataAdded(TIndexTabletDatabase& db, ui64 commitId);
+    void ConfirmedDataAdded(IIndexTabletDatabase& db, ui64 commitId);
 
     void LoadUnconfirmedData(
         TVector<TIndexTabletDatabase::TUnconfirmedDataEntry> entries);
@@ -1046,14 +1046,14 @@ public:
         TStringBuf data) const;
 
     void WriteFreshBytes(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         ui64 nodeId,
         ui64 commitId,
         ui64 offset,
         TStringBuf data);
 
     void WriteFreshBytesDeletionMarker(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         ui64 nodeId,
         ui64 commitId,
         ui64 offset,
@@ -1063,7 +1063,7 @@ public:
         TVector<TBytes>* bytes,
         TVector<TBytes>* deletionMarkers);
     TFlushBytesStats FinishFlushBytes(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         ui64 itemLimit,
         ui64 chunkId,
         NProto::TProfileLogRequestInfo& profileLogRequest);
@@ -1096,21 +1096,21 @@ public:
         ui32 blockIndex) const;
 
     void WriteFreshBlock(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         ui64 nodeId,
         ui64 commitId,
         ui32 blockIndex,
         TStringBuf blockData);
 
     void MarkFreshBlocksDeleted(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         ui64 nodeId,
         ui64 commitId,
         ui32 blockIndex,
         ui32 blocksCount);
 
     void DeleteFreshBlocks(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         const TVector<TBlock>& blocks);
 
     //
@@ -1130,18 +1130,18 @@ public:
         ui32 blocksCount) const;
 
     void WriteMixedBlocks(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         const TPartialBlobId& blobId,
         const TBlock& block,
         ui32 blocksCount);
 
     TWriteMixedBlocksResult WriteMixedBlocks(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         const TPartialBlobId& blobId,
         /*const*/ TVector<TBlock>& blocks);
 
     void DeleteMixedBlocks(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         const TPartialBlobId& blobId,
         const TVector<TBlock>& blocks);
 
@@ -1150,7 +1150,7 @@ public:
     TMixedBlobMeta FindBlob(ui32 rangeId, TPartialBlobId blobId) const;
 
     void MarkMixedBlocksDeleted(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         ui64 nodeId,
         ui64 commitId,
         ui32 blockIndex,
@@ -1158,16 +1158,16 @@ public:
 
     // returns processed deletion marker count
     ui32 CleanupBlockDeletions(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         ui32 rangeId,
         NProto::TProfileLogRequestInfo& profileLogRequest);
 
     bool UpdateBlockLists(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         TMixedBlobMeta& blob);
 
     void RewriteMixedBlocks(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         ui32 rangeId,
         /*const*/ TMixedBlobMeta& blob,
         const TMixedBlobStats& blobStats);
@@ -1183,13 +1183,13 @@ public:
 
 private:
     TWriteMixedBlocksResult WriteMixedBlocks(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         ui32 rangeId,
         const TPartialBlobId& blobId,
         /*const*/ TVector<TBlock>& blocks);
 
     TDeleteMixedBlocksResult DeleteMixedBlocks(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         ui32 rangeId,
         const TPartialBlobId& blobId,
         const TVector<TBlock>& blocks);
@@ -1242,14 +1242,14 @@ public:
     TVector<TPartialBlobId> GetGarbageBlobs(ui64 collectCommitId) const;
 
     void DeleteGarbage(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         ui64 collectCommitId,
         const TVector<TPartialBlobId>& newBlobs,
         const TVector<TPartialBlobId>& garbageBlobs);
 
 private:
-    void AddNewBlob(TIndexTabletDatabase& db, const TPartialBlobId& blobId);
-    void AddGarbageBlob(TIndexTabletDatabase& db, const TPartialBlobId& blobId);
+    void AddNewBlob(IIndexTabletDatabase& db, const TPartialBlobId& blobId);
+    void AddGarbageBlob(IIndexTabletDatabase& db, const TPartialBlobId& blobId);
 
     //
     // Checkpoints
@@ -1265,38 +1265,38 @@ public:
     ui64 GetReadCommitId(const TString& checkpointId) const;
 
     TCheckpoint* CreateCheckpoint(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         const TString& checkpointId,
         ui64 nodeId,
         ui64 commitId);
 
     void MarkCheckpointDeleted(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         TCheckpoint* checkpoint);
 
     void RemoveCheckpointNodes(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         TCheckpoint* checkpoint,
         const TVector<ui64>& nodes);
 
     void RemoveCheckpointBlob(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         TCheckpoint* checkpoint,
         ui32 rangeId,
         const TPartialBlobId& blobId);
 
     void RemoveCheckpoint(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         TCheckpoint* checkpoint);
 
 private:
     void AddCheckpointNode(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         ui64 checkpointId,
         ui64 nodeId);
 
     void AddCheckpointBlob(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         ui64 checkpointId,
         ui32 rangeId,
         const TPartialBlobId& blobId);
@@ -1510,11 +1510,11 @@ public:
     void CompleteTruncateOp(ui64 nodeId);
     bool HasActiveTruncateOp(ui64 nodeId) const;
 
-    void AddTruncate(TIndexTabletDatabase& db, ui64 nodeId, TByteRange range);
-    void DeleteTruncate(TIndexTabletDatabase& db, ui64 nodeId);
+    void AddTruncate(IIndexTabletDatabase& db, ui64 nodeId, TByteRange range);
+    void DeleteTruncate(IIndexTabletDatabase& db, ui64 nodeId);
 
     [[nodiscard]] NProto::TError Truncate(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         ui64 nodeId,
         ui64 commitId,
         ui64 currentSize,
@@ -1527,7 +1527,7 @@ public:
     // - deletes all blocks in NEW range;
     // - writes fresh bytes (zeroes) on unaligned head, if range.Offset != 0.
     [[nodiscard]] NProto::TError TruncateRange(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         ui64 nodeId,
         ui64 commitId,
         TByteRange range);
@@ -1537,14 +1537,14 @@ public:
     // - writes fresh bytes (zeroes) on unaligned head, if any;
     // - writes fresh bytes (zeroes) on unaligned tail, if any.
     [[nodiscard]] NProto::TError ZeroRange(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         ui64 nodeId,
         ui64 commitId,
         TByteRange range);
 
 private:
     [[nodiscard]] NProto::TError DeleteRange(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         ui64 nodeId,
         ui64 commitId,
         const TByteRange& range);

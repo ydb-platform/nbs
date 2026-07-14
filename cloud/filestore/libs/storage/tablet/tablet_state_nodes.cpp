@@ -25,7 +25,7 @@ ui64 SizeDiff(const TString& v1, const TString& v2)
 // Nodes
 
 void TIndexTabletState::UpdateUsedBlocksCount(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     ui64 currentSize,
     ui64 prevSize)
 {
@@ -38,7 +38,7 @@ void TIndexTabletState::UpdateUsedBlocksCount(
 }
 
 void TIndexTabletState::CreateNodeWithId(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     ui64 nodeId,
     ui64 commitId,
     const NProto::TNode& attrs)
@@ -51,7 +51,7 @@ void TIndexTabletState::CreateNodeWithId(
 }
 
 ui64 TIndexTabletState::CreateNode(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     ui64 commitId,
     const NProto::TNode& attrs)
 {
@@ -64,7 +64,7 @@ ui64 TIndexTabletState::CreateNode(
 }
 
 void TIndexTabletState::UpdateNode(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     ui64 nodeId,
     ui64 minCommitId,
     ui64 maxCommitId,
@@ -87,7 +87,7 @@ void TIndexTabletState::UpdateNode(
 }
 
 NProto::TError TIndexTabletState::RemoveNode(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     const INodeIndexTabletDatabase::TNode& node,
     ui64 minCommitId,
     ui64 maxCommitId)
@@ -123,7 +123,7 @@ NProto::TError TIndexTabletState::RemoveNode(
 }
 
 NProto::TError TIndexTabletState::UnlinkNode(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     ui64 parentNodeId,
     const TString& name,
     const INodeIndexTabletDatabase::TNode& node,
@@ -171,7 +171,7 @@ NProto::TError TIndexTabletState::UnlinkNode(
 }
 
 void TIndexTabletState::UnlinkExternalNode(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     ui64 parentNodeId,
     const TString& name,
     const TString& shardId,
@@ -215,7 +215,7 @@ bool TIndexTabletState::ReadNode(
 }
 
 void TIndexTabletState::RewriteNode(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     ui64 nodeId,
     ui64 minCommitId,
     ui64 maxCommitId,
@@ -234,7 +234,7 @@ void TIndexTabletState::RewriteNode(
 }
 
 void TIndexTabletState::WriteOrphanNode(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     const TString& message,
     ui64 nodeId)
 {
@@ -263,7 +263,7 @@ void TIndexTabletState::EndNodeCreateInShard(const TString& nodeName)
 // NodeAttrs
 
 ui64 TIndexTabletState::CreateNodeAttr(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     ui64 nodeId,
     ui64 commitId,
     const TString& name,
@@ -278,7 +278,7 @@ ui64 TIndexTabletState::CreateNodeAttr(
 }
 
 ui64 TIndexTabletState::UpdateNodeAttr(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     ui64 nodeId,
     ui64 minCommitId,
     ui64 maxCommitId,
@@ -313,7 +313,7 @@ ui64 TIndexTabletState::UpdateNodeAttr(
 }
 
 void TIndexTabletState::RemoveNodeAttr(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     ui64 nodeId,
     ui64 minCommitId,
     ui64 maxCommitId,
@@ -383,7 +383,7 @@ bool TIndexTabletState::ReadNodeAttrs(
 }
 
 void TIndexTabletState::RewriteNodeAttr(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     ui64 nodeId,
     ui64 minCommitId,
     ui64 maxCommitId,
@@ -411,7 +411,7 @@ void TIndexTabletState::RewriteNodeAttr(
 // HasXAttrs
 
 void TIndexTabletState::WriteHasXAttrs(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     const TIndexTabletState::EHasXAttrs hasXAttrs)
 {
     SetHasXAttrs(db, static_cast<ui64>(hasXAttrs));
@@ -459,7 +459,7 @@ inline bool TryToDecodeShardId(
 // NodeRefs
 
 void TIndexTabletState::CreateNodeRef(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     ui64 nodeId,
     ui64 commitId,
     const TString& childName,
@@ -486,7 +486,7 @@ void TIndexTabletState::CreateNodeRef(
 }
 
 void TIndexTabletState::RemoveNodeRef(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     ui64 nodeId,
     ui64 minCommitId,
     ui64 maxCommitId,
@@ -617,7 +617,7 @@ bool TIndexTabletState::PrechargeNodeRefs(
 }
 
 void TIndexTabletState::RewriteNodeRef(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     ui64 nodeId,
     ui64 minCommitId,
     ui64 maxCommitId,
