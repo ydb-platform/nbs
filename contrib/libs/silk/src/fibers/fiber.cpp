@@ -588,6 +588,8 @@ struct FiberScheduler::ProcessorState
     void wakeThread() noexcept;
     void parkThread(uint64_t waitNs, CpuTimer * timer) noexcept;
     bool hasWork() const noexcept;
+    uint32_t sqReady() const noexcept;
+    uint32_t cqReady() const noexcept;
 
     void enqueueDoorbell() noexcept;
     void postWakeup(ProcessorState * target) noexcept;
@@ -772,6 +774,13 @@ void FiberScheduler::ProcessorState::wakeThread() noexcept
 
 void FiberScheduler::ProcessorState::parkThread(uint64_t waitNs, CpuTimer * timer) noexcept
 {
+    // Flush deferred SQEs: the idle path has no other submit, and parking
+    // passes to_submit=0, so a deferred doorbell rearm, MSG_RING wakeup, or
+    // remote cancel would sit queued until unrelated activity lands on this
+    // ring. If the submit defers again: on EBUSY hasWork() sees the full CQ
+    // and skips the park; on EAGAIN the timed park is the retry backoff.
+    submitIo(true);
+
     // Announce that we are about to park, then a seq_cst fence pairing with the one in wakeThread:
     // release alone is not a StoreLoad barrier, so without this the store could reorder past the
     // hasWork() re-check below while a concurrent wakeThread reads sleeping=false - both miss, and
@@ -824,13 +833,30 @@ bool FiberScheduler::ProcessorState::hasWork() const noexcept
     {
         return true;
     }
+    if (cqReady())
+    {
+        return true;
+    }
+    return false;
+}
 
-    // Ignore ring->cq.khead atomic/non-atomic mismatch.
+// The kernel and other submitters update the SQ/CQ ring counters with plain
+// stores; a racy read is benign - a stale count only defers or repeats work -
+// so hide it from TSan here rather than annotating every call site.
+uint32_t FiberScheduler::ProcessorState::sqReady() const noexcept
+{
+    TSAN_IGNORE_BEGIN();
+    uint32_t count = ::io_uring_sq_ready(&ring);
+    TSAN_IGNORE_END();
+    return count;
+}
+
+uint32_t FiberScheduler::ProcessorState::cqReady() const noexcept
+{
     TSAN_IGNORE_BEGIN();
     uint32_t count = ::io_uring_cq_ready(&ring);
     TSAN_IGNORE_END();
-
-    return count > 0;
+    return count;
 }
 
 void FiberScheduler::ProcessorState::enqueueDoorbell() noexcept
@@ -945,9 +971,7 @@ bool FiberScheduler::ProcessorState::submitIo(bool flush) noexcept
     // the submission lock when there's nothing to submit or the count/staleness
     // thresholds haven't been met. Kept small so it inlines into runFiber;
     // the rest lives in submitIoSlow.
-    TSAN_IGNORE_BEGIN();
-    uint32_t count = ::io_uring_sq_ready(&ring);
-    TSAN_IGNORE_END();
+    uint32_t count = sqReady();
     if (count == 0)
     {
         return false;
@@ -972,7 +996,7 @@ __attribute__((noinline)) bool FiberScheduler::ProcessorState::submitIoSlow(uint
 {
     std::lock_guard lock(submissionLock);
 
-    uint32_t count = ::io_uring_sq_ready(&ring);
+    uint32_t count = sqReady();
     if (count == 0)
     {
         return false;
@@ -1043,7 +1067,6 @@ struct FiberScheduler::SchedulerState
     uint16_t schedulerThreadCount = 0;
     uint16_t workerThreadCount = 0;
 
-    std::unique_ptr<ProcessorState[]> processorState;
     std::unique_ptr<std::thread[]> schedulerThreads;
     std::unique_ptr<std::thread[]> workerThreads;
 
@@ -1054,6 +1077,11 @@ struct FiberScheduler::SchedulerState
 
     std::unique_ptr<WaitStack[]> waiterTable;
     uint64_t waiterTableMask{};
+
+    // Declared last so it is destroyed first: each ProcessorState's suspended
+    // list links nodes embedded in pool-owned fibers, so the lists must be
+    // destroyed before fiberPool frees the fiber memory.
+    std::unique_ptr<ProcessorState[]> processorState;
 };
 
 FiberScheduler::SchedulerState::SchedulerState() noexcept
@@ -1263,6 +1291,24 @@ void FiberScheduler::destroy() noexcept
     for (uint16_t i = 0; i < scheduler->workerThreadCount; ++i)
     {
         scheduler->workerThreads[i].join();
+    }
+
+    // A fiber still linked here suspended (or stayed scheduled) and never ran
+    // to completion: the caller leaked it, violating the contract that no
+    // fibers exist at destroy time. Fail here, where the leak is attributable,
+    // instead of corrupting teardown.
+    SILK_ASSERT(scheduler->readyQueue.empty(), "fiber leaked: still in the global ready queue");
+    for (uint16_t cpu = 0; cpu < scheduler->processorCount; ++cpu)
+    {
+        ProcessorState * processor = &scheduler->processorState[cpu];
+        SILK_ASSERT(processor->suspendedList.empty(), "fiber leaked: still suspended on cpu %u", cpu);
+
+        // readyQueue.empty() touches the slot array, which exists only for
+        // processors that were actually initialized.
+        if (processor->number != kInvalidProcessorNumber)
+        {
+            SILK_ASSERT(processor->readyQueue.empty(), "fiber leaked: still ready on cpu %u", cpu);
+        }
     }
 
     delete scheduler;
@@ -1950,7 +1996,8 @@ bool FiberScheduler::handleReadyQueue(ProcessorState * processor, CpuTimer * tim
 bool FiberScheduler::handleCompletionQueue(ProcessorState * processor) noexcept
 {
     // Fast path: CQ ring is empty, nothing to drain.
-    if (::io_uring_cq_ready(&processor->ring) == 0)
+    uint32_t count = processor->cqReady();
+    if (count == 0)
     {
         return false;
     }
