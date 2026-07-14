@@ -22,7 +22,7 @@ bool TIndexTabletActor::ValidateTx_LoadNodes(
 
 bool TIndexTabletActor::PrepareTx_LoadNodes(
     const TActorContext& ctx,
-    IIndexTabletDatabase& db,
+    INodeIndexTabletDatabase& db,
     TTxIndexTablet::TLoadNodes& args)
 {
     Y_UNUSED(ctx, db, args);

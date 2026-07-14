@@ -72,7 +72,7 @@ bool TIndexTabletActor::ValidateTx_ReadLink(
 
 bool TIndexTabletActor::PrepareTx_ReadLink(
     const NActors::TActorContext& ctx,
-    IIndexTabletDatabase& db,
+    INodeIndexTabletDatabase& db,
     TTxIndexTablet::TReadLink& args)
 {
     Y_UNUSED(ctx);

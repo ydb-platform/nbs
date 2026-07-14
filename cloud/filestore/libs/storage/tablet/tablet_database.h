@@ -64,7 +64,7 @@ namespace NCloud::NFileStore::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 class TIndexTabletDatabase
-    : public IIndexTabletDatabase
+    : public INodeIndexTabletDatabase
     , public NKikimr::NIceDb::TNiceDb
 {
 public:

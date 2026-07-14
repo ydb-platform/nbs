@@ -497,7 +497,7 @@ bool TIndexTabletActor::PrepareTx_AddBlob(
 
     bool ready = true;
     for (auto [id, maxOffset]: args.WriteRanges) {
-        TMaybe<IIndexTabletDatabase::TNode> node;
+        TMaybe<INodeIndexTabletDatabase::TNode> node;
         if (!ReadNode(db, id, args.CommitId, node)) {
             ready = false;
         }

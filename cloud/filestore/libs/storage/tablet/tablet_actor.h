@@ -844,7 +844,7 @@ private:
         FILESTORE_IMPLEMENT_RO_TRANSACTION,
         TTxIndexTablet,
         TIndexTabletDatabaseProxy,
-        IIndexTabletDatabase);
+        INodeIndexTabletDatabase);
 
     STFUNC(StateBoot);
     STFUNC(StateInit);
