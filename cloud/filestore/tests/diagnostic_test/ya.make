@@ -8,15 +8,17 @@ TEST_SRCS(
 
 DEPENDS(
     cloud/filestore/apps/client
+    cloud/filestore/tools/testing/loadtest/bin
 )
 
 PEERDIR(
     cloud/filestore/tests/python/lib
+    cloud/filestore/tools/testing/loadtest/protos
 )
 
 SET(
     NFS_STORAGE_CONFIG_PATCH
-    cloud/filestore/tests/client_sharded/nfs-storage.txt
+    cloud/filestore/tests/diagnostic_test/nfs-storage.txt
 )
 
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/service-kikimr.inc)

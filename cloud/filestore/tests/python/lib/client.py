@@ -302,7 +302,7 @@ class FilestoreCliClient:
 
     def diagnose_shards(self, fs, top=None, sort_by="load"):
         cmd = [
-            self.__binary_path, "diagnose-shards",
+            self.__binary_path, "diagnoseshards",
             "--filesystem", fs,
             "--json",
         ]
