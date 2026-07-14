@@ -404,8 +404,6 @@ private:
         request->SetOffset(byteOffset);
         request->SetLength(ReadBytes);
 
-        const auto requestBytes = CalculateByteCount(*request);
-
         auto self = weak_from_this();
         return Session->ReadData(CreateCallContext(), std::move(request)).Apply(
             [=] (const TFuture<NProto::TReadDataResponse>& future){
@@ -414,8 +412,7 @@ private:
                         future,
                         handleInfo,
                         started,
-                        byteOffset,
-                        requestBytes);
+                        byteOffset);
                 }
 
                 return TCompletedRequest{
@@ -429,8 +426,7 @@ private:
         const TFuture<NProto::TReadDataResponse>& future,
         THandleInfo handleInfo,
         TInstant started,
-        ui64 byteOffset,
-        ui64 requestBytes)
+        ui64 byteOffset)
     {
         try {
             const auto& response = future.GetValue();
@@ -443,6 +439,8 @@ private:
             } else {
                 Y_ABORT_UNLESS(bufferOffset < buffer.size());
             }
+
+            const ui64 bytesRead = CalculateByteCount(response);
 
             ui64 segmentId = byteOffset / SEGMENT_SIZE;
             for (ui64 offset = 0; offset < ReadBytes; offset += SEGMENT_SIZE) {
@@ -472,7 +470,7 @@ private:
                 NProto::ACTION_READ,
                 started,
                 response.GetError(),
-                requestBytes};
+                bytesRead};
         } catch (const TServiceError& e)  {
             auto error = MakeError(e.GetCode(), TString{e.GetMessage()});
             STORAGE_ERROR("read for %s has failed: %s",

@@ -128,6 +128,17 @@ ui64 CalculateByteCount<NProto::TWriteDataRequest>(
     return byteCount;
 }
 
+template <>
+ui64 CalculateByteCount<NProto::TReadDataResponse>(
+    const NProto::TReadDataResponse& response)
+{
+    if (!response.GetBuffer().empty()) {
+        return response.GetBuffer().size() - response.GetBufferOffset();
+    }
+
+    return response.GetLength();
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 #define FILESTORE_DECLARE_REQUEST(name, ...) #name,

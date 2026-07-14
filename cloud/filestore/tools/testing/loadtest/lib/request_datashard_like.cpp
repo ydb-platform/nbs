@@ -295,8 +295,6 @@ private:
         char* shmLocalPtr =
             DataClient ? DataClient->PrepareRead(*request, shmOffset) : nullptr;
 
-        const auto requestBytes = CalculateByteCount(*request);
-
         auto self = weak_from_this();
         return Session->ReadData(CreateCallContext(), std::move(request))
             .Apply(
@@ -308,8 +306,7 @@ private:
                             nodeInfo,
                             started,
                             shmLocalPtr,
-                            shmOffset,
-                            requestBytes);
+                            shmOffset);
                     }
 
                     return TCompletedRequest{
@@ -324,8 +321,7 @@ private:
         TNodeInfo nodeInfo,
         TInstant started,
         char* shmLocalPtr,
-        ui64 shmOffset,
-        ui64 requestBytes)
+        ui64 shmOffset)
     {
         Y_DEFER
         {
@@ -351,7 +347,7 @@ private:
                 NProto::ACTION_READ,
                 started,
                 response.GetError(),
-                requestBytes};
+                CalculateByteCount(response)};
         } catch (const TServiceError& e) {
             auto error = MakeError(e.GetCode(), TString{e.GetMessage()});
             STORAGE_ERROR(

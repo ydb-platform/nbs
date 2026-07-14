@@ -282,6 +282,8 @@ private:
 
         if (HasError(err)) {
             requestBytes = 0;
+        } else if (resp.HasReadData()) {
+            requestBytes = CalculateByteCount(resp.GetReadData());
         }
         s->Promise.SetValue(
             {s->Action, s->Started, std::move(err), requestBytes});

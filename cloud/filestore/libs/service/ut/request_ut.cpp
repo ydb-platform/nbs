@@ -64,6 +64,30 @@ Y_UNIT_TEST_SUITE(TCalculateByteCountTest)
 
         UNIT_ASSERT_VALUES_EQUAL(0, CalculateByteCount(request));
     }
+
+    Y_UNIT_TEST(ShouldReturnBufferSizeMinusOffsetForReadDataResponse)
+    {
+        NProto::TReadDataResponse response;
+        response.SetBuffer("xxhello");
+        response.SetBufferOffset(2);
+
+        UNIT_ASSERT_VALUES_EQUAL(5, CalculateByteCount(response));
+    }
+
+    Y_UNIT_TEST(ShouldReturnLengthForReadDataResponseWithoutBuffer)
+    {
+        NProto::TReadDataResponse response;
+        response.SetLength(4096);
+
+        UNIT_ASSERT_VALUES_EQUAL(4096, CalculateByteCount(response));
+    }
+
+    Y_UNIT_TEST(ShouldReturnZeroForEmptyReadDataResponse)
+    {
+        NProto::TReadDataResponse response;
+
+        UNIT_ASSERT_VALUES_EQUAL(0, CalculateByteCount(response));
+    }
 }
 
 }   // namespace NCloud::NFileStore

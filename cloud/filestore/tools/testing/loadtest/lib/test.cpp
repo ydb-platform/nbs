@@ -714,7 +714,7 @@ private:
             auto stats = GetStats();
             STORAGE_INFO("%s current rate: %ld r/s, bandwidth: %ld bytes/s; stats:\n%s",
                 MakeTestTag().c_str(),
-                (ui64)(requestsCompleted / elapsed.Seconds()),
+                (ui64)(requestsCompleted / elapsed.SecondsFloat()),
                 (ui64)(requestBytes / elapsed.SecondsFloat()),
                 NProtobufJson::Proto2Json(stats, {.FormatOutput = true}).c_str());
 

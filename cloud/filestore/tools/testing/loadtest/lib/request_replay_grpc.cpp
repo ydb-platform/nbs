@@ -378,8 +378,7 @@ private:
             .Started = Started,
             .EventMessageNumber = EventMessageNumber,
             .LogRequest = logRequest,
-            .Description = ToString(handle),
-            .RequestBytes = CalculateByteCount(*request)};
+            .Description = ToString(handle)};
 
         auto self = weak_from_this();
         return Session->ReadData(CreateCallContext(), std::move(request))
@@ -409,7 +408,7 @@ private:
                 NProto::ACTION_READ,
                 info.Started,
                 response.GetError(),
-                info.RequestBytes};
+                CalculateByteCount(response)};
         } catch (const TServiceError& e) {
             CompareResponse(info, e.GetCode());
             return {
