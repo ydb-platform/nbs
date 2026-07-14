@@ -545,10 +545,11 @@ private:
     // Separate, narrow counters tree (component=sli_volume) for the
     // cumulative availability counters (ObservedSeconds/AvailableSeconds/
     // HealthySeconds) only. component=server_volume also carries ~200-280
-    // other per-volume perf counters, so a UA scrape of the whole subtree
-    // just to reach our ~3 sensors is wasteful; this sibling group lets UA
-    // pull only what SLI needs. Only populated for EServerStats - client-side
-    // stats keep the previous (nested) placement, see RegisterInstance().
+    // other per-volume perf counters, so scraping the whole subtree just to
+    // reach our ~3 sensors is wasteful; this sibling group lets a monitoring
+    // agent pull only these specific counters. Only populated for
+    // EServerStats - client-side stats keep the previous (nested)
+    // placement, see RegisterInstance().
     TDynamicCountersPtr SliCounters;
     std::shared_ptr<NUserCounter::IUserCounterSupplier> UserCounters;
     std::unique_ptr<TSufferCounters> SufferCounters;
@@ -1137,6 +1138,13 @@ private:
 
         // component=sli_volume for server-side stats (see SliCounters
         // comment); client-side stats keep the old nested placement.
+        // "type" uses MediaKindToComputeType (not MediaKindToStatsString, the
+        // convention used by the DownDisks aggregate below) to produce the
+        // same disk-type spelling ("network-ssd", ...) this helper already
+        // produces elsewhere in the codebase.
+        // StorageMediaKind is immutable for the lifetime of a volume (unlike
+        // cloud/folder, which AlterVolume can change), so this extra level
+        // needs no re-registration/aliasing handling.
         auto sliCountersGroup = SliCounters
             ? SliCounters
                   ->GetSubgroup("volume", volumeConfig.GetDiskId())
@@ -1145,6 +1153,9 @@ private:
                       realInstanceId.GetRealInstanceId())
                   ->GetSubgroup("cloud", volumeConfig.GetCloudId())
                   ->GetSubgroup("folder", volumeConfig.GetFolderId())
+                  ->GetSubgroup(
+                      "type",
+                      MediaKindToComputeType(volumeConfig.GetStorageMediaKind()))
             : countersGroup;
         info->ObservedSecondsCounter =
             sliCountersGroup->GetCounter("ObservedSeconds", true);

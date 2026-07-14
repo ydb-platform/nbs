@@ -1223,7 +1223,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             ->GetSubgroup("volume", "test1")
             ->GetSubgroup("instance", "instance")
             ->GetSubgroup("cloud", DefaultCloudId)
-            ->GetSubgroup("folder", DefaultFolderId);
+            ->GetSubgroup("folder", DefaultFolderId)
+            ->GetSubgroup("type", "network-ssd");
 
         auto observed = sliCounters->GetCounter("ObservedSeconds");
         auto available = sliCounters->GetCounter("AvailableSeconds");
@@ -1292,6 +1293,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             ->GetSubgroup("instance", "instance2")
             ->GetSubgroup("cloud", DefaultCloudId)
             ->GetSubgroup("folder", DefaultFolderId)
+            ->GetSubgroup("type", "network-ssd")
             ->GetCounter("ObservedSeconds");
 
         // Five seconds later the new volume must be credited only for the 5s it
@@ -1331,7 +1333,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             ->GetSubgroup("volume", "test1")
             ->GetSubgroup("instance", "instance")
             ->GetSubgroup("cloud", DefaultCloudId)
-            ->GetSubgroup("folder", DefaultFolderId);
+            ->GetSubgroup("folder", DefaultFolderId)
+            ->GetSubgroup("type", "network-ssd");
 
         auto observed = sliCounters->GetCounter("ObservedSeconds");
         auto available = sliCounters->GetCounter("AvailableSeconds");
@@ -1403,7 +1406,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             ->GetSubgroup("volume", "test1")
             ->GetSubgroup("instance", "instance")
             ->GetSubgroup("cloud", DefaultCloudId)
-            ->GetSubgroup("folder", DefaultFolderId);
+            ->GetSubgroup("folder", DefaultFolderId)
+            ->GetSubgroup("type", "network-ssd");
 
         auto observed = sliCounters->GetCounter("ObservedSeconds");
         auto available = sliCounters->GetCounter("AvailableSeconds");
@@ -1481,7 +1485,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             ->GetSubgroup("volume", "test1")
             ->GetSubgroup("instance", "instance")
             ->GetSubgroup("cloud", DefaultCloudId)
-            ->GetSubgroup("folder", DefaultFolderId);
+            ->GetSubgroup("folder", DefaultFolderId)
+            ->GetSubgroup("type", "network-ssd");
 
         auto observed = sliCounters->GetCounter("ObservedSeconds");
 
