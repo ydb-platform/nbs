@@ -449,6 +449,66 @@ struct TDirtyDeviceEntry
     TString StateMessage;
 };
 
+struct TReplicaHistoryEntry
+{
+    TString ReplicaId;
+    NProto::TDiskHistoryItem HistoryItem;
+};
+
+TVector<TReplicaHistoryEntry> MergeMirrorDiskHistory(
+    const TDiskRegistryState& state,
+    const TString& diskId,
+    const TDiskInfo& info)
+{
+    TVector<TReplicaHistoryEntry> result;
+
+    if (info.Replicas.empty()) {
+        for (const auto& hi: info.History) {
+            result.push_back({.ReplicaId = {}, .HistoryItem = hi});
+        }
+        return result;
+    }
+
+    for (ui32 i = 0; i <= info.Replicas.size(); ++i) {
+        const TString replicaId = diskId + "/" + ToString(i);
+        TDiskInfo replicaInfo;
+        if (const auto error = state.GetDiskInfo(replicaId, replicaInfo);
+            HasError(error))
+        {
+            NProto::TDiskHistoryItem errorItem;
+            errorItem.SetTimestamp(TInstant::Now().MicroSeconds());
+            errorItem.SetMessage(
+                TStringBuilder() << "Failed to read history for replica "
+                                 << replicaId << ": " << FormatError(error));
+            result.push_back(
+                {.ReplicaId = replicaId, .HistoryItem = std::move(errorItem)});
+            continue;
+        }
+        for (auto& hi: replicaInfo.History) {
+            result.push_back(
+                {.ReplicaId = replicaId, .HistoryItem = std::move(hi)});
+        }
+    }
+
+    for (const auto& hi: info.History) {
+        result.push_back({.ReplicaId = {}, .HistoryItem = hi});
+    }
+
+    // Deduplicate by (timestamp, message): if the same event was recorded in
+    // both a mirror disk replica (e.g. mrr1/0) and the master disk (mrr1),
+    // keep the replica entry (has non-empty ReplicaId) and drop the master one.
+    StableSortUniqueBy(
+        result,
+        [](const auto& e)
+        {
+            return std::make_pair(
+                e.HistoryItem.GetTimestamp(),
+                e.HistoryItem.GetMessage());
+        });
+
+    return result;
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1155,23 +1215,37 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
             out << "History";
         }
 
+        const bool isMirrorDisk = !info.Replicas.empty();
+        const auto allHistory = MergeMirrorDiskHistory(*State, id, info);
+
         TABLE_SORTABLE_CLASS("table table-bordered") {
             TABLEHEAD() {
                 TABLER() {
                     TABLEH() { out << "Timestamp"; }
+                    if (isMirrorDisk) {
+                        TABLEH() { out << "Replica"; }
+                    }
                     TABLEH() { out << "Message"; }
                 }
             }
 
-            for (const auto& hi: info.History) {
+            for (const auto& entry: allHistory) {
                 TABLER() {
                     TABLED() {
-                        out << TInstant::MicroSeconds(hi.GetTimestamp())
-                            << " (" << hi.GetTimestamp() << ")";
+                        out << TInstant::MicroSeconds(
+                                   entry.HistoryItem.GetTimestamp())
+                            << " (" << entry.HistoryItem.GetTimestamp() << ")";
+                    }
+                    if (isMirrorDisk) {
+                        TABLED() {
+                            if (!entry.ReplicaId.empty()) {
+                                DumpDiskLink(out, TabletID(), entry.ReplicaId);
+                            }
+                        }
                     }
                     TABLED() {
                         PRE() {
-                            out << hi.GetMessage();
+                            out << entry.HistoryItem.GetMessage();
                         }
                     }
                 }
