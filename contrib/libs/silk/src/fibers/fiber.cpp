@@ -5,6 +5,7 @@
 
 #include <silk/fibers/future.h>
 #include <silk/util/assert.h>
+#include <silk/util/bitmap.h>
 #include <silk/util/bounded-queue.h>
 #include <silk/util/list.h>
 #include <silk/util/memory-pool.h>
@@ -26,6 +27,7 @@
 #include <thread>
 #include <utility>
 
+#include <cxxabi.h>
 #include <fcontext.h>
 #include <liburing.h>
 #include <poll.h>
@@ -49,8 +51,8 @@ FiberScheduler::SchedulerState * FiberScheduler::scheduler;
 //
 
 static constexpr uint64_t CQE_TAG_CANCEL = 0;
-static constexpr uint64_t CQE_TAG_TIMEOUT = 1;
-static constexpr uint64_t CQE_TAG_DOORBELL = 2;
+static constexpr uint64_t CQE_TAG_DOORBELL = 1;
+static constexpr uint64_t CQE_TAG_WAKEUP = 2;
 
 // clang-format off
 #define FIBER_SIMPLE_COUNTERS(x) \
@@ -85,6 +87,40 @@ static constexpr uint64_t CQE_TAG_DOORBELL = 2;
 DECLARE_SIMPLE_COUNTERS(FIBER_SIMPLE_COUNTERS);
 
 static Perf::CounterGroup simpleCounters;
+
+// Itanium C++ ABI per-thread exception-propagation state (libstdc++'s __cxxabiv1::__cxa_eh_globals
+// and libc++abi's __cxa_eh_globals share this layout): the stack of exceptions being propagated or
+// handled on the thread, plus the uncaught count. __cxa_throw / __cxa_begin_catch / __cxa_end_catch
+// mutate it and free the exception object through it. It lives in thread-local storage, so every
+// fiber on a scheduler thread shares one copy - silk swaps it per fiber on each context switch so an
+// exception whose unwind spans a switch is not corrupted by another fiber's exception handling.
+struct CxaEhGlobals
+{
+    void * caughtExceptions = nullptr;
+    unsigned int uncaughtExceptions = 0;
+};
+
+// libstdc++ declares __cxxabiv1::__cxa_get_globals in <cxxabi.h>; libc++abi omits it from its public
+// header, so declare the Itanium ABI symbol (matching its internal signature) there.
+#if defined(_LIBCPP_VERSION)
+namespace __cxxabiv1
+{
+struct __cxa_eh_globals;
+extern "C" __cxa_eh_globals * __cxa_get_globals() noexcept;
+}
+#endif
+
+// Read the current thread's exception state. Re-fetched on every switch so a migrated fiber reads
+// the state of whichever thread it now runs on.
+static CxaEhGlobals loadExceptionState() noexcept
+{
+    return *reinterpret_cast<CxaEhGlobals *>(__cxxabiv1::__cxa_get_globals());
+}
+
+static void storeExceptionState(const CxaEhGlobals & state) noexcept
+{
+    *reinterpret_cast<CxaEhGlobals *>(__cxxabiv1::__cxa_get_globals()) = state;
+}
 
 /**
  * Fiber lifecycle state.
@@ -133,7 +169,7 @@ public:
     // dispatch and every suspension. runFiber's full read/write set lives on
     // this single line, so dispatch never pulls a second cache line on the
     // common path.
-    struct alignas(CACHELINE_SIZE)
+    struct alignas(kCacheLineSize)
     {
         // Intrusive node for pool free-list and WaitStack membership.
         StackEntry stackEntry;
@@ -150,10 +186,10 @@ public:
         bool inThreadMode = false;
 
         // CPU this fiber is assigned to.
-        uint16_t processorNumber = INVALID_PROCESSOR_NUMBER;
+        uint16_t processorNumber = kInvalidProcessorNumber;
 
         // Processor whose suspendedList this fiber is currently in.
-        uint16_t suspendedProcessorNumber = INVALID_PROCESSOR_NUMBER;
+        uint16_t suspendedProcessorNumber = kInvalidProcessorNumber;
 
         // Suspend callback set by suspend, invoked by runFiber after the
         // context switch back to the scheduler or thread worker.
@@ -173,7 +209,7 @@ public:
     // Cache line 1: context-switch state and profiler timestamps; touched on
     // every dispatch. Per-fiber-once fields (fiberMain, parametersDtor,
     // waitingFuture) piggyback for free.
-    struct alignas(CACHELINE_SIZE)
+    struct alignas(kCacheLineSize)
     {
         // mmap'd stack and fcontext handles for cooperative switching.
         void * stack = nullptr;
@@ -215,6 +251,11 @@ public:
 
     // Return value of fiberMain; valid after the fiber reaches STOPPED state.
     int result = 0;
+
+    // This fiber's saved C++ exception-propagation state, swapped with the thread's on each context
+    // switch so an exception crossing the switch is not corrupted by another fiber sharing the thread.
+    // Placed last so it does not shift the offset-pinned fields above.
+    CxaEhGlobals cxaEhGlobals;
 
 #if defined(__SANITIZE_ADDRESS__)
     void * asanFakeStack = nullptr;
@@ -266,7 +307,7 @@ Fiber::~Fiber() noexcept
 
     if (stack)
     {
-        int r = ::munmap(stack, FiberScheduler::getOptions().fiberStackSize + 2 * PAGE_SIZE);
+        int r = ::munmap(stack, FiberScheduler::getOptions().fiberStackSize + 2 * kPageSize);
         SILK_ASSERT(!r);
     }
 }
@@ -277,8 +318,8 @@ bool Fiber::initialize(
     state.store(FiberState::SUSPENDED, std::memory_order_relaxed);
 
     inThreadMode = false;
-    processorNumber = INVALID_PROCESSOR_NUMBER;
-    suspendedProcessorNumber = INVALID_PROCESSOR_NUMBER;
+    processorNumber = kInvalidProcessorNumber;
+    suspendedProcessorNumber = kInvalidProcessorNumber;
     suspendCallback = nullptr;
     suspendContext = nullptr;
     fiberId = fiberId_;
@@ -291,17 +332,17 @@ bool Fiber::initialize(
 
     if (!stack)
     {
-        stack = ::mmap(nullptr, fiberStackSize + 2 * PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        stack = ::mmap(nullptr, fiberStackSize + 2 * kPageSize, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
         if (stack == MAP_FAILED) [[unlikely]]
         {
             stack = nullptr;
             return false;
         }
 
-        int r = ::mprotect(stack, PAGE_SIZE, PROT_NONE);
+        int r = ::mprotect(stack, kPageSize, PROT_NONE);
         SILK_ASSERT(!r);
 
-        r = ::mprotect(static_cast<uint8_t *>(stack) + PAGE_SIZE + fiberStackSize, PAGE_SIZE, PROT_NONE);
+        r = ::mprotect(static_cast<uint8_t *>(stack) + kPageSize + fiberStackSize, kPageSize, PROT_NONE);
         SILK_ASSERT(!r);
     }
 
@@ -317,7 +358,7 @@ bool Fiber::initialize(
 
     fiberMain = fiberMain_;
     parametersDtor = parametersDtor_;
-    fiberContext = make_fcontext(static_cast<uint8_t *>(stack) + PAGE_SIZE + fiberStackSize, fiberStackSize, fiberContextMain);
+    fiberContext = make_fcontext(static_cast<uint8_t *>(stack) + kPageSize + fiberStackSize, fiberStackSize, fiberContextMain);
 
     return true;
 }
@@ -342,7 +383,7 @@ void Fiber::switchToFiberContext() noexcept
 #if defined(__SANITIZE_ADDRESS__)
     void * schedulerFakeStack = nullptr;
     __sanitizer_start_switch_fiber(
-        &schedulerFakeStack, static_cast<uint8_t *>(stack) + PAGE_SIZE, FiberScheduler::getOptions().fiberStackSize);
+        &schedulerFakeStack, static_cast<uint8_t *>(stack) + kPageSize, FiberScheduler::getOptions().fiberStackSize);
 #endif
 
 #if defined(__SANITIZE_THREAD__)
@@ -350,8 +391,19 @@ void Fiber::switchToFiberContext() noexcept
     TSAN_FIBER_SWITCH(tsanFiber);
 #endif
 
+    // Save the scheduler's C++ exception state and load this fiber's, so an exception being
+    // propagated on either side is not clobbered by the other (they share the OS thread).
+    CxaEhGlobals schedulerEh = loadExceptionState();
+    storeExceptionState(cxaEhGlobals);
+
     auto transfer = jump_fcontext(fiberContext, this);
+    // transfer is populated by the uninstrumented jump_fcontext assembly; MSan cannot see those
+    // writes, so mark it initialized (as fiberContextMain does on first entry).
+    MSAN_UNPOISON(&transfer, sizeof(transfer));
     fiberContext = transfer.fctx;
+
+    // The scheduler resumed; restore its exception state.
+    storeExceptionState(schedulerEh);
 
 #if defined(__SANITIZE_ADDRESS__)
     __sanitizer_finish_switch_fiber(schedulerFakeStack, nullptr, nullptr);
@@ -370,7 +422,14 @@ void Fiber::switchToThreadContext(bool final) noexcept
     TSAN_FIBER_SWITCH(tsanSchedulerFiber);
 #endif
 
+    // Save this fiber's C++ exception state; the scheduler restores it (via switchToFiberContext)
+    // before this fiber next resumes.
+    cxaEhGlobals = loadExceptionState();
+
     auto transfer = jump_fcontext(threadContext, nullptr);
+    // transfer is populated by the uninstrumented jump_fcontext assembly; MSan cannot see those
+    // writes, so mark it initialized (as fiberContextMain does on first entry).
+    MSAN_UNPOISON(&transfer, sizeof(transfer));
     threadContext = transfer.fctx;
 
 #if defined(__SANITIZE_ADDRESS__)
@@ -499,7 +558,7 @@ struct FiberScheduler::CpuTimer
         counterRunning = counter;
     }
 
-    void reset(uint32_t counter, uint32_t cpu) noexcept
+    void reset(uint32_t counter, uint16_t cpu) noexcept
     {
         uint64_t now = Tsc::getCycles();
         uint64_t elapsedNs = Tsc::cyclesToNanoseconds(now - startedCycles);
@@ -518,7 +577,7 @@ struct FiberScheduler::CpuTimer
  */
 struct FiberScheduler::ProcessorState
 {
-    void initialize(uint32_t cpu) noexcept;
+    void initialize(uint16_t cpu) noexcept;
     void destroy() noexcept;
 
     FiberId allocateFiberId(uint8_t category) noexcept;
@@ -526,9 +585,11 @@ struct FiberScheduler::ProcessorState
 
     void wakeThread() noexcept;
     void parkThread(uint64_t waitNs, CpuTimer * timer) noexcept;
-
     bool hasWork() const noexcept;
-    void enqueueWakeup() noexcept;
+
+    void enqueueDoorbell() noexcept;
+    void postWakeup(ProcessorState * target) noexcept;
+    bool enqueueWakeup(ProcessorState * target) noexcept;
 
     template <typename Setup>
     bool enqueueIo(IoFuture * future, Setup && setup) noexcept;
@@ -539,10 +600,10 @@ struct FiberScheduler::ProcessorState
     void removeSuspended(Fiber * fiber) noexcept;
 
     // Cache line 0: scheduling hot path.
-    struct alignas(CACHELINE_SIZE)
+    struct alignas(kCacheLineSize)
     {
         // CPU index this processor is pinned to.
-        uint16_t number = INVALID_PROCESSOR_NUMBER;
+        uint16_t number = kInvalidProcessorNumber;
 
         // Set to true by runScheduler after initialization completes.
         // The steal loop checks this before accessing the ring,
@@ -576,9 +637,6 @@ struct FiberScheduler::ProcessorState
         // suspendedLock so that insert/remove touch only this cache line.
         SuspendedList suspendedList;
 
-        // Deadline of the in-flight io_uring timeout SQE; 0 when none is pending.
-        uint64_t wakeupDeadlineCycles = 0;
-
         // Timestamp (TSC cycles) of the most recent successful CQ drain on
         // this ring. Used to emit CQ_WAIT profile events bounding how long
         // any CQE in the next drain batch could have sat in the ring.
@@ -597,6 +655,12 @@ struct FiberScheduler::ProcessorState
         // profiling is off.  The scheduler thread for this CPU is the sole
         // producer; aggregate is called by the service loop under serviceLoopLock.
         std::unique_ptr<Profiler> profiler;
+
+        // Per-CPU monotonic counter feeding the counter field of FiberId.
+        // Initialized to 1 so the first allocated fiber (cpu=0, counter=0) does
+        // not collide with the all-zero sentinel that getCurrentFiberId returns
+        // for "no fiber".
+        std::atomic<uint64_t> fiberCounter{1};
     };
 
     // Service-loop state: drained / inspected on every iteration of
@@ -606,23 +670,11 @@ struct FiberScheduler::ProcessorState
     SleepStack cancelQueue;
     SleepTree sleepTree;
 
-    // Per-CPU monotonic counter feeding the counter field of FiberId.
-    // Initialized to 1 so the first allocated fiber (cpu=0, counter=0) does
-    // not collide with the all-zero sentinel that getCurrentFiberId returns
-    // for "no fiber".
-    std::atomic<uint64_t> fiberCounter{1};
-
     // Neighboring CPUs sorted by estimated steal cost (topology-aware).
     // Read only in the steal loop.
     std::unique_ptr<StealCandidate[]> stealCandidates;
 
-    // Timespec pointed at by the in-flight io_uring timeout SQE.  Co-located
-    // with the ring because enqueueWakeup writes wakeupTs immediately before
-    // it walks the SQ to install the timeout SQE; the kernel's SQPOLL thread
-    // reads the pointer asynchronously, so the storage must outlive the call.
-    __kernel_timespec wakeupTs{};
-
-    // io_uring ring for async IO and sleep timeouts. Spans 4 cache lines on
+    // io_uring ring for async IO. Spans 4 cache lines on
     // its own (sq + cq + flags); empty-check on the CQ head is hit on every
     // service-loop iteration.
     io_uring ring{};
@@ -634,9 +686,9 @@ struct FiberScheduler::ProcessorState
     BoundedQueue<Fiber *> readyQueue;
 };
 
-void FiberScheduler::ProcessorState::initialize(uint32_t cpu) noexcept
+void FiberScheduler::ProcessorState::initialize(uint16_t cpu) noexcept
 {
-    SILK_ASSERT(cpu < INVALID_PROCESSOR_NUMBER);
+    SILK_ASSERT(cpu < kInvalidProcessorNumber);
     number = cpu;
 
     readyQueue.initialize(options.readyQueueCapacity);
@@ -648,18 +700,16 @@ void FiberScheduler::ProcessorState::initialize(uint32_t cpu) noexcept
     int r = ::io_uring_queue_init_params(options.ioUringQueueSize, &ring, &params);
     SILK_ASSERT(!r);
 
+    // The kernel queues overflowing CQEs (failing submit with EBUSY) rather than dropping completions,
+    // so a transiently full CQ never silently loses one - submitIo relies on it.
     SILK_ASSERT(params.features & IORING_FEAT_NODROP);
 
-    // Submit a persistent poll for the wakeup fd.  IORING_POLL_ADD_MULTI keeps
-    // the SQE active indefinitely; each eventfd_write produces one CQE.
-    io_uring_sqe * sqe = ::io_uring_get_sqe(&ring);
-    SILK_ASSERT(sqe);
+    // postWakeup posts cross-ring doorbells with IOSQE_CQE_SKIP_SUCCESS to drop the send-side completion.
+    SILK_ASSERT(params.features & IORING_FEAT_CQE_SKIP);
 
-    ::io_uring_prep_poll_multishot(sqe, eventFd, POLLIN);
-    ::io_uring_sqe_set_data64(sqe, CQE_TAG_DOORBELL);
-
-    r = ::io_uring_submit(&ring);
-    SILK_ASSERT(r >= 0);
+    // Arm the wakeup doorbell. The kernel can end the multishot poll on CQ overflow,
+    // so handleCompletionQueueSlow re-arms it through the same path on F_MORE loss.
+    enqueueDoorbell();
 
     if (options.enableProfiler)
     {
@@ -703,6 +753,12 @@ void FiberScheduler::ProcessorState::profileEvent(ProfileEventKind kind, uint8_t
 
 void FiberScheduler::ProcessorState::wakeThread() noexcept
 {
+    // seq_cst fence pairs with the one in parkThread to prevent the store-buffering race on weak
+    // memory models (e.g. arm64): the producer's prior queue store and this sleeping load must not
+    // reorder, so either we observe sleeping=true here (and post the eventfd) or parkThread's
+    // hasWork() re-check observes our enqueued work. Same pattern as enqueueWaiter / releaseWaiters.
+    std::atomic_thread_fence(std::memory_order_seq_cst);
+
     if (sleeping.load(std::memory_order_acquire))
     {
         Perf::getSimpleCounter(simpleCounters[SCHEDULER_THREAD_WAKED], number).increment();
@@ -714,22 +770,25 @@ void FiberScheduler::ProcessorState::wakeThread() noexcept
 
 void FiberScheduler::ProcessorState::parkThread(uint64_t waitNs, CpuTimer * timer) noexcept
 {
-    __kernel_timespec ts;
-    ts.tv_sec = static_cast<int64_t>(waitNs / 1'000'000'000);
-    ts.tv_nsec = static_cast<int64_t>(waitNs % 1'000'000'000);
-
-    io_uring_getevents_arg arg{};
-    arg.ts = reinterpret_cast<uint64_t>(&ts);
-
-    // Announce that we are about to park.  Release ordering ensures that any
-    // concurrent wakeThread() that observes parked=true also observes all prior
-    // queue stores, guaranteeing the eventfd_write reaches us.
+    // Announce that we are about to park, then a seq_cst fence pairing with the one in wakeThread:
+    // release alone is not a StoreLoad barrier, so without this the store could reorder past the
+    // hasWork() re-check below while a concurrent wakeThread reads sleeping=false - both miss, and
+    // the wakeup is lost on weak memory models (e.g. arm64). Same pattern as enqueueWaiter.
     sleeping.store(true, std::memory_order_release);
+
+    std::atomic_thread_fence(std::memory_order_seq_cst);
 
     // Double-check: work may have arrived between the last drain and here.
     // If so, skip the park entirely so that work is not delayed by waitNs.
     if (!hasWork())
     {
+        __kernel_timespec ts;
+        ts.tv_sec = static_cast<int64_t>(waitNs / 1'000'000'000);
+        ts.tv_nsec = static_cast<int64_t>(waitNs % 1'000'000'000);
+
+        io_uring_getevents_arg arg{};
+        arg.ts = reinterpret_cast<uint64_t>(&ts);
+
         Perf::getSimpleCounter(simpleCounters[SCHEDULER_THREAD_PARKED], number).increment();
 
         timer->reset(simpleCounters[SCHEDULER_IDLE_TIME], number);
@@ -738,8 +797,9 @@ void FiberScheduler::ProcessorState::parkThread(uint64_t waitNs, CpuTimer * time
         if (r < 0)
         {
             // io_uring_enter2 returns -errno directly; it does not set errno.
-            // ETIME: timeout expired with no CQE (normal); EINTR: signal interrupted (normal).
-            SILK_ASSERT(-r == ETIME || -r == EINTR);
+            // ETIME: timeout expired with no CQE (normal); EINTR: signal interrupted (normal);
+            // EBUSY: a full CQ blocked the overflow flush (the drain below clears it).
+            SILK_ASSERT(-r == ETIME || -r == EINTR || -r == EBUSY);
         }
 
         timer->reset(simpleCounters[SCHEDULER_SYSTEM_TIME], number);
@@ -771,56 +831,71 @@ bool FiberScheduler::ProcessorState::hasWork() const noexcept
     return count > 0;
 }
 
-void FiberScheduler::ProcessorState::enqueueWakeup() noexcept
+void FiberScheduler::ProcessorState::enqueueDoorbell() noexcept
 {
-    SleepFuture * sleepFuture = sleepTree.min();
-    if (!sleepFuture)
+    // (Re-)arm the wakeup doorbell: a persistent multishot poll on eventFd posts a
+    // CQE each time wakeThread writes to it. The kernel ends the poll on CQ overflow
+    // (a CQE without IORING_CQE_F_MORE), so the completion drain re-arms it here. A
+    // missed re-arm leaves the doorbell deaf forever, so retry through a full SQ ring.
+    for (;;)
     {
-        return;
-    }
-
-    uint64_t now = Tsc::getCycles();
-    if (now >= sleepFuture->deadlineCycles)
-    {
-        return;
-    }
-
-    if (wakeupDeadlineCycles && wakeupDeadlineCycles <= sleepFuture->deadlineCycles)
-    {
-        return;
-    }
-
-    uint64_t remainingNs = Tsc::cyclesToNanoseconds(sleepFuture->deadlineCycles - now);
-    wakeupTs.tv_sec = static_cast<int64_t>(remainingNs / 1'000'000'000);
-    wakeupTs.tv_nsec = static_cast<int64_t>(remainingNs % 1'000'000'000);
-
-    bool enqueued = enqueueIo(
-        nullptr,
-        [this](io_uring_sqe * sqe) noexcept
-        {
-            if (!wakeupDeadlineCycles)
+        bool enqueued = enqueueIo(
+            nullptr,
+            [this](io_uring_sqe * sqe) noexcept
             {
-                ::io_uring_prep_timeout(sqe, &wakeupTs, 0, 0);
-                ::io_uring_sqe_set_data64(sqe, CQE_TAG_TIMEOUT);
-            }
-            else
-            {
-                // A shorter deadline arrived - update the in-flight timeout.
-                // CQE_TAG_TIMEOUT identifies the original timeout SQE to update.
-                // The update SQE's own CQE will have data=CQE_TAG_CANCEL and is ignored.
-                ::io_uring_prep_timeout_update(sqe, &wakeupTs, CQE_TAG_TIMEOUT, 0);
-                ::io_uring_sqe_set_data64(sqe, CQE_TAG_CANCEL);
-            }
-        });
+                ::io_uring_prep_poll_multishot(sqe, eventFd, POLLIN);
+                ::io_uring_sqe_set_data64(sqe, CQE_TAG_DOORBELL);
+            });
 
-    // If SQ ring full we can just skip this wakeup.
-    // The service loop retries enqueueWakeup() on every iteration,
-    // so the timeout will be submitted as soon as a slot becomes available.
-    if (enqueued)
-    {
-        wakeupDeadlineCycles = sleepFuture->deadlineCycles;
         submitIo(true);
+
+        if (enqueued)
+        {
+            break;
+        }
     }
+}
+
+void FiberScheduler::ProcessorState::postWakeup(ProcessorState * target) noexcept
+{
+    // Same lost-wakeup handshake as wakeThread: this seq_cst fence pairs with parkThread, so a target
+    // observed awake here cannot have missed the ready-queue store its parkThread hasWork() re-check sees.
+    std::atomic_thread_fence(std::memory_order_seq_cst);
+
+    if (!target->sleeping.load(std::memory_order_acquire))
+    {
+        return;
+    }
+
+    Perf::getSimpleCounter(simpleCounters[SCHEDULER_THREAD_WAKED], number).increment();
+
+    // Fill the doorbell SQE and submit it; retry until the SQE is accepted (the SQ ring may be full).
+    for (;;)
+    {
+        bool enqueued = enqueueWakeup(target);
+        submitIo(true);
+        if (enqueued)
+        {
+            break;
+        }
+    }
+}
+
+bool FiberScheduler::ProcessorState::enqueueWakeup(ProcessorState * target) noexcept
+{
+    // Fill (do not submit) a doorbell SQE on this (the caller's) ring posting straight into the target's
+    // CQ via IORING_OP_MSG_RING, waking its io_uring_enter2 - cheaper than the eventfd doorbell.
+    // IOSQE_CQE_SKIP_SUCCESS drops our send-side completion, so only the target's CQE lands, tagged
+    // CQE_TAG_WAKEUP for the drain to skip. Returns false if the SQ ring is momentarily full.
+    int targetRingFd = target->ring.ring_fd;
+    return enqueueIo(
+        nullptr,
+        [targetRingFd](io_uring_sqe * sqe) noexcept
+        {
+            ::io_uring_prep_msg_ring(sqe, targetRingFd, 0, CQE_TAG_WAKEUP, 0);
+            ::io_uring_sqe_set_data64(sqe, CQE_TAG_WAKEUP);
+            ::io_uring_sqe_set_flags(sqe, IOSQE_CQE_SKIP_SUCCESS);
+        });
 }
 
 template <typename Setup>
@@ -866,8 +941,8 @@ bool FiberScheduler::ProcessorState::submitIo(bool flush) noexcept
 {
     // Fast path: read SQ tail outside the lock. Returns false without taking
     // the submission lock when there's nothing to submit or the count/staleness
-    // thresholds haven't been met. Kept small so it inlines into runFiber and
-    // enqueueWakeup; the rest lives in submitIoSlow.
+    // thresholds haven't been met. Kept small so it inlines into runFiber;
+    // the rest lives in submitIoSlow.
     TSAN_IGNORE_BEGIN();
     uint32_t count = ::io_uring_sq_ready(&ring);
     TSAN_IGNORE_END();
@@ -904,17 +979,30 @@ __attribute__((noinline)) bool FiberScheduler::ProcessorState::submitIoSlow(uint
     // TSan needs an explicit barrier between submission/completion.
     TSAN_RELEASE(this);
 
-    lastSubmitCycles.store(startCycles, std::memory_order_relaxed);
-
     int r = ::io_uring_submit(&ring);
-    SILK_ASSERT(r >= 0);
+
+    // Under IORING_FEAT_NODROP the kernel returns EBUSY (EINTR/EAGAIN are likewise
+    // transient) when the CQ ring is full of unreaped completions: it refuses new
+    // SQEs whose completions it could not store. The SQEs stay queued, so defer
+    // rather than abort - the service loop drains the CQ, which schedules fibers and
+    // re-submits via handleReadyQueue. lastSubmitCycles is left stale on deferral so
+    // the staleness gate in submitIo retries promptly.
+    if (r < 0)
+    {
+        SILK_ASSERT(r == -EBUSY || r == -EINTR || r == -EAGAIN);
+        return false;
+    }
+
+    lastSubmitCycles.store(startCycles, std::memory_order_relaxed);
 
     if (profiler)
     {
         profileEvent(ProfileEventKind::SUBMIT_IO, 0, Tsc::getCycles() - startCycles);
     }
 
-    Perf::getSimpleCounter(simpleCounters[IO_ENQUEUED], number).increment(count);
+    // io_uring_submit reports how many SQEs it actually consumed, which can be fewer
+    // than were ready on a partial submit; count the real number, not sq_ready.
+    Perf::getSimpleCounter(simpleCounters[IO_ENQUEUED], number).increment(static_cast<uint64_t>(r));
     Perf::getSimpleCounter(simpleCounters[IO_SUBMITTED], number).increment();
     return true;
 }
@@ -949,9 +1037,9 @@ struct FiberScheduler::SchedulerState
 
     std::atomic<bool> stopping{};
 
-    uint32_t processorCount = 0;
-    uint32_t schedulerThreadCount = 0;
-    uint32_t workerThreadCount = 0;
+    uint16_t processorCount = 0;
+    uint16_t schedulerThreadCount = 0;
+    uint16_t workerThreadCount = 0;
 
     std::unique_ptr<ProcessorState[]> processorState;
     std::unique_ptr<std::thread[]> schedulerThreads;
@@ -1014,8 +1102,9 @@ void FiberScheduler::initialize(const Options * userOptions) noexcept
         options = *userOptions;
     }
 
-    SILK_ASSERT(options.fiberStackSize >= PAGE_SIZE && (options.fiberStackSize % PAGE_SIZE) == 0);
+    SILK_ASSERT(options.fiberStackSize >= kPageSize && (options.fiberStackSize % kPageSize) == 0);
     SILK_ASSERT(options.readyQueueCapacity >= 2 && (options.readyQueueCapacity & (options.readyQueueCapacity - 1)) == 0);
+    SILK_ASSERT(options.readyDispatchBatch >= 1);
     SILK_ASSERT(options.ioUringQueueSize >= 2 && (options.ioUringQueueSize & (options.ioUringQueueSize - 1)) == 0);
     SILK_ASSERT(options.ioUringFlushThreshold >= 1 && options.ioUringFlushThreshold <= options.ioUringQueueSize);
     SILK_ASSERT(options.waiterTableSize >= 2 && (options.waiterTableSize & (options.waiterTableSize - 1)) == 0);
@@ -1033,10 +1122,10 @@ void FiberScheduler::initialize(const Options * userOptions) noexcept
     CPU_ZERO(&processCpuSet);
     sched_getaffinity(0, sizeof(processCpuSet), &processCpuSet);
 
-    scheduler->schedulerThreadCount = CPU_COUNT(&processCpuSet);
+    scheduler->schedulerThreadCount = static_cast<uint16_t>(CPU_COUNT(&processCpuSet));
     scheduler->schedulerThreads = std::make_unique<std::thread[]>(scheduler->schedulerThreadCount);
 
-    for (uint32_t cpu = 0; cpu < scheduler->processorCount; ++cpu)
+    for (uint16_t cpu = 0; cpu < scheduler->processorCount; ++cpu)
     {
         if (CPU_ISSET(cpu, &processCpuSet))
         {
@@ -1047,8 +1136,8 @@ void FiberScheduler::initialize(const Options * userOptions) noexcept
 
     buildStealCandidates();
 
-    uint32_t threadIndex = 0;
-    for (uint32_t cpu = 0; cpu < scheduler->processorCount; ++cpu)
+    uint16_t threadIndex = 0;
+    for (uint16_t cpu = 0; cpu < scheduler->processorCount; ++cpu)
     {
         if (CPU_ISSET(cpu, &processCpuSet))
         {
@@ -1057,7 +1146,7 @@ void FiberScheduler::initialize(const Options * userOptions) noexcept
         }
     }
 
-    for (uint32_t cpu = 0; cpu < scheduler->processorCount; ++cpu)
+    for (uint16_t cpu = 0; cpu < scheduler->processorCount; ++cpu)
     {
         if (CPU_ISSET(cpu, &processCpuSet))
         {
@@ -1072,7 +1161,7 @@ void FiberScheduler::initialize(const Options * userOptions) noexcept
     scheduler->workerThreadCount = scheduler->schedulerThreadCount;
     scheduler->workerThreads = std::make_unique<std::thread[]>(scheduler->workerThreadCount);
 
-    for (uint32_t i = 0; i < scheduler->workerThreadCount; ++i)
+    for (uint16_t i = 0; i < scheduler->workerThreadCount; ++i)
     {
         scheduler->workerThreads[i] = std::thread(runThreadWorker);
     }
@@ -1083,11 +1172,11 @@ void FiberScheduler::buildStealCandidates() noexcept
     auto topologies = std::make_unique<CpuTopology[]>(scheduler->processorCount);
     readCpuTopologies(topologies.get(), scheduler->processorCount);
 
-    uint32_t candidateCount = scheduler->processorCount - 1;
-    for (uint32_t cpu = 0; cpu < scheduler->processorCount; ++cpu)
+    uint16_t candidateCount = scheduler->processorCount - 1;
+    for (uint16_t cpu = 0; cpu < scheduler->processorCount; ++cpu)
     {
         ProcessorState * processor = &scheduler->processorState[cpu];
-        if (processor->number == INVALID_PROCESSOR_NUMBER)
+        if (processor->number == kInvalidProcessorNumber)
         {
             continue;
         }
@@ -1095,15 +1184,15 @@ void FiberScheduler::buildStealCandidates() noexcept
         // Build an array of CPUs with the estimated stealing cost.
         processor->stealCandidates = std::make_unique<StealCandidate[]>(candidateCount);
 
-        uint32_t i = 0;
-        for (uint32_t other = 0; other < scheduler->processorCount; ++other)
+        uint16_t i = 0;
+        for (uint16_t other = 0; other < scheduler->processorCount; ++other)
         {
             if (other == cpu)
             {
                 continue;
             }
             uint64_t cost = UINT64_MAX;
-            if (scheduler->processorState[other].number != INVALID_PROCESSOR_NUMBER)
+            if (scheduler->processorState[other].number != kInvalidProcessorNumber)
             {
                 cost = topologyCostCycles(topologies[cpu], topologies[other]);
             }
@@ -1116,10 +1205,10 @@ void FiberScheduler::buildStealCandidates() noexcept
         // deterministic rotation by cpu % groupSize. Avoids the thundering
         // herd of every CPU racing the same first target while keeping the
         // candidate order reproducible across runs.
-        for (uint32_t start = 0; start < candidateCount;)
+        for (uint16_t start = 0; start < candidateCount;)
         {
             uint64_t groupCost = processor->stealCandidates[start].costCycles;
-            uint32_t end = start;
+            uint16_t end = start;
             while (end < candidateCount && processor->stealCandidates[end].costCycles == groupCost)
             {
                 ++end;
@@ -1144,32 +1233,32 @@ void FiberScheduler::destroy() noexcept
 
     scheduler->stopping.store(true, std::memory_order_release);
 
-    for (uint32_t cpu = 0; cpu < scheduler->processorCount; ++cpu)
+    for (uint16_t cpu = 0; cpu < scheduler->processorCount; ++cpu)
     {
         ProcessorState * processor = &scheduler->processorState[cpu];
-        if (processor->number != INVALID_PROCESSOR_NUMBER)
+        if (processor->number != kInvalidProcessorNumber)
         {
             processor->wakeThread();
         }
     }
 
-    for (uint32_t i = 0; i < scheduler->schedulerThreadCount; ++i)
+    for (uint16_t i = 0; i < scheduler->schedulerThreadCount; ++i)
     {
         scheduler->schedulerThreads[i].join();
     }
 
-    for (uint32_t cpu = 0; cpu < scheduler->processorCount; ++cpu)
+    for (uint16_t cpu = 0; cpu < scheduler->processorCount; ++cpu)
     {
         ProcessorState * processor = &scheduler->processorState[cpu];
         processor->destroy();
     }
 
-    for (uint32_t i = 0; i < scheduler->workerThreadCount; ++i)
+    for (uint16_t i = 0; i < scheduler->workerThreadCount; ++i)
     {
         scheduler->wakeThread();
     }
 
-    for (uint32_t i = 0; i < scheduler->workerThreadCount; ++i)
+    for (uint16_t i = 0; i < scheduler->workerThreadCount; ++i)
     {
         scheduler->workerThreads[i].join();
     }
@@ -1246,14 +1335,24 @@ bool FiberScheduler::schedule(Fiber * fiber) noexcept
 {
     if (fiber->tryChangeStateToReady())
     {
-        enqueueReady(fiber);
+        ProcessorState * processor = &scheduler->processorState[getCurrentProcessor()];
+        ProcessorState * target = enqueueReady(processor, fiber);
+        if (target)
+        {
+            processor->postWakeup(target);
+        }
         return true;
     }
 
     return false;
 }
 
-void FiberScheduler::enqueueReady(Fiber * fiber) noexcept
+// Shared by schedule, scheduleAll, and runFiber: place a ready fiber on its home ready queue and return
+// the processor whose doorbell the caller must ring (immediately, or batched). processor is the caller's
+// own processor - used as the home default and, by the caller, as the doorbell source - so it must be the
+// current processor. A proxy or thread-mode fiber, or a full ready queue, rings its own wakeup here and
+// returns null.
+FiberScheduler::ProcessorState * FiberScheduler::enqueueReady(ProcessorState * processor, Fiber * fiber) noexcept
 {
     if (!fiber->isProxyFiber)
     {
@@ -1264,31 +1363,85 @@ void FiberScheduler::enqueueReady(Fiber * fiber) noexcept
 
         if (!fiber->inThreadMode)
         {
-            if (fiber->processorNumber == INVALID_PROCESSOR_NUMBER)
+            if (fiber->processorNumber == kInvalidProcessorNumber)
             {
-                fiber->processorNumber = getCurrentProcessor();
+                fiber->processorNumber = processor->number;
             }
 
-            ProcessorState * processor = &scheduler->processorState[fiber->processorNumber];
-            if (processor->readyQueue.enqueue(fiber))
+            ProcessorState * target = &scheduler->processorState[fiber->processorNumber];
+            if (target->readyQueue.enqueue(fiber))
             {
                 Perf::getSimpleCounter(simpleCounters[FIBER_ENQUEUED], processor->number).increment();
-                processor->wakeThread();
-                return;
+                return target;
             }
 
-            // Ready queue full: fall back to worker thread pool.
+            // Ready queue full: fall back to the worker thread pool.
             Perf::getSimpleCounter(simpleCounters[READY_QUEUE_FULL], processor->number).increment();
         }
 
         scheduler->readyQueue.enqueue(fiber);
-
-        Perf::getSimpleCounter(simpleCounters[FIBER_ENQUEUED_SHARED]).increment();
+        Perf::getSimpleCounter(simpleCounters[FIBER_ENQUEUED_SHARED], processor->number).increment();
         scheduler->wakeThread();
     }
     else
     {
         fiber->wakeThread();
+    }
+
+    return nullptr;
+}
+
+void FiberScheduler::scheduleAll(Fiber ** fibers, uint64_t count) noexcept
+{
+    ProcessorState * processor = &scheduler->processorState[getCurrentProcessor()];
+
+    // Dedup the wake targets in a bitmap over all processors so each parked target is rung exactly once.
+    uint64_t words[Bitmap::wordCount(kInvalidProcessorNumber)];
+    Bitmap wakeTargets(words, scheduler->processorCount);
+    wakeTargets.clear();
+
+    for (uint64_t i = 0; i < count; i++)
+    {
+        Fiber * fiber = fibers[i];
+        if (!fiber->tryChangeStateToReady())
+        {
+            continue;
+        }
+
+        ProcessorState * target = enqueueReady(processor, fiber);
+        if (target)
+        {
+            wakeTargets.set(target->number);
+        }
+    }
+
+    // One StoreLoad barrier for the whole batch (same handshake as postWakeup): the ready-queue stores
+    // above are ordered before the sleeping loads below, so a target parking concurrently is not missed.
+    std::atomic_thread_fence(std::memory_order_seq_cst);
+
+    // Ring each distinct parked target once, filling one doorbell SQE per target; a single submit delivers
+    // them all (and drains the SQ for the retry if it momentarily fills).
+    bool enqueued = false;
+    for (uint32_t bit = 0; wakeTargets.findBit(bit, true, &bit); bit++)
+    {
+        ProcessorState * target = &scheduler->processorState[bit];
+        if (!target->sleeping.load(std::memory_order_acquire))
+        {
+            continue;
+        }
+
+        Perf::getSimpleCounter(simpleCounters[SCHEDULER_THREAD_WAKED], processor->number).increment();
+
+        while (!processor->enqueueWakeup(target))
+        {
+            processor->submitIo(true);
+        }
+        enqueued = true;
+    }
+
+    if (enqueued)
+    {
+        processor->submitIo(true);
     }
 }
 
@@ -1337,8 +1490,10 @@ void FiberScheduler::exitThreadModeSuspendCallback(Fiber * fiber, void * context
     schedule(fiber);
 }
 
-void FiberScheduler::suspend(SuspendCallback * callback, void * context) noexcept
+void FiberScheduler::suspend(SuspendCallback * callback, void * context, uint64_t * waitCycles) noexcept
 {
+    uint64_t suspendStart = waitCycles ? Tsc::getCycles() : 0;
+
     Fiber * fiber = getCurrentFiber();
     fiber->changeState(FiberState::RUNNING, FiberState::SUSPEND_REQUESTED);
 
@@ -1364,6 +1519,11 @@ void FiberScheduler::suspend(SuspendCallback * callback, void * context) noexcep
 
     FiberState fiberState = fiber->state.load(std::memory_order_acquire);
     SILK_ASSERT(fiberState == FiberState::RUNNING);
+
+    if (waitCycles)
+    {
+        *waitCycles += Tsc::getCycles() - suspendStart;
+    }
 }
 
 void FiberScheduler::enqueueWaiter(uint64_t key, Fiber * fiber) noexcept
@@ -1437,6 +1597,40 @@ void FiberScheduler::write(int fd, iovec * iov, uint32_t iov_len, uint64_t offse
     enqueueIo(future, [=](io_uring_sqe * sqe) noexcept { ::io_uring_prep_writev(sqe, fd, iov, iov_len, offset); });
 }
 
+void FiberScheduler::readFixed(
+    int fd, void * buf, uint32_t len, uint64_t offset, int bufIndex, uint64_t * bytesRead, IoFuture * future) noexcept
+{
+    future->result = bytesRead;
+#if defined(__SANITIZE_MEMORY__)
+    future->readIovStorage = {buf, len};
+    future->readIov = &future->readIovStorage;
+    future->readIovLen = 1;
+#endif
+    enqueueIo(future, [=](io_uring_sqe * sqe) noexcept { ::io_uring_prep_read_fixed(sqe, fd, buf, len, offset, bufIndex); });
+}
+
+void FiberScheduler::writeFixed(
+    int fd, const void * buf, uint32_t len, uint64_t offset, int bufIndex, uint64_t * bytesWritten, IoFuture * future) noexcept
+{
+    future->result = bytesWritten;
+    enqueueIo(future, [=](io_uring_sqe * sqe) noexcept { ::io_uring_prep_write_fixed(sqe, fd, buf, len, offset, bufIndex); });
+}
+
+void FiberScheduler::registerBuffers(const iovec * iovecs, unsigned count) noexcept
+{
+    SILK_ASSERT(scheduler, "registerBuffers called before initialize()");
+    for (uint16_t cpu = 0; cpu < scheduler->processorCount; ++cpu)
+    {
+        ProcessorState * processor = &scheduler->processorState[cpu];
+        if (processor->number == kInvalidProcessorNumber)
+        {
+            continue;
+        }
+        int r = ::io_uring_register_buffers(&processor->ring, iovecs, count);
+        SILK_ASSERT(r == 0, "io_uring_register_buffers failed: r=%d, cpu=%u", r, cpu);
+    }
+}
+
 void FiberScheduler::poll(int fd, uint32_t events, uint64_t * triggeredEvents, IoFuture * future) noexcept
 {
     future->result = triggeredEvents;
@@ -1462,13 +1656,13 @@ void FiberScheduler::cancelIo(IoFuture * future) noexcept
     // was work-stolen to another CPU between registering the poll and cancelling
     // it), io_uring returns -ENOENT and the original operation is never removed,
     // leaving the caller's IoFuture::wait() blocked forever.
-    uint32_t processorNumber = future->processorNumber;
-    if (processorNumber == INVALID_PROCESSOR_NUMBER)
+    uint16_t processorNumber = future->processorNumber;
+    if (processorNumber == kInvalidProcessorNumber)
     {
         processorNumber = getCurrentProcessor();
     }
 
-    auto * target = &scheduler->processorState[processorNumber];
+    ProcessorState * processor = &scheduler->processorState[processorNumber];
 
     auto setup = [=](io_uring_sqe * sqe) noexcept
     {
@@ -1477,16 +1671,16 @@ void FiberScheduler::cancelIo(IoFuture * future) noexcept
     };
 
     // Retry if the SQ ring is temporarily full.
-    while (!target->enqueueIo(nullptr, setup))
+    while (!processor->enqueueIo(nullptr, setup))
     {
-        Perf::getSimpleCounter(simpleCounters[SQ_RING_OVERFLOW], target->number).increment();
+        Perf::getSimpleCounter(simpleCounters[SQ_RING_OVERFLOW], processor->number).increment();
         yield();
     }
 
     // If we enqueued to a remote processor's ring, force-submit.
     if (processorNumber != getCurrentProcessor() || getCurrentFiber()->isProxyFiber)
     {
-        target->submitIo(true);
+        processor->submitIo(true);
     }
 }
 
@@ -1538,7 +1732,7 @@ void FiberScheduler::cancelSleep(SleepFuture * future) noexcept
 LatencyReport FiberScheduler::reportLatency(ProfileEventKind kind, uint8_t category) noexcept
 {
     Histogram merged;
-    for (uint32_t cpu = 0; cpu < scheduler->processorCount; ++cpu)
+    for (uint16_t cpu = 0; cpu < scheduler->processorCount; ++cpu)
     {
         ProcessorState * processor = &scheduler->processorState[cpu];
         if (processor->profiler)
@@ -1608,17 +1802,37 @@ bool FiberScheduler::runServiceLoop(ProcessorState * processor, uint64_t waitNs,
 
     if (waitNs)
     {
+        // Cap the park at the earliest sleep deadline; cross-proc wakeups still ring the doorbell.
+        uint64_t effectiveWaitNs = waitNs;
+        SleepFuture * nextSleep = processor->sleepTree.min();
+        if (nextSleep)
+        {
+            uint64_t now = Tsc::getCycles();
+            if (now >= nextSleep->deadlineCycles)
+            {
+                effectiveWaitNs = 0;
+            }
+            else
+            {
+                uint64_t untilNs = Tsc::cyclesToNanoseconds(nextSleep->deadlineCycles - now);
+                effectiveWaitNs = std::min(effectiveWaitNs, untilNs);
+            }
+        }
+
         // Wait step starts at initialWaitNs and doubles each idle iteration up to maxWaitNs.
         // A timed wait ensures sleeping CPUs periodically wake to steal work even when not
         // explicitly signalled (e.g. work arrived on a neighbor via an external thread).
         // Before going to sleep - spin a little to avoid eventfd syscalls.
-        if (waitNs < options.spinThresholdNs)
+        if (effectiveWaitNs)
         {
-            spinWait([=] { return processor->hasWork() || scheduler->stopping.load(std::memory_order_relaxed); });
-        }
-        else
-        {
-            processor->parkThread(waitNs, timer);
+            if (effectiveWaitNs < options.spinThresholdNs)
+            {
+                spinWait([=] { return processor->hasWork() || scheduler->stopping.load(std::memory_order_relaxed); });
+            }
+            else
+            {
+                processor->parkThread(effectiveWaitNs, timer);
+            }
         }
     }
 
@@ -1634,10 +1848,6 @@ bool FiberScheduler::runServiceLoop(ProcessorState * processor, uint64_t waitNs,
     {
         processor->profiler->aggregate();
     }
-
-    // Arm the next io_uring timeout for the earliest pending sleep deadline
-    // so parkThread wakes exactly when the next fiber needs to be woken.
-    processor->enqueueWakeup();
 
     processor->serviceLoopLock.unlock();
     return didWork;
@@ -1655,8 +1865,8 @@ bool FiberScheduler::runStealLoop(ProcessorState * processor, uint64_t idleSince
     uint64_t idleCycles = now - idleSinceCycles;
     uint64_t deadlineCycles = now + idleCycles;
 
-    uint32_t candidateCount = scheduler->processorCount - 1;
-    for (uint32_t i = 0; i < candidateCount && now < deadlineCycles; ++i)
+    uint16_t candidateCount = scheduler->processorCount - 1;
+    for (uint16_t i = 0; i < candidateCount && now < deadlineCycles; ++i)
     {
         // Candidates are sorted cheapest first. Once the threshold exceeds our
         // idle duration all remaining candidates are even more expensive.
@@ -1709,11 +1919,20 @@ bool FiberScheduler::handleReadyQueue(ProcessorState * processor, CpuTimer * tim
 {
     bool didWork = false;
 
-    Fiber * fiber;
-    while (processor->readyQueue.dequeue(&fiber))
+    // Bound the batch so runServiceLoop runs every pass: an unbounded drain lets
+    // a self-re-enqueuing yield loop starve timer expiry and io_uring completions.
+    for (uint32_t i = 0; i < options.readyDispatchBatch; ++i)
     {
-        runFiber(fiber, timer);
-        didWork = true;
+        Fiber * fiber;
+        if (processor->readyQueue.dequeue(&fiber))
+        {
+            runFiber(fiber, timer);
+            didWork = true;
+        }
+        else
+        {
+            break;
+        }
     }
 
     // Drain whatever the dispatch left below the pressure-relief threshold
@@ -1740,6 +1959,7 @@ bool FiberScheduler::handleCompletionQueue(ProcessorState * processor) noexcept
 __attribute__((noinline)) bool FiberScheduler::handleCompletionQueueSlow(ProcessorState * processor) noexcept
 {
     bool didWork = false;
+    bool rearmDoorbell = false;
 
     // TSan needs an explicit barrier between submission/completion.
     TSAN_ACQUIRE(processor);
@@ -1764,27 +1984,39 @@ __attribute__((noinline)) bool FiberScheduler::handleCompletionQueueSlow(Process
             uint64_t tag = ::io_uring_cqe_get_data64(cqe);
             if (tag == CQE_TAG_CANCEL)
             {
-                // IO cancellation or timeout_update confirmation
-                continue;
-            }
-
-            if (tag == CQE_TAG_TIMEOUT)
-            {
-                // Sleep deadline timeout
-                processor->wakeupDeadlineCycles = 0;
+                // IO cancellation confirmation
                 continue;
             }
 
             if (tag == CQE_TAG_DOORBELL)
             {
-                // Wakeup doorbell: drain the eventfd counter and keep the
-                // POLL_ADD_MULTI SQE active for the next write.
+                // Wakeup doorbell: drain the eventfd counter. The kernel ends the
+                // multishot poll on CQ overflow - a CQE without IORING_CQE_F_MORE -
+                // so re-arm it after the drain or wakeThread can no longer wake us.
                 eventfd_t val;
                 ::eventfd_read(processor->eventFd, &val);
+
+                if (!(cqe->flags & IORING_CQE_F_MORE))
+                {
+                    rearmDoorbell = true;
+                }
                 continue;
             }
 
-            // IO completion
+            if (tag == CQE_TAG_WAKEUP)
+            {
+                // Cross-ring wakeup doorbell (IORING_OP_MSG_RING): a pure wakeup carrier - the work is
+                // already in the ready queue. Covers both an incoming doorbell and the sender-side
+                // completion of an outgoing one. Nothing to drain or re-arm.
+                continue;
+            }
+
+            // IO completion. Every IO op is one-shot - only the doorbell is multishot -
+            // so each IoFuture completes exactly once. A multishot IO op added later
+            // (recv/accept multishot) would deliver IORING_CQE_F_MORE here and set the
+            // same future repeatedly; trip loudly rather than double-complete silently.
+            SILK_ASSERT(!(cqe->flags & IORING_CQE_F_MORE));
+
             IoFuture * future = reinterpret_cast<IoFuture *>(tag);
             TSAN_ACQUIRE(future);
 
@@ -1841,6 +2073,11 @@ __attribute__((noinline)) bool FiberScheduler::handleCompletionQueueSlow(Process
         // iteration.
         int r = ::io_uring_get_events(&processor->ring);
         SILK_ASSERT(r >= 0);
+    }
+
+    if (rearmDoorbell)
+    {
+        processor->enqueueDoorbell();
     }
 
     if (didWork && processor->profiler)
@@ -1983,11 +2220,11 @@ void FiberScheduler::runFiber(Fiber * fiber, CpuTimer * timer) noexcept
     // Maintain the per-CPU suspended list for GDB debuggability.
     // suspendedLock and suspendedList are co-located in ProcessorState cache line 0.
     // Benchmarking showed no net cost.
-    if (fiber->suspendedProcessorNumber != INVALID_PROCESSOR_NUMBER)
+    if (fiber->suspendedProcessorNumber != kInvalidProcessorNumber)
     {
         ProcessorState * processor = &scheduler->processorState[fiber->suspendedProcessorNumber];
         processor->removeSuspended(fiber);
-        fiber->suspendedProcessorNumber = INVALID_PROCESSOR_NUMBER;
+        fiber->suspendedProcessorNumber = kInvalidProcessorNumber;
     }
 
     ProcessorState * processor = &scheduler->processorState[fiber->processorNumber];
@@ -2089,7 +2326,12 @@ void FiberScheduler::runFiber(Fiber * fiber, CpuTimer * timer) noexcept
             {
                 fiber->suspendTimestamp = 0;
             }
-            enqueueReady(fiber);
+
+            ProcessorState * target = enqueueReady(processor, fiber);
+            if (target)
+            {
+                processor->postWakeup(target);
+            }
         }
         return;
     }
