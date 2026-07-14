@@ -405,6 +405,10 @@ void TDiskRegistryActor::SecureErase(const TActorContext& ctx)
         }
         SecureEraseScheduledPools.insert(poolName);
 
+        for (auto it2 = first; it2 != it; ++it2) {
+            DeviceCleanupStartTs[it2->GetDeviceUUID()] = ctx.Now();
+        }
+
         auto request =
             std::make_unique<TEvDiskRegistryPrivate::TEvSecureEraseRequest>(
                 poolName,
