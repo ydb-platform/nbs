@@ -10867,9 +10867,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         CheckIncrementAndDecrementCompactionPerRun(
                 1, 1000, 99999, 203, 99999, 5, 13, 5, 2);
 
-        // 14.8 < 16, so should decrement and compact only 1 range
+        // 14.8 < 15, so should decrement and compact only 1 range
         CheckIncrementAndDecrementCompactionPerRun(
-                2, 1000, 99999, 203, 99999, 7, 30, 16, 1);
+                2, 1000, 99999, 203, 99999, 7, 30, 15, 1);
     }
 
     Y_UNIT_TEST(ShouldChangeBatchSizeDueToBlocksPerRangeCount)

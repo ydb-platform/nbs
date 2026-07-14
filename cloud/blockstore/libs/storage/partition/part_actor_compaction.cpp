@@ -1611,15 +1611,19 @@ TDuration TPartitionActor::ComputeGarbageCompactionExecTime(
     const TActorContext& ctx,
     bool throttlingAllowed)
 {
+    // Fall back to the static budget unless the dynamic config is valid.
+    TDuration execTimePerSecond = Config->GetMaxCompactionExecTimePerSecond();
+
+    if (IsGarbageCompactionThrottlingMisconfigured) {
+        return execTimePerSecond;
+    }
+
     const ui32 throttleBelowFillPercentage =
         Config->GetThrottleGarbageCompactionBelowFillPercentage();
     const ui32 stopThrottlingAboveFillPercentage =
         Config->GetStopGarbageCompactionThrottlingAboveFillPercentage();
     const TDuration minExecTimePerSecond =
         Config->GetMinGarbageCompactionExecTimePerSecond();
-
-    // Fall back to the static budget unless the dynamic config is valid.
-    TDuration execTimePerSecond = Config->GetMaxCompactionExecTimePerSecond();
 
     TString configError;
     if (throttleBelowFillPercentage > stopThrottlingAboveFillPercentage) {
@@ -1650,6 +1654,7 @@ TDuration TPartitionActor::ComputeGarbageCompactionExecTime(
             "%s Invalid garbage compaction throttling config: %s",
             LogTitle.GetWithTime().c_str(),
             configError.c_str());
+        IsGarbageCompactionThrottlingMisconfigured = true;
     } else {
         execTimePerSecond = InterpolateCompactionExecTime(
             throttleBelowFillPercentage,

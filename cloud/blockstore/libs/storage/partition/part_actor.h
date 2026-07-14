@@ -164,6 +164,7 @@ private:
     NBlobMetrics::TBlobLoadMetrics OverlayMetrics;
 
     bool FirstGarbageCollectionCompleted = false;
+    bool IsGarbageCompactionThrottlingMisconfigured = false;
 
     TTransactionTimeTracker TransactionTimeTracker;
     TBSGroupOperationTimeTracker BSGroupOperationTimeTracker;
