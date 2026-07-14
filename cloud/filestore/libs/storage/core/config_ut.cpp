@@ -185,7 +185,7 @@ Y_UNIT_TEST_SUITE(TStorageConfigTest)
             featuresConfigProto,
             "PipeClientRetryCount",
             cloudName)
-            .SetValue("akjdalihjsd");
+            .SetValue("not-a-real-value");
 
         TStorageConfig config;
         config.SetFeaturesConfig(
@@ -197,7 +197,7 @@ Y_UNIT_TEST_SUITE(TStorageConfigTest)
         UNIT_ASSERT(HasError(error));
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
         UNIT_ASSERT_C(
-            error.GetMessage().Contains("akjdalihjsd"),
+            error.GetMessage().Contains("not-a-real-value"),
             error.GetMessage());
         UNIT_ASSERT_C(
             error.GetMessage().Contains("PipeClientRetryCount"),
@@ -213,7 +213,7 @@ Y_UNIT_TEST_SUITE(TStorageConfigTest)
             featuresConfigProto,
             "DestroyFilestoreDenyList",
             cloudName)
-            .SetValue("akjdalihjsd");
+            .SetValue("not-a-real-value");
 
         TStorageConfig config;
         config.SetFeaturesConfig(

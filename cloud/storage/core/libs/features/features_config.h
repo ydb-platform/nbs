@@ -50,7 +50,7 @@ public:
         const TString& featureName) const;
 
     template <typename T>
-    bool GetFeatureValue(
+    bool TryGetFeatureValue(
         const TString& cloudId,
         const TString& folderId,
         const TString& entityId,
@@ -70,7 +70,7 @@ private:
 };
 
 template <typename T>
-bool TFeaturesConfig::GetFeatureValue(
+bool TFeaturesConfig::TryGetFeatureValue(
     const TString& cloudId,
     const TString& folderId,
     const TString& entityId,
