@@ -677,6 +677,37 @@ func (s *storageYDB) ClearDeletingFilesystemSnapshots(
 	return nil
 }
 
+func (s *storageYDB) tableEmpty(ctx context.Context, table string) (bool, error) {
+	res, err := s.db.ExecuteRO(ctx, fmt.Sprintf(`
+			--!syntax_v1
+			pragma TablePathPrefix = "%v";
+
+			select count(*)
+			from %v
+		`, s.tablesPath, table))
+	if err != nil {
+		return false, err
+	}
+	defer res.Close()
+
+	if !res.NextResultSet(ctx) || !res.NextRow() {
+		return false, res.Err()
+	}
+
+	var count uint64
+	err = res.Scan(&count)
+	if err != nil {
+		return false, err
+	}
+
+	err = res.Err()
+	if err != nil {
+		return false, err
+	}
+
+	return count == 0, nil
+}
+
 func (s *storageYDB) TablesEmpty(ctx context.Context) (bool, error) {
 	// Used by tests to verify collection cleanup.
 	for _, table := range []string{
@@ -688,36 +719,12 @@ func (s *storageYDB) TablesEmpty(ctx context.Context) (bool, error) {
 		"hardlinks",
 		"restoration_node_ids_mapping",
 	} {
-		res, err := s.db.ExecuteRO(ctx, fmt.Sprintf(`
-			--!syntax_v1
-			pragma TablePathPrefix = "%v";
-
-			select count(*)
-			from %v
-		`, s.tablesPath, table))
+		empty, err := s.tableEmpty(ctx, table)
 		if err != nil {
 			return false, err
 		}
 
-		if !res.NextResultSet(ctx) || !res.NextRow() {
-			res.Close()
-			return false, nil
-		}
-
-		var count uint64
-		err = res.Scan(&count)
-		if err != nil {
-			res.Close()
-			return false, err
-		}
-
-		err = res.Err()
-		res.Close()
-		if err != nil {
-			return false, err
-		}
-
-		if count != 0 {
+		if !empty {
 			return false, nil
 		}
 	}
