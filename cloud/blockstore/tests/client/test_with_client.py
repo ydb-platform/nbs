@@ -918,6 +918,23 @@ def test_createvolume_with_tags():
     tear_down(env)
 
 
+def test_list_volumes():
+    env, run = setup()
+
+    disk_ids = ["vol-list-0", "vol-list-1", "vol-list-2"]
+    for disk_id in disk_ids:
+        run("createvolume",
+            "--disk-id", disk_id,
+            "--blocks-count", str(BLOCKS_COUNT))
+
+    response = list_volumes(env, run)
+    for disk_id in disk_ids:
+        assert disk_id in response.Volumes, \
+            f"{disk_id} not found in ListVolumes response: {list(response.Volumes)}"
+
+    tear_down(env)
+
+
 def test_describe_volume_with_exact_disk_id_match():
     env, run = setup(with_nrd=True, nrd_device_count=2, rack='')
 
