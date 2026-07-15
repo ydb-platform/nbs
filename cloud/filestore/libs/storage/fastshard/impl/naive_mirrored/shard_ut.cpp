@@ -47,9 +47,10 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr ui32 ShardNo = 1;
-constexpr size_t PageSize = 512;
-constexpr size_t PageCount = 16;
+constexpr size_t PageSize = 4_KB;
+constexpr size_t PageCount = 1024;
 constexpr size_t FileSize = PageSize * PageCount;
+constexpr size_t NodesPerGroup = 64;
 
 ////////////////////////////////////////////////////////////////////////////////
 // Test fixture:
@@ -98,6 +99,9 @@ struct TStorageFixture
             d->SetPort(node.Port);
             d->SetDeviceId("doesn't-matter");
         }
+
+        Config.SetNodesPerGroup(NodesPerGroup);
+        Config.SetExpectedGroupCapacity(FileSize);
     }
 };
 
@@ -143,6 +147,17 @@ TEST(NaiveMirroredShardTest, WritesAndReadsFiles)
         EXPECT_EQ(S_OK, response.GetError().GetCode())
             << FormatError(response.GetError());
         nodeId = response.GetNode().GetId();
+    }
+
+    {
+        TGetNodeAttrRequest request;
+        request.SetNodeId(nodeId);
+        auto f = shard->GetNodeAttr(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+        EXPECT_EQ(nodeId, response.GetNode().GetId());
+        EXPECT_EQ(mode, response.GetNode().GetMode());
     }
 
     ui64 handle = 0;

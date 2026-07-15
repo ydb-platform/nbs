@@ -102,6 +102,7 @@ public:
     {
         const ui32 i =
             Selector.fetch_add(1, std::memory_order_relaxed) % Nodes.size();
+        // TODO: update the request with the right device uuid
         return Nodes[i]->ReadPages(request);
     }
 

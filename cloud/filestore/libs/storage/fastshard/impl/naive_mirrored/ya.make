@@ -23,6 +23,7 @@ PEERDIR(
     cloud/filestore/libs/storage/fastshard/iface
     cloud/filestore/libs/storage/fastshard/sn/client
     cloud/filestore/libs/storage/fastshard/sn/quorum
+    cloud/filestore/libs/storage/model
 
     cloud/filestore/private/api/unsafe_protos
 )
