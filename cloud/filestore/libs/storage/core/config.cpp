@@ -653,7 +653,7 @@ NProto::TError TStorageConfig::SetCloudFolderEntity(
 
         auto getFeatureValue = [&](auto& featureValue) -> bool
         {
-            return FeaturesConfig.GetFeatureValue(
+            return FeaturesConfig.TryGetFeatureValue(
                 cloudId,
                 folderId,
                 entityId,
