@@ -45,6 +45,7 @@ jobs:
             nightly-tsan
             nightly-msan
             nightly-ubsan
+            nightly-arm
             nightly-sanitizers
             nightly-all
         run: |

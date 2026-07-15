@@ -648,6 +648,7 @@ jobs:
           contains(github.event.pull_request.labels.*.name, 'nightly-tsan') ||
           contains(github.event.pull_request.labels.*.name, 'nightly-msan') ||
           contains(github.event.pull_request.labels.*.name, 'nightly-ubsan') ||
+          contains(github.event.pull_request.labels.*.name, 'nightly-arm') ||
           contains(github.event.pull_request.labels.*.name, 'nightly-sanitizers') ||
           contains(github.event.pull_request.labels.*.name, 'nightly-all')
         )
