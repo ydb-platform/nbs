@@ -83,6 +83,7 @@ TPartitionState::TPartitionState(
     , ThreadSafeState(std::move(threadSafeState))
     , Config(*Meta.MutableConfig())
     , MixedIndexCache(mixedIndexCacheSize, &MixedIndexCacheAllocator)
+    , MixedBlocksFilter(GetMaxBlocksInBlob(), Config.GetBlocksCount())
     , CompactionMap(GetMaxBlocksInBlob(), std::move(compactionPolicy))
     , CompactionScoreHistory(compactionScoreHistorySize)
     , UsedBlocks(Config.GetBlocksCount())
@@ -419,6 +420,7 @@ void TPartitionState::WriteMixedBlock(
 {
     const ui32 rangeIdx = CompactionMap.GetRangeIndex(block.BlockIndex);
     MixedIndexCache.InsertBlockIfHot(rangeIdx, block);
+    MixedBlocksFilter.AddBlocksToMixedIndex(block.BlockIndex, block.CommitId);
     db.WriteMixedBlock(block);
 }
 
@@ -440,6 +442,7 @@ void TPartitionState::WriteMixedBlocks(
              blockIndex,
              blobOffset,
              compactionRangeCount});
+        MixedBlocksFilter.AddBlocksToMixedIndex(blockIndex, commitId);
         ++blobOffset;
     }
 

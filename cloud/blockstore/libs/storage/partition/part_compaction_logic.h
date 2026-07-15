@@ -119,6 +119,7 @@ void PrepareRangeCompaction(
     const ui64 tabletId,
     const bool readBlockMaskOnCompactionOptimizationEnabled,
     const bool useRecreatedBlobMetasOnCleanup,
+    const bool mixedBlocksBloomFilterEnabled,
     bool& ready,
     TPartitionDatabase& db,
     TPartitionState& state,

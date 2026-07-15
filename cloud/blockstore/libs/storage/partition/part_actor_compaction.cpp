@@ -1992,6 +1992,14 @@ void TPartitionActor::HandleCompaction(
             PartitionConfig.GetFolderId(),
             PartitionConfig.GetDiskId());
 
+    TVector<ui32> rangeIndices(Reserve(ranges.size()));
+    for (const auto& [rangeIdx, _]: ranges) {
+        rangeIndices.push_back(rangeIdx);
+    }
+    State->AccessMixedBlocksFilter().StartCompaction(
+        std::move(rangeIndices),
+        commitId);
+
     auto tx = CreateTx<TCompaction>(
         requestInfo,
         commitId,
@@ -2034,10 +2042,15 @@ void TPartitionActor::HandleCompactionCompleted(
 
     UpdateStats(msg->Stats);
 
+    if (HasError(msg->GetError())) {
+        State->AccessMixedBlocksFilter().CompactionFailed();
+    } else {
+        State->AccessMixedBlocksFilter().CompactionFinished();
+    }
+
     State->AccessCommitQueue()->ReleaseBarrier(commitId);
     State->GetCleanupQueue().ReleaseBarrier(commitId);
     State->GetGarbageQueue().ReleaseBarrier(commitId);
-
     const auto compactionStartedTs =
         State->GetCompactionState(msg->CompactionType).Timestamp;
     State->GetCompactionState(msg->CompactionType)
@@ -2130,6 +2143,11 @@ bool TPartitionActor::PrepareCompaction(
                 NCloud::NProto::STORAGE_MEDIA_SSD
             ? Config->GetMaxSkippedBlobsDuringCompaction()
             : Config->GetMaxSkippedBlobsDuringCompactionHDD();
+    const bool mixedIndexBlocksFilterEnabled =
+            Config->IsMixedIndexBlocksFilterFeatureEnabled(
+                State->GetConfig().GetCloudId(),
+                State->GetConfig().GetFolderId(),
+                State->GetConfig().GetDiskId());
 
     bool ready = true;
 
@@ -2141,6 +2159,7 @@ bool TPartitionActor::PrepareCompaction(
             TabletID(),
             IsReadBlockMaskOnCompactionOptimizationEnabled(),
             IsUseRecreatedBlobMetasOnCleanupEnabled(),
+            mixedIndexBlocksFilterEnabled,
             ready,
             db,
             *State,

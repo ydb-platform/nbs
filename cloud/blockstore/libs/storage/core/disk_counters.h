@@ -169,6 +169,10 @@ struct TSimpleDiskCounters
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Expiring};
+    TCounter MixedIndexFilterMemSize{
+        EPublishingPolicy::Repl,
+        TSimpleCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Expiring};
     TCounter CheckpointBytes{
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Generic,
@@ -269,6 +273,7 @@ struct TSimpleDiskCounters
         MakeMeta<&TSimpleDiskCounters::IORequestsQueued>(),
         MakeMeta<&TSimpleDiskCounters::UsedBlocksMapMemSize>(),
         MakeMeta<&TSimpleDiskCounters::MixedIndexCacheMemSize>(),
+        MakeMeta<&TSimpleDiskCounters::MixedIndexFilterMemSize>(),
         MakeMeta<&TSimpleDiskCounters::CheckpointBytes>(),
         MakeMeta<&TSimpleDiskCounters::AlmostFullChannelCount>(),
         MakeMeta<&TSimpleDiskCounters::FreshBlocksInFlight>(),
@@ -392,6 +397,10 @@ struct TCumulativeDiskCounters
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
+    TCounter MixedIndexFilterFalsePositives{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
 
     // DiskRegistry based
     TCounter ScrubbingThroughput{
@@ -422,6 +431,7 @@ struct TCumulativeDiskCounters
         MakeMeta<&TCumulativeDiskCounters::CompactionAddBlobsTime>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionExecutionTime>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionTotalTime>(),
+        MakeMeta<&TCumulativeDiskCounters::MixedIndexFilterFalsePositives>(),
 
         MakeMeta<&TCumulativeDiskCounters::ScrubbingThroughput>(),
     };

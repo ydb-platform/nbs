@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include "cloud/blockstore/libs/storage/partition/model/mixed_index_blocks_filter.h"
 #include "part_counters.h"
 #include "part_database.h"
 #include "part_schema.h"
@@ -557,6 +558,8 @@ public:
 private:
     TProfilingAllocator MixedIndexCacheAllocator;
     TMixedIndexCache MixedIndexCache;
+    TMixedBlocksFilter MixedBlocksFilter;
+    ui64 FilterFalsePositives = 0;
 
 public:
     void WriteMixedBlock(TPartitionDatabase& db, TMixedBlock block);
@@ -579,6 +582,28 @@ public:
     void RaiseRangeTemperature(ui32 rangeIndex);
 
     ui64 GetMixedIndexCacheMemSize() const;
+
+    TMixedBlocksFilter& AccessMixedBlocksFilter()
+    {
+        return MixedBlocksFilter;
+    }
+
+    const TMixedBlocksFilter& GetMixedBlocksFilter() const
+    {
+        return MixedBlocksFilter;
+    }
+
+    ui64 TakeMixedBlocksFilterFalsePositives()
+    {
+        auto falsePositives = FilterFalsePositives;
+        FilterFalsePositives = 0;
+        return falsePositives;
+    }
+
+    void IncrementFilterFalsePositives()
+    {
+        ++FilterFalsePositives;
+    }
 
     //
     // Compaction

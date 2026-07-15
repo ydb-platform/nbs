@@ -766,6 +766,7 @@ BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_STORAGE_DECLARE_CONFIG)
     xxx(VerifyRecreatedBlobMetasOnCleanup)                                     \
     xxx(UseRecreatedBlobMetasOnCleanup)                                       \
     xxx(DynamicGarbageCompactionThrottling)                                    \
+    xxx(MixedIndexBlocksFilter)                                                \
 
 // BLOCKSTORE_BINARY_FEATURES
 

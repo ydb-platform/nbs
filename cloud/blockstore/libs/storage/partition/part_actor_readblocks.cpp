@@ -738,6 +738,8 @@ private:
     TTabletStorageInfo& TabletInfo;
     TTxPartition::TReadBlocks& Args;
 
+    bool HasBlocksInMixedIndex = false;
+
 public:
     TReadBlocksVisitor(
             IBlockDigestGeneratorPtr blockDigestGenerator,
@@ -822,7 +824,14 @@ public:
     {
         Y_UNUSED(compactionRangeCount);
 
+        HasBlocksInMixedIndex = true;
+
         return Visit(blockIndex, commitId, blobId, blobOffset);
+    }
+
+    [[nodiscard]] bool GetHasBlocksInMixedIndex() const
+    {
+        return HasBlocksInMixedIndex;
     }
 };
 
@@ -1082,18 +1091,35 @@ bool TPartitionActor::PrepareReadBlocks(
         args
     );
     State->FindFreshBlocks(visitor, args.ReadRange, commitId);
-    auto ready = db.FindMixedBlocks(
-        visitor,
-        args.ReadRange,
-        false,   // precharge
-        commitId);
+
+    const auto& filter = State->AccessMixedBlocksFilter();
+    const bool mixedBlocksBloomFilterEnabled =
+        Config->IsMixedIndexBlocksFilterFeatureEnabled(
+            PartitionConfig.GetCloudId(),
+            PartitionConfig.GetFolderId(),
+            PartitionConfig.GetDiskId());
+
+    bool ready = true;
+    if (!mixedBlocksBloomFilterEnabled ||
+        filter.MayHaveBlocksInMixedIndex(args.ReadRange, commitId))
+    {
+        ready &= db.FindMixedBlocks(
+            visitor,
+            args.ReadRange,
+            false,   // precharge
+            commitId);
+        if (!visitor.GetHasBlocksInMixedIndex() &&
+            mixedBlocksBloomFilterEnabled)
+        {
+            State->IncrementFilterFalsePositives();
+        }
+    }
     ready &= db.FindMergedBlocks(
         visitor,
         args.ReadRange,
-        false,  // precharge
+        false,   // precharge
         State->GetMaxBlocksInBlob(),
-        commitId
-    );
+        commitId);
 
     const ui32 checksumBoundary =
         Config->GetDiskPrefixLengthWithBlockChecksumsInBlobs()

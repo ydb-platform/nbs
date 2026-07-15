@@ -146,6 +146,8 @@ struct TAffectedBlob
     // Filled only for merged blobs.
     TMaybe<TMergedBlobsSpecificInfo> MergedBlobsSpecificInfo;
 
+    EChannelDataKind IndexKind = EChannelDataKind::Max;
+
     TVector<ui16> Offsets;
 
     TMaybe<TBlockMask> BlockMask;

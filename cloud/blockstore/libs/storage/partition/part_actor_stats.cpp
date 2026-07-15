@@ -123,6 +123,11 @@ TPartitionStatisticsCounters TPartitionActor::ExtractPartCounters(
         State->GetUnconfirmedBlobCount());
     PartCounters->Simple.ConfirmedBlobCount.Set(State->GetConfirmedBlobCount());
 
+    PartCounters->Simple.MixedIndexFilterMemSize.Set(
+        State->GetMixedBlocksFilter().GetMemoryUsage());
+    PartCounters->Cumulative.MixedIndexFilterFalsePositives.Increment(
+        State->TakeMixedBlocksFilterFalsePositives());
+
     ui64 sysCpuConsumption = 0;
     for (ui32 tx = 0; tx < TPartitionCounters::ETransactionType::TX_SIZE; ++tx)
     {
