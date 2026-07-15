@@ -996,7 +996,7 @@ def workload_check_status_for_job_conclusion(conclusion: str | None) -> str:
 
 def complete_workload_checks_block(
     body: str,
-    job_conclusion_resolver: Callable[[str], str | None] | None = None,
+    job_conclusion_resolver: Callable[[str, str], str | None] | None = None,
 ) -> str:
     pattern = re.compile(
         r"^.*<!-- workload-check component=(?P<component>[^ ]+) -->$",
@@ -1011,7 +1011,9 @@ def complete_workload_checks_block(
         job_url_match = re.search(r"\]\((?P<url>[^)]+)\)", match.group(0))
         job_url = job_url_match.group("url") if job_url_match else ""
         conclusion = (
-            job_conclusion_resolver(job_url) if job_conclusion_resolver else None
+            job_conclusion_resolver(job_url, component)
+            if job_conclusion_resolver
+            else None
         )
         return get_workload_check_line(
             component,
@@ -1322,7 +1324,7 @@ def complete_pr_comment_workload_checks(
     pr: PullRequestLike,
     build_preset: str,
     is_dry_run: bool,
-    job_conclusion_resolver: Callable[[str], str | None] | None = None,
+    job_conclusion_resolver: Callable[[str, str], str | None] | None = None,
 ) -> None:
     header_prefix = get_comment_header_prefix(
         pr.number,

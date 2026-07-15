@@ -151,7 +151,7 @@ on:
 
 jobs:
   build-and-test:
-    name: Build and test NBS (${{ inputs.build_preset }})
+    name: Build and test NBS [build_preset=${{ inputs.build_preset }} component=${{ inputs.component == '' && 'all' || inputs.component }}]
     uses: ./.github/workflows/on_pooled_build_and_test_ya.yaml
     with:
       runner_kind: self-hosted

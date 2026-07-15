@@ -110,7 +110,7 @@ jobs:
           fi
           echo "LABELS_LIST=${LABELS_LIST}" | tee -a "$GITHUB_OUTPUT"
   build-and-test:
-    name: Build and test ${{ inputs.build_preset }}
+    name: Build and test [build_preset=${{ inputs.build_preset }} component=${{ inputs.component == '' && 'all' || inputs.component }}]
     runs-on: ${{ fromJson(needs.calculate-runs-on.outputs.runs-on) }}
     timeout-minutes: 480
     needs: calculate-runs-on
@@ -196,7 +196,7 @@ jobs:
         target_platform: ${{ inputs.target_platform }}
         component: ${{ inputs.component == '' && 'all' || inputs.component }}
         workload_check_status: running
-        current_job_name: Build and test ${{ inputs.build_preset }}
+        current_job_name: Build and test [build_preset=${{ inputs.build_preset }} component=${{ inputs.component == '' && 'all' || inputs.component }}]
         runner_name: ${{ runner.name }}
         add_summary_link: yes
 

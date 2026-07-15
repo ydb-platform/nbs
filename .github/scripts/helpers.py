@@ -51,6 +51,7 @@ SAN_PRESET = {
 
 SAN_PRESETS = {"release-asan", "release-tsan", "release-msan", "release-ubsan"}
 SAN_SUFFIX = {"asan": "-asan", "tsan": "-tsan", "msan": "-msan", "ubsan": "-ubsan"}
+BUILD_AND_TEST_JOB_NAME_PREFIX = "Build and test"
 SAN_PRESET_BY_SAN = {
     "asan": "release-asan",
     "tsan": "release-tsan",
@@ -773,8 +774,8 @@ def classify_runner(labels):
 
 def compact_job_name(job_name: str) -> str:
     """Convert a job name to a compact format."""
-    if job_name.startswith("Build and test"):
-        return job_name.replace("Build and test", "").strip()
+    if job_name.startswith(BUILD_AND_TEST_JOB_NAME_PREFIX):
+        return job_name.replace(BUILD_AND_TEST_JOB_NAME_PREFIX, "").strip()
     if "(" in job_name:
         return job_name.split("(")[0].strip()
     if ".yaml" in job_name or ".yml" in job_name:

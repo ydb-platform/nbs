@@ -1146,8 +1146,9 @@ def test_complete_workload_checks_block_marks_cancelled_stale_row() -> None:
         ]
     )
 
-    def resolve_job_conclusion(url: str) -> str:
+    def resolve_job_conclusion(url: str, component: str) -> str:
         assert url == job_url
+        assert component == "blockstore"
         return "cancelled"
 
     updated = gs.complete_workload_checks_block(
@@ -1158,6 +1159,28 @@ def test_complete_workload_checks_block_marks_cancelled_stale_row() -> None:
     assert gs.get_workload_check_status(updated, "blockstore") == "cancelled"
     assert "cancelled or timed out before reporting completion" in updated
     assert job_url in updated
+
+
+def test_complete_workload_checks_block_resolves_row_without_job_url() -> None:
+    body = "\n".join(
+        [
+            gs.WORKLOAD_CHECKS_START,
+            gs.get_workload_check_line("blockstore", "pending"),
+            gs.WORKLOAD_CHECKS_END,
+        ]
+    )
+
+    def resolve_job_conclusion(url: str, component: str) -> str:
+        assert url == ""
+        assert component == "blockstore"
+        return "skipped"
+
+    updated = gs.complete_workload_checks_block(
+        body,
+        job_conclusion_resolver=resolve_job_conclusion,
+    )
+
+    assert gs.get_workload_check_status(updated, "blockstore") == "skipped"
 
 
 def test_complete_workload_checks_block_marks_failed_stale_row() -> None:
@@ -1174,8 +1197,9 @@ def test_complete_workload_checks_block_marks_failed_stale_row() -> None:
         ]
     )
 
-    def resolve_job_conclusion(url: str) -> str:
+    def resolve_job_conclusion(url: str, component: str) -> str:
         assert url == job_url
+        assert component == "blockstore"
         return "failure"
 
     updated = gs.complete_workload_checks_block(
@@ -1203,8 +1227,9 @@ def test_complete_workload_checks_block_marks_successful_stale_row_as_report_fai
         ]
     )
 
-    def resolve_job_conclusion(url: str) -> str:
+    def resolve_job_conclusion(url: str, component: str) -> str:
         assert url == job_url
+        assert component == "blockstore"
         return "success"
 
     updated = gs.complete_workload_checks_block(
