@@ -1,6 +1,7 @@
 import argparse
 import logging
 import os
+import re
 import retrying
 import shlex
 import signal
@@ -37,6 +38,14 @@ QEMU_HOST = "10.0.2.2"
 
 PID_FILE = "qemu.pid"
 ERR_LOG_FILE_NAMES_FILE = "qemu.err_log_files"
+_UNEXPANDED_ENV_VAR = re.compile(
+    r"^\$(?:[A-Za-z_][A-Za-z0-9_]*|\{[A-Za-z_][A-Za-z0-9_]*\})$")
+
+
+def optional_env_value(value):
+    if not value or _UNEXPANDED_ENV_VAR.fullmatch(value):
+        return None
+    return value
 
 
 class QemuKvmRecipeException(Exception):
@@ -209,65 +218,94 @@ def stop(argv):
 def _parse_args(argv):
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--qemu-bin", help="Path to qemu executable (Arcadia related)")
+        "--qemu-bin",
+        type=optional_env_value,
+        help="Path to qemu executable (Arcadia related)")
     parser.add_argument(
-        "--qemu-firmware", help="Path to qemu firmware directory (Arcadia related)")
+        "--qemu-firmware",
+        type=optional_env_value,
+        help="Path to qemu firmware directory (Arcadia related)")
     parser.add_argument(
         "--qemu-bios",
-        default=os.getenv("QEMU_BIOS"),
+        type=optional_env_value,
         help="Path to qemu bios file (Arcadia related)")
     parser.add_argument(
-        "--kernel", help="Path to kernel image (Arcadia related)")
+        "--kernel",
+        type=optional_env_value,
+        help="Path to kernel image (Arcadia related)")
     parser.add_argument(
-        "--kcmdline", help="Path to kernel cmdline config (Arcadia related)")
+        "--kcmdline",
+        type=optional_env_value,
+        help="Path to kernel cmdline config (Arcadia related)")
     parser.add_argument(
-        "--initrd", help="Path to initrd image (Arcadia related)")
+        "--initrd",
+        type=optional_env_value,
+        help="Path to initrd image (Arcadia related)")
     parser.add_argument(
-        "--rootfs", help="Path to rootfs image (Arcadia related)")
+        "--rootfs",
+        type=optional_env_value,
+        help="Path to rootfs image (Arcadia related)")
     parser.add_argument(
-        "--mem", help="Amount of memory for running VM (default is 2G)")
+        "--mem",
+        type=optional_env_value,
+        help="Amount of memory for running VM (default is 2G)")
     parser.add_argument(
-        "--proc", help="Amount of processors for running VM (default is 2)")
+        "--proc",
+        type=optional_env_value,
+        help="Amount of processors for running VM (default is 2)")
     parser.add_argument(
-        "--ssh-key", help="Path to ssh key to access VM (Arcadia related)")
-    parser.add_argument("--ssh-user", help="ssh user name to access VM")
-    parser.add_argument("--qemu-options", help="Custom options for qemu")
-    parser.add_argument("--virtio", default="none")
-    parser.add_argument("--enable-kvm", default="True")
+        "--ssh-key",
+        type=optional_env_value,
+        help="Path to ssh key to access VM (Arcadia related)")
     parser.add_argument(
-        "--instance-count", help="Number of qemu instances to start")
-    parser.add_argument("--invoke-test", default="Invoke test from qemu after starting")
-    parser.add_argument("--use-virtiofs-server", default="False")
+        "--ssh-user",
+        type=optional_env_value,
+        help="ssh user name to access VM")
+    parser.add_argument(
+        "--qemu-options",
+        type=optional_env_value,
+        help="Custom options for qemu")
+    parser.add_argument("--virtio", type=optional_env_value)
+    parser.add_argument("--enable-kvm", type=optional_env_value)
+    parser.add_argument(
+        "--instance-count",
+        type=optional_env_value,
+        help="Number of qemu instances to start")
+    parser.add_argument(
+        "--invoke-test",
+        type=optional_env_value,
+        help="Invoke test from qemu after starting")
+    parser.add_argument("--use-virtiofs-server", type=optional_env_value)
     parser.add_argument(
         "--num-request-queues",
-        default=1,
+        type=optional_env_value,
         help="Number of request queues for virtiofs")
     parser.add_argument(
         "--chardev-reconnect",
         dest="chardev_reconnect",
-        default=os.getenv("QEMU_CHARDEV_RECONNECT"),
+        type=optional_env_value,
         help="Reconnect timeout for virtiofs chardev socket")
     parser.add_argument(
         "--virtiofs-migration",
-        default=os.getenv("QEMU_VIRTIOFS_MIGRATION"),
+        type=optional_env_value,
         help="virtiofs migration mode, for example 'external'")
 
     args = parser.parse_args(argv)
-    if args.instance_count == "$QEMU_INSTANCE_COUNT":
-        args.instance_count = 1
-    else:
+    if args.instance_count:
         args.instance_count = int(args.instance_count)
-
-    if args.invoke_test == "$QEMU_INVOKE_TEST":
-        args.invoke_test = True
     else:
+        args.instance_count = 1
+
+    if args.invoke_test:
         args.invoke_test = _str_to_bool(args.invoke_test)
+    else:
+        args.invoke_test = True
 
     return args
 
 
 def _get_qemu_kvm(args):
-    if not args.qemu_bin or args.qemu_bin == "$QEMU_BIN":
+    if not args.qemu_bin:
         # QEMU_BIN not defined externally, use the one from the resource
         qemu_kvm = get_qemu_kvm()
     else:
@@ -283,7 +321,7 @@ def _get_qemu_kvm(args):
 
 
 def _get_qemu_firmware(args):
-    if not args.qemu_firmware or args.qemu_firmware == "$QEMU_FIRMWARE":
+    if not args.qemu_firmware:
         # QEMU_FIRMWARE not defined externally, use the one from the resource
         qemu_firmware = get_qemu_firmware()
     else:
@@ -323,7 +361,7 @@ def _get_qemu_bios(args):
 
 
 def _get_rootfs(args):
-    if not args.rootfs or args.rootfs == "$QEMU_ROOTFS":
+    if not args.rootfs:
         raise QemuKvmRecipeException(
             "Rootfs image is not set for the recipe, please, follow the docs to know how to fix it")
     rootfs = yatest.common.build_path(args.rootfs)
@@ -337,7 +375,7 @@ def _get_rootfs(args):
 
 
 def _get_kernel(args):
-    if not args.kernel or args.kernel == "$QEMU_KERNEL":
+    if not args.kernel:
         return None
 
     kernel = yatest.common.build_path(args.kernel)
@@ -351,7 +389,7 @@ def _get_kernel(args):
 
 
 def _get_kcmdline(args):
-    if args.kcmdline is None or args.kcmdline == "$QEMU_KCMDLINE":
+    if not args.kcmdline:
         return None
 
     kcmdline = yatest.common.build_path(args.kcmdline)
@@ -366,7 +404,7 @@ def _get_kcmdline(args):
 
 
 def _get_initrd(args):
-    if not args.initrd or args.initrd == "$QEMU_INITRD":
+    if not args.initrd:
         return None
     initrd = yatest.common.build_path(args.initrd)
     if not os.path.exists(initrd):
@@ -376,19 +414,19 @@ def _get_initrd(args):
 
 
 def _get_vm_mem(args):
-    if args.mem == "$QEMU_MEM":
+    if not args.mem:
         return "4G"
     return args.mem
 
 
 def _get_vm_proc(args):
-    if args.proc == "$QEMU_PROC":
+    if not args.proc:
         return "8"
     return args.proc
 
 
 def _get_vm_virtio(args):
-    if args.virtio == "$QEMU_VIRTIO":
+    if not args.virtio:
         return "none"
     return args.virtio
 
@@ -398,13 +436,13 @@ def _str_to_bool(s):
 
 
 def _get_vm_enable_kvm(args):
-    if args.enable_kvm == "$QEMU_ENABLE_KVM":
+    if not args.enable_kvm:
         return True
     return _str_to_bool(args.enable_kvm)
 
 
 def _get_qemu_options(args):
-    if args.qemu_options == "$QEMU_OPTIONS":
+    if not args.qemu_options:
         return []
     return args.qemu_options.split()
 
@@ -418,7 +456,7 @@ def _get_nbs_device_path():
 
 
 def _get_ssh_key(args):
-    if args.ssh_key == "$QEMU_SSH_KEY":
+    if not args.ssh_key:
         raise QemuKvmRecipeException(
             "ssh key is not set for the recipe, please, foolow the docs to know how to fix it")
     ssh_key = yatest.common.build_path(args.ssh_key)
@@ -435,13 +473,13 @@ def _get_ssh_key(args):
 
 
 def _get_vm_use_virtiofs_server(args):
-    if args.use_virtiofs_server == "$QEMU_USE_VIRTIOFS_SERVER":
+    if not args.use_virtiofs_server:
         return False
     return _str_to_bool(args.use_virtiofs_server)
 
 
 def _get_num_request_queues(args):
-    if args.num_request_queues == "$QEMU_NUM_REQUEST_QUEUES":
+    if not args.num_request_queues:
         return 1
     return int(args.num_request_queues)
 
@@ -545,7 +583,7 @@ def _prepare_test_environment(ssh, virtio):
 
 
 def _get_ssh_user(args):
-    if args.ssh_user == "$QEMU_SSH_USER":
+    if not args.ssh_user:
         raise QemuKvmRecipeException(
             "ssh user is not set for the recipe, please, follow the docs to know how to fix it")
     return args.ssh_user
