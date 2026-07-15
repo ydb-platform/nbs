@@ -620,12 +620,12 @@ jobs:
     uses: ./.github/workflows/build_and_test_proxy.yaml
     with:
       mode: ${{ matrix.mode }}
-      allow_split_workload: ${{ matrix.allow_split_workload }}
+      allow_split_workload: ${{ !contains(toJSON(matrix), '"allow_split_workload"') || matrix.allow_split_workload }}
       build_target: ${{ matrix.build_target }}
       test_target: ${{ matrix.test_target }}
       build_preset: ${{ matrix.build_preset }}
-      run_build: ${{ matrix.run_build }}
-      run_tests: ${{ matrix.run_tests }}
+      run_build: ${{ !contains(toJSON(matrix), '"run_build"') || matrix.run_build }}
+      run_tests: ${{ !contains(toJSON(matrix), '"run_tests"') || matrix.run_tests }}
       target_platform: ${{ matrix.target_platform }}
       test_size: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && 'small,medium,large' || 'small' }}
       test_type: ${{ matrix.test_type }}
