@@ -36,7 +36,7 @@ ya_make_patches/
 ├── patches/                          # Source patches applied in order
 │   ├── 01-gitignore.patch
 │   ├── 02-fiber-uring24-compat.patch
-│   ├── 03-init-skip-rseq-init.patch
+│   ├── 03-rseq-register-per-thread.patch
 │   └── 04-fiber-cxa-get-globals-arcadia-libcxxrt.patch
 └── overlay/                          # Files copied verbatim into silk tree
     ├── ya.make
@@ -55,9 +55,16 @@ ya_make_patches/
   `sigset_t*`. Silk targets liburing 2.9 where the arg is `void*`; the repo
   has 2.4 where it is `sigset_t*`. The cast is safe because the kernel
   interprets the pointer based on the `IORING_ENTER_EXT_ARG` flag.
-- **03-init-skip-rseq-init**: removes the `rseq_init()` call from
-  `silk::initialize()`. The repo's older librseq auto-registers via
-  constructor and doesn't expose `rseq_init()` publicly.
+- **03-rseq-register-per-thread**: replaces silk's single `rseq_init()`
+  call in `silk::initialize()` with `rseq_register_current_thread()` and
+  adds the same call at the top of `FiberScheduler::runScheduler` and
+  `FiberScheduler::runThreadWorker`. Silk targets glibc 2.35+ (where the
+  C library auto-registers rseq for every thread) and reads `cpu_id`
+  through the librseq-provided `__rseq_offset` TLS slot; the repo's build
+  targets ship with older glibc where nobody registers rseq, so
+  `__rseq_offset` stays zero, `getCurrentProcessor` returns garbage, and
+  every downstream `Perf::processorState[cpu]` access lands out of
+  bounds and segfaults.
 - **04-fiber-cxa-get-globals-arcadia-libcxxrt**: gates silk's Itanium ABI
   `__cxxabiv1::__cxa_get_globals` redeclaration on
   `!defined(Y_CXA_EH_GLOBALS_COMPLETE)`. Arcadia's libcxxrt already
@@ -66,8 +73,10 @@ ya_make_patches/
   redeclaration then clashes on the exception specification.
 
 If a future silk version is built against a newer liburing or librseq, the
-corresponding patch can be dropped. Patch 04 can be dropped once silk
-upstream either drops the redeclaration or gates it on Arcadia's macro.
+corresponding patch can be dropped. Patch 03 can be dropped only once every
+target machine ships glibc 2.35+ (or silk itself learns to register rseq
+per thread upstream). Patch 04 can be dropped once silk upstream either
+drops the redeclaration or gates it on Arcadia's macro.
 
 ## Dependencies referenced by the overlay ya.make files
 

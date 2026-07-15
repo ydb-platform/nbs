@@ -18,8 +18,13 @@ namespace silk
 
 void initialize() noexcept
 {
-    // Older librseq versions auto-register via constructor; no explicit
-    // rseq_init() call is needed.
+    // Arcadia's librseq neither auto-registers via a constructor nor relies
+    // on glibc doing so (target platforms include glibc < 2.35). Register
+    // rseq for the calling thread here so getCurrentProcessor's TLS read
+    // returns a valid cpu_id; silk's own scheduler / worker threads do the
+    // same in their own prologues.
+    int r = rseq_register_current_thread();
+    SILK_ASSERT(r == 0);
 
     Tsc::initialize();
     Perf::initialize();

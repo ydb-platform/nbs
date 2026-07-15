@@ -30,6 +30,13 @@
 #include <cxxabi.h>
 #include <fcontext.h>
 #include <liburing.h>
+// Suppress warnings emitted by librseq headers: volatile assignment in rseq_cs
+// and unused parameters in the asm stubs.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-volatile"
+#pragma clang diagnostic ignored "-Wunused-parameter"
+#include <rseq/rseq.h>
+#pragma clang diagnostic pop
 #include <poll.h>
 #include <pthread.h>
 #include <sched.h>
@@ -1800,6 +1807,11 @@ LatencyReport FiberScheduler::reportLatency(ProfileEventKind kind, uint8_t categ
 
 void FiberScheduler::runScheduler(ProcessorState * processor) noexcept
 {
+    // rseq is per-thread; register this scheduler thread so subsequent
+    // getCurrentProcessor calls return a valid cpu_id. See util/init.cpp.
+    int r = rseq_register_current_thread();
+    SILK_ASSERT(r == 0);
+
     cpu_set_t cpuSet;
     CPU_ZERO(&cpuSet);
     CPU_SET(processor->number, &cpuSet);
@@ -2397,6 +2409,10 @@ void FiberScheduler::runFiber(Fiber * fiber, CpuTimer * timer) noexcept
 
 void FiberScheduler::runThreadWorker() noexcept
 {
+    // rseq is per-thread; register this worker thread. See util/init.cpp.
+    int r = rseq_register_current_thread();
+    SILK_ASSERT(r == 0);
+
     while (!scheduler->stopping.load(std::memory_order_relaxed))
     {
         while (Fiber * fiber = scheduler->readyQueue.dequeue())
