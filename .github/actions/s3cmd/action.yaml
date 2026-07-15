@@ -26,6 +26,10 @@ inputs:
   build_preset:
     required: true
     description: "build preset like relwithdebinfo"
+  target_platform:
+    required: false
+    default: ""
+    description: "ya make target platform used to classify cross-compiled output"
   install:
     required: false
     default: "true"
@@ -61,6 +65,7 @@ runs:
         S3_SECRET_ACCESS_KEY: ${{ inputs.s3_key_secret }}
         S3_REGION: ${{ inputs.s3_region }}
         BUILD_PRESET: ${{ inputs.build_preset }}
+        TARGET_PLATFORM: ${{ inputs.target_platform }}
       run: |
         CURRENT_HOME=${HOME:-}
         if [ -z "$CURRENT_HOME" ]; then
@@ -91,6 +96,11 @@ runs:
         EOF
 
         folder="${{ runner.arch == 'X64' && 'x86-64' || runner.arch == 'ARM64' && 'arm64' || 'unknown' }}"
+        case "$TARGET_PLATFORM" in
+            default-linux-armv9a_grace)
+                folder="arm64"
+                ;;
+        esac
 
         # shellcheck disable=SC2195
         case "$BUILD_PRESET" in

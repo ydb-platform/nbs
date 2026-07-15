@@ -39,6 +39,7 @@ jobs:
             rebase
             sleep
             disable_truncate
+            arm64
             nightly-tests
             nightly-asan
             nightly-tsan

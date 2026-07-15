@@ -8,6 +8,10 @@ inputs:
   build_preset:
     required: true
     description: "Build preset suffix, for example relwithdebinfo"
+  target_platform:
+    required: false
+    default: ""
+    description: "ya make target platform used to classify cross-compiled workloads"
   matrix_include:
     required: false
     default: ""
@@ -61,9 +65,27 @@ runs:
       shell: bash
       env:
         BUILD_PRESET: ${{ inputs.build_preset }}
+        TARGET_PLATFORM: ${{ inputs.target_platform }}
+        RUNNER_ARCH: ${{ runner.arch }}
       run: |
         set -euo pipefail
-        echo "full_build_preset=$(uname | tr '[:upper:]' '[:lower:]')-$(arch)-${BUILD_PRESET}" >> "$GITHUB_OUTPUT"
+        case "$RUNNER_ARCH" in
+            X64)
+                platform_name="linux-x86_64"
+                ;;
+            ARM64)
+                platform_name="linux-arm64"
+                ;;
+            *)
+                platform_name="$(uname | tr '[:upper:]' '[:lower:]')-$(arch)"
+                ;;
+        esac
+        case "$TARGET_PLATFORM" in
+            default-linux-armv9a_grace)
+                platform_name="linux-arm64"
+                ;;
+        esac
+        echo "full_build_preset=${platform_name}-${BUILD_PRESET}" >> "$GITHUB_OUTPUT"
     - name: initialize workload comment
       if: ${{ inputs.command == 'init' }}
       shell: bash
