@@ -4,6 +4,7 @@
 
 #include <cloud/filestore/config/storage.pb.h>
 
+#include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/features/features_config.h>
 #include <cloud/storage/core/libs/features/public.h>
 
@@ -58,7 +59,7 @@ public:
 
     void SetFeaturesConfig(NFeatures::TFeaturesConfig featuresConfig);
 
-    void SetCloudFolderEntity(
+    NProto::TError SetCloudFolderEntity(
         const TString& cloudId,
         const TString& folderId,
         const TString& entityId);
