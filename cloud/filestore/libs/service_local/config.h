@@ -58,6 +58,7 @@ public:
     [[nodiscard]] ui32 GetMaxKernelWorkersCount() const;
     [[nodiscard]] bool GetForceAsyncIO() const;
     [[nodiscard]] bool GetPropagateAffinityToKernelWorkers() const;
+    [[nodiscard]] bool GetSQKernelPollingEnabled() const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -105,6 +106,7 @@ public:
     void DumpHtml(IOutputStream& out) const;
 
     bool GetAsyncDestroyHandleEnabled() const;
+    bool GetAsyncDestroyReadOnlyHandleEnabled() const;
     TDuration GetAsyncHandleOperationPeriod() const;
 
     bool GetOpenNodeByHandleEnabled() const;

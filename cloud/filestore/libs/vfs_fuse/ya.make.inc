@@ -16,6 +16,7 @@ SRCS(
     fs_impl_node.cpp
     fs_impl_stat.cpp
     handle_ops_queue.cpp
+    handle_ops_queue_stats.cpp
     log.cpp
     loop.cpp
     node_cache.cpp

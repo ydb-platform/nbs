@@ -992,7 +992,9 @@ private:
             SessionId = response.GetSession().GetSessionId();
 
             THandleOpsQueuePtr handleOpsQueue;
-            if (FileSystemConfig->GetAsyncDestroyHandleEnabled()) {
+            if (FileSystemConfig->GetAsyncDestroyHandleEnabled() ||
+                FileSystemConfig->GetAsyncDestroyReadOnlyHandleEnabled())
+            {
                 if (Config->GetHandleOpsQueuePath()) {
                     auto path = TFsPath(Config->GetHandleOpsQueuePath()) /
                         FileSystemConfig->GetFileSystemId() /
@@ -1177,6 +1179,16 @@ private:
                  .SessionId = SessionId,
                  .ModuleStats = DirectoryHandleStats});
 
+            if (handleOpsQueue) {
+                ModuleStatsRegistry->Register(
+                    {.FileSystemId = Config->GetFileSystemId(),
+                     .ClientId = Config->GetClientId(),
+                     .CloudId = response.GetFileStore().GetCloudId(),
+                     .FolderId = response.GetFileStore().GetFolderId(),
+                     .SessionId = SessionId,
+                     .ModuleStats = handleOpsQueue->GetModuleStats()});
+            }
+
             FileSystem = CreateFileSystem(
                 Logging,
                 ProfileLog,
@@ -1277,8 +1289,12 @@ private:
         if (features.GetXAttrCacheTimeout()) {
             config.SetXAttrCacheTimeout(features.GetXAttrCacheTimeout());
         }
+        config.SetXAttrCacheInvalidateOnCreateEnabled(
+            features.GetXAttrCacheInvalidateOnCreateEnabled());
         config.SetAsyncDestroyHandleEnabled(
             features.GetAsyncDestroyHandleEnabled());
+        config.SetAsyncDestroyReadOnlyHandleEnabled(
+            features.GetAsyncDestroyReadOnlyHandleEnabled());
         config.SetAsyncHandleOperationPeriod(
             features.GetAsyncHandleOperationPeriod());
 

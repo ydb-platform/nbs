@@ -19,6 +19,7 @@ struct TIoUringServiceParams
     bool ShareKernelWorkers = false;
     bool ForceAsyncIO = false;
     bool PropagateAffinityToKernelWorkers = false;
+    bool SQKernelPollingEnabled = false;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

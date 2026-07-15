@@ -99,14 +99,15 @@ void TFileSystem::Reset()
 
 void TFileSystem::ScheduleProcessHandleOpsQueue()
 {
-    if (Config->GetAsyncDestroyHandleEnabled()) {
+    if (HandleOpsQueue) {
         Scheduler->Schedule(
-        Timer->Now() + Config->GetAsyncHandleOperationPeriod(),
-        [=, ptr = weak_from_this()] () {
-            if (auto self = ptr.lock()) {
-                self->ProcessHandleOpsQueue();
-            }
-        });
+            Timer->Now() + Config->GetAsyncHandleOperationPeriod(),
+            [=, ptr = weak_from_this()]()
+            {
+                if (auto self = ptr.lock()) {
+                    self->ProcessHandleOpsQueue();
+                }
+            });
     }
 }
 
@@ -214,6 +215,12 @@ void TFileSystem::InvalidateDirectoryEntryInCache(
     DirectoryEntryVersionCache->AdvanceVersion(parent, name, version);
 }
 
+void TFileSystem::InvalidateXAttrCache(ui64 ino)
+{
+    TGuard g{XAttrCacheLock};
+    XAttrCache.Invalidate(ino);
+}
+
 void TFileSystem::UpdateXAttrCache(
     ui64 ino,
     const TString& name,
@@ -238,7 +245,8 @@ void TFileSystem::ReplyCreateWithCache(
     fuse_req_t req,
     ui64 handle,
     const NProto::TNodeAttr& attrs,
-    ui64 version)
+    ui64 version,
+    bool newNodeCreated)
 {
     STORAGE_TRACE("inserting node: "
         << ProtoMessagePrinter.ToString(attrs)
@@ -247,6 +255,12 @@ void TFileSystem::ReplyCreateWithCache(
     if (attrs.GetId() == InvalidNodeId) {
         ReplyError(callContext, MakeError(E_FS_IO), req, EIO);
         return;
+    }
+
+    if (Config->GetXAttrCacheInvalidateOnCreateEnabled() && newNodeCreated &&
+        !HasError(error))
+    {
+        InvalidateXAttrCache(attrs.GetId());
     }
 
     fuse_entry_param entry = {};
@@ -267,7 +281,8 @@ void TFileSystem::ReplyEntryWithCache(
     const NCloud::NProto::TError& error,
     fuse_req_t req,
     const NProto::TNodeAttr& attrs,
-    ui64 version)
+    ui64 version,
+    bool newNodeCreated)
 {
     STORAGE_TRACE("inserting node: "
         << ProtoMessagePrinter.ToString(attrs)
@@ -276,6 +291,12 @@ void TFileSystem::ReplyEntryWithCache(
     if (attrs.GetId() == InvalidNodeId) {
         ReplyError(callContext, MakeError(E_FS_IO), req, EIO);
         return;
+    }
+
+    if (Config->GetXAttrCacheInvalidateOnCreateEnabled() && newNodeCreated &&
+        !HasError(error))
+    {
+        InvalidateXAttrCache(attrs.GetId());
     }
 
     fuse_entry_param entry = {};

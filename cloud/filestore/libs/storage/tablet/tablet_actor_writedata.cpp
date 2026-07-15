@@ -26,6 +26,28 @@ void TIndexTabletActor::HandleWriteData(
 {
     auto* msg = ev->Get();
 
+    if (msg->GetPayloadCount() > 0 && msg->GetPayload(0).size() != 0) {
+        if (!msg->Record.GetBuffer().empty()) {
+            TStringStream error;
+            error << "WriteData request has both buffer and payload. "
+                  << "FileSystemId: " << msg->Record.GetFileSystemId()
+                  << ", Handle: " << msg->Record.GetHandle()
+                  << ", NodeId: " << msg->Record.GetNodeId()
+                  << ", Offset: " << msg->Record.GetOffset()
+                  << ", Buffer size: " << msg->Record.GetBuffer().size()
+                  << ", Payload size: " << msg->GetPayload(0).size();
+            ReportWriteDataRequestWithBufferAndPayload(error.Str());
+        } else {
+            auto& payload = msg->GetPayload(0);
+            msg->Record.MutableBuffer()->ReserveAndResize(payload.size());
+            TRopeUtils::Memcpy(
+                msg->Record.MutableBuffer()->begin(),
+                payload.begin(),
+                payload.size());
+            msg->StripPayload();
+        }
+    }
+
     NProto::TProfileLogRequestInfo profileLogRequest;
     InitTabletProfileLogRequestInfo(
         profileLogRequest,

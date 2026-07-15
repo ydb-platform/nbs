@@ -425,6 +425,7 @@ private:
     void InvalidateDirectoryEntryInCache(
         fuse_ino_t parent,
         const TString& name);
+    void InvalidateXAttrCache(ui64 ino);
 
     void UpdateXAttrCache(
         ui64 ino,
@@ -439,13 +440,15 @@ private:
         fuse_req_t req,
         ui64 handle,
         const NProto::TNodeAttr& attrs,
-        ui64 version);
+        ui64 version,
+        bool newNodeCreated);
     void ReplyEntryWithCache(
         TCallContext& callContext,
         const NCloud::NProto::TError& error,
         fuse_req_t req,
         const NProto::TNodeAttr& attrs,
-        ui64 version);
+        ui64 version,
+        bool newNodeCreated);
     void ReplyXAttrInt(
         TCallContext& callContext,
         const NCloud::NProto::TError& error,
@@ -470,6 +473,7 @@ private:
         fuse_req_t req,
         fuse_ino_t ino,
         ui64 handle,
+        bool asyncDestroyHandleEnabled,
         const NCloud::NProto::TError& writeBackCacheError);
     void CompleteAsyncDestroyHandle(
         TCallContext& callContext,

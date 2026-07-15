@@ -259,7 +259,9 @@ struct TBootstrap
         proto.SetDebug(true);
         proto.SetSocketPath(SocketPath);
         proto.SetFileSystemId(FileSystemId);
-        if (featuresConfig.GetAsyncDestroyHandleEnabled()) {
+        if (featuresConfig.GetAsyncDestroyHandleEnabled() ||
+            featuresConfig.GetAsyncDestroyReadOnlyHandleEnabled())
+        {
             proto.SetHandleOpsQueuePath(TempDir.Path() / "HandleOpsQueue");
             proto.SetHandleOpsQueueSize(handleOpsQueueSize);
         }
@@ -309,6 +311,25 @@ struct TBootstrap
             ->FindSubgroup("cloud", "")
             ->FindSubgroup("folder", "")
             ->FindSubgroup("module", "DirectoryHandles");
+    }
+
+    NMonitoring::TDynamicCountersPtr GetHandleOpsQueueCounters() const
+    {
+        return Counters
+            ->FindSubgroup("component", TString{MetricsComponent} + "_fs")
+            ->FindSubgroup("host", "cluster")
+            ->FindSubgroup("filesystem", FileSystemId)
+            ->FindSubgroup("client", "")
+            ->FindSubgroup("cloud", "")
+            ->FindSubgroup("folder", "")
+            ->FindSubgroup("module", "HandleOpsQueue");
+    }
+
+    NMonitoring::TDynamicCountersPtr GetAggregateHandleOpsQueueCounters() const
+    {
+        return Counters
+            ->FindSubgroup("component", TString{MetricsComponent})
+            ->FindSubgroup("module", "HandleOpsQueue");
     }
 
     ~TBootstrap()
@@ -413,6 +434,67 @@ struct TBootstrap
             std::move(fileMapMemoryLimiter));
     }
 };
+
+NProto::TNodeAttr MakeNodeAttr(ui64 nodeId, ui32 nodeType)
+{
+    NProto::TNodeAttr attrs;
+    attrs.SetId(nodeId);
+    attrs.SetType(nodeType);
+    attrs.SetMode(0644);
+    return attrs;
+}
+
+template <typename TSetupCreateHandler, typename TSendCreateRequest>
+void DoShouldInvalidateXAttrCacheAfterSuccessfulCreate(
+    TSetupCreateHandler setupCreateHandler,
+    TSendCreateRequest sendCreateRequest)
+{
+    constexpr ui64 recycledNodeId = 6;
+
+    NProto::TFileStoreFeatures features;
+    features.SetXAttrCacheInvalidateOnCreateEnabled(true);
+
+    auto timer = std::make_shared<TTestTimer>();
+    TBootstrap bootstrap{timer, CreateScheduler(), features};
+    bootstrap.Start();
+    Y_DEFER {
+        bootstrap.Stop();
+    };
+
+    std::atomic<int> xattrCallCount = 0;
+    bootstrap.Service->SetHandlerGetNodeXAttr(
+        [&] (auto callContext, auto request) {
+            Y_UNUSED(request);
+            UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+
+            const auto call = ++xattrCallCount;
+            NProto::TGetNodeXAttrResponse response;
+            response.SetValue(call == 1 ? "old-value" : "new-value");
+            response.SetVersion(call);
+            return MakeFuture(response);
+        });
+
+    setupCreateHandler(bootstrap, recycledNodeId);
+
+    {
+        auto xattr = bootstrap.Fuse->SendRequest<TGetXAttrValueRequest>(
+            "name",
+            recycledNodeId);
+        UNIT_ASSERT(xattr.Wait(WaitTimeout));
+        UNIT_ASSERT_STRINGS_EQUAL("old-value", xattr.GetValue());
+    }
+
+    sendCreateRequest(bootstrap, recycledNodeId);
+
+    {
+        auto xattr = bootstrap.Fuse->SendRequest<TGetXAttrValueRequest>(
+            "name",
+            recycledNodeId);
+        UNIT_ASSERT(xattr.Wait(WaitTimeout));
+        UNIT_ASSERT_STRINGS_EQUAL("new-value", xattr.GetValue());
+        UNIT_ASSERT_VALUES_EQUAL(2, xattrCallCount.load());
+    }
+}
 
 }   // namespace
 
@@ -2339,6 +2421,294 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldInvalidateXAttrCacheAfterMkDirReusesNodeId)
+    {
+        DoShouldInvalidateXAttrCacheAfterSuccessfulCreate(
+            [] (TBootstrap& bootstrap, ui64 recycledNodeId) {
+                bootstrap.Service->SetHandlerCreateNode(
+                    [=] (auto callContext, auto request) {
+                        Y_UNUSED(request);
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            FileSystemId,
+                            callContext->FileSystemId);
+
+                        NProto::TCreateNodeResponse response;
+                        *response.MutableNode() = MakeNodeAttr(
+                            recycledNodeId,
+                            NProto::E_DIRECTORY_NODE);
+                        return MakeFuture(response);
+                    });
+            },
+            [] (TBootstrap& bootstrap, ui64 recycledNodeId) {
+                Y_UNUSED(recycledNodeId);
+                auto create = bootstrap.Fuse->SendRequest<TMkDirRequest>(
+                    "dir",
+                    RootNodeId);
+                UNIT_ASSERT(create.Wait(WaitTimeout));
+            });
+    }
+
+    Y_UNIT_TEST(ShouldInvalidateXAttrCacheAfterMkNodeReusesNodeId)
+    {
+        DoShouldInvalidateXAttrCacheAfterSuccessfulCreate(
+            [] (TBootstrap& bootstrap, ui64 recycledNodeId) {
+                bootstrap.Service->SetHandlerCreateNode(
+                    [=] (auto callContext, auto request) {
+                        Y_UNUSED(request);
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            FileSystemId,
+                            callContext->FileSystemId);
+
+                        NProto::TCreateNodeResponse response;
+                        *response.MutableNode() = MakeNodeAttr(
+                            recycledNodeId,
+                            NProto::E_REGULAR_NODE);
+                        return MakeFuture(response);
+                    });
+            },
+            [] (TBootstrap& bootstrap, ui64 recycledNodeId) {
+                Y_UNUSED(recycledNodeId);
+                auto create = bootstrap.Fuse->SendRequest<TMkNodeRequest>(
+                    "file",
+                    RootNodeId);
+                UNIT_ASSERT(create.Wait(WaitTimeout));
+            });
+    }
+
+    Y_UNIT_TEST(ShouldInvalidateXAttrCacheAfterSymLinkReusesNodeId)
+    {
+        DoShouldInvalidateXAttrCacheAfterSuccessfulCreate(
+            [] (TBootstrap& bootstrap, ui64 recycledNodeId) {
+                bootstrap.Service->SetHandlerCreateNode(
+                    [=] (auto callContext, auto request) {
+                        Y_UNUSED(request);
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            FileSystemId,
+                            callContext->FileSystemId);
+
+                        NProto::TCreateNodeResponse response;
+                        *response.MutableNode() = MakeNodeAttr(
+                            recycledNodeId,
+                            NProto::E_LINK_NODE);
+                        return MakeFuture(response);
+                    });
+            },
+            [] (TBootstrap& bootstrap, ui64 recycledNodeId) {
+                Y_UNUSED(recycledNodeId);
+                auto create = bootstrap.Fuse->SendRequest<TSymLinkRequest>(
+                    "link",
+                    "target",
+                    RootNodeId);
+                UNIT_ASSERT(create.Wait(WaitTimeout));
+            });
+    }
+
+    Y_UNIT_TEST(ShouldInvalidateXAttrCacheAfterCreateHandleReusesNodeId)
+    {
+        DoShouldInvalidateXAttrCacheAfterSuccessfulCreate(
+            [] (TBootstrap& bootstrap, ui64 recycledNodeId) {
+                bootstrap.Service->SetHandlerCreateHandle(
+                    [=] (auto callContext, auto request) {
+                        Y_UNUSED(request);
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            FileSystemId,
+                            callContext->FileSystemId);
+
+                        NProto::TCreateHandleResponse response;
+                        response.SetHandle(42);
+                        *response.MutableNodeAttr() = MakeNodeAttr(
+                            recycledNodeId,
+                            NProto::E_REGULAR_NODE);
+                        return MakeFuture(response);
+                    });
+            },
+            [] (TBootstrap& bootstrap, ui64 recycledNodeId) {
+                Y_UNUSED(recycledNodeId);
+                auto request = std::make_shared<TCreateHandleRequest>(
+                    "file",
+                    RootNodeId);
+                request->In->Body.flags = O_CREAT | O_RDWR;
+                request->In->Body.mode = 0644;
+
+                auto create = bootstrap.Fuse->SendRequest(request);
+                UNIT_ASSERT(create.Wait(WaitTimeout));
+            });
+    }
+
+    Y_UNIT_TEST(ShouldNotInvalidateXAttrCacheAfterFailedCreate)
+    {
+        constexpr ui64 recycledNodeId = 6;
+
+        NProto::TFileStoreFeatures features;
+        features.SetXAttrCacheInvalidateOnCreateEnabled(true);
+
+        auto timer = std::make_shared<TTestTimer>();
+        TBootstrap bootstrap{timer, CreateScheduler(), features};
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        std::atomic<int> xattrCallCount = 0;
+        bootstrap.Service->SetHandlerGetNodeXAttr(
+            [&] (auto callContext, auto request) {
+                Y_UNUSED(request);
+                UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+
+                ++xattrCallCount;
+                NProto::TGetNodeXAttrResponse response;
+                response.SetValue("old-value");
+                response.SetVersion(xattrCallCount.load());
+                return MakeFuture(response);
+            });
+
+        bootstrap.Service->SetHandlerCreateNode(
+            [] (auto callContext, auto request) {
+                Y_UNUSED(request);
+                UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+
+                NProto::TCreateNodeResponse response;
+                response.MutableError()->SetCode(MAKE_FILESTORE_ERROR(
+                    NProto::E_FS_IO));
+                return MakeFuture(response);
+            });
+
+        {
+            auto xattr = bootstrap.Fuse->SendRequest<TGetXAttrValueRequest>(
+                "name",
+                recycledNodeId);
+            UNIT_ASSERT(xattr.Wait(WaitTimeout));
+            UNIT_ASSERT_STRINGS_EQUAL("old-value", xattr.GetValue());
+        }
+
+        {
+            auto create = bootstrap.Fuse->SendRequest<TMkNodeRequest>(
+                "file",
+                RootNodeId);
+            UNIT_ASSERT(create.Wait(WaitTimeout));
+            UNIT_ASSERT_EXCEPTION(create.GetValue(), yexception);
+        }
+
+        {
+            auto xattr = bootstrap.Fuse->SendRequest<TGetXAttrValueRequest>(
+                "name",
+                recycledNodeId);
+            UNIT_ASSERT(xattr.Wait(WaitTimeout));
+            UNIT_ASSERT_STRINGS_EQUAL("old-value", xattr.GetValue());
+            UNIT_ASSERT_VALUES_EQUAL(1, xattrCallCount.load());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldNotInvalidateXAttrCacheAfterLookupLinkOrOpenExisting)
+    {
+        constexpr ui64 nodeId = 6;
+
+        NProto::TFileStoreFeatures features;
+        features.SetXAttrCacheInvalidateOnCreateEnabled(true);
+
+        auto timer = std::make_shared<TTestTimer>();
+        TBootstrap bootstrap{timer, CreateScheduler(), features};
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        std::atomic<int> xattrCallCount = 0;
+        bootstrap.Service->SetHandlerGetNodeXAttr(
+            [&] (auto callContext, auto request) {
+                Y_UNUSED(request);
+                UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+
+                ++xattrCallCount;
+                NProto::TGetNodeXAttrResponse response;
+                response.SetValue("old-value");
+                response.SetVersion(xattrCallCount.load());
+                return MakeFuture(response);
+            });
+
+        bootstrap.Service->SetHandlerGetNodeAttr(
+            [=] (auto callContext, auto request) {
+                Y_UNUSED(request);
+                UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+
+                NProto::TGetNodeAttrResponse response;
+                *response.MutableNode() = MakeNodeAttr(
+                    nodeId,
+                    NProto::E_REGULAR_NODE);
+                return MakeFuture(response);
+            });
+
+        bootstrap.Service->SetHandlerCreateNode(
+            [=] (auto callContext, auto request) {
+                Y_UNUSED(request);
+                UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+
+                NProto::TCreateNodeResponse response;
+                *response.MutableNode() = MakeNodeAttr(
+                    nodeId,
+                    NProto::E_REGULAR_NODE);
+                return MakeFuture(response);
+            });
+
+        bootstrap.Service->SetHandlerCreateHandle(
+            [=] (auto callContext, auto request) {
+                Y_UNUSED(request);
+                UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+
+                NProto::TCreateHandleResponse response;
+                response.SetHandle(42);
+                *response.MutableNodeAttr() = MakeNodeAttr(
+                    nodeId,
+                    NProto::E_REGULAR_NODE);
+                return MakeFuture(response);
+            });
+
+        auto assertCachedXAttr = [&] {
+            auto xattr = bootstrap.Fuse->SendRequest<TGetXAttrValueRequest>(
+                "name",
+                nodeId);
+            UNIT_ASSERT(xattr.Wait(WaitTimeout));
+            UNIT_ASSERT_STRINGS_EQUAL("old-value", xattr.GetValue());
+            UNIT_ASSERT_VALUES_EQUAL(1, xattrCallCount.load());
+        };
+
+        {
+            auto xattr = bootstrap.Fuse->SendRequest<TGetXAttrValueRequest>(
+                "name",
+                nodeId);
+            UNIT_ASSERT(xattr.Wait(WaitTimeout));
+            UNIT_ASSERT_STRINGS_EQUAL("old-value", xattr.GetValue());
+        }
+
+        {
+            auto lookup = bootstrap.Fuse->SendRequest<TLookupRequest>(
+                "file",
+                RootNodeId);
+            UNIT_ASSERT(lookup.Wait(WaitTimeout));
+            assertCachedXAttr();
+        }
+
+        {
+            auto link = bootstrap.Fuse->SendRequest<TLinkRequest>(
+                "hardlink",
+                nodeId,
+                RootNodeId);
+            UNIT_ASSERT(link.Wait(WaitTimeout));
+            assertCachedXAttr();
+        }
+
+        {
+            auto request = std::make_shared<TCreateHandleRequest>(
+                "file",
+                RootNodeId);
+            request->In->Body.flags = O_RDWR;
+
+            auto create = bootstrap.Fuse->SendRequest(request);
+            UNIT_ASSERT(create.Wait(WaitTimeout));
+            assertCachedXAttr();
+        }
+    }
+
     Y_UNIT_TEST(SuspendShouldNotDestroySession)
     {
         TBootstrap bootstrap;
@@ -2706,10 +3076,15 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             bootstrap.Stop();
         };
 
-        auto future =
-            bootstrap.Fuse->SendRequest<TReleaseRequest>(nodeId1, handle1);
+        auto future = bootstrap.Fuse->SendRequest<TReleaseRequest>(
+            nodeId1,
+            handle1,
+            O_RDONLY);
         UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
-        future = bootstrap.Fuse->SendRequest<TReleaseRequest>(nodeId2, handle2);
+        future = bootstrap.Fuse->SendRequest<TReleaseRequest>(
+            nodeId2,
+            handle2,
+            O_RDONLY);
         UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
         releaseFinished = true;
 
@@ -2720,6 +3095,101 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         responsePromise2.SetValue(NProto::TDestroyHandleResponse{});
 
         UNIT_ASSERT_VALUES_EQUAL(2U, handlerCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            AtomicGet(counters->GetCounter("InProgress")->GetAtomic()));
+    }
+
+    Y_UNIT_TEST(ShouldProcessReadOnlyDestroyHandleRequestsAsynchronously)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetAsyncDestroyReadOnlyHandleEnabled(true);
+        auto scheduler = std::make_shared<TTestScheduler>();
+        TBootstrap bootstrap(CreateWallClockTimer(), scheduler, features);
+
+        const ui64 readOnlyHandle = 2;
+        const ui64 readOnlyNodeId = 10;
+        const ui64 writeHandle = 5;
+        const ui64 writeNodeId = 11;
+        std::atomic_bool readOnlyReleaseFinished = false;
+        std::atomic_bool writeReleaseFinished = false;
+        std::atomic_uint handlerCalled = 0;
+        auto counters = bootstrap.Counters->FindSubgroup("component", "fs_ut")
+                            ->FindSubgroup("request", "DestroyHandle");
+        auto readOnlyResponsePromise =
+            NewPromise<NProto::TDestroyHandleResponse>();
+        auto writeResponsePromise =
+            NewPromise<NProto::TDestroyHandleResponse>();
+        bootstrap.Service->SetHandlerDestroyHandle(
+            [&,
+             readOnlyResponsePromise,
+             writeResponsePromise](auto callContext, auto request) mutable
+            {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    1,
+                    AtomicGet(counters->GetCounter("InProgress")->GetAtomic()));
+
+                UNIT_ASSERT_VALUES_EQUAL(
+                    FileSystemId,
+                    callContext->FileSystemId);
+
+                ++handlerCalled;
+                if (request->GetHandle() == readOnlyHandle) {
+                    UNIT_ASSERT(readOnlyReleaseFinished);
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        readOnlyNodeId,
+                        request->GetNodeId());
+                    return readOnlyResponsePromise;
+                }
+
+                if (request->GetHandle() == writeHandle) {
+                    UNIT_ASSERT(!writeReleaseFinished);
+                    UNIT_ASSERT_VALUES_EQUAL(writeNodeId, request->GetNodeId());
+                    return writeResponsePromise;
+                }
+
+                UNIT_ASSERT_C(false, "Unexpected DestroyHandle request");
+                return NewPromise<NProto::TDestroyHandleResponse>();
+            });
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        auto future = bootstrap.Fuse->SendRequest<TReleaseRequest>(
+            readOnlyNodeId,
+            readOnlyHandle,
+            O_RDONLY);
+        UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
+        readOnlyReleaseFinished = true;
+        UNIT_ASSERT_VALUES_EQUAL(0U, handlerCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            AtomicGet(counters->GetCounter("InProgress")->GetAtomic()));
+
+        scheduler->RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(1U, handlerCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            AtomicGet(counters->GetCounter("InProgress")->GetAtomic()));
+        readOnlyResponsePromise.SetValue(NProto::TDestroyHandleResponse{});
+
+        future = bootstrap.Fuse->SendRequest<TReleaseRequest>(
+            writeNodeId,
+            writeHandle,
+            O_WRONLY);
+        UNIT_ASSERT_EXCEPTION(
+            future.GetValue(ExceptionWaitTimeout),
+            yexception);
+        UNIT_ASSERT_VALUES_EQUAL(2U, handlerCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            AtomicGet(counters->GetCounter("InProgress")->GetAtomic()));
+
+        writeResponsePromise.SetValue(NProto::TDestroyHandleResponse{});
+        UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
+        writeReleaseFinished = true;
         UNIT_ASSERT_VALUES_EQUAL(
             0,
             AtomicGet(counters->GetCounter("InProgress")->GetAtomic()));
@@ -2761,8 +3231,10 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             bootstrap.Stop();
         };
 
-        auto future =
-            bootstrap.Fuse->SendRequest<TReleaseRequest>(nodeId, handle);
+        auto future = bootstrap.Fuse->SendRequest<TReleaseRequest>(
+            nodeId,
+            handle,
+            O_RDONLY);
         UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
 
         destroyFinished.GetFuture().Wait(WaitTimeout);
@@ -2796,8 +3268,10 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             bootstrap.Stop();
         };
 
-        auto future =
-            bootstrap.Fuse->SendRequest<TReleaseRequest>(nodeId, handle);
+        auto future = bootstrap.Fuse->SendRequest<TReleaseRequest>(
+            nodeId,
+            handle,
+            O_RDONLY);
         UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
 
         scheduler->RunAllScheduledTasks();
@@ -2852,23 +3326,81 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             bootstrap.Stop();
         };
 
+        auto moduleCounters = bootstrap.GetHandleOpsQueueCounters();
+        auto aggregateModuleCounters =
+            bootstrap.GetAggregateHandleOpsQueueCounters();
+        bootstrap.ModuleStatsRegistry->UpdateStats(true);
+
+        auto entryCount = moduleCounters->FindCounter("EntryCount");
+        UNIT_ASSERT(entryCount);
+        auto capacityBytes = moduleCounters->FindCounter("CapacityBytes");
+        UNIT_ASSERT(capacityBytes);
+        auto overflowErrorCount =
+            moduleCounters->FindCounter("OverflowErrorCount");
+        UNIT_ASSERT(overflowErrorCount);
+        auto serializationErrorCount =
+            moduleCounters->FindCounter("SerializationErrorCount");
+        UNIT_ASSERT(serializationErrorCount);
+        auto parseErrorCount =
+            moduleCounters->FindCounter("ParseErrorCount");
+        UNIT_ASSERT(parseErrorCount);
+
+        auto aggregateOverflowErrorCount =
+            aggregateModuleCounters->FindCounter("OverflowErrorCount");
+        UNIT_ASSERT(aggregateOverflowErrorCount);
+        auto aggregateSerializationErrorCount =
+            aggregateModuleCounters->FindCounter("SerializationErrorCount");
+        UNIT_ASSERT(aggregateSerializationErrorCount);
+        auto aggregateParseErrorCount =
+            aggregateModuleCounters->FindCounter("ParseErrorCount");
+        UNIT_ASSERT(aggregateParseErrorCount);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, entryCount->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(20, capacityBytes->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(0, overflowErrorCount->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(0, serializationErrorCount->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(0, parseErrorCount->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(0, aggregateOverflowErrorCount->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            aggregateSerializationErrorCount->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(0, aggregateParseErrorCount->GetAtomic());
+
         auto counters = bootstrap.Counters
             ->FindSubgroup("component", "fs_ut")
             ->FindSubgroup("request", "DestroyHandle");
-        auto future =
-            bootstrap.Fuse->SendRequest<TReleaseRequest>(nodeId1, handle1);
+        auto future = bootstrap.Fuse->SendRequest<TReleaseRequest>(
+            nodeId1,
+            handle1,
+            O_RDONLY);
         UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
+        bootstrap.ModuleStatsRegistry->UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(1, entryCount->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(20, capacityBytes->GetAtomic());
+
         UNIT_ASSERT_VALUES_EQUAL(
             0,
             AtomicGet(counters->GetCounter("InProgress")->GetAtomic()));
 
-        future =
-            bootstrap.Fuse->SendRequest<TReleaseRequest>(nodeId2, handle2);
+        future = bootstrap.Fuse->SendRequest<TReleaseRequest>(
+            nodeId2,
+            handle2,
+            O_RDONLY);
 
         // Second request should wait until the first request is processed.
         UNIT_ASSERT_EXCEPTION(
             future.GetValue(ExceptionWaitTimeout),
             yexception);
+        bootstrap.ModuleStatsRegistry->UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(1, entryCount->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(1, overflowErrorCount->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(0, serializationErrorCount->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(0, parseErrorCount->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(1, aggregateOverflowErrorCount->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            aggregateSerializationErrorCount->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(0, aggregateParseErrorCount->GetAtomic());
         UNIT_ASSERT_VALUES_EQUAL(
             1,
             AtomicGet(counters->GetCounter("InProgress")->GetAtomic()));
@@ -3402,8 +3934,10 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         // should not write (flush) data from cache immediately
         UNIT_ASSERT_VALUES_EQUAL(0, writeDataCalled.load());
 
-        auto future =
-            bootstrap.Fuse->SendRequest<TReleaseRequest>(nodeId, handleId);
+        auto future = bootstrap.Fuse->SendRequest<TReleaseRequest>(
+            nodeId,
+            handleId,
+            O_WRONLY);
         UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
         UNIT_ASSERT_VALUES_EQUAL(1, destroyHandleCalled.load());
         // cache should be flushed
@@ -5029,12 +5563,18 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT(writeDSync->Out->Header.error);
 
         // 4. Release - should fail because data is dropped
-        auto release = std::make_shared<TReleaseRequest>(NodeId, NodeId + 1);
+        auto release = std::make_shared<TReleaseRequest>(
+            NodeId,
+            NodeId + 1,
+            O_WRONLY);
         UNIT_ASSERT(bootstrap.Fuse->SendRequest(release).Wait(WaitTimeout));
         UNIT_ASSERT(release->Out->Header.error);
 
         // 5. Release again - success because of no data in the cache
-        auto release2 = std::make_shared<TReleaseRequest>(NodeId, NodeId + 1);
+        auto release2 = std::make_shared<TReleaseRequest>(
+            NodeId,
+            NodeId + 1,
+            O_WRONLY);
         UNIT_ASSERT(bootstrap.Fuse->SendRequest(release2).Wait(WaitTimeout));
         UNIT_ASSERT(!release2->Out->Header.error);
     }

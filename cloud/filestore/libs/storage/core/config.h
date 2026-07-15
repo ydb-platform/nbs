@@ -271,6 +271,7 @@ public:
     bool GetUseUnlimitedBTreeNodeRefsCacheInShards() const;
 
     bool GetAsyncDestroyHandleEnabled() const;
+    bool GetAsyncDestroyReadOnlyHandleEnabled() const;
     bool GetTabletUnsafeAsyncReadOnlyCreateHandleEnabled() const;
     bool GetTabletUnsafeAsyncDestroyHandleEnabled() const;
     TDuration GetAsyncHandleOperationPeriod() const;
@@ -436,6 +437,8 @@ public:
     ui32 GetSoftBackpressureMaxReadBandwidth() const;
     ui32 GetSoftBackpressureMaxWriteIops() const;
     ui32 GetSoftBackpressureMaxReadIops() const;
+
+    [[nodiscard]] bool GetExternalWriteDataPayloadEnabled() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

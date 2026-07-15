@@ -187,6 +187,7 @@ public:
         ui64 version);
     void AddAbsent(ui64 ino, const TString& name);
     const TXAttr* Get(ui64 ino, const TString& name);
+    void Invalidate(ui64 ino);
     void Forget(ui64 ino, const TString& name);
 };
 

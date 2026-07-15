@@ -123,12 +123,35 @@ void TXAttrCache::AddAbsent(ui64 ino, const TString& name)
 
 const TXAttr* TXAttrCache::Get(ui64 ino, const TString& name)
 {
+    const auto now = Timer->Now();
+
     auto it = Cache.Find({ino, name});
-    if (it != Cache.End() && (Timer->Now() - it.Value().UpdateTime) < Timeout) {
-        return &it.Value();
+    if (it == Cache.End() || (now - it.Value().UpdateTime) >= Timeout) {
+        return nullptr;
     }
 
-    return nullptr;
+    auto invalidation = Cache.Find(TKey{ino, TString{}});
+    if (invalidation != Cache.End() &&
+        (now - invalidation.Value().UpdateTime) < Timeout &&
+        it.Value().UpdateTime <= invalidation.Value().UpdateTime)
+    {
+        return nullptr;
+    }
+
+    return &it.Value();
+}
+
+void TXAttrCache::Invalidate(ui64 ino)
+{
+    Cache.Update(
+        TKey{ino, TString{}},
+        TXAttr{
+            .Name = TString{},
+            .Value = Nothing(),
+            .Version = 0,
+            .UpdateTime = Timer->Now()
+        }
+    );
 }
 
 void TXAttrCache::Forget(ui64 ino, const TString& name)

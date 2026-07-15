@@ -214,8 +214,11 @@ void TDiskRegistryActor::HandleHttpInfo_ReplaceDevice(
         return;
     }
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "Replace device from monitoring page: volume %s, device %s",
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Replace device from monitoring page: volume %s, device %s",
+        LogTitle.GetWithTime().c_str(),
         diskId.Quote().data(),
         deviceId.Quote().data());
 

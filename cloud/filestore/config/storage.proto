@@ -842,4 +842,10 @@ message TStorageConfig
     // Enables the RDMA side channel for tablet-proxied requests in
     // filestore-server and filestore-vhost.
     optional bool TabletDirectRdmaEnabled = 524;
+
+    // Async processing of destroy handle requests only for read only handles.
+    optional bool AsyncDestroyReadOnlyHandleEnabled = 525;
+
+    // Pass data buffer to the tablet as a message payload
+    optional bool ExternalWriteDataPayloadEnabled = 526;
 }

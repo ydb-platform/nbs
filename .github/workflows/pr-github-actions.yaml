@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - ".github/**"
+      - "!.github/vscode-yatool-extension/**"
     types:
       - "opened"
       - "synchronize"

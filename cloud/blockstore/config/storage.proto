@@ -1621,4 +1621,8 @@ message TStorageServiceConfig
 
     // Use read or recreated compaction blob metas during cleanup.
     optional bool UseRecreatedBlobMetasOnCleanup = 513;
+
+    // If false (default), UseGentlePreemption param
+    // for RebindVolumes action is ignored
+    optional bool AllowGentlePreemptionForRebindVolumesAction = 514;
 }

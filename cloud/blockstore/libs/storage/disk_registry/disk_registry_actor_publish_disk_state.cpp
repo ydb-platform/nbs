@@ -3,6 +3,8 @@
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/logbroker/iface/logbroker.h>
 
+#include <cloud/storage/core/libs/common/format.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -24,20 +26,23 @@ void TDiskRegistryActor::PublishDiskStates(const TActorContext& ctx)
 
     auto deadline = Min(DiskStatesPublicationStartTs, ctx.Now()) + TDuration::Seconds(5);
     if (deadline > ctx.Now()) {
-        LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "[%lu] Scheduled disk state updates publication, now: %lu, deadline: %lu",
-            TabletID(),
-            ctx.Now().MicroSeconds(),
-            deadline.MicroSeconds());
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s Scheduled disk state updates publication after %s",
+            LogTitle.GetWithTime().c_str(),
+            FormatDuration(deadline - ctx.Now()).c_str());
 
         ctx.Schedule(
             deadline,
             std::make_unique<IEventHandle>(ctx.SelfID, ctx.SelfID, request.get()));
         request.release();
     } else {
-        LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "[%lu] Sending disk state updates request",
-            TabletID());
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s Sending disk state updates request",
+            LogTitle.GetWithTime().c_str());
 
         NCloud::Send(ctx, ctx.SelfID, std::move(request));
     }
@@ -49,9 +54,11 @@ void TDiskRegistryActor::HandlePublishDiskStates(
 {
     BLOCKSTORE_DISK_REGISTRY_COUNTER(PublishDiskStates);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Disk state updates request. Updates=%d",
-        TabletID(),
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Disk state updates request. Updates=%lu",
+        LogTitle.GetWithTime().c_str(),
         State->GetDiskStateUpdates().size());
 
     DiskStatesPublicationStartTs = ctx.Now();
@@ -122,9 +129,11 @@ void TDiskRegistryActor::HandlePublishDiskStatesResponse(
         return;
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Publish disk state completed",
-        TabletID());
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Publish disk state completed",
+        LogTitle.GetWithTime().c_str());
 
     ExecuteTx<TDeleteDiskStateUpdates>(
         ctx,

@@ -23,12 +23,14 @@ namespace {
                                                                                \
     xxx(XAttrCacheLimit,        ui32,           512                           )\
     xxx(XAttrCacheTimeout,      TDuration,      TDuration::Seconds(15)        )\
+    xxx(XAttrCacheInvalidateOnCreateEnabled,    bool, false                   )\
                                                                                \
     xxx(MaxBufferSize,          ui32,           4_MB                          )\
                                                                                \
     xxx(PreferredBlockSize,     ui32,           0                             )\
                                                                                \
-    xxx(AsyncDestroyHandleEnabled,  bool,       false                         )\
+    xxx(AsyncDestroyHandleEnabled,          bool,       false                 )\
+    xxx(AsyncDestroyReadOnlyHandleEnabled,  bool,       false                 )\
     xxx(AsyncHandleOperationPeriod, TDuration,  TDuration::MilliSeconds(50)   )\
                                                                                \
     xxx(DirectIoEnabled,            bool,       false                         )\

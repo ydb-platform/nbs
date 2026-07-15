@@ -28,6 +28,7 @@ namespace {
     xxx(DirectIoAlign,               ui32,          4_KB                      )\
     xxx(GuestWriteBackCacheEnabled,  bool,          false                     )\
     xxx(AsyncDestroyHandleEnabled,   bool,          false                     )\
+    xxx(AsyncDestroyReadOnlyHandleEnabled, bool,    false                     )\
     xxx(AsyncHandleOperationPeriod,  TDuration,     50ms                      )\
     xxx(OpenNodeByHandleEnabled,     bool,          false                     )\
     xxx(NodeCleanupBatchSize,        ui32,          1000                      )\
@@ -67,6 +68,7 @@ namespace {
     xxx(MaxKernelWorkersCount,       ui32,          0                         )\
     xxx(ForceAsyncIO,                bool,          false                     )\
     xxx(PropagateAffinityToKernelWorkers, bool,     false                     )\
+    xxx(SQKernelPollingEnabled,      bool,          false                     )\
 // FILESTORE_SERVICE_IO_URING_CONFIG
 
 #define FILESTORE_SERVICE_DECLARE_CONFIG(name, type, value)                    \
