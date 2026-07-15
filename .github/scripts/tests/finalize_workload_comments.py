@@ -18,12 +18,25 @@ def get_pull_request(gh) -> PullRequest:
     return gh.create_from_raw_data(PullRequest, event["pull_request"])
 
 
-def iter_build_presets(matrix_include: str) -> list[str]:
+def platform_name_for_target(default_platform_name: str, target_platform: str) -> str:
+    if target_platform == "default-linux-armv9a_grace":
+        return "linux-arm64"
+    return default_platform_name
+
+
+def iter_full_build_presets(
+    matrix_include: str, default_platform_name: str
+) -> list[str]:
     if not matrix_include.strip():
         return []
 
     matrix = json.loads(matrix_include)
-    return sorted({entry["build_preset"] for entry in matrix.get("include", [])})
+    return sorted(
+        {
+            f"{platform_name_for_target(default_platform_name, entry.get('target_platform', ''))}-{entry['build_preset']}"
+            for entry in matrix.get("include", [])
+        }
+    )
 
 
 def main() -> None:
@@ -58,8 +71,9 @@ def main() -> None:
     pr = get_pull_request(github_client(os.environ["GITHUB_TOKEN"]))
     run_number = int(os.environ.get("GITHUB_RUN_NUMBER", "0"))
 
-    for build_preset in iter_build_presets(args.matrix_include):
-        full_build_preset = f"{args.platform_name}-{build_preset}"
+    for full_build_preset in iter_full_build_presets(
+        args.matrix_include, args.platform_name
+    ):
         gs.complete_pr_comment_workload_checks(
             run_number=run_number,
             pr=pr,

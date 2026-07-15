@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url/common/cache"
+	url_metrics "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 )
 
@@ -44,6 +45,7 @@ type urlReader struct {
 	etag       string
 	size       uint64
 	cache      *cache.Cache
+	metrics    url_metrics.Metrics
 }
 
 func NewURLReader(
@@ -53,7 +55,8 @@ func NewURLReader(
 	httpClientMaxRetryTimeout time.Duration,
 	httpClientMaxRetries uint32,
 	url string,
-) (Reader, error) {
+	metrics url_metrics.Metrics,
+) (_ Reader, err error) {
 
 	parsed, err := net_url.Parse(url)
 	if err != nil {
@@ -74,7 +77,10 @@ func NewURLReader(
 		httpClientMaxRetryTimeout,
 		httpClientMaxRetries,
 		url,
+		metrics,
 	)
+
+	defer metrics.StatRequest("head")(&err)
 
 	resp, err := httpClient.Head(ctx)
 	if err != nil {
@@ -99,6 +105,7 @@ func NewURLReader(
 		url:        url,
 		etag:       etag,
 		size:       uint64(resp.ContentLength),
+		metrics:    metrics,
 	}, nil
 }
 
@@ -106,7 +113,7 @@ func NewURLReader(
 
 func (r *urlReader) EnableCache() {
 	if r.cache == nil {
-		r.cache = cache.NewCache(r.read)
+		r.cache = cache.NewCache(r.read, r.metrics.OnCacheHit)
 	}
 }
 
@@ -137,7 +144,9 @@ func (r *urlReader) read(
 	ctx context.Context,
 	start uint64,
 	data []byte,
-) error {
+) (err error) {
+
+	defer r.metrics.StatRequest("get")(&err)
 
 	end := start + uint64(len(data))
 	if end > r.size {
@@ -155,7 +164,7 @@ func (r *urlReader) read(
 		data = data[:r.size-start]
 	}
 
-	err := r.validateRange(start, end)
+	err = r.validateRange(start, end)
 	if err != nil {
 		return err
 	}

@@ -3,6 +3,7 @@
 #include <cloud/filestore/libs/storage/fastshard/client/client.h>
 #include <cloud/filestore/libs/storage/fastshard/server/protos/fastshard.pb.h>
 #include <cloud/filestore/libs/service/filestore.h>
+#include <cloud/filestore/libs/service/request.h>
 #include <cloud/filestore/public/api/protos/node.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -243,6 +244,7 @@ private:
         TRequest req;
         req.SetFileSystemId(s->ShardFileSystemId);
 
+        ui64 requestBytes = 0;
         if (s->Action == NProto::ACTION_READ) {
             const ui64 slotCount = s->File.Size / s->ReadBytes;
             const ui64 offset = RandomNumber(slotCount) * s->ReadBytes;
@@ -250,6 +252,7 @@ private:
             body->SetHandle(s->File.Handle);
             body->SetOffset(offset);
             body->SetLength(s->ReadBytes);
+            requestBytes = CalculateByteCount(*body);
         } else {
             const ui64 offset = s->File.Size;
             s->File.Size += s->WriteBytes;
@@ -257,6 +260,7 @@ private:
             body->SetHandle(s->File.Handle);
             body->SetOffset(offset);
             body->SetBuffer(TString(s->WriteBytes, '\0'));
+            requestBytes = CalculateByteCount(*body);
         }
 
         auto resp = e->Send(req);
@@ -275,7 +279,14 @@ private:
         }
 
         releaseEndpoint();
-        s->Promise.SetValue({s->Action, s->Started, std::move(err)});
+
+        if (HasError(err)) {
+            requestBytes = 0;
+        } else if (resp.HasReadData()) {
+            requestBytes = CalculateByteCount(resp.GetReadData());
+        }
+        s->Promise.SetValue(
+            {s->Action, s->Started, std::move(err), requestBytes});
     }
 
     TFuture<TCompletedRequest> DoRead()

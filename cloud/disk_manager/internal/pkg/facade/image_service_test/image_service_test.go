@@ -609,6 +609,30 @@ func testCreateQCOW2ImageFromURL(t *testing.T) {
 		testcommon.GetQCOW2ImageSize(t),
 		testcommon.GetQCOW2ImageCrc32(t),
 	)
+
+	if testcommon.IsNemesisEnabled() {
+		return
+	}
+
+	// Verify URL source metrics are reported.
+	urlSourceLabels := map[string]string{"component": "url_source"}
+	require.Greater(t, testcommon.GetCountersDataplane(
+		t, "cacheHits", urlSourceLabels,
+	)[0], float64(0))
+	require.Greater(t, testcommon.GetCountersDataplane(
+		t, "responses", map[string]string{
+			"component": "url_source",
+			"method":    "get",
+			"status":    "206",
+		},
+	)[0], float64(0))
+	require.Greater(t, testcommon.GetCountersDataplane(
+		t, "responses", map[string]string{
+			"component": "url_source",
+			"method":    "head",
+			"status":    "200",
+		},
+	)[0], float64(0))
 }
 
 ////////////////////////////////////////////////////////////////////////////////

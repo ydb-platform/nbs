@@ -234,6 +234,7 @@ message TTestStats
         string Action = 1;
         uint64 Count = 2;
         TLatency Latency = 3;
+        uint64 RequestBytes = 4;
     }
 
     string Name = 1;

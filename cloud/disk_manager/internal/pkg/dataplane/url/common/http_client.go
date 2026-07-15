@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/go-retryablehttp"
+	url_metrics "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
@@ -160,6 +161,7 @@ type httpClient struct {
 	client        *http.Client
 	url           string
 	requestsCount uint64
+	metrics       url_metrics.Metrics
 }
 
 func (c *httpClient) Head(ctx context.Context) (*http.Response, error) {
@@ -195,6 +197,10 @@ func (c *httpClient) head(
 	)
 
 	resp, err := c.client.Head(c.url)
+	if resp != nil {
+		c.metrics.OnHttpStatus("head", resp.StatusCode)
+	}
+
 	if err != nil {
 		// NBS-3324: should it be retriable?
 		return nil, errors.NewRetriableError(err)
@@ -250,6 +256,10 @@ func (c *httpClient) body(
 
 	// TODO: try to use http2 streams NBS-3253.
 	resp, err = c.client.Do(req)
+	if resp != nil {
+		c.metrics.OnHttpStatus("get", resp.StatusCode)
+	}
+
 	if err != nil {
 		return nil, errors.NewRetriableErrorf(
 			"range [%v:%v]: %v",
@@ -281,6 +291,7 @@ func (c *httpClient) body(
 		)
 	}
 
+	c.metrics.OnRequestSize(end - start)
 	return httpReadCloser{
 		cancel:     cancelReqCtx,
 		readCloser: resp.Body,
@@ -312,6 +323,7 @@ func newHTTPClient(
 	maxRetryTimeout time.Duration,
 	maxRetries uint32,
 	url string,
+	metrics url_metrics.Metrics,
 ) *httpClient {
 
 	retryableClient := retryablehttp.NewClient()
@@ -326,8 +338,9 @@ func newHTTPClient(
 	)
 
 	return &httpClient{
-		client: retryableClient.StandardClient(),
-		url:    url,
+		client:  retryableClient.StandardClient(),
+		url:     url,
+		metrics: metrics,
 	}
 }
 

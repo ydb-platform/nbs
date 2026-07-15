@@ -217,7 +217,14 @@ void TIndexTabletActor::ApplyStorageConfigOverrides(
         LogTag << " Setting CloudId=" << cloudId << ", FolderId=" << folderId
                << ", EntityId=" << fileSystemId
                << " for the storage config features overrides");
-    Config->SetCloudFolderEntity(cloudId, folderId, fileSystemId);
+
+    // SetCloudFolderEntity may return errors if some values in the
+    // FeaturesConfig can't be converted to appropriate types.
+    const NProto::TError err =
+        Config->SetCloudFolderEntity(cloudId, folderId, fileSystemId);
+    if (HasError(err)) {
+        ReportBadValueInFeatureConfig(err.GetMessage());
+    }
 
     if (StorageConfigOverride.ByteSize()) {
         Config->Merge(StorageConfigOverride);

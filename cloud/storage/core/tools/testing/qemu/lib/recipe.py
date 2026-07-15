@@ -85,6 +85,10 @@ def start(argv):
 
 
 def start_instance(args, inst_index):
+    # The recipe can retry startup in the same process. Do not let cleanup for
+    # the current attempt use a forwarding port left by an earlier attempt.
+    recipe_set_env("QEMU_FORWARDING_PORT", "", inst_index)
+
     virtio = _get_vm_virtio(args)
     mount_paths = get_mount_paths(inst_index=inst_index)
 
@@ -132,6 +136,9 @@ def start_instance(args, inst_index):
     recipe_set_env("QEMU_FORWARDING_PORT", str(ssh.port), inst_index)
 
     _wait_ssh(qemu, ssh)
+    # Install coredump handling as soon as SSH is available. Any later setup
+    # step may fail and trigger cleanup, including mounting shared filesystems.
+    setup_coredumps(ssh)
 
     for tag, path, _ in mount_paths:
         ssh("sudo mkdir -p {path}".format(path=path))
@@ -173,7 +180,18 @@ def _process_coredumps(args):
     for instance in range(args.instance_count):
         try:
             qemu_fwd_port = env_with_guest_index("QEMU_FORWARDING_PORT", instance)
-            port = int(os.getenv(qemu_fwd_port, 22))
+            port = os.getenv(qemu_fwd_port)
+            key = os.getenv("QEMU_SSH_KEY")
+
+            if not port or not key:
+                logger.info(
+                    "Skipping coredump processing for instance #%d: "
+                    "guest SSH connection is not initialized",
+                    instance,
+                )
+                continue
+
+            port = int(port)
 
             logger.info(
                 "Processing coredumps for instance #%d via SSH port %d",
@@ -184,7 +202,7 @@ def _process_coredumps(args):
             _process_instance_coredumps(
                 user=_get_ssh_user(args),
                 port=port,
-                key=os.getenv("QEMU_SSH_KEY"))
+                key=key)
 
             logger.info("Finished processing coredumps for instance #%d", instance)
         except Exception:
@@ -194,6 +212,8 @@ def _process_coredumps(args):
 def stop(argv):
     args = _parse_args(argv)
     _process_coredumps(args)
+    for instance in range(args.instance_count):
+        recipe_set_env("QEMU_FORWARDING_PORT", "", instance)
 
     with open(PID_FILE, "r") as f:
         pids = f.read().strip().splitlines()
@@ -468,7 +488,7 @@ def _get_ssh_key(args):
     new_ssh_key = yatest.common.work_path(os.path.basename(ssh_key))
     fs.copy_file(ssh_key, new_ssh_key)
     os.chmod(new_ssh_key, 0o0600)
-    library.python.testing.recipe.set_env("QEMU_SSH_KEY", new_ssh_key)
+    recipe_set_env("QEMU_SSH_KEY", new_ssh_key)
     return new_ssh_key
 
 
@@ -541,8 +561,6 @@ def _prepare_test_environment(ssh, virtio):
     else:
         raise QemuKvmRecipeException("Invalid virtio type")
 
-    setup_coredumps(ssh)
-
     library.python.testing.recipe.set_env(
         "TEST_ENV_WRAPPER", vm_env['TEST_ENV_WRAPPER'])
 
@@ -602,7 +620,10 @@ def _wait_ssh(daemon, ssh):
 
 
 def recipe_set_env(key, val, guest_index=0):
-    library.python.testing.recipe.set_env(env_with_guest_index(key, guest_index), val)
+    key = env_with_guest_index(key, guest_index)
+    val = str(val)
+    os.environ[key] = val
+    library.python.testing.recipe.set_env(key, val)
 
 
 def recipe_get_env(key, guest_index=0):

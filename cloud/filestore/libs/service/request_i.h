@@ -185,6 +185,10 @@ template <>
 ui64 CalculateByteCount<NProto::TWriteDataRequest>(
     const NProto::TWriteDataRequest& request);
 
+template <>
+ui64 CalculateByteCount<NProto::TReadDataResponse>(
+    const NProto::TReadDataResponse& response);
+
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr bool IsDataChannel(NCloud::NProto::ERequestSource source)

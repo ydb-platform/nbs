@@ -23,27 +23,31 @@ class QmpClient:
         self._sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self._sock.settimeout(self.timeout)
 
-        time_end = time.time() + self.timeout
-        while True:
-            try:
-                self._sock.connect(sock_path)
-                break
-            except (FileNotFoundError, ConnectionRefusedError) as e:
-                if time.time() > time_end:
-                    logger.debug("%s: timed out", sock_path)
-                    raise
+        try:
+            time_end = time.time() + self.timeout
+            while True:
+                try:
+                    self._sock.connect(sock_path)
+                    break
+                except (FileNotFoundError, ConnectionRefusedError) as e:
+                    if time.time() > time_end:
+                        logger.debug("%s: timed out", sock_path)
+                        raise
 
-                if vm_proc is not None:
-                    res = vm_proc.poll()
-                    if res is not None:
-                        raise Exception('VM process exited with result: {}'.format(res))
+                    if vm_proc is not None:
+                        res = vm_proc.poll()
+                        if res is not None:
+                            raise Exception('VM process exited with result: {}'.format(res))
 
-                logger.debug("%s: %s: retrying", sock_path, e)
-                time.sleep(1)
+                    logger.debug("%s: %s: retrying", sock_path, e)
+                    time.sleep(1)
 
-        logger.info("init for socket {}".format(sock_path))
+            logger.info("init for socket {}".format(sock_path))
 
-        self.command("qmp_capabilities")
+            self.command("qmp_capabilities")
+        except Exception:
+            self.close()
+            raise
 
     def get_socket_path(self):
         return self.sock_path

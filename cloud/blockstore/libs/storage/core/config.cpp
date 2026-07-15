@@ -85,6 +85,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
 // clang-format off
 #define BLOCKSTORE_STORAGE_CONFIG_RO(xxx)                                      \
     xxx(SchemeShardDir,                TString,   "/Root"                     )\
+    xxx(ListVolumesConcurrency,        ui32,      100                         )\
     xxx(DisableLocalService,           bool,      false                       )\
     xxx(ServiceVersionInfo,            TString,   ""                          )\
     xxx(FolderId,                      TString,   ""                          )\

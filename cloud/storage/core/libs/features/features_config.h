@@ -9,6 +9,9 @@
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 
+#include <util/string/builder.h>
+#include <util/string/cast.h>
+
 namespace NCloud::NFeatures {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -46,6 +49,15 @@ public:
         const TString& entityId,
         const TString& featureName) const;
 
+    template <typename T>
+    bool TryGetFeatureValue(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& entityId,
+        const TString& featureName,
+        T& value,
+        TString& errorMessage) const;
+
     TVector<TString> CollectAllFeatures() const;
 
 private:
@@ -56,5 +68,39 @@ private:
         const TString& featureName,
         TString* value) const;
 };
+
+template <typename T>
+bool TFeaturesConfig::TryGetFeatureValue(
+    const TString& cloudId,
+    const TString& folderId,
+    const TString& entityId,
+    const TString& featureName,
+    T& value,
+    TString& errorMessage) const
+{
+    TString featureValue;
+    if (!GetFeature(cloudId, folderId, entityId, featureName, &featureValue)) {
+        // It's not an error if a feature is not found.
+        return false;
+    }
+
+    if constexpr (std::is_same_v<T, bool>) {
+        // For backward compatibility, an empty feature value means `true`.
+        if (featureValue.empty()) {
+            value = true;
+            return true;
+        }
+    }
+
+    if (!TryFromString(featureValue, value)) {
+        errorMessage += TStringBuilder()
+                        << "Value '" << featureValue << "' of feature '"
+                        << featureName
+                        << "' cannot be converted to the target field type. ";
+        return false;
+    }
+
+    return true;
+}
 
 }   // namespace NCloud::NFeatures

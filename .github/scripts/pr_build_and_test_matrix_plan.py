@@ -27,6 +27,7 @@ class Inputs:
     contains: Dict[str, bool]
     has_san: Dict[str, bool]
     has_large_tests_label: bool
+    has_arm64_label: bool
 
     @staticmethod
     def from_env(env: Dict[str, str] | None = None) -> "Inputs":
@@ -50,6 +51,7 @@ class Inputs:
                 "ubsan": truthy(env.get("HAS_UBSAN_LABEL")),
             },
             has_large_tests_label=truthy(env.get("HAS_LARGE_TESTS_LABEL")),
+            has_arm64_label=truthy(env.get("HAS_ARM64_LABEL")),
         )
 
 
@@ -135,6 +137,10 @@ def build_matrix(inp: Inputs) -> list[dict]:
                 "test_target": test_target,
                 "vm_name_suffix": "",
                 "number_of_retries": 3,
+                "run_build": True,
+                "run_tests": True,
+                "allow_split_workload": True,
+                "target_platform": "",
             }
         )
 
@@ -157,8 +163,33 @@ def build_matrix(inp: Inputs) -> list[dict]:
                         "test_target": test_target_san[san],
                         "vm_name_suffix": suffix,
                         "number_of_retries": 1,
+                        "run_build": True,
+                        "run_tests": True,
+                        "allow_split_workload": True,
+                        "target_platform": "",
                     }
                 )
+
+    if inp.has_arm64_label:
+        include.append(
+            {
+                "mode": "hybrid",
+                "san": "",
+                "build_preset": "relwithdebinfo",
+                # The proxy planner still requires test metadata even though this
+                # workload skips the test stage.
+                "test_type": TEST_TYPE_REGULAR,
+                "test_size": test_size,
+                "build_target": build_target,
+                "test_target": test_target,
+                "vm_name_suffix": "-arm-grace",
+                "number_of_retries": 1,
+                "run_build": True,
+                "run_tests": False,
+                "allow_split_workload": False,
+                "target_platform": "default-linux-armv9a_grace",
+            }
+        )
 
     return include
 

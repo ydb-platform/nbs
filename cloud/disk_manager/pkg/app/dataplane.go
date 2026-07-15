@@ -44,6 +44,7 @@ func initDataplane(
 	}
 
 	snapshotMetricsRegistry := mon.NewRegistry("snapshot_storage")
+	urlMetricsRegistry := mon.NewRegistry("url_source")
 
 	snapshotStorage, err := snapshot_storage.NewStorage(
 		snapshotConfig,
@@ -88,6 +89,7 @@ func initDataplane(
 		snapshotStorage,
 		snapshotLegacyStorage,
 		snapshotMetricsRegistry,
+		urlMetricsRegistry,
 		migrationDstStorage,
 		useS3InSnapshotMigration,
 	)

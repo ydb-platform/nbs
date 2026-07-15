@@ -14,6 +14,7 @@
 #include <contrib/ydb/core/testlib/fake_coordinator.h>
 #include <contrib/ydb/core/testlib/tablet_helpers.h>
 #include <contrib/ydb/core/testlib/test_client.h>
+#include <contrib/ydb/core/tx/scheme_cache/scheme_cache.h>
 #include <contrib/ydb/core/tx/schemeshard/schemeshard.h>
 #include <contrib/ydb/core/tx/schemeshard/schemeshard_identificators.h>
 #include <contrib/ydb/core/tx/tx_allocator/txallocator.h>
@@ -1171,6 +1172,96 @@ void TestShouldCreateDirectoryIdempotently(bool useSchemeCache)
     }
 }
 
+void TestShouldSkipUnknownChildKinds()
+{
+    TTestBasicRuntime runtime;
+    TTestEnv env(runtime);
+
+    ui64 txId = 100;
+
+    TestMkDir(runtime, ++txId, "/MyRoot", "nbs");
+    env.TestWaitNotification(runtime, txId);
+
+    auto ssProxyId = SetupSSProxy(runtime, true);
+
+    CreateFileStore(runtime, ssProxyId, "fs");
+    CreateBlockStoreVolume(runtime, ssProxyId, "volume");
+
+    using TSchemeCacheNavigate = NKikimr::NSchemeCache::TSchemeCacheNavigate;
+
+    runtime.SetEventFilter(
+        [&](auto&, TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() ==
+                TEvTxProxySchemeCache::EvNavigateKeySetResult)
+            {
+                auto* msg =
+                    event
+                        ->Get<TEvTxProxySchemeCache::TEvNavigateKeySetResult>();
+                auto* record = msg->Request.Get();
+                if (!record || record->ResultSet.size() != 1) {
+                    return false;
+                }
+
+                auto& entry = record->ResultSet.front();
+                if (!entry.ListNodeEntry) {
+                    return false;
+                }
+
+                auto newListNode =
+                    MakeIntrusive<TSchemeCacheNavigate::TListNodeEntry>();
+                newListNode->Kind = entry.ListNodeEntry->Kind;
+                for (const auto& child: entry.ListNodeEntry->Children) {
+                    newListNode->Children.emplace_back(
+                        child.Name,
+                        child.PathId,
+                        child.Kind,
+                        child.SchemaVersion);
+                }
+
+                newListNode->Children.emplace_back(
+                    "fake-table",
+                    TPathId(1, 999),
+                    TSchemeCacheNavigate::KindTable);
+                newListNode->Children.emplace_back(
+                    "fake-topic",
+                    TPathId(1, 998),
+                    TSchemeCacheNavigate::KindTopic);
+
+                entry.ListNodeEntry = std::move(newListNode);
+            }
+            return false;
+        });
+
+    const auto response = DescribePath(runtime, ssProxyId, "/MyRoot/nbs");
+    const auto& pathDescription = response->Get()->PathDescription;
+
+    bool foundFileStore = false;
+    bool foundBlockStoreVolume = false;
+
+    for (const auto& child: pathDescription.GetChildren()) {
+        UNIT_ASSERT_C(
+            child.GetName() != "fake-table" && child.GetName() != "fake-topic",
+            TStringBuilder() << "Unknown child kind should have been skipped: "
+                             << child.GetName());
+
+        if (child.GetName() == "fs") {
+            UNIT_ASSERT_VALUES_EQUAL(
+                NKikimrSchemeOp::EPathTypeFileStore,
+                child.GetPathType());
+            foundFileStore = true;
+        } else if (child.GetName() == "volume") {
+            UNIT_ASSERT_VALUES_EQUAL(
+                NKikimrSchemeOp::EPathTypeBlockStoreVolume,
+                child.GetPathType());
+            foundBlockStoreVolume = true;
+        }
+    }
+
+    UNIT_ASSERT(foundFileStore);
+    UNIT_ASSERT(foundBlockStoreVolume);
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1235,6 +1326,11 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
     Y_UNIT_TEST(ShouldCreateAndDropBlockStoreVolumeWithoutSchemeCache)
     {
         TestShouldCreateAndDropBlockStoreVolume(false);
+    }
+
+    Y_UNIT_TEST(ShouldSkipUnknownChildKindsWithSchemeCache)
+    {
+        TestShouldSkipUnknownChildKinds();
     }
 }
 

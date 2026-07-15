@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	url_metrics "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url/metrics"
+	common_metrics "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
@@ -82,6 +84,7 @@ func newTestReader(t *testing.T, data []byte) *urlReader {
 		url:        "",
 		etag:       resp.Header.Get("Etag"),
 		size:       uint64(resp.ContentLength),
+		metrics:    url_metrics.New(common_metrics.NewEmptyRegistry()),
 	}
 	reader.EnableCache()
 	return reader

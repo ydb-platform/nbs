@@ -19,6 +19,18 @@ on:
       build_preset:
         required: true
         type: string
+      run_build:
+        required: false
+        type: boolean
+        default: true
+      run_tests:
+        required: false
+        type: boolean
+        default: true
+      target_platform:
+        required: false
+        type: string
+        default: ""
       test_size:
         required: true
         type: string
@@ -144,6 +156,7 @@ jobs:
           command: init
           matrix_include: ${{ needs.plan.outputs.matrix_include }}
           build_preset: ${{ inputs.build_preset }}
+          target_platform: ${{ inputs.target_platform }}
           workload_status: in_progress
 
   on_demand:
@@ -161,6 +174,9 @@ jobs:
       build_target: ${{ matrix.build_target }}
       test_target:  ${{ matrix.test_target }}
       build_preset: ${{ matrix.build_preset }}
+      run_build: ${{ inputs.run_build }}
+      run_tests: ${{ inputs.run_tests }}
+      target_platform: ${{ inputs.target_platform }}
       test_size:    ${{ inputs.test_size }}
       test_type:    ${{ matrix.test_type }}
       vm_preset:    ${{ inputs.vm_preset != '' && inputs.vm_preset || ( inputs.allow_split_workload == false && vars.POOLED_HEAVY_VM_PRESET_SPLIT || vars.POOLED_HEAVY_VM_PRESET ) }}
@@ -186,6 +202,9 @@ jobs:
       build_target: ${{ matrix.build_target }}
       test_target:  ${{ matrix.test_target }}
       build_preset: ${{ matrix.build_preset }}
+      run_build: ${{ inputs.run_build }}
+      run_tests: ${{ inputs.run_tests }}
+      target_platform: ${{ inputs.target_platform }}
       test_size:    ${{ inputs.test_size }}
       test_type:    ${{ matrix.test_type }}
       vm_name_suffix: "${{ inputs.vm_name_suffix }}${{ matrix.vm_name_suffix }}"
@@ -210,6 +229,9 @@ jobs:
       build_target: ${{ matrix.build_target }}
       test_target:  ${{ matrix.test_target }}
       build_preset: ${{ matrix.build_preset }}
+      run_build: ${{ inputs.run_build }}
+      run_tests: ${{ inputs.run_tests }}
+      target_platform: ${{ inputs.target_platform }}
       test_size:    ${{ inputs.test_size }}
       test_type:    ${{ matrix.test_type }}
       vm_preset:    ${{ inputs.vm_preset != '' && inputs.vm_preset || ( inputs.allow_split_workload == false && vars.POOLED_HEAVY_VM_PRESET_SPLIT || vars.POOLED_HEAVY_VM_PRESET ) }}
