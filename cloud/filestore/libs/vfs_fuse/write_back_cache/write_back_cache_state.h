@@ -148,6 +148,7 @@ public:
     void UnpinNodeStates(TNodeStatePin pinId);
 
     // Visit unflushed cached requests in the increasing order of SequenceId
+    // Returns no requests if a barrier prevents from flushing
     void VisitUnflushedRequests(
         ui64 nodeId,
         const TEntryVisitor& visitor) const;

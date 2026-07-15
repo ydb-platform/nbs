@@ -638,7 +638,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
 
             UNIT_ASSERT_VALUES_EQUAL("1", b.DumpEvents());
             UNIT_ASSERT_VALUES_EQUAL(
-                "1:abc",
+                "1:abc, 4:def",
                 b.VisitUnflushedCachedRequests(1));
 
             b.State->FlushFailed(1, MakeError(E_FAIL, "Flush failed"));
@@ -667,7 +667,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
             UNIT_ASSERT(b.Add(1, 101, 7, "ghi").GetValue());
             UNIT_ASSERT_VALUES_EQUAL("1", b.DumpEvents());
             UNIT_ASSERT_VALUES_EQUAL(
-                "1:abc, 4:def",
+                "1:abc, 4:def, 7:ghi",
                 b.VisitUnflushedCachedRequests(1));
 
             UNIT_ASSERT(!flush.HasValue());
@@ -683,7 +683,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
             // Flush is requested because of AcquireBarrier
             UNIT_ASSERT_VALUES_EQUAL("1", b.DumpEvents());
             UNIT_ASSERT_VALUES_EQUAL(
-                "4:def",
+                "4:def, 7:ghi",
                 b.VisitUnflushedCachedRequests(1));
 
             // flushed: abc def

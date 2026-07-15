@@ -88,9 +88,7 @@ public:
     ui64 GetMinFlushedSequenceId() const;
     ui64 GetMaxFlushedSequenceId() const;
 
-    void VisitUnflushedRequests(
-        TCachedWriteDataRequestVisitor visitor,
-        ui64 maxSequenceId) const;
+    void VisitUnflushedRequests(TCachedWriteDataRequestVisitor visitor) const;
 
     TCachedData GetCachedData(
         ui64 offset,
