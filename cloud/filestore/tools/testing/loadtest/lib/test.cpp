@@ -12,6 +12,7 @@
 #include <cloud/filestore/libs/service/request.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/common/timer.h>
@@ -51,6 +52,7 @@ struct TTestStats
     struct TStats
     {
         ui64 Requests = 0;
+        ui64 RequestBytes = 0;
         TLatencyHistogram Hist;
     };
 
@@ -276,6 +278,9 @@ private:
 
     TInstant LastReportTs;
     ui64 LastRequestsCompleted = 0;
+
+    ui64 RequestBytes = 0;
+    ui64 LastRequestBytes = 0;
 
     IRequestGeneratorPtr RequestGenerator;
     TRequestsCompletionQueue CompletionQueue;
@@ -692,6 +697,8 @@ private:
 
             auto& stats = TestStats.ActionStats[request->Action];
             ++stats.Requests;
+            stats.RequestBytes += request->RequestBytes;
+            RequestBytes += request->RequestBytes;
             stats.Hist.RecordValue(request->Elapsed);
         }
     }
@@ -703,15 +710,21 @@ private:
 
         if (elapsed > ReportInterval) {
             const auto requestsCompleted = RequestsCompleted - LastRequestsCompleted;
+            const auto requestBytes = RequestBytes - LastRequestBytes;
 
             auto stats = GetStats();
-            STORAGE_INFO("%s current rate: %ld r/s; stats:\n%s",
+            STORAGE_INFO(
+                "%s current rate: %ld r/s, bandwidth: %s/s; stats:\n%s",
                 MakeTestTag().c_str(),
-                (ui64)(requestsCompleted / elapsed.Seconds()),
-                NProtobufJson::Proto2Json(stats, {.FormatOutput = true}).c_str());
+                (ui64)(requestsCompleted / elapsed.SecondsFloat()),
+                FormatByteSize((ui64)(requestBytes / elapsed.SecondsFloat()))
+                    .c_str(),
+                NProtobufJson::Proto2Json(stats, {.FormatOutput = true})
+                    .c_str());
 
             LastReportTs = now;
             LastRequestsCompleted = RequestsCompleted;
+            LastRequestBytes = RequestBytes;
         }
     }
 
@@ -726,6 +739,7 @@ private:
             auto* action = stats->Add();
             action->SetAction(NProto::EAction_Name(pair.first));
             action->SetCount(pair.second.Requests);
+            action->SetRequestBytes(pair.second.RequestBytes);
             FillLatency(pair.second.Hist, *action->MutableLatency());
         }
 

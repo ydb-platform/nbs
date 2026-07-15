@@ -24,13 +24,19 @@ struct TCompletedRequest
 {
     NProto::EAction Action{};
     TDuration Elapsed;
+    ui64 RequestBytes = 0;
     NProto::TError Error;
 
     TCompletedRequest() = default;
 
-    TCompletedRequest(NProto::EAction action, TInstant start, NProto::TError error) noexcept
+    TCompletedRequest(
+            NProto::EAction action,
+            TInstant start,
+            NProto::TError error,
+            ui64 requestBytes = 0) noexcept
         : Action(action)
         , Elapsed(TInstant::Now() - start)
+        , RequestBytes(requestBytes)
         , Error(std::move(error))
     {}
 };
