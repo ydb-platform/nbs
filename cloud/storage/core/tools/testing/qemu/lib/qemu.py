@@ -8,7 +8,12 @@ import yatest.common
 import yatest.common.network
 
 from contrib.ydb.tests.library.harness.daemon import Daemon
-from .common import get_qemu_bios, is_arm as is_arm_host
+from .common import (
+    get_chardev_reconnect,
+    get_qemu_bios,
+    get_virtiofs_migration,
+    is_arm as is_arm_host,
+)
 from .qmp import QmpClient
 
 logger = logging.getLogger(__name__)
@@ -89,7 +94,8 @@ class Qemu:
                  use_virtiofs_server=False,
                  num_request_queues=1,
                  is_arm=None,
-                 reconnect=None,
+                 chardev_reconnect=None,
+                 virtiofs_migration=None,
                  qemu_bios=None):
 
         self.ssh_port = 0
@@ -114,9 +120,13 @@ class Qemu:
         self.qemu_options = qemu_options
         self.num_request_queues = num_request_queues
 
-        # TODO(proller): Temporary disable reconnect and migration for arm, while preparing proper qemu binary
-        self.reconnect = reconnect if reconnect is not None else 0 if self.is_arm else 1
-        self.migration = "" if self.is_arm else ",migration=external"
+        if chardev_reconnect is None:
+            chardev_reconnect = get_chardev_reconnect()
+        if virtiofs_migration is None:
+            virtiofs_migration = get_virtiofs_migration()
+
+        self.chardev_reconnect_option = f",reconnect={chardev_reconnect}" if chardev_reconnect else ""
+        self.virtiofs_migration_option = f",migration={virtiofs_migration}" if virtiofs_migration else ""
 
         self.virtio_options = self._get_virtio_options(self.virtio, vhost_socket)
         self.enable_kvm = enable_kvm
@@ -158,12 +168,12 @@ class Qemu:
 
         cmd = [
             "-chardev",
-            f"socket,id=vhost0,path={vhost_socket},reconnect={self.reconnect}",
+            f"socket,id=vhost0,path={vhost_socket}{self.chardev_reconnect_option}",
         ]
         cmd += [
             "-device",
             "vhost-user-fs-pci,chardev=vhost0,id=vhost-user-fs0,tag=fs0,"
-            f"num-request-queues={self.num_request_queues},queue-size=512{self.migration}",
+            f"num-request-queues={self.num_request_queues},queue-size=512{self.virtiofs_migration_option}",
         ]
         return cmd
 
@@ -200,7 +210,7 @@ class Qemu:
             logger.info("migrate_status {}".format(json.dumps(status)))
 
         if status['status'] != "completed":
-            raise self.QemuException(status['status'])
+            raise QemuException(status['status'])
 
         self.qmp.close()
         self.qemu_bin.kill()
@@ -293,12 +303,12 @@ class Qemu:
             if self.use_virtiofs_server:
                 cmd += [
                     "-chardev",
-                    f"socket,id={tag},path={vhost_socket},reconnect={self.reconnect}",
+                    f"socket,id={tag},path={vhost_socket}{self.chardev_reconnect_option}",
                 ]
                 cmd += [
                     "-device",
                     f"vhost-user-fs-pci,chardev={tag},id=vhost-user-{tag},tag={tag},"
-                    f"queue-size=512{self.migration}",
+                    f"queue-size=512{self.virtiofs_migration_option}",
                 ]
             else:
                 cmd += ["-virtfs",
