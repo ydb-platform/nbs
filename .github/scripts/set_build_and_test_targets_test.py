@@ -206,16 +206,20 @@ def test_timeout_large_all_targets_gets_default_limit():
         )
     )
 
-    assert inc[0]["test_timeout_minutes"] == 320
+    assert inc[0]["test_timeout_minutes"] == 300
 
 
 def test_timeout_large_split_components_get_component_limits():
     inc = parse(
         mk(
             build_target=(
-                "cloud/blockstore/apps/,cloud/disk_manager/,cloud/tasks/,cloud/storage/"
+                "cloud/blockstore/apps/,cloud/filestore/apps/,"
+                "cloud/disk_manager/,cloud/tasks/,cloud/storage/"
             ),
-            test_target="cloud/blockstore/,cloud/disk_manager/,cloud/tasks/,cloud/storage/",
+            test_target=(
+                "cloud/blockstore/,cloud/filestore/,cloud/disk_manager/,"
+                "cloud/tasks/,cloud/storage/"
+            ),
             build_preset="relwithdebinfo",
             split=True,
             test_size="small,medium,large",
@@ -223,7 +227,8 @@ def test_timeout_large_split_components_get_component_limits():
     )
 
     by = {r["component"]: r for r in inc}
-    assert by["blockstore"]["test_timeout_minutes"] == 180
+    assert by["blockstore"]["test_timeout_minutes"] == 300
+    assert by["filestore"]["test_timeout_minutes"] == 300
     assert by["disk_manager"]["test_timeout_minutes"] == 120
     assert by["tasks_storage"]["test_timeout_minutes"] == 60
 
@@ -239,7 +244,7 @@ def test_timeout_large_unsplit_blockstore_filestore_gets_default_limit():
         )
     )
 
-    assert inc[0]["test_timeout_minutes"] == 320
+    assert inc[0]["test_timeout_minutes"] == 300
 
 
 def test_timeout_medium_all_targets_gets_two_hours():
@@ -260,3 +265,19 @@ def test_timeout_medium_all_targets_gets_two_hours():
     )
 
     assert inc[0]["test_timeout_minutes"] == 120
+
+
+def test_timeout_medium_split_blockstore_filestore_get_component_limits():
+    inc = parse(
+        mk(
+            build_target="cloud/blockstore/apps/,cloud/filestore/apps/",
+            test_target="cloud/blockstore/,cloud/filestore/",
+            build_preset="relwithdebinfo",
+            split=True,
+            test_size="small,medium",
+        )
+    )
+
+    by = {r["component"]: r for r in inc}
+    assert by["blockstore"]["test_timeout_minutes"] == 90
+    assert by["filestore"]["test_timeout_minutes"] == 90

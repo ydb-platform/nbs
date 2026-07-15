@@ -543,17 +543,17 @@ TEST_TIMEOUT_COMPONENTS_BY_KEY = {
 }
 TEST_TIMEOUT_MINUTES_BY_SIZE_AND_COMPONENT = {
     "large": {
-        "blockstore": 180,
-        "filestore": 180,
+        "blockstore": 300,
+        "filestore": 300,
         "disk_manager": 120,
         "tasks": 60,
         "storage": 60,
         "tasks_storage": 60,
-        TEST_TIMEOUT_COMPONENT_DEFAULT: 320,
+        TEST_TIMEOUT_COMPONENT_DEFAULT: 300,
     },
     "medium": {
-        "blockstore": 60,
-        "filestore": 60,
+        "blockstore": 90,
+        "filestore": 90,
         "disk_manager": 60,
         "tasks": 60,
         "storage": 60,

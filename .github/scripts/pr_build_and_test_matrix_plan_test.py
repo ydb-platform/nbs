@@ -218,14 +218,14 @@ def test_build_matrix_sets_large_all_targets_default_timeout():
     inp = mk_inputs(large_tests=True)
     matrix = build_matrix(inp)
 
-    assert matrix[0]["test_timeout_minutes"] == 320
+    assert matrix[0]["test_timeout_minutes"] == 300
 
 
 def test_build_matrix_sets_large_component_timeout():
     inp = mk_inputs(contains={"blockstore": True}, large_tests=True)
     matrix = build_matrix(inp)
 
-    assert matrix[0]["test_timeout_minutes"] == 180
+    assert matrix[0]["test_timeout_minutes"] == 300
 
 
 def test_build_matrix_skips_empty_san_targets():
