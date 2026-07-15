@@ -11,6 +11,7 @@ For other development environments, you should install clang-format-18 manually.
 ```
 sudo apt-get install clang-format-18
 ```
+Note that on some older Ubuntu versions you may need to setup [LLVM repository](https://apt.llvm.org/).
 
 Configure the plugin for your favorite code editor to use the [config](.clang-format) to format the code.
 
