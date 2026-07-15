@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/volume_model.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/private/api/protos/disk.pb.h>
 
 #include <cloud/storage/core/libs/common/media.h>
@@ -43,6 +44,7 @@ private:
     const NProto::TCreateVolumeFromDeviceRequest Request;
 
     NProto::TError Error;
+    TLogTitle LogTitle;
 
 public:
     TCreateVolumeFromDeviceActor(
@@ -82,6 +84,7 @@ TCreateVolumeFromDeviceActor::TCreateVolumeFromDeviceActor(
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , Request(std::move(request))
+    , LogTitle(GetCycleCount(), TLogTitle::TServiceRequest{})
 {}
 
 void TCreateVolumeFromDeviceActor::Bootstrap(const TActorContext& ctx)
@@ -90,6 +93,8 @@ void TCreateVolumeFromDeviceActor::Bootstrap(const TActorContext& ctx)
         ReplyAndDie(ctx, MakeError(E_ARGUMENT, "DiskId cannot be empty"));
         return;
     }
+
+    LogTitle.SetDiskId(Request.GetDiskId());
 
     if (!Request.GetAgentId()) {
         ReplyAndDie(ctx, MakeError(E_ARGUMENT, "AgentId cannot be empty"));
@@ -156,9 +161,11 @@ void TCreateVolumeFromDeviceActor::HandleCreateDiskFromDevicesResponse(
     const auto& error = msg->GetError();
 
     if (HasError(error)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-            "Creation of disk %s failed: %s",
-            Request.GetDiskId().Quote().c_str(),
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s Creation of disk failed: %s",
+            LogTitle.GetWithTime().c_str(),
             error.GetMessage().c_str());
 
         ReplyAndDie(ctx, msg->GetError());
@@ -181,9 +188,11 @@ void TCreateVolumeFromDeviceActor::HandleCreateDiskFromDevicesResponse(
 
     volumeConfig.SetCreationTs(ctx.Now().MicroSeconds());
 
-    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
-        "Sending createvolume request for volume %s",
-        volumeConfig.GetDiskId().Quote().c_str());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Sending createvolume request for volume",
+        LogTitle.GetWithTime().c_str());
 
     auto request = std::make_unique<TEvSSProxy::TEvCreateVolumeRequest>(
         std::move(volumeConfig));
@@ -203,9 +212,11 @@ void TCreateVolumeFromDeviceActor::HandleCreateVolumeResponse(
     const auto& error = msg->GetError();
 
     if (HasError(error)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-            "Creation of volume %s failed: %s",
-            Request.GetDiskId().Quote().c_str(),
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s Creation of volume failed: %s",
+            LogTitle.GetWithTime().c_str(),
             error.GetMessage().c_str());
     }
 

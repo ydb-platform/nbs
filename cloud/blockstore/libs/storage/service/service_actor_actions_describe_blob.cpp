@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 
 #include <cloud/blockstore/private/api/protos/volume.pb.h>
 
@@ -34,6 +35,7 @@ private:
 
     TString DiskId;
     NKikimr::TLogoBlobID BlobId;
+    TLogTitle LogTitle;
 
 public:
     TDescribeBlobActionActor(TRequestInfoPtr requestInfo, TString input);
@@ -61,6 +63,7 @@ TDescribeBlobActionActor::TDescribeBlobActionActor(
         TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
+    , LogTitle(GetCycleCount(), TLogTitle::TServiceRequest{})
 {}
 
 void TDescribeBlobActionActor::Bootstrap(const TActorContext& ctx)
@@ -74,6 +77,7 @@ void TDescribeBlobActionActor::Bootstrap(const TActorContext& ctx)
     }
 
     DiskId = request.GetDiskId();
+    LogTitle.SetDiskId(DiskId);
     if (!DiskId) {
         HandleError(ctx, MakeError(E_ARGUMENT, "DiskId should be defined"));
         return;
@@ -178,8 +182,11 @@ void TDescribeBlobActionActor::HandleDescribeBlobResponse(
     TString response;
     google::protobuf::util::MessageToJsonString(msg->Record, &response);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-        "Execute action private API: describe blob response: %s",
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Execute action private API: describe blob response: %s",
+        LogTitle.GetWithTime().c_str(),
         response.data());
 
     HandleSuccess(ctx, response);

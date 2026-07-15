@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 
 #include <cloud/storage/core/libs/common/media.h>
 
@@ -31,6 +32,7 @@ private:
     const bool IsCellRequest = false;
 
     NProto::TVolume Volume;
+    TLogTitle LogTitle;
 
 public:
     TDescribeVolumeActor(
@@ -75,6 +77,7 @@ TDescribeVolumeActor::TDescribeVolumeActor(
     , DiskId(std::move(diskId))
     , ExactDiskIdMatch(exactDiskIdMatch)
     , IsCellRequest(isCellRequest)
+    , LogTitle(GetCycleCount(), TLogTitle::TServiceRequest{.DiskId = DiskId})
 {}
 
 void TDescribeVolumeActor::Bootstrap(const TActorContext& ctx)
@@ -118,9 +121,11 @@ void TDescribeVolumeActor::HandleDescribeVolumeResponse(
     const auto& error = msg->GetError();
     if (FAILED(error.GetCode())) {
         if (!IsCellRequest) {
-            LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-                "Volume %s: describe failed: %s",
-                DiskId.Quote().data(),
+            LOG_ERROR(
+                ctx,
+                TBlockStoreComponents::SERVICE,
+                "%s Volume: describe failed: %s",
+                LogTitle.GetWithTime().c_str(),
                 FormatError(error).data());
         }
 
@@ -161,9 +166,11 @@ void TDescribeVolumeActor::HandleDescribeDiskResponse(
     const auto& error = msg->GetError();
     if (FAILED(error.GetCode())) {
         if (!IsCellRequest) {
-            LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-                "Non-replicated volume %s: describe failed: %s",
-                DiskId.Quote().data(),
+            LOG_ERROR(
+                ctx,
+                TBlockStoreComponents::SERVICE,
+                "%s Non-replicated volume: describe failed: %s",
+                LogTitle.GetWithTime().c_str(),
                 FormatError(error).data());
         }
 

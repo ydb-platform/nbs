@@ -2,7 +2,7 @@
 
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
-
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/private/api/protos/volume.pb.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -30,6 +30,7 @@ private:
     const TStorageConfigPtr Config;
 
     NPrivateProto::TSetupChannelsRequest Request;
+    TLogTitle LogTitle;
 
 public:
     TSetupChannelsActionActor(TRequestInfoPtr requestInfo,
@@ -61,6 +62,7 @@ TSetupChannelsActionActor::TSetupChannelsActionActor(
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
     , Config(config)
+    , LogTitle(GetCycleCount(), TLogTitle::TServiceRequest{})
 {}
 
 void TSetupChannelsActionActor::Bootstrap(const TActorContext& ctx)
@@ -79,9 +81,13 @@ void TSetupChannelsActionActor::Bootstrap(const TActorContext& ctx)
         return;
     }
 
-    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
-        "Start setup channels %s",
-        Request.GetDiskId().c_str());
+    LogTitle.SetDiskId(Request.GetDiskId());
+
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Start setup channels",
+        LogTitle.GetWithTime().c_str());
 
     NCloud::NBlockStore::NStorage::RegisterAlterVolumeActor(
         SelfId(),

@@ -3,7 +3,7 @@
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
-
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/private/api/protos/volume.pb.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -30,7 +30,7 @@ private:
     const TString Input;
 
     NPrivateProto::TScanDiskRequest Request;
-
+    TLogTitle LogTitle;
 public:
     TScanDiskActor(TRequestInfoPtr requestInfo, TString input);
 
@@ -57,6 +57,7 @@ TScanDiskActor::TScanDiskActor(
         TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
+    , LogTitle(GetCycleCount(), TLogTitle::TServiceRequest{})
 {}
 
 void TScanDiskActor::Bootstrap(const TActorContext& ctx)
@@ -75,6 +76,8 @@ void TScanDiskActor::Bootstrap(const TActorContext& ctx)
         return;
     }
 
+    LogTitle.SetDiskId(Request.GetDiskId());
+
     if (!Request.GetBatchSize()) {
         ReplyAndDie(ctx, MakeError(
             E_ARGUMENT,
@@ -86,9 +89,11 @@ void TScanDiskActor::Bootstrap(const TActorContext& ctx)
     request->Record.SetDiskId(Request.GetDiskId());
     request->Record.SetBatchSize(Request.GetBatchSize());
 
-    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
-        "Start scan disk %s",
-        Request.GetDiskId().c_str());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Start scan disk",
+        LogTitle.GetWithTime().c_str());
 
     NCloud::Send(
         ctx,
@@ -179,6 +184,7 @@ private:
     const TString Input;
 
     NPrivateProto::TGetScanDiskStatusRequest Request;
+    TLogTitle LogTitle;
 
 public:
     TScanDiskStatusActor(
@@ -208,6 +214,7 @@ TScanDiskStatusActor::TScanDiskStatusActor(
         TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
+    , LogTitle(GetCycleCount(), TLogTitle::TServiceRequest{})
 {
 }
 
@@ -227,12 +234,16 @@ void TScanDiskStatusActor::Bootstrap(const TActorContext& ctx)
         return;
     }
 
+    LogTitle.SetDiskId(Request.GetDiskId());
+
     auto request = std::make_unique<TEvVolume::TEvGetScanDiskStatusRequest>();
     request->Record.SetDiskId(Request.GetDiskId());
 
-    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
-        "Query scan disk progress for %s disk",
-        Request.GetDiskId().c_str());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Query scan disk progress for disk",
+        LogTitle.GetWithTime().c_str());
 
     NCloud::Send(
         ctx,

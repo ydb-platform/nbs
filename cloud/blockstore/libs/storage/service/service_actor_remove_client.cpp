@@ -4,6 +4,7 @@
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
@@ -21,6 +22,7 @@ private:
     const TRequestInfoPtr RequestInfo;
     const TString ClientId;
     const TString DiskId;
+    TLogTitle LogTitle;
 
 public:
     TRemoveClientActor(
@@ -30,6 +32,7 @@ public:
         : RequestInfo(std::move(requestInfo))
         , ClientId(std::move(clientId))
         , DiskId(std::move(diskId))
+        , LogTitle(GetCycleCount(), TLogTitle::TServiceRequest{.DiskId = DiskId})
     {}
 
     void Bootstrap(const TActorContext& ctx);
@@ -61,9 +64,9 @@ void TRemoveClientActor::HandleRemoveClientResponse(
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::SERVICE,
-            "Error while removing client %s from disk %s : %s",
+            "%s Error while removing client %s : %s",
+            LogTitle.GetWithTime().c_str(),
             ClientId.Quote().c_str(),
-            DiskId.Quote().c_str(),
             FormatError(msg->GetError()).c_str());
     }
 

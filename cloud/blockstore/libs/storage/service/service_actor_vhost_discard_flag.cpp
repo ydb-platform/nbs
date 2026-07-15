@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/private/api/protos/volume.pb.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -37,6 +38,7 @@ private:
     ui32 ConfigVersion = 0;
 
     NKikimrBlockStore::TVolumeConfig VolumeConfig;
+    TLogTitle LogTitle;
 
 public:
     TSetVhostDiscardFlagActor(
@@ -86,6 +88,7 @@ TSetVhostDiscardFlagActor::TSetVhostDiscardFlagActor(
     , DiskId(std::move(diskId))
     , VhostDiscardEnabled(vhostDiscardEnabled)
     , ConfigVersion(configVersion)
+    , LogTitle(GetCycleCount(), TLogTitle::TServiceRequest{.DiskId = DiskId})
 {}
 
 void TSetVhostDiscardFlagActor::Bootstrap(const TActorContext& ctx)
@@ -111,8 +114,8 @@ void TSetVhostDiscardFlagActor::DescribeVolume(
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::SERVICE,
-        "Sending describe request for volume %s",
-        DiskId.Quote().c_str());
+        "%s Sending describe request for volume",
+        LogTitle.GetWithTime().c_str());
 
     NCloud::Send(
         ctx,
@@ -131,7 +134,8 @@ void TSetVhostDiscardFlagActor::AlterVolume(
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::SERVICE,
-        "Sending SetVhostDiscardFlag->Alter request for %s",
+        "%s Sending SetVhostDiscardFlag->Alter request for %s",
+        LogTitle.GetWithTime().c_str(),
         path.Quote().c_str());
 
     auto request = CreateModifySchemeRequestForAlterVolume(
@@ -149,8 +153,8 @@ void TSetVhostDiscardFlagActor::WaitReady(const TActorContext& ctx)
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::SERVICE,
-        "Sending SetVhostDiscardFlag->WaitReady request to volume %s",
-        DiskId.Quote().c_str());
+        "%s Sending SetVhostDiscardFlag->WaitReady request to volume",
+        LogTitle.GetWithTime().c_str());
 
     auto request = std::make_unique<TEvVolume::TEvWaitReadyRequest>();
     request->Record.SetDiskId(DiskId);
@@ -190,8 +194,8 @@ void TSetVhostDiscardFlagActor::HandleDescribeVolumeResponse(
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::SERVICE,
-            "Volume %s: describe failed: %s",
-            DiskId.Quote().c_str(),
+            "%s Volume: describe failed: %s",
+            LogTitle.GetWithTime().c_str(),
             FormatError(error).c_str());
         ReplyAndDie(ctx, std::move(error));
         return;
@@ -211,10 +215,10 @@ void TSetVhostDiscardFlagActor::HandleDescribeVolumeResponse(
         LOG_INFO(
             ctx,
             TBlockStoreComponents::SERVICE,
-            "Skipping setting VhostDiscardEnabled to %d; "
-            "VhostDiscardEnabled option is already as desired for volume %s",
-            VhostDiscardEnabled,
-            DiskId.Quote().c_str());
+            "%s Skipping setting VhostDiscardEnabled to %d; "
+            "VhostDiscardEnabled option is already as desired for volume",
+            LogTitle.GetWithTime().c_str(),
+            VhostDiscardEnabled);
         ReplyAndDie(ctx, error);
         return;
     }
@@ -240,8 +244,8 @@ void TSetVhostDiscardFlagActor::HandleAlterVolumeResponse(
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::SERVICE,
-            "SetVhostDiscardFlag->Alter of volume %s failed: %s",
-            DiskId.Quote().c_str(),
+            "%s SetVhostDiscardFlag->Alter of volume failed: %s",
+            LogTitle.GetWithTime().c_str(),
             msg->GetErrorReason().c_str());
 
         ReplyAndDie(ctx, std::move(error));
@@ -263,17 +267,16 @@ void TSetVhostDiscardFlagActor::HandleWaitReadyResponse(
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::SERVICE,
-            "SetVhostDiscardFlag->WaitReady request failed for volume "
-            "%s, "
+            "%s SetVhostDiscardFlag->WaitReady request failed for volume, "
             "error: %s",
-            DiskId.Quote().c_str(),
+            LogTitle.GetWithTime().c_str(),
             msg->GetErrorReason().Quote().c_str());
     } else {
         LOG_INFO(
             ctx,
             TBlockStoreComponents::SERVICE,
-            "Successfully done SetVhostDiscardFlag for volume %s",
-            DiskId.Quote().c_str());
+            "%s Successfully done SetVhostDiscardFlag for volume",
+            LogTitle.GetWithTime().c_str());
     }
 
     ReplyAndDie(ctx, std::move(error));

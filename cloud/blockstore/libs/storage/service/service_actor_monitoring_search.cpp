@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
 
@@ -27,6 +28,7 @@ private:
     const TRequestInfoPtr RequestInfo;
     const TString DiskId;
     const ui32 ClientCount;
+    TLogTitle LogTitle;
 
 public:
     THttpFindVolumeActor(
@@ -63,6 +65,7 @@ THttpFindVolumeActor::THttpFindVolumeActor(
     : RequestInfo(std::move(requestInfo))
     , DiskId(std::move(diskId))
     , ClientCount(clientCount)
+    , LogTitle(GetCycleCount(), TLogTitle::TServiceRequest{.DiskId = DiskId})
 {}
 
 void THttpFindVolumeActor::Bootstrap(const TActorContext& ctx)
@@ -98,7 +101,12 @@ TString THttpFindVolumeActor::HandleError(
     out << "Could not resolve paths [\"" << JoinStrings(paths, "\", \"")
         << "\"] for volume " << DiskId.Quote() << ": " << FormatError(error);
 
-    LOG_WARN(ctx, TBlockStoreComponents::SERVICE, out.Str());
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s %s",
+        LogTitle.GetWithTime().c_str(),
+        out.Str().c_str());
     return out.Str();
 }
 

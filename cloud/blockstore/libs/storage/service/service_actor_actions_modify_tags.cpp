@@ -1,10 +1,12 @@
 #include "service_actor.h"
 
+#include "cloud/blockstore/libs/storage/ss_proxy/ss_proxy_actor.h"
+
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
-#include "cloud/blockstore/libs/storage/ss_proxy/ss_proxy_actor.h"
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/private/api/protos/volume.pb.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -43,6 +45,7 @@ private:
         std::function<NActors::IEventBasePtr(NProto::TError)>;
 
     TResponseCreateFunc CreateResponse;
+    TLogTitle LogTitle;
 
 public:
     TModifyTagsActionActor(
@@ -93,6 +96,7 @@ TModifyTagsActionActor::TModifyTagsActionActor(
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
     , CreateResponse(std::move(createResponse))
+    , LogTitle(GetCycleCount(), TLogTitle::TServiceRequest{})
 {}
 
 bool TModifyTagsActionActor::ValidateTag(
@@ -119,6 +123,8 @@ void TModifyTagsActionActor::Bootstrap(const TActorContext& ctx)
         ReplyAndDie(ctx, MakeError(E_ARGUMENT, "Failed to parse input"));
         return;
     }
+
+    LogTitle.SetDiskId(Request.GetDiskId());
 
     if (!Request.GetDiskId()) {
         ReplyAndDie(ctx, MakeError(E_ARGUMENT, "DiskId should be supplied"));
@@ -158,9 +164,11 @@ void TModifyTagsActionActor::DescribeVolume(const TActorContext& ctx)
 {
     Become(&TThis::StateDescribeVolume);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-        "Sending describe request for volume %s",
-        Request.GetDiskId().Quote().c_str());
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Sending describe request for volume",
+        LogTitle.GetWithTime().c_str());
 
     NCloud::Send(
         ctx,
@@ -176,8 +184,11 @@ void TModifyTagsActionActor::AlterVolume(
 {
     Become(&TThis::StateAlterVolume);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-        "Sending ModifyTags->Alter request for %s",
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Sending ModifyTags->Alter request for %s",
+        LogTitle.GetWithTime().c_str(),
         path.Quote().c_str());
 
     auto request = CreateModifySchemeRequestForAlterVolume(
@@ -225,9 +236,11 @@ void TModifyTagsActionActor::HandleDescribeVolumeResponse(
 
     auto error = msg->GetError();
     if (FAILED(error.GetCode())) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-            "Volume %s: describe failed: %s",
-            Request.GetDiskId().Quote().c_str(),
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s Volume: describe failed: %s",
+            LogTitle.GetWithTime().c_str(),
             FormatError(error).c_str());
         ReplyAndDie(ctx, std::move(error));
         return;
@@ -272,9 +285,9 @@ void TModifyTagsActionActor::HandleDescribeVolumeResponse(
         LOG_INFO(
             ctx,
             TBlockStoreComponents::SERVICE,
-            "Skipping tag modification; tags are already as desired for volume "
-            "%s",
-            Request.GetDiskId().Quote().c_str());
+            "%s Skipping tag modification; tags are already as desired for "
+            "volume",
+            LogTitle.GetWithTime().c_str());
         ReplyAndDie(ctx, error);
         return;
     }
@@ -297,18 +310,22 @@ void TModifyTagsActionActor::HandleAlterVolumeResponse(
     ui32 errorCode = error.GetCode();
 
     if (FAILED(errorCode)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-            "ModifyTags->Alter of volume %s failed: %s",
-            Request.GetDiskId().Quote().c_str(),
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s ModifyTags->Alter of volume failed: %s",
+            LogTitle.GetWithTime().c_str(),
             msg->GetErrorReason().c_str());
 
         ReplyAndDie(ctx, error);
         return;
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-        "Sending WaitReady request to volume %s",
-        Request.GetDiskId().Quote().c_str());
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Sending WaitReady request to volume",
+        LogTitle.GetWithTime().c_str());
 
     WaitReady(ctx);
 }
@@ -321,14 +338,18 @@ void TModifyTagsActionActor::HandleWaitReadyResponse(
     NProto::TError error = msg->GetError();
 
     if (HasError(error)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-            "ModifyTags->WaitReady request failed for volume %s, error: %s",
-            Request.GetDiskId().Quote().c_str(),
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s ModifyTags->WaitReady request failed for volume, error: %s",
+            LogTitle.GetWithTime().c_str(),
             msg->GetErrorReason().Quote().c_str());
     } else {
-        LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-            "Successfully modified tags for volume %s",
-            Request.GetDiskId().Quote().c_str());
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s Successfully modified tags for volume",
+            LogTitle.GetWithTime().c_str());
     }
 
     ReplyAndDie(ctx, std::move(error));

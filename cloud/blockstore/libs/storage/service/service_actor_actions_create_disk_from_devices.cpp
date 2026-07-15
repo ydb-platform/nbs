@@ -3,8 +3,9 @@
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
-#include <cloud/blockstore/libs/storage/core/volume_model.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/libs/storage/core/volume_model.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
@@ -63,6 +64,7 @@ private:
     const TString Input;
 
     NProto::TCreateVolumeFromDevicesRequest Request;
+    TLogTitle LogTitle;
 
 public:
     TCreateDiskFromDevicesActor(
@@ -96,6 +98,7 @@ TCreateDiskFromDevicesActor::TCreateDiskFromDevicesActor(
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , Input(std::move(input))
+    , LogTitle(GetCycleCount(), TLogTitle::TServiceRequest{})
 {}
 
 void TCreateDiskFromDevicesActor::Bootstrap(const TActorContext& ctx)
@@ -113,6 +116,8 @@ void TCreateDiskFromDevicesActor::Bootstrap(const TActorContext& ctx)
         ReplyAndDie(ctx, MakeError(E_ARGUMENT, "DiskId cannot be empty"));
         return;
     }
+
+    LogTitle.SetDiskId(Request.GetDiskId());
 
     if (!Request.GetBlockSize()) {
         ReplyAndDie(ctx, MakeError(E_ARGUMENT, "BlockSize cannot be zero"));
@@ -179,11 +184,11 @@ void TCreateDiskFromDevicesActor::HandleCreateDiskFromDevicesResponse(
     auto volumeConfig = ConvertToVolumeConfig(Request);
 
     if (HasError(error)) {
-        LOG_ERROR_S(ctx, TBlockStoreComponents::SERVICE,
-            "Creation of disk "
-            << volumeConfig.GetDiskId().Quote()
-            << " failed: "
-            << error.GetMessage());
+        LOG_ERROR_S(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            LogTitle.GetWithTime()
+                << " Creation of disk failed: " << error.GetMessage());
 
         ReplyAndDie(ctx, msg->GetError());
         return;
@@ -202,9 +207,10 @@ void TCreateDiskFromDevicesActor::HandleCreateDiskFromDevicesResponse(
 
     volumeConfig.SetCreationTs(ctx.Now().MicroSeconds());
 
-    LOG_INFO_S(ctx, TBlockStoreComponents::SERVICE,
-        "Sending createvolume request for volume "
-        << volumeConfig.GetDiskId().Quote());
+    LOG_INFO_S(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        LogTitle.GetWithTime() << " Sending createvolume request for volume");
 
     NCloud::Send(
         ctx,
@@ -221,11 +227,11 @@ void TCreateDiskFromDevicesActor::HandleCreateVolumeResponse(
     const auto& error = msg->GetError();
 
     if (HasError(error)) {
-        LOG_ERROR_S(ctx, TBlockStoreComponents::SERVICE,
-            "Creation of disk "
-            << Request.GetDiskId().Quote()
-            << " failed: "
-            << error.GetMessage());
+        LOG_ERROR_S(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            LogTitle.GetWithTime()
+                << " Creation of disk failed: " << error.GetMessage());
     }
 
     ReplyAndDie(ctx, error);
