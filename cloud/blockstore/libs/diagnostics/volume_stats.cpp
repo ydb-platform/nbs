@@ -260,7 +260,7 @@ private:
     // Cumulative per-volume availability counters (derivative/RATE, seconds).
     // Nested: ObservedSeconds >= AvailableSeconds >= HealthySeconds. Consumers
     // compute availability = Available/Observed and quality = Healthy/Observed
-    // over a window. Advance only while the volume is being served, 
+    // over a window. Advance only while the volume is being served,
     // until the counters are trimmed.
     TDynamicCounters::TCounterPtr ObservedSecondsCounter;
     TDynamicCounters::TCounterPtr AvailableSecondsCounter;
