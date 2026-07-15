@@ -37,6 +37,7 @@ LABEL_TO_WORKFLOWS = {
     "nightly-tsan": ["nightly-tsan.yaml"],
     "nightly-msan": ["nightly-msan.yaml"],
     "nightly-ubsan": ["nightly-ubsan.yaml"],
+    "nightly-arm": ["nightly-arm.yaml"],
     "nightly-sanitizers": [
         "nightly-asan.yaml",
         "nightly-tsan.yaml",
@@ -49,6 +50,7 @@ LABEL_TO_WORKFLOWS = {
         "nightly-tsan.yaml",
         "nightly-msan.yaml",
         "nightly-ubsan.yaml",
+        "nightly-arm.yaml",
     ],
 }
 

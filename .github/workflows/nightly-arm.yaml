@@ -1,0 +1,72 @@
+name: Nightly build (ARM Grace)
+run-name: |
+  ${{ github.event_name == 'schedule'
+      && 'Nightly build (ARM Grace) (schedule)'
+      || (
+            inputs.comment != ''
+            && format('Nightly build (ARM Grace) (manual) (comment: {0})', inputs.comment)
+            || 'Nightly build (ARM Grace) (manual)'
+          )
+    }}
+on:
+  schedule:
+    - cron: "30 23 * * *"
+  workflow_dispatch:
+    inputs:
+      build_target:
+        description: "Build target"
+        type: string
+        required: false
+        default: "cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/,cloud/tasks/,cloud/storage/"
+      comment:
+        description: "Comment"
+        type: string
+        required: false
+        default: ""
+
+jobs:
+  build_dispatch:
+    name: Build ARM Grace using YA (relwithdebinfo) (dispatch)
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    uses: ./.github/workflows/build_and_test_proxy.yaml
+    secrets: inherit
+    with:
+      mode: hybrid
+      allow_split_workload: false
+      vm_preset: ${{ vars.POOLED_HEAVY_VM_PRESET_NIGHTLY }}
+      vm_name_suffix: "-arm-grace"
+      build_target: ${{ inputs.build_target }}
+      test_target: "cloud/blockstore/,cloud/filestore/,cloud/disk_manager/,cloud/tasks/,cloud/storage/"
+      test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt,govet"
+      test_size: small,medium,large
+      build_preset: relwithdebinfo
+      run_build: true
+      run_tests: false
+      target_platform: default-linux-armv9a_grace
+      cache_update_build: true
+      cache_update_tests: false
+      sleep_after_tests: "1"
+      number_of_retries: 1
+
+  build_schedule:
+    name: Build ARM Grace using YA (relwithdebinfo) (schedule)
+    if: ${{ github.event_name == 'schedule' }}
+    uses: ./.github/workflows/build_and_test_proxy.yaml
+    secrets: inherit
+    with:
+      mode: hybrid
+      allow_split_workload: false
+      vm_preset: ${{ vars.POOLED_HEAVY_VM_PRESET_NIGHTLY }}
+      vm_name_suffix: "-arm-grace"
+      build_target: "cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/,cloud/tasks/,cloud/storage/"
+      test_target: "cloud/blockstore/,cloud/filestore/,cloud/disk_manager/,cloud/tasks/,cloud/storage/"
+      test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt,govet"
+      test_size: small,medium,large
+      build_preset: relwithdebinfo
+      run_build: true
+      run_tests: false
+      target_platform: default-linux-armv9a_grace
+      cache_update_build: true
+      cache_update_tests: false
+      sleep_after_tests: "1"
+      number_of_retries: 1

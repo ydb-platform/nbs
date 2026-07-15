@@ -52,5 +52,6 @@ runs:
           HAS_HYBRID_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'hybrid') && 'true' || 'false' }}
 
           HAS_LARGE_TESTS_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && 'true' || 'false' }}
+          HAS_ARM64_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'arm64') && 'true' || 'false' }}
 
           SCHEDULING_TYPE: ${{ inputs.scheduling_type }}

@@ -37,6 +37,10 @@ on:
         type: boolean
         default: true
         description: "run tests"
+      target_platform:
+        type: string
+        default: ""
+        description: "ya make target platform"
       sleep_after_tests:
         type: string
         default: "0"
@@ -185,6 +189,7 @@ jobs:
       with:
         command: update
         build_preset: ${{ inputs.build_preset }}
+        target_platform: ${{ inputs.target_platform }}
         component: ${{ inputs.component == '' && 'all' || inputs.component }}
         workload_check_status: running
         current_job_name: Build and test ${{ inputs.build_preset }}
@@ -201,6 +206,7 @@ jobs:
         s3_key_secret: ${{ secrets.POOLED_HEAVY_AWS_SECRET_KEY }}
         folder_prefix: nebius-
         build_preset: ${{ inputs.build_preset }}
+        target_platform: ${{ inputs.target_platform }}
         install: false
 
     - name: Build
@@ -219,6 +225,7 @@ jobs:
         link_threads: ${{ steps.calculate-threads.outputs.link_threads }}
         clean_ya_dir: ${{ inputs.clean_ya_dir }}
         use_network_cache: ${{ inputs.use_network_cache }}
+        target_platform: ${{ inputs.target_platform }}
 
     - name: Run tests
       uses: ./.github/actions/test
@@ -249,6 +256,7 @@ jobs:
       with:
         command: update
         build_preset: ${{ inputs.build_preset }}
+        target_platform: ${{ inputs.target_platform }}
         component: ${{ inputs.component == '' && 'all' || inputs.component }}
         workload_check_status: failed_build
         build_error_log_url: ${{ steps.build.outputs.build_error_log_url }}
@@ -267,6 +275,7 @@ jobs:
       with:
         command: update
         build_preset: ${{ inputs.build_preset }}
+        target_platform: ${{ inputs.target_platform }}
         component: ${{ inputs.component == '' && 'all' || inputs.component }}
         workload_check_status: completed
   debug:
@@ -315,7 +324,7 @@ jobs:
       - calculate-runs-on
       - build-and-test
     # we can only rely on fact that test_failed can be null
-    if: ${{ failure() && vars.POOLED_ENABLE_FAILED_TESTS_RETRY_ON_NODE_FAILURE == 'yes' && (needs.build-and-test.outputs.test_failed == null && needs.build-and-test.outputs.test_run_outcome == null) }}
+    if: ${{ inputs.run_tests && failure() && vars.POOLED_ENABLE_FAILED_TESTS_RETRY_ON_NODE_FAILURE == 'yes' && (needs.build-and-test.outputs.test_failed == null && needs.build-and-test.outputs.test_run_outcome == null) }}
     steps:
       - name: Checkout PR
         uses: actions/checkout@v7
@@ -394,6 +403,7 @@ jobs:
           s3_key_secret: ${{ secrets.POOLED_HEAVY_AWS_SECRET_KEY }}
           folder_prefix: nebius-
           build_preset: ${{ inputs.build_preset }}
+          target_platform: ${{ inputs.target_platform }}
           install: false
       - name: Run tests
         uses: ./.github/actions/test
