@@ -1,5 +1,7 @@
 #include "part_actor.h"
 
+#include "part_readblobinfo_logic.h"
+
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
 using namespace NActors;
@@ -49,41 +51,13 @@ bool TPartitionActor::PrepareCompactionReadBlobInfo(
     TRequestScope timer(*args.RequestInfo);
     TPartitionDatabase db(tx.DB);
 
-    bool ready = true;
-
-    for (size_t i = 0; i < args.BlobsToReadBlockMasks.size(); ++i) {
-        TMaybe<TBlockMask> mask;
-        if (!db.ReadBlockMask(args.BlobsToReadBlockMasks[i], mask)) {
-            ready = false;
-            continue;
-        }
-        STORAGE_VERIFY_C(
-            mask.Defined(),
-            TWellKnownEntityTypes::TABLET,
-            TabletID(),
-            TStringBuilder()
-                << "Could not read block mask for blob: "
-                << MakeBlobId(TabletID(), args.BlobsToReadBlockMasks[i]));
-        args.BlockMasks.emplace_back(*mask);
-    }
-
-    for (size_t i = 0; i < args.BlobsToReadBlobMetas.size(); ++i) {
-        TMaybe<NProto::TBlobMeta> meta;
-        if (!db.ReadBlobMeta(args.BlobsToReadBlobMetas[i], meta)) {
-            ready = false;
-            continue;
-        }
-        STORAGE_VERIFY_C(
-            meta.Defined(),
-            TWellKnownEntityTypes::TABLET,
-            TabletID(),
-            TStringBuilder()
-                << "Could not read blob meta for blob: "
-                << MakeBlobId(TabletID(), args.BlobsToReadBlobMetas[i]));
-        args.BlobMetas.emplace_back(std::move(*meta));
-    }
-
-    return ready;
+    return ReadBlobsInfo(
+        db,
+        args.BlobsToReadBlockMasks,
+        args.BlobsToReadBlobMetas,
+        TabletID(),
+        args.BlockMasks,
+        args.BlobMetas);
 }
 
 void TPartitionActor::ExecuteCompactionReadBlobInfo(
