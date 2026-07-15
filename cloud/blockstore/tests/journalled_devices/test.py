@@ -1,8 +1,6 @@
 import logging
 import os
 import pytest
-import time
-import sys
 import socket
 import itertools
 import struct
@@ -11,9 +9,6 @@ import cloud.storage.core.protos.device_pb2 as device_pb2
 
 from cloud.blockstore.tests.python.lib.test_client import CreateTestClient
 
-from cloud.blockstore.public.sdk.python.client import Session
-from cloud.blockstore.public.sdk.python.client.error import ClientError
-from cloud.blockstore.public.sdk.python.client.error_codes import EResult
 from cloud.blockstore.public.sdk.python.protos import STORAGE_MEDIA_SSD_LOCAL
 
 from cloud.blockstore.tests.python.lib.config import NbsConfigurator, \
@@ -21,12 +16,12 @@ from cloud.blockstore.tests.python.lib.config import NbsConfigurator, \
 
 import cloud.blockstore.tests.python.lib.daemon as daemon
 
-import yatest.common as yatest_common
-
 from yatest.common.network import PortManager
 
 from contrib.ydb.tests.library.harness.kikimr_runner import \
     get_unique_path_for_current_test, ensure_path_exists
+
+from google.protobuf.message import DecodeError
 
 
 DEVICE_SIZE = 8 * 1024 ** 2  # 8 MiB
@@ -45,9 +40,11 @@ KNOWN_DEVICE_POOLS = {
         },
     ]}
 
+
 @pytest.fixture(name='agent_id')
 def get_agent_id():
     return daemon.get_fqdn()
+
 
 @pytest.fixture(name='tcp_port')
 def get_tcp_port():
@@ -86,6 +83,7 @@ def start_nbs_daemon(ydb):
     yield p
 
     p.kill()
+
 
 @pytest.fixture(autouse=True)
 def start_disk_agent(ydb, nbs, agent_id, tcp_port, tmp_path):
@@ -138,7 +136,6 @@ def start_disk_agent(ydb, nbs, agent_id, tcp_port, tmp_path):
 
     disk_agent.stop()
 
-################################################################################
 
 class DeviceProtocolError(Exception):
     """Journalled Device Protocol Error"""
@@ -298,8 +295,8 @@ class DeviceTcpClient:
     @staticmethod
     def _ensure_response_type(
         response: device_pb2.TDeviceProtocolResponse,
-        expected_type: str):
-
+        expected_type: str
+    ):
         actual_type = response.WhichOneof("Response")
 
         if actual_type != expected_type:
@@ -369,7 +366,6 @@ class DeviceTcpClient:
 
         return response
 
-################################################################################
 
 def test_journalled_devices(nbs, tcp_port):
 
@@ -427,4 +423,3 @@ def test_journalled_devices(nbs, tcp_port):
         assert len(group.Content) == 2
         assert group.Content[0] == b"A" * page_size
         assert group.Content[1] == b"B" * page_size
-
