@@ -41,7 +41,7 @@ public:
               Stats->GetWriteBackCacheStateStats(),
               Stats->GetWriteDataRequestManagerStats(),
               Stats->GetNodeStateHolderStats(),
-              TFlushBackpressureCalculator({}),
+              TFlushBatchLimits{},
               "[tag]")
     {
         State.Init(CreateTestStorage(Stats));

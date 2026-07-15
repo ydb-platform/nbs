@@ -20,13 +20,13 @@ TWriteBackCacheState::TWriteBackCacheState(
     IWriteBackCacheStateStatsPtr writeBackCacheStateStats,
     IWriteDataRequestManagerStatsPtr writeDataRequestManagerStats,
     INodeStateHolderStatsPtr nodeStateHolderStats,
-    TFlushBackpressureCalculator flushBackpressureCalculator,
+    const TFlushBatchLimits& flushBatchLimits,
     TString logTag)
     : SequenceIdGenerator(std::make_shared<TSequenceIdGenerator>())
     , Timer(std::move(timer))
     , Stats(std::move(writeBackCacheStateStats))
     , RequestManagerStats(std::move(writeDataRequestManagerStats))
-    , FlushBackpressureCalculator(std::move(flushBackpressureCalculator))
+    , FlushBatchLimits(flushBatchLimits)
     , LogTag(std::move(logTag))
     , Nodes(Timer, std::move(nodeStateHolderStats))
     , QueuedOperations(processor)
@@ -271,18 +271,14 @@ void TWriteBackCacheState::UnpinNodeStates(TNodeStatePin pinId)
     Nodes.Unpin(pinId);
 }
 
-void TWriteBackCacheState::VisitUnflushedRequests(
+void TWriteBackCacheState::VisitUnflushedRequestsFromFrontFlushBatch(
     ui64 nodeId,
-    const TEntryVisitor& visitor) const
+    const TEntryVisitor& visitor)
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 
-    const auto* nodeState = Nodes.GetNodeState(nodeId);
+    auto* nodeState = Nodes.GetNodeState(nodeId, /* includeDeleted = */ false);
     if (nodeState == nullptr) {
-        return;
-    }
-
-    if (!nodeState->Cache.HasUnflushedRequests()) {
         return;
     }
 
@@ -293,7 +289,7 @@ void TWriteBackCacheState::VisitUnflushedRequests(
         }
     }
 
-    nodeState->Cache.VisitUnflushedRequests(visitor);
+    nodeState->Cache.VisitUnflushedRequestsFromFrontFlushBatch(visitor);
 }
 
 ui64 TWriteBackCacheState::GetLiveHandle(ui64 nodeId) const
@@ -618,10 +614,9 @@ void TWriteBackCacheState::TriggerFlushAll(bool includePendingRequests)
 bool TWriteBackCacheState::GetBackpressureStatus(
     const TNodeState& nodeState) const
 {
-    return FlushBackpressureCalculator.GetBackpressureStatus(
-        nodeState.Cache.GetUnflushedRequestsCount(),
-        nodeState.Cache.GetCachedDataContiguousIntervalCount(),
-        nodeState.Cache.GetCachedDataByteCount());
+    return FlushBatchLimits.MaxQueuedFlushBatchesPerNode > 0 &&
+           nodeState.Cache.GetExpectedFlushBatchCount() >
+               FlushBatchLimits.MaxQueuedFlushBatchesPerNode;
 }
 
 void TWriteBackCacheState::UpdateFlushStatus(ui64 nodeId, TNodeState& nodeState)
@@ -836,7 +831,9 @@ void TWriteBackCacheState::EnqueueUnflushedRequest(
     TNodeState& nodeState,
     std::unique_ptr<TCachedWriteDataRequest> request)
 {
-    nodeState.Cache.EnqueueUnflushedRequest(std::move(request));
+    nodeState.Cache.EnqueueUnflushedRequest(
+        FlushBatchLimits,
+        std::move(request));
 
     if (GetBackpressureStatus(nodeState)) {
         RequestManager.SetBackpressureStatusForNode(nodeId);

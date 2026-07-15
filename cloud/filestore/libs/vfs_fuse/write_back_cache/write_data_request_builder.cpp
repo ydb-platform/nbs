@@ -162,7 +162,6 @@ private:
     const ui64 NodeId;
     const TWriteDataRequestBuilderConfig Config;
 
-    TFlushBatchWriteRequestCounter FlushBatchWriteRequestCounter;
     TVector<TWriteDataRequestPart> InputRequests;
 
 public:
@@ -173,26 +172,10 @@ public:
         , Config(std::move(config))
     {}
 
-    bool AddRequest(ui64 offset, TStringBuf data) override
+    void AddRequest(ui64 offset, TStringBuf data) override
     {
         Y_ABORT_UNLESS(!data.empty(), "Empty requests are not allowed");
-
-        FlushBatchWriteRequestCounter.AddRequestInterval(
-            Config.FlushBatchLimits,
-            offset,
-            offset + data.size());
-
-        if ((FlushBatchWriteRequestCounter.GetWriteRequestCount() >
-                 Config.FlushBatchLimits.MaxWriteRequestsCount ||
-             FlushBatchWriteRequestCounter.GetSumWriteRequestsSize() >
-                 Config.FlushBatchLimits.MaxSumWriteRequestsSize) &&
-            !InputRequests.empty())
-        {
-            return false;
-        }
-
         InputRequests.push_back({offset, data});
-        return true;
     }
 
     TWriteDataRequestBatch Build() override

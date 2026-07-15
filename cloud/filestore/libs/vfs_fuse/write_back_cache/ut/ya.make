@@ -6,7 +6,6 @@ SRCDIR(cloud/filestore/libs/vfs_fuse/write_back_cache)
 
 SRCS(
     disjoint_interval_builder_ut.cpp
-    flush_backpressure_calculator_ut.cpp
     flush_batch_write_request_counter_ut.cpp
     node_cache_ut.cpp
     node_state_holder_ut.cpp
@@ -18,7 +17,6 @@ SRCS(
     write_back_cache_state_ut.cpp
     write_back_cache_stats_ut.cpp
     write_back_cache_ut.cpp
-    write_data_request_builder_ut.cpp
     write_data_request_manager_ut.cpp
 )
 
