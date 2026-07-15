@@ -34,6 +34,7 @@ func TestCacheReadConcurrently(t *testing.T) {
 		func(context.Context, uint64, []byte) error {
 			return nil
 		},
+		nil, // onCacheHit
 	)
 	cache.maxCacheSize = cache.chunkSize
 	wg := errgroup.Group{}
