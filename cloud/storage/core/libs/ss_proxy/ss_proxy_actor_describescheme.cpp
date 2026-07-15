@@ -261,18 +261,16 @@ void TDescribeSchemeActor::HandleDescribeSchemeResult(
 
     if (entry.ListNodeEntry) {
         for (const auto& child: entry.ListNodeEntry->Children) {
-            auto* childEntry = pathDescription.MutableChildren()->Add();
-
             auto pathType = ConvertSchemeCacheKind(child.Kind);
-
             if (!pathType) {
-                const TString message = TStringBuilder()
-                    << "Unknown child path kind: " << child.Kind;
-                ReportSchemeCacheError(message);
-                HandleError(ctx, MakeError(E_REJECTED, message));
-                return;
+                LOG_WARN(ctx, LogComponent,
+                    "Skipping child with unknown kind: %d, name: %s",
+                    static_cast<int>(child.Kind),
+                    child.Name.c_str());
+                continue;
             }
 
+            auto* childEntry = pathDescription.MutableChildren()->Add();
             childEntry->SetPathType(*pathType);
             childEntry->SetName(child.Name);
             childEntry->SetPathId(child.PathId.LocalPathId);

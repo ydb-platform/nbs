@@ -2074,6 +2074,89 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
             "NavigateKeySet undelivered",
             response->GetErrorReason());
     }
+
+    Y_UNIT_TEST(ShouldSkipUnknownChildKindsWithSchemeCache)
+    {
+        TTestEnv env;
+        auto& runtime = env.GetRuntime();
+        auto config = CreateStorageConfig(
+            []()
+            {
+                NProto::TStorageServiceConfig config;
+                config.SetUseSchemeCache(true);
+                return config;
+            }());
+        SetupTestEnv(env, config);
+
+        CreateVolume(runtime, "volume0");
+
+        runtime.SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvTxProxySchemeCache::EvNavigateKeySetResult)
+                {
+                    auto* msg = event->Get<
+                        TEvTxProxySchemeCache::TEvNavigateKeySetResult>();
+                    auto* record = msg->Request.Get();
+                    if (!record || record->ResultSet.size() != 1) {
+                        return false;
+                    }
+
+                    auto& entry = record->ResultSet.front();
+                    if (!entry.ListNodeEntry) {
+                        return false;
+                    }
+
+                    auto newListNode = MakeIntrusive<
+                        NSchemeCache::TSchemeCacheNavigate::TListNodeEntry>();
+                    newListNode->Kind = entry.ListNodeEntry->Kind;
+                    for (const auto& child: entry.ListNodeEntry->Children) {
+                        newListNode->Children.emplace_back(
+                            child.Name,
+                            child.PathId,
+                            child.Kind,
+                            child.SchemaVersion);
+                    }
+
+                    newListNode->Children.emplace_back(
+                        "fake-table",
+                        TPathId(1, 999),
+                        NSchemeCache::TSchemeCacheNavigate::KindTable);
+                    newListNode->Children.emplace_back(
+                        "fake-topic",
+                        TPathId(1, 998),
+                        NSchemeCache::TSchemeCacheNavigate::KindTopic);
+
+                    entry.ListNodeEntry = std::move(newListNode);
+                }
+                return false;
+            });
+
+        const auto response = DescribePath(runtime, config);
+        const auto& pathDescription = response->Get()->PathDescription;
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            NKikimrSchemeOp::EPathTypeSubDomain,
+            pathDescription.GetSelf().GetPathType());
+
+        for (const auto& child: pathDescription.GetChildren()) {
+            UNIT_ASSERT_C(
+                child.GetName() != "fake-table" &&
+                    child.GetName() != "fake-topic",
+                TStringBuilder()
+                    << "Unknown child kind should have been skipped: "
+                    << child.GetName());
+
+            auto pathType = child.GetPathType();
+            UNIT_ASSERT_C(
+                pathType == NKikimrSchemeOp::EPathTypeDir ||
+                    pathType == NKikimrSchemeOp::EPathTypeBlockStoreVolume ||
+                    pathType == NKikimrSchemeOp::EPathTypeSubDomain,
+                TStringBuilder()
+                    << "Unexpected path type: " << static_cast<int>(pathType));
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
