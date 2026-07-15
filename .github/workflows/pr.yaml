@@ -157,7 +157,6 @@ jobs:
       test_type: ${{ matrix.test_type }}
       vm_name_suffix: ${{ matrix.vm_name_suffix }}
       number_of_retries: ${{ matrix.number_of_retries }}
-      test_timeout_minutes: ${{ matrix.test_timeout_minutes }}
       cache_update_build: false
       cache_update_tests: false
       sleep_after_tests: ${{ contains(github.event.pull_request.labels.*.name, 'sleep') && '7200' || '1' }}
