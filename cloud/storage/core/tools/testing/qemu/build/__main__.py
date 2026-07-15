@@ -22,6 +22,7 @@ def tmpdir(**kwargs):
     finally:
         shutil.rmtree(tmp)
 
+
 QEMU_CONFIG = [
     '--static',
     '--prefix=/usr',
@@ -41,7 +42,6 @@ QEMU_CONFIG = [
     '--enable-vnc',
     '--enable-vnc-jpeg',
     '--enable-vvfat',
-    '--disable-auth-pam',
     '--disable-brlapi',
     '--disable-bzip2',
     '--disable-curl',
@@ -294,7 +294,7 @@ def run(args, **kwargs):
 
 
 def install_deps(args):
-    run(['sudo', 'apt', 'install', '--no-install-recommends', '-y'] + QEMU_DEPS)
+    run(['sudo', 'apt-get', 'install', '--no-install-recommends', '-y'] + QEMU_DEPS)
 
 
 def preprocess(args):
@@ -310,10 +310,9 @@ def checkout(args):
     if not os.path.exists(args.src):
         os.mkdir(args.src)
     else:
-        return
-    #    raise RuntimeError("src path already exists {}".format(args.src))
+        raise RuntimeError("src path already exists {}".format(args.src))
 
-        run(['git', 'clone', args.git, args.src])
+    run(['git', 'clone', args.git, args.src])
     if args.git_tag is not None:
         run(['git', 'checkout', args.git_tag], cwd=args.src)
     run(['git', 'submodule', 'update', '--init', '--recursive'], cwd=args.src)
