@@ -115,6 +115,7 @@ locals {
 }
 
 source "nebius-image" "ubuntu2204-nbs-github-ci" {
+  packer_build_name = local.packer_build_name
   communicator = "ssh"
   ssh_username = "ubuntu"
   token      = var.NEBIUS_IAM_TOKEN
