@@ -768,7 +768,9 @@ def test_remove_vm_and_disk_by_ids_deletes_instance_before_disk(monkeypatch):
 def test_remove_vm_and_disk_by_ids_removes_disk_when_instance_is_not_found(monkeypatch):
     removed = []
 
-    async def fake_remove_instance(_sdk, _resource_id):
+    async def fake_remove_instance(remove_sdk, resource_id):
+        assert remove_sdk is sdk
+        assert resource_id == "computeinstance-instance-id"
         raise m.RequestError(SimpleNamespace(code=m.grpc.StatusCode.NOT_FOUND))
 
     async def fake_remove_disk(sdk, resource_id):
@@ -790,8 +792,10 @@ def test_remove_vm_and_disk_by_ids_removes_disk_when_instance_is_not_found(monke
 def test_remove_vm_and_disk_by_ids_removes_disk_without_instance(monkeypatch):
     removed = []
 
-    async def fake_remove_instance(_sdk, _resource_id):
-        raise AssertionError("Instance removal should not be called")
+    async def fake_remove_instance(remove_sdk, resource_id):
+        raise AssertionError(
+            f"Instance removal should not be called: {remove_sdk!r}, {resource_id}"
+        )
 
     async def fake_remove_disk(sdk, resource_id):
         removed.append((sdk, resource_id))
@@ -808,11 +812,15 @@ def test_remove_vm_and_disk_by_ids_removes_disk_without_instance(monkeypatch):
 def test_remove_vm_and_disk_by_ids_does_not_remove_disk_when_instance_removal_fails(
     monkeypatch,
 ):
-    async def fake_remove_instance(_sdk, _resource_id):
+    async def fake_remove_instance(remove_sdk, resource_id):
+        assert remove_sdk is not None
+        assert resource_id == "computeinstance-instance-id"
         raise RuntimeError("instance is still present")
 
-    async def fake_remove_disk(_sdk, _resource_id):
-        raise AssertionError("Disk removal should not be called")
+    async def fake_remove_disk(remove_sdk, resource_id):
+        raise AssertionError(
+            f"Disk removal should not be called: {remove_sdk!r}, {resource_id}"
+        )
 
     monkeypatch.setattr(m, "remove_vm_by_id", fake_remove_instance)
     monkeypatch.setattr(m, "remove_disk_by_id", fake_remove_disk)
@@ -1065,6 +1073,7 @@ def test_remove_vm_resolves_disk_id_before_removing_resources(monkeypatch):
 
     async def fake_find_disk(search_sdk, args, instance_name):
         assert search_sdk is sdk
+        assert args.parent_id == "parent-id"
         events.append(("find-disk", instance_name))
         return SimpleNamespace(metadata=SimpleNamespace(id="computedisk-disk-id"))
 
@@ -1078,11 +1087,17 @@ def test_remove_vm_resolves_disk_id_before_removing_resources(monkeypatch):
             )
         )
 
+    def fake_remove_runner_from_github(*args):
+        assert len(args) == 5
+        return "not_found"
+
+    def fake_instance_service_client(service_sdk):
+        assert service_sdk is sdk
+        return FakeInstanceService()
+
     monkeypatch.setattr(m, "github_client_from_env", lambda: object())
-    monkeypatch.setattr(m, "remove_runner_from_github", lambda *args: "not_found")
-    monkeypatch.setattr(
-        m, "InstanceServiceClient", lambda service_sdk: FakeInstanceService()
-    )
+    monkeypatch.setattr(m, "remove_runner_from_github", fake_remove_runner_from_github)
+    monkeypatch.setattr(m, "InstanceServiceClient", fake_instance_service_client)
     monkeypatch.setattr(m, "find_disk_by_instance_name", fake_find_disk)
     monkeypatch.setattr(m, "remove_vm_and_disk_by_ids", fake_remove_resources)
 
@@ -1160,6 +1175,10 @@ def test_main_remove_by_ids_passes_explicit_ids(monkeypatch):
     async def fake_remove_resources(cleanup_sdk, instance_id, disk_id):
         calls.append((cleanup_sdk, instance_id, disk_id))
 
+    def fake_sdk(**kwargs):
+        assert "config_reader" in kwargs
+        return sdk
+
     monkeypatch.setattr(
         sys,
         "argv",
@@ -1173,7 +1192,7 @@ def test_main_remove_by_ids_passes_explicit_ids(monkeypatch):
             "--apply",
         ],
     )
-    monkeypatch.setattr(m, "SDK", lambda **kwargs: sdk)
+    monkeypatch.setattr(m, "SDK", fake_sdk)
     monkeypatch.setattr(m, "Config", lambda: object())
     monkeypatch.setattr(m, "remove_vm_and_disk_by_ids", fake_remove_resources)
 
