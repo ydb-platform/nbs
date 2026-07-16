@@ -39,8 +39,9 @@ def find_sanitizer_error(file_path: str):
             buffer = tail + chunk
             match = re.search(common.SANITIZER_ERROR_PATTERN, buffer)
             if match:
-                context = buffer[match.start():]
-                context += f.read(common.process.MAX_OUT_LEN)
+                context_start = match.start()
+                context = buffer[context_start:context_start + common.process.MAX_OUT_LEN]
+                context += f.read(common.process.MAX_OUT_LEN - len(context))
                 return match, context
 
             tail = buffer[-SANITIZER_SCAN_TAIL_SIZE:]
