@@ -1800,6 +1800,12 @@ LatencyReport FiberScheduler::reportLatency(ProfileEventKind kind, uint8_t categ
 
 void FiberScheduler::runScheduler(ProcessorState * processor) noexcept
 {
+    // rseq is per-thread; register eagerly so the very first read of
+    // getCurrentProcessor (from setaffinity below, then Perf counters,
+    // etc.) sees a valid cpu_id. The guard is shared with the lazy
+    // path inside getCurrentProcessor, so this is a one-shot init.
+    ensureRseqRegistered();
+
     cpu_set_t cpuSet;
     CPU_ZERO(&cpuSet);
     CPU_SET(processor->number, &cpuSet);
@@ -2397,6 +2403,9 @@ void FiberScheduler::runFiber(Fiber * fiber, CpuTimer * timer) noexcept
 
 void FiberScheduler::runThreadWorker() noexcept
 {
+    // rseq is per-thread; see runScheduler for the same rationale.
+    ensureRseqRegistered();
+
     while (!scheduler->stopping.load(std::memory_order_relaxed))
     {
         while (Fiber * fiber = scheduler->readyQueue.dequeue())
