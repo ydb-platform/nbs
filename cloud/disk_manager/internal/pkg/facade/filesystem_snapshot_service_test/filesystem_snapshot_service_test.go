@@ -210,7 +210,7 @@ func TestCreateFilesystemSnapshot(t *testing.T) {
 		&disk_manager.CreateFilesystemSnapshotRequest{
 			Src: &disk_manager.FilesystemId{
 				FilesystemId: "test-filesystem-id",
-				ZoneId:       "test-zone-id",
+				ZoneId:       "zone-a",
 			},
 			FilesystemSnapshotId: "test-filesystem-snapshot-id",
 		},
