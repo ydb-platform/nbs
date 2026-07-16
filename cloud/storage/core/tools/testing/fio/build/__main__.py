@@ -5,6 +5,8 @@ from __future__ import print_function
 import argparse
 import contextlib
 import os
+import platform
+import re
 import shutil
 import subprocess
 import tarfile
@@ -20,7 +22,7 @@ def tmpdir(**kwargs):
         shutil.rmtree(tmp)
 
 
-CFLAGS = [
+X86_CFLAGS = [
     '-march=ivybridge',
     '-mno-bmi',
     '-mno-bmi2',
@@ -32,7 +34,6 @@ CFLAGS = [
 FIO_CONFIG = [
     '--build-static',
     '--prefix=/usr',
-    '--extra-cflags=' + ' '.join(CFLAGS),
 ]
 
 
@@ -40,10 +41,55 @@ FIO_DEPS = [
     'git',
 ]
 
+DEFAULT_OUT_BASENAME = 'fio-static'
+
 
 def run(args, **kwargs):
     print("+ '" + "' '".join(args) + "'")
     return subprocess.check_call(args, **kwargs)
+
+
+def fio_cflags():
+    machine = platform.machine().lower()
+    if machine in ('x86_64', 'amd64'):
+        return X86_CFLAGS
+
+    return []
+
+
+def fio_config():
+    config = list(FIO_CONFIG)
+    cflags = fio_cflags()
+    if cflags:
+        config.append('--extra-cflags=' + ' '.join(cflags))
+
+    return config
+
+
+def fio_source_version(src_dir):
+    if os.path.exists(os.path.join(src_dir, '.git')):
+        try:
+            version = subprocess.check_output(
+                ['git', 'describe', '--match', 'fio-[0-9]*', '--abbrev=4', 'HEAD'],
+                cwd=src_dir)
+            if isinstance(version, bytes):
+                version = version.decode('utf-8')
+            version = version.strip()
+            if version:
+                return version
+        except (OSError, subprocess.CalledProcessError):
+            pass
+
+    return None
+
+
+def default_out_path(fio_version):
+    if not fio_version:
+        raise RuntimeError("Cannot derive default --out name; pass --out explicitly")
+
+    version = re.sub(r'[^A-Za-z0-9._-]+', '_', fio_version)
+    machine = platform.machine().lower()
+    return "{}-{}-{}.tgz".format(DEFAULT_OUT_BASENAME, version, machine)
 
 
 def install_deps(args):
@@ -74,7 +120,10 @@ def build(args):
                  os.path.abspath(args.src)], cwd=build_dir)
             src_dir = build_dir
 
-        run([src_dir + '/configure'] + FIO_CONFIG, cwd=build_dir)
+        if args.out is None:
+            args.out = default_out_path(args.git_tag or fio_source_version(src_dir))
+
+        run([src_dir + '/configure'] + fio_config(), cwd=build_dir)
         run(['make', '-j', str(os.sysconf('SC_NPROCESSORS_ONLN'))], cwd=build_dir)
 
         if os.path.isdir(args.out):
@@ -131,9 +180,9 @@ if __name__ == '__main__':
         default=False)
     parser.add_argument(
         "--out",
-        help="target directory or tarball",
+        help="target directory or tarball; defaults to fio-static-<version>-<arch>.tgz",
         action="store",
-        default="fio-static.tgz")
+        default=None)
 
     args = parser.parse_args()
     main(args)
