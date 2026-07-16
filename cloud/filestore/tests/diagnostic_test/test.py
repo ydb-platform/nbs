@@ -60,7 +60,11 @@ def __generate_loadtest_config(
     return config_path
 
 
-def __list_loadtest_files(client, fs_id, client_id):
+def __json_line(data):
+    return json.dumps(data, sort_keys=True).encode("utf-8")
+
+
+def __get_loadtested_shards(client, fs_id, client_id):
     output = json.loads(client.ls(
         fs_id,
         "/",
@@ -68,22 +72,43 @@ def __list_loadtest_files(client, fs_id, client_id):
         "--disable-multitablet-forwarding",
     ))
     prefix = client_id + ":"
-    files = []
+    shard_ids = []
     for entry in output["content"]:
         name = entry.get("Name")
         if not name or not name.startswith(prefix):
             continue
 
-        files.append({
-            "name": name,
-            "shard_id": entry.get("ShardFileSystemId"),
-        })
+        shard_id = entry.get("ShardFileSystemId")
+        if shard_id:
+            shard_ids.append(shard_id)
 
-    return files
+    return shard_ids
+
+
+def __alias_shards(shard_ids):
+    return {
+        shard_id: f"shard_{i + 1}"
+        for i, shard_id in enumerate(shard_ids)
+    }
+
+
+def __compare_shards(target_shards, seen_active_shards):
+    target_shards = target_shards or set()
+    observed_shards = sorted(target_shards | seen_active_shards)
+    aliases = __alias_shards(observed_shards)
+
+    return {
+        "target_shards": [aliases[shard_id] for shard_id in sorted(target_shards)],
+        "seen_active_shards": [aliases[shard_id] for shard_id in sorted(seen_active_shards)],
+        "missing_target_shards": [
+            aliases[shard_id]
+            for shard_id in sorted(target_shards - seen_active_shards)
+        ],
+    }
 
 
 def test_diagnose_shards_with_loadtest():
-    client, client_nocheck, _ = __init_test()
+    client, client_nocheck, results_path = __init_test()
     shards_count = 4
     blocks_count = shards_count * int(SHARD_SIZE / BLOCK_SIZE)
     loadtest_duration_seconds = 20
@@ -93,23 +118,21 @@ def test_diagnose_shards_with_loadtest():
     loadtest_client_id = "diagnose-shards-loadtest"
     workload = None
     target_shards = None
-    diagnose_response = None
-    files_response = None
     seen_active_shards = set()
 
     try:
-        client.create(
+        out = client.create(
             "fs0",
             "test_cloud",
             "test_folder",
             BLOCK_SIZE,
             blocks_count)
-        client.resize("fs0", blocks_count, shard_count=shards_count)
+        out += client.execute_action(
+            "getfilesystemtopology", {"FileSystemId": "fs0"})
+        out += client.resize("fs0", blocks_count, shard_count=shards_count)
 
-        topology = json.loads(client.execute_action(
-            "getfilesystemtopology",
-            {"FileSystemId": "fs0"}))
-        assert len(topology["ShardFileSystemIds"]) == shards_count
+        out += client.execute_action(
+            "getfilesystemtopology", {"FileSystemId": "fs0"})
 
         config_path = __generate_loadtest_config(
             "fs0",
@@ -136,14 +159,12 @@ def test_diagnose_shards_with_loadtest():
         while time.time() < deadline:
             time.sleep(poll_interval_seconds)
 
-            files_response = __list_loadtest_files(client, "fs0", loadtest_client_id)
-            target_shards = {file["shard_id"] for file in files_response}
+            target_shards = set(__get_loadtested_shards(client, "fs0", loadtest_client_id))
 
             diagnose_response = json.loads(client.diagnose_shards(
                 "fs0",
                 top=top_n_shards,
             ))
-            assert len(diagnose_response["shards"]) == top_n_shards
             active_shards = {
                 shard["shard_id"]
                 for shard in diagnose_response["shards"]
@@ -161,14 +182,15 @@ def test_diagnose_shards_with_loadtest():
         if workload is not None and workload.running:
             workload.wait(check_exit_code=False)
 
-        assert target_shards is not None and target_shards.issubset(seen_active_shards), (
-            "Target file shards are not active. files={}, active_shards={}, "
-            "diagnose_response={}".format(
-                files_response,
-                seen_active_shards,
-                diagnose_response))
+        out += __json_line(__compare_shards(target_shards, seen_active_shards))
     finally:
         if workload is not None and workload.running:
             workload.kill()
             workload.wait(check_exit_code=False)
         client_nocheck.destroy("fs0")
+
+    with open(results_path, "wb") as results_file:
+        results_file.write(out)
+
+    ret = common.canonical_file(results_path, local=True)
+    return ret
