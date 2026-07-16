@@ -654,7 +654,7 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
         // If the filesystem is configured to check for nodeRefs
 
         // validate target node doesn't exist
-        TMaybe<IIndexTabletDatabase::TNodeRef> childRef;
+        TMaybe<INodeIndexTabletDatabase::TNodeRef> childRef;
 
         if (!ReadNodeRef(
                 db,
@@ -750,7 +750,7 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
                 args.CommitId,
                 args.Attrs);
 
-            args.ChildNode = IIndexTabletDatabase::TNode {
+            args.ChildNode = INodeIndexTabletDatabase::TNode {
                 args.ChildNodeId,
                 args.Attrs,
                 args.CommitId,

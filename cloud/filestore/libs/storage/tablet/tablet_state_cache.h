@@ -31,7 +31,7 @@ struct TInMemoryIndexStateStats
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class IInMemoryIndexState : public IIndexTabletDatabase
+class IInMemoryIndexState : public INodeIndexTabletDatabase
 {
 public:
     virtual void LoadNodeRefs(const TVector<TNodeRef>& nodeRefs) = 0;
@@ -144,13 +144,13 @@ public:
     bool ReadNode(
         ui64 nodeId,
         ui64 commitId,
-        TMaybe<IIndexTabletDatabase::TNode>& node) override;
+        TMaybe<INodeIndexTabletDatabase::TNode>& node) override;
 
     bool ReadNodes(
         ui64 startNodeId,
         ui64 maxNodes,
         ui64& nextNodeId,
-        TVector<IIndexTabletDatabase::TNode>& nodes) override;
+        TVector<INodeIndexTabletDatabase::TNode>& nodes) override;
 
 private:
     void WriteNode(
@@ -168,7 +168,7 @@ public:
     bool ReadNodeVer(
         ui64 nodeId,
         ui64 commitId,
-        TMaybe<IIndexTabletDatabase::TNode>& node) override;
+        TMaybe<INodeIndexTabletDatabase::TNode>& node) override;
 
     //
     // NodeAttrs
@@ -178,12 +178,12 @@ public:
         ui64 nodeId,
         ui64 commitId,
         const TString& name,
-        TMaybe<IIndexTabletDatabase::TNodeAttr>& attr) override;
+        TMaybe<INodeIndexTabletDatabase::TNodeAttr>& attr) override;
 
     bool ReadNodeAttrs(
         ui64 nodeId,
         ui64 commitId,
-        TVector<IIndexTabletDatabase::TNodeAttr>& attrs) override;
+        TVector<INodeIndexTabletDatabase::TNodeAttr>& attrs) override;
 
 private:
     void WriteNodeAttr(
@@ -204,12 +204,12 @@ public:
         ui64 nodeId,
         ui64 commitId,
         const TString& name,
-        TMaybe<IIndexTabletDatabase::TNodeAttr>& attr) override;
+        TMaybe<INodeIndexTabletDatabase::TNodeAttr>& attr) override;
 
     bool ReadNodeAttrVers(
         ui64 nodeId,
         ui64 commitId,
-        TVector<IIndexTabletDatabase::TNodeAttr>& attrs) override;
+        TVector<INodeIndexTabletDatabase::TNodeAttr>& attrs) override;
 
     //
     // NodeRefs
@@ -219,13 +219,13 @@ public:
         ui64 nodeId,
         ui64 commitId,
         const TString& name,
-        TMaybe<IIndexTabletDatabase::TNodeRef>& ref) override;
+        TMaybe<INodeIndexTabletDatabase::TNodeRef>& ref) override;
 
     bool ReadNodeRefs(
         ui64 nodeId,
         ui64 commitId,
         const TString& cookie,
-        TVector<IIndexTabletDatabase::TNodeRef>& refs,
+        TVector<INodeIndexTabletDatabase::TNodeRef>& refs,
         ui32 maxBytes,
         TString* next,
         ui32* skippedRefs,
@@ -236,7 +236,7 @@ public:
         ui64 startNodeId,
         const TString& startCookie,
         ui64 maxCount,
-        TVector<IIndexTabletDatabase::TNodeRef>& refs,
+        TVector<INodeIndexTabletDatabase::TNodeRef>& refs,
         ui64& nextNodeId,
         TString& nextCookie) override;
 
@@ -266,12 +266,12 @@ public:
         ui64 nodeId,
         ui64 commitId,
         const TString& name,
-        TMaybe<IIndexTabletDatabase::TNodeRef>& ref) override;
+        TMaybe<INodeIndexTabletDatabase::TNodeRef>& ref) override;
 
     bool ReadNodeRefVers(
         ui64 nodeId,
         ui64 commitId,
-        TVector<IIndexTabletDatabase::TNodeRef>& refs) override;
+        TVector<INodeIndexTabletDatabase::TNodeRef>& refs) override;
 
     //
     // CheckpointNodes
@@ -288,7 +288,7 @@ public:
 
     bool ReadMixedBlocks(
         ui32 rangeId,
-        TVector<IIndexTabletDatabase::TMixedBlob>& blobs,
+        TVector<INodeIndexTabletDatabase::TMixedBlob>& blobs,
         IAllocator* alloc) override;
 
     bool ReadDeletionMarkers(

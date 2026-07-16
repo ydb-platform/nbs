@@ -115,7 +115,7 @@ bool TIndexTabletActor::ValidateTx_GetNodeAttr(
 
 bool TIndexTabletActor::PrepareTx_GetNodeAttr(
     const NActors::TActorContext& ctx,
-    IIndexTabletDatabase& db,
+    INodeIndexTabletDatabase& db,
     TTxIndexTablet::TGetNodeAttr& args)
 {
     Y_UNUSED(ctx);
@@ -138,7 +138,7 @@ bool TIndexTabletActor::PrepareTx_GetNodeAttr(
         TABLET_VERIFY(args.ParentNode);
 
         // validate target node exists
-        TMaybe<IIndexTabletDatabase::TNodeRef> ref;
+        TMaybe<INodeIndexTabletDatabase::TNodeRef> ref;
         if (!ReadNodeRef(db, args.NodeId, args.CommitId, args.Name, ref)) {
             return false;   // not ready
         }
@@ -275,7 +275,7 @@ bool TIndexTabletActor::ValidateTx_GetNodeAttrBatch(
 
 bool TIndexTabletActor::PrepareTx_GetNodeAttrBatch(
     const NActors::TActorContext& ctx,
-    IIndexTabletDatabase& db,
+    INodeIndexTabletDatabase& db,
     TTxIndexTablet::TGetNodeAttrBatch& args)
 {
     Y_UNUSED(ctx);
@@ -292,7 +292,7 @@ bool TIndexTabletActor::PrepareTx_GetNodeAttrBatch(
         return true;
     }
 
-    TVector<TMaybe<IIndexTabletDatabase::TNodeRef>> refs(
+    TVector<TMaybe<INodeIndexTabletDatabase::TNodeRef>> refs(
         args.Request.NamesSize());
     ui32 foundRefs = 0;
     for (ui32 i = 0; i < args.Request.NamesSize(); ++i) {
@@ -314,7 +314,7 @@ bool TIndexTabletActor::PrepareTx_GetNodeAttrBatch(
         return false;   // not ready
     }
 
-    TVector<TMaybe<IIndexTabletDatabase::TNode>> nodes(
+    TVector<TMaybe<INodeIndexTabletDatabase::TNode>> nodes(
         args.Request.NamesSize());
     bool ready = true;
     for (ui32 i = 0; i < args.Request.NamesSize(); ++i) {

@@ -330,7 +330,7 @@ bool TIndexTabletActor::ValidateTx_UnsafeGetNode(
 
 bool TIndexTabletActor::PrepareTx_UnsafeGetNode(
     const NActors::TActorContext& ctx,
-    IIndexTabletDatabase& db,
+    INodeIndexTabletDatabase& db,
     TTxIndexTablet::TUnsafeGetNode& args)
 {
     Y_UNUSED(ctx);
@@ -717,7 +717,7 @@ bool TIndexTabletActor::ValidateTx_UnsafeGetNodeRef(
 
 bool TIndexTabletActor::PrepareTx_UnsafeGetNodeRef(
     const NActors::TActorContext& ctx,
-    IIndexTabletDatabase& db,
+    INodeIndexTabletDatabase& db,
     TTxIndexTablet::TUnsafeGetNodeRef& args)
 {
     Y_UNUSED(ctx);

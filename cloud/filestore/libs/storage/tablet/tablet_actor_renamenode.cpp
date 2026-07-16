@@ -467,7 +467,7 @@ bool TIndexTabletActor::PrepareTx_RenameNode(
                 args.NewChildNode->Attrs.GetType() == NProto::E_DIRECTORY_NODE;
             if (newChildIsDir) {
                 // 1 entry is enough to prevent rename
-                TVector<IIndexTabletDatabase::TNodeRef> refs;
+                TVector<INodeIndexTabletDatabase::TNodeRef> refs;
                 if (!ReadNodeRefs(
                         db,
                         args.NewChildNode->NodeId,

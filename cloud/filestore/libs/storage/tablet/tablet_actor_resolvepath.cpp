@@ -67,7 +67,7 @@ bool TIndexTabletActor::ValidateTx_ResolvePath(
 
 bool TIndexTabletActor::PrepareTx_ResolvePath(
     const TActorContext& ctx,
-    IIndexTabletDatabase& db,
+    INodeIndexTabletDatabase& db,
     TTxIndexTablet::TResolvePath& args)
 {
     Y_UNUSED(ctx);

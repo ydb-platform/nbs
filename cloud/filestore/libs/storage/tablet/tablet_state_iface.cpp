@@ -24,7 +24,7 @@ static_assert(sizeof(TGUID::dw) == 16);
 
 }   // namespace
 
-bool IIndexTabletDatabase::TNodeRef::TryToEncodeShardId(const TString& mainFsId)
+bool INodeIndexTabletDatabase::TNodeRef::TryToEncodeShardId(const TString& mainFsId)
 {
     if (ShardId.empty() || IsFilesystemIdEncoded(ShardId)) {
         return true;
@@ -69,7 +69,7 @@ bool IIndexTabletDatabase::TNodeRef::TryToEncodeShardId(const TString& mainFsId)
     return true;
 }
 
-bool IIndexTabletDatabase::TNodeRef::TryToDecodeShardId(const TString& mainFsId)
+bool INodeIndexTabletDatabase::TNodeRef::TryToDecodeShardId(const TString& mainFsId)
 {
     if (!IsFilesystemIdEncoded(ShardId)) {
         return true;

@@ -674,14 +674,14 @@ void TIndexTabletState::DeleteFreshBlocks(
 ////////////////////////////////////////////////////////////////////////////////
 // MixedBlocks
 
-bool TIndexTabletState::LoadMixedBlocks(IIndexTabletDatabase& db, ui32 rangeId)
+bool TIndexTabletState::LoadMixedBlocks(INodeIndexTabletDatabase& db, ui32 rangeId)
 {
     if (Impl->MixedBlocks.IsLoaded(rangeId)) {
         Impl->MixedBlocks.RefRange(rangeId);
         return true;
     }
 
-    TVector<TIndexTabletDatabase::IIndexTabletDatabase::TMixedBlob> blobs;
+    TVector<INodeIndexTabletDatabase::TMixedBlob> blobs;
     TVector<TDeletionMarker> deletionMarkers;
 
     if (!db.ReadMixedBlocks(rangeId, blobs, AllocatorRegistry.GetAllocator(EAllocatorTag::BlockList)) ||

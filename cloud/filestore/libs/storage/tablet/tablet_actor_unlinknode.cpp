@@ -442,7 +442,7 @@ bool TIndexTabletActor::PrepareTx_UnlinkNode(
     }
 
     if (args.ChildNode->Attrs.GetType() == NProto::E_DIRECTORY_NODE) {
-        TVector<IIndexTabletDatabase::TNodeRef> refs;
+        TVector<INodeIndexTabletDatabase::TNodeRef> refs;
         // 1 entry is enough to prevent deletion
         if (!ReadNodeRefs(db, childNodeId, args.CommitId, {}, refs, 1)) {
             return false;

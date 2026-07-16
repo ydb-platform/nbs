@@ -557,7 +557,7 @@ public:
 
     [[nodiscard]] NProto::TError RemoveNode(
         TIndexTabletDatabase& db,
-        const IIndexTabletDatabase::TNode& node,
+        const INodeIndexTabletDatabase::TNode& node,
         ui64 minCommitId,
         ui64 maxCommitId);
 
@@ -565,7 +565,7 @@ public:
         TIndexTabletDatabase& db,
         ui64 parentNodeId,
         const TString& name,
-        const IIndexTabletDatabase::TNode& node,
+        const INodeIndexTabletDatabase::TNode& node,
         ui64 minCommitId,
         ui64 maxCommitId,
         bool removeNodeRef);
@@ -580,10 +580,10 @@ public:
         ui64 maxCommitId);
 
     bool ReadNode(
-        IIndexTabletDatabase& db,
+        INodeIndexTabletDatabase& db,
         ui64 nodeId,
         ui64 commitId,
-        TMaybe<IIndexTabletDatabase::TNode>& node);
+        TMaybe<INodeIndexTabletDatabase::TNode>& node);
 
     void RewriteNode(
         TIndexTabletDatabase& db,
@@ -626,7 +626,7 @@ public:
         ui64 nodeId,
         ui64 minCommitId,
         ui64 maxCommitId,
-        const IIndexTabletDatabase::TNodeAttr& attr,
+        const INodeIndexTabletDatabase::TNodeAttr& attr,
         const TString& newValue);
 
     void RemoveNodeAttr(
@@ -634,27 +634,27 @@ public:
         ui64 nodeId,
         ui64 minCommitId,
         ui64 maxCommitId,
-        const IIndexTabletDatabase::TNodeAttr& attr);
+        const INodeIndexTabletDatabase::TNodeAttr& attr);
 
     bool ReadNodeAttr(
-        IIndexTabletDatabase& db,
+        INodeIndexTabletDatabase& db,
         ui64 nodeId,
         ui64 commitId,
         const TString& name,
-        TMaybe<IIndexTabletDatabase::TNodeAttr>& attr);
+        TMaybe<INodeIndexTabletDatabase::TNodeAttr>& attr);
 
     bool ReadNodeAttrs(
-        IIndexTabletDatabase& db,
+        INodeIndexTabletDatabase& db,
         ui64 nodeId,
         ui64 commitId,
-        TVector<IIndexTabletDatabase::TNodeAttr>& attrs);
+        TVector<INodeIndexTabletDatabase::TNodeAttr>& attrs);
 
     void RewriteNodeAttr(
         TIndexTabletDatabase& db,
         ui64 nodeId,
         ui64 minCommitId,
         ui64 maxCommitId,
-        const IIndexTabletDatabase::TNodeAttr& attr);
+        const INodeIndexTabletDatabase::TNodeAttr& attr);
 
 
     //
@@ -696,34 +696,34 @@ public:
         const TString& shardNodeName);
 
     bool ReadNodeRef(
-        IIndexTabletDatabase& db,
+        INodeIndexTabletDatabase& db,
         ui64 nodeId,
         ui64 commitId,
         const TString& name,
-        TMaybe<IIndexTabletDatabase::TNodeRef>& ref);
+        TMaybe<INodeIndexTabletDatabase::TNodeRef>& ref);
 
     bool ReadNodeRefs(
-        IIndexTabletDatabase& db,
+        INodeIndexTabletDatabase& db,
         ui64 nodeId,
         ui64 commitId,
         const TString& cookie,
-        TVector<IIndexTabletDatabase::TNodeRef>& refs,
+        TVector<INodeIndexTabletDatabase::TNodeRef>& refs,
         ui32 maxBytes,
         TString* next = nullptr,
         bool noAutoPrecharge = false,
         NProto::EListNodesSizeMode sizeMode = NProto::LNSM_NAME_ONLY);
 
     bool ReadNodeRefs(
-        IIndexTabletDatabase& db,
+        INodeIndexTabletDatabase& db,
         ui64 startNodeId,
         const TString& startCookie,
         ui64 maxCount,
-        TVector<IIndexTabletDatabase::TNodeRef>& refs,
+        TVector<INodeIndexTabletDatabase::TNodeRef>& refs,
         ui64& nextNodeId,
         TString& nextCookie);
 
     bool PrechargeNodeRefs(
-        IIndexTabletDatabase& db,
+        INodeIndexTabletDatabase& db,
         ui64 nodeId,
         const TString& cookie,
         ui64 rowsToPrecharge,
@@ -1118,7 +1118,7 @@ public:
     //
 
 public:
-    bool LoadMixedBlocks(IIndexTabletDatabase& db, ui32 rangeId);
+    bool LoadMixedBlocks(INodeIndexTabletDatabase& db, ui32 rangeId);
     void ReleaseMixedBlocks(ui32 rangeId);
     void ReleaseMixedBlocks(const TSet<ui32>& ranges);
 
@@ -1581,7 +1581,7 @@ public:
     // In-memory index state.
     //
 
-    IIndexTabletDatabase* AccessInMemoryIndexState();
+    INodeIndexTabletDatabase* AccessInMemoryIndexState();
     void UpdateInMemoryIndexState(
         const TVector<IInMemoryIndexState::TIndexStateRequest>& nodeUpdates);
     void MarkNodeRefsLoadComplete();

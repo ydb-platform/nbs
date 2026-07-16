@@ -359,7 +359,7 @@ bool TInMemoryIndexState<TNodeRefsImpl>::ReadNodeRefs(
     ui64 startNodeId,
     const TString& startCookie,
     ui64 maxCount,
-    TVector<IIndexTabletDatabase::TNodeRef>& refs,
+    TVector<INodeIndexTabletDatabase::TNodeRef>& refs,
     ui64& nextNodeId,
     TString& nextCookie)
 {
@@ -468,7 +468,7 @@ bool TInMemoryIndexState<TNodeRefsImpl>::ReadCheckpointNodes(
 template <typename TNodeRefsImpl>
 bool TInMemoryIndexState<TNodeRefsImpl>::ReadMixedBlocks(
     ui32 rangeId,
-    TVector<IIndexTabletDatabase::TMixedBlob>& blobs,
+    TVector<INodeIndexTabletDatabase::TMixedBlob>& blobs,
     IAllocator* alloc)
 {
     Y_UNUSED(rangeId, blobs, alloc);
