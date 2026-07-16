@@ -1,0 +1,43 @@
+name: Delete Nebius resources by IDs
+description: Delete a Nebius VM instance and disk by their resource IDs
+inputs:
+  instance_id:
+    required: false
+    default: ""
+    description: "Nebius VM instance ID"
+  disk_id:
+    required: false
+    default: ""
+    description: "Nebius disk ID"
+  service_account_key:
+    required: false
+    description: "Deprecated legacy Nebius service-account JSON credentials"
+  nebius_config_yaml:
+    required: false
+    description: "Nebius CLI config.yaml content for SDK authentication"
+
+runs:
+  using: composite
+  steps:
+    - name: set up nebius cli
+      id: nebius-cli
+      uses: ./.github/actions/nebius_cli
+      with:
+        config_yaml: ${{ inputs.nebius_config_yaml }}
+        service_account_key: ${{ inputs.service_account_key }}
+    - name: install dependencies
+      shell: bash
+      run: pip install -r .github/scripts/requirements.txt
+    - name: remove resources by IDs
+      if: ${{ inputs.instance_id != '' || inputs.disk_id != '' }}
+      shell: bash
+      env:
+        NEBIUS_IAM_TOKEN: ${{ steps.nebius-cli.outputs.NEBIUS_IAM_TOKEN }}
+        INSTANCE_ID: ${{ inputs.instance_id }}
+        DISK_ID: ${{ inputs.disk_id }}
+      run: |
+        export PYTHONPATH=$PYTHONPATH:$GITHUB_WORKSPACE/.github
+        python3 -m scripts.nebius_manage_vm remove-by-ids \
+            --instance-id "${INSTANCE_ID}" \
+            --disk-id "${DISK_ID}" \
+            --apply
