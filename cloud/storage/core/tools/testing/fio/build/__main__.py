@@ -66,28 +66,8 @@ def fio_config():
     return config
 
 
-def fio_source_version(src_dir):
-    if os.path.exists(os.path.join(src_dir, '.git')):
-        try:
-            version = subprocess.check_output(
-                ['git', 'describe', '--match', 'fio-[0-9]*', '--abbrev=4', 'HEAD'],
-                cwd=src_dir)
-            if isinstance(version, bytes):
-                version = version.decode('utf-8')
-            version = version.strip()
-            if version:
-                return version
-        except (OSError, subprocess.CalledProcessError):
-            pass
-
-    return None
-
-
 def default_out_path(fio_version):
-    if not fio_version:
-        raise RuntimeError("Cannot derive default --out name; pass --out explicitly")
-
-    version = re.sub(r'[^A-Za-z0-9._-]+', '_', fio_version)
+    version = re.sub(r'[^A-Za-z0-9._-]+', '_', fio_version or 'unknown')
     machine = platform.machine().lower()
     return "{}-{}-{}.tgz".format(DEFAULT_OUT_BASENAME, version, machine)
 
@@ -121,7 +101,7 @@ def build(args):
             src_dir = build_dir
 
         if args.out is None:
-            args.out = default_out_path(args.git_tag or fio_source_version(src_dir))
+            args.out = default_out_path(args.git_tag)
 
         run([src_dir + '/configure'] + fio_config(), cwd=build_dir)
         run(['make', '-j', str(os.sysconf('SC_NPROCESSORS_ONLN'))], cwd=build_dir)
@@ -156,7 +136,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--src",
-        help="fio src directory or tarball",
+        help="fio src directory or tarball; required unless --co is used",
         action="store")
     parser.add_argument(
         "--co",
@@ -185,4 +165,6 @@ if __name__ == '__main__':
         default=None)
 
     args = parser.parse_args()
+    if args.src is None and not args.co:
+        parser.error("--src is required unless --co is used")
     main(args)
