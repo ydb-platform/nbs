@@ -20,6 +20,10 @@ SET(
     NFS_STORAGE_CONFIG_PATCH
     cloud/filestore/tests/diagnostic_test/nfs-storage.txt
 )
+SET(
+    NFS_DIAG_CONFIG_PATCH
+    cloud/filestore/tests/diagnostic_test/nfs-diag.txt
+)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/service-kikimr.inc)
 

@@ -121,13 +121,13 @@ def test_diagnose_shards_with_loadtest():
     seen_active_shards = set()
 
     try:
-        out = client.create(
+        client.create(
             "fs0",
             "test_cloud",
             "test_folder",
             BLOCK_SIZE,
             blocks_count)
-        out += client.execute_action(
+        out = client.execute_action(
             "getfilesystemtopology", {"FileSystemId": "fs0"})
         out += client.resize("fs0", blocks_count, shard_count=shards_count)
 
