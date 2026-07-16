@@ -6,8 +6,9 @@ to stdout as a raw disk image stream, without going through the Disk Manager
 service.
 
 Typical use cases: recovering data from a snapshot when the regular path
-(create disk from snapshot, attach, copy) is unavailable, or inspecting
-snapshot/image content offline.
+(create disk from snapshot, attach, copy) is unavailable, inspecting
+snapshot/image content offline, or exporting a large snapshot in independently
+processed parts.
 
 ## Requirements
 
@@ -23,8 +24,8 @@ snapshot/image content offline.
   `chunk_map` and `chunk_blobs` tables and only gets objects from the S3
   bucket.
 * A receiver for the raw stream. When redirecting stdout to a file, make sure
-  there is enough free disk space for the snapshot virtual size. Stream output
-  cannot create sparse holes by itself, so zero chunks are written explicitly.
+  there is enough free disk space for the exported data. Stream output cannot
+  create sparse holes by itself, so zero chunks are written explicitly.
 
 ## Build
 
@@ -36,6 +37,8 @@ Plain `go build` does not work: the generated proto packages are not committed
 to the repository.
 
 ## Run
+
+Export the complete snapshot:
 
 ```
 disk-manager-export-snapshot \
@@ -54,6 +57,46 @@ disk-manager-export-snapshot \
     | qemu-img convert -f raw -O qcow2 - image.qcow2
 ```
 
+### Partitioned export
+
+`--partition` is 1-based. Together with `--partition-count`, it selects one
+contiguous part of the raw snapshot stream. For example, this exports the first
+of ten parts:
+
+```
+disk-manager-export-snapshot \
+    --config /etc/disk-manager/server-config.txt \
+    --snapshot-id <snapshot or image ID> \
+    --partition 1 \
+    --partition-count 10 \
+    > image.raw.part-01
+```
+
+Export every part and concatenate them in increasing partition order:
+
+```
+for partition in {1..10}; do
+    printf -v part_file 'image.raw.part-%02d' "$partition"
+    disk-manager-export-snapshot \
+        --config /etc/disk-manager/server-config.txt \
+        --snapshot-id <snapshot or image ID> \
+        --partition "$partition" \
+        --partition-count 10 \
+        > "$part_file"
+done
+
+cat image.raw.part-{01..10} > image.raw
+```
+
+Partition boundaries are aligned to the 4 MiB snapshot chunks. Chunk ranges are
+balanced, so parts differ by at most one chunk, except that the final snapshot
+chunk may be shorter than 4 MiB. No chunk is omitted or duplicated: bytewise
+concatenation of partitions `1..partition-count` is exactly the same raw image
+as an export without partition flags. If `--partition-count` exceeds the number
+of snapshot chunks, the trailing partitions are empty.
+
+Both partition flags default to `1`, preserving the complete-export behavior.
+
 * `--snapshot-id` accepts both snapshot and image IDs: images are stored in
   the same dataplane snapshot storage.
 * Incremental snapshots are exported the same way as full ones: their chunk
@@ -70,11 +113,13 @@ disk-manager-export-snapshot \
 
 ## Result
 
-The output stream is a raw disk image with exactly the snapshot virtual size.
-The checksum of every data chunk is verified during the export; a mismatch
-fails the whole export. Zero chunks are emitted as zero bytes.
+Without partition flags, the output stream is a raw disk image with exactly the
+snapshot virtual size. With partition flags, the output is exactly the selected
+contiguous byte range and contains no prefix or suffix padding. The checksum of
+every data chunk is verified during the export; a mismatch fails the whole
+export. Zero chunks are emitted as zero bytes.
 
-The image can be verified and converted with qemu-img:
+The complete image can be verified and converted with qemu-img:
 
 ```
 qemu-img info image.raw

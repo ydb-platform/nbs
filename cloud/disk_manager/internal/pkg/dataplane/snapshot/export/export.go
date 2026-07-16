@@ -2,6 +2,7 @@ package export
 
 import (
 	"context"
+	"errors"
 	"io"
 	"sync/atomic"
 
@@ -40,12 +41,99 @@ type Destination interface {
 }
 
 type Stats struct {
-	// Snapshot virtual size in bytes.
+	// Number of bytes exported to the destination.
 	Size uint64
 	// Number of chunks read from the storage.
 	DataChunkCount uint32
 	// Number of zero chunks emitted or skipped during export.
 	ZeroChunkCount uint32
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+// ValidatePartition validates a 1-based partition number.
+func ValidatePartition(partition uint32, partitionCount uint32) error {
+	if partitionCount == 0 {
+		return task_errors.NewNonRetriableErrorf(
+			"partitionCount must be positive, got %v",
+			partitionCount,
+		)
+	}
+	if partition == 0 || partition > partitionCount {
+		return task_errors.NewNonRetriableErrorf(
+			"partition must be in range [1, %v], got %v",
+			partitionCount,
+			partition,
+		)
+	}
+
+	return nil
+}
+
+func partitionChunkRange(
+	chunkCount uint32,
+	partition uint32,
+	partitionCount uint32,
+) (uint32, uint32, error) {
+
+	if err := ValidatePartition(partition, partitionCount); err != nil {
+		return 0, 0, err
+	}
+
+	partitionIndex := uint64(partition - 1)
+	count := uint64(partitionCount)
+	chunks := uint64(chunkCount)
+	chunksPerPartition := chunks / count
+	partitionsWithExtraChunk := chunks % count
+
+	startChunkIndex := partitionIndex * chunksPerPartition
+	if partitionIndex < partitionsWithExtraChunk {
+		startChunkIndex += partitionIndex
+	} else {
+		startChunkIndex += partitionsWithExtraChunk
+	}
+
+	partitionChunkCount := chunksPerPartition
+	if partitionIndex < partitionsWithExtraChunk {
+		partitionChunkCount++
+	}
+
+	endChunkIndex := startChunkIndex + partitionChunkCount
+	return uint32(startChunkIndex), uint32(endChunkIndex), nil
+}
+
+func partitionSize(
+	snapshotSize uint64,
+	startChunkIndex uint32,
+	endChunkIndex uint32,
+) (uint64, error) {
+
+	if startChunkIndex > endChunkIndex {
+		return 0, task_errors.NewNonRetriableErrorf(
+			"invalid partition chunk range [%v, %v)",
+			startChunkIndex,
+			endChunkIndex,
+		)
+	}
+	if startChunkIndex == endChunkIndex {
+		return 0, nil
+	}
+
+	startOffset := uint64(startChunkIndex) * uint64(chunkSize)
+	if startOffset >= snapshotSize {
+		return 0, task_errors.NewNonRetriableErrorf(
+			"partition starts at chunk %v outside snapshot size %v",
+			startChunkIndex,
+			snapshotSize,
+		)
+	}
+
+	endOffset := uint64(endChunkIndex) * uint64(chunkSize)
+	if endOffset > snapshotSize {
+		endOffset = snapshotSize
+	}
+
+	return endOffset - startOffset, nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -192,11 +280,13 @@ func ExportToWriter(
 	dst io.Writer,
 ) (Stats, error) {
 
-	return ExportToWriterWithReadWorkers(
+	return ExportPartitionToWriterWithReadWorkers(
 		ctx,
 		snapshotStorage,
 		snapshotID,
 		dst,
+		1, // partition
+		1, // partitionCount
 		DefaultStreamReadWorkerCount,
 	)
 }
@@ -212,16 +302,96 @@ func ExportToWriterWithReadWorkers(
 	readWorkerCount int,
 ) (Stats, error) {
 
+	return ExportPartitionToWriterWithReadWorkers(
+		ctx,
+		snapshotStorage,
+		snapshotID,
+		dst,
+		1, // partition
+		1, // partitionCount
+		readWorkerCount,
+	)
+}
+
+// ExportPartitionToWriter writes one 1-based partition of the snapshot raw
+// stream. Partitions are contiguous, chunk-aligned ranges; concatenating them
+// in ascending order reconstructs the complete raw snapshot.
+func ExportPartitionToWriter(
+	ctx context.Context,
+	snapshotStorage storage.Storage,
+	snapshotID string,
+	dst io.Writer,
+	partition uint32,
+	partitionCount uint32,
+) (Stats, error) {
+
+	return ExportPartitionToWriterWithReadWorkers(
+		ctx,
+		snapshotStorage,
+		snapshotID,
+		dst,
+		partition,
+		partitionCount,
+		DefaultStreamReadWorkerCount,
+	)
+}
+
+// ExportPartitionToWriterWithReadWorkers is ExportPartitionToWriter with
+// configurable parallel chunk readers. Data chunks are read concurrently but
+// written to dst in their original order within the selected partition.
+func ExportPartitionToWriterWithReadWorkers(
+	ctx context.Context,
+	snapshotStorage storage.Storage,
+	snapshotID string,
+	dst io.Writer,
+	partition uint32,
+	partitionCount uint32,
+	readWorkerCount int,
+) (Stats, error) {
+
 	if readWorkerCount <= 0 {
 		return Stats{}, task_errors.NewNonRetriableErrorf(
 			"readWorkerCount must be positive, got %v",
 			readWorkerCount,
 		)
 	}
+	if err := ValidatePartition(partition, partitionCount); err != nil {
+		return Stats{}, err
+	}
 
 	meta, err := checkSnapshotReadyForExport(ctx, snapshotStorage, snapshotID)
 	if err != nil {
 		return Stats{}, err
+	}
+
+	startChunkIndex, endChunkIndex, err := partitionChunkRange(
+		meta.ChunkCount,
+		partition,
+		partitionCount,
+	)
+	if err != nil {
+		return Stats{}, err
+	}
+
+	size, err := partitionSize(meta.Size, startChunkIndex, endChunkIndex)
+	if err != nil {
+		return Stats{}, err
+	}
+
+	logging.Info(
+		ctx,
+		"exporting partition %v/%v of snapshot %v: chunks [%v, %v), size %v bytes",
+		partition,
+		partitionCount,
+		snapshotID,
+		startChunkIndex,
+		endChunkIndex,
+		size,
+	)
+
+	partitionChunkCount := endChunkIndex - startChunkIndex
+	if partitionChunkCount == 0 {
+		return Stats{Size: size}, nil
 	}
 
 	readCtx, cancel := context.WithCancel(ctx)
@@ -231,6 +401,8 @@ func ExportToWriterWithReadWorkers(
 		readCtx,
 		snapshotStorage,
 		snapshotID,
+		startChunkIndex,
+		endChunkIndex,
 		meta.ChunkCount,
 	)
 	if err != nil {
@@ -305,16 +477,20 @@ func ExportToWriterWithReadWorkers(
 		}
 	}()
 
-	var dataChunkCount, zeroChunkCount, nextChunkIndex uint32
-	var scheduledChunkIndex uint32
+	var dataChunkCount, zeroChunkCount uint32
+	nextChunkIndex := startChunkIndex
+	scheduledChunkIndex := startChunkIndex
 	inFlightReads := 0
 	readyChunks := make(map[uint32][]byte)
 	zeroes := make([]byte, chunkSize)
 
 	scheduleReads := func() error {
-		for scheduledChunkIndex < meta.ChunkCount && inFlightReads < readAheadChunkCount {
-			entry := entriesByIndex[scheduledChunkIndex]
-			if hasEntry[scheduledChunkIndex] && len(entry.ChunkID) != 0 {
+		for scheduledChunkIndex < endChunkIndex &&
+			inFlightReads < readAheadChunkCount {
+
+			localIndex := scheduledChunkIndex - startChunkIndex
+			entry := entriesByIndex[localIndex]
+			if hasEntry[localIndex] && len(entry.ChunkID) != 0 {
 				select {
 				case jobs <- entry:
 					inFlightReads++
@@ -334,20 +510,25 @@ func ExportToWriterWithReadWorkers(
 		return writeStreamChunk(dst, zeroes, chunkIndex, meta.Size)
 	}
 
-	for nextChunkIndex < meta.ChunkCount {
+	for nextChunkIndex < endChunkIndex {
 		if err := scheduleReads(); err != nil {
 			return Stats{}, err
 		}
 
-		entry := entriesByIndex[nextChunkIndex]
-		if !hasEntry[nextChunkIndex] || len(entry.ChunkID) == 0 {
+		localIndex := nextChunkIndex - startChunkIndex
+		entry := entriesByIndex[localIndex]
+		if !hasEntry[localIndex] || len(entry.ChunkID) == 0 {
 			err = writeZeroChunk(nextChunkIndex)
 			if err != nil {
 				return Stats{}, err
 			}
 
 			nextChunkIndex++
-			logExportProgress(ctx, nextChunkIndex, meta.ChunkCount)
+			logExportProgress(
+				ctx,
+				nextChunkIndex-startChunkIndex,
+				partitionChunkCount,
+			)
 			continue
 		}
 
@@ -383,7 +564,11 @@ func ExportToWriterWithReadWorkers(
 
 		dataChunkCount++
 		nextChunkIndex++
-		logExportProgress(ctx, nextChunkIndex, meta.ChunkCount)
+		logExportProgress(
+			ctx,
+			nextChunkIndex-startChunkIndex,
+			partitionChunkCount,
+		)
 	}
 
 	close(jobs)
@@ -396,7 +581,7 @@ func ExportToWriterWithReadWorkers(
 	}
 
 	return Stats{
-		Size:           meta.Size,
+		Size:           size,
 		DataChunkCount: dataChunkCount,
 		ZeroChunkCount: zeroChunkCount,
 	}, nil
@@ -406,20 +591,36 @@ func readStreamChunkMap(
 	ctx context.Context,
 	snapshotStorage storage.Storage,
 	snapshotID string,
+	startChunkIndex uint32,
+	endChunkIndex uint32,
 	chunkCount uint32,
 ) ([]storage.ChunkMapEntry, []bool, error) {
 
+	if startChunkIndex > endChunkIndex || endChunkIndex > chunkCount {
+		return nil, nil, task_errors.NewNonRetriableErrorf(
+			"invalid chunk range [%v, %v) for snapshot chunk count %v",
+			startChunkIndex,
+			endChunkIndex,
+			chunkCount,
+		)
+	}
+
+	mapCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	entries, entriesErrors := snapshotStorage.ReadChunkMap(
-		ctx,
+		mapCtx,
 		snapshotID,
-		0, // milestoneChunkIndex
+		startChunkIndex,
 	)
 
-	entriesByIndex := make([]storage.ChunkMapEntry, int(chunkCount))
-	hasEntry := make([]bool, int(chunkCount))
+	partitionChunkCount := endChunkIndex - startChunkIndex
+	entriesByIndex := make([]storage.ChunkMapEntry, int(partitionChunkCount))
+	hasEntry := make([]bool, int(partitionChunkCount))
 
 	var lastEntryIndex uint32
 	hasLastEntry := false
+	stoppedAtEnd := false
 
 	for entry := range entries {
 		if hasLastEntry && entry.ChunkIndex <= lastEntryIndex {
@@ -427,6 +628,14 @@ func readStreamChunkMap(
 				"chunk map is not ordered: got chunk index %v after %v chunks",
 				entry.ChunkIndex,
 				lastEntryIndex+1,
+			)
+		}
+		if entry.ChunkIndex < startChunkIndex {
+			return nil, nil, task_errors.NewNonRetriableErrorf(
+				"chunk index %v is before requested chunk range [%v, %v)",
+				entry.ChunkIndex,
+				startChunkIndex,
+				endChunkIndex,
 			)
 		}
 		if entry.ChunkIndex >= chunkCount {
@@ -437,14 +646,32 @@ func readStreamChunkMap(
 			)
 		}
 
-		entriesByIndex[entry.ChunkIndex] = entry
-		hasEntry[entry.ChunkIndex] = true
 		lastEntryIndex = entry.ChunkIndex
 		hasLastEntry = true
+
+		if entry.ChunkIndex >= endChunkIndex {
+			stoppedAtEnd = true
+			cancel()
+			break
+		}
+
+		localIndex := entry.ChunkIndex - startChunkIndex
+		entriesByIndex[localIndex] = entry
+		hasEntry[localIndex] = true
+	}
+
+	if stoppedAtEnd {
+		for range entries {
+		}
 	}
 
 	err := <-entriesErrors
 	if err != nil {
+		if !stoppedAtEnd || ctx.Err() != nil || !errors.Is(err, context.Canceled) {
+			return nil, nil, err
+		}
+	}
+	if err := ctx.Err(); err != nil {
 		return nil, nil, err
 	}
 

@@ -31,6 +31,8 @@ func exportSnapshot(
 	config *server_config.ServerConfig,
 	snapshotID string,
 	readWorkerCount int,
+	partition uint32,
+	partitionCount uint32,
 ) error {
 
 	snapshotConfig := config.GetDataplaneConfig().GetSnapshotConfig()
@@ -74,11 +76,13 @@ func exportSnapshot(
 		return err
 	}
 
-	stats, err := export.ExportToWriterWithReadWorkers(
+	stats, err := export.ExportPartitionToWriterWithReadWorkers(
 		ctx,
 		snapshotStorage,
 		snapshotID,
 		os.Stdout,
+		partition,
+		partitionCount,
 		readWorkerCount,
 	)
 	if err != nil {
@@ -87,7 +91,9 @@ func exportSnapshot(
 
 	logging.Info(
 		ctx,
-		"exported snapshot %v to stdout: size %v bytes, %v data chunks, %v zero chunks",
+		"exported partition %v/%v of snapshot %v to stdout: size %v bytes, %v data chunks, %v zero chunks",
+		partition,
+		partitionCount,
 		snapshotID,
 		stats.Size,
 		stats.DataChunkCount,
@@ -102,6 +108,8 @@ func main() {
 	var configFilePath string
 	var snapshotID string
 	var readWorkerCount int
+	var partition uint32
+	var partitionCount uint32
 	var verbose bool
 	config := &server_config.ServerConfig{}
 
@@ -109,6 +117,9 @@ func main() {
 		Use:   "disk-manager-export-snapshot",
 		Short: "Exports a snapshot (or an image) from the dataplane storage to stdout as a raw image stream",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			if err := export.ValidatePartition(partition, partitionCount); err != nil {
+				return err
+			}
 			return util.ParseProto(configFilePath, config)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -126,6 +137,8 @@ func main() {
 				config,
 				snapshotID,
 				readWorkerCount,
+				partition,
+				partitionCount,
 			)
 		},
 	}
@@ -147,6 +160,18 @@ func main() {
 		"read-workers",
 		export.DefaultStreamReadWorkerCount,
 		"Number of parallel chunk read workers",
+	)
+	rootCmd.Flags().Uint32Var(
+		&partition,
+		"partition",
+		1,
+		"1-based partition number to export",
+	)
+	rootCmd.Flags().Uint32Var(
+		&partitionCount,
+		"partition-count",
+		1,
+		"Total number of contiguous snapshot partitions",
 	)
 	rootCmd.Flags().BoolVarP(
 		&verbose,
