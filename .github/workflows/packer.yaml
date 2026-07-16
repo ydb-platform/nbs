@@ -147,6 +147,7 @@ jobs:
       - name: build image
         if: inputs.image_id == '' && inputs.build_image == true
         id: build-image
+        timeout-minutes: 60
         env:
           PASSWORD_HASH: ${{ secrets.VM_USER_PASSWD }}
           NEBIUS_IAM_TOKEN: ${{ steps.cli.outputs.NEBIUS_IAM_TOKEN }}
@@ -179,7 +180,7 @@ jobs:
               '
           PACKER_EXIT_CODE=${PIPESTATUS[0]}
           set -e
-          if (( PACKER_EXIT_CODE != 0 )); then
+          if ((PACKER_EXIT_CODE != 0)); then
               exit "${PACKER_EXIT_CODE}"
           fi
           cat reports/manifest.json
@@ -195,10 +196,12 @@ jobs:
       - name: Remove Nebius resources by IDs
         if: >-
           always() &&
+          (steps.build-image.outcome == 'failure' ||
+          steps.build-image.outcome == 'cancelled') &&
           (steps.build-image.outputs.PACKER_INSTANCE_ID != '' ||
           steps.build-image.outputs.PACKER_DISK_ID != '')
         uses: ./.github/actions/nebius_remove_by_ids
-        timeout-minutes: 60
+        timeout-minutes: 30
         with:
           nebius_config_yaml: ${{ secrets.POOLED_LIGHT_NEBIUS_CONFIG_YAML }}
           instance_id: ${{ steps.build-image.outputs.PACKER_INSTANCE_ID }}
