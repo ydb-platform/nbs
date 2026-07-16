@@ -29,6 +29,10 @@ extern "C" ptrdiff_t rseq_offset;
 #    define __rseq_offset rseq_offset
 #endif
 
+// librseq's public register API. Declared here (not via <rseq/rseq.h>) so
+// this header stays self-contained; the definition lives in librseq.
+extern "C" int rseq_register_current_thread(void);
+
 /** Suppress unused-variable warnings. */
 #define SILK_UNUSED(x) (void)(x)
 
@@ -120,9 +124,36 @@ static inline uint16_t getAvailableProcessorCount() noexcept
     return static_cast<uint16_t>(CPU_COUNT(&cpuSet));
 }
 
+// Lazy per-thread rseq registration. Silk supports arbitrary application
+// threads calling fiber-aware APIs (docs/scheduler.md, "Proxy Fibers"), and
+// every such API funnels through getCurrentProcessor(). On glibc < 2.35 or
+// with GLIBC_TUNABLES=glibc.pthread.rseq=0 the C library does not register
+// rseq for us, so we do it here on first use. rseq_register_current_thread
+// is a no-op on glibc-owned rseq installs.
+//
+// The function is `inline` (not `static inline`) so its function-local
+// thread_local guard has vague linkage and is shared across every TU that
+// touches it. Otherwise each TU carries its own guard, hits registration
+// once, and later librseq's second sys_rseq for the same thread aborts
+// with "incoherent success/failure within process".
+inline void ensureRseqRegistered() noexcept
+{
+    static thread_local bool registered = false;
+    if (!registered) [[unlikely]] {
+        int r = rseq_register_current_thread();
+        SILK_ASSERT(r == 0);
+        registered = true;
+    }
+}
+
 /** Return the index of the CPU the calling thread is currently running on. */
 static inline uint16_t getCurrentProcessor() noexcept
 {
+    // Ensure the calling thread's rseq is registered before we read from
+    // its TLS area; without this, __rseq_offset stays zero and the read
+    // below returns garbage from some unrelated TLS slot.
+    ensureRseqRegistered();
+
     // The thread pointer is read through volatile asm rather than __builtin_thread_pointer(). A fiber
     // may suspend on one OS thread and resume on another (work-stealing, or the SQ-ring-overflow yield
     // in enqueueIo), which changes the thread pointer mid-function. The C++ abstract machine assumes the

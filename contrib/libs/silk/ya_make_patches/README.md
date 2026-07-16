@@ -55,16 +55,23 @@ ya_make_patches/
   `sigset_t*`. Silk targets liburing 2.9 where the arg is `void*`; the repo
   has 2.4 where it is `sigset_t*`. The cast is safe because the kernel
   interprets the pointer based on the `IORING_ENTER_EXT_ARG` flag.
-- **03-rseq-register-per-thread**: replaces silk's single `rseq_init()`
-  call in `silk::initialize()` with `rseq_register_current_thread()` and
-  adds the same call at the top of `FiberScheduler::runScheduler` and
-  `FiberScheduler::runThreadWorker`. Silk targets glibc 2.35+ (where the
-  C library auto-registers rseq for every thread) and reads `cpu_id`
-  through the librseq-provided `__rseq_offset` TLS slot; the repo's build
-  targets ship with older glibc where nobody registers rseq, so
-  `__rseq_offset` stays zero, `getCurrentProcessor` returns garbage, and
-  every downstream `Perf::processorState[cpu]` access lands out of
-  bounds and segfaults.
+- **03-rseq-register-per-thread**: replaces silk's `rseq_init()` in
+  `silk::initialize()` with a call to a new `silk::ensureRseqRegistered()`
+  helper defined in `include/silk/util/platform.h`, and calls the same
+  helper as the first thing `getCurrentProcessor()` does. The helper
+  wraps `rseq_register_current_thread()` behind a `thread_local` bool so
+  it runs at most once per thread, and its `inline` linkage keeps the
+  guard shared across every TU that touches it. Silk targets glibc 2.35+
+  (where the C library auto-registers rseq for every thread) and reads
+  `cpu_id` through the librseq-provided `__rseq_offset` TLS slot; on the
+  repo's older glibc targets nobody registers rseq, so `__rseq_offset`
+  stays zero, `getCurrentProcessor` returns garbage, and every downstream
+  `Perf::processorState[cpu]` access lands out of bounds and segfaults.
+  Silk's own docs (`docs/scheduler.md`, "Proxy Fibers") explicitly
+  support arbitrary application threads calling fiber APIs, so the
+  registration has to be lazy on any thread the first time it enters
+  silk — pre-registering only silk-spawned scheduler / worker threads
+  is not enough.
 - **04-fiber-cxa-get-globals-arcadia-libcxxrt**: gates silk's Itanium ABI
   `__cxxabiv1::__cxa_get_globals` redeclaration on
   `!defined(Y_CXA_EH_GLOBALS_COMPLETE)`. Arcadia's libcxxrt already

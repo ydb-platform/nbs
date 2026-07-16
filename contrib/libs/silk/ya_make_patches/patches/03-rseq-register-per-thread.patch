@@ -1,6 +1,70 @@
+--- a/include/silk/util/platform.h
++++ b/include/silk/util/platform.h
+@@ -29,6 +29,10 @@
+ #    define __rseq_offset rseq_offset
+ #endif
+
++// librseq's public register API. Declared here (not via <rseq/rseq.h>) so
++// this header stays self-contained; the definition lives in librseq.
++extern "C" int rseq_register_current_thread(void);
++
+ /** Suppress unused-variable warnings. */
+ #define SILK_UNUSED(x) (void)(x)
+
+@@ -120,9 +124,36 @@
+     return static_cast<uint16_t>(CPU_COUNT(&cpuSet));
+ }
+
++// Lazy per-thread rseq registration. Silk supports arbitrary application
++// threads calling fiber-aware APIs (docs/scheduler.md, "Proxy Fibers"), and
++// every such API funnels through getCurrentProcessor(). On glibc < 2.35 or
++// with GLIBC_TUNABLES=glibc.pthread.rseq=0 the C library does not register
++// rseq for us, so we do it here on first use. rseq_register_current_thread
++// is a no-op on glibc-owned rseq installs.
++//
++// The function is `inline` (not `static inline`) so its function-local
++// thread_local guard has vague linkage and is shared across every TU that
++// touches it. Otherwise each TU carries its own guard, hits registration
++// once, and later librseq's second sys_rseq for the same thread aborts
++// with "incoherent success/failure within process".
++inline void ensureRseqRegistered() noexcept
++{
++    static thread_local bool registered = false;
++    if (!registered) [[unlikely]] {
++        int r = rseq_register_current_thread();
++        SILK_ASSERT(r == 0);
++        registered = true;
++    }
++}
++
+ /** Return the index of the CPU the calling thread is currently running on. */
+ static inline uint16_t getCurrentProcessor() noexcept
+ {
++    // Ensure the calling thread's rseq is registered before we read from
++    // its TLS area; without this, __rseq_offset stays zero and the read
++    // below returns garbage from some unrelated TLS slot.
++    ensureRseqRegistered();
++
+     // The thread pointer is read through volatile asm rather than __builtin_thread_pointer(). A fiber
+     // may suspend on one OS thread and resume on another (work-stealing, or the SQ-ring-overflow yield
+     // in enqueueIo), which changes the thread pointer mid-function. The C++ abstract machine assumes the
 --- a/src/util/init.cpp
 +++ b/src/util/init.cpp
-@@ -18,8 +18,13 @@
+@@ -5,21 +5,19 @@
+ #include <silk/util/queue.h>
+ #include <silk/util/tsc.h>
+
+-// Suppress warnings emitted by librseq headers: volatile assignment in rseq_cs
+-// and unused parameters in the asm stubs.
+-#pragma clang diagnostic push
+-#pragma clang diagnostic ignored "-Wdeprecated-volatile"
+-#pragma clang diagnostic ignored "-Wunused-parameter"
+-#include <rseq/rseq.h>
+-#pragma clang diagnostic pop
++#include <silk/util/platform.h>
+
+ namespace silk
+ {
 
  void initialize() noexcept
  {
@@ -9,49 +73,9 @@
 +    // Arcadia's librseq neither auto-registers via a constructor nor relies
 +    // on glibc doing so (target platforms include glibc < 2.35). Register
 +    // rseq for the calling thread here so getCurrentProcessor's TLS read
-+    // returns a valid cpu_id; silk's own scheduler / worker threads do the
-+    // same in their own prologues.
-+    int r = rseq_register_current_thread();
-+    SILK_ASSERT(r == 0);
++    // returns a valid cpu_id. Every other thread that later calls into
++    // silk hits the same guard lazily through getCurrentProcessor().
++    ensureRseqRegistered();
 
      Tsc::initialize();
      Perf::initialize();
---- a/src/fibers/fiber.cpp
-+++ b/src/fibers/fiber.cpp
-@@ -30,6 +30,13 @@
- #include <cxxabi.h>
- #include <fcontext.h>
- #include <liburing.h>
-+// Suppress warnings emitted by librseq headers: volatile assignment in rseq_cs
-+// and unused parameters in the asm stubs.
-+#pragma clang diagnostic push
-+#pragma clang diagnostic ignored "-Wdeprecated-volatile"
-+#pragma clang diagnostic ignored "-Wunused-parameter"
-+#include <rseq/rseq.h>
-+#pragma clang diagnostic pop
- #include <poll.h>
- #include <pthread.h>
- #include <sched.h>
-@@ -1798,6 +1805,11 @@
-
- void FiberScheduler::runScheduler(ProcessorState * processor) noexcept
- {
-+    // rseq is per-thread; register this scheduler thread so subsequent
-+    // getCurrentProcessor calls return a valid cpu_id. See util/init.cpp.
-+    int r = rseq_register_current_thread();
-+    SILK_ASSERT(r == 0);
-+
-     cpu_set_t cpuSet;
-     CPU_ZERO(&cpuSet);
-     CPU_SET(processor->number, &cpuSet);
-@@ -2395,6 +2407,10 @@
-
- void FiberScheduler::runThreadWorker() noexcept
- {
-+    // rseq is per-thread; register this worker thread. See util/init.cpp.
-+    int r = rseq_register_current_thread();
-+    SILK_ASSERT(r == 0);
-+
-     while (!scheduler->stopping.load(std::memory_order_relaxed))
-     {
-         while (Fiber * fiber = scheduler->readyQueue.dequeue())
