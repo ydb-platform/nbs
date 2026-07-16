@@ -278,7 +278,7 @@ void TWriteBackCacheState::VisitUnflushedRequestsFromFrontFlushBatch(
     auto guard = LockStateAndPostponeQueuedOperations();
 
     auto* nodeState = Nodes.GetNodeState(nodeId, /* includeDeleted = */ false);
-    if (nodeState == nullptr) {
+    if (nodeState == nullptr || !nodeState->Cache.HasUnflushedRequests()) {
         return;
     }
 
