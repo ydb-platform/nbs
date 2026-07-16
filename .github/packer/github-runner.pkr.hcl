@@ -77,11 +77,41 @@ variable "SUBNET_ID" {
   default = env("SUBNET_ID")
 }
 
+variable "GITHUB_RUN_ID" {
+  type    = string
+  default = env("GITHUB_RUN_ID")
+}
+
+variable "GITHUB_RUN_ATTEMPT" {
+  type    = string
+  default = env("GITHUB_RUN_ATTEMPT")
+}
+
+variable "GITHUB_EVENT_NAME" {
+  type    = string
+  default = env("GITHUB_EVENT_NAME")
+}
+
+variable "GITHUB_REF_NAME" {
+  type    = string
+  default = env("GITHUB_REF_NAME")
+}
+
+variable "GITHUB_REPOSITORY" {
+  type    = string
+  default = env("GITHUB_REPOSITORY")
+}
 
 locals {
-  image_family  = "ubuntu22.04-nbs-github-ci"
-  image_version = "${formatdate("YYYYMMDDHHMM", timestamp())}-${timestamp()}"
-  tmp_directory = "/tmp/packer"
+  image_family      = "ubuntu22.04-nbs-github-ci"
+  image_version     = "${formatdate("YYYYMMDDHHMM", timestamp())}-${timestamp()}"
+  tmp_directory     = "/tmp/packer"
+  github_owner      = var.GITHUB_REPOSITORY != "" ? split("/", var.GITHUB_REPOSITORY)[0] : "na"
+  github_repository = var.GITHUB_REPOSITORY != "" ? split("/", var.GITHUB_REPOSITORY)[1] : "na"
+  run_id            = var.GITHUB_RUN_ID != "" ? var.GITHUB_RUN_ID : "na"
+  run_attempt       = var.GITHUB_RUN_ATTEMPT != "" ? var.GITHUB_RUN_ATTEMPT : "0"
+  pr_number         = var.GITHUB_EVENT_NAME == "pull_request" && var.GITHUB_REF_NAME != "" ? split("/", var.GITHUB_REF_NAME)[0] : "na"
+  packer_build_name = "${local.github_owner}.${local.github_repository}.${local.pr_number}.${local.run_id}.${local.run_attempt}"
 }
 
 source "nebius-image" "ubuntu2204-nbs-github-ci" {
@@ -96,7 +126,6 @@ source "nebius-image" "ubuntu2204-nbs-github-ci" {
   }
   network {
     subnet_id = var.SUBNET_ID
-    associate_public_ip_address = true
   }
   instance {
     platform = "cpu-d3"
@@ -114,6 +143,7 @@ source "nebius-image" "ubuntu2204-nbs-github-ci" {
 
 
 build {
+  name    = local.packer_build_name
   sources = ["source.nebius-image.ubuntu2204-nbs-github-ci"]
 
   provisioner "shell" {
