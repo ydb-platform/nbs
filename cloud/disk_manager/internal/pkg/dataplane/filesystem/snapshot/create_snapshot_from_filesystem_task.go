@@ -179,7 +179,6 @@ func (t *createSnapshotFromFilesystemTask) Cancel(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	// TODO (jkuradobery): Clean up directory listing queue on snapshot data deletion
 	_, err := t.storage.DeletingFilesystemSnapshot(
 		ctx,
 		t.request.GetSnapshotId(),
