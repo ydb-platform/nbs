@@ -8216,18 +8216,40 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             sevenBytesHandlesCount);
 
         env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
+        // To make the following counter updates less dependent on timing,
+        // GetStorageStats is called to refresh the cache.
+        GetStorageStats(service, fsId).GetStats();
 
         // Update counters in all the shards.
         TDispatchOptions options;
-        options.FinalEvents = {TDispatchOptions::TFinalEventCondition(
-            TEvIndexTabletPrivate::EvAggregateStatsCompleted,
-            shardCount + 1)};
-        service.AccessRuntime().DispatchEvents(options);
+        options.FinalEvents.emplace_back(
+            TDispatchOptions::TFinalEventCondition(
+                TEvIndexTabletPrivate::EvUpdateCounters,
+                shardCount + 2));
+        env.GetRuntime().DispatchEvents(options);
 
         const auto mainStats = GetStorageStats(service, fsId);
         UNIT_ASSERT_VALUES_EQUAL(
             sevenBytesHandlesCount,
             mainStats.GetStats().GetSevenBytesHandlesCount());
+
+        env.GetRegistry()->Update(env.GetRuntime().GetCurrentTime());
+        auto tabletCounters = env.GetRuntime().GetAppData().Counters
+            ->FindSubgroup("counters", "filestore")
+            ->FindSubgroup("component", "storage")
+            ->FindSubgroup("type", "hdd");
+
+        const auto getStorageStatsCount =
+            tabletCounters->FindSubgroup("request", "GetStorageStats")
+                ->GetCounter("Count")
+                ->GetAtomic();
+
+        // Each GetStorageStats to the main fs generate requests to all shards.
+        // Three calls to the main fs are made explicitly,
+        // one call from UpdateCounters and two GetStorageStats requests happen
+        // when it's called to a shard.
+        // So, we should have ~ 6 * shardCount GetStorageStats request.
+        UNIT_ASSERT_EQUAL(6, getStorageStatsCount / shardCount);
     }
 
     SERVICE_TEST(ShouldCreateALotOfShardsThrottled)
@@ -8535,8 +8557,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     void DoShouldShardedFileSystemHitNodesCountLimit(
         NProto::TStorageConfig config,
-        const bool strictFileSystemSizeEnforcementEnabled,
-        const bool updateMainFsCounters)
+        const bool strictFileSystemSizeEnforcementEnabled)
     {
         const ui64 blockSize = 4_KB;
         const ui64 shardBlockCount = 512;
@@ -8601,9 +8622,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                     nodeIdx);
             };
 
-            if (updateMainFsCounters) {
-                updateCounters(fsInfo.MainTabletActorId);
-            }
+            updateCounters(fsInfo.MainTabletActorId);
             updateCounters(fsInfo.Shard1ActorId);
             updateCounters(fsInfo.Shard2ActorId);
 
@@ -8611,14 +8630,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             options.FinalEvents.emplace_back(
                 TDispatchOptions::TFinalEventCondition(
                     TEvIndexTabletPrivate::EvUpdateCounters,
-                    shardCount + updateMainFsCounters));
+                    shardCount + 1));
             env.GetRuntime().DispatchEvents(options);
         }
 
         const ui32 response =
-            (strictFileSystemSizeEnforcementEnabled && updateMainFsCounters)
-                ? E_FS_NOSPC
-                : S_OK;
+            strictFileSystemSizeEnforcementEnabled ? E_FS_NOSPC : S_OK;
 
         service.SendCreateNodeRequest(
             headers,
@@ -8652,9 +8669,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST(ShouldShardedFileSystemHitNodesCountLimit)
     {
-        DoShouldShardedFileSystemHitNodesCountLimit(config, true, true);
-        DoShouldShardedFileSystemHitNodesCountLimit(config, true, false);
-        DoShouldShardedFileSystemHitNodesCountLimit(config, false, true);
+        DoShouldShardedFileSystemHitNodesCountLimit(config, true);
+        DoShouldShardedFileSystemHitNodesCountLimit(config, false);
     }
 
     SERVICE_TEST(ShouldNotUpdateShardBalancerInTabletZombieState)

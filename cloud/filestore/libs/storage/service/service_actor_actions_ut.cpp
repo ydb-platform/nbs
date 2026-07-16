@@ -1115,7 +1115,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         options.FinalEvents = {
             TDispatchOptions::TFinalEventCondition(
                 TEvIndexTabletPrivate::EvAggregateStatsCompleted,
-                strictFileSystemSizeEnforcementEnabled ? 3 : 1)
+                strictFileSystemSizeEnforcementEnabled ? 4 : 1)
         };
         env.GetRuntime().DispatchEvents(options);
 
