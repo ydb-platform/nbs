@@ -725,6 +725,7 @@ def test_build_vm_labels_adds_runner_metadata_to_copy_of_existing_labels():
 
 def test_remove_vm_and_disk_by_ids_deletes_instance_before_disk(monkeypatch):
     removed = []
+    logs = []
 
     async def fake_remove_instance(sdk, resource_id):
         removed.append(("instance", sdk, resource_id))
@@ -734,6 +735,14 @@ def test_remove_vm_and_disk_by_ids_deletes_instance_before_disk(monkeypatch):
 
     monkeypatch.setattr(m, "remove_vm_by_id", fake_remove_instance)
     monkeypatch.setattr(m, "remove_disk_by_id", fake_remove_disk)
+    monkeypatch.setattr(
+        m,
+        "logger",
+        SimpleNamespace(
+            info=lambda message, *args: logs.append(message % args),
+            error=lambda message, *args: logs.append(message % args),
+        ),
+    )
 
     sdk = object()
     asyncio.run(
@@ -745,6 +754,14 @@ def test_remove_vm_and_disk_by_ids_deletes_instance_before_disk(monkeypatch):
     assert removed == [
         ("instance", sdk, "computeinstance-instance-id"),
         ("disk", sdk, "computedisk-disk-id"),
+    ]
+    assert logs == [
+        "Cleanup plan: remove instance computeinstance-instance-id, then remove disk computedisk-disk-id",
+        "Removing instance with ID computeinstance-instance-id",
+        "Successfully removed instance with ID computeinstance-instance-id",
+        "Removing disk with ID computedisk-disk-id",
+        "Successfully removed disk with ID computedisk-disk-id",
+        "VM and disk cleanup completed successfully",
     ]
 
 

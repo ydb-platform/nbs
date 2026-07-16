@@ -795,10 +795,24 @@ async def remove_vm_and_disk_by_ids(
         raise ValueError(f"Invalid disk ID: {disk_id}")
 
     if not instance_id and not disk_id:
-        logger.info("No instance or disk IDs were provided")
+        logger.info("No instance or disk IDs were provided; nothing to remove")
         return
 
+    if instance_id and disk_id:
+        logger.info(
+            "Cleanup plan: remove instance %s, then remove disk %s",
+            instance_id,
+            disk_id,
+        )
+    elif instance_id:
+        logger.info(
+            "Cleanup plan: remove instance %s; no disk was provided", instance_id
+        )
+    else:
+        logger.info("Cleanup plan: remove disk %s; no instance was created", disk_id)
+
     if instance_id:
+        logger.info("Removing instance with ID %s", instance_id)
         try:
             await remove_vm_by_id(sdk, instance_id)
         except RequestError as error:
@@ -808,9 +822,24 @@ async def remove_vm_and_disk_by_ids(
                     instance_id,
                 )
             else:
+                logger.error(
+                    "Failed to remove instance with ID %s; cleanup stopped",
+                    instance_id,
+                )
                 raise
+        except Exception:
+            logger.error(
+                "Failed to remove instance with ID %s; cleanup stopped",
+                instance_id,
+            )
+            raise
+        else:
+            logger.info("Successfully removed instance with ID %s", instance_id)
+    else:
+        logger.info("No instance ID provided; proceeding with disk-only cleanup")
 
     if disk_id:
+        logger.info("Removing disk with ID %s", disk_id)
         try:
             await remove_disk_by_id(sdk, disk_id)
         except RequestError as error:
@@ -820,7 +849,17 @@ async def remove_vm_and_disk_by_ids(
                     disk_id,
                 )
             else:
+                logger.error("Failed to remove disk with ID %s", disk_id)
                 raise
+        except Exception:
+            logger.error("Failed to remove disk with ID %s", disk_id)
+            raise
+        else:
+            logger.info("Successfully removed disk with ID %s", disk_id)
+    else:
+        logger.info("No disk ID provided; skipping disk removal")
+
+    logger.info("VM and disk cleanup completed successfully")
 
 
 def labels_match(
