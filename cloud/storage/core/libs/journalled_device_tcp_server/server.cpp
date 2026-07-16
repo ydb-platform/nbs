@@ -214,6 +214,14 @@ void TServer::StopImpl()
             conn->Recv->Cancel();
         }
     }
+
+    Listener.reset();
+
+    while (!Connections.empty()) {
+        RunningCont()->Yield();
+    }
+
+    STORAGE_DEBUG("Stopped");
 }
 
 void TServer::Receive(TConnectionPtr conn)
