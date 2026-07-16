@@ -132,7 +132,7 @@ void FillFeatures(
 ////////////////////////////////////////////////////////////////////////////////
 
 TActorId DoRecoverSession(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     TIndexTabletState& state,
     TSession* session,
     const TString& clientId,
@@ -329,7 +329,7 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
 
     const auto owner = args.RequestInfo->Sender;
 
-    TIndexTabletDatabase db(tx.DB);
+    auto db = CreateIndexTabletDatabase(tx.DB);
 
     // check if client reconnecting with known session id
     auto* session = FindSession(sessionId);
@@ -337,7 +337,7 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
         if (session->GetClientId() == clientId) {
             args.SessionId = session->GetSessionId();
             auto toKill = DoRecoverSession(
-                db,
+                *db,
                 *this,
                 session,
                 clientId,
@@ -397,7 +397,7 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
             args.SessionId = session->GetSessionId();
 
             DoRecoverSession(
-                db,
+                *db,
                 *this,
                 session,
                 clientId,
@@ -447,7 +447,7 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
     auto sessionOptions = TSession::CreateSessionOptions(Config);
 
     auto* newSession = CreateSession(
-        db,
+        *db,
         clientId,
         args.SessionId,
         checkpointId,

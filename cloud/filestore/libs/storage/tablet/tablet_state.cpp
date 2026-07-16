@@ -256,7 +256,7 @@ void TIndexTabletState::LoadState(
 }
 
 void TIndexTabletState::UpdateConfig(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     const TStorageConfig& config,
     const NProto::TFileSystem& fileSystem,
     const TThrottlerConfig& throttlerConfig)
@@ -272,14 +272,14 @@ void TIndexTabletState::UpdateConfig(
     InitShardBalancer(config);
 }
 
-void TIndexTabletState::SetFrozen(TIndexTabletDatabase& db, bool frozen)
+void TIndexTabletState::SetFrozen(IIndexTabletDatabase& db, bool frozen)
 {
     FileSystem.SetFrozen(frozen);
     db.WriteFileSystem(FileSystem);
 }
 
 void TIndexTabletState::SetCompressNodeRef(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     bool compressNodeRef)
 {
     FileSystem.SetCompressNodeRef(compressNodeRef);
@@ -349,14 +349,14 @@ ui64 TIndexTabletState::CalculateMinExpectedShardCount(
 ////////////////////////////////////////////////////////////////////////////////
 
 void TIndexTabletState::WriteOpLogEntry(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     const NProto::TOpLogEntry& e)
 {
     db.WriteOpLogEntry(e);
     Impl->OpLogEntryIds.insert(e.GetEntryId());
 }
 
-void TIndexTabletState::DeleteOpLogEntry(TIndexTabletDatabase& db, ui64 entryId)
+void TIndexTabletState::DeleteOpLogEntry(IIndexTabletDatabase& db, ui64 entryId)
 {
     db.DeleteOpLogEntry(entryId);
     Impl->OpLogEntryIds.erase(entryId);
@@ -379,7 +379,7 @@ TIndexTabletState::LookupResponseLogEntry(
 }
 
 void TIndexTabletState::WriteResponseLogEntry(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     const NProtoPrivate::TResponseLogEntry& e)
 {
     db.WriteResponseLogEntry(e);
@@ -408,7 +408,7 @@ void TIndexTabletState::CommitResponseLogEntry(
 }
 
 void TIndexTabletState::DeleteResponseLogEntry(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     ui64 clientTabletId,
     ui64 requestId)
 {

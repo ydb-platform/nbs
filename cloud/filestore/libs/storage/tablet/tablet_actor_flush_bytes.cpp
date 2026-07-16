@@ -660,7 +660,7 @@ bool TIndexTabletActor::PrepareTx_FlushBytes(
     TTransactionContext& tx,
     TTxIndexTablet::TFlushBytes& args)
 {
-    TIndexTabletDatabase db(tx.DB);
+    auto db = CreateIndexTabletDatabase(tx.DB);
 
     InitTabletProfileLogRequestInfo(args.ProfileLogRequest, ctx.Now());
 
@@ -668,7 +668,7 @@ bool TIndexTabletActor::PrepareTx_FlushBytes(
     for (const auto& bytes: args.Bytes) {
         ui32 rangeId = GetMixedRangeIndex(bytes.NodeId, bytes.Offset / GetBlockSize());
         if (!args.MixedBlocksRanges.count(rangeId)) {
-            if (LoadMixedBlocks(db, rangeId)) {
+            if (LoadMixedBlocks(*db, rangeId)) {
                 args.MixedBlocksRanges.insert(rangeId);
             } else {
                 ready = false;
@@ -978,10 +978,10 @@ void TIndexTabletActor::ExecuteTx_TrimBytes(
 {
     Y_UNUSED(ctx);
 
-    TIndexTabletDatabase db(tx.DB);
+    auto db = CreateIndexTabletDatabase(tx.DB);
 
     auto result = FinishFlushBytes(
-        db,
+        *db,
         Config->GetTrimBytesItemCount(),
         args.ChunkId,
         args.ProfileLogRequest);

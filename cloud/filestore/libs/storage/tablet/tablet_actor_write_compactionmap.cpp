@@ -54,9 +54,9 @@ void TIndexTabletActor::ExecuteTx_WriteCompactionMap(
 {
     Y_UNUSED(ctx);
 
-    TIndexTabletDatabase db(tx.DB);
+    auto db = CreateIndexTabletDatabase(tx.DB);
     for (const auto& range: args.Ranges) {
-        db.ForceWriteCompactionMap(
+        db->ForceWriteCompactionMap(
             range.GetRangeId(),
             range.GetBlobCount(),
             range.GetDeletionCount(),
