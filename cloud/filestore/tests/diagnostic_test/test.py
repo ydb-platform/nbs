@@ -7,9 +7,16 @@ import yatest.common as common
 from cloud.filestore.tools.testing.loadtest.protos.loadtest_pb2 import TTestGraph, ACTION_WRITE, ACTION_READ
 from cloud.filestore.tests.python.lib.client import FilestoreCliClient
 from google.protobuf.text_format import MessageToString
+from copy import deepcopy
 
 BLOCK_SIZE = 4 * 1024
 SHARD_SIZE = 1024 * 1024 * 1024
+UNSTABLE_DIAGNOSE_FIELDS = (
+    "current_load",
+    "suffer",
+    "used_blocks_count",
+    "used_nodes_count",
+)
 
 
 def __init_test():
@@ -61,7 +68,7 @@ def __generate_loadtest_config(
 
 
 def __json_line(data):
-    return json.dumps(data, sort_keys=True).encode("utf-8")
+    return json.dumps(data, sort_keys=True).encode("utf-8") + b"\n"
 
 
 def __get_loadtested_shards(client, fs_id, client_id):
@@ -88,23 +95,35 @@ def __get_loadtested_shards(client, fs_id, client_id):
 def __alias_shards(shard_ids):
     return {
         shard_id: f"shard_{i + 1}"
-        for i, shard_id in enumerate(shard_ids)
+        for i, shard_id in enumerate(sorted(shard_ids))
     }
 
 
-def __compare_shards(target_shards, seen_active_shards):
-    target_shards = target_shards or set()
-    observed_shards = sorted(target_shards | seen_active_shards)
-    aliases = __alias_shards(observed_shards)
-
-    return {
-        "target_shards": [aliases[shard_id] for shard_id in sorted(target_shards)],
-        "seen_active_shards": [aliases[shard_id] for shard_id in sorted(seen_active_shards)],
-        "missing_target_shards": [
-            aliases[shard_id]
-            for shard_id in sorted(target_shards - seen_active_shards)
-        ],
-    }
+def __normalize_responses(diagnose_responses):
+    if not diagnose_responses:
+        return {}
+    
+    result = deepcopy(diagnose_responses[0])
+    result_shards = {
+        shard["shard_id"]: shard
+        for shard in result["shards"]}
+    
+    for shard in result_shards.values():
+        for field in UNSTABLE_DIAGNOSE_FIELDS:
+            shard[field] = 0
+    
+    for response in diagnose_responses:
+        input_shards = {
+            shard["shard_id"]: shard
+            for shard in response["shards"]
+        }
+        
+        for shard_id, result_shard in result_shards.items():
+            input_shard = input_shards[shard_id]
+            for field in UNSTABLE_DIAGNOSE_FIELDS:
+                result_shard[field] = (1 if input_shard[field] > 0 else result_shard[field])
+                
+    return result
 
 
 def test_diagnose_shards_with_loadtest():
@@ -118,7 +137,7 @@ def test_diagnose_shards_with_loadtest():
     loadtest_client_id = "diagnose-shards-loadtest"
     workload = None
     target_shards = None
-    seen_active_shards = set()
+    diagnose_responses = []
 
     try:
         client.create(
@@ -127,12 +146,7 @@ def test_diagnose_shards_with_loadtest():
             "test_folder",
             BLOCK_SIZE,
             blocks_count)
-        out = client.execute_action(
-            "getfilesystemtopology", {"FileSystemId": "fs0"})
-        out += client.resize("fs0", blocks_count, shard_count=shards_count)
-
-        out += client.execute_action(
-            "getfilesystemtopology", {"FileSystemId": "fs0"})
+        client.resize("fs0", blocks_count, shard_count=shards_count)
 
         config_path = __generate_loadtest_config(
             "fs0",
@@ -165,12 +179,12 @@ def test_diagnose_shards_with_loadtest():
                 "fs0",
                 top=top_n_shards,
             ))
+            diagnose_responses.append(diagnose_response)
             active_shards = {
                 shard["shard_id"]
                 for shard in diagnose_response["shards"]
                 if shard["current_load"] > 0
             }
-            seen_active_shards.update(active_shards)
 
             if target_shards and target_shards.issubset(active_shards):
                 break
@@ -182,7 +196,25 @@ def test_diagnose_shards_with_loadtest():
         if workload is not None and workload.running:
             workload.wait(check_exit_code=False)
 
-        out += __json_line(__compare_shards(target_shards, seen_active_shards))
+        normalized_response = __normalize_responses(diagnose_responses)
+        response_shard_ids = {
+            shard["shard_id"]
+            for shard in normalized_response["shards"]
+        }
+        aliases = __alias_shards(response_shard_ids)
+        aliased_targets = [
+            aliases[shard_id]
+            for shard_id in sorted(target_shards or set())
+        ]
+        for shard in normalized_response["shards"]:
+            shard["shard_id"] = aliases[shard["shard_id"]]
+
+        normalized_response["shards"].sort(
+            key=lambda shard: shard["shard_id"]
+        )
+        out = __json_line(aliased_targets)
+        out += __json_line(normalized_response)
+
     finally:
         if workload is not None and workload.running:
             workload.kill()
