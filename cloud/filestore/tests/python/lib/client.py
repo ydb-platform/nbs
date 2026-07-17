@@ -300,6 +300,23 @@ class FilestoreCliClient:
 
         return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
 
+    def diagnose_filesystem(self, fs, top=None, sort_by="load"):
+        cmd = [
+            self.__binary_path, "diagnosefilesystem",
+            "--filesystem", fs,
+            "--json",
+        ]
+
+        if top is not None:
+            cmd += ["--top", str(top)]
+
+        if sort_by is not None:
+            cmd += ["--sort-by", sort_by]
+
+        cmd += self.__cmd_opts()
+
+        return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
+
     def find(self, fs, depth, glob=None, root_node_id=None):
         cmd = [
             self.__binary_path, "find",

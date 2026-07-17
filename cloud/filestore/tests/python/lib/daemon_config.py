@@ -58,6 +58,7 @@ class FilestoreDaemonConfigGenerator:
         restart_flag=None,
         access_service_port=0,
         storage_config=None,
+        diag_config=None,
         use_secure_registration=False,
         secure=False,
         access_service_type=AccessService,
@@ -75,6 +76,7 @@ class FilestoreDaemonConfigGenerator:
         self.__app_config_file_path = self.__config_file_path(config_file)
         self.__storage_config_file_path = self.__config_file_path(storage_config_file)
         self.__storage_config = storage_config or TStorageConfig()
+        self.__diag_config = diag_config or TDiagnosticsConfig()
 
         self.__profile_log_path = self.__profile_file_path(profile_log)
 
@@ -247,6 +249,7 @@ class FilestoreDaemonConfigGenerator:
         config.RequestThresholds.add(Default=1000)
         config.RequestThresholds.add(Default=1000, MediaKind=STORAGE_MEDIA_HDD)
         config.LWTraceShuttleCount = 50000
+        config.MergeFrom(self.__diag_config)
 
         return config
 
@@ -396,6 +399,7 @@ class FilestoreServerConfigGenerator(FilestoreDaemonConfigGenerator):
         restart_interval=None,
         access_service_port=0,
         storage_config=None,
+        diag_config=None,
         use_secure_registration=False,
         secure=False,
         access_service_type=AccessService,
@@ -416,6 +420,7 @@ class FilestoreServerConfigGenerator(FilestoreDaemonConfigGenerator):
             restart_flag=None,
             access_service_port=access_service_port,
             storage_config=storage_config,
+            diag_config=diag_config,
             use_secure_registration=use_secure_registration,
             secure=secure,
             access_service_type=access_service_type,

@@ -1,0 +1,20 @@
+SSDFileSystemPerformanceProfile {
+    Read {
+        RPS: 10
+        Throughput: 1000000
+    }
+    Write {
+          RPS: 10
+          Throughput: 10000000
+      }
+}
+HDDFileSystemPerformanceProfile {
+    Read {
+        RPS: 10
+        Throughput: 1000000
+    }
+    Write {
+          RPS: 10
+          Throughput: 10000000
+      }
+}
