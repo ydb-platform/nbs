@@ -1,7 +1,6 @@
 import json
 import os
 import time
-
 import yatest.common as common
 
 from cloud.filestore.tools.testing.loadtest.protos.loadtest_pb2 import TTestGraph, ACTION_WRITE, ACTION_READ
@@ -42,7 +41,7 @@ def __generate_loadtest_config(
     config.Tests.add()
 
     load_test = config.Tests[0].LoadTest
-    load_test.Name = "diagnose-shards"
+    load_test.Name = "diagnose-filesystem"
     load_test.FileSystemId = fs_id
     load_test.ClientId = client_id
     # 1 outstanding filesystem operation should not create more than MinFileCount files
@@ -126,7 +125,7 @@ def __normalize_responses(diagnose_responses):
     return result
 
 
-def test_diagnose_shards_with_loadtest():
+def test_diagnose_filesystem_with_loadtest():
     client, client_nocheck, results_path = __init_test()
     shards_count = 4
     blocks_count = shards_count * int(SHARD_SIZE / BLOCK_SIZE)
@@ -134,7 +133,7 @@ def test_diagnose_shards_with_loadtest():
     poll_interval_seconds = 1
     poll_deadline_seconds = 20
     top_n_shards = 3
-    loadtest_client_id = "diagnose-shards-loadtest"
+    loadtest_client_id = "diagnose-filesystem-loadtest"
     workload = None
     target_shards = None
     diagnose_responses = []
@@ -175,7 +174,7 @@ def test_diagnose_shards_with_loadtest():
 
             target_shards = set(__get_loadtested_shards(client, "fs0", loadtest_client_id))
 
-            diagnose_response = json.loads(client.diagnose_shards(
+            diagnose_response = json.loads(client.diagnose_filesystem(
                 "fs0",
                 top=top_n_shards,
             ))
@@ -190,7 +189,7 @@ def test_diagnose_shards_with_loadtest():
                 break
 
             if not workload.running:
-                workload.wait(check_exit_code=False)
+                workload.wait(check_exit_code=False, timeout=loadtest_duration_seconds+10)
                 break
 
         if workload is not None and workload.running:
@@ -217,8 +216,7 @@ def test_diagnose_shards_with_loadtest():
 
     finally:
         if workload is not None and workload.running:
-            workload.kill()
-            workload.wait(check_exit_code=False)
+            workload.wait(check_exit_code=False, timeout=loadtest_duration_seconds+10)
         client_nocheck.destroy("fs0")
 
     with open(results_path, "wb") as results_file:

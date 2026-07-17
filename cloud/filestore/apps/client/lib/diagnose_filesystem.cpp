@@ -12,7 +12,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDiagnoseShardsCommand final
+class TDiagnoseFilesystemCommand final
     : public TFileStoreCommand
 {
 private:
@@ -26,18 +26,20 @@ private:
         ui64 UsedNodesCount = 0;
     };
 
-    ui32 Top = 10;
-    TString SortBy = "load";
+    ui32 Top;
+    TString SortBy;
 
 public:
-    TDiagnoseShardsCommand()
+    TDiagnoseFilesystemCommand()
     {
         Opts.AddLongOption("top", "number of most loaded shards")
             .RequiredArgument("NUM")
+            .DefaultValue(10)
             .StoreResult(&Top);
         Opts.AddLongOption("sort-by", "way of sorting")
             .RequiredArgument("STR")
             .Choices({"load"})
+            .DefaultValue("load")
             .StoreResult(&SortBy);
     }
 
@@ -173,9 +175,9 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TCommandPtr NewDiagnoseShardsCommand()
+TCommandPtr NewDiagnoseFilesystemCommand()
 {
-    return std::make_shared<TDiagnoseShardsCommand>();
+    return std::make_shared<TDiagnoseFilesystemCommand>();
 }
   
 }   // namespace NCloud::NFileStore::NClient

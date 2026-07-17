@@ -10,7 +10,7 @@ SRCS(
     describe.cpp
     destroy.cpp
     destroy_session.cpp
-    diagnose_shards.cpp
+    diagnose_filesystem.cpp
     diff.cpp
     execute_action.cpp
     factory.cpp

@@ -300,9 +300,9 @@ class FilestoreCliClient:
 
         return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
 
-    def diagnose_shards(self, fs, top=None, sort_by="load"):
+    def diagnose_filesystem(self, fs, top=None, sort_by="load"):
         cmd = [
-            self.__binary_path, "diagnoseshards",
+            self.__binary_path, "diagnosefilesystem",
             "--filesystem", fs,
             "--json",
         ]

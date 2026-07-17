@@ -42,7 +42,7 @@ TCommandPtr NewForcedCompactionCommand();
 TCommandPtr NewFindCommand();
 TCommandPtr NewDiffCommand();
 TCommandPtr NewPingCommand();
-TCommandPtr NewDiagnoseShardsCommand();
+TCommandPtr NewDiagnoseFilesystemCommand();
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -83,7 +83,7 @@ static const TMap<TString, TFactoryFunc> Commands = {
     { "touch", NewTouchCommand },
     { "write", NewWriteCommand },
     { "ping", NewPingCommand },
-    { "diagnoseshards", NewDiagnoseShardsCommand },
+    { "diagnosefilesystem", NewDiagnoseFilesystemCommand },
 };
 
 ////////////////////////////////////////////////////////////////////////////////
