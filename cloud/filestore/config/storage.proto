@@ -851,5 +851,5 @@ message TStorageConfig
 
     // Enables injecting of errors in TIndexTabletDatabase. Must be only used in tests!
     optional bool FakeTxPageFaultsEnabled = 527;
-    optional double FakeTxPageFaultsProbabilityPercentage = 528;
+    optional double FakeTxPageFaultsProbability = 528;
 }

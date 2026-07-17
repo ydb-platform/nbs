@@ -79,7 +79,7 @@ struct TTestEnvConfig
 
     // This controls probability that read will be restarted
     bool FakePageFaultsEnabled = true;
-    double FakePageFaultsProbabilityPercentage = 1;
+    double FakePageFaultsProbability = 0.01;
     std::optional<ui64> FakePageFaultsRandomSeed = std::nullopt;
 };
 

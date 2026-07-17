@@ -1458,7 +1458,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
             storageConfig.SetAddingUnconfirmedDataEnabled(true);
             storageConfig.SetUnconfirmedDataCountHardLimit(10);
 
-            TTestEnv env({.FakePageFaultsProbabilityPercentage = 5}, std::move(storageConfig));
+            TTestEnv env({.FakePageFaultsProbability = 0.05}, std::move(storageConfig));
             ui32 nodeIdx = env.AddDynamicNode();
             ui64 tabletId = env.BootIndexTablet(nodeIdx);
 

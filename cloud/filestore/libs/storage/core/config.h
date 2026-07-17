@@ -442,7 +442,7 @@ public:
     [[nodiscard]] bool GetExternalWriteDataPayloadEnabled() const;
 
     [[nodiscard]] bool GetFakeTxPageFaultsEnabled() const;
-    [[nodiscard]] double GetFakeTxPageFaultsProbabilityPercentage() const;
+    [[nodiscard]] double GetFakeTxPageFaultsProbability() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

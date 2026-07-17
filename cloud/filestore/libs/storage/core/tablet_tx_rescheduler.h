@@ -30,7 +30,7 @@ using ITxReschedulerPtr = std::shared_ptr<ITxRescheduler>;
 // with a given probability.
 struct TReschedulerParams
 {
-    double ProbabilityPercentage = 1;
+    double Probability = 0.01;
     std::optional<ui64> RandomSeed;
 };
 

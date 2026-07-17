@@ -28,9 +28,9 @@ private:
     TMersenne<ui64> RandomGen;
 
 public:
-    explicit TRandomTxRescheduler(float probabilityPercentage,
+    explicit TRandomTxRescheduler(double probability,
                                   std::optional<ui64> randomSeed)
-        : Probability(probabilityPercentage / 100.0)
+        : Probability(std::clamp(probability, 0.0, 1.0))
         , Seed(randomSeed ? *randomSeed : RandomNumber<ui64>())
         , RandomGen(Seed)
     {
@@ -66,7 +66,7 @@ public:
 ITxReschedulerPtr CreateRescheduler(TReschedulerParams params)
 {
     return std::make_shared<TRandomTxRescheduler>(
-        params.ProbabilityPercentage,
+        params.Probability,
         params.RandomSeed);
 }
 

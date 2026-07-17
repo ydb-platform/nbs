@@ -248,7 +248,7 @@ public:
                     fastShardServer,
                     config->GetFakeTxPageFaultsEnabled() ?
                         CreateRescheduler({
-                            .ProbabilityPercentage = config->GetFakeTxPageFaultsProbabilityPercentage(),
+                            .Probability = config->GetFakeTxPageFaultsProbability(),
                             .RandomSeed = std::nullopt
                         }) : nullptr);
                 return actor.release();
