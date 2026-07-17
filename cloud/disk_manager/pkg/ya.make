@@ -5,4 +5,5 @@ RECURSE(
     client
     monitoring
     schema
+    snapshot
 )

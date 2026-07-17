@@ -97,6 +97,21 @@ func TestNbsClientReportsMetrics(t *testing.T) {
 		map[string]string{"component": "nbs_session", "request": "Write"},
 	)[0], float64(0))
 
+	snapshotStorageQuotaLabels := map[string]string{
+		"bucket":    "snapshot",
+		"component": "snapshot_storage",
+	}
+	require.Equal(t, []float64{0}, testcommon.GetGaugesDataplane(
+		t,
+		"snapshots_quotas_used_bytes",
+		snapshotStorageQuotaLabels,
+	))
+	require.Equal(t, []float64{1000}, testcommon.GetGaugesDataplane(
+		t,
+		"snapshots_quotas_limit_bytes",
+		snapshotStorageQuotaLabels,
+	))
+
 	testcommon.DeleteDisk(t, ctx, client, diskID1)
 	testcommon.DeleteDisk(t, ctx, client, diskID2)
 }

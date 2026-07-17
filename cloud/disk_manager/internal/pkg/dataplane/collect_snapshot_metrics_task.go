@@ -8,7 +8,9 @@ import (
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/snapshot"
 	"github.com/ydb-platform/nbs/cloud/tasks"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -16,6 +18,7 @@ import (
 type collectSnapshotMetricsTask struct {
 	registry                  metrics.Registry
 	storage                   storage.Storage
+	quotaReporter             snapshot.SnapshotStorageQuotaReporter
 	metricsCollectionInterval time.Duration
 }
 
@@ -38,6 +41,11 @@ func (c collectSnapshotMetricsTask) Run(
 	defer ticker.Stop()
 
 	for range ticker.C {
+		err := c.quotaReporter.Report(ctx)
+		if err != nil {
+			logging.Warn(ctx, "Failed to report snapshot storage quota: %v", err)
+		}
+
 		deletingSnapshotCount, err := c.storage.GetDeletingSnapshotCount(ctx)
 		if err != nil {
 			return err

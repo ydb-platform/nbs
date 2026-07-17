@@ -1094,11 +1094,84 @@ func GetCounters(
 	return result
 }
 
+func GetGauges(
+	t *testing.T,
+	ports []string,
+	name string,
+	labels map[string]string,
+) []float64 {
+	var result []float64
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		result = result[:0]
+		for _, port := range ports {
+			value, ok := GetGauge(
+				t,
+				port,
+				name,
+				labels,
+			)
+			if ok {
+				result = append(result, value)
+			}
+		}
+		if len(result) != 0 {
+			return result
+		}
+		if time.Now().After(deadline) {
+			require.NotEmpty(
+				t,
+				result,
+				"No gauge with name %s, labels %v",
+				name,
+				labels,
+			)
+			return result
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
 func GetCounter(
 	t *testing.T,
 	port string,
 	name string,
 	labels map[string]string,
+) (float64, bool) {
+	return getMetric(
+		t,
+		port,
+		name,
+		labels,
+		func(metric *prometheus_client.Metric) float64 {
+			return metric.GetCounter().GetValue()
+		},
+	)
+}
+
+func GetGauge(
+	t *testing.T,
+	port string,
+	name string,
+	labels map[string]string,
+) (float64, bool) {
+	return getMetric(
+		t,
+		port,
+		name,
+		labels,
+		func(metric *prometheus_client.Metric) float64 {
+			return metric.GetGauge().GetValue()
+		},
+	)
+}
+
+func getMetric(
+	t *testing.T,
+	port string,
+	name string,
+	labels map[string]string,
+	getValue func(metric *prometheus_client.Metric) float64,
 ) (float64, bool) {
 
 	resp, err := httpGetWithRetries(
@@ -1116,18 +1189,18 @@ func GetCounter(
 
 	retrievedMetrics, ok := metricFamilies[name]
 	if !ok {
-		t.Logf("counter with name %s is not found", name)
+		t.Logf("metric with name %s is not found", name)
 		t.Logf("Metric families: %v", metricFamilies)
 		return 0, false
 	}
 
 	for _, metricValue := range retrievedMetrics.GetMetric() {
 		if metricMatchesLabel(labels, metricValue) {
-			return metricValue.GetCounter().GetValue(), true
+			return getValue(metricValue), true
 		}
 	}
 
-	t.Logf("counter with name %s, labels %v is not found", name, labels)
+	t.Logf("metric with name %s, labels %v is not found", name, labels)
 	t.Logf("Metric families: %v", metricFamilies)
 	return 0, false
 }
@@ -1179,6 +1252,22 @@ func GetCountersDataplane(
 ) []float64 {
 
 	return GetCounters(
+		t,
+		parseMetricsPorts(
+			os.Getenv("DISK_MANAGER_RECIPE_DATAPLANE_MON_PORT"),
+		),
+		name,
+		labels,
+	)
+}
+
+func GetGaugesDataplane(
+	t *testing.T,
+	name string,
+	labels map[string]string,
+) []float64 {
+
+	return GetGauges(
 		t,
 		parseMetricsPorts(
 			os.Getenv("DISK_MANAGER_RECIPE_DATAPLANE_MON_PORT"),

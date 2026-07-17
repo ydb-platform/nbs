@@ -4,6 +4,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/app"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/auth"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/monitoring/metrics"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/snapshot"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -17,5 +18,6 @@ func main() {
 			// TODO: should use real authorizer, not stub.
 			return auth.NewStubAuthorizer(), nil
 		},
+		snapshot.NewStubSnapshotStorageQuotaReporter,
 	)
 }
