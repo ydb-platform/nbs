@@ -353,6 +353,8 @@ void TNodeCache::AddUnflushedRequestToFlushBatch(
         }
     }
 
+    // Adding new request to a flush batch resulted in exceeding the limits
+    // We need to start a new flush batch and add that request to it
     FlushBatchRequestCountQueue.push_back(1);
 
     IncompleteFlushBatchWriteRequestCounter.Reset();
