@@ -4,18 +4,18 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TIndexTabletDatabaseFailureInjection::InitSchema()
+void TIndexTabletDatabaseWithFailureInjection::InitSchema()
 {
     Real->InitSchema();
 }
 
-void TIndexTabletDatabaseFailureInjection::WriteFileSystem(
+void TIndexTabletDatabaseWithFailureInjection::WriteFileSystem(
     const NProto::TFileSystem& fileSystem)
 {
     Real->WriteFileSystem(fileSystem);
 }
 
-bool TIndexTabletDatabaseFailureInjection::ReadFileSystem(
+bool TIndexTabletDatabaseWithFailureInjection::ReadFileSystem(
     NProto::TFileSystem& fileSystem)
 {
     if (Y_UNLIKELY(ShouldFailReadInTest())) {
@@ -25,7 +25,7 @@ bool TIndexTabletDatabaseFailureInjection::ReadFileSystem(
     return Real->ReadFileSystem(fileSystem);
 }
 
-bool TIndexTabletDatabaseFailureInjection::ReadFileSystemStats(
+bool TIndexTabletDatabaseWithFailureInjection::ReadFileSystemStats(
     NProto::TFileSystemStats& stats)
 {
     if (Y_UNLIKELY(ShouldFailReadInTest())) {
@@ -36,9 +36,9 @@ bool TIndexTabletDatabaseFailureInjection::ReadFileSystemStats(
 }
 
 #define FILESTORE_IMPLEMENT_STATS(name, ...)                                   \
-    void TIndexTabletDatabaseFailureInjection::Write##name(ui64 value)         \
+    void TIndexTabletDatabaseWithFailureInjection::Write##name(ui64 value)     \
     {                                                                          \
-        Real->Write##name(value);                                               \
+        Real->Write##name(value);                                              \
     }                                                                          \
 // FILESTORE_IMPLEMENT_STATS
 
@@ -46,13 +46,13 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_IMPLEMENT_STATS)
 
 #undef FILESTORE_IMPLEMENT_STATS
 
-void TIndexTabletDatabaseFailureInjection::WriteStorageConfig(
+void TIndexTabletDatabaseWithFailureInjection::WriteStorageConfig(
     const NProto::TStorageConfig& storageConfig)
 {
     Real->WriteStorageConfig(storageConfig);
 }
 
-bool TIndexTabletDatabaseFailureInjection::ReadStorageConfig(
+bool TIndexTabletDatabaseWithFailureInjection::ReadStorageConfig(
     TMaybe<NProto::TStorageConfig>& storageConfig)
 {
     if (Y_UNLIKELY(ShouldFailReadInTest())) {
@@ -62,7 +62,7 @@ bool TIndexTabletDatabaseFailureInjection::ReadStorageConfig(
     return Real->ReadStorageConfig(storageConfig);
 }
 
-bool TIndexTabletDatabaseFailureInjection::ReadTabletStorageInfo(
+bool TIndexTabletDatabaseWithFailureInjection::ReadTabletStorageInfo(
     NCloud::NProto::TTabletStorageInfo& tabletStorageInfo)
 {
     if (Y_UNLIKELY(ShouldFailReadInTest())) {
@@ -72,13 +72,13 @@ bool TIndexTabletDatabaseFailureInjection::ReadTabletStorageInfo(
     return Real->ReadTabletStorageInfo(tabletStorageInfo);
 }
 
-void TIndexTabletDatabaseFailureInjection::WriteTabletStorageInfo(
+void TIndexTabletDatabaseWithFailureInjection::WriteTabletStorageInfo(
     const NCloud::NProto::TTabletStorageInfo& tabletStorageInfo)
 {
     Real->WriteTabletStorageInfo(tabletStorageInfo);
 }
 
-void TIndexTabletDatabaseFailureInjection::WriteNode(
+void TIndexTabletDatabaseWithFailureInjection::WriteNode(
     ui64 nodeId,
     ui64 commitId,
     const NProto::TNode& attrs)
@@ -86,12 +86,12 @@ void TIndexTabletDatabaseFailureInjection::WriteNode(
     Real->WriteNode(nodeId, commitId, attrs);
 }
 
-void TIndexTabletDatabaseFailureInjection::DeleteNode(ui64 nodeId)
+void TIndexTabletDatabaseWithFailureInjection::DeleteNode(ui64 nodeId)
 {
     Real->DeleteNode(nodeId);
 }
 
-bool TIndexTabletDatabaseFailureInjection::ReadNode(
+bool TIndexTabletDatabaseWithFailureInjection::ReadNode(
     ui64 nodeId,
     ui64 commitId,
     TMaybe<TNode>& node)
@@ -103,7 +103,7 @@ bool TIndexTabletDatabaseFailureInjection::ReadNode(
     return Real->ReadNode(nodeId, commitId, node);
 }
 
-bool TIndexTabletDatabaseFailureInjection::ReadNodes(
+bool TIndexTabletDatabaseWithFailureInjection::ReadNodes(
     ui64 startNodeId,
     ui64 maxNodes,
     ui64& nextNodeId,
@@ -120,7 +120,7 @@ bool TIndexTabletDatabaseFailureInjection::ReadNodes(
         nodes);
 }
 
-void TIndexTabletDatabaseFailureInjection::WriteNodeVer(
+void TIndexTabletDatabaseWithFailureInjection::WriteNodeVer(
     ui64 nodeId,
     ui64 minCommitId,
     ui64 maxCommitId,
@@ -129,14 +129,14 @@ void TIndexTabletDatabaseFailureInjection::WriteNodeVer(
     Real->WriteNodeVer(nodeId, minCommitId, maxCommitId, attrs);
 }
 
-void TIndexTabletDatabaseFailureInjection::DeleteNodeVer(
+void TIndexTabletDatabaseWithFailureInjection::DeleteNodeVer(
     ui64 nodeId,
     ui64 commitId)
 {
     Real->DeleteNodeVer(nodeId, commitId);
 }
 
-bool TIndexTabletDatabaseFailureInjection::ReadNodeVer(
+bool TIndexTabletDatabaseWithFailureInjection::ReadNodeVer(
     ui64 nodeId,
     ui64 commitId,
     TMaybe<TNode>& node)
@@ -148,7 +148,7 @@ bool TIndexTabletDatabaseFailureInjection::ReadNodeVer(
     return Real->ReadNodeVer(nodeId, commitId, node);
 }
 
-void TIndexTabletDatabaseFailureInjection::WriteNodeAttr(
+void TIndexTabletDatabaseWithFailureInjection::WriteNodeAttr(
     ui64 nodeId,
     ui64 commitId,
     const TString& name,
@@ -158,14 +158,14 @@ void TIndexTabletDatabaseFailureInjection::WriteNodeAttr(
     Real->WriteNodeAttr(nodeId, commitId, name, value, version);
 }
 
-void TIndexTabletDatabaseFailureInjection::DeleteNodeAttr(
+void TIndexTabletDatabaseWithFailureInjection::DeleteNodeAttr(
     ui64 nodeId,
     const TString& name)
 {
     Real->DeleteNodeAttr(nodeId, name);
 }
 
-bool TIndexTabletDatabaseFailureInjection::ReadNodeAttr(
+bool TIndexTabletDatabaseWithFailureInjection::ReadNodeAttr(
     ui64 nodeId,
     ui64 commitId,
     const TString& name,
@@ -178,7 +178,7 @@ bool TIndexTabletDatabaseFailureInjection::ReadNodeAttr(
     return Real->ReadNodeAttr(nodeId, commitId, name, attr);
 }
 
-bool TIndexTabletDatabaseFailureInjection::ReadNodeAttrs(
+bool TIndexTabletDatabaseWithFailureInjection::ReadNodeAttrs(
     ui64 nodeId,
     ui64 commitId,
     TVector<TNodeAttr>& attrs)
@@ -190,7 +190,7 @@ bool TIndexTabletDatabaseFailureInjection::ReadNodeAttrs(
     return Real->ReadNodeAttrs(nodeId, commitId, attrs);
 }
 
-void TIndexTabletDatabaseFailureInjection::WriteNodeAttrVer(
+void TIndexTabletDatabaseWithFailureInjection::WriteNodeAttrVer(
     ui64 nodeId,
     ui64 minCommitId,
     ui64 maxCommitId,
@@ -207,7 +207,7 @@ void TIndexTabletDatabaseFailureInjection::WriteNodeAttrVer(
         version);
 }
 
-void TIndexTabletDatabaseFailureInjection::DeleteNodeAttrVer(
+void TIndexTabletDatabaseWithFailureInjection::DeleteNodeAttrVer(
     ui64 nodeId,
     ui64 commitId,
     const TString& name)
@@ -215,7 +215,7 @@ void TIndexTabletDatabaseFailureInjection::DeleteNodeAttrVer(
     Real->DeleteNodeAttrVer(nodeId, commitId, name);
 }
 
-bool TIndexTabletDatabaseFailureInjection::ReadNodeAttrVer(
+bool TIndexTabletDatabaseWithFailureInjection::ReadNodeAttrVer(
     ui64 nodeId,
     ui64 commitId,
     const TString& name,
@@ -228,7 +228,7 @@ bool TIndexTabletDatabaseFailureInjection::ReadNodeAttrVer(
     return Real->ReadNodeAttrVer(nodeId, commitId, name, attr);
 }
 
-bool TIndexTabletDatabaseFailureInjection::ReadNodeAttrVers(
+bool TIndexTabletDatabaseWithFailureInjection::ReadNodeAttrVers(
     ui64 nodeId,
     ui64 commitId,
     TVector<TNodeAttr>& attrs)
@@ -240,21 +240,21 @@ bool TIndexTabletDatabaseFailureInjection::ReadNodeAttrVers(
     return Real->ReadNodeAttrVers(nodeId, commitId, attrs);
 }
 
-void TIndexTabletDatabaseFailureInjection::WriteNodeRef(
+void TIndexTabletDatabaseWithFailureInjection::WriteNodeRef(
     const TNodeRef& nodeRef,
     bool markExhaustive)
 {
     Real->WriteNodeRef(nodeRef, markExhaustive);
 }
 
-void TIndexTabletDatabaseFailureInjection::DeleteNodeRef(
+void TIndexTabletDatabaseWithFailureInjection::DeleteNodeRef(
     ui64 nodeId,
     const TString& name)
 {
     Real->DeleteNodeRef(nodeId, name);
 }
 
-bool TIndexTabletDatabaseFailureInjection::ReadNodeRef(
+bool TIndexTabletDatabaseWithFailureInjection::ReadNodeRef(
     ui64 nodeId,
     ui64 commitId,
     const TString& name,
@@ -267,7 +267,7 @@ bool TIndexTabletDatabaseFailureInjection::ReadNodeRef(
     return Real->ReadNodeRef(nodeId, commitId, name, ref);
 }
 
-bool TIndexTabletDatabaseFailureInjection::ReadNodeRefs(
+bool TIndexTabletDatabaseWithFailureInjection::ReadNodeRefs(
     ui64 nodeId,
     ui64 commitId,
     const TString& cookie,
@@ -294,7 +294,7 @@ bool TIndexTabletDatabaseFailureInjection::ReadNodeRefs(
         sizeMode);
 }
 
-bool TIndexTabletDatabaseFailureInjection::ReadNodeRefs(
+bool TIndexTabletDatabaseWithFailureInjection::ReadNodeRefs(
     ui64 startNodeId,
     const TString& startCookie,
     ui64 maxCount,
@@ -315,7 +315,7 @@ bool TIndexTabletDatabaseFailureInjection::ReadNodeRefs(
         nextCookie);
 }
 
-bool TIndexTabletDatabaseFailureInjection::PrechargeNodeRefs(
+bool TIndexTabletDatabaseWithFailureInjection::PrechargeNodeRefs(
     ui64 nodeId,
     const TString& cookie,
     ui64 rowsToPrecharge,
@@ -332,7 +332,7 @@ bool TIndexTabletDatabaseFailureInjection::PrechargeNodeRefs(
         bytesToPrecharge);
 }
 
-void TIndexTabletDatabaseFailureInjection::WriteNodeRefVer(
+void TIndexTabletDatabaseWithFailureInjection::WriteNodeRefVer(
     ui64 nodeId,
     ui64 minCommitId,
     ui64 maxCommitId,
@@ -351,7 +351,7 @@ void TIndexTabletDatabaseFailureInjection::WriteNodeRefVer(
         shardNodeName);
 }
 
-void TIndexTabletDatabaseFailureInjection::DeleteNodeRefVer(
+void TIndexTabletDatabaseWithFailureInjection::DeleteNodeRefVer(
     ui64 nodeId,
     ui64 commitId,
     const TString& name)
@@ -359,7 +359,7 @@ void TIndexTabletDatabaseFailureInjection::DeleteNodeRefVer(
     Real->DeleteNodeRefVer(nodeId, commitId, name);
 }
 
-bool TIndexTabletDatabaseFailureInjection::ReadNodeRefVer(
+bool TIndexTabletDatabaseWithFailureInjection::ReadNodeRefVer(
     ui64 nodeId,
     ui64 commitId,
     const TString& name,
@@ -372,7 +372,7 @@ bool TIndexTabletDatabaseFailureInjection::ReadNodeRefVer(
     return Real->ReadNodeRefVer(nodeId, commitId, name, ref);
 }
 
-bool TIndexTabletDatabaseFailureInjection::ReadNodeRefVers(
+bool TIndexTabletDatabaseWithFailureInjection::ReadNodeRefVers(
     ui64 nodeId,
     ui64 commitId,
     TVector<TNodeRef>& refs)
@@ -384,19 +384,19 @@ bool TIndexTabletDatabaseFailureInjection::ReadNodeRefVers(
     return Real->ReadNodeRefVers(nodeId, commitId, refs);
 }
 
-void TIndexTabletDatabaseFailureInjection::WriteTruncateQueueEntry(
+void TIndexTabletDatabaseWithFailureInjection::WriteTruncateQueueEntry(
     ui64 nodeId,
     TByteRange range)
 {
     Real->WriteTruncateQueueEntry(nodeId, range);
 }
 
-void TIndexTabletDatabaseFailureInjection::DeleteTruncateQueueEntry(ui64 id)
+void TIndexTabletDatabaseWithFailureInjection::DeleteTruncateQueueEntry(ui64 id)
 {
     Real->DeleteTruncateQueueEntry(id);
 }
 
-bool TIndexTabletDatabaseFailureInjection::ReadTruncateQueue(
+bool TIndexTabletDatabaseWithFailureInjection::ReadTruncateQueue(
     TVector<NProto::TTruncateEntry>& entries)
 {
     if (Y_UNLIKELY(ShouldFailReadInTest())) {
@@ -406,19 +406,19 @@ bool TIndexTabletDatabaseFailureInjection::ReadTruncateQueue(
     return Real->ReadTruncateQueue(entries);
 }
 
-void TIndexTabletDatabaseFailureInjection::WriteSession(
+void TIndexTabletDatabaseWithFailureInjection::WriteSession(
     const NProto::TSession& session)
 {
     Real->WriteSession(session);
 }
 
-void TIndexTabletDatabaseFailureInjection::DeleteSession(
+void TIndexTabletDatabaseWithFailureInjection::DeleteSession(
     const TString& sessionId)
 {
     Real->DeleteSession(sessionId);
 }
 
-bool TIndexTabletDatabaseFailureInjection::ReadSessions(
+bool TIndexTabletDatabaseWithFailureInjection::ReadSessions(
     TVector<NProto::TSession>& sessions)
 {
     if (Y_UNLIKELY(ShouldFailReadInTest())) {
@@ -428,20 +428,20 @@ bool TIndexTabletDatabaseFailureInjection::ReadSessions(
     return Real->ReadSessions(sessions);
 }
 
-void TIndexTabletDatabaseFailureInjection::WriteSessionHandle(
+void TIndexTabletDatabaseWithFailureInjection::WriteSessionHandle(
     const NProto::TSessionHandle& handle)
 {
     Real->WriteSessionHandle(handle);
 }
 
-void TIndexTabletDatabaseFailureInjection::DeleteSessionHandle(
+void TIndexTabletDatabaseWithFailureInjection::DeleteSessionHandle(
     const TString& sessionId,
     ui64 handle)
 {
     Real->DeleteSessionHandle(sessionId, handle);
 }
 
-bool TIndexTabletDatabaseFailureInjection::ReadSessionHandles(
+bool TIndexTabletDatabaseWithFailureInjection::ReadSessionHandles(
     TVector<NProto::TSessionHandle>& handles)
 {
     if (Y_UNLIKELY(ShouldFailReadInTest())) {
@@ -451,7 +451,7 @@ bool TIndexTabletDatabaseFailureInjection::ReadSessionHandles(
     return Real->ReadSessionHandles(handles);
 }
 
-bool TIndexTabletDatabaseFailureInjection::ReadSessionHandles(
+bool TIndexTabletDatabaseWithFailureInjection::ReadSessionHandles(
     const TString& sessionId,
     TVector<NProto::TSessionHandle>& handles)
 {
@@ -462,20 +462,20 @@ bool TIndexTabletDatabaseFailureInjection::ReadSessionHandles(
     return Real->ReadSessionHandles(sessionId, handles);
 }
 
-void TIndexTabletDatabaseFailureInjection::WriteSessionLock(
+void TIndexTabletDatabaseWithFailureInjection::WriteSessionLock(
     const NProto::TSessionLock& lock)
 {
     Real->WriteSessionLock(lock);
 }
 
-void TIndexTabletDatabaseFailureInjection::DeleteSessionLock(
+void TIndexTabletDatabaseWithFailureInjection::DeleteSessionLock(
     const TString& sessionId,
     ui64 lockId)
 {
     Real->DeleteSessionLock(sessionId, lockId);
 }
 
-bool TIndexTabletDatabaseFailureInjection::ReadSessionLocks(
+bool TIndexTabletDatabaseWithFailureInjection::ReadSessionLocks(
     TVector<NProto::TSessionLock>& locks)
 {
     if (Y_UNLIKELY(ShouldFailReadInTest())) {
@@ -485,7 +485,7 @@ bool TIndexTabletDatabaseFailureInjection::ReadSessionLocks(
     return Real->ReadSessionLocks(locks);
 }
 
-bool TIndexTabletDatabaseFailureInjection::ReadSessionLocks(
+bool TIndexTabletDatabaseWithFailureInjection::ReadSessionLocks(
     const TString& sessionId,
     TVector<NProto::TSessionLock>& locks)
 {
@@ -496,20 +496,20 @@ bool TIndexTabletDatabaseFailureInjection::ReadSessionLocks(
     return Real->ReadSessionLocks(sessionId, locks);
 }
 
-void TIndexTabletDatabaseFailureInjection::WriteSessionDupCacheEntry(
+void TIndexTabletDatabaseWithFailureInjection::WriteSessionDupCacheEntry(
     const NProto::TDupCacheEntry& entry)
 {
     Real->WriteSessionDupCacheEntry(entry);
 }
 
-void TIndexTabletDatabaseFailureInjection::DeleteSessionDupCacheEntry(
+void TIndexTabletDatabaseWithFailureInjection::DeleteSessionDupCacheEntry(
     const TString& sessionId,
     ui64 entryId)
 {
     Real->DeleteSessionDupCacheEntry(sessionId, entryId);
 }
 
-bool TIndexTabletDatabaseFailureInjection::ReadSessionDupCacheEntries(
+bool TIndexTabletDatabaseWithFailureInjection::ReadSessionDupCacheEntries(
     TVector<NProto::TDupCacheEntry>& entries)
 {
     if (Y_UNLIKELY(ShouldFailReadInTest())) {
@@ -519,19 +519,19 @@ bool TIndexTabletDatabaseFailureInjection::ReadSessionDupCacheEntries(
     return Real->ReadSessionDupCacheEntries(entries);
 }
 
-void TIndexTabletDatabaseFailureInjection::WriteSessionHistoryEntry(
+void TIndexTabletDatabaseWithFailureInjection::WriteSessionHistoryEntry(
     const NProto::TSessionHistoryEntry& entry)
 {
     Real->WriteSessionHistoryEntry(entry);
 }
 
-void TIndexTabletDatabaseFailureInjection::DeleteSessionHistoryEntry(
+void TIndexTabletDatabaseWithFailureInjection::DeleteSessionHistoryEntry(
     ui64 entryId)
 {
     Real->DeleteSessionHistoryEntry(entryId);
 }
 
-bool TIndexTabletDatabaseFailureInjection::ReadSessionHistoryEntries(
+bool TIndexTabletDatabaseWithFailureInjection::ReadSessionHistoryEntries(
     TVector<NProto::TSessionHistoryEntry>& entries)
 {
     if (Y_UNLIKELY(ShouldFailReadInTest())) {
@@ -541,7 +541,7 @@ bool TIndexTabletDatabaseFailureInjection::ReadSessionHistoryEntries(
     return Real->ReadSessionHistoryEntries(entries);
 }
 
-void TIndexTabletDatabaseFailureInjection::WriteFreshBytes(
+void TIndexTabletDatabaseWithFailureInjection::WriteFreshBytes(
     ui64 nodeId,
     ui64 commitId,
     ui64 offset,
@@ -550,7 +550,7 @@ void TIndexTabletDatabaseFailureInjection::WriteFreshBytes(
     Real->WriteFreshBytes(nodeId, commitId, offset, data);
 }
 
-void TIndexTabletDatabaseFailureInjection::WriteFreshBytesDeletionMarker(
+void TIndexTabletDatabaseWithFailureInjection::WriteFreshBytesDeletionMarker(
     ui64 nodeId,
     ui64 commitId,
     ui64 offset,
@@ -559,7 +559,7 @@ void TIndexTabletDatabaseFailureInjection::WriteFreshBytesDeletionMarker(
     Real->WriteFreshBytesDeletionMarker(nodeId, commitId, offset, len);
 }
 
-void TIndexTabletDatabaseFailureInjection::DeleteFreshBytes(
+void TIndexTabletDatabaseWithFailureInjection::DeleteFreshBytes(
     ui64 nodeId,
     ui64 commitId,
     ui64 offset)
@@ -567,7 +567,7 @@ void TIndexTabletDatabaseFailureInjection::DeleteFreshBytes(
     Real->DeleteFreshBytes(nodeId, commitId, offset);
 }
 
-bool TIndexTabletDatabaseFailureInjection::ReadFreshBytes(
+bool TIndexTabletDatabaseWithFailureInjection::ReadFreshBytes(
     TVector<TFreshBytesEntry>& bytes)
 {
     if (Y_UNLIKELY(ShouldFailReadInTest())) {
@@ -577,7 +577,7 @@ bool TIndexTabletDatabaseFailureInjection::ReadFreshBytes(
     return Real->ReadFreshBytes(bytes);
 }
 
-void TIndexTabletDatabaseFailureInjection::WriteFreshBlock(
+void TIndexTabletDatabaseWithFailureInjection::WriteFreshBlock(
     ui64 nodeId,
     ui64 commitId,
     ui32 blockIndex,
@@ -586,7 +586,7 @@ void TIndexTabletDatabaseFailureInjection::WriteFreshBlock(
     Real->WriteFreshBlock(nodeId, commitId, blockIndex, blockData);
 }
 
-void TIndexTabletDatabaseFailureInjection::MarkFreshBlockDeleted(
+void TIndexTabletDatabaseWithFailureInjection::MarkFreshBlockDeleted(
     ui64 nodeId,
     ui64 minCommitId,
     ui64 maxCommitId,
@@ -599,7 +599,7 @@ void TIndexTabletDatabaseFailureInjection::MarkFreshBlockDeleted(
         blockIndex);
 }
 
-void TIndexTabletDatabaseFailureInjection::DeleteFreshBlock(
+void TIndexTabletDatabaseWithFailureInjection::DeleteFreshBlock(
     ui64 nodeId,
     ui64 commitId,
     ui32 blockIndex)
@@ -607,7 +607,7 @@ void TIndexTabletDatabaseFailureInjection::DeleteFreshBlock(
     Real->DeleteFreshBlock(nodeId, commitId, blockIndex);
 }
 
-bool TIndexTabletDatabaseFailureInjection::ReadFreshBlocks(TVector<TFreshBlock>& blocks)
+bool TIndexTabletDatabaseWithFailureInjection::ReadFreshBlocks(TVector<TFreshBlock>& blocks)
 {
     if (Y_UNLIKELY(ShouldFailReadInTest())) {
         return false;
@@ -616,7 +616,7 @@ bool TIndexTabletDatabaseFailureInjection::ReadFreshBlocks(TVector<TFreshBlock>&
     return Real->ReadFreshBlocks(blocks);
 }
 
-void TIndexTabletDatabaseFailureInjection::WriteMixedBlocks(
+void TIndexTabletDatabaseWithFailureInjection::WriteMixedBlocks(
     ui32 rangeId,
     const TPartialBlobId& blobId,
     const TBlockList& blockList,
@@ -631,14 +631,14 @@ void TIndexTabletDatabaseFailureInjection::WriteMixedBlocks(
         checkpointBlocks);
 }
 
-void TIndexTabletDatabaseFailureInjection::DeleteMixedBlocks(
+void TIndexTabletDatabaseWithFailureInjection::DeleteMixedBlocks(
     ui32 rangeId,
     const TPartialBlobId& blobId)
 {
     Real->DeleteMixedBlocks(rangeId, blobId);
 }
 
-bool TIndexTabletDatabaseFailureInjection::ReadMixedBlocks(
+bool TIndexTabletDatabaseWithFailureInjection::ReadMixedBlocks(
     ui32 rangeId,
     const TPartialBlobId& blobId,
     TMaybe<TMixedBlob>& blob,
@@ -651,7 +651,7 @@ bool TIndexTabletDatabaseFailureInjection::ReadMixedBlocks(
     return Real->ReadMixedBlocks(rangeId, blobId, blob, alloc);
 }
 
-bool TIndexTabletDatabaseFailureInjection::ReadMixedBlocks(
+bool TIndexTabletDatabaseWithFailureInjection::ReadMixedBlocks(
     ui32 rangeId,
     TVector<TMixedBlob>& blobs,
     IAllocator* alloc)
@@ -663,7 +663,7 @@ bool TIndexTabletDatabaseFailureInjection::ReadMixedBlocks(
     return Real->ReadMixedBlocks(rangeId, blobs, alloc);
 }
 
-void TIndexTabletDatabaseFailureInjection::WriteDeletionMarkers(
+void TIndexTabletDatabaseWithFailureInjection::WriteDeletionMarkers(
     ui32 rangeId,
     ui64 nodeId,
     ui64 commitId,
@@ -678,7 +678,7 @@ void TIndexTabletDatabaseFailureInjection::WriteDeletionMarkers(
         blocksCount);
 }
 
-void TIndexTabletDatabaseFailureInjection::DeleteDeletionMarker(
+void TIndexTabletDatabaseWithFailureInjection::DeleteDeletionMarker(
     ui32 rangeId,
     ui64 nodeId,
     ui64 commitId,
@@ -687,7 +687,7 @@ void TIndexTabletDatabaseFailureInjection::DeleteDeletionMarker(
     Real->DeleteDeletionMarker(rangeId, nodeId, commitId, blockIndex);
 }
 
-bool TIndexTabletDatabaseFailureInjection::ReadDeletionMarkers(
+bool TIndexTabletDatabaseWithFailureInjection::ReadDeletionMarkers(
     ui32 rangeId,
     TVector<TDeletionMarker>& deletionMarkers)
 {
@@ -698,7 +698,7 @@ bool TIndexTabletDatabaseFailureInjection::ReadDeletionMarkers(
     return Real->ReadDeletionMarkers(rangeId, deletionMarkers);
 }
 
-void TIndexTabletDatabaseFailureInjection::WriteLargeDeletionMarkers(
+void TIndexTabletDatabaseWithFailureInjection::WriteLargeDeletionMarkers(
     ui64 nodeId,
     ui64 commitId,
     ui32 blockIndex,
@@ -711,7 +711,7 @@ void TIndexTabletDatabaseFailureInjection::WriteLargeDeletionMarkers(
         blocksCount);
 }
 
-void TIndexTabletDatabaseFailureInjection::DeleteLargeDeletionMarker(
+void TIndexTabletDatabaseWithFailureInjection::DeleteLargeDeletionMarker(
     ui64 nodeId,
     ui64 commitId,
     ui32 blockIndex)
@@ -719,7 +719,7 @@ void TIndexTabletDatabaseFailureInjection::DeleteLargeDeletionMarker(
     Real->DeleteLargeDeletionMarker(nodeId, commitId, blockIndex);
 }
 
-bool TIndexTabletDatabaseFailureInjection::ReadLargeDeletionMarkers(
+bool TIndexTabletDatabaseWithFailureInjection::ReadLargeDeletionMarkers(
     TVector<TDeletionMarker>& deletionMarkers)
 {
     if (Y_UNLIKELY(ShouldFailReadInTest())) {
@@ -729,17 +729,17 @@ bool TIndexTabletDatabaseFailureInjection::ReadLargeDeletionMarkers(
     return Real->ReadLargeDeletionMarkers(deletionMarkers);
 }
 
-void TIndexTabletDatabaseFailureInjection::WriteOrphanNode(ui64 nodeId)
+void TIndexTabletDatabaseWithFailureInjection::WriteOrphanNode(ui64 nodeId)
 {
     Real->WriteOrphanNode(nodeId);
 }
 
-void TIndexTabletDatabaseFailureInjection::DeleteOrphanNode(ui64 nodeId)
+void TIndexTabletDatabaseWithFailureInjection::DeleteOrphanNode(ui64 nodeId)
 {
     Real->DeleteOrphanNode(nodeId);
 }
 
-bool TIndexTabletDatabaseFailureInjection::ReadOrphanNodes(TVector<ui64>& nodeIds)
+bool TIndexTabletDatabaseWithFailureInjection::ReadOrphanNodes(TVector<ui64>& nodeIds)
 {
     if (Y_UNLIKELY(ShouldFailReadInTest())) {
         return false;
@@ -748,19 +748,19 @@ bool TIndexTabletDatabaseFailureInjection::ReadOrphanNodes(TVector<ui64>& nodeId
     return Real->ReadOrphanNodes(nodeIds);
 }
 
-void TIndexTabletDatabaseFailureInjection::WriteNewBlob(
+void TIndexTabletDatabaseWithFailureInjection::WriteNewBlob(
     const TPartialBlobId& blobId)
 {
     Real->WriteNewBlob(blobId);
 }
 
-void TIndexTabletDatabaseFailureInjection::DeleteNewBlob(
+void TIndexTabletDatabaseWithFailureInjection::DeleteNewBlob(
     const TPartialBlobId& blobId)
 {
     Real->DeleteNewBlob(blobId);
 }
 
-bool TIndexTabletDatabaseFailureInjection::ReadNewBlobs(TVector<TPartialBlobId>& blobIds)
+bool TIndexTabletDatabaseWithFailureInjection::ReadNewBlobs(TVector<TPartialBlobId>& blobIds)
 {
     if (Y_UNLIKELY(ShouldFailReadInTest())) {
         return false;
@@ -769,19 +769,19 @@ bool TIndexTabletDatabaseFailureInjection::ReadNewBlobs(TVector<TPartialBlobId>&
     return Real->ReadNewBlobs(blobIds);
 }
 
-void TIndexTabletDatabaseFailureInjection::WriteGarbageBlob(
+void TIndexTabletDatabaseWithFailureInjection::WriteGarbageBlob(
     const TPartialBlobId& blobId)
 {
     Real->WriteGarbageBlob(blobId);
 }
 
-void TIndexTabletDatabaseFailureInjection::DeleteGarbageBlob(
+void TIndexTabletDatabaseWithFailureInjection::DeleteGarbageBlob(
     const TPartialBlobId& blobId)
 {
     Real->DeleteGarbageBlob(blobId);
 }
 
-bool TIndexTabletDatabaseFailureInjection::ReadGarbageBlobs(
+bool TIndexTabletDatabaseWithFailureInjection::ReadGarbageBlobs(
     TVector<TPartialBlobId>& blobIds)
 {
     if (Y_UNLIKELY(ShouldFailReadInTest())) {
@@ -791,19 +791,19 @@ bool TIndexTabletDatabaseFailureInjection::ReadGarbageBlobs(
     return Real->ReadGarbageBlobs(blobIds);
 }
 
-void TIndexTabletDatabaseFailureInjection::WriteCheckpoint(
+void TIndexTabletDatabaseWithFailureInjection::WriteCheckpoint(
     const NProto::TCheckpoint& checkpoint)
 {
     Real->WriteCheckpoint(checkpoint);
 }
 
-void TIndexTabletDatabaseFailureInjection::DeleteCheckpoint(
+void TIndexTabletDatabaseWithFailureInjection::DeleteCheckpoint(
     const TString& checkpointId)
 {
     Real->DeleteCheckpoint(checkpointId);
 }
 
-bool TIndexTabletDatabaseFailureInjection::ReadCheckpoints(
+bool TIndexTabletDatabaseWithFailureInjection::ReadCheckpoints(
     TVector<NProto::TCheckpoint>& checkpoints)
 {
     if (Y_UNLIKELY(ShouldFailReadInTest())) {
@@ -813,21 +813,21 @@ bool TIndexTabletDatabaseFailureInjection::ReadCheckpoints(
     return Real->ReadCheckpoints(checkpoints);
 }
 
-void TIndexTabletDatabaseFailureInjection::WriteCheckpointNode(
+void TIndexTabletDatabaseWithFailureInjection::WriteCheckpointNode(
     ui64 checkpointId,
     ui64 nodeId)
 {
     Real->WriteCheckpointNode(checkpointId, nodeId);
 }
 
-void TIndexTabletDatabaseFailureInjection::DeleteCheckpointNode(
+void TIndexTabletDatabaseWithFailureInjection::DeleteCheckpointNode(
     ui64 checkpointId,
     ui64 nodeId)
 {
     Real->DeleteCheckpointNode(checkpointId, nodeId);
 }
 
-bool TIndexTabletDatabaseFailureInjection::ReadCheckpointNodes(
+bool TIndexTabletDatabaseWithFailureInjection::ReadCheckpointNodes(
     ui64 checkpointId,
     TVector<ui64>& nodes,
     size_t maxCount)
@@ -842,7 +842,7 @@ bool TIndexTabletDatabaseFailureInjection::ReadCheckpointNodes(
         maxCount);
 }
 
-void TIndexTabletDatabaseFailureInjection::WriteCheckpointBlob(
+void TIndexTabletDatabaseWithFailureInjection::WriteCheckpointBlob(
     ui64 checkpointId,
     ui32 rangeId,
     const TPartialBlobId& blobId)
@@ -850,7 +850,7 @@ void TIndexTabletDatabaseFailureInjection::WriteCheckpointBlob(
     Real->WriteCheckpointBlob(checkpointId, rangeId, blobId);
 }
 
-void TIndexTabletDatabaseFailureInjection::DeleteCheckpointBlob(
+void TIndexTabletDatabaseWithFailureInjection::DeleteCheckpointBlob(
     ui64 checkpointId,
     ui32 rangeId,
     const TPartialBlobId& blobId)
@@ -858,7 +858,7 @@ void TIndexTabletDatabaseFailureInjection::DeleteCheckpointBlob(
     Real->DeleteCheckpointBlob(checkpointId, rangeId, blobId);
 }
 
-bool TIndexTabletDatabaseFailureInjection::ReadCheckpointBlobs(
+bool TIndexTabletDatabaseWithFailureInjection::ReadCheckpointBlobs(
     ui64 checkpointId,
     TVector<TCheckpointBlob>& blobs,
     size_t maxCount)
@@ -873,7 +873,7 @@ bool TIndexTabletDatabaseFailureInjection::ReadCheckpointBlobs(
         maxCount);
 }
 
-void TIndexTabletDatabaseFailureInjection::ForceWriteCompactionMap(
+void TIndexTabletDatabaseWithFailureInjection::ForceWriteCompactionMap(
     ui32 rangeId,
     ui32 blobsCount,
     ui32 deletionsCount,
@@ -886,7 +886,7 @@ void TIndexTabletDatabaseFailureInjection::ForceWriteCompactionMap(
         garbageBlocksCount);
 }
 
-void TIndexTabletDatabaseFailureInjection::WriteCompactionMap(
+void TIndexTabletDatabaseWithFailureInjection::WriteCompactionMap(
     ui32 rangeId,
     ui32 blobsCount,
     ui32 deletionsCount,
@@ -899,7 +899,7 @@ void TIndexTabletDatabaseFailureInjection::WriteCompactionMap(
         garbageBlocksCount);
 }
 
-bool TIndexTabletDatabaseFailureInjection::ReadCompactionMap(
+bool TIndexTabletDatabaseWithFailureInjection::ReadCompactionMap(
     TVector<TCompactionRangeInfo>& compactionMap)
 {
     if (Y_UNLIKELY(ShouldFailReadInTest())) {
@@ -909,7 +909,7 @@ bool TIndexTabletDatabaseFailureInjection::ReadCompactionMap(
     return Real->ReadCompactionMap(compactionMap);
 }
 
-bool TIndexTabletDatabaseFailureInjection::ReadCompactionMap(
+bool TIndexTabletDatabaseWithFailureInjection::ReadCompactionMap(
     TVector<TCompactionRangeInfo>& compactionMap,
     ui32 firstRangeId,
     ui32 rangeCount,
@@ -926,18 +926,18 @@ bool TIndexTabletDatabaseFailureInjection::ReadCompactionMap(
         prechargeAll);
 }
 
-void TIndexTabletDatabaseFailureInjection::WriteOpLogEntry(
+void TIndexTabletDatabaseWithFailureInjection::WriteOpLogEntry(
     const NProto::TOpLogEntry& entry)
 {
     Real->WriteOpLogEntry(entry);
 }
 
-void TIndexTabletDatabaseFailureInjection::DeleteOpLogEntry(ui64 entryId)
+void TIndexTabletDatabaseWithFailureInjection::DeleteOpLogEntry(ui64 entryId)
 {
     Real->DeleteOpLogEntry(entryId);
 }
 
-bool TIndexTabletDatabaseFailureInjection::ReadOpLogEntry(
+bool TIndexTabletDatabaseWithFailureInjection::ReadOpLogEntry(
     ui64 entryId,
     TMaybe<NProto::TOpLogEntry>& entry)
 {
@@ -948,7 +948,7 @@ bool TIndexTabletDatabaseFailureInjection::ReadOpLogEntry(
     return Real->ReadOpLogEntry(entryId, entry);
 }
 
-bool TIndexTabletDatabaseFailureInjection::ReadOpLog(TVector<NProto::TOpLogEntry>& opLog)
+bool TIndexTabletDatabaseWithFailureInjection::ReadOpLog(TVector<NProto::TOpLogEntry>& opLog)
 {
     if (Y_UNLIKELY(ShouldFailReadInTest())) {
         return false;
@@ -957,20 +957,20 @@ bool TIndexTabletDatabaseFailureInjection::ReadOpLog(TVector<NProto::TOpLogEntry
     return Real->ReadOpLog(opLog);
 }
 
-void TIndexTabletDatabaseFailureInjection::WriteResponseLogEntry(
+void TIndexTabletDatabaseWithFailureInjection::WriteResponseLogEntry(
     const NProtoPrivate::TResponseLogEntry& entry)
 {
     Real->WriteResponseLogEntry(entry);
 }
 
-void TIndexTabletDatabaseFailureInjection::DeleteResponseLogEntry(
+void TIndexTabletDatabaseWithFailureInjection::DeleteResponseLogEntry(
     ui64 clientTabletId,
     ui64 requestId)
 {
     Real->DeleteResponseLogEntry(clientTabletId, requestId);
 }
 
-bool TIndexTabletDatabaseFailureInjection::ReadResponseLogEntry(
+bool TIndexTabletDatabaseWithFailureInjection::ReadResponseLogEntry(
     ui64 clientTabletId,
     ui64 requestId,
     TMaybe<NProtoPrivate::TResponseLogEntry>& entry)
@@ -985,7 +985,7 @@ bool TIndexTabletDatabaseFailureInjection::ReadResponseLogEntry(
         entry);
 }
 
-bool TIndexTabletDatabaseFailureInjection::ReadResponseLog(
+bool TIndexTabletDatabaseWithFailureInjection::ReadResponseLog(
     TVector<NProtoPrivate::TResponseLogEntry>& responseLog)
 {
     if (Y_UNLIKELY(ShouldFailReadInTest())) {
@@ -995,19 +995,19 @@ bool TIndexTabletDatabaseFailureInjection::ReadResponseLog(
     return Real->ReadResponseLog(responseLog);
 }
 
-void TIndexTabletDatabaseFailureInjection::WriteUnconfirmedData(
+void TIndexTabletDatabaseWithFailureInjection::WriteUnconfirmedData(
     ui64 commitId,
     const NProto::TUnconfirmedData& data)
 {
     Real->WriteUnconfirmedData(commitId, data);
 }
 
-void TIndexTabletDatabaseFailureInjection::DeleteUnconfirmedData(ui64 commitId)
+void TIndexTabletDatabaseWithFailureInjection::DeleteUnconfirmedData(ui64 commitId)
 {
     Real->DeleteUnconfirmedData(commitId);
 }
 
-bool TIndexTabletDatabaseFailureInjection::ReadUnconfirmedData(
+bool TIndexTabletDatabaseWithFailureInjection::ReadUnconfirmedData(
     TVector<TUnconfirmedDataEntry>& entries)
 {
     if (Y_UNLIKELY(ShouldFailReadInTest())) {
@@ -1024,7 +1024,7 @@ std::unique_ptr<IIndexTabletDatabase> CreateIndexTabletDatabase(
     std::unique_ptr<IIndexTabletDatabase> db =
         std::make_unique<TIndexTabletDatabase>(database);
     if (rescheduler) {
-        db = std::make_unique<TIndexTabletDatabaseFailureInjection>(
+        db = std::make_unique<TIndexTabletDatabaseWithFailureInjection>(
             std::move(db),
             rescheduler);
     }
@@ -1039,7 +1039,7 @@ std::unique_ptr<IIndexTabletDatabase> CreateIndexTabletDatabaseProxy(
     std::unique_ptr<IIndexTabletDatabase> db =
         std::make_unique<TIndexTabletDatabaseProxy>(database, nodeUpdates);
     if (rescheduler) {
-        db = std::make_unique<TIndexTabletDatabaseFailureInjection>(
+        db = std::make_unique<TIndexTabletDatabaseWithFailureInjection>(
             std::move(db),
             rescheduler);
     }

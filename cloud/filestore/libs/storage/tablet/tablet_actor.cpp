@@ -1825,7 +1825,7 @@ TIndexTabletActor::CreateIndexTabletDatabase(
     std::unique_ptr<IIndexTabletDatabase> db =
         std::make_unique<TIndexTabletDatabase>(database);
     if (TxRescheduler) {
-        db = std::make_unique<TIndexTabletDatabaseFailureInjection>(
+        db = std::make_unique<TIndexTabletDatabaseWithFailureInjection>(
             std::move(db),
             TxRescheduler);
     }
@@ -1840,7 +1840,7 @@ TIndexTabletActor::CreateIndexTabletDatabaseProxy(
     std::unique_ptr<IIndexTabletDatabase> db =
         std::make_unique<TIndexTabletDatabaseProxy>(database, nodeUpdates);
     if (TxRescheduler) {
-        db = std::make_unique<TIndexTabletDatabaseFailureInjection>(
+        db = std::make_unique<TIndexTabletDatabaseWithFailureInjection>(
             std::move(db),
             TxRescheduler);
     }

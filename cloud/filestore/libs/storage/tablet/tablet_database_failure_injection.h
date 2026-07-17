@@ -7,7 +7,7 @@
 
 namespace NCloud::NFileStore::NStorage {
 
-class TIndexTabletDatabaseFailureInjection : public IIndexTabletDatabase
+class TIndexTabletDatabaseWithFailureInjection : public IIndexTabletDatabase
 {
     std::unique_ptr<IIndexTabletDatabase> Real;
 
@@ -18,7 +18,7 @@ class TIndexTabletDatabaseFailureInjection : public IIndexTabletDatabase
     }
 
 public:
-    TIndexTabletDatabaseFailureInjection(
+    TIndexTabletDatabaseWithFailureInjection(
         std::unique_ptr<IIndexTabletDatabase> real,
         ITxReschedulerPtr rescheduler)
         : Real(std::move(real))
