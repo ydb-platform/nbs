@@ -1,4 +1,4 @@
-package export
+package exporter
 
 import (
 	"github.com/stretchr/testify/mock"

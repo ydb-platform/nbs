@@ -17,7 +17,7 @@ import (
 	client_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/client/config"
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
-	snapshot_export "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/exporter"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/exporter"
 	snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks"
@@ -329,6 +329,43 @@ type exportSnapshot struct {
 	verbose         bool
 }
 
+const exportSnapshotLong = `Export a ready snapshot or image directly from dataplane snapshot storage
+to stdout as a raw disk image stream.
+
+This command does not call the Disk Manager service and does not require a
+valid client config. It uses --server-config and reads DataplaneConfig.
+SnapshotConfig plus AuthConfig from that file. The host must have network
+access to the dataplane YDB database and, when configured, S3. Read-only
+access is enough: the command reads snapshot metadata, chunk maps, chunk blobs
+and S3 objects.
+
+Incremental snapshots are exported the same way as full snapshots: their chunk
+map is complete, unchanged chunks are shallow copies of base snapshot chunks.
+Snapshots of encrypted disks are exported as stored, so the output stream is
+ciphertext. Legacy snapshot storage configured by LegacyStorageFolder is not
+supported.
+
+The output stream is not sparse: zero chunks are written explicitly because
+stdout is sequential. Memory usage is roughly --read-workers * 4 MiB for chunk
+read buffers plus the selected partition chunk map. With the default
+--partition-count=1 this is the whole snapshot map; use --partition-count and
+concatenate partitions in ascending order to bound map memory for large
+snapshots.`
+
+const exportSnapshotExample = `  disk-manager-admin \
+      --server-config /etc/disk-manager/server-config.txt \
+      snapshots export --id <snapshot-or-image-id> > image.raw
+
+  qemu-img info image.raw
+  qemu-img convert -f raw -O qcow2 image.raw image.qcow2
+
+  for p in 1 2 3 4; do
+      disk-manager-admin \
+          --server-config /etc/disk-manager/server-config.txt \
+          snapshots export --id <snapshot-or-image-id> \
+          --partition $p --partition-count 4 >> image.raw
+  done`
+
 func newExportSnapshotLogger(level logging.Level) logging.Logger {
 	config := logzap.ConsoleConfig(level)
 	config.OutputPaths = []string{"stderr"}
@@ -336,7 +373,7 @@ func newExportSnapshotLogger(level logging.Level) logging.Logger {
 }
 
 func (c *exportSnapshot) run() error {
-	if err := snapshot_export.ValidatePartition(c.partition, c.partitionCount); err != nil {
+	if err := exporter.ValidatePartition(c.partition, c.partitionCount); err != nil {
 		return err
 	}
 
@@ -390,7 +427,7 @@ func (c *exportSnapshot) run() error {
 		return err
 	}
 
-	stats, err := snapshot_export.ExportPartitionToWriterWithReadWorkers(
+	stats, err := exporter.ExportPartitionToWriterWithReadWorkers(
 		ctx,
 		snapshotStorage,
 		c.snapshotID,
@@ -419,14 +456,19 @@ func (c *exportSnapshot) run() error {
 func newExportSnapshotCmd(serverConfig *server_config.ServerConfig) *cobra.Command {
 	c := &exportSnapshot{
 		serverConfig:    serverConfig,
-		readWorkerCount: snapshot_export.DefaultStreamReadWorkerCount,
+		readWorkerCount: exporter.DefaultStreamReadWorkerCount,
 		partition:       1,
 		partitionCount:  1,
 	}
 
 	cmd := &cobra.Command{
-		Use:   "export",
-		Short: "Exports a snapshot from the dataplane storage to stdout as a raw image stream",
+		Use:     "export",
+		Short:   "Exports a snapshot from dataplane storage to stdout as a raw image stream",
+		Long:    exportSnapshotLong,
+		Example: exportSnapshotExample,
+		Annotations: map[string]string{
+			skipClientConfigParsingAnnotation: "true",
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return c.run()
 		},
@@ -440,8 +482,8 @@ func newExportSnapshotCmd(serverConfig *server_config.ServerConfig) *cobra.Comma
 	cmd.Flags().IntVar(
 		&c.readWorkerCount,
 		"read-workers",
-		snapshot_export.DefaultStreamReadWorkerCount,
-		"Number of parallel chunk read workers",
+		exporter.DefaultStreamReadWorkerCount,
+		"Number of parallel chunk read workers; each worker uses one 4 MiB read buffer",
 	)
 	cmd.Flags().Uint32Var(
 		&c.partition,

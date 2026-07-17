@@ -1,10 +1,9 @@
-package export
+package exporter
 
 import (
 	"context"
 	"errors"
 	"io"
-	"sync/atomic"
 
 	dataplane_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
@@ -32,16 +31,8 @@ const streamReadAheadMultiplier = 4
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Destination receives the exported snapshot data, e.g. *os.File.
-// It should not contain any data before the export: zero chunks are skipped,
-// not written, so the destination is expected to read back as zeroes there.
-type Destination interface {
-	io.WriterAt
-	Truncate(size int64) error
-}
-
 type Stats struct {
-	// Number of bytes exported to the destination.
+	// Number of bytes exported to the writer.
 	Size uint64
 	// Number of chunks read from the storage.
 	DataChunkCount uint32
@@ -170,175 +161,11 @@ func checkSnapshotReadyForExport(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Export reads all chunks of the snapshot (or image) snapshotID from
-// snapshotStorage, verifies their checksums and writes them to dst at
-// chunkIndex*chunkSize offsets. In the end dst is truncated to the snapshot
-// virtual size. The result is a raw disk image. Zero chunks may be absent
-// from the chunk map; they are left as holes and materialized by truncation.
-// Incremental snapshots don't need any special handling: unchanged chunks
-// are shallow copies of the base snapshot chunks.
-func Export(
-	ctx context.Context,
-	snapshotStorage storage.Storage,
-	snapshotID string,
-	dst Destination,
-	workerCount int,
-) (Stats, error) {
-
-	if workerCount <= 0 {
-		return Stats{}, task_errors.NewNonRetriableErrorf(
-			"workerCount must be positive, got %v",
-			workerCount,
-		)
-	}
-
-	meta, err := checkSnapshotReadyForExport(ctx, snapshotStorage, snapshotID)
-	if err != nil {
-		return Stats{}, err
-	}
-
-	var dataChunkCount, zeroChunkCount, processedChunkCount atomic.Uint32
-
-	errGroup, groupCtx := errgroup.WithContext(ctx)
-
-	entries, entriesErrors := snapshotStorage.ReadChunkMap(
-		groupCtx,
-		snapshotID,
-		0, // milestoneChunkIndex
-	)
-
-	for i := 0; i < workerCount; i++ {
-		errGroup.Go(func() error {
-			data := make([]byte, chunkSize)
-
-			for entry := range entries {
-				if len(entry.ChunkID) == 0 {
-					// Zero chunks have no data and are skipped.
-					zeroChunkCount.Add(1)
-				} else {
-					err := exportChunk(
-						groupCtx,
-						snapshotStorage,
-						entry,
-						data,
-						dst,
-					)
-					if err != nil {
-						return err
-					}
-
-					dataChunkCount.Add(1)
-				}
-
-				processed := processedChunkCount.Add(1)
-				if processed%logProgressChunkCount == 0 {
-					logging.Info(
-						ctx,
-						"exported %v/%v chunks",
-						processed,
-						meta.ChunkCount,
-					)
-				}
-			}
-
-			return nil
-		})
-	}
-
-	err = errGroup.Wait()
-	if err != nil {
-		return Stats{}, err
-	}
-
-	err = <-entriesErrors
-	if err != nil {
-		return Stats{}, err
-	}
-
-	err = dst.Truncate(int64(meta.Size))
-	if err != nil {
-		return Stats{}, err
-	}
-
-	return Stats{
-		Size:           meta.Size,
-		DataChunkCount: dataChunkCount.Load(),
-		ZeroChunkCount: zeroChunkCount.Load(),
-	}, nil
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-// ExportToWriter reads the snapshot (or image) snapshotID and writes it to dst as
-// a sequential raw disk image stream. Unlike Export, it can write to non-seekable
-// destinations such as stdout, so zero chunks are written explicitly,
-// including zero chunks that are absent from the chunk map.
-func ExportToWriter(
-	ctx context.Context,
-	snapshotStorage storage.Storage,
-	snapshotID string,
-	dst io.Writer,
-) (Stats, error) {
-
-	return ExportPartitionToWriterWithReadWorkers(
-		ctx,
-		snapshotStorage,
-		snapshotID,
-		dst,
-		1, // partition
-		1, // partitionCount
-		DefaultStreamReadWorkerCount,
-	)
-}
-
-// ExportToWriterWithReadWorkers is ExportToWriter with configurable parallel
-// chunk readers. It reads data chunks concurrently, but writes the raw stream to
-// dst in chunk index order.
-func ExportToWriterWithReadWorkers(
-	ctx context.Context,
-	snapshotStorage storage.Storage,
-	snapshotID string,
-	dst io.Writer,
-	readWorkerCount int,
-) (Stats, error) {
-
-	return ExportPartitionToWriterWithReadWorkers(
-		ctx,
-		snapshotStorage,
-		snapshotID,
-		dst,
-		1, // partition
-		1, // partitionCount
-		readWorkerCount,
-	)
-}
-
-// ExportPartitionToWriter writes one 1-based partition of the snapshot raw
-// stream. Partitions are contiguous, chunk-aligned ranges; concatenating them
-// in ascending order reconstructs the complete raw snapshot.
-func ExportPartitionToWriter(
-	ctx context.Context,
-	snapshotStorage storage.Storage,
-	snapshotID string,
-	dst io.Writer,
-	partition uint32,
-	partitionCount uint32,
-) (Stats, error) {
-
-	return ExportPartitionToWriterWithReadWorkers(
-		ctx,
-		snapshotStorage,
-		snapshotID,
-		dst,
-		partition,
-		partitionCount,
-		DefaultStreamReadWorkerCount,
-	)
-}
-
-// ExportPartitionToWriterWithReadWorkers is ExportPartitionToWriter with
-// configurable parallel chunk readers. Data chunks are read concurrently but
-// written to dst in their original order within the selected partition.
+// ExportPartitionToWriterWithReadWorkers writes one 1-based partition of the
+// snapshot raw stream. Partitions are contiguous, chunk-aligned ranges;
+// concatenating them in ascending order reconstructs the complete raw snapshot.
+// Data chunks are read concurrently but written to dst in their original order
+// within the selected partition.
 func ExportPartitionToWriterWithReadWorkers(
 	ctx context.Context,
 	snapshotStorage storage.Storage,
@@ -690,30 +517,6 @@ func logExportProgress(ctx context.Context, processedChunkCount uint32, chunkCou
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-
-func exportChunk(
-	ctx context.Context,
-	snapshotStorage storage.Storage,
-	entry storage.ChunkMapEntry,
-	data []byte,
-	dst Destination,
-) error {
-
-	chunk := dataplane_common.Chunk{
-		ID:         entry.ChunkID,
-		Index:      entry.ChunkIndex,
-		StoredInS3: entry.StoredInS3,
-		Data:       data,
-	}
-
-	err := snapshotStorage.ReadChunk(ctx, &chunk)
-	if err != nil {
-		return err
-	}
-
-	_, err = dst.WriteAt(data, int64(entry.ChunkIndex)*chunkSize)
-	return err
-}
 
 func writeStreamChunk(
 	dst io.Writer,

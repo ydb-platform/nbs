@@ -182,14 +182,16 @@ class _SnapshotExportTestSetup:
     def export_snapshot(self, snapshot_id: str, output_file: Path, *args: str):
         with open(output_file, "wb") as stdout:
             subprocess.check_call(
-                self._admin_command(
+                [
+                    self.disk_manager_admin_binary_path,
+                    "--server-config",
                     self.dataplane_disk_manager.config_file,
                     "snapshots",
                     "export",
                     "--id",
                     snapshot_id,
                     *args,
-                ),
+                ],
                 stdout=stdout,
             )
 
@@ -337,7 +339,7 @@ class _SnapshotExportTestSetup:
 @pytest.mark.parametrize("use_s3", [False, True], ids=["ydb", "s3"])
 def test_snapshot_export_downloads_snapshot_and_preserves_data(use_s3):
     with _SnapshotExportTestSetup(use_s3=use_s3) as setup:
-        disk_size = 10 * 1024 * 1024
+        disk_size = 12 * 1024 * 1024
         disk_id = "export-source"
         base_snapshot_id = "export-base-snapshot"
         incremental_snapshot_id = "export-incremental-snapshot"
