@@ -68,6 +68,8 @@ public:
     std::unique_ptr<TPendingWriteDataRequest> DequeuePendingRequest();
 
     // Flush batches are built when adding requests to unflushed queue
+    // Note: flushBatchLimits are passed to the function to avoid storing them
+    // in TNodeCache
     void EnqueueUnflushedRequest(
         const TFlushBatchLimits& flushBatchLimits,
         std::unique_ptr<TCachedWriteDataRequest> request);
