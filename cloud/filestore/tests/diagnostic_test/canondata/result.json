@@ -1,5 +1,5 @@
 {
-    "test.test_diagnose_filesysten_with_loadtest": {
+    "test.test_diagnose_filesystem_with_loadtest": {
         "uri": "file://test.test_diagnose_filesystem_with_loadtest/results.txt"
     }
 }
