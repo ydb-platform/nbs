@@ -242,12 +242,16 @@ void TNodeCache::VisitUnflushedRequestsFromFrontFlushBatch(
     if (remainingRequests > 0) {
         // Invariant violation
         ReportWriteBackCacheImpossibleState(
-            "TNodeCache::GetFrontFlushBatch(): UnflushedRequests contains "
-            "less elements than needed to build a flush batch");
+            "TNodeCache::VisitUnflushedRequestsFromFrontFlushBatch(): "
+            "UnflushedRequests contains less elements than needed to build a "
+            "flush batch");
 
         // Fix the invariant
         IncompleteFlushBatchWriteRequestCounter.Reset();
-        FlushBatchRequestCountQueue = {UnflushedRequests.size()};
+
+        // Put each remaining request into a separate flush batch since we have
+        // no more guarantee about meeting the flush batch limits
+        FlushBatchRequestCountQueue = TDeque<ui64>(UnflushedRequests.size(), 1);
     }
 }
 

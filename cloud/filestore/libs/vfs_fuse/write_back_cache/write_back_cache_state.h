@@ -147,6 +147,8 @@ public:
     void UnpinNodeStates(TNodeStatePin pinId);
 
     // Returns empty batch if flush is not allowed due to barriers
+    // Forces completion of an incomplete flush batch if there are no completed
+    // flush batches
     void VisitUnflushedRequestsFromFrontFlushBatch(
         ui64 nodeId,
         const TEntryVisitor& visitor);
