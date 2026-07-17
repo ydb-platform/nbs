@@ -246,7 +246,12 @@ public:
                     systemCounters,
                     metricsRegistry,
                     fastShardServer,
-                    CreateNoOpTxRescheduler());
+                    config->GetFakeTxPageFaultsProbability() > 0
+                        ? CreateRescheduler(
+                              {.Probability =
+                                   config->GetFakeTxPageFaultsProbability(),
+                               .RandomSeed = std::nullopt})
+                        : nullptr);
                 return actor.release();
             };
 

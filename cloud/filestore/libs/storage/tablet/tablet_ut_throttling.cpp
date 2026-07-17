@@ -662,7 +662,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Throttling)
         storageConfig.SetCleanupThresholdAverage(999'999);
         storageConfig.SetWriteBlobThreshold(block);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);

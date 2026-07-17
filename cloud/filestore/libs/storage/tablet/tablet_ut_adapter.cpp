@@ -22,7 +22,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Adapter)
         NProto::TStorageConfig storageConfig;
         storageConfig.SetTwoStageReadEnabled(true);
         storageConfig.SetThreeStageWriteEnabled(true);
-        TTestEnv env({}, storageConfig);
+        TTestEnv env(testEnvConfig, storageConfig);
 
         const ui32 nodeIdx = env.AddDynamicNode();
         const ui64 tabletId = env.BootIndexTablet(nodeIdx);
