@@ -68,7 +68,7 @@ def __generate_loadtest_config(
 
 
 def __json_line(data):
-    return json.dumps(data, sort_keys=True).encode("utf-8") + b"\n"
+    return json.dumps(data, indent=4, sort_keys=True).encode("utf-8") + b"\n"
 
 
 def __get_loadtested_shards(client, fs_id, client_id):
@@ -102,27 +102,27 @@ def __alias_shards(shard_ids):
 def __normalize_responses(diagnose_responses):
     if not diagnose_responses:
         return {}
-    
+
     result = deepcopy(diagnose_responses[0])
     result_shards = {
         shard["shard_id"]: shard
         for shard in result["shards"]}
-    
+
     for shard in result_shards.values():
         for field in UNSTABLE_DIAGNOSE_FIELDS:
             shard[field] = 0
-    
+
     for response in diagnose_responses:
         input_shards = {
             shard["shard_id"]: shard
             for shard in response["shards"]
         }
-        
+
         for shard_id, result_shard in result_shards.items():
             input_shard = input_shards[shard_id]
             for field in UNSTABLE_DIAGNOSE_FIELDS:
                 result_shard[field] = (1 if input_shard[field] > 0 else result_shard[field])
-                
+
     return result
 
 
