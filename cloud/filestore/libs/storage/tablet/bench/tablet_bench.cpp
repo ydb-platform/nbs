@@ -64,7 +64,7 @@ struct TTabletSetup
             .LogPriority_NFS = NActors::NLog::PRI_ALERT,
             .LogPriority_KiKiMR = NActors::NLog::PRI_ALERT,
             .LogPriority_Others = NActors::NLog::PRI_ALERT,
-            .FakePageFaultsEnabled = false})
+            })
     {
         NCloud::NFileStore::NProto::TStorageConfig storageConfig;
         storageConfig.SetInMemoryIndexCacheEnabled(true);

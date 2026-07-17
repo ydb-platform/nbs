@@ -475,7 +475,7 @@ ui64 TTestEnv::BootIndexTablet(ui32 nodeIdx)
             SystemCounters,
             Registry,
             nullptr /* fastShardServer */,
-            Config.FakePageFaultsEnabled ?
+            Config.FakePageFaultsProbability > 0 ?
                 CreateRescheduler({
                     .Probability = Config.FakePageFaultsProbability,
                     .RandomSeed = Config.FakePageFaultsRandomSeed
@@ -612,7 +612,7 @@ void TTestEnv::SetupLocalServiceConfig(
             SystemCounters,
             Registry,
             nullptr /* fastShardServer */,
-            Config.FakePageFaultsEnabled ?
+            Config.FakePageFaultsProbability > 0 ?
                 CreateRescheduler({
                     .Probability = Config.FakePageFaultsProbability,
                     .RandomSeed = Config.FakePageFaultsRandomSeed
