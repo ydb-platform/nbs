@@ -5,21 +5,26 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/spf13/cobra"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/auth"
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
 	client_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/client/config"
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
+	snapshot_export "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/export"
+	snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
+	logzap "github.com/ydb-platform/nbs/library/go/core/log/zap"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -315,6 +320,154 @@ func newDeleteSnapshotCmd(clientConfig *client_config.ClientConfig) *cobra.Comma
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type exportSnapshot struct {
+	serverConfig    *server_config.ServerConfig
+	snapshotID      string
+	readWorkerCount int
+	partition       uint32
+	partitionCount  uint32
+	verbose         bool
+}
+
+func newExportSnapshotLogger(level logging.Level) logging.Logger {
+	config := logzap.ConsoleConfig(level)
+	config.OutputPaths = []string{"stderr"}
+	return logzap.Must(config)
+}
+
+func (c *exportSnapshot) run() error {
+	if err := snapshot_export.ValidatePartition(c.partition, c.partitionCount); err != nil {
+		return err
+	}
+
+	level := logging.InfoLevel
+	if c.verbose {
+		level = logging.DebugLevel
+	}
+
+	ctx := logging.SetLogger(
+		context.Background(),
+		newExportSnapshotLogger(level),
+	)
+
+	snapshotConfig := c.serverConfig.GetDataplaneConfig().GetSnapshotConfig()
+	if snapshotConfig == nil {
+		return fmt.Errorf("dataplane snapshot config is missing in the server config file")
+	}
+
+	creds := auth.NewCredentials(ctx, c.serverConfig.GetAuthConfig())
+	db, err := persistence.NewYDBClient(
+		ctx,
+		snapshotConfig.GetPersistenceConfig(),
+		metrics.NewEmptyRegistry(),
+		persistence.WithCredentials(creds),
+	)
+	if err != nil {
+		return err
+	}
+	defer db.Close(ctx)
+
+	s3Config := snapshotConfig.GetPersistenceConfig().GetS3Config()
+	var s3 *persistence.S3Client
+	if s3Config != nil {
+		s3, err = persistence.NewS3ClientFromConfig(
+			s3Config,
+			metrics.NewEmptyRegistry(),
+			nil, // availabilityMonitoring
+		)
+		if err != nil {
+			return err
+		}
+	}
+
+	snapshotStorage, err := snapshot_storage.NewStorage(
+		snapshotConfig,
+		metrics.NewEmptyRegistry(),
+		db,
+		s3,
+	)
+	if err != nil {
+		return err
+	}
+
+	stats, err := snapshot_export.ExportPartitionToWriterWithReadWorkers(
+		ctx,
+		snapshotStorage,
+		c.snapshotID,
+		os.Stdout,
+		c.partition,
+		c.partitionCount,
+		c.readWorkerCount,
+	)
+	if err != nil {
+		return err
+	}
+
+	logging.Info(
+		ctx,
+		"exported partition %v/%v of snapshot %v to stdout: size %v bytes, %v data chunks, %v zero chunks",
+		c.partition,
+		c.partitionCount,
+		c.snapshotID,
+		stats.Size,
+		stats.DataChunkCount,
+		stats.ZeroChunkCount,
+	)
+	return nil
+}
+
+func newExportSnapshotCmd(serverConfig *server_config.ServerConfig) *cobra.Command {
+	c := &exportSnapshot{
+		serverConfig:    serverConfig,
+		readWorkerCount: snapshot_export.DefaultStreamReadWorkerCount,
+		partition:       1,
+		partitionCount:  1,
+	}
+
+	cmd := &cobra.Command{
+		Use:   "export",
+		Short: "Exports a snapshot from the dataplane storage to stdout as a raw image stream",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.run()
+		},
+	}
+
+	cmd.Flags().StringVar(&c.snapshotID, "id", "", "ID of snapshot to export; required")
+	if err := cmd.MarkFlagRequired("id"); err != nil {
+		log.Fatalf("Error setting flag id as required: %v", err)
+	}
+
+	cmd.Flags().IntVar(
+		&c.readWorkerCount,
+		"read-workers",
+		snapshot_export.DefaultStreamReadWorkerCount,
+		"Number of parallel chunk read workers",
+	)
+	cmd.Flags().Uint32Var(
+		&c.partition,
+		"partition",
+		1,
+		"1-based partition number to export",
+	)
+	cmd.Flags().Uint32Var(
+		&c.partitionCount,
+		"partition-count",
+		1,
+		"Total number of contiguous snapshot partitions",
+	)
+	cmd.Flags().BoolVarP(
+		&c.verbose,
+		"verbose",
+		"v",
+		false,
+		"Enable verbose logging",
+	)
+
+	return cmd
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 // TODO: Remove this command after getting rid of legacy snapshot storage.
 type scheduleCreateSnapshotFromLegacySnapshotTask struct {
 	commandWithScheduler
@@ -510,6 +663,7 @@ func newSnapshotsCmd(
 		newListSnapshotsCmd(clientConfig, serverConfig),
 		newCreateSnapshotCmd(clientConfig),
 		newDeleteSnapshotCmd(clientConfig),
+		newExportSnapshotCmd(serverConfig),
 		// TODO: Remove this command after getting rid of legacy snapshot storage.
 		newScheduleCreateSnapshotFromLegacySnapshotTaskCmd(
 			clientConfig,
