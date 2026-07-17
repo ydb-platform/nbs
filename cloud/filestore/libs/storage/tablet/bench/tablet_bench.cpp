@@ -63,8 +63,7 @@ struct TTabletSetup
             // Turn off logging in order to reduce performance overhead
             .LogPriority_NFS = NActors::NLog::PRI_ALERT,
             .LogPriority_KiKiMR = NActors::NLog::PRI_ALERT,
-            .LogPriority_Others = NActors::NLog::PRI_ALERT,
-            })
+            .LogPriority_Others = NActors::NLog::PRI_ALERT})
     {
         NCloud::NFileStore::NProto::TStorageConfig storageConfig;
         storageConfig.SetInMemoryIndexCacheEnabled(true);

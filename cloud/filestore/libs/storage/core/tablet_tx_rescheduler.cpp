@@ -17,7 +17,7 @@ namespace {
 // With a given probability decides if a transaction should be rescheduled.
 // Used in tests to exercise behaviour in case of transaction restarts/reorderings.
 // Note that it does not reschedule anything by itself and only serves for communication
-// between TIndexActorDatabase and Tx::Execute().
+// between TIndexTabletDatabase and Tx::Execute().
 class TRandomTxRescheduler final
     : public ITxRescheduler
 {
