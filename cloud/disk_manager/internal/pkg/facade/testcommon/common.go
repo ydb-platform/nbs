@@ -1100,36 +1100,27 @@ func GetGauges(
 	name string,
 	labels map[string]string,
 ) []float64 {
-	var result []float64
-	deadline := time.Now().Add(30 * time.Second)
-	for {
-		result = result[:0]
-		for _, port := range ports {
-			value, ok := GetGauge(
-				t,
-				port,
-				name,
-				labels,
-			)
-			if ok {
-				result = append(result, value)
-			}
+	result := make([]float64, 0)
+	for _, port := range ports {
+		value, ok := GetGauge(
+			t,
+			port,
+			name,
+			labels,
+		)
+		if ok {
+			result = append(result, value)
 		}
-		if len(result) != 0 {
-			return result
-		}
-		if time.Now().After(deadline) {
-			require.NotEmpty(
-				t,
-				result,
-				"No gauge with name %s, labels %v",
-				name,
-				labels,
-			)
-			return result
-		}
-		time.Sleep(100 * time.Millisecond)
 	}
+
+	require.NotEmpty(
+		t,
+		result,
+		"No gauge with name %s, labels %v",
+		name,
+		labels,
+	)
+	return result
 }
 
 func GetCounter(
