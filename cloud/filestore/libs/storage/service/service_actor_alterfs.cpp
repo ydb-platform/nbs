@@ -601,6 +601,8 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
         ExistingShardIds.push_back(std::move(shardId));
     }
 
+    // Intentionally called after the ExistingShardIds are filled because this
+    // vector is used in FillMultiShardFileStoreConfig
     PatchStorageConfig();
     FillMultiShardFileStoreConfig(ctx);
 
