@@ -25,7 +25,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-enum class ESecureEraseAbility {
+enum class ESecureEraseReadiness {
     ReadyToErase,
     Suspended,
     DeviceInErrorState,
@@ -751,7 +751,7 @@ public:
     bool IsReadyForCleanup(const TDiskId& diskId) const;
 
     bool CanSecureErase(const TDeviceId& uuid) const;
-    ESecureEraseAbility CanSecureErase(
+    ESecureEraseReadiness GetSecureEraseReadiness(
         const NProto::TDeviceConfig& device) const;
 
     NProto::TError SetUserId(

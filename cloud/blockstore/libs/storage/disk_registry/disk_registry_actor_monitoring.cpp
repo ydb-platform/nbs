@@ -2496,7 +2496,7 @@ void TDiskRegistryActor::RenderDirtyDevicesCleanupOverviewDetailed(
     IOutputStream& out) const
 {
     auto dirtyDevices = State->GetDirtyDevices();
-    TMap<ESecureEraseAbility, TVector<TDirtyDeviceEntry>> classified;
+    TMap<ESecureEraseReadiness, TVector<TDirtyDeviceEntry>> classified;
     TVector<TDirtyDeviceEntry> eraseInProgress;
 
     for (const auto& device: dirtyDevices) {
@@ -2518,13 +2518,14 @@ void TDiskRegistryActor::RenderDirtyDevicesCleanupOverviewDetailed(
             entry.AgentId = agent->GetAgentId();
         }
 
-        const ESecureEraseAbility ability = State->CanSecureErase(device);
-        if (ability == ESecureEraseAbility::ReadyToErase &&
+        const ESecureEraseReadiness readiness =
+            State->GetSecureEraseReadiness(device);
+        if (readiness == ESecureEraseReadiness::ReadyToErase &&
             entry.EraseStartedAt)
         {
             eraseInProgress.push_back(std::move(entry));
         } else {
-            classified[ability].push_back(std::move(entry));
+            classified[readiness].push_back(std::move(entry));
         }
     }
 

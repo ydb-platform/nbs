@@ -356,7 +356,10 @@ void TDiskRegistryActor::SecureErase(const TActorContext& ctx)
     EraseIf(
         dirtyDevices,
         [this](const NProto::TDeviceConfig& device)
-        { return State->CanSecureErase(device) != ESecureEraseAbility::ReadyToErase; });
+        {
+            return State->GetSecureEraseReadiness(device) !=
+                   ESecureEraseReadiness::ReadyToErase;
+        });
 
     if (!dirtyDevices) {
         LOG_DEBUG(
