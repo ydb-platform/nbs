@@ -15,9 +15,8 @@ func main() {
 		"/etc/disk-manager/server-config.txt",
 		metrics.NewPrometheusRegistry,
 		func(config *auth.AuthConfig, creds auth.Credentials) (auth.Authorizer, error) {
-			// TODO: should use real authorizer, not stub.
 			return auth.NewStubAuthorizer(), nil
 		},
-		snapshot.NewEmptySnapshotStorageQuotaReporter,
+		snapshot.NewStubSnapshotStorageQuotaReporter,
 	)
 }
