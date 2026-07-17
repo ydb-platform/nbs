@@ -225,7 +225,8 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
                 AuthToken1,
                 CreatePermissionList({
                     EPermission::Read,
-                    EPermission::Write})));
+                    EPermission::Write}),
+                "192.168.0.101"));
 
         testEnv.DispatchEvents();
 
@@ -241,6 +242,7 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         UNIT_ASSERT_EQUAL(event.Entries[0].Permissions.size(), 2);
         UNIT_ASSERT_EQUAL(event.Entries[0].Permissions[0].Permission, "nbsInternal.disks.read");
         UNIT_ASSERT_EQUAL(event.Entries[0].Permissions[1].Permission, "nbsInternal.disks.write");
+        UNIT_ASSERT_EQUAL(event.PeerName, "192.168.0.101");
     }
 
     Y_UNIT_TEST(AuthorizeWithAuthorizerDisabledWhenIgnoring)
@@ -268,7 +270,8 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
                 AuthToken1,
                 CreatePermissionList({
                     EPermission::Read,
-                    EPermission::Write})));
+                    EPermission::Write}),
+                "192.168.0.101"));
 
         auto event = testEnv.GrabAuthorizationResponse();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, event->GetStatus());
@@ -303,7 +306,8 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
                 AuthToken1,
                 CreatePermissionList({
                     EPermission::Read,
-                    EPermission::Write})));
+                    EPermission::Write}),
+                "192.168.0.101"));
 
         auto event = testEnv.GrabAuthorizationResponse();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, event->GetStatus());
@@ -340,7 +344,8 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
                 AuthToken1,
                 CreatePermissionList({
                     EPermission::Read,
-                    EPermission::Write})));
+                    EPermission::Write}),
+                "192.168.0.101"));
 
         auto event = testEnv.GrabAuthorizationResponse();
         UNIT_ASSERT_VALUES_EQUAL(E_UNAUTHORIZED, event->GetStatus());
@@ -377,7 +382,8 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
                 TString(),
                 CreatePermissionList({
                     EPermission::Read,
-                    EPermission::Write})));
+                    EPermission::Write}),
+                "192.168.0.101"));
 
         auto event = testEnv.GrabAuthorizationResponse();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, event->GetStatus());
@@ -412,7 +418,8 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
                 TString(),
                 CreatePermissionList({
                     EPermission::Read,
-                    EPermission::Write})));
+                    EPermission::Write}),
+                "192.168.0.101"));
 
         auto event = testEnv.GrabAuthorizationResponse();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, event->GetStatus());
@@ -449,7 +456,8 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
                 TString(),
                 CreatePermissionList({
                     EPermission::Read,
-                    EPermission::Write})));
+                    EPermission::Write}),
+                "192.168.0.101"));
 
         auto event = testEnv.GrabAuthorizationResponse();
         UNIT_ASSERT_VALUES_EQUAL(E_UNAUTHORIZED, event->GetStatus());
@@ -486,7 +494,8 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
                 AuthToken1,
                 CreatePermissionList({
                     EPermission::Read,
-                    EPermission::Write})));
+                    EPermission::Write}),
+                "192.168.0.101"));
 
         auto event = testEnv.GrabAuthorizationResponse();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, event->GetStatus());
@@ -521,7 +530,8 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
                 AuthToken1,
                 CreatePermissionList({
                     EPermission::Read,
-                    EPermission::Write})));
+                    EPermission::Write}),
+                "192.168.0.101"));
 
         auto event = testEnv.GrabAuthorizationResponse();
         UNIT_ASSERT_VALUES_EQUAL(E_UNAUTHORIZED, event->GetStatus());
@@ -558,7 +568,8 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
                 AuthToken1,
                 CreatePermissionList({
                     EPermission::Read,
-                    EPermission::Write})));
+                    EPermission::Write}),
+                "192.168.0.101"));
 
         auto event = testEnv.GrabAuthorizationResponse();
         UNIT_ASSERT_VALUES_EQUAL(E_UNAUTHORIZED, event->GetStatus());
@@ -595,11 +606,13 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
                 AuthToken1,
                 CreatePermissionList({
                     EPermission::Read,
-                    EPermission::Write})));
+                    EPermission::Write}),
+                "192.168.0.101"));
 
         testEnv.DispatchEvents();
 
         UNIT_ASSERT_EQUAL(authorizeEvents.size(), 1ul);
+        UNIT_ASSERT_EQUAL(authorizeEvents[0]->Get()->PeerName, "192.168.0.101");
 
         testEnv.Send(
             authorizeEvents[0]->Sender,
@@ -640,11 +653,13 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
                 AuthToken1,
                 CreatePermissionList({
                     EPermission::Read,
-                    EPermission::Write})));
+                    EPermission::Write}),
+                "192.168.0.101"));
 
         testEnv.DispatchEvents();
 
         UNIT_ASSERT_EQUAL(authorizeEvents.size(), 1ul);
+        UNIT_ASSERT_EQUAL(authorizeEvents[0]->Get()->PeerName, "192.168.0.101");
 
         testEnv.Send(
             authorizeEvents[0]->Sender,
@@ -685,11 +700,13 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
                 AuthToken1,
                 CreatePermissionList({
                     EPermission::Read,
-                    EPermission::Write})));
+                    EPermission::Write}),
+                "192.168.0.101"));
 
         testEnv.DispatchEvents();
 
         UNIT_ASSERT_EQUAL(authorizeEvents.size(), 1ul);
+        UNIT_ASSERT_EQUAL(authorizeEvents[0]->Get()->PeerName, "192.168.0.101");
 
         testEnv.Send(
             authorizeEvents[0]->Sender,
@@ -728,11 +745,13 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
                 AuthToken1,
                 CreatePermissionList({
                     EPermission::Read,
-                    EPermission::Write})));
+                    EPermission::Write}),
+                "192.168.0.101"));
 
         testEnv.DispatchEvents();
 
         UNIT_ASSERT_EQUAL(authorizeEvents.size(), 1ul);
+        UNIT_ASSERT_EQUAL(authorizeEvents[0]->Get()->PeerName, "192.168.0.101");
 
         testEnv.Send(
             authorizeEvents[0]->Sender,
@@ -773,11 +792,13 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
                 AuthToken1,
                 CreatePermissionList({
                     EPermission::Read,
-                    EPermission::Write})));
+                    EPermission::Write}),
+                "192.168.0.101"));
 
         testEnv.DispatchEvents();
 
         UNIT_ASSERT_EQUAL(authorizeEvents.size(), 1ul);
+        UNIT_ASSERT_EQUAL(authorizeEvents[0]->Get()->PeerName, "192.168.0.101");
 
         testEnv.Send(
             authorizeEvents[0]->Sender,
@@ -818,11 +839,13 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
                 AuthToken1,
                 CreatePermissionList({
                     EPermission::Read,
-                    EPermission::Write})));
+                    EPermission::Write}),
+                "192.168.0.101"));
 
         testEnv.DispatchEvents();
 
         UNIT_ASSERT_EQUAL(authorizeEvents.size(), 1ul);
+        UNIT_ASSERT_EQUAL(authorizeEvents[0]->Get()->PeerName, "192.168.0.101");
 
         testEnv.Send(
             authorizeEvents[0]->Sender,
@@ -866,11 +889,13 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
                 AuthToken1,
                 CreatePermissionList({
                     EPermission::Read,
-                    EPermission::Write})));
+                    EPermission::Write}),
+                "192.168.0.101"));
 
         testEnv.DispatchEvents();
 
         UNIT_ASSERT_EQUAL(authorizeEvents.size(), 1ul);
+        UNIT_ASSERT_EQUAL(authorizeEvents[0]->Get()->PeerName, "192.168.0.101");
 
         testEnv.Send(
             authorizeEvents[0]->Sender,
@@ -909,11 +934,13 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
                 AuthToken1,
                 CreatePermissionList({
                     EPermission::Read,
-                    EPermission::Write})));
+                    EPermission::Write}),
+                "192.168.0.101"));
 
         testEnv.DispatchEvents();
 
         UNIT_ASSERT_EQUAL(authorizeEvents.size(), 1ul);
+        UNIT_ASSERT_EQUAL(authorizeEvents[0]->Get()->PeerName, "192.168.0.101");
 
         testEnv.Send(
             authorizeEvents[0]->Sender,
@@ -952,11 +979,13 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
                 AuthToken1,
                 CreatePermissionList({
                     EPermission::Read,
-                    EPermission::Write})));
+                    EPermission::Write}),
+                "192.168.0.101"));
 
         testEnv.DispatchEvents();
 
         UNIT_ASSERT_EQUAL(authorizeEvents.size(), 1ul);
+        UNIT_ASSERT_EQUAL(authorizeEvents[0]->Get()->PeerName, "192.168.0.101");
 
         testEnv.Send(
             authorizeEvents[0]->Sender,
@@ -997,11 +1026,13 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
                 AuthToken1,
                 CreatePermissionList({
                     EPermission::Read,
-                    EPermission::Write})));
+                    EPermission::Write}),
+                "192.168.0.101"));
 
         testEnv.DispatchEvents();
 
         UNIT_ASSERT_EQUAL(authorizeEvents.size(), 1ul);
+        UNIT_ASSERT_EQUAL(authorizeEvents[0]->Get()->PeerName, "192.168.0.101");
 
         testEnv.Send(
             authorizeEvents[0]->Sender,
@@ -1043,11 +1074,13 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
                 AuthToken1,
                 CreatePermissionList({
                     EPermission::Read,
-                    EPermission::Write})));
+                    EPermission::Write}),
+                "192.168.0.101"));
 
         testEnv.DispatchEvents();
 
         UNIT_ASSERT_EQUAL(authorizeEvents.size(), 1ul);
+        UNIT_ASSERT_EQUAL(authorizeEvents[0]->Get()->PeerName, "192.168.0.101");
 
         testEnv.Send(
             authorizeEvents[0]->Sender,
@@ -1090,11 +1123,13 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
                 AuthToken1,
                 CreatePermissionList({
                     EPermission::Read,
-                    EPermission::Write})));
+                    EPermission::Write}),
+                "192.168.0.101"));
 
         testEnv.DispatchEvents();
 
         UNIT_ASSERT_EQUAL(authorizeEvents.size(), 1ul);
+        UNIT_ASSERT_EQUAL(authorizeEvents[0]->Get()->PeerName, "192.168.0.101");
 
         testEnv.Send(
             authorizeEvents[0]->Sender,
@@ -1133,17 +1168,20 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
                 AuthToken1,
-                CreatePermissionList({EPermission::Read})));
+                CreatePermissionList({EPermission::Read}),
+                "192.168.0.101"));
         testEnv.Send(
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
                 AuthToken2,
-                CreatePermissionList({EPermission::Create})));
+                CreatePermissionList({EPermission::Create}),
+                "192.168.0.101"));
         testEnv.Send(
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
                 AuthToken1,
-                CreatePermissionList({EPermission::Write})));
+                CreatePermissionList({EPermission::Write}),
+                "192.168.0.101"));
 
         testEnv.DispatchEvents();
 
@@ -1200,11 +1238,13 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
                 AuthToken1,
                 CreatePermissionList({
                     EPermission::Read,
-                    EPermission::Write})));
+                    EPermission::Write}),
+                "192.168.0.101"));
 
         testEnv.DispatchEvents();
 
         UNIT_ASSERT_EQUAL(authorizeEvents.size(), 1ul);
+        UNIT_ASSERT_EQUAL(authorizeEvents[0]->Get()->PeerName, "192.168.0.101");
 
         testEnv.Send(
             authorizeEvents[0]->Sender,

@@ -95,7 +95,8 @@ private:
             ctx,
             std::move(permissions),
             internal.GetAuthToken(),
-            TDuration::MilliSeconds(headers.GetRequestTimeout()));
+            TDuration::MilliSeconds(headers.GetRequestTimeout()),
+            internal.GetPeer());
 
         return HandleAuthResponse<TRequest, TResponse>(
             std::move(authResponse),
