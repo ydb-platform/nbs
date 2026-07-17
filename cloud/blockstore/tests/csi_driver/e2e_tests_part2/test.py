@@ -84,7 +84,7 @@ def get_target_path(pod_id: str, volume_name: str, access_type: str) -> Path:
 def assert_endpoints(run, volume_name: str, total: int, read_only: int):
     endpoints = run("listendpoints", "--proto").stdout
     assert total == endpoints.count(f'DiskId: "{volume_name}"')
-    assert read_only == endpoints.count("VolumeAccessMode: VOLUME_ACCESS_READ_ONLY")
+    assert read_only == endpoints.count("VolumeAccessMode: VOLUME_ACCESS_USER_READ_ONLY")
 
 
 def test_publish_distinguishes_remote_mount_access_modes():
