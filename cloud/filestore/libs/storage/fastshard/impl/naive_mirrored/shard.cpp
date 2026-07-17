@@ -1,5 +1,7 @@
 #include "shard.h"
 
+#include "persistent_hash_table.h"
+
 #include <cloud/filestore/libs/service/error.h>
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/storage/fastshard/iface/fs.h>
@@ -27,8 +29,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr ui32 NameCapacity = 20;
-constexpr ui64 SlotSize = 100;
+constexpr ui64 NodeSlotSize = 100;
 constexpr ui32 PageSize = 4_KB;
 constexpr ui64 NodeTableSize = 512_MB;
 
@@ -44,11 +45,21 @@ struct TNodeTableSlot
     ui64 CTime;
     ui64 Size;
     ui32 Links;
-    char Name[NameCapacity];
     ui32 RootPageNo;
 };
 
-static_assert(sizeof(TNodeTableSlot) <= SlotSize);
+static_assert(sizeof(TNodeTableSlot) <= NodeSlotSize);
+
+constexpr ui64 NameSlotSize = 32;
+constexpr ui32 NameCapacity = 20;
+
+struct TNameTableSlot
+{
+    char Name[NameCapacity];
+    ui64 NodeId;
+};
+
+static_assert(sizeof(TNameTableSlot) <= NameSlotSize);
 
 NProto::TNodeAttr Convert(const TNodeTableSlot& slot)
 {
@@ -66,7 +77,7 @@ NProto::TNodeAttr Convert(const TNodeTableSlot& slot)
     return attr;
 }
 
-TNodeTableSlot Convert(const TString& name, const NProto::TNodeAttr& attr)
+TNodeTableSlot Convert(const NProto::TNodeAttr& attr)
 {
     TNodeTableSlot slot{};
     slot.Id = attr.GetId();
@@ -79,30 +90,22 @@ TNodeTableSlot Convert(const TString& name, const NProto::TNodeAttr& attr)
     slot.CTime = attr.GetCTime();
     slot.Size = attr.GetSize();
     slot.Links = attr.GetLinks();
-    Y_ABORT_UNLESS(name.size() < NameCapacity);
-    memcpy(slot.Name, name.data(), name.size());
-    slot.Name[name.size()] = 0;
     slot.RootPageNo = 0;
     return slot;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// This data structure is a prototype and is pretty inefficient:
-// * no page cache - the same page is re-read multiple times
-// * it uses TStrings for pages so we allocate more mem per page than needed
-// So it's basically a PoC.
+// This data structure is a PoC, it's not really efficient, can be easily
+// optimized.
 
 class TNodeTable
 {
 private:
     static constexpr ui64 SlotsPerPage = 40;
-    static_assert(SlotsPerPage * SlotSize < PageSize);
+    static_assert(SlotsPerPage * NodeSlotSize <= PageSize);
 
-    ui64 SlotCount = 0;
-    ui64 PageCount = 0;
-    IStorageGroupPtr Storage;
-    mutable silk::FiberMutex ConnMutex;
-    ui64 SlotPointer = 0;
+    using THt = TPersistentHashTable<ui64, TNodeTableSlot>;
+    std::unique_ptr<THt> Slots;
     ui64 LastNodeId = 0;
 
 public:
@@ -110,9 +113,29 @@ public:
         const NProtoPrivate::TPersistentFastShardConfig& config,
         IStorageGroupPtr storage)
     {
-        Storage = std::move(storage);
-        SlotCount = (config.GetNodesPerGroup() / SlotsPerPage) * SlotsPerPage;
-        PageCount = Min(SlotCount / SlotsPerPage, NodeTableSize / PageSize);
+        const ui64 slotCount =
+            (config.GetNodesPerGroup() / SlotsPerPage) * SlotsPerPage;
+        const ui64 pageCount =
+            Min(slotCount / SlotsPerPage, NodeTableSize / PageSize);
+        const TNodeTableSlot tombstone{.Id = Max<ui64>()};
+        Slots = std::make_unique<THt>(
+            0 /* firstPageNo */,
+            pageCount,
+            PageSize,
+            slotCount,
+            NodeSlotSize,
+            tombstone,
+            storage,
+            [] (const TNodeTableSlot& s) -> ui64
+            {
+                return s.Id;
+            },
+            [] (const ui64& nodeId) -> ui64
+            {
+                return CityHash64(
+                    reinterpret_cast<const char*>(&nodeId),
+                    sizeof(nodeId));
+            });
     }
 
     ui64 AllocateNodeId()
@@ -126,22 +149,12 @@ public:
         ui64 nodeId,
         ui32 flags,
         const NProto::TSetNodeAttrRequest::TUpdate& update,
-        NProto::TNodeAttr* attr)
+        NProto::TNodeAttr* attr,
+        NProto::TWriteLogRecordRequest& logRecord)
     {
-        std::lock_guard g(ConnMutex);
-
         TNodeTableSlot slot{};
         ui64 slotNo = 0;
-        auto error = FindSlot(
-            CityHash64(reinterpret_cast<const char*>(&nodeId), sizeof(nodeId)),
-            [=] (const TNodeTableSlot& slot) {
-                return slot.Id == nodeId;
-            },
-            [&] () {
-                return ErrorInvalidTarget(nodeId);
-            },
-            &slot,
-            &slotNo);
+        auto error = Slots->Get(nodeId, &slot, &slotNo);
         if (HasError(error)) {
             return error;
         }
@@ -168,56 +181,24 @@ public:
             slot.Size = update.GetSize();
         }
 
-        error = WriteNode(slot, slotNo);
+        Slots->Update(slot, slotNo, logRecord);
         *attr = Convert(slot);
         return {};
     }
 
-    NProto::TError PutNode(const TString& name, const NProto::TNodeAttr& attr)
+    NProto::TError PutNode(
+        const NProto::TNodeAttr& attr,
+        NProto::TWriteLogRecordRequest& logRecord)
     {
-        std::lock_guard g(ConnMutex);
-
-        TNodeTableSlot slot{};
-        ui64 slotNo = 0;
-        auto error = FindSlot(
-            CityHash64(name),
-            [=] (const TNodeTableSlot& slot) {
-                return strcmp(slot.Name, name.c_str()) == 0;
-            },
-            [&] () {
-                return ErrorInvalidTarget(RootNodeId, name);
-            },
-            &slot,
-            &slotNo);
-        if (error.GetCode() != E_FS_NOENT) {
-            return ErrorAlreadyExists(name);
-        }
-
-        slotNo = 0;
-        error = AllocateSlot(&slotNo);
-        if (HasError(error)) {
-            return error;
-        }
-
-        return WriteNode(name, attr, slotNo);
+        auto slot = Convert(attr);
+        return Slots->Put(slot, logRecord);
     }
 
     NProto::TError GetNode(ui64 nodeId, NProto::TNodeAttr* attr) const
     {
-        std::lock_guard g(ConnMutex);
-
         TNodeTableSlot slot{};
         ui64 slotNo = 0;
-        auto error = FindSlot(
-            CityHash64(reinterpret_cast<const char*>(&nodeId), sizeof(nodeId)),
-            [&] (const TNodeTableSlot& slot) {
-                return slot.Id == nodeId;
-            },
-            [&] () {
-                return ErrorInvalidTarget(nodeId);
-            },
-            &slot,
-            &slotNo);
+        auto error = Slots->Get(nodeId, &slot, &slotNo);
         if (HasError(error)) {
             return error;
         }
@@ -225,204 +206,70 @@ public:
         *attr = Convert(slot);
         return {};
     }
+};
 
-    NProto::TError GetNode(const TString& name, NProto::TNodeAttr* attr) const
-    {
-        std::lock_guard g(ConnMutex);
+////////////////////////////////////////////////////////////////////////////////
 
-        TNodeTableSlot slot{};
-        ui64 slotNo = 0;
-        auto error = FindSlot(
-            CityHash64(name),
-            [=] (const TNodeTableSlot& slot) {
-                return strcmp(slot.Name, name.c_str()) == 0;
-            },
-            [&] () {
-                return ErrorInvalidTarget(RootNodeId, name);
-            },
-            &slot,
-            &slotNo);
-        if (HasError(error)) {
-            return error;
-        }
-
-        *attr = Convert(slot);
-        return {};
-    }
-
+class TNameTable
+{
 private:
-    NProto::TError WritePage(ui64 slotNo, TString page)
+    static constexpr ui64 SlotsPerPage = 128;
+    static_assert(SlotsPerPage * NameSlotSize <= PageSize);
+
+    using THt = TPersistentHashTable<const char*, TNameTableSlot>;
+    std::unique_ptr<THt> Slots;
+
+public:
+    void Init(
+        const NProtoPrivate::TPersistentFastShardConfig& config,
+        IStorageGroupPtr storage)
     {
-        const ui64 pageNo = slotNo / SlotsPerPage;
-
-        NProto::TWriteLogRecordRequest request;
-        auto* pg = request.AddPageGroups();
-        pg->SetFirstPageNo(pageNo);
-        pg->AddContent(std::move(page));
-
-        auto response = Storage->WriteLogRecord(request);
-        return response.GetError();
+        const ui64 slotCount =
+            (config.GetNodesPerGroup() / SlotsPerPage) * SlotsPerPage;
+        const ui64 pageCount = slotCount / SlotsPerPage;
+        TNameTableSlot tombstone{};
+        tombstone.NodeId = Max<ui64>();
+        Slots = std::make_unique<THt>(
+            0 /* firstPageNo */,
+            pageCount,
+            PageSize,
+            slotCount,
+            NameSlotSize,
+            tombstone,
+            storage,
+            [] (const TNameTableSlot& s) -> const char*
+            {
+                return s.Name;
+            },
+            [] (const char* const& name) -> ui64
+            {
+                return CityHash64(name, strlen(name));
+            });
     }
 
-    NProto::TError ReadPage(ui64 slotNo, TString* page) const
-    {
-        const ui64 pageNo = slotNo / SlotsPerPage;
-
-        // TODO: page cache
-
-        NProto::TReadPagesRequest request;
-        auto* pg = request.AddPageGroupRefs();
-        pg->SetFirstPageNo(pageNo);
-        pg->SetPageCount(1);
-        pg->SetPageSize(PageSize);
-
-        auto response = Storage->ReadPages(request);
-        if (HasError(response.GetError())) {
-            return response.GetError();
-        }
-
-        if (response.PageGroupsSize() != 1) {
-            return MakeError(
-                E_BADMSG,
-                TStringBuilder() << "unexpected pg count: "
-                    << response.PageGroupsSize());
-        }
-
-        auto& rpg = *response.MutablePageGroups(0);
-        if (rpg.ContentSize() != 1) {
-            return MakeError(
-                E_BADMSG,
-                TStringBuilder() << "unexpected page count: "
-                    << rpg.ContentSize());
-        }
-
-        if (rpg.GetContent(0).size() < PageSize) {
-            return MakeError(
-                E_BADMSG,
-                TStringBuilder() << "unexpected page size: "
-                    << rpg.GetContent(0).size());
-        }
-
-        *page = std::move(*rpg.MutableContent(0));
-        return {};
-    }
-
-    NProto::TError LookupSlot(ui64 slotNo, TNodeTableSlot* s) const
-    {
-        TString page;
-        auto error = ReadPage(slotNo, &page);
-        if (HasError(error)) {
-            return error;
-        }
-
-        const ui32 relSlotNo = slotNo % SlotsPerPage;
-        memcpy(
-            s,
-            page.data() + relSlotNo * SlotSize,
-            sizeof(TNodeTableSlot));
-        return MakeError(s->Id == 0 ? S_FALSE : S_OK);
-    }
-
-    using TEq = std::function<bool(const TNodeTableSlot&)>;
-    using TMakeNotFoundError = std::function<NProto::TError()>;
-    NProto::TError FindSlot(
-        ui64 h,
-        const TEq& eq,
-        const TMakeNotFoundError& nfe,
-        TNodeTableSlot* s,
-        ui64* slotNo) const
-    {
-        const ui64 firstSlotNo = h % SlotCount;
-        *slotNo = firstSlotNo;
-        while (true) {
-            auto error = LookupSlot(*slotNo, s);
-            if (HasError(error)) {
-                return error;
-            }
-
-            if (error.GetCode() == S_FALSE) {
-                break;
-            }
-
-            if (eq(*s)) {
-                return {};
-            }
-
-            *slotNo = (*slotNo + 1) % SlotCount;
-            if (*slotNo == firstSlotNo) {
-                break;
-            }
-        }
-
-        return nfe();
-    }
-
-    NProto::TError WriteNode(
+    NProto::TError Put(
         const TString& name,
-        const NProto::TNodeAttr& attr,
-        ui64 slotNo)
+        ui64 nodeId,
+        NProto::TWriteLogRecordRequest& logRecord)
     {
-        TString page;
-        auto error = ReadPage(slotNo, &page);
+        TNameTableSlot slot{};
+        Y_ABORT_UNLESS(name.size() < NameCapacity);
+        memcpy(slot.Name, name.data(), name.size());
+        memset(slot.Name + name.size(), 0, NameCapacity - name.size());
+        slot.NodeId = nodeId;
+        return Slots->Put(slot, logRecord);
+    }
+
+    NProto::TError Get(const TString& name, ui64* nodeId) const
+    {
+        ui64 slotNo = 0;
+        TNameTableSlot slot{};
+        auto error = Slots->Get(name.c_str(), &slot, &slotNo);
         if (HasError(error)) {
             return error;
         }
 
-        if (name.size() >= NameCapacity) {
-            return MakeError(
-                E_ARGUMENT,
-                TStringBuilder() << "name too long: " << name.size());
-        }
-
-        auto slot = Convert(name, attr);
-
-        const ui32 relSlotNo = slotNo % SlotsPerPage;
-        memcpy(
-            page.begin() + relSlotNo * SlotSize,
-            &slot,
-            sizeof(TNodeTableSlot));
-
-        return WritePage(slotNo, std::move(page));
-    }
-
-    NProto::TError WriteNode(const TNodeTableSlot& slot, ui64 slotNo)
-    {
-        TString page;
-        auto error = ReadPage(slotNo, &page);
-        if (HasError(error)) {
-            return error;
-        }
-
-        const ui32 relSlotNo = slotNo % SlotsPerPage;
-        memcpy(
-            page.begin() + relSlotNo * SlotSize,
-            &slot,
-            sizeof(TNodeTableSlot));
-
-        return WritePage(slotNo, std::move(page));
-    }
-
-    NProto::TError AllocateSlot(ui64* slotNo)
-    {
-        *slotNo = SlotPointer;
-        while (true) {
-            TNodeTableSlot s{};
-            auto error = LookupSlot(*slotNo, &s);
-            if (HasError(error)) {
-                return error;
-            }
-
-            if (error.GetCode() == S_FALSE) {
-                break;
-            }
-
-            *slotNo = (*slotNo + 1) % SlotCount;
-            if (*slotNo == SlotPointer) {
-                return MakeError(E_FS_OUT_OF_SPACE, "no free node slot");
-            }
-        }
-
-        SlotPointer = (*slotNo + 1) % SlotCount;
+        *nodeId = slot.NodeId;
         return {};
     }
 };
@@ -458,6 +305,8 @@ private:
 
     IStorageGroupPtr Storage;
     TNodeTable Nodes;
+    TNameTable Names;
+    mutable silk::FiberMutex Mutex;
 
 public:
     TFiberShardImpl(
@@ -481,6 +330,7 @@ public:
         Storage = CreateNaiveMirroredStorageGroup(std::move(nodes));
 
         Nodes.Init(Config, Storage);
+        Names.Init(Config, Storage);
     }
 
 public:
@@ -511,7 +361,10 @@ public:
     GetNodeAttr(ui64 nodeId, const TString& name, NProto::TNodeAttr* attr)
     {
         if (name) {
-            return Nodes.GetNode(name, attr);
+            auto error = Names.Get(name, &nodeId);
+            if (HasError(error)) {
+                return error;
+            }
         }
 
         return Nodes.GetNode(nodeId, attr);
@@ -537,13 +390,20 @@ public:
     {
         NProto::TSetNodeAttrResponse response;
 
+        NProto::TWriteLogRecordRequest logRecord;
         auto error = Nodes.UpdateNode(
             request.GetNodeId(),
             request.GetFlags(),
             request.GetUpdate(),
-            response.MutableNode());
+            response.MutableNode(),
+            logRecord);
         if (HasError(error)) {
             *response.MutableError() = std::move(error);
+        }
+
+        auto writeResponse = Storage->WriteLogRecord(logRecord);
+        if (HasError(writeResponse.GetError())) {
+            *response.MutableError() = std::move(*writeResponse.MutableError());
         }
 
         return response;
@@ -572,15 +432,29 @@ public:
             return response;
         }
 
+        NProto::TWriteLogRecordRequest logRecord;
+
         auto attr = CreateAttrs(
             ShardedId(Nodes.AllocateNodeId(), ShardNo),
             request.GetFile().GetMode(),
             0 /* size */,
             request.GetUid(),
             request.GetGid());
-        auto error = Nodes.PutNode(request.GetName(), attr);
+        auto error = Nodes.PutNode(attr, logRecord);
         if (HasError(error)) {
             *response.MutableError() = std::move(error);
+            return response;
+        }
+
+        error = Names.Put(request.GetName(), attr.GetId(), logRecord);
+        if (HasError(error)) {
+            *response.MutableError() = std::move(error);
+            return response;
+        }
+
+        auto writeResponse = Storage->WriteLogRecord(std::move(logRecord));
+        if (HasError(writeResponse.GetError())) {
+            *response.MutableError() = std::move(*writeResponse.MutableError());
             return response;
         }
 
