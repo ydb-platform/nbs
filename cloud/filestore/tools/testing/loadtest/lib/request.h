@@ -89,16 +89,14 @@ IRequestGeneratorPtr CreateReplayRequestGeneratorFs(
     ILoggingServicePtr logging,
     NClient::ISessionPtr session,
     TString filesystemId,
-    NProto::THeaders headers,
-    TFileCreationLimiterPtr fileCreationLimiter);
+    NProto::THeaders headers);
 
 IRequestGeneratorPtr CreateReplayRequestGeneratorGRPC(
     NProto::TReplaySpec spec,
     ILoggingServicePtr logging,
     NClient::ISessionPtr session,
     TString filesystemId,
-    NProto::THeaders headers,
-    TFileCreationLimiterPtr fileCreationLimiter);
+    NProto::THeaders headers);
 
 IRequestGeneratorPtr CreateFastShardRequestGenerator(
     NProto::TFastShardLoadSpec spec,

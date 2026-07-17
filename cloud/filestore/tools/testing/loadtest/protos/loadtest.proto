@@ -211,7 +211,8 @@ message TLoadTest
     bool KeepFileStore = 16;
     string ClientId = 19;
 
-    // Maximum number of regular files created by this test run. Zero means unlimited.
+    // Maximum number of regular files created by this synthetic load test.
+    // Zero means unlimited. Ignored by replay specs.
     uint64 MaxFileCount = 22;
 }
 

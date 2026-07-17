@@ -534,9 +534,6 @@ private:
         NProto::THeaders headers;
         headers.SetClientId(Config.GetClientId());
         headers.SetSessionId(SessionId);
-        auto fileCreationLimiter = std::make_shared<TFileCreationLimiter>(
-            Config.GetMaxFileCount());
-
         switch (Config.GetSpecsCase()) {
             case NProto::TLoadTest::kIndexLoadSpec:
                 RequestGenerator = CreateIndexRequestGenerator(
@@ -546,7 +543,7 @@ private:
                     Session,
                     FileSystemId,
                     headers,
-                    fileCreationLimiter);
+                    std::make_shared<TFileCreationLimiter>(Config.GetMaxFileCount()));
                 break;
             case NProto::TLoadTest::kDataLoadSpec:
                 RequestGenerator = CreateDataRequestGenerator(
@@ -555,7 +552,7 @@ private:
                     Session,
                     FileSystemId,
                     headers,
-                    fileCreationLimiter);
+                    std::make_shared<TFileCreationLimiter>(Config.GetMaxFileCount()));
                 break;
             case NProto::TLoadTest::kReplayFsSpec:
                 RequestGenerator = CreateReplayRequestGeneratorFs(
@@ -563,8 +560,7 @@ private:
                     Logging,
                     Session,
                     FileSystemId,
-                    headers,
-                    fileCreationLimiter);
+                    headers);
                 break;
             case NProto::TLoadTest::kReplayGrpcSpec:
                 RequestGenerator = CreateReplayRequestGeneratorGRPC(
@@ -572,8 +568,7 @@ private:
                     Logging,
                     Session,
                     FileSystemId,
-                    headers,
-                    fileCreationLimiter);
+                    headers);
                 break;
             case NProto::TLoadTest::kDatashardLikeLoadSpec: {
                 const auto& spec = Config.GetDatashardLikeLoadSpec();
@@ -601,7 +596,7 @@ private:
                     ShmClient,
                     FileSystemId,
                     headers,
-                    fileCreationLimiter);
+                    std::make_shared<TFileCreationLimiter>(Config.GetMaxFileCount()));
                 break;
             }
             case NProto::TLoadTest::kFastShardLoadSpec:
@@ -609,7 +604,7 @@ private:
                     Config.GetFastShardLoadSpec(),
                     Config.GetIODepth(),
                     Logging,
-                    fileCreationLimiter);
+                    std::make_shared<TFileCreationLimiter>(Config.GetMaxFileCount()));
                 break;
             default:
                 ythrow yexception()

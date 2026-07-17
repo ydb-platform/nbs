@@ -20,12 +20,10 @@ IReplayRequestGenerator::IReplayRequestGenerator(
         ILoggingServicePtr logging,
         NClient::ISessionPtr session,
         TString filesystemId,
-        NProto::THeaders headers,
-        TFileCreationLimiterPtr fileCreationLimiter)
+        NProto::THeaders headers)
     : Spec(std::move(spec))
     , TargetFilesystemId(std::move(filesystemId))
     , Headers(std::move(headers))
-    , FileCreationLimiter(std::move(fileCreationLimiter))
     , Session(std::move(session))
 {
     Log = logging->CreateLog(Headers.GetClientId());
