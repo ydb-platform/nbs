@@ -1106,8 +1106,7 @@ private:
                 });
         }
 
-        if (!IsReadWriteMode(request.GetVolumeAccessMode()))
-        {
+        if (!IsReadWriteMode(request.GetVolumeAccessMode())) {
             args.emplace_back("--read-only");
         }
 
