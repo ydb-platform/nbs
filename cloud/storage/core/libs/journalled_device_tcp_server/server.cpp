@@ -21,6 +21,63 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+#define STORAGE_JD_SERVER(xxx, ...)  \
+    xxx(AcquireDevices, __VA_ARGS__) \
+    xxx(ReleaseDevices, __VA_ARGS__) \
+    xxx(ReadPages, __VA_ARGS__)      \
+    xxx(WriteLogRecord, __VA_ARGS__)
+
+// STORAGE_JD_SERVER
+
+template <
+    typename TProtoRequest,
+    typename TProtoResponse,
+    TFuture<TProtoResponse> (IServerBackend::*M)(TInstant, TProtoRequest),
+    TProtoRequest* (NProto::TDeviceProtocolRequest::*F1)(),
+    TProtoResponse* (NProto::TDeviceProtocolResponse::*F2)()>
+struct TServerMethod
+{
+    using TRequest = TProtoRequest;
+    using TResponse = TProtoResponse;
+
+    static auto Execute(
+        IServerBackend& backend,
+        TInstant now,
+        TRequest&& request) -> TFuture<TResponse>
+    {
+        return (backend.*M)(now, std::move(request));
+    }
+
+    static auto MutableProto(NProto::TDeviceProtocolRequest& request)
+        -> TRequest&
+    {
+        return *(request.*F1)();
+    }
+
+    static auto MutableProto(NProto::TDeviceProtocolResponse& response)
+        -> TResponse&
+    {
+        return *(response.*F2)();
+    }
+};
+
+#define STORAGE_DECLARE_METHOD(name, ...)                      \
+    struct T##name##Method                                     \
+        : TServerMethod<                                       \
+              NProto::T##name##Request,                        \
+              NProto::T##name##Response,                       \
+              &IServerBackend::name,                           \
+              &NProto::TDeviceProtocolRequest::Mutable##name,  \
+              &NProto::TDeviceProtocolResponse::Mutable##name> \
+    {                                                          \
+        constexpr static TStringBuf Name = #name;              \
+    };                                                         \
+    // STORAGE_DECLARE_METHOD
+
+STORAGE_JD_SERVER(STORAGE_DECLARE_METHOD)
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TConnection
 {
     TSocketHolder Socket;
@@ -120,6 +177,40 @@ private:
     void HandleRequest(
         NProto::TDeviceProtocolRequest& request,
         TConnectionPtr conn);
+
+    template <typename TMethod>
+    void ProcessRequest(
+        TConnectionPtr conn,
+        NProto::TDeviceProtocolRequest&& request)
+    {
+        using TResponse = typename TMethod::TResponse;
+
+        TFuture<TResponse> future;
+
+        const ui64 requestId = request.GetRequestId();
+
+        try {
+            auto& proto = TMethod::MutableProto(request);
+
+            future = TMethod::Execute(*Backend, Now(), std::move(proto));
+        } catch (...) {
+            STORAGE_ERROR(
+                TMethod::Name << " failed: " << CurrentExceptionMessage());
+
+            future = MakeErrorFuture<TResponse>(std::current_exception());
+        }
+
+        future.Subscribe(
+            [conn, requestId](const auto& future)
+            {
+                NProto::TDeviceProtocolResponse response;
+                response.SetRequestId(requestId);
+                TMethod::MutableProto(response).CopyFrom(
+                    SafeExecute<TResponse>([&] { return future.GetValue(); }));
+
+                conn->ResponseQueue.Enqueue(std::move(response));
+            });
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -314,75 +405,19 @@ void TServer::HandleRequest(
 
     switch (request.GetRequestCase()) {
         case ERequestCase::kAcquireDevices: {
-            auto future = Backend->AcquireDevices(
-                Now(),
-                std::move(*request.MutableAcquireDevices()));
-
-            future.Subscribe(
-                [conn, requestId](
-                    const TFuture<NProto::TAcquireDevicesResponse>& future)
-                {
-                    NProto::TDeviceProtocolResponse response;
-                    response.SetRequestId(requestId);
-                    response.MutableAcquireDevices()->CopyFrom(
-                        future.GetValue());
-
-                    conn->ResponseQueue.Enqueue(std::move(response));
-                });
-
+            ProcessRequest<TAcquireDevicesMethod>(conn, std::move(request));
             break;
         }
         case ERequestCase::kReleaseDevices: {
-            auto future = Backend->ReleaseDevices(
-                Now(),
-                std::move(*request.MutableReleaseDevices()));
-
-            future.Subscribe(
-                [conn, requestId](
-                    const TFuture<NProto::TReleaseDevicesResponse>& future)
-                {
-                    NProto::TDeviceProtocolResponse response;
-                    response.SetRequestId(requestId);
-                    response.MutableReleaseDevices()->CopyFrom(
-                        future.GetValue());
-
-                    conn->ResponseQueue.Enqueue(std::move(response));
-                });
+            ProcessRequest<TReleaseDevicesMethod>(conn, std::move(request));
             break;
         }
         case ERequestCase::kReadPages: {
-            auto future = Backend->ReadPages(
-                Now(),
-                std::move(*request.MutableReadPages()));
-
-            future.Subscribe(
-                [conn,
-                 requestId](const TFuture<NProto::TReadPagesResponse>& future)
-                {
-                    NProto::TDeviceProtocolResponse response;
-                    response.SetRequestId(requestId);
-                    response.MutableReadPages()->CopyFrom(future.GetValue());
-
-                    conn->ResponseQueue.Enqueue(std::move(response));
-                });
+            ProcessRequest<TReadPagesMethod>(conn, std::move(request));
             break;
         }
         case ERequestCase::kWriteLogRecord: {
-            auto future = Backend->WriteLogRecord(
-                Now(),
-                std::move(*request.MutableWriteLogRecord()));
-
-            future.Subscribe(
-                [conn, requestId](
-                    const TFuture<NProto::TWriteLogRecordResponse>& future)
-                {
-                    NProto::TDeviceProtocolResponse response;
-                    response.SetRequestId(requestId);
-                    response.MutableWriteLogRecord()->CopyFrom(
-                        future.GetValue());
-
-                    conn->ResponseQueue.Enqueue(std::move(response));
-                });
+            ProcessRequest<TWriteLogRecordMethod>(conn, std::move(request));
             break;
         }
         default: {
