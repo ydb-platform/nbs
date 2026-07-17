@@ -8,7 +8,9 @@ namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TFlushBatchRequestCounter
+// Counts the amount of WriteData requests needed to flush data in a single
+// batch according to limits defined by TFlushBatchLimits
+class TFlushBatchWriteRequestCounter
 {
 private:
     TDisjointIntervalMap<ui64, ui64> SeparatedIntervalsMap;

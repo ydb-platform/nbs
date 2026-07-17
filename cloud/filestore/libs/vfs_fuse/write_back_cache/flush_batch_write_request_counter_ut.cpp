@@ -1,4 +1,4 @@
-#include "flush_batch_request_counter.h"
+#include "flush_batch_write_request_counter.h"
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -6,11 +6,11 @@ namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Y_UNIT_TEST_SUITE(TFlushBatchRequestCounterTest)
+Y_UNIT_TEST_SUITE(TFlushBatchWriteRequestCounterTest)
 {
     Y_UNIT_TEST(Simple)
     {
-        TFlushBatchRequestCounter counter;
+        TFlushBatchWriteRequestCounter counter;
         TFlushBatchLimits flushBatchLimits{.MaxWriteRequestSize = 10};
 
         UNIT_ASSERT_VALUES_EQUAL(0, counter.GetWriteRequestCount());
@@ -29,7 +29,7 @@ Y_UNIT_TEST_SUITE(TFlushBatchRequestCounterTest)
 
     Y_UNIT_TEST(Separate)
     {
-        TFlushBatchRequestCounter counter;
+        TFlushBatchWriteRequestCounter counter;
         TFlushBatchLimits flushBatchLimits{.MaxWriteRequestSize = 10};
 
         counter.AddRequestInterval(flushBatchLimits, 10, 30);
@@ -42,7 +42,7 @@ Y_UNIT_TEST_SUITE(TFlushBatchRequestCounterTest)
 
     Y_UNIT_TEST(MergeTouching)
     {
-        TFlushBatchRequestCounter counter;
+        TFlushBatchWriteRequestCounter counter;
         TFlushBatchLimits flushBatchLimits{.MaxWriteRequestSize = 100};
 
         counter.AddRequestInterval(flushBatchLimits, 0, 10);
@@ -55,7 +55,7 @@ Y_UNIT_TEST_SUITE(TFlushBatchRequestCounterTest)
 
     Y_UNIT_TEST(MergeOverlapping)
     {
-        TFlushBatchRequestCounter counter;
+        TFlushBatchWriteRequestCounter counter;
         TFlushBatchLimits flushBatchLimits{.MaxWriteRequestSize = 100};
 
         counter.AddRequestInterval(flushBatchLimits, 0, 11);
@@ -68,7 +68,7 @@ Y_UNIT_TEST_SUITE(TFlushBatchRequestCounterTest)
 
     Y_UNIT_TEST(MergeFullCover)
     {
-        TFlushBatchRequestCounter counter;
+        TFlushBatchWriteRequestCounter counter;
         TFlushBatchLimits flushBatchLimits{.MaxWriteRequestSize = 100};
 
         counter.AddRequestInterval(flushBatchLimits, 1, 10);
@@ -77,6 +77,18 @@ Y_UNIT_TEST_SUITE(TFlushBatchRequestCounterTest)
 
         UNIT_ASSERT_VALUES_EQUAL(1, counter.GetWriteRequestCount());
         UNIT_ASSERT_VALUES_EQUAL(40, counter.GetSumWriteRequestsSize());
+    }
+
+    Y_UNIT_TEST(Unlimited)
+    {
+        TFlushBatchWriteRequestCounter counter;
+        TFlushBatchLimits flushBatchLimits{.MaxWriteRequestSize = 0};
+
+        counter.AddRequestInterval(flushBatchLimits, 0, 1000000);
+        counter.AddRequestInterval(flushBatchLimits, 2000000, 3000000);
+
+        UNIT_ASSERT_VALUES_EQUAL(2, counter.GetWriteRequestCount());
+        UNIT_ASSERT_VALUES_EQUAL(2000000, counter.GetSumWriteRequestsSize());
     }
 }
 

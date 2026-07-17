@@ -1,4 +1,4 @@
-#include "flush_batch_request_counter.h"
+#include "flush_batch_write_request_counter.h"
 
 #include <util/generic/ylimits.h>
 #include <util/system/yassert.h>
@@ -7,7 +7,7 @@ namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TFlushBatchRequestCounter::AddRequestInterval(
+void TFlushBatchWriteRequestCounter::AddRequestInterval(
     const TFlushBatchLimits& flushBatchLimits,
     ui64 begin,
     ui64 end)
@@ -38,7 +38,7 @@ void TFlushBatchRequestCounter::AddRequestInterval(
     SumWriteRequestsSize += end - begin;
 }
 
-void TFlushBatchRequestCounter::Reset()
+void TFlushBatchWriteRequestCounter::Reset()
 {
     SeparatedIntervalsMap = {};
     WriteRequestCount = 0;

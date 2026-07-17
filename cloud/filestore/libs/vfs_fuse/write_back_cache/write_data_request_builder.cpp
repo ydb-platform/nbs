@@ -1,4 +1,4 @@
-#include "flush_batch_request_counter.h"
+#include "flush_batch_write_request_counter.h"
 #include "write_data_request_builder.h"
 
 #include "disjoint_interval_builder.h"
@@ -162,7 +162,7 @@ private:
     const ui64 NodeId;
     const TWriteDataRequestBuilderConfig Config;
 
-    TFlushBatchRequestCounter FlushBatchRequestCounter;
+    TFlushBatchWriteRequestCounter FlushBatchWriteRequestCounter;
     TVector<TWriteDataRequestPart> InputRequests;
 
 public:
@@ -177,14 +177,14 @@ public:
     {
         Y_ABORT_UNLESS(!data.empty(), "Empty requests are not allowed");
 
-        FlushBatchRequestCounter.AddRequestInterval(
+        FlushBatchWriteRequestCounter.AddRequestInterval(
             Config.FlushBatchLimits,
             offset,
             offset + data.size());
 
-        if ((FlushBatchRequestCounter.GetWriteRequestCount() >
+        if ((FlushBatchWriteRequestCounter.GetWriteRequestCount() >
                  Config.FlushBatchLimits.MaxWriteRequestsCount ||
-             FlushBatchRequestCounter.GetSumWriteRequestsSize() >
+             FlushBatchWriteRequestCounter.GetSumWriteRequestsSize() >
                  Config.FlushBatchLimits.MaxSumWriteRequestsSize) &&
             !InputRequests.empty())
         {
@@ -245,7 +245,8 @@ private:
             // be split and should be sent as is.
 
             auto maxWriteRequestSize =
-                Config.FlushBatchLimits.MaxWriteRequestsCount > 1
+                Config.FlushBatchLimits.MaxWriteRequestsCount > 1 &&
+                        Config.FlushBatchLimits.MaxWriteRequestSize > 0
                     ? Config.FlushBatchLimits.MaxWriteRequestSize
                     : Max<ui32>();
 

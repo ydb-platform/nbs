@@ -9,6 +9,7 @@ namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 struct TFlushBatchLimits
 {
     // The maximum size of a single consolidated WriteData request
+    // Zero value = the limit is not enforced
     ui32 MaxWriteRequestSize = 0;
 
     // The maximum number of consolidated WriteData requests
