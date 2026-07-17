@@ -7,7 +7,6 @@ TEST_SRCS(
 )
 
 DEPENDS(
-    cloud/filestore/apps/client
     cloud/filestore/tools/testing/loadtest/bin
 )
 
