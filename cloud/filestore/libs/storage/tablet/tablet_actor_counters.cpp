@@ -834,7 +834,7 @@ void TIndexTabletActor::HandleGetStorageStats(
 
     if (allowCache && pollShards) {
         *stats = CachedAggregateStats;
-        response->Record.SetStatsTs(CachedStatsFetchingStartTs.MilliSeconds());
+        response->Record.SetStatsTs(CachedAggregateStatsTs.MilliSeconds());
     } else {
         FillSelfStorageStats(stats);
         response->Record.SetStatsTs(ctx.Now().MilliSeconds());
