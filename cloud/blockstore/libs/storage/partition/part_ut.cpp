@@ -3944,6 +3944,10 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         // config.SetCleanupThreshold(1);
         config.SetCollectGarbageThreshold(999999);
 
+        // TODO:_ ??????
+        config.SetVerifyRecreatedBlobMetasOnCleanup(true);
+        config.SetUseRecreatedBlobMetasOnCleanup(true);
+
         auto runtime = PrepareTestActorRuntime(config);
 
         TPartitionClient partition(*runtime);
@@ -3962,6 +3966,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
             UNIT_ASSERT_VALUES_EQUAL(3, stats.GetMergedBlobsCount());
             UNIT_ASSERT_GT(stats.GetCleanupQueueBytes(), 0);
+            std::cerr << "cleanupQueueBytes: " << stats.GetCleanupQueueBytes() << std::endl;
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetGarbageQueueSize());
             cleanupQueueBytesAfterFirstCompaction = stats.GetCleanupQueueBytes();
         }
@@ -3973,8 +3978,21 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         // Advance commit id so blobs enqueued by the first compaction have
         // deletion commit ids strictly below the checkpoint bound used by
         // CleanupWithCheckpoint.
-        // TODO:_ is this comment correct?
+        // TODO:_ resolve this carefully
         partition.WriteBlocks(0, 2);
+        // TODO:_ remove this
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            // TODO:_ ???
+            // std::cerr << "freshBlobsCount: " << stats.GetFreshBlobsCount() << std::endl;
+            // std::cerr << "freshBlocksCount: " << stats.GetFreshBlocksCount() << std::endl;
+            // std::cerr << "mixedBlobsCount: " << stats.GetMixedBlobsCount() << std::endl;
+            // std::cerr << "mergedBlobsCount: " << stats.GetMergedBlobsCount() << std::endl;
+            // UNIT_ASSERT_VALUES_EQUAL(1, stats.GetFreshBlobsCount());
+            // UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            // UNIT_ASSERT_VALUES_EQUAL(3, stats.GetMergedBlobsCount());
+        }
 
         // 2. Create a checkpoint that must keep seeing content "2".
         partition.CreateCheckpoint("c1");
@@ -3996,6 +4014,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             UNIT_ASSERT_GT(
                 stats.GetCleanupQueueBytes(),
                 cleanupQueueBytesAfterFirstCompaction);
+            std::cerr << "cleanupQueueBytes: " << stats.GetCleanupQueueBytes() << std::endl;
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetGarbageQueueSize());
         }
 
@@ -4008,6 +4027,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
+            std::cerr << "cleanupQueueBytes: " << stats.GetCleanupQueueBytes() << std::endl;
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
             // Current compacted blob + checkpoint-protected blob.
             UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedBlobsCount());

@@ -93,6 +93,62 @@ Y_UNIT_TEST_SUITE(TCleanupQueueTest)
         UNIT_ASSERT(queue.HasBlob(anotherBlobId));
     }
 
+    // TODO:_ check this test
+    Y_UNIT_TEST(ShouldSkipItemsNeededByCheckpoint)
+    {
+        // TODO:_ testcase with invalid commit ids?
+        TCleanupQueue queue(1024);
+
+        const ui64 minCheckpointCommitId = MakeCommitId(1, 40);
+        const ui64 maxCheckpointCommitId = MakeCommitId(1, 60);
+        const ui64 maxCommitId = MakeCommitId(1, 100);
+        const ui64 deletionCommitId = MakeCommitId(1, 80);
+
+        NProto::TBlobMeta mergedBelowMax;
+        {
+            auto& merged = *mergedBelowMax.MutableMergedBlocks();
+            merged.SetStart(0);
+            merged.SetEnd(3);
+        }
+
+        NProto::TBlobMeta mergedAboveMax;
+        {
+            auto& merged = *mergedAboveMax.MutableMergedBlocks();
+            merged.SetStart(10);
+            merged.SetEnd(13);
+        }
+
+        // deletionCommitId < min — always eligible
+        queue.Add({
+            TPartialBlobId(1, 10, 3, 1024, 0, 0),
+            MakeCommitId(1, 35),
+            mergedBelowMax});
+
+        // blobCommitId > max — garbage
+        queue.Add({
+            TPartialBlobId(1, 70, 3, 1024, 0, 0),
+            deletionCommitId,
+            mergedAboveMax});
+
+        // blobCommitId <= max — needed by checkpoint
+        queue.Add({
+            TPartialBlobId(1, 50, 3, 1024, 0, 0),
+            deletionCommitId,
+            mergedBelowMax});
+
+        EnsureEqual(
+            queue.GetItems(
+                maxCommitId,
+                100,
+                minCheckpointCommitId,
+                maxCheckpointCommitId),
+            {10, 70});
+
+        // Without checkpoint bounds, all items are returned (sorted by
+        // deletionCommitId, then blobId).
+        EnsureEqual(queue.GetItems(maxCommitId), {10, 50, 70});
+    }
+
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

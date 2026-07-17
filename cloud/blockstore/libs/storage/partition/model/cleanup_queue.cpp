@@ -6,6 +6,59 @@
 
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Returns true if the blob might still be needed by a checkpoint and must not
+// be cleaned up.
+bool ShouldSkipCleanupDueToCheckpoint(
+    const TCleanupQueueItem& item,
+    ui64 minCheckpointCommitId,
+    ui64 maxCheckpointCommitId)
+{
+    if (maxCheckpointCommitId == InvalidCommitId || minCheckpointCommitId == InvalidCommitId) {
+        // std::cerr << "ShouldSkipCleanupDueToCheckpoint: invalid commit ids" << std::endl;
+        return false;
+    }
+
+    // std::cerr << "ShouldSkipCleanupDueToCheckpoint: item.CommitId=" << item.CommitId << " minCheckpointCommitId=" << minCheckpointCommitId << " maxCheckpointCommitId=" << maxCheckpointCommitId << std::endl;
+
+    if (item.CommitId < minCheckpointCommitId) {
+        // Blob was added to the cleanup queue before any checkpoint.
+        // std::cerr << "ShouldSkipCleanupDueToCheckpoint: blob was added to the cleanup queue before any checkpoint" << std::endl;
+        return false;
+    }
+
+    const auto& blobMeta = item.BlobMeta;
+
+    ui64 blobCommitId = Max<ui64>();
+    if (blobMeta.HasMixedBlocks()) {
+        const auto& mixedBlocks = blobMeta.GetMixedBlocks();
+        if (mixedBlocks.CommitIdsSize() == 0) {
+            // every block shares the same commitId
+            blobCommitId = item.BlobId.CommitId();
+        } else {
+            // each block has its own commitId
+            Y_ABORT_UNLESS(mixedBlocks.BlocksSize() == mixedBlocks.CommitIdsSize());
+            for (ui64 commitId: mixedBlocks.GetCommitIds()) {
+                blobCommitId = Min(blobCommitId, commitId);
+            }
+        }
+    } else if (blobMeta.HasMergedBlocks()) {
+        blobCommitId = item.BlobId.CommitId();
+    } else {
+        // TODO:_ is this a valid case? Seems yes.
+        // std::cerr << "ShouldSkipCleanupDueToCheckpoint: blob has no mixed or merged blocks" << std::endl;
+        return false;
+    }
+
+    // std::cerr << "ShouldSkipCleanupDueToCheckpoint: blobCommitId=" << blobCommitId << std::endl;
+    return blobCommitId <= maxCheckpointCommitId;
+}
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TCleanupQueue::TImpl
@@ -71,12 +124,24 @@ struct TCleanupQueue::TImpl
         return result;
     }
 
-    TVector<TCleanupQueueItem> GetItems(ui64 maxCommitId, size_t limit) const
+    // TODO:_ add separate method for getting items with checkpoint filtering?
+    TVector<TCleanupQueueItem> GetItems(
+        ui64 maxCommitId,
+        size_t limit,
+        ui64 minCheckpointCommitId,
+        ui64 maxCheckpointCommitId) const
     {
         TVector<TCleanupQueueItem> result;
         for (const auto& item: Items) {
             if (item.CommitId > maxCommitId) {
                 break;
+            }
+            if (ShouldSkipCleanupDueToCheckpoint(
+                    item,
+                    minCheckpointCommitId,
+                    maxCheckpointCommitId))
+            {
+                continue;
             }
             result.emplace_back(item);
             if (result.size() == limit) {
@@ -140,9 +205,17 @@ size_t TCleanupQueue::GetCount(ui64 maxCommitId) const
     return Impl->GetCount(maxCommitId);
 }
 
-TVector<TCleanupQueueItem> TCleanupQueue::GetItems(ui64 maxCommitId, size_t limit) const
+TVector<TCleanupQueueItem> TCleanupQueue::GetItems(
+    ui64 maxCommitId,
+    size_t limit,
+    ui64 minCheckpointCommitId,
+    ui64 maxCheckpointCommitId) const
 {
-    return Impl->GetItems(maxCommitId, limit);
+    return Impl->GetItems(
+        maxCommitId,
+        limit,
+        minCheckpointCommitId,
+        maxCheckpointCommitId);
 }
 
 ui64 TCleanupQueue::GetQueueBytes() const

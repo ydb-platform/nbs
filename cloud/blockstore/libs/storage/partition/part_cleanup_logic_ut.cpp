@@ -268,20 +268,14 @@ TTxPartition::TCleanup MakeCleanupArgs(
     const TVector<TCleanupQueueItem>& cleanupQueue,
     ui64 cleanupCommitId,
     bool useRecreatedBlobMeta,
-    bool verifyRecreatedBlobMetasOnCleanup,
-    bool cleanupWithCheckpoint = false,
-    ui64 maxCheckpointCommitId = 0,
-    ui64 minCheckpointCommitId = 0)
+    bool verifyRecreatedBlobMetasOnCleanup)
 {
     return TTxPartition::TCleanup(
         MakeIntrusive<TRequestInfo>(),
         cleanupCommitId,
         useRecreatedBlobMeta,
         verifyRecreatedBlobMetasOnCleanup,
-        cleanupQueue,
-        cleanupWithCheckpoint,
-        maxCheckpointCommitId,
-        minCheckpointCommitId);
+        cleanupQueue);
 }
 
 void RunPrepareAndExecute(
@@ -873,29 +867,37 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
             });
 
         state.GetCleanupQueue().Add(
-            {deletedBelowMinBlobId, deletedBelowMinDeletionCommitId, {}});
+            {deletedBelowMinBlobId,
+             deletedBelowMinDeletionCommitId,
+             deletedBelowMinBlobMeta});
         state.GetCleanupQueue().Add(
-            {mergedAboveMaxBlobId, deletionCommitId, {}});
+            {mergedAboveMaxBlobId, deletionCommitId, mergedAboveMaxBlobMeta});
         state.GetCleanupQueue().Add(
-            {mergedBelowMaxBlobId, deletionCommitId, {}});
+            {mergedBelowMaxBlobId, deletionCommitId, mergedBelowMaxBlobMeta});
         state.GetCleanupQueue().Add(
-            {mixedAboveMaxBlobId, deletionCommitId, {}});
+            {mixedAboveMaxBlobId, deletionCommitId, mixedAboveMaxBlobMeta});
         state.GetCleanupQueue().Add(
-            {mixedBelowMaxBlobId, deletionCommitId, {}});
+            {mixedBelowMaxBlobId, deletionCommitId, mixedBelowMaxBlobMeta});
 
         state.IncrementMergedBlocksCount(12);
         state.IncrementMergedBlobsCount(3);
         state.IncrementMixedBlocksCount(6);
         state.IncrementMixedBlobsCount(2);
 
+        auto cleanupQueue = state.GetCleanupQueue().GetItems(
+            cleanupCommitId,
+            100,
+            minCheckpointCommitId,
+            maxCheckpointCommitId);
+
+        UNIT_ASSERT_VALUES_EQUAL(3, cleanupQueue.size());
+        UNIT_ASSERT_VALUES_EQUAL(5, state.GetCleanupQueue().GetCount());
+
         auto args = MakeCleanupArgs(
-            state.GetCleanupQueue().GetItems(cleanupCommitId),
+            cleanupQueue,
             cleanupCommitId,
             false,   // useRecreatedBlobMeta
-            false,   // verifyRecreatedBlobMetasOnCleanup
-            true,    // cleanupWithCheckpoint
-            maxCheckpointCommitId,
-            minCheckpointCommitId);
+            false);  // verifyRecreatedBlobMetasOnCleanup
 
         RunPrepareAndExecute(executor, env, state, args);
 

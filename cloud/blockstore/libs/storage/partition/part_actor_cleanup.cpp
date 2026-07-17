@@ -153,9 +153,14 @@ void TPartitionActor::HandleCleanup(
 
     ui64 commitId = State->GetCleanupCommitId(IsCleanupWithCheckpointEnabled());
 
+    const bool cleanupWithCheckpoint = IsCleanupWithCheckpointEnabled();
     auto cleanupQueue = State->GetCleanupQueue().GetItems(
         commitId,
-        Config->GetMaxBlobsToCleanup());
+        Config->GetMaxBlobsToCleanup(),
+        cleanupWithCheckpoint ? State->GetMinCheckpointCommitId()
+                              : InvalidCommitId,
+        cleanupWithCheckpoint ? State->GetMaxCheckpointCommitId()
+                              : InvalidCommitId);
 
     if (!cleanupQueue) {
         State->GetCleanupState().SetStatus(EOperationStatus::Idle, ctx.Now());
@@ -164,7 +169,7 @@ void TPartitionActor::HandleCleanup(
         return;
     }
 
-    LOG_INFO(
+    LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
         "%s Start cleanup @%lu (queue: %u)",
@@ -181,10 +186,7 @@ void TPartitionActor::HandleCleanup(
         commitId,
         IsUseRecreatedBlobMetasOnCleanupEnabled(),
         IsVerifyRecreatedBlobMetasOnCleanupEnabled(),
-        std::move(cleanupQueue),
-        IsCleanupWithCheckpointEnabled(),
-        State->GetMaxCheckpointCommitId(),
-        State->GetMinCheckpointCommitId());
+        std::move(cleanupQueue));
 
     ExecuteTx(ctx, std::move(tx));
 }
@@ -229,7 +231,7 @@ void TPartitionActor::CompleteCleanup(
 {
     TRequestScope timer(*args.RequestInfo);
 
-    LOG_INFO(
+    LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
         "%s Complete Cleanup transaction @%lu",
@@ -255,7 +257,7 @@ void TPartitionActor::CompleteCleanup(
     // blobs added to GarbageQueue.
     for (const auto& item: args.CleanupQueue) {
         if (!IsDeletionMarker(item.BlobId)) {
-            LOG_INFO(
+            LOG_DEBUG(
                 ctx,
                 TBlockStoreComponents::PARTITION,
                 "%s Add garbage blob: %s",

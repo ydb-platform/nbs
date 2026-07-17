@@ -273,48 +273,6 @@ bool PrepareCleanupTransaction(
     return ready;
 }
 
-namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-// Returns true if the blob might still be needed by a checkpoint and must not
-// be cleaned up.
-bool ShouldSkipCleanupDueToCheckpoint(
-    const TCleanupQueueItem& item,
-    const NProto::TBlobMeta& blobMeta,
-    ui64 minCheckpointCommitId,
-    ui64 maxCheckpointCommitId)
-{
-    if (item.CommitId < minCheckpointCommitId) {
-        // Blob was added to the cleanup queue before any checkpoint.
-        return false;
-    }
-
-    ui64 blobCommitId = Max<ui64>();
-    if (blobMeta.HasMixedBlocks()) {
-        const auto& mixedBlocks = blobMeta.GetMixedBlocks();
-        if (mixedBlocks.CommitIdsSize() == 0) {
-            // every block shares the same commitId
-            blobCommitId = item.BlobId.CommitId();
-        } else {
-            // each block has its own commitId
-            Y_ABORT_UNLESS(mixedBlocks.BlocksSize() == mixedBlocks.CommitIdsSize());
-            for (ui64 commitId: mixedBlocks.GetCommitIds()) {
-                blobCommitId = Min(blobCommitId, commitId);
-            }
-        }
-    } else if (blobMeta.HasMergedBlocks()) {
-        blobCommitId = item.BlobId.CommitId();
-    } else {
-        // TODO:_ is this valid case?
-        return false;
-    }
-
-    return blobCommitId <= maxCheckpointCommitId;
-}
-
-}   // namespace
-
 ////////////////////////////////////////////////////////////////////////////////
 
 void ExecuteCleanupTransaction(
@@ -330,33 +288,10 @@ void ExecuteCleanupTransaction(
     size_t mixedBlobsCount = 0;
     size_t mergedBlobsCount = 0;
 
-    TVector<TCleanupQueueItem> cleanedQueue;
-    cleanedQueue.reserve(args.CleanupQueue.size());
-
     Y_ABORT_UNLESS(args.CleanupQueue.size() == args.BlobsMeta.size());
     for (size_t i = 0; i < args.CleanupQueue.size(); ++i) {
         const auto& item = args.CleanupQueue[i];
         const auto& blobMeta = args.BlobsMeta[i];
-
-        if (args.CleanupWithCheckpoint &&
-            ShouldSkipCleanupDueToCheckpoint(
-                item,
-                blobMeta,
-                args.MinCheckpointCommitId,
-                args.MaxCheckpointCommitId))
-        {
-            LOG_DEBUG(
-                *actorSystem,
-                TBlockStoreComponents::PARTITION,
-                "%s ExecuteCleanupTransaction: skipping blob=%s: deletionCommitId=%lu "
-                "minCheckpointCommitId=%lu maxCheckpointCommitId=%lu",
-                logTitle.GetWithTime().c_str(),
-                ToString(MakeBlobId(tabletId, item.BlobId)).Quote().c_str(),
-                item.CommitId,
-                args.MinCheckpointCommitId,
-                args.MaxCheckpointCommitId);
-            continue;
-        }
 
         if (blobMeta.HasMixedBlocks()) {
             const auto& mixedBlocks = blobMeta.GetMixedBlocks();
@@ -434,12 +369,7 @@ void ExecuteCleanupTransaction(
         if (!IsDeletionMarker(item.BlobId)) {
             db.WriteGarbageBlob(item.BlobId);
         }
-
-        // TODO:_ is it correct? Why do we need it? Is naming ok?
-        cleanedQueue.push_back(item);
     }
-
-    args.CleanupQueue = std::move(cleanedQueue);
 
     // Updating counters
     state.DecrementMixedBlobsCount(mixedBlobsCount);
