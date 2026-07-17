@@ -1,6 +1,7 @@
 Tests {
     LoadTest {
         Name: "max-file-count"
+        ClientId: "max-file-count-loadtest"
         CreateFileStoreRequest {
             FileSystemId: "max-file-count"
             FolderId: "folder"
