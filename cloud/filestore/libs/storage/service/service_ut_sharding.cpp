@@ -5626,17 +5626,21 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             SUCCEEDED(response->GetStatus()),
             response->GetErrorReason());
 
+        auto listIds = [&] {
+            auto listing = service.ListFileStores();
+            auto fsIds = listing->Record.GetFileStores();
+            TVector<TString> ids(fsIds.begin(), fsIds.end());
+            Sort(ids);
+            return ids;
+        };
+
         TVector<TString> expected = {
             fsId,
             fsId + "_s1",
             fsId + "_s2",
             fsId + "_s3",
         };
-        auto listing = service.ListFileStores();
-        auto fsIds = listing->Record.GetFileStores();
-        TVector<TString> ids(fsIds.begin(), fsIds.end());
-        Sort(ids);
-        UNIT_ASSERT_VALUES_EQUAL(expected, ids);
+        UNIT_ASSERT_VALUES_EQUAL(expected, listIds());
 
         // without an explicit ShardCount no shards should be created
         const TString fsId2 = "test2";
@@ -5644,11 +5648,22 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         expected.push_back(fsId2);
         Sort(expected);
-        listing = service.ListFileStores();
-        fsIds = listing->Record.GetFileStores();
-        ids = TVector<TString>(fsIds.begin(), fsIds.end());
-        Sort(ids);
-        UNIT_ASSERT_VALUES_EQUAL(expected, ids);
+        UNIT_ASSERT_VALUES_EQUAL(expected, listIds());
+
+        // resizing the sharded filesystem without an explicit ShardCount
+        // should keep the shard layout intact
+        service.ResizeFileStore(fsId, 2_GB / 4_KB);
+        UNIT_ASSERT_VALUES_EQUAL(expected, listIds());
+
+        // resizing with a larger explicit ShardCount should add shards
+        service.ResizeFileStore(fsId, 2_GB / 4_KB, false, 4);
+        expected.push_back(fsId + "_s4");
+        Sort(expected);
+        UNIT_ASSERT_VALUES_EQUAL(expected, listIds());
+
+        // decreasing the shard count is prohibited
+        service.AssertResizeFileStoreFailed(fsId, 2_GB / 4_KB, false, 2);
+        UNIT_ASSERT_VALUES_EQUAL(expected, listIds());
     }
 
     SERVICE_TEST(ShouldCreateDirectoryStructureInShards)

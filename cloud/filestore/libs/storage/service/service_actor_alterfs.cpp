@@ -433,14 +433,23 @@ void TAlterFileStoreActor::FillMultiShardFileStoreConfig(
         TargetConfig.GetProjectId().empty());
 
     currentConfig.SetBlocksCount(TargetConfig.GetBlocksCount());
-    if (!allocateMixed0
-            && StorageConfig->GetAutomaticShardCreationEnabled())
-    {
+    // The filesystem is sharded if automatic shard creation is enabled or if
+    // it was created with an explicitly specified shard count
+    const bool isSharded = StorageConfig->GetAutomaticShardCreationEnabled() ||
+                           ExplicitShardCount > 0 || !ExistingShardIds.empty();
+    if (!allocateMixed0 && isSharded) {
+        ui32 shardCount = ExplicitShardCount;
+        if (shardCount == 0 &&
+            !StorageConfig->GetAutomaticShardCreationEnabled())
+        {
+            // Keep the current number of shards
+            shardCount = ExistingShardIds.size();
+        }
         FileStoreConfig = SetupMultiShardFileStorePerformanceAndChannels(
             *StorageConfig,
             currentConfig,
             PerformanceProfile,
-            ExplicitShardCount);
+            shardCount);
     } else {
         SetupFileStorePerformanceAndChannels(
             allocateMixed0,
@@ -588,12 +597,12 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
         msg->Record.GetStrictFileSystemSizeEnforcementEnabled();
     MaxShardCount = msg->Record.GetMaxShardCount();
 
-    PatchStorageConfig();
-    FillMultiShardFileStoreConfig(ctx);
-
     for (auto& shardId: *msg->Record.MutableShardFileSystemIds()) {
         ExistingShardIds.push_back(std::move(shardId));
     }
+
+    PatchStorageConfig();
+    FillMultiShardFileStoreConfig(ctx);
 
     if (SevenBytesHandlesCount > 0 &&
         ExistingShardIds.size() <= MaxOneByteShardCount &&
