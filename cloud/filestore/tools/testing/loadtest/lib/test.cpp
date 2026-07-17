@@ -534,6 +534,8 @@ private:
         NProto::THeaders headers;
         headers.SetClientId(Config.GetClientId());
         headers.SetSessionId(SessionId);
+        auto fileCreationLimiter = std::make_shared<TFileCreationLimiter>(
+            Config.GetMaxFileCount());
 
         switch (Config.GetSpecsCase()) {
             case NProto::TLoadTest::kIndexLoadSpec:
@@ -543,7 +545,8 @@ private:
                     Client,
                     Session,
                     FileSystemId,
-                    headers);
+                    headers,
+                    fileCreationLimiter);
                 break;
             case NProto::TLoadTest::kDataLoadSpec:
                 RequestGenerator = CreateDataRequestGenerator(
@@ -551,7 +554,8 @@ private:
                     Logging,
                     Session,
                     FileSystemId,
-                    headers);
+                    headers,
+                    fileCreationLimiter);
                 break;
             case NProto::TLoadTest::kReplayFsSpec:
                 RequestGenerator = CreateReplayRequestGeneratorFs(
@@ -559,7 +563,8 @@ private:
                     Logging,
                     Session,
                     FileSystemId,
-                    headers);
+                    headers,
+                    fileCreationLimiter);
                 break;
             case NProto::TLoadTest::kReplayGrpcSpec:
                 RequestGenerator = CreateReplayRequestGeneratorGRPC(
@@ -567,7 +572,8 @@ private:
                     Logging,
                     Session,
                     FileSystemId,
-                    headers);
+                    headers,
+                    fileCreationLimiter);
                 break;
             case NProto::TLoadTest::kDatashardLikeLoadSpec: {
                 const auto& spec = Config.GetDatashardLikeLoadSpec();
@@ -594,14 +600,16 @@ private:
                     Session,
                     ShmClient,
                     FileSystemId,
-                    headers);
+                    headers,
+                    fileCreationLimiter);
                 break;
             }
             case NProto::TLoadTest::kFastShardLoadSpec:
                 RequestGenerator = CreateFastShardRequestGenerator(
                     Config.GetFastShardLoadSpec(),
                     Config.GetIODepth(),
-                    Logging);
+                    Logging,
+                    fileCreationLimiter);
                 break;
             default:
                 ythrow yexception()

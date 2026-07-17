@@ -16,7 +16,47 @@
 #include <util/datetime/base.h>
 #include <util/generic/string.h>
 
+#include <atomic>
+#include <memory>
+
 namespace NCloud::NFileStore::NLoadTest {
+
+class TFileCreationLimiter
+{
+private:
+    const ui64 MaxFileCount;
+    std::atomic<ui64> ReservedFileCount = 0;
+
+public:
+    explicit TFileCreationLimiter(ui64 maxFileCount)
+        : MaxFileCount(maxFileCount)
+    {}
+
+    bool TryReserve()
+    {
+        if (!MaxFileCount) {
+            return true;
+        }
+
+        auto count = ReservedFileCount.load(std::memory_order_relaxed);
+        while (count < MaxFileCount &&
+               !ReservedFileCount.compare_exchange_weak(
+                   count,
+                   count + 1,
+                   std::memory_order_relaxed))
+        {}
+        return count < MaxFileCount;
+    }
+
+    void Release()
+    {
+        if (MaxFileCount) {
+            ReservedFileCount.fetch_sub(1, std::memory_order_relaxed);
+        }
+    }
+};
+
+using TFileCreationLimiterPtr = std::shared_ptr<TFileCreationLimiter>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -72,33 +112,38 @@ IRequestGeneratorPtr CreateIndexRequestGenerator(
     IFileStoreServicePtr client,
     NClient::ISessionPtr session,
     TString filesystemId,
-    NProto::THeaders headers);
+    NProto::THeaders headers,
+    TFileCreationLimiterPtr fileCreationLimiter);
 
 IRequestGeneratorPtr CreateDataRequestGenerator(
     NProto::TDataLoadSpec spec,
     ILoggingServicePtr logging,
     NClient::ISessionPtr session,
     TString filesystemId,
-    NProto::THeaders headers);
+    NProto::THeaders headers,
+    TFileCreationLimiterPtr fileCreationLimiter);
 
 IRequestGeneratorPtr CreateReplayRequestGeneratorFs(
     NProto::TReplaySpec spec,
     ILoggingServicePtr logging,
     NClient::ISessionPtr session,
     TString filesystemId,
-    NProto::THeaders headers);
+    NProto::THeaders headers,
+    TFileCreationLimiterPtr fileCreationLimiter);
 
 IRequestGeneratorPtr CreateReplayRequestGeneratorGRPC(
     NProto::TReplaySpec spec,
     ILoggingServicePtr logging,
     NClient::ISessionPtr session,
     TString filesystemId,
-    NProto::THeaders headers);
+    NProto::THeaders headers,
+    TFileCreationLimiterPtr fileCreationLimiter);
 
 IRequestGeneratorPtr CreateFastShardRequestGenerator(
     NProto::TFastShardLoadSpec spec,
     ui32 maxParallelism,
-    ILoggingServicePtr logging);
+    ILoggingServicePtr logging,
+    TFileCreationLimiterPtr fileCreationLimiter);
 
 IRequestGeneratorPtr CreateDatashardLikeRequestGenerator(
     NProto::TDatashardLikeLoadSpec spec,
@@ -106,6 +151,7 @@ IRequestGeneratorPtr CreateDatashardLikeRequestGenerator(
     NClient::ISessionPtr session,
     IShmDataClientPtr dataClient,
     TString filesystemId,
-    NProto::THeaders headers);
+    NProto::THeaders headers,
+    TFileCreationLimiterPtr fileCreationLimiter);
 
 }   // namespace NCloud::NFileStore::NLoadTest

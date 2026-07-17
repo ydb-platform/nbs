@@ -84,13 +84,15 @@ public:
             ILoggingServicePtr logging,
             ISessionPtr session,
             TString filesystemId,
-            NProto::THeaders headers)
+            NProto::THeaders headers,
+            TFileCreationLimiterPtr fileCreationLimiter)
         : IReplayRequestGenerator(
               std::move(spec),
               std::move(logging),
               std::move(session),
               std::move(filesystemId),
-              std::move(headers))
+              std::move(headers),
+              std::move(fileCreationLimiter))
     {
         if (!Session) {
             ythrow yexception() << "Session not created. Missing FileSystemId?";
@@ -233,6 +235,10 @@ private:
 
         const auto request = CreateRequest<NProto::TCreateHandleRequest>();
         auto name = logRequest.GetNodeInfo().GetNodeName();
+        if (!TryReserveFile()) {
+            return MakeFuture(TCompletedRequest{
+                NProto::ACTION_CREATE_HANDLE, Started, MakeError(S_FALSE)});
+        }
 
         const auto nodeId =
             NodeIdMapped(logRequest.GetNodeInfo().GetParentNodeId());
@@ -282,6 +288,9 @@ private:
                                 MakeError(E_INVALID_STATE, "cancelled")});
                     });
         const auto& response = future.GetValueSync();
+        if (HasError(response.Error)) {
+            ReleaseFile();
+        }
         return MakeFuture(
             TCompletedRequest{
                 NProto::ACTION_CREATE_HANDLE,
@@ -562,6 +571,10 @@ private:
 
         switch (logRequest.GetNodeInfo().GetType()) {
             case NProto::E_REGULAR_NODE:
+                if (!TryReserveFile()) {
+                    return MakeFuture(TCompletedRequest{
+                        NProto::ACTION_CREATE_NODE, Started, MakeError(S_FALSE)});
+                }
                 request->MutableFile()->SetMode(
                     logRequest.GetNodeInfo().GetMode());
                 break;
@@ -627,6 +640,11 @@ private:
                     });
 
         const auto& response = future.GetValueSync();
+        if (HasError(response.Error) &&
+            logRequest.GetNodeInfo().GetType() == NProto::E_REGULAR_NODE)
+        {
+            ReleaseFile();
+        }
         return MakeFuture(
             TCompletedRequest{
                 NProto::ACTION_CREATE_NODE,
@@ -1288,14 +1306,16 @@ IRequestGeneratorPtr CreateReplayRequestGeneratorGRPC(
     ILoggingServicePtr logging,
     ISessionPtr session,
     TString filesystemId,
-    NProto::THeaders headers)
+    NProto::THeaders headers,
+    TFileCreationLimiterPtr fileCreationLimiter)
 {
     return std::make_shared<TReplayRequestGeneratorGRPC>(
         std::move(spec),
         std::move(logging),
         std::move(session),
         std::move(filesystemId),
-        std::move(headers));
+        std::move(headers),
+        std::move(fileCreationLimiter));
 }
 
 }   // namespace NCloud::NFileStore::NLoadTest

@@ -93,13 +93,15 @@ public:
         ILoggingServicePtr logging,
         ISessionPtr session,
         TString filesystemId,
-        NProto::THeaders headers)
+        NProto::THeaders headers,
+        TFileCreationLimiterPtr fileCreationLimiter)
         : IReplayRequestGenerator(
               std::move(spec),
               std::move(logging),
               std::move(session),
               std::move(filesystemId),
-              std::move(headers))
+              std::move(headers),
+              std::move(fileCreationLimiter))
     {
         if (Spec.GetReplayRoot().empty()) {
             ythrow yexception() << "ReplayRoot is not defined";
@@ -724,6 +726,12 @@ private:
         ui64 nodeid = 0;
         switch (logRequest.GetNodeInfo().GetType()) {
             case NProto::E_REGULAR_NODE: {
+                if (!TryReserveFile()) {
+                    return MakeFuture(TCompletedRequest{
+                        NProto::ACTION_CREATE_NODE,
+                        Started,
+                        MakeError(S_FALSE)});
+                }
                 // TODO(proller): transform r.GetNodeInfo().GetMode() to correct
                 // open mode
                 TFileHandle fh(fullName, OpenAlways | RdWr);
@@ -1126,14 +1134,16 @@ IRequestGeneratorPtr CreateReplayRequestGeneratorFs(
     ILoggingServicePtr logging,
     ISessionPtr session,
     TString filesystemId,
-    NProto::THeaders headers)
+    NProto::THeaders headers,
+    TFileCreationLimiterPtr fileCreationLimiter)
 {
     return std::make_shared<TReplayRequestGeneratorFs>(
         std::move(spec),
         std::move(logging),
         std::move(session),
         std::move(filesystemId),
-        std::move(headers));
+        std::move(headers),
+        std::move(fileCreationLimiter));
 }
 
 }   // namespace NCloud::NFileStore::NLoadTest

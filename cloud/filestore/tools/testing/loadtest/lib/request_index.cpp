@@ -48,6 +48,7 @@ private:
     const NProto::TIndexLoadSpec Spec;
     const TString FileSystemId;
     const NProto::THeaders Headers;
+    const TFileCreationLimiterPtr FileCreationLimiter;
     const ui64 OwnerId = RandomNumber(100500u);
 
     TLog Log;
@@ -76,10 +77,12 @@ public:
             IFileStoreServicePtr client,
             ISessionPtr session,
             TString filesystemId,
-            NProto::THeaders headers)
+            NProto::THeaders headers,
+            TFileCreationLimiterPtr fileCreationLimiter)
         : Spec(std::move(spec))
         , FileSystemId(std::move(filesystemId))
         , Headers(std::move(headers))
+        , FileCreationLimiter(std::move(fileCreationLimiter))
         , Client(std::move(client))
         , Session(std::move(session))
     {
@@ -148,7 +151,15 @@ private:
         TGuard<TMutex> guard(StateLock);
         auto started = TInstant::Now();
 
+        if (!FileCreationLimiter->TryReserve()) {
+            return MakeFuture<TCompletedRequest>({
+                NProto::ACTION_CREATE_NODE,
+                started,
+                MakeError(S_FALSE)});
+        }
+
         if (Spec.GetMaxNodes() && Nodes.size() >= Spec.GetMaxNodes()) {
+            FileCreationLimiter->Release();
             return MakeFuture<TCompletedRequest>({
                 NProto::ACTION_CREATE_NODE,
                 started,
@@ -197,6 +208,7 @@ private:
                 name.c_str(),
                 FormatError(error).c_str());
 
+            FileCreationLimiter->Release();
             return {NProto::ACTION_CREATE_NODE, started, error};
         }
     }
@@ -777,7 +789,8 @@ IRequestGeneratorPtr CreateIndexRequestGenerator(
     IFileStoreServicePtr client,
     ISessionPtr session,
     TString filesystemId,
-    NProto::THeaders headers)
+    NProto::THeaders headers,
+    TFileCreationLimiterPtr fileCreationLimiter)
 {
     return std::make_shared<TIndexRequestGenerator>(
         std::move(spec),
@@ -785,7 +798,8 @@ IRequestGeneratorPtr CreateIndexRequestGenerator(
         std::move(client),
         std::move(session),
         std::move(filesystemId),
-        std::move(headers));
+        std::move(headers),
+        std::move(fileCreationLimiter));
 }
 
 }   // namespace NCloud::NFileStore::NLoadTest

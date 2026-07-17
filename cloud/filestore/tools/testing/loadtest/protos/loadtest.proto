@@ -210,6 +210,9 @@ message TLoadTest
     // disables destruction of the filestore created via CreateFileStoreRequest
     bool KeepFileStore = 16;
     string ClientId = 19;
+
+    // Maximum number of regular files created by this test run. Zero means unlimited.
+    uint64 MaxFileCount = 22;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

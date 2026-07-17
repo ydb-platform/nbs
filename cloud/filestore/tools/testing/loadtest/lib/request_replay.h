@@ -22,6 +22,7 @@ protected:
     TString TargetFilesystemId;   // Only for GRPC
     TString FileSystemIdFilter;
     const ::NCloud::NFileStore::NProto::THeaders Headers;
+    const TFileCreationLimiterPtr FileCreationLimiter;
     NClient::ISessionPtr Session;
     int EventMessageNumber = 0;
     i64 TimestampMicroSeconds = 0;
@@ -54,7 +55,11 @@ public:
         ILoggingServicePtr logging,
         NClient::ISessionPtr session,
         TString filesystemId,
-        NProto::THeaders headers);
+        NProto::THeaders headers,
+        TFileCreationLimiterPtr fileCreationLimiter);
+
+    bool TryReserveFile() { return FileCreationLimiter->TryReserve(); }
+    void ReleaseFile() { FileCreationLimiter->Release(); }
 
     bool ShouldImmediatelyProcessQueue() override;
 

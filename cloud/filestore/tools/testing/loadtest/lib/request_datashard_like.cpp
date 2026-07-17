@@ -50,6 +50,7 @@ private:
     const NProto::TDatashardLikeLoadSpec Spec;
     const TString FileSystemId;
     const NProto::THeaders Headers;
+    const TFileCreationLimiterPtr FileCreationLimiter;
 
     TLog Log;
 
@@ -77,10 +78,12 @@ public:
             ISessionPtr session,
             IShmDataClientPtr dataClient,
             TString filesystemId,
-            NProto::THeaders headers)
+            NProto::THeaders headers,
+            TFileCreationLimiterPtr fileCreationLimiter)
         : Spec(std::move(spec))
         , FileSystemId(std::move(filesystemId))
         , Headers(std::move(headers))
+        , FileCreationLimiter(std::move(fileCreationLimiter))
         , Session(std::move(session))
         , DataClient(std::move(dataClient))
     {
@@ -174,6 +177,12 @@ private:
     TFuture<TCompletedRequest> DoCreateNode()
     {
         auto started = TInstant::Now();
+        if (!FileCreationLimiter->TryReserve()) {
+            return MakeFuture<TCompletedRequest>({
+                NProto::ACTION_CREATE_NODE,
+                started,
+                MakeError(S_FALSE)});
+        }
 
         auto request = CreateRequest<NProto::TCreateNodeRequest>();
         request->SetNodeId(RootNodeId);
@@ -231,6 +240,7 @@ private:
                 [=, this](const TFuture<NProto::TSetNodeAttrResponse>& f)
                 { return HandleResizeAfterCreate(f, info, started); });
         } catch (const TServiceError& e) {
+            FileCreationLimiter->Release();
             auto error = MakeError(e.GetCode(), TString{e.GetMessage()});
             STORAGE_ERROR(
                 "create node has failed: %s",
@@ -496,7 +506,8 @@ IRequestGeneratorPtr CreateDatashardLikeRequestGenerator(
     NClient::ISessionPtr session,
     IShmDataClientPtr dataClient,
     TString filesystemId,
-    NProto::THeaders headers)
+    NProto::THeaders headers,
+    TFileCreationLimiterPtr fileCreationLimiter)
 {
     return std::make_shared<TDatashardLikeRequestGenerator>(
         std::move(spec),
@@ -504,7 +515,8 @@ IRequestGeneratorPtr CreateDatashardLikeRequestGenerator(
         std::move(session),
         std::move(dataClient),
         std::move(filesystemId),
-        std::move(headers));
+        std::move(headers),
+        std::move(fileCreationLimiter));
 }
 
 }   // namespace NCloud::NFileStore::NLoadTest
