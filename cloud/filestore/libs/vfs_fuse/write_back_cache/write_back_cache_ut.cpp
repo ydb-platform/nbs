@@ -2632,6 +2632,47 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
             UNIT_ASSERT_VALUES_EQUAL("abc", readResult.GetBuffer());
         }
     }
+
+    Y_UNIT_TEST(AllowReorderingOnBarrierAcquisition)
+    {
+        TBootstrap b({
+            // Direct writes bypass cache - validation will fail
+            .DoNotCheckWriteDataRequestBuffer = true,
+            // Control flush batches
+            .FlushWritesInParallelEnabled = false,
+        });
+
+        // Prevent write requests initiated by Flush from completing immediately
+        TManualProceedHandlers writeRequests(b.Session->WriteDataHandler);
+
+        UNIT_ASSERT(b.WriteToCache(1, 0, "abc").HasValue());
+        UNIT_ASSERT(b.WriteToCache(1, 10, "def").HasValue());
+
+        auto request = std::make_shared<NProto::TWriteDataRequest>();
+        request->SetNodeId(1);
+        request->SetHandle(102);
+        request->SetOffset(12);
+        request->SetBuffer("+++");
+
+        auto directWriteFuture =
+            b.Cache.WriteDataDirect(b.CallContext, std::move(request));
+
+        UNIT_ASSERT(b.WriteToCache(1, 10, "ghi").HasValue());
+        UNIT_ASSERT(b.WriteToCache(1, 14, "jkl").HasValue());
+        UNIT_ASSERT(!directWriteFuture.HasValue());
+
+        // "def" and "ghi" are expected to go to the same flush batch
+        // then direct flush is executed
+        writeRequests.ProceedAll();
+
+        UNIT_ASSERT(directWriteFuture.HasValue());
+
+        auto readResponse = b.ReadFromCache(1, 10, 7).GetValue();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "gh++jkl",
+            readResponse.GetBuffer().substr(readResponse.GetBufferOffset()));
+    }
 }
 
 }   // namespace NCloud::NFileStore::NFuse

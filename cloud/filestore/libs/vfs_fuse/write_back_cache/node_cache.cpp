@@ -184,13 +184,10 @@ ui64 TNodeCache::GetMaxFlushedSequenceId() const
 }
 
 void TNodeCache::VisitUnflushedRequests(
-    TCachedWriteDataRequestVisitor visitor, ui64 maxSequenceId) const
+    TCachedWriteDataRequestVisitor visitor) const
 {
     for (const auto& e: UnflushedRequests) {
         auto* cachedWriteDataRequest = e.get();
-        if (cachedWriteDataRequest->GetSequenceId() > maxSequenceId) {
-            break;
-        }
         const bool shouldContinue = visitor(cachedWriteDataRequest);
         if (!shouldContinue) {
             break;

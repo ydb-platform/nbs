@@ -282,11 +282,18 @@ void TWriteBackCacheState::VisitUnflushedRequests(
         return;
     }
 
-    const ui64 maxSequenceId = nodeState->Barriers.empty()
-                                   ? Max<ui64>()
-                                   : nodeState->Barriers.cbegin()->first;
+    if (!nodeState->Cache.HasUnflushedRequests()) {
+        return;
+    }
 
-    nodeState->Cache.VisitUnflushedRequests(visitor, maxSequenceId);
+    if (!nodeState->Barriers.empty()) {
+        const ui64 minBarrierId = nodeState->Barriers.cbegin()->first;
+        if (minBarrierId < nodeState->Cache.GetMinUnflushedSequenceId()) {
+            return;
+        }
+    }
+
+    nodeState->Cache.VisitUnflushedRequests(visitor);
 }
 
 ui64 TWriteBackCacheState::GetLiveHandle(ui64 nodeId) const

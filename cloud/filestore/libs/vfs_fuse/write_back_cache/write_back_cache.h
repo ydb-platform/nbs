@@ -204,25 +204,35 @@ public:
         ui64 nodeId,
         ui64 handle);
 
-    /* Read directly from the underlying storage.
-     * All prior cached WriteData requests are flushed and evicted.
-     * No new WriteData requests will be flushed until the direct read is
-     * completed.
+    /* Read directly from the underlying storage under a barrier.
+     * An acquired barrier ensures that operation will not interfere with cache:
+     * - All cached WriteData requests prior to barrier acquisition are flushed
+     *   and evicted.
+     * - No flush may take place until the barrier is released.
+     * Note: the sequence point is barrier acquisition, not the request itself.
+     * It means that newer WriteData requests may be reordered and flushed while
+     * the barrier is in pending state.
      */
     NThreading::TFuture<NProto::TReadDataResponse> ReadDataDirect(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TReadDataRequest> request);
 
-    /* Write directly to the underlying storage.
-     * All prior cached WriteData requests are flushed and evicted.
-     * No new WriteData requests will be flushed until the direct write is
-     * completed.
+    /* Write directly to the underlying storage under a barrier.
+     * An acquired barrier ensures that operation will not interfere with cache:
+     * - All cached WriteData requests prior to barrier acquisition are flushed
+     *   and evicted.
+     * - No flush may take place until the barrier is released.
+     * Note: the sequence point is barrier acquisition, not the request itself.
+     * It means that newer WriteData requests may be reordered and flushed while
+     * the barrier is in pending state.
      */
     NThreading::TFuture<NProto::TWriteDataResponse> WriteDataDirect(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TWriteDataRequest> request);
 
-    // Execute SetNodeAttr with taking awareness of changing node size
+    /* Execute SetNodeAttr with taking awareness of changing node size under a
+     * barrier.
+     */
     NThreading::TFuture<NProto::TSetNodeAttrResponse> SetNodeAttr(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TSetNodeAttrRequest> request);
