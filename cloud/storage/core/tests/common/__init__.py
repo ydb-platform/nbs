@@ -39,7 +39,7 @@ def find_sanitizer_error(file_path: str):
             buffer = tail + chunk
             match = re.search(common.SANITIZER_ERROR_PATTERN, buffer)
             if match:
-                context_start = match.start()
+                context_start = match.end()
                 context = buffer[context_start:context_start + common.process.MAX_OUT_LEN]
                 context += f.read(common.process.MAX_OUT_LEN - len(context))
                 return match, context
@@ -72,10 +72,6 @@ def process_recipe_err_files(common_file_name: str) -> list[str]:
         if not match:
             yatest_logger.debug("No sanitizer errors found in %s", file_path)
             continue
-
-        sanitizer_pos = ctx.find(b"Sanitizer")
-        if sanitizer_pos != -1:
-            ctx = ctx[sanitizer_pos + len(b"Sanitizer"):]
 
         truncated_std_err = common.process.truncate(
             ctx.decode("utf-8", errors="backslashreplace"),
