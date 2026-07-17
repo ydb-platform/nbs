@@ -57,7 +57,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
 
     TABLET_TEST_4K_ONLY(ShouldPrepareUnlinkDirectoryNodeInShard)
     {
-        TTestEnv env;
+        TTestEnv env(testEnvConfig);
 
         const ui32 nodeIdx = env.AddDynamicNode();
         const ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -202,7 +202,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
 
     TABLET_TEST_4K_ONLY(ShouldAbortUnlinkDirectoryNodeInShard)
     {
-        TTestEnv env;
+        TTestEnv env(testEnvConfig);
 
         const ui32 nodeIdx = env.AddDynamicNode();
         const ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -276,11 +276,12 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
 
     void DoTestShouldReturnErrorUponRenameNodeForFileToDirOp(
         const TFileSystemConfig& tabletConfig,
+        const TTestEnvConfig& testEnvConfig,
         bool useRenameInDestination)
     {
         NProto::TStorageConfig storageConfig;
         storageConfig.SetDirectoryCreationInShardsEnabled(true);
-        TTestEnv env({}, storageConfig);
+        TTestEnv env(testEnvConfig, storageConfig);
 
         const ui32 nodeIdx = env.AddDynamicNode();
         const ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -368,6 +369,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
     {
         DoTestShouldReturnErrorUponRenameNodeForFileToDirOp(
             tabletConfig,
+            testEnvConfig,
             true /* useRenameInDestination */);
     }
 
@@ -375,16 +377,18 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
     {
         DoTestShouldReturnErrorUponRenameNodeForFileToDirOp(
             tabletConfig,
+            testEnvConfig,
             false /* useRenameInDestination */);
     }
 
     void DoTestShouldCheckDstEmptinessUponRenameNodeForDirToDirOp(
         const TFileSystemConfig& tabletConfig,
+        const TTestEnvConfig& testEnvConfig,
         bool useRenameInDestination)
     {
         NProto::TStorageConfig storageConfig;
         storageConfig.SetDirectoryCreationInShardsEnabled(true);
-        TTestEnv env({}, storageConfig);
+        TTestEnv env(testEnvConfig, storageConfig);
 
         const ui32 nodeIdx = env.AddDynamicNode();
         const ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -517,6 +521,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
     {
         DoTestShouldCheckDstEmptinessUponRenameNodeForDirToDirOp(
             tabletConfig,
+            testEnvConfig,
             true /* useRenameInDestination */);
     }
 
@@ -524,16 +529,18 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
     {
         DoTestShouldCheckDstEmptinessUponRenameNodeForDirToDirOp(
             tabletConfig,
+            testEnvConfig,
             false /* useRenameInDestination */);
     }
 
     void DoTestShouldAbortUnlinkUponRenameNodeForDirToDirOp(
         const TFileSystemConfig& tabletConfig,
+        const TTestEnvConfig& testEnvConfig,
         bool useRenameInDestination)
     {
         NProto::TStorageConfig storageConfig;
         storageConfig.SetDirectoryCreationInShardsEnabled(true);
-        TTestEnv env({}, storageConfig);
+        TTestEnv env(testEnvConfig, storageConfig);
 
         const ui32 nodeIdx = env.AddDynamicNode();
         const ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -720,6 +727,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
     {
         DoTestShouldAbortUnlinkUponRenameNodeForDirToDirOp(
             tabletConfig,
+            testEnvConfig,
             true /* useRenameInDestination */);
     }
 
@@ -727,16 +735,18 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
     {
         DoTestShouldAbortUnlinkUponRenameNodeForDirToDirOp(
             tabletConfig,
+            testEnvConfig,
             false /* useRenameInDestination */);
     }
 
     void DoTestShouldAbortUnlinkUponRenameNodeForDirToDirOpAfterReboot(
         const TFileSystemConfig& tabletConfig,
+        const TTestEnvConfig& testEnvConfig,
         bool useRenameInDestination)
     {
         NProto::TStorageConfig storageConfig;
         storageConfig.SetDirectoryCreationInShardsEnabled(true);
-        TTestEnv env({}, storageConfig);
+        TTestEnv env(testEnvConfig, storageConfig);
 
         const ui32 nodeIdx = env.AddDynamicNode();
         const ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -951,6 +961,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
     {
         DoTestShouldAbortUnlinkUponRenameNodeForDirToDirOpAfterReboot(
             tabletConfig,
+            testEnvConfig,
             true /* useRenameInDestination */);
     }
 
@@ -958,13 +969,14 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
     {
         DoTestShouldAbortUnlinkUponRenameNodeForDirToDirOpAfterReboot(
             tabletConfig,
+            testEnvConfig,
             false /* useRenameInDestination */);
     }
 
     TABLET_TEST_4K_ONLY(
         ShouldReturnErrorUponRenameNodeInDestinationForLocalNode)
     {
-        TTestEnv env;
+        TTestEnv env(testEnvConfig);
 
         const ui32 nodeIdx = env.AddDynamicNode();
 
@@ -998,7 +1010,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         NProto::TStorageConfig storageConfig;
         storageConfig.SetMaxTabletStep(maxTabletStep);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
         const ui32 nodeIdx = env.AddDynamicNode();
 
@@ -1131,7 +1143,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         NProto::TStorageConfig storageConfig;
         storageConfig.SetMaxTabletStep(maxTabletStep);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
         const ui32 nodeIdx = env.AddDynamicNode();
 
@@ -1263,7 +1275,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
 
     TABLET_TEST_4K_ONLY(ShouldDeleteGetWriteResponseLog)
     {
-        TTestEnv env;
+        TTestEnv env(testEnvConfig);
 
         const ui32 nodeIdx = env.AddDynamicNode();
         const ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -1385,7 +1397,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         storageConfig.SetResponseLogEntryTTL(10'000);
         storageConfig.SetTabletRegularTasksSchedulePeriod(5'000);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
         const ui32 nodeIdx = env.AddDynamicNode();
         const ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -1438,7 +1450,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
     TABLET_TEST_4K_ONLY(
         ShouldDeleteResponseLogEntryUponCommitRenameNodeInSource)
     {
-        TTestEnv env;
+        TTestEnv env(testEnvConfig);
 
         const ui32 nodeIdx = env.AddDynamicNode();
 
@@ -1521,7 +1533,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
     TABLET_TEST_4K_ONLY(
         ShouldDeleteResponseLogEntryUponCommitRenameNodeInSourceWithError)
     {
-        TTestEnv env;
+        TTestEnv env(testEnvConfig);
 
         const ui32 nodeIdx = env.AddDynamicNode();
 
@@ -1721,7 +1733,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         NProto::TStorageConfig storageConfig;
         storageConfig.SetMaxTabletStep(maxTabletStep);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
         const ui32 nodeIdx = env.AddDynamicNode();
 
@@ -1844,7 +1856,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         NProto::TStorageConfig storageConfig;
         storageConfig.SetMaxTabletStep(maxTabletStep);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
         const ui32 nodeIdx = env.AddDynamicNode();
 
@@ -1949,7 +1961,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
     {
         NProto::TStorageConfig storageConfig;
         storageConfig.SetDirectoryCreationInShardsEnabled(true);
-        TTestEnv env({}, storageConfig);
+        TTestEnv env(testEnvConfig, storageConfig);
 
         const ui32 nodeIdx = env.AddDynamicNode();
         const ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -2083,7 +2095,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
 
     TABLET_TEST_4K_ONLY(ShouldNotRequireActiveSessionForGetNodeAttrToShard)
     {
-        TTestEnv env;
+        TTestEnv env(testEnvConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -2129,7 +2141,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
 
     TABLET_TEST_4K_ONLY(ShouldRestoreSymLinkWithUnsafeCreateNode)
     {
-        TTestEnv env;
+        TTestEnv env(testEnvConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -2162,7 +2174,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
 
     TABLET_TEST_4K_ONLY(ShouldSendGetNodeAttrRequestWithoutBehaveAsDirectoryTabletFlagUponCreateNode)
     {
-        TTestEnv env;
+        TTestEnv env(testEnvConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -2261,7 +2273,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         NProto::TStorageConfig storageConfig;
         storageConfig.SetDirectoryCreationInShardsEnabled(true);
         storageConfig.SetParentlessFilesOnly(true);
-        TTestEnv env({}, storageConfig);
+        TTestEnv env(testEnvConfig, storageConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -2294,7 +2306,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
     {
         NProto::TStorageConfig storageConfig;
         storageConfig.SetDirectoryCreationInShardsEnabled(true);
-        TTestEnv env({}, storageConfig);
+        TTestEnv env(testEnvConfig, storageConfig);
 
         const ui32 nodeIdx = env.AddDynamicNode();
         const ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -2340,11 +2352,12 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
 
     void DoTestShouldProperlyCompleteUnlinkNodeUponTabletRebootAfterRenameNode(
         const TFileSystemConfig& tabletConfig,
+        const TTestEnvConfig& testEnvConfig,
         bool useRenameInDestination)
     {
         NProto::TStorageConfig storageConfig;
         storageConfig.SetDirectoryCreationInShardsEnabled(true);
-        TTestEnv env({}, storageConfig);
+        TTestEnv env(testEnvConfig, storageConfig);
 
         const ui32 nodeIdx = env.AddDynamicNode();
         const ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -2492,6 +2505,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
     {
         DoTestShouldProperlyCompleteUnlinkNodeUponTabletRebootAfterRenameNode(
             tabletConfig,
+            testEnvConfig,
             true /* useRenameInDestination */);
     }
 
@@ -2500,6 +2514,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
     {
         DoTestShouldProperlyCompleteUnlinkNodeUponTabletRebootAfterRenameNode(
             tabletConfig,
+            testEnvConfig,
             false /* useRenameInDestination */);
     }
 
@@ -2518,7 +2533,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         // these circumstances, CreateHandle returns E_REJECTED.
 
         NProto::TStorageConfig storageConfig;
-        TTestEnv env({}, storageConfig);
+        TTestEnv env(testEnvConfig, storageConfig);
 
         const ui32 nodeIdx = env.AddDynamicNode();
         const ui64 tabletId = env.BootIndexTablet(nodeIdx);

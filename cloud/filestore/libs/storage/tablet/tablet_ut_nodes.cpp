@@ -2110,7 +2110,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
         NProto::TStorageConfig storageConfig;
         storageConfig.SetMaxTabletStep(maxTabletStep);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
         const ui32 nodeIdx = env.AddDynamicNode();
 
