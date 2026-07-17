@@ -441,7 +441,6 @@ public:
 
     [[nodiscard]] bool GetExternalWriteDataPayloadEnabled() const;
 
-    [[nodiscard]] bool GetFakeTxPageFaultsEnabled() const;
     [[nodiscard]] double GetFakeTxPageFaultsProbability() const;
 };
 

@@ -246,7 +246,7 @@ public:
                     systemCounters,
                     metricsRegistry,
                     fastShardServer,
-                    config->GetFakeTxPageFaultsEnabled() ?
+                    config->GetFakeTxPageFaultsProbability() > 0 ?
                         CreateRescheduler({
                             .Probability = config->GetFakeTxPageFaultsProbability(),
                             .RandomSeed = std::nullopt

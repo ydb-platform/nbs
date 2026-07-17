@@ -384,7 +384,6 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(SoftBackpressureMaxReadIops,                   ui32,    100'000       )\
                                                                                \
     xxx(ExternalWriteDataPayloadEnabled,               bool,    false         )\
-    xxx(FakeTxPageFaultsEnabled,                       bool,    false         )\
     xxx(FakeTxPageFaultsProbability,                   double,   0            )\
 // FILESTORE_STORAGE_CONFIG
 

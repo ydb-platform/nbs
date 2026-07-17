@@ -850,6 +850,5 @@ message TStorageConfig
     optional bool ExternalWriteDataPayloadEnabled = 526;
 
     // Enables injecting of errors in TIndexTabletDatabase. Must be only used in tests!
-    optional bool FakeTxPageFaultsEnabled = 527;
-    optional double FakeTxPageFaultsProbability = 528;
+    optional double FakeTxPageFaultsProbability = 527;
 }
