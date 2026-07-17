@@ -342,6 +342,10 @@ void TDiskRegistryActor::CompleteCleanupDevices(
     for (const auto& diskId: args.SyncDeallocatedDisks) {
         ReplyToPendingDeallocations(ctx, diskId);
     }
+
+    for (const auto& uuid: args.Devices) {
+        DeviceEraseStartTs.erase(uuid);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -351,7 +355,8 @@ void TDiskRegistryActor::SecureErase(const TActorContext& ctx)
     auto dirtyDevices = State->GetDirtyDevices();
     EraseIf(
         dirtyDevices,
-        [this](auto& device) { return !State->CanSecureErase(device); });
+        [this](const NProto::TDeviceConfig& device)
+        { return State->CanSecureErase(device) != ESecureEraseAbility::ReadyToErase; });
 
     if (!dirtyDevices) {
         LOG_DEBUG(
@@ -452,6 +457,10 @@ void TDiskRegistryActor::HandleSecureErase(
         "%s Received SecureErase request. DirtyDevices: %s",
         LogTitle.GetWithTime().c_str(),
         MakeDevicesNamesString(msg->DirtyDevices).c_str());
+
+    for (const auto& device: msg->DirtyDevices) {
+        DeviceEraseStartTs[device.GetDeviceUUID()] = ctx.Now();
+    }
 
     auto actor = NCloud::Register<TSecureEraseActor>(
         ctx,

@@ -25,6 +25,16 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum class ESecureEraseAbility {
+    ReadyToErase,
+    Suspended,
+    DeviceInErrorState,
+    AutomaticallyReplaced,
+    AgentAbsent,
+    AgentUnavailable,
+    DeviceDetached,
+};
+
 struct TAgentStorageInfo
 {
     ui64 ChunkSize = 0;
@@ -741,7 +751,8 @@ public:
     bool IsReadyForCleanup(const TDiskId& diskId) const;
 
     bool CanSecureErase(const TDeviceId& uuid) const;
-    bool CanSecureErase(const NProto::TDeviceConfig& device) const;
+    ESecureEraseAbility CanSecureErase(
+        const NProto::TDeviceConfig& device) const;
 
     NProto::TError SetUserId(
         TDiskRegistryDatabase& db,

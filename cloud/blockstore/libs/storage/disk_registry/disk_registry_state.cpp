@@ -3121,21 +3121,21 @@ NProto::TError TDiskRegistryState::DeallocateDisk(
     return {};
 }
 
-bool TDiskRegistryState::CanSecureErase(
+ESecureEraseAbility TDiskRegistryState::CanSecureErase(
     const NProto::TDeviceConfig& device) const
 {
     if (DeviceList.IsSuspendedAndNotResumingDevice(device.GetDeviceUUID())) {
         STORAGE_DEBUG(
             "Skip SecureErase for device '%s'. Device is suspended.",
             device.GetDeviceUUID().c_str());
-        return false;
+        return ESecureEraseAbility::Suspended;
     }
 
     if (device.GetState() == NProto::DEVICE_STATE_ERROR) {
         STORAGE_DEBUG(
             "Skip SecureErase for device '%s'. Device in error state",
             device.GetDeviceUUID().c_str());
-        return false;
+        return ESecureEraseAbility::DeviceInErrorState;
     }
 
     if (IsAutomaticallyReplaced(device.GetDeviceUUID())) {
@@ -3143,7 +3143,7 @@ bool TDiskRegistryState::CanSecureErase(
             "Skip SecureErase for device '%s'."
             " Device was automatically replaced recently.",
             device.GetDeviceUUID().c_str());
-        return false;
+        return ESecureEraseAbility::AutomaticallyReplaced;
     }
 
     const NProto::TAgentConfig* agent = FindAgent(device.GetNodeId());
@@ -3152,7 +3152,7 @@ bool TDiskRegistryState::CanSecureErase(
             "Skip SecureErase for device '%s'. Agent for node id %d not found",
             device.GetDeviceUUID().c_str(),
             device.GetNodeId());
-        return false;
+        return ESecureEraseAbility::AgentAbsent;
     }
 
     if (StorageConfig->GetAttachDetachPathsEnabled()) {
@@ -3160,7 +3160,7 @@ bool TDiskRegistryState::CanSecureErase(
             STORAGE_DEBUG(
                 "Skip SecureErase for device '%s'. Device is detached",
                 device.GetDeviceUUID().c_str());
-            return false;
+            return ESecureEraseAbility::DeviceDetached;
         }
     }
 
@@ -3168,10 +3168,10 @@ bool TDiskRegistryState::CanSecureErase(
         STORAGE_DEBUG(
             "Skip SecureErase for device '%s'. Agent is unavailable",
             device.GetDeviceUUID().c_str());
-        return false;
+        return ESecureEraseAbility::AgentUnavailable;
     }
 
-    return true;
+    return ESecureEraseAbility::ReadyToErase;
 }
 
 bool TDiskRegistryState::CanSecureErase(const TDeviceId& uuid) const
@@ -3180,7 +3180,7 @@ bool TDiskRegistryState::CanSecureErase(const TDeviceId& uuid) const
     if (!device) {
         return false;
     }
-    return CanSecureErase(*device);
+    return CanSecureErase(*device) == ESecureEraseAbility::ReadyToErase;
 }
 
 bool TDiskRegistryState::HasPendingCleanup(const TDiskId& diskId) const
