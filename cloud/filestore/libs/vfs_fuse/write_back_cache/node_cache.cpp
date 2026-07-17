@@ -218,7 +218,7 @@ void TNodeCache::VisitUnflushedRequestsFromFrontFlushBatch(
             "not empty");
 
         // Instead of crash, allow slow processing of unflushed requests
-        FlushBatchRequestCountQueue.push_back({1});
+        FlushBatchRequestCountQueue.push_back(1);
     }
 
     if (FlushBatchRequestCountQueue.size() == 1 &&
