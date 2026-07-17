@@ -4,6 +4,7 @@
 #include "shm_client.h"
 
 #include <cloud/filestore/tools/testing/loadtest/protos/loadtest.pb.h>
+#include <cloud/filestore/tools/testing/loadtest/lib/file_creation_limiter.h>
 
 #include <cloud/filestore/libs/client/public.h>
 #include <cloud/filestore/libs/service/public.h>
@@ -16,47 +17,7 @@
 #include <util/datetime/base.h>
 #include <util/generic/string.h>
 
-#include <atomic>
-#include <memory>
-
 namespace NCloud::NFileStore::NLoadTest {
-
-class TFileCreationLimiter
-{
-private:
-    const ui64 MaxFileCount;
-    std::atomic<ui64> ReservedFileCount = 0;
-
-public:
-    explicit TFileCreationLimiter(ui64 maxFileCount)
-        : MaxFileCount(maxFileCount)
-    {}
-
-    bool TryReserve()
-    {
-        if (!MaxFileCount) {
-            return true;
-        }
-
-        auto count = ReservedFileCount.load(std::memory_order_relaxed);
-        while (count < MaxFileCount &&
-               !ReservedFileCount.compare_exchange_weak(
-                   count,
-                   count + 1,
-                   std::memory_order_relaxed))
-        {}
-        return count < MaxFileCount;
-    }
-
-    void Release()
-    {
-        if (MaxFileCount) {
-            ReservedFileCount.fetch_sub(1, std::memory_order_relaxed);
-        }
-    }
-};
-
-using TFileCreationLimiterPtr = std::shared_ptr<TFileCreationLimiter>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
