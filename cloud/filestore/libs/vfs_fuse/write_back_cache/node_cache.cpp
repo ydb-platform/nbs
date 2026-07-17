@@ -1,6 +1,7 @@
 #include "node_cache.h"
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
+#include <util/string/printf.h>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
@@ -212,10 +213,11 @@ void TNodeCache::VisitUnflushedRequestsFromFrontFlushBatch(
 
         // We may go here if the following invariant is violated:
         // sum(FlushBatchRequestCountQueue) == UnflushedRequests.size()
-        ReportWriteBackCacheImpossibleState(
+        ReportWriteBackCacheImpossibleState(Sprintf(
             "TNodeCache::VisitUnflushedRequestsFromFrontFlushBatch(): "
             "FlushBatchRequestCountQueue is empty while UnflushedRequests is "
-            "not empty");
+            "not empty (UnflushedRequests.size()=%zu)",
+            UnflushedRequests.size()));
 
         // Instead of crash, allow slow processing of unflushed requests
         FlushBatchRequestCountQueue.push_back(1);
@@ -241,10 +243,11 @@ void TNodeCache::VisitUnflushedRequestsFromFrontFlushBatch(
 
     if (remainingRequests > 0) {
         // Invariant violation
-        ReportWriteBackCacheImpossibleState(
+        ReportWriteBackCacheImpossibleState(Sprintf(
             "TNodeCache::VisitUnflushedRequestsFromFrontFlushBatch(): "
             "UnflushedRequests contains less elements than needed to build a "
-            "flush batch");
+            "flush batch (remainingRequests=%lu)",
+            remainingRequests));
 
         // Fix the invariant
         IncompleteFlushBatchWriteRequestCounter.Reset();
