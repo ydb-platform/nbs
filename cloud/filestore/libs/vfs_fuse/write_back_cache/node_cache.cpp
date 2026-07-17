@@ -226,8 +226,14 @@ void TNodeCache::VisitUnflushedRequestsFromFrontFlushBatch(
     if (FlushBatchRequestCountQueue.size() == 1 &&
         !IncompleteFlushBatchWriteRequestCounter.IsEmpty())
     {
-        // We are trying to process an incomplete flush batch
-        // Reset the counter to complete it and start building another batch
+        // We are visiting requests from an incomplete flush batch
+        //
+        // VisitUnflushedRequestsFromFrontFlushBatch is expected to be called
+        // from a code that executes flush batches. It is not expected that new
+        // requests may be added once the batch is taken for processing.
+        //
+        // Therefore, we forcibly complete the current batch. After the counter
+        // is reset, new requests will be added to a new batch.
         IncompleteFlushBatchWriteRequestCounter.Reset();
     }
 
@@ -319,6 +325,19 @@ void TNodeCache::AddUnflushedRequestToFlushBatch(
     ui64 begin,
     ui64 end)
 {
+    // Append cached request to the last (incomplete) flush batch in arrival
+    // order. IncompleteFlushBatchWriteRequestCounter models how their ranges
+    // will be consolidated into backend WriteData requests: overlapping or
+    // adjacent ranges are merged, then split according to MaxWriteRequestSize
+    // from TFlushBatchLimits.
+    //
+    // Requests are added speculatively to the incomplete batch while the
+    // resulting consolidated request count and total size fit the batch limits.
+    //
+    // If the limits are exceeded, a batch is completed and a new batch is
+    // started, and the request that caused the limits to be exceeded is
+    // added to the new batch.
+
     const bool startNewFlushBatch =
         IncompleteFlushBatchWriteRequestCounter.IsEmpty();
 
@@ -328,6 +347,8 @@ void TNodeCache::AddUnflushedRequestToFlushBatch(
         end);
 
     if (startNewFlushBatch) {
+        // A single cached request always forms a batch even if it cannot
+        // satisfy the limits on its own.
         FlushBatchRequestCountQueue.push_back(1);
         return;
     }
@@ -344,24 +365,28 @@ void TNodeCache::AddUnflushedRequestToFlushBatch(
 
     if (requestCountWithinLimits && sumRequestsSizeWithinLimits) {
         if (FlushBatchRequestCountQueue.empty()) {
+            // Invariant violation - a new batch will be created
             ReportWriteBackCacheImpossibleState(
                 "FlushBatchRequestCountQueue is empty while "
                 "IncompleteFlushBatchRequestCounter is not empty");
         } else {
+            // Limits are not exceeded - just increment the request count in
+            // the last (incomplete) flush batch
             FlushBatchRequestCountQueue.back()++;
             return;
         }
     }
 
-    // Adding new request to a flush batch resulted in exceeding the limits
-    // We need to start a new flush batch and add that request to it
-    FlushBatchRequestCountQueue.push_back(1);
-
+    // Limits are exceeded - start new incomplete batch
     IncompleteFlushBatchWriteRequestCounter.Reset();
+
+    // And add the request that caused the limits to be exceeded to it
     IncompleteFlushBatchWriteRequestCounter.AddRequestInterval(
         flushBatchLimits,
         begin,
         end);
+
+    FlushBatchRequestCountQueue.push_back(1);
 }
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache
