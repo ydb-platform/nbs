@@ -108,6 +108,12 @@ func getVolumeId(perInstanceVolumes bool) string {
 	return defaultDiskId
 }
 
+func getAccessMode(accessMode csi.VolumeCapability_AccessMode_Mode) csi.VolumeCapability_AccessMode {
+	return csi.VolumeCapability_AccessMode{
+		Mode: accessMode,
+	}
+}
+
 func CreateTestContext(
 	t *testing.T,
 	vmMode bool,
@@ -496,6 +502,7 @@ func doTestStagedPublishUnpublishVolumeForKubevirtHelper(
 	localFsOverride LocalFsOverride,
 	requestQueuesCountOpt *uint32,
 	backendReplicaCount uint,
+	accessMode csi.VolumeCapability_AccessMode,
 ) {
 	t.Helper()
 	testCtx := CreateTestContext(
@@ -547,17 +554,12 @@ func doTestStagedPublishUnpublishVolumeForKubevirtHelper(
 		testCtx.nbsServerReplicaCount,
 	)
 
-	accessMode := csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER
-	if backend == "nfs" {
-		accessMode = csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER
-	}
-
 	volumeCapability := csi.VolumeCapability{
 		AccessType: &csi.VolumeCapability_Mount{
 			Mount: &csi.VolumeCapability_MountVolume{},
 		},
 		AccessMode: &csi.VolumeCapability_AccessMode{
-			Mode: accessMode,
+			Mode: accessMode.GetMode(),
 		},
 	}
 
@@ -592,8 +594,8 @@ func doTestStagedPublishUnpublishVolumeForKubevirtHelper(
 			DeviceName:       deviceName,
 			IpcType:          nbs.EClientIpcType_IPC_VHOST,
 			VhostQueuesCount: vhostQueuesCount,
-			VolumeAccessMode: nbs.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
-			VolumeMountMode:  nbs.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
+			VolumeAccessMode: getNbsVolumeAccessMode(&accessMode, false),
+			VolumeMountMode:  getNbsVolumeMountMode(&accessMode),
 			Persistent:       true,
 			NbdDevice: &nbs.TStartEndpointRequest_UseFreeNbdDeviceFile{
 				UseFreeNbdDeviceFile: false,
@@ -673,7 +675,12 @@ func doTestStagedPublishUnpublishVolumeForKubevirtHelper(
 	assert.Equal(t, fs.FileMode(0644), fileInfo.Mode().Perm())
 
 	testCtx.mounter.On("IsMountPoint", testCtx.targetPathMountMode).Return(false, nil)
-	testCtx.mounter.On("Mount", testCtx.sourcePath, testCtx.targetPathMountMode, "", []string{"bind"}).Return(nil)
+
+	mountOptions := []string{"bind"}
+	if hasReadOnlyVolumeAccess(&accessMode, false) {
+		mountOptions = append(mountOptions, "ro")
+	}
+	testCtx.mounter.On("Mount", testCtx.sourcePath, testCtx.targetPathMountMode, "", mountOptions).Return(nil)
 
 	_, err = nodeService.NodePublishVolume(ctx, &csi.NodePublishVolumeRequest{
 		VolumeId:          testCtx.volumeId,
@@ -754,6 +761,7 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 		localFsOverride       LocalFsOverride
 		requestQueuesCountOpt *uint32
 		backendReplicaCount   uint
+		accesssMode           csi.VolumeCapability_AccessMode
 	}{
 		// Legacy tests (perInstanceVolumes = false, requestQueuesCountOpt = nil)
 		{
@@ -764,6 +772,7 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 			localFsOverride:       LocalFsOverrideDisabled,
 			requestQueuesCountOpt: nil,
 			backendReplicaCount:   1,
+			accesssMode:           getAccessMode(csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER),
 		},
 		{
 			name:                  "DiskForKubevirtSetDeviceNameLegacy",
@@ -773,6 +782,7 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 			localFsOverride:       LocalFsOverrideDisabled,
 			requestQueuesCountOpt: nil,
 			backendReplicaCount:   1,
+			accesssMode:           getAccessMode(csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER),
 		},
 		{
 			name:                  "FilestoreForKubevirtLegacy",
@@ -782,6 +792,7 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 			localFsOverride:       LocalFsOverrideDisabled,
 			requestQueuesCountOpt: nil,
 			backendReplicaCount:   1,
+			accesssMode:           getAccessMode(csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER),
 		},
 		{
 			name:                  "DiskForKubevirt",
@@ -791,6 +802,7 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 			localFsOverride:       LocalFsOverrideDisabled,
 			requestQueuesCountOpt: nil,
 			backendReplicaCount:   1,
+			accesssMode:           getAccessMode(csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER),
 		},
 		{
 			name:                  "DiskForKubevirtMultipleNbsServer",
@@ -800,6 +812,7 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 			localFsOverride:       LocalFsOverrideDisabled,
 			requestQueuesCountOpt: nil,
 			backendReplicaCount:   5,
+			accesssMode:           getAccessMode(csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER),
 		},
 		{
 			name:                  "DiskForKubevirtSetDeviceName",
@@ -809,6 +822,7 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 			localFsOverride:       LocalFsOverrideDisabled,
 			requestQueuesCountOpt: nil,
 			backendReplicaCount:   1,
+			accesssMode:           getAccessMode(csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER),
 		},
 		{
 			name:                  "FilestoreForKubevirt",
@@ -818,6 +832,7 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 			localFsOverride:       LocalFsOverrideDisabled,
 			requestQueuesCountOpt: nil,
 			backendReplicaCount:   1,
+			accesssMode:           getAccessMode(csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER),
 		},
 		{
 			name:                  "LocalFilestoreForKubevirt",
@@ -827,6 +842,7 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 			localFsOverride:       LocalFsOverrideEnabled,
 			requestQueuesCountOpt: nil,
 			backendReplicaCount:   1,
+			accesssMode:           getAccessMode(csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER),
 		},
 		// Multiqueue tests (perInstanceVolumes = false, requestQueuesCountOpt = &rqc32)
 		// These correspond to the original "Multiqueue" tests which were legacy style.
@@ -838,6 +854,7 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 			localFsOverride:       LocalFsOverrideDisabled,
 			requestQueuesCountOpt: &rqc32,
 			backendReplicaCount:   1,
+			accesssMode:           getAccessMode(csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER),
 		},
 		{
 			name:                  "DiskForKubevirtSetDeviceNameMultiqueue",
@@ -847,6 +864,7 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 			localFsOverride:       LocalFsOverrideDisabled,
 			requestQueuesCountOpt: &rqc32,
 			backendReplicaCount:   1,
+			accesssMode:           getAccessMode(csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER),
 		},
 		{
 			name:                  "FilestoreForKubevirtMultiqueue",
@@ -856,6 +874,7 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 			localFsOverride:       LocalFsOverrideDisabled,
 			requestQueuesCountOpt: &rqc32,
 			backendReplicaCount:   1,
+			accesssMode:           getAccessMode(csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER),
 		},
 		{
 			name:                  "LocalFilestoreForKubevirtMultiqueue",
@@ -865,6 +884,7 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 			localFsOverride:       LocalFsOverrideEnabled,
 			requestQueuesCountOpt: &rqc32,
 			backendReplicaCount:   1,
+			accesssMode:           getAccessMode(csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER),
 		},
 		{
 			name:                  "FilestoreForKubevirtMultipleNfsVhost",
@@ -874,6 +894,17 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 			localFsOverride:       LocalFsOverrideDisabled,
 			requestQueuesCountOpt: nil,
 			backendReplicaCount:   4,
+			accesssMode:           getAccessMode(csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER),
+		},
+		{
+			name:                  "DiskForKubevirtReadOnly",
+			backend:               "nbs",
+			deviceNameOpt:         nil,
+			perInstanceVolumes:    true,
+			localFsOverride:       LocalFsOverrideDisabled,
+			requestQueuesCountOpt: nil,
+			backendReplicaCount:   1,
+			accesssMode:           getAccessMode(csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY),
 		},
 	}
 
@@ -889,6 +920,7 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 				tc.localFsOverride,
 				tc.requestQueuesCountOpt,
 				tc.backendReplicaCount,
+				tc.accesssMode,
 			)
 		})
 	}
