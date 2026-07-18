@@ -36,12 +36,6 @@ private:
 
     ui64 SlotPointer = 0;
 
-    // TODO: introduce a proper PageStore abstraction that would:
-    // * maintain page cache
-    // * block reads to uncommitted pages
-    // * allow page commit/rollback
-    mutable THashMap<ui64, TString> PageCache;
-
 public:
     TPersistentHashTable(
             ui64 firstPageNo,
