@@ -21,6 +21,7 @@ from cloud.filestore.config.storage_pb2 import TStorageConfig
 
 from cloud.storage.core.protos.media_pb2 import STORAGE_MEDIA_HDD
 from cloud.storage.core.tools.testing.access_service.lib import AccessService
+from cloud.storage.core.tools.common.python.port_reservation import PortManager
 
 logger = logging.getLogger(__name__)
 
@@ -81,17 +82,17 @@ class FilestoreDaemonConfigGenerator:
         self.__restart_interval = restart_interval
         self.__restart_flag = restart_flag
 
-        self._port_manager = yatest_common.PortManager()
-        self.__port = self._port_manager.get_port()
-        self.__mon_port = self._port_manager.get_port()
-        self.__ic_port = self._port_manager.get_port() if ic_port is None else ic_port
+        self._port_manager = PortManager()
+        self.__port = self._port_manager.reserve_port()
+        self.__mon_port = self._port_manager.reserve_port()
+        self.__ic_port = self._port_manager.reserve_port() if ic_port is None else ic_port
         self.__access_service_type = access_service_type
         self.__access_service_port = access_service_port
 
         self.__use_secure_registration = use_secure_registration
 
         if secure:
-            self.__secure_port = self._port_manager.get_port()
+            self.__secure_port = self._port_manager.reserve_port()
             self.__app_config.ServerConfig.SecurePort = self.__secure_port
 
         with open(self.__app_config_file_path, "w") as config_file:
@@ -366,7 +367,21 @@ class FilestoreDaemonConfigGenerator:
                 str(self.__restart_interval),
                 "--cmdline",
                 " ".join(command),
-            ] + (["--allow-restart-flag", self.__restart_flag] if self.__restart_flag else [])
+            ]
+
+            if self.__restart_flag:
+                command += ["--allow-restart-flag", self.__restart_flag]
+
+            # All ports allocated by the PortManager (server, mon, ic, secure,
+            # local-service, ...) are reserved (flocked under PORT_SYNC_PATH)
+            # only until the recipe process exits.
+            #
+            # Pass the full set to the launcher so it re-takes and holds those
+            # flocks across every restart.
+            #
+            # See issue #6518 for details
+            for reserved_port in self._port_manager.list_reserved_ports():
+                command += ["--reserve-port", str(reserved_port)]
 
         return command
 
@@ -464,7 +479,7 @@ class FilestoreVhostConfigGenerator(FilestoreDaemonConfigGenerator):
             trace_sampling_rate=trace_sampling_rate,
         )
 
-        self.__local_service_port = self._port_manager.get_port()
+        self.__local_service_port = self._port_manager.reserve_port()
 
     def generate_aux_params(self):
         return ["--local-service-port", str(self.__local_service_port)]
