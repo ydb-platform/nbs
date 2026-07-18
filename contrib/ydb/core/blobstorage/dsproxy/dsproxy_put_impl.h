@@ -321,10 +321,6 @@ public:
         return Info->GetOrderNumber(shortId);
     }
 
-    bool WasNotOkResponses() {
-        return AtLeastOneResponseWasNotOk;
-    }
-
 protected:
     void RunStrategies(TLogContext &logCtx, TPutResultVec &outPutResults, const TBlobStorageGroupInfo::TGroupVDisks& expired,
         bool accelerate);
