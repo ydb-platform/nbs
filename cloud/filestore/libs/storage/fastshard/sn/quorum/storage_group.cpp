@@ -90,6 +90,7 @@ public:
     NProto::TWriteLogRecordResponse WriteLogRecord(
         NProto::TWriteLogRecordRequest request) override
     {
+        SILK_DEBUG("sg write: %s", LogMessage(request).c_str());
         return MirrorRequest<
             NProto::TWriteLogRecordRequest,
             NProto::TWriteLogRecordResponse,
@@ -100,6 +101,7 @@ public:
     NProto::TReadPagesResponse ReadPages(
         NProto::TReadPagesRequest request) override
     {
+        SILK_DEBUG("sg read: %s", request.ShortUtf8DebugString().c_str());
         const ui32 i =
             Selector.fetch_add(1, std::memory_order_relaxed) % Nodes.size();
         // TODO: update the request with the right device uuid
@@ -107,6 +109,20 @@ public:
     }
 
 private:
+    TString LogMessage(const NProto::TWriteLogRecordRequest& w)
+    {
+        NProto::TReadPagesRequest r;
+        *r.MutableDeviceUUID() = w.GetDeviceUUID();
+        *r.MutableHeaders() = w.GetHeaders();
+        for (auto& pg: w.GetPageGroups()) {
+            auto* rpg = r.AddPageGroupRefs();
+            rpg->SetPageSize(pg.GetContent(0).Size());
+            rpg->SetPageCount(pg.ContentSize());
+            rpg->SetFirstPageNo(pg.GetFirstPageNo());
+        }
+        return r.ShortUtf8DebugString();
+    }
+
     template <
         typename TRequest,
         typename TResponse,

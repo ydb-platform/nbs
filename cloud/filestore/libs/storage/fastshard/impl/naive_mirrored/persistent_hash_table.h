@@ -1,9 +1,12 @@
 #pragma once
 
+#include "page_store.h"
+
 #include <cloud/filestore/libs/service/error.h>
-#include <cloud/filestore/libs/storage/fastshard/sn/quorum/storage_group.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+
+#include <silk/util/logger.h>
 
 #include <util/digest/city.h>
 #include <util/string/builder.h>
@@ -23,7 +26,7 @@ private:
     const ui64 SlotSize;
     const ui64 SlotsPerPage;
     const TValue Tombstone;
-    IStorageGroupPtr Storage;
+    TPageStorePtr PageStore;
 
     using TMakeKey = std::function<TKey(const TValue&)>;
     TMakeKey MakeKey;
@@ -33,6 +36,12 @@ private:
 
     ui64 SlotPointer = 0;
 
+    // TODO: introduce a proper PageStore abstraction that would:
+    // * maintain page cache
+    // * block reads to uncommitted pages
+    // * allow page commit/rollback
+    mutable THashMap<ui64, TString> PageCache;
+
 public:
     TPersistentHashTable(
             ui64 firstPageNo,
@@ -41,7 +50,7 @@ public:
             ui64 slotCount,
             ui64 slotSize,
             const TValue& tombstone,
-            IStorageGroupPtr storage,
+            TPageStorePtr pageStore,
             TMakeKey makeKey,
             THash hash)
         : FirstPageNo(firstPageNo)
@@ -51,7 +60,7 @@ public:
         , SlotSize(slotSize)
         , SlotsPerPage(PageSize / SlotSize)
         , Tombstone(tombstone)
-        , Storage(std::move(storage))
+        , PageStore(std::move(pageStore))
         , MakeKey(std::move(makeKey))
         , Hash(std::move(hash))
     {
@@ -68,7 +77,10 @@ public:
         TValue existing{};
         ui64 slotNo = 0;
         auto error = FindSlot(k, &existing, &slotNo);
-        if (HasError(error)) {
+        if (error.GetCode() != E_FS_NOENT) {
+            if (HasError(error)) {
+                return MakeError(E_FS_EXIST);
+            }
             return error;
         }
 
@@ -94,56 +106,14 @@ private:
         TString page,
         NProto::TWriteLogRecordRequest& logRecord)
     {
-        const ui64 pageNo = slotNo / SlotsPerPage;
-
-        auto* pg = logRecord.AddPageGroups();
-        pg->SetFirstPageNo(pageNo);
-        pg->AddContent(std::move(page));
+        const ui64 pageNo = FirstPageNo + slotNo / SlotsPerPage;
+        PageStore->WritePage(pageNo, std::move(page), logRecord);
     }
 
     NProto::TError ReadPage(ui64 slotNo, TString* page) const
     {
-        const ui64 pageNo = slotNo / SlotsPerPage;
-
-        // TODO: page cache
-        // and actually use a proper page-storage abstraction on top of storage
-        // groups
-
-        NProto::TReadPagesRequest request;
-        auto* pg = request.AddPageGroupRefs();
-        pg->SetFirstPageNo(pageNo);
-        pg->SetPageCount(1);
-        pg->SetPageSize(PageSize);
-
-        auto response = Storage->ReadPages(request);
-        if (HasError(response.GetError())) {
-            return response.GetError();
-        }
-
-        if (response.PageGroupsSize() != 1) {
-            return MakeError(
-                E_BADMSG,
-                TStringBuilder() << "unexpected pg count: "
-                    << response.PageGroupsSize());
-        }
-
-        auto& rpg = *response.MutablePageGroups(0);
-        if (rpg.ContentSize() != 1) {
-            return MakeError(
-                E_BADMSG,
-                TStringBuilder() << "unexpected page count: "
-                    << rpg.ContentSize());
-        }
-
-        if (rpg.GetContent(0).size() < PageSize) {
-            return MakeError(
-                E_BADMSG,
-                TStringBuilder() << "unexpected page size: "
-                    << rpg.GetContent(0).size());
-        }
-
-        *page = std::move(*rpg.MutableContent(0));
-        return {};
+        const ui64 pageNo = FirstPageNo + slotNo / SlotsPerPage;
+        return PageStore->ReadPage(pageNo, page);
     }
 
     NProto::TError LookupSlot(ui64 slotNo, TValue* v) const
@@ -189,7 +159,7 @@ private:
             }
         }
 
-        return MakeError(E_NOT_FOUND);
+        return MakeError(E_FS_NOENT);
     }
 
     NProto::TError DoPut(
@@ -208,6 +178,12 @@ private:
         memcpy(ptr, &v, sizeof(TValue));
 
         WritePage(slotNo, std::move(page), logRecord);
+
+        SILK_DEBUG(
+            "pht DoPut: slotNo=%lu, logRecordPGs=%lu",
+            slotNo,
+            logRecord.PageGroupsSize());
+
         return {};
     }
 

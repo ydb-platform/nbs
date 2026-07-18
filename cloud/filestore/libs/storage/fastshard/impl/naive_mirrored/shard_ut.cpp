@@ -13,6 +13,7 @@
 
 #include <silk/fibers/fiber.h>
 #include <silk/fibers/future.h>
+#include <silk/util/logger.h>
 
 #include <gtest/gtest.h>
 
@@ -120,6 +121,75 @@ TString GenerateValidateData(ui32 size, ui32 seed = 0)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TEST(NaiveMirroredShardTest, CreatesFiles)
+{
+    silk::Logger::setLevel(silk::LogLevel::DEBUG);
+
+    TStorageFixture fx;
+
+    auto shard = CreateNaiveMirroredFileSystemShard(ShardNo, fx.Config);
+
+    const TString file1 = "file1";
+    const TString file2 = "file2";
+    const TString file3 = "file3";
+    const ui32 mode = 0644;
+    const ui32 expectedMode = S_IFREG | 0644;
+    const ui64 uid = 111;
+    const ui64 gid = 222;
+
+    ui64 nodeId = 0;
+    {
+        TCreateNodeRequest request;
+        request.SetNodeId(RootNodeId);
+        request.SetName(file1);
+        request.SetUid(uid);
+        request.SetGid(gid);
+        request.MutableFile()->SetMode(mode);
+        auto f = shard->CreateNode(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+        nodeId = response.GetNode().GetId();
+    }
+
+    {
+        TGetNodeAttrRequest request;
+        request.SetNodeId(nodeId);
+        auto f = shard->GetNodeAttr(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+        EXPECT_EQ(nodeId, response.GetNode().GetId());
+        EXPECT_EQ(uid, response.GetNode().GetUid());
+        EXPECT_EQ(gid, response.GetNode().GetGid());
+        EXPECT_EQ(
+            static_cast<ui32>(E_REGULAR_NODE),
+            response.GetNode().GetType());
+        EXPECT_EQ(expectedMode, response.GetNode().GetMode());
+    }
+
+    {
+        TUnlinkNodeRequest request;
+        request.SetNodeId(RootNodeId);
+        request.SetName(file1);
+        auto f = shard->UnlinkNode(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+    }
+
+    /*
+    {
+        TGetNodeAttrRequest request;
+        request.SetNodeId(nodeId);
+        auto f = shard->GetNodeAttr(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(NCloud::E_FS_NOENT, response.GetError().GetCode())
+            << FormatError(response.GetError());
+    }
+    */
+}
+
 TEST(NaiveMirroredShardTest, WritesAndReadsFiles)
 {
     TStorageFixture fx;
@@ -147,17 +217,6 @@ TEST(NaiveMirroredShardTest, WritesAndReadsFiles)
         EXPECT_EQ(S_OK, response.GetError().GetCode())
             << FormatError(response.GetError());
         nodeId = response.GetNode().GetId();
-    }
-
-    {
-        TGetNodeAttrRequest request;
-        request.SetNodeId(nodeId);
-        auto f = shard->GetNodeAttr(request);
-        auto response = f.GetValueSync();
-        EXPECT_EQ(S_OK, response.GetError().GetCode())
-            << FormatError(response.GetError());
-        EXPECT_EQ(nodeId, response.GetNode().GetId());
-        EXPECT_EQ(mode, response.GetNode().GetMode());
     }
 
     ui64 handle = 0;

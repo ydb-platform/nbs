@@ -1,5 +1,6 @@
 #include "shard.h"
 
+#include "page_store.h"
 #include "persistent_hash_table.h"
 
 #include <cloud/filestore/libs/service/error.h>
@@ -95,6 +96,13 @@ TNodeTableSlot Convert(const NProto::TNodeAttr& attr)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+ui64 RoundUp(ui64 n, ui64 by)
+{
+    return ((n - 1) / by + 1) * by;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // This data structure is a PoC, it's not really efficient, can be easily
 // optimized.
 
@@ -109,14 +117,14 @@ private:
     ui64 LastNodeId = 0;
 
 public:
-    void Init(
+    ui64 Init(
         const NProtoPrivate::TPersistentFastShardConfig& config,
-        IStorageGroupPtr storage)
+        TPageStorePtr pageStore)
     {
-        const ui64 slotCount =
-            (config.GetNodesPerGroup() / SlotsPerPage) * SlotsPerPage;
-        const ui64 pageCount =
-            Min(slotCount / SlotsPerPage, NodeTableSize / PageSize);
+        const ui64 slotCount = Min(
+            RoundUp(config.GetNodesPerGroup(), SlotsPerPage),
+            NodeTableSize / PageSize * SlotsPerPage);
+        const ui64 pageCount = slotCount / SlotsPerPage;
         const TNodeTableSlot tombstone{.Id = Max<ui64>()};
         Slots = std::make_unique<THt>(
             0 /* firstPageNo */,
@@ -125,7 +133,7 @@ public:
             slotCount,
             NodeSlotSize,
             tombstone,
-            storage,
+            std::move(pageStore),
             [] (const TNodeTableSlot& s) -> ui64
             {
                 return s.Id;
@@ -136,6 +144,8 @@ public:
                     reinterpret_cast<const char*>(&nodeId),
                     sizeof(nodeId));
             });
+
+        return pageCount;
     }
 
     ui64 AllocateNodeId()
@@ -222,21 +232,23 @@ private:
 public:
     void Init(
         const NProtoPrivate::TPersistentFastShardConfig& config,
-        IStorageGroupPtr storage)
+        ui64 firstPageNo,
+        TPageStorePtr pageStore)
     {
-        const ui64 slotCount =
-            (config.GetNodesPerGroup() / SlotsPerPage) * SlotsPerPage;
+        const ui64 slotCount = Min(
+            RoundUp(config.GetNodesPerGroup(), SlotsPerPage),
+            NodeTableSize / PageSize * SlotsPerPage);
         const ui64 pageCount = slotCount / SlotsPerPage;
         TNameTableSlot tombstone{};
         tombstone.NodeId = Max<ui64>();
         Slots = std::make_unique<THt>(
-            0 /* firstPageNo */,
+            firstPageNo,
             pageCount,
             PageSize,
             slotCount,
             NameSlotSize,
             tombstone,
-            storage,
+            std::move(pageStore),
             [] (const TNameTableSlot& s) -> const char*
             {
                 return s.Name;
@@ -297,6 +309,20 @@ auto CreateAttrs(ui64 id, ui32 mode, ui64 size, ui64 uid, ui64 gid)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TVector<ui64> CollectPages(const NProto::TWriteLogRecordRequest& logRecord)
+{
+    TVector<ui64> pages;
+    for (const auto& pg: logRecord.GetPageGroups()) {
+        for (ui64 i = 0; i < pg.ContentSize(); ++i) {
+            pages.push_back(pg.GetFirstPageNo() + i);
+        }
+    }
+
+    return pages;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TFiberShardImpl
 {
 private:
@@ -304,6 +330,7 @@ private:
     const NProtoPrivate::TPersistentFastShardConfig Config;
 
     IStorageGroupPtr Storage;
+    TPageStorePtr PageStore;
     TNodeTable Nodes;
     TNameTable Names;
     mutable silk::FiberMutex Mutex;
@@ -328,9 +355,10 @@ public:
             nodes.push_back(CreateStorageNodeClient(d.GetHost(), d.GetPort()));
         }
         Storage = CreateNaiveMirroredStorageGroup(std::move(nodes));
+        PageStore = std::make_shared<TPageStore>(Storage, PageSize);
 
-        Nodes.Init(Config, Storage);
-        Names.Init(Config, Storage);
+        const ui64 nodeTablePageCount = Nodes.Init(Config, PageStore);
+        Names.Init(Config, nodeTablePageCount /* firstPageNo */, PageStore);
     }
 
 public:
@@ -401,9 +429,13 @@ public:
             *response.MutableError() = std::move(error);
         }
 
-        auto writeResponse = Storage->WriteLogRecord(logRecord);
+        auto pages = CollectPages(logRecord);
+        auto writeResponse = Storage->WriteLogRecord(std::move(logRecord));
         if (HasError(writeResponse.GetError())) {
             *response.MutableError() = std::move(*writeResponse.MutableError());
+            PageStore->RollbackPages(pages);
+        } else {
+            PageStore->CommitPages(pages);
         }
 
         return response;
@@ -452,12 +484,15 @@ public:
             return response;
         }
 
+        auto pages = CollectPages(logRecord);
         auto writeResponse = Storage->WriteLogRecord(std::move(logRecord));
         if (HasError(writeResponse.GetError())) {
             *response.MutableError() = std::move(*writeResponse.MutableError());
+            PageStore->RollbackPages(pages);
             return response;
         }
 
+        PageStore->CommitPages(pages);
         *response.MutableNode() = std::move(attr);
         return response;
     }
