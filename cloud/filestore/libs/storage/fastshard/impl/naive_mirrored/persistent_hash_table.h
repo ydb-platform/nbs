@@ -70,11 +70,8 @@ public:
         auto k = MakeKey(v);
         TValue existing{};
         ui64 slotNo = 0;
-        auto error = FindSlot(k, &existing, &slotNo);
-        if (error.GetCode() != E_FS_NOENT) {
-            if (HasError(error)) {
-                return MakeError(E_FS_EXIST);
-            }
+        auto error = AllocateSlot(k, &existing, &slotNo);
+        if (HasError(error)) {
             return error;
         }
 
@@ -120,11 +117,39 @@ private:
 
         const ui32 relSlotNo = slotNo % SlotsPerPage;
         const char* ptr = page.data() + relSlotNo * SlotSize;
-        if (ptr[0] == 0 && memcmp(ptr, ptr + 1, sizeof(TValue) - 1)) {
+        if (ptr[0] == 0 && memcmp(ptr, ptr + 1, sizeof(TValue) - 1) == 0) {
             return MakeError(S_FALSE);
         }
 
         memcpy(v, ptr, sizeof(TValue));
+        return {};
+    }
+
+    NProto::TError AllocateSlot(const TKey& k, TValue* v, ui64* slotNo) const
+    {
+        const ui64 h = Hash(k);
+        const ui64 firstSlotNo = h % SlotCount;
+        *slotNo = firstSlotNo;
+        while (true) {
+            auto error = LookupSlot(*slotNo, v);
+            if (HasError(error)) {
+                return error;
+            }
+
+            if (error.GetCode() == S_FALSE) {
+                break;
+            }
+
+            if (k == MakeKey(*v)) {
+                return MakeError(E_FS_EXIST);
+            }
+
+            *slotNo = (*slotNo + 1) % SlotCount;
+            if (*slotNo == firstSlotNo) {
+                return MakeError(E_FS_OUT_OF_SPACE, "no free node slot");
+            }
+        }
+
         return {};
     }
 
@@ -178,30 +203,6 @@ private:
             slotNo,
             logRecord.PageGroupsSize());
 
-        return {};
-    }
-
-    NProto::TError AllocateSlot(ui64* slotNo)
-    {
-        *slotNo = SlotPointer;
-        while (true) {
-            TValue v{};
-            auto error = LookupSlot(*slotNo, &v);
-            if (HasError(error)) {
-                return error;
-            }
-
-            if (error.GetCode() == S_FALSE) {
-                break;
-            }
-
-            *slotNo = (*slotNo + 1) % SlotCount;
-            if (*slotNo == SlotPointer) {
-                return MakeError(E_FS_OUT_OF_SPACE, "no free node slot");
-            }
-        }
-
-        SlotPointer = (*slotNo + 1) % SlotCount;
         return {};
     }
 };
