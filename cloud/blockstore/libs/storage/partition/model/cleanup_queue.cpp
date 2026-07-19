@@ -71,6 +71,24 @@ struct TCleanupQueue::TImpl
         return result;
     }
 
+    size_t GetCount(ui64 minCommitId, ui64 maxCommitId) const
+    {
+        // First item with CommitId > minCommitId
+        auto it = Items.upper_bound(TCleanupQueueItem{
+            TPartialBlobId(Max(), Max()),
+            minCommitId,
+            {}});
+
+        size_t result = 0;
+        for (; it != Items.end(); ++it) {
+            if (it->CommitId > maxCommitId) {
+                break;
+            }
+            ++result;
+        }
+        return result;
+    }
+
     TVector<TCleanupQueueItem> GetItems(ui64 maxCommitId, size_t limit) const
     {
         TVector<TCleanupQueueItem> result;
@@ -79,6 +97,30 @@ struct TCleanupQueue::TImpl
                 break;
             }
             result.emplace_back(item);
+            if (result.size() == limit) {
+                break;
+            }
+        }
+        return result;
+    }
+
+    TVector<TCleanupQueueItem> GetItems(
+        ui64 minCommitId,
+        ui64 maxCommitId,
+        size_t limit) const
+    {
+        // First item with CommitId > minCommitId
+        auto it = Items.upper_bound(TCleanupQueueItem{
+            TPartialBlobId(Max(), Max()),
+            minCommitId,
+            {}});
+
+        TVector<TCleanupQueueItem> result;
+        for (; it != Items.end(); ++it) {
+            if (it->CommitId > maxCommitId) {
+                break;
+            }
+            result.emplace_back(*it);
             if (result.size() == limit) {
                 break;
             }
@@ -140,9 +182,22 @@ size_t TCleanupQueue::GetCount(ui64 maxCommitId) const
     return Impl->GetCount(maxCommitId);
 }
 
+size_t TCleanupQueue::GetCount(ui64 minCommitId, ui64 maxCommitId) const
+{
+    return Impl->GetCount(minCommitId, maxCommitId);
+}
+
 TVector<TCleanupQueueItem> TCleanupQueue::GetItems(ui64 maxCommitId, size_t limit) const
 {
     return Impl->GetItems(maxCommitId, limit);
+}
+
+TVector<TCleanupQueueItem> TCleanupQueue::GetItems(
+    ui64 minCommitId,
+    ui64 maxCommitId,
+    size_t limit) const
+{
+    return Impl->GetItems(minCommitId, maxCommitId, limit);
 }
 
 ui64 TCleanupQueue::GetQueueBytes() const

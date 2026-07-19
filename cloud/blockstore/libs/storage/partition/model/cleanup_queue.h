@@ -53,9 +53,18 @@ public:
 
     size_t GetCount(ui64 maxCommitId = InvalidCommitId) const;
 
+    // Count items with minCommitId < CommitId <= maxCommitId.
+    size_t GetCount(ui64 minCommitId, ui64 maxCommitId) const;
+
     TVector<TCleanupQueueItem> GetItems(
         ui64 maxCommitId = InvalidCommitId,
         size_t limit = 100) const;
+
+    // Return items with minCommitId < CommitId <= maxCommitId, up to limit.
+    TVector<TCleanupQueueItem> GetItems(
+        ui64 minCommitId,
+        ui64 maxCommitId,
+        size_t limit) const;
 
     ui64 GetQueueBytes() const;
     ui64 GetQueueBlocks() const;
