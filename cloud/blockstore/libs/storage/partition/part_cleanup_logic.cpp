@@ -337,8 +337,10 @@ void ExecuteCleanupTransaction(
     for (size_t i = 0; i < args.CleanupQueue.size(); ++i) {
         const auto& item = args.CleanupQueue[i];
         const auto& blobMeta = args.BlobsMeta[i];
+        const bool afterCheckpoint = args.CleanupWithCheckpoint && (item.CommitId > args.MaxCheckpointCommitId);
 
-        if (args.CleanupWithCheckpoint &&
+        if (afterCheckpoint &&
+            // TODO:_ simplify ShouldSkipCleanupDueToCheckpoint
             ShouldSkipCleanupDueToCheckpoint(
                 item,
                 blobMeta,
@@ -426,7 +428,7 @@ void ExecuteCleanupTransaction(
             logTitle.GetWithTime().c_str(),
             ToString(MakeBlobId(tabletId, item.BlobId)).Quote().c_str());
 
-        state.RemoveCleanupQueueItem(item);
+        state.RemoveCleanupQueueItem(item, afterCheckpoint);
 
         db.DeleteBlobMeta(item.BlobId);
         db.DeleteCleanupQueue(item.BlobId, item.CommitId);

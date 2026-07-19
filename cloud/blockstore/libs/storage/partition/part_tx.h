@@ -645,7 +645,7 @@ struct TTxPartition
                 bool verifyRecreatedBlobMetasOnCleanup,
                 TVector<TCleanupQueueItem> cleanupQueue,
                 bool cleanupWithCheckpoint,
-                ui64 maxCheckpointCommitId,
+                ui64 maxCheckpointCommitId, // TODO:_ strange order of arguments: switch max and min
                 ui64 minCheckpointCommitId)
             : RequestInfo(std::move(requestInfo))
             , CommitId(commitId)
