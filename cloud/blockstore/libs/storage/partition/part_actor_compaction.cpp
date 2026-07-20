@@ -2026,12 +2026,14 @@ bool TPartitionActor::PrepareCompaction(
         ready = false;
     }
 
-    FillRangeCompactionInfos(
-        args.RangeCompactions,
-        blobsToReadBlobMetas,
-        blobsToReadBlockMasks,
-        blobMetas,
-        blockMasks);
+    if (ready) {
+        FillRangeCompactionInfos(
+            args.RangeCompactions,
+            blobsToReadBlobMetas,
+            blobsToReadBlockMasks,
+            blobMetas,
+            blockMasks);
+    }
 
     return ready;
 }
