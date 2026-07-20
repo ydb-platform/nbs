@@ -73,7 +73,7 @@ private:
     const ui64 ReadBytes;
     const ui64 WriteBytes;
     const ui64 InitialFileSize;
-    TFileCreationLimiterPtr FileCreationLimiter;
+    TCountLimiterPtr CountLimiter;
 
     TClient Client;
     TDeque<std::shared_ptr<IEndpoint>> Endpoints;
@@ -90,13 +90,13 @@ public:
             NProto::TFastShardLoadSpec spec,
             ui32 maxParallelism,
             ILoggingServicePtr /*logging*/,
-            TFileCreationLimiterPtr fileCreationLimiter)
+            TCountLimiterPtr fileCreationLimiter)
         : Spec(std::move(spec))
         , ShardFileSystemId(Spec.GetShardFileSystemId())
         , ReadBytes(Spec.GetReadBytes() ? Spec.GetReadBytes() : DefaultIoSize)
         , WriteBytes(Spec.GetWriteBytes() ? Spec.GetWriteBytes() : DefaultIoSize)
         , InitialFileSize(Spec.GetInitialFileSize())
-        , FileCreationLimiter(std::move(fileCreationLimiter))
+        , CountLimiter(std::move(fileCreationLimiter))
     {
         Y_ENSURE(!ShardFileSystemId.empty(), "ShardFileSystemId must be set");
         Y_ENSURE(maxParallelism > 0);
@@ -202,7 +202,7 @@ private:
 
         // Create a file if the pool had nothing to offer.
         if (s->File.Handle == 0) {
-            if (!ptr->FileCreationLimiter->TryReserve()) {
+            if (!ptr->CountLimiter->TryReserve()) {
                 releaseEndpoint();
                 s->Promise.SetValue({s->Action, s->Started, MakeError(S_FALSE)});
                 return;
@@ -228,7 +228,7 @@ private:
                 ? resp.GetError()
                 : resp.GetCreateHandle().GetError();
             if (HasError(createErr)) {
-                ptr->FileCreationLimiter->Release();
+                ptr->CountLimiter->Release();
                 releaseEndpoint();
                 s->Promise.SetValue({s->Action, s->Started, createErr});
                 return;
@@ -359,7 +359,7 @@ IRequestGeneratorPtr CreateFastShardRequestGenerator(
     NProto::TFastShardLoadSpec spec,
     ui32 maxParallelism,
     ILoggingServicePtr logging,
-    TFileCreationLimiterPtr fileCreationLimiter)
+    TCountLimiterPtr fileCreationLimiter)
 {
     return std::make_shared<TFastShardRequestGenerator>(
         std::move(spec),

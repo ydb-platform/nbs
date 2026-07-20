@@ -50,7 +50,7 @@ private:
     const NProto::TDatashardLikeLoadSpec Spec;
     const TString FileSystemId;
     const NProto::THeaders Headers;
-    const TFileCreationLimiterPtr FileCreationLimiter;
+    const TCountLimiterPtr CountLimiter;
 
     TLog Log;
 
@@ -79,11 +79,11 @@ public:
             IShmDataClientPtr dataClient,
             TString filesystemId,
             NProto::THeaders headers,
-            TFileCreationLimiterPtr fileCreationLimiter)
+            TCountLimiterPtr fileCreationLimiter)
         : Spec(std::move(spec))
         , FileSystemId(std::move(filesystemId))
         , Headers(std::move(headers))
-        , FileCreationLimiter(std::move(fileCreationLimiter))
+        , CountLimiter(std::move(fileCreationLimiter))
         , Session(std::move(session))
         , DataClient(std::move(dataClient))
     {
@@ -177,7 +177,7 @@ private:
     TFuture<TCompletedRequest> DoCreateNode()
     {
         auto started = TInstant::Now();
-        if (!FileCreationLimiter->TryReserve()) {
+        if (!CountLimiter->TryReserve()) {
             return MakeFuture<TCompletedRequest>({
                 NProto::ACTION_CREATE_NODE,
                 started,
@@ -240,7 +240,7 @@ private:
                 [=, this](const TFuture<NProto::TSetNodeAttrResponse>& f)
                 { return HandleResizeAfterCreate(f, info, started); });
         } catch (const TServiceError& e) {
-            FileCreationLimiter->Release();
+            CountLimiter->Release();
             auto error = MakeError(e.GetCode(), TString{e.GetMessage()});
             STORAGE_ERROR(
                 "create node has failed: %s",
@@ -507,7 +507,7 @@ IRequestGeneratorPtr CreateDatashardLikeRequestGenerator(
     IShmDataClientPtr dataClient,
     TString filesystemId,
     NProto::THeaders headers,
-    TFileCreationLimiterPtr fileCreationLimiter)
+    TCountLimiterPtr fileCreationLimiter)
 {
     return std::make_shared<TDatashardLikeRequestGenerator>(
         std::move(spec),

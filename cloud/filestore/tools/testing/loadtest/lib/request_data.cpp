@@ -106,7 +106,7 @@ private:
     const NProto::TDataLoadSpec Spec;
     const TString FileSystemId;
     const NProto::THeaders Headers;
-    const TFileCreationLimiterPtr FileCreationLimiter;
+    const TCountLimiterPtr CountLimiter;
 
     TLog Log;
 
@@ -136,11 +136,11 @@ public:
             ISessionPtr session,
             TString filesystemId,
             NProto::THeaders headers,
-            TFileCreationLimiterPtr fileCreationLimiter)
+            TCountLimiterPtr fileCreationLimiter)
         : Spec(std::move(spec))
         , FileSystemId(std::move(filesystemId))
         , Headers(std::move(headers))
-        , FileCreationLimiter(std::move(fileCreationLimiter))
+        , CountLimiter(std::move(fileCreationLimiter))
         , Session(std::move(session))
     {
         Log = logging->CreateLog(Headers.GetClientId());
@@ -241,7 +241,7 @@ private:
 
         auto started = TInstant::Now();
         TGuard<TMutex> guard(StateLock);
-        if (!FileCreationLimiter->TryReserve()) {
+        if (!CountLimiter->TryReserve()) {
             return MakeFuture<TCompletedRequest>({
                 NProto::ACTION_CREATE_HANDLE,
                 started,
@@ -310,7 +310,7 @@ private:
                     return HandleResizeAfterCreateHandle(f, name, started);
                 });
         } catch (const TServiceError& e)  {
-            FileCreationLimiter->Release();
+            CountLimiter->Release();
             auto error = MakeError(e.GetCode(), TString{e.GetMessage()});
             STORAGE_ERROR("create handle for %s has failed: %s",
                 name.Quote().c_str(),
@@ -657,7 +657,7 @@ IRequestGeneratorPtr CreateDataRequestGenerator(
     ISessionPtr session,
     TString filesystemId,
     NProto::THeaders headers,
-    TFileCreationLimiterPtr fileCreationLimiter)
+    TCountLimiterPtr fileCreationLimiter)
 {
     return std::make_shared<TDataRequestGenerator>(
         std::move(spec),

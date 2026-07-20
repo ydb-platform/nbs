@@ -48,7 +48,7 @@ private:
     const NProto::TIndexLoadSpec Spec;
     const TString FileSystemId;
     const NProto::THeaders Headers;
-    const TFileCreationLimiterPtr FileCreationLimiter;
+    const TCountLimiterPtr CountLimiter;
     const ui64 OwnerId = RandomNumber(100500u);
 
     TLog Log;
@@ -78,11 +78,11 @@ public:
             ISessionPtr session,
             TString filesystemId,
             NProto::THeaders headers,
-            TFileCreationLimiterPtr fileCreationLimiter)
+            TCountLimiterPtr fileCreationLimiter)
         : Spec(std::move(spec))
         , FileSystemId(std::move(filesystemId))
         , Headers(std::move(headers))
-        , FileCreationLimiter(std::move(fileCreationLimiter))
+        , CountLimiter(std::move(fileCreationLimiter))
         , Client(std::move(client))
         , Session(std::move(session))
     {
@@ -151,7 +151,7 @@ private:
         TGuard<TMutex> guard(StateLock);
         auto started = TInstant::Now();
 
-        if (!FileCreationLimiter->TryReserve()) {
+        if (!CountLimiter->TryReserve()) {
             return MakeFuture<TCompletedRequest>({
                 NProto::ACTION_CREATE_NODE,
                 started,
@@ -159,7 +159,7 @@ private:
         }
 
         if (Spec.GetMaxNodes() && Nodes.size() >= Spec.GetMaxNodes()) {
-            FileCreationLimiter->Release();
+            CountLimiter->Release();
             return MakeFuture<TCompletedRequest>({
                 NProto::ACTION_CREATE_NODE,
                 started,
@@ -208,7 +208,7 @@ private:
                 name.c_str(),
                 FormatError(error).c_str());
 
-            FileCreationLimiter->Release();
+            CountLimiter->Release();
             return {NProto::ACTION_CREATE_NODE, started, error};
         }
     }
@@ -790,7 +790,7 @@ IRequestGeneratorPtr CreateIndexRequestGenerator(
     ISessionPtr session,
     TString filesystemId,
     NProto::THeaders headers,
-    TFileCreationLimiterPtr fileCreationLimiter)
+    TCountLimiterPtr fileCreationLimiter)
 {
     return std::make_shared<TIndexRequestGenerator>(
         std::move(spec),

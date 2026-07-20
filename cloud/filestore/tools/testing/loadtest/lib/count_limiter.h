@@ -9,14 +9,14 @@ namespace NCloud::NFileStore::NLoadTest {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TFileCreationLimiter
+class TCountLimiter
 {
 private:
     const ui64 MaxFileCount;
     std::atomic<ui64> ReservedFileCount = 0;
 
 public:
-    explicit TFileCreationLimiter(ui64 maxFileCount)
+    explicit TCountLimiter(ui64 maxFileCount)
         : MaxFileCount(maxFileCount)
     {}
 
@@ -47,6 +47,6 @@ public:
     }
 };
 
-using TFileCreationLimiterPtr = std::shared_ptr<TFileCreationLimiter>;
+using TCountLimiterPtr = std::shared_ptr<TCountLimiter>;
 
 }   // namespace NCloud::NFileStore::NLoadTest
