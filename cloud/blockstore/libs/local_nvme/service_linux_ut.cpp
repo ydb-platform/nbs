@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/nvme/nvme_stub.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/common/proto_helpers.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
@@ -1232,6 +1233,10 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
                 E_TRY_AGAIN,
                 error.GetCode(),
                 FormatError(error));
+
+            UNIT_ASSERT_C(
+                !HasProtoFlag(error.GetFlags(), NProto::EF_SILENT),
+                FormatError(error));
         }
 
         NVMeManager->UpdateSanitizeStatus(ctrlPath, MakeError(S_OK), 100.0);
@@ -1276,6 +1281,9 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
                 E_TRY_AGAIN,
                 error.GetCode(),
                 FormatError(error));
+            UNIT_ASSERT_C(
+                HasProtoFlag(error.GetFlags(), NProto::EF_SILENT),
+                FormatError(error));
             UNIT_ASSERT_STRING_CONTAINS_C(
                 error.GetMessage(),
                 "Release in progress",
@@ -1289,7 +1297,9 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
                 E_TRY_AGAIN,
                 error.GetCode(),
                 FormatError(error));
-
+            UNIT_ASSERT_C(
+                !HasProtoFlag(error.GetFlags(), NProto::EF_SILENT),
+                FormatError(error));
             UNIT_ASSERT_STRING_CONTAINS_C(
                 error.GetMessage(),
                 "Another operation is in progress",
@@ -1327,6 +1337,9 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
                 E_TRY_AGAIN,
                 error.GetCode(),
                 FormatError(error));
+            UNIT_ASSERT_C(
+                !HasProtoFlag(error.GetFlags(), NProto::EF_SILENT),
+                FormatError(error));
             UNIT_ASSERT_STRING_CONTAINS_C(
                 error.GetMessage(),
                 "Another operation is in progress",
@@ -1349,6 +1362,9 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_TRY_AGAIN,
                 error.GetCode(),
+                FormatError(error));
+            UNIT_ASSERT_C(
+                HasProtoFlag(error.GetFlags(), NProto::EF_SILENT),
                 FormatError(error));
             Sleep(100ms);
         }
@@ -1419,6 +1435,9 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
                 E_TRY_AGAIN,
                 error.GetCode(),
                 FormatError(error));
+            UNIT_ASSERT_C(
+                HasProtoFlag(error.GetFlags(), NProto::EF_SILENT),
+                FormatError(error));
             Sleep(100ms);
         }
 
@@ -1437,6 +1456,9 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_TRY_AGAIN,
                 error.GetCode(),
+                FormatError(error));
+            UNIT_ASSERT_C(
+                HasProtoFlag(error.GetFlags(), NProto::EF_SILENT),
                 FormatError(error));
         }
 
@@ -1475,6 +1497,9 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_TRY_AGAIN,
                 error.GetCode(),
+                FormatError(error));
+            UNIT_ASSERT_C(
+                HasProtoFlag(error.GetFlags(), NProto::EF_SILENT),
                 FormatError(error));
         }
 
