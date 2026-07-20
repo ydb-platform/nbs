@@ -51,6 +51,8 @@ private:
     TString FileSystemId;
     TString CheckpointId;
     TString OriginFqdn;
+    // Whether the filesystem id came from the public gRPC API
+    bool FromUncontrolledSource;
     bool RestoreClientSession;
     ui64 SeqNo;
     bool ReadOnly;
@@ -87,6 +89,7 @@ public:
         ui64 seqNo,
         bool readOnly,
         bool restoreClientSession,
+        bool fromUncontrolledSource,
         TActorId owner);
 
     void Bootstrap(const TActorContext& ctx);
@@ -182,6 +185,7 @@ TCreateSessionActor::TCreateSessionActor(
         ui64 seqNo,
         bool readOnly,
         bool restoreClientSession,
+        bool fromUncontrolledSource,
         TActorId owner)
     : Config(std::move(config))
     , RequestInfo(std::move(requestInfo))
@@ -189,6 +193,7 @@ TCreateSessionActor::TCreateSessionActor(
     , FileSystemId(std::move(fileSystemId))
     , CheckpointId(std::move(checkpointId))
     , OriginFqdn(std::move(originFqdn))
+    , FromUncontrolledSource(fromUncontrolledSource)
     , RestoreClientSession(restoreClientSession)
     , SeqNo(seqNo)
     , ReadOnly(readOnly)
@@ -226,7 +231,11 @@ void TCreateSessionActor::HandleDescribeFileStoreResponse(
                 LogTag().c_str(),
                 FileSystemId.c_str(),
                 FormatError(msg->GetError()).c_str());
-            ReportDescribeFileStoreError();
+
+            // not_found is expected from an uncontrolled source
+            if (!(FromUncontrolledSource && msg->GetStatus() == E_NOT_FOUND)) {
+                ReportDescribeFileStoreError();
+            }
         }
 
         Notify(ctx, msg->GetError(), false);
@@ -797,6 +806,8 @@ void TStorageServiceActor::HandleCreateSession(
         msg->Record.GetMountSeqNumber(),
         msg->Record.GetReadOnly(),
         msg->Record.GetRestoreClientSession(),
+        msg->Record.GetHeaders().GetInternal().GetRequestOrigin() ==
+            NProto::THeaders::TInternal::REQUEST_ORIGIN_UNCONTROLLED,
         SelfId());
 
     auto actorId = NCloud::Register(ctx, std::move(actor));

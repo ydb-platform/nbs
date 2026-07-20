@@ -53,6 +53,19 @@ message THeaders
 
         // Peer address of the request sender.
         string Peer = 5;
+
+        enum ERequestOrigin
+        {
+            REQUEST_ORIGIN_UNSPECIFIED = 0;
+
+            // Internal caller; arguments are picked by us
+            REQUEST_ORIGIN_CONTROLLED = 1;
+
+            // Came over the public gRPC API; arguments are client-supplied
+            REQUEST_ORIGIN_UNCONTROLLED = 2;
+        }
+
+        ERequestOrigin RequestOrigin = 6;
     }
 
     // Internal header, should not be used outside.
