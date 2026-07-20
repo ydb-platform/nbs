@@ -18,7 +18,7 @@ import (
 type collectSnapshotMetricsTask struct {
 	registry                  metrics.Registry
 	storage                   storage.Storage
-	quotaReporter             snapshot.SnapshotStorageQuotaReporter
+	storageQuotaReporter      snapshot.SnapshotStorageQuotaReporter
 	metricsCollectionInterval time.Duration
 }
 
@@ -41,7 +41,7 @@ func (c collectSnapshotMetricsTask) Run(
 	defer ticker.Stop()
 
 	for range ticker.C {
-		err := c.quotaReporter.Report(ctx)
+		err := c.storageQuotaReporter.Report(ctx)
 		if err != nil {
 			logging.Warn(ctx, "Failed to report snapshot storage quota: %v", err)
 		}

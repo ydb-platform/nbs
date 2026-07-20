@@ -1100,6 +1100,7 @@ func GetGauges(
 	name string,
 	labels map[string]string,
 ) []float64 {
+
 	result := make([]float64, 0)
 	for _, port := range ports {
 		value, ok := GetGauge(
@@ -1129,6 +1130,7 @@ func GetCounter(
 	name string,
 	labels map[string]string,
 ) (float64, bool) {
+
 	return getMetric(
 		t,
 		port,
@@ -1146,6 +1148,7 @@ func GetGauge(
 	name string,
 	labels map[string]string,
 ) (float64, bool) {
+
 	return getMetric(
 		t,
 		port,

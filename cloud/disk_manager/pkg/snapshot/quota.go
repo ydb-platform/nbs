@@ -46,8 +46,8 @@ type stubSnapshotStorageQuotaReporter struct {
 }
 
 func (r *stubSnapshotStorageQuotaReporter) Report(_ context.Context) error {
-	r.registry.Gauge("snapshots/quotas/used_bytes").Set(0)
-	r.registry.Gauge("snapshots/quotas/limit_bytes").Set(1000)
+	r.registry.Gauge("snapshots/quotas/usedBytes").Set(0)
+	r.registry.Gauge("snapshots/quotas/limitBytes").Set(1000)
 	return nil
 }
 

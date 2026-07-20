@@ -244,7 +244,7 @@ func RegisterForExecution(
 			return &collectSnapshotMetricsTask{
 				registry:                  metricsRegistry,
 				storage:                   storage,
-				quotaReporter:             snapshotStorageQuotaReporter,
+				storageQuotaReporter:      snapshotStorageQuotaReporter,
 				metricsCollectionInterval: snapshotMetricsCollectionInterval,
 			}
 		},

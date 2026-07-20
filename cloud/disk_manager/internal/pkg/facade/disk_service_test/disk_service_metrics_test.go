@@ -103,12 +103,12 @@ func TestNbsClientReportsMetrics(t *testing.T) {
 	}
 	require.Equal(t, []float64{0}, testcommon.GetGaugesDataplane(
 		t,
-		"snapshots_quotas_used_bytes",
+		"snapshots_quotas_usedBytes",
 		snapshotStorageQuotaLabels,
 	))
 	require.Equal(t, []float64{1000}, testcommon.GetGaugesDataplane(
 		t,
-		"snapshots_quotas_limit_bytes",
+		"snapshots_quotas_limitBytes",
 		snapshotStorageQuotaLabels,
 	))
 
