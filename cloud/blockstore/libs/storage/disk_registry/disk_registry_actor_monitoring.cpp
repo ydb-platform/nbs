@@ -2597,7 +2597,7 @@ void TDiskRegistryActor::RenderDirtyDevicesCleanupOverviewDetailed(
             }
         };
 
-        renderTable("Cleanup up in progress", eraseInProgress, true);
+        renderTable("Cleanup in progress", eraseInProgress, true);
         for (const auto& [ability, devices]: classified) {
             renderTable(ToString(ability), devices, false);
         }

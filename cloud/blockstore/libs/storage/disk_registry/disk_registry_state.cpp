@@ -3121,6 +3121,21 @@ NProto::TError TDiskRegistryState::DeallocateDisk(
     return {};
 }
 
+bool TDiskRegistryState::CanSecureErase(const TDeviceId& uuid) const
+{
+    const NProto::TDeviceConfig* device = FindDevice(uuid);
+    if (!device) {
+        return false;
+    }
+    return CanSecureErase(*device);
+}
+
+bool TDiskRegistryState::CanSecureErase(const NProto::TDeviceConfig& device) const
+{
+    return GetSecureEraseReadiness(device) ==
+           ESecureEraseReadiness::ReadyToErase;
+}
+
 ESecureEraseReadiness TDiskRegistryState::GetSecureEraseReadiness(
     const NProto::TDeviceConfig& device) const
 {
@@ -3172,16 +3187,6 @@ ESecureEraseReadiness TDiskRegistryState::GetSecureEraseReadiness(
     }
 
     return ESecureEraseReadiness::ReadyToErase;
-}
-
-bool TDiskRegistryState::CanSecureErase(const TDeviceId& uuid) const
-{
-    const NProto::TDeviceConfig* device = FindDevice(uuid);
-    if (!device) {
-        return false;
-    }
-    return GetSecureEraseReadiness(*device) ==
-           ESecureEraseReadiness::ReadyToErase;
 }
 
 bool TDiskRegistryState::HasPendingCleanup(const TDiskId& diskId) const

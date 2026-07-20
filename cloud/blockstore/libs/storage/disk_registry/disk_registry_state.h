@@ -751,6 +751,7 @@ public:
     bool IsReadyForCleanup(const TDiskId& diskId) const;
 
     bool CanSecureErase(const TDeviceId& uuid) const;
+    bool CanSecureErase(const NProto::TDeviceConfig& device) const;
     ESecureEraseReadiness GetSecureEraseReadiness(
         const NProto::TDeviceConfig& device) const;
 

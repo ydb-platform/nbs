@@ -150,7 +150,7 @@ void TSecureEraseActor::ReplyAndDie(const TActorContext& ctx, NProto::TError err
     auto response = std::make_unique<TEvDiskRegistryPrivate::TEvSecureEraseResponse>(
         std::move(error),
         PoolName,
-        CleanDevices.size());
+        std::move(CleanDevices));
     NCloud::Reply(ctx, *Request, std::move(response));
 
     NCloud::Send(
@@ -342,10 +342,6 @@ void TDiskRegistryActor::CompleteCleanupDevices(
     for (const auto& diskId: args.SyncDeallocatedDisks) {
         ReplyToPendingDeallocations(ctx, diskId);
     }
-
-    for (const auto& uuid: args.Devices) {
-        DeviceEraseStartTs.erase(uuid);
-    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -356,10 +352,7 @@ void TDiskRegistryActor::SecureErase(const TActorContext& ctx)
     EraseIf(
         dirtyDevices,
         [this](const NProto::TDeviceConfig& device)
-        {
-            return State->GetSecureEraseReadiness(device) !=
-                   ESecureEraseReadiness::ReadyToErase;
-        });
+        { return !State->CanSecureErase(device); });
 
     if (!dirtyDevices) {
         LOG_DEBUG(
@@ -487,9 +480,12 @@ void TDiskRegistryActor::HandleSecureEraseResponse(
         TBlockStoreComponents::DISK_REGISTRY,
         "%s Received SecureErase response: CleanDevices=%lu",
         LogTitle.GetWithTime().c_str(),
-        msg->CleanDevices);
+        msg->CleanDevices.size());
 
     SecureEraseInProgressPerPool.erase(msg->PoolName);
+    for (const auto& uuid: msg->CleanDevices) {
+        DeviceEraseStartTs.erase(uuid);
+    }
     SecureErase(ctx);
 }
 
