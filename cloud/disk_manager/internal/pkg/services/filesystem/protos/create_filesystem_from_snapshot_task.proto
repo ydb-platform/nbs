@@ -15,5 +15,5 @@ message CreateFilesystemFromSnapshotRequest {
 
 message CreateFilesystemFromSnapshotTaskState {
     string SelectedCellId = 1;
-    string TransferFromSnapshotTaskID = 2;
+    string TransferFromSnapshotTaskId = 2;
 }

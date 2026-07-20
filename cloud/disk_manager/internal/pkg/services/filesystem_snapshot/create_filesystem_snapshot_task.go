@@ -116,10 +116,12 @@ func (t *createFilesystemSnapshotTask) Run(
 		return nil
 	}
 
-	taskID, err := t.scheduler.ScheduleTask(
+	// TODO: (jkuradobery) Create fs checkpoint once checkpoints are implemented on the  filestore size.
+	taskID, err := t.scheduler.ScheduleZonalTask(
 		headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_run"),
 		"dataplane.CreateSnapshotFromFilesystem",
 		"",
+		filesystem.ZoneId,
 		&dataplane_protos.CreateFilesystemSnapshotRequest{
 			Filesystem:   filesystem,
 			CheckpointId: "",
@@ -142,6 +144,8 @@ func (t *createFilesystemSnapshotTask) Run(
 		return err
 	}
 
+	// TODO: (jkuradobery) pass actual storage size once data backup is implemented.
+	// See: https://github.com/ydb-platform/nbs/issues/1559
 	return t.storage.FilesystemSnapshotCreated(
 		ctx,
 		t.request.DstSnapshotId,

@@ -124,7 +124,7 @@ func (t *createFilesystemFromSnapshotTask) Run(
 		return err
 	}
 
-	t.state.TransferFromSnapshotTaskID = taskID
+	t.state.TransferFromSnapshotTaskId = taskID
 
 	err = execCtx.SaveState(ctx)
 	if err != nil {

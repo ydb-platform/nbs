@@ -203,7 +203,7 @@ func TestCreateFilesystemTaskFromSnapshot(t *testing.T) {
 	err := task.Run(ctx, execCtx)
 	mock.AssertExpectationsForObjects(t, storage, scheduler, nfsFactory, nfsClient, execCtx)
 	require.NoError(t, err)
-	require.Equal(t, "transfer", task.state.TransferFromSnapshotTaskID)
+	require.Equal(t, "transfer", task.state.TransferFromSnapshotTaskId)
 }
 
 func TestCancelCreateFilesystemTask(t *testing.T) {
