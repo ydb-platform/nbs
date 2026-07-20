@@ -169,15 +169,13 @@ private:
     NProto::TError MirrorRequest(TFiberMain fiberMain, TRequest request)
     {
         TVector<silk::FiberFuture> futures(Devices.size());
-        TVector<TRequest> requests(Devices.size());
         TVector<TResponse> responses(Devices.size());
         for (ui32 i = 0; i < Devices.size(); ++i) {
-            requests[i] = request;
             int r = silk::FiberScheduler::run(
                 fiberMain,
                 TParams{
                     .Device = Devices[i],
-                    .Request = &requests[i],
+                    .Request = &request,
                     .Response = &responses[i]},
                 &futures[i]);
             Y_ABORT_UNLESS(r == 0, "failed to spawn fiber: %s", ::strerror(r));
