@@ -160,6 +160,8 @@ func (t *createFilesystemSnapshotTask) Cancel(
 	execCtx tasks.ExecutionContext,
 ) error {
 
+	// TODO: (jkuradobery) Implement cancellation of the snapshot creation task.
+	// See: https://github.com/ydb-platform/nbs/issues/1559
 	return nil
 }
 
