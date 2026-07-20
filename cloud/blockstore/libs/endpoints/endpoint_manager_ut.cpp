@@ -1758,6 +1758,14 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
 
         UNIT_ASSERT(wrongCount != correctCount);
         UNIT_ASSERT_VALUES_EQUAL(wrongCount, static_cast<int>(*configCounter));
+
+        auto response =
+            ListEndpoints(*manager).GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_VALUES_EQUAL(E_FAIL, response.GetError().GetCode());
+        UNIT_ASSERT(!response.GetEndpointsWereRestored());
+        UNIT_ASSERT_STRING_CONTAINS(
+            response.GetError().GetMessage(),
+            "failed to restore 3 endpoint(s)");
     }
 
     Y_UNIT_TEST(ShouldRemoveEndpointForNotFoundVolume)
