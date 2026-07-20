@@ -57,6 +57,7 @@ jobs:
     steps:
     - uses: actions/checkout@v7
       with:
+        ref: ${{ github.event.pull_request.head.sha }}
         fetch-depth: 0
         clean: true
     - uses: actions/setup-python@v6.3.0

@@ -179,5 +179,5 @@ TCommandPtr NewDiagnoseFilesystemCommand()
 {
     return std::make_shared<TDiagnoseFilesystemCommand>();
 }
-  
+
 }   // namespace NCloud::NFileStore::NClient
