@@ -672,6 +672,24 @@ private:
         return false;
     }
 
+    NProto::EEndpointRestoringState GetEndpointRestoringState()
+    {
+        switch (AtomicGet(RestoringStage)) {
+            case WaitingForRestoring:
+                return NProto::ENDPOINT_RESTORING_STATE_WAITING_FOR_RESTORING;
+            case ReadingStorage:
+                return NProto::ENDPOINT_RESTORING_STATE_READING_STORAGE;
+            case StartingEndpoints:
+                return NProto::ENDPOINT_RESTORING_STATE_STARTING_ENDPOINTS;
+            case Completed:
+                return NProto::ENDPOINT_RESTORING_STATE_COMPLETED;
+            case Failed:
+                return NProto::ENDPOINT_RESTORING_STATE_FAILED;
+        }
+
+        return NProto::ENDPOINT_RESTORING_STATE_FAILED;
+    }
+
     NProto::TStartEndpointResponse StartEndpointImpl(
         TCallContextPtr ctx,
         std::shared_ptr<NProto::TStartEndpointRequest> request,
@@ -1251,13 +1269,6 @@ NProto::TListEndpointsResponse TEndpointManager::DoListEndpoints(
     Y_UNUSED(ctx);
     Y_UNUSED(request);
 
-    if (AtomicGet(RestoringStage) == Failed) {
-        return TErrorResponse(
-            E_FAIL,
-            TStringBuilder()
-                << "failed to restore " << AtomicGet(RestoringErrors)
-                << " endpoint(s)");
-    }
 
     NProto::TListEndpointsResponse response;
     auto& responseEndpoints = *response.MutableEndpoints();
@@ -1267,8 +1278,12 @@ NProto::TListEndpointsResponse TEndpointManager::DoListEndpoints(
         responseEndpoints.Add()->CopyFrom(*endpoint->Request);
     }
 
+    const auto restoringStage = AtomicGet(RestoringStage);
     response.SetEndpointsWereRestored(
-        AtomicGet(RestoringStage) == Completed);
+        restoringStage == Completed || restoringStage == Failed);
+    response.SetEndpointRestoringState(GetEndpointRestoringState());
+    response.SetEndpointRestoringErrorCount(AtomicGet(RestoringErrors));
+
     return response;
 }
 
