@@ -11,6 +11,7 @@
 #include <cloud/blockstore/libs/encryption/encryption_client.h>
 #include <cloud/blockstore/libs/encryption/encryption_key.h>
 #include <cloud/blockstore/libs/service/service_test.h>
+#include <cloud/blockstore/libs/service/storage.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
 #include <cloud/blockstore/libs/storage/model/volume_label.h>
 
@@ -46,6 +47,51 @@ struct TTestDumpable
     {
         Y_UNUSED(out);
     }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TTestCellManager: public ICellManager
+{
+    using TGetCellEndpointHandler = std::function<TResultOrError<TCellHostEndpoint>(
+        const TString& cellId,
+        const NClient::TClientAppConfigPtr& clientConfig)>;
+
+    TGetCellEndpointHandler GetCellEndpointHandler;
+
+    TTestCellManager()
+        : ICellManager(nullptr)
+    {}
+
+    TResultOrError<TCellHostEndpoint> GetCellEndpoint(
+        const TString& cellId,
+        const NClient::TClientAppConfigPtr& clientConfig) override
+    {
+        UNIT_ASSERT(GetCellEndpointHandler);
+        return GetCellEndpointHandler(cellId, clientConfig);
+    }
+
+    TDescribeVolumeFuture DescribeVolume(
+        TCallContextPtr callContext,
+        const TString& diskId,
+        const NProto::THeaders& headers,
+        IBlockStorePtr service,
+        const NProto::TClientConfig& clientConfig) override
+    {
+        Y_UNUSED(clientConfig);
+
+        auto req = std::make_shared<NProto::TDescribeVolumeRequest>();
+        req->MutableHeaders()->CopyFrom(headers);
+        req->SetDiskId(diskId);
+
+        return service->DescribeVolume(std::move(callContext), std::move(req));
+    }
+
+    void Start() override
+    {}
+
+    void Stop() override
+    {}
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -656,6 +702,138 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
         Sleep(TDuration::Seconds(1));
 
         scheduler->Stop();
+    }
+
+    void ShouldForceRemoteMountModeForCellEndpoints(bool temporaryServer)
+    {
+        TString socketPath = "testSocket";
+        TString diskId = "testDiskId";
+        TString cellId = "testCellId";
+
+        auto service = std::make_shared<TTestService>();
+        service->DescribeVolumeHandler =
+            [&] (std::shared_ptr<NProto::TDescribeVolumeRequest> request) {
+                auto response = NProto::TDescribeVolumeResponse();
+                response.MutableVolume()->SetDiskId(request->GetDiskId());
+                response.SetCellId(cellId);
+                return MakeFuture(std::move(response));
+            };
+
+        TVector<NProto::EVolumeMountMode> mountModes;
+
+        auto cellService = std::make_shared<TTestService>();
+        cellService->MountVolumeHandler =
+            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
+                mountModes.push_back(request->GetVolumeMountMode());
+
+                NProto::TMountVolumeResponse response;
+                response.MutableVolume()->SetDiskId(request->GetDiskId());
+                response.SetInactiveClientsTimeout(100);
+                return MakeFuture(response);
+            };
+        cellService->UnmountVolumeHandler =
+            [&] (std::shared_ptr<NProto::TUnmountVolumeRequest> request) {
+                Y_UNUSED(request);
+                return MakeFuture(NProto::TUnmountVolumeResponse());
+            };
+
+        auto cellManager = std::make_shared<TTestCellManager>();
+        cellManager->GetCellEndpointHandler =
+            [&] (const TString& requestedCellId,
+                 const NClient::TClientAppConfigPtr& clientConfig)
+                -> TResultOrError<TCellHostEndpoint>
+            {
+                UNIT_ASSERT_VALUES_EQUAL(cellId, requestedCellId);
+                return TCellHostEndpoint(
+                    clientConfig,
+                    "cell-fqdn",
+                    cellService,
+                    CreateStorageStub());
+            };
+
+        auto executor = TExecutor::Create("TestService");
+        auto logging = CreateLoggingService("console");
+
+        TSessionManagerOptions options;
+        options.TemporaryServer = temporaryServer;
+        options.DisableDurableClient = true;
+
+        auto encryptionClientFactory = CreateEncryptionClientFactory(
+            logging,
+            CreateDefaultEncryptionKeyProvider(),
+            NProto::EZP_WRITE_ENCRYPTED_ZEROS);
+
+        auto sessionManager = CreateSessionManager(
+            CreateWallClockTimer(),
+            CreateSchedulerStub(),
+            logging,
+            CreateMonitoringServiceStub(),
+            CreateRequestStatsStub(),
+            CreateVolumeStatsStub(),
+            CreateServerStatsStub(),
+            service,
+            cellManager,
+            CreateDefaultStorageProvider(service),
+            encryptionClientFactory,
+            executor,
+            options);
+
+        executor->Start();
+        Y_DEFER {
+            executor->Stop();
+        };
+
+        NProto::TStartEndpointRequest request;
+        request.SetUnixSocketPath(socketPath);
+        request.SetDiskId(diskId);
+        request.SetClientId("testClientId");
+        request.SetVolumeMountMode(NProto::VOLUME_MOUNT_LOCAL);
+
+        auto expectedMountMode = temporaryServer
+            ? NProto::VOLUME_MOUNT_REMOTE
+            : NProto::VOLUME_MOUNT_LOCAL;
+
+        {
+            auto future = sessionManager->CreateSession(
+                MakeIntrusive<TCallContext>(),
+                request);
+
+            auto sessionOrError = future.GetValueSync();
+            UNIT_ASSERT_C(!HasError(sessionOrError), sessionOrError.GetError());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(1, mountModes.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<int>(expectedMountMode),
+            static_cast<int>(mountModes.back()));
+
+        {
+            auto future = sessionManager->AlterSession(
+                MakeIntrusive<TCallContext>(),
+                socketPath,
+                NProto::VOLUME_ACCESS_READ_WRITE,
+                NProto::VOLUME_MOUNT_LOCAL,
+                1,
+                request.GetHeaders());
+
+            auto error = future.GetValueSync();
+            UNIT_ASSERT_C(!HasError(error), error);
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(2, mountModes.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<int>(expectedMountMode),
+            static_cast<int>(mountModes.back()));
+    }
+
+    Y_UNIT_TEST(ShouldForceRemoteMountModeForCellEndpointsWhenTemporaryServer)
+    {
+        ShouldForceRemoteMountModeForCellEndpoints(true);
+    }
+
+    Y_UNIT_TEST(ShouldNotForceRemoteMountModeForCellEndpointsWhenNotTemporaryServer)
+    {
+        ShouldForceRemoteMountModeForCellEndpoints(false);
     }
 }
 

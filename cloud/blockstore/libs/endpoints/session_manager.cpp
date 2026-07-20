@@ -56,6 +56,7 @@ private:
     const TString ClientId;
     const TString DiskId;
     NProto::TStartEndpointRequest StartRequest;
+    const TString CellId;
 
     std::weak_ptr<TSessionSwitchingGuard> SwitchingGuard;
     TString SessionId;
@@ -70,7 +71,8 @@ public:
             IThrottlerProviderPtr throttlerProvider,
             TString clientId,
             TString diskId,
-            NProto::TStartEndpointRequest startRequest)
+            NProto::TStartEndpointRequest startRequest,
+            TString cellId)
         : Executor(executor)
         , SwitchableSession(std::move(switchableSession))
         , Session(std::move(session))
@@ -80,6 +82,7 @@ public:
         , ClientId(std::move(clientId))
         , DiskId(std::move(diskId))
         , StartRequest(std::move(startRequest))
+        , CellId(std::move(cellId))
     {}
 
     NProto::TError Start(TCallContextPtr callContext, NProto::THeaders headers)
@@ -144,6 +147,11 @@ public:
     TString GetDiskId() const
     {
         return DiskId;
+    }
+
+    TString GetCellId() const
+    {
+        return CellId;
     }
 
     NProto::TClientPerformanceProfile GetPerformanceProfile() const
@@ -543,7 +551,8 @@ private:
         NProto::EVolumeAccessMode accessMode) const;
 
     static TSessionConfig CreateSessionConfig(
-        const NProto::TStartEndpointRequest& request);
+        const NProto::TStartEndpointRequest& request,
+        bool forceRemoteMount);
 
     void SwitchSessionForEndpoint(
         const TString& socketPath,
@@ -726,7 +735,9 @@ NProto::TError TSessionManager::AlterSessionImpl(
     return endpoint->Alter(
         std::move(callContext),
         accessMode,
-        mountMode,
+        endpoint->GetCellId() && Options.TemporaryServer
+            ? NProto::VOLUME_MOUNT_REMOTE
+            : mountMode,
         mountSeqNumber,
         headers);
 }
@@ -993,7 +1004,7 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
         VolumeStats,
         client,
         std::move(clientConfig),
-        CreateSessionConfig(request));
+        CreateSessionConfig(request, !cellId.empty() && Options.TemporaryServer));
 
     auto switchableSession = CreateSwitchableSession(
         Logging,
@@ -1011,7 +1022,8 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
         ThrottlerProvider,
         clientId,
         volume.GetDiskId(),
-        request);
+        request,
+        cellId);
 }
 
 TClientAppConfigPtr TSessionManager::CreateClientConfig(
@@ -1046,13 +1058,17 @@ TClientAppConfigPtr TSessionManager::CreateClientConfig(
 
 // static
 TSessionConfig TSessionManager::CreateSessionConfig(
-    const NProto::TStartEndpointRequest& request)
+    const NProto::TStartEndpointRequest& request,
+    bool forceRemouteMount)
 {
     TSessionConfig config;
     config.DiskId = request.GetDiskId();
     config.InstanceId = request.GetInstanceId();
     config.AccessMode = request.GetVolumeAccessMode();
     config.MountMode = request.GetVolumeMountMode();
+    if (forceRemouteMount) {
+        config.MountMode = NProto::VOLUME_MOUNT_REMOTE;
+    }
     config.MountFlags = request.GetMountFlags();
     config.IpcType = request.GetIpcType();
     config.ClientVersionInfo = request.GetClientVersionInfo();
