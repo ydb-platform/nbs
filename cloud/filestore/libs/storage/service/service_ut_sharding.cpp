@@ -5606,6 +5606,66 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         UNIT_ASSERT_VALUES_EQUAL(expected, ids);
     }
 
+    SERVICE_TEST(ShouldCreateShardsUponExplicitShardCountInCreateRequest)
+    {
+        // AutomaticShardCreationEnabled is left disabled - shards should be
+        // created only because of the explicit ShardCount in the request
+        UNIT_ASSERT(!config.GetAutomaticShardCreationEnabled());
+        TTestEnv env({}, config);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        const TString fsId = "test";
+        auto request = service.CreateCreateFileStoreRequest(fsId, 1_GB / 4_KB);
+        request->Record.SetShardCount(3);
+        service.SendCreateFileStoreRequest(std::move(request));
+        auto response = service.RecvCreateFileStoreResponse();
+        UNIT_ASSERT_C(
+            SUCCEEDED(response->GetStatus()),
+            response->GetErrorReason());
+
+        auto listIds = [&] {
+            auto listing = service.ListFileStores();
+            auto fsIds = listing->Record.GetFileStores();
+            TVector<TString> ids(fsIds.begin(), fsIds.end());
+            Sort(ids);
+            return ids;
+        };
+
+        TVector<TString> expected = {
+            fsId,
+            fsId + "_s1",
+            fsId + "_s2",
+            fsId + "_s3",
+        };
+        UNIT_ASSERT_VALUES_EQUAL(expected, listIds());
+
+        // without an explicit ShardCount no shards should be created
+        const TString fsId2 = "test2";
+        service.CreateFileStore(fsId2, 1_GB / 4_KB);
+
+        expected.push_back(fsId2);
+        Sort(expected);
+        UNIT_ASSERT_VALUES_EQUAL(expected, listIds());
+
+        // resizing the sharded filesystem without an explicit ShardCount
+        // should keep the shard layout intact
+        service.ResizeFileStore(fsId, 2_GB / 4_KB);
+        UNIT_ASSERT_VALUES_EQUAL(expected, listIds());
+
+        // resizing with a larger explicit ShardCount should add shards
+        service.ResizeFileStore(fsId, 2_GB / 4_KB, false, 4);
+        expected.push_back(fsId + "_s4");
+        Sort(expected);
+        UNIT_ASSERT_VALUES_EQUAL(expected, listIds());
+
+        // decreasing the shard count is prohibited
+        service.AssertResizeFileStoreFailed(fsId, 2_GB / 4_KB, false, 2);
+        UNIT_ASSERT_VALUES_EQUAL(expected, listIds());
+    }
+
     SERVICE_TEST(ShouldCreateDirectoryStructureInShards)
     {
         config.SetDirectoryCreationInShardsEnabled(true);
