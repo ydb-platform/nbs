@@ -259,12 +259,10 @@ struct TBootstrap
         proto.SetDebug(true);
         proto.SetSocketPath(SocketPath);
         proto.SetFileSystemId(FileSystemId);
-        if (featuresConfig.GetAsyncDestroyHandleEnabled() ||
-            featuresConfig.GetAsyncDestroyReadOnlyHandleEnabled())
-        {
-            proto.SetHandleOpsQueuePath(TempDir.Path() / "HandleOpsQueue");
-            proto.SetHandleOpsQueueSize(handleOpsQueueSize);
-        }
+        // Keep the path configured to allow restoring
+        // an existing HandleOpsQueue.
+        proto.SetHandleOpsQueuePath(TempDir.Path() / "HandleOpsQueue");
+        proto.SetHandleOpsQueueSize(handleOpsQueueSize);
 
         proto.SetDirectoryHandlesStoragePath(
             TempDir.Path() / "DirectoryHandles");
@@ -3454,6 +3452,130 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                     true);
 
         UNIT_ASSERT_VALUES_EQUAL(1, static_cast<int>(*handleOpsQueueError));
+    }
+
+    Y_UNIT_TEST(ShouldDrainHandleOpsQueueAfterAsyncDestroyDisabled)
+    {
+        const TString sessionId = CreateGuidAsString();
+        const ui64 queuedNodeId = 10;
+        const ui64 queuedHandle = 2;
+        const ui64 directNodeId = 11;
+        const ui64 directHandle = 3;
+
+        auto createBootstrap =
+            [&](bool asyncDestroyHandleEnabled, ISchedulerPtr scheduler)
+        {
+            NProto::TFileStoreFeatures features;
+            features.SetAsyncDestroyHandleEnabled(asyncDestroyHandleEnabled);
+
+            TBootstrap bootstrap(
+                CreateWallClockTimer(),
+                std::move(scheduler),
+                features);
+
+            bootstrap.Service->CreateSessionHandler =
+                [features, &sessionId](auto, auto)
+            {
+                NProto::TCreateSessionResponse result;
+                result.MutableSession()->SetSessionId(sessionId);
+                result.MutableFileStore()->SetBlockSize(4096);
+                result.MutableFileStore()->MutableFeatures()->CopyFrom(
+                    features);
+                result.MutableFileStore()->SetFileSystemId(FileSystemId);
+                return MakeFuture(result);
+            };
+
+            return bootstrap;
+        };
+
+        {
+            auto bootstrap = createBootstrap(true, CreateScheduler());
+            auto destroyStarted = NewPromise<void>();
+            bootstrap.Service->SetHandlerDestroyHandle(
+                [destroyStarted](auto, auto) mutable
+                {
+                    destroyStarted.TrySetValue();
+                    return NewPromise<NProto::TDestroyHandleResponse>();
+                });
+
+            bootstrap.Start();
+            Y_DEFER
+            {
+                bootstrap.Stop();
+            };
+
+            auto release = bootstrap.Fuse->SendRequest<TReleaseRequest>(
+                queuedNodeId,
+                queuedHandle,
+                O_RDONLY);
+            UNIT_ASSERT_NO_EXCEPTION(release.GetValue(WaitTimeout));
+            UNIT_ASSERT(destroyStarted.GetFuture().Wait(WaitTimeout));
+
+            bootstrap.ModuleStatsRegistry->UpdateStats(true);
+            auto counters = bootstrap.GetHandleOpsQueueCounters();
+            auto entryCount = counters->FindCounter("EntryCount");
+            UNIT_ASSERT(entryCount);
+            UNIT_ASSERT_VALUES_EQUAL(1, entryCount->GetAtomic());
+
+            auto suspend = bootstrap.Loop->SuspendAsync();
+            UNIT_ASSERT(suspend.Wait(WaitTimeout));
+        }
+
+        {
+            auto scheduler = std::make_shared<TTestScheduler>();
+            auto bootstrap = createBootstrap(false, scheduler);
+            std::atomic_uint destroyHandleCalled = 0;
+            bootstrap.Service->SetHandlerDestroyHandle(
+                [&](auto, const auto& request)
+                {
+                    if (++destroyHandleCalled == 1) {
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            queuedNodeId,
+                            request->GetNodeId());
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            queuedHandle,
+                            request->GetHandle());
+                    } else {
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            directNodeId,
+                            request->GetNodeId());
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            directHandle,
+                            request->GetHandle());
+                    }
+                    return MakeFuture(NProto::TDestroyHandleResponse{});
+                });
+
+            bootstrap.Start();
+            Y_DEFER
+            {
+                bootstrap.Stop();
+            };
+
+            bootstrap.ModuleStatsRegistry->UpdateStats(true);
+            auto counters = bootstrap.GetHandleOpsQueueCounters();
+            auto entryCount = counters->FindCounter("EntryCount");
+            UNIT_ASSERT(entryCount);
+            UNIT_ASSERT_VALUES_EQUAL(1, entryCount->GetAtomic());
+
+            scheduler->RunAllScheduledTasks();
+            UNIT_ASSERT_VALUES_EQUAL(1, destroyHandleCalled.load());
+            bootstrap.ModuleStatsRegistry->UpdateStats(true);
+            UNIT_ASSERT_VALUES_EQUAL(0, entryCount->GetAtomic());
+
+            auto release = bootstrap.Fuse->SendRequest<TReleaseRequest>(
+                directNodeId,
+                directHandle,
+                O_RDONLY);
+            UNIT_ASSERT_NO_EXCEPTION(release.GetValue(WaitTimeout));
+
+            // Do not run the test scheduler after Release. If the request were
+            // added to HandleOpsQueue, DestroyHandle would not be called and
+            // EntryCount would be 1.
+            UNIT_ASSERT_VALUES_EQUAL(2, destroyHandleCalled.load());
+            bootstrap.ModuleStatsRegistry->UpdateStats(true);
+            UNIT_ASSERT_VALUES_EQUAL(0, entryCount->GetAtomic());
+        }
     }
 
     Y_UNIT_TEST(ShouldReadAndWriteWithServerWriteBackCacheEnabled)
