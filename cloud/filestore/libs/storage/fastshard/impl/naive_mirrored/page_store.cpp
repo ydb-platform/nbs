@@ -31,11 +31,12 @@ void TPageStore::RollbackPages(const TVector<ui64>& pages)
 void TPageStore::WritePage(
     ui64 pageNo,
     TString page,
-    NProto::TWriteLogRecordRequest& logRecord)
+    TVector<TPageGroup>& logRecord)
 {
-    auto* pg = logRecord.AddPageGroups();
-    pg->SetFirstPageNo(pageNo);
-    pg->AddContent(page);
+    logRecord.push_back({
+        .FirstPageNo = pageNo,
+        .Content = TVector<TString>({page})
+    });
     PageCache[pageNo] = {.Content = std::move(page), .Dirty = true};
 }
 
@@ -59,34 +60,45 @@ NProto::TError TPageStore::ReadPage(ui64 pageNo, TString* page) const
     pg->SetPageCount(1);
     pg->SetPageSize(PageSize);
 
-    auto response = Storage->ReadPages(request);
-    if (HasError(response.GetError())) {
-        return response.GetError();
+    TVector<TPageGroupRef> pageGroupRefs = {{
+        .FirstPageNo = pageNo,
+        .PageCount = 1,
+        .PageSize = PageSize,
+    }};
+
+    TVector<TPageGroup> pageGroups;
+
+    auto error = Storage->ReadPages(
+        {} /* headers */,
+        pageGroupRefs,
+        &pageGroups);
+    if (HasError(error)) {
+        return error;
     }
 
-    if (response.PageGroupsSize() != 1) {
+    if (pageGroups.size() != 1) {
         return MakeError(
             E_BADMSG,
             TStringBuilder() << "unexpected pg count: "
-                << response.PageGroupsSize());
+                << pageGroups.size());
     }
 
-    auto& rpg = *response.MutablePageGroups(0);
-    if (rpg.ContentSize() != 1) {
+    auto& rpg = pageGroups[0];
+    if (rpg.Content.size() != 1) {
         return MakeError(
             E_BADMSG,
             TStringBuilder() << "unexpected page count: "
-                << rpg.ContentSize());
+                << rpg.Content.size());
     }
 
-    if (rpg.GetContent(0).size() < PageSize) {
+    if (rpg.Content[0].size() < PageSize) {
         return MakeError(
             E_BADMSG,
             TStringBuilder() << "unexpected page size: "
-                << rpg.GetContent(0).size());
+                << rpg.Content[0].size());
     }
 
-    *page = std::move(*rpg.MutableContent(0));
+    *page = std::move(rpg.Content[0]);
     PageCache[pageNo] = {.Content = *page, .Dirty = false};
     return {};
 }

@@ -63,9 +63,7 @@ public:
     }
 
 public:
-    NProto::TError Put(
-        const TValue& v,
-        NProto::TWriteLogRecordRequest& logRecord)
+    NProto::TError Put(const TValue& v, TVector<TPageGroup>& pageGroups)
     {
         auto k = MakeKey(v);
         TValue existing{};
@@ -75,15 +73,15 @@ public:
             return error;
         }
 
-        return DoPut(v, slotNo, logRecord);
+        return DoPut(v, slotNo, pageGroups);
     }
 
     NProto::TError Update(
         const TValue& v,
         const ui64 slotNo,
-        NProto::TWriteLogRecordRequest& logRecord)
+        TVector<TPageGroup>& pageGroups)
     {
-        return DoPut(v, slotNo, logRecord);
+        return DoPut(v, slotNo, pageGroups);
     }
 
     NProto::TError Get(const TKey& k, TValue* v, ui64* slotNo) const
@@ -95,10 +93,10 @@ private:
     void WritePage(
         ui64 slotNo,
         TString page,
-        NProto::TWriteLogRecordRequest& logRecord)
+        TVector<TPageGroup>& pageGroups)
     {
         const ui64 pageNo = FirstPageNo + slotNo / SlotsPerPage;
-        PageStore->WritePage(pageNo, std::move(page), logRecord);
+        PageStore->WritePage(pageNo, std::move(page), pageGroups);
     }
 
     NProto::TError ReadPage(ui64 slotNo, TString* page) const
@@ -184,7 +182,7 @@ private:
     NProto::TError DoPut(
         const TValue& v,
         ui64 slotNo,
-        NProto::TWriteLogRecordRequest& logRecord)
+        TVector<TPageGroup>& pageGroups)
     {
         TString page;
         auto error = ReadPage(slotNo, &page);
@@ -196,12 +194,12 @@ private:
         char* ptr = page.begin() + relSlotNo * SlotSize;
         memcpy(ptr, &v, sizeof(TValue));
 
-        WritePage(slotNo, std::move(page), logRecord);
+        WritePage(slotNo, std::move(page), pageGroups);
 
         SILK_DEBUG(
             "pht DoPut: slotNo=%lu, logRecordPGs=%lu",
             slotNo,
-            logRecord.PageGroupsSize());
+            pageGroups.size());
 
         return {};
     }

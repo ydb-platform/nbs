@@ -37,7 +37,7 @@ public:
     void WritePage(
         ui64 pageNo,
         TString page,
-        NProto::TWriteLogRecordRequest& logRecord);
+        TVector<TPageGroup>& logRecord);
     NProto::TError ReadPage(ui64 pageNo, TString* page) const;
 };
 

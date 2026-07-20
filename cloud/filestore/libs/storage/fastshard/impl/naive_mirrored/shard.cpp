@@ -103,6 +103,14 @@ ui64 RoundUp(ui64 n, ui64 by)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+struct TWriteContext
+{
+    NProto::TDeviceRequestHeaders Headers;
+    TVector<TPageGroup> PageGroups;
+};
+
+////////////////////////////////////////////////////////////////////////////////
 // This data structure is a PoC, it's not really efficient, can be easily
 // optimized.
 
@@ -160,7 +168,7 @@ public:
         ui32 flags,
         const NProto::TSetNodeAttrRequest::TUpdate& update,
         NProto::TNodeAttr* attr,
-        NProto::TWriteLogRecordRequest& logRecord)
+        TWriteContext& writeContext)
     {
         TNodeTableSlot slot{};
         ui64 slotNo = 0;
@@ -191,17 +199,17 @@ public:
             slot.Size = update.GetSize();
         }
 
-        Slots->Update(slot, slotNo, logRecord);
+        Slots->Update(slot, slotNo, writeContext.PageGroups);
         *attr = Convert(slot);
         return {};
     }
 
     NProto::TError PutNode(
         const NProto::TNodeAttr& attr,
-        NProto::TWriteLogRecordRequest& logRecord)
+        TWriteContext& writeContext)
     {
         auto slot = Convert(attr);
-        return Slots->Put(slot, logRecord);
+        return Slots->Put(slot, writeContext.PageGroups);
     }
 
     NProto::TError GetNode(ui64 nodeId, NProto::TNodeAttr* attr) const
@@ -262,14 +270,14 @@ public:
     NProto::TError Put(
         const TString& name,
         ui64 nodeId,
-        NProto::TWriteLogRecordRequest& logRecord)
+        TWriteContext& writeContext)
     {
         TNameTableSlot slot{};
         Y_ABORT_UNLESS(name.size() < NameCapacity);
         memcpy(slot.Name, name.data(), name.size());
         memset(slot.Name + name.size(), 0, NameCapacity - name.size());
         slot.NodeId = nodeId;
-        return Slots->Put(slot, logRecord);
+        return Slots->Put(slot, writeContext.PageGroups);
     }
 
     NProto::TError Get(const TString& name, ui64* nodeId) const
@@ -309,12 +317,12 @@ auto CreateAttrs(ui64 id, ui32 mode, ui64 size, ui64 uid, ui64 gid)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TVector<ui64> CollectPages(const NProto::TWriteLogRecordRequest& logRecord)
+TVector<ui64> CollectPages(const TWriteContext& writeContext)
 {
     TVector<ui64> pages;
-    for (const auto& pg: logRecord.GetPageGroups()) {
-        for (ui64 i = 0; i < pg.ContentSize(); ++i) {
-            pages.push_back(pg.GetFirstPageNo() + i);
+    for (const auto& pg: writeContext.PageGroups) {
+        for (ui64 i = 0; i < pg.Content.size(); ++i) {
+            pages.push_back(pg.FirstPageNo + i);
         }
     }
 
@@ -349,12 +357,15 @@ public:
         // Using only one storage group for now.
         //
 
-        TVector<IStorageNodePtr> nodes;
+        TVector<TStorageDevice> devices;
         const auto& sg = Config.GetStorageGroups(0);
         for (const auto& d: sg.GetDevices()) {
-            nodes.push_back(CreateStorageNodeClient(d.GetHost(), d.GetPort()));
+            devices.push_back({
+                .Node = CreateStorageNodeClient(d.GetHost(), d.GetPort()),
+                .DeviceUUID = d.GetDeviceId(),
+            });
         }
-        Storage = CreateNaiveMirroredStorageGroup(std::move(nodes));
+        Storage = CreateNaiveMirroredStorageGroup(std::move(devices));
         PageStore = std::make_shared<TPageStore>(Storage, PageSize);
 
         const ui64 nodeTablePageCount = Nodes.Init(Config, PageStore);
@@ -418,21 +429,23 @@ public:
     {
         NProto::TSetNodeAttrResponse response;
 
-        NProto::TWriteLogRecordRequest logRecord;
+        TWriteContext writeContext;
         auto error = Nodes.UpdateNode(
             request.GetNodeId(),
             request.GetFlags(),
             request.GetUpdate(),
             response.MutableNode(),
-            logRecord);
+            writeContext);
         if (HasError(error)) {
             *response.MutableError() = std::move(error);
         }
 
-        auto pages = CollectPages(logRecord);
-        auto writeResponse = Storage->WriteLogRecord(std::move(logRecord));
-        if (HasError(writeResponse.GetError())) {
-            *response.MutableError() = std::move(*writeResponse.MutableError());
+        auto pages = CollectPages(writeContext);
+        error = Storage->WriteLogRecord(
+            std::move(writeContext.Headers),
+            std::move(writeContext.PageGroups));
+        if (HasError(error)) {
+            *response.MutableError() = std::move(error);
             PageStore->RollbackPages(pages);
         } else {
             PageStore->CommitPages(pages);
@@ -464,7 +477,7 @@ public:
             return response;
         }
 
-        NProto::TWriteLogRecordRequest logRecord;
+        TWriteContext writeContext;
 
         auto attr = CreateAttrs(
             ShardedId(Nodes.AllocateNodeId(), ShardNo),
@@ -472,22 +485,24 @@ public:
             0 /* size */,
             request.GetUid(),
             request.GetGid());
-        auto error = Nodes.PutNode(attr, logRecord);
+        auto error = Nodes.PutNode(attr, writeContext);
         if (HasError(error)) {
             *response.MutableError() = std::move(error);
             return response;
         }
 
-        error = Names.Put(request.GetName(), attr.GetId(), logRecord);
+        error = Names.Put(request.GetName(), attr.GetId(), writeContext);
         if (HasError(error)) {
             *response.MutableError() = std::move(error);
             return response;
         }
 
-        auto pages = CollectPages(logRecord);
-        auto writeResponse = Storage->WriteLogRecord(std::move(logRecord));
-        if (HasError(writeResponse.GetError())) {
-            *response.MutableError() = std::move(*writeResponse.MutableError());
+        auto pages = CollectPages(writeContext);
+        error = Storage->WriteLogRecord(
+            std::move(writeContext.Headers),
+            std::move(writeContext.PageGroups));
+        if (HasError(error)) {
+            *response.MutableError() = std::move(error);
             PageStore->RollbackPages(pages);
             return response;
         }
