@@ -1114,13 +1114,6 @@ func GetGauges(
 		}
 	}
 
-	require.NotEmpty(
-		t,
-		result,
-		"No gauge with name %s, labels %v",
-		name,
-		labels,
-	)
 	return result
 }
 
@@ -1255,18 +1248,36 @@ func GetCountersDataplane(
 	)
 }
 
-func GetGaugesDataplane(
+func WaitGaugePresentDataplane(
 	t *testing.T,
 	name string,
 	labels map[string]string,
+	timeout time.Duration,
 ) []float64 {
 
-	return GetGauges(
-		t,
-		parseMetricsPorts(
-			os.Getenv("DISK_MANAGER_RECIPE_DATAPLANE_MON_PORT"),
-		),
-		name,
-		labels,
+	ports := parseMetricsPorts(
+		os.Getenv("DISK_MANAGER_RECIPE_DATAPLANE_MON_PORT"),
 	)
+	deadline := time.Now().Add(timeout)
+
+	for {
+		result := GetGauges(t, ports, name, labels)
+		if len(result) != 0 {
+			return result
+		}
+
+		if time.Now().After(deadline) {
+			require.Failf(
+				t,
+				"Gauge not found",
+				"No gauge with name %s, labels %v within %v",
+				name,
+				labels,
+				timeout,
+			)
+			return nil
+		}
+
+		time.Sleep(time.Second)
+	}
 }

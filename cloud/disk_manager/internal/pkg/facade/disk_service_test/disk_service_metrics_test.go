@@ -2,6 +2,7 @@ package disk_service_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/stretchr/testify/require"
@@ -101,15 +102,17 @@ func TestNbsClientReportsMetrics(t *testing.T) {
 		"bucket":    "snapshot",
 		"component": "snapshot_storage",
 	}
-	require.Equal(t, []float64{0}, testcommon.GetGaugesDataplane(
+	require.Equal(t, []float64{0}, testcommon.WaitGaugePresentDataplane(
 		t,
 		"snapshots_quotas_usedBytes",
 		snapshotStorageQuotaLabels,
+		90*time.Second, // timeout
 	))
-	require.Equal(t, []float64{1000}, testcommon.GetGaugesDataplane(
+	require.Equal(t, []float64{1000}, testcommon.WaitGaugePresentDataplane(
 		t,
 		"snapshots_quotas_limitBytes",
 		snapshotStorageQuotaLabels,
+		90*time.Second, // timeout
 	))
 
 	testcommon.DeleteDisk(t, ctx, client, diskID1)
