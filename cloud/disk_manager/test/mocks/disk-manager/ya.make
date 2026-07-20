@@ -1,4 +1,4 @@
-GO_PROGRAM(disk-manager-test)
+GO_PROGRAM(disk-manager-mock)
 
 SRCS(
     main.go

@@ -38,30 +38,3 @@ func NewEmptySnapshotStorageQuotaReporter(
 
 	return &emptySnapshotStorageQuotaReporter{}, nil
 }
-
-////////////////////////////////////////////////////////////////////////////////
-
-type stubSnapshotStorageQuotaReporter struct {
-	registry metrics.Registry
-}
-
-func (r *stubSnapshotStorageQuotaReporter) Report(_ context.Context) error {
-	r.registry.Gauge("snapshots/quotas/usedBytes").Set(0)
-	r.registry.Gauge("snapshots/quotas/limitBytes").Set(1000)
-	return nil
-}
-
-func NewStubSnapshotStorageQuotaReporter(
-	registry metrics.Registry,
-	config *Config,
-	_ auth.Credentials,
-) (SnapshotStorageQuotaReporter, error) {
-
-	registry = registry.WithTags(map[string]string{
-		"bucket": config.GetS3Bucket(),
-	})
-
-	return &stubSnapshotStorageQuotaReporter{
-		registry: registry,
-	}, nil
-}
