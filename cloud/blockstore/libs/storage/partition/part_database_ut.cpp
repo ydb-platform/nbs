@@ -826,6 +826,8 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
         mixedBlocks->AddBlocks(10);
         mixedBlocks->AddCommitIds(20);
         blobMeta.AddBlockChecksums(30);
+        NProto::TCleanupQueueAdditionalFields additionalFields;
+        *additionalFields.MutableBlobMeta() = blobMeta;
 
         executor.WriteTx(
             [&](TPartitionDatabase db)
@@ -833,7 +835,7 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
                 db.WriteCleanupQueue(
                     blobId,
                     deletionCommitId,
-                    blobMeta);
+                    additionalFields);
             });
 
         executor.ReadTx(
@@ -848,8 +850,8 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
                     deletionCommitId,
                     items[0].CommitId);
                 UNIT_ASSERT_VALUES_EQUAL(
-                    blobMeta.SerializeAsString(),
-                    items[0].BlobMeta.SerializeAsString());
+                    additionalFields.SerializeAsString(),
+                    items[0].AdditionalFields.SerializeAsString());
             });
     }
 

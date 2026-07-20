@@ -209,7 +209,7 @@ public:
     void WriteCleanupQueue(
         const TPartialBlobId& blobId,
         ui64 commitId,
-        const NProto::TBlobMeta& blobMeta);
+        const NProto::TCleanupQueueAdditionalFields& additionalFields);
 
     void DeleteCleanupQueue(const TPartialBlobId& blobId, ui64 commitId);
 
