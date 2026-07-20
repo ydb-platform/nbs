@@ -78,20 +78,12 @@ public:
         return false;
     }
 
-    // True if data produced by the given commit supersedes the block's
-    // currently visible data: the block has no visible data (Empty or
-    // Deleted) or its data comes from an older commit.
-    bool IsCommitNewerThanVisibleData(ui32 blockIndex, ui64 commitId) const
+    // Commit id of the source which currently wins the block: visible data
+    // (Blob/Fresh) or a deletion. Zero for a block nothing was recorded for.
+    ui64 GetCommitIdByBlockOffset(ui32 blockOffset) const
     {
-        const auto& source = GetSource(blockIndex);
-
-        if (source.Kind == ESourceKind::Empty
-                || source.Kind == ESourceKind::Deleted)
-        {
-            return true;
-        }
-
-        return source.CommitId < commitId;
+        Y_DEBUG_ABORT_UNLESS(blockOffset < Blocks.size());
+        return Blocks[blockOffset].CommitId;
     }
 
     bool IsFreshBlock(ui32 blockIndex) const

@@ -88,9 +88,12 @@ void FillDescribeDataResponse(
 
         for (const auto& range: ranges) {
             auto& rangeInBlob = *piece.AddRanges();
-            rangeInBlob.SetOffset(ui64(range.BlockIndex) * blockSize);
-            rangeInBlob.SetLength(ui64(range.BlocksCount) * blockSize);
-            rangeInBlob.SetBlobOffset(ui64(range.BlobOffset) * blockSize);
+            rangeInBlob.SetOffset(
+                static_cast<ui64>(range.BlockIndex) * blockSize);
+            rangeInBlob.SetLength(
+                static_cast<ui64>(range.BlocksCount) * blockSize);
+            rangeInBlob.SetBlobOffset(
+                static_cast<ui64>(range.BlobOffset) * blockSize);
         }
     }
 
@@ -99,7 +102,8 @@ void FillDescribeDataResponse(
 
     NProtoPrivate::TFreshDataRange freshRange;
     for (ui32 i = 0; i < actualBlockCount; ++i) {
-        const ui64 curOffset = args.ActualRange().Offset + ui64(i) * blockSize;
+        const ui64 curOffset =
+            args.ActualRange().Offset + static_cast<ui64>(i) * blockSize;
 
         const auto& bytes = args.Bytes[i];
 
@@ -273,10 +277,8 @@ public:
                 (blockOffset + 1) * Args.ActualRange().BlockSize
             );
 
-            if (Args.BlockRanges.IsCommitNewerThanVisibleData(
-                    IntegerCast<ui32>(
-                        Args.ActualRange().FirstBlock() + blockOffset),
-                    bytes.MinCommitId))
+            if (Args.BlockRanges.GetCommitIdByBlockOffset(
+                    IntegerCast<ui32>(blockOffset)) < bytes.MinCommitId)
             {
                 Args.Bytes[blockOffset].Intervals.push_back({
                     IntegerCast<ui32>(offsetInBlock),
@@ -429,7 +431,8 @@ void TReadDataActor::ReadBlob(const TActorContext& ctx)
             auto& blocks = blocksByBlob[range.BlobId];
             for (ui32 i = 0; i < range.BlocksCount; ++i) {
                 const ui32 blockOffset = IntegerCast<ui32>(
-                    ui64(range.BlockIndex) + i - actualFirstBlock);
+                    static_cast<ui64>(range.BlockIndex) + i
+                    - actualFirstBlock);
                 blocks.emplace_back(range.BlobOffset + i, blockOffset);
             }
         });
