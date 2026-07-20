@@ -23,10 +23,11 @@ public:
     bool TryReserve()
     {
         if (!MaxFileCount) {
+            // MaxFileCount == 0 means unlimited.
             return true;
         }
 
-        auto count = ReservedFileCount.load(std::memory_order_relaxed);
+        ui64 count = ReservedFileCount.load(std::memory_order_relaxed);
         while (count < MaxFileCount){
             if (ReservedFileCount.compare_exchange_weak(
                 count,
