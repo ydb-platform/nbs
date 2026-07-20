@@ -12,6 +12,9 @@ import (
 
 type Config = snapshot_config.SnapshotConfig
 
+// SnapshotStorageQuotaReporter.Report SHOULD
+// report the following metrics: snapshots/quotas/usedBytes, snapshots/quotas/limitBytes
+// albeit other implementations may report additional metrics as well.
 type SnapshotStorageQuotaReporter interface {
 	Report(ctx context.Context) error
 }
