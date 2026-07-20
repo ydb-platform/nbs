@@ -19,6 +19,7 @@ SRCS(
     disk_agent_actor_waitready.cpp
     disk_agent_actor.cpp
     disk_agent_counters.cpp
+    disk_agent_journalled_device_tcp_server.cpp
     disk_agent_private.cpp
     disk_agent_state.cpp
     disk_agent.cpp
@@ -44,6 +45,7 @@ PEERDIR(
     cloud/blockstore/libs/storage/model
 
     cloud/storage/core/libs/common
+    cloud/storage/core/libs/journalled_device_tcp_server
     cloud/storage/core/libs/rdma/iface
 
     library/cpp/containers/stack_vector
@@ -68,5 +70,6 @@ RECURSE_FOR_TESTS(
     stress_tests
     ut
     ut_actor
+    ut_journalled_device
     ut_large
 )

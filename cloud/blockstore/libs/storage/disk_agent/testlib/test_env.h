@@ -29,6 +29,7 @@
 #include <util/datetime/base.h>
 #include <util/folder/dirut.h>
 #include <util/generic/guid.h>
+#include <util/generic/hash_set.h>
 #include <util/generic/size_literals.h>
 
 namespace NCloud::NBlockStore::NStorage::NDiskAgentTest {
@@ -490,11 +491,22 @@ struct TTestSpdkEnv final
 
 struct TTestEnv
 {
-    NActors::TTestActorRuntime& Runtime;
+    NActors::TTestActorRuntime* Runtime = nullptr;
     TDiskRegistryState::TPtr DiskRegistryState;
     IFileIOServicePtr FileIOService;
     NNvme::INvmeManagerPtr NvmeManager;
     NActors::TActorId DiskAgentActorId;
+
+    ITaskQueuePtr BackgroundThreadPool;
+
+    THashSet<NActors::TActorId> Actors;
+
+    explicit TTestEnv(NActors::TTestActorRuntime& runtime);
+
+    TTestEnv(const TTestEnv&) = delete;
+    TTestEnv(TTestEnv&&) = default;
+    TTestEnv& operator = (const TTestEnv&) = delete;
+    TTestEnv& operator = (TTestEnv&&) = default;
 
     ~TTestEnv();
 };

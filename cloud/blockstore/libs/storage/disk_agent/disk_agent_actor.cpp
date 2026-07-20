@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/nvme/nvme.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
 
+#include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
 #include <contrib/ydb/core/base/appdata.h>
@@ -249,6 +250,14 @@ void TDiskAgentActor::HandlePoisonPill(
         NCloud::Send<TEvents::TEvPoisonPill>(ctx, actor);
     }
     IOParserActors.clear();
+
+    if (JournalledDeviceTcpServer) {
+        JournalledDeviceTcpServer->Stop();
+    }
+
+    if (Executor) {
+        Executor->Stop();
+    }
 
     Die(ctx);
 }

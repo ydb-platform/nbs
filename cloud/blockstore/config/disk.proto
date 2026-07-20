@@ -378,6 +378,10 @@ message TDiskAgentConfig
 
     // Timeout (in milliseconds) before aborting admin command.
     optional uint32 NVMeAdminCmdTimeout = 48;
+
+    // Listen address for the Journalled Device TCP server.
+    // If set, the Disk Agent starts a TCP server to handle Journalled Device requests.
+    optional string JournalledDeviceTcpServerListenAddress = 49;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
