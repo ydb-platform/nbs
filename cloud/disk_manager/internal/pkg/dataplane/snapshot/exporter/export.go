@@ -143,7 +143,7 @@ func checkSnapshotReadyForExport(
 	if meta.Encryption.GetMode() != types.EncryptionMode_NO_ENCRYPTION {
 		logging.Warn(
 			ctx,
-			"snapshot %v is encrypted, the exported data is encrypted as well",
+			"snapshot %v has encryption metadata; raw export data is plaintext logical disk data",
 			snapshotID,
 		)
 	}
@@ -311,9 +311,13 @@ func ExportPartitionToWriterWithReadWorkers(
 	readyChunks := make(map[uint32][]byte)
 	zeroes := make([]byte, chunkSize)
 
+	pendingReadCount := func() int {
+		return inFlightReads + len(readyChunks)
+	}
+
 	scheduleReads := func() error {
 		for scheduledChunkIndex < endChunkIndex &&
-			inFlightReads < readAheadChunkCount {
+			pendingReadCount() < readAheadChunkCount {
 
 			localIndex := scheduledChunkIndex - startChunkIndex
 			entry := entriesByIndex[localIndex]
@@ -378,8 +382,10 @@ func ExportPartitionToWriterWithReadWorkers(
 				return Stats{}, readCtx.Err()
 			}
 
-			if err := scheduleReads(); err != nil {
-				return Stats{}, err
+			if !ready {
+				if err := scheduleReads(); err != nil {
+					return Stats{}, err
+				}
 			}
 		}
 

@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
+	"sync"
 	"testing"
 	"time"
 
@@ -286,6 +288,109 @@ func TestExportPartitionWritesOutOfOrderReadsInChunkOrder(t *testing.T) {
 	}
 
 	assertTwoChunkStream(t, dst.Bytes())
+}
+
+func TestExportPartitionBoundsOutOfOrderReadBuffering(t *testing.T) {
+	ctx := newContext()
+
+	readWorkerCount := 2
+	readAheadChunkCount := readWorkerCount * streamReadAheadMultiplier
+	chunkCount := uint32(readAheadChunkCount + 1)
+
+	entries := make([]storage.ChunkMapEntry, 0, chunkCount)
+	for chunkIndex := uint32(0); chunkIndex < chunkCount; chunkIndex++ {
+		entries = append(entries, storage.ChunkMapEntry{
+			ChunkIndex: chunkIndex,
+			ChunkID:    fmt.Sprintf("chunk-%v", chunkIndex),
+		})
+	}
+
+	snapshotStorage := mocks.NewStorageMock()
+	snapshotStorage.On("CheckSnapshotReady", mock.Anything, "snapshot").Return(
+		storage.SnapshotMeta{
+			Size:       uint64(chunkCount) * chunkSize,
+			ChunkCount: chunkCount,
+		},
+		nil,
+	)
+	entryChannel, errorChannel := newChunkMapChannels(entries, nil)
+	snapshotStorage.On("ReadChunkMap", mock.Anything, "snapshot", uint32(0)).Return(
+		entryChannel,
+		errorChannel,
+	)
+
+	readStarted := make(chan uint32, int(chunkCount))
+	releaseChunkZero := make(chan struct{})
+	var releaseChunkZeroOnce sync.Once
+	release := func() {
+		releaseChunkZeroOnce.Do(func() {
+			close(releaseChunkZero)
+		})
+	}
+	defer release()
+
+	snapshotStorage.On("ReadChunk", mock.Anything, mock.Anything).Run(
+		func(args mock.Arguments) {
+			chunk := args.Get(1).(*dataplane_common.Chunk)
+			readStarted <- chunk.Index
+			if chunk.Index == 0 {
+				<-releaseChunkZero
+			}
+			fillChunkOnRead(args)
+		},
+	).Return(nil)
+
+	type exportResult struct {
+		stats Stats
+		err   error
+	}
+	result := make(chan exportResult, 1)
+
+	go func() {
+		stats, err := ExportPartitionToWriterWithReadWorkers(
+			ctx,
+			snapshotStorage,
+			"snapshot",
+			io.Discard,
+			1, // partition
+			1, // partitionCount
+			readWorkerCount,
+		)
+		result <- exportResult{stats: stats, err: err}
+	}()
+
+	started := make(map[uint32]bool)
+	for len(started) < readAheadChunkCount {
+		select {
+		case chunkIndex := <-readStarted:
+			require.Less(t, int(chunkIndex), readAheadChunkCount)
+			started[chunkIndex] = true
+		case <-time.After(time.Second):
+			t.Fatal("timed out waiting for read-ahead chunk reads")
+		}
+	}
+
+	select {
+	case chunkIndex := <-readStarted:
+		require.Less(
+			t,
+			int(chunkIndex),
+			readAheadChunkCount,
+			"started another read while out-of-order chunks filled the read-ahead budget",
+		)
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	release()
+
+	select {
+	case res := <-result:
+		require.NoError(t, res.err)
+		require.Equal(t, chunkCount, res.stats.DataChunkCount)
+		require.Equal(t, uint32(0), res.stats.ZeroChunkCount)
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for export to finish")
+	}
 }
 
 func TestExportPartitionWritesMissingChunksAsZeroes(t *testing.T) {
