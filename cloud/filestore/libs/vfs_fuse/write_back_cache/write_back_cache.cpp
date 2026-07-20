@@ -113,7 +113,7 @@ public:
               args.Stats->GetWriteBackCacheStateStats(),
               args.Stats->GetWriteDataRequestManagerStats(),
               args.Stats->GetNodeStateHolderStats(),
-              TFlushBackpressureCalculator(BuildFlushBatchLimits(args)),
+              BuildFlushBatchLimits(args),
               LogTag)
     {
         auto createPersistentStorageResult =
@@ -428,16 +428,35 @@ private:
         auto batchBuilder =
             RequestBuilder->CreateWriteDataRequestBatchBuilder(nodeId);
 
-        State.VisitUnflushedRequests(
+        State.VisitUnflushedRequestsFromFrontFlushBatch(
             nodeId,
             [&batchBuilder](const TCachedWriteDataRequest* request)
             {
-                return batchBuilder->AddRequest(
+                batchBuilder->AddRequest(
                     request->GetOffset(),
                     request->GetBuffer());
             });
 
         auto writeDataBatch = batchBuilder->Build();
+
+        if (writeDataBatch.Requests.empty()) {
+            // Flush can be scheduled only when there are requests to flush.
+            // The only reason why VisitUnflushedRequestsFromFrontFlushBatch()
+            // may return an empty batch for a non-empty unflushed queue is a
+            // presence of a barrier with BarrierId less than SequenceId for all
+            // unflushed requests. This cannot happen because:
+            // - newly added barriers cannot have BarrierId less than SequenceId
+            //   for any existing WriteData request;
+            // - flush cannot be scheduled if an existing barrier prevents it.
+            ReportWriteBackCacheImpossibleState(Sprintf(
+                "Flush is scheduled for node %lu but flush batch is empty",
+                nodeId));
+
+            // We do not fail flush because it may cause dropping WriteData
+            // requests
+            State.FlushSucceeded(nodeId, 0);
+            return;
+        }
 
         auto flushState = std::make_shared<TNodeFlushState>(
             nodeId,
