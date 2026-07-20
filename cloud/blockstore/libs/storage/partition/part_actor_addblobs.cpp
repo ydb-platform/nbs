@@ -369,7 +369,7 @@ private:
         if (IsBlockMaskFull(blockMask, MaxBlocksInBlob)) {
             // blob already could be garbage, but we should keep it
             // as there could be active readers (or even checkpoint)
-            db.WriteCleanupQueue(blob.BlobId, DeletionCommitId);
+            db.WriteCleanupQueue(blob.BlobId, DeletionCommitId, blobMeta);
             State.GetCleanupQueue().Add(
                 {blob.BlobId, DeletionCommitId, blobMeta});
         }
@@ -610,8 +610,13 @@ private:
                     blobMeta = kv.second.RecreatedBlobMeta.GetRef();
                 }
 
-                bool inserted = State.GetCleanupQueue().Add(
-                    {kv.first, DeletionCommitId, std::move(blobMeta)});
+                TCleanupQueueItem cleanupQueueItem{
+                    kv.first,
+                    DeletionCommitId,
+                    std::move(blobMeta)};
+
+                bool inserted =
+                    State.GetCleanupQueue().Add(cleanupQueueItem);
 
                 STORAGE_VERIFY_DEBUG_C(
                     inserted,
@@ -619,7 +624,10 @@ private:
                     TabletId,
                     "Cleanup queue: blob already in cleanup queue");
                 if (inserted) {
-                    db.WriteCleanupQueue(kv.first, DeletionCommitId);
+                    db.WriteCleanupQueue(
+                        kv.first,
+                        DeletionCommitId,
+                        cleanupQueueItem.BlobMeta);
                 }
             }
         }

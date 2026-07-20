@@ -134,7 +134,10 @@ TMixedAndMergedBlobsSetup SetupMixedAndMergedBlobs(
             setup.MixedBlobId = executor.MakeBlobId(3);
             state.WriteMixedBlocks(db, setup.MixedBlobId, {0, 1, 2}, 1);
             db.WriteBlobMeta(setup.MixedBlobId, setup.MixedBlobMeta);
-            db.WriteCleanupQueue(setup.MixedBlobId, deletionCommitId);
+            db.WriteCleanupQueue(
+                setup.MixedBlobId,
+                deletionCommitId,
+                setup.MixedBlobMeta);
 
             setup.MergedBlobId = executor.MakeBlobId(4);
             db.WriteMergedBlocks(
@@ -142,7 +145,10 @@ TMixedAndMergedBlobsSetup SetupMixedAndMergedBlobs(
                 TBlockRange32::MakeClosedInterval(10, 13),
                 TBlockMask{});
             db.WriteBlobMeta(setup.MergedBlobId, setup.MergedBlobMeta);
-            db.WriteCleanupQueue(setup.MergedBlobId, deletionCommitId);
+            db.WriteCleanupQueue(
+                setup.MergedBlobId,
+                deletionCommitId,
+                setup.MergedBlobMeta);
         });
 
     state.GetCleanupQueue().Add({setup.MixedBlobId, deletionCommitId, {}});

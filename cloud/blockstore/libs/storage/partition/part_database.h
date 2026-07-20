@@ -206,7 +206,11 @@ public:
     // CleanupQueue
     //
 
-    void WriteCleanupQueue(const TPartialBlobId& blobId, ui64 commitId);
+    void WriteCleanupQueue(
+        const TPartialBlobId& blobId,
+        ui64 commitId,
+        const NProto::TBlobMeta& blobMeta);
+
     void DeleteCleanupQueue(const TPartialBlobId& blobId, ui64 commitId);
 
     bool ReadCleanupQueue(TVector<TCleanupQueueItem>& items);
