@@ -341,7 +341,7 @@ private:
     IPageStorePtr PageStore;
     TNodeTable Nodes;
     TNameTable Names;
-    mutable silk::FiberMutex Mutex;
+    mutable silk::FiberMutex Mutex; // TODO: use it!!!
 
 public:
     TFiberShardImpl(
