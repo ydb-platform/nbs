@@ -1,0 +1,45 @@
+{
+  "nodes": {
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1735563628,
+        "narHash": "sha256-OnSAY7XDSx7CtDoqNh8jwVwh4xNL/2HaJxGjryLWzX8=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "b134951a4c9f3c995fd7be05f3243f8ecd65d798",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixos-24.05",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "nixpkgs": "nixpkgs",
+        "ydb-src": "ydb-src"
+      }
+    },
+    "ydb-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1784621319,
+        "narHash": "sha256-qhwhji16eUhstQDJr9+rQTDZSS3GXEe1l53L9gXOMac=",
+        "owner": "ydb-platform",
+        "repo": "ydb",
+        "rev": "ffa7b99b42391d01548c55bb7117d61a0e74fc63",
+        "type": "github"
+      },
+      "original": {
+        "owner": "ydb-platform",
+        "repo": "ydb",
+        "rev": "ffa7b99b42391d01548c55bb7117d61a0e74fc63",
+        "type": "github"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}

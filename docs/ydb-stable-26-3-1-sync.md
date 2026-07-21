@@ -39,11 +39,19 @@ Error: Unknown type in NPath::GetType: $name$.proto.h
 YMake failed with exit code 1
 ```
 
-This happens after the folded YQL/YT layout issues are gone. The next blocker is compatibility of the current NBS `ya`/ymake stack with YDB 26.3 `contrib/libs/protobuf` and `contrib/libs/protoc` 22.5, or finding a way to keep the older NBS protobuf/protoc while importing the newer YDB/YQL/YT layout.
+This happens after the folded YQL/YT layout issues are gone. The same blocker is reached by the Nix sandbox check:
+
+```bash
+nix build .#checks.x86_64-linux.ya-make-smoke --print-build-logs
+```
+
+The Nix check successfully materializes the synced source tree, prefetches the `ya` bootstrap, `ymake`, and `ya-tc` tool resources, patches the external Linux ELF binaries for the Nix sandbox, and then fails at the same YMake protobuf/protoc compatibility point.
+
+The next blocker is compatibility of the current NBS `ya`/ymake stack with YDB 26.3 `contrib/libs/protobuf` and `contrib/libs/protoc` 22.5, or finding a way to keep the older NBS protobuf/protoc while importing the newer YDB/YQL/YT layout.
 
 ## Nix Shell
 
-The repository contains `flake.nix` with a small shell for local sync work.
+The repository contains `flake.nix` with a small shell for local sync work and Nix targets for materializing the synced source tree.
 
 ```bash
 nix develop
@@ -51,11 +59,38 @@ nix develop
 
 The shell provides common tools used by the sync script: `git`, `rsync`, GNU `sed`, `perl`, `python3`, and coreutils.
 
-`flake.lock` is intentionally not committed yet because this experiment was prepared on a host without `nix`. Generate it locally when needed:
+YDB is pinned as a non-flake input in `flake.nix`:
+
+```nix
+ydb-src.url = "github:ydb-platform/ydb/ffa7b99b42391d01548c55bb7117d61a0e74fc63";
+```
+
+Build the synthetic NBS + YDB source tree with:
 
 ```bash
-nix flake lock
+nix build .#nbs-ydb-synced-src
 ```
+
+This derivation runs the sync pipeline with the pinned YDB source and writes the resulting source tree into the Nix store. The sync order is also encoded in `flake.nix` as `syncSteps` and exposed as:
+
+```bash
+nix build .#ydb-sync-order
+```
+
+Run local convenience wrappers from the current checkout:
+
+```bash
+nix run .#ya-make-smoke
+nix run .#ya-make-actors-ut
+```
+
+Run sandbox-style validation checks:
+
+```bash
+nix flake check
+```
+
+`flake.lock` is committed intentionally. It pins both nixpkgs and the exact YDB GitHub source revision used by the source derivation.
 
 ## Running The Sync Locally
 

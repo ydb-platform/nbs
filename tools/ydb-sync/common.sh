@@ -3,11 +3,12 @@
 ydb_sync_init() {
     YDB_REF=${YDB_REF:-stable-26-3-1}
     YDB_REPO=${YDB_REPO:-https://github.com/ydb-platform/ydb.git}
-    IMPORT_CONTRIB_DIR=${IMPORT_CONTRIB_DIR:-/home/apkobzev/arcadia/kikimr/scripts/oss/import_contrib}
     ROOT=${ROOT:-$(git rev-parse --show-toplevel)}
+    IMPORT_CONTRIB_DIR=${IMPORT_CONTRIB_DIR:-$ROOT/tools/ydb-sync/import-contrib}
     YDB_SRC=${YDB_SRC:-$ROOT/.sync/ydb-$YDB_REF}
+    ARC_ROOT=${ARC_ROOT:-$ROOT}
 
-    export YDB_REF YDB_REPO IMPORT_CONTRIB_DIR ROOT YDB_SRC
+    export YDB_REF YDB_REPO IMPORT_CONTRIB_DIR ROOT YDB_SRC ARC_ROOT
     cd "$ROOT"
 }
 
@@ -19,7 +20,7 @@ ydb_sync_check_clean() {
 }
 
 ydb_sync_ensure_source() {
-    if [ ! -d "$YDB_SRC/.git" ]; then
+    if [ ! -d "$YDB_SRC" ]; then
         mkdir -p "$(dirname "$YDB_SRC")"
         git clone --depth 1 --branch "$YDB_REF" "$YDB_REPO" "$YDB_SRC"
     fi
@@ -37,6 +38,7 @@ copy_dir() {
     local dst=$2
     mkdir -p "$dst"
     rsync -a --delete "$src/" "$dst/"
+    chmod -R u+w "$dst"
 }
 
 copy_optional_dir() {
@@ -53,5 +55,6 @@ copy_optional_file() {
     if [ -f "$src" ]; then
         mkdir -p "$(dirname "$dst")"
         cp "$src" "$dst"
+        chmod u+w "$dst"
     fi
 }
