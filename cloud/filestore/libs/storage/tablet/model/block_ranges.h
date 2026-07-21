@@ -86,11 +86,6 @@ public:
         return Blocks[blockOffset].CommitId;
     }
 
-    bool IsFreshBlock(ui32 blockIndex) const
-    {
-        return GetSource(blockIndex).Kind == ESourceKind::Fresh;
-    }
-
     bool AddBlobRange(
         ui32 blockIndex,
         ui32 blocksCount,
@@ -127,6 +122,16 @@ public:
         return UpdateRange(blockIndex, blocksCount, source);
     }
 
+    // Visits every block in order, passing the block's offset within the
+    // range and its source (which may be Empty).
+    template <typename TVisitor>
+    void VisitBlocks(TVisitor&& visitor) const
+    {
+        for (ui32 i = 0; i < Blocks.size(); ++i) {
+            visitor(i, Blocks[i]);
+        }
+    }
+
     // Visits maximal blob runs (same blob, same commit, contiguous offset).
     template <typename TVisitor>
     void VisitBlobRanges(TVisitor&& visitor) const
@@ -158,13 +163,6 @@ public:
     }
 
 private:
-    const TSource& GetSource(ui32 blockIndex) const
-    {
-        const ui32 i = blockIndex - BeginBlockIndex;
-        Y_DEBUG_ABORT_UNLESS(i < Blocks.size());
-        return Blocks[i];
-    }
-
     // prev is known to be a Blob.
     static bool SameBlobConsecutiveBlocks(
         const TSource& prev,

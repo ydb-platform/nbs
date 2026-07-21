@@ -97,17 +97,17 @@ void FillDescribeDataResponse(
         }
     }
 
-    const ui64 actualFirstBlock = args.ActualRange().FirstBlock();
-    const ui32 actualBlockCount = args.ActualRange().BlockCount();
-
     NProtoPrivate::TFreshDataRange freshRange;
-    for (ui32 i = 0; i < actualBlockCount; ++i) {
-        const ui64 curOffset =
-            args.ActualRange().Offset + static_cast<ui64>(i) * blockSize;
+    args.BlockRanges.VisitBlocks([&] (
+        ui32 blockOffset,
+        const TBlockRanges::TSource& source)
+    {
+        const ui64 curOffset = args.ActualRange().Offset
+            + static_cast<ui64>(blockOffset) * blockSize;
 
-        const auto& bytes = args.Bytes[i];
+        const auto& bytes = args.Bytes[blockOffset];
 
-        if (args.BlockRanges.IsFreshBlock(actualFirstBlock + i)) {
+        if (source.Kind == TBlockRanges::ESourceKind::Fresh) {
             // it's a fresh block: accumulate it (with any newer fresh bytes
             // applied on top) into a contiguous fresh data range
             if (freshRange.GetContent()) {
@@ -123,11 +123,11 @@ void FillDescribeDataResponse(
                 freshRange.SetOffset(curOffset);
             }
 
-            auto target = args.Buffer->GetBlock(i);
+            auto target = args.Buffer->GetBlock(blockOffset);
             ApplyBytes(bytes, target);
             freshRange.MutableContent()->append(target);
 
-            continue;
+            return;
         }
 
         if (freshRange.GetContent()) {
@@ -145,7 +145,7 @@ void FillDescribeDataResponse(
             byteRange.SetOffset(curOffset + interval.OffsetInBlock);
             byteRange.SetContent(interval.Data);
         }
-    }
+    });
 
     if (freshRange.GetContent()) {
         *record->AddFreshDataRanges() = std::move(freshRange);
@@ -424,16 +424,12 @@ void TReadDataActor::ReadBlob(const TActorContext& ctx)
 
     TBlocksByBlob blocksByBlob;
 
-    const ui64 actualFirstBlock = ActualRange.FirstBlock();
-
-    BlockRanges.VisitBlobRanges(
-        [&] (const TBlockRanges::TBlobRange& range) {
-            auto& blocks = blocksByBlob[range.BlobId];
-            for (ui32 i = 0; i < range.BlocksCount; ++i) {
-                const ui32 blockOffset = IntegerCast<ui32>(
-                    static_cast<ui64>(range.BlockIndex) + i
-                    - actualFirstBlock);
-                blocks.emplace_back(range.BlobOffset + i, blockOffset);
+    BlockRanges.VisitBlocks(
+        [&] (ui32 blockOffset, const TBlockRanges::TSource& source) {
+            if (source.Kind == TBlockRanges::ESourceKind::Blob) {
+                blocksByBlob[source.BlobId].emplace_back(
+                    source.BlobOffset,
+                    blockOffset);
             }
         });
 
