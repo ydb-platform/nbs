@@ -10,7 +10,7 @@ Tests {
             BlockSize: 4096
         }
         KeepFileStore: true
-        MaxFileCount: 3
+        MaxNodes: 3
         RequestsCount: 30
         IODepth: 16
         DataLoadSpec {

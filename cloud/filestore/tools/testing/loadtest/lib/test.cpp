@@ -543,7 +543,7 @@ private:
                     Session,
                     FileSystemId,
                     headers,
-                    std::make_shared<TCountLimiter>(Config.GetMaxFileCount()));
+                    std::make_shared<TCountLimiter>(Config.GetMaxNodes()));
                 break;
             case NProto::TLoadTest::kDataLoadSpec:
                 RequestGenerator = CreateDataRequestGenerator(
@@ -552,7 +552,7 @@ private:
                     Session,
                     FileSystemId,
                     headers,
-                    std::make_shared<TCountLimiter>(Config.GetMaxFileCount()));
+                    std::make_shared<TCountLimiter>(Config.GetMaxNodes()));
                 break;
             case NProto::TLoadTest::kReplayFsSpec:
                 RequestGenerator = CreateReplayRequestGeneratorFs(
@@ -596,7 +596,7 @@ private:
                     ShmClient,
                     FileSystemId,
                     headers,
-                    std::make_shared<TCountLimiter>(Config.GetMaxFileCount()));
+                    std::make_shared<TCountLimiter>(Config.GetMaxNodes()));
                 break;
             }
             case NProto::TLoadTest::kFastShardLoadSpec:
@@ -604,7 +604,7 @@ private:
                     Config.GetFastShardLoadSpec(),
                     Config.GetIODepth(),
                     Logging,
-                    std::make_shared<TCountLimiter>(Config.GetMaxFileCount()));
+                    std::make_shared<TCountLimiter>(Config.GetMaxNodes()));
                 break;
             default:
                 ythrow yexception()

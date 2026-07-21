@@ -37,7 +37,6 @@ message TIndexLoadSpec
     }
 
     repeated TAction Actions = 1;
-    uint64 MaxNodes = 2;
 }
 
 message TDataLoadSpec
@@ -211,9 +210,9 @@ message TLoadTest
     bool KeepFileStore = 16;
     string ClientId = 19;
 
-    // Maximum number of regular files created by this synthetic load test.
+    // Maximum number of nodes created by this synthetic load test.
     // Zero means unlimited. Ignored by replay specs.
-    uint64 MaxFileCount = 22;
+    uint64 MaxNodes = 22;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

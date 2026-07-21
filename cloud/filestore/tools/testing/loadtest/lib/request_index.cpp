@@ -158,14 +158,6 @@ private:
                 MakeError(S_FALSE)});
         }
 
-        if (Spec.GetMaxNodes() && Nodes.size() >= Spec.GetMaxNodes()) {
-            CountLimiter->Release();
-            return MakeFuture<TCompletedRequest>({
-                NProto::ACTION_CREATE_NODE,
-                started,
-                MakeError(S_FALSE)});
-        }
-
         auto name = GenerateNodeName();
         StagedNodes[name] = {};
 
