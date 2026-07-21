@@ -11,8 +11,9 @@ namespace {
 
 ///////////////////////////////////////////////////////////////////////////////
 
+template <typename TCounters>
 void ReadBlobInfo(
-    TPartitionDatabase& db,
+    TPartitionDatabaseImpl<TCounters>& db,
     const TPartialBlobId& blobId,
     ui64 tabletId,
     const TOutputIndex& outputIndex,
@@ -37,8 +38,9 @@ void ReadBlobInfo(
     blobMetas[*outputIndex.BlobMetaIndex] = *meta;
 }
 
+template <typename TCounters>
 void ReadBlobMeta(
-    TPartitionDatabase& db,
+    TPartitionDatabaseImpl<TCounters>& db,
     const TPartialBlobId& blobId,
     ui64 tabletId,
     const TOutputIndex& outputIndex,
@@ -59,8 +61,9 @@ void ReadBlobMeta(
     blobMetas[*outputIndex.BlobMetaIndex] = *meta;
 }
 
+template <typename TCounters>
 void ReadBlockMask(
-    TPartitionDatabase& db,
+    TPartitionDatabaseImpl<TCounters>& db,
     const TPartialBlobId& blobId,
     ui64 tabletId,
     const TOutputIndex& outputIndex,
@@ -86,7 +89,7 @@ void ReadBlockMask(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-THashMap<TPartialBlobId, TOutputIndex, TPartialBlobIdHash> DeduplicateBlobInfos(
+TBlobId2IndexMap DeduplicateBlobInfos(
     ui64 tabletId,
     const TVector<TPartialBlobId>& blobsToReadBlockMasks,
     const TVector<TPartialBlobId>& blobsToReadBlobMetas)
@@ -125,12 +128,10 @@ THashMap<TPartialBlobId, TOutputIndex, TPartialBlobIdHash> DeduplicateBlobInfos(
     return blobsToOutputIndices;
 }
 
+template <typename TCounters>
 bool ReadBlobsInfo(
-    TPartitionDatabase& db,
-    const THashMap<
-        TPartialBlobId,
-        TTxPartition::TCompactionReadBlobInfo::TOutputIndex,
-        TPartialBlobIdHash>& blobsToOutputIndices,
+    TPartitionDatabaseImpl<TCounters>& db,
+    const TBlobId2IndexMap& blobsToOutputIndices,
     ui64 tabletId,
     TVector<TBlockMask>& blockMasks,
     TVector<NProto::TBlobMeta>& blobMetas)
@@ -156,5 +157,21 @@ bool ReadBlobsInfo(
 
     return ready;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+template bool ReadBlobsInfo<TNoOpCounter>(
+    TPartitionDatabase& db,
+    const TBlobId2IndexMap& blobsToOutputIndices,
+    ui64 tabletId,
+    TVector<TBlockMask>& blockMasks,
+    TVector<NProto::TBlobMeta>& blobMetas);
+
+template bool ReadBlobsInfo<TMethodCallCounter>(
+    TPartitionDatabaseWithCounters& db,
+    const TBlobId2IndexMap& blobsToOutputIndices,
+    ui64 tabletId,
+    TVector<TBlockMask>& blockMasks,
+    TVector<NProto::TBlobMeta>& blobMetas);
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

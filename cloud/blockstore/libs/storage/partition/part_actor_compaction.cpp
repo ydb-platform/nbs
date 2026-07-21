@@ -1558,10 +1558,8 @@ void FillBlobsInfo(
         blobsToReadBlockMasks,
         blobsToReadBlobMetas);
 
-    TVector<TBlockMask> blockMasks;
-    blockMasks.resize(args.BlobsToReadBlockMasks.size());
-    TVector<NProto::TBlobMeta> blobMetas;
-    blobMetas.resize(args.BlobsToReadBlobMetas.size());
+    TVector<TBlockMask> blockMasks(args.BlobsToReadBlockMasks.size());
+    TVector<NProto::TBlobMeta> blobMetas(args.BlobsToReadBlobMetas.size());
     if (!ReadBlobsInfo(
             db,
             blobsToOutputIndices,

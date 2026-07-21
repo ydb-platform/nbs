@@ -25,8 +25,32 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TPartitionDatabase
-    : public NKikimr::NIceDb::TNiceDb
+class TNoOpCounter
+{
+public:
+    void operator()(TStringBuf)
+    {}
+};
+
+class TMethodCallCounter
+{
+private:
+    THashMap<TString, ui64> MethodCallCounts;
+
+public:
+    void operator()(TStringBuf methodName)
+    {
+        MethodCallCounts[methodName]++;
+    }
+
+    [[nodiscard]] const THashMap<TString, ui64>& GetMethodCallCounts() const
+    {
+        return MethodCallCounts;
+    }
+};
+
+template <typename TCounters>
+class TPartitionDatabaseImpl: public NKikimr::NIceDb::TNiceDb
 {
 public:
     enum class EBlobIndexScanProgress
@@ -37,22 +61,16 @@ public:
     };
 
 private:
-    THashMap<TString, ui64> MethodCallCounts;
-    bool NeedCountMethodCalls = false;
+    TCounters Counters;
 
 public:
-    TPartitionDatabase(NKikimr::NTable::TDatabase& database)
+    TPartitionDatabaseImpl(NKikimr::NTable::TDatabase& database)
         : NKikimr::NIceDb::TNiceDb(database)
     {}
 
-    void SetNeedCountMethodCalls(bool needCountMethodCalls)
+    [[nodiscard]] const TCounters& GetCounters() const
     {
-        NeedCountMethodCalls = needCountMethodCalls;
-    }
-
-    [[nodiscard]] const THashMap<TString, ui64>& GetMethodCallCount() const
-    {
-        return MethodCallCounts;
+        return Counters;
     }
 
     void InitSchema();
@@ -249,14 +267,10 @@ public:
     void DeleteUnconfirmedBlob(const TPartialBlobId& blobId);
 
     bool ReadUnconfirmedBlobs(TCommitIdToBlobsToConfirm& blobs);
-
-private:
-    void IncrementMethodCallCount(const TString& methodName)
-    {
-        if (Y_UNLIKELY(NeedCountMethodCalls)) {
-            MethodCallCounts[methodName]++;
-        }
-    }
 };
+
+using TPartitionDatabase = TPartitionDatabaseImpl<TNoOpCounter>;
+using TPartitionDatabaseWithCounters =
+    TPartitionDatabaseImpl<TMethodCallCounter>;
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

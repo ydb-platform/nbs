@@ -7,21 +7,20 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-THashMap<
+using TBlobId2IndexMap = THashMap<
     TPartialBlobId,
     TTxPartition::TCompactionReadBlobInfo::TOutputIndex,
-    TPartialBlobIdHash>
-DeduplicateBlobInfos(
+    TPartialBlobIdHash>;
+
+TBlobId2IndexMap DeduplicateBlobInfos(
     ui64 tabletId,
     const TVector<TPartialBlobId>& blobsToReadBlockMasks,
     const TVector<TPartialBlobId>& blobsToReadBlobMetas);
 
+template <typename TCounters>
 bool ReadBlobsInfo(
-    TPartitionDatabase& db,
-    const THashMap<
-        TPartialBlobId,
-        TTxPartition::TCompactionReadBlobInfo::TOutputIndex,
-        TPartialBlobIdHash>& blobsToOutputIndices,
+    TPartitionDatabaseImpl<TCounters>& db,
+    const TBlobId2IndexMap& blobsToOutputIndices,
     ui64 tabletId,
     TVector<TBlockMask>& blockMasks,
     TVector<NProto::TBlobMeta>& blobMetas);

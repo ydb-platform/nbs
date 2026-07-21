@@ -12,10 +12,13 @@ namespace {
 
 using TOutputIndex = TTxPartition::TCompactionReadBlobInfo::TOutputIndex;
 
-ui64 GetMethodCallCount(const TPartitionDatabase& db, const TString& methodName)
+ui64 GetMethodCallCount(
+    const TPartitionDatabaseWithCounters& db,
+    const TString& methodName)
 {
     ui64 count = 0;
-    for (const auto& [name, callCount]: db.GetMethodCallCount()) {
+    for (const auto& [name, callCount]: db.GetCounters().GetMethodCallCounts())
+    {
         if (name.Contains(methodName)) {
             count += callCount;
         }
@@ -153,9 +156,8 @@ Y_UNIT_TEST_SUITE(TReadBlobsInfoTest)
         TVector<NProto::TBlobMeta> blobMetas(1);
 
         executor.ReadTx(
-            [&](TPartitionDatabase db)
+            [&](TPartitionDatabaseWithCounters db)
             {
-                db.SetNeedCountMethodCalls(true);
                 const bool ready = ReadBlobsInfo(
                     db,
                     blobsToOutputIndices,

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "part_database.h"
 #include "part_events_private.h"
 #include "part_tx.h"
 
@@ -26,7 +27,6 @@ namespace NKikimr {
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
 class TPartitionState;
-class TPartitionDatabase;
 
 ////////////////////////////////////////////////////////////////////////////////
 
