@@ -1212,15 +1212,63 @@ STFUNC(TCompactionActor::StateWork)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ui32 GetExcessPercentage(ui64 enumerator, ui64 denominator)
+static constexpr double MaxPercentage = 1'000;
+static constexpr TDuration NoThrottleExecTimePerSecond = TDuration::Seconds(1);
+
+ui32 GetPercentage(ui64 numerator, ui64 denominator)
 {
-    if (enumerator < denominator) {
-        return 0;
+    const double p = numerator * 100. / Max(denominator, 1UL);
+    return static_cast<ui32>(Min(p, MaxPercentage));
+}
+
+ui32 GetExcessPercentage(ui64 numerator, ui64 denominator)
+{
+    const double p = GetPercentage(numerator, denominator);
+    return p < 100 ? 0 : p - 100;
+}
+
+ui64 GetDiskBlockCount(const TPartitionState& state)
+{
+    const ui64 mixedAndMergedBlocks =
+        state.GetMixedBlocksCount() + state.GetMergedBlocksCount();
+    const ui64 queueBlocks = state.GetCleanupQueue().GetQueueBlocks();
+    Y_DEBUG_ABORT_UNLESS(mixedAndMergedBlocks >= queueBlocks);
+
+    return mixedAndMergedBlocks < queueBlocks
+               ? 0
+               : mixedAndMergedBlocks - queueBlocks;
+}
+
+ui32 GetDiskFillPercentage(const TPartitionState& state)
+{
+    const ui64 diskSizeInBlocks = state.GetBlocksCount();
+    return GetPercentage(GetDiskBlockCount(state), diskSizeInBlocks);
+}
+
+TDuration InterpolateCompactionExecTime(
+    ui32 throttleBelowFillPercentage,
+    ui32 stopThrottlingAboveFillPercentage,
+    TDuration minExecTimePerSecond,
+    ui32 diskFillPercentage)
+{
+    Y_DEBUG_ABORT_UNLESS(
+        throttleBelowFillPercentage <= stopThrottlingAboveFillPercentage);
+    Y_DEBUG_ABORT_UNLESS(minExecTimePerSecond.GetValue() > 0);
+    Y_DEBUG_ABORT_UNLESS(minExecTimePerSecond <= NoThrottleExecTimePerSecond);
+
+    if (diskFillPercentage <= throttleBelowFillPercentage) {
+        return minExecTimePerSecond;
+    }
+    if (diskFillPercentage >= stopThrottlingAboveFillPercentage) {
+        return NoThrottleExecTimePerSecond;
     }
 
-    const double p = (enumerator - denominator) * 100. / Max(denominator, 1UL);
-    const double MAX_P = 1'000;
-    return Min(p, MAX_P);
+    // Position of diskFillPercentage within the throttling band, in [0, 1].
+    const double t =
+        static_cast<double>(diskFillPercentage - throttleBelowFillPercentage) /
+        (stopThrottlingAboveFillPercentage - throttleBelowFillPercentage);
+    return minExecTimePerSecond +
+           (NoThrottleExecTimePerSecond - minExecTimePerSecond) * t;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1324,8 +1372,7 @@ public:
 private:
     [[nodiscard]] ui64 GetBlockCount() const
     {
-        return State.GetMixedBlocksCount() + State.GetMergedBlocksCount() -
-               State.GetCleanupQueue().GetQueueBlocks();
+        return GetDiskBlockCount(State);
     }
 
     [[nodiscard]] ui64 GetGarbagePercentage() const
@@ -1564,18 +1611,82 @@ void TPartitionActor::ChangeRangeCountPerRunIfNeeded(
     const auto compactionRangeCountPerRun =
         State->GetCompactionRangeCountPerRun();
 
-    if (thresholdPercentage > countPerRunIncreasingThreshold
-        && compactionRangeCountPerRun <
-        Config->GetMaxCompactionRangeCountPerRun())
+    if (thresholdPercentage > countPerRunIncreasingThreshold &&
+        compactionRangeCountPerRun < Config->GetMaxCompactionRangeCountPerRun())
     {
         State->IncrementCompactionRangeCountPerRun();
         State->SetLastCompactionRangeCountPerRunTime(ctx.Now());
-    } else if (thresholdPercentage < countPerRunDecreasingThreshold &&
+    } else if (
+        thresholdPercentage < countPerRunDecreasingThreshold &&
         compactionRangeCountPerRun > 1)
     {
         State->DecrementCompactionRangeCountPerRun();
         State->SetLastCompactionRangeCountPerRunTime(ctx.Now());
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+TDuration TPartitionActor::ComputeGarbageCompactionExecTime(
+    const TActorContext& ctx,
+    bool throttlingAllowed)
+{
+    // Fall back to the static budget unless the dynamic config is valid.
+    TDuration execTimePerSecond = Config->GetMaxCompactionExecTimePerSecond();
+
+    if (IsGarbageCompactionThrottlingMisconfigured) {
+        return execTimePerSecond;
+    }
+
+    const ui32 throttleBelowFillPercentage =
+        Config->GetThrottleGarbageCompactionBelowFillPercentage();
+    const ui32 stopThrottlingAboveFillPercentage =
+        Config->GetStopGarbageCompactionThrottlingAboveFillPercentage();
+    const TDuration minExecTimePerSecond =
+        Config->GetMinGarbageCompactionExecTimePerSecond();
+
+    TString configError;
+    if (throttleBelowFillPercentage > stopThrottlingAboveFillPercentage) {
+        configError =
+            "ThrottleGarbageCompactionBelowFillPercentage > "
+            "StopGarbageCompactionThrottlingAboveFillPercentage";
+    } else if (stopThrottlingAboveFillPercentage > MaxPercentage) {
+        configError =
+            TStringBuilder()
+            << "StopGarbageCompactionThrottlingAboveFillPercentage is greater "
+               "than "
+            << MaxPercentage;
+    } else if (minExecTimePerSecond.GetValue() == 0) {
+        configError = "MinGarbageCompactionExecTimePerSecond is zero";
+    } else if (minExecTimePerSecond > NoThrottleExecTimePerSecond) {
+        configError =
+            "MinGarbageCompactionExecTimePerSecond exceeds one second";
+    } else if (Config->GetIgnoringZeroedCompactionEnabled()) {
+        configError =
+            "Ignoring zeroed compaction and dynamic garbage compaction are "
+            "enabled simultaneously";
+    }
+
+    if (configError) {
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s Invalid garbage compaction throttling config: %s",
+            LogTitle.GetWithTime().c_str(),
+            configError.c_str());
+        IsGarbageCompactionThrottlingMisconfigured = true;
+    } else {
+        execTimePerSecond = InterpolateCompactionExecTime(
+            throttleBelowFillPercentage,
+            stopThrottlingAboveFillPercentage,
+            minExecTimePerSecond,
+            GetDiskFillPercentage(*State));
+    }
+
+    PartCounters->Simple.GarbageCompactionExecTimePerSecondLimit.Set(
+        throttlingAllowed ? execTimePerSecond.MilliSeconds() : 0);
+
+    return execTimePerSecond;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1634,6 +1745,7 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
 
     auto maxCompactionExecTimePerSecond =
         Config->GetMaxCompactionExecTimePerSecond();
+
     if (Config->GetIgnoringZeroedCompactionEnabled() &&
         info->Mode == TEvPartitionPrivate::GarbageCompaction &&
         Config->GetMaxCompactionExecTimePerSecondForZeroed())
@@ -1648,6 +1760,13 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
                 Config->GetMaxCompactionExecTimePerSecond(),
                 Config->GetMaxCompactionExecTimePerSecondForZeroed());
         }
+    }
+
+    if (IsDynamicGarbageCompactionThrottlingEnabled() &&
+        info->Mode == TEvPartitionPrivate::GarbageCompaction)
+    {
+        maxCompactionExecTimePerSecond =
+            ComputeGarbageCompactionExecTime(ctx, info->ThrottlingAllowed);
     }
 
     if (info->ThrottlingAllowed) {
