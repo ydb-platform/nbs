@@ -1,5 +1,7 @@
 LIBRARY()
 
+GENERATE_ENUM_SERIALIZATION(disk_registry_state.h)
+
 SRCS(
     disk_registry_actor_acquire.cpp
     disk_registry_actor_add_lagging_devices.cpp
