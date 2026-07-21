@@ -91,7 +91,13 @@ namespace NKikimr {
                 google::protobuf::TextFormat::ParseFromString(text, conf->BlobStorageConfig.MutableServiceSet());
             }
 
-            conf->BlobStorageConfig.MutableServiceSet()->SetEnableProxyMock(Mock);
+            auto* serviceSet = conf->BlobStorageConfig.MutableServiceSet();
+            serviceSet->SetEnableProxyMock(Mock);
+            if (Conf.FakeBSProxyFailureProbability > 0) {
+                auto* config = serviceSet->MutableFailureInjectionConfig();
+                config->SetFailureProbability(Conf.FakeBSProxyFailureProbability);
+                config->SetIncludeStaticGroups(true);
+            }
             conf->PDiskConfigOverlay.SetGetDriveDataSwitch(NKikimrBlobStorage::TPDiskConfig::DoNotTouch);
             conf->PDiskConfigOverlay.SetWriteCacheSwitch(NKikimrBlobStorage::TPDiskConfig::DoNotTouch);
 

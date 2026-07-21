@@ -17,6 +17,7 @@ namespace NFake {
         ui64 SectorSize = 0;
         ui64 ChunkSize = 0;
         ui64 DiskSize = 0;
+        double FakeBSProxyFailureProbability = 0.0;
     };
 
     struct TCaches {

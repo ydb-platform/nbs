@@ -80,6 +80,9 @@ struct TTestEnvConfig
     // This controls probability that read will be restarted
     double FakePageFaultsProbability = 0.0;
     std::optional<ui64> FakePageFaultsRandomSeed = std::nullopt;
+
+    // This controls probability that DSProxy would reject a request with an error
+    double FakeBSProxyFailureProbability = 0.0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -280,6 +283,11 @@ TStorageConfigPtr CreateTestStorageConfig(NProto::TStorageConfig storageConfig);
     {                                                                          \
         TestImpl##name(TFileSystemConfig{.BlockSize = 4_KB},                   \
                        TTestEnvConfig{.FakePageFaultsProbability = 0.01});     \
+    }                                                                          \
+    Y_UNIT_TEST(name##WithBSFailureInjection)                                  \
+    {                                                                          \
+        TestImpl##name(TFileSystemConfig{.BlockSize = 4_KB},                   \
+                       TTestEnvConfig{.FakeBSProxyFailureProbability = 0.01}); \
     }                                                                          \
 // TABLET_TEST_HEAD
 

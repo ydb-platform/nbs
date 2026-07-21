@@ -107,7 +107,12 @@ TTestEnv::TTestEnv(
     SetupDomain(app);
     app.AddHive(Config.DomainUid, GetHive());
     SetupChannelProfiles(app);
-    SetupTabletServices(Runtime, &app, false, {}, std::move(cachesConfig));
+    SetupTabletServices(
+        Runtime,
+        &app,
+        false,
+        {.FakeBSProxyFailureProbability = Config.FakeBSProxyFailureProbability},
+        std::move(cachesConfig));
     BootTablets();
     SetupStorage();
     SetupProxies();
@@ -310,6 +315,7 @@ void TTestEnv::SetupLogging()
     auto kikimrServices = {
         NKikimrServices::BS_CONTROLLER,
         NKikimrServices::BS_NODE,
+        NKikimrServices::BS_PROXY,
         NKikimrServices::FLAT_TX_SCHEMESHARD,
         NKikimrServices::HIVE,
         NKikimrServices::LOCAL,
