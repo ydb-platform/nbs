@@ -83,7 +83,7 @@ def start(argv):
             "ShardFileSystemIds": shards,
         })
 
-    set_env("NFS_VHOST_SOCKET_COUNT", args.endpoint_count)
+    set_env("NFS_VHOST_SOCKET_COUNT", str(args.endpoint_count))
     for i in range(args.endpoint_count):
         socket = create_endpoint(
             client,
