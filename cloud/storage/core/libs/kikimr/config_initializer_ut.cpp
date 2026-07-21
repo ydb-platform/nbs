@@ -77,6 +77,7 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         options->SharedCacheConfig        =
         options->ImmediateControlsConfig  =
         options->InterconnectConfig       =
+        options->BlobStorageConfig        =
         options->MonitoringConfig         = configPath.GetPath();
         // clang-format on
 
