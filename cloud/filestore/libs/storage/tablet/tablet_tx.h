@@ -1913,6 +1913,7 @@ struct TTxIndexTablet
         : TTxIndexTabletBase
         , TErrorAware
         , TSessionAware
+        , TProfileAware
         , TIndexStateNodeUpdates
     {
         const TRequestInfoPtr RequestInfo;
@@ -1923,8 +1924,10 @@ struct TTxIndexTablet
 
         TDestroyHandle(
                 TRequestInfoPtr requestInfo,
-                const NProto::TDestroyHandleRequest& request)
+                const NProto::TDestroyHandleRequest& request,
+                NProto::TProfileLogRequestInfo profileLogRequest)
             : TSessionAware(request)
+            , TProfileAware(std::move(profileLogRequest))
             , RequestInfo(std::move(requestInfo))
             , Request(request)
         {}
@@ -1932,6 +1935,7 @@ struct TTxIndexTablet
         void Clear() override
         {
             TErrorAware::Clear();
+            TProfileAware::Clear();
             TIndexStateNodeUpdates::Clear();
 
             Node.Clear();

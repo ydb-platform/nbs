@@ -31,12 +31,27 @@ void TIndexTabletActor::HandleDestroyHandle(
 
     auto* msg = ev->Get();
 
+    NProto::TProfileLogRequestInfo profileLogRequest;
+    InitTabletProfileLogRequestInfo(
+        profileLogRequest,
+        EFileStoreRequest::DestroyHandle,
+        msg->Record,
+        ctx.Now(),
+        BehaveAsShard(msg->Record.GetHeaders()));
+
     auto& request = msg->Record;
     auto* handle = FindHandle(request.GetHandle());
     if (!handle || handle->GetSessionId() != GetSessionId(request)) {
+        auto error = MakeError(S_FALSE, "Invalid handle");
         auto response = std::make_unique<TEvService::TEvDestroyHandleResponse>(
-            MakeError(S_FALSE, "Invalid handle"));
+            error);
         NCloud::Reply(ctx, *ev, std::move(response));
+        FinalizeProfileLogRequestInfo(
+            std::move(profileLogRequest),
+            ctx.Now(),
+            GetFileSystemId(),
+            error,
+            ProfileLog);
         return;
     }
 
@@ -51,7 +66,8 @@ void TIndexTabletActor::HandleDestroyHandle(
     ExecuteTx<TDestroyHandle>(
         ctx,
         std::move(requestInfo),
-        request);
+        request,
+        std::move(profileLogRequest));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -159,6 +175,13 @@ void TIndexTabletActor::CompleteDestroyHandle(
         ctx);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+
+    FinalizeProfileLogRequestInfo(
+        std::move(args.ProfileLogRequest),
+        ctx.Now(),
+        GetFileSystemId(),
+        args.Error,
+        ProfileLog);
 }
 
 void TIndexTabletActor::CompleteTx_DestroyHandle(
