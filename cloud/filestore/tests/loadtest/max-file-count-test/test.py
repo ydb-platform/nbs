@@ -35,7 +35,7 @@ def test_max_file_count():
         ]
 
         with open(results_path, "w") as results:
-            results.write("\n".join(normalized_entries))
+            results.write("\n".join(normalized_entries) + "\n")
 
     finally:
         client.destroy(filesystem_id)
