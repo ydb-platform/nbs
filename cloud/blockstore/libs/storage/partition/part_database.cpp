@@ -1578,7 +1578,7 @@ bool TPartitionDatabaseImpl<TCounters>::ReadUnconfirmedBlobs(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template class TPartitionDatabase;
-template class TPartitionDatabase<TMethodCallCounter>;
+template class TPartitionDatabaseImpl<TNoOpCounter>;
+template class TPartitionDatabaseImpl<TMethodCallCounter>;
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition
