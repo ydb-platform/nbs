@@ -1935,11 +1935,12 @@ struct TTxIndexTablet
         void Clear() override
         {
             TErrorAware::Clear();
-            TProfileAware::Clear();
             TIndexStateNodeUpdates::Clear();
 
             Node.Clear();
             Completed = false;
+
+            // deliberately not calling TProfileAware::Clear()
         }
     };
 
