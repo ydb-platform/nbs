@@ -1,4 +1,8 @@
+#pragma once
+
 #include "spilling_counters.h"
+
+#include <library/cpp/threading/future/future.h>
 
 #include <contrib/ydb/library/yql/dq/runtime/dq_channel_storage.h>
 #include "contrib/ydb/library/yql/dq/common/dq_common.h"
@@ -10,13 +14,14 @@ namespace NYql::NDq {
 struct TDqChannelStorageActorEvents {
     enum {
         EvPut = EventSpaceBegin(NActors::TEvents::EEventSpace::ES_USERSPACE) + 30100,
-        EvGet
+        EvGet,
+        EvSetWakeUpCallback
     };
 };
 
 struct TEvDqChannelSpilling {
     struct TEvPut : NActors::TEventLocal<TEvPut, TDqChannelStorageActorEvents::EvPut> {
-        TEvPut(ui64 blobId, TRope&& blob, NThreading::TPromise<void>&& promise)
+        TEvPut(ui64 blobId, TChunkedBuffer&& blob, NThreading::TPromise<void>&& promise)
             : BlobId_(blobId)
             , Blob_(std::move(blob))
             , Promise_(std::move(promise))
@@ -24,7 +29,7 @@ struct TEvDqChannelSpilling {
         }
 
         ui64 BlobId_;
-        TRope Blob_;
+        TChunkedBuffer Blob_;
         NThreading::TPromise<void> Promise_;
     };
 
@@ -37,6 +42,15 @@ struct TEvDqChannelSpilling {
 
         ui64 BlobId_;
         NThreading::TPromise<TBuffer> Promise_;
+    };
+
+    struct TEvSetWakeUpCallback : NActors::TEventLocal<TEvSetWakeUpCallback, TDqChannelStorageActorEvents::EvSetWakeUpCallback> {
+        TEvSetWakeUpCallback(TWakeUpCallback&& wakeUpCallback)
+            : WakeUpCallback_(std::move(wakeUpCallback))
+        {
+        }
+
+       TWakeUpCallback WakeUpCallback_;
     };
 };
 

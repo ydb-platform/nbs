@@ -2,14 +2,7 @@ UNITTEST_FOR(contrib/ydb/core/blobstorage/backpressure)
 
 FORK_SUBTESTS()
 
-IF (WITH_VALGRIND)
-    TIMEOUT(1800)
-    SIZE(LARGE)
-    TAG(ya:fat)
-ELSE()
-    TIMEOUT(600)
-    SIZE(MEDIUM)
-ENDIF()
+SIZE(MEDIUM)
 
 PEERDIR(
     library/cpp/getopt

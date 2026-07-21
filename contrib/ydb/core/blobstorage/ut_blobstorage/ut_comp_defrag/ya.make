@@ -1,11 +1,13 @@
 UNITTEST_FOR(contrib/ydb/core/blobstorage/ut_blobstorage)
 
-    IF (SANITIZER_TYPE OR WITH_VALGRIND)
-        FORK_SUBTESTS()
-    ENDIF()
+    FORK_SUBTESTS()
 
-    SIZE(MEDIUM)
-    TIMEOUT(600)
+    IF (SANITIZER_TYPE)
+        SIZE(LARGE)
+        INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/large.inc)
+    ELSE()
+        SIZE(MEDIUM)
+    ENDIF()
 
     SRCS(
         comp_defrag.cpp

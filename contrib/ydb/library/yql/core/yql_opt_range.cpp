@@ -2,7 +2,7 @@
 #include "yql_opt_utils.h"
 #include "yql_expr_type_annotation.h"
 
-#include <contrib/ydb/library/yql/public/udf/tz/udf_tz.h>
+#include <library/cpp/type_info/tz/tz.h>
 
 namespace NYql {
 namespace {
@@ -77,7 +77,7 @@ TExprNode::TPtr MakeNaNBoundary(TPositionHandle pos, const TTypeAnnotationNode* 
 
 TExprNode::TPtr TzRound(const TExprNode::TPtr& key, const TTypeAnnotationNode* keyType, bool down, TExprContext& ctx) {
     TPositionHandle pos = key->Pos();
-    const auto& timeZones = NUdf::GetTimezones();
+    const auto& timeZones = NTi::GetTimezones();
     const size_t tzSize = timeZones.size();
     YQL_ENSURE(tzSize > 0);
     size_t targetTzId = 0;
@@ -256,10 +256,11 @@ TExprNode::TPtr BuildNormalRangeLambdaRaw(TPositionHandle pos, const TTypeAnnota
     const bool isTzKey = keySlot && (NUdf::GetDataTypeInfo(*keySlot).Features & NUdf::EDataTypeFeatures::TzDateType);
     const bool isIntegralOrDateKey = keySlot && (NUdf::GetDataTypeInfo(*keySlot).Features &
         (NUdf::EDataTypeFeatures::IntegralType | NUdf::EDataTypeFeatures::DateType));
-    const auto downKey = isTzKey ? TzRound(key, keyType, true, ctx) : key;
-    const auto upKey = isTzKey ? TzRound(key, keyType, false, ctx) : key;
+    const auto downKey = isTzKey ? TzRound(key, keyType, /*down=*/true, ctx) : key;
+    const auto upKey = isTzKey ? TzRound(key, keyType, /*down=*/false, ctx) : key;
     if (op == "!=") {
-        TRangeBoundary left, right;
+        TRangeBoundary left;
+        TRangeBoundary right;
         left = BuildMinusInf(pos, keyType, ctx);
         right.Value = downKey;
         right.Included = false;
@@ -290,7 +291,8 @@ TExprNode::TPtr BuildNormalRangeLambdaRaw(TPositionHandle pos, const TTypeAnnota
         op = "==";
     }
 
-    TRangeBoundary left, right;
+    TRangeBoundary left;
+    TRangeBoundary right;
     if (op == "==") {
         left.Value = downKey;
         right.Value = upKey;

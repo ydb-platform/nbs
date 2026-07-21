@@ -43,8 +43,8 @@ EExecutionStatus TCheckDataTxUnit::Execute(TOperation::TPtr op,
                                            TTransactionContext &,
                                            const TActorContext &ctx)
 {
-    Y_ABORT_UNLESS(op->IsDataTx() || op->IsReadTable());
-    Y_ABORT_UNLESS(!op->IsAborted());
+    Y_ENSURE(op->IsDataTx() || op->IsReadTable());
+    Y_ENSURE(!op->IsAborted());
 
     if (CheckRejectDataTx(op, ctx)) {
         op->Abort(EExecutionUnitKind::FinishPropose);
@@ -53,15 +53,15 @@ EExecutionStatus TCheckDataTxUnit::Execute(TOperation::TPtr op,
     }
 
     TActiveTransaction *tx = dynamic_cast<TActiveTransaction*>(op.Get());
-    Y_VERIFY_S(tx, "cannot cast operation of kind " << op->GetKind());
+    Y_ENSURE(tx, "cannot cast operation of kind " << op->GetKind());
     auto dataTx = tx->GetDataTx();
-    Y_ABORT_UNLESS(dataTx);
-    Y_ABORT_UNLESS(dataTx->Ready() || dataTx->RequirePrepare());
+    Y_ENSURE(dataTx);
+    Y_ENSURE(dataTx->Ready() || dataTx->RequirePrepare());
 
     if (dataTx->Ready()) {
         DataShard.IncCounter(COUNTER_MINIKQL_PROGRAM_SIZE, dataTx->ProgramSize());
     } else {
-        Y_ABORT_UNLESS(dataTx->RequirePrepare());
+        Y_ENSURE(dataTx->RequirePrepare());
         LOG_DEBUG_S(ctx, NKikimrServices::TX_DATASHARD,
                     "Require prepare Tx " << op->GetTxId() <<  " at " << DataShard.TabletID()
                     << ": " << dataTx->GetErrors());
@@ -75,9 +75,9 @@ EExecutionStatus TCheckDataTxUnit::Execute(TOperation::TPtr op,
             << "Cannot perform transaction: out of disk space at tablet "
             << DataShard.TabletID() << " txId " << op->GetTxId();
 
-        DataShard.IncCounter(COUNTER_PREPARE_OUT_OF_SPACE);
+        DataShard.IncCounter(COUNTER_PREPARE_DISK_GROUP_OUT_OF_SPACE);
 
-        BuildResult(op)->AddError(NKikimrTxDataShard::TError::OUT_OF_SPACE, err);
+        BuildResult(op)->AddError(NKikimrTxDataShard::TError::DISK_GROUP_OUT_OF_SPACE, err);
         op->Abort(EExecutionUnitKind::FinishPropose);
 
         LOG_LOG_S_THROTTLE(DataShard.GetLogThrottler(TDataShard::ELogThrottlerType::CheckDataTxUnit_Execute), ctx, NActors::NLog::PRI_ERROR, NKikimrServices::TX_DATASHARD, err);
@@ -91,18 +91,6 @@ EExecutionStatus TCheckDataTxUnit::Execute(TOperation::TPtr op,
             TString err = TStringBuilder()
                 << "Operation " << *op << " cannot read from snapshot " << snapshot
                 << " using data tx on a follower " << DataShard.TabletID();
-
-            BuildResult(op, NKikimrTxDataShard::TEvProposeTransactionResult::BAD_REQUEST)
-                ->AddError(NKikimrTxDataShard::TError::BAD_ARGUMENT, err);
-            op->Abort(EExecutionUnitKind::FinishPropose);
-
-            LOG_ERROR_S(ctx, NKikimrServices::TX_DATASHARD, err);
-
-            return EExecutionStatus::Executed;
-        } else if (!DataShard.IsMvccEnabled()) {
-            TString err = TStringBuilder()
-                << "Operation " << *op << " reads from snapshot " << snapshot
-                << " with MVCC feature disabled at " << DataShard.TabletID();
 
             BuildResult(op, NKikimrTxDataShard::TEvProposeTransactionResult::BAD_REQUEST)
                 ->AddError(NKikimrTxDataShard::TError::BAD_ARGUMENT, err);
@@ -213,9 +201,9 @@ EExecutionStatus TCheckDataTxUnit::Execute(TOperation::TPtr op,
                             // Updates are not allowed when database is out of space
                             TString err = "Cannot perform writes: database is out of disk space";
 
-                            DataShard.IncCounter(COUNTER_PREPARE_OUT_OF_SPACE);
+                            DataShard.IncCounter(COUNTER_PREPARE_DATABASE_DISK_SPACE_QUOTA_EXCEEDED);
 
-                            BuildResult(op)->AddError(NKikimrTxDataShard::TError::OUT_OF_SPACE, err);
+                            BuildResult(op)->AddError(NKikimrTxDataShard::TError::DATABASE_DISK_SPACE_QUOTA_EXCEEDED, err);
                             op->Abort(EExecutionUnitKind::FinishPropose);
 
                             LOG_LOG_S_THROTTLE(DataShard.GetLogThrottler(TDataShard::ELogThrottlerType::CheckDataTxUnit_Execute), ctx, NActors::NLog::PRI_ERROR, NKikimrServices::TX_DATASHARD, err);
@@ -241,7 +229,7 @@ EExecutionStatus TCheckDataTxUnit::Execute(TOperation::TPtr op,
         if (auto it = userTables.find(record.GetTableId().GetTableId()); it != userTables.end()) {
             const auto& tableInfo = *it->second;
             for (const auto& columnRecord : record.GetColumns()) {
-                if (auto* columnInfo = tableInfo.Columns.FindPtr(columnRecord.GetId())) {
+                if (tableInfo.Columns.FindPtr(columnRecord.GetId())) {
                     // TODO: column types don't change when bound by id, but we may want to check anyway
                 } else {
                     schemaChangedError = TStringBuilder() << "ReadTable cannot find column "

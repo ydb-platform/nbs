@@ -1,4 +1,6 @@
 #include "ydb_updater.h"
+#include "download_manager.h"
+#include "progress_bar.h"
 
 #include <library/cpp/json/writer/json.h>
 #include <library/cpp/resource/resource.h>
@@ -11,34 +13,52 @@
 #include <util/system/env.h>
 #include <util/system/execpath.h>
 #include <util/system/shellcommand.h>
+#include <library/cpp/colorizer/output.h>
+#include <contrib/ydb/public/lib/ydb_cli/common/colors.h>
 
+#ifndef _win32_
+#include <sys/utsname.h>
+#endif
 namespace NYdb {
 namespace NConsoleClient {
 
-const char* VersionResourceName = "version.txt";
+TString GetOsArchitecture() {
+#if defined(_win32_)
+    return "amd64";
+#else
+    struct utsname uts;
+    uname(&uts);
+    TString machine = uts.machine;
+    if (machine == "arm64" || machine == "aarch64") {
+        return "arm64";
+    } else {
+        return "amd64";
+    }
+#endif
+}
 
 namespace {
 #if defined(_darwin_)
-    const TString OsVersion = "darwin";
-    const TString BinaryName = "ydb";
-    const TString HomeDir = GetHomeDir();
+    const TString osVersion = "darwin";
+    const TString binaryName = "ydb";
+    const TString homeDir = GetHomeDir();
 #elif defined(_win32_)
-    const TString OsVersion = "windows";
-    const TString BinaryName = "ydb.exe";
-    const TString HomeDir = GetEnv("USERPROFILE");
+    const TString osVersion = "windows";
+    const TString binaryName = "ydb.exe";
+    const TString homeDir = GetEnv("USERPROFILE");
 #else
-    const TString OsVersion = "linux";
-    const TString BinaryName = "ydb";
-    const TString HomeDir = GetHomeDir();
+    const TString osVersion = "linux";
+    const TString binaryName = "ydb";
+    const TString homeDir = GetHomeDir();
 #endif
-    const TString DefaultConfigFile = TStringBuilder() << HomeDir << "/ydb/bin/config.json";
-    const TString DefaultTempFile = TStringBuilder() << HomeDir << "/ydb/install/" << BinaryName;
-    const TString StorageUrl = "https://storage.yandexcloud.net/yandexcloud-ydb/release/";
-    const TString VersionUrl = TStringBuilder() << StorageUrl << "stable";
+    const TString osArch = GetOsArchitecture();
+    const TString defaultConfigFile = TStringBuilder() << homeDir << "/ydb/bin/config.json";
+    const TString defaultTempFile = TStringBuilder() << homeDir << "/ydb/install/" << binaryName;
 }
 
-TYdbUpdater::TYdbUpdater()
+TYdbUpdater::TYdbUpdater(std::string storageUrl)
     : MyVersion(StripString(NResource::Find(TStringBuf(VersionResourceName))))
+    , StorageUrl(storageUrl)
 {
     LoadConfig();
 }
@@ -49,53 +69,43 @@ TYdbUpdater::~TYdbUpdater() {
     }
 }
 
-bool TYdbUpdater::CheckIfUpdateNeeded(bool forceRequest) {
-    if (!forceRequest && !IsCheckEnabled()) {
-        return false;
-    }
-    if (!forceRequest && Config.Has("outdated") && Config["outdated"].GetBoolean()) {
-        return true;
-    }
-    if (!forceRequest && !IsTimeToCheckForUpdate()) {
-        return false;
-    }
-
-    SetConfigValue("last_check", TInstant::Now().Seconds());
-
-    if (GetLatestVersion()) {
-        bool isOutdated = MyVersion != LatestVersion;
-        SetConfigValue("outdated", isOutdated);
-        return isOutdated;
-    }
-    return false;
-}
-
 int TYdbUpdater::Update(bool forceUpdate) {
-    if (!GetLatestVersion()) {
-        return EXIT_FAILURE;
-    }
-    if (!CheckIfUpdateNeeded(/*forceRequest*/ true) && !forceUpdate) {
-        Cerr << "Current version: \"" << MyVersion << "\". Latest version Available: \"" << LatestVersion
-            << "\". No need to update. Use '--force' option to update anyway." << Endl;
+    if (GetLatestVersion()) {
+        if (MyVersion == LatestVersion && !forceUpdate) {
+            Cerr << "Current version: \"" << MyVersion << "\". Latest version available: \"" << LatestVersion
+                << "\". No need to update. Use '--force' option to update anyway." << Endl;
+            return EXIT_FAILURE;
+        }
+    } else {
         return EXIT_FAILURE;
     }
 
-    TFsPath tmpPathToBinary(DefaultTempFile);
+    TFsPath tmpPathToBinary(defaultTempFile);
     tmpPathToBinary.Fix();
     TString corrPath = tmpPathToBinary.GetPath();
     if (!tmpPathToBinary.Parent().Exists()) {
         tmpPathToBinary.Parent().MkDirs();
     }
-    const TString DownloadUrl = TStringBuilder() << StorageUrl << LatestVersion << "/" << OsVersion << "/amd64/"
-        << BinaryName;
-    Cout << "Downloading binary from url " << DownloadUrl << Endl;
-    TShellCommand curlCmd(TStringBuilder() << "curl --max-time 60 " << DownloadUrl << " -o " << tmpPathToBinary.GetPath());
-    curlCmd.Run().Wait();
-    if (curlCmd.GetExitCode() != 0) {
-        Cerr << "Failed to download from url \"" << DownloadUrl << "\". " << curlCmd.GetError() << Endl;
+    const TString downloadUrl = TStringBuilder() << StorageUrl << '/' << LatestVersion << '/' << osVersion
+        << '/' << osArch << '/' << binaryName;
+    TBytesProgressBar progressBar;
+    TDownloadResult downloadResult = DownloadFile(
+        downloadUrl,
+        tmpPathToBinary.GetPath(),
+        [&progressBar](ui64 downloaded, ui64 total) {
+            if (total > 0 && progressBar.GetTotalBytes() == 0) {
+                progressBar.SetTotal(total);
+            }
+            progressBar.SetProgress(downloaded);
+        }
+    );
+
+    if (!downloadResult.Success) {
+        Cerr << Endl << "Failed to download from url \"" << downloadUrl << "\". " << downloadResult.ErrorMessage << Endl;
+        Cerr << "If the problem persists, consider reinstalling YDB CLI: https://ydb.tech/docs/en/reference/ydb-cli/install" << Endl;
+        tmpPathToBinary.DeleteIfExists();
         return EXIT_FAILURE;
     }
-    Cout << "Downloaded to " << tmpPathToBinary.GetPath() << Endl;
 
 #ifndef _win32_
     int chmodResult = Chmod(tmpPathToBinary.GetPath().data(), MODE0777);
@@ -105,15 +115,15 @@ int TYdbUpdater::Update(bool forceUpdate) {
     }
 #endif
 
-    // Check new binary
-    Cout << "Checking downloaded binary by calling 'version' command..." << Endl;
     TShellCommand checkCmd(TStringBuilder() << tmpPathToBinary.GetPath() << " version");
     checkCmd.Run().Wait();
     if (checkCmd.GetExitCode() != 0) {
         Cerr << "Failed to check downloaded binary. " << checkCmd.GetError() << Endl;
+        tmpPathToBinary.DeleteIfExists();
         return EXIT_FAILURE;
     }
-    Cout << checkCmd.GetOutput();
+
+    TString versionOutput = StripString(checkCmd.GetOutput());
 
     TFsPath fsPathToBinary(GetExecPath());
 #ifdef _win32_
@@ -121,15 +131,15 @@ int TYdbUpdater::Update(bool forceUpdate) {
     binaryNameOld.Fix();
     binaryNameOld.DeleteIfExists();
     fsPathToBinary.RenameTo(binaryNameOld);
-    Cout << "Old binary renamed to " << binaryNameOld.GetPath() << Endl;
 #else
     fsPathToBinary.DeleteIfExists();
-    Cout << "Old binary removed" << Endl;
 #endif
     tmpPathToBinary.RenameTo(fsPathToBinary);
-    Cout << "New binary renamed to " << fsPathToBinary.GetPath() << Endl;
 
-    SetConfigValue("outdated", false);
+    TStringBuf version = versionOutput;
+    version.SkipPrefix("YDB CLI ");
+    Cerr << "YDB CLI successfully updated to version " << version << "." << Endl;
+
     return EXIT_SUCCESS;
 }
 
@@ -144,7 +154,7 @@ void TYdbUpdater::SetConfigValue(const TString& name, const T& value) {
 }
 
 void TYdbUpdater::LoadConfig() {
-    TFsPath configFilePath(DefaultConfigFile);
+    TFsPath configFilePath(defaultConfigFile);
     configFilePath.Fix();
     try {
         if (configFilePath.Exists()) {
@@ -164,7 +174,7 @@ void TYdbUpdater::LoadConfig() {
 
 void TYdbUpdater::SaveConfig() {
     try {
-        TFsPath configFilePath(DefaultConfigFile);
+        TFsPath configFilePath(defaultConfigFile);
         configFilePath.Fix();
         if (!configFilePath.Parent().Exists()) {
             configFilePath.Parent().MkDirs();
@@ -201,16 +211,40 @@ bool TYdbUpdater::GetLatestVersion() {
     if (LatestVersion) {
         return true;
     }
-
-    TShellCommand curlCmd(TStringBuilder() << "curl --silent --max-time 10 " << VersionUrl);
+    std::string versionUrl = StorageUrl + "/stable";
+    TShellCommand curlCmd(TStringBuilder() << "curl --silent --max-time 10 " << versionUrl);
     curlCmd.Run().Wait();
 
     if (curlCmd.GetExitCode() == 0) {
         LatestVersion = StripString(curlCmd.GetOutput());
+        SetConfigValue("last_check", TInstant::Now().Seconds());
         return true;
     }
-    Cerr << "(!) Couldn't get latest version from url \"" << VersionUrl << "\". " << curlCmd.GetError() << Endl;
+    Cerr << "(!) Couldn't get latest version from url \"" << versionUrl << "\". " << curlCmd.GetError() << Endl;
     return false;
+}
+
+void TYdbUpdater::PrintUpdateMessageIfNeeded(bool forceVersionCheck) {
+    if (forceVersionCheck) {
+        Cerr << "Force checking if there is a newer version..." << Endl;
+    } else if (!IsCheckEnabled() || !IsTimeToCheckForUpdate()) {
+        return;
+    }
+    if (!GetLatestVersion()) {
+        Cerr << "You can disable further version checks with 'ydb version --disable-checks' command." << Endl;
+        return;
+    }
+    if (MyVersion != LatestVersion) {
+        NColorizer::TColors colors = NConsoleClient::AutoColors(Cerr);
+        Cerr << colors.Green() << "(!) New version of YDB CLI is available. Current version: \"" << MyVersion
+            << "\", Latest recommended version available: \"" << LatestVersion << "\". Run 'ydb update' command for update. "
+            << "You can also disable further version checks with 'ydb version --disable-checks' command."
+            << colors.OldColor() << Endl;
+    } else if (forceVersionCheck) {
+        NColorizer::TColors colors = NConsoleClient::AutoColors(Cerr);
+        Cerr << colors.GreenColor() << "Current version is up to date"
+            << colors.OldColor() << Endl;
+    }
 }
 
 }

@@ -48,26 +48,27 @@
                                                         "TopSortBy": "$5.SearchPhrase"
                                                     },
                                                     {
+                                                        "Blocks": "True",
                                                         "Inputs": [
                                                             {
                                                                 "InternalOperatorId": 2
                                                             }
                                                         ],
                                                         "Name": "Filter",
-                                                        "Predicate": "SearchPhrase != "
+                                                        "Predicate": "SearchPhrase != \"\"",
+                                                        "Pushdown": "True"
                                                     },
                                                     {
                                                         "Inputs": [],
                                                         "Name": "TableFullScan",
+                                                        "Path": "/local/clickbench/plans/column/hits",
                                                         "ReadColumns": [
-                                                            "SearchPhrase"
-                                                        ],
-                                                        "ReadRanges": [
                                                             "CounterID (-\u221e, +\u221e)",
                                                             "EventDate (-\u221e, +\u221e)",
                                                             "UserID (-\u221e, +\u221e)",
                                                             "EventTime (-\u221e, +\u221e)",
-                                                            "WatchID (-\u221e, +\u221e)"
+                                                            "WatchID (-\u221e, +\u221e)",
+                                                            "SearchPhrase"
                                                         ],
                                                         "Scan": "Parallel",
                                                         "SsaProgram": {
@@ -118,8 +119,7 @@
                                                                         ]
                                                                     }
                                                                 }
-                                                            ],
-                                                            "Version": 4
+                                                            ]
                                                         },
                                                         "Table": "clickbench/plans/column/hits"
                                                     }
@@ -138,7 +138,10 @@
                             }
                         ]
                     }
-                ]
+                ],
+                "Stats": {
+                    "ResourcePoolId": "default"
+                }
             },
             "tables": [
                 {

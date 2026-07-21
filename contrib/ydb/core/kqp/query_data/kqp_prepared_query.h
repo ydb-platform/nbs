@@ -37,6 +37,7 @@ class TPreparedQueryAllocHolder;
 struct TPhyTxResultMetadata {
     NKikimr::NMiniKQL::TType* MkqlItemType;
     TVector<ui32> ColumnOrder;
+    TVector<TString> ColumnHints;
 };
 
 struct TTableConstInfoMap : public TAtomicRefCount<TTableConstInfoMap> {
@@ -58,6 +59,14 @@ public:
     const TStagePredictor& GetCalculationPredictor(const size_t stageIdx) const;
 
     const TVector<TPhyTxResultMetadata>& GetTxResultsMeta() const { return TxResultsMeta; }
+
+    bool EnableShuffleElimination() const {
+        return Proto->GetEnableShuffleElimination();
+    }
+
+    ui32 DqChannelVersion() const {
+        return Proto->GetDqChannelVersion();
+    }
 
     const NKqpProto::TKqpPhyStage& GetStages(size_t index) const {
         return Proto->GetStages(index);
@@ -111,6 +120,10 @@ public:
         return Proto->ShortDebugString();
     }
 
+    std::shared_ptr<const NKikimrKqp::TPreparedQuery> GetPreparedQuery() const {
+        return PreparedQuery;
+    }
+
     TIntrusiveConstPtr<TTableConstInfoMap> GetTableConstInfoById() const;
 
     TKqpPhyTxHolder(const std::shared_ptr<const NKikimrKqp::TPreparedQuery>& pq, const NKqpProto::TKqpPhyTx* proto,
@@ -135,6 +148,7 @@ public:
 class TPreparedQueryHolder {
 private:
     YDB_ACCESSOR_DEF(TLlvmSettings, LlvmSettings);
+    YDB_ACCESSOR(bool, UseKqpTasksGraphV2, false);
     std::shared_ptr<const NKikimrKqp::TPreparedQuery> Proto;
     std::shared_ptr<TPreparedQueryAllocHolder> Alloc;
     TVector<TString> QueryTables;

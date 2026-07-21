@@ -10,6 +10,7 @@ SRCS(
     fake_scheme_shard.h
     minikql_compile.h
     mock_pq_metacache.h
+    storage_helpers.cpp
     tablet_flat_dummy.cpp
     tablet_helpers.cpp
     tablet_helpers.h
@@ -23,9 +24,10 @@ SRCS(
 
 PEERDIR(
     contrib/ydb/apps/version
+    contrib/ydb/core/audit/audit_config
     contrib/ydb/library/actors/core
     contrib/ydb/library/actors/interconnect
-    contrib/ydb/library/grpc/client
+    contrib/ydb/public/sdk/cpp/src/library/grpc/client
     contrib/ydb/library/grpc/server
     contrib/ydb/library/grpc/server/actors
     library/cpp/regex/pcre
@@ -51,8 +53,10 @@ PEERDIR(
     contrib/ydb/core/kesus/proxy
     contrib/ydb/core/kesus/tablet
     contrib/ydb/core/keyvalue
+    contrib/ydb/core/test_tablet
     contrib/ydb/core/kqp
     contrib/ydb/core/kqp/federated_query
+    contrib/ydb/services/scheme_secret
     contrib/ydb/core/kqp/finalize_script_service
     contrib/ydb/core/kqp/proxy_service
     contrib/ydb/core/metering
@@ -62,9 +66,11 @@ PEERDIR(
     contrib/ydb/core/mind/hive
     contrib/ydb/core/node_whiteboard
     contrib/ydb/core/persqueue
+    contrib/ydb/core/persqueue/deferred_publish
     contrib/ydb/core/protos
     contrib/ydb/core/security
     contrib/ydb/core/security/ldap_auth_provider
+    contrib/ydb/core/security/token_manager
     contrib/ydb/core/statistics/aggregator
     contrib/ydb/core/sys_view/processor
     contrib/ydb/core/sys_view/service
@@ -84,17 +90,20 @@ PEERDIR(
     contrib/ydb/library/mkql_proto/protos
     contrib/ydb/library/persqueue/topic_parser
     contrib/ydb/library/security
-    contrib/ydb/library/yql/minikql/comp_nodes/llvm14
+    contrib/ydb/library/yql/minikql/comp_nodes/llvm16
+    contrib/ydb/library/yql/providers/pq/gateway/dummy
     contrib/ydb/library/yql/providers/s3/actors_factory
     contrib/ydb/library/yql/providers/yt/codec/codegen
-    contrib/ydb/library/yql/providers/yt/comp_nodes/llvm14
+    contrib/ydb/library/yql/providers/yt/comp_nodes/llvm16
+    contrib/ydb/library/yql/providers/yt/comp_nodes/dq/llvm16
     contrib/ydb/library/yql/public/udf/service/exception_policy
+    contrib/ydb/public/api/protos
     contrib/ydb/public/lib/base
     contrib/ydb/public/lib/deprecated/kicli
-    contrib/ydb/public/sdk/cpp/client/ydb_driver
-    contrib/ydb/public/sdk/cpp/client/ydb_topic/codecs
-    contrib/ydb/public/sdk/cpp/client/ydb_query
-    contrib/ydb/public/sdk/cpp/client/ydb_table
+    contrib/ydb/public/sdk/cpp/src/client/driver
+    contrib/ydb/public/sdk/cpp/src/client/topic/codecs
+    contrib/ydb/public/sdk/cpp/src/client/query
+    contrib/ydb/public/sdk/cpp/src/client/table
     contrib/ydb/services/auth
     contrib/ydb/services/cms
     contrib/ydb/services/datastreams
@@ -102,6 +111,7 @@ PEERDIR(
     contrib/ydb/services/ext_index/service
     contrib/ydb/services/ymq
     contrib/ydb/core/tx/conveyor/service
+    contrib/ydb/core/tx/priorities/service
     contrib/ydb/core/tx/limiter/grouped_memory/usage
     contrib/ydb/services/fq
     contrib/ydb/services/kesus
@@ -111,6 +121,7 @@ PEERDIR(
     contrib/ydb/services/replication
     contrib/ydb/services/monitoring
     contrib/ydb/services/metadata/ds_table
+    contrib/ydb/services/tablet
     contrib/ydb/services/ydb
 
     contrib/ydb/core/http_proxy
@@ -130,5 +141,6 @@ RECURSE(
     actors
     basics
     default
+    grpc_request
     pg
 )

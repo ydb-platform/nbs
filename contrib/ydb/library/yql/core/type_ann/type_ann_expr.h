@@ -5,11 +5,21 @@
 #include <contrib/ydb/library/yql/ast/yql_expr.h>
 #include <contrib/ydb/library/yql/ast/yql_expr_types.h>
 #include <contrib/ydb/library/yql/core/yql_expr_optimize.h>
+#include <contrib/ydb/library/yql/core/yql_data_provider.h>
+
+#include <contrib/ydb/library/yql/public/udf_meta/udf_meta.h>
 
 namespace NYql {
 
+enum class ETypeCheckMode {
+    Single,
+    Initial,
+    Repeat
+};
+
 TAutoPtr<IGraphTransformer> CreateTypeAnnotationTransformer(
-        TAutoPtr<IGraphTransformer> callableTransformer, TTypeAnnotationContext& types);
+    TAutoPtr<IGraphTransformer> callableTransformer, TTypeAnnotationContext& types,
+    ETypeCheckMode mode = ETypeCheckMode::Single);
 
 TAutoPtr<IGraphTransformer> CreateFullTypeAnnotationTransformer(bool instant, bool wholeProgram, TTypeAnnotationContext& types);
 
@@ -25,5 +35,15 @@ TExprNode::TPtr ParseAndAnnotate(
         const TStringBuf& str,
         TExprContext& exprCtx, bool instant, bool wholeProgram,
         TTypeAnnotationContext& typeAnnotationContext);
+
+TAutoPtr<IGraphTransformer> CreatePartialTypeAnnotationTransformer(
+    TAutoPtr<IGraphTransformer> callableTransformer, TTypeAnnotationContext& types);
+
+bool PartialAnnonateTypes(TAstNode* astRoot, bool isLibrary, TLangVersion langver, const IUdfMeta* udfMeta, TIssues& issues,
+    std::function<TIntrusivePtr<IDataProvider>(TTypeAnnotationContext&)> configProviderFactory,
+    std::function<const TTypeAnnotationNode* (TStringBuf, TExprContext&)> typeParser,
+    std::function<TString (const TTypeAnnotationNode*)> typeWriter);
+
+void CheckFatalTypeError(IGraphTransformer::TStatus status);
 
 }

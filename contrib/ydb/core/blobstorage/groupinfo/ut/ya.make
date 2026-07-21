@@ -2,13 +2,12 @@ UNITTEST_FOR(contrib/ydb/core/blobstorage/groupinfo)
 
 FORK_SUBTESTS()
 
-IF (WITH_VALGRIND)
-    TIMEOUT(1800)
-    SIZE(LARGE)
-    TAG(ya:fat)
-ELSE()
-    TIMEOUT(600)
+IF (SANITIZER_TYPE)
     SIZE(MEDIUM)
+    REQUIREMENTS(cpu:4)
+ELSE()
+    SIZE(MEDIUM)
+    REQUIREMENTS(cpu:4)
 ENDIF()
 
 PEERDIR(

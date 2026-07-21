@@ -2,16 +2,13 @@ UNITTEST_FOR(contrib/ydb/core/mind/address_classification)
 
 FORK_SUBTESTS()
 
-IF (SANITIZER_TYPE == "thread" OR WITH_VALGRIND)
-    TIMEOUT(1200)
+IF (SANITIZER_TYPE == "thread")
     SIZE(LARGE)
     SPLIT_FACTOR(20)
-    TAG(ya:fat)
+    INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/large.inc)
     REQUIREMENTS(ram:16)
 ELSE()
-    TIMEOUT(600)
     SIZE(MEDIUM)
-    REQUIREMENTS(ram:16)
 ENDIF()
 
 PEERDIR(

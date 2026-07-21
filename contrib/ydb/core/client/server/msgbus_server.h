@@ -1,5 +1,4 @@
 #pragma once
-#include <contrib/ydb/library/actors/core/actorsystem.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/core/grpc_services/base/base.h>
 #include <contrib/ydb/public/lib/base/defs.h>
@@ -46,7 +45,6 @@ class TMessageBusSessionIdentHolder {
     THolder<TImpl> Impl;
 
     class TImplMessageBus;
-    class TImplGRpc;
     class TImplNoOpGrpc;
 
     // to create session
@@ -69,6 +67,8 @@ public:
 
     // If ticket parser authentication/authorization is already done, returns the internal token.
     TIntrusiveConstPtr<NACLib::TUserToken> GetInternalToken() const;
+
+    void SetFinishAction(std::function<void()>&& cb);
 };
 
 class TBusMessageContext {
@@ -76,14 +76,12 @@ class TBusMessageContext {
     TIntrusivePtr<TImpl> Impl;
 
     class TImplMessageBus;
-    class TImplGRpc;
     class TImplNoOpGrpc;
 
 public:
     TBusMessageContext();
     TBusMessageContext(const TBusMessageContext& other);
     TBusMessageContext(NBus::TOnMessageContext &messageContext, IMessageWatcher *messageWatcher = nullptr);
-    TBusMessageContext(NGRpcProxy::IRequestContext *requestContext, int type);
     TBusMessageContext(std::unique_ptr<NGRpcService::IRequestNoOpCtx> requestContext, int type);
     ~TBusMessageContext();
 
@@ -102,6 +100,51 @@ public:
 private:
     friend class TMessageBusSessionIdentHolder;
     THolder<TMessageBusSessionIdentHolder::TImpl> CreateSessionIdentHolder();
+};
+
+template <typename TDerived>
+class TMessageBusCancellableRequest : public TActorBootstrapped<TMessageBusCancellableRequest<TDerived>>, public TMessageBusSessionIdentHolder {
+public:
+    using TThis = TDerived;
+
+protected:
+    TMessageBusCancellableRequest() = default;
+
+    explicit TMessageBusCancellableRequest(TBusMessageContext& msg)
+        : TMessageBusSessionIdentHolder(msg)
+    {
+    }
+
+public:
+    void Bootstrap(const TActorContext& ctx) {
+        RegisterCancelCallback();
+
+        using T = decltype(&TDerived::Bootstrap);
+        TDerived& self = static_cast<TDerived&>(*this);
+        if constexpr (std::is_invocable_v<T, TDerived, const TActorContext&>) {
+            self.Bootstrap(ctx);
+        } else if constexpr (std::is_invocable_v<T, TDerived>) {
+            self.Bootstrap();
+        } else {
+            static_assert(dependent_false<TDerived>::value, "No correct Bootstrap() signature");
+        }
+    }
+
+protected:
+    // Derived actors need to embed Cancel to their StateFunc
+    void Cancel(const TActorContext& ctx) {
+        SendReplyMove(new TBusResponseStatus(MSTATUS_ABORTED, "Aborted"));
+        this->Die(ctx);
+    }
+
+private:
+    void RegisterCancelCallback() {
+        const TActorId selfId = this->SelfId();
+        TActorSystem* actorSystem = TActivationContext::ActorSystem();
+        SetFinishAction([selfId, actorSystem]() {
+            actorSystem->Send(selfId, new TEvents::TEvPoisonPill());
+        });
+    }
 };
 
 struct TEvBusProxy {
@@ -283,17 +326,12 @@ IActor* CreateMessageBusServerProxy(TMessageBusServer *server);
 
 //IActor* CreateMessageBusDatashardSetConfig(TBusMessageContext &msg);
 IActor* CreateMessageBusTabletCountersRequest(TBusMessageContext &msg);
-IActor* CreateMessageBusLocalMKQL(TBusMessageContext &msg);
-IActor* CreateMessageBusLocalSchemeTx(TBusMessageContext &msg);
 IActor* CreateMessageBusSchemeInitRoot(TBusMessageContext &msg);
 IActor* CreateMessageBusGetTypes(TBusMessageContext &msg);
 IActor* CreateMessageBusHiveCreateTablet(TBusMessageContext &msg);
-IActor* CreateMessageBusLocalEnumerateTablets(TBusMessageContext &msg);
-IActor* CreateMessageBusKeyValue(TBusMessageContext &msg);
 IActor* CreateMessageBusPersQueue(TBusMessageContext &msg);
 IActor* CreateMessageBusChooseProxy(TBusMessageContext &msg);
 IActor* CreateMessageBusTabletStateRequest(TBusMessageContext &msg);
-IActor* CreateMessageBusTabletKillRequest(TBusMessageContext &msg);
 IActor* CreateMessageBusSchemeOperationStatus(TBusMessageContext &msg);
 IActor* CreateMessageBusBlobStorageLoadRequest(TBusMessageContext &msg);
 IActor* CreateMessageBusBlobStorageGetRequest(TBusMessageContext &msg);
@@ -304,11 +342,9 @@ IActor* CreateMessageBusFillNode(TBusMessageContext &msg);
 IActor* CreateMessageBusResolveNode(TBusMessageContext &msg);
 IActor* CreateMessageBusRegisterNode(TBusMessageContext &msg);
 IActor* CreateMessageBusCmsRequest(TBusMessageContext &msg);
-IActor* CreateMessageBusSqsRequest(TBusMessageContext &msg);
 IActor* CreateMessageBusInterconnectDebug(TBusMessageContext& msg);
 IActor* CreateMessageBusConsoleRequest(TBusMessageContext &msg);
 IActor* CreateMessageBusTestShardControl(TBusMessageContext &msg);
-IActor* CreateMessageBusLoginRequest(TBusMessageContext &msg);
 
 TBusResponse* ProposeTransactionStatusToResponse(EResponseStatus status, const NKikimrTxUserProxy::TEvProposeTransactionStatus &result);
 

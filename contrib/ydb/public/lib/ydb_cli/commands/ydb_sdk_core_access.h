@@ -1,9 +1,9 @@
 #pragma once
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_types/core_facility/core_facility.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/types/core_facility/core_facility.h>
 #include <memory>
 
-namespace NYdb {
+namespace NYdb::inline Dev {
     class TDriver;
 }
 

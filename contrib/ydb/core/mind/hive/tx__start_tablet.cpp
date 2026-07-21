@@ -9,6 +9,7 @@ class TTxStartTablet : public TTransactionBase<THive> {
     TActorId Local;
     ui64 Cookie;
     bool External;
+    bool BootingSuppressed;
     TSideEffects SideEffects;
     bool Success;
 
@@ -19,6 +20,7 @@ public:
         , Local(local)
         , Cookie(cookie)
         , External(external)
+        , BootingSuppressed(false)
     {}
 
     TTxType GetTxType() const override { return NHive::TXTYPE_START_TABLET; }
@@ -29,6 +31,7 @@ public:
         BLOG_D("THive::TTxStartTablet::Execute Tablet " << TabletId);
         TTabletInfo* tablet = Self->FindTablet(TabletId);
         if (tablet != nullptr) {
+            NIceDb::TNiceDb db(txc.DB);
             tablet->BootTime = TActivationContext::Now();
             // finish fast-move operation
             if (tablet->LastNodeId != 0 && tablet->LastNodeId != Local.NodeId()) {
@@ -38,24 +41,48 @@ public:
                 }
                 tablet->LastNodeId = 0;
             }
+
+            tablet->AddRestartTimestamp(TActivationContext::Now());
+
             // increase generation
             if (tablet->IsLeader()) {
                 TLeaderTabletInfo& leader = tablet->AsLeader();
-                if (leader.IsStarting() || leader.IsBootingSuppressed() && External) {
-                    NIceDb::TNiceDb db(txc.DB);
+                BootingSuppressed = leader.IsBootingSuppressed();
+
+                if (BootingSuppressed && External && leader.ChannelProfileNewGroup.any()) {
+                    if (leader.State != ETabletState::GroupAssignment) {
+                        leader.InitiateAssignTabletGroups();
+                    }
+                    SideEffects.Send(Local,
+                        new TEvHive::TEvBootTabletReply(NKikimrProto::EReplyStatus::TRYLATER),
+                        0,
+                        Cookie);
+                    return true;
+                }
+
+                if (leader.IsStarting() || BootingSuppressed && External) {
                     leader.IncreaseGeneration();
                     db.Table<Schema::Tablet>().Key(leader.Id).Update<Schema::Tablet::KnownGeneration>(leader.KnownGeneration);
                 } else {
                     BLOG_W("THive::TTxStartTablet::Execute Tablet " << leader.ToString() << " (" << leader.StateString() << ") skipped generation increment " << (ui64)leader.State);
                 }
+
+                db.Table<Schema::Tablet>().Key(leader.Id).Update<Schema::Tablet::Statistics>(leader.Statistics);
+            } else {
+                db.Table<Schema::TabletFollowerTablet>().Key(TabletId.first, TabletId.second).Update<Schema::TabletFollowerTablet::Statistics>(tablet->Statistics);
             }
+            // reset usage impact estimate on each tablet restart
+            tablet->UsageImpact = 0;
+            db.Table<Schema::Metrics>().Key(tablet->GetFullTabletId()).Update<Schema::Metrics::UsageImpact>(0.);
             if (tablet->IsLeader()) {
                 TLeaderTabletInfo& leader = tablet->AsLeader();
-                if (leader.IsStartingOnNode(Local.NodeId()) || leader.IsBootingSuppressed() && External) {
+                if (leader.IsStartingOnNode(Local.NodeId()) || BootingSuppressed && External) {
                     if (!leader.DeletedHistory.empty()) {
                         if (!leader.WasAliveSinceCutHistory) {
                             BLOG_ERROR("THive::TTxStartTablet::Execute Tablet " << TabletId << " failed to start after cutting history - will restore history");
-                            leader.RestoreDeletedHistory();
+                            Self->TabletCounters->Cumulative()[NHive::COUNTER_HISTORY_RESTORED].Increment(leader.DeletedHistory.size());
+                            Self->UpdateCounterTabletChannelHistorySize();
+                            leader.RestoreDeletedHistory(txc);
                         } else {
                             leader.WasAliveSinceCutHistory = false;
                         }
@@ -113,7 +140,8 @@ public:
     void Complete(const TActorContext& ctx) override {
         BLOG_D("THive::TTxStartTablet::Complete Tablet " << TabletId << " SideEffects: " << SideEffects);
         SideEffects.Complete(ctx);
-        if (Success) {
+        bool legitExternalBoot = External && BootingSuppressed;
+        if (Success && !legitExternalBoot) {
             Self->UpdateCounterTabletsStarting(+1);
         }
     }

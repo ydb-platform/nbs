@@ -6,7 +6,7 @@
 #include <contrib/ydb/core/ymq/base/counters.h>
 #include <contrib/ydb/library/http_proxy/authorization/signature.h>
 #include <contrib/ydb/core/base/appdata.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_types/credentials/credentials.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/types/credentials/credentials.h>
 
 namespace NKikimr::NSQS {
 
@@ -33,6 +33,7 @@ struct TAuthActorData {
 
     TStringBuf IAMToken;
     TStringBuf FolderID;
+    TStringBuf SourceAddress;
 
     ESqsRequestFormat RequestFormat = Xml;
     TActorId Requester;

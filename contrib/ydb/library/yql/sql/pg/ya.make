@@ -6,10 +6,10 @@ PROVIDES(
 
 PEERDIR(
     contrib/ydb/library/yql/ast
-    contrib/ydb/library/yql/core
+    contrib/ydb/library/yql/core/sql_types
     contrib/ydb/library/yql/parser/pg_catalog
+    contrib/ydb/library/yql/minikql
     contrib/ydb/library/yql/sql/settings
-    contrib/ydb/public/api/protos
 )
 
 ADDINCL(

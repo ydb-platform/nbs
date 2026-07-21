@@ -43,7 +43,7 @@
  * before switching to the other state or activating a different read pointer.
  *
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -673,10 +673,10 @@ grow_memtuples(Tuplestorestate *state)
 
 	/* OK, do it */
 	FREEMEM(state, GetMemoryChunkSpace(state->memtuples));
-	state->memtupsize = newmemtupsize;
 	state->memtuples = (void **)
 		repalloc_huge(state->memtuples,
-					  state->memtupsize * sizeof(void *));
+					  newmemtupsize * sizeof(void *));
+	state->memtupsize = newmemtupsize;
 	USEMEM(state, GetMemoryChunkSpace(state->memtuples));
 	if (LACKMEM(state))
 		elog(ERROR, "unexpected out-of-memory situation in tuplestore");
@@ -1221,7 +1221,19 @@ dumptuples(Tuplestorestate *state)
 		if (i >= state->memtupcount)
 			break;
 		WRITETUP(state, state->memtuples[i]);
+
+		/*
+		 * Increase memtupdeleted to track the fact that we just deleted that
+		 * tuple.  Think not to remove this on the grounds that we'll reset
+		 * memtupdeleted to zero below.  We might not reach that if some later
+		 * WRITETUP fails (e.g. due to overrunning temp_file_limit).  If so,
+		 * we'd error out leaving an effectively-corrupt tuplestore, which
+		 * would be quite bad if it's a persistent data structure such as a
+		 * Portal's holdStore.
+		 */
+		state->memtupdeleted++;
 	}
+	/* Now we can reset memtupdeleted along with memtupcount */
 	state->memtupdeleted = 0;
 	state->memtupcount = 0;
 }
@@ -1246,11 +1258,11 @@ tuplestore_rescan(Tuplestorestate *state)
 		case TSS_WRITEFILE:
 			readptr->eof_reached = false;
 			readptr->file = 0;
-			readptr->offset = 0L;
+			readptr->offset = 0;
 			break;
 		case TSS_READFILE:
 			readptr->eof_reached = false;
-			if (BufFileSeek(state->myfile, 0, 0L, SEEK_SET) != 0)
+			if (BufFileSeek(state->myfile, 0, 0, SEEK_SET) != 0)
 				ereport(ERROR,
 						(errcode_for_file_access(),
 						 errmsg("could not seek in tuplestore temporary file")));
@@ -1408,8 +1420,10 @@ tuplestore_trim(Tuplestorestate *state)
 		FREEMEM(state, GetMemoryChunkSpace(state->memtuples[i]));
 		pfree(state->memtuples[i]);
 		state->memtuples[i] = NULL;
+		/* As in dumptuples(), increment memtupdeleted synchronously */
+		state->memtupdeleted++;
 	}
-	state->memtupdeleted = nremove;
+	Assert(state->memtupdeleted == nremove);
 
 	/* mark tuplestore as truncated (used for Assert crosschecks only) */
 	state->truncated = true;
@@ -1468,15 +1482,11 @@ getlen(Tuplestorestate *state, bool eofOK)
 	unsigned int len;
 	size_t		nbytes;
 
-	nbytes = BufFileRead(state->myfile, (void *) &len, sizeof(len));
-	if (nbytes == sizeof(len))
+	nbytes = BufFileReadMaybeEOF(state->myfile, &len, sizeof(len), eofOK);
+	if (nbytes == 0)
+		return 0;
+	else
 		return len;
-	if (nbytes != 0 || !eofOK)
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not read from tuplestore temporary file: read only %zu of %zu bytes",
-						nbytes, sizeof(len))));
-	return 0;
 }
 
 
@@ -1512,10 +1522,10 @@ writetup_heap(Tuplestorestate *state, void *tup)
 	/* total on-disk footprint: */
 	unsigned int tuplen = tupbodylen + sizeof(int);
 
-	BufFileWrite(state->myfile, (void *) &tuplen, sizeof(tuplen));
-	BufFileWrite(state->myfile, (void *) tupbody, tupbodylen);
+	BufFileWrite(state->myfile, &tuplen, sizeof(tuplen));
+	BufFileWrite(state->myfile, tupbody, tupbodylen);
 	if (state->backward)		/* need trailing length word? */
-		BufFileWrite(state->myfile, (void *) &tuplen, sizeof(tuplen));
+		BufFileWrite(state->myfile, &tuplen, sizeof(tuplen));
 
 	FREEMEM(state, GetMemoryChunkSpace(tuple));
 	heap_free_minimal_tuple(tuple);
@@ -1528,25 +1538,12 @@ readtup_heap(Tuplestorestate *state, unsigned int len)
 	unsigned int tuplen = tupbodylen + MINIMAL_TUPLE_DATA_OFFSET;
 	MinimalTuple tuple = (MinimalTuple) palloc(tuplen);
 	char	   *tupbody = (char *) tuple + MINIMAL_TUPLE_DATA_OFFSET;
-	size_t		nread;
 
 	USEMEM(state, GetMemoryChunkSpace(tuple));
 	/* read in the tuple proper */
 	tuple->t_len = tuplen;
-	nread = BufFileRead(state->myfile, (void *) tupbody, tupbodylen);
-	if (nread != (size_t) tupbodylen)
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not read from tuplestore temporary file: read only %zu of %zu bytes",
-						nread, (size_t) tupbodylen)));
+	BufFileReadExact(state->myfile, tupbody, tupbodylen);
 	if (state->backward)		/* need trailing length word? */
-	{
-		nread = BufFileRead(state->myfile, (void *) &tuplen, sizeof(tuplen));
-		if (nread != sizeof(tuplen))
-			ereport(ERROR,
-					(errcode_for_file_access(),
-					 errmsg("could not read from tuplestore temporary file: read only %zu of %zu bytes",
-							nread, sizeof(tuplen))));
-	}
+		BufFileReadExact(state->myfile, &tuplen, sizeof(tuplen));
 	return (void *) tuple;
 }

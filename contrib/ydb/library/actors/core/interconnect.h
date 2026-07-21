@@ -7,11 +7,18 @@
 #include <util/string/cast.h>
 #include <util/string/builder.h>
 
+#include <memory>
+
 namespace NActors {
+    // Defined in ydb/library/actors/interconnect/interconnect_direct_session.h; forward declared here to
+    // avoid a dependency from actors/core onto actors/interconnect. Only referenced through shared_ptr.
+    class IDirectSession;
+
     class TNodeLocation {
     public:
         struct TKeys {
             enum E : int {
+                BridgePileName = 5,
                 DataCenter = 10,
                 Module = 20,
                 Rack = 30,
@@ -89,6 +96,17 @@ namespace NActors {
 
         const std::vector<std::pair<TKeys::E, TString>>& GetItems() const { return Items; }
 
+        const std::optional<TString> GetBridgePileName() const {
+            if (Items.empty()) {
+                return std::nullopt;
+            }
+
+            auto& [key, value] = Items.front();
+            return key == TKeys::BridgePileName
+                ? std::make_optional(value)
+                : std::nullopt;
+        }
+
         bool HasKey(TKeys::E key) const {
             auto comp = [](const auto& p, TKeys::E value) { return p.first < value; };
             const auto it = std::lower_bound(Items.begin(), Items.end(), key, comp);
@@ -140,6 +158,11 @@ namespace NActors {
             EvPoisonSession,
             EvTerminate,
             EvForwardDelayed,
+            EvPrepareOutgoingConnection,
+            EvPrepareOutgoingConnectionResult,
+            EvCheckIncomingConnection,
+            EvCheckIncomingConnectionResult,
+            EvNotifyOutgoingConnectionEstablished,
             EvEnd
         };
 
@@ -150,26 +173,30 @@ namespace NActors {
 
         static_assert(EvEnd < EventSpaceEnd(TEvents::ES_INTERCONNECT), "expect EvEnd < EventSpaceEnd(TEvents::ES_INTERCONNECT)");
 
-        struct TEvResolveNode;
         struct TEvNodeAddress;
 
-        struct TEvConnectNode: public TEventBase<TEvConnectNode, EvConnectNode> {
-            DEFINE_SIMPLE_LOCAL_EVENT(TEvConnectNode, "TEvInterconnect::TEvConnectNode")
+        struct TEvConnectNode: public TEventLocal<TEvConnectNode, EvConnectNode> {
         };
 
         struct TEvAcceptIncoming;
 
         struct TEvNodeConnected: public TEventLocal<TEvNodeConnected, EvNodeConnected> {
-            DEFINE_SIMPLE_LOCAL_EVENT(TEvNodeConnected, "TEvInterconnect::TEvNodeConnected")
             TEvNodeConnected(ui32 node) noexcept
                 : NodeId(node)
             {
             }
+            TEvNodeConnected(ui32 node, std::shared_ptr<IDirectSession> directSession) noexcept
+                : NodeId(node)
+                , DirectSession(std::move(directSession))
+            {
+            }
             const ui32 NodeId;
+            // Set only for TInterconnectSessionTCPv2 sessions; carries a thread-safe direct send/receive
+            // interface that bypasses the actor system. Null for classic (v1) sessions.
+            std::shared_ptr<IDirectSession> DirectSession;
         };
 
         struct TEvNodeDisconnected: public TEventLocal<TEvNodeDisconnected, EvNodeDisconnected> {
-            DEFINE_SIMPLE_LOCAL_EVENT(TEvNodeDisconnected, "TEvInterconnect::TEvNodeDisconnected")
             TEvNodeDisconnected(ui32 node) noexcept
                 : NodeId(node)
             {
@@ -182,11 +209,13 @@ namespace NActors {
 
         struct TEvListNodes: public TEventLocal<TEvListNodes, EvListNodes> {
             const bool SubscribeToStaticNodeChanges = false;
+            const bool OnlyAliveNodes = true;
 
             TEvListNodes() = default;
 
-            TEvListNodes(bool subscribeToStaticNodeChanges)
+            TEvListNodes(bool subscribeToStaticNodeChanges, bool onlyAliveNodes = true)
                 : SubscribeToStaticNodeChanges(subscribeToStaticNodeChanges)
+                , OnlyAliveNodes(onlyAliveNodes)
             {}
         };
 
@@ -225,12 +254,16 @@ namespace NActors {
         };
 
         struct TEvNodesInfo: public TEventLocal<TEvNodesInfo, EvNodesInfo> {
+            using TPileMap = std::vector<std::vector<ui32>>; // a vector of sorted node ids among each pile (when bridge mode is on)
+
             TIntrusiveVector<TNodeInfo>::TConstPtr NodesPtr;
             const TVector<TNodeInfo>& Nodes;
+            std::shared_ptr<const TPileMap> PileMap;
 
-            TEvNodesInfo(TIntrusiveVector<TNodeInfo>::TConstPtr nodesPtr)
+            TEvNodesInfo(TIntrusiveVector<TNodeInfo>::TConstPtr nodesPtr, std::shared_ptr<const TPileMap>&& pileMap = nullptr)
                 : NodesPtr(nodesPtr)
                 , Nodes(*nodesPtr)
+                , PileMap(std::move(pileMap))
             {}
 
             const TNodeInfo* GetNodeInfo(ui32 nodeId) const {
@@ -246,13 +279,28 @@ namespace NActors {
 
         struct TEvGetNode: public TEventLocal<TEvGetNode, EvGetNode> {
             ui32 NodeId;
-            TInstant Deadline;
+            TMonotonic Deadline;
 
-            TEvGetNode(ui32 nodeId, TInstant deadline = TInstant::Max())
+            TEvGetNode(ui32 nodeId, TMonotonic deadline = TMonotonic::Max())
                 : NodeId(nodeId)
                 , Deadline(deadline)
             {
             }
+
+            TString ToString() const override;
+        };
+
+        struct TEvResolveNode: public TEventLocal<TEvResolveNode, EvResolveNode> {
+            ui32 NodeId;
+            TMonotonic Deadline;
+
+            TEvResolveNode(ui32 nodeId, TMonotonic deadline = TMonotonic::Max())
+                : NodeId(nodeId)
+                , Deadline(deadline)
+            {
+            }
+
+            TString ToString() const override;
         };
 
         struct TEvNodeInfo: public TEventLocal<TEvNodeInfo, EvNodeInfo> {
@@ -274,5 +322,53 @@ namespace NActors {
         struct TEvTerminate : TEventLocal<TEvTerminate, EvTerminate> {};
 
         struct TEvForwardDelayed : TEventLocal<TEvForwardDelayed, EvForwardDelayed> {};
+
+        struct TEvPrepareOutgoingConnection : TEventLocal<TEvPrepareOutgoingConnection, EvPrepareOutgoingConnection> {
+            const ui32 PeerNodeId;
+
+            TEvPrepareOutgoingConnection(ui32 peerNodeId)
+                : PeerNodeId(peerNodeId)
+            {}
+        };
+
+        struct TEvPrepareOutgoingConnectionResult : TEventLocal<TEvPrepareOutgoingConnectionResult, EvPrepareOutgoingConnectionResult> {
+            std::variant<TString, THashMap<TString, TString>> Conclusion;
+
+            TEvPrepareOutgoingConnectionResult(std::variant<TString, THashMap<TString, TString>>&& conclusion)
+                : Conclusion(std::move(conclusion))
+            {}
+        };
+
+        struct TEvCheckIncomingConnection : TEventLocal<TEvCheckIncomingConnection, EvCheckIncomingConnection> {
+            const ui32 PeerNodeId;
+            THashMap<TString, TString> Params; // incoming key-value pairs from the other peer
+
+            TEvCheckIncomingConnection(ui32 peerNodeId, THashMap<TString, TString>&& params)
+                : PeerNodeId(peerNodeId)
+                , Params(std::move(params))
+            {}
+        };
+
+        struct TEvCheckIncomingConnectionResult : TEventLocal<TEvCheckIncomingConnectionResult, EvCheckIncomingConnectionResult> {
+            std::optional<TString> ErrorReason;
+            THashMap<TString, TString> ParamsToSend;
+
+            TEvCheckIncomingConnectionResult(std::optional<TString>&& errorReason, THashMap<TString, TString>&& paramsToSend)
+                : ErrorReason(std::move(errorReason))
+                , ParamsToSend(std::move(paramsToSend))
+             {}
+        };
+
+        struct TEvNotifyOutgoingConnectionEstablished : TEventLocal<TEvNotifyOutgoingConnectionEstablished, EvNotifyOutgoingConnectionEstablished> {
+            const ui32 PeerNodeId;
+            const bool Success;
+            THashMap<TString, TString> Params;
+
+            TEvNotifyOutgoingConnectionEstablished(ui32 peerNodeId, const bool success, THashMap<TString, TString>&& params)
+                : PeerNodeId(peerNodeId)
+                , Success(success)
+                , Params(std::move(params))
+            {}
+        };
     };
 }

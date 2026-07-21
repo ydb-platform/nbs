@@ -20,16 +20,57 @@ TSchemeCacheConfig::TSchemeCacheConfig(const TAppData* appData, ::NMonitoring::T
 }
 
 TString TDomainInfo::ToString() const {
-    return TStringBuilder() << "{"
+    auto result = TStringBuilder() << "{"
         << " DomainKey: " << DomainKey
         << " ResourcesDomainKey: " << ResourcesDomainKey
         << " Params { " << Params.ShortDebugString() << " }"
-        << " ServerlessComputeResourcesMode: " << ServerlessComputeResourcesMode
-    << " }";
+        << " ServerlessComputeResourcesMode: " << ServerlessComputeResourcesMode;
+
+    result << " Users: [";
+    const auto usersView = std::views::keys(Users);
+    for (auto it = usersView.begin(); it != usersView.end(); ++it) {
+        if (it != usersView.begin()) {
+            result << ", ";
+        }
+
+        result << "{ Sid: " << *it << " }";
+    }
+    result << "]";
+
+    result << " Groups: [";
+    for (ui32 i = 0; i < Groups.size(); ++i) {
+        if (i) {
+            result << ",";
+        }
+
+        result << Groups.at(i).ToString();
+    }
+    result << "]";
+
+    result << " }";
+    return result;
+}
+
+TString TDomainInfo::TGroup::ToString() const {
+    auto result = TStringBuilder() << "{"
+        << " Sid: " << Sid;
+
+    result << " Members: [";
+    for (ui32 i = 0; i < Members.size(); ++i) {
+        if (i) {
+            result << ",";
+        }
+
+        result << Members.at(i);
+    }
+    result << "]";
+
+    result << " }";
+    return result;
 }
 
 TString TSchemeCacheNavigate::TEntry::ToString() const {
-    return TStringBuilder() << "{"
+    auto out = TStringBuilder() << "{"
         << " Path: " << JoinPath(Path)
         << " TableId: " << TableId
         << " RequestType: " << RequestType
@@ -39,8 +80,22 @@ TString TSchemeCacheNavigate::TEntry::ToString() const {
         << " SyncVersion: " << (SyncVersion ? "true" : "false")
         << " Status: " << Status
         << " Kind: " << Kind
-        << " DomainInfo " << (DomainInfo ? DomainInfo->ToString() : "<null>")
-    << " }";
+        << " DomainInfo " << (DomainInfo ? DomainInfo->ToString() : "<null>");
+
+    if (ListNodeEntry) {
+        out << " Children [";
+        for (ui32 i = 0; i < ListNodeEntry->Children.size(); ++i) {
+            if (i) {
+                out << ",";
+            }
+
+            out << ListNodeEntry->Children.at(i).Name;
+        }
+        out << "]";
+    }
+
+    out << " }";
+    return out;
 }
 
 TString TSchemeCacheNavigate::TEntry::ToString(const NScheme::TTypeRegistry& typeRegistry) const {

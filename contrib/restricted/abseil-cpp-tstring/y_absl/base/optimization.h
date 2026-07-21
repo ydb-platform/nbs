@@ -18,11 +18,24 @@
 // -----------------------------------------------------------------------------
 //
 // This header file defines portable macros for performance optimization.
+//
+// This header is included in both C++ code and legacy C code and thus must
+// remain compatible with both C and C++. C compatibility will be removed if
+// the legacy code is removed or converted to C++. Do not include this header in
+// new code that requires C compatibility or assume C compatibility will remain
+// indefinitely.
+
+// SKIP_ABSL_INLINE_NAMESPACE_CHECK
 
 #ifndef Y_ABSL_BASE_OPTIMIZATION_H_
 #define Y_ABSL_BASE_OPTIMIZATION_H_
 
 #include <assert.h>
+
+#ifdef __cplusplus
+// Included for std::unreachable()
+#include <utility>
+#endif  // __cplusplus
 
 #include "y_absl/base/config.h"
 #include "y_absl/base/options.h"
@@ -260,20 +273,14 @@
 #elif defined(_MSC_VER)
 #define Y_ABSL_ASSUME(cond) __assume(cond)
 #elif defined(__cpp_lib_unreachable) && __cpp_lib_unreachable >= 202202L
-#define Y_ABSL_ASSUME(cond)            \
-  do {                               \
-    if (!(cond)) std::unreachable(); \
-  } while (false)
+#define Y_ABSL_ASSUME(cond) ((cond) ? void() : std::unreachable())
 #elif defined(__GNUC__) || Y_ABSL_HAVE_BUILTIN(__builtin_unreachable)
-#define Y_ABSL_ASSUME(cond)                 \
-  do {                                    \
-    if (!(cond)) __builtin_unreachable(); \
-  } while (false)
+#define Y_ABSL_ASSUME(cond) ((cond) ? void() : __builtin_unreachable())
+#elif Y_ABSL_INTERNAL_CPLUSPLUS_LANG >= 202002L
+// Unimplemented. Uses the same definition as Y_ABSL_ASSERT in the NDEBUG case.
+#define Y_ABSL_ASSUME(expr) (decltype((expr) ? void() : void())())
 #else
-#define Y_ABSL_ASSUME(cond)               \
-  do {                                  \
-    static_cast<void>(false && (cond)); \
-  } while (false)
+#define Y_ABSL_ASSUME(expr) (false ? ((expr) ? void() : void()) : void())
 #endif
 
 // Y_ABSL_INTERNAL_UNIQUE_SMALL_NAME(cond)

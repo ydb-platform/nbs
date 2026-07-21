@@ -2,18 +2,11 @@ UNITTEST()
 
 FORK_SUBTESTS()
 
-REQUIREMENTS(
-    cpu:4
-    ram:16
-)
-
-IF (SANITIZER_TYPE == "thread" OR WITH_VALGRIND)
+IF (SANITIZER_TYPE == "thread")
     SIZE(LARGE)
-    TAG(ya:fat)
-    TIMEOUT(1800)
+    INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/large.inc)
 ELSE()
     SIZE(MEDIUM)
-    TIMEOUT(600)
 ENDIF()
 
 SRCS(

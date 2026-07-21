@@ -4,40 +4,28 @@
 
 #include "s3_wrapper.h"
 
-#include <contrib/libs/aws-sdk-cpp/aws-cpp-sdk-core/include/aws/core/internal/AWSHttpResourceClient.h>
-#include <contrib/libs/aws-sdk-cpp/aws-cpp-sdk-core/include/aws/core/utils/stream/PreallocatedStreamBuf.h>
-#include <contrib/libs/aws-sdk-cpp/aws-cpp-sdk-core/include/aws/core/utils/stream/ResponseStream.h>
-#include <contrib/libs/aws-sdk-cpp/aws-cpp-sdk-core/include/aws/core/Aws.h>
-#include <contrib/libs/curl/include/curl/curl.h>
-
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
-#include <contrib/ydb/library/actors/core/log.h>
-
-#include <util/generic/singleton.h>
-#include <util/string/cast.h>
-#include <util/system/mutex.h>
 
 namespace NKikimr::NWrappers {
 
 namespace NExternalStorage {
 
-class TS3Wrapper: public TActor<TS3Wrapper> {
-
-    template <class T>
+class TStorageWrapper: public TActor<TStorageWrapper> {
+    template <typename T>
     void Handle(T& ev) {
         StorageOperator->Execute(ev);
     }
 
 public:
-    explicit TS3Wrapper(IExternalStorageOperator::TPtr storageOperator)
+    explicit TStorageWrapper(IExternalStorageOperator::TPtr storageOperator)
         : TActor(&TThis::StateWork)
         , StorageOperator(storageOperator)
     {
         Y_ABORT_UNLESS(!!StorageOperator, "not initialized operator. incorrect config.");
     }
 
-    virtual ~TS3Wrapper() = default;
+    virtual ~TStorageWrapper() = default;
 
     STATEFN(StateWork) {
         switch (ev->GetTypeRewrite()) {
@@ -54,7 +42,7 @@ public:
             hFunc(TEvCheckObjectExistsRequest, Handle);
             hFunc(TEvUploadPartCopyRequest, Handle);
 
-            cFunc(TEvents::TEvPoison::EventType, PassAway);
+            sFunc(TEvents::TEvPoison, PassAway);
         }
     }
 
@@ -65,8 +53,8 @@ private:
 
 } // NExternalStorage
 
-IActor* CreateS3Wrapper(NExternalStorage::IExternalStorageOperator::TPtr storage) {
-    return new NExternalStorage::TS3Wrapper(storage);
+IActor* CreateStorageWrapper(NExternalStorage::IExternalStorageOperator::TPtr storage) {
+    return new NExternalStorage::TStorageWrapper(storage);
 }
 
 } // NKikimr::NWrappers

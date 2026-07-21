@@ -11,7 +11,8 @@
 #include <contrib/ydb/core/kqp/ut/common/kqp_ut_common.h>
 
 #include <contrib/ydb/core/node_whiteboard/node_whiteboard.h>
-
+#include <contrib/ydb/library/yql/providers/common/http_gateway/yql_http_gateway.h>
+#include <contrib/ydb/library/yql/utils/actor_log/log.h>
 
 namespace NKikimr::NKqp::NWorkload {
 
@@ -109,7 +110,7 @@ public:
     void Handle(TEvKqp::TEvQueryResponse::TPtr& ev) {
         SendNotification<TEvQueryRunner::TEvExecutionFinished>();
 
-        Result_.Response = ev->Get()->Record.GetRef();
+        Result_.Response = ev->Get()->Record;
         Promise_.SetValue(Result_);
         PassAway();
     }
@@ -222,25 +223,99 @@ private:
     std::unordered_set<TActorId> RunningRequests;
 };
 
+// The only purpose is to allow BUILTIN_SYSTEM_DOMAIN users
+struct TFakeTicketParserActor : public TActor<TFakeTicketParserActor> {
+    TFakeTicketParserActor()
+        : TActor<TFakeTicketParserActor>(&TFakeTicketParserActor::StateFunc)
+    {}
+
+    STRICT_STFUNC(StateFunc,
+        hFunc(TEvTicketParser::TEvAuthorizeTicket, Handle);
+    )
+
+    void Handle(TEvTicketParser::TEvAuthorizeTicket::TPtr& ev) {
+        Y_ABORT_UNLESS(ev->Get()->Ticket.EndsWith(BUILTIN_SYSTEM_DOMAIN));
+        NACLib::TUserToken::TUserTokenInitFields args;
+        args.UserSID = ev->Get()->Ticket;
+        TIntrusivePtr<NACLib::TUserToken> userToken = MakeIntrusive<NACLib::TUserToken>(args);
+        Send(ev->Sender, new TEvTicketParser::TEvAuthorizeTicketResult(ev->Get()->Ticket, userToken));
+    }
+};
+
+IActor* CreateFakeTicketParser(const TTicketParserSettings&) {
+    return new TFakeTicketParserActor();
+}
+
+///
+/// The HttpGateway is created as a singleton and stored in a shared_ptr.
+/// The HttpGateway is destroyed when its reference count reaches zero.
+///
+/// Destruction triggers the cleanup of libcurl, which in turn clears c-ares.
+/// During tests, this can race with gRPC threads that also use c-ares.
+///
+/// This class holds a reference to the HttpGateway during test execution
+/// to prevent repeated create/destroy/create cycles.
+///
+/// HttpGateway requires logging, so LoggerScope must be created before
+/// the HttpGateway is initialized
+///
+struct TGlobalObjectHolder {
+    std::shared_ptr<NYql::NLog::YqlLoggerScope> LoggerScope;
+    NYql::IHTTPGateway::TPtr HttpGateway;
+
+    TGlobalObjectHolder()
+        : LoggerScope(std::make_shared<NYql::NLog::YqlLoggerScope>(
+            new NYql::NLog::TTlsLogBackend(new TNullLogBackend())
+          ))
+        , HttpGateway(NYql::IHTTPGateway::Make())
+    {}
+
+    ~TGlobalObjectHolder() {
+        // By this point, all threads using c-ares must be stopped.
+        // Use this line to set a breakpoint while debugging c-ares races.
+        HttpGateway.reset();
+        LoggerScope.reset();
+    }
+};
+
 // Ydb setup
+const TGlobalObjectHolder& GetGlobalObjectHolder() {
+    static const TGlobalObjectHolder holder_;
+    Y_ENSURE(holder_.HttpGateway);
+    return holder_;
+}
 
 class TWorkloadServiceYdbSetup : public IYdbSetup {
 private:
     TAppConfig GetAppConfig() const {
         TAppConfig appConfig;
-        appConfig.MutableFeatureFlags()->SetEnableResourcePools(Settings_.EnableResourcePools_);
-        appConfig.MutableFeatureFlags()->SetEnableResourcePoolsOnServerless(Settings_.EnableResourcePoolsOnServerless_);
-        appConfig.MutableFeatureFlags()->SetEnableMetadataObjectsOnServerless(Settings_.EnableMetadataObjectsOnServerless_);
-        appConfig.MutableFeatureFlags()->SetEnableExternalDataSourcesOnServerless(Settings_.EnableExternalDataSourcesOnServerless_);
-        appConfig.MutableFeatureFlags()->SetEnableExternalDataSources(true);
-        appConfig.MutableFeatureFlags()->SetEnableResourcePoolsCounters(true);
+        *appConfig.MutableWorkloadManagerConfig() = Settings_.WorkloadManagerConfig_;
 
+        auto& featureFlags = *appConfig.MutableFeatureFlags();
+        featureFlags.SetEnableResourcePools(Settings_.EnableResourcePools_);
+        featureFlags.SetEnableResourcePoolsOnServerless(Settings_.EnableResourcePoolsOnServerless_);
+        featureFlags.SetEnableMetadataObjectsOnServerless(Settings_.EnableMetadataObjectsOnServerless_);
+        featureFlags.SetEnableExternalDataSourcesOnServerless(Settings_.EnableExternalDataSourcesOnServerless_);
+        featureFlags.SetEnableExternalDataSources(true);
+        featureFlags.SetEnableResourcePoolsCounters(true);
+        featureFlags.SetEnableStreamingQueries(Settings_.EnableStreamingQueries_);
+        featureFlags.SetEnableResourcePoolsScheduler(Settings_.EnableResourcePoolsScheduler_);
+
+        auto& queryServiceConfig = *appConfig.MutableQueryServiceConfig();
+        queryServiceConfig.SetAllExternalDataSourcesAreAvailable(true);
+        queryServiceConfig.SetProgressStatsPeriodMs(1000);
+
+        auto& tableServiceConfig = *appConfig.MutableTableServiceConfig();
+        tableServiceConfig.SetDqChannelVersion(1u);
+
+        appConfig.MutableQueryServiceConfig()->AddAvailableExternalDataSources("ObjectStorage");
         return appConfig;
     }
 
     void SetLoggerSettings(TServerSettings& serverSettings) const {
         auto loggerInitializer = [](TTestActorRuntime& runtime) {
             runtime.SetLogPriority(NKikimrServices::KQP_WORKLOAD_SERVICE, NLog::EPriority::PRI_TRACE);
+            runtime.SetLogPriority(NKikimrServices::KQP_COMPUTE_SCHEDULER, NLog::EPriority::PRI_TRACE);
             runtime.SetLogPriority(NKikimrServices::KQP_SESSION, NLog::EPriority::PRI_TRACE);
         };
 
@@ -256,23 +331,31 @@ private:
             .SetNodeCount(Settings_.NodeCount_)
             .SetDomainName(Settings_.DomainName_)
             .SetAppConfig(appConfig)
-            .SetFeatureFlags(appConfig.GetFeatureFlags());
+            .SetFeatureFlags(appConfig.GetFeatureFlags())
+            .SetInitializeFederatedQuerySetupFactory(true);
+
+        if (Settings_.WorkSafeWithGlobalObjects_) {
+            serverSettings.SetKqpLoggerScope(GetGlobalObjectHolder().LoggerScope);
+        }
 
         if (Settings_.CreateSampleTenants_) {
+            const auto dedicatedPoolKind = SplitPath(Settings_.GetDedicatedTenantName()).back();
+            const auto sharedPoolKind = SplitPath(Settings_.GetSharedTenantName()).back();
             serverSettings
                 .SetDynamicNodeCount(2)
-                .AddStoragePoolType(Settings_.GetDedicatedTenantName())
-                .AddStoragePoolType(Settings_.GetSharedTenantName());
+                .AddStoragePool(dedicatedPoolKind, TStringBuilder() << Settings_.GetDedicatedTenantName() << ":" << dedicatedPoolKind)
+                .AddStoragePool(sharedPoolKind, TStringBuilder() << Settings_.GetSharedTenantName() << ":" << sharedPoolKind);
         }
 
         SetLoggerSettings(serverSettings);
 
+        serverSettings.CreateTicketParser = CreateFakeTicketParser;
         return serverSettings;
     }
 
     void SetupResourcesTenant(Ydb::Cms::CreateDatabaseRequest& request, Ydb::Cms::StorageUnits* storage, const TString& name) {
         request.set_path(name);
-        storage->set_unit_kind(name);
+        storage->set_unit_kind(SplitPath(name).back());
         storage->set_count(1);
     }
 
@@ -280,13 +363,25 @@ private:
         {  // Dedicated
             Ydb::Cms::CreateDatabaseRequest request;
             SetupResourcesTenant(request, request.mutable_resources()->add_storage_units(), Settings_.GetDedicatedTenantName());
+
+            if (Settings_.DedicatedDiskQuota_ > -1) {
+                request.mutable_database_quotas()->set_data_size_hard_quota(Settings_.DedicatedDiskQuota_);
+                request.mutable_database_quotas()->set_data_size_soft_quota(Settings_.DedicatedDiskQuota_);
+            }
+
             Tenants_->CreateTenant(std::move(request));
+            const auto describeResult = Client_->Describe(GetRuntime(), Settings_.GetDedicatedTenantName());
+            DedicatedTenantPathId = describeResult.GetPathDescription().GetDomainDescription().GetDomainKey().GetPathId();
+            Server_->EnableGRpc(PortManager_.GetPort(), Tenants_->List(Settings_.GetDedicatedTenantName())[0], Settings_.GetDedicatedTenantName());
         }
 
         {  // Shared
             Ydb::Cms::CreateDatabaseRequest request;
             SetupResourcesTenant(request, request.mutable_shared_resources()->add_storage_units(), Settings_.GetSharedTenantName());
             Tenants_->CreateTenant(std::move(request));
+            const auto describeResult = Client_->Describe(GetRuntime(), Settings_.GetSharedTenantName());
+            SharedTenantPathId = describeResult.GetPathDescription().GetDomainDescription().GetDomainKey().GetPathId();
+            Server_->EnableGRpc(PortManager_.GetPort(), Tenants_->List(Settings_.GetSharedTenantName())[0], Settings_.GetSharedTenantName());
         }
 
         {  // Serverless
@@ -294,12 +389,18 @@ private:
             request.set_path(Settings_.GetServerlessTenantName());
             request.mutable_serverless_resources()->set_shared_database_path(Settings_.GetSharedTenantName());
             Tenants_->CreateTenant(std::move(request));
+            const auto describeResult = Client_->Describe(GetRuntime(), Settings_.GetServerlessTenantName());
+            ServerlessTenantPathId = describeResult.GetPathDescription().GetDomainDescription().GetDomainKey().GetPathId();
         }
     }
 
     void InitializeServer() {
         ui32 grpcPort = PortManager_.GetPort();
         TServerSettings serverSettings = GetServerSettings(grpcPort);
+
+        if (SettingsTweakFnc_) {
+            SettingsTweakFnc_(serverSettings);
+        }
 
         Server_ = MakeIntrusive<TServer>(serverSettings);
         Server_->EnableGRpc(grpcPort);
@@ -333,15 +434,31 @@ private:
     }
 
 public:
-    explicit TWorkloadServiceYdbSetup(const TYdbSetupSettings& settings)
+    explicit TWorkloadServiceYdbSetup(const TYdbSetupSettings& settings,
+        std::function<void(Tests::TServerSettings&)> fnc = nullptr)
         : Settings_(settings)
+        , SettingsTweakFnc_(fnc)
     {
+        if (Settings_.WorkSafeWithGlobalObjects_) {
+            GetGlobalObjectHolder();
+        }
+
         EnableYDBBacktraceFormat();
         InitializeServer();
-        CreateSamplePool();
+
+        if (Settings_.CreateSamplePool_) {
+            CreateSamplePool();
+        }
     }
 
-    // Cluster helpers
+    virtual ~TWorkloadServiceYdbSetup() {
+        if (YdbDriver_) {
+            // Stop requests and wait for their completion
+            YdbDriver_->Stop(true);
+            YdbDriver_.reset();
+        }
+    }
+
     void UpdateNodeCpuInfo(double usage, ui32 threads, ui64 nodeIndex = 0) override {
         TVector<std::tuple<TString, double, ui32, ui32>> pools;
         pools.emplace_back("User", usage, threads, threads);
@@ -358,7 +475,7 @@ public:
                 new NNodeWhiteboard::TEvWhiteboard::TEvSystemStateRequest(), nodeIndex
             );
             auto response = GetRuntime()->GrabEdgeEvent<NNodeWhiteboard::TEvWhiteboard::TEvSystemStateResponse>(edgeActor, FUTURE_WAIT_TIMEOUT);
-            
+
             if (!response->Get()->Record.SystemStateInfoSize()) {
                 errorString = "empty system state info";
                 return false;
@@ -378,12 +495,19 @@ public:
 
     // Scheme queries helpers
     NYdb::NScheme::TSchemeClient GetSchemeClient() const override {
+        Y_ENSURE(YdbDriver_);
         return NYdb::NScheme::TSchemeClient(*YdbDriver_);
+    }
+
+    NYdb::NTable::TTableClient GetTableClient(NYdb::NTable::TClientSettings settings) const override {
+        Y_ENSURE(YdbDriver_);
+        return NYdb::NTable::TTableClient(*YdbDriver_, settings.UseQueryCache(false));
     }
 
     void ExecuteSchemeQuery(const TString& query, NYdb::EStatus expectedStatus = NYdb::EStatus::SUCCESS, const TString& expectedMessage = "") const override {
         TStatus status = TableClientSession_->ExecuteSchemeQuery(query).GetValueSync();
-        UNIT_ASSERT_VALUES_EQUAL_C(status.GetStatus(), expectedStatus, status.GetIssues().ToOneLineString());
+        UNIT_ASSERT_VALUES_EQUAL_C(status.GetStatus(), expectedStatus,
+            TStringBuilder() << "Query: " << query << Endl << status.GetIssues().ToOneLineString());
         if (expectedStatus != NYdb::EStatus::SUCCESS) {
             UNIT_ASSERT_STRING_CONTAINS(status.GetIssues().ToString(), expectedMessage);
         }
@@ -426,9 +550,17 @@ public:
         auto event = GetQueryRequest(query, settings);
         auto promise = NewPromise<TQueryRunnerResult>();
         auto edgeActor = GetRuntime()->AllocateEdgeActor();
-        auto runerActor = GetRuntime()->Register(new TQueryRunnerActor(std::move(event), promise, settings, GetRuntime()->GetNodeId(settings.NodeIndex_)), 0, 0, TMailboxType::Simple, 0, edgeActor);
+        auto runnerActor = GetRuntime()->Register(new TQueryRunnerActor(std::move(event), promise, settings, GetRuntime()->GetNodeId(settings.NodeIndex_)), 0, 0, TMailboxType::Simple, 0, edgeActor);
 
-        return {.AsyncResult = promise.GetFuture(), .QueryRunnerActor = runerActor, .EdgeActor = edgeActor};
+        return {.AsyncResult = promise.GetFuture(), .QueryRunnerActor = runnerActor, .EdgeActor = edgeActor};
+    }
+
+    void ExecuteQueryRetry(const TString& retryMessage, const TString& query, TQueryRunnerSettings settings = TQueryRunnerSettings(), TDuration timeout = FUTURE_WAIT_TIMEOUT) const override {
+        WaitFor(timeout, retryMessage, [this, query, settings](TString& errorString) {
+            auto result = ExecuteQuery(query, settings);
+            errorString = result.GetIssues().ToOneLineString();
+            return result.GetStatus() == EStatus::SUCCESS;
+        });
     }
 
     // Async query execution actions
@@ -448,14 +580,44 @@ public:
     }
 
     // Pools actions
+    void CreateResourcePool(const TString& databaseId, const TString& poolId, const NResourcePool::TPoolSettings& settings) const override {
+        auto edgeActor = GetRuntime()->AllocateEdgeActor();
+        auto actor = CreatePoolCreatorActor(
+            edgeActor,
+            databaseId,
+            poolId,
+            settings,
+            nullptr,
+            {}
+        );
+
+        GetRuntime()->Register(actor);
+        auto response = GetRuntime()->GrabEdgeEvent<TEvPrivate::TEvCreatePoolResponse>(edgeActor, FUTURE_WAIT_TIMEOUT);
+        UNIT_ASSERT_VALUES_EQUAL_C(response->Get()->Status, Ydb::StatusIds::SUCCESS, response->Get()->Issues.ToOneLineString());
+    }
+
+    void CreateResourcePool(const TString& poolId, const NResourcePool::TPoolSettings& settings) const override {
+        CreateResourcePool(Settings_.DomainName_, poolId, settings);
+    }
+
+    void CreateSamplePoolOn(const TString& databaseId) const override {
+        CreateResourcePool(databaseId, Settings_.PoolId_, Settings_.GetDefaultPoolSettings());
+    }
+
     TPoolStateDescription GetPoolDescription(TDuration leaseDuration = FUTURE_WAIT_TIMEOUT, const TString& poolId = "") const override {
         const auto& edgeActor = GetRuntime()->AllocateEdgeActor();
 
-        GetRuntime()->Register(CreateRefreshPoolStateActor(edgeActor, CanonizePath(Settings_.DomainName_), poolId ? poolId : Settings_.PoolId_, leaseDuration, GetRuntime()->GetAppData().Counters));
-        auto response = GetRuntime()->GrabEdgeEvent<TEvPrivate::TEvRefreshPoolStateResponse>(edgeActor, FUTURE_WAIT_TIMEOUT);
-        UNIT_ASSERT_VALUES_EQUAL_C(response->Get()->Status, Ydb::StatusIds::SUCCESS, response->Get()->Issues.ToOneLineString());
+        TInstant startAt = TInstant::Now();
+        while (true) {
+            GetRuntime()->Register(CreateRefreshPoolStateActor(edgeActor, CanonizePath(Settings_.DomainName_), poolId ? poolId : Settings_.PoolId_, leaseDuration, GetRuntime()->GetAppData().Counters));
+            auto response = GetRuntime()->GrabEdgeEvent<TEvPrivate::TEvRefreshPoolStateResponse>(edgeActor, FUTURE_WAIT_TIMEOUT - (TInstant::Now() - startAt));
+            if (TInstant::Now() < startAt + FUTURE_WAIT_TIMEOUT && response->Get()->Status != Ydb::StatusIds::SUCCESS) {
+                continue;
+            }
+            UNIT_ASSERT_VALUES_EQUAL_C(response->Get()->Status, Ydb::StatusIds::SUCCESS, response->Get()->Issues.ToOneLineString());
 
-        return response->Get()->PoolState;
+            return response->Get()->PoolState;
+        }
     }
 
     void WaitPoolState(const TPoolStateDescription& state, const TString& poolId = "") const override {
@@ -506,13 +668,59 @@ public:
         return response;
     }
 
-    // Coomon helpers
+    // Common helpers
+    ui64 GetGrpcPort() const override {
+        return Server_->GetGRpcServer().GetPort();
+    }
+
     TTestActorRuntime* GetRuntime() const override {
         return Server_->GetRuntime();
     }
 
     const TYdbSetupSettings& GetSettings() const override {
         return Settings_;
+    }
+
+    TTenantInfo GetDedicatedTenantInfo() const override {
+        return {
+            .PathId = DedicatedTenantPathId,
+            .GrpcPort = Server_->GetTenantGRpcServer(Settings_.GetDedicatedTenantName()).GetPort(),
+            .NodeIdx = Tenants_->List(Settings_.GetDedicatedTenantName())[0]
+        };
+    }
+
+    TTenantInfo GetSharedTenantInfo() const override {
+        return {
+            .PathId = SharedTenantPathId,
+            .GrpcPort = Server_->GetTenantGRpcServer(Settings_.GetSharedTenantName()).GetPort(),
+            .NodeIdx = Tenants_->List(Settings_.GetSharedTenantName())[0]
+        };
+    }
+
+    TTenantInfo GetServerlessTenantInfo() const override {
+        auto sharedInfo = GetSharedTenantInfo();
+        sharedInfo.PathId = ServerlessTenantPathId;
+        return sharedInfo;
+    }
+
+    void CreateDedicatedTenant(const TString& path, const TString& unitKind) override {
+        Ydb::Cms::CreateDatabaseRequest request;
+        request.set_path(path);
+
+        auto storage = request.mutable_resources()->add_storage_units();
+        storage->set_unit_kind(unitKind);
+        storage->set_count(1);
+
+        Tenants_->CreateTenant(std::move(request));
+
+        auto tenants = Tenants_->List(path);
+        if (!tenants.empty()) {
+            Server_->EnableGRpc(PortManager_.GetPort(), tenants[0], path);
+        }
+    }
+
+    void DropDedicatedTenant(const TString& path) override {
+        Tenants_->RemoveTenant(path);
     }
 
 private:
@@ -536,6 +744,9 @@ private:
         request->SetAction(NKikimrKqp::QUERY_ACTION_EXECUTE);
         request->SetDatabase(settings.Database_ ? settings.Database_ : Settings_.DomainName_);
         request->SetPoolId(*settings.PoolId_);
+        if (!settings.ApplicationName_.empty()) {
+            request->SetApplicationName(settings.ApplicationName_);
+        }
 
         return event;
     }
@@ -574,12 +785,17 @@ private:
 
 private:
     const TYdbSetupSettings Settings_;
+    std::function<void(TServerSettings&)> SettingsTweakFnc_;
 
     TPortManager PortManager_;
     TServer::TPtr Server_;
     std::unique_ptr<TClient> Client_;
     std::unique_ptr<TDriver> YdbDriver_;
     std::unique_ptr<TTenants> Tenants_;
+
+    TLocalPathId DedicatedTenantPathId;
+    TLocalPathId SharedTenantPathId;
+    TLocalPathId ServerlessTenantPathId;
 
     std::unique_ptr<NYdb::NTable::TTableClient> TableClient_;
     std::unique_ptr<NYdb::NTable::TSession> TableClientSession_;
@@ -630,12 +846,13 @@ NResourcePool::TPoolSettings TYdbSetupSettings::GetDefaultPoolSettings() const {
     poolConfig.QueueSize = QueueSize_;
     poolConfig.QueryCancelAfter = QueryCancelAfter_;
     poolConfig.QueryMemoryLimitPercentPerNode = QueryMemoryLimitPercentPerNode_;
+    poolConfig.TotalMemoryLimitPercentPerNode = TotalMemoryLimitPercentPerNode_;
     poolConfig.DatabaseLoadCpuThreshold = DatabaseLoadCpuThreshold_;
     return poolConfig;
 }
 
-TIntrusivePtr<IYdbSetup> TYdbSetupSettings::Create() const {
-    return MakeIntrusive<TWorkloadServiceYdbSetup>(*this);
+TIntrusivePtr<IYdbSetup> TYdbSetupSettings::Create(std::function<void(Tests::TServerSettings&)> fnc) const {
+    return MakeIntrusive<TWorkloadServiceYdbSetup>(*this, fnc);
 }
 
 TString TYdbSetupSettings::GetDedicatedTenantName() const {
@@ -663,6 +880,34 @@ void IYdbSetup::WaitFor(TDuration timeout, TString description, std::function<bo
         Sleep(TDuration::Seconds(1));
     }
     UNIT_ASSERT_C(false, "Waiting " << description << " timeout. Spent time " << TInstant::Now() - start << " exceeds limit " << timeout);
+}
+
+//// Classifier helpers
+
+void WaitForClassifierFail(TIntrusivePtr<IYdbSetup> ydb, const TString& query, const TQueryRunnerSettings& settings, const TString& poolId) {
+    ydb->WaitFor(TDuration::Seconds(10), "Resource pool classifier fail", [ydb, query, settings, poolId](TString& errorString) {
+        auto result = ydb->ExecuteQuery(query, settings);
+
+        errorString = result.GetIssues().ToOneLineString();
+        return result.GetStatus() == NYdb::EStatus::PRECONDITION_FAILED && errorString.Contains(TStringBuilder() << "Resource pool " << poolId << " was disabled due to zero concurrent query limit");
+    });
+}
+
+void WaitForClassifierFail(TIntrusivePtr<IYdbSetup> ydb, const TQueryRunnerSettings& settings, const TString& poolId) {
+    WaitForClassifierFail(ydb, TSampleQueries::TSelect42::Query, settings, poolId);
+}
+
+void WaitForClassifierSuccess(TIntrusivePtr<IYdbSetup> ydb, const TString& query, const TQueryRunnerSettings& settings) {
+    ydb->WaitFor(TDuration::Seconds(30), "Resource pool classifier success", [ydb, query, settings](TString& errorString) {
+        auto result = ydb->ExecuteQuery(query, settings);
+
+        errorString = result.GetIssues().ToOneLineString();
+        return result.GetStatus() == NYdb::EStatus::SUCCESS;
+    });
+}
+
+void WaitForClassifierSuccess(TIntrusivePtr<IYdbSetup> ydb, const TQueryRunnerSettings& settings) {
+    WaitForClassifierSuccess(ydb, TSampleQueries::TSelect42::Query, settings);
 }
 
 //// TSampleQueriess

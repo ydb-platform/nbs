@@ -3,6 +3,7 @@
 #include "private_events.h"
 
 #include <contrib/ydb/core/base/tablet_pipecache.h>
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 #include <contrib/ydb/core/tx/schemeshard/schemeshard.h>
 #include <contrib/ydb/core/tx/tx_proxy/proxy.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -44,6 +45,7 @@ class TDstRemover: public TActorBootstrapped<TDstRemover> {
             tx.SetOperationType(NKikimrSchemeOp::ESchemeOpDropTable);
             break;
         case TReplication::ETargetKind::IndexTable:
+        case TReplication::ETargetKind::Transfer:
             Y_ABORT("unreachable");
         }
 
@@ -162,7 +164,9 @@ public:
             case TReplication::ETargetKind::Table:
                 return AllocateTxId();
             case TReplication::ETargetKind::IndexTable:
+            case TReplication::ETargetKind::Transfer:
                 // indexed table will be removed along with its indexes
+                // transfer works with an existing table and removing isn`t required
                 return Success();
             }
         }

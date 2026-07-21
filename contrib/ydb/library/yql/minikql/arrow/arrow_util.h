@@ -11,20 +11,25 @@
 #include <contrib/ydb/library/yql/minikql/mkql_node.h>
 #include <contrib/ydb/library/yql/minikql/arrow/mkql_bit_utils.h>
 #include <contrib/ydb/library/yql/public/udf/arrow/util.h>
+#include <contrib/ydb/library/yql/public/udf/udf_data_type.h>
 
 namespace NKikimr::NMiniKQL {
 
-using NYql::NUdf::DeepSlice;
 using NYql::NUdf::Chop;
+using NYql::NUdf::DeepSlice;
 
 /// \brief Remove optional from `data` as new ArrayData object
 std::shared_ptr<arrow::ArrayData> Unwrap(const arrow::ArrayData& data, TType* itemType);
+std::shared_ptr<arrow::Scalar> UnwrapScalar(std::shared_ptr<arrow::Scalar> scalar, TType* itemType);
 
 using NYql::NUdf::AllocateBitmapWithReserve;
 using NYql::NUdf::MakeDenseBitmap;
+using NYql::NUdf::MakeDenseBitmapCopy;
+using NYql::NUdf::MakeDenseBitmapCopyIfOffsetDiffers;
+using NYql::NUdf::MakeDenseFalseBitmap;
 
 inline arrow::internal::Bitmap GetBitmap(const arrow::ArrayData& arr, int index) {
-    return arrow::internal::Bitmap{ arr.buffers[index], arr.offset, arr.length };
+    return arrow::internal::Bitmap{arr.buffers[index], arr.offset, arr.length};
 }
 
 using NYql::NUdf::ForEachArrayData;
@@ -51,7 +56,7 @@ inline std::string_view GetStringScalarValue(const arrow::Scalar& scalar) {
 inline arrow::Datum MakeUint8Array(arrow::MemoryPool* pool, ui8 value, int64_t len) {
     std::shared_ptr<arrow::Buffer> data = ARROW_RESULT(arrow::AllocateBuffer(len, pool));
     std::memset(data->mutable_data(), value, len);
-    return arrow::ArrayData::Make(arrow::uint8(), len, { std::shared_ptr<arrow::Buffer>{}, data });
+    return arrow::ArrayData::Make(arrow::uint8(), len, {std::shared_ptr<arrow::Buffer>{}, data});
 }
 
 inline arrow::Datum MakeFalseArray(arrow::MemoryPool* pool, int64_t len) {
@@ -65,100 +70,142 @@ inline arrow::Datum MakeTrueArray(arrow::MemoryPool* pool, int64_t len) {
 inline arrow::Datum MakeBitmapArray(arrow::MemoryPool* pool, int64_t len, int64_t offset, const ui8* bitmap) {
     std::shared_ptr<arrow::Buffer> data = ARROW_RESULT(arrow::AllocateBuffer(len, pool));
     DecompressToSparseBitmap(data->mutable_data(), bitmap, offset, len);
-    return arrow::ArrayData::Make(arrow::uint8(), len, { std::shared_ptr<arrow::Buffer>{}, data });
+    return arrow::ArrayData::Make(arrow::uint8(), len, {std::shared_ptr<arrow::Buffer>{}, data});
 }
 
-template<typename T>
+template <typename T>
 struct TPrimitiveDataType;
 
-template<>
+template <>
 struct TPrimitiveDataType<bool> {
     using TLayout = ui8;
+    using TArithmetic = ui8;
     using TResult = arrow::UInt8Type;
     using TScalarResult = arrow::UInt8Scalar;
 };
 
-template<>
+template <>
 struct TPrimitiveDataType<i8> {
     using TLayout = i8;
+    using TArithmetic = i8;
     using TResult = arrow::Int8Type;
     using TScalarResult = arrow::Int8Scalar;
 };
 
-template<>
+template <>
 struct TPrimitiveDataType<ui8> {
     using TLayout = ui8;
+    using TArithmetic = ui8;
     using TResult = arrow::UInt8Type;
     using TScalarResult = arrow::UInt8Scalar;
 };
 
-template<>
+template <>
 struct TPrimitiveDataType<i16> {
     using TLayout = i16;
+    using TArithmetic = i16;
     using TResult = arrow::Int16Type;
     using TScalarResult = arrow::Int16Scalar;
 };
 
-template<>
+template <>
 struct TPrimitiveDataType<ui16> {
     using TLayout = ui16;
+    using TArithmetic = ui16;
     using TResult = arrow::UInt16Type;
     using TScalarResult = arrow::UInt16Scalar;
 };
 
-template<>
+template <>
 struct TPrimitiveDataType<i32> {
     using TLayout = i32;
+    using TArithmetic = i32;
     using TResult = arrow::Int32Type;
     using TScalarResult = arrow::Int32Scalar;
 };
 
-template<>
+template <>
 struct TPrimitiveDataType<ui32> {
     using TLayout = ui32;
+    using TArithmetic = ui32;
     using TResult = arrow::UInt32Type;
     using TScalarResult = arrow::UInt32Scalar;
 };
 
-template<>
+template <>
 struct TPrimitiveDataType<i64> {
     using TLayout = i64;
+    using TArithmetic = i64;
     using TResult = arrow::Int64Type;
     using TScalarResult = arrow::Int64Scalar;
 };
 
-template<>
+template <>
 struct TPrimitiveDataType<ui64> {
     using TLayout = ui64;
+    using TArithmetic = ui64;
     using TResult = arrow::UInt64Type;
     using TScalarResult = arrow::UInt64Scalar;
 };
 
-template<>
+template <>
 struct TPrimitiveDataType<float> {
     using TLayout = float;
+    using TArithmetic = float;
     using TResult = arrow::FloatType;
     using TScalarResult = arrow::FloatScalar;
 };
 
-template<>
+template <>
 struct TPrimitiveDataType<double> {
     using TLayout = double;
+    using TArithmetic = double;
     using TResult = arrow::DoubleType;
     using TScalarResult = arrow::DoubleScalar;
 };
 
-template<>
+template <>
 struct TPrimitiveDataType<char*> {
     using TResult = arrow::BinaryType;
     using TScalarResult = arrow::BinaryScalar;
 };
 
-template<>
+template <>
 struct TPrimitiveDataType<NYql::NUdf::TUtf8> {
     using TResult = arrow::StringType;
     using TScalarResult = arrow::StringScalar;
 };
+
+template <>
+struct TPrimitiveDataType<NYql::NDecimal::TInt128> {
+    using TLayout = NYql::NDecimal::TInt128;
+    using TArithmetic = NYql::NDecimal::TDecimal;
+
+    class TResult: public arrow::FixedSizeBinaryType {
+    public:
+        TResult()
+            : arrow::FixedSizeBinaryType(16)
+        {
+        }
+    };
+
+    class TScalarResult: public arrow::FixedSizeBinaryScalar {
+    public:
+        explicit TScalarResult(std::shared_ptr<arrow::Buffer> value)
+            : arrow::FixedSizeBinaryScalar(std::move(value), arrow::fixed_size_binary(16))
+        {
+        }
+
+        TScalarResult()
+            : arrow::FixedSizeBinaryScalar(arrow::fixed_size_binary(16))
+        {
+        }
+    };
+};
+
+inline constexpr size_t UuidBinarySize = NYql::NUdf::UUID_SIZE;
+
+std::shared_ptr<arrow::DataType> GetUuidArrowType();
 
 template <typename T, typename = typename std::enable_if<std::is_arithmetic<T>::value>::type>
 inline arrow::Datum MakeScalarDatum(T value) {
@@ -172,10 +219,25 @@ inline arrow::Datum MakeDefaultScalarDatum() {
 
 template <typename T>
 inline std::shared_ptr<arrow::DataType> GetPrimitiveDataType() {
-    static std::shared_ptr<arrow::DataType> result = std::make_shared<typename TPrimitiveDataType<T>::TResult>();
-    return result;
+    static std::shared_ptr<arrow::DataType> Result = std::make_shared<typename TPrimitiveDataType<T>::TResult>();
+    return Result;
 }
 
 using NYql::NUdf::TTypedBufferBuilder;
 
-}
+std::shared_ptr<arrow::Buffer> MakeEmptyBuffer();
+
+void UntrackDatum(const arrow::Datum& datum);
+
+} // namespace NKikimr::NMiniKQL
+
+namespace arrow {
+
+template <>
+struct TypeTraits<typename NKikimr::NMiniKQL::TPrimitiveDataType<NYql::NDecimal::TInt128>::TResult> {
+    static inline std::shared_ptr<DataType> type_singleton() { // NOLINT(readability-identifier-naming)
+        return arrow::fixed_size_binary(16);
+    }
+};
+
+} // namespace arrow

@@ -1,0 +1,78 @@
+#pragma once
+
+#include <util/system/types.h>
+#include <contrib/ydb/library/actors/core/events.h>
+
+namespace NActors {
+    enum class ENetwork : ui32 {
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        // local messages
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+        Start = EventSpaceBegin(TEvents::ES_INTERCONNECT_TCP),
+
+        SocketReadyRead = Start,
+        SocketReadyWrite,
+        SocketError,
+        Connect,
+        Disconnect,
+        IncomingConnection,
+        HandshakeAsk,
+        HandshakeAck,
+        HandshakeNak,
+        HandshakeDone,
+        HandshakeFail,
+        Kick,
+        Flush,
+        NodeInfo,
+        BunchOfEventsToDestroy,
+        HandshakeRequest,
+        HandshakeReplyOK,
+        HandshakeReplyError,
+        ResolveAddress,
+        AddressInfo,
+        ResolveError,
+        HTTPStreamStatus,
+        HTTPSendContent,
+        ConnectProtocolWakeup,
+        HTTPProtocolRetry,
+        EvPollerRegister,
+        EvPollerRegisterResult,
+        EvPollerReady,
+        EvUpdateFromInputSession,
+        EvConfirmUpdate,
+        EvSessionBufferSizeRequest,
+        EvSessionBufferSizeResponse,
+        EvProcessPingRequest,
+        EvGetSecureSocket,
+        EvSecureSocket,
+        HandshakeBrokerTake,
+        HandshakeBrokerFree,
+        HandshakeBrokerPermit,
+
+        EvForwardSubscribeSession,
+
+        // external data channel messages
+        EvSubscribeForConnection,
+        EvReportConnection,
+
+        // io_uring transport events
+        EvUringRegister,
+        EvUringRegisterResult,
+        EvUringWriteComplete,
+        EvUringRecvComplete,
+        EvUringSendZcNotif,
+        EvUringUnregister,
+        EvUringRegisterFailed,
+
+        // wake for the direct-session (v1) lock-free registration queue
+        EvProcessDirectSessionQueue,
+
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        // nonlocal messages; their indices must be preserved in order to work properly while doing rolling update
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+        // interconnect load test message
+        EvLoadMessage = Start + 256,
+    };
+}

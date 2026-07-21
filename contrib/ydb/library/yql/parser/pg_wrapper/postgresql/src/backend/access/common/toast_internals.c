@@ -3,7 +3,7 @@
  * toast_internals.c
  *	  Functions for internal use by the TOAST system.
  *
- * Copyright (c) 2000-2021, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2023, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/access/common/toast_internals.c
@@ -136,7 +136,7 @@ toast_save_datum(Relation rel, Datum value,
 		char		data[TOAST_MAX_CHUNK_SIZE + VARHDRSZ];
 		/* ensure union is aligned well enough: */
 		int32		align_it;
-	}			chunk_data;
+	}			chunk_data = {0};	/* silence compiler warning */
 	int32		chunk_size;
 	int32		chunk_seq = 0;
 	char	   *data_p;
@@ -659,6 +659,15 @@ init_toast_snapshot(Snapshot toast_snapshot)
 	 */
 	if (snapshot == NULL)
 		elog(ERROR, "cannot fetch toast data without an active snapshot");
+
+	/*
+	 * Catalog snapshots can be returned by GetOldestSnapshot() even if not
+	 * registered or active. That easily hides bugs around not having a
+	 * snapshot set up - most of the time there is a valid catalog snapshot.
+	 * So additionally insist that the current snapshot is registered or
+	 * active.
+	 */
+	Assert(HaveRegisteredOrActiveSnapshot());
 
 	InitToastSnapshot(*toast_snapshot, snapshot->lsn, snapshot->whenTaken);
 }

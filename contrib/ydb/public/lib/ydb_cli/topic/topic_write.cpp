@@ -12,7 +12,7 @@
 
 namespace NYdb::NConsoleClient {
     namespace {
-        constexpr TDuration DefaultMessagesWaitTimeout = TDuration::Seconds(1);
+        constexpr TDuration DefaultMessagesWaitTimeout = TDuration::Seconds(5);
     }
 
     TTopicWriterParams::TTopicWriterParams() {
@@ -20,12 +20,14 @@ namespace NYdb::NConsoleClient {
 
     TTopicWriterParams::TTopicWriterParams(EMessagingFormat inputFormat, TMaybe<TString> delimiter, ui64 messageSizeLimit,
                                            TMaybe<TDuration> batchDuration, TMaybe<ui64> batchSize, TMaybe<ui64> batchMessagesCount,
-                                           ETransformBody transform)
+                                           ETransformBody transform,
+                                           TMaybe<TDuration> messagesWaitTimeout)
         : MessagingFormat_(inputFormat)
         , BatchDuration_(batchDuration)
         , BatchSize_(batchSize)
         , BatchMessagesCount_(batchMessagesCount)
         , Transform_(transform)
+        , MessagesWaitTimeout_(messagesWaitTimeout)
         , MessageSizeLimit_(messageSizeLimit) {
         if (inputFormat == EMessagingFormat::NewlineDelimited || inputFormat == EMessagingFormat::Concatenated) {
             Delimiter_ = TMaybe<char>('\n');
@@ -54,7 +56,7 @@ namespace NYdb::NConsoleClient {
                 return;
             }
 
-            Y_ENSURE(delimiter->Size() == 1, "Invalid delimiter size, should be <= 1");
+            Y_ENSURE(delimiter->size() == 1, "Invalid delimiter size, should be <= 1");
             Delimiter_ = TMaybe<char>(delimiter->at(0));
         }
     }
@@ -69,12 +71,12 @@ namespace NYdb::NConsoleClient {
     }
 
     int TTopicWriter::Init() {
-        TInstant endPreparationTime = Now() + DefaultMessagesWaitTimeout;
-        NThreading::TFuture<ui64> initSeqNo = WriteSession_->GetInitSeqNo();
+        const TInstant endPreparationTime =
+            Now() + WriterParams_.MessagesWaitTimeout().GetOrElse(DefaultMessagesWaitTimeout);
+        NThreading::TFuture<uint64_t> initSeqNo = WriteSession_->GetInitSeqNo();
 
         while (Now() < endPreparationTime) {
-            // TODO(shmel1k@): handle situation if seqNo already exists but with exception.
-            if (!initSeqNo.HasValue() && !initSeqNo.Wait(TDuration::Seconds(1))) {
+            if (!initSeqNo.HasValue() && !initSeqNo.HasException() && !initSeqNo.Wait(TDuration::Seconds(1))) {
                 // TODO(shmel1k@): change logs
                 Cerr << "no init seqno yet" << Endl;
                 continue;
@@ -87,10 +89,12 @@ namespace NYdb::NConsoleClient {
             if (initSeqNo.HasException()) {
                 // NOTE(shmel1k@): SessionClosedEvent is stored in EventsQueue, so we can try to get it.
                 auto event = WriteSession_->GetEvent(true);
-                if (event.Defined()) {
+                if (event.has_value()) {
                     return HandleEvent(*event);
                 }
                 initSeqNo.TryRethrow();
+            } else {
+                Cerr << "we never received the seqno" << Endl;
             }
             return EXIT_FAILURE;
         }
@@ -110,7 +114,7 @@ namespace NYdb::NConsoleClient {
     }
 
     int TTopicWriter::HandleSessionClosedEvent(const NTopic::TSessionClosedEvent* event) {
-        ThrowOnError(*event);
+        NStatusHelpers::ThrowOnErrorOrPrintIssues(*event);
         return EXIT_FAILURE;
     }
 
@@ -172,8 +176,8 @@ namespace NYdb::NConsoleClient {
         bool continueSending = true;
         while (continueSending) {
             while (!ContinuationToken_.Defined()) {
-                TMaybe<NTopic::TWriteSessionEvent::TEvent> event = WriteSession_->GetEvent(true);
-                if (event.Empty()) {
+                std::optional<NTopic::TWriteSessionEvent::TEvent> event = WriteSession_->GetEvent(true);
+                if (!event.has_value()) {
                     continue;
                 }
                 if (int status = HandleEvent(*event); status) {
@@ -197,7 +201,7 @@ namespace NYdb::NConsoleClient {
         if (WriteSession_->Close(closeTimeout)) {
             return true;
         }
-        TVector<NTopic::TWriteSessionEvent::TEvent> events = WriteSession_->GetEvents(true);
+        std::vector<NTopic::TWriteSessionEvent::TEvent> events = WriteSession_->GetEvents(true);
         if (events.empty()) {
             return false;
         }

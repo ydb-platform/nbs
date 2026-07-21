@@ -5,8 +5,7 @@ SRCS(
 )
 
 SIZE(MEDIUM)
-
-TIMEOUT(600)
+REQUIREMENTS(cpu:2)
 
 PEERDIR(
     contrib/ydb/apps/version
@@ -22,6 +21,7 @@ PEERDIR(
     contrib/ydb/core/blobstorage/vdisk/repl
     contrib/ydb/core/tx/scheme_board
     contrib/ydb/core/util
+    contrib/ydb/core/util/actorsys_test
 )
 
 END()

@@ -1,0 +1,11 @@
+SELECT
+    FormatType(Tuple<>),
+    FormatType(Tuple< >),
+    FormatType(Struct<>),
+    FormatType(
+        Struct<
+            -- whitespace
+             
+        >
+    )
+;

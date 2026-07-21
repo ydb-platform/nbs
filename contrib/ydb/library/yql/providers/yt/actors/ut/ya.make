@@ -1,12 +1,9 @@
 UNITTEST_FOR(contrib/ydb/library/yql/providers/yt/actors)
 
-TAG(ya:manual)
-
 PEERDIR(
-    contrib/ydb/library/yql/providers/yt/codec/codegen/no_llvm
-    contrib/ydb/library/yql/providers/yt/comp_nodes/no_llvm
+    contrib/ydb/library/yql/providers/yt/codec/codegen/llvm16
+    contrib/ydb/library/yql/providers/yt/comp_nodes/llvm16
     contrib/ydb/library/yql/providers/yt/gateway/file
-    contrib/ydb/library/yql/minikql/codegen/no_llvm
     contrib/ydb/library/actors/testlib
     contrib/ydb/library/yql/public/udf
     library/cpp/testing/unittest

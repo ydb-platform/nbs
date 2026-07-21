@@ -1,7 +1,5 @@
 UNITTEST_FOR(contrib/ydb/library/yql/core/file_storage)
 
-TAG(ya:manual)
-
 SRCS(
     file_storage_ut.cpp
     sized_cache_ut.cpp
@@ -13,6 +11,7 @@ PEERDIR(
     library/cpp/threading/future
     library/cpp/deprecated/atomic
     contrib/ydb/library/yql/utils/test_http_server
+    contrib/ydb/library/yql/utils/fetch/proto
 )
 
 END()

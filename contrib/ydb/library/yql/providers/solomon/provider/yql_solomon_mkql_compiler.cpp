@@ -1,7 +1,7 @@
 #include "yql_solomon_mkql_compiler.h"
 
 #include <contrib/ydb/library/yql/providers/common/provider/yql_provider_names.h>
-#include <contrib/ydb/library/yql/providers/common/mkql/parser.h>
+#include <contrib/ydb/library/yql/providers/dq/mkql/parser.h>
 
 namespace NYql {
 
@@ -13,7 +13,7 @@ template <typename T>
 TRuntimeNode Wrap(T wrapper, NCommon::TMkqlBuildContext& ctx) {
     const auto input = MkqlBuildExpr(wrapper.Input().Ref(), ctx);
                 
-    return ctx.ProgramBuilder.ExpandMap(ctx.ProgramBuilder.ToFlow(input), [&](TRuntimeNode item) {
+    return ctx.ProgramBuilder.ExpandMap(ctx.ProgramBuilder.ToFlow(input, {}), [&](TRuntimeNode item) {
         TRuntimeNode::TList fields;
         bool isOptional = false;
         auto unpacked = UnpackOptional(item, isOptional);

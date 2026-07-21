@@ -7,8 +7,8 @@
 namespace NKikimr {
 namespace NDataIntegrity {
 
-inline void LogKeyValue(const TString& key, const TString& value, TStringStream& ss, bool last = false) {
-    ss << key << ": " << (value.Empty() ? "Empty" : value) << (last ? "" : ",");
+inline void LogKeyValue(const TStringBuf key, const TStringBuf value, TStringStream& ss, bool last = false) {
+    ss << key << ": " << (value.empty() ? "Empty" : value) << (last ? "" : ", ");
 }
 
 template <class TransactionSettings>
@@ -27,11 +27,20 @@ inline void LogTxSettings(const TransactionSettings& txSettings, TStringStream& 
         case TransactionSettings::kSnapshotReadOnly:
             LogKeyValue("TxMode", "SnapshotReadOnly", ss);
             break;
+        case TransactionSettings::kSnapshotReadWrite:
+            LogKeyValue("TxMode", "SnapshotReadWrite", ss);
+            break;
+        case TransactionSettings::kReadCommittedReadWrite:
+            LogKeyValue("TxMode", "ReadCommittedReadWrite", ss);
+            break;
+        case TransactionSettings::kStrictSerializableReadWrite:
+            LogKeyValue("TxMode", "StrictSerializableReadWrite", ss);
+            break;
         case TransactionSettings::TX_MODE_NOT_SET:
             LogKeyValue("TxMode", "Undefined", ss);
             break;
     }
-}    
+}
 
 template <class TxControl>
 inline void LogTxControl(const TxControl& txControl, TStringStream& ss)

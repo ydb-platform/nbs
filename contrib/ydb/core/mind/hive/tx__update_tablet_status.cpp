@@ -33,23 +33,13 @@ public:
 
     TTxType GetTxType() const override { return NHive::TXTYPE_UPDATE_TABLET_STATUS; }
 
-    bool IsGoodStatusForPenalties() const {
-        switch (Status) {
-            case TEvLocal::TEvTabletStatus::StatusBootFailed:
-                switch (Reason) {
-                    case TEvTablet::TEvTabletDead::EReason::ReasonBootSSError:
-                    case TEvTablet::TEvTabletDead::EReason::ReasonBootBSError:
-                    case TEvTablet::TEvTabletDead::EReason::ReasonBootSSTimeout:
-                        return true;
-                    default:
-                        break;
-                }
-                break;
+    bool IsFailStatusForPostponeRestart() const {
+        return Status != TEvLocal::TEvTabletStatus::StatusOk && Status != TEvLocal::TEvTabletStatus::StatusSupersededByLeader;
+    }
 
-            default:
-                break;
-        }
-        return false;
+    bool IsFailStatusForNodePenalty() const {
+        // Hive can send Poison to tablets, it must not make penalty for the node
+        return IsFailStatusForPostponeRestart() && Reason != TEvTablet::TEvTabletDead::EReason::ReasonPill;
     }
 
     TString GetStatus() {
@@ -76,10 +66,8 @@ public:
                         << " from local "
                         << Local);
             NIceDb::TNiceDb db(txc.DB);
-            TInstant now = TActivationContext::Now();
+            const TInstant now = TActivationContext::Now();
             if (Status == TEvLocal::TEvTabletStatus::StatusOk) {
-                tablet->Statistics.AddRestartTimestamp(now.MilliSeconds());
-                tablet->ActualizeTabletStatistics(now);
                 if (tablet->BootTime != TInstant()) {
                     TDuration startTime = now - tablet->BootTime;
                     if (startTime > TDuration::Seconds(30)) {
@@ -97,10 +85,7 @@ public:
                 if (tablet->IsLeader() && Generation < tablet->GetLeader().KnownGeneration) {
                     return true;
                 }
-                for (const TActorId& actor : tablet->ActorsToNotifyOnRestart) {
-                    SideEffects.Send(actor, new TEvPrivate::TEvRestartComplete({TabletId, FollowerId}, "OK"));
-                }
-                tablet->ActorsToNotifyOnRestart.clear();
+                tablet->NotifyOnRestart("OK", SideEffects);
                 for (const TActorId& actor : Self->ActorsWaitingToMoveTablets) {
                     SideEffects.Send(actor, new TEvPrivate::TEvCanMoveTablets());
                 }
@@ -123,6 +108,15 @@ public:
                     db.Table<Schema::Tablet>().Key(TabletId).Update(NIceDb::TUpdate<Schema::Tablet::LeaderNode>(tablet->NodeId),
                                                                     NIceDb::TUpdate<Schema::Tablet::KnownGeneration>(Generation),
                                                                     NIceDb::TUpdate<Schema::Tablet::Statistics>(tablet->Statistics));
+
+
+                    // tablet booted successfully, we may actually cut history now
+                    while (!leader.DeletedHistory.empty() && leader.DeletedHistory.front().DeletedAtGeneration < leader.KnownGeneration) {
+                        leader.WasAliveSinceCutHistory = true;
+                        const auto& entry = leader.DeletedHistory.front();
+                        db.Table<Schema::TabletChannelGen>().Key(TabletId, entry.Channel, entry.Entry.FromGeneration).Delete();
+                        leader.DeletedHistory.pop();
+                    }
                 } else {
                     db.Table<Schema::TabletFollowerTablet>().Key(TabletId, FollowerId).Update(
                                 NIceDb::TUpdate<Schema::TabletFollowerTablet::GroupID>(tablet->AsFollower().FollowerGroup.Id),
@@ -144,8 +138,8 @@ public:
                     if (Generation < leader.KnownGeneration) {
                         return true;
                     }
-                    if (leader.GetRestartsPerPeriod(now - Self->GetTabletRestartsPeriodForPenalties()) >= Self->GetTabletRestartsMaxCount()) {
-                        if (IsGoodStatusForPenalties()) {
+                    if (IsFailStatusForPostponeRestart()) {
+                        if (leader.GetRestartsPerPeriod(now - Self->GetTabletRestartsPeriodForPenalties()) >= Self->GetTabletRestartsMaxCount()) {
                             leader.PostponeStart(now + Self->GetPostponeStartPeriod());
                             BLOG_D("THive::TTxUpdateTabletStatus::Execute for tablet " << tablet->ToString()
                                 << " postponed start until " << leader.PostponedStart);
@@ -159,13 +153,6 @@ public:
                             db.Table<Schema::Tablet>().Key(TabletId).Update(NIceDb::TUpdate<Schema::Tablet::LeaderNode>(0),
                                                                             NIceDb::TUpdate<Schema::Tablet::KnownGeneration>(leader.KnownGeneration),
                                                                             NIceDb::TUpdate<Schema::Tablet::Statistics>(tablet->Statistics));
-
-                            // tablet booted successfully, we may actually cut history now
-                            leader.WasAliveSinceCutHistory = true;
-                            for (const auto& entry : leader.DeletedHistory) {
-                                db.Table<Schema::TabletChannelGen>().Key(TabletId, entry.Channel, entry.Entry.FromGeneration).Delete();
-                            }
-                            leader.DeletedHistory.clear();
                         } else {
                             db.Table<Schema::TabletFollowerTablet>().Key(TabletId, FollowerId).Update(
                                         NIceDb::TUpdate<Schema::TabletFollowerTablet::GroupID>(tablet->AsFollower().FollowerGroup.Id),
@@ -174,7 +161,7 @@ public:
                         }
                         tablet->InitiateStop(SideEffects);
                     }
-                    if (IsGoodStatusForPenalties()) {
+                    if (IsFailStatusForNodePenalty()) {
                         tablet->FailedNodeId = Local.NodeId();
                     }
                 }

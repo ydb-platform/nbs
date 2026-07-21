@@ -1,21 +1,26 @@
 LIBRARY()
 
 SRCS(
-    bind_in_range.cpp
-    bind_in_range.h
     cast.h
+    checkpoint_map.cpp
+    chunked_buffer.cpp
+    chunked_buffer.h
     debug_info.cpp
     debug_info.h
+    exception_utils.cpp
+    exception_utils.h
     future_action.cpp
     future_action.h
     hash.cpp
     hash.h
+    limiting_allocator.cpp
+    line_split.cpp
     md5_stream.cpp
     md5_stream.h
+    mem_limit.h
+    mem_limit.cpp
     method_index.cpp
     method_index.h
-    multi_resource_lock.cpp
-    multi_resource_lock.h
     parse_double.cpp
     parse_double.h
     proc_alive.cpp
@@ -25,12 +30,18 @@ SRCS(
     resetable_setting.h
     retry.cpp
     retry.h
-    rope_over_buffer.cpp
-    rope_over_buffer.h
+    checked_deref_ptr.h
+    runnable.h
     sort.cpp
     sort.h
+    strong_alias.cpp
+    strong_alias.h
     swap_bytes.cpp
     swap_bytes.h
+    time_provider.h
+    time_provider.cpp
+    tty.cpp
+    tty.h
     url_builder.cpp
     utf8.cpp
     yql_panic.cpp
@@ -40,34 +51,35 @@ SRCS(
 )
 
 PEERDIR(
-    contrib/ydb/library/actors/util
+    contrib/libs/miniselect
+    library/cpp/time_provider
     library/cpp/digest/md5
-    library/cpp/messagebus
     library/cpp/string_utils/quote
     library/cpp/threading/future
     library/cpp/deprecated/atomic
-    contrib/libs/miniselect
 )
 
 END()
 
-RECURSE(
-    actor_log
-    actors
-    actor_system
-    backtrace
-    bindings
-    failure_injector
-    fetch
-    log
-    plan
-    signals
-    simd
-    sys
-    test_http_server
-    threading
-)
-
 RECURSE_FOR_TESTS(
     ut
 )
+
+IF (OPENSOURCE_PROJECT != "yt")
+    RECURSE(
+        backtrace
+        random_data_generator
+        docs
+        failure_injector
+        fetch
+        log
+        memory_profiling
+        network
+        oom_helper
+        signals
+        string
+        sys
+        test_http_server
+        threading
+    )
+ENDIF()

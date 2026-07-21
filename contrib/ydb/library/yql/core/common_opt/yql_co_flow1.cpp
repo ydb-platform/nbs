@@ -1240,7 +1240,7 @@ TExprNode::TPtr PropagateConstPremapIntoCombineByKey(const TExprNode& node, TExp
         .Lambda()
             .Param("item")
             .Apply(*children[2])
-                .With(0, std::move(constItem))
+                .With(0, constItem)
             .Seal()
         .Seal()
         .Build();
@@ -1295,91 +1295,6 @@ TExprNode::TPtr OptimizeLookup(const TExprNode::TPtr& node, TExprContext& ctx, T
             return ctx.RenameNode(node->Head(), "ListHead");
         }
     }
-    return node;
-}
-
-constexpr std::initializer_list<std::string_view> FlowPriority = {
-    "AssumeSorted", "AssumeUnique", "AssumeDistinct",
-    "Map", "OrderedMap", "MapNext",
-    "Filter", "OrderedFilter",
-    "FlatMap", "OrderedFlatMap",
-    "MultiMap", "OrderedMultiMap",
-    "FoldMap", "Fold1Map", "Chain1Map",
-    "Take", "Skip",
-    "TakeWhile", "SkipWhile",
-    "TakeWhileInclusive", "SkipWhileInclusive",
-    "SkipNullMembers", "FilterNullMembers",
-    "SkipNullElements", "FilterNullElements",
-    "Condense", "Condense1",
-    "MapJoinCore", "CommonJoinCore",
-    "CombineCore", "ExtractMembers",
-    "PartitionByKey", "SqueezeToDict"
-};
-
-TExprNode::TPtr OptimizeToFlow(const TExprNode::TPtr& node, TExprContext& ctx, TOptimizeContext& optCtx) {
-    if (!optCtx.IsSingleUsage(node->Head())) {
-        return node;
-    }
-
-    if (node->Head().IsCallable(FlowPriority)) {
-        YQL_CLOG(DEBUG, Core) << "Swap " << node->Content() << " with " << node->Head().Content();
-        return ctx.SwapWithHead(*node);
-    }
-
-    if (node->Head().IsCallable("FromFlow")) {
-        YQL_CLOG(DEBUG, Core) << "Drop " << node->Content() << " with " << node->Head().Content();
-        return node->Head().HeadPtr();
-    }
-
-    if (node->Head().IsCallable("ForwardList")) {
-        YQL_CLOG(DEBUG, Core) << "Drop " << node->Head().Content() << " under " << node->Content();
-        return ctx.ChangeChild(*node, 0U,  node->Head().HeadPtr());
-    }
-
-    if (node->Head().IsCallable("Chopper")) {
-        YQL_CLOG(DEBUG, Core) << "Swap " << node->Head().Content() << " with " << node->Content();
-        auto children = node->Head().ChildrenList();
-        children.front() = ctx.ChangeChildren(*node, {std::move(children.front())});
-        children.back() = ctx.Builder(children.back()->Pos())
-            .Lambda()
-                .Param("key")
-                .Param("flow")
-                .Callable("ToFlow")
-                    .Apply(0, *children.back())
-                        .With(0, "key")
-                        .With(1)
-                            .Callable("FromFlow")
-                                .Arg(0, "flow")
-                            .Seal()
-                        .Done()
-                    .Seal()
-                .Seal()
-            .Seal().Build();
-        return ctx.ChangeChildren(node->Head(), std::move(children));
-    }
-
-    if (node->Head().IsCallable("Switch")) {
-        YQL_CLOG(DEBUG, Core) << "Swap " << node->Head().Content() << " with " << node->Content();
-        auto children = node->Head().ChildrenList();
-        children.front() = ctx.ChangeChildren(*node, {std::move(children.front())});
-        for (auto i = 3U; i < children.size(); ++++i) {
-            children[i] = ctx.Builder(children[i]->Pos())
-                .Lambda()
-                    .Param("flow")
-                    .Callable("ToFlow")
-                        .Apply(0, *children[i])
-                            .With(0)
-                                .Callable("FromFlow")
-                                    .Arg(0, "flow")
-                                .Seal()
-                            .Done()
-                        .Seal()
-                    .Seal()
-                .Seal().Build();
-        }
-        return ctx.ChangeChildren(node->Head(), std::move(children));
-    }
-
     return node;
 }
 
@@ -1466,7 +1381,7 @@ TExprNode::TPtr OptimizeFlatMap(const TExprNode::TPtr& node, TExprContext& ctx, 
         }
     }
 
-    if (node->Head().IsCallable(Ordered ? "OrderedExtend" : "Extend") &&
+    if (node->Head().IsCallable({"OrderedExtend", "Extend", "Merge"}) &&
         // constraints below can not be derived for (Ordered)Extend
         !node->GetConstraint<TSortedConstraintNode>() &&
         !node->GetConstraint<TPartOfSortedConstraintNode>() &&
@@ -1476,9 +1391,9 @@ TExprNode::TPtr OptimizeFlatMap(const TExprNode::TPtr& node, TExprContext& ctx, 
         !node->GetConstraint<TPartOfDistinctConstraintNode>())
     {
         auto canPush = [&](const auto& child) {
-            // we push FlatMap over Extend only if it can later be fused with child
-            return child->IsCallable({Ordered ? "OrderedFlatMap" : "FlatMap", "GroupByKey", "CombineByKey", "PartitionByKey", "PartitionsByKeys", "ShuffleByKeys",
-                                      "ListIf", "FlatListIf", "AsList", "ToList"}) && optCtx.IsSingleUsage(*child);
+            // we push FlatMap over Extend only if it can later be fused with or pushed down through child
+            return child->IsCallable({"OrderedFlatMap", "FlatMap", "GroupByKey", "CombineByKey", "PartitionByKey", "PartitionsByKeys", "ShuffleByKeys",
+                                      "Aggregate", "EquiJoin", "ListIf", "FlatListIf", "AsList", "ToList"});
         };
         if (AllOf(node->Head().ChildrenList(), canPush)) {
             TExprNodeList newChildren;
@@ -1493,12 +1408,74 @@ TExprNode::TPtr OptimizeFlatMap(const TExprNode::TPtr& node, TExprContext& ctx, 
     return node;
 }
 
+bool IsOptimizerToFlowOverIteratorWithDependsAllowed(const TTypeAnnotationContext& types) {
+    static const char Flag[] = "ToFlowOverIteratorWithDepends";
+    return IsOptimizerEnabled<Flag>(types) && !IsOptimizerDisabled<Flag>(types);
+}
+
+bool IsOptimizerToFlowOverCollectAllowed(const TTypeAnnotationContext& types) {
+    static const char Flag[] = "ToFlowOverCollect";
+    return !IsOptimizerDisabled<Flag>(types);
+}
+
 }
 
 void RegisterCoFlowCallables1(TCallableOptimizerMap& map) {
     using namespace std::placeholders;
 
-    map["ToFlow"] = std::bind(&OptimizeToFlow, _1, _2, _3);
+    map["PruneKeys"] = map["PruneAdjacentKeys"] = [](const TExprNode::TPtr& node, TExprContext& ctx, TOptimizeContext& optCtx) {
+        if (!optCtx.IsSingleUsage(node->Head())) {
+            return node;
+        }
+
+        TCoPruneKeysBase pruneKeys(node);
+        TCoLambda keyExtractorLambda = pruneKeys.Extractor();
+        TSet<TStringBuf> columns;
+
+        if (!HaveFieldsSubset(keyExtractorLambda.Ref().Child(1), *keyExtractorLambda.Ref().Child(0)->Child(0), columns, *optCtx.ParentsMap)) {
+            return node;
+        }
+
+        if (auto maybeFlatmap = TExprBase(node->HeadPtr()).Maybe<TCoFlatMapBase>()) {
+            auto flatmap = maybeFlatmap.Cast();
+
+            auto checkAllPruneExtractorPassthroughLambda = [&columns](const TCoLambda& lambda) {
+                TMaybe<THashSet<TStringBuf>> passthroughFields;
+                /*
+                    PruneKeys can only be reordered with filtration if all filtration keys are PruneKeys keys.
+                    To simplify, we only support projections. Because of this, we shouldn't consider
+                    OptionalIf or ListIf as passthrough. Just is ok for PruneKeys.
+                */
+                if (IsJustOrSingleAsList(lambda.Body().Ref()) &&
+                    IsPassthroughLambda(lambda, &passthroughFields, /*analyzeJustMember*/true) &&
+                    passthroughFields) {
+
+                    for (const auto& column : columns) {
+                        if (!passthroughFields->contains(column)) {
+                            return false;
+                        }
+                    }
+                    return true;
+                }
+                return false;
+            };
+
+            if (checkAllPruneExtractorPassthroughLambda(flatmap.Lambda())) {
+                YQL_CLOG(DEBUG, Core) << node->Content() << " Over Flatmap";
+                return ctx.Builder(flatmap.Pos())
+                    .Callable(flatmap.CallableName())
+                        .Callable(0, pruneKeys.CallableName())
+                            .Add(0, flatmap.Input().Ptr())
+                            .Add(1, ctx.DeepCopyLambda(keyExtractorLambda.Ref()))
+                        .Seal()
+                        .Add(1, flatmap.Lambda().Ptr())
+                    .Seal()
+                    .Build();
+            }
+        }
+
+        return node;
+    };
 
     map["FlatMap"] = std::bind(&OptimizeFlatMap<false>, _1, _2, _3);
     map["OrderedFlatMap"] = std::bind(&OptimizeFlatMap<true>, _1, _2, _3);
@@ -1763,14 +1740,14 @@ void RegisterCoFlowCallables1(TCallableOptimizerMap& map) {
             if (const auto init = ExtractMemberFromLiteral(chain.InitHandler().Ref(), member), update = ExtractMemberFromLiteral(chain.UpdateHandler().Ref(), member);
                 init && update && init->IsCallable("Bool") && !FromString<bool>(init->Tail().Content())) {
                 if (std::map<std::string_view, TExprNode::TPtr> usedFields;
-                    HaveFieldsSubset(update, chain.UpdateHandler().Args().Arg(1).Ref(), usedFields, *optCtx.ParentsMap, false) && !usedFields.empty()
+                    HaveFieldsSubset(update, chain.UpdateHandler().Args().Arg(1).Ref(), usedFields, *optCtx.ParentsMap, /*allowDependsOn=*/false) && !usedFields.empty()
                     && IsPasstroughtFields(usedFields, self.InitHandler().Ref()) && IsPasstroughtFields(usedFields, self.UpdateHandler().Ref())) {
                     YQL_CLOG(DEBUG, Core) << "Fuse " << node->Content() << " with " << node->Head().Content();
                     auto lambda = ctx.Builder(chain.Pos())
                         .Lambda()
                             .Param("item")
                             .Param("state")
-                            .ApplyPartial(chain.UpdateHandler().Args().Ptr(), std::move(update))
+                            .ApplyPartial(chain.UpdateHandler().Args().Ptr(), update)
                                 .With(0, "item")
                                 .With(1, "state")
                             .Seal()
@@ -1779,7 +1756,7 @@ void RegisterCoFlowCallables1(TCallableOptimizerMap& map) {
                     return Build<TCoCondense1>(ctx, self.Pos())
                         .Input(chain.Input())
                         .InitHandler(ctx.DeepCopyLambda(self.InitHandler().Ref()))
-                        .SwitchHandler(std::move(lambda))
+                        .SwitchHandler(lambda)
                         .UpdateHandler(ctx.DeepCopyLambda(self.UpdateHandler().Ref()))
                         .Done().Ptr();
                 }
@@ -2109,6 +2086,73 @@ void RegisterCoFlowCallables1(TCallableOptimizerMap& map) {
         return node;
     };
 
+    map["ToFlow"] = [](const TExprNode::TPtr& node, TExprContext& ctx, TOptimizeContext& optCtx) {
+        if (IsOptimizerToFlowOverIteratorWithDependsAllowed(*optCtx.Types)) {
+            const auto head = node->HeadPtr();
+            if (head->IsCallable("Iterator") && optCtx.IsSingleUsage(*head)) {
+                YQL_CLOG(DEBUG, Core) << "ToFlow over Iterator with depends";
+                auto newChildren = node->ChildrenList();
+                const auto headChildren = head->ChildrenList();
+                newChildren.front() = headChildren.front();
+                for (size_t i = 1; i < headChildren.size(); i++) {
+                    newChildren.push_back(headChildren[i]);
+                }
+                return ctx.ChangeChildren(*node, std::move(newChildren));
+            }
+        }
+        if (IsOptimizerToFlowOverCollectAllowed(*optCtx.Types)) {
+            const auto head = node->HeadPtr();
+            if (head->IsCallable("Collect") && optCtx.IsSingleUsage(*head) &&
+                head->Head().GetTypeAnn()->GetKind() == ETypeAnnotationKind::Flow) {
+                YQL_CLOG(DEBUG, Core) << "Drop ToFlow over Collect";
+                return head->HeadPtr();
+            }
+        }
+        return node;
+    };
+
+    map[TCoMember::CallableName()] = map[TCoNth::CallableName()] = [](const TExprNode::TPtr& node, TExprContext& ctx, TOptimizeContext& optCtx) {
+        if (!optCtx.IsSingleUsage(node->Head())) {
+            return node;
+        }
+        if (auto maybeFlatMap = TMaybeNode<TCoFlatMapBase>(node->HeadPtr())) {
+            auto flatMap = maybeFlatMap.Cast();
+            if (flatMap.Input().Ref().GetTypeAnn()->GetKind() == ETypeAnnotationKind::Optional &&
+                flatMap.Lambda().Ref().GetTypeAnn()->GetKind() == ETypeAnnotationKind::Optional)
+            {
+                YQL_CLOG(DEBUG, Core) << node->Content() << " over " << node->Head().Content();
+                return ctx.Builder(node->Pos())
+                    .Callable(flatMap.CallableName())
+                        .Add(0, flatMap.Input().Ptr())
+                        .Lambda(1)
+                            .Param("item")
+                            .Callable(node->Content())
+                                .Apply(0, flatMap.Lambda().Ptr())
+                                    .With(0, "item")
+                                .Seal()
+                                .Add(1, node->Child(1))
+                            .Seal()
+                        .Seal()
+                    .Seal()
+                    .Build();
+            }
+        }
+        return node;
+    };
+
+    map["ToMutDict"] = [](const TExprNode::TPtr& node, TExprContext& ctx, TOptimizeContext& optCtx) {
+        Y_UNUSED(ctx);
+        if (!optCtx.IsSingleUsage(node->Head())) {
+            return node;
+        }
+
+        if (node->Head().IsCallable("FromMutDict")) {
+            YQL_CLOG(DEBUG, Core) << "Skip " << node->Content() << " over " << node->Head().Content();
+            return node->Head().HeadPtr();
+        }
+
+        return node;
+    };
 }
 
 }

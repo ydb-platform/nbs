@@ -1,12 +1,13 @@
 UNITTEST_FOR(contrib/ydb/library/actors/util)
 
-IF (WITH_VALGRIND)
-    TIMEOUT(600)
+IF (SANITIZER_TYPE)
+    REQUIREMENTS(cpu:2)
     SIZE(MEDIUM)
 ENDIF()
 
 SRCS(
     cpu_load_log_ut.cpp
+    cpu_topology_ut.cpp
     memory_tracker_ut.cpp
     thread_load_log_ut.cpp
     rope_ut.cpp
@@ -14,7 +15,12 @@ SRCS(
     shared_data_ut.cpp
     shared_data_rope_backend_ut.cpp
     shared_data_native_rope_backend_ut.cpp
+    spinparkpad_ut.cpp
     unordered_cache_ut.cpp
+)
+
+DATA(
+    arcadia/contrib/ydb/library/actors/util/testdata/cpu_topology
 )
 
 END()

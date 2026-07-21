@@ -6,21 +6,24 @@ FORK_SUBTESTS()
 
 PEERDIR(
     contrib/restricted/nlohmann_json
+    library/cpp/string_utils/url
     contrib/ydb/library/actors/http
     contrib/ydb/library/grpc/server
     contrib/ydb/library/grpc/server/actors
     contrib/ydb/core/base
     contrib/ydb/core/http_proxy
+    contrib/ydb/core/http_proxy/ut/datastreams_fixture
     contrib/ydb/core/testlib/default
     contrib/ydb/library/aclib
     contrib/ydb/library/persqueue/tests
-    contrib/ydb/public/sdk/cpp/client/ydb_discovery
-    contrib/ydb/public/sdk/cpp/client/ydb_types
+    contrib/ydb/public/sdk/cpp/src/client/discovery
+    contrib/ydb/public/sdk/cpp/src/client/topic
+    contrib/ydb/public/sdk/cpp/src/client/types
     contrib/ydb/services/ydb
 )
 
 SRCS(
-    ../http_proxy_ut.cpp
+    ../kinesis_ut.cpp
     ../ymq_ut.cpp
     inside_ydb_ut.cpp
 )

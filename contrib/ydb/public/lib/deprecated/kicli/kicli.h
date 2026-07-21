@@ -587,7 +587,12 @@ public:
         ExternalTable,
         ExternalDataSource,
         View,
-        ResourcePool
+        ResourcePool,
+        BackupCollection,
+        Transfer,
+        SysView,
+        Secret,
+        StreamingQuery,
     };
 
     TSchemaObject(TSchemaObject&&) = default;
@@ -688,9 +693,11 @@ public:
     TString GetErrorMessage() const;
 
     const NKikimrConfig::TAppConfig &GetConfig() const;
-    bool HasYamlConfig() const;
-    const TString& GetYamlConfig() const;
+    bool HasMainYamlConfig() const;
+    const TString& GetMainYamlConfig() const;
     TMap<ui64, TString> GetVolatileYamlConfigs() const;
+    bool HasDatabaseYamlConfig() const;
+    const TString& GetDatabaseYamlConfig() const;
 
     const NKikimrClient::TConsoleResponse &Record() const;
 
@@ -838,12 +845,6 @@ protected:
         if (!SecurityToken.empty()) {
             request.SetSecurityToken(SecurityToken);
         }
-    }
-
-    void PrepareRequest(NKikimrClient::TLoginRequest&) const {
-    }
-
-    void PrepareRequest(NKikimrClient::TKeyValueRequest&) const { // not used in real life, not implemented in server
     }
 
     TString SecurityToken;

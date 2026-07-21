@@ -8,10 +8,12 @@ SRCS(
 PEERDIR(
     contrib/ydb/public/api/protos
     contrib/ydb/public/lib/ydb_cli/common
-    contrib/ydb/public/sdk/cpp/client/ydb_proto
+    contrib/ydb/public/sdk/cpp/src/client/proto
     contrib/ydb/public/lib/json_value
     contrib/libs/apache/arrow
     library/cpp/string_utils/csv
 )
+
+GENERATE_ENUM_SERIALIZATION(import.h)
 
 END()

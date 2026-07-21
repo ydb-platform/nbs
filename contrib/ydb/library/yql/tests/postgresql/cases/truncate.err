@@ -184,21 +184,21 @@ INSERT INTO trunc_b VALUES (1);
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.trunc_b
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.trunc_b
     
 <sql-statement>
 INSERT INTO trunc_d VALUES (1);
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.trunc_d
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.trunc_d
     
 <sql-statement>
 INSERT INTO trunc_e VALUES (1,1);
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.trunc_e
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.trunc_e
     
 <sql-statement>
 TRUNCATE TABLE trunc_c;
@@ -252,14 +252,14 @@ SELECT * FROM truncate_a
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.trunc_b
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.trunc_b
     
 <sql-statement>
 SELECT * FROM trunc_e;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.trunc_e
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.trunc_e
     
 <sql-statement>
 -- Add data again to test TRUNCATE ... CASCADE
@@ -273,21 +273,21 @@ INSERT INTO trunc_b VALUES (1);
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.trunc_b
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.trunc_b
     
 <sql-statement>
 INSERT INTO trunc_d VALUES (1);
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.trunc_d
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.trunc_d
     
 <sql-statement>
 INSERT INTO trunc_e VALUES (1,1);
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.trunc_e
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.trunc_e
     
 <sql-statement>
 TRUNCATE TABLE trunc_c CASCADE;  -- ok
@@ -308,14 +308,14 @@ SELECT * FROM truncate_a
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.trunc_b
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.trunc_b
     
 <sql-statement>
 SELECT * FROM trunc_e;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.trunc_e
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.trunc_e
     
 <sql-statement>
 DROP TABLE truncate_a,trunc_c,trunc_b,trunc_d,trunc_e CASCADE;
@@ -348,7 +348,7 @@ INSERT INTO trunc_fa VALUES (3, 'three');
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.trunc_fa
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.trunc_fa
     
 <sql-statement>
 CREATE TABLE trunc_fb (col2b int) INHERITS (trunc_f);
@@ -363,7 +363,7 @@ INSERT INTO trunc_fb VALUES (4, 444);
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.trunc_fb
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.trunc_fb
     
 <sql-statement>
 CREATE TABLE trunc_faa (col3 text) INHERITS (trunc_fa);
@@ -378,7 +378,7 @@ INSERT INTO trunc_faa VALUES (5, 'five', 'FIVE');
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.trunc_faa
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.trunc_faa
     
 <sql-statement>
 BEGIN;
@@ -431,14 +431,14 @@ SELECT * FROM trunc_fa;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.trunc_fa
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.trunc_fa
     
 <sql-statement>
 SELECT * FROM trunc_faa;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.trunc_faa
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.trunc_faa
     
 <sql-statement>
 TRUNCATE ONLY trunc_fb, ONLY trunc_fa;
@@ -456,14 +456,14 @@ SELECT * FROM trunc_fa;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.trunc_fa
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.trunc_fa
     
 <sql-statement>
 SELECT * FROM trunc_faa;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.trunc_faa
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.trunc_faa
     
 <sql-statement>
 ROLLBACK;
@@ -479,14 +479,14 @@ SELECT * FROM trunc_fa;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.trunc_fa
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.trunc_fa
     
 <sql-statement>
 SELECT * FROM trunc_faa;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.trunc_faa
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.trunc_faa
     
 <sql-statement>
 TRUNCATE ONLY trunc_fb, trunc_fa;
@@ -504,14 +504,14 @@ SELECT * FROM trunc_fa;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.trunc_fa
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.trunc_fa
     
 <sql-statement>
 SELECT * FROM trunc_faa;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.trunc_faa
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.trunc_faa
     
 <sql-statement>
 ROLLBACK;
@@ -747,7 +747,7 @@ SELECT * FROM truncate_b;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.truncate_b
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.truncate_b
     
 <sql-statement>
 TRUNCATE truncate_b;
@@ -772,7 +772,7 @@ SELECT * FROM truncate_b;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.truncate_b
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.truncate_b
     
 <sql-statement>
 TRUNCATE truncate_b RESTART IDENTITY;
@@ -797,7 +797,7 @@ SELECT * FROM truncate_b;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.truncate_b
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.truncate_b
     
 <sql-statement>
 -- check rollback of a RESTART IDENTITY operation
@@ -881,7 +881,7 @@ INSERT INTO truncparted VALUES (1, 'a');
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.truncparted
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.truncparted
     
 <sql-statement>
 -- error, must truncate partitions
@@ -1172,7 +1172,7 @@ INSERT INTO trunc_a VALUES (0), (5), (10), (15), (20), (25);
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.trunc_a
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.trunc_a
     
 <sql-statement>
 -- truncate a partition cascading to a table
@@ -1191,7 +1191,7 @@ INSERT INTO ref_b VALUES (10, 0), (50, 5), (100, 10), (150, 15);
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.ref_b
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.ref_b
     
 <sql-statement>
 TRUNCATE TABLE trunc_a1 CASCADE;
@@ -1206,7 +1206,7 @@ SELECT a FROM ref_b;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.ref_b
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.ref_b
     
 <sql-statement>
 DROP TABLE ref_b;
@@ -1244,7 +1244,7 @@ INSERT INTO ref_c VALUES (100, 10), (150, 15), (200, 20), (250, 25);
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.ref_c
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.ref_c
     
 <sql-statement>
 TRUNCATE TABLE trunc_a21 CASCADE;
@@ -1259,14 +1259,14 @@ SELECT a as "from table ref_c" FROM ref_c;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.ref_c
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.ref_c
     
 <sql-statement>
 SELECT a as "from table trunc_a" FROM trunc_a ORDER BY a;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.trunc_a
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.trunc_a
     
 <sql-statement>
 DROP TABLE trunc_a, ref_c;

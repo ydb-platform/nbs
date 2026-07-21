@@ -1,11 +1,8 @@
 LIBRARY()
 
 PEERDIR(
-    contrib/ydb/library/yql/core/issue/protos
-    contrib/ydb/library/yql/parser/proto_ast
-    contrib/ydb/library/yql/parser/proto_ast/gen/v1
-    contrib/ydb/library/yql/parser/proto_ast/gen/v1_ansi
-    contrib/ydb/library/yql/parser/proto_ast/gen/v1_proto_split
+    contrib/ydb/library/yql/public/issue/protos
+    contrib/ydb/library/yql/sql/settings
 )
 
 SRCS(
@@ -17,3 +14,17 @@ SUPPRESSIONS(
 )
 
 END()
+
+RECURSE(
+    antlr4
+    antlr4_ansi
+    antlr4_pure
+    antlr4_pure_ansi
+    check
+    regex
+)
+
+RECURSE_FOR_TESTS(
+    ut
+)
+

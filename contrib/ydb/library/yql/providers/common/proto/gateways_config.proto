@@ -2,29 +2,12 @@ package NYql;
 option java_package = "ru.yandex.yql.proto";
 
 import "contrib/ydb/library/yql/protos/clickhouse.proto";
-import "contrib/ydb/library/yql/providers/generic/connector/api/common/data_source.proto";
-import "contrib/ydb/library/yql/providers/generic/connector/api/common/endpoint.proto";
-
+import "contrib/ydb/library/yql/protos/fmr.proto";
+import "contrib/ydb/library/yql/utils/fetch/proto/fetch_config.proto";
+import "contrib/ydb/library/yql/minikql/runtime_settings/proto/runtime_settings.proto";
+import "contrib/ydb/library/yql/providers/common/proto/activation/activation.proto";
 
 /////////////////////////////// common ///////////////////////////////
-
-message TActivationByHour {
-    required uint32 Hour = 1;
-    required uint32 Percentage = 2;
-}
-
-message TActivationPercentage {
-    optional uint32 Percentage = 1 [default = 0];
-    repeated TActivationByHour ByHour = 2;
-    repeated string IncludeUsers = 3;
-    repeated string ExcludeUsers = 4;
-    optional bool ExcludeRobots = 5 [default = true];
-    repeated string Tags = 6;
-    repeated string IncludeGroups = 7;
-    repeated string ExcludeGroups = 8;
-    repeated string IncludeRevisions = 9;
-    repeated string ExcludeRevisions = 10;
-}
 
 message TAttr {
     required string Name = 1;
@@ -105,11 +88,16 @@ message TYtClusterConfig {
     repeated TAttr Settings = 100;
 }
 
+message TFileWithMd5 {
+    optional string File = 1;
+    optional string Md5 = 2;
+}
+
 message TYtGatewayConfig {
     optional uint32 GatewayThreads = 1 [default = 0]; // Number of gateway MtpQueue threads. The adaptive MtpQueue will be used for 0 value
     optional EYtLogLevel YtLogLevel = 2 [default = YL_ERROR]; // The verbosity level of YT log
-    optional string PerfToolsPath = 4; // Path to perftools libraries
-    optional bool PerfToolsFromPackage = 5; // Use perftools from package
+    reserved 4;
+    reserved 5;
     optional string MrJobBin = 6; // Path to mrjob executable. If not set then main executable will be used
     optional string MrJobBinMd5 = 13; // MD5 checksum of mrjob executable. Should not be specified directly
     optional string MrJobUdfsDir = 7; // Path to linux udfs. If not set then loaded into main executable will be used
@@ -119,6 +107,7 @@ message TYtGatewayConfig {
     optional uint64 YtDebugLogSize = 11 [default = 0]; // Max YT debug log size
     optional bool YtDebugLogAlwaysWrite = 12 [default = false]; // Write YT debug log always or on error only
     optional string LocalChainFile = 14; // File to dump table contet in test mode
+    repeated TFileWithMd5 MrJobSystemLibsWithMd5 = 15; // Paths to linux dynamic libraries required for running mrjob.
 
     repeated TRemoteFilePattern RemoteFilePatterns = 100;
     repeated TYtClusterConfig ClusterMapping = 101; // Accepted cluster shortcuts. All names not from this list will be rejected
@@ -230,6 +219,9 @@ message TClickHouseClusterConfig {
     optional bool NativeSecure = 12 [default = false];
     optional string Id = 13;
     repeated string GroupAllowed = 14;
+    optional bool ForceUseBalancer = 15 [default = false];
+    optional bool JsonFormatHeader = 16 [default = false];
+    optional bool IdmOnlyAccess = 17 [default = false];
 }
 
 message TClickHouseGatewayConfig {
@@ -326,6 +318,9 @@ message TPqClusterConfig {
     optional bool AddBearerToToken = 11; // whether to use prefix "Bearer " in token
     optional string DatabaseId = 12;
     repeated TAttr Settings = 100;
+    optional bool SharedReading = 101;
+    optional string ReconnectPeriod = 102; // disabled by default, example of a parameter: 5m
+    optional string ReadGroup = 103;
 }
 
 message TPqGatewayConfig {
@@ -364,6 +359,18 @@ message TChytGatewayConfig {
     repeated TChytClusterConfig ClusterMapping = 1;
 }
 
+///////////////////////////// SPYT /////////////////////////////
+
+message TSpytClusterConfig {
+    optional string Name = 1; // Short cluster name
+    optional string YtCluster = 2; // Name of the corresponding YT cluster.
+    optional string DiscoveryPath = 3; // SPYT discovery path on YT.
+}
+
+message TSpytGatewayConfig {
+    repeated TSpytClusterConfig ClusterMapping = 1;
+}
+
 ///////////////////////////// S3 /////////////////////////////
 
 message TS3ClusterConfig {
@@ -387,7 +394,7 @@ message TS3GatewayConfig {
     repeated TS3FormatSizeLimit FormatSizeLimit = 6; // Format limits (override FileSizeLimit)
     optional uint64 BlockFileSizeLimit = 10;         // Global limit for block readers (overrides FormatSizeLimit)
     optional uint64 MaxFilesPerQuery = 3;
-    optional uint64 MaxReadSizePerQuery = 4;
+    reserved 4;
     optional uint64 MaxDiscoveryFilesPerQuery = 5;
     optional uint64 MaxInflightListsPerQuery = 7;
     optional uint64 MaxDirectoriesAndFilesPerQuery = 8;
@@ -398,6 +405,10 @@ message TS3GatewayConfig {
     optional uint64 RegexpCacheSize = 14;
     optional uint64 GeneratorPathsLimit = 15;
     optional uint64 MaxListingResultSizePerPartition = 16;
+    optional uint64 RowsInBatch = 17; // Default = 1000
+    optional uint64 MaxInflight = 18; // Default = 20
+    optional uint64 DataInflight = 19; // Default = 200 MB
+    optional bool AllowLocalFiles = 20;
 
     repeated TAttr DefaultSettings = 100;
 }
@@ -457,6 +468,7 @@ message TPostgresqlClusterConfig {
     optional string PGtoken = 3;
     optional string TargetServerType = 4;
     optional uint64 MaxResultBufferSize = 5 [default = 1000000]; // Zero value disables adaptiveFetch
+    optional bool IdmOnlyAccess = 6 [default = false];
 }
 
 message TPostgresqlGatewayConfig {
@@ -511,6 +523,9 @@ message TCoreAttr {
 message TYqlCoreConfig {
     repeated TCoreAttr Flags = 1;
     optional TActivationPercentage QPlayerActivation = 2;
+    optional uint32 QPlayerRobotPercentage = 3 [default = 0];
+    optional TActivationPercentage QPlayerFullCaptureActivation = 4;
+    optional bool AlwaysCommitQPlayer = 5;
 }
 
 /////////////////////////////// Sql Core ///////////////////////////////
@@ -526,6 +541,7 @@ message TSqlCoreConfig {
     repeated string NoV0SyntaxErrorForUsers = 3;
 
     repeated string TranslationFlags = 4;
+    repeated TCoreAttr ExtendedTranslationFlags = 5;
 }
 
 /////////////////////////////// Db Tool ///////////////////////////////
@@ -545,29 +561,243 @@ message TDbToolConfig {
 
 /////////// Generic gateway for the external data sources ////////////
 
+// TGenericEndpoint represents the network address of a generic data source instance
+message TGenericEndpoint {
+    optional string host = 1;
+    optional uint32 port = 2;
+}
+
+
+// TGenericCredentials represents various ways of user authentication in the data source instance
+message TGenericCredentials {
+    message TBasic {
+        optional string username = 1;
+        optional string password = 2;
+    }
+
+    message TToken {
+        optional string type = 1;
+        optional string value = 2;
+    }
+
+    oneof payload {
+        TBasic basic = 1;
+        TToken token = 2;
+    }
+}
+
+// EGenericDataSourceKind enumerates the external data sources
+// supported by the federated query system
+enum EGenericDataSourceKind {
+    DATA_SOURCE_KIND_UNSPECIFIED = 0;
+    CLICKHOUSE = 1;
+    POSTGRESQL = 2;
+    S3 = 3;
+    YDB = 4;
+    MYSQL = 5;
+    MS_SQL_SERVER = 6;
+    GREENPLUM = 7;
+    ORACLE = 8;
+    LOGGING = 9;
+    MONGO_DB = 10;
+    REDIS = 11;
+    PROMETHEUS = 12;
+    ICEBERG = 13;
+    OPENSEARCH = 14;
+}
+
+// EGenericProtocol generalizes various kinds of network protocols supported by different databases.
+enum EGenericProtocol {
+    PROTOCOL_UNSPECIFIED = 0;
+    NATIVE = 1; // CLICKHOUSE, POSTGRESQL
+    HTTP = 2;   // CLICKHOUSE, S3
+}
+
+// TPostgreSQLDataSourceOptions represents settings specific to PostgreSQL
+message TPostgreSQLDataSourceOptions {
+    // PostgreSQL schema
+    optional string schema = 1;
+}
+
+// TClickhouseDataSourceOptions represents settings specific to Clickhouse
+message TClickhouseDataSourceOptions {
+}
+
+// TS3DataSourceOptions represents settings specific to S3 (Simple Storage Service)
+message TS3DataSourceOptions {
+    // the region where data is stored
+    optional string region = 1;
+    // the bucket the object belongs to
+    optional string bucket = 2;
+}
+
+// TGreenplumDataSourceOptions represents settings specific to Greenplum
+message TGreenplumDataSourceOptions {
+    // Greenplum schema
+    optional string schema = 1;
+}
+
+// TOracleDataSourceOptions represents settings specific to Oracle
+message TOracleDataSourceOptions {
+    // Oracle service_name - alias to SID of oracle INSTANCE, or SID, or PDB.
+    //  More about connection options in Oracle docs:
+    //  https://docs.oracle.com/en/database/other-databases/essbase/21/essoa/connection-string-formats.html
+    optional string service_name = 1;
+}
+
+// TLoggingDataSourceOptions represents settings specific to Logging
+message TLoggingDataSourceOptions {
+    optional string folder_id = 1;
+}
+
+// TMongoDbDataSourceOptions represents settings specific to MongoDB
+message TMongoDbDataSourceOptions {
+    enum EReadingMode {
+        READING_MODE_UNSPECIFIED = 0;
+        // Returns each top level field of the document deserialized into the corresponding YQL type; if the type of some field is ambiguous / inconsistent across several documents it is returned serialized as an YQL Utf8 value
+        TABLE = 1;
+        // Returns a key-value pair of ObjectID primary key and a YSON serialized document
+        YSON = 2;
+        // Returns a key-value pair of ObjectID primary key and a JSON serialized document
+        JSON = 3;
+    };
+
+    // Ways of dealing with values read in ReadSplit whose types are inconsistent with types that were deduced in DescribeTable
+    enum EUnexpectedTypeDisplayMode {
+        UNEXPECTED_UNSPECIFIED = 0;
+        UNEXPECTED_AS_NULL = 1;
+        UNEXPECTED_AS_STRING = 2;
+    };
+
+    // Ways of dealing with unsupported data types
+    enum EUnsupportedTypeDisplayMode {
+        UNSUPPORTED_UNSPECIFIED = 0;
+        UNSUPPORTED_OMIT = 1;
+        UNSUPPORTED_AS_STRING = 2;
+    };
+
+    optional EReadingMode reading_mode = 1;
+    optional EUnexpectedTypeDisplayMode unexpected_type_display_mode = 2;
+    optional EUnsupportedTypeDisplayMode unsupported_type_display_mode = 3;
+}
+
+// TIcebergCatalog represents settings specific to iceberg catalog
+message TIcebergCatalog {
+    // Hadoop Iceberg Catalog which is built on top of a storage
+    message THadoop {
+    }
+
+    // Hive Iceberg Catalog which is based on a Hive Metastore
+    message THiveMetastore {
+        // Location of a hive metastore
+        // e.g., thrift://host:9083/
+        optional string uri = 1;
+    }
+
+    oneof payload {
+        THadoop hadoop = 1;
+        THiveMetastore hive_metastore = 3;
+    }
+
+    reserved 2;
+}
+
+// TIcebergWarehouse represents settings specific to iceberg warehouse
+message TIcebergWarehouse {
+    // Iceberg data located in a S3 storage
+    message TS3 {
+        // Data location in a storage
+        // e.g., s3a://iceberg-bucket/storage
+        optional string uri = 1;
+
+        // Endpoint to access a storage
+        // e.g., https://storage.yandexcloud.net
+        optional string endpoint = 2;
+
+        // Region where a storage is located
+        // e.g., ru-central1
+        optional string region = 3;
+    }
+
+    oneof payload {
+        TS3 s3 = 1;
+    }
+}
+
+// TIcebergDataSourceOptions represents settings specific
+// to Iceberg data source
+message TIcebergDataSourceOptions {
+    // Iceberg catalog
+    optional TIcebergCatalog catalog = 1;
+
+    // Iceberg warehouse
+    optional TIcebergWarehouse warehouse = 2;
+}
+
+// TYdbDataSourceOptions represents settings specific for YDB data source
+message TYdbDataSourceOptions {
+    // EQueryDataFormat determines the format of the data returned by the YDB server
+    enum EQueryDataFormat {
+        QUERY_DATA_FORMAT_UNSPECIFIED = 0;
+        ARROW = 1;
+    }
+
+    optional EQueryDataFormat query_data_format = 1;
+}
+
+// TGenericDataSourceInstance helps to identify the instance of a data source to redirect request to.
+message TGenericDataSourceInstance {
+    // Data source kind
+    optional EGenericDataSourceKind kind = 1;
+    // Network address
+    optional TGenericEndpoint endpoint = 2;
+    // Database name
+    optional string database = 3;
+    // Credentials to access database
+    optional TGenericCredentials credentials = 4;
+    // If true, Connector server will use secure connections to access remote data sources.
+    // Certificates will be obtained from the standard system paths.
+    optional bool use_tls = 5;
+    // Allows to specify network protocol that should be used between
+    // during the connection between Connector and the remote data source
+    optional EGenericProtocol protocol = 6;
+    // Options specific to various data sources
+    oneof options {
+        TPostgreSQLDataSourceOptions pg_options = 7;
+        TClickhouseDataSourceOptions ch_options = 8;
+        TS3DataSourceOptions s3_options = 9;
+        TGreenplumDataSourceOptions gp_options = 10;
+        TOracleDataSourceOptions oracle_options = 11;
+        TLoggingDataSourceOptions logging_options = 12;
+        TMongoDbDataSourceOptions mongodb_options = 13;
+        TIcebergDataSourceOptions iceberg_options = 14;
+        TYdbDataSourceOptions ydb_options = 15;
+    }
+}
+
 message TGenericClusterConfig {
     // Cluster name
     optional string Name = 1;
 
     // Data source kind
-    optional NYql.NConnector.NApi.EDataSourceKind Kind = 8;
+    optional EGenericDataSourceKind Kind = 8;
 
     // Location represents the network address of a data source instance we want to connect
     oneof Location {
         // Endpoint must be used for on-premise deployments.
-        NYql.NConnector.NApi.TEndpoint Endpoint = 9;
+        TGenericEndpoint Endpoint = 9;
         // DatabaseId must be used when the data source is deployed in cloud.
         // Data source FQDN and port will be resolved by MDB service.
         string DatabaseId = 4;
     }
 
     // Credentials used to access data source instance
-    optional NYql.NConnector.NApi.TCredentials Credentials = 10;
+    optional TGenericCredentials Credentials = 10;
 
     // Credentials used to access managed databases APIs.
     // When working with external data source instances deployed in clouds,
-    // one should either set (ServiceAccountId, ServiceAccountIdSignature) pair 
-    // that will be resolved into IAM Token via Token Accessor, 
+    // one should either set (ServiceAccountId, ServiceAccountIdSignature) pair
+    // that will be resolved into IAM Token via Token Accessor,
     // or provide IAM Token directly.
     optional string ServiceAccountId = 6;
     optional string ServiceAccountIdSignature = 7;
@@ -581,7 +811,7 @@ message TGenericClusterConfig {
     optional string DatabaseName = 13;
 
     // Transport protocol used to establish a network connection with database
-    optional NYql.NConnector.NApi.EProtocol Protocol = 14;
+    optional EGenericProtocol Protocol = 14;
 
     // Data source options specific to various data sources
     map<string, string> DataSourceOptions = 15;
@@ -589,12 +819,23 @@ message TGenericClusterConfig {
     reserved 2, 3, 5;
 }
 
+// Connection factory type
+enum EConnectionFactory {
+    FACTORY_UNSPECIFIED = 0;
+
+    // Single connection for all requests
+    SINGLE = 1;
+
+    // Create new connection for each request
+    NEW_FOR_EACH_REQUEST = 2;
+}
+
 message TGenericConnectorConfig {
     // There are two options to configure Connector network address:
     // 1. Set address statically via `Endpoint.Host` and `Endpoint.Port`;
     // 2. Ask YDB to set `Endpoint.Port` to the value of expression `./ydbd --ic-port + OffsetFromIcPort`,
     // while Connector's hostname will still be taken from `Endpoint.Host` (with 'localhost' as a default value).
-    optional NYql.NConnector.NApi.TEndpoint Endpoint = 3;
+    optional TGenericEndpoint Endpoint = 3;
     optional uint32 OffsetFromIcPort = 6;
 
     // If true, Connector GRPC Client will use TLS encryption.
@@ -603,13 +844,35 @@ message TGenericConnectorConfig {
     // If empty, the default system CA certificate pool will be used.
     optional string SslCaCrt = 5;
 
+    // Сonnection factory to use
+    // Default = SINGLE
+    optional EConnectionFactory Factory = 7;
+
+    // List of DataSourceKinds for which this connector can be used
+    // Default = empty
+    repeated EGenericDataSourceKind ForKinds = 8;
+
     reserved 1, 2;
 }
 
 message TGenericGatewayConfig {
-    // Connector service network endpoint
-    // TODO: replace with map<DataSourceKind, TGenericConnectorConfig>
+    //
+    // Default Connector service network endpoint.
+    //
+    // This field is interpreted as a "Default Connector".
+    // Used when "Connectors" does not contain an appropriate connector for a request's.
+    // EGenericDataSourceKind. The value of a field "Connector.ForKinds" is ignored.
+    //
     optional TGenericConnectorConfig Connector = 5;
+
+    //
+    // The list of Connectors.
+    //
+    // When a request is served, firstly this list is checked.
+    // If the list has a connector for a request's EGenericDataSourceKind it will
+    // be applied to that request; otherwise, the "Default Connector" is used.
+    //
+    repeated TGenericConnectorConfig Connectors = 8;
 
     // Database clusters supported by this particular instance
     repeated TGenericClusterConfig ClusterMapping = 3;
@@ -622,6 +885,9 @@ message TGenericGatewayConfig {
     // [http|https]://host:port/ydbc/cloud-prod/
     optional string YdbMvpEndpoint = 7;
 
+    // Defines timeout for calling the Connector API method `DescribeTable`
+    optional uint64 DescribeTableTimeoutSeconds = 9;
+
     repeated TAttr DefaultSettings = 6;
 
     reserved 1, 2;
@@ -631,7 +897,7 @@ message TGenericGatewayConfig {
 
 message TDbResolverConfig {
     // Ydb / Yds MVP endpoint.
-    // Expected format: 
+    // Expected format:
     // [http|https]://host:port/ydbc/cloud-prod/
     optional string YdbMvpEndpoint = 2;
 }
@@ -648,6 +914,56 @@ message TRevisionFilterConfig {
     repeated TRevisionException RevisionException = 1;
 }
 
+///////////////////////////// Ytflow /////////////////////////////
+
+message TYtflowClusterConfig {
+    optional string Name = 1; // YQL short cluster name.
+    optional string RealName = 2; // Short cluster name.
+    optional string ProxyUrl = 3;
+    optional string Token = 4;
+
+    repeated TAttr Settings = 100;
+}
+
+message TYtflowGatewayConfig {
+    optional uint32 GatewayThreads = 1 [default = 1]; // Number of gateway threads. The adaptive thread pool will be used for 0 value
+    optional string YtflowWorkerBin = 2; // Path to ytflow worker executable.
+
+    repeated TYtflowClusterConfig ClusterMapping = 3;
+
+    repeated TAttr DefaultSettings = 102;
+}
+
+///////////////////////////// Fmr /////////////////////////////
+
+message TFmrTvmConfig {
+    optional uint64 CoordinatorTvmId = 1;
+    optional uint64 GatewayTvmId = 2;
+    optional string GatewayTvmSecretFile = 3; // Path to file with tvm secret.
+    optional string TvmDiskCacheDir = 4;
+}
+
+message TFmrInstance {
+    optional string Name = 1;
+    optional string CoordinatorUrl = 2;
+    repeated string AllowedGroups = 3;
+    optional bool EnableAuth = 4 [default = false];
+    optional string FileRemoteCacheName = 5;
+    optional TFmrTvmConfig TvmConfig = 6;
+}
+
+message TFmrGatewayConfig {
+    repeated TFmrInstance FmrConfigurations = 1;
+    repeated TFmrFileRemoteCache FileCacheConfigurations = 2;
+}
+
+/////////////////////////////// Layers ///////////////////////////////
+
+message TLayersConfig {
+    optional string FetchUrl = 1;
+    optional TFetchConfig FetchConfig = 2;
+}
+
 /////////////////////////////// Root ///////////////////////////////
 
 message TGatewaysConfig {
@@ -659,6 +975,7 @@ message TGatewaysConfig {
     optional TStatGatewayConfig Stat = 6;
     optional TChytGatewayConfig Chyt = 7;
     optional TSolomonGatewayConfig Solomon = 8;
+
     optional TFileStorageAdditionalConfig Fs = 9;
     optional TYqlCoreConfig YqlCore = 10;
     optional TPostgresqlGatewayConfig Postgresql = 11;
@@ -674,4 +991,9 @@ message TGatewaysConfig {
     optional TGenericGatewayConfig Generic = 21;
     optional TRevisionFilterConfig RevisionFilter = 22;
     optional TDbResolverConfig DbResolver = 23;
+    optional TYtflowGatewayConfig Ytflow = 24;
+    optional TFmrGatewayConfig Fmr = 25;
+    optional TLayersConfig Layers = 26;
+    optional NProto.TRuntimeSettings RuntimeSettings = 27;
+    optional TSpytGatewayConfig Spyt = 28;
 }

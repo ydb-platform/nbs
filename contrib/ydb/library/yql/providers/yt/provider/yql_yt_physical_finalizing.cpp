@@ -30,6 +30,8 @@
 
 #include <utility>
 #include <unordered_set>
+#include <iterator>
+#include <algorithm>
 
 namespace NYql {
 
@@ -60,6 +62,7 @@ public:
         TNodeSet neverCombine;
         TNodeSet lefts;
         TNodeMap<TString> commits;
+        TExprNode::TListType publishNodes;
 
         bool enableChunkCombining = IsChunkCombiningEnabled();
 
@@ -111,6 +114,7 @@ public:
             else if (auto maybePublish = TMaybeNode<TYtPublish>(node)) {
                 auto publish = maybePublish.Cast();
                 visitedOutParents.insert(publish.Input().Raw());
+                publishNodes.push_back(publish.Ptr());
                 for (auto out: publish.Input()) {
                     storeDep(out, publish.Raw(), nullptr, nullptr);
                 }
@@ -162,71 +166,30 @@ public:
 
         const auto disableOptimizers = State_->Configuration->DisableOptimizers.Get().GetOrElse(TSet<TString>());
 
-        if (!disableOptimizers.contains("MergePublish")) {
-            for (auto& c: commits) {
-                THashMap<TString, TVector<const TExprNode*>> groupedPublishesByDst;
-                VisitExprByFirst(*c.first, [&](const TExprNode& node) {
-                    if (auto maybePub = TMaybeNode<TYtPublish>(&node)) {
-                        auto pub = maybePub.Cast();
-                        if (pub.DataSink().Cluster().Value() == c.second && !NYql::HasSetting(pub.Settings().Ref(), EYtSettingType::MonotonicKeys)) {
-                            groupedPublishesByDst[TString{pub.Publish().Name().Value()}].push_back(&node);
-                        }
-                    } else if (auto maybeCommit = TMaybeNode<TCoCommit>(&node)) {
-                        if (auto maybeSink = maybeCommit.DataSink().Maybe<TYtDSink>()) {
-                            // Stop traversing when got another commit on the same cluster
-                            return maybeSink.Cast().Cluster().Value() != c.second || &node == c.first;
-                        }
-                    }
-                    return true;
-                });
-                TVector<TString> dstTables;
-                for (auto& grp: groupedPublishesByDst) {
-                    if (grp.second.size() > 1) {
-                        dstTables.push_back(grp.first);
-                    }
-                }
-                if (dstTables.size() > 1) {
-                    ::Sort(dstTables);
-                }
-                for (auto& tbl: dstTables) {
-                    auto& grp = groupedPublishesByDst[tbl];
-                    while (grp.size() > 1) {
-                        TNodeOnNodeOwnedMap replaceMap;
-                        // Optimize only two YtPublish nodes at once to properly update world dependencies
-                        auto last = TYtPublish(grp[0]);
-                        auto prev = TYtPublish(grp[1]);
-                        if (last.World().Raw() != prev.Raw()) {
-                            // Has extra dependencies. Don't merge
-                            grp.erase(grp.begin());
-                            continue;
-                        }
-
-                        auto mode = NYql::GetSetting(last.Settings().Ref(), EYtSettingType::Mode);
-                        YQL_ENSURE(mode && FromString<EYtWriteMode>(mode->Child(1)->Content()) == EYtWriteMode::Append);
-                        YQL_ENSURE(!NYql::HasSetting(last.Settings().Ref(), EYtSettingType::Initial));
-
-                        replaceMap.emplace(grp[0],
-                            Build<TYtPublish>(ctx, grp[0]->Pos())
-                                .InitFrom(prev)
-                                .Input()
-                                    .Add(prev.Input().Ref().ChildrenList())
-                                    .Add(last.Input().Ref().ChildrenList())
-                                .Build()
-                                .Done().Ptr()
-                        );
-                        replaceMap.emplace(grp[1], prev.World().Ptr());
-
-                        YQL_CLOG(INFO, ProviderYt) << "PhysicalFinalizing-MergePublish";
-                        return RemapExpr(input, output, replaceMap, ctx, TOptimizeExprSettings(State_->Types));
-                    }
-                }
-                ProcessedMergePublish.insert(c.first->UniqueId());
+        TStatus status = TStatus::Ok;
+        if (!disableOptimizers.contains("UnorderedPublishTarget")) {
+            status = UnorderedPublishTarget(input, output, publishNodes, ctx);
+            if (status.Level != TStatus::Ok) {
+                return status;
             }
         }
 
-        TStatus status = TStatus::Ok;
+        if (!disableOptimizers.contains("MergePublish")) {
+            status = MergePublish(input, output, commits, ctx);
+            if (status.Level != TStatus::Ok) {
+                return status;
+            }
+        }
+
         if (!disableOptimizers.contains("BypassMergeBeforeLength")) {
-            status = BypassMergeBeforeLength(input, output, opDeps, lefts, ctx);
+            status = BypassMergeOrCopyBeforeLength(input, output, opDeps, lefts, ctx);
+            if (status.Level != TStatus::Ok) {
+                return status;
+            }
+        }
+
+        if (!State_->Configuration->DontForceTransformForInputTables.Get().GetOrElse(false)) {
+            status = MergeWithTransform(input, output, opDeps, ctx);
             if (status.Level != TStatus::Ok) {
                 return status;
             }
@@ -313,13 +276,15 @@ public:
             bool canHaveLimit = TYtTransientOpBase(writer).Output().Size() == 1;
             if (canHaveLimit) {
                 TString usedCluster;
+                const ERuntimeClusterSelectionMode selectionMode =
+                    State_->Configuration->RuntimeClusterSelection.Get().GetOrElse(DEFAULT_RUNTIME_CLUSTER_SELECTION);
                 for (auto item: x.second) {
                     if (!std::get<1>(item)) { // YtLength, YtPublish
                         canHaveLimit = false;
                         break;
                     }
                     for (auto path: TYtSection(std::get<1>(item)).Paths()) {
-                        if (!path.Ranges().Maybe<TCoVoid>()) {
+                        if (!path.Ranges().Maybe<TCoVoid>() || !path.QLFilter().Maybe<TCoVoid>()) {
                             canHaveLimit = false;
                             break;
                         }
@@ -332,7 +297,7 @@ public:
                         auto kind = FromString<EYtSettingType>(setting.Name().Value());
                         if (EYtSettingType::Take == kind || EYtSettingType::Skip == kind) {
                             TSyncMap syncList;
-                            if (!IsYtCompleteIsolatedLambda(setting.Value().Ref(), syncList, usedCluster, true, false) || !syncList.empty()) {
+                            if (!IsYtCompleteIsolatedLambda(setting.Value().Ref(), syncList, usedCluster, false, selectionMode) || !syncList.empty()) {
                                 hasTake = false;
                                 break;
                             }
@@ -422,8 +387,27 @@ public:
             }
         }
 
+
+        if (!State_->Configuration->DisableFuseOperations.Get().GetOrElse(DEFAULT_DISABLE_FUSE_OPERATIONS) &&
+            State_->Configuration->FuseMapToMapReduce.Get().GetOrElse(DEFAULT_FUSE_MAP_TO_MAPREDUCE) == EFuseMapToMapReduceMode::Late)
+        {
+            auto getParents = [&]() {
+                return &parentsMap;
+            };
+            status = OptimizeExpr(output, output, [&](const TExprNode::TPtr& node, TExprContext& ctx) {
+                if (TYtMapReduce::Match(node.Get()) && !node->StartsExecution()) {
+                    auto res = FuseMapToMapReduce(TExprBase(node), ctx, getParents, State_);
+                    return res ? res.Cast().Ptr() : TExprNode::TPtr();
+                }
+                return node;
+            }, ctx, TOptimizeExprSettings(State_->Types));
+            if (status.Level != TStatus::Ok) {
+                return status;
+            }
+        }
+
         if (const auto mode = State_->Configuration->ColumnGroupMode.Get().GetOrElse(EColumnGroupMode::Disable); mode != EColumnGroupMode::Disable) {
-            status = CalculateColumnGroups(input, output, opDeps, mode, ctx);
+            status = CalculateColumnGroups(input, output, opDepsOrder, opDeps, mode, ctx);
             if (status.Level != TStatus::Ok) {
                 return status;
             }
@@ -529,6 +513,25 @@ private:
             TYtOutput ytOutput(node);
             const auto oldOp = GetOutputOp(ytOutput);
 
+            auto settingsBuilder =
+                Build<TCoNameValueTupleList>(ctx, oldOp.Pos())
+                    .Add()
+                        .Name().Value(ToString(EYtSettingType::CombineChunks)).Build()
+                    .Build();
+
+            const auto queryCacheMode = State_->Configuration->QueryCacheMode.Get().GetOrElse(EQueryCacheMode::Disable);
+            if (State_->Configuration->QueryCacheCombineChunksReplace.Get().GetOrElse(DEFAULT_QUERY_CACHE_COMBINE_CHUNKS_REPLACE)
+                && queryCacheMode != EQueryCacheMode::Disable
+                && queryCacheMode != EQueryCacheMode::Readonly)
+            {
+                settingsBuilder
+                    .Add()
+                        .Name().Value(ToString(EYtSettingType::ReplaceParentCache)).Build()
+                    .Build();
+            }
+
+            auto settings = settingsBuilder.Done();
+
             auto combiningOp =
                 Build<TYtMerge>(ctx, oldOp.Pos())
                     .World<TCoWorld>().Build()
@@ -550,17 +553,14 @@ private:
                                     .Columns<TCoVoid>().Build()
                                     .Ranges<TCoVoid>().Build()
                                     .Stat<TCoVoid>().Build()
+                                    .QLFilter<TCoVoid>().Build()
                                 .Build()
                             .Build()
                             .Settings<TCoNameValueTupleList>()
                             .Build()
                         .Build()
                     .Build()
-                    .Settings()
-                        .Add()
-                            .Name().Value(ToString(EYtSettingType::CombineChunks)).Build()
-                        .Build()
-                    .Build()
+                    .Settings(settings)
                 .Done();
 
             auto newYtOutput =
@@ -607,9 +607,119 @@ private:
         return TStatus::Ok;
     }
 
+    TStatus UnorderedPublishTarget(TExprNode::TPtr input, TExprNode::TPtr& output, const TExprNode::TListType& publishNodes, TExprContext& ctx) {
+        TNodeOnNodeOwnedMap replaceMap;
+        for (auto n: publishNodes) {
+            auto publish = TYtPublish(n);
+
+            auto cluster = publish.DataSink().Cluster().StringValue();
+            auto pubTableInfo = TYtTableInfo(publish.Publish());
+            if (auto commitEpoch = pubTableInfo.CommitEpoch.GetOrElse(0)) {
+                const TYtTableDescription& nextDescription = State_->TablesData->GetTable(cluster, pubTableInfo.Name, commitEpoch);
+                YQL_ENSURE(nextDescription.RowSpec);
+                if (nextDescription.RowSpecSortReady && !nextDescription.RowSpec->IsSorted()) {
+                    bool modified = false;
+                    TVector<TYtOutput> outs;
+                    for (auto out: publish.Input()) {
+                        if (!IsUnorderedOutput(out) && TYqlRowSpecInfo(GetOutTable(out).Cast<TYtOutTable>().RowSpec()).IsSorted()) {
+                            outs.push_back(Build<TYtOutput>(ctx, out.Pos())
+                                .InitFrom(out)
+                                .Mode()
+                                    .Value(ToString(EYtSettingType::Unordered))
+                                .Build()
+                                .Done());
+                            modified = true;
+                        } else {
+                            outs.push_back(out);
+                        }
+                    }
+                    if (modified) {
+                        replaceMap[publish.Raw()] = Build<TYtPublish>(ctx, publish.Pos())
+                            .InitFrom(publish)
+                            .Input()
+                                .Add(outs)
+                            .Build()
+                            .Done().Ptr();
+                    }
+                }
+            }
+        }
+        if (!replaceMap.empty()) {
+            YQL_CLOG(INFO, ProviderYt) << "PhysicalFinalizing-UnorderedPublishTarget";
+            return RemapExpr(input, output, replaceMap, ctx, TOptimizeExprSettings(State_->Types));
+        }
+        return TStatus::Ok;
+    }
+
+    TStatus MergePublish(TExprNode::TPtr input, TExprNode::TPtr& output, const TNodeMap<TString>& commits, TExprContext& ctx) {
+        for (auto& c: commits) {
+            THashMap<TString, TVector<const TExprNode*>> groupedPublishesByDst;
+            VisitExprByFirst(*c.first, [&](const TExprNode& node) {
+                if (auto maybePub = TMaybeNode<TYtPublish>(&node)) {
+                    auto pub = maybePub.Cast();
+                    if (pub.DataSink().Cluster().Value() == c.second && !NYql::HasSetting(pub.Settings().Ref(), EYtSettingType::MonotonicKeys)) {
+                        groupedPublishesByDst[TString{pub.Publish().Name().Value()}].push_back(&node);
+                    }
+                } else if (auto maybeCommit = TMaybeNode<TCoCommit>(&node)) {
+                    if (auto maybeSink = maybeCommit.DataSink().Maybe<TYtDSink>()) {
+                        // Stop traversing when got another commit on the same cluster
+                        return maybeSink.Cast().Cluster().Value() != c.second || &node == c.first;
+                    }
+                }
+                return true;
+            });
+            TVector<TString> dstTables;
+            for (auto& grp: groupedPublishesByDst) {
+                if (grp.second.size() > 1) {
+                    dstTables.push_back(grp.first);
+                }
+            }
+            if (dstTables.size() > 1) {
+                ::Sort(dstTables);
+            }
+            for (auto& tbl: dstTables) {
+                auto& grp = groupedPublishesByDst[tbl];
+                while (grp.size() > 1) {
+                    TNodeOnNodeOwnedMap replaceMap;
+                    // Optimize only two YtPublish nodes at once to properly update world dependencies
+                    auto last = TYtPublish(grp[0]);
+                    auto prev = TYtPublish(grp[1]);
+                    if (last.World().Raw() != prev.Raw()) {
+                        // Has extra dependencies. Don't merge
+                        grp.erase(grp.begin());
+                        continue;
+                    }
+
+                    auto mode = NYql::GetSetting(last.Settings().Ref(), EYtSettingType::Mode);
+                    YQL_ENSURE(mode && FromString<EYtWriteMode>(mode->Child(1)->Content()) == EYtWriteMode::Append);
+                    YQL_ENSURE(!NYql::HasSetting(last.Settings().Ref(), EYtSettingType::Initial));
+
+                    replaceMap.emplace(grp[0],
+                        Build<TYtPublish>(ctx, grp[0]->Pos())
+                            .InitFrom(prev)
+                            .Input()
+                                .Add(prev.Input().Ref().ChildrenList())
+                                .Add(last.Input().Ref().ChildrenList())
+                            .Build()
+                            .Done().Ptr()
+                    );
+                    replaceMap.emplace(grp[1], prev.World().Ptr());
+
+                    YQL_CLOG(INFO, ProviderYt) << "PhysicalFinalizing-MergePublish";
+                    return RemapExpr(input, output, replaceMap, ctx, TOptimizeExprSettings(State_->Types));
+                }
+            }
+            ProcessedMergePublish.insert(c.first->UniqueId());
+        }
+        return TStatus::Ok;
+    };
+
     TStatus OptimizeFieldSubsetForMultiUsage(TExprNode::TPtr input, TExprNode::TPtr& output, const TOpDeps& opDeps, const TNodeSet& lefts, TExprContext& ctx) {
         TVector<std::pair<const TOpDeps::value_type*, THashSet<TString>>> matchedOps;
+
         const bool useNativeDescSort = State_->Configuration->UseNativeDescSort.Get().GetOrElse(DEFAULT_USE_NATIVE_DESC_SORT);
+        const bool useNativeYtDefaultColumnOrder = State_->Configuration->UseNativeYtDefaultColumnOrder.Get().GetOrElse(DEFAULT_USE_NATIVE_YT_DEFAULT_COLUMN_ORDER);
+
         for (auto& x: opDeps) {
             auto writer = x.first;
 
@@ -620,7 +730,10 @@ private:
             if (IsBeingExecuted(*writer)) {
                 continue;
             }
-            if (!TYtMap::Match(writer) && !TYtMerge::Match(writer)) {
+            if (!TYtMap::Match(writer) && !TYtMerge::Match(writer) && !TYtPersist::Match(writer)) {
+                continue;
+            }
+            if (TYtPersist::Match(writer) && !NYql::HasSetting(*writer->Child(TYtPersist::idx_Settings), EYtSettingType::PruneUnusedColumns)) {
                 continue;
             }
             if (writer->GetTypeAnn()->Cast<TTupleExprType>()->GetItems()[1]->Cast<TListExprType>()->GetItemType()->GetKind() == ETypeAnnotationKind::Variant) {
@@ -641,7 +754,7 @@ private:
 
             bool good = true;
             THashSet<TString> usedColumns;
-            if (NYql::HasSetting(*writer->Child(TYtTransientOpBase::idx_Settings), EYtSettingType::KeepSorted)) {
+            if (NYql::HasSetting(*writer->Child(TYtTransientOpBase::idx_Settings), EYtSettingType::KeepSorted) || TYtPersist::Match(writer)) {
                 for (size_t i = 0; i < rowSpec.SortedBy.size(); ++i) {
                     usedColumns.insert(rowSpec.SortedBy[i]);
                 }
@@ -690,6 +803,14 @@ private:
                     }
                 }
 
+                if (const auto qlFilter = path.QLFilter().Maybe<TYtQLFilter>()) {
+                    // add columns which are implicitly used by path.QLFilter(), but not included in path.Columns();
+                    const TStructExprType* qlFilterType = qlFilter.Cast().Ref().Head().GetTypeAnn()->Cast<TTypeExprType>()->GetType()->Cast<TStructExprType>();
+                    for (const auto& item : qlFilterType->GetItems()) {
+                        usedColumns.emplace(item->GetName());
+                    }
+                }
+
                 if (type->GetSize() <= usedColumns.size()) {
                     good = false;
                     break;
@@ -725,6 +846,7 @@ private:
                 distinct = distinct->FilterFields(ctx, [&columns](const TPartOfConstraintBase::TPathType& path) { return !path.empty() && columns.contains(path.front()); });
             }
 
+            const ui64 nativeTypeCompatibility = GetNativeYtTypeCompatibility(TYtTransientOpBase(writer).DataSink().Cluster().StringValue(), *State_->Configuration);
             TExprNode::TPtr newOp;
             if (auto maybeMap = TMaybeNode<TYtMap>(writer)) {
                 TYtMap map = maybeMap.Cast();
@@ -761,7 +883,7 @@ private:
                     .Seal()
                     .Build();
 
-                TYtOutTableInfo mapOut(outStructType, State_->Configuration->UseNativeYtTypes.Get().GetOrElse(DEFAULT_USE_NATIVE_YT_TYPES) ? NTCF_ALL : NTCF_NONE);
+                TYtOutTableInfo mapOut(outStructType, nativeTypeCompatibility);
 
                 if (ctx.IsConstraintEnabled<TSortedConstraintNode>()) {
                     if (auto sorted = outTable.Ref().GetConstraint<TSortedConstraintNode>()) {
@@ -780,7 +902,7 @@ private:
                             if (sorted = sorted->FilterFields(ctx, [&columns](const TPartOfConstraintBase::TPathType& path) { return !path.empty() && columns.contains(path.front()); })) {
                                 TKeySelectorBuilder builder(map.Mapper().Pos(), ctx, useNativeDescSort, outStructType);
                                 builder.ProcessConstraint(*sorted);
-                                builder.FillRowSpecSort(*mapOut.RowSpec);
+                                builder.FillRowSpecSort(*mapOut.RowSpec, useNativeYtDefaultColumnOrder);
 
                                 if (builder.NeedMap()) {
                                     mapper = ctx.Builder(map.Mapper().Pos())
@@ -800,7 +922,7 @@ private:
                         }
                     }
                 } else {
-                    mapOut.RowSpec->CopySortness(TYqlRowSpecInfo(outTable.RowSpec()));
+                    mapOut.RowSpec->CopySortness(ctx, TYqlRowSpecInfo(outTable.RowSpec()), useNativeYtDefaultColumnOrder);
                 }
                 mapOut.SetUnique(distinct, map.Mapper().Pos(), ctx);
                 mapOut.RowSpec->SetConstraints(outTable.Ref().GetConstraintSet());
@@ -813,16 +935,16 @@ private:
                     .Mapper(std::move(mapper))
                     .Done().Ptr();
             }
-            else  {
+            else if (TYtMerge::Match(writer)) {
                 auto merge = TYtMerge(writer);
                 auto prevRowSpec = TYqlRowSpecInfo(merge.Output().Item(0).RowSpec());
-                TYtOutTableInfo mergeOut(outStructType, prevRowSpec.GetNativeYtTypeFlags());
-                mergeOut.RowSpec->CopySortness(prevRowSpec, TYqlRowSpecInfo::ECopySort::WithDesc);
+                TYtOutTableInfo mergeOut(outStructType, nativeTypeCompatibility);
+                mergeOut.RowSpec->CopySortness(ctx, prevRowSpec, useNativeYtDefaultColumnOrder, TYqlRowSpecInfo::ECopySort::WithDesc);
                 mergeOut.SetUnique(distinct, merge.Pos(), ctx);
                 mergeOut.RowSpec->SetConstraints(outTable.Ref().GetConstraintSet());
 
                 if (auto nativeType = prevRowSpec.GetNativeYtType()) {
-                    mergeOut.RowSpec->CopyTypeOrders(*nativeType);
+                    mergeOut.RowSpec->CopyTypeOrders(*nativeType, useNativeYtDefaultColumnOrder);
                 }
 
                 TSet<TStringBuf> columnSet;
@@ -842,6 +964,63 @@ private:
                     .Build()
                     .Output()
                         .Add(mergeOut.ToExprNode(ctx, merge.Pos()).Cast<TYtOutTable>())
+                    .Build()
+                    .Done().Ptr();
+            } else {
+                YQL_ENSURE(TYtPersist::Match(writer));
+
+                auto persist = TYtPersist(writer);
+
+                auto prevRowSpec = TYqlRowSpecInfo(persist.Output().Item(0).RowSpec());
+                TYtOutTableInfo mergeOut(outStructType, prevRowSpec.GetNativeYtTypeFlags());
+                mergeOut.RowSpec->CopySortness(ctx, prevRowSpec, useNativeYtDefaultColumnOrder, TYqlRowSpecInfo::ECopySort::WithDesc);
+                mergeOut.SetUnique(distinct, persist.Pos(), ctx);
+                mergeOut.RowSpec->SetConstraints(outTable.Ref().GetConstraintSet());
+
+                if (auto nativeType = prevRowSpec.GetNativeYtType()) {
+                    mergeOut.RowSpec->CopyTypeOrders(*nativeType, useNativeYtDefaultColumnOrder);
+                }
+
+                TSet<TStringBuf> columnSet;
+                for (auto& column: columns) {
+                    columnSet.insert(column);
+                }
+                if (mergeOut.RowSpec->HasAuxColumns()) {
+                    for (auto item: mergeOut.RowSpec->GetAuxColumns()) {
+                        columnSet.insert(item.first);
+                    }
+                }
+
+                auto persistInput = Build<TYtPath>(ctx, persist.Pos())
+                    .InitFrom(persist.Input().Item(0).Paths().Item(0))
+                    .Table<TYtOutput>()
+                        .Operation<TYtMerge>()
+                            .World<TCoWorld>().Build()
+                            .DataSink(persist.DataSink())
+                            .Input()
+                                .Add(UpdateInputFields(persist.Input().Item(0), std::move(columnSet), ctx, false))
+                            .Build()
+                            .Output()
+                                .Add(mergeOut.ToExprNode(ctx, persist.Pos()).Cast<TYtOutTable>())
+                            .Build()
+                            .Settings().Build()
+                        .Build()
+                        .OutIndex().Value(0).Build()
+                    .Build()
+                    .Done();
+
+                newOp = Build<TYtPersist>(ctx, persist.Pos())
+                    .InitFrom(persist)
+                    .Input()
+                        .Add()
+                            .Paths()
+                                .Add(persistInput)
+                            .Build()
+                            .Settings().Build()
+                        .Build()
+                    .Build()
+                    .Output()
+                        .Add(mergeOut.ToExprNode(ctx, persist.Pos()).Cast<TYtOutTable>())
                     .Build()
                     .Done().Ptr();
             }
@@ -920,6 +1099,13 @@ private:
                                 .Second(newOpSecond ? std::move(newOpSecond) : mayTry.Cast().Second().Ptr())
                                 .Done().Ptr();
                         }
+                    } else if (const auto maybePersist = TExprBase(writer).Maybe<TYtPersist>()) {
+                        if (!NYql::HasSetting(maybePersist.Cast().Settings().Ref(), EYtSettingType::Unordered)) {
+                            newOp = Build<TYtPersist>(ctx, writer->Pos())
+                                .InitFrom(maybePersist.Cast())
+                                .Settings(NYql::AddSetting(maybePersist.Cast().Settings().Ref(), EYtSettingType::Unordered, {}, ctx))
+                                .Done().Ptr();
+                        }
                     } else {
                         newOp = MakeUnorderedOp(*writer, unorderedOuts, ctx);
                     }
@@ -963,10 +1149,12 @@ private:
         bool changedOutSort = false;
         TVector<TYtOutTable> outTables;
         TExprNode::TListType filterColumns(op.Output().Size());
+        TTypeAnnotationNode::TListType varItemTypes(op.Output().Size());
         for (size_t i = 0; i < op.Output().Size(); ++i) {
             auto out = op.Output().Item(i);
+            auto rowSpec = TYtTableBaseInfo::GetRowSpec(out);
+            varItemTypes[i] = rowSpec->GetExtendedType(ctx);
             if (unorderedOuts.Test(i)) {
-                auto rowSpec = TYtTableBaseInfo::GetRowSpec(out);
                 YQL_ENSURE(rowSpec);
                 if (rowSpec->IsSorted()) {
                     if (rowSpec->HasAuxColumns()) {
@@ -975,8 +1163,9 @@ private:
                             columns.emplace_back(item->GetName());
                         }
                         filterColumns[i] = ToAtomList(columns, node.Pos(), ctx);
+                        varItemTypes[i] = rowSpec->GetType();
                     }
-                    rowSpec->ClearSortness();
+                    rowSpec->ClearSortness(ctx);
                     outTables.push_back(TYtOutTable(ctx.ChangeChild(out.Ref(), TYtOutTable::idx_RowSpec, rowSpec->ToExprNode(ctx, out.Pos()).Ptr())));
                     changedOutSort = true;
                 } else {
@@ -991,6 +1180,7 @@ private:
         }
 
         bool isFill = false;
+        bool isYtDqProcessWrite = false;
         int lambdaIdx = -1;
         TExprNode::TPtr lambda;
         if (TYtMap::Match(&node)) {
@@ -1000,6 +1190,9 @@ private:
         } else if (TYtFill::Match(&node)) {
             lambdaIdx = TYtFill::idx_Content;
             isFill = true;
+        } else if (TYtDqProcessWrite::Match(&node)) {
+            lambdaIdx = TYtDqProcessWrite::idx_Input;
+            isYtDqProcessWrite = true;
         }
         if (-1 != lambdaIdx && !hasOtherSortedOuts) {
             if (isFill) {
@@ -1013,20 +1206,46 @@ private:
                         .Build()
                         .Done().Ptr();
                 }
+            } else if (isYtDqProcessWrite) {
+                TProcessedNodesSet processedNodes;
+                TNodeOnNodeOwnedMap remaps;
+                VisitExpr(node.ChildPtr(lambdaIdx), [&processedNodes, &remaps, &ctx](const TExprNode::TPtr& n) {
+                    if (TYtOutput::Match(n.Get())) {
+                        // Stop traversing dependent operations
+                        processedNodes.insert(n->UniqueId());
+                        return false;
+                    }
+                    if (TYtDqWrite::Match(n.Get())) {
+                        auto newInput = Build<TCoUnordered>(ctx, n->Pos())
+                            .Input(n->ChildPtr(TYtDqWrite::idx_Input))
+                            .Done();
+                        remaps[n.Get()] = ctx.ChangeChild(*n, TYtDqWrite::idx_Input, newInput.Ptr());
+                    }
+                    return true;
+                });
+                if (!remaps.empty()) {
+                    TOptimizeExprSettings settings{State_->Types};
+                    settings.ProcessedNodes = &processedNodes;
+                    auto status = RemapExpr(node.ChildPtr(lambdaIdx), lambda, remaps, ctx, settings);
+                    if (status.Level == IGraphTransformer::TStatus::Error) {
+                        return {};
+                    }
+                }
+
             } else {
                 TProcessedNodesSet processedNodes;
                 TNodeOnNodeOwnedMap remaps;
-                VisitExpr(node.ChildPtr(lambdaIdx), [&processedNodes, &remaps, &ctx](const TExprNode::TPtr& node) {
-                    if (TYtOutput::Match(node.Get())) {
+                VisitExpr(node.ChildPtr(lambdaIdx), [&processedNodes, &remaps, &ctx](const TExprNode::TPtr& n) {
+                    if (TYtOutput::Match(n.Get())) {
                         // Stop traversing dependent operations
-                        processedNodes.insert(node->UniqueId());
+                        processedNodes.insert(n->UniqueId());
                         return false;
                     }
-                    auto name = node->Content();
-                    if (node->IsCallable() && node->ChildrenSize() > 0 && name.SkipPrefix("Ordered")) {
-                        const auto inputKind = node->Child(0)->GetTypeAnn()->GetKind();
+                    auto name = n->Content();
+                    if (n->IsCallable() && n->ChildrenSize() > 0 && name.SkipPrefix("Ordered")) {
+                        const auto inputKind = n->Child(0)->GetTypeAnn()->GetKind();
                         if (inputKind == ETypeAnnotationKind::Stream || inputKind == ETypeAnnotationKind::Flow) {
-                            remaps[node.Get()] = ctx.RenameNode(*node, name);
+                            remaps[n.Get()] = ctx.RenameNode(*n, name);
                         }
                     }
                     return true;
@@ -1052,22 +1271,18 @@ private:
             }
 
             if (lambdaIdx != -1 && AnyOf(filterColumns, [](const TExprNode::TPtr& p) { return !!p; })) {
-                if (!lambda) {
-                    lambda = node.ChildPtr(lambdaIdx);
-                }
+
+                TExprNode::TPtr extractLambda;
                 if (op.Output().Size() == 1) {
-                    lambda = Build<TCoLambda>(ctx, lambda->Pos())
+                    extractLambda = Build<TCoLambda>(ctx, lambda->Pos())
                         .Args({"stream"})
                         .Body<TCoExtractMembers>()
-                            .Input<TExprApplier>()
-                                .Apply(TCoLambda(lambda))
-                                .With(0, "stream")
-                            .Build()
+                            .Input("stream")
                             .Members(filterColumns[0])
                         .Build()
                         .Done().Ptr();
                 } else {
-                    auto varType = ExpandType(lambda->Pos(), *GetSeqItemType(node.Child(lambdaIdx)->GetTypeAnn()), ctx);
+                    auto varType = ExpandType(lambda->Pos(), *ctx.MakeType<TVariantExprType>(ctx.MakeType<TTupleExprType>(varItemTypes)), ctx);
                     TVector<TExprBase> visitArgs;
                     for (size_t i = 0; i < op.Output().Size(); ++i) {
                         visitArgs.push_back(Build<TCoAtom>(ctx, lambda->Pos()).Value(ToString(i)).Done());
@@ -1103,14 +1318,11 @@ private:
                         }
                     }
 
-                    lambda = Build<TCoLambda>(ctx, lambda->Pos())
+                    extractLambda = Build<TCoLambda>(ctx, lambda->Pos())
                         .Args({"stream"})
                         .Body<TCoFlatMapBase>()
                             .CallableName(hasOtherSortedOuts ? TCoOrderedFlatMap::CallableName() : TCoFlatMap::CallableName())
-                            .Input<TExprApplier>()
-                                .Apply(TCoLambda(lambda))
-                                .With(0, "stream")
-                            .Build()
+                            .Input("stream")
                             .Lambda()
                                 .Args({"var"})
                                 .Body<TCoJust>()
@@ -1124,6 +1336,44 @@ private:
                             .Build()
                         .Build()
                         .Done().Ptr();
+                }
+
+
+                if (!lambda) {
+                    lambda = node.ChildPtr(lambdaIdx);
+                }
+                if (isYtDqProcessWrite) {
+                    TProcessedNodesSet processedNodes;
+                    TNodeOnNodeOwnedMap remaps;
+                    VisitExpr(lambda, [&processedNodes, &remaps, extractLambda, &ctx](const TExprNode::TPtr& n) {
+                        if (TYtOutput::Match(n.Get())) {
+                            // Stop traversing dependent operations
+                            processedNodes.insert(n->UniqueId());
+                            return false;
+                        }
+                        if (auto dqWrite = TMaybeNode<TYtDqWrite>(n)) {
+                            auto newWrite =  Build<TYtDqWrite>(ctx, n->Pos())
+                                .InitFrom(dqWrite.Cast())
+                                .Input<TExprApplier>()
+                                    .Apply(TCoLambda(extractLambda))
+                                    .With(0, dqWrite.Cast().Input())
+                                .Build()
+                                .Done();
+                            remaps[n.Get()] = newWrite.Ptr();
+                        }
+                        return true;
+                    });
+                    if (!remaps.empty()) {
+                        TOptimizeExprSettings settings{State_->Types};
+                        settings.ProcessedNodes = &processedNodes;
+                        auto status = RemapExpr(lambda, lambda, remaps, ctx, settings);
+                        if (status.Level == IGraphTransformer::TStatus::Error) {
+                            return {};
+                        }
+                    }
+
+                } else {
+                    lambda = ctx.FuseLambdas(*extractLambda, *lambda);
                 }
             }
         }
@@ -1225,6 +1475,7 @@ private:
                                     .Columns<TCoVoid>().Build()
                                     .Ranges<TCoVoid>().Build()
                                     .Stat<TCoVoid>().Build()
+                                    .QLFilter<TCoVoid>().Build()
                                 .Done()
                             );
                             prevPaths.erase(prevPaths.begin(), prevPaths.begin() + count);
@@ -1486,33 +1737,38 @@ private:
         return lambda;
     }
 
-    TStatus BypassMergeBeforeLength(TExprNode::TPtr input, TExprNode::TPtr& output, const TOpDeps& opDeps, const TNodeSet& lefts, TExprContext& ctx) {
+    TStatus BypassMergeOrCopyBeforeLength(TExprNode::TPtr input, TExprNode::TPtr& output, const TOpDeps& opDeps, const TNodeSet& lefts, TExprContext& ctx) {
         TNodeOnNodeOwnedMap replaces;
         for (auto& x: opDeps) {
-            if (TYtMerge::Match(x.first) && x.second.size() > 0 && AllOf(x.second, [](const auto& item) { return TYtLength::Match(std::get<0>(item)); } )) {
-                auto merge = TYtMerge(x.first);
-                if (merge.Ref().HasResult()) {
+            if ((TYtMerge::Match(x.first) || TYtCopy::Match(x.first)) && x.second.size() > 0 && AllOf(x.second, [](const auto& item) { return TYtLength::Match(std::get<0>(item)); } )) {
+                auto op = TYtTransientOpBase(x.first);
+                if (op.Ref().HasResult()) {
                     continue;
                 }
 
-                if (NYql::HasSetting(merge.Settings().Ref(), EYtSettingType::Limit)) {
-                    continue;
-                }
+                auto section = op.Input().Item(0);
+                if (op.Maybe<TYtMerge>()) {
+                    if (NYql::HasSetting(op.Settings().Ref(), EYtSettingType::Limit)) {
+                        continue;
+                    }
 
-                auto section = merge.Input().Item(0);
-                if (NYql::HasAnySetting(section.Settings().Ref(), EYtSettingType::Take | EYtSettingType::Skip | EYtSettingType::Sample)) {
-                    continue;
-                }
-                if (NYql::HasNonEmptyKeyFilter(section)) {
-                    continue;
-                }
+                    if (NYql::HasAnySetting(section.Settings().Ref(), EYtSettingType::Take | EYtSettingType::Skip | EYtSettingType::Sample)) {
+                        continue;
+                    }
+                    if (NYql::HasNonEmptyKeyFilter(section)) {
+                        continue;
+                    }
 
-                if (AnyOf(section.Paths(), [](const TYtPath& path) { return !path.Ranges().Maybe<TCoVoid>() || TYtTableBaseInfo::GetMeta(path.Table())->IsDynamic; })) {
-                    continue;
-                }
-                // Dependency on more than 1 operation
-                if (1 < Accumulate(section.Paths(), 0ull, [](ui64 val, const TYtPath& path) { return val + path.Table().Maybe<TYtOutput>().IsValid(); })) {
-                    continue;
+                    if (AnyOf(section.Paths(), [](const TYtPath& path) {
+                        auto meta = TYtTableBaseInfo::GetMeta(path.Table());
+                        return !path.Ranges().Maybe<TCoVoid>() || !path.QLFilter().Maybe<TCoVoid>() || meta->IsDynamic || meta->HasRLS;
+                    })) {
+                        continue;
+                    }
+                    // Dependency on more than 1 operation
+                    if (1 < Accumulate(section.Paths(), 0ull, [](ui64 val, const TYtPath& path) { return val + path.Table().Maybe<TYtOutput>().IsValid(); })) {
+                        continue;
+                    }
                 }
 
                 TSyncMap syncList;
@@ -1521,10 +1777,10 @@ private:
                         syncList.emplace(GetOutputOp(out.Cast()).Ptr(), syncList.size());
                     }
                 }
-                auto newWorld = ApplySyncListToWorld(merge.World().Ptr(), syncList, ctx);
+                auto newWorld = ApplySyncListToWorld(op.World().Ptr(), syncList, ctx);
                 for (auto node: lefts) {
                     TCoLeft left(node);
-                    if (left.Input().Raw() == merge.Raw()) {
+                    if (left.Input().Raw() == op.Raw()) {
                         replaces[node] = newWorld;
                     }
                 }
@@ -1571,10 +1827,92 @@ private:
         }
 
         if (!replaces.empty()) {
-            YQL_CLOG(INFO, ProviderYt) << "PhysicalFinalizing-BypassMergeBeforeLength";
+            YQL_CLOG(INFO, ProviderYt) << "PhysicalFinalizing-BypassMergeOrCopyBeforeLength";
             return RemapExpr(input, output, replaces, ctx, TOptimizeExprSettings(State_->Types));
         }
 
+        return TStatus::Ok;
+    }
+
+    TStatus MergeWithTransform(TExprNode::TPtr input, TExprNode::TPtr& output, const TOpDeps& opDeps, TExprContext& ctx) {
+        TNodeOnNodeOwnedMap replaces;
+        for (auto& x: opDeps) {
+            if (TYtMerge::Match(x.first)) {
+                auto merge = TYtTransientOpBase(x.first);
+                if (IsBeingExecuted(merge.Ref())) {
+                    continue;
+                }
+
+                TVector<TString> transforms;
+                if (AnyOf(x.second, [](const auto& item) { return TYtPublish::Match(std::get<0>(item)); })) {
+                    const auto cluster = merge.DataSink().Cluster().StringValue();
+                    bool diffGroup = false;
+                    bool storage = false;
+                    TStringBuf outGroup;
+                    TMaybe<TString> expandedOutGroup;
+                    if (auto setting = NYql::GetSetting(merge.Output().Item(0).Settings().Ref(), EYtSettingType::ColumnGroups)) {
+                        outGroup = setting->Tail().Content();
+                    }
+
+                    for (const auto& path: merge.Input().Item(0).Paths()) {
+                        if (auto table = path.Table().Maybe<TYtTable>()) {
+                            storage = true;
+                            if (!diffGroup) {
+                                if (auto tableDesc = State_->TablesData->FindTable(cluster, TString{TYtTableInfo::GetTableLabel(table.Cast())}, TEpochInfo::Parse(table.Cast().Epoch().Ref()))) {
+                                    diffGroup = outGroup.empty() != tableDesc->ColumnGroupSpecAlts.empty() || (!outGroup.empty() && !tableDesc->ColumnGroupSpecAlts.contains(outGroup));
+                                    if (diffGroup && !outGroup.empty() && !tableDesc->ColumnGroupSpecAlts.empty()) {
+                                        if (!expandedOutGroup) {
+                                            expandedOutGroup.ConstructInPlace();
+                                            ExpandDefaultColumnGroup(outGroup, *GetSeqItemType(*merge.Output().Item(0).Ref().GetTypeAnn()).Cast<TStructExprType>(), *expandedOutGroup);
+                                        }
+                                        diffGroup = !*expandedOutGroup || !tableDesc->ColumnGroupSpecAlts.contains(*expandedOutGroup);
+                                    }
+                                }
+                            }
+                        } else if (auto out = path.Table().Maybe<TYtOutput>()) {
+                            if (!diffGroup) {
+                                TStringBuf inGroup;
+                                if (auto setting = NYql::GetSetting(GetOutputOp(out.Cast()).Output().Item(FromString<ui32>(out.Cast().OutIndex().Value())).Settings().Ref(), EYtSettingType::ColumnGroups)) {
+                                    inGroup = setting->Tail().Content();
+                                }
+                                diffGroup = outGroup != inGroup;
+                            }
+                        }
+                    }
+                    if (diffGroup) {
+                        transforms.emplace_back("column_groups");
+                    }
+                    if (storage) {
+                        transforms.emplace_back("storage");
+                    }
+                }
+
+                if (transforms.empty()) {
+                    if (NYql::HasSetting(merge.Settings().Ref(), EYtSettingType::SoftTransform)) {
+                        replaces[merge.Raw()] = ctx.ChangeChild(merge.Ref(), TYtMerge::idx_Settings, NYql::RemoveSetting(merge.Settings().Ref(), EYtSettingType::SoftTransform, ctx));
+                    }
+                } else {
+                    std::sort(transforms.begin(), transforms.end());
+                    if (!NYql::HasSetting(merge.Settings().Ref(), EYtSettingType::SoftTransform)) {
+                        replaces[merge.Raw()] = ctx.ChangeChild(merge.Ref(), TYtMerge::idx_Settings, NYql::AddSettingAsColumnList(merge.Settings().Ref(), EYtSettingType::SoftTransform, transforms, ctx));
+                    } else {
+                        auto values = NYql::GetSettingAsColumnList(merge.Settings().Ref(), EYtSettingType::SoftTransform);
+                        if (values.size() != transforms.size() || AnyOf(values, [&transforms](const auto& v) { return Find(transforms, v) == transforms.end(); })) {
+                            replaces[merge.Raw()] = ctx.ChangeChild(merge.Ref(), TYtMerge::idx_Settings,
+                                NYql::AddSettingAsColumnList(
+                                    *NYql::RemoveSettings(merge.Settings().Ref(), EYtSettingType::SoftTransform, ctx),
+                                    EYtSettingType::SoftTransform, transforms, ctx
+                                )
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        if (!replaces.empty()) {
+            YQL_CLOG(INFO, ProviderYt) << "PhysicalFinalizing-MergeWithTransform";
+            return RemapExpr(input, output, replaces, ctx, TOptimizeExprSettings(State_->Types));
+        }
         return TStatus::Ok;
     }
 
@@ -1658,7 +1996,7 @@ private:
             bool hasPublish = false;
             for (auto& item : x.second) {
                 auto reader = std::get<0>(item);
-                if (TYtPublish::Match(reader) || TYtCopy::Match(reader) || TYtMerge::Match(reader) || TYtSort::Match(reader)) {
+                if (TYtPublish::Match(reader) || TYtCopy::Match(reader) || TYtMerge::Match(reader) || TYtSort::Match(reader) || TYtPersist::Match(reader)) {
                     const auto opIndex = FromString<size_t>(std::get<2>(item)->Child(TYtOutput::idx_OutIndex)->Content());
                     ++outUsage[opIndex];
                     hasPublish = hasPublish || TYtPublish::Match(reader);
@@ -1669,8 +2007,7 @@ private:
             }
 
             const TYtOutputOpBase operation = GetRealOperation(TExprBase(x.first));
-            const bool canUpdateOp = !IsBeingExecuted(*x.first) && !operation.Maybe<TYtCopy>();
-            const bool canChangeNativeTypeForOp = !operation.Maybe<TYtMerge>() && !operation.Maybe<TYtSort>();
+            const bool canUpdateOp = !IsBeingExecuted(*x.first) && !operation.Maybe<TYtCopy>() && !operation.Maybe<TYtPersist>();
 
             auto origOutput = operation.Output().Ptr();
             auto newOutput = origOutput;
@@ -1700,7 +2037,7 @@ private:
                             TExprNode::TPtr newTable = ctx.ChangeChild(table.Ref(), TYtOutTable::idx_RowSpec,
                                 outRowSpec->ToExprNode(ctx, table.RowSpec().Pos()).Ptr());
 
-                            if (canUpdateOp && outUsage[opIndex] <= 1 && (!diffNativeType || canChangeNativeTypeForOp)) {
+                            if (!diffNativeType && canUpdateOp && outUsage[opIndex] <= 1) {
                                 YQL_CLOG(INFO, ProviderYt) << "AlignPublishTypes: change " << opIndex << " output of " << operation.Ref().Content();
                                 newOutput = ctx.ChangeChild(*newOutput, opIndex, std::move(newTable));
                             } else if (diffNativeType) {
@@ -1747,6 +2084,7 @@ private:
                                                         .Columns<TCoVoid>().Build()
                                                         .Ranges<TCoVoid>().Build()
                                                         .Stat<TCoVoid>().Build()
+                                                        .QLFilter<TCoVoid>().Build()
                                                     .Build()
                                                 .Build()
                                                 .Settings().Build()
@@ -1903,7 +2241,7 @@ private:
 
         // Rebuild output table
         TYtOutTableInfo outTableInfo(outTable);
-        outTableInfo.RowSpec->ClearSortness();
+        outTableInfo.RowSpec->ClearSortness(ctx);
         outTableInfo.RowSpec->SetType(ctx.MakeType<TStructExprType>(TVector<const TItemExprType*>()));
 
         auto newOp = ctx.ShallowCopy(*node);
@@ -1973,7 +2311,7 @@ private:
         auto outTable = op.Output().Item(0);
         TYtOutTableInfo outTableInfo(outTable);
         if (outTableInfo.RowSpec->IsSorted()) {
-            outTableInfo.RowSpec->ClearSortness();
+            outTableInfo.RowSpec->ClearSortness(ctx);
             newOp->ChildRef(TYtWithUserJobsOpBase::idx_Output) =
                 Build<TYtOutSection>(ctx, op.Output().Pos())
                     .Add(outTableInfo.ToExprNode(ctx, outTable.Pos()).Cast<TYtOutTable>())
@@ -2015,6 +2353,16 @@ private:
                     }
                     auto section = std::get<1>(reader); // section
                     auto op = std::get<0>(reader); // operation
+                    if (!section && !TYtPublish::Match(op)) {
+                        // Used in unknown callables. Don't process
+                        exclusiveOuts.insert(outIndex);
+                    }
+                    if (section && (NYql::HasAnySetting(*section->Child(TYtSection::idx_Settings), EYtSettingType::Take | EYtSettingType::Skip)
+                        || HasNonEmptyKeyFilter(TYtSection(section))))
+                    {
+                        exclusiveOuts.insert(outIndex);
+                    }
+
                     // Section may be used multiple times in different operations
                     // So, check only unique pair of operation + section
                     if (!duplicateCheck[outIndex].insert(std::make_pair(op, section)).second) {
@@ -2116,6 +2464,7 @@ private:
                                             updatedPaths.push_back(Build<TYtPath>(ctx, path.Pos())
                                                 .InitFrom(path)
                                                 .Table(it->second)
+                                                .QLFilter<TCoVoid>().Build()
                                                 .Done());
                                         }
                                         updated = true;
@@ -2228,7 +2577,8 @@ private:
         } else { // nextNewOutIndex > 1
             TVector<TExprBase> tupleTypes;
             for (auto out: joinedOutTables) {
-                auto itemType = out.Ref().GetTypeAnn()->Cast<TListExprType>()->GetItemType();
+                // Use the extended type to take into account synthetic (aux) sort columns of sorted outputs
+                const TStructExprType* itemType = TYqlRowSpecInfo(out.RowSpec()).GetExtendedType(ctx);
                 tupleTypes.push_back(TExprBase(ExpandType(out.Pos(), *itemType, ctx)));
             }
             TExprBase varType = Build<TCoVariantType>(ctx, lambda->Pos())
@@ -2354,7 +2704,7 @@ private:
                             && outerMap.DataSink().Cluster().Value() == op.DataSink().Cluster().Value()
                             && NYql::HasSetting(op.Settings().Ref(), EYtSettingType::Flow) == NYql::HasSetting(outerMap.Settings().Ref(), EYtSettingType::Flow)
                             && !NYql::HasSetting(op.Settings().Ref(), EYtSettingType::JobCount)
-                            && !NYql::HasSetting(outerMap.Settings().Ref(), EYtSettingType::JobCount)
+                            && !NYql::HasAnySetting(outerMap.Settings().Ref(), EYtSettingType::JobCount | EYtSettingType::BlockInputApplied | EYtSettingType::BlockOutputApplied)
                             && !HasYtRowNumber(outerMap.Mapper().Body().Ref())
                             && IsYieldTransparent(outerMap.Mapper().Ptr(), *State_->Types)
                             && (!op.Maybe<TYtMapReduce>() || AllOf(outerMap.Output(), [](const auto& out) { return !TYtTableBaseInfo::GetRowSpec(out)->IsSorted(); }))) {
@@ -2383,7 +2733,7 @@ private:
 
                     TExprNode::TPtr updatedBody = lambda.Body().Ptr();
                     if (maxJobMemoryLimit) {
-                        auto status = UpdateTableContentMemoryUsage(lambda.Body().Ptr(), updatedBody, State_, ctx);
+                        auto status = UpdateTableContentMemoryUsage(lambda.Body().Ptr(), updatedBody, State_, ctx, false);
                         if (status.Level != TStatus::Ok) {
                             return status;
                         }
@@ -2402,7 +2752,7 @@ private:
 
                                 updatedBody = outerMap.Mapper().Body().Ptr();
                                 if (maxJobMemoryLimit) {
-                                    auto status = UpdateTableContentMemoryUsage(outerMap.Mapper().Body().Ptr(), updatedBody, State_, ctx);
+                                    auto status = UpdateTableContentMemoryUsage(outerMap.Mapper().Body().Ptr(), updatedBody, State_, ctx, false);
                                     if (status.Level != TStatus::Ok) {
                                         return status;
                                     }
@@ -2588,179 +2938,334 @@ private:
         auto newOutput = origOutput;
         for (const auto& item: groupSpecs) {
             const auto table = op.Output().Item(item.first);
-            auto currentGroup = GetSetting(table.Settings().Ref(), EYtSettingType::ColumnGroups);
-            if (!currentGroup || currentGroup->Tail().Content() != item.second) {
-                auto newSettings = AddOrUpdateSettingValue(table.Settings().Ref(),
-                    EYtSettingType::ColumnGroups,
-                    ctx.NewAtom(table.Settings().Pos(), item.second, TNodeFlags::MultilineContent),
-                    ctx);
-                auto newTable = ctx.ChangeChild(table.Ref(), TYtOutTable::idx_Settings, std::move(newSettings));
-                newOutput = ctx.ChangeChild(*newOutput, item.first, std::move(newTable));
+            if (item.second.empty()) {
+                if (NYql::HasSetting(table.Settings().Ref(), EYtSettingType::ColumnGroups)) {
+                    newOutput = ctx.ChangeChild(*newOutput, item.first,
+                        ctx.ChangeChild(table.Ref(), TYtOutTable::idx_Settings,
+                            NYql::RemoveSetting(table.Settings().Ref(), EYtSettingType::ColumnGroups, ctx)
+                        )
+                    );
+                }
+            } else {
+                auto currentGroup = NYql::GetSetting(table.Settings().Ref(), EYtSettingType::ColumnGroups);
+                if (!currentGroup || currentGroup->Tail().Content() != item.second) {
+                    auto newSettings = NYql::AddOrUpdateSettingValue(table.Settings().Ref(),
+                        EYtSettingType::ColumnGroups,
+                        ctx.NewAtom(table.Settings().Pos(), item.second, TNodeFlags::MultilineContent),
+                        ctx);
+                    auto newTable = ctx.ChangeChild(table.Ref(), TYtOutTable::idx_Settings, std::move(newSettings));
+                    newOutput = ctx.ChangeChild(*newOutput, item.first, std::move(newTable));
+                }
             }
         }
         if (newOutput != origOutput) {
             return ctx.ChangeChild(op.Ref(), TYtOutputOpBase::idx_Output, std::move(newOutput));
         }
+        if (auto copy = op.Maybe<TYtCopy>()) {
+            TStringBuf outGroup;
+            if (auto setting = GetSetting(op.Output().Item(0).Settings().Ref(), EYtSettingType::ColumnGroups)) {
+                outGroup = setting->Tail().Content();
+            }
+            const auto& path = copy.Cast().Input().Item(0).Paths().Item(0);
+            bool diffGroups = false;
+            if (auto table = path.Table().Maybe<TYtTable>()) {
+                if (auto tableDesc = State_->TablesData->FindTable(copy.Cast().DataSink().Cluster().StringValue(), TString{TYtTableInfo::GetTableLabel(table.Cast())}, TEpochInfo::Parse(table.Cast().Epoch().Ref()))) {
+                    bool diffGroups = outGroup.empty() != tableDesc->ColumnGroupSpecAlts.empty() || (!outGroup.empty() && !tableDesc->ColumnGroupSpecAlts.contains(outGroup));
+                    if (diffGroups && !outGroup.empty() && !tableDesc->ColumnGroupSpecAlts.empty()) {
+                        TString expanded;
+                        if (ExpandDefaultColumnGroup(outGroup, *GetSeqItemType(*copy.Output().Item(0).Ref().GetTypeAnn()).Cast<TStructExprType>(), expanded)) {
+                            diffGroups = !tableDesc->ColumnGroupSpecAlts.contains(expanded);
+                        }
+                    }
+                }
+            } else if (auto out = path.Table().Maybe<TYtOutput>()) {
+                TStringBuf inGroup;
+                if (auto setting = NYql::GetSetting(GetOutputOp(out.Cast()).Output().Item(FromString<ui32>(out.Cast().OutIndex().Value())).Settings().Ref(), EYtSettingType::ColumnGroups)) {
+                    inGroup = setting->Tail().Content();
+                }
+                diffGroups = inGroup != outGroup;
+            }
+            if (diffGroups) {
+                return ctx.RenameNode(op.Ref(), TYtMerge::CallableName());
+            }
+        }
         return {};
     }
 
-    TStatus CalculateColumnGroups(TExprNode::TPtr input, TExprNode::TPtr& output, const TOpDeps& opDeps, EColumnGroupMode mode, TExprContext& ctx) {
-        const auto maxGroups = State_->Configuration->MaxColumnGroups.Get().GetOrElse(DEFAULT_MAX_COLUMN_GROUPS);
-        const auto minGroupSize = State_->Configuration->MinColumnGroupSize.Get().GetOrElse(DEFAULT_MIN_COLUMN_GROUP_SIZE);
-        TNodeOnNodeOwnedMap remap;
-        for (auto& x: opDeps) {
-            auto writer = x.first;
-            if (TYtEquiJoin::Match(writer) || IsBeingExecuted(*writer)) {
-                continue;
-            }
-            if (!ProcessedCalculateColumnGroups.insert(writer->UniqueId()).second) {
-                continue;
-            }
+    struct TColumnUsage {
+        bool GenerateGroups;
+        std::vector<const TStructExprType*> OutTypes;
+        std::vector<std::unordered_map<TString, std::set<size_t>>> ColumnUsage;
+        std::vector<bool> FullUsage;
+        std::vector<std::unordered_set<TString>> PublishUsage;
+        std::vector<std::vector<const TExprNode*>> UsedByMerges;
+    };
 
-            std::vector<const TStructExprType*> outTypes;
-            for (const auto& outTable: GetRealOperation(TExprBase(writer)).Output()) {
-                outTypes.push_back(outTable.Ref().GetTypeAnn()->Cast<TListExprType>()->GetItemType()->Cast<TStructExprType>());
-            }
+    void GatherColumnUsage(EColumnGroupMode mode, const TExprNode* writer, const TOpDeps::mapped_type& readers, const TOpDeps& opDeps, TColumnUsage& usage, TNodeMap<size_t>& uniquePaths) {
+        for (const auto& outTable: GetRealOperation(TExprBase(writer)).Output()) {
+            usage.OutTypes.push_back(outTable.Ref().GetTypeAnn()->Cast<TListExprType>()->GetItemType()->Cast<TStructExprType>());
+        }
 
-            TNodeMap<size_t> uniquePaths;
-            std::vector<std::unordered_map<TString, std::set<size_t>>> columnUsage;
-            columnUsage.resize(outTypes.size());
-            std::vector<bool> fullUsage;
-            fullUsage.resize(outTypes.size());
-            std::vector<std::unordered_set<TString>> publishUsage;
-            publishUsage.resize(outTypes.size());
-            // Collect column usage per consumer
-            for (auto& item: x.second) {
-                const auto out = TYtOutput(std::get<2>(item));
-                const auto outIndex = FromString<size_t>(out.OutIndex().Value());
-                auto rawPath = std::get<3>(item);
-                if (!rawPath) {
-                    if (TYtLength::Match(std::get<0>(item))) {
-                        continue;
-                    }
-                    if (auto maybePublish = TMaybeNode<TYtPublish>(std::get<0>(item))) {
-                        TYtTableInfo dstInfo = maybePublish.Cast().Publish();
-                        const auto& desc = State_->TablesData->GetTable(dstInfo.Cluster, dstInfo.Name, dstInfo.CommitEpoch);
-                        publishUsage.at(outIndex).insert(desc.ColumnGroupSpec);
-                    } else {
-                        fullUsage.at(outIndex) = true;
-                    }
-                } else if (EColumnGroupMode::Single == mode) {
-                    fullUsage.at(outIndex) = true;
-                } else {
-                    auto path = TYtPath(rawPath);
-                    auto columns = TYtColumnsInfo(path.Columns());
-                    if (!columns.HasColumns() || outTypes[outIndex]->GetSize() <= columns.GetColumns()->size()) {
-                        fullUsage.at(outIndex) = true;
-                    } else {
-                        const size_t pathNdx = uniquePaths.emplace(rawPath, uniquePaths.size()).first->second;
-                        std::for_each(columns.GetColumns()->cbegin(), columns.GetColumns()->cend(),
-                            [&columnUsage, outIndex, pathNdx](const TYtColumnsInfo::TColumn& c) {
-                                 columnUsage.at(outIndex)[c.Name].insert(pathNdx);
-                            }
-                        );
-                    }
-                }
-            }
-
-            std::map<size_t, TString> groupSpecs;
-            for (size_t i = 0; i < columnUsage.size(); ++i) {
-                if (!publishUsage[i].empty()) {
-                    if (publishUsage[i].size() == 1) {
-                        if (auto spec = *publishUsage[i].cbegin(); !spec.empty()) {
-                            groupSpecs[i] = spec;
-                        }
-                    }
+        usage.ColumnUsage.resize(usage.OutTypes.size());
+        usage.FullUsage.resize(usage.OutTypes.size());
+        usage.PublishUsage.resize(usage.OutTypes.size());
+        usage.UsedByMerges.resize(usage.OutTypes.size());
+        // Collect column usage per consumer
+        for (auto& item: readers) {
+            const auto out = TYtOutput(std::get<2>(item));
+            const auto outIndex = FromString<size_t>(out.OutIndex().Value());
+            YQL_ENSURE(outIndex < usage.OutTypes.size());
+            auto rawPath = std::get<3>(item);
+            if (!rawPath) {
+                if (TYtLength::Match(std::get<0>(item))) {
                     continue;
                 }
-                if (EColumnGroupMode::Single == mode) {
-                    if (fullUsage[i]) {
-                        groupSpecs[i] = NYql::GetSingleColumnGroupSpec();
-                    }
+                if (auto maybePublish = TMaybeNode<TYtPublish>(std::get<0>(item))) {
+                    TYtTableInfo dstInfo = maybePublish.Cast().Publish();
+                    const auto& desc = State_->TablesData->GetTable(dstInfo.Cluster, dstInfo.Name, dstInfo.CommitEpoch);
+                    usage.PublishUsage[outIndex].insert(desc.ColumnGroupSpec);
+                } else if (TResPull::Match(std::get<0>(item))) {
+                    usage.PublishUsage[outIndex].emplace();
                 } else {
-                    if (fullUsage[i]) {
-                        // Add all columns for tables with entire usage
-                        const size_t pathNdx = uniquePaths.emplace(nullptr, uniquePaths.size()).first->second;
-                        std::for_each(outTypes[i]->GetItems().cbegin(), outTypes[i]->GetItems().cend(),
-                            [&columnUsage, i, pathNdx](const TItemExprType* itemType) {
-                                columnUsage.at(i)[TString{itemType->GetName()}].insert(pathNdx);
-                            }
-                        );
-                    }
+                    usage.FullUsage[outIndex] = true;
+                }
+            } else if (auto maybeMerge = TMaybeNode<TYtMerge>(std::get<0>(item)); maybeMerge && AllOf(maybeMerge.Cast().Input().Item(0).Paths(),
+                [](const TYtPath& path) { return path.Ref().GetTypeAnn()->Equals(*path.Table().Ref().GetTypeAnn()); })) {
 
-                    if (!columnUsage.at(i).empty()) {
-                        auto groupSpec = NYT::TNode();
+                // YtMerge may have no usage in the graph (only via Left!)
+                if (opDeps.contains(std::get<0>(item))) {
+                    usage.UsedByMerges[outIndex].push_back(std::get<0>(item));
+                }
 
-                        // Find unique groups. Use ordered collections for stable names
-                        std::map<std::set<size_t>, std::set<TString>> groups;
-                        for (const auto& item: columnUsage.at(i)) {
-                            groups[item.second].insert(item.first);
-                            if (groups.size() > maxGroups) {
-                                groups.clear();
-                                break;
-                            }
+            } else if (TYtCopy::Match(std::get<0>(item))) {
+
+                // YtCopy may have no usage in the graph (only via Left!)
+                if (opDeps.contains(std::get<0>(item))) {
+                    usage.UsedByMerges[outIndex].push_back(std::get<0>(item));
+                }
+
+            } else if (TYtPersist::Match(std::get<0>(item))) {
+                usage.PublishUsage[outIndex].emplace();
+            } else if (EColumnGroupMode::Single == mode) {
+                usage.FullUsage[outIndex] = true;
+            } else {
+                auto path = TYtPath(rawPath);
+                auto columns = TYtColumnsInfo(path.Columns());
+                if (!columns.HasColumns() || usage.OutTypes[outIndex]->GetSize() <= columns.GetColumns()->size()) {
+                    usage.FullUsage[outIndex] = true;
+                } else {
+                    const size_t pathNdx = uniquePaths.emplace(rawPath, uniquePaths.size()).first->second;
+                    auto& cu = usage.ColumnUsage[outIndex];
+                    THashMap<TString, TString> renames;
+                    if (auto& colRenames = columns.GetRenames()) {
+                        for (auto& [k, v]: *colRenames) {
+                            renames[v] = k;
                         }
-                        if (!groups.empty()) {
-                            bool allGroups = true;
-                            size_t maxSize = 0;
-                            auto maxGrpIt = groups.end();
-                            // Delete too short groups and find a group with max size
-                            for (auto it = groups.begin(); it != groups.end();) {
-                                if (it->second.size() < minGroupSize) {
-                                    it = groups.erase(it);
-                                    allGroups = false;
-                                } else {
-                                    if (it->second.size() > maxSize) {
-                                        maxSize = it->second.size();
-                                        maxGrpIt = it;
-                                    }
-                                    ++it;
+                    }
+                    std::for_each(columns.GetColumns()->cbegin(), columns.GetColumns()->cend(),
+                        [&cu, pathNdx, &renames](const TYtColumnsInfo::TColumn& c) {
+                            cu[renames.Value(c.Name, c.Name)].insert(pathNdx);
+                        }
+                    );
+                }
+            }
+        }
+    }
+
+    TStatus CalculateColumnGroups(TExprNode::TPtr input, TExprNode::TPtr& output, std::vector<const TExprNode*> opDepsOrder, const TOpDeps& opDeps, EColumnGroupMode mode, TExprContext& ctx) {
+        const auto maxGroups = State_->Configuration->MaxColumnGroups.Get().GetOrElse(DEFAULT_MAX_COLUMN_GROUPS);
+        const auto minGroupSize = State_->Configuration->MinColumnGroupSize.Get().GetOrElse(DEFAULT_MIN_COLUMN_GROUP_SIZE);
+
+        TNodeMap<TColumnUsage> colUsages;
+        TNodeMap<size_t> uniquePaths;
+        std::vector<const TExprNode*> mergesToProcess;
+        std::vector<const TExprNode*> withMergeDeps;
+
+        for (auto writer: opDepsOrder) {
+            if (TYtEquiJoin::Match(writer) || TYtPersist::Match(writer) || IsBeingExecuted(*writer)) {
+                continue;
+            }
+            const auto& readers = opDeps.at(writer);
+
+            // Check all consumers are known
+            auto& processed = ProcessedCalculateColumnGroups[writer];
+            if (processed.size() == readers.size() &&
+                AllOf(readers, [&processed](const auto& item) {
+                    // Always reprocess ops with merge/copy readers
+                    return !TYtCopy::Match(std::get<0>(item)) && !TYtMerge::Match(std::get<0>(item)) && processed.contains(std::get<0>(item)->UniqueId());
+                })
+            ) {
+                continue;
+            }
+            processed.clear();
+            std::transform(readers.begin(), readers.end(),
+                std::inserter(processed, processed.end()),
+                [](const auto& item) { return std::get<0>(item)->UniqueId(); }
+            );
+
+            TColumnUsage& usage = colUsages[writer];
+            usage.GenerateGroups = true;
+
+            GatherColumnUsage(mode, writer, readers, opDeps, usage, uniquePaths);
+            bool hasMergeDep = false;
+            for (const auto& item: usage.UsedByMerges) {
+                hasMergeDep = hasMergeDep || !item.empty();
+                mergesToProcess.insert(mergesToProcess.end(), item.begin(), item.end());
+            }
+            if (hasMergeDep) {
+                withMergeDeps.push_back(writer);
+            }
+        }
+
+        while (!mergesToProcess.empty()) {
+            std::vector<const TExprNode*> nextMergesToProcess;
+            for (auto merge: mergesToProcess) {
+                auto res = colUsages.emplace(merge, TColumnUsage{});
+                if (res.second) { // Not processed before
+                    TColumnUsage& usage = res.first->second;
+                    usage.GenerateGroups = TYtCopy::Match(merge); // Maybe we need to rewrite YtCopy to YtMerge
+                    GatherColumnUsage(mode, merge, opDeps.at(merge), opDeps, usage, uniquePaths);
+                    bool hasMergeDep = false;
+                    for (const auto& item: usage.UsedByMerges) {
+                        hasMergeDep = hasMergeDep || !item.empty();
+                        nextMergesToProcess.insert(nextMergesToProcess.end(), item.begin(), item.end());
+                    }
+                    if (hasMergeDep) {
+                        withMergeDeps.push_back(merge);
+                    }
+                }
+            }
+            nextMergesToProcess.swap(mergesToProcess);
+        }
+
+        // In case of [YtOp -> YtMerge -> ...consumers] inherit column usage from YtMerge to YtOp
+        // Iterate in reverse order - from top-level operations to deeper
+        for (auto ri = withMergeDeps.rbegin(); ri != withMergeDeps.rend(); ++ri) {
+            TColumnUsage& usage = colUsages.at(*ri);
+            for (size_t outIndex = 0; outIndex < usage.UsedByMerges.size(); ++outIndex) {
+                for (auto merge: usage.UsedByMerges[outIndex]) {
+                    const TColumnUsage& mergeUsage = colUsages.at(merge);
+                    if (TYtCopy::Match(merge)) {
+                        usage.FullUsage[outIndex] = mergeUsage.FullUsage.at(0);
+                        usage.PublishUsage[outIndex] = mergeUsage.PublishUsage.at(0);
+                        usage.ColumnUsage[outIndex] = mergeUsage.ColumnUsage.at(0);
+                        break; // Don't process others. YtCopy enforces exact the same column groups
+                    } else {
+                        usage.FullUsage[outIndex] = usage.FullUsage[outIndex] || mergeUsage.FullUsage.at(0);
+                        usage.PublishUsage[outIndex].insert(mergeUsage.PublishUsage.at(0).cbegin(), mergeUsage.PublishUsage.at(0).cend());
+                        auto& cu = usage.ColumnUsage[outIndex];
+                        for (const auto& p: mergeUsage.ColumnUsage.at(0)) {
+                            cu[p.first].insert(p.second.cbegin(), p.second.cend());
+                        }
+                    }
+                }
+            }
+        }
+
+        TNodeOnNodeOwnedMap remap;
+        for (auto& x: colUsages) {
+            auto writer = x.first;
+            TColumnUsage& usage = x.second;
+            if (usage.GenerateGroups) {
+                std::map<size_t, TString> groupSpecs;
+                for (size_t i = 0; i < usage.OutTypes.size(); ++i) {
+                    groupSpecs[i] = TString{};
+                    if (!usage.PublishUsage[i].empty()) {
+                        if (usage.PublishUsage[i].size() == 1) {
+                            groupSpecs[i] = *usage.PublishUsage[i].cbegin();
+                        }
+                        continue;
+                    }
+                    if (EColumnGroupMode::Single == mode) {
+                        if (usage.FullUsage[i]) {
+                            groupSpecs[i] = NYql::GetSingleColumnGroupSpec();
+                        }
+                    } else {
+                        if (usage.FullUsage[i]) {
+                            // Add all columns for tables with entire usage
+                            const size_t pathNdx = uniquePaths.emplace(nullptr, uniquePaths.size()).first->second;
+                            auto& cu = usage.ColumnUsage[i];
+                            std::for_each(usage.OutTypes[i]->GetItems().cbegin(), usage.OutTypes[i]->GetItems().cend(),
+                                [&cu, pathNdx](const TItemExprType* itemType) {
+                                    cu[TString{itemType->GetName()}].insert(pathNdx);
+                                }
+                            );
+                        }
+
+                        if (!usage.ColumnUsage[i].empty()) {
+                            auto groupSpec = NYT::TNode();
+
+                            // Find unique groups. Use ordered collections for stable names
+                            std::map<std::set<size_t>, std::set<TString>> groups;
+                            for (const auto& item: usage.ColumnUsage[i]) {
+                                groups[item.second].insert(item.first);
+                                if (groups.size() > maxGroups) {
+                                    groups.clear();
+                                    break;
                                 }
                             }
                             if (!groups.empty()) {
-                                groupSpec = NYT::TNode::CreateMap();
-                                // If we keep all groups then use the group with max size as default
-                                if (allGroups && maxGrpIt != groups.end()) {
-                                    groupSpec["default"] = NYT::TNode::CreateEntity();
-                                    groups.erase(maxGrpIt);
-                                }
-                                TStringBuilder nameBuilder;
-                                nameBuilder.reserve(8); // "group" + 2 digit number + zero-terminator
-                                nameBuilder << "group";
-                                size_t num = 0;
-                                for (const auto& g: groups) {
-                                    nameBuilder.resize(5);
-                                    nameBuilder << num++;
-                                    auto columns = NYT::TNode::CreateList();
-                                    for (const auto& n: g.second) {
-                                        columns.Add(n);
+                                bool allGroups = true;
+                                size_t maxSize = 0;
+                                auto maxGrpIt = groups.end();
+                                // Delete too short groups and find a group with max size
+                                for (auto it = groups.begin(); it != groups.end();) {
+                                    if (it->second.size() < minGroupSize) {
+                                        it = groups.erase(it);
+                                        allGroups = false;
+                                    } else {
+                                        if (it->second.size() > maxSize) {
+                                            maxSize = it->second.size();
+                                            maxGrpIt = it;
+                                        }
+                                        ++it;
                                     }
-                                    groupSpec[nameBuilder] = std::move(columns);
+                                }
+                                if (!groups.empty()) {
+                                    groupSpec = NYT::TNode::CreateMap();
+                                    // If we keep all groups then use the group with max size as default
+                                    if (allGroups && maxGrpIt != groups.end() && (groups.size() > 1 || usage.FullUsage[i])) {
+                                        groupSpec["default"] = NYT::TNode::CreateEntity();
+                                        groups.erase(maxGrpIt);
+                                    }
+                                    TStringBuilder nameBuilder;
+                                    nameBuilder.reserve(8); // "group" + 2 digit number + zero-terminator
+                                    nameBuilder << "group";
+                                    size_t num = 0;
+                                    for (const auto& g: groups) {
+                                        nameBuilder.resize(5);
+                                        nameBuilder << num++;
+                                        auto columns = NYT::TNode::CreateList();
+                                        for (const auto& n: g.second) {
+                                            columns.Add(n);
+                                        }
+                                        groupSpec[nameBuilder] = std::move(columns);
+                                    }
                                 }
                             }
-                        }
-                        if (!groupSpec.IsUndefined()) {
-                            groupSpecs[i] = NYT::NodeToCanonicalYsonString(groupSpec, NYson::EYsonFormat::Text);
+                            if (!groupSpec.IsUndefined()) {
+                                groupSpecs[i] = NYT::NodeToCanonicalYsonString(groupSpec, NYson::EYsonFormat::Text);
+                            }
                         }
                     }
                 }
-            }
-            if (!groupSpecs.empty()) {
-                TExprNode::TPtr newOp;
-                if (const auto mayTry = TExprBase(writer).Maybe<TYtTryFirst>()) {
-                    TExprNode::TPtr newOpFirst = UpdateColumnGroups(mayTry.Cast().First(), groupSpecs, ctx);
-                    TExprNode::TPtr newOpSecond = UpdateColumnGroups(mayTry.Cast().Second(), groupSpecs, ctx);
-                    if (newOpFirst || newOpSecond) {
-                        newOp = Build<TYtTryFirst>(ctx, writer->Pos())
-                            .First(newOpFirst ? std::move(newOpFirst) : mayTry.Cast().First().Ptr())
-                            .Second(newOpSecond ? std::move(newOpSecond) : mayTry.Cast().Second().Ptr())
-                            .Done().Ptr();
+                if (!groupSpecs.empty()) {
+                    TExprNode::TPtr newOp;
+                    if (const auto mayTry = TExprBase(writer).Maybe<TYtTryFirst>()) {
+                        TExprNode::TPtr newOpFirst = UpdateColumnGroups(mayTry.Cast().First(), groupSpecs, ctx);
+                        TExprNode::TPtr newOpSecond = UpdateColumnGroups(mayTry.Cast().Second(), groupSpecs, ctx);
+                        if (newOpFirst || newOpSecond) {
+                            newOp = Build<TYtTryFirst>(ctx, writer->Pos())
+                                .First(newOpFirst ? std::move(newOpFirst) : mayTry.Cast().First().Ptr())
+                                .Second(newOpSecond ? std::move(newOpSecond) : mayTry.Cast().Second().Ptr())
+                                .Done().Ptr();
+                        }
+                    } else {
+                        newOp = UpdateColumnGroups(TYtOutputOpBase(writer), groupSpecs, ctx);
                     }
-                } else {
-                    newOp = UpdateColumnGroups(TYtOutputOpBase(writer), groupSpecs, ctx);
-                }
-                if (newOp) {
-                    remap[writer] = newOp;
+                    if (newOp) {
+                        remap[writer] = newOp;
+                    }
                 }
             }
         }
@@ -2784,7 +3289,7 @@ private:
     TProcessedNodesSet ProcessedMultiOuts;
     TProcessedNodesSet ProcessedHorizontalJoin;
     TProcessedNodesSet ProcessedFieldSubsetForMultiUsage;
-    TProcessedNodesSet ProcessedCalculateColumnGroups;
+    TNodeMap<TProcessedNodesSet> ProcessedCalculateColumnGroups;
     std::unordered_set<std::pair<ui64, ui64>, THash<std::pair<ui64, ui64>>> ProcessedFuseWithOuterMaps;
 };
 
@@ -2795,6 +3300,7 @@ THashSet<TStringBuf> TYtPhysicalFinalizingTransformer::OPS_WITH_SORTED_OUTPUT = 
     TYtReduce::CallableName(),
     TYtFill::CallableName(),
     TYtDqProcessWrite::CallableName(),
+    TYtPersist::CallableName(),
     TYtTryFirst::CallableName(),
 };
 

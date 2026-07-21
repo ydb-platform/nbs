@@ -436,7 +436,7 @@ FROM booltbl3 ORDER BY o;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.booltbl3
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.booltbl3
     
 <sql-statement>
 -- Test to make sure short-circuiting and NULL handling is

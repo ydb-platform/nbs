@@ -8,7 +8,7 @@
 #include <contrib/ydb/core/base/tablet_pipe.h>
 #include <contrib/ydb/core/base/tablet_pipecache.h>
 #include <contrib/ydb/core/base/tx_processing.h>
-#include <contrib/ydb/core/control/immediate_control_board_wrapper.h>
+#include <contrib/ydb/core/control/lib/immediate_control_board_wrapper.h>
 #include <contrib/ydb/core/tablet/tablet_counters.h>
 #include <contrib/ydb/core/tablet/tablet_exception.h>
 #include <contrib/ydb/core/tablet_flat/tablet_flat_executed.h>
@@ -655,7 +655,7 @@ private:
     TMediator& Mediator(TTabletId mediatorId, const TActorContext &ctx) {
         TMediator &mediator = Mediators[mediatorId];
         if (!mediator.QueueActor)
-            mediator.QueueActor = ctx.ExecutorThread.RegisterActor(CreateTxCoordinatorMediatorQueue(ctx.SelfID, TabletID(), mediatorId, Executor()->Generation()));
+            mediator.QueueActor = ctx.Register(CreateTxCoordinatorMediatorQueue(ctx.SelfID, TabletID(), mediatorId, Executor()->Generation()));
         return mediator;
     }
 

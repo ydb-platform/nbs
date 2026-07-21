@@ -1,9 +1,8 @@
-#include <contrib/ydb/core/tx/schemeshard/ut_helpers/helpers.h>
-#include <contrib/ydb/core/tx/schemeshard/schemeshard_utils.h>
-
-#include <contrib/ydb/core/base/compile_time_flags.h>
+#include <contrib/ydb/core/base/table_index.h>
 #include <contrib/ydb/core/kqp/ut/common/kqp_ut_common.h>
 #include <contrib/ydb/core/tx/datashard/change_exchange.h>
+#include <contrib/ydb/core/tx/schemeshard/ut_helpers/helpers.h>
+#include <contrib/ydb/core/tx/schemeshard/ut_helpers/local_indexes.h>
 
 #include <util/generic/size_literals.h>
 #include <util/string/cast.h>
@@ -11,12 +10,15 @@
 using namespace NKikimr;
 using namespace NSchemeShard;
 using namespace NSchemeShardUT_Private;
+using namespace NKikimr::NTableIndex::NKMeans;
 
 void SetEnableMoveIndex(TTestActorRuntime &runtime, TTestEnv&, ui64 schemeShard, bool value) {
     auto request = MakeHolder<NConsole::TEvConsole::TEvConfigNotificationRequest>();
 
     NKikimrConfig::TFeatureFlags features;
     features.SetEnableMoveIndex(value);
+    features.SetEnableAddUniqueIndex(true);
+    features.SetEnableOnlineAddUniqueIndex(true);
     *request->Record.MutableConfig()->MutableFeatureFlags() = features;
     SetConfig(runtime, schemeShard, std::move(request));
 }
@@ -27,10 +29,13 @@ Y_UNIT_TEST_SUITE(TSchemeShardMoveTest) {
         TTestEnv env(runtime);
     }
 
-    Y_UNIT_TEST(Reject) {
+    Y_UNIT_TEST(RejectsAndBasic) {
         TTestBasicRuntime runtime;
         TTestEnv env(runtime);
         ui64 txId = 100;
+
+        auto initialDomainDesc = DescribePath(runtime, "/MyRoot");
+        ui64 expectedDomainPaths = initialDomainDesc.GetPathDescription().GetDomainDescription().GetPathsInside();
 
         TestCreateIndexedTable(runtime, ++txId, "/MyRoot", R"(
             TableDescription {
@@ -38,6 +43,7 @@ Y_UNIT_TEST_SUITE(TSchemeShardMoveTest) {
               Columns { Name: "key"   Type: "Uint64" }
               Columns { Name: "value0" Type: "Utf8" }
               Columns { Name: "value1" Type: "Utf8" }
+              Columns { Name: "value2" Type: "Utf8" }
               KeyColumnNames: ["key"]
             }
             IndexDescription {
@@ -51,6 +57,11 @@ Y_UNIT_TEST_SUITE(TSchemeShardMoveTest) {
             }
         )");
         env.TestWaitNotification(runtime, txId);
+
+        TestBuildUniqIndex(runtime, ++txId, TTestTxConfig::SchemeShard, "/MyRoot", "/MyRoot/Table1", "Uniq", {"value2"});
+        env.TestWaitNotification(runtime, txId);
+
+        expectedDomainPaths += 7;
 
         TestCreateIndexedTable(runtime, ++txId, "/MyRoot", R"(
             TableDescription {
@@ -58,6 +69,7 @@ Y_UNIT_TEST_SUITE(TSchemeShardMoveTest) {
               Columns { Name: "key"   Type: "Uint64" }
               Columns { Name: "value0" Type: "Utf8" }
               Columns { Name: "value1" Type: "Utf8" }
+              Columns { Name: "value2" Type: "Utf8" }
               KeyColumnNames: ["key"]
             }
             IndexDescription {
@@ -69,25 +81,32 @@ Y_UNIT_TEST_SUITE(TSchemeShardMoveTest) {
               KeyColumnNames: ["value1"]
               Type: EIndexTypeGlobalAsync
             }
+            IndexDescription {
+              Name: "Uniq"
+              KeyColumnNames: ["value2"]
+              Type: EIndexTypeGlobalUnique
+            }
         )");
         env.TestWaitNotification(runtime, txId);
 
+        expectedDomainPaths += 7;
+
         TestDescribeResult(DescribePath(runtime, "/MyRoot"),
-                           {NLs::ChildrenCount(2),
-                            NLs::PathsInsideDomain(10),
-                            NLs::ShardsInsideDomain(6)});
+                           {NLs::ChildrenCount(3),
+                            NLs::PathsInsideDomain(expectedDomainPaths),
+                            NLs::ShardsInsideDomain(8)});
 
         TestDescribeResult(DescribePath(runtime, "/MyRoot/Table1"),
                            {NLs::IsTable,
-                            NLs::PathVersionEqual(3),
-                            NLs::CheckColumns("Table1", {"key", "value0", "value1"}, {}, {"key"}),
-                            NLs::IndexesCount(2)});
+                            NLs::PathVersionEqual(6),
+                            NLs::CheckColumns("Table1", {"key", "value0", "value1", "value2"}, {}, {"key"}),
+                            NLs::IndexesCount(3)});
 
         TestDescribeResult(DescribePath(runtime, "/MyRoot/Table2"),
                            {NLs::IsTable,
                             NLs::PathVersionEqual(3),
-                            NLs::CheckColumns("Table2", {"key", "value0", "value1"}, {}, {"key"}),
-                            NLs::IndexesCount(2)});
+                            NLs::CheckColumns("Table2", {"key", "value0", "value1", "value2"}, {}, {"key"}),
+                            NLs::IndexesCount(3)});
 
         TestDescribeResult(DescribePath(runtime, "/MyRoot/Moved1"),
                            {NLs::PathNotExist});
@@ -107,6 +126,13 @@ Y_UNIT_TEST_SUITE(TSchemeShardMoveTest) {
             auto op = MoveTableRequest(txId,  "/MyRoot/Table1", "/MyRoot/Table1");
             AsyncSend(runtime, TTestTxConfig::SchemeShard, op);
             TestModificationResult(runtime, txId, NKikimrScheme::StatusSchemeError);
+        }
+
+        {
+            ++txId;
+            auto op = MoveTableRequest(txId,  "/MyRoot/Table1", "/MyRoot/NoSuchDir/Moved1");
+            AsyncSend(runtime, TTestTxConfig::SchemeShard, op);
+            TestModificationResult(runtime, txId, NKikimrScheme::StatusPathDoesNotExist);
         }
 
         {
@@ -158,21 +184,21 @@ Y_UNIT_TEST_SUITE(TSchemeShardMoveTest) {
         }
 
         TestDescribeResult(DescribePath(runtime, "/MyRoot"),
-                           {NLs::ChildrenCount(2),
-                            NLs::PathsInsideDomain(10),
-                            NLs::ShardsInsideDomain(6)});
+                           {NLs::ChildrenCount(3),
+                            NLs::PathsInsideDomain(expectedDomainPaths),
+                            NLs::ShardsInsideDomain(8)});
 
         TestDescribeResult(DescribePath(runtime, "/MyRoot/Table1"),
                            {NLs::IsTable,
-                            NLs::PathVersionEqual(3),
-                            NLs::CheckColumns("Table1", {"key", "value0", "value1"}, {}, {"key"}),
-                            NLs::IndexesCount(2)});
+                            NLs::PathVersionEqual(6),
+                            NLs::CheckColumns("Table1", {"key", "value0", "value1", "value2"}, {}, {"key"}),
+                            NLs::IndexesCount(3)});
 
         TestDescribeResult(DescribePath(runtime, "/MyRoot/Table2"),
                            {NLs::IsTable,
                             NLs::PathVersionEqual(3),
-                            NLs::CheckColumns("Table2", {"key", "value0", "value1"}, {}, {"key"}),
-                            NLs::IndexesCount(2)});
+                            NLs::CheckColumns("Table2", {"key", "value0", "value1", "value2"}, {}, {"key"}),
+                            NLs::IndexesCount(3)});
 
         TestDescribeResult(DescribePath(runtime, "/MyRoot/Moved1"),
                            {NLs::PathNotExist});
@@ -195,18 +221,18 @@ Y_UNIT_TEST_SUITE(TSchemeShardMoveTest) {
 
             TestDescribeResult(DescribePath(runtime, "/MyRoot/Table2"),
                                {NLs::IsTable,
-                                NLs::PathVersionEqual(5),
-                                NLs::CheckColumns("Table2", {"key", "value0", "value1"}, {}, {"key"})});
+                                NLs::PathVersionEqual(7),
+                                NLs::CheckColumns("Table2", {"key", "value0", "value1", "value2"}, {}, {"key"})});
 
             TestDescribeResult(DescribePath(runtime, "/MyRoot/Moved2"),
                                {NLs::IsTable,
                                 NLs::PathVersionEqual(5),
-                                NLs::CheckColumns("Moved2", {"key", "value0", "value1"}, {}, {"key"})});
+                                NLs::CheckColumns("Moved2", {"key", "value0", "value1", "value2"}, {}, {"key"})});
 
             TestDescribeResult(DescribePath(runtime, "/MyRoot"),
-                               {NLs::ChildrenCount(2),
-                                NLs::PathsInsideDomain(10),
-                                NLs::ShardsInsideDomain(6)});
+                               {NLs::ChildrenCount(3),
+                                NLs::PathsInsideDomain(expectedDomainPaths),
+                                NLs::ShardsInsideDomain(8)});
         }
     }
 
@@ -268,9 +294,11 @@ Y_UNIT_TEST_SUITE(TSchemeShardMoveTest) {
 
     Y_UNIT_TEST(TwoTables) {
         TTestBasicRuntime runtime;
-        TTestEnv env(runtime,
-                     TTestEnvOptions());
+        TTestEnv env(runtime);
         ui64 txId = 100;
+
+        auto initialDomainDesc = DescribePath(runtime, "/MyRoot");
+        ui64 expectedDomainPaths = initialDomainDesc.GetPathDescription().GetDomainDescription().GetPathsInside();
 
         TestCreateTable(runtime, ++txId, "/MyRoot", R"(
               Name: "Table1"
@@ -280,6 +308,8 @@ Y_UNIT_TEST_SUITE(TSchemeShardMoveTest) {
         )");
         env.TestWaitNotification(runtime, txId);
 
+        expectedDomainPaths += 1;
+
         TestCreateTable(runtime, ++txId, "/MyRoot", R"(
               Name: "Table2"
               Columns { Name: "key"   Type: "Uint64" }
@@ -288,9 +318,11 @@ Y_UNIT_TEST_SUITE(TSchemeShardMoveTest) {
         )");
         env.TestWaitNotification(runtime, txId);
 
+        expectedDomainPaths += 1;
+
         TestDescribeResult(DescribePath(runtime, "/MyRoot"),
-                           {NLs::ChildrenCount(2),
-                            NLs::PathsInsideDomain(2),
+                           {NLs::ChildrenCount(3),
+                            NLs::PathsInsideDomain(expectedDomainPaths),
                             NLs::ShardsInsideDomain(2)});
 
         TestDescribeResult(DescribePath(runtime, "/MyRoot/Table1"),
@@ -328,8 +360,8 @@ Y_UNIT_TEST_SUITE(TSchemeShardMoveTest) {
                             NLs::CheckColumns("TableMove2", {"key", "value"}, {}, {"key"})});
 
         TestDescribeResult(DescribePath(runtime, "/MyRoot"),
-                           {NLs::ChildrenCount(2),
-                            NLs::PathsInsideDomain(2),
+                           {NLs::ChildrenCount(3),
+                            NLs::PathsInsideDomain(expectedDomainPaths),
                             NLs::ShardsInsideDomain(2)});
     }
 
@@ -337,6 +369,9 @@ Y_UNIT_TEST_SUITE(TSchemeShardMoveTest) {
         TTestBasicRuntime runtime;
         TTestEnv env(runtime);
         ui64 txId = 100;
+
+        auto initialDomainDesc = DescribePath(runtime, "/MyRoot");
+        ui64 expectedDomainPaths = initialDomainDesc.GetPathDescription().GetDomainDescription().GetPathsInside();
 
         TestCreateIndexedTable(runtime, ++txId, "/MyRoot", R"(
             TableDescription {
@@ -357,6 +392,8 @@ Y_UNIT_TEST_SUITE(TSchemeShardMoveTest) {
             }
         )");
         env.TestWaitNotification(runtime, txId);
+
+        expectedDomainPaths += 5;
 
         TestCreateIndexedTable(runtime, ++txId, "/MyRoot", R"(
             TableDescription {
@@ -378,11 +415,14 @@ Y_UNIT_TEST_SUITE(TSchemeShardMoveTest) {
         )");
         env.TestWaitNotification(runtime, txId);
 
+        expectedDomainPaths += 5;
+
         TestDescribeResult(DescribePath(runtime, "/MyRoot"),
-                           {NLs::ChildrenCount(2),
-                            NLs::PathsInsideDomain(10),
+                           {NLs::ChildrenCount(3),
+                            NLs::PathsInsideDomain(expectedDomainPaths),
                             NLs::ShardsInsideDomain(6)});
 
+        TLocalPathId movedTablePathId = GetNextLocalPathId(runtime, txId);
         {
             ++txId;
             auto first = DropTableRequest(txId,  "/MyRoot", "Dst");
@@ -391,6 +431,8 @@ Y_UNIT_TEST_SUITE(TSchemeShardMoveTest) {
             AsyncSend(runtime, TTestTxConfig::SchemeShard, combination);
             TestModificationResult(runtime, txId);
             env.TestWaitNotification(runtime, txId);
+
+            expectedDomainPaths -= 5;
         }
 
         env.TestWaitTabletDeletion(runtime, xrange(TTestTxConfig::FakeHiveTablets+3, TTestTxConfig::FakeHiveTablets+6));
@@ -401,14 +443,14 @@ Y_UNIT_TEST_SUITE(TSchemeShardMoveTest) {
 
         TestDescribeResult(DescribePath(runtime, "/MyRoot/Dst"),
                            {NLs::IsTable,
-                            NLs::PathIdEqual(12),
+                            NLs::PathIdEqual(movedTablePathId),
                             NLs::PathVersionEqual(5),
                             NLs::CheckColumns("Dst", {"key", "value0", "value1"}, {}, {"key"}),
                             NLs::IndexesCount(2)});
 
         TestDescribeResult(DescribePath(runtime, "/MyRoot"),
-                           {NLs::ChildrenCount(1),
-                            NLs::PathsInsideDomain(5),
+                           {NLs::ChildrenCount(2),
+                            NLs::PathsInsideDomain(expectedDomainPaths),
                             NLs::ShardsInsideDomain(3)});
 
         TestCreateIndexedTable(runtime, ++txId, "/MyRoot", R"(
@@ -431,6 +473,9 @@ Y_UNIT_TEST_SUITE(TSchemeShardMoveTest) {
         )");
         env.TestWaitNotification(runtime, txId);
 
+        expectedDomainPaths += 5;
+
+        movedTablePathId = GetNextLocalPathId(runtime, txId);
         {
             ++txId;
             auto first = DropTableRequest(txId,  "/MyRoot", "Dst");
@@ -439,6 +484,8 @@ Y_UNIT_TEST_SUITE(TSchemeShardMoveTest) {
             AsyncSend(runtime, TTestTxConfig::SchemeShard, combination);
             TestModificationResult(runtime, txId);
             env.TestWaitNotification(runtime, txId);
+
+            expectedDomainPaths -= 5;
         }
 
         env.TestWaitTabletDeletion(runtime, xrange(TTestTxConfig::FakeHiveTablets, TTestTxConfig::FakeHiveTablets+3));
@@ -448,21 +495,287 @@ Y_UNIT_TEST_SUITE(TSchemeShardMoveTest) {
 
         TestDescribeResult(DescribePath(runtime, "/MyRoot/Dst"),
                            {NLs::IsTable,
-                            NLs::PathIdEqual(22),
+                            NLs::PathIdEqual(movedTablePathId),
                             NLs::PathVersionEqual(5),
                             NLs::CheckColumns("Dst", {"key", "value0", "value1"}, {}, {"key"}),
                             NLs::IndexesCount(2)});
 
         TestDescribeResult(DescribePath(runtime, "/MyRoot"),
-                           {NLs::ChildrenCount(1),
-                            NLs::PathsInsideDomain(5),
+                           {NLs::ChildrenCount(2),
+                            NLs::PathsInsideDomain(expectedDomainPaths),
                             NLs::ShardsInsideDomain(3)});
     }
+
+    Y_UNIT_TEST(Replace2) {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        ui64 txId = 100;
+
+        auto initialDomainDesc = DescribePath(runtime, "/MyRoot");
+        ui64 expectedDomainPaths = initialDomainDesc.GetPathDescription().GetDomainDescription().GetPathsInside();
+
+        TestCreateIndexedTable(runtime, ++txId, "/MyRoot", R"(
+            TableDescription {
+              Name: "Src"
+              Columns { Name: "key"   Type: "Uint64" }
+              Columns { Name: "value0" Type: "Utf8" }
+              Columns { Name: "value1" Type: "Utf8" }
+              KeyColumnNames: ["key"]
+            }
+            IndexDescription {
+              Name: "Sync"
+              KeyColumnNames: ["value0"]
+            }
+            IndexDescription {
+              Name: "Async"
+              KeyColumnNames: ["value1"]
+              Type: EIndexTypeGlobalAsync
+            }
+        )");
+        env.TestWaitNotification(runtime, txId);
+
+        expectedDomainPaths += 5;
+
+        TestCreateIndexedTable(runtime, ++txId, "/MyRoot", R"(
+            TableDescription {
+              Name: "Dst"
+              Columns { Name: "key"   Type: "Uint64" }
+              Columns { Name: "value0" Type: "Utf8" }
+              Columns { Name: "value1" Type: "Utf8" }
+              KeyColumnNames: ["key"]
+            }
+        )");
+        env.TestWaitNotification(runtime, txId);
+
+        expectedDomainPaths += 1;
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot"),
+                           {NLs::ChildrenCount(3),
+                            NLs::PathsInsideDomain(expectedDomainPaths),
+                            NLs::ShardsInsideDomain(4)});
+
+        TLocalPathId movedTablePathId = GetNextLocalPathId(runtime, txId);
+        {
+            ++txId;
+            auto first = DropTableRequest(txId,  "/MyRoot", "Dst");
+            auto second = MoveTableRequest(txId,  "/MyRoot/Src", "/MyRoot/Dst");
+            auto combination = CombineSchemeTransactions({first, second});
+            AsyncSend(runtime, TTestTxConfig::SchemeShard, combination);
+            TestModificationResult(runtime, txId);
+            env.TestWaitNotification(runtime, txId);
+
+            expectedDomainPaths -= 1;
+        }
+
+        env.TestWaitTabletDeletion(runtime, TTestTxConfig::FakeHiveTablets + 3);
+
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/Src"),
+                           {NLs::PathNotExist});
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/Dst"),
+                           {NLs::IsTable,
+                            NLs::PathIdEqual(movedTablePathId),
+                            NLs::PathVersionEqual(5),
+                            NLs::CheckColumns("Dst", {"key", "value0", "value1"}, {}, {"key"}),
+                            NLs::IndexesCount(2)});
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/Dst/Sync", true, true, true),
+                           {NLs::PathExist,
+                            NLs::IndexType(NKikimrSchemeOp::EIndexTypeGlobal),
+                            NLs::IndexKeys({"value0"}),
+                            NLs::IndexState(NKikimrSchemeOp::EIndexState::EIndexStateReady)});
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/Dst/Async", true, true, true),
+                           {NLs::PathExist,
+                            NLs::IndexType(NKikimrSchemeOp::EIndexTypeGlobalAsync),
+                            NLs::IndexKeys({"value1"}),
+                            NLs::IndexState(NKikimrSchemeOp::EIndexState::EIndexStateReady)});
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot"),
+                           {NLs::ChildrenCount(2),
+                            NLs::PathsInsideDomain(expectedDomainPaths),
+                            NLs::ShardsInsideDomain(3)});
+
+        TestCreateIndexedTable(runtime, ++txId, "/MyRoot", R"(
+            TableDescription {
+              Name: "Src"
+              Columns { Name: "key"   Type: "Uint64" }
+              Columns { Name: "value0" Type: "Utf8" }
+              Columns { Name: "value1" Type: "Utf8" }
+              KeyColumnNames: ["key"]
+            }
+            IndexDescription {
+              Name: "Sync"
+              KeyColumnNames: ["value0"]
+            }
+            IndexDescription {
+              Name: "Async"
+              KeyColumnNames: ["value1"]
+              Type: EIndexTypeGlobalAsync
+            }
+        )");
+        env.TestWaitNotification(runtime, txId);
+
+        expectedDomainPaths += 5;
+
+        movedTablePathId = GetNextLocalPathId(runtime, txId);
+        {
+            ++txId;
+            auto first = DropTableRequest(txId,  "/MyRoot", "Dst");
+            auto second = MoveTableRequest(txId,  "/MyRoot/Src", "/MyRoot/Dst");
+            auto combination = CombineSchemeTransactions({first, second});
+            AsyncSend(runtime, TTestTxConfig::SchemeShard, combination);
+            TestModificationResult(runtime, txId);
+            env.TestWaitNotification(runtime, txId);
+
+            expectedDomainPaths -= 5;
+        }
+
+        env.TestWaitTabletDeletion(runtime, xrange(TTestTxConfig::FakeHiveTablets, TTestTxConfig::FakeHiveTablets+3));
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/Src"),
+                           {NLs::PathNotExist});
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/Dst"),
+                           {NLs::IsTable,
+                            NLs::PathIdEqual(movedTablePathId),
+                            NLs::PathVersionEqual(5),
+                            NLs::CheckColumns("Dst", {"key", "value0", "value1"}, {}, {"key"}),
+                            NLs::IndexesCount(2)});
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/Dst/Sync", true, true, true),
+                           {NLs::PathExist,
+                            NLs::IndexType(NKikimrSchemeOp::EIndexTypeGlobal),
+                            NLs::IndexKeys({"value0"}),
+                            NLs::IndexState(NKikimrSchemeOp::EIndexState::EIndexStateReady)});
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/Dst/Async", true, true, true),
+                           {NLs::PathExist,
+                            NLs::IndexType(NKikimrSchemeOp::EIndexTypeGlobalAsync),
+                            NLs::IndexKeys({"value1"}),
+                            NLs::IndexState(NKikimrSchemeOp::EIndexState::EIndexStateReady)});
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot"),
+                           {NLs::ChildrenCount(2),
+                            NLs::PathsInsideDomain(expectedDomainPaths),
+                            NLs::ShardsInsideDomain(3)});
+    }
+
+    Y_UNIT_TEST(ReplaceWithDifferentIndexNames) {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        ui64 txId = 100;
+
+        auto initialDomainDesc = DescribePath(runtime, "/MyRoot");
+        ui64 expectedDomainPaths = initialDomainDesc.GetPathDescription().GetDomainDescription().GetPathsInside();
+
+        TestCreateIndexedTable(runtime, ++txId, "/MyRoot", R"(
+            TableDescription {
+              Name: "Src"
+              Columns { Name: "key"   Type: "Uint64" }
+              Columns { Name: "value0" Type: "Utf8" }
+              Columns { Name: "value1" Type: "Utf8" }
+              KeyColumnNames: ["key"]
+            }
+            IndexDescription {
+              Name: "SrcSync"
+              KeyColumnNames: ["value0"]
+            }
+            IndexDescription {
+              Name: "SrcAsync"
+              KeyColumnNames: ["value1"]
+              Type: EIndexTypeGlobalAsync
+            }
+        )");
+        env.TestWaitNotification(runtime, txId);
+
+        expectedDomainPaths += 5;
+
+        TestCreateIndexedTable(runtime, ++txId, "/MyRoot", R"(
+            TableDescription {
+              Name: "Dst"
+              Columns { Name: "key"   Type: "Uint64" }
+              Columns { Name: "value0" Type: "Utf8" }
+              Columns { Name: "value1" Type: "Utf8" }
+              KeyColumnNames: ["key"]
+            }
+            IndexDescription {
+              Name: "DstSync"
+              KeyColumnNames: ["value0"]
+            }
+            IndexDescription {
+              Name: "DstAsync"
+              KeyColumnNames: ["value1"]
+              Type: EIndexTypeGlobalAsync
+            }
+        )");
+        env.TestWaitNotification(runtime, txId);
+
+        expectedDomainPaths += 5;
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot"),
+                           {NLs::ChildrenCount(3),
+                            NLs::PathsInsideDomain(expectedDomainPaths),
+                            NLs::ShardsInsideDomain(6)});
+
+        TLocalPathId movedTablePathId = GetNextLocalPathId(runtime, txId);
+        {
+            ++txId;
+            auto first = DropTableRequest(txId, "/MyRoot", "Dst");
+            auto second = MoveTableRequest(txId, "/MyRoot/Src", "/MyRoot/Dst");
+            auto combination = CombineSchemeTransactions({first, second});
+            AsyncSend(runtime, TTestTxConfig::SchemeShard, combination);
+            TestModificationResult(runtime, txId);
+            env.TestWaitNotification(runtime, txId);
+
+            expectedDomainPaths -= 5;
+        }
+
+        env.TestWaitTabletDeletion(runtime, xrange(TTestTxConfig::FakeHiveTablets + 3, TTestTxConfig::FakeHiveTablets + 6));
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/Src"),
+                           {NLs::PathNotExist});
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/Dst"),
+                           {NLs::IsTable,
+                            NLs::PathIdEqual(movedTablePathId),
+                            NLs::PathVersionEqual(5),
+                            NLs::CheckColumns("Dst", {"key", "value0", "value1"}, {}, {"key"}),
+                            NLs::IndexesCount(2)});
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/Dst/SrcSync", true, true, true),
+                           {NLs::PathExist,
+                            NLs::IndexType(NKikimrSchemeOp::EIndexTypeGlobal),
+                            NLs::IndexKeys({"value0"}),
+                            NLs::IndexState(NKikimrSchemeOp::EIndexState::EIndexStateReady)});
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/Dst/SrcAsync", true, true, true),
+                           {NLs::PathExist,
+                            NLs::IndexType(NKikimrSchemeOp::EIndexTypeGlobalAsync),
+                            NLs::IndexKeys({"value1"}),
+                            NLs::IndexState(NKikimrSchemeOp::EIndexState::EIndexStateReady)});
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/Dst/DstSync", true, true, true),
+                           {NLs::PathNotExist});
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/Dst/DstAsync", true, true, true),
+                           {NLs::PathNotExist});
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot"),
+                           {NLs::ChildrenCount(2),
+                            NLs::PathsInsideDomain(expectedDomainPaths),
+                            NLs::ShardsInsideDomain(3)});
+    }
+
 
     Y_UNIT_TEST(Chain) {
         TTestBasicRuntime runtime;
         TTestEnv env(runtime);
         ui64 txId = 100;
+
+        auto initialDomainDesc = DescribePath(runtime, "/MyRoot");
+        ui64 expectedDomainPaths = initialDomainDesc.GetPathDescription().GetDomainDescription().GetPathsInside();
 
         TestCreateIndexedTable(runtime, ++txId, "/MyRoot", R"(
             TableDescription {
@@ -485,6 +798,8 @@ Y_UNIT_TEST_SUITE(TSchemeShardMoveTest) {
         )");
         env.TestWaitNotification(runtime, txId);
 
+        expectedDomainPaths += 5;
+
         TestCreateIndexedTable(runtime, ++txId, "/MyRoot", R"(
             TableDescription {
               Name: "table2"
@@ -505,9 +820,11 @@ Y_UNIT_TEST_SUITE(TSchemeShardMoveTest) {
         )");
         env.TestWaitNotification(runtime, txId);
 
+        expectedDomainPaths += 5;
+
         TestDescribeResult(DescribePath(runtime, "/MyRoot"),
-                           {NLs::ChildrenCount(2),
-                            NLs::PathsInsideDomain(10),
+                           {NLs::ChildrenCount(3),
+                            NLs::PathsInsideDomain(expectedDomainPaths),
                             NLs::ShardsInsideDomain(6)});
 
         ++txId;
@@ -532,8 +849,8 @@ Y_UNIT_TEST_SUITE(TSchemeShardMoveTest) {
                             NLs::CheckColumns("table3", {"key", "value0", "value1"}, {}, {"key"})});
 
         TestDescribeResult(DescribePath(runtime, "/MyRoot"),
-                           {NLs::ChildrenCount(2),
-                            NLs::PathsInsideDomain(10),
+                           {NLs::ChildrenCount(3),
+                            NLs::PathsInsideDomain(expectedDomainPaths),
                             NLs::ShardsInsideDomain(6)});
     }
 
@@ -541,6 +858,9 @@ Y_UNIT_TEST_SUITE(TSchemeShardMoveTest) {
         TTestBasicRuntime runtime;
         TTestEnv env(runtime);
         ui64 txId = 100;
+
+        auto initialDomainDesc = DescribePath(runtime, "/MyRoot");
+        ui64 expectedDomainPaths = initialDomainDesc.GetPathDescription().GetDomainDescription().GetPathsInside();
 
         TestCreateTable(runtime, ++txId, "/MyRoot", R"(
               Name: "Table"
@@ -551,16 +871,18 @@ Y_UNIT_TEST_SUITE(TSchemeShardMoveTest) {
 
         env.TestWaitNotification(runtime, txId);
 
+        expectedDomainPaths += 1;
+
         TestDescribeResult(DescribePath(runtime, "/MyRoot"),
-                           {NLs::ChildrenCount(1),
-                            NLs::PathsInsideDomain(1),
+                           {NLs::ChildrenCount(2),
+                            NLs::PathsInsideDomain(expectedDomainPaths),
                             NLs::ShardsInsideDomain(1)});
 
         TestDescribeResult(DescribePath(runtime, "/MyRoot/Table"),
                            {NLs::IsTable,
                             NLs::PathVersionEqual(3),
                             NLs::CheckColumns("Table", {"key", "value"}, {}, {"key"}),
-                            NLs::PathsInsideDomain(1),
+                            NLs::PathsInsideDomain(expectedDomainPaths),
                             NLs::ShardsInsideDomain(1)});
 
 
@@ -574,12 +896,12 @@ Y_UNIT_TEST_SUITE(TSchemeShardMoveTest) {
                            {NLs::IsTable,
                             NLs::PathVersionEqual(5),
                             NLs::CheckColumns("TableMove", {"key", "value"}, {}, {"key"}),
-                            NLs::PathsInsideDomain(1),
+                            NLs::PathsInsideDomain(expectedDomainPaths),
                             NLs::ShardsInsideDomain(1)});
 
         TestDescribeResult(DescribePath(runtime, "/MyRoot"),
-                           {NLs::ChildrenCount(1),
-                            NLs::PathsInsideDomain(1),
+                           {NLs::ChildrenCount(2),
+                            NLs::PathsInsideDomain(expectedDomainPaths),
                             NLs::ShardsInsideDomain(1)});
 
         TestAlterTable(runtime, ++txId, "/MyRoot",
@@ -590,12 +912,12 @@ Y_UNIT_TEST_SUITE(TSchemeShardMoveTest) {
                            {NLs::IsTable,
                             NLs::PathVersionEqual(6),
                             NLs::CheckColumns("TableMove", {"key", "value", "add"}, {}, {"key"}),
-                            NLs::PathsInsideDomain(1),
+                            NLs::PathsInsideDomain(expectedDomainPaths),
                             NLs::ShardsInsideDomain(1)});
 
         TestDescribeResult(DescribePath(runtime, "/MyRoot"),
-                           {NLs::ChildrenCount(1),
-                            NLs::PathsInsideDomain(1),
+                           {NLs::ChildrenCount(2),
+                            NLs::PathsInsideDomain(expectedDomainPaths),
                             NLs::ShardsInsideDomain(1)});
 
         TestMoveTable(runtime, ++txId, "/MyRoot/TableMove", "/MyRoot/TableMoveTwice");
@@ -605,27 +927,29 @@ Y_UNIT_TEST_SUITE(TSchemeShardMoveTest) {
                            {NLs::IsTable,
                             NLs::PathVersionEqual(8),
                             NLs::CheckColumns("TableMoveTwice", {"key", "value", "add"}, {}, {"key"}),
-                            NLs::PathsInsideDomain(1),
+                            NLs::PathsInsideDomain(expectedDomainPaths),
                             NLs::ShardsInsideDomain(1)});
 
         TestDescribeResult(DescribePath(runtime, "/MyRoot"),
-                           {NLs::ChildrenCount(1),
-                            NLs::PathsInsideDomain(1),
+                           {NLs::ChildrenCount(2),
+                            NLs::PathsInsideDomain(expectedDomainPaths),
                             NLs::ShardsInsideDomain(1)});
 
         TestCopyTable(runtime, ++txId, "/MyRoot", "TableCopy", "/MyRoot/TableMoveTwice");
         env.TestWaitNotification(runtime, txId);
 
+        expectedDomainPaths += 1;
+
         TestDescribeResult(DescribePath(runtime, "/MyRoot/TableCopy"),
                            {NLs::IsTable,
                             NLs::PathVersionEqual(3),
                             NLs::CheckColumns("TableCopy", {"key", "value", "add"}, {}, {"key"}),
-                            NLs::PathsInsideDomain(2),
+                            NLs::PathsInsideDomain(expectedDomainPaths),
                             NLs::ShardsInsideDomain(2)});
 
         TestDescribeResult(DescribePath(runtime, "/MyRoot"),
-                           {NLs::ChildrenCount(2),
-                            NLs::PathsInsideDomain(2),
+                           {NLs::ChildrenCount(3),
+                            NLs::PathsInsideDomain(expectedDomainPaths),
                             NLs::ShardsInsideDomain(2)});
 
         TestMoveTable(runtime, ++txId, "/MyRoot/TableCopy", "/MyRoot/TableCopyMove");
@@ -635,30 +959,34 @@ Y_UNIT_TEST_SUITE(TSchemeShardMoveTest) {
                            {NLs::IsTable,
                             NLs::PathVersionEqual(5),
                             NLs::CheckColumns("TableCopyMove", {"key", "value", "add"}, {}, {"key"}),
-                            NLs::PathsInsideDomain(2),
+                            NLs::PathsInsideDomain(expectedDomainPaths),
                             NLs::ShardsInsideDomain(2)});
 
         TestDescribeResult(DescribePath(runtime, "/MyRoot"),
-                           {NLs::ChildrenCount(2),
-                            NLs::PathsInsideDomain(2),
+                           {NLs::ChildrenCount(3),
+                            NLs::PathsInsideDomain(expectedDomainPaths),
                             NLs::ShardsInsideDomain(2)});
 
         TestDropTable(runtime, ++txId, "/MyRoot", "TableCopyMove");
         env.TestWaitNotification(runtime, txId);
 
+        expectedDomainPaths -= 1;
+
         TestDescribeResult(DescribePath(runtime, "/MyRoot"),
-                           {NLs::ChildrenCount(1),
-                            NLs::PathsInsideDomain(1),
+                           {NLs::ChildrenCount(2),
+                            NLs::PathsInsideDomain(expectedDomainPaths),
                             NLs::ShardsInsideDomainOneOf({1, 2})});
 
         TestDropTable(runtime, ++txId, "/MyRoot", "TableMoveTwice");
         env.TestWaitNotification(runtime, txId);
 
+        expectedDomainPaths -= 1;
+
         env.TestWaitTabletDeletion(runtime, {72075186233409546, 72075186233409547});
 
         TestDescribeResult(DescribePath(runtime, "/MyRoot"),
-                           {NLs::ChildrenCount(0),
-                            NLs::PathsInsideDomain(0),
+                           {NLs::ChildrenCount(1),
+                            NLs::PathsInsideDomain(expectedDomainPaths),
                             NLs::ShardsInsideDomain(0)});
     }
 
@@ -708,6 +1036,9 @@ Y_UNIT_TEST_SUITE(TSchemeShardMoveTest) {
         TTestEnv env(runtime);
         ui64 txId = 100;
 
+        auto initialDomainDesc = DescribePath(runtime, "/MyRoot");
+        ui64 expectedDomainPaths = initialDomainDesc.GetPathDescription().GetDomainDescription().GetPathsInside();
+
         TestCreateIndexedTable(runtime, ++txId, "/MyRoot", R"(
             TableDescription {
               Name: "Table"
@@ -728,9 +1059,11 @@ Y_UNIT_TEST_SUITE(TSchemeShardMoveTest) {
         )");
         env.TestWaitNotification(runtime, txId);
 
+        expectedDomainPaths += 5;
+
         TestDescribeResult(DescribePath(runtime, "/MyRoot"),
-                           {NLs::ChildrenCount(1),
-                            NLs::PathsInsideDomain(5),
+                           {NLs::ChildrenCount(2),
+                            NLs::PathsInsideDomain(expectedDomainPaths),
                             NLs::ShardsInsideDomain(3)});
 
         TestDescribeResult(DescribePath(runtime, "/MyRoot/Table"),
@@ -751,8 +1084,8 @@ Y_UNIT_TEST_SUITE(TSchemeShardMoveTest) {
                             NLs::CheckColumns("TableMove", {"key", "value0", "value1", "valueFloat"}, {}, {"key"})});
 
         TestDescribeResult(DescribePath(runtime, "/MyRoot"),
-                           {NLs::ChildrenCount(1),
-                            NLs::PathsInsideDomain(5),
+                           {NLs::ChildrenCount(2),
+                            NLs::PathsInsideDomain(expectedDomainPaths),
                             NLs::ShardsInsideDomain(3)});
 
         TestDescribeResult(DescribePath(runtime, "/MyRoot/TableMove/Sync", true, true, true),
@@ -772,6 +1105,9 @@ Y_UNIT_TEST_SUITE(TSchemeShardMoveTest) {
         TTestBasicRuntime runtime;
         TTestEnv env(runtime);
         ui64 txId = 100;
+
+        auto initialDomainDesc = DescribePath(runtime, "/MyRoot");
+        ui64 expectedDomainPaths = initialDomainDesc.GetPathDescription().GetDomainDescription().GetPathsInside();
 
         TestCreateIndexedTable(runtime, ++txId, "/MyRoot", R"(
             TableDescription {
@@ -793,9 +1129,11 @@ Y_UNIT_TEST_SUITE(TSchemeShardMoveTest) {
         )");
         env.TestWaitNotification(runtime, txId);
 
+        expectedDomainPaths += 5;
+
         TestDescribeResult(DescribePath(runtime, "/MyRoot"),
-                           {NLs::ChildrenCount(1),
-                            NLs::PathsInsideDomain(5),
+                           {NLs::ChildrenCount(2),
+                            NLs::PathsInsideDomain(expectedDomainPaths),
                             NLs::ShardsInsideDomain(3)});
 
         TestDescribeResult(DescribePath(runtime, "/MyRoot/Table"),
@@ -823,8 +1161,8 @@ Y_UNIT_TEST_SUITE(TSchemeShardMoveTest) {
                             NLs::CheckColumns("Table", {"key", "value0", "value1", "valueFloat"}, {}, {"key"})});
 
         TestDescribeResult(DescribePath(runtime, "/MyRoot"),
-                           {NLs::ChildrenCount(1),
-                            NLs::PathsInsideDomain(5),
+                           {NLs::ChildrenCount(2),
+                            NLs::PathsInsideDomain(expectedDomainPaths),
                             NLs::ShardsInsideDomain(3)});
 
         TestDescribeResult(DescribePath(runtime, "/MyRoot/Table/MovedSync", true, true, true),
@@ -845,6 +1183,9 @@ Y_UNIT_TEST_SUITE(TSchemeShardMoveTest) {
         TTestEnv env(runtime, TTestEnvOptions().EnableMoveIndex(true));
         ui64 txId = 100;
 
+        auto initialDomainDesc = DescribePath(runtime, "/MyRoot");
+        ui64 expectedDomainPaths = initialDomainDesc.GetPathDescription().GetDomainDescription().GetPathsInside();
+
         TestCreateIndexedTable(runtime, ++txId, "/MyRoot", R"(
             TableDescription {
               Name: "Table"
@@ -865,9 +1206,11 @@ Y_UNIT_TEST_SUITE(TSchemeShardMoveTest) {
         )");
         env.TestWaitNotification(runtime, txId);
 
+        expectedDomainPaths += 5;
+
         TestDescribeResult(DescribePath(runtime, "/MyRoot"),
-                           {NLs::ChildrenCount(1),
-                            NLs::PathsInsideDomain(5),
+                           {NLs::ChildrenCount(2),
+                            NLs::PathsInsideDomain(expectedDomainPaths),
                             NLs::ShardsInsideDomain(3)});
 
         TestDescribeResult(DescribePath(runtime, "/MyRoot/Table"),
@@ -888,8 +1231,8 @@ Y_UNIT_TEST_SUITE(TSchemeShardMoveTest) {
                             NLs::CheckColumns("Table", {"key", "value0", "value1", "valueFloat"}, {}, {"key"})});
 
         TestDescribeResult(DescribePath(runtime, "/MyRoot"),
-                           {NLs::ChildrenCount(1),
-                            NLs::PathsInsideDomain(5),
+                           {NLs::ChildrenCount(2),
+                            NLs::PathsInsideDomain(expectedDomainPaths),
                             NLs::ShardsInsideDomain(3)});
 
         TestDescribeResult(DescribePath(runtime, "/MyRoot/Table/Sync", true, true, true),
@@ -909,6 +1252,9 @@ Y_UNIT_TEST_SUITE(TSchemeShardMoveTest) {
         TTestBasicRuntime runtime;
         TTestEnv env(runtime, TTestEnvOptions().EnableMoveIndex(true));
         ui64 txId = 100;
+
+        auto initialDomainDesc = DescribePath(runtime, "/MyRoot");
+        ui64 expectedDomainPaths = initialDomainDesc.GetPathDescription().GetDomainDescription().GetPathsInside();
 
         TestCreateIndexedTable(runtime, ++txId, "/MyRoot", R"(
             TableDescription {
@@ -930,9 +1276,11 @@ Y_UNIT_TEST_SUITE(TSchemeShardMoveTest) {
         )");
         env.TestWaitNotification(runtime, txId);
 
+        expectedDomainPaths += 5;
+
         TestDescribeResult(DescribePath(runtime, "/MyRoot"),
-                           {NLs::ChildrenCount(1),
-                            NLs::PathsInsideDomain(5),
+                           {NLs::ChildrenCount(2),
+                            NLs::PathsInsideDomain(expectedDomainPaths),
                             NLs::ShardsInsideDomain(3)});
 
         TestDescribeResult(DescribePath(runtime, "/MyRoot/Table"),
@@ -953,8 +1301,8 @@ Y_UNIT_TEST_SUITE(TSchemeShardMoveTest) {
                             NLs::CheckColumns("Table", {"key", "value0", "value1", "valueFloat"}, {}, {"key"})});
 
         TestDescribeResult(DescribePath(runtime, "/MyRoot"),
-                           {NLs::ChildrenCount(1),
-                            NLs::PathsInsideDomain(5),
+                           {NLs::ChildrenCount(2),
+                            NLs::PathsInsideDomain(expectedDomainPaths),
                             NLs::ShardsInsideDomain(3)});
 
         TestDescribeResult(DescribePath(runtime, "/MyRoot/Table/Sync", true, true, true),
@@ -1022,6 +1370,446 @@ Y_UNIT_TEST_SUITE(TSchemeShardMoveTest) {
                             NLs::PathVersionEqual(6),
                             NLs::CheckColumns("Table", {"key", "value0", "value1", "valueFloat"}, {}, {"key"}),
                             NLs::IndexesCount(2)});
+    }
+
+    Y_UNIT_TEST(ReplaceVectorIndex) {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        ui64 txId = 100;
+
+        TestCreateTable(runtime, ++txId, "/MyRoot", R"(
+            Name: "Table"
+            Columns { Name: "key"       Type: "Uint32" }
+            Columns { Name: "embedding" Type: "String" }
+            Columns { Name: "prefix"    Type: "Uint32" }
+            Columns { Name: "value"     Type: "String" }
+            KeyColumnNames: ["key"]
+        )");
+        env.TestWaitNotification(runtime, txId);
+
+        TestBuildVectorIndex(runtime, ++txId, TTestTxConfig::SchemeShard, "/MyRoot", "/MyRoot/Table", "index1", {"embedding"});
+        env.TestWaitNotification(runtime, txId);
+
+        TestBuildVectorIndex(runtime, ++txId, TTestTxConfig::SchemeShard, "/MyRoot", "/MyRoot/Table", "index2", {"prefix", "embedding"});
+        env.TestWaitNotification(runtime, txId);
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/Table"), {NLs::PathExist, NLs::PathVersionEqual(9), NLs::IndexesCount(2)});
+
+        TestMoveIndex(runtime, ++txId, "/MyRoot/Table", "index2", "index1", true);
+        env.TestWaitNotification(runtime, txId);
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/Table/index2"), {NLs::PathNotExist});
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/Table"), {NLs::PathExist, NLs::IndexesCount(1)});
+        TestDescribeResult(DescribePrivatePath(runtime, "/MyRoot/Table/index1/indexImplPrefixTable"),
+            { NLs::PathExist, NLs::CheckColumns(PrefixTable, {"prefix", IdColumn}, {}, {"prefix", IdColumn}, true) });
+        TestDescribeResult(DescribePrivatePath(runtime, "/MyRoot/Table/index1/indexImplLevelTable"),
+            { NLs::PathExist, NLs::CheckColumns(LevelTable, {ParentColumn, IdColumn, CentroidColumn}, {}, {ParentColumn, IdColumn}, true) });
+        TestDescribeResult(DescribePrivatePath(runtime, "/MyRoot/Table/index1/indexImplPostingTable"),
+            { NLs::PathExist, NLs::CheckColumns(PostingTable, {ParentColumn, "key"}, {}, {ParentColumn, "key"}, true) });
+
+        // Replace again - it previously crashed here when Dec/IncAliveChildren were incorrect
+
+        TestBuildVectorIndex(runtime, ++txId, TTestTxConfig::SchemeShard, "/MyRoot", "/MyRoot/Table", "index2", {"prefix", "embedding"});
+        env.TestWaitNotification(runtime, txId);
+
+        TestMoveIndex(runtime, ++txId, "/MyRoot/Table", "index2", "index1", true);
+        env.TestWaitNotification(runtime, txId);
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/Table/index2"), {NLs::PathNotExist});
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/Table"), {NLs::PathExist, NLs::IndexesCount(1)});
+        TestDescribeResult(DescribePrivatePath(runtime, "/MyRoot/Table/index1/indexImplPrefixTable"),
+            { NLs::PathExist, NLs::CheckColumns(PrefixTable, {"prefix", IdColumn}, {}, {"prefix", IdColumn}, true) });
+        TestDescribeResult(DescribePrivatePath(runtime, "/MyRoot/Table/index1/indexImplLevelTable"),
+            { NLs::PathExist, NLs::CheckColumns(LevelTable, {ParentColumn, IdColumn, CentroidColumn}, {}, {ParentColumn, IdColumn}, true) });
+        TestDescribeResult(DescribePrivatePath(runtime, "/MyRoot/Table/index1/indexImplPostingTable"),
+            { NLs::PathExist, NLs::CheckColumns(PostingTable, {ParentColumn, "key"}, {}, {ParentColumn, "key"}, true) });
+
+        // Drop - it also crashed here when the sequence wasn't moved correctly
+
+        TestDropTableIndex(runtime, ++txId, "/MyRoot", R"(
+            TableName: "Table"
+            IndexName: "index1"
+        )");
+        env.TestWaitNotification(runtime, txId);
+    }
+
+
+    void MoveTableWithIndex(
+        const TString& indexDescription,
+        NKikimrSchemeOp::EIndexType expectedIndexType,
+        const TVector<TString>& indexKeyColumns)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        ui64 txId = 100;
+
+        TestCreateIndexedTable(runtime, ++txId, "/MyRoot", Sprintf(R"(
+            TableDescription {
+              Name: "Table"
+              Columns { Name: "key" Type: "Uint64" }
+              Columns { Name: "embedding" Type: "String" }
+              Columns { Name: "prefix" Type: "String" }
+              Columns { Name: "value" Type: "Utf8" }
+              Columns { Name: "json" Type: "Json" }
+              KeyColumnNames: ["key"]
+            }
+            %s
+        )", indexDescription.c_str()));
+        env.TestWaitNotification(runtime, txId);
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/Table"),
+                           {NLs::IsTable, NLs::IndexesCount(1)});
+
+        auto preMoveDomainDesc = DescribePath(runtime, "/MyRoot");
+        const ui64 expectedDomainPaths =
+            preMoveDomainDesc.GetPathDescription().GetDomainDescription().GetPathsInside();
+        const ui64 expectedDomainShards =
+            preMoveDomainDesc.GetPathDescription().GetDomainDescription().GetShardsInside();
+
+        TestMoveTable(runtime, ++txId, "/MyRoot/Table", "/MyRoot/TableMove");
+        env.TestWaitNotification(runtime, txId);
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/Table"),
+                           {NLs::PathNotExist});
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/TableMove"),
+                           {NLs::IsTable, NLs::IndexesCount(1)});
+
+        TestDescribeResult(DescribePrivatePath(runtime, "/MyRoot/TableMove/index", true, true),
+                           {NLs::PathExist,
+                            NLs::IndexType(expectedIndexType),
+                            NLs::IndexState(NKikimrSchemeOp::EIndexState::EIndexStateReady),
+                            NLs::IndexKeys(indexKeyColumns)});
+
+        for (const auto& implTable : NTableIndex::GetImplTables(expectedIndexType, indexKeyColumns)) {
+            TestDescribeResult(
+                DescribePrivatePath(runtime,
+                    TString::Join("/MyRoot/TableMove/index/", implTable), true, true),
+                {NLs::PathExist, NLs::IsTable});
+        }
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot"),
+                           {NLs::PathsInsideDomain(expectedDomainPaths),
+                            NLs::ShardsInsideDomain(expectedDomainShards)});
+    }
+
+    Y_UNIT_TEST(MoveTableWithGlobalSyncIndex) {
+        MoveTableWithIndex(R"(
+            IndexDescription {
+              Name: "index"
+              KeyColumnNames: ["value"]
+              Type: EIndexTypeGlobal
+            }
+        )",
+        NKikimrSchemeOp::EIndexTypeGlobal,
+        {"value"});
+    }
+
+    Y_UNIT_TEST(MoveTableWithGlobalAsyncIndex) {
+        MoveTableWithIndex(R"(
+            IndexDescription {
+              Name: "index"
+              KeyColumnNames: ["value"]
+              Type: EIndexTypeGlobalAsync
+            }
+        )",
+        NKikimrSchemeOp::EIndexTypeGlobalAsync,
+        {"value"});
+    }
+
+    Y_UNIT_TEST(MoveTableWithGlobalUniqueIndex) {
+        MoveTableWithIndex(R"(
+            IndexDescription {
+              Name: "index"
+              KeyColumnNames: ["value"]
+              Type: EIndexTypeGlobalUnique
+            }
+        )",
+        NKikimrSchemeOp::EIndexTypeGlobalUnique,
+        {"value"});
+    }
+
+    Y_UNIT_TEST(MoveTableWithGlobalVectorKmeansTreeIndex) {
+        MoveTableWithIndex(R"(
+            IndexDescription {
+              Name: "index"
+              KeyColumnNames: ["embedding"]
+              Type: EIndexTypeGlobalVectorKmeansTree
+              VectorIndexKmeansTreeDescription {
+                Settings {
+                  settings {
+                    metric: DISTANCE_COSINE
+                    vector_type: VECTOR_TYPE_FLOAT
+                    vector_dimension: 1024
+                  }
+                  clusters: 4
+                  levels: 5
+                }
+              }
+            }
+        )",
+        NKikimrSchemeOp::EIndexTypeGlobalVectorKmeansTree,
+        {"embedding"});
+    }
+
+    Y_UNIT_TEST(MoveTableWithGlobalVectorKmeansTreePrefixIndex) {
+        MoveTableWithIndex(R"(
+            IndexDescription {
+              Name: "index"
+              KeyColumnNames: ["prefix", "embedding"]
+              Type: EIndexTypeGlobalVectorKmeansTree
+              VectorIndexKmeansTreeDescription {
+                Settings {
+                  settings {
+                    metric: DISTANCE_COSINE
+                    vector_type: VECTOR_TYPE_FLOAT
+                    vector_dimension: 1024
+                  }
+                  clusters: 4
+                  levels: 5
+                }
+              }
+            }
+        )",
+        NKikimrSchemeOp::EIndexTypeGlobalVectorKmeansTree,
+        {"prefix", "embedding"});
+    }
+
+    Y_UNIT_TEST(MoveTableWithGlobalFulltextPlainIndex) {
+        MoveTableWithIndex(R"(
+            IndexDescription {
+              Name: "index"
+              KeyColumnNames: ["value"]
+              Type: EIndexTypeGlobalFulltextPlain
+              FulltextIndexDescription {
+                Settings {
+                  columns: {
+                    column: "value"
+                    analyzers: {
+                      tokenizer: STANDARD
+                      use_filter_lowercase: true
+                    }
+                  }
+                }
+              }
+            }
+        )",
+        NKikimrSchemeOp::EIndexTypeGlobalFulltextPlain,
+        {"value"});
+    }
+
+    Y_UNIT_TEST(MoveTableWithGlobalFulltextRelevanceIndex) {
+        MoveTableWithIndex(R"(
+            IndexDescription {
+              Name: "index"
+              KeyColumnNames: ["value"]
+              Type: EIndexTypeGlobalFulltextRelevance
+              FulltextIndexDescription {
+                Settings {
+                  columns: {
+                    column: "value"
+                    analyzers: {
+                      tokenizer: STANDARD
+                      use_filter_lowercase: true
+                    }
+                  }
+                }
+              }
+            }
+        )",
+        NKikimrSchemeOp::EIndexTypeGlobalFulltextRelevance,
+        {"value"});
+    }
+
+    Y_UNIT_TEST(MoveTableWithGlobalJsonIndex) {
+        MoveTableWithIndex(R"(
+            IndexDescription {
+              Name: "index"
+              KeyColumnNames: ["json"]
+              Type: EIndexTypeGlobalJson
+            }
+        )",
+        NKikimrSchemeOp::EIndexTypeGlobalJson,
+        {"json"});
+    }
+
+    Y_UNIT_TEST(MoveTableWithGlobalJsonRowIdAutoProvisionIndex) {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        ui64 txId = 100;
+
+        auto& ff = runtime.GetAppData().FeatureFlags;
+        ff.SetEnableJsonIndex(true);
+        ff.SetEnableFulltextIndex(true);
+        ff.SetEnableAddUniqueIndex(true);
+        ff.SetEnableUniqConstraint(true);
+
+        // Table with Utf8 PK - no __ydb_row_id yet; build will auto-provision it.
+        TestCreateTable(runtime, ++txId, "/MyRoot", R"(
+            Name: "texts"
+            Columns { Name: "pk"   Type: "Utf8" NotNull: true }
+            Columns { Name: "data" Type: "Json" }
+            KeyColumnNames: ["pk"]
+        )");
+        env.TestWaitNotification(runtime, txId);
+
+        {
+            Ydb::Table::TableIndex index;
+            index.set_name("json_idx");
+            index.add_index_columns("data");
+            index.mutable_global_json_index();
+            TestBuildIndex(runtime, ++txId, TTestTxConfig::SchemeShard, "/MyRoot", "/MyRoot/texts", index);
+        }
+        env.TestWaitNotification(runtime, txId);
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/texts"),
+                           {NLs::IsTable, NLs::IndexesCount(2)});
+
+        auto preMoveDomainDesc = DescribePath(runtime, "/MyRoot");
+        const ui64 expectedDomainPaths =
+            preMoveDomainDesc.GetPathDescription().GetDomainDescription().GetPathsInside();
+        const ui64 expectedDomainShards =
+            preMoveDomainDesc.GetPathDescription().GetDomainDescription().GetShardsInside();
+
+        TestMoveTable(runtime, ++txId, "/MyRoot/texts", "/MyRoot/texts_moved");
+        env.TestWaitNotification(runtime, txId);
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/texts"), {NLs::PathNotExist});
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/texts_moved"),
+                           {NLs::IsTable, NLs::IndexesCount(2)});
+
+        // json_idx must preserve UseRowIdAsDocId=true through the move.
+        TestDescribeResult(DescribePrivatePath(runtime, "/MyRoot/texts_moved/json_idx"), {
+            NLs::PathExist,
+            NLs::IndexType(NKikimrSchemeOp::EIndexTypeGlobalJson),
+            NLs::IndexState(NKikimrSchemeOp::EIndexStateReady),
+        });
+        {
+            const auto d = DescribePrivatePath(runtime, "/MyRoot/texts_moved/json_idx");
+            const auto& ti = d.GetPathDescription().GetTableIndex();
+            UNIT_ASSERT_C(ti.HasFulltextIndexDescription(),
+                "json_idx after move: FulltextIndexDescription must be set");
+            UNIT_ASSERT_C(ti.GetFulltextIndexDescription().GetUseRowIdAsDocId(),
+                "json_idx after move: UseRowIdAsDocId must be preserved through MoveTable");
+        }
+
+        // Impl-table must be keyed by [__ydb_token, __ydb_row_id].
+        TestDescribeResult(DescribePrivatePath(runtime,
+                "/MyRoot/texts_moved/json_idx/" + TString(NTableIndex::ImplTable)), {
+            NLs::PathExist,
+            NLs::CheckColumns(TString(NTableIndex::ImplTable),
+                { NTableIndex::NFulltext::TokenColumn, NTableIndex::NFulltext::RowIdColumn },
+                {},
+                { NTableIndex::NFulltext::TokenColumn, NTableIndex::NFulltext::RowIdColumn },
+                /*strictCount=*/ true),
+        });
+
+        // Auto-provisioned unique index must have been moved.
+        TestDescribeResult(DescribePrivatePath(runtime,
+                TStringBuilder() << "/MyRoot/texts_moved/" << NTableIndex::NFulltext::RowIdUniqueIndexName), {
+            NLs::PathExist,
+            NLs::IndexType(NKikimrSchemeOp::EIndexTypeGlobalUnique),
+            NLs::IndexState(NKikimrSchemeOp::EIndexStateReady),
+        });
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot"),
+                           {NLs::PathsInsideDomain(expectedDomainPaths),
+                            NLs::ShardsInsideDomain(expectedDomainShards)});
+    }
+
+    Y_UNIT_TEST(MoveTableWithGlobalJsonRowIdManualInfraIndex) {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        ui64 txId = 100;
+
+        auto& ff = runtime.GetAppData().FeatureFlags;
+        ff.SetEnableJsonIndex(true);
+        ff.SetEnableFulltextIndex(true);
+        ff.SetEnableAddUniqueIndex(true);
+        ff.SetEnableUniqConstraint(true);
+
+        // Table with Utf8 PK + explicit __ydb_row_id + user-created unique index.
+        TestCreateIndexedTable(runtime, ++txId, "/MyRoot", Sprintf(R"(
+            TableDescription {
+                Name: "texts"
+                Columns { Name: "pk"   Type: "Utf8"   NotNull: true }
+                Columns { Name: "data" Type: "Json" }
+                Columns { Name: "%s"   Type: "Uint64" NotNull: true }
+                KeyColumnNames: ["pk"]
+            }
+            IndexDescription {
+                Name: "uniq_rowid"
+                KeyColumnNames: ["%s"]
+                Type: EIndexTypeGlobalUnique
+            }
+        )", NTableIndex::NFulltext::RowIdColumn, NTableIndex::NFulltext::RowIdColumn));
+        env.TestWaitNotification(runtime, txId);
+
+        {
+            Ydb::Table::TableIndex index;
+            index.set_name("json_idx");
+            index.add_index_columns("data");
+            index.mutable_global_json_index();
+            TestBuildIndex(runtime, ++txId, TTestTxConfig::SchemeShard, "/MyRoot", "/MyRoot/texts", index);
+        }
+        env.TestWaitNotification(runtime, txId);
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/texts"),
+                           {NLs::IsTable, NLs::IndexesCount(2)});
+
+        auto preMoveDomainDesc = DescribePath(runtime, "/MyRoot");
+        const ui64 expectedDomainPaths =
+            preMoveDomainDesc.GetPathDescription().GetDomainDescription().GetPathsInside();
+        const ui64 expectedDomainShards =
+            preMoveDomainDesc.GetPathDescription().GetDomainDescription().GetShardsInside();
+
+        TestMoveTable(runtime, ++txId, "/MyRoot/texts", "/MyRoot/texts_moved");
+        env.TestWaitNotification(runtime, txId);
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/texts"), {NLs::PathNotExist});
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/texts_moved"),
+                           {NLs::IsTable, NLs::IndexesCount(2)});
+
+        TestDescribeResult(DescribePrivatePath(runtime, "/MyRoot/texts_moved/json_idx"), {
+            NLs::PathExist,
+            NLs::IndexType(NKikimrSchemeOp::EIndexTypeGlobalJson),
+            NLs::IndexState(NKikimrSchemeOp::EIndexStateReady),
+        });
+        {
+            const auto d = DescribePrivatePath(runtime, "/MyRoot/texts_moved/json_idx");
+            const auto& ti = d.GetPathDescription().GetTableIndex();
+            UNIT_ASSERT_C(ti.HasFulltextIndexDescription(),
+                "json_idx after move: FulltextIndexDescription must be set");
+            UNIT_ASSERT_C(ti.GetFulltextIndexDescription().GetUseRowIdAsDocId(),
+                "json_idx after move: UseRowIdAsDocId must be preserved through MoveTable");
+        }
+
+        TestDescribeResult(DescribePrivatePath(runtime,
+                "/MyRoot/texts_moved/json_idx/" + TString(NTableIndex::ImplTable)), {
+            NLs::PathExist,
+            NLs::CheckColumns(TString(NTableIndex::ImplTable),
+                { NTableIndex::NFulltext::TokenColumn, NTableIndex::NFulltext::RowIdColumn },
+                {},
+                { NTableIndex::NFulltext::TokenColumn, NTableIndex::NFulltext::RowIdColumn },
+                /*strictCount=*/ true),
+        });
+
+        // User-created unique index must have been moved.
+        TestDescribeResult(DescribePrivatePath(runtime, "/MyRoot/texts_moved/uniq_rowid"), {
+            NLs::PathExist,
+            NLs::IndexType(NKikimrSchemeOp::EIndexTypeGlobalUnique),
+            NLs::IndexState(NKikimrSchemeOp::EIndexStateReady),
+        });
+
+        // Auto-provision index must NOT exist on the moved table (user infra was reused).
+        TestDescribeResult(DescribePrivatePath(runtime,
+                TStringBuilder() << "/MyRoot/texts_moved/" << NTableIndex::NFulltext::RowIdUniqueIndexName), {
+            NLs::PathNotExist,
+        });
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot"),
+                           {NLs::PathsInsideDomain(expectedDomainPaths),
+                            NLs::ShardsInsideDomain(expectedDomainShards)});
     }
 
     Y_UNIT_TEST(AsyncIndexWithSyncInFly) {
@@ -1210,6 +1998,421 @@ Y_UNIT_TEST_SUITE(TSchemeShardMoveTest) {
         )");
         env.TestWaitNotification(runtime, txId);
 
-        TestMoveTable(runtime, ++txId, "/MyRoot/Table", "/MyRoot/TableMove", {NKikimrScheme::StatusPreconditionFailed});
+        i64 value = DoNextVal(runtime, "/MyRoot/Table/myseq");
+        UNIT_ASSERT_VALUES_EQUAL(value, 1);
+
+        TestMoveTable(runtime, ++txId, "/MyRoot/Table", "/MyRoot/TableMove");
+        env.TestWaitNotification(runtime, txId);
+
+        DoNextVal(runtime, "/MyRoot/Table/myseq", Ydb::StatusIds::SCHEME_ERROR);
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/Table/myseq"),
+                           {NLs::PathNotExist});
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/Table"),
+                           {NLs::PathNotExist});
+
+        auto tableMove = DescribePath(runtime, "/MyRoot/TableMove")
+            .GetPathDescription()
+            .GetTable();
+
+        for (const auto& column: tableMove.GetColumns()) {
+            if (column.GetName() == "key") {
+                UNIT_ASSERT(column.HasDefaultFromSequence());
+                UNIT_ASSERT_VALUES_EQUAL(column.GetDefaultFromSequence(), "myseq");
+
+                TestDescribeResult(DescribePath(runtime, "/MyRoot/TableMove/myseq", false, false, true, false),
+                    {
+                        NLs::SequenceName("myseq"),
+                    }
+                );
+            }
+        }
+
+        value = DoNextVal(runtime, "/MyRoot/TableMove/myseq");
+        UNIT_ASSERT_VALUES_EQUAL(value, 2);
     }
-}
+
+    /* Test that multiple bloom filter prefixes are preserved during CopyTable and MoveTable operations */
+    Y_UNIT_TEST(CopyMovePreservesMultipleBloomPrefixes) {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        runtime.GetAppData().FeatureFlags.SetEnableLocalIndexAsSchemeObject(true);
+        ui64 txId = 100;
+
+        // Create source table with multiple bloom filter prefixes
+        TestCreateTable(runtime, ++txId, "/MyRoot", R"(
+            Name: "Table"
+            Columns { Name: "key1"       Type: "Utf8"}
+            Columns { Name: "key2"       Type: "Uint32"}
+            Columns { Name: "key3"       Type: "Utf8"}
+            Columns { Name: "Value"      Type: "Utf8"}
+            KeyColumnNames: ["key1", "key2", "key3"]
+            PartitionConfig {
+                ByKeyFilterPrefixes { PrefixLength: 1 }
+                ByKeyFilterPrefixes { PrefixLength: 3 FalsePositiveProbability: 0.001 }
+            }
+        )");
+        env.TestWaitNotification(runtime, txId);
+
+        // Restart SchemeShard to trigger migration to scheme objects
+        TActorId sender = runtime.AllocateEdgeActor();
+        GracefulRestartTablet(runtime, TTestTxConfig::SchemeShard, sender);
+
+        // Wait deterministically for migration to complete by polling for scheme objects
+        int retries = 10;
+        while (retries--) {
+            auto tableDescr = DescribePath(runtime, "/MyRoot/Table", true);
+            const auto& table = tableDescr.GetPathDescription().GetTable();
+
+            // Check if migration has completed (scheme objects exist)
+            if (table.TableIndexesSize() == 2) {
+                bool allReady = true;
+                for (const auto& idx : table.GetTableIndexes()) {
+                    if (idx.GetState() != NKikimrSchemeOp::EIndexStateReady) {
+                        allReady = false;
+                        break;
+                    }
+                }
+                if (allReady) {
+                    break; // Migration complete
+                }
+            }
+
+            // Use SimulateSleep instead of manual DispatchEvents
+            runtime.SimulateSleep(TDuration::MilliSeconds(100));
+        }
+
+        // Verify source table has multiple bloom filter prefixes and scheme objects after migration
+        NLocalIndexes::CheckRowTableBloomSchemeObjects(runtime, "/MyRoot/Table",
+            {1, 3},
+            {{"idx_bloom_1", {"key1"}}, {"idx_bloom_3", {"key1", "key2", "key3"}}});
+
+        // Perform CopyTable operation
+        TestCopyTable(runtime, ++txId, "/MyRoot", "TableCopy", "/MyRoot/Table");
+        env.TestWaitNotification(runtime, txId);
+
+        // Verify copied table has all bloom filter prefixes and scheme objects
+        NLocalIndexes::CheckRowTableBloomSchemeObjects(runtime, "/MyRoot/TableCopy",
+            {1, 3},
+            {{"idx_bloom_1", {"key1"}}, {"idx_bloom_3", {"key1", "key2", "key3"}}});
+
+        // Perform MoveTable operation on the copied table
+        TestMoveTable(runtime, ++txId, "/MyRoot/TableCopy", "/MyRoot/TableMove");
+        env.TestWaitNotification(runtime, txId);
+
+        // Verify original copied table no longer exists
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/TableCopy"),
+                           {NLs::PathNotExist});
+
+        // Verify moved table has all bloom filter prefixes and scheme objects
+        NLocalIndexes::CheckRowTableBloomSchemeObjects(runtime, "/MyRoot/TableMove",
+            {1, 3},
+            {{"idx_bloom_1", {"key1"}}, {"idx_bloom_3", {"key1", "key2", "key3"}}});
+    }
+
+
+    Y_UNIT_TEST(MoveColumnTableWithLocalBloomIndexes) {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        runtime.GetAppData().FeatureFlags.SetEnableMoveColumnTable(true);
+        runtime.GetAppData().FeatureFlags.SetEnableLocalIndexAsSchemeObject(true);
+        ui64 txId = 100;
+
+        TestCreateColumnTable(runtime, ++txId, "/MyRoot",
+            NLocalIndexes::OlapTableWithBloomAndNgramIndexes("ColumnTable"));
+        env.TestWaitNotification(runtime, txId);
+
+        // Both local indexes are visible as scheme-object children before the move.
+        NLocalIndexes::CheckOlapTableWithBloomAndNgramIndexesReady(runtime, "/MyRoot/ColumnTable");
+
+        TestMoveTable(runtime, ++txId, "/MyRoot/ColumnTable", "/MyRoot/ColumnTableMoved");
+        env.TestWaitNotification(runtime, txId);
+
+        // Source is gone; destination has both index children.
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/ColumnTable"), {NLs::PathNotExist});
+        NLocalIndexes::CheckOlapTableWithBloomAndNgramIndexesReady(runtime, "/MyRoot/ColumnTableMoved");
+    }
+
+    Y_UNIT_TEST(MoveIndexWithReplaceDestination) {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime, TTestEnvOptions().EnableMoveIndex(true));
+        ui64 txId = 100;
+
+        auto initialDomainDesc = DescribePath(runtime, "/MyRoot");
+        ui64 expectedDomainPaths = initialDomainDesc.GetPathDescription().GetDomainDescription().GetPathsInside();
+
+        // Create a table with multiple indexes
+        TestCreateIndexedTable(runtime, ++txId, "/MyRoot", R"(
+            TableDescription {
+              Name: "Table"
+              Columns { Name: "key"   Type: "Uint64" }
+              Columns { Name: "value0" Type: "Utf8" }
+              Columns { Name: "value1" Type: "Utf8" }
+              KeyColumnNames: ["key"]
+            }
+            IndexDescription {
+              Name: "Index1"
+              KeyColumnNames: ["value0"]
+            }
+            IndexDescription {
+              Name: "Index2"
+              KeyColumnNames: ["value1"]
+            }
+        )");
+        env.TestWaitNotification(runtime, txId);
+
+        expectedDomainPaths += 5;
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot"),
+                           {NLs::ChildrenCount(2),
+                            NLs::PathsInsideDomain(expectedDomainPaths),
+                            NLs::ShardsInsideDomain(3)});
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/Table"),
+                           {NLs::IsTable,
+                            NLs::PathVersionEqual(3),
+                            NLs::CheckColumns("Table", {"key", "value0", "value1"}, {}, {"key"}),
+                            NLs::IndexesCount(2)});
+
+        // Try to move Index1 to Index2 without replace_destination - should fail
+        TestMoveIndex(runtime, ++txId, "/MyRoot/Table", "Index1", "Index2", false, {NKikimrScheme::StatusSchemeError});
+        env.TestWaitNotification(runtime, txId);
+
+        // Verify both original indexes still exist
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/Table"),
+                           {NLs::IsTable,
+                            NLs::PathVersionEqual(3),
+                            NLs::IndexesCount(2)});
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/Table/Index1", true, true, true),
+                           {NLs::PathExist,
+                            NLs::IndexType(NKikimrSchemeOp::EIndexTypeGlobal),
+                            NLs::IndexKeys({"value0"}),
+                            NLs::IndexState(NKikimrSchemeOp::EIndexState::EIndexStateReady)});
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/Table/Index2", true, true, true),
+                           {NLs::PathExist,
+                            NLs::IndexType(NKikimrSchemeOp::EIndexTypeGlobal),
+                            NLs::IndexKeys({"value1"}),
+                            NLs::IndexState(NKikimrSchemeOp::EIndexState::EIndexStateReady)});
+
+        // Now move Index1 to Index2 with replace_destination - should succeed
+        TestMoveIndex(runtime, ++txId, "/MyRoot/Table", "Index1", "Index2", true);
+        env.TestWaitNotification(runtime, txId);
+
+        // Verify Index1 is gone and Index2 now has Index1's configuration
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/Table"),
+                           {NLs::IsTable,
+                            NLs::PathVersionEqual(5),  // Version increased by 2: drop (4) + move (5)
+                            NLs::IndexesCount(1)});
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/Table/Index1", true, true, true),
+                           {NLs::PathNotExist});
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/Table/Index2", true, true, true),
+                           {NLs::PathExist,
+                            NLs::IndexType(NKikimrSchemeOp::EIndexTypeGlobal),
+                            NLs::IndexKeys({"value0"}),  // Index2 now has Index1's key columns
+                            NLs::IndexState(NKikimrSchemeOp::EIndexState::EIndexStateReady)});
+     }
+
+    Y_UNIT_TEST(LocalIndexConflictDropAndMoveSameIndex) {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        runtime.GetAppData().FeatureFlags.SetEnableLocalIndexAsSchemeObject(true);
+        ui64 txId = 100;
+
+        TestCreateColumnTable(runtime, ++txId, "/MyRoot", R"(
+            Name: "Table"
+            ColumnShardCount: 1
+            Schema {
+                Columns { Name: "key0" Type: "Uint64" NotNull: true }
+                Columns { Name: "value0" Type: "Utf8" }
+                KeyColumnNames: "key0"
+                Indexes {
+                    Id: 1
+                    Name: "Index1"
+                    ClassName: "BLOOM_FILTER"
+                    BloomFilter {
+                        FalsePositiveProbability: 0.01
+                        ColumnIds: 2
+                    }
+                }
+            }
+        )");
+        env.TestWaitNotification(runtime, txId);
+
+        // Try to drop and move the same index in one ALTER - should fail
+        TestAlterColumnTable(runtime, ++txId, "/MyRoot", R"(
+            Name: "Table"
+            AlterSchema {
+                DropIndexes: ["Index1"]
+                MoveIndex {
+                    SourceName: "Index1"
+                    DestinationName: "Index2"
+                }
+            }
+        )", {NKikimrScheme::StatusSchemeError});
+    }
+
+    Y_UNIT_TEST(LocalIndexConflictMultipleMovesSameSource) {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        runtime.GetAppData().FeatureFlags.SetEnableLocalIndexAsSchemeObject(true);
+        ui64 txId = 100;
+
+        TestCreateColumnTable(runtime, ++txId, "/MyRoot", R"(
+            Name: "Table"
+            ColumnShardCount: 1
+            Schema {
+                Columns { Name: "key0" Type: "Uint64" NotNull: true }
+                Columns { Name: "value0" Type: "Utf8" }
+                KeyColumnNames: "key0"
+                Indexes {
+                    Id: 1
+                    Name: "Index1"
+                    ClassName: "BLOOM_FILTER"
+                    BloomFilter {
+                        FalsePositiveProbability: 0.01
+                        ColumnIds: 2
+                    }
+                }
+            }
+        )");
+        env.TestWaitNotification(runtime, txId);
+
+        // Try to move the same index to multiple destinations - should fail
+        TestAlterColumnTable(runtime, ++txId, "/MyRoot", R"(
+            Name: "Table"
+            AlterSchema {
+                MoveIndex {
+                    SourceName: "Index1"
+                    DestinationName: "Index2"
+                }
+                MoveIndex {
+                    SourceName: "Index1"
+                    DestinationName: "Index3"
+                }
+            }
+        )", {NKikimrScheme::StatusSchemeError});
+
+        // Try to move the same index to the same destination twice - should fail
+        TestAlterColumnTable(runtime, ++txId, "/MyRoot", R"(
+            Name: "Table"
+            AlterSchema {
+                MoveIndex {
+                    SourceName: "Index1"
+                    DestinationName: "Index2"
+                }
+                MoveIndex {
+                    SourceName: "Index1"
+                    DestinationName: "Index2"
+                }
+            }
+        )", {NKikimrScheme::StatusSchemeError});
+    }
+
+    Y_UNIT_TEST(LocalIndexConflictMoveDestinationConflictsWithUpsert) {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        runtime.GetAppData().FeatureFlags.SetEnableLocalIndexAsSchemeObject(true);
+        ui64 txId = 100;
+
+        TestCreateColumnTable(runtime, ++txId, "/MyRoot", R"(
+            Name: "Table"
+            ColumnShardCount: 1
+            Schema {
+                Columns { Name: "key0" Type: "Uint64" NotNull: true }
+                Columns { Name: "value0" Type: "Utf8" }
+                KeyColumnNames: "key0"
+                Indexes {
+                    Id: 1
+                    Name: "Index1"
+                    ClassName: "BLOOM_FILTER"
+                    BloomFilter {
+                        FalsePositiveProbability: 0.01
+                        ColumnIds: 2
+                    }
+                }
+            }
+        )");
+        env.TestWaitNotification(runtime, txId);
+
+        // Try to move an index to a destination that's being upserted - should fail
+        TestAlterColumnTable(runtime, ++txId, "/MyRoot", R"(
+            Name: "Table"
+            AlterSchema {
+                UpsertIndexes {
+                    Name: "Index2"
+                    ClassName: "BLOOM_FILTER"
+                    BloomFilter {
+                        ColumnNames: ["value0"]
+                        FalsePositiveProbability: 0.01
+                    }
+                }
+                MoveIndex {
+                    SourceName: "Index1"
+                    DestinationName: "Index2"
+                }
+            }
+        )", {NKikimrScheme::StatusSchemeError});
+    }
+
+    Y_UNIT_TEST(MoveTableWithMultiColumnStatistics) {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        ui64 txId = 100;
+
+        TestCreateTable(runtime, ++txId, "/MyRoot", R"(
+            Name: "Table"
+            Columns { Name: "key" Type: "Uint32" }
+            Columns { Name: "value" Type: "Utf8" }
+            KeyColumnNames: ["key"]
+            MultiColumnStatistics { Name: "s1" ColumnNames: "value" Types: COUNT_MIN_SKETCH }
+        )");
+        env.TestWaitNotification(runtime, txId);
+
+        TestMoveTable(runtime, ++txId, "/MyRoot/Table", "/MyRoot/TableMove");
+        env.TestWaitNotification(runtime, txId);
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/Table"),
+                           {NLs::PathNotExist});
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/TableMove", true, true), {
+            NLs::PathExist,
+            NLs::CheckMultiColumnStatistics("s1", {"value"}, {NKikimrSchemeOp::EMultiColumnStatisticsType::COUNT_MIN_SKETCH}),
+        });
+    }
+
+    Y_UNIT_TEST(MoveColumnTableWithMultiColumnStatistics) {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        runtime.GetAppData().FeatureFlags.SetEnableMoveColumnTable(true);
+        ui64 txId = 100;
+
+        TestCreateColumnTable(runtime, ++txId, "/MyRoot", R"(
+            Name: "Table"
+            ColumnShardCount: 1
+            Schema {
+                Columns { Name: "timestamp" Type: "Timestamp" NotNull: true }
+                Columns { Name: "data" Type: "Utf8" }
+                KeyColumnNames: "timestamp"
+            }
+            MultiColumnStatistics { Name: "s1" ColumnNames: "data" Types: COUNT_MIN_SKETCH }
+        )");
+        env.TestWaitNotification(runtime, txId);
+
+        TestMoveTable(runtime, ++txId, "/MyRoot/Table", "/MyRoot/TableMove");
+        env.TestWaitNotification(runtime, txId);
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/Table"),
+                           {NLs::PathNotExist});
+
+        TestDescribeResult(DescribePrivatePath(runtime, "/MyRoot/TableMove", true, true), {
+            NLs::PathExist,
+            NLs::CheckColumnTableMultiColumnStatistics("s1", {"data"}, {NKikimrSchemeOp::EMultiColumnStatisticsType::COUNT_MIN_SKETCH}),
+        });
+    }
+
+ }

@@ -2,21 +2,22 @@
 #include "rewrite_io_utils.h"
 #include "yql_kikimr_provider_impl.h"
 
+#include <contrib/ydb/core/external_sources/external_source_factory.h>
+#include <contrib/ydb/core/fq/libs/result_formatter/result_formatter.h>
 #include <contrib/ydb/core/kqp/common/simple/services.h>
 #include <contrib/ydb/core/kqp/host/kqp_translate.h>
-#include <contrib/ydb/library/yql/providers/common/provider/yql_data_provider_impl.h>
-#include <contrib/ydb/library/yql/providers/common/config/yql_configuration_transformer.h>
+#include <contrib/ydb/core/kqp/provider/yql_kikimr_settings.h>
+#include <contrib/ydb/library/yql/dq/expr_nodes/dq_expr_nodes.h>
+#include <contrib/ydb/library/yql/providers/dq/expr_nodes/dqs_expr_nodes.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/value/value.h>
 
 #include <contrib/ydb/library/yql/core/yql_expr_optimize.h>
 #include <contrib/ydb/library/yql/core/yql_expr_type_annotation.h>
+#include <contrib/ydb/library/yql/core/yql_opt_utils.h>
+#include <contrib/ydb/library/yql/providers/common/config/transformer/yql_configuration_transformer.h>
+#include <contrib/ydb/library/yql/providers/common/provider/yql_data_provider_impl.h>
+#include <contrib/ydb/library/yql/providers/common/provider/yql_provider.h>
 #include <contrib/ydb/library/yql/providers/common/schema/expr/yql_expr_schema.h>
-#include <contrib/ydb/library/yql/providers/dq/expr_nodes/dqs_expr_nodes.h>
-#include <contrib/ydb/library/yql/dq/expr_nodes/dq_expr_nodes.h>
-
-#include <contrib/ydb/core/external_sources/external_source_factory.h>
-#include <contrib/ydb/core/fq/libs/result_formatter/result_formatter.h>
-
-#include <contrib/ydb/public/sdk/cpp/client/ydb_value/value.h>
 
 #include <util/generic/is_in.h>
 
@@ -85,6 +86,12 @@ TString FillAuthProperties(THashMap<TString, TString>& properties, const TExtern
             properties["tokenReference"] = externalSource.DataSourceAuth.GetToken().GetTokenSecretName();
             return {};
 
+        case NKikimrSchemeOp::TAuth::kIam:
+            properties["authMethod"] = "IAM";
+            properties["iamServiceAccountId"] = externalSource.DataSourceAuth.GetIam().GetServiceAccountId();
+            properties["iamResourceId"] = externalSource.DataSourceAuth.GetIam().GetResourceId();
+            return {};
+
         case NKikimrSchemeOp::TAuth::IDENTITY_NOT_SET:
             return {"Identity case is not specified"};
     }
@@ -95,6 +102,13 @@ namespace {
 using namespace NKikimr;
 using namespace NNodes;
 
+bool IsShowCreate(const TExprNode& read) {
+    if (read.ChildrenSize() <= TKiReadTable::idx_Settings) {
+        return false;
+    }
+    return !GetShowCreateSetting(*read.Child(TKiReadTable::idx_Settings)).empty();
+}
+
 class TKiSourceIntentDeterminationTransformer: public TKiSourceVisitorTransformer {
 public:
     TKiSourceIntentDeterminationTransformer(TIntrusivePtr<TKikimrSessionContext> sessionCtx)
@@ -102,23 +116,48 @@ public:
 
 private:
     TStatus HandleKiRead(TKiReadBase node, TExprContext& ctx) override {
+        bool sysViewRewritten = false;
+        TExprBase currentNode(node);
+        if (auto maybeReadTable = currentNode.Maybe<TKiReadTable>()) {
+            auto readTable = maybeReadTable.Cast();
+            for (auto setting : readTable.Settings().Ref().ChildrenList()) {
+                auto maybeTuple = TMaybeNode<TCoNameValueTuple>(setting);
+                if (maybeTuple && maybeTuple.Cast().Name().Value() == "sysViewRewritten"sv) {
+                    sysViewRewritten = true;
+                }
+            }
+        }
+
         auto cluster = node.DataSource().Cluster();
         TKikimrKey key(ctx);
         if (!key.Extract(node.TableKey().Ref())) {
             return TStatus::Error;
         }
 
-        return HandleKey(cluster, key);
+        return HandleKey(cluster, key, sysViewRewritten);
     }
 
     TStatus HandleRead(TExprBase node, TExprContext& ctx) override {
+        bool sysViewRewritten = false;
+        if (auto maybeRead = node.Maybe<TCoRead>()) {
+            auto read = maybeRead.Cast();
+            for (auto arg : read.FreeArgs()) {
+                if (auto maybeTuple = arg.Maybe<TCoNameValueTuple>()) {
+                    auto tuple = maybeTuple.Cast();
+                    if (tuple.Ref().Child(0)->Content() == "sysViewRewritten") {
+                        sysViewRewritten = true;
+                    }
+                }
+            }
+        }
+
         auto cluster = node.Ref().Child(1)->Child(1)->Content();
         TKikimrKey key(ctx);
         if (!key.Extract(*node.Ref().Child(2))) {
             return TStatus::Error;
         }
 
-        return HandleKey(cluster, key);
+        return HandleKey(cluster, key, sysViewRewritten);
     }
 
     TStatus HandleLength(TExprBase node, TExprContext& ctx) override {
@@ -134,12 +173,15 @@ private:
     }
 
 private:
-    TStatus HandleKey(const TStringBuf& cluster, const TKikimrKey& key) {
+    TStatus HandleKey(const TStringBuf& cluster, const TKikimrKey& key, bool sysViewRewritten = false) {
         switch (key.GetKeyType()) {
+            case TKikimrKey::Type::Database:
+                return TStatus::Ok;
+
             case TKikimrKey::Type::Table:
             case TKikimrKey::Type::TableScheme: {
                 auto& table = SessionCtx->Tables().GetOrAddTable(TString(cluster), SessionCtx->GetDatabase(),
-                    key.GetTablePath());
+                    key.GetTablePath(), ETableType::Table, sysViewRewritten);
 
                 if (key.GetKeyType() == TKikimrKey::Type::TableScheme) {
                     table.RequireStats();
@@ -164,6 +206,14 @@ private:
                 return TStatus::Ok;
             case TKikimrKey::Type::Replication:
                 return TStatus::Ok;
+            case TKikimrKey::Type::Transfer:
+                return TStatus::Ok;
+            case TKikimrKey::Type::BackupCollection:
+                return TStatus::Ok;
+            case TKikimrKey::Type::Sequence:
+                return TStatus::Ok;
+            case TKikimrKey::Type::Secret:
+                return TStatus::Ok;
         }
 
         return TStatus::Error;
@@ -186,7 +236,7 @@ public:
         , Types(types)
         , ExternalSourceFactory(externalSourceFactory)
         , IsInternalCall(isInternalCall)
-        {}
+    {}
 
     TStatus DoTransform(TExprNode::TPtr input, TExprNode::TPtr& output, TExprContext& ctx) final {
         output = input;
@@ -232,6 +282,8 @@ public:
                             .WithAuthInfo(table.GetNeedAuthInfo())
                             .WithExternalSourceFactory(ExternalSourceFactory)
                             .WithReadAttributes(readAttrs ? std::move(*readAttrs) : THashMap<TString, TString>{})
+                            .WithSysViewRewritten(table.GetSysViewRewritten())
+                            .WithTopicsIo(SessionCtx->Config().FeatureFlags.GetEnableTopicsSqlIoOperations())
             );
 
             futures.push_back(future.Apply([result, queryType]
@@ -270,22 +322,53 @@ public:
         return AsyncFuture;
     }
 
-    bool AddCluster(const std::pair<TString, TString>& table, IKikimrGateway::TTableMetadataResult& res, TExprNode::TPtr input, TExprContext& ctx) {
+    // Returns true if any read node in the AST carries a SHOW CREATE setting.
+    // Only the read's Settings tuple is inspected (via IsShowCreate), so
+    // unrelated string literals that happen to spell a setting name (e.g. in a
+    // WHERE clause) cannot trigger a false positive. Runs against raw `Read!`
+    // callables since DoApplyAsyncChanges executes before RewriteIO turns them
+    // into TKiReadTable.
+    bool ContainsShowCreateSetting(const TExprNode& input) {
+        bool found = false;
+        VisitExpr(input, [&](const TExprNode& node) -> bool {
+            if (found) {
+                return false;
+            }
+            if (node.IsCallable(ReadName) && IsShowCreate(node)) {
+                found = true;
+                return false;
+            }
+            return true;
+        });
+        return found;
+    }
+
+    bool AddCluster(const std::pair<TString, TString>& table, IKikimrGateway::TTableMetadataResult& res, TExprNode::TPtr input, TExprContext& ctx, bool isShowCreate) {
         const auto& metadata = *res.Metadata;
         if (metadata.Kind != EKikimrTableKind::External) {
             return true;
         }
+
+        // SHOW CREATE rewrites the read to point at the .sys/show_create
+        // system view in a later step, so it does not need the external
+        // data source to be available through ExternalSourceFactory.
+        if (isShowCreate) {
+            return true;
+        }
+
+        if (!ExternalSourceFactory) {
+            ctx.AddError(NYql::TIssue(ctx.GetPosition(input->Pos()), TStringBuilder()
+                << "Unsupported. Failed to load metadata for table: " << NCommon::FullTableName(table.first, table.second)
+                << " (external source factory is doesn't set), please contact internal support"));
+            return false;
+        }
+
         auto source = ExternalSourceFactory->GetOrCreate(metadata.ExternalSource.Type);
         auto it = Types.DataSourceMap.find(source->GetName());
         if (it == Types.DataSourceMap.end()) {
-            TIssueScopeGuard issueScope(ctx.IssueManager, [input, &table, &ctx]() {
-                return MakeIntrusive<TIssue>(TIssue(ctx.GetPosition(input->Pos()), TStringBuilder()
-                    << "Failed to load metadata for table (data source doesn't exist): "
-                    << NCommon::FullTableName(table.first, table.second)));
-            });
-
-            res.ReportIssues(ctx.IssueManager);
-            LoadResults.clear();
+            ctx.AddError(NYql::TIssue(ctx.GetPosition(input->Pos()), TStringBuilder()
+                << "Unsupported. Failed to load metadata for table: " << NCommon::FullTableName(table.first, table.second)
+                << " data source " << source->GetName() << " doesn't exist, please contact internal support"));
             return false;
         }
 
@@ -299,7 +382,9 @@ public:
 
         const auto error = FillAuthProperties(properties, metadata.ExternalSource);
         if (error) {
-            res.AddIssue(TIssue(error));
+            ctx.AddError(NYql::TIssue(ctx.GetPosition(input->Pos()), TStringBuilder()
+                << "Fill auth properties for table: " << NCommon::FullTableName(table.first, table.second)
+                << " failed: " << error));
             return false;
         }
 
@@ -313,6 +398,7 @@ public:
         YQL_ENSURE(AsyncFuture.HasValue());
 
         auto gatheredAttributes = GatherReadAttributes(*input, ctx);
+        const bool isShowCreate = ContainsShowCreateSetting(*input);
         for (auto& it : LoadResults) {
             const auto& table = it.first;
             IKikimrGateway::TTableMetadataResult& res = *it.second;
@@ -332,12 +418,21 @@ public:
                 tableDesc->Metadata = res.Metadata;
 
                 bool sysColumnsEnabled = SessionCtx->Config().SystemColumnsEnabled();
-                YQL_ENSURE(res.Metadata->Indexes.size() == res.Metadata->SecondaryGlobalIndexMetadata.size());
-                for (const auto& indexMeta : res.Metadata->SecondaryGlobalIndexMetadata) {
-                    YQL_ENSURE(indexMeta);
-                    auto& desc = SessionCtx->Tables().GetOrAddTable(indexMeta->Cluster, SessionCtx->GetDatabase(), indexMeta->Name);
-                    desc.Metadata = indexMeta;
-                    desc.Load(ctx, sysColumnsEnabled);
+                YQL_ENSURE(res.Metadata->Indexes.size() == res.Metadata->ImplTables.size());
+                for (auto implTable : res.Metadata->ImplTables) {
+                    // Local indexes (e.g. column-store bloom / bloom-ngram / min-max) have
+                    // no impl table, so their slot is null. Skip them.
+                    if (!implTable) {
+                        continue;
+                    }
+                    do {
+                        auto nextImplTable = implTable->Next;
+                        auto& desc = SessionCtx->Tables().GetOrAddTable(implTable->Cluster, SessionCtx->GetDatabase(), implTable->Name);
+                        SessionCtx->Tables().AddIndexImplTableToMainTableMapping(tablePath, implTable->Name);
+                        desc.Metadata = std::move(implTable);
+                        desc.Load(ctx, sysColumnsEnabled);
+                        implTable = std::move(nextImplTable);
+                    } while (implTable);
                 }
 
                 if (!tableDesc->Load(ctx, sysColumnsEnabled)) {
@@ -352,7 +447,8 @@ public:
                     }
                 }
 
-                if (!AddCluster(table, res, input, ctx)) {
+                if (!AddCluster(table, res, input, ctx, isShowCreate)) {
+                    LoadResults.clear();
                     return TStatus::Error;
                 }
 
@@ -418,11 +514,16 @@ protected:
     {
         YQL_ENSURE(SessionCtx->Query().Type != EKikimrQueryType::Unspecified);
 
-        if (!Dispatcher->Dispatch(cluster, name, value, NCommon::TSettingDispatcher::EStage::STATIC, NCommon::TSettingDispatcher::GetErrorCallback(pos, ctx))) {
+        auto normalizedValue = value;
+        if (name == "DisableBlockExecution" && !normalizedValue) {
+            normalizedValue = "true";
+        }
+
+        if (!GetDispatcher()->Dispatch(cluster, name, normalizedValue, NCommon::TSettingDispatcher::EStage::STATIC, NCommon::TSettingDispatcher::GetErrorCallback(pos, ctx))) {
             return false;
         }
 
-        if (Dispatcher->IsRuntime(name)) {
+        if (GetDispatcher()->IsRuntime(name)) {
             bool pragmaAllowed = false;
 
             switch (SessionCtx->Query().Type) {
@@ -486,7 +587,7 @@ public:
         , LoadTableMetadataTransformer(CreateKiSourceLoadTableMetadataTransformer(gateway, sessionCtx, types, externalSourceFactory, isInternalCall))
         , TypeAnnotationTransformer(CreateKiSourceTypeAnnotationTransformer(sessionCtx, types))
         , CallableExecutionTransformer(CreateKiSourceCallableExecutionTransformer(gateway, sessionCtx, types))
-
+        , ConstraintsTransformer(CreateKiSourceConstraintsTransformer(sessionCtx))
     {
         Y_UNUSED(FunctionRegistry);
         Y_UNUSED(Types);
@@ -561,6 +662,11 @@ public:
         return *TypeAnnotationTransformer;
     }
 
+    IGraphTransformer& GetConstraintTransformer(bool instantOnly, bool subGraph) override {
+        Y_UNUSED(instantOnly, subGraph);
+        return *ConstraintsTransformer;
+    }
+
     IGraphTransformer& GetCallableExecutionTransformer() override {
         return *CallableExecutionTransformer;
     }
@@ -607,7 +713,9 @@ public:
                 node.IsCallable(TDqSourceWideBlockWrap::CallableName()) ||
                 node.IsCallable(TDqReadWrap::CallableName()) ||
                 node.IsCallable(TDqReadWideWrap::CallableName()) ||
-                node.IsCallable(TDqSource::CallableName())
+                node.IsCallable(TDqReadBlockWideWrap::CallableName()) ||
+                node.IsCallable(TDqSource::CallableName()) ||
+                node.IsCallable(TDqLookupSourceWrap::CallableName())
             )
         )
         {
@@ -699,13 +807,23 @@ public:
         const TString tablePath = key.GetTablePath();
         auto& tableDesc = SessionCtx->Tables().GetTable(cluster, tablePath);
         if (key.GetKeyType() == TKikimrKey::Type::Table) {
+            YQL_ENSURE(tableDesc.Metadata);
             if (tableDesc.Metadata->Kind == EKikimrTableKind::External) {
+                // SHOW CREATE EXTERNAL DATA SOURCE reads have no associated table —
+                // they are rewritten downstream into reads of .sys/show_create.
+                if (IsShowCreate(*read)) {
+                    auto newRead = ctx.RenameNode(*read, newName);
+                    auto retChildren = node->ChildrenList();
+                    retChildren[0] = newRead;
+                    return ctx.ChangeChildren(*node, std::move(retChildren));
+                }
                 if (tableDesc.Metadata->ExternalSource.SourceType == ESourceType::ExternalDataSource && tableDesc.Metadata->TableType == NYql::ETableType::Unknown) {
                     ctx.AddError(TIssue(node->Pos(ctx),
                                         TStringBuilder() << "Attempt to read from external data source \"" << tablePath << "\" without table. Please specify table to read from"));
                     return nullptr;
                 }
                 if (tableDesc.Metadata->ExternalSource.SourceType == ESourceType::ExternalDataSource) {
+                    YQL_ENSURE(ExternalSourceFactory);
                     const auto& source = ExternalSourceFactory->GetOrCreate(tableDesc.Metadata->ExternalSource.Type);
                     ctx.Step.Repeat(TExprStep::DiscoveryIO)
                             .Repeat(TExprStep::Epochs)
@@ -725,6 +843,7 @@ public:
                     retChildren[0] = newRead;
                     return ctx.ChangeChildren(*node, std::move(retChildren));
                 } else if (tableDesc.Metadata->ExternalSource.SourceType == ESourceType::ExternalTable) {
+                    YQL_ENSURE(ExternalSourceFactory);
                     const auto& source = ExternalSourceFactory->GetOrCreate(tableDesc.Metadata->ExternalSource.Type);
                     ctx.Step.Repeat(TExprStep::DiscoveryIO)
                             .Repeat(TExprStep::Epochs)
@@ -755,12 +874,7 @@ public:
                     retChildren[0] = newRead;
                     return ctx.ChangeChildren(*node, std::move(retChildren));
                 }
-            } else if (tableDesc.Metadata->Kind == EKikimrTableKind::View) {
-                if (!SessionCtx->Config().FeatureFlags.GetEnableViews()) {
-                    ctx.AddError(TIssue(node->Pos(ctx),
-                                        "Views are disabled. Please contact your system administrator to enable the feature"));
-                    return nullptr;
-                }
+            } else if (tableDesc.Metadata->Kind == EKikimrTableKind::View && !IsShowCreate(*read)) {
 
                 ctx.Step
                     .Repeat(TExprStep::ExpandApplyForLambdas)
@@ -775,12 +889,12 @@ public:
 
                 NKqp::TKqpTranslationSettingsBuilder settingsBuilder(
                     SessionCtx->Query().Type,
-                    SessionCtx->Config()._KqpYqlSyntaxVersion.Get().GetRef(),
                     cluster,
                     viewData.QueryText,
-                    SessionCtx->Config().BindingsMode,
+                    SessionCtx->Config().GetYqlBindingsMode(),
                     GUCSettings
                 );
+                settingsBuilder.SetFromConfig(SessionCtx->Config());
                 return RewriteReadFromView(node, ctx, settingsBuilder, Types.Modules, viewData);
             }
         }
@@ -845,6 +959,7 @@ public:
                     .Build()
                 .Columns(result.Columns())
                 .RowsLimit().Build(ToString(rowsLimit))
+                .Discard(result.Discard())
                 .Done();
 
             auto newResults = ctx.ChangeChild(results.Ref(), index - startBlockIndex, newResult.Ptr());
@@ -901,9 +1016,10 @@ private:
     TAutoPtr<IGraphTransformer> LoadTableMetadataTransformer;
     TAutoPtr<IGraphTransformer> TypeAnnotationTransformer;
     TAutoPtr<IGraphTransformer> CallableExecutionTransformer;
+    const TAutoPtr<IGraphTransformer> ConstraintsTransformer;
 };
 
-} // namespace
+} // anonymous namespace
 
 IGraphTransformer::TStatus TKiSourceVisitorTransformer::DoTransform(TExprNode::TPtr input,
     TExprNode::TPtr& output, TExprContext& ctx)

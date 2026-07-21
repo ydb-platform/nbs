@@ -1,17 +1,13 @@
 UNITTEST()
 
-IF (NOT WITH_VALGRIND)
-    SRCS(
-        main.cpp
-    )
-ENDIF()
+SRCS(
+    main.cpp
+)
 
 IF (SANITIZER_TYPE == "thread")
-    TIMEOUT(3600)
     SIZE(LARGE)
-    TAG(ya:fat)
+    INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/large.inc)
 ELSE()
-    TIMEOUT(600)
     SIZE(MEDIUM)
 ENDIF()
 
@@ -27,6 +23,7 @@ PEERDIR(
     contrib/ydb/core/blobstorage/vdisk/common
     contrib/ydb/core/tx/scheme_board
     contrib/ydb/core/util
+    contrib/ydb/core/util/actorsys_test
 )
 
 END()

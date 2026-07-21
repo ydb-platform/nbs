@@ -5,18 +5,19 @@
 #include <contrib/ydb/core/blobstorage/vdisk/ingress/blobstorage_ingress.h>
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <bit>
+
 namespace NKikimr {
 
 Y_UNIT_TEST_SUITE(TBlobStorageGroupInfoTest) {
 
     Y_UNIT_TEST(TestBelongsToSubgroup) {
         for (ui32 disks = 1; disks < 4; ++disks) {
-            for (ui32 species = 0; species < TBlobStorageGroupType::ErasureSpeciesCount; ++species) {
-                if (species == TBlobStorageGroupType::ErasureMirror3dc) {
+            for (auto [erasureType, _] : TErasureType::ErasureNames) {
+                if (erasureType == TBlobStorageGroupType::ErasureMirror3dc) {
                     continue;
                 }
 
-                const auto erasureType = TErasureType::EErasureSpecies(species);
                 const ui32 numFailDomains = TBlobStorageGroupType(erasureType).BlobSubgroupSize();
                 TBlobStorageGroupInfo info(erasureType, disks, numFailDomains);
 
@@ -65,12 +66,11 @@ Y_UNIT_TEST_SUITE(TBlobStorageGroupInfoTest) {
     Y_UNIT_TEST(SubgroupPartLayout) {
         TLogoBlobID id(1, 1, 1, 0, 100, 0);
 
-        for (ui32 species = 0; species < TBlobStorageGroupType::ErasureSpeciesCount; ++species) {
-            if (species == TBlobStorageGroupType::ErasureMirror3dc || species == TBlobStorageGroupType::ErasureMirror3of4) {
+        for (auto [erasureType, _] : TErasureType::ErasureNames) {
+            if (erasureType == TBlobStorageGroupType::ErasureMirror3dc || erasureType == TBlobStorageGroupType::ErasureMirror3of4) {
                 continue;
             }
 
-            const auto erasureType = TErasureType::EErasureSpecies(species);
             const ui32 numFailDomains = TBlobStorageGroupType(erasureType).BlobSubgroupSize();
             TBlobStorageGroupInfo info(erasureType, 1, numFailDomains);
 
@@ -129,8 +129,7 @@ Y_UNIT_TEST_SUITE(TBlobStorageGroupInfoTest) {
     }
 
     Y_UNIT_TEST(GroupQuorumCheckerOrdinary) {
-        for (ui32 i = 0; i < TBlobStorageGroupType::ErasureSpeciesCount; ++i) {
-            auto erasure = static_cast<TBlobStorageGroupType::EErasureSpecies>(i);
+        for (auto [erasure, _] : TErasureType::ErasureNames) {
             if (erasure == TBlobStorageGroupType::ErasureMirror3dc || erasure == TBlobStorageGroupType::ErasureMirror3of4) {
                 // separate test for mirror-3-dc
                 continue;
@@ -147,7 +146,7 @@ Y_UNIT_TEST_SUITE(TBlobStorageGroupInfoTest) {
             // calculate sets of disks
             TVector<ui32> goodMask, badMask;
             for (ui32 mask = 0; mask < numMasks; ++mask) {
-                (PopCount(mask) <= numHandoff ? goodMask : badMask).push_back(mask);
+                (static_cast<ui32>(std::popcount(mask)) <= numHandoff ? goodMask : badMask).push_back(mask);
             }
 
             auto createGroupVDisks = [&](ui32 domainMask, ui32 vdiskMask) {

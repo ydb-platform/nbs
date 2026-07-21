@@ -1,14 +1,19 @@
 #include "sessions.h"
+
 #include <contrib/ydb/core/tx/columnshard/columnshard_schema.h>
 #include <contrib/ydb/core/tx/columnshard/data_sharing/destination/transactions/tx_start_from_initiator.h>
 #include <contrib/ydb/core/tx/columnshard/data_sharing/source/transactions/tx_start_to_source.h>
 #include <contrib/ydb/core/tx/columnshard/engines/column_engine_logs.h>
 #include <contrib/ydb/core/tx/columnshard/hooks/abstract/abstract.h>
 
+#include <contrib/ydb/library/actors/struct_log/log_stack.h>
+
 namespace NKikimr::NOlap::NDataSharing {
 
-void TSessionsManager::Start(const NColumnShard::TColumnShard& shard) const {
-    NActors::TLogContextGuard logGuard = NActors::TLogContextBuilder::Build()("sessions", "start")("tablet_id", shard.TabletID());
+void TSessionsManager::Start(NColumnShard::TColumnShard& shard) const {
+    YDB_LOG_CREATE_CONTEXT(
+        {"sessions", "start"},
+        {"tabletId", shard.TabletID()});
     for (auto&& i : SourceSessions) {
         if (i.second->IsReadyForStarting()) {
             i.second->PrepareToStart(shard);
@@ -22,12 +27,15 @@ void TSessionsManager::Start(const NColumnShard::TColumnShard& shard) const {
 
     for (auto&& i : SourceSessions) {
         if (i.second->IsPrepared()) {
-            i.second->TryStart(shard);
+            TConclusionStatus status = i.second->TryStart(shard);
+            AFL_VERIFY(status.Ok())("failed to start source session", status.GetErrorMessage());
         }
     }
     for (auto&& i : DestSessions) {
         if (i.second->IsPrepared() && i.second->IsConfirmed()) {
-            i.second->TryStart(shard);
+            TConclusionStatus status = i.second->TryStart(shard);
+            AFL_VERIFY(status.Ok())("failed to start dest session", status.GetErrorMessage());
+
             if (!i.second->GetSourcesInProgressCount()) {
                 i.second->Finish(shard, shard.GetDataLocksManager());
             }
@@ -67,11 +75,21 @@ bool TSessionsManager::Load(NTable::TDatabase& database, const TColumnEngineForL
             NKikimrColumnShardDataSharingProto::TSourceSession protoSession;
             AFL_VERIFY(protoSession.ParseFromString(rowset.GetValue<Schema::SourceSessions::Details>()));
 
-            NKikimrColumnShardDataSharingProto::TSourceSession::TCursorDynamic protoSessionCursorDynamic;
-            AFL_VERIFY(protoSessionCursorDynamic.ParseFromString(rowset.GetValue<Schema::SourceSessions::CursorDynamic>()));
+            std::optional<NKikimrColumnShardDataSharingProto::TSourceSession::TCursorDynamic> protoSessionCursorDynamic;
+            if (rowset.HaveValue<Schema::SourceSessions::CursorDynamic>()) {
+                protoSessionCursorDynamic = NKikimrColumnShardDataSharingProto::TSourceSession::TCursorDynamic{};
+                AFL_VERIFY(protoSessionCursorDynamic->ParseFromString(rowset.GetValue<Schema::SourceSessions::CursorDynamic>()));
+            }
 
-            NKikimrColumnShardDataSharingProto::TSourceSession::TCursorStatic protoSessionCursorStatic;
-            AFL_VERIFY(protoSessionCursorStatic.ParseFromString(rowset.GetValue<Schema::SourceSessions::CursorStatic>()));
+            std::optional<NKikimrColumnShardDataSharingProto::TSourceSession::TCursorStatic> protoSessionCursorStatic;
+            if (rowset.HaveValue<Schema::SourceSessions::CursorStatic>()) {
+                protoSessionCursorStatic = NKikimrColumnShardDataSharingProto::TSourceSession::TCursorStatic{};
+                AFL_VERIFY(protoSessionCursorStatic->ParseFromString(rowset.GetValue<Schema::SourceSessions::CursorStatic>()));
+            }
+
+            if (protoSessionCursorDynamic && !protoSessionCursorStatic) {
+                protoSessionCursorStatic = NKikimrColumnShardDataSharingProto::TSourceSession::TCursorStatic{};
+            }
 
             AFL_VERIFY(index);
             session->DeserializeFromProto(protoSession, protoSessionCursorDynamic, protoSessionCursorStatic).Validate();
@@ -80,7 +98,6 @@ bool TSessionsManager::Load(NTable::TDatabase& database, const TColumnEngineForL
                 return false;
             }
         }
-
     }
 
     {
@@ -110,19 +127,22 @@ bool TSessionsManager::Load(NTable::TDatabase& database, const TColumnEngineForL
     return true;
 }
 
-std::unique_ptr<NTabletFlatExecutor::ITransaction> TSessionsManager::ProposeDestSession(NColumnShard::TColumnShard* self, const std::shared_ptr<TDestinationSession>& session) {
+std::unique_ptr<NTabletFlatExecutor::ITransaction> TSessionsManager::ProposeDestSession(
+    NColumnShard::TColumnShard* self, const std::shared_ptr<TDestinationSession>& session) {
     AFL_VERIFY(session);
     return std::make_unique<TTxProposeFromInitiator>(self, session, DestSessions, "tx_propose_from_initiator");
 }
 
-std::unique_ptr<NTabletFlatExecutor::ITransaction> TSessionsManager::ConfirmDestSession(NColumnShard::TColumnShard* self, const std::shared_ptr<TDestinationSession>& session) {
+std::unique_ptr<NTabletFlatExecutor::ITransaction> TSessionsManager::ConfirmDestSession(
+    NColumnShard::TColumnShard* self, const std::shared_ptr<TDestinationSession>& session) {
     AFL_VERIFY(session);
     return std::make_unique<TTxConfirmFromInitiator>(self, session, "tx_confirm_from_initiator");
 }
 
-std::unique_ptr<NTabletFlatExecutor::ITransaction> TSessionsManager::InitializeSourceSession(NColumnShard::TColumnShard* self, const std::shared_ptr<TSourceSession>& session) {
+std::unique_ptr<NTabletFlatExecutor::ITransaction> TSessionsManager::InitializeSourceSession(
+    NColumnShard::TColumnShard* self, const std::shared_ptr<TSourceSession>& session) {
     AFL_VERIFY(session);
     return std::make_unique<TTxStartToSource>(self, session, SourceSessions, "tx_start_to_source");
 }
 
-}
+}   // namespace NKikimr::NOlap::NDataSharing

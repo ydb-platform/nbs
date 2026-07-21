@@ -1,6 +1,8 @@
 import argparse
 import random
 
+from pathlib import Path
+
 
 def parse_optional_arguments(args):
     kwargs = {}
@@ -20,6 +22,7 @@ def parse_optional_arguments(args):
         kwargs['walle_url'] = args.walle_url
 
     kwargs['enable_cores'] = args.enable_cores
+    kwargs['enable_modules'] = getattr(args, 'enable_modules', False)
 
     for cmd_arg in ('ic_port', 'grpc_port', 'mbus_port', 'mon_port', 'cfg_home', 'sqs_port', 'binaries_home'):
         if hasattr(args, cmd_arg) and getattr(args, cmd_arg) is not None:
@@ -58,6 +61,9 @@ def get_parser(generate_func, extra_cfg_arguments=[]):
     )
     parser_cfg.add_argument('--enable-cores', action='store_true', help='Enables coredumps')
     parser_cfg.add_argument(
+        '--enable-modules', action='store_true', help='Enable module field in node location configuration (default: false)'
+    )
+    parser_cfg.add_argument(
         '--dynamic-node', action='store_true', help='Indicates that configuration should be generated for dynamic node'
     )
     parser_cfg.add_argument('--node-broker-port', type=str, help='Node Broker Port to use')
@@ -73,6 +79,19 @@ def get_parser(generate_func, extra_cfg_arguments=[]):
             help=v['help'],
         )
 
+    parser_cfg.add_argument(
+        "--hosts-provider-url",
+        type=str,
+        help="""URL from which information about hosts can be obtained.
+        Mutually exclusive with --hosts-provider-k8s""")
+
+    home_directory = str(Path.home())
+    defaultKubeconfigLocation = "{0}/.kube/config".format(home_directory)
+    parser_cfg.add_argument("--kubeconfig",
+                            type=str,
+                            help="path to the kubeconfig file. Default `$HOME/.kube/config`, also see --hosts-provider-k8s",
+                            default=defaultKubeconfigLocation)
+
     argument_group = parser_cfg.add_mutually_exclusive_group()
 
     argument_group.add_argument(
@@ -85,10 +104,17 @@ def get_parser(generate_func, extra_cfg_arguments=[]):
     argument_group.add_argument(
         '--nbs-control', action='store_true', help='Forces cfg command to generate NBS Control configuration'
     )
+    argument_group.add_argument(
+        '--nbs-disk-agent', action='store_true', help='Forces cfg command to generate Disk Agent Control configuration'
+    )
     argument_group.add_argument('--nfs', action='store_true', help='Forces cfg command to generate NFS configuration')
     argument_group.add_argument(
         '--nfs-control', action='store_true', help='Forces cfg command to generate NFS Control configuration'
     )
+
+    parser_cfg.add_argument('--backport-to-template',
+                            action='store_true',
+                            help='Backport blob_storage_config and similar sections to template after generation')
 
     parser_cfg.set_defaults(func=generate_func)
     return parser

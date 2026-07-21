@@ -1,10 +1,8 @@
 LIBRARY()
 
 SRCS(
-    process_response.cpp
     events.cpp
     query.cpp
-    script_executions.cpp
     workload_service.cpp
 )
 
@@ -20,10 +18,12 @@ PEERDIR(
 
     contrib/ydb/library/yql/dq/actors
     contrib/ydb/public/api/protos
-    contrib/ydb/public/lib/operation_id
+    contrib/ydb/public/sdk/cpp/src/library/operation_id
 
     contrib/ydb/library/actors/core
 )
+
+GENERATE_ENUM_SERIALIZATION(script_executions.h)
 
 YQL_LAST_ABI_VERSION()
 

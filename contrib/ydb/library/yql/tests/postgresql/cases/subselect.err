@@ -460,7 +460,7 @@ SELECT * FROM orders_view;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.orders_view
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.orders_view
     
 <sql-statement>
 DROP TABLE orderstest cascade;
@@ -523,7 +523,7 @@ select * from shipped_view;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.shipped_view
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.shipped_view
     
 <sql-statement>
 create rule shipped_view_update as on update to shipped_view do instead
@@ -551,7 +551,7 @@ select * from shipped_view;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.shipped_view
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.shipped_view
     
 <sql-statement>
 select f1, ss1 as relabel from
@@ -700,28 +700,28 @@ select view_a from view_a;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.view_a
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.view_a
     
 <sql-statement>
 select (select view_a) from view_a;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.view_a
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.view_a
     
 <sql-statement>
 select (select (select view_a)) from view_a;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.view_a
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.view_a
     
 <sql-statement>
 select (select (a.*)::text) from view_a a;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.view_a
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.view_a
     
 <sql-statement>
 --
@@ -1186,7 +1186,7 @@ insert into exists_tbl select x, x/2, x+1 from generate_series(0,10) x;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.exists_tbl
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.exists_tbl
     
 <sql-statement>
 analyze exists_tbl;
@@ -1212,7 +1212,7 @@ select * from exists_tbl t1
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.exists_tbl
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.exists_tbl
     
 <sql-statement>
 --
@@ -1978,7 +1978,7 @@ select * from x;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.z
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.z
     
 <sql-statement>
 explain (verbose, costs off)
@@ -2006,7 +2006,7 @@ select * from x;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.z
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.z
     
 <sql-statement>
 -- Check handling of outer references

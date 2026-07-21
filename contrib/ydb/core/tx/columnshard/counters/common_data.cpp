@@ -19,4 +19,22 @@ TDataOwnerSignals::TDataOwnerSignals(const TString& module, const TString dataNa
     SkipEraseBytes = GetDeriviative(DataName + "/SkipErase/Bytes");
 }
 
+TLoadTimeSignals::TLoadTimer::~TLoadTimer() {
+    ui64 duration = (TInstant::Now() - Start).MicroSeconds();
+    if (Failed) {
+        Signals.AddFailedLoadingTime(duration);
+    } else {
+        Signals.AddLoadingTime(duration);
+    }
+    YDB_LOG_INFO_COMP(NKikimrServices::TX_COLUMNSHARD, "",
+        {Name, duration});
 }
+
+void TLoadTimeSignals::TLoadTimer::AddLoadingFail() {
+    if (!Failed) {
+        Failed = true;
+        Signals.AddLoadingFail();
+    }
+}
+
+}   // namespace NKikimr::NColumnShard

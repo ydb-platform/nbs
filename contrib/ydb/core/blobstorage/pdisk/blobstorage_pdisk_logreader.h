@@ -47,8 +47,6 @@ struct TLogChunkItem {
 };
 
 class TLogReader : public TLogReaderBase {
-    static constexpr ui32 BufferSizeSectors = 105;
-
     struct TSectorData;
     class TDoubleBuffer;
 
@@ -62,7 +60,7 @@ class TLogReader : public TLogReaderBase {
 
     bool IsInitial;
     TPDisk * const PDisk;
-    TActorSystem * const ActorSystem;
+    std::shared_ptr<TPDiskCtx> PCtx;
     const TActorId ReplyTo;
 
     TOwner Owner;
@@ -72,6 +70,7 @@ class TLogReader : public TLogReaderBase {
     THolder<TEvReadLogResult> Result;
     TLogChunkInfo *ChunkInfo;
 
+    const ui32 BufferSizeSectors;
     THolder<TDoubleBuffer> Sector;
 
     THolder<TMap<ui32, TChunkState>> ChunkOwnerMap;
@@ -83,7 +82,6 @@ class TLogReader : public TLogReaderBase {
     ui64 LastNonce;
     ui64 LastDataNonce;
     bool OnEndOfSplice;
-    TPDiskStreamCypher Cypher;
     ui32 OffsetInSector;
     bool SetLastGoodToWritePosition;
     ui32 ChunkIdx;

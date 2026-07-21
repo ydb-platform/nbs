@@ -4,7 +4,7 @@
 #include <contrib/ydb/core/base/counters.h>
 
 #include <contrib/ydb/core/mind/address_classification/net_classifier.h>
-#include <contrib/ydb/core/persqueue/cluster_tracker.h>
+#include <contrib/ydb/core/persqueue/public/cluster_tracker/cluster_tracker.h>
 #include <contrib/ydb/core/testlib/test_pq_client.h>
 
 #include <contrib/ydb/public/api/grpc/draft/ydb_persqueue_v1.grpc.pb.h>
@@ -278,7 +278,7 @@ public:
         UNIT_ASSERT(!Server_);
 
         NetDataFile = MakeHolder<TTempFileHandle>();
-        NetDataFile->Write(netDataTsv.Data(), netDataTsv.Size());
+        NetDataFile->Write(netDataTsv.data(), netDataTsv.size());
         NetDataFile->FlushData();
 
         Settings_.NetClassifierConfig.SetNetDataFilePath(NetDataFile->Name());

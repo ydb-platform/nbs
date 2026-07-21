@@ -1,10 +1,13 @@
 #pragma once
 
 #include <contrib/ydb/core/base/ticket_parser.h>
+#include <contrib/ydb/core/grpc_services/base/base.h>
+#include <contrib/ydb/core/grpc_services/local_rpc/local_rpc.h>
 #include <contrib/ydb/core/protos/replication.pb.h>
 #include <contrib/ydb/core/testlib/test_client.h>
 #include <contrib/ydb/core/tx/schemeshard/schemeshard.h>
 #include <contrib/ydb/core/tx/replication/ydb_proxy/ydb_proxy.h>
+#include <contrib/ydb/public/api/grpc/ydb_auth_v1.grpc.pb.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -34,20 +37,34 @@ class TEnv {
         Endpoint = "localhost:" + ToString(grpcPort);
         Database = "/" + ToString(DomainName);
 
+        auto driverConfig = NYdb::TDriverConfig()
+            .SetEndpoint(Endpoint)
+            .SetDatabase(Database);
+        Driver = MakeHolder<NYdb::TDriver>(driverConfig);
+
         YdbProxy = Server.GetRuntime()->Register(CreateYdbProxy(
-            Endpoint, UseDatabase ? Database : "", false /* ssl */, std::forward<Args>(args)...));
+            Endpoint, UseDatabase ? Database : "", false /* ssl */, "" /* cert */, std::forward<Args>(args)...));
         Sender = Server.GetRuntime()->AllocateEdgeActor();
     }
 
-    void Login(ui64 schemeShardId, const TString& user, const TString& password) {
-        auto req = MakeHolder<NSchemeShard::TEvSchemeShard::TEvLogin>();
-        req->Record.SetUser(user);
-        req->Record.SetPassword(password);
-        ForwardToTablet(*Server.GetRuntime(), schemeShardId, Sender, req.Release());
+    void Login(const TString& database, const TString& user, const TString& password) {
+        Ydb::Auth::LoginRequest request;
+        request.set_user(user);
+        request.set_password(password);
 
-        auto resp = Server.GetRuntime()->GrabEdgeEvent<NSchemeShard::TEvSchemeShard::TEvLoginResult>(Sender);
-        UNIT_ASSERT(resp->Get()->Record.GetError().empty());
-        UNIT_ASSERT(!resp->Get()->Record.GetToken().empty());
+        using TEvLoginRequest = NGRpcService::TGRpcRequestWrapperNoAuth<
+            NGRpcService::TRpcServices::EvLogin, Ydb::Auth::LoginRequest, Ydb::Auth::LoginResponse>;
+
+        auto result = NRpcService::DoLocalRpc<TEvLoginRequest>(
+            std::move(request), database, {}, Server.GetRuntime()->GetActorSystem(0)
+        ).ExtractValueSync();
+
+        const auto& operation = result.operation();
+        UNIT_ASSERT_VALUES_EQUAL_C(operation.status(), Ydb::StatusIds::SUCCESS, operation.issues(0).message());
+
+        Ydb::Auth::LoginResult loginResult;
+        operation.result().UnpackTo(&loginResult);
+        UNIT_ASSERT(!loginResult.token().empty());
     }
 
 public:
@@ -102,14 +119,7 @@ public:
         }
         // init security state
         {
-            auto resp = Client.Ls(db);
-
-            const auto& desc = resp->Record;
-            UNIT_ASSERT(desc.HasPathDescription());
-            UNIT_ASSERT(desc.GetPathDescription().HasDomainDescription());
-            UNIT_ASSERT(desc.GetPathDescription().GetDomainDescription().HasDomainKey());
-
-            Login(desc.GetPathDescription().GetDomainDescription().GetDomainKey().GetSchemeShard(), user, password);
+            Login(db, user, password);
         }
         // update security state
         {
@@ -165,6 +175,16 @@ public:
     }
 
     template <typename... Args>
+    auto CreateColumnTable(Args&&... args) {
+        return Client.CreateColumnTable(std::forward<Args>(args)...);
+    }
+
+    template <typename... Args>
+    auto CreateTopic(Args&&... args) {
+        return Client.CreateTopic(std::forward<Args>(args)...);
+    }
+
+    template <typename... Args>
     auto MkDir(Args&&... args) {
         return Client.MkDir(std::forward<Args>(args)...);
     }
@@ -173,10 +193,38 @@ public:
         Server.GetRuntime()->Send(new IEventHandle(recipient, Sender, ev));
     }
 
+    void SendAsync(const TActorId& recipient, THolder<IEventBase> ev) {
+        SendAsync(recipient, ev.Release());
+    }
+
     template <typename TEvResponse>
     auto Send(const TActorId& recipient, IEventBase* ev) {
         SendAsync(recipient, ev);
         return Server.GetRuntime()->GrabEdgeEvent<TEvResponse>(Sender);
+    }
+
+    template <typename TEvResponse>
+    auto Send(const TActorId& recipient, THolder<IEventBase> ev) {
+        return Send<TEvResponse>(recipient, ev.Release());
+    }
+
+    void SendAsync(ui64 tabletId, IEventBase* ev) {
+        ForwardToTablet(*Server.GetRuntime(), tabletId, Sender, ev);
+    }
+
+    void SendAsync(ui64 tabletId, THolder<IEventBase> ev) {
+        SendAsync(tabletId, ev.Release());
+    }
+
+    template <typename TEvResponse>
+    auto Send(ui64 tabletId, IEventBase* ev) {
+        SendAsync(tabletId, ev);
+        return Server.GetRuntime()->GrabEdgeEvent<TEvResponse>(Sender);
+    }
+
+    template <typename TEvResponse>
+    auto Send(ui64 tabletId, THolder<IEventBase> ev) {
+        return Send<TEvResponse>(tabletId, ev.Release());
     }
 
     auto& GetRuntime() {
@@ -184,7 +232,7 @@ public:
     }
 
     const NYdb::TDriver& GetDriver() const {
-        return Server.GetDriver();
+        return *Driver;
     }
 
     const TString& GetEndpoint() const {
@@ -208,6 +256,7 @@ private:
     Tests::TServerSettings Settings;
     Tests::TServer Server;
     Tests::TClient Client;
+    THolder<NYdb::TDriver> Driver;
     TString Endpoint;
     TString Database;
     TActorId YdbProxy;

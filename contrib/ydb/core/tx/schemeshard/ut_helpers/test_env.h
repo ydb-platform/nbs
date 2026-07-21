@@ -1,20 +1,20 @@
 #pragma once
 
 
-#include <contrib/ydb/core/testlib/tablet_helpers.h>
-#include <contrib/ydb/core/testlib/fake_coordinator.h>
+#include <contrib/ydb/public/api/protos/ydb_status_codes.pb.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/driver/driver.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
+#include <contrib/ydb/core/protos/follower_group.pb.h>
+#include <contrib/ydb/core/protos/msgbus_kv.pb.h>
+#include <contrib/ydb/core/testlib/fake_coordinator.h>
+#include <contrib/ydb/core/testlib/tablet_helpers.h>
 #include <contrib/ydb/core/tx/schemeshard/schemeshard.h>
 #include <contrib/ydb/core/tx/schemeshard/schemeshard_export.h>
 #include <contrib/ydb/core/tx/schemeshard/schemeshard_identificators.h>
 #include <contrib/ydb/core/tx/schemeshard/schemeshard_import.h>
-#include <contrib/ydb/library/ydb_issue/proto/issue_id.pb.h>
-#include <contrib/ydb/public/api/protos/ydb_status_codes.pb.h>
-#include <contrib/ydb/core/protos/follower_group.pb.h>
-#include <contrib/ydb/core/protos/msgbus_kv.pb.h>
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_driver/driver.h>
+#include <contrib/ydb/library/ydb_issue/proto/issue_id.pb.h>
 
 #include <functional>
 
@@ -40,7 +40,8 @@ namespace NSchemeShardUT_Private {
         OPTION(bool, EnablePipeRetries, true);
         OPTION(bool, RunFakeConfigDispatcher, false);
         OPTION(bool, InitYdbDriver, false);
-        OPTION(std::optional<bool>, EnableSystemViews, std::nullopt);
+        OPTION(bool, EnableFulltextIndexPrefix, true);
+        OPTION(bool, EnableFulltextIndexRowId, true);
         OPTION(std::optional<bool>, EnablePersistentQueryStats, std::nullopt);
         OPTION(std::optional<bool>, EnablePersistentPartitionStats, std::nullopt);
         OPTION(std::optional<bool>, AllowUpdateChannelsBindingOfSolomonPartitions, std::nullopt);
@@ -56,8 +57,7 @@ namespace NSchemeShardUT_Private {
         OPTION(std::optional<bool>, EnableNotNullDataColumns, std::nullopt);
         OPTION(std::optional<bool>, EnableAlterDatabaseCreateHiveFirst, std::nullopt);
         OPTION(std::optional<bool>, EnableTopicDiskSubDomainQuota, std::nullopt);
-        OPTION(std::optional<bool>, EnablePQConfigTransactionsAtSchemeShard, std::nullopt);
-        OPTION(std::optional<bool>, EnableTopicSplitMerge, std::nullopt);
+        OPTION(std::optional<bool>, EnableTopicMessageLevelParallelism, std::nullopt);
         OPTION(std::optional<bool>, EnableChangefeedDynamoDBStreamsFormat, std::nullopt);
         OPTION(std::optional<bool>, EnableChangefeedDebeziumJsonFormat, std::nullopt);
         OPTION(std::optional<bool>, EnableTablePgTypes, std::nullopt);
@@ -68,6 +68,31 @@ namespace NSchemeShardUT_Private {
         OPTION(std::optional<bool>, EnableChangefeedsOnIndexTables, std::nullopt);
         OPTION(std::optional<bool>, EnableTieringInColumnShard, std::nullopt);
         OPTION(std::optional<bool>, EnableParameterizedDecimal, std::nullopt);
+        OPTION(std::optional<bool>, EnableBackupService, std::nullopt);
+        OPTION(std::optional<bool>, EnableReplication, std::nullopt);
+        OPTION(bool, SetupKqpProxy, false);
+        OPTION(bool, EnableStrictAclCheck, false);
+        OPTION(std::optional<bool>, EnableStrictUserManagement, std::nullopt);
+        OPTION(std::optional<bool>, EnableDatabaseAdmin, std::nullopt);
+        OPTION(std::optional<bool>, EnablePermissionsExport, std::nullopt);
+        OPTION(std::optional<bool>, EnableChecksumsExport, std::nullopt);
+        OPTION(std::optional<bool>, EnableLocalDBBtreeIndex, std::nullopt);
+        OPTION(TVector<TIntrusivePtr<NFake::TProxyDS>>, DSProxies, {});
+        OPTION(std::optional<bool>, EnableSystemNamesProtection, std::nullopt);
+        OPTION(std::optional<bool>, EnableRealSystemViewPaths, std::nullopt);
+        OPTION(ui32, NStoragePools, 2);
+        OPTION(std::optional<ui32>, DataShardStatsReportIntervalSeconds, std::nullopt);
+        OPTION(bool, EnableAlterDatabase, false);
+        OPTION(std::optional<bool>, EnableAccessToIndexImplTables, std::nullopt);
+        OPTION(std::optional<bool>, EnableIndexMaterialization, std::nullopt);
+        OPTION(bool, EnableConditionalEraseResponseBatching, false);
+        OPTION(std::optional<ui32>, CondEraseResponseBatchSize, std::nullopt);
+        OPTION(std::optional<ui32>, CondEraseResponseBatchMaxTimeMs, std::nullopt);
+        OPTION(std::optional<ui32>, MaxBuildIndexShardsInFlight, std::nullopt);
+        OPTION(std::optional<ui32>, MaxStoredIndexBuilds, std::nullopt);
+        OPTION(bool, EnableDataShardSplitHistogramSorting, false);
+        OPTION(bool, EnableDataShardSplitKeySelection, false);
+        OPTION(bool, EnableDataShardSplitHistogramOmission, false);
 
         #undef OPTION
     };
@@ -87,11 +112,17 @@ namespace NSchemeShardUT_Private {
         TActorId MeteringFake;
         THolder<NYdb::TDriver> YdbDriver;
 
+        TTestActorRuntime::TEventObserverHolder SysViewsRosterUpdateObserver;
+        bool SysViewsRosterUpdateFinished;
+
+        TTestActorRuntime::TEventObserverHolder ExtSubdomainCleanupObserver;
+        THashSet<TPathId> ExtSubdomainCleanupComplete;
+
     public:
         static bool ENABLE_SCHEMESHARD_LOG;
 
         TTestEnv(TTestActorRuntime& runtime, ui32 nchannels = 4, bool enablePipeRetries = true,
-            TSchemeShardFactory ssFactory = &CreateFlatTxSchemeShard, bool enableSystemViews = false);
+            TSchemeShardFactory ssFactory = &CreateFlatTxSchemeShard);
         TTestEnv(TTestActorRuntime& runtime, const TTestEnvOptions& opts,
             TSchemeShardFactory ssFactory = &CreateFlatTxSchemeShard, std::shared_ptr<NKikimr::NDataShard::IExportFactory> dsExportFactory = {});
 
@@ -123,6 +154,12 @@ namespace NSchemeShardUT_Private {
         void TestWaitShardDeletion(TTestActorRuntime& runtime, ui64 schemeShard, TSet<ui64> localIds);
         void TestWaitShardDeletion(TTestActorRuntime& runtime, ui64 schemeShard, TSet<TShardIdx> shardIds);
 
+        void AddExtSubdomainCleanupObserver(NActors::TTestActorRuntime& runtime, const TPathId& subdomainPathId);
+        void WaitForExtSubdomainCleanup(NActors::TTestActorRuntime& runtime, const TPathId& subdomainPathId);
+
+        void AddSysViewsRosterUpdateObserver(TTestActorRuntime& runtime);
+        void WaitForSysViewsRosterUpdate(TTestActorRuntime& runtime);
+
         void SimulateSleep(TTestActorRuntime& runtime, TDuration duration);
 
         void TestServerlessComputeResourcesModeInHive(TTestActorRuntime& runtime, const TString& path,
@@ -136,14 +173,19 @@ namespace NSchemeShardUT_Private {
 
     private:
         static std::function<IActor*(const TActorId&, TTabletStorageInfo*)> GetTabletCreationFunc(ui32 type);
-        void AddDomain(TTestActorRuntime& runtime, TAppPrepare& app, ui32 domainUid, ui64 hive, ui64 schemeRoot);
+        void AddDomain(TTestActorRuntime& runtime, TAppPrepare& app, ui32 domainUid, ui64 hive, ui64 schemeRoot, ui32 storagePoolCount);
 
         void BootSchemeShard(TTestActorRuntime& runtime, ui64 schemeRoot);
         void BootTxAllocator(TTestActorRuntime& runtime, ui64 tabletId);
+        NKikimrConfig::TAppConfig GetAppConfig() const;
     };
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // A wrapper to run test scenarios with reboots of schemeshard, hive and coordinator
+    // The idea is to run the same test scenario multiple times and on each run restart a tablet **once**
+    // on receiving a non-filtered event. A given tablet is restarted when it receives an event for which
+    // PassUserRequests() doesn't return true. On the first run, it is restarted on the first such event,
+    // on the second run - on the second event and so on.
     class TTestWithReboots {
     protected:
         struct TDatashardLogBatchingSwitch {
@@ -155,6 +197,7 @@ namespace NSchemeShardUT_Private {
 
     public:
         TVector<ui64> TabletIds;
+        TSet<ui32> NoRebootEventTypes;
         THolder<TTestActorRuntime> Runtime;
         TTestEnvOptions EnvOpts;
         THolder<TTestEnv> TestEnv;
@@ -165,12 +208,14 @@ namespace NSchemeShardUT_Private {
         const ui64 CoordinatorTabletId;
         const ui64 TxAllocatorId;
         const bool KillOnCommit;
+        ui32 TotalBuckets = 0;
+        ui32 Bucket = 0;
 
         explicit TTestWithReboots(bool killOnCommit = false, TTestEnv::TSchemeShardFactory ssFactory = &CreateFlatTxSchemeShard);
         virtual ~TTestWithReboots() = default;
 
-        void Run(std::function<void(TTestActorRuntime& runtime, bool& activeZone)> testScenario);
-        void Run(std::function<void(TTestActorRuntime& runtime, bool& activeZone)> testScenario, bool allowLogBatching);
+        virtual void Run(std::function<void(TTestActorRuntime& runtime, bool& activeZone)> testScenario);
+        virtual void Run(std::function<void(TTestActorRuntime& runtime, bool& activeZone)> testScenario, bool allowLogBatching);
         void RunWithTabletReboots(std::function<void(TTestActorRuntime& runtime, bool& activeZone)> testScenario);
         void RunWithPipeResets(std::function<void(TTestActorRuntime& runtime, bool& activeZone)> testScenario);
         void RunWithDelays(std::function<void(TTestActorRuntime& runtime, bool& activeZone)> testScenario);
@@ -185,10 +230,11 @@ namespace NSchemeShardUT_Private {
         void Prepare(const TString& dispatchName, std::function<void(TTestActorRuntime&)> setup, bool& outActiveZone);
         void EnableTabletResolverScheduling(ui32 nodeIdx = 0);
         void Finalize();
+
     private:
         virtual TTestEnv* CreateTestEnv();
         // Make sure that user requests are not dropped
-        static bool PassUserRequests(TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event);
+        bool PassUserRequests(TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event);
 
     private:
         struct TFinalizer;

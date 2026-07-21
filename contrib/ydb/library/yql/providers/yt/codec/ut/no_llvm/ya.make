@@ -1,7 +1,5 @@
 UNITTEST_FOR(contrib/ydb/library/yql/providers/yt/codec)
 
-TAG(ya:manual)
-
 SRCDIR(
     contrib/ydb/library/yql/providers/yt/codec/ut
 )

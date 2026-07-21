@@ -17,7 +17,7 @@ YQL_LAST_ABI_VERSION()
 PEERDIR(
     contrib/ydb/library/yql/core
     contrib/ydb/library/yql/core/type_ann
-    contrib/ydb/library/yql/dq/integration
+    contrib/ydb/library/yql/core/dq_integration
     contrib/ydb/library/yql/providers/common/dq
     contrib/ydb/library/yql/providers/common/provider
     contrib/ydb/library/yql/providers/common/transform

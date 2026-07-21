@@ -10,7 +10,7 @@ public:
         : Delegatee(delegatee) {
     }
 
-    TString GetAuthInfo() const override {
+    std::string GetAuthInfo() const override {
         TString result = Delegatee->GetAuthInfo();
         if (!result || result.StartsWith("Bearer ")) {
             return result;
@@ -33,8 +33,8 @@ public:
         : Delegatee(delegatee) {
     }
 
-    TString GetClientIdentity() const override {
-        return "BEARER_CRED_PROV_FACTORY" + ToString((ui64)this);
+    std::string GetClientIdentity() const override {
+        return "BEARER_CRED_PROV_FACTORY\t" + Delegatee->GetClientIdentity();
     }
 
     std::shared_ptr<NYdb::ICredentialsProvider> CreateProvider() const override {

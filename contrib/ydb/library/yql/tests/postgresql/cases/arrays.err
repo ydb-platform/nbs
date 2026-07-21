@@ -1433,182 +1433,182 @@ SELECT * FROM array_op_test WHERE i @> '{32}' ORDER BY seqno;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
     
 <sql-statement>
 SELECT * FROM array_op_test WHERE i && '{32}' ORDER BY seqno;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
     
 <sql-statement>
 SELECT * FROM array_op_test WHERE i @> '{17}' ORDER BY seqno;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
     
 <sql-statement>
 SELECT * FROM array_op_test WHERE i && '{17}' ORDER BY seqno;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
     
 <sql-statement>
 SELECT * FROM array_op_test WHERE i @> '{32,17}' ORDER BY seqno;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
     
 <sql-statement>
 SELECT * FROM array_op_test WHERE i && '{32,17}' ORDER BY seqno;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
     
 <sql-statement>
 SELECT * FROM array_op_test WHERE i <@ '{38,34,32,89}' ORDER BY seqno;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
     
 <sql-statement>
 SELECT * FROM array_op_test WHERE i = '{}' ORDER BY seqno;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
     
 <sql-statement>
 SELECT * FROM array_op_test WHERE i @> '{}' ORDER BY seqno;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
     
 <sql-statement>
 SELECT * FROM array_op_test WHERE i && '{}' ORDER BY seqno;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
     
 <sql-statement>
 SELECT * FROM array_op_test WHERE i <@ '{}' ORDER BY seqno;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
     
 <sql-statement>
 SELECT * FROM array_op_test WHERE i = '{NULL}' ORDER BY seqno;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
     
 <sql-statement>
 SELECT * FROM array_op_test WHERE i @> '{NULL}' ORDER BY seqno;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
     
 <sql-statement>
 SELECT * FROM array_op_test WHERE i && '{NULL}' ORDER BY seqno;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
     
 <sql-statement>
 SELECT * FROM array_op_test WHERE i <@ '{NULL}' ORDER BY seqno;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
     
 <sql-statement>
 SELECT * FROM array_op_test WHERE t @> '{AAAAAAAA72908}' ORDER BY seqno;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
     
 <sql-statement>
 SELECT * FROM array_op_test WHERE t && '{AAAAAAAA72908}' ORDER BY seqno;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
     
 <sql-statement>
 SELECT * FROM array_op_test WHERE t @> '{AAAAAAAAAA646}' ORDER BY seqno;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
     
 <sql-statement>
 SELECT * FROM array_op_test WHERE t && '{AAAAAAAAAA646}' ORDER BY seqno;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
     
 <sql-statement>
 SELECT * FROM array_op_test WHERE t @> '{AAAAAAAA72908,AAAAAAAAAA646}' ORDER BY seqno;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
     
 <sql-statement>
 SELECT * FROM array_op_test WHERE t && '{AAAAAAAA72908,AAAAAAAAAA646}' ORDER BY seqno;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
     
 <sql-statement>
 SELECT * FROM array_op_test WHERE t <@ '{AAAAAAAA72908,AAAAAAAAAAAAAAAAAAA17075,AA88409,AAAAAAAAAAAAAAAAAA36842,AAAAAAA48038,AAAAAAAAAAAAAA10611}' ORDER BY seqno;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
     
 <sql-statement>
 SELECT * FROM array_op_test WHERE t = '{}' ORDER BY seqno;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
     
 <sql-statement>
 SELECT * FROM array_op_test WHERE t @> '{}' ORDER BY seqno;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
     
 <sql-statement>
 SELECT * FROM array_op_test WHERE t && '{}' ORDER BY seqno;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
     
 <sql-statement>
 SELECT * FROM array_op_test WHERE t <@ '{}' ORDER BY seqno;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.array_op_test
     
 <sql-statement>
 -- array casts
@@ -2210,7 +2210,7 @@ select * from comptable;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.comptable
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.comptable
     
 <sql-statement>
 select c2[2].f2 from comptable;
@@ -3020,14 +3020,14 @@ insert into t1 (f1[5].q1) values(42);
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.t1
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.t1
     
 <sql-statement>
 select * from t1;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.t1
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.t1
     
 <sql-statement>
 update t1 set f1[5].q2 = 43;
@@ -3041,7 +3041,7 @@ select * from t1;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.t1
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.t1
     
 <sql-statement>
 -- Check that arrays of composites are safely detoasted when needed

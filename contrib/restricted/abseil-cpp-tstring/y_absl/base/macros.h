@@ -34,6 +34,7 @@
 #include "y_absl/base/attributes.h"
 #include "y_absl/base/config.h"
 #include "y_absl/base/optimization.h"
+#include "y_absl/base/options.h"
 #include "y_absl/base/port.h"
 
 // Y_ABSL_ARRAYSIZE()
@@ -81,8 +82,9 @@ Y_ABSL_NAMESPACE_END
 // Y_ABSL_ASSERT()
 //
 // In C++11, `assert` can't be used portably within constexpr functions.
+// `assert` also generates spurious unused-symbol warnings.
 // Y_ABSL_ASSERT functions as a runtime assert but works in C++11 constexpr
-// functions.  Example:
+// functions, and maintains references to symbols.  Example:
 //
 // constexpr double Divide(double a, double b) {
 //   return Y_ABSL_ASSERT(b != 0), a / b;
@@ -91,8 +93,18 @@ Y_ABSL_NAMESPACE_END
 // This macro is inspired by
 // https://akrzemi1.wordpress.com/2017/05/18/asserts-in-constexpr-functions/
 #if defined(NDEBUG)
-#define Y_ABSL_ASSERT(expr) \
-  (false ? static_cast<void>(expr) : static_cast<void>(0))
+#if Y_ABSL_INTERNAL_CPLUSPLUS_LANG >= 202002L
+// We use `decltype` here to avoid generating unnecessary code that the
+// optimizer then has to optimize away.
+// This not only improves compilation performance by reducing codegen bloat
+// and optimization work, but also guarantees fast run-time performance without
+// having to rely on the optimizer.
+#define Y_ABSL_ASSERT(expr) (decltype((expr) ? void() : void())())
+#else
+// Pre-C++20, lambdas can't be inside unevaluated operands, so we're forced to
+// rely on the optimizer.
+#define Y_ABSL_ASSERT(expr) (false ? ((expr) ? void() : void()) : void())
+#endif
 #else
 #define Y_ABSL_ASSERT(expr)                           \
   (Y_ABSL_PREDICT_TRUE((expr)) ? static_cast<void>(0) \
@@ -120,12 +132,31 @@ Y_ABSL_NAMESPACE_END
 //
 // See `Y_ABSL_OPTION_HARDENED` in `y_absl/base/options.h` for more information on
 // hardened mode.
-#if Y_ABSL_OPTION_HARDENED == 1 && defined(NDEBUG)
+#if (Y_ABSL_OPTION_HARDENED == 1 || Y_ABSL_OPTION_HARDENED == 2) && defined(NDEBUG)
 #define Y_ABSL_HARDENING_ASSERT(expr)                 \
   (Y_ABSL_PREDICT_TRUE((expr)) ? static_cast<void>(0) \
                              : [] { Y_ABSL_INTERNAL_HARDENING_ABORT(); }())
 #else
 #define Y_ABSL_HARDENING_ASSERT(expr) Y_ABSL_ASSERT(expr)
+#endif
+
+// Y_ABSL_HARDENING_ASSERT_SLOW()
+//
+// `Y_ABSL_HARDENING_ASSERT()` is like `Y_ABSL_HARDENING_ASSERT()`,
+//  but specifically for assertions whose predicates are too slow
+//  to be enabled in many applications.
+//
+// When `NDEBUG` is not defined, `Y_ABSL_HARDENING_ASSERT_SLOW()` is identical to
+// `Y_ABSL_ASSERT()`.
+//
+// See `Y_ABSL_OPTION_HARDENED` in `y_absl/base/options.h` for more information on
+// hardened mode.
+#if Y_ABSL_OPTION_HARDENED == 1 && defined(NDEBUG)
+#define Y_ABSL_HARDENING_ASSERT_SLOW(expr)            \
+  (Y_ABSL_PREDICT_TRUE((expr)) ? static_cast<void>(0) \
+                             : [] { Y_ABSL_INTERNAL_HARDENING_ABORT(); }())
+#else
+#define Y_ABSL_HARDENING_ASSERT_SLOW(expr) Y_ABSL_ASSERT(expr)
 #endif
 
 #ifdef Y_ABSL_HAVE_EXCEPTIONS
@@ -137,5 +168,53 @@ Y_ABSL_NAMESPACE_END
 #define Y_ABSL_INTERNAL_CATCH_ANY else if (false)
 #define Y_ABSL_INTERNAL_RETHROW do {} while (false)
 #endif  // Y_ABSL_HAVE_EXCEPTIONS
+
+// Y_ABSL_DEPRECATE_AND_INLINE()
+//
+// Marks a function or type alias as deprecated and tags it to be picked up for
+// automated refactoring by go/cpp-inliner. It can added to inline function
+// definitions or type aliases. It should only be used within a header file. It
+// differs from `Y_ABSL_DEPRECATED` in the following ways:
+//
+// 1. New uses of the function or type will be discouraged via Tricorder
+//    warnings.
+// 2. If enabled via `METADATA`, automated changes will be sent out inlining the
+//    functions's body or replacing the type where it is used.
+//
+// For example:
+//
+// Y_ABSL_DEPRECATE_AND_INLINE() inline int OldFunc(int x) {
+//   return NewFunc(x, 0);
+// }
+//
+// will mark `OldFunc` as deprecated, and the go/cpp-inliner service will
+// replace calls to `OldFunc(x)` with calls to `NewFunc(x, 0)`. Once all calls
+// to `OldFunc` have been replaced, `OldFunc` can be deleted.
+//
+// See go/cpp-inliner for more information.
+//
+// Note: go/cpp-inliner is Google-internal service for automated refactoring.
+// While open-source users do not have access to this service, the macro is
+// provided for compatibility, and so that users receive deprecation warnings.
+#if Y_ABSL_HAVE_CPP_ATTRIBUTE(deprecated) && \
+    Y_ABSL_HAVE_CPP_ATTRIBUTE(clang::annotate)
+#define Y_ABSL_DEPRECATE_AND_INLINE() [[deprecated, clang::annotate("inline-me")]]
+#elif Y_ABSL_HAVE_CPP_ATTRIBUTE(deprecated)
+#define Y_ABSL_DEPRECATE_AND_INLINE() [[deprecated]]
+#else
+#define Y_ABSL_DEPRECATE_AND_INLINE()
+#endif
+
+// Requires the compiler to prove that the size of the given object is at least
+// the expected amount.
+#if Y_ABSL_HAVE_ATTRIBUTE(diagnose_if) && Y_ABSL_HAVE_BUILTIN(__builtin_object_size)
+#define Y_ABSL_INTERNAL_NEED_MIN_SIZE(Obj, N)                     \
+  __attribute__((diagnose_if(__builtin_object_size(Obj, 0) < N, \
+                             "object size provably too small "  \
+                             "(this would corrupt memory)",     \
+                             "error")))
+#else
+#define Y_ABSL_INTERNAL_NEED_MIN_SIZE(Obj, N)
+#endif
 
 #endif  // Y_ABSL_BASE_MACROS_H_

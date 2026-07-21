@@ -5,7 +5,6 @@
 #include <contrib/ydb/core/blobstorage/vdisk/common/vdisk_dbtype.h>
 #include <contrib/ydb/core/blobstorage/vdisk/ingress/blobstorage_ingress.h>
 
-#include <contrib/ydb/core/protos/blobstorage.pb.h>
 
 namespace NKikimr {
 
@@ -34,18 +33,21 @@ namespace NKikimr {
             return Sprintf("[%16" PRIu64 "]", TabletId);
         }
 
-        TLogoBlobID LogoBlobID() const {
-            return TLogoBlobID();
-        }
-
         static TKeyBlock First() {
             return TKeyBlock();
+        }
+
+        static TKeyBlock Inf() {
+            return TKeyBlock(Max<ui64>());
         }
 
         bool IsSameAs(const TKeyBlock& other) const {
             return TabletId == other.TabletId;
         }
     };
+
+    static_assert(sizeof(TKeyBlock) == 8, "expect sizeof(TKeyBlock) == 8");
+
 #pragma pack(pop)
 
     inline bool operator <(const TKeyBlock &x, const TKeyBlock &y) {
@@ -91,7 +93,7 @@ namespace NKikimr {
             : BlockedGeneration(blockGen)
         {}
 
-        void Merge(const TMemRecBlock& rec, const TKeyBlock& /*key*/) {
+        void Merge(const TMemRecBlock& rec, const TKeyBlock& /*key*/, bool /*clearLocal*/, TBlobStorageGroupType /*gtype*/) {
             BlockedGeneration = Max(BlockedGeneration, rec.BlockedGeneration);
         }
 
@@ -154,6 +156,9 @@ namespace NKikimr {
             return Sprintf("{BlockedGen: %" PRIu32 "}", BlockedGeneration);
         }
     };
+
+    static_assert(sizeof(TMemRecBlock) == 4, "expect sizeof(TMemRecBlock) == 4");
+
 #pragma pack(pop)
 
     inline bool operator==(const TMemRecBlock &x, const TMemRecBlock &y) {

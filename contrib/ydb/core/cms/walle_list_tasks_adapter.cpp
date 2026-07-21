@@ -3,6 +3,8 @@
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 
+#define YDB_LOG_THIS_FILE_COMPONENT NKikimrServices::CMS
+
 namespace NKikimr::NCms {
 
 using namespace NKikimrCms;
@@ -23,8 +25,8 @@ public:
     void Bootstrap(const TActorContext &ctx) {
         auto &rec = RequestEvent->Get()->Record;
 
-        LOG_INFO(ctx, NKikimrServices::CMS, "Processing Wall-E request: %s",
-                  rec.ShortDebugString().data());
+        YDB_LOG_INFO_CTX(ctx, "Processing Wall-E request",
+            {"ev", rec.ShortDebugString()});
 
         TAutoPtr<TEvCms::TEvWalleListTasksResponse> response = new TEvCms::TEvWalleListTasksResponse;
 
@@ -35,21 +37,13 @@ public:
             info.SetTaskId(task.TaskId);
             if (State->ScheduledRequests.contains(task.RequestId)) {
                 auto &req = State->ScheduledRequests.find(task.RequestId)->second;
-                for (auto &action : req.Request.GetActions()) {
+                for (auto &action : req.Request.GetActions())
                     *info.AddHosts() = action.GetHost();
-                    for (auto &device : action.GetDevices())
-                        *info.AddDevices() = device;
-                }
                 info.SetStatus("in-process");
             } else {
                 for (auto &id : task.Permissions) {
-                    if (State->Permissions.contains(id)) {
-                        const auto &action = State->Permissions.find(id)->second.Action;
-                        *info.AddHosts() = action.GetHost();
-
-                        for (auto &device : action.GetDevices())
-                            *info.AddDevices() = device;
-                    }
+                    if (State->Permissions.contains(id))
+                        *info.AddHosts() = State->Permissions.find(id)->second.Action.GetHost();
                 }
                 info.SetStatus("ok");
             }

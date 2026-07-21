@@ -1,7 +1,7 @@
 LIBRARY()
 
 SRCS(
-    actor.cpp
+    actor2.cpp
     events.cpp
 )
 

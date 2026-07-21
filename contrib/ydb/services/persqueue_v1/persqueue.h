@@ -1,6 +1,6 @@
 #pragma once
 
-#include <contrib/ydb/library/actors/core/actorsystem.h>
+#include <contrib/ydb/library/actors/core/actorsystem_fwd.h>
 
 #include <contrib/ydb/public/api/grpc/draft/ydb_persqueue_v1.grpc.pb.h>
 
@@ -29,7 +29,6 @@ private:
     void SetupIncomingRequests(NYdbGrpc::TLoggerPtr logger) override;
 
     NActors::TActorId SchemeCache;
-    NKikimr::NGRpcProxy::V1::IClustersCfgProvider* ClustersCfgProvider = nullptr;
 };
 
 } // namespace V1

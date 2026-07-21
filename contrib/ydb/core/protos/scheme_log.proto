@@ -1,3 +1,4 @@
+import "contrib/ydb/core/protos/compaction.proto";
 import "contrib/ydb/core/protos/flat_scheme_op.proto";
 import "contrib/ydb/core/scheme/protos/type_info.proto";
 
@@ -54,6 +55,7 @@ message TAlterRecord {
     optional uint32 Cache = 13;     // Read NPage::ECache for details
     optional uint32 Large = 14;     // When keep values in single blobs
     optional uint32 Small = 18;     // When pack values to outer blobs
+    optional uint32 CacheMode = 27; // NPage::ECacheMode
 
     //_ Table: Attributes of single colimn
 
@@ -62,9 +64,14 @@ message TAlterRecord {
     optional NKikimrProto.TTypeInfo ColumnTypeInfo = 25;
     optional bytes Default = 10;    // Serialized default value for cell
     optional bool NotNull = 24 [default = false];
+    optional bool SetNotNullInProgress = 31 [default = false];
+    optional bool IsSensitive = 28 [default = false];
+    reserved 29; // deprecated -> ByKeyFilterPrefixes
+    repeated NKikimrSchemeOp.TByKeyFilterPrefix ByKeyFilterPrefixes = 30; // Bloom filters on PK prefixes
+    optional uint32 SpecialTableType = 32;
 
     optional uint64 ExecutorCacheSize = 100;
-    optional NKikimrSchemeOp.TCompactionPolicy CompactionPolicy = 101;
+    optional NKikimrCompaction.TCompactionPolicy CompactionPolicy = 101;
     optional bool ExecutorAllowLogBatching = 102;
     optional uint64 ExecutorLogFlushPeriod = 103;
     optional uint32 ExecutorLimitInFlyTx = 104;

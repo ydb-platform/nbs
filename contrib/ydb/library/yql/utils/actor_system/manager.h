@@ -20,7 +20,7 @@ namespace NYql {
     class TActorSystemManager {
     public:
         TActorSystemManager(
-            IMetricsRegistryPtr& metricsRegistry,
+            IMetricsRegistryPtr metricsRegistry,
             NActors::NLog::EPriority loggingLevel,
             TIntrusivePtr<NActors::NLog::TSettings> loggingSettings = nullptr);
 
@@ -41,7 +41,7 @@ namespace NYql {
         ~TActorSystemManager();
 
     private:
-        // Copied from https://a.yandex-team.ru/arcadia/yql/providers/dq/service/interconnect_helpers.cpp?rev=r11761215
+        // Copied from https://a.yandex-team.ru/arcadia/contrib/ydb/library/yql/providers/dq/service/interconnect_helpers.cpp?rev=r11761215
         class TYqlLogBackend: public TLogBackend {
             void WriteData(const TLogRecord& rec) override {
                 TString message(rec.Data, rec.Len);
@@ -71,4 +71,4 @@ namespace NYql {
         THolder<TLogBackend> LoggerBackend_ = nullptr;
         IMetricsRegistryPtr MetricsRegistry_;
     };
-}
+} // namespace NYql

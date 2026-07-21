@@ -27,6 +27,7 @@ namespace NActors {
             EvQueryStats,
             EvStats,
             EvPassAwayIfNeeded,
+            EvRdmaPendingHandshake,
         };
 
         struct TEvCleanupEventQueue : TEventLocal<TEvCleanupEventQueue, EvCleanupEventQueue> {};
@@ -39,26 +40,27 @@ namespace NActors {
             TString State;
             TScopeId PeerScopeId;
             TInstant LastSessionDieTime;
-            ui64 TotalOutputQueueSize;
-            bool Connected;
-            bool ExternalDataChannel;
+            ui64 TotalOutputQueueSize = 0;
+            bool Connected = false;
+            bool ExternalDataChannel = false;
             TString Host;
-            ui16 Port;
+            ui16 Port = 0;
             TInstant LastErrorTimestamp;
             TString LastErrorKind;
             TString LastErrorExplanation;
             TDuration Ping;
-            i64 ClockSkew;
+            i64 ClockSkew = 0;
             TString Encryption;
             enum XDCFlags {
                 NONE = 0,
                 MSG_ZERO_COPY_SEND = 1,
+                RDMA_READ = 1 << 1,
             };
-            ui8 XDCFlags;
+            ui8 XDCFlags = NONE;
         };
 
         struct TEvStats : TEventLocal<TEvStats, EvStats> {
-            ui32 PeerNodeId;
+            ui32 PeerNodeId = 0;
             TProxyStats ProxyStats;
         };
 
@@ -80,14 +82,26 @@ namespace NActors {
 
     private:
         friend class TInterconnectSessionTCP;
-        friend class TInterconnectSessionTCPv0;
+        friend class TInterconnectSessionTCPv2;
         friend class THandshake;
         friend class TInputSessionTCP;
 
-        void UnregisterSession(TInterconnectSessionTCP* session);
+        void UnregisterSession(IInterconnectSession* session);
+
+        // Forwards a synchronous call to the current session through the IInterconnectSession interface,
+        // while setting up the session's actor recurse-context (as IActor::InvokeOtherActor would do for a
+        // concrete actor type).
+        template <typename TMethod, typename... TArgs>
+        decltype(auto) InvokeSession(TMethod&& method, TArgs&&... args) {
+            return IActor::InvokeOtherActor(Session->SessionActor(),
+                [&](auto&&) -> decltype(auto) {
+                    return std::invoke(std::forward<TMethod>(method), Session, std::forward<TArgs>(args)...);
+                });
+        }
 
 #define SESSION_EVENTS(HANDLER)                                \
     fFunc(TEvInterconnect::EvForward, HANDLER)                 \
+    fFunc(TEvForwardSubscribeSession::EventType, HANDLER)      \
     fFunc(TEvInterconnect::TEvConnectNode::EventType, HANDLER) \
     fFunc(TEvents::TEvSubscribe::EventType, HANDLER)           \
     fFunc(TEvents::TEvUnsubscribe::EventType, HANDLER)
@@ -106,6 +120,7 @@ namespace NActors {
     STATEFN(STATE) {                                                                            \
         const ui32 type = ev->GetTypeRewrite();                                                 \
         const bool profiled = type != TEvInterconnect::EvForward                                \
+            && type != TEvForwardSubscribeSession::EventType                                    \
             && type != TEvInterconnect::EvConnectNode                                           \
             && type != TEvents::TSystem::Subscribe                                              \
             && type != TEvents::TSystem::Unsubscribe;                                           \
@@ -133,8 +148,9 @@ namespace NActors {
                 cFunc(EvPassAwayIfNeeded, HandlePassAwayIfNeeded)                               \
                 hFunc(TEvSubscribeForConnection, Handle);                                       \
                 hFunc(TEvReportConnection, Handle);                                             \
+                fFunc(EvRdmaPendingHandshake, HandleRdmaDelayedHandshake)                       \
                 default:                                                                        \
-                    Y_ABORT("unexpected event Type# 0x%08" PRIx32, type);                        \
+                    Y_ABORT("unexpected event Type# 0x%08" PRIx32, type);                       \
             }                                                                                   \
         }                                                                                       \
         if (profiled) {                                                                         \
@@ -172,6 +188,7 @@ namespace NActors {
 
         const char* State = nullptr;
         TInstant StateSwitchTime;
+        bool InErrorState = false;
 
         template <typename... TArgs>
         void SwitchToState(int line, const char* name, TArgs&&... args) {
@@ -191,6 +208,15 @@ namespace NActors {
                         {}, nullptr, 0));
                     PassAwayScheduled = true;
                 }
+            }
+            if (CurrentStateFunc() == &TThis::HoldByError) {
+                InErrorState = true;
+            } else if (CurrentStateFunc() == &TThis::StateWork || CurrentStateFunc() == &TThis::PendingActivation) {
+                if (InErrorState) {
+                    LastErrorStateLogAt = TInstant::Zero();
+                    ErrorStateLogSuppressed = 0;
+                }
+                InErrorState = false;
             }
         }
 
@@ -218,6 +244,8 @@ namespace NActors {
                 PassAwayScheduled = false;
             }
         }
+
+
 
         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         // PendingActivation
@@ -355,7 +383,17 @@ namespace NActors {
         void HandleHandshakeStatus(TEvHandshakeDone::TPtr& ev);
         void HandleHandshakeStatus(TEvHandshakeFail::TPtr& ev);
 
-        void TransitToErrorState(TString Explanation, bool updateErrorLog = true);
+        void TransitToErrorState(TString explanation, bool updateErrorLog = true, const TEvHandshakeFail* handshakeFail = nullptr);
+        TString FormatRemoteNodeForLog(const TEvHandshakeFail& handshakeFail) const;
+        TString FormatHandshakeFailNotice(TStringBuf explanation, const TEvHandshakeFail& handshakeFail) const;
+        enum class EHandshakeStatusDirection {
+            Incoming,
+            Outgoing,
+        };
+        void LogHandshakeStatusNotice(TStringBuf marker, EHandshakeStatusDirection direction, const TEvHandshakeFail& handshakeFail) const;
+        void AppendSuppressedErrorStateLogs(TStringBuilder& stream, ui64 globalSuppressed, ui64 perPeerSuppressed) const;
+        void AppendHandshakeFailDebugInfo(TStringBuilder& stream, TStringBuf marker, TStringBuf rawReason,
+            TStringBuf extraDebugInfo = {}) const;
         void WakeupFromErrorState(TEvents::TEvWakeup::TPtr& ev);
         void Disconnect();
 
@@ -387,10 +425,12 @@ namespace NActors {
         }
 
         TString TechnicalPeerHostName;
+        ui16 TechnicalPeerPort = 0;
 
         std::shared_ptr<IInterconnectMetrics> Metrics;
 
         void HandleClosePeerSocket();
+        void HandleClosePeerSocket(std::span<const char> logEntry);
         void HandleCloseInputSession();
         void HandlePoisonSession();
 
@@ -400,6 +440,13 @@ namespace NActors {
         void ScheduleCleanupEventQueue();
         void HandleCleanupEventQueue();
         void CleanupEventQueue();
+        void HandleRdmaDelayedHandshake(STATEFN_SIG);
+        TDuration GetNextRdmaRetryDelay() const;
+        TDuration GetMaxRdmaRetryDelay() const;
+        void RegisterRdmaSuccess();
+        void RegisterRdmaFailure();
+        void ScheduleDelayedRdmaHandshake();
+        void SetRdmaRetryWatchdogPending(bool pending);
 
         // hold all events before connection is established
         struct TPendingSessionEvent {
@@ -418,7 +465,7 @@ namespace NActors {
         void ProcessPendingSessionEvents();
         void DropSessionEvent(STATEFN_SIG);
 
-        TInterconnectSessionTCP* Session = nullptr;
+        IInterconnectSession* Session = nullptr;
         TActorId SessionID;
 
         // virtual ids used during handshake to check if it is the connection
@@ -427,12 +474,7 @@ namespace NActors {
         TActorId SessionVirtualId;
         TActorId RemoteSessionVirtualId;
 
-        TActorId GenerateSessionVirtualId() {
-            ICPROXY_PROFILED;
-
-            const ui64 localId = TlsActivationContext->ExecutorThread.ActorSystem->AllocateIDSpace(1);
-            return NActors::TActorId(SelfId().NodeId(), 0, localId, 0);
-        }
+        TActorId GenerateSessionVirtualId();
 
         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -483,7 +525,7 @@ namespace NActors {
             // drop existing session if we have one
             if (Session) {
                 LOG_INFO_IC("ICP04", "terminating current session as we are negotiating a new one");
-                IActor::InvokeOtherActor(*Session, &TInterconnectSessionTCP::Terminate, TDisconnectReason::NewSession());
+                InvokeSession(&IInterconnectSession::Terminate, TDisconnectReason::NewSession());
             }
 
             // ensure we have no current session
@@ -533,8 +575,17 @@ namespace NActors {
         TDuration HoldByErrorWakeupDuration = TDuration::Zero();
         TEvents::TEvWakeup* HoldByErrorWakeupCookie;
 
+        TInstant LastErrorStateLogAt;
+        ui64 ErrorStateLogSuppressed = 0;
+
         THolder<TProgramInfo> RemoteProgramInfo;
         NInterconnect::TSecureSocketContext::TPtr SecureContext;
+        TDuration DelayedRdmaHandshakeTimeout;
+        bool RdmaRetryWatchdogPending = false;
+        ui64 RdmaRetryWatchdogCookie = 0;
+        ui32 ConsecutiveRdmaFailures = 0;
+        TInstant LastRdmaSuccessAt;
+        TInstant LastRdmaFailureAt;
 
         void Handle(TEvGetSecureSocket::TPtr ev) {
             auto socket = MakeIntrusive<NInterconnect::TSecureSocket>(*ev->Get()->Socket, SecureContext);
@@ -570,6 +621,21 @@ namespace NActors {
         void HandleTerminate();
 
         void PassAway() override;
+
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        // Disconnection management
+
+        static constexpr size_t NumDisconnectsSize = 60;
+        std::array<ui32, NumDisconnectsSize> NumDisconnects;
+        size_t NumDisconnectsIndex = 0;
+        ui32 NumDisconnectsInLastHour = 0;
+        ui64 FirstDisconnectWindowMinutes = 0;
+
+        void RegisterDisconnect();
+        ui32 GetDisconnectCountInLastHour();
+        void ShiftDisconnectWindow(TMonotonic now);
+
+        std::optional<TString> PeerBridgePileName;
     };
 
 }

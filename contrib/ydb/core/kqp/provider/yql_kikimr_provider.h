@@ -1,33 +1,83 @@
 #pragma once
 
 #include "yql_kikimr_gateway.h"
-#include "yql_kikimr_settings.h"
 
-#include <contrib/ydb/core/base/path.h>
-#include <contrib/ydb/core/external_sources/external_source_factory.h>
-#include <contrib/ydb/core/kqp/common/kqp_user_request_context.h>
 #include <contrib/ydb/core/kqp/common/simple/temp_tables.h>
-#include <contrib/ydb/core/kqp/query_data/kqp_query_data.h>
-#include <contrib/ydb/library/yql/ast/yql_gc_nodes.h>
-#include <contrib/ydb/library/yql/core/yql_type_annotation.h>
-#include <contrib/ydb/library/yql/minikql/mkql_function_registry.h>
+#include <contrib/ydb/core/protos/kqp.pb.h>
+#include <contrib/ydb/library/actors/core/actorid.h>
 
-#include <contrib/ydb/library/actors/core/actor.h>
-#include <library/cpp/cache/cache.h>
+#include <contrib/ydb/library/yql/ast/yql_pos_handle.h>
+#include <contrib/ydb/library/yql/core/issue/yql_issue.h>
+#include <contrib/ydb/library/yql/sql/settings/translation_settings.h>
 
+#include <util/datetime/base.h>
 #include <util/generic/flags.h>
-#include <util/generic/is_in.h>
-#include <util/generic/strbuf.h>
+#include <util/generic/hash.h>
+#include <util/generic/maybe.h>
+#include <util/generic/string.h>
+#include <util/generic/vector.h>
+#include <util/string/builder.h>
+
+class ITimeProvider;
+class IRandomProvider;
+
+namespace NYson {
+
+class TYsonWriter;
+
+} // namespace NYson
+
+namespace NKqpProto {
+
+class TKqpTableInfo;
+
+} // namespace NKqpProto
 
 namespace NKikimr {
+
 namespace NGRpcService {
 
 class IRequestCtxMtSafe;
 
-}
-}
+} // namespace NGRpcService
+
+namespace NKqp {
+
+struct TUserRequestContext;
+class TQueryData;
+
+} // namespace NKqp
+
+namespace NMiniKQL {
+
+class IFunctionRegistry;
+
+} // namespace NMiniKQL
+
+namespace NExternalSource {
+
+struct IExternalSourceFactory;
+
+} // namespace NExternalSource
+
+} // namespace NKikimr
 
 namespace NYql {
+
+struct TKikimrConfiguration;
+class TVisitorTransformerBase;
+struct TExprContext;
+class TStructExprType;
+class TTypeAnnotationNode;
+class IDataProvider;
+struct TTypeAnnotationContext;
+class TExprNode;
+
+namespace NProto {
+
+class TTranslationSettings;
+
+} // namespace NProto
 
 const TStringBuf KikimrMkqlProtoFormat = "mkql_proto";
 
@@ -65,10 +115,10 @@ public:
     virtual ~IKikimrQueryExecutor() {}
 
     virtual TIntrusivePtr<TAsyncQueryResult> ExecuteDataQuery(const TString& cluster,
-        const TExprNode::TPtr& query, TExprContext& ctx, const TExecuteSettings& settings) = 0;
+        const TIntrusivePtr<TExprNode>& query, TExprContext& ctx, const TExecuteSettings& settings) = 0;
 
     virtual TIntrusivePtr<TAsyncQueryResult> ExplainDataQuery(const TString& cluster,
-        const TExprNode::TPtr& query, TExprContext& ctx) = 0;
+        const TIntrusivePtr<TExprNode>& query, TExprContext& ctx) = 0;
 };
 
 enum class EKikimrQueryType {
@@ -85,10 +135,7 @@ enum class EKikimrQueryType {
 
 struct TKikimrQueryContext : TThrRefBase {
     TKikimrQueryContext(const NKikimr::NMiniKQL::IFunctionRegistry* functionRegistry,
-        TIntrusivePtr<ITimeProvider> timeProvider, TIntrusivePtr<IRandomProvider> randomProvider)
-    {
-        QueryData = std::make_shared<NKikimr::NKqp::TQueryData>(functionRegistry, timeProvider, randomProvider);
-    }
+        TIntrusivePtr<ITimeProvider> timeProvider, TIntrusivePtr<IRandomProvider> randomProvider);
 
     TKikimrQueryContext(const TKikimrQueryContext&) = delete;
     TKikimrQueryContext& operator=(const TKikimrQueryContext&) = delete;
@@ -110,10 +157,13 @@ struct TKikimrQueryContext : TThrRefBase {
     bool DocumentApiRestricted = true;
     bool IsInternalCall = false;
     bool ConcurrentResults = true;
+    bool IsolateEffects = false;
+    i32 RuntimeParameterSizeLimit = 0;
+    bool RuntimeParameterSizeLimitSatisfied = false;
 
     std::unique_ptr<NKikimrKqp::TPreparedQuery> PreparingQuery;
     std::shared_ptr<const NKikimrKqp::TPreparedQuery> PreparedQuery;
-    NKikimr::NKqp::TQueryData::TPtr QueryData;
+    std::shared_ptr<NKikimr::NKqp::TQueryData> QueryData;
 
     THashMap<ui64, IKikimrQueryExecutor::TQueryResult> Results;
     THashMap<ui64, TIntrusivePtr<IKikimrQueryExecutor::TAsyncQueryResult>> InProgress;
@@ -127,26 +177,7 @@ struct TKikimrQueryContext : TThrRefBase {
 
     NSQLTranslation::TTranslationSettings TranslationSettings;
 
-    void Reset() {
-        PrepareOnly = false;
-        SuppressDdlChecks = false;
-        StatsMode = EKikimrStatsMode::None;
-        Type = EKikimrQueryType::Unspecified;
-        Deadlines = {};
-        Limits = {};
-
-        PreparingQuery.reset();
-        PreparedQuery.reset();
-        QueryData->Clear();
-
-        Results.clear();
-        InProgress.clear();
-        ExecutionOrder.clear();
-
-        RlPath.Clear();
-        RpcCtx.reset();
-        TranslationSettings = NSQLTranslation::TTranslationSettings();
-    }
+    void Reset();
 };
 
 class TKikimrTableDescription {
@@ -177,11 +208,15 @@ public:
     ETableType GetTableType() const { return TableType; }
     void SetTableType(ETableType tableType) { TableType = tableType; }
 
+    void SetSysViewRewritten(bool flag) { SysViewRewritten = flag; }
+    bool GetSysViewRewritten() const { return SysViewRewritten; }
+
 private:
     THashMap<TString, const TTypeAnnotationNode*> ColumnTypes;
     bool NeedsStats = false;
     bool NeedAuthInfo = true;
     ETableType TableType;
+    bool SysViewRewritten = false;
 };
 
 class TKikimrTablesData : public TThrRefBase {
@@ -191,7 +226,7 @@ public:
     TKikimrTablesData& operator=(const TKikimrTablesData&) = delete;
 
     TKikimrTableDescription& GetOrAddTable(const TString& cluster, const TString& database, const TString& table,
-        ETableType tableType = ETableType::Table);
+        ETableType tableType = ETableType::Table, bool sysViewRewritten = false);
     TKikimrTableDescription& GetTable(const TString& cluster, const TString& table);
 
     const TKikimrTableDescription* EnsureTableExists(const TString& cluster, const TString& table,
@@ -202,6 +237,20 @@ public:
     const THashMap<std::pair<TString, TString>, TKikimrTableDescription>& GetTables() const {
         return Tables;
     }
+
+    void AddIndexImplTableToMainTableMapping(const TString& mainTable, const TString& indexTable);
+
+    const TKikimrTableDescription* GetMainTableIfTableIsImplTableOfIndex(const TStringBuf& cluster, const TStringBuf& id) {
+        auto it = IndexTableToMainTable.find(id);
+        if (it == IndexTableToMainTable.end()) {
+            return nullptr;
+        }
+        return &ExistingTable(cluster, it->second);
+    }
+
+    bool IsTableImmutable(const TStringBuf& cluster, const TStringBuf& path);
+
+    std::optional<TString> GetTempTablePath(const TStringBuf& table) const;
 
     void Reset() {
         Tables.clear();
@@ -214,37 +263,54 @@ public:
 private:
     THashMap<std::pair<TString, TString>, TKikimrTableDescription> Tables;
     NKikimr::NKqp::TKqpTempTablesState::TConstPtr TempTablesState;
+
+    THashMap<TString, TString> IndexTableToMainTable;
 };
 
-enum class TYdbOperation : ui32 {
-    CreateTable          = 1 << 0,
-    DropTable            = 1 << 1,
-    AlterTable           = 1 << 2,
-    Select               = 1 << 3,
-    Upsert               = 1 << 4,
-    Replace              = 1 << 5,
-    Update               = 1 << 6,
-    Delete               = 1 << 7,
-    InsertRevert         = 1 << 8,
-    InsertAbort          = 1 << 9,
-    ReservedInsertIgnore = 1 << 10,
-    UpdateOn             = 1 << 11,
-    DeleteOn             = 1 << 12,
-    CreateUser           = 1 << 13,
-    AlterUser            = 1 << 14,
-    DropUser             = 1 << 15,
-    CreateGroup          = 1 << 16,
-    AlterGroup           = 1 << 17,
-    DropGroup            = 1 << 18,
-    CreateTopic          = 1 << 19,
-    AlterTopic           = 1 << 20,
-    DropTopic            = 1 << 21,
-    ModifyPermission     = 1 << 22,
-    RenameGroup          = 1 << 23,
-    CreateReplication    = 1 << 24,
-    AlterReplication     = 1 << 25,
-    DropReplication      = 1 << 26,
-    Analyze              = 1 << 27,
+enum class TYdbOperation : ui64 {
+    CreateTable            = 1ull << 0,
+    DropTable              = 1ull << 1,
+    AlterTable             = 1ull << 2,
+    Select                 = 1ull << 3,
+    Upsert                 = 1ull << 4,
+    Replace                = 1ull << 5,
+    Update                 = 1ull << 6,
+    Delete                 = 1ull << 7,
+    InsertRevert           = 1ull << 8,
+    InsertAbort            = 1ull << 9,
+    ReservedInsertIgnore   = 1ull << 10,
+    UpdateOn               = 1ull << 11,
+    DeleteOn               = 1ull << 12,
+    CreateUser             = 1ull << 13,
+    AlterUser              = 1ull << 14,
+    DropUser               = 1ull << 15,
+    CreateGroup            = 1ull << 16,
+    AlterGroup             = 1ull << 17,
+    DropGroup              = 1ull << 18,
+    CreateTopic            = 1ull << 19,
+    AlterTopic             = 1ull << 20,
+    DropTopic              = 1ull << 21,
+    ModifyPermission       = 1ull << 22,
+    RenameGroup            = 1ull << 23,
+    CreateReplication      = 1ull << 24,
+    AlterReplication       = 1ull << 25,
+    DropReplication        = 1ull << 26,
+    Analyze                = 1ull << 27,
+    CreateBackupCollection = 1ull << 28,
+    AlterBackupCollection  = 1ull << 29,
+    DropBackupCollection   = 1ull << 30,
+    Backup                 = 1ull << 31,
+    BackupIncremental      = 1ull << 32,
+    Restore                = 1ull << 33,
+    CreateTransfer         = 1ull << 34,
+    AlterTransfer          = 1ull << 35,
+    DropTransfer           = 1ull << 36,
+    AlterDatabase          = 1ull << 37,
+    FillTable              = 1ull << 38,
+    CreateSecret           = 1ull << 39,
+    AlterSecret            = 1ull << 40,
+    DropSecret             = 1ull << 41,
+    TruncateTable          = 1ull << 42,
 };
 
 Y_DECLARE_FLAGS(TYdbOperations, TYdbOperation);
@@ -254,9 +320,6 @@ const TYdbOperations& KikimrSchemeOps();
 const TYdbOperations& KikimrDataOps();
 const TYdbOperations& KikimrModifyOps();
 const TYdbOperations& KikimrReadOps();
-
-TIssue AddDmlIssue(const TIssue& issue);
-bool AddDmlIssue(const TIssue& issue, TExprContext& ctx);
 
 class TKikimrTransactionContextBase : public TThrRefBase {
 public:
@@ -292,7 +355,6 @@ public:
         Invalidated = false;
         Readonly = false;
         Closed = false;
-        HasUncommittedChangesRead = false;
     }
 
     void SetTempTables(NKikimr::NKqp::TKqpTempTablesState::TConstPtr tempTablesState) {
@@ -339,7 +401,7 @@ public:
             if (TempTablesState) {
                 auto tempTableInfoIt = TempTablesState->FindInfo(table, false);
                 if (tempTableInfoIt != TempTablesState->TempTables.end()) {
-                    table = NKikimr::NKqp::GetTempTablePath(TempTablesState->Database, TempTablesState->SessionId, tempTableInfoIt->first);
+                    table = NKikimr::NKqp::GetTempTablePath(TempTablesState->Database, TempTablesState->TempDirName, tempTableInfoIt->first);
                 }
             }
 
@@ -409,17 +471,6 @@ public:
             }
 
             auto& currentOps = TableOperations[table];
-            const bool currentModify = currentOps & KikimrModifyOps();
-            if (currentModify) {
-                if (KikimrReadOps() & newOp) {
-                    HasUncommittedChangesRead = true;
-                }
-
-                if ((*info)->GetHasIndexTables()) {
-                    HasUncommittedChangesRead = true;
-                }
-            }
-
             currentOps |= newOp;
         }
 
@@ -429,10 +480,9 @@ public:
     virtual ~TKikimrTransactionContextBase() = default;
 
 public:
-    bool HasUncommittedChangesRead = false;
     THashMap<TString, TYdbOperations> TableOperations;
     THashMap<TKikimrPathId, TString> TableByIdMap;
-    TMaybe<NKikimrKqp::EIsolationLevel> EffectiveIsolationLevel;
+    TMaybe<NKqpProto::EIsolationLevel> EffectiveIsolationLevel;
     NKikimr::NKqp::TKqpTempTablesState::TConstPtr TempTablesState;
     bool Readonly = false;
     bool Invalidated = false;
@@ -442,19 +492,12 @@ public:
 class TKikimrSessionContext : public TThrRefBase {
 public:
     TKikimrSessionContext(const NKikimr::NMiniKQL::IFunctionRegistry* functionRegistry,
-        TKikimrConfiguration::TPtr config,
+        TIntrusivePtr<TKikimrConfiguration> config,
         TIntrusivePtr<ITimeProvider> timeProvider,
         TIntrusivePtr<IRandomProvider> randomProvider,
         const TIntrusiveConstPtr<NACLib::TUserToken>& userToken,
         TIntrusivePtr<TKikimrTransactionContextBase> txCtx = nullptr,
-        const TIntrusivePtr<NKikimr::NKqp::TUserRequestContext>& userRequestContext = nullptr)
-        : Configuration(config)
-        , TablesData(MakeIntrusive<TKikimrTablesData>())
-        , QueryCtx(MakeIntrusive<TKikimrQueryContext>(functionRegistry, timeProvider, randomProvider))
-        , TxCtx(txCtx)
-        , UserToken(userToken)
-        , UserRequestContext(userRequestContext)
-    {}
+        const TIntrusivePtr<NKikimr::NKqp::TUserRequestContext>& userRequestContext = nullptr);
 
     TKikimrSessionContext(const TKikimrSessionContext&) = delete;
     TKikimrSessionContext& operator=(const TKikimrSessionContext&) = delete;
@@ -464,7 +507,9 @@ public:
     TKikimrQueryContext& Query() { return *QueryCtx; }
     TKikimrTransactionContextBase& Tx() { Y_ABORT_UNLESS(HasTx()); return *TxCtx; }
 
-    TKikimrConfiguration::TPtr ConfigPtr() { return Configuration; }
+    TIntrusivePtr<TKikimrConfiguration> ConfigPtr();
+    TIntrusiveConstPtr<TKikimrConfiguration> ConfigConstPtr();
+
     TIntrusivePtr<TKikimrTablesData> TablesPtr() { return TablesData; }
     TIntrusivePtr<TKikimrQueryContext> QueryPtr() { return QueryCtx; }
     TIntrusivePtr<TKikimrTransactionContextBase> TxPtr() { return TxCtx; }
@@ -497,10 +542,6 @@ public:
         return DatabaseId;
     }
 
-    const TString& GetSessionId() const {
-        return SessionId;
-    }
-
     void SetCluster(const TString& cluster) {
         Cluster = cluster;
     }
@@ -513,23 +554,11 @@ public:
         DatabaseId = databaseId;
     }
 
-    void SetSessionId(const TString& sessionId) {
-        SessionId = sessionId;
-    }
-
     NKikimr::NKqp::TKqpTempTablesState::TConstPtr GetTempTablesState() const {
         return TempTablesState;
     }
 
-    void Reset(bool keepConfigChanges) {
-        TablesData->Reset();
-        QueryCtx->Reset();
-        ClearTx();
-
-        if (!keepConfigChanges) {
-            Configuration->Restore();
-        }
-    }
+    void Reset(bool keepConfigChanges);
 
     void SetTempTables(NKikimr::NKqp::TKqpTempTablesState::TConstPtr tempTablesState) {
         TablesData->SetTempTables(tempTablesState);
@@ -547,19 +576,25 @@ public:
         return UserRequestContext;
     }
 
+    void SetInternalTypeAnnTransformer(THolder<TVisitorTransformerBase>&& transformer);
+
+    TVisitorTransformerBase* GetInternalTypeAnnTransformer() const {
+        return InternalTypeAnnTransformer.Get();
+    }
+
 private:
     TString UserName;
     TString Cluster;
     TString Database;
     TString DatabaseId;
-    TString SessionId;
-    TKikimrConfiguration::TPtr Configuration;
+    TIntrusivePtr<TKikimrConfiguration> Configuration;
     TIntrusivePtr<TKikimrTablesData> TablesData;
     TIntrusivePtr<TKikimrQueryContext> QueryCtx;
     TIntrusivePtr<TKikimrTransactionContextBase> TxCtx;
     NKikimr::NKqp::TKqpTempTablesState::TConstPtr TempTablesState;
     TIntrusiveConstPtr<NACLib::TUserToken> UserToken;
     TIntrusivePtr<NKikimr::NKqp::TUserRequestContext> UserRequestContext;
+    THolder<TVisitorTransformerBase> InternalTypeAnnTransformer;
 };
 
 TIntrusivePtr<IDataProvider> CreateKikimrDataSource(
@@ -567,7 +602,7 @@ TIntrusivePtr<IDataProvider> CreateKikimrDataSource(
     TTypeAnnotationContext& types,
     TIntrusivePtr<IKikimrGateway> gateway,
     TIntrusivePtr<TKikimrSessionContext> sessionCtx,
-    const NKikimr::NExternalSource::IExternalSourceFactory::TPtr& sourceFactory,
+    const TIntrusivePtr<NKikimr::NExternalSource::IExternalSourceFactory>& sourceFactory,
     bool isInternalCall,
     TGUCSettings::TPtr gucSettings);
 
@@ -576,7 +611,7 @@ TIntrusivePtr<IDataProvider> CreateKikimrDataSink(
     TTypeAnnotationContext& types,
     TIntrusivePtr<IKikimrGateway> gateway,
     TIntrusivePtr<TKikimrSessionContext> sessionCtx,
-    const NKikimr::NExternalSource::IExternalSourceFactory::TPtr& sourceFactory,
+    const TIntrusivePtr<NKikimr::NExternalSource::IExternalSourceFactory>& sourceFactory,
     TIntrusivePtr<IKikimrQueryExecutor> queryExecutor);
 
 } // namespace NYql
@@ -586,4 +621,4 @@ namespace NSQLTranslation {
 void Serialize(const TTranslationSettings& settings, NYql::NProto::TTranslationSettings& serializedSettings);
 void Deserialize(const NYql::NProto::TTranslationSettings& serializedSettings, TTranslationSettings& settings);
 
-}
+} // namespace NSQLTranslation

@@ -9,16 +9,22 @@ SRCS(
     configs_config.h
     configs_dispatcher.cpp
     configs_dispatcher.h
+    configs_dispatcher_observer.h
+    configs_dispatcher_proxy.h
+    configs_dispatcher_proxy.cpp
     console.cpp
     console.h
     console_audit.cpp
     console_audit.h
+    console_handshake.cpp
     console_configs_manager.cpp
     console_configs_manager.h
     console_configs_provider.cpp
     console_configs_provider.h
     console_configs_subscriber.cpp
     console_configs_subscriber.h
+    console_configuration_info_collector.cpp
+    console_configuration_info_collector.h
     console_impl.h
     console_tenants_manager.cpp
     console_tenants_manager.h
@@ -29,6 +35,7 @@ SRCS(
     console__configure.cpp
     console__create_tenant.cpp
     console__drop_yaml_config.cpp
+    console__decommit_groups.cpp
     console__init_scheme.cpp
     console__load_state.cpp
     console__get_log_tail.cpp
@@ -53,6 +60,8 @@ SRCS(
     console__update_tenant_state.cpp
     console__update_tenant_pool_config.cpp
     defs.h
+    feature_flags_configurator.cpp
+    feature_flags_configurator.h
     grpc_library_helper.cpp
     http.cpp
     http.h
@@ -67,8 +76,6 @@ SRCS(
     modifications_validator.cpp
     modifications_validator.h
     net_classifier_updater.cpp
-    shared_cache_configurator.cpp
-    shared_cache_configurator.h
     tx_processor.cpp
     tx_processor.h
     util.cpp
@@ -85,7 +92,7 @@ PEERDIR(
     contrib/ydb/core/blobstorage/groupinfo
     contrib/ydb/core/cms/console/validators
     contrib/ydb/core/config/init
-    contrib/ydb/core/control
+    contrib/ydb/core/control/lib
     contrib/ydb/core/engine/minikql
     contrib/ydb/core/mind
     contrib/ydb/core/node_whiteboard
@@ -94,9 +101,11 @@ PEERDIR(
     contrib/ydb/core/tablet_flat
     contrib/ydb/core/util
     contrib/ydb/library/aclib
+    contrib/ydb/library/protobuf_printer
     contrib/ydb/library/yaml_config
     contrib/ydb/public/api/protos
-    contrib/ydb/public/lib/operation_id
+    contrib/ydb/public/sdk/cpp/src/library/operation_id
+    contrib/ydb/public/sdk/cpp/src/library/operation_id/protos
 )
 
 YQL_LAST_ABI_VERSION()
@@ -109,5 +118,6 @@ RECURSE(
 )
 
 RECURSE_FOR_TESTS(
-    ut
+    ut_configs_dispatcher
+    ut_console
 )

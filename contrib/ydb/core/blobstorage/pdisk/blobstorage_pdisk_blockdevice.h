@@ -6,20 +6,21 @@
 #include "blobstorage_pdisk_util_devicemode.h"
 
 #include <contrib/ydb/core/base/blobstorage.h>
-#include <contrib/ydb/core/control/immediate_control_board_wrapper.h>
+#include <contrib/ydb/core/blobstorage/base/blobstorage_vdiskid.h>
+#include <contrib/ydb/core/control/lib/immediate_control_board_wrapper.h>
 #include <contrib/ydb/library/pdisk_io/aio.h>
 #include <contrib/ydb/library/pdisk_io/drivedata.h>
 #include <contrib/ydb/library/pdisk_io/sector_map.h>
 
-namespace NActors {
-class TActorSystem;
-}
+#include <util/system/file.h>
 
 namespace NKikimr {
 
 struct TPDiskMon;
 
 namespace NPDisk {
+
+struct TPDiskCtx;
 
 ////////////////////////////////////////////////////////////////////////////
 // IBlockDevice - PDisk Hardware abstraction layer
@@ -30,14 +31,14 @@ public:
     virtual ~IBlockDevice()
     {};
     // Initialization methods
-    virtual void Initialize(TActorSystem *actorSystem, const TActorId &pdiskActor) = 0;
+    virtual void Initialize(std::shared_ptr<TPDiskCtx> pdiskCtx) = 0;
     virtual bool IsGood() = 0;
     virtual int GetLastErrno() = 0;
 
     // Synchronous intefrace
     virtual void PwriteSync(const void *data, ui64 size, ui64 offset, TReqId reqId, NWilson::TTraceId *traceId) = 0;
     virtual void PreadSync(void *data, ui32 size, ui64 offset, TReqId reqId, NWilson::TTraceId *traceId) = 0;
-    virtual void TrimSync(ui32 size, ui64 offset) = 0;
+    virtual void TrimSync(ui64 size, ui64 offset) = 0;
 
     // Asynchronous intefrace
     virtual void PwriteAsync(const void *data, ui64 size, ui64 offset, TCompletionAction *completionAction,
@@ -51,7 +52,7 @@ public:
     virtual void FlushAsync(TCompletionAction *completionAction, TReqId reqId) = 0;
     virtual void NoopAsync(TCompletionAction *completionAction, TReqId reqId) = 0;
     virtual void NoopAsyncHackForLogReader(TCompletionAction *completionAction, TReqId reqId) = 0;
-    virtual void TrimAsync(ui32 size, ui64 offset, TCompletionAction *completionAction, TReqId reqId) = 0;
+    virtual void TrimAsync(ui64 size, ui64 offset, TCompletionAction *completionAction, TReqId reqId) = 0;
 
     // Control methods
     virtual bool GetIsTrimEnabled() = 0;
@@ -60,15 +61,23 @@ public:
     virtual void SetWriteCache(bool isEnable) = 0;
     virtual void Stop() = 0;
     virtual TString DebugInfo() = 0;
+
+    // Returns a duplicated file descriptor for the underlying block device.
+    // The caller owns the returned TFileHandle and is responsible for closing it.
+    // Returns an invalid (not open) TFileHandle if the device does not support fd duplication (e.g. SectorMap).
+    virtual TFileHandle DuplicateFd() = 0;
 };
 
 class TPDisk;
 
-IBlockDevice* CreateRealBlockDevice(const TString &path, ui32 pDiskId, TPDiskMon &mon,
+IBlockDevice* CreateRealBlockDevice(const TString &path, TPDiskMon &mon,
         ui64 reorderingCycles, ui64 seekCostNs, ui64 deviceInFlight, TDeviceMode::TFlags flags,
-        ui32 maxQueuedCompletionActions, ui32 completionThreadsCount, TIntrusivePtr<TSectorMap> sectorMap, TPDisk * const pdisk = nullptr, bool readOnly = false);
+        ui32 maxQueuedCompletionActions, ui32 completionThreadsCount, TIntrusivePtr<TSectorMap> sectorMap,
+        ui64 pDiskBufferSize = 512ull << 10,
+        TPDisk * const pdisk = nullptr, bool readOnly = false, bool useBytesFlightControl = false);
 IBlockDevice* CreateRealBlockDeviceWithDefaults(const TString &path, TPDiskMon &mon, TDeviceMode::TFlags flags,
-        TIntrusivePtr<TSectorMap> sectorMap, TActorSystem *actorSystem, TPDisk * const pdisk = nullptr, bool readOnly = false);
+        TIntrusivePtr<TSectorMap> sectorMap, TActorSystem *actorSystem, TPDisk * const pdisk = nullptr,
+        bool readOnly = false, bool useBytesFlightControl = false);
 
 } // NPDisk
 } // NKikimr

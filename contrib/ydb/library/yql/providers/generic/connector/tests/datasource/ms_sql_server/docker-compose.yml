@@ -1,0 +1,23 @@
+services:
+
+  fq-connector-go:
+    build: ./connector.d
+    container_name: fq-tests-mssql-fq-connector-go
+    ports:
+      - 2130
+    depends_on:
+      ms_sql_server:
+        condition: service_healthy
+
+  ms_sql_server:
+    build: ./ms_sql_server.d
+    container_name: fq-tests-mssql-ms_sql_server
+    environment:
+      ACCEPT_EULA: "Y"
+      DOTNET_SYSTEM_GLOBALIZATION_INVARIANT: "false"
+      LANG: ru_RU.UTF-8
+      SA_PASSWORD: Qwerty12345!
+    ports:
+      - 1433:1433
+
+version: "2.4"

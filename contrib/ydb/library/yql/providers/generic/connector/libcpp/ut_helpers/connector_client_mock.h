@@ -2,7 +2,8 @@
 
 #include <contrib/ydb/core/kqp/ut/common/kqp_ut_common.h>
 #include <contrib/ydb/core/formats/arrow/serializer/abstract.h>
-#include <contrib/ydb/library/yql/providers/generic/connector/api/common/data_source.pb.h>
+#include <contrib/ydb/library/yql/providers/common/proto/gateways_config.pb.h>
+#include <contrib/ydb/library/yql/providers/generic/connector/api/service/protos/connector.pb.h>
 #include <contrib/ydb/library/yql/providers/generic/connector/libcpp/client.h>
 #include <contrib/ydb/library/yql/providers/generic/connector/libcpp/error.h>
 #include <contrib/ydb/library/yql/providers/generic/connector/libcpp/ut_helpers/defaults.h>
@@ -32,8 +33,9 @@ namespace NYql::NConnector::NTest {
 #define SETTER(name, protoName) EXPR_SETTER(name, Y_CAT(set_, protoName))
 
 #define SUBPROTO_BUILDER(name, fieldExpr, protoType, builderType)                     \
-    builderType name() {                                                              \
-        return builderType(this->Result_->fieldExpr(), static_cast<TBuilder*>(this)); \
+    builderType name(bool skip = false) {                                             \
+        return builderType(skip ? nullptr : this->Result_->fieldExpr(),               \
+                           static_cast<TBuilder*>(this));                             \
     }                                                                                 \
     TBuilder& name(const protoType& proto) {                                          \
         this->Result_->fieldExpr()->CopyFrom(proto);                                  \
@@ -41,7 +43,7 @@ namespace NYql::NConnector::NTest {
     }
 
 #define DATA_SOURCE_INSTANCE_SUBBUILDER()                                           \
-    TBuilder& DataSourceInstance(const NApi::TDataSourceInstance& proto) {          \
+    TBuilder& DataSourceInstance(const NYql::TGenericDataSourceInstance& proto) {          \
         this->Result_->mutable_data_source_instance()->CopyFrom(proto);             \
         return static_cast<TBuilder&>(*this);                                       \
     }                                                                               \
@@ -61,17 +63,51 @@ namespace NYql::NConnector::NTest {
             static_cast<TBuilder*>(this));                                          \
     }
 
-    MATCHER_P(ProtobufRequestMatcher, expected, "request does not match") {
-        return google::protobuf::util::MessageDifferencer::Equals(arg, expected);
+    template <typename TProto>
+    bool MatchProtos(const TProto& expected, const TProto& actual) {
+        Cerr << "GENERIC-CONNECTOR-MOCK Expected: " << expected.DebugString() << Endl;
+        Cerr << "GENERIC-CONNECTOR-MOCK Actual: " << actual.DebugString() << Endl;
+
+        google::protobuf::util::MessageDifferencer differencer;
+        TString differences;
+        differencer.ReportDifferencesToString(&differences);
+
+        bool result = differencer.Compare(actual, expected);
+
+        if (!result) {
+            Cerr << "GENERIC-CONNECTOR-MOCK Differences:" << Endl << differences << Endl;
+        }
+
+        return result;
     }
 
-#define MATCH_RESULT_WITH_INPUT(INPUT, RESULT_SET, GETTER)                      \
-    {                                                                           \
-        for (const auto& val : INPUT) {                                         \
-            UNIT_ASSERT(RESULT_SET.TryNextRow());                               \
-            UNIT_ASSERT_VALUES_EQUAL(RESULT_SET.ColumnParser(0).GETTER(), val); \
-        }                                                                       \
+    MATCHER_P(ProtobufRequestMatcher, expected, "request does not match") {
+        return MatchProtos(expected, arg);
     }
+
+    MATCHER_P(RequestRelaxedMatcher, checker, "request does not match") {
+        return checker(arg);
+    }
+
+#define MATCH_OPT_RESULT_WITH_VAL_IDX(VAL, RESULT_SET, GETTER, INDEX)               \
+    {                                                                               \
+            auto r = RESULT_SET.ColumnParser(INDEX).GETTER();                       \
+            UNIT_ASSERT_VALUES_EQUAL(r.has_value(), VAL.has_value());               \
+            if (r.has_value()) {                                                    \
+                UNIT_ASSERT_VALUES_EQUAL(*r, *VAL);                                 \
+            }                                                                       \
+    }
+
+#define MATCH_RESULT_WITH_INPUT_IDX(INPUT, RESULT_SET, GETTER, INDEX)               \
+    {                                                                               \
+        for (const auto& val : INPUT) {                                             \
+            UNIT_ASSERT(RESULT_SET.TryNextRow());                                   \
+            UNIT_ASSERT_VALUES_EQUAL(RESULT_SET.ColumnParser(INDEX).GETTER(), val); \
+        }                                                                           \
+    }
+
+#define MATCH_RESULT_WITH_INPUT(INPUT, RESULT_SET, GETTER)\
+    MATCH_RESULT_WITH_INPUT_IDX(INPUT, RESULT_SET, GETTER, 0)
 
     // Make arrow array for one column.
     // Returns field for schema and array with data.
@@ -120,6 +156,10 @@ namespace NYql::NConnector::NTest {
 
     template <class T>
     void SetSimpleValue(const T& value, Ydb::TypedValue* proto, bool optional = false);
+
+    template <class T>
+    void SetValue(const T& value, Ydb::TypedValue* proto,
+        const ::Ydb::Type::PrimitiveTypeId& typeId, bool optional = false);
 
     template <class TParent>
     struct TWithParentBuilder {
@@ -184,7 +224,7 @@ namespace NYql::NConnector::NTest {
     void CreatePostgreSQLExternalDataSource(
         const std::shared_ptr<NKikimr::NKqp::TKikimrRunner>& kikimr,
         const TString& dataSourceName = DEFAULT_DATA_SOURCE_NAME,
-        NApi::EProtocol protocol = DEFAULT_PG_PROTOCOL,
+        NYql::EGenericProtocol protocol = DEFAULT_PG_PROTOCOL,
         const TString& host = DEFAULT_PG_HOST,
         int port = DEFAULT_PG_PORT,
         const TString& login = DEFAULT_LOGIN,
@@ -196,7 +236,7 @@ namespace NYql::NConnector::NTest {
     void CreateClickHouseExternalDataSource(
         const std::shared_ptr<NKikimr::NKqp::TKikimrRunner>& kikimr,
         const TString& dataSourceName = DEFAULT_DATA_SOURCE_NAME,
-        NApi::EProtocol protocol = DEFAULT_CH_PROTOCOL,
+        NYql::EGenericProtocol protocol = DEFAULT_CH_PROTOCOL,
         const TString& clickHouseClusterId = DEFAULT_CH_CLUSTER_ID,
         const TString& login = DEFAULT_LOGIN,
         const TString& password = DEFAULT_PASSWORD,
@@ -224,12 +264,18 @@ namespace NYql::NConnector::NTest {
         // Expectation helpers
         //
 
+        enum class EArgsValidation {
+            Strict,
+            DataSourceInstance,
+            Off,
+        };
+
         template <class TDerived, class TParent = void /* no parent by default */>
-        struct TBaseDataSourceInstanceBuilder: public TProtoBuilder<TParent, NApi::TDataSourceInstance> {
+        struct TBaseDataSourceInstanceBuilder: public TProtoBuilder<TParent, NYql::TGenericDataSourceInstance> {
             using TBuilder = TDerived;
 
-            explicit TBaseDataSourceInstanceBuilder(NApi::TDataSourceInstance* result = nullptr, TParent* parent = nullptr)
-                : TProtoBuilder<TParent, NApi::TDataSourceInstance>(result, parent)
+            explicit TBaseDataSourceInstanceBuilder(NYql::TGenericDataSourceInstance* result = nullptr, TParent* parent = nullptr)
+                : TProtoBuilder<TParent, NYql::TGenericDataSourceInstance>(result, parent)
             {
             }
 
@@ -256,7 +302,7 @@ namespace NYql::NConnector::NTest {
         struct TPostgreSQLDataSourceInstanceBuilder: public TBaseDataSourceInstanceBuilder<TPostgreSQLDataSourceInstanceBuilder<TParent>, TParent> {
             using TBase = TBaseDataSourceInstanceBuilder<TPostgreSQLDataSourceInstanceBuilder<TParent>, TParent>;
 
-            explicit TPostgreSQLDataSourceInstanceBuilder(NApi::TDataSourceInstance* result = nullptr, TParent* parent = nullptr)
+            explicit TPostgreSQLDataSourceInstanceBuilder(NYql::TGenericDataSourceInstance* result = nullptr, TParent* parent = nullptr)
                 : TBase(result, parent)
             {
                 FillWithDefaults();
@@ -266,7 +312,7 @@ namespace NYql::NConnector::NTest {
                 TBase::FillWithDefaults();
                 this->Host(DEFAULT_PG_HOST);
                 this->Port(DEFAULT_PG_PORT);
-                this->Kind(NApi::EDataSourceKind::POSTGRESQL);
+                this->Kind(NYql::EGenericDataSourceKind::POSTGRESQL);
                 this->Protocol(DEFAULT_PG_PROTOCOL);
                 this->Schema(DEFAULT_PG_SCHEMA);
             }
@@ -276,7 +322,7 @@ namespace NYql::NConnector::NTest {
         struct TClickHouseDataSourceInstanceBuilder: public TBaseDataSourceInstanceBuilder<TClickHouseDataSourceInstanceBuilder<TParent>, TParent> {
             using TBase = TBaseDataSourceInstanceBuilder<TClickHouseDataSourceInstanceBuilder<TParent>, TParent>;
 
-            explicit TClickHouseDataSourceInstanceBuilder(NApi::TDataSourceInstance* result = nullptr, TParent* parent = nullptr)
+            explicit TClickHouseDataSourceInstanceBuilder(NYql::TGenericDataSourceInstance* result = nullptr, TParent* parent = nullptr)
                 : TBase(result, parent)
             {
                 FillWithDefaults();
@@ -286,7 +332,7 @@ namespace NYql::NConnector::NTest {
                 TBase::FillWithDefaults();
                 this->Host(DEFAULT_CH_HOST);
                 this->Port(DEFAULT_CH_PORT);
-                this->Kind(NApi::EDataSourceKind::CLICKHOUSE);
+                this->Kind(NYql::EGenericDataSourceKind::CLICKHOUSE);
                 this->Protocol(DEFAULT_CH_PROTOCOL);
             }
         };
@@ -295,7 +341,7 @@ namespace NYql::NConnector::NTest {
         struct TYdbDataSourceInstanceBuilder: public TBaseDataSourceInstanceBuilder<TYdbDataSourceInstanceBuilder<TParent>, TParent> {
             using TBase = TBaseDataSourceInstanceBuilder<TYdbDataSourceInstanceBuilder<TParent>, TParent>;
 
-            explicit TYdbDataSourceInstanceBuilder(NApi::TDataSourceInstance* result = nullptr, TParent* parent = nullptr)
+            explicit TYdbDataSourceInstanceBuilder(NYql::TGenericDataSourceInstance* result = nullptr, TParent* parent = nullptr)
                 : TBase(result, parent)
             {
                 FillWithDefaults();
@@ -305,7 +351,7 @@ namespace NYql::NConnector::NTest {
                 TBase::FillWithDefaults();
                 this->Host(DEFAULT_YDB_HOST);
                 this->Port(DEFAULT_YDB_PORT);
-                this->Kind(NApi::EDataSourceKind::YDB);
+                this->Kind(NYql::EGenericDataSourceKind::YDB);
                 this->Protocol(DEFAULT_YDB_PROTOCOL);
             }
         };
@@ -370,12 +416,11 @@ namespace NYql::NConnector::NTest {
             DATA_SOURCE_INSTANCE_SUBBUILDER();
 
             TDescribeTableResultBuilder<TBuilder> Response() {
-                return TDescribeTableResultBuilder<TBuilder>(ResponseResult_, this);
+                return TDescribeTableResultBuilder<TBuilder>(ResponseResults_.emplace_back(std::make_shared<NApi::TDescribeTableResponse>()), this);
             }
 
             void FillWithDefaults() {
                 Table(DEFAULT_TABLE);
-                Response();
             }
 
             TBuilder& TypeMappingSettings(const NApi::TTypeMappingSettings& proto) {
@@ -385,16 +430,19 @@ namespace NYql::NConnector::NTest {
 
         private:
             void SetExpectation() {
-                EXPECT_CALL(*Mock_, DescribeTableImpl(ProtobufRequestMatcher(*Result_)))
-                    .WillOnce(Return(
-                        TResult<NApi::TDescribeTableResponse>(
-                            {NYdbGrpc::TGrpcStatus(),
-                             *ResponseResult_})));
+                if (ResponseResults_.empty()) {
+                    Response();
+                }
+
+                auto& expectBuilder = EXPECT_CALL(*Mock_, DescribeTableImpl(ProtobufRequestMatcher(*Result_)));
+                for (auto result : ResponseResults_) {
+                    expectBuilder.WillOnce(Return(TResult<NApi::TDescribeTableResponse>({NYdbGrpc::TGrpcStatus(), *result})));
+                }
             }
 
         private:
             TConnectorClientMock* Mock_ = nullptr;
-            std::shared_ptr<NApi::TDescribeTableResponse> ResponseResult_ = std::make_shared<NApi::TDescribeTableResponse>();
+            std::vector<std::shared_ptr<NApi::TDescribeTableResponse>> ResponseResults_;
         };
 
         template <class TParent = void /* no parent by default */>
@@ -416,8 +464,20 @@ namespace NYql::NConnector::NTest {
             }
 
             template <class T>
+            TBuilder& Value(const T& value, const ::Ydb::Type::PrimitiveTypeId& typeId) {
+                SetValue(value, this->Result_->mutable_typed_value(), typeId);
+                return *this;
+            }
+
+            template <class T>
             TBuilder& OptionalValue(const T& value) {
                 SetSimpleValue(value, this->Result_->mutable_typed_value(), true);
+                return *this;
+            }
+
+            template <class T>
+            TBuilder& OptionalValue(const T& value, const ::Ydb::Type::PrimitiveTypeId& typeId) {
+                SetValue(value, this->Result_->mutable_typed_value(), typeId, true);
                 return *this;
             }
 
@@ -471,8 +531,16 @@ namespace NYql::NConnector::NTest {
                 return Arg().Value(value).Done();
             }
 
+            TBuilder& Value(const auto& value, const ::Ydb::Type::PrimitiveTypeId& typeId) {
+                return Arg().Value(value, typeId).Done();
+            }
+
             TBuilder& OptionalValue(const auto& value) {
                 return Arg().OptionalValue(value).Done();
+            }
+
+            TBuilder& OptionalValue(const auto& value, const ::Ydb::Type::PrimitiveTypeId& typeId) {
+                return Arg().OptionalValue(value, typeId).Done();
             }
 
             void FillWithDefaults() {
@@ -594,6 +662,23 @@ namespace NYql::NConnector::NTest {
         };
 
         template <class TParent = void /* no parent by default */>
+        struct TLimitBuilder: public TProtoBuilder<TParent, NApi::TSelect::TLimit> {
+            using TBuilder = TLimitBuilder<TParent>;
+
+            TLimitBuilder(NApi::TSelect::TLimit* result = nullptr, TParent* parent = nullptr)
+                : TProtoBuilder<TParent, NApi::TSelect::TLimit>(result, parent)
+            {
+                FillWithDefaults();
+            }
+
+            SETTER(Limit, limit);
+            SETTER(Offset, offset);
+
+            void FillWithDefaults() {
+            }
+        };
+
+        template <class TParent = void /* no parent by default */>
         struct TSelectBuilder: public TProtoBuilder<TParent, NApi::TSelect> {
             using TBuilder = TSelectBuilder<TParent>;
 
@@ -607,6 +692,7 @@ namespace NYql::NConnector::NTest {
             DATA_SOURCE_INSTANCE_SUBBUILDER();
             SUBPROTO_BUILDER(What, mutable_what, NApi::TSelect::TWhat, TWhatBuilder<TBuilder>);
             SUBPROTO_BUILDER(Where, mutable_where, NApi::TSelect::TWhere, TWhereBuilder<TBuilder>);
+            SUBPROTO_BUILDER(Limit, mutable_limit, NApi::TSelect::TLimit, TLimitBuilder<TBuilder>);
 
             void FillWithDefaults() {
                 Table(DEFAULT_TABLE);
@@ -660,9 +746,7 @@ namespace NYql::NConnector::NTest {
             explicit TListSplitsExpectationBuilder(NApi::TListSplitsRequest* result = nullptr, TConnectorClientMock* mock = nullptr)
                 : TProtoBuilder<int, NApi::TListSplitsRequest>(result)
                 , Mock_(mock)
-
             {
-                FillWithDefaults();
             }
 
             explicit TListSplitsExpectationBuilder(TConnectorClientMock* mock)
@@ -678,22 +762,58 @@ namespace NYql::NConnector::NTest {
             SETTER(MaxSplitCount, max_split_count);
 
             TListSplitsResultBuilder<TBuilder> Result() {
-                return TListSplitsResultBuilder<TBuilder>(ResponseResult_, this);
+                return TListSplitsResultBuilder<TBuilder>(ResponseResults_.emplace_back(std::make_shared<TListSplitsStreamIteratorMock>()), this);
             }
 
-            void FillWithDefaults() {
-                Result();
+            auto& Status(const NYdbGrpc::TGrpcStatus& status) {
+                ResponseStatus_ = status;
+                return *this;
+            }
+
+            auto& ValidateArgs(EArgsValidation validateCase) {
+                ValidateArgs_ = validateCase;
+                return *this;
             }
 
         private:
             void SetExpectation() {
-                EXPECT_CALL(*Mock_, ListSplitsImpl(ProtobufRequestMatcher(*Result_)))
-                    .WillOnce(Return(TIteratorResult<IListSplitsStreamIterator>{NYdbGrpc::TGrpcStatus(), ResponseResult_}));
+                if (ResponseResults_.empty()) {
+                    Result();
+                }
+
+                const auto setupResponse = [&](auto& expectBuilder) {
+                    for (auto response : ResponseResults_) {
+                        expectBuilder.WillOnce(Return(TIteratorResult<IListSplitsStreamIterator>{ResponseStatus_, response}));
+                    }
+                };
+
+                switch (ValidateArgs_) {
+                    case EArgsValidation::Strict:
+                        setupResponse(EXPECT_CALL(*Mock_, ListSplitsImpl(ProtobufRequestMatcher(*Result_))));
+                        break;
+                    case EArgsValidation::DataSourceInstance:
+                        if (!Result_->selects().empty()) {
+                            setupResponse(EXPECT_CALL(*Mock_, ListSplitsImpl(RequestRelaxedMatcher([expected = Result_->selects(0).data_source_instance()](const NConnector::NApi::TListSplitsRequest& actual) {
+                                for (const auto& select : actual.selects()) {
+                                    if (!MatchProtos(expected, select.data_source_instance())) {
+                                        return false;
+                                    }
+                                }
+                                return true;
+                            }))));
+                            break;
+                        }
+                    case EArgsValidation::Off:
+                        setupResponse(EXPECT_CALL(*Mock_, ListSplitsImpl(RequestRelaxedMatcher([](const auto&) { return true; }))));
+                        break;
+                }
             }
 
         private:
             TConnectorClientMock* Mock_ = nullptr;
-            TListSplitsStreamIteratorMock::TPtr ResponseResult_ = std::make_shared<TListSplitsStreamIteratorMock>();
+            std::vector<TListSplitsStreamIteratorMock::TPtr> ResponseResults_;
+            NYdbGrpc::TGrpcStatus ResponseStatus_ {};
+            EArgsValidation ValidateArgs_ = EArgsValidation::Strict;
         };
 
         template <class TParent = void /* no parent by default */>
@@ -745,9 +865,20 @@ namespace NYql::NConnector::NTest {
             DATA_SOURCE_INSTANCE_SUBBUILDER();
             SUBPROTO_BUILDER(Split, add_splits, NApi::TSplit, TSplitBuilder<TBuilder>);
             SETTER(Format, format);
+            SETTER(Filtering, filtering);
 
             TReadSplitsResultBuilder<TBuilder> Result() {
-                return TReadSplitsResultBuilder<TBuilder>(ResponseResult_, this);
+                return TReadSplitsResultBuilder<TBuilder>(ResponseResults_.emplace_back(std::make_shared<TReadSplitsStreamIteratorMock>()), this);
+            }
+
+            auto& Status(const NYdbGrpc::TGrpcStatus& status) {
+                ResponseStatus_ = status;
+                return *this;
+            }
+
+            auto& ValidateArgs(EArgsValidation validateCase) {
+                ValidateArgs_ = validateCase;
+                return *this;
             }
 
             void FillWithDefaults() {
@@ -756,13 +887,43 @@ namespace NYql::NConnector::NTest {
 
         private:
             void SetExpectation() {
-                EXPECT_CALL(*Mock_, ReadSplitsImpl(ProtobufRequestMatcher(*Result_)))
-                    .WillOnce(Return(TIteratorResult<IReadSplitsStreamIterator>{NYdbGrpc::TGrpcStatus(), ResponseResult_}));
+                if (ResponseResults_.empty()) {
+                    Result();
+                }
+
+                const auto setupResponse = [&](auto& expectBuilder) {
+                    for (auto response : ResponseResults_) {
+                        expectBuilder.WillOnce(Return(TIteratorResult<IReadSplitsStreamIterator>{ResponseStatus_, response}));
+                    }
+                };
+
+                switch (ValidateArgs_) {
+                    case EArgsValidation::Strict:
+                        setupResponse(EXPECT_CALL(*Mock_, ReadSplitsImpl(ProtobufRequestMatcher(*Result_))));
+                        break;
+                    case EArgsValidation::DataSourceInstance:
+                        if (!Result_->splits().empty()) {
+                            setupResponse(EXPECT_CALL(*Mock_, ReadSplitsImpl(RequestRelaxedMatcher([expected = Result_->splits(0).select().data_source_instance()](const NConnector::NApi::TReadSplitsRequest& actual) {
+                                for (const auto& split : actual.splits()) {
+                                    if (!MatchProtos(expected, split.select().data_source_instance())) {
+                                        return false;
+                                    }
+                                }
+                                return true;
+                            }))));
+                            break;
+                        }
+                    case EArgsValidation::Off:
+                        setupResponse(EXPECT_CALL(*Mock_, ReadSplitsImpl(RequestRelaxedMatcher([](const auto&) { return true; }))));
+                        break;
+                }
             }
 
         private:
             TConnectorClientMock* Mock_ = nullptr;
-            TReadSplitsStreamIteratorMock::TPtr ResponseResult_ = std::make_shared<TReadSplitsStreamIteratorMock>();
+            std::vector<TReadSplitsStreamIteratorMock::TPtr> ResponseResults_;
+            NYdbGrpc::TGrpcStatus ResponseStatus_ {};
+            EArgsValidation ValidateArgs_ = EArgsValidation::Strict;
         };
 
         TDescribeTableExpectationBuilder ExpectDescribeTable() {
@@ -777,7 +938,7 @@ namespace NYql::NConnector::NTest {
             return TReadSplitsExpectationBuilder(this);
         }
 
-        TDescribeTableAsyncResult DescribeTable(const NApi::TDescribeTableRequest& request) override {
+        TDescribeTableAsyncResult DescribeTable(const NApi::TDescribeTableRequest& request, TDuration = {}) override {
             Cerr << "Call DescribeTable.\n"
                  << request.Utf8DebugString() << Endl;
             auto result = DescribeTableImpl(request);
@@ -791,7 +952,7 @@ namespace NYql::NConnector::NTest {
             return NThreading::MakeFuture(std::move(result));
         }
 
-        TListSplitsStreamIteratorAsyncResult ListSplits(const NApi::TListSplitsRequest& request) override {
+        TListSplitsStreamIteratorAsyncResult ListSplits(const NApi::TListSplitsRequest& request, TDuration = {}) override {
             Cerr << "Call ListSplits.\n"
                  << request.Utf8DebugString() << Endl;
             auto result = ListSplitsImpl(request);
@@ -800,23 +961,54 @@ namespace NYql::NConnector::NTest {
             return NThreading::MakeFuture(std::move(result));
         }
 
-        TReadSplitsStreamIteratorAsyncResult ReadSplits(const NApi::TReadSplitsRequest& request) override {
-            Cerr << "Call ReadSplits.\n"
-                 << request.Utf8DebugString() << Endl;
+        TReadSplitsStreamIteratorAsyncResult ReadSplits(const NApi::TReadSplitsRequest& request, TDuration = {}) override {
+            Cerr << "Call ReadSplits.\n" << request.Utf8DebugString() << Endl;
+            auto resultPromise = NThreading::NewPromise<TIteratorResult<IReadSplitsStreamIterator>>();
+
+            with_lock (Mutex_) {
+                if (ReadingLocked_) {
+                    Cerr << "Delay ReadSplits." << Endl;
+                    PendingReadSplits.push_back({request, resultPromise});
+                    return resultPromise.GetFuture();
+                }
+            }
+
+            ProcessReadSplits(request, resultPromise);
+            return resultPromise.GetFuture();
+        }
+
+        void LockReading() {
+            with_lock (Mutex_) {
+                ReadingLocked_ = true;
+            }
+        }
+
+        void UnlockReading() {
+            with_lock (Mutex_) {
+                ReadingLocked_ = false;
+                for (auto& pending : PendingReadSplits) {
+                    Cerr << "Process pending ReadSplits." << Endl;
+                    ProcessReadSplits(pending.Request, pending.ResultPromise);
+                }
+                PendingReadSplits.clear();
+            }
+        }
+
+    private:
+        void ProcessReadSplits(const NApi::TReadSplitsRequest& request, NThreading::TPromise<TIteratorResult<IReadSplitsStreamIterator>>& resultPromise) {
             auto result = ReadSplitsImpl(request);
-            Cerr << "ReadSplits result.\n"
-                 << StatusToDebugString(result.Status) << Endl;
-            return NThreading::MakeFuture(std::move(result));
+            Cerr << "ReadSplits result.\n" << StatusToDebugString(result.Status) << Endl;
+            resultPromise.SetValue(std::move(result));
         }
 
     protected:
         static TString StatusToDebugString(const NYdbGrpc::TGrpcStatus& status) {
             TStringBuilder s;
             s << "GRpcStatusCode: " << status.GRpcStatusCode << '\n';
-            if (status.Msg) {
+            if (!status.Msg.empty()) {
                 s << status.Msg;
             }
-            if (status.Details) {
+            if (!status.Details.empty()) {
                 s << " (" << status.Details << ')';
             }
             if (status.InternalError) {
@@ -824,5 +1016,15 @@ namespace NYql::NConnector::NTest {
             }
             return std::move(s);
         }
+
+        template <typename TRequest, typename TResult>
+        struct TPendingResult {
+            TRequest Request;
+            NThreading::TPromise<TResult> ResultPromise;
+        };
+
+        std::vector<TPendingResult<NApi::TReadSplitsRequest, TIteratorResult<IReadSplitsStreamIterator>>> PendingReadSplits;
+        bool ReadingLocked_ = false;
+        TMutex Mutex_;
     };
 } // namespace NYql::NConnector::NTest

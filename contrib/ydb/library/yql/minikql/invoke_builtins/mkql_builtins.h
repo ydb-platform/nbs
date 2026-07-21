@@ -2,10 +2,8 @@
 
 #include <contrib/ydb/library/yql/minikql/mkql_function_metadata.h>
 
-namespace NKikimr {
-namespace NMiniKQL {
+namespace NKikimr::NMiniKQL {
 
 IBuiltinFunctionRegistry::TPtr CreateBuiltinRegistry();
 
-} // namspace NMiniKQL
-} // namspace NKikimr
+} // namespace NKikimr::NMiniKQL

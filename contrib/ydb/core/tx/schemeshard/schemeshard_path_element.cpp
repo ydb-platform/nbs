@@ -1,5 +1,7 @@
 #include "schemeshard_path_element.h"
 
+#include <contrib/ydb/core/sys_view/common/path.h>
+
 #include <library/cpp/json/json_reader.h>
 
 namespace NKikimr::NSchemeShard {
@@ -33,6 +35,13 @@ bool CheckSpaceChanged(const TSpaceLimits& limits, ui64 newValue, ui64 oldValue,
     }
 
     const ui64 diff = newValue - oldValue;
+    if (limits.Allocated > Max<ui64>() - diff) {
+        errStr = TStringBuilder()
+            << "New " << tabletType << " space overflows allocated counter" << suffix
+            << ": " << limits.Allocated << " + " << diff << " > " << Max<ui64>();
+        return false;
+    }
+
     const ui64 newAllocated = limits.Allocated + diff;
     if (newAllocated <= limits.Limit) {
         return true;
@@ -59,31 +68,27 @@ ui64 TPathElement::GetAliveChildren() const {
     return AliveChildrenCount;
 }
 
-void TPathElement::SetAliveChildren(ui64 val) {
-    AliveChildrenCount = val;
-}
-
 ui64 TPathElement::GetBackupChildren() const {
     return BackupChildrenCount;
 }
 
-void TPathElement::IncAliveChildren(ui64 delta, bool isBackup) {
-    Y_ABORT_UNLESS(Max<ui64>() - AliveChildrenCount >= delta);
-    AliveChildrenCount += delta;
+void TPathElement::IncAliveChildrenPrivate(bool isBackup) {
+    Y_ABORT_UNLESS(Max<ui64>() - AliveChildrenCount >= 1);
+    AliveChildrenCount += 1;
 
     if (isBackup) {
-        Y_ABORT_UNLESS(Max<ui64>() - BackupChildrenCount >= delta);
-        BackupChildrenCount += delta;
+        Y_ABORT_UNLESS(Max<ui64>() - BackupChildrenCount >= 1);
+        BackupChildrenCount += 1;
     }
 }
 
-void TPathElement::DecAliveChildren(ui64 delta, bool isBackup) {
-    Y_ABORT_UNLESS(AliveChildrenCount >= delta);
-    AliveChildrenCount -= delta;
+void TPathElement::DecAliveChildrenPrivate(bool isBackup) {
+    Y_ABORT_UNLESS(AliveChildrenCount >= 1);
+    AliveChildrenCount -= 1;
 
     if (isBackup) {
-        Y_ABORT_UNLESS(BackupChildrenCount >= delta);
-        BackupChildrenCount -= delta;
+        Y_ABORT_UNLESS(BackupChildrenCount >= 1);
+        BackupChildrenCount -= 1;
     }
 }
 
@@ -113,6 +118,10 @@ bool TPathElement::IsDirectory() const {
     return PathType == EPathType::EPathTypeDir;
 }
 
+bool TPathElement::IsSystemDirectory() const {
+    return IsDirectory() && Name == NSysView::SysPathName;
+}
+
 bool TPathElement::IsTableIndex() const {
     return PathType == EPathType::EPathTypeTableIndex;
 }
@@ -139,6 +148,10 @@ bool TPathElement::IsDomainRoot() const {
 
 bool TPathElement::IsSubDomainRoot() const {
     return PathType == EPathType::EPathTypeSubDomain || IsRoot();
+}
+
+bool TPathElement::IsPlainSubDomainRoot() const {
+    return PathType == EPathType::EPathTypeSubDomain;
 }
 
 bool TPathElement::IsExternalSubDomainRoot() const {
@@ -177,6 +190,10 @@ bool TPathElement::IsReplication() const {
     return PathType == EPathType::EPathTypeReplication;
 }
 
+bool TPathElement::IsTransfer() const {
+    return PathType == EPathType::EPathTypeTransfer;
+}
+
 bool TPathElement::IsBlobDepot() const {
     return PathType == EPathType::EPathTypeBlobDepot;
 }
@@ -187,7 +204,7 @@ bool TPathElement::IsContainer() const {
 }
 
 bool TPathElement::IsLikeDirectory() const {
-    return IsDirectory() || IsDomainRoot() || IsOlapStore() || IsTableIndex();
+    return IsDirectory() || IsDomainRoot() || IsOlapStore() || IsTableIndex() || IsBackupCollection();
 }
 
 bool TPathElement::HasActiveChanges() const {
@@ -215,8 +232,20 @@ bool TPathElement::IsExternalDataSource() const {
     return PathType == EPathType::EPathTypeExternalDataSource;
 }
 
+bool TPathElement::IsIncrementalBackupTable() const {
+    auto it = UserAttrs->Attrs.find(ATTR_INCREMENTAL_BACKUP);
+    if (it == UserAttrs->Attrs.end()) {
+        return false;
+    }
+    return TString(it->second) != "null";
+}
+
 bool TPathElement::IsView() const {
     return PathType == EPathType::EPathTypeView;
+}
+
+bool TPathElement::IsSysView() const {
+    return PathType == EPathType::EPathTypeSysView;
 }
 
 bool TPathElement::IsTemporary() const {
@@ -225,6 +254,22 @@ bool TPathElement::IsTemporary() const {
 
 bool TPathElement::IsResourcePool() const {
     return PathType == EPathType::EPathTypeResourcePool;
+}
+
+bool TPathElement::IsBackupCollection() const {
+    return PathType == EPathType::EPathTypeBackupCollection;
+}
+
+bool TPathElement::IsSecret() const {
+    return PathType == EPathType::EPathTypeSecret;
+}
+
+bool TPathElement::IsStreamingQuery() const {
+    return PathType == EPathType::EPathTypeStreamingQuery;
+}
+
+bool TPathElement::IsTestShardSet() const {
+    return PathType == EPathType::EPathTypeTestShardSet;
 }
 
 void TPathElement::SetDropped(TStepId step, TTxId txId) {
@@ -422,6 +467,10 @@ void TPathElement::SetAsyncReplica(bool value) {
     IsAsyncReplica = value;
 }
 
+void TPathElement::SetIncrementalRestoreTable() {
+    IsIncrementalRestoreTable = true;
+}
+
 bool TPathElement::HasRuntimeAttrs() const {
     return (VolumeSpaceRaw.Allocated > 0 ||
             VolumeSpaceSSD.Allocated > 0 ||
@@ -457,7 +506,8 @@ void TPathElement::SerializeRuntimeAttrs(
     process(FileStoreSpaceHDD, "__filestore_space_allocated_hdd");
     process(FileStoreSpaceSSDSystem, "__filestore_space_allocated_ssd_system");
 
-    if (IsAsyncReplica) {
+    // Set __async_replica attribute only for true async replica tables, not for incremental backup tables
+    if (IsAsyncReplica && !IsIncrementalRestoreTable) {
         auto* attr = userAttrs->Add();
         attr->SetKey(ToString(ATTR_ASYNC_REPLICA));
         attr->SetValue("true");

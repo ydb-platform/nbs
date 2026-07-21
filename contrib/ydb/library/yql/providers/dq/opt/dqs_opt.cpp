@@ -18,7 +18,7 @@
 #include <contrib/ydb/library/yql/dq/opt/dq_opt_build.h>
 #include <contrib/ydb/library/yql/dq/opt/dq_opt_peephole.h>
 #include <contrib/ydb/library/yql/dq/type_ann/dq_type_ann.h>
-#include <contrib/ydb/library/yql/dq/integration/yql_dq_integration.h>
+#include <contrib/ydb/library/yql/core/dq_integration/yql_dq_integration.h>
 
 #include <contrib/ydb/library/yql/utils/log/log.h>
 
@@ -94,16 +94,15 @@ namespace NYql::NDqs {
                     }
 
                     YQL_CLOG(INFO, ProviderDq) << "DqsRewritePhyBlockReadOnDqIntegration";
-                    return Build<TCoWideFromBlocks>(ctx, node->Pos())
-                            .Input(
-                                Build<TCoToFlow>(ctx, node->Pos())
-                                .Input(Build<TDqReadBlockWideWrap>(ctx, node->Pos())
-                                                .Input(readWideWrap.Input())
-                                                .Flags(readWideWrap.Flags())
-                                                .Token(readWideWrap.Token())
-                                            .Done().Ptr())
-                                .Done())
-                            .Done().Ptr();
+                    return Build<TCoToFlow>(ctx, node->Pos())
+                        .Input(Build<TCoWideFromBlocks>(ctx, node->Pos())
+                            .Input(Build<TDqReadBlockWideWrap>(ctx, node->Pos())
+                                .Input(readWideWrap.Input())
+                                .Flags(readWideWrap.Flags())
+                                .Token(readWideWrap.Token())
+                                .Done().Ptr())
+                            .Done())
+                        .Done().Ptr();
                 }, ctx, optSettings);
         });
     }

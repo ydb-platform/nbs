@@ -4,7 +4,7 @@
  *
  *	  Routines for opclass (and opfamily) manipulation commands
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -52,7 +52,7 @@
 static void AlterOpFamilyAdd(AlterOpFamilyStmt *stmt,
 							 Oid amoid, Oid opfamilyoid,
 							 int maxOpNumber, int maxProcNumber,
-							 int opclassOptsProcNumber, List *items);
+							 int optsProcNumber, List *items);
 static void AlterOpFamilyDrop(AlterOpFamilyStmt *stmt,
 							  Oid amoid, Oid opfamilyoid,
 							  int maxOpNumber, int maxProcNumber,
@@ -66,6 +66,7 @@ static void storeOperators(List *opfamilyname, Oid amoid, Oid opfamilyoid,
 						   List *operators, bool isAdd);
 static void storeProcedures(List *opfamilyname, Oid amoid, Oid opfamilyoid,
 							List *procedures, bool isAdd);
+static bool typeDepNeeded(Oid typid, OpFamilyMember *member);
 static void dropOperators(List *opfamilyname, Oid amoid, Oid opfamilyoid,
 						  List *operators);
 static void dropProcedures(List *opfamilyname, Oid amoid, Oid opfamilyoid,
@@ -240,7 +241,8 @@ get_opclass_oid(Oid amID, List *opclassname, bool missing_ok)
  * Caller must have done permissions checks etc. already.
  */
 static ObjectAddress
-CreateOpFamily(const char *amname, const char *opfname, Oid namespaceoid, Oid amoid)
+CreateOpFamily(CreateOpFamilyStmt *stmt, const char *opfname,
+			   Oid namespaceoid, Oid amoid)
 {
 	Oid			opfamilyoid;
 	Relation	rel;
@@ -264,7 +266,7 @@ CreateOpFamily(const char *amname, const char *opfname, Oid namespaceoid, Oid am
 		ereport(ERROR,
 				(errcode(ERRCODE_DUPLICATE_OBJECT),
 				 errmsg("operator family \"%s\" for access method \"%s\" already exists",
-						opfname, amname)));
+						opfname, stmt->amname)));
 
 	/*
 	 * Okay, let's create the pg_opfamily entry.
@@ -312,6 +314,10 @@ CreateOpFamily(const char *amname, const char *opfname, Oid namespaceoid, Oid am
 	/* dependency on extension */
 	recordDependencyOnCurrentExtension(&myself, false);
 
+	/* Report the new operator family to possibly interested event triggers */
+	EventTriggerCollectSimpleCommand(myself, InvalidObjectAddress,
+									 (Node *) stmt);
+
 	/* Post creation hook for new operator family */
 	InvokeObjectPostCreateHook(OperatorFamilyRelationId, opfamilyoid, 0);
 
@@ -357,7 +363,7 @@ DefineOpClass(CreateOpClassStmt *stmt)
 													 &opcname);
 
 	/* Check we have creation rights in target namespace */
-	aclresult = pg_namespace_aclcheck(namespaceoid, GetUserId(), ACL_CREATE);
+	aclresult = object_aclcheck(NamespaceRelationId, namespaceoid, GetUserId(), ACL_CREATE);
 	if (aclresult != ACLCHECK_OK)
 		aclcheck_error(aclresult, OBJECT_SCHEMA,
 					   get_namespace_name(namespaceoid));
@@ -416,7 +422,7 @@ DefineOpClass(CreateOpClassStmt *stmt)
 #ifdef NOT_USED
 	/* XXX this is unnecessary given the superuser check above */
 	/* Check we have ownership of the datatype */
-	if (!pg_type_ownercheck(typeoid, GetUserId()))
+	if (!object_ownercheck(TypeRelationId, typeoid, GetUserId()))
 		aclcheck_error_type(ACLCHECK_NOT_OWNER, typeoid);
 #endif
 
@@ -447,13 +453,17 @@ DefineOpClass(CreateOpClassStmt *stmt)
 		}
 		else
 		{
+			CreateOpFamilyStmt *opfstmt;
 			ObjectAddress tmpAddr;
+
+			opfstmt = makeNode(CreateOpFamilyStmt);
+			opfstmt->opfamilyname = stmt->opclassname;
+			opfstmt->amname = stmt->amname;
 
 			/*
 			 * Create it ... again no need for more permissions ...
 			 */
-			tmpAddr = CreateOpFamily(stmt->amname, opcname,
-									 namespaceoid, amoid);
+			tmpAddr = CreateOpFamily(opfstmt, opcname, namespaceoid, amoid);
 			opfamilyoid = tmpAddr.objectId;
 		}
 	}
@@ -504,11 +514,11 @@ DefineOpClass(CreateOpClassStmt *stmt)
 #ifdef NOT_USED
 				/* XXX this is unnecessary given the superuser check above */
 				/* Caller must own operator and its underlying function */
-				if (!pg_oper_ownercheck(operOid, GetUserId()))
+				if (!object_ownercheck(OperatorRelationId, operOid, GetUserId()))
 					aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_OPERATOR,
 								   get_opname(operOid));
 				funcOid = get_opcode(operOid);
-				if (!pg_proc_ownercheck(funcOid, GetUserId()))
+				if (!object_ownercheck(ProcedureRelationId, funcOid, GetUserId()))
 					aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_FUNCTION,
 								   get_func_name(funcOid));
 #endif
@@ -533,7 +543,7 @@ DefineOpClass(CreateOpClassStmt *stmt)
 #ifdef NOT_USED
 				/* XXX this is unnecessary given the superuser check above */
 				/* Caller must own function */
-				if (!pg_proc_ownercheck(funcOid, GetUserId()))
+				if (!object_ownercheck(ProcedureRelationId, funcOid, GetUserId()))
 					aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_FUNCTION,
 								   get_func_name(funcOid));
 #endif
@@ -561,7 +571,7 @@ DefineOpClass(CreateOpClassStmt *stmt)
 #ifdef NOT_USED
 				/* XXX this is unnecessary given the superuser check above */
 				/* Check we have ownership of the datatype */
-				if (!pg_type_ownercheck(storageoid, GetUserId()))
+				if (!object_ownercheck(TypeRelationId, storageoid, GetUserId()))
 					aclcheck_error_type(ACLCHECK_NOT_OWNER, storageoid);
 #endif
 				break;
@@ -772,7 +782,7 @@ DefineOpFamily(CreateOpFamilyStmt *stmt)
 													 &opfname);
 
 	/* Check we have creation rights in target namespace */
-	aclresult = pg_namespace_aclcheck(namespaceoid, GetUserId(), ACL_CREATE);
+	aclresult = object_aclcheck(NamespaceRelationId, namespaceoid, GetUserId(), ACL_CREATE);
 	if (aclresult != ACLCHECK_OK)
 		aclcheck_error(aclresult, OBJECT_SCHEMA,
 					   get_namespace_name(namespaceoid));
@@ -792,7 +802,7 @@ DefineOpFamily(CreateOpFamilyStmt *stmt)
 				 errmsg("must be superuser to create an operator family")));
 
 	/* Insert pg_opfamily catalog entry */
-	return CreateOpFamily(stmt->amname, opfname, namespaceoid, amoid);
+	return CreateOpFamily(stmt, opfname, namespaceoid, amoid);
 }
 
 
@@ -810,7 +820,7 @@ AlterOpFamily(AlterOpFamilyStmt *stmt)
 	Oid			amoid,			/* our AM's oid */
 				opfamilyoid;	/* oid of opfamily */
 	int			maxOpNumber,	/* amstrategies value */
-				optsProcNumber, /* amopclassopts value */
+				optsProcNumber, /* amoptsprocnum value */
 				maxProcNumber;	/* amsupport value */
 	HeapTuple	tup;
 	Form_pg_am	amform;
@@ -921,11 +931,11 @@ AlterOpFamilyAdd(AlterOpFamilyStmt *stmt, Oid amoid, Oid opfamilyoid,
 #ifdef NOT_USED
 				/* XXX this is unnecessary given the superuser check above */
 				/* Caller must own operator and its underlying function */
-				if (!pg_oper_ownercheck(operOid, GetUserId()))
+				if (!object_ownercheck(OperatorRelationId, operOid, GetUserId()))
 					aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_OPERATOR,
 								   get_opname(operOid));
 				funcOid = get_opcode(operOid);
-				if (!pg_proc_ownercheck(funcOid, GetUserId()))
+				if (!object_ownercheck(ProcedureRelationId, funcOid, GetUserId()))
 					aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_FUNCTION,
 								   get_func_name(funcOid));
 #endif
@@ -955,7 +965,7 @@ AlterOpFamilyAdd(AlterOpFamilyStmt *stmt, Oid amoid, Oid opfamilyoid,
 #ifdef NOT_USED
 				/* XXX this is unnecessary given the superuser check above */
 				/* Caller must own function */
-				if (!pg_proc_ownercheck(funcOid, GetUserId()))
+				if (!object_ownercheck(ProcedureRelationId, funcOid, GetUserId()))
 					aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_FUNCTION,
 								   get_func_name(funcOid));
 #endif
@@ -1312,7 +1322,7 @@ assignProcTypes(OpFamilyMember *member, Oid amoid, Oid typeoid,
 			/*
 			 * pg_amproc functions are indexed by (lefttype, righttype), but
 			 * an equalimage function can only be called at CREATE INDEX time.
-			 * The same opclass opcintype OID is always used for leftype and
+			 * The same opclass opcintype OID is always used for lefttype and
 			 * righttype.  Providing a cross-type routine isn't sensible.
 			 * Reject cross-type ALTER OPERATOR FAMILY ...  ADD FUNCTION 4
 			 * statements here.
@@ -1499,6 +1509,29 @@ storeOperators(List *opfamilyname, Oid amoid, Oid opfamilyoid,
 		recordDependencyOn(&myself, &referenced,
 						   op->ref_is_hard ? DEPENDENCY_INTERNAL : DEPENDENCY_AUTO);
 
+		if (typeDepNeeded(op->lefttype, op))
+		{
+			referenced.classId = TypeRelationId;
+			referenced.objectId = op->lefttype;
+			referenced.objectSubId = 0;
+
+			/* see comments in amapi.h about dependency strength */
+			recordDependencyOn(&myself, &referenced,
+							   op->ref_is_hard ? DEPENDENCY_NORMAL : DEPENDENCY_AUTO);
+		}
+
+		if (op->lefttype != op->righttype &&
+			typeDepNeeded(op->righttype, op))
+		{
+			referenced.classId = TypeRelationId;
+			referenced.objectId = op->righttype;
+			referenced.objectSubId = 0;
+
+			/* see comments in amapi.h about dependency strength */
+			recordDependencyOn(&myself, &referenced,
+							   op->ref_is_hard ? DEPENDENCY_NORMAL : DEPENDENCY_AUTO);
+		}
+
 		/* A search operator also needs a dep on the referenced opfamily */
 		if (OidIsValid(op->sortfamily))
 		{
@@ -1600,12 +1633,86 @@ storeProcedures(List *opfamilyname, Oid amoid, Oid opfamilyoid,
 		recordDependencyOn(&myself, &referenced,
 						   proc->ref_is_hard ? DEPENDENCY_INTERNAL : DEPENDENCY_AUTO);
 
+		if (typeDepNeeded(proc->lefttype, proc))
+		{
+			referenced.classId = TypeRelationId;
+			referenced.objectId = proc->lefttype;
+			referenced.objectSubId = 0;
+
+			/* see comments in amapi.h about dependency strength */
+			recordDependencyOn(&myself, &referenced,
+							   proc->ref_is_hard ? DEPENDENCY_NORMAL : DEPENDENCY_AUTO);
+		}
+
+		if (proc->lefttype != proc->righttype &&
+			typeDepNeeded(proc->righttype, proc))
+		{
+			referenced.classId = TypeRelationId;
+			referenced.objectId = proc->righttype;
+			referenced.objectSubId = 0;
+
+			/* see comments in amapi.h about dependency strength */
+			recordDependencyOn(&myself, &referenced,
+							   proc->ref_is_hard ? DEPENDENCY_NORMAL : DEPENDENCY_AUTO);
+		}
+
 		/* Post create hook of access method procedure */
 		InvokeObjectPostCreateHook(AccessMethodProcedureRelationId,
 								   entryoid, 0);
 	}
 
 	table_close(rel, RowExclusiveLock);
+}
+
+/*
+ * Detect whether a pg_amop or pg_amproc entry needs an explicit dependency
+ * on its lefttype or righttype.
+ *
+ * We make such a dependency unless the entry has an indirect dependency
+ * via its referenced operator or function.  That's nearly always true
+ * for operators, but might well not be true for support functions.
+ */
+static bool
+typeDepNeeded(Oid typid, OpFamilyMember *member)
+{
+	bool		result = true;
+
+	/*
+	 * If the type is pinned, we don't need a dependency.  This is a bit of a
+	 * layering violation perhaps (recordDependencyOn would ignore the request
+	 * anyway), but it's a cheap test and will frequently save a syscache
+	 * lookup here.
+	 */
+	if (IsPinnedObject(TypeRelationId, typid))
+		return false;
+
+	/* Nope, so check the input types of the function or operator. */
+	if (member->is_func)
+	{
+		Oid		   *argtypes;
+		int			nargs;
+
+		(void) get_func_signature(member->object, &argtypes, &nargs);
+		for (int i = 0; i < nargs; i++)
+		{
+			if (typid == argtypes[i])
+			{
+				result = false; /* match, no dependency needed */
+				break;
+			}
+		}
+		pfree(argtypes);
+	}
+	else
+	{
+		Oid			lefttype,
+					righttype;
+
+		op_input_types(member->object, &lefttype, &righttype);
+		if (typid == lefttype || typid == righttype)
+			result = false;		/* match, no dependency needed */
+	}
+	return result;
 }
 
 

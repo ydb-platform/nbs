@@ -154,10 +154,11 @@ void TPQReadService::TSession::SendEvent(IEventBase* ev) {
 void TPQReadService::TSession::CreateActor(std::unique_ptr<NPersQueue::TTopicsListController>&& topicsHandler) {
     auto classifier = Proxy->GetClassifier();
 
-    ActorId = Proxy->ActorSystem->Register(
-        new TReadSessionActor(this, *topicsHandler, Cookie, SchemeCache, NewSchemeCache, Counters,
-                                    classifier ? classifier->ClassifyAddress(GetPeerName())
-                                                         : "unknown"));
+    auto g(Guard(Lock));
+    auto* actor = new TReadSessionActor(this, *topicsHandler, Cookie, SchemeCache, NewSchemeCache, Counters,
+                                    classifier ? classifier->ClassifyAddress(GetPeerName()) : "unknown");
+    ui32 poolId = Proxy->ActorSystem->AppData<::NKikimr::TAppData>()->UserPoolId;
+    ActorId = Proxy->ActorSystem->Register(actor, TMailboxType::HTSwap, poolId);
 }
 
 
@@ -192,7 +193,8 @@ TPQReadService::TPQReadService(NKikimr::NGRpcService::TGRpcPersQueueService* ser
     );
 
     if (NeedDiscoverClusters) {
-        ActorSystem->Register(new TClustersUpdater(this));
+        ClustersUpdaterStatus = std::make_shared<TClustersUpdater::TStatus>();
+        ActorSystem->Register(new TClustersUpdater(this, ClustersUpdaterStatus));
     }
 }
 
@@ -204,10 +206,10 @@ ui64 TPQReadService::NextCookie() {
 
 void TPQReadService::ReleaseSession(ui64 cookie) {
     auto g(Guard(Lock));
-    bool erased = Sessions.erase(cookie);
-    if (erased)
+    if (Sessions.erase(cookie)) {
+        g.Release();
         ActorSystem->Send(MakeGRpcProxyStatusID(ActorSystem->NodeId), new TEvGRpcProxyStatus::TEvUpdateStatus(0,0,-1,0));
-
+    }
 }
 
 void TPQReadService::CheckClusterChange(const TString& localCluster, const bool) {

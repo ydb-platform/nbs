@@ -1,0 +1,240 @@
+#include "oidc_session_create.h"
+#include "oidc_settings.h"
+#include "openid_connect.h"
+
+#include <contrib/ydb/mvp/core/mvp_log.h>
+
+#include <contrib/ydb/library/actors/http/http.h>
+
+#include <library/cpp/json/json_reader.h>
+#include <library/cpp/string_utils/base64/base64.h>
+
+namespace NMVP::NOIDC {
+
+THandlerSessionCreate::THandlerSessionCreate(const NActors::TActorId& sender,
+                                             const NHttp::THttpIncomingRequestPtr& request,
+                                             const NActors::TActorId& httpProxyId,
+                                             const TOpenIdConnectSettings& settings)
+    : TMvpLogContextProvider(CreateMvpLogContext(request))
+    , Sender(sender)
+    , Request(request)
+    , HttpProxyId(httpProxyId)
+    , Settings(settings)
+{}
+
+TRestoreOidcContextResult THandlerSessionCreate::RestoreOidcContext(const NHttp::TCookies& cookies, const TCheckStateResult& checkStateResult) {
+    TString requestedAddress = checkStateResult.RequestedAddress;
+    if (!cookies.Has(TOpenIdConnectSettings::YDB_OIDC_COOKIE)) {
+        if (requestedAddress.empty()) {
+            return TRestoreOidcContextResult(
+                {.IsSuccess = false,
+                 .IsErrorRetryable = false,
+                 .ErrorMessage = "Restore oidc context failed: requested address is missing in state and auth flow cookie"}
+            );
+        }
+
+        return TRestoreOidcContextResult(
+            {.IsSuccess = false,
+             .IsErrorRetryable = true,
+             .ErrorMessage = "Restore oidc context failed: auth flow cookie is missing"},
+            TContext({.RequestedAddress = requestedAddress})
+        );
+    }
+
+    TStringBuf authFlowCookieValue = cookies.Get(TOpenIdConnectSettings::YDB_OIDC_COOKIE);
+    TString requestedAddressFromCookie;
+    TString signedRequestedAddress;
+    try {
+        signedRequestedAddress = Base64StrictDecode(authFlowCookieValue);
+    } catch (std::exception& e) {
+        BLOG_D("Base64Decode auth flow cookie: " << e.what());
+    }
+
+    TString requestedAddressContext;
+    TString expectedDigest;
+    NJson::TJsonValue jsonValue;
+    NJson::TJsonReaderConfig jsonConfig;
+    if (NJson::ReadJsonTree(signedRequestedAddress, &jsonConfig, &jsonValue)) {
+        const NJson::TJsonValue* jsonRequestedAddressContext = nullptr;
+        if (jsonValue.GetValuePointer("requested_address_context", &jsonRequestedAddressContext) && jsonRequestedAddressContext->IsString()) {
+            try {
+                requestedAddressContext = Base64StrictDecode(jsonRequestedAddressContext->GetString());
+            } catch (std::exception& e) {
+                BLOG_D("Base64Decode requested_address_context from auth flow cookie: " << e.what());
+            }
+        }
+        const NJson::TJsonValue* jsonDigest = nullptr;
+        if (jsonValue.GetValuePointer("digest", &jsonDigest) && jsonDigest->IsString()) {
+            try {
+                expectedDigest = Base64StrictDecode(jsonDigest->GetString());
+            } catch (std::exception& e) {
+                BLOG_D("Base64Decode digest from auth flow cookie: " << e.what());
+            }
+        }
+    }
+
+    if (!requestedAddressContext.empty() &&
+        !expectedDigest.empty() &&
+        expectedDigest == HmacSHA256(Settings.ClientSecret, requestedAddressContext)) {
+        NJson::TJsonValue requestedAddressJsonValue;
+        if (NJson::ReadJsonTree(requestedAddressContext, &jsonConfig, &requestedAddressJsonValue)) {
+            const NJson::TJsonValue* jsonRequestedAddress = nullptr;
+            if (requestedAddressJsonValue.GetValuePointer("requested_address", &jsonRequestedAddress) && jsonRequestedAddress->IsString()) {
+                requestedAddressFromCookie = jsonRequestedAddress->GetString();
+            }
+        }
+    }
+
+    if (requestedAddress.empty()) {
+        requestedAddress = requestedAddressFromCookie;
+    }
+
+    if (requestedAddress.empty()) {
+        return TRestoreOidcContextResult(
+            {.IsSuccess = false,
+             .IsErrorRetryable = false,
+             .ErrorMessage = "Restore oidc context failed: requested address is missing in state and auth flow cookie"}
+        );
+    }
+
+    if (requestedAddressFromCookie.empty()) {
+        return TRestoreOidcContextResult(
+            {.IsSuccess = false,
+             .IsErrorRetryable = true,
+             .ErrorMessage = "Restore oidc context failed: auth flow cookie is invalid"},
+            TContext({.RequestedAddress = requestedAddress})
+        );
+    }
+
+    return TRestoreOidcContextResult(
+        {.IsSuccess = true,
+         .IsErrorRetryable = true,
+         .ErrorMessage = ""},
+        TContext({.RequestedAddress = requestedAddress})
+    );
+}
+
+void THandlerSessionCreate::Bootstrap() {
+    BLOG_D("Restore oidc session");
+    NHttp::TUrlParameters urlParameters(Request->URL);
+    TString code = urlParameters["code"];
+    TString state = urlParameters["state"];
+
+    TCheckStateResult checkStateResult = CheckState(state, Settings.ClientSecret);
+
+    NHttp::THeaders headers(Request->Headers);
+    NHttp::TCookies cookies(headers.Get("cookie"));
+    TRestoreOidcContextResult restoreContextResult = RestoreOidcContext(cookies, checkStateResult);
+    Context = restoreContextResult.Context;
+
+    if (checkStateResult.Ok) {
+        if (restoreContextResult.IsSuccess()) {
+            if (code.empty()) {
+                BLOG_D("Restore oidc session failed: receive empty 'code' parameter");
+                RetryRequestToProtectedResourceAndDie();
+            } else {
+                RequestSessionToken(code);
+            }
+        } else {
+            const auto& restoreSessionStatus = restoreContextResult.Status;
+            BLOG_D(restoreSessionStatus.ErrorMessage);
+            if (restoreSessionStatus.IsErrorRetryable) {
+                RetryRequestToProtectedResourceAndDie();
+            } else {
+                SendUnknownErrorResponseAndDie();
+            }
+        }
+    } else {
+        BLOG_D(checkStateResult.ErrorMessage);
+        if (restoreContextResult.IsSuccess() || restoreContextResult.Status.IsErrorRetryable) {
+            RetryRequestToProtectedResourceAndDie();
+        } else {
+            SendUnknownErrorResponseAndDie();
+        }
+    }
+
+}
+
+void THandlerSessionCreate::ReplyBadRequestAndPassAway(TString errorMessage) {
+    NHttp::THeadersBuilder responseHeaders;
+    SetCORS(Request, &responseHeaders);
+    SetRequestIdHeader(responseHeaders, GetRequestId());
+    responseHeaders.Set("Content-Type", "text/plain");
+    return ReplyAndPassAway(Request->CreateResponse("400", "Bad Request", responseHeaders, errorMessage));
+}
+
+void THandlerSessionCreate::Handle(NHttp::TEvHttpProxy::TEvHttpIncomingResponse::TPtr event) {
+    if (event->Get()->Error.empty() && event->Get()->Response) {
+        NHttp::THttpIncomingResponsePtr response = std::move(event->Get()->Response);
+        BLOG_D("Incoming response from authorization server: " << response->Status);
+        if (response->Status == "200") {
+            NJson::TJsonValue jsonValue;
+            NJson::TJsonReaderConfig jsonConfig;
+            if (NJson::ReadJsonTree(response->Body, &jsonConfig, &jsonValue)) {
+                return ProcessSessionToken(jsonValue);
+            }
+            return ReplyBadRequestAndPassAway("Wrong OIDC response");
+        } else {
+            NHttp::THeadersBuilder responseHeaders;
+            responseHeaders.Parse(response->Headers);
+            SetRequestIdHeader(responseHeaders, GetRequestId());
+            return ReplyAndPassAway(Request->CreateResponse(response->Status, response->Message, responseHeaders, response->Body));
+        }
+    }
+
+    return ReplyBadRequestAndPassAway(event->Get()->Error);
+}
+
+TString THandlerSessionCreate::ChangeSameSiteFieldInSessionCookie(const TString& cookie) {
+    const static TStringBuf SameSiteParameter {"SameSite=Lax"};
+    size_t n = cookie.find(SameSiteParameter);
+    if (n == TString::npos) {
+        return cookie;
+    }
+    TStringBuilder cookieBuilder;
+    cookieBuilder << cookie.substr(0, n);
+    cookieBuilder << "SameSite=None";
+    cookieBuilder << cookie.substr(n + SameSiteParameter.size());
+    return cookieBuilder;
+}
+
+void THandlerSessionCreate::RetryRequestToProtectedResourceAndDie() {
+    NHttp::THeadersBuilder responseHeaders;
+    RetryRequestToProtectedResourceAndDie(&responseHeaders);
+}
+
+void THandlerSessionCreate::RetryRequestToProtectedResourceAndDie(NHttp::THeadersBuilder* responseHeaders) {
+    SetCORS(Request, responseHeaders);
+    SetRequestIdHeader(*responseHeaders, GetRequestId());
+    responseHeaders->Set("Location", Context.GetRequestedAddress());
+    ReplyAndPassAway(Request->CreateResponse("302", "Found", *responseHeaders));
+}
+
+void THandlerSessionCreate::SendUnknownErrorResponseAndDie() {
+    NHttp::THeadersBuilder responseHeaders;
+    responseHeaders.Set("Content-Type", "text/html");
+    SetCORS(Request, &responseHeaders);
+    SetRequestIdHeader(responseHeaders, GetRequestId());
+    const static TStringBuf BAD_REQUEST_HTML_PAGE = "<html>"
+                                                        "<head>"
+                                                            "<title>"
+                                                                "400 Bad Request"
+                                                            "</title>"
+                                                        "</head>"
+                                                        "<body bgcolor=\"white\">"
+                                                            "<center>"
+                                                                "<h1>"
+                                                                    "Unknown error has occurred. Please open the page again"
+                                                                "</h1>"
+                                                            "</center>"
+                                                        "</body>"
+                                                    "</html>";
+    ReplyAndPassAway(Request->CreateResponse("400", "Bad Request", responseHeaders, BAD_REQUEST_HTML_PAGE));
+}
+
+void THandlerSessionCreate::ReplyAndPassAway(NHttp::THttpOutgoingResponsePtr httpResponse) {
+    Send(Sender, new NHttp::TEvHttpProxy::TEvHttpOutgoingResponse(std::move(httpResponse)));
+    PassAway();
+}
+
+} // NMVP::NOIDC

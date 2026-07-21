@@ -32,7 +32,7 @@ PEERDIR(
     contrib/ydb/library/yql/core
     contrib/ydb/library/yql/core/type_ann
     contrib/ydb/library/yql/dq/expr_nodes
-    contrib/ydb/library/yql/dq/integration
+    contrib/ydb/library/yql/core/dq_integration
     contrib/ydb/library/yql/providers/common/db_id_async_resolver
     contrib/ydb/library/yql/providers/clickhouse/expr_nodes
     contrib/ydb/library/yql/providers/clickhouse/proto

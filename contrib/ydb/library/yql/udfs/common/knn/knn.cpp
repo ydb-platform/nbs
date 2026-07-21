@@ -1,8 +1,8 @@
-#include "knn-enumerator.h"
-#include "knn-serializer.h"
 #include "knn-distance.h"
+#include "knn-serializer.h"
 
 #include <contrib/ydb/library/yql/public/udf/udf_helpers.h>
+#include <contrib/ydb/library/yql/public/udf/udf_type_printer.h>
 
 #include <util/generic/buffer.h>
 #include <util/generic/queue.h>
@@ -112,7 +112,7 @@ public:
     }
 
     TUnboxedValue RunImpl(const IValueBuilder* valueBuilder, const TUnboxedValuePod* args) const {
-        return TKnnBitVectorSerializer<TFrom>::Serialize(valueBuilder, args[0]);
+        return TKnnVectorSerializer<bool, TFrom>::Serialize(valueBuilder, args[0]);
     }
 };
 
@@ -164,7 +164,11 @@ public:
             }
         }
         if (type == EType::None) {
-            builder.SetError("'List<Double|Float|Uint8|Int8>' is expected");
+            TStringBuilder sb;
+            sb << "'List<Double|Float|Uint8|Int8>' is expected but got '";
+            TTypePrinter(*typeInfoHelper, argsTuple.GetElementType(0)).Out(sb.Out);
+            sb << "'";
+            builder.SetError(std::move(sb));
             return true;
         }
 
@@ -228,14 +232,18 @@ public:
 
         auto argType = argsTuple.GetElementType(0);
         auto argTag = GetArg(*typeInfoHelper, argType, builder);
-        if (!ValidTag(argTag, {TagStoredVector, TagFloatVector, TagInt8Vector, TagUint8Vector})) {
-            builder.SetError("A result from 'ToBinaryString[Float|Int8|Uint8]' is expected as an argument");
+        if (!ValidTag(argTag, {TagStoredVector, TagFloatVector, TagInt8Vector, TagUint8Vector, TagBitVector})) {
+            TStringBuilder sb;
+            sb << "A result from 'ToBinaryString[Float|Int8|Uint8|Bit]' is expected as an argument but got '";
+            TTypePrinter(*typeInfoHelper, argsTuple.GetElementType(0)).Out(sb.Out);
+            sb << "'";
+            builder.SetError(std::move(sb));
             return true;
         }
 
         builder.UserType(userType);
         builder.Args(1)->Add(argType).Flags(ICallablePayload::TArgumentFlags::AutoMap);
-        if (ValidTag(argTag, {TagFloatVector, TagInt8Vector, TagUint8Vector}) && argType == argsTuple.GetElementType(0)) {
+        if (ValidTag(argTag, {TagFloatVector, TagInt8Vector, TagUint8Vector, TagBitVector}) && argType == argsTuple.GetElementType(0)) {
             builder.Returns<TListType<float>>().IsStrict();
         } else {
             builder.Returns<TOptional<TListType<float>>>().IsStrict();
@@ -279,7 +287,13 @@ public:
 
         if (!Base::ValidTag(arg0Tag, {TagStoredVector, TagFloatVector, TagInt8Vector, TagUint8Vector, TagBitVector}) ||
             !Base::ValidTag(arg1Tag, {TagStoredVector, TagFloatVector, TagInt8Vector, TagUint8Vector, TagBitVector})) {
-            builder.SetError("A result from 'ToBinaryString[Float|Int8|Uint8]' is expected as an argument");
+            TStringBuilder sb;
+            sb << "Both arguments are expected to be results from 'ToBinaryString[Float|Int8|Uint8]' but got '";
+            TTypePrinter(*typeInfoHelper, argsTuple.GetElementType(0)).Out(sb.Out);
+            sb << "' and '";
+            TTypePrinter(*typeInfoHelper, argsTuple.GetElementType(1)).Out(sb.Out);
+            sb << "'";
+            builder.SetError(std::move(sb));
             return true;
         }
 
@@ -310,9 +324,10 @@ public:
 
     TUnboxedValue RunImpl(const IValueBuilder* valueBuilder, const TUnboxedValuePod* args) const {
         Y_UNUSED(valueBuilder);
-        const auto ret = KnnDotProduct(args[0].AsStringRef(), args[1].AsStringRef());
-        if (Y_UNLIKELY(!ret))
+        const auto ret = KnnDistance<>::DotProduct(args[0].AsStringRef(), args[1].AsStringRef());
+        if (Y_UNLIKELY(!ret)) {
             return {};
+        }
         return TUnboxedValuePod{*ret};
     }
 };
@@ -328,9 +343,10 @@ public:
 
     TUnboxedValue RunImpl(const IValueBuilder* valueBuilder, const TUnboxedValuePod* args) const {
         Y_UNUSED(valueBuilder);
-        const auto ret = KnnCosineSimilarity(args[0].AsStringRef(), args[1].AsStringRef());
-        if (Y_UNLIKELY(!ret))
+        const auto ret = KnnDistance<>::CosineSimilarity(args[0].AsStringRef(), args[1].AsStringRef());
+        if (Y_UNLIKELY(!ret)) {
             return {};
+        }
         return TUnboxedValuePod{*ret};
     }
 };
@@ -346,9 +362,10 @@ public:
 
     TUnboxedValue RunImpl(const IValueBuilder* valueBuilder, const TUnboxedValuePod* args) const {
         Y_UNUSED(valueBuilder);
-        const auto ret = KnnCosineSimilarity(args[0].AsStringRef(), args[1].AsStringRef());
-        if (Y_UNLIKELY(!ret))
+        const auto ret = KnnDistance<>::CosineSimilarity(args[0].AsStringRef(), args[1].AsStringRef());
+        if (Y_UNLIKELY(!ret)) {
             return {};
+        }
         return TUnboxedValuePod{1 - *ret};
     }
 };
@@ -364,9 +381,10 @@ public:
 
     TUnboxedValue RunImpl(const IValueBuilder* valueBuilder, const TUnboxedValuePod* args) const {
         Y_UNUSED(valueBuilder);
-        const auto ret = KnnManhattanDistance(args[0].AsStringRef(), args[1].AsStringRef());
-        if (Y_UNLIKELY(!ret))
+        const auto ret = KnnDistance<>::ManhattanDistance(args[0].AsStringRef(), args[1].AsStringRef());
+        if (Y_UNLIKELY(!ret)) {
             return {};
+        }
         return TUnboxedValuePod{*ret};
     }
 };
@@ -382,9 +400,10 @@ public:
 
     TUnboxedValue RunImpl(const IValueBuilder* valueBuilder, const TUnboxedValuePod* args) const {
         Y_UNUSED(valueBuilder);
-        const auto ret = KnnEuclideanDistance(args[0].AsStringRef(), args[1].AsStringRef());
-        if (Y_UNLIKELY(!ret))
+        const auto ret = KnnDistance<>::EuclideanDistance(args[0].AsStringRef(), args[1].AsStringRef());
+        if (Y_UNLIKELY(!ret)) {
             return {};
+        }
         return TUnboxedValuePod{*ret};
     }
 };

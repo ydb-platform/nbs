@@ -1,6 +1,6 @@
 #include "metering.h"
 
-#include "cfg.h"
+#include <contrib/ydb/core/ymq/actor/cfg/cfg.h>
 #include "serviceid.h"
 #include "proxy_actor.h"
 
@@ -272,7 +272,7 @@ public:
             }
 
             if (const TString packedRecords = records) {
-                TLoggerOperator<TGlobalLog>::Log().Write(packedRecords.Data(), packedRecords.Size());
+                TLoggerOperator<TGlobalLog>::Log().Write(packedRecords.data(), packedRecords.size());
             }
         }
 

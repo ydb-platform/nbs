@@ -1,6 +1,8 @@
 #pragma once
 #include <contrib/ydb/library/yql/ast/yql_expr.h>
 #include <contrib/ydb/library/yql/minikql/mkql_program_builder.h>
+#include <contrib/ydb/library/yql/providers/common/mkql/yql_type_mkql.h>
+#include <contrib/ydb/library/yql/public/langver/yql_langver.h>
 
 #include <unordered_map>
 
@@ -41,7 +43,7 @@ public:
         Coalesce
     };
 
-    TKernelRequestBuilder(const NKikimr::NMiniKQL::IFunctionRegistry& functionRegistry);
+    explicit TKernelRequestBuilder(const NKikimr::NMiniKQL::IFunctionRegistry& functionRegistry, TLangVersion langver = MinLangVersion);
     ~TKernelRequestBuilder();
 
     ui32 AddUnaryOp(EUnaryOp op, const TTypeAnnotationNode* arg1Type, const TTypeAnnotationNode* retType);
@@ -57,14 +59,16 @@ public:
 private:
     NKikimr::NMiniKQL::TRuntimeNode MakeArg(const TTypeAnnotationNode* type);
     NKikimr::NMiniKQL::TBlockType* MakeType(const TTypeAnnotationNode* type);
+
 private:
+    const TLangVersion Langver_;
     NKikimr::NMiniKQL::TScopedAlloc Alloc_;
     const NKikimr::NMiniKQL::TTypeEnvironment Env_;
     NKikimr::NMiniKQL::TProgramBuilder Pb_;
     std::vector<NKikimr::NMiniKQL::TRuntimeNode> Items_;
     std::vector<NKikimr::NMiniKQL::TRuntimeNode> ArgsItems_;
-    std::unordered_map<const TTypeAnnotationNode*, NKikimr::NMiniKQL::TBlockType*> CachedTypes_;
+    NCommon::TMemoizedTypesMap TypesMemoization_;
     std::unordered_map<const TTypeAnnotationNode*, NKikimr::NMiniKQL::TRuntimeNode> CachedArgs_;
 };
 
-}
+} // namespace NYql

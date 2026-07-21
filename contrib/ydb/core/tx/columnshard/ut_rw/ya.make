@@ -4,13 +4,11 @@ FORK_SUBTESTS()
 
 SPLIT_FACTOR(60)
 
-IF (SANITIZER_TYPE == "thread" OR WITH_VALGRIND)
-    TIMEOUT(3600)
+IF (SANITIZER_TYPE == "thread" OR SANITIZER_TYPE == "memory")
     SIZE(LARGE)
-    TAG(ya:fat)
+    INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/large.inc)
     REQUIREMENTS(ram:16)
 ELSE()
-    TIMEOUT(600)
     SIZE(MEDIUM)
 ENDIF()
 
@@ -19,18 +17,22 @@ PEERDIR(
     library/cpp/regex/pcre
     library/cpp/svnversion
     contrib/ydb/core/testlib/default
-    contrib/ydb/core/tx/columnshard/test_helper
+    contrib/ydb/core/tx
     contrib/ydb/core/tx/columnshard/hooks/abstract
     contrib/ydb/core/tx/columnshard/hooks/testing
-    contrib/ydb/services/metadata
-    contrib/ydb/core/tx
+    contrib/ydb/core/tx/columnshard/test_helper
+    contrib/ydb/library/testlib/s3_recipe_helper
     contrib/ydb/public/lib/yson_value
+    contrib/ydb/services/metadata
 )
 
 YQL_LAST_ABI_VERSION()
 
+INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/tools/s3_recipe/recipe.inc)
+
 SRCS(
     ut_columnshard_read_write.cpp
+    ut_scan_snapshot_guard_integration.cpp
     ut_normalizer.cpp
     ut_backup.cpp
 )

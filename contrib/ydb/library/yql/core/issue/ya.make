@@ -8,7 +8,7 @@ PEERDIR(
     library/cpp/resource
     contrib/libs/protobuf
     contrib/ydb/library/yql/public/issue
-    contrib/ydb/library/yql/core/issue/protos
+    contrib/ydb/library/yql/public/issue/protos
 )
 
 RESOURCE(

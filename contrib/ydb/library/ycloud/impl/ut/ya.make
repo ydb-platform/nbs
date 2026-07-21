@@ -2,13 +2,18 @@ UNITTEST_FOR(contrib/ydb/library/ycloud/impl)
 
 FORK_SUBTESTS()
 
-TIMEOUT(600)
-
 SIZE(MEDIUM)
+
+IF (SANITIZER_TYPE)
+    REQUIREMENTS(cpu:2)
+ELSE()
+    REQUIREMENTS(cpu:2)
+ENDIF()
 
 PEERDIR(
     library/cpp/retry
     contrib/ydb/core/testlib/default
+    contrib/ydb/library/testlib/service_mocks
 )
 
 YQL_LAST_ABI_VERSION()
@@ -19,7 +24,5 @@ SRCS(
     service_account_service_ut.cpp
     user_account_service_ut.cpp
 )
-
-REQUIREMENTS(ram:10)
 
 END()

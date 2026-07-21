@@ -7,7 +7,7 @@
 #include <contrib/ydb/core/fq/libs/db_schema/db_schema.h>
 #include <contrib/ydb/core/fq/libs/shared_resources/db_exec.h>
 #include <contrib/ydb/public/api/protos/draft/fq.pb.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_value/value.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/value/value.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/typetraits.h>
@@ -32,7 +32,7 @@ public:
     static constexpr char ActorName[] = "YQ_CONTROL_PLANE_STORAGE_REQUEST";
 
 protected:
-    TControlPlaneRequestActor(typename TRequestEvent::TPtr&& ev, TRequestCounters requestCounters, TDebugInfoPtr debugInfo, TDbPool::TPtr dbPool, TYdbConnectionPtr ydbConnection, const std::shared_ptr<::NFq::TControlPlaneStorageConfig>& config)
+    TControlPlaneRequestActor(typename TRequestEvent::TPtr&& ev, TRequestCounters requestCounters, TDebugInfoPtr debugInfo, TDbPoolPtr dbPool, TYdbConnectionPtr ydbConnection, const std::shared_ptr<::NFq::TControlPlaneStorageConfig>& config)
         : TDbRequester(std::move(dbPool), std::move(ydbConnection))
         , TControlPlaneStorageUtils(config)
         , Request(std::move(ev))
@@ -54,7 +54,8 @@ public:
     }
 
     void Bootstrap() {
-        CPS_LOG_T(RequestLogString());
+        YDB_LOG_TRACE_COMP(::NKikimrServices::YQ_CONTROL_PLANE_STORAGE, "Dump request",
+            {"request", RequestLogString()});
 
         AsDerived()->Start();
     }
@@ -89,9 +90,9 @@ protected:
         AsDerived()->LwProbe(success);
 
         for (const auto& issue : event->Issues) {
-            NYql::WalkThroughIssues(issue, true, [this](const NYql::TIssue& err, ui16 level) {
+            NYql::WalkThroughIssues(issue, true, [issuesCounters=RequestCounters.Common->Issues](const NYql::TIssue& err, ui16 level) {
                 Y_UNUSED(level);
-                RequestCounters.Common->Issues->GetCounter(ToString(err.GetCode()), true)->Inc();
+                issuesCounters->GetCounter(ToString(err.GetCode()), true)->Inc();
             });
         }
 
@@ -121,10 +122,10 @@ protected:
                     result = prepare();
                 }
             } else {
-                issues.AddIssues(status.GetIssues());
-                internalIssues.AddIssues(status.GetIssues());
+                issues.AddIssues(NYdb::NAdapters::ToYqlIssues(status.GetIssues()));
+                internalIssues.AddIssues(NYdb::NAdapters::ToYqlIssues(status.GetIssues()));
             }
-        } catch (const TCodeLineException& exception) {
+        } catch (const NKikimr::TCodeLineException& exception) {
             NYql::TIssue issue = MakeErrorIssue(exception.Code, exception.GetRawMessage());
             issues.AddIssue(issue);
             NYql::TIssue internalIssue = MakeErrorIssue(exception.Code, CurrentExceptionMessage());
@@ -143,10 +144,15 @@ protected:
 
         std::unique_ptr<TResponseEvent> event;
         if (issues) {
-            CPS_LOG_W(name << ": {" << TrimForLogs(Request->Get()->Request.DebugString()) << "} ERROR: " << internalIssues.ToOneLineString());
+            YDB_LOG_WARN_COMP(::NKikimrServices::YQ_CONTROL_PLANE_STORAGE, "",
+                {"name", name},
+                {"request", TrimForLogs(Request->Get()->Request.DebugString())},
+                {"ERROR", internalIssues.ToOneLineString()});
             event = std::make_unique<TResponseEvent>(issues);
         } else {
-            CPS_LOG_W(name << ": {" << TrimForLogs(Request->Get()->Request.DebugString()) << "} SUCCESS");
+            YDB_LOG_WARN_COMP(::NKikimrServices::YQ_CONTROL_PLANE_STORAGE, "SUCCESS",
+                {"name", name},
+                {"request", TrimForLogs(Request->Get()->Request.DebugString())});
             if constexpr (TResponseEvent::Auditable) {
                 event = std::make_unique<TResponseEvent>(result, auditDetails);
             } else {
@@ -165,7 +171,7 @@ protected:
         return static_cast<TDerived*>(this);
     }
 
-    void Subscribe(NYdb::TAsyncStatus& status, std::shared_ptr<TVector<NYdb::TResultSet>> resultSets = nullptr) {
+    void Subscribe(NYdb::TAsyncStatus& status, std::shared_ptr<std::vector<NYdb::TResultSet>> resultSets = nullptr) {
         status.Subscribe(
             [actorSystem = NActors::TActivationContext::ActorSystem(), selfId = this->SelfId(), resultSets] (const NYdb::TAsyncStatus& status) mutable {
                 actorSystem->Send(new IEventHandle(selfId, selfId, new TEvControlPlaneStorageInternal::TEvDbRequestResult(status, std::move(resultSets))));

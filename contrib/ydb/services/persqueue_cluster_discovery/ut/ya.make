@@ -2,15 +2,7 @@ UNITTEST_FOR(contrib/ydb/services/persqueue_cluster_discovery)
 
 FORK_SUBTESTS()
 
-IF (WITH_VALGRIND)
-    TIMEOUT(1800)
-    SIZE(LARGE)
-    TAG(ya:fat)
-    REQUIREMENTS(ram:32)
-ELSE()
-    TIMEOUT(600)
-    SIZE(MEDIUM)
-ENDIF()
+SIZE(MEDIUM)
 
 SRCS(
     cluster_discovery_service_ut.cpp

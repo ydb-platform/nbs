@@ -1,6 +1,6 @@
 #pragma once
 
-#include <contrib/ydb/library/yql/dq/integration/yql_dq_optimization.h>
+#include <contrib/ydb/library/yql/core/dq_integration/yql_dq_optimization.h>
 
 namespace NYql {
 

@@ -2,6 +2,7 @@
 
 #include <contrib/ydb/core/fq/libs/checkpointing_common/defs.h>
 
+#include <contrib/ydb/library/aclib/aclib.h>
 #include <contrib/ydb/library/yql/dq/actors/compute/dq_checkpoints_states.h>
 
 #include <contrib/ydb/library/yql/public/issue/yql_issue.h>
@@ -20,7 +21,7 @@ public:
     using TSaveStateResult = std::pair<size_t, NYql::TIssues>;
     using TCountStatesResult = std::pair<size_t, NYql::TIssues>;
 
-    virtual NThreading::TFuture<NYql::TIssues> Init() = 0;
+    virtual NThreading::TFuture<NYql::TIssues> Init(const NACLib::TDiffACL& acl) = 0;
 
     virtual NThreading::TFuture<TSaveStateResult> SaveState(
         ui64 taskId,

@@ -1,17 +1,17 @@
 LIBRARY()
 
-PEERDIR(
-    contrib/libs/antlr3_cpp_runtime
-    contrib/libs/protobuf
-)
+HEADERS(common.h)
 
-SRCS(
-    proto_ast.cpp
+PEERDIR(
+    contrib/libs/protobuf
+    contrib/ydb/library/yql/parser/common
 )
 
 END()
 
 RECURSE(
+    antlr3
+    antlr4
     collect_issues
     gen
 )

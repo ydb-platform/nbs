@@ -7,7 +7,9 @@
 #include <contrib/ydb/core/mon/mon.h>
 #include <library/cpp/monlib/service/pages/templates.h>
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_discovery/discovery.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/discovery/discovery.h>
+
+#define YDB_LOG_THIS_FILE_COMPONENT ::NKikimrServices::YQ_HEALTH
 
 namespace NFq {
 namespace {
@@ -34,13 +36,14 @@ public:
     static constexpr char ActorName[] = "YQ_HEALTH";
 
     void Bootstrap() {
-        HEALTH_LOG_D("Starting yandex query health. Actor id: " << SelfId());
+        YDB_LOG_DEBUG("Starting yandex query health. Actor",
+            {"id", SelfId()});
 
         NActors::TMon* mon = NKikimr::AppData()->Mon;
         if (mon) {
             NMonitoring::TIndexMonPage* actorsMonPage = mon->RegisterIndexPage("actors", "Actors");
             mon->RegisterActorPage(actorsMonPage, "yq_health", "YQ Health", false,
-                TlsActivationContext->ExecutorThread.ActorSystem, SelfId());
+                TlsActivationContext->ActorSystem(), SelfId());
         }
 
         Become(&THealthActor::StateFunc);

@@ -15,7 +15,7 @@ SRCS(
 
 PEERDIR(
     contrib/libs/apache/arrow
-    contrib/ydb/library/binary_json
+    contrib/ydb/library/yql/types/binary_json
     contrib/ydb/library/yql/utils
     contrib/ydb/library/yql/utils/log
     contrib/ydb/library/yql/core/spilling/storage

@@ -1,8 +1,10 @@
 #include "yql_mkql_file_input_state.h"
 
+#include <contrib/ydb/library/yql/minikql/computation/mkql_block_impl.h>
 #include <contrib/ydb/library/yql/utils/yql_panic.h>
 
 #include <util/system/fs.h>
+#include <util/string/builder.h>
 
 namespace NYql {
 
@@ -54,9 +56,20 @@ bool TFileInputState::NextValue() {
         }
 
         MkqlReader_.Next();
-        ++CurrentRecord_;
+        if (Spec_->UseBlockInput_) {
+            auto blockSizeStructIndex = GetBlockSizeStructIndex(*Spec_, CurrentInput_);
+            auto blockCountValue = CurrentValue_.GetElement(blockSizeStructIndex);
+            CurrentRecord_ += GetBlockCount(blockCountValue);
+        } else {
+            ++CurrentRecord_;
+        }
+
         return true;
     }
+}
+
+TString TFileInputState::DebugInfo() const {
+    return TStringBuilder() << "TFileInputState{CurrentInput=" << CurrentInput_ << ", CurrentRecord=" << CurrentRecord_ << '}';
 }
 
 TVector<NYT::TRawTableReaderPtr> MakeMkqlFileInputs(const TVector<TString>& files, bool decompress) {

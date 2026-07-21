@@ -3,8 +3,8 @@
 #include <contrib/ydb/services/metadata/manager/common.h>
 #include <contrib/ydb/core/persqueue/writer/metadata_initializers.h>
 
-#include <contrib/ydb/core/persqueue/pq_database.h>
-#include <contrib/ydb/core/persqueue/write_meta.h>
+#include <contrib/ydb/core/persqueue/public/pq_database.h>
+#include <contrib/ydb/core/persqueue/public/write_meta/write_meta.h>
 #include <contrib/ydb/library/services/services.pb.h>
 #include <contrib/ydb/public/lib/deprecated/kicli/kicli.h>
 #include <contrib/ydb/library/persqueue/topic_parser/topic_parser.h>
@@ -113,7 +113,7 @@ void TWriteSessionActor::Bootstrap(const TActorContext& ctx) {
     Become(&TThis::StateFunc);
     const auto& pqConfig = AppData(ctx)->PQConfig;
 
-    Database = NKikimr::NPQ::GetDatabaseFromConfig(pqConfig);
+    Database = CanonizePath(NKikimr::NPQ::GetDatabaseFromConfig(pqConfig));
     ConverterFactory = MakeHolder<NPersQueue::TTopicNamesConverterFactory>(
             pqConfig, LocalDC
     );
@@ -221,7 +221,7 @@ void TWriteSessionActor::Handle(TEvPQProxy::TEvWriteInit::TPtr& ev, const TActor
     }
     PeerName = event->PeerName;
     if (!event->Database.empty()) {
-        Database = event->Database;
+        Database = CanonizePath(event->Database);
     }
 
     SourceId = init.GetSourceId();
@@ -366,6 +366,8 @@ void TWriteSessionActor::Handle(TEvDescribeTopicsResponse::TPtr& ev, const TActo
         return;
     }
     PQInfo = entry.PQGroupInfo;
+    Y_ABORT_UNLESS(PQInfo->PartitionChooser);
+    Y_ABORT_UNLESS(PQInfo->PartitionGraph);
     Config = std::move(PQInfo->Description);
     //const TString topicName = description.GetName();
 
@@ -403,10 +405,6 @@ void TWriteSessionActor::Handle(TEvDescribeTopicsResponse::TPtr& ev, const TActo
         LOG_WARN_S(ctx, NKikimrServices::PQ_WRITE_PROXY, "session without AuthInfo : " << DiscoveryConverter->GetPrintableString()
                                                          << " sourceId " << SourceId << " from " << PeerName);
         SessionsWithoutAuth.Inc();
-        if (AppData(ctx)->EnforceUserTokenRequirement || AppData(ctx)->PQConfig.GetRequireCredentialsInNewProtocol()) {
-            CloseSession("Unauthenticated access is forbidden, please provide credentials", NPersQueue::NErrorCode::ACCESS_DENIED, ctx);
-            return;
-        }
         if (FirstACLCheck) {
             FirstACLCheck = false;
             DiscoverPartition(ctx);
@@ -436,8 +434,8 @@ void TWriteSessionActor::InitCheckACL(const TActorContext& ctx) {
 
     auto entries = NKikimr::NGRpcProxy::V1::GetTicketParserEntries(DatabaseId, FolderId);
     ctx.Send(MakeTicketParserID(), new TEvTicketParser::TEvAuthorizeTicket({
-            .Database = Database,
             .Ticket = ticket,
+            .Database = Database,
             .PeerName = PeerName,
             .Entries = entries
         }));
@@ -449,11 +447,13 @@ void TWriteSessionActor::Handle(TEvTicketParser::TEvAuthorizeTicketResult::TPtr&
     TString maskedTicket = ticket.size() > 5 ? (ticket.substr(0, 5) + "***" + ticket.substr(ticket.size() - 5)) : "***";
     LOG_INFO_S(ctx, NKikimrServices::PQ_WRITE_PROXY, "CheckACL ticket " << maskedTicket << " got result from TICKET_PARSER response: error: "
                             << ev->Get()->Error << " user: "
-                            << (ev->Get()->Error.empty() ? ev->Get()->Token->GetUserSID() : ""));
+                            << (!ev->Get()->HasError() ? ev->Get()->Token->GetUserSID() : ""));
 
-    if (!ev->Get()->Error.empty()) {
-        CloseSession(TStringBuilder() << "Ticket parsing error: " << ev->Get()->Error, NPersQueue::NErrorCode::ACCESS_DENIED, ctx);
-        return;
+    if (ev->Get()->HasError()) {
+        if (AppData()->EnforceUserTokenRequirement || AppData()->EnforceUserTokenCheckRequirement) {
+            CloseSession(TStringBuilder() << "Ticket parsing error: " << ev->Get()->Error, NPersQueue::NErrorCode::ACCESS_DENIED, ctx);
+            return;
+        }
     }
     Token = ev->Get()->Token;
 
@@ -472,7 +472,7 @@ void TWriteSessionActor::DiscoverPartition(const NActors::TActorContext& ctx) {
     }
 
     std::optional<ui32> preferedPartition = PreferedPartition == Max<ui32>() ? std::nullopt : std::optional(PreferedPartition);
-    PartitionChooser = ctx.RegisterWithSameMailbox(NPQ::CreatePartitionChooserActor(ctx.SelfID, Config, FullConverter, SourceId, preferedPartition));
+    PartitionChooser = ctx.RegisterWithSameMailbox(NPQ::CreatePartitionChooserActor(ctx.SelfID, Config, PQInfo->PartitionChooser, PQInfo->PartitionGraph, FullConverter, SourceId, preferedPartition, {}));
 }
 
 void TWriteSessionActor::Handle(NPQ::TEvPartitionChooser::TEvChooseResult::TPtr& ev, const NActors::TActorContext& ctx) {

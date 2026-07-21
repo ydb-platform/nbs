@@ -5,8 +5,8 @@ from typing import Tuple
 
 import pg8000.dbapi
 
-from contrib.ydb.library.yql.providers.generic.connector.tests.utils.settings import Settings
-from contrib.ydb.library.yql.providers.generic.connector.tests.utils.log import make_logger
+from contrib.ydb.library.contrib.ydb.library.yql.providers.generic.connector.tests.utils.settings import Settings
+from contrib.ydb.library.contrib.ydb.library.yql.providers.generic.connector.tests.utils.log import make_logger
 
 LOGGER = make_logger(__name__)
 

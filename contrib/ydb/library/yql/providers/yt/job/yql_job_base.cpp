@@ -2,6 +2,11 @@
 #include "yql_job_stats_writer.h"
 #include "yql_job_factory.h"
 
+#include <contrib/ydb/library/yql/minikql/runtime_settings/runtime_settings_serialization.h>
+#include <contrib/ydb/library/yql/providers/common/provider/yql_provider.h>
+#include <contrib/ydb/library/yql/parser/pg_wrapper/interface/context.h>
+#include <contrib/ydb/library/yql/parser/pg_wrapper/interface/parser.h>
+#include <contrib/ydb/library/yql/parser/pg_catalog/catalog.h>
 #include <contrib/ydb/library/yql/minikql/invoke_builtins/mkql_builtins.h>
 #include <contrib/ydb/library/yql/minikql/mkql_function_registry.h>
 #include <contrib/ydb/library/yql/minikql/mkql_stats_registry.h>
@@ -243,6 +248,13 @@ void TYqlJobBase::Init() {
 #endif
     }
 
+    NPg::LoadSystemFunctions(*NSQLTranslationPG::CreateSystemFunctionsParser());
+    if (TFsPath(NCommon::PgCatalogFileName).Exists()) {
+        TFileInput file(TString{NCommon::PgCatalogFileName});
+        NPg::ImportExtensions(file.ReadAll(), false,
+            NKikimr::NMiniKQL::CreateExtensionLoader().get());
+    }
+
     FillStaticModules(*funcRegistry);
     for (const auto& mod: UdfModules) {
         auto path = mod.first;
@@ -258,10 +270,20 @@ void TYqlJobBase::Init() {
         FunctionRegistry->SupportsSizedAllocators()));
     Env.Reset(new TTypeEnvironment(*Alloc));
     CodecCtx.Reset(new NCommon::TCodecContext(*Env, *FunctionRegistry));
-    if (!GetEnv(TString("YQL_SUPPRESS_JOB_STATISTIC"))) {
+    if (NeedWriteStats() && !GetEnv(TString("YQL_SUPPRESS_JOB_STATISTIC"))) {
         JobStats = CreateDefaultStatsRegistry();
     }
     SecureParamsProvider.Reset(new TEnvSecureParamsProvider("YT_SECURE_VAULT"));
+    LogProvider = NUdf::MakeLogProvider(
+        [](const NUdf::TStringRef& component, NUdf::ELogLevel level, const NUdf::TStringRef& message) {
+            Cerr << Now() << " " << component << " [" << level << "] " << message << "\n";
+        }, RuntimeLogLevel);
+}
+
+void TYqlJobBase::Finish() {
+    if (JobStats) {
+        JobStats->SetStat(Job_ThreadsCount, GetRunnigThreadsCount());
+    }
 }
 
 void TYqlJobBase::Save(IOutputStream& s) const {
@@ -270,25 +292,26 @@ void TYqlJobBase::Save(IOutputStream& s) const {
         FileAliases,
         UdfValidateMode,
         OptLLVM,
-        TableNames
+        TableNames,
+        RuntimeLogLevel,
+        LangVer,
+        NYql::SerializeRuntimeSettingsToString(*RuntimeSettings)
     );
 }
 
 void TYqlJobBase::Load(IInputStream& s) {
+    TString serializedRuntimeSettings;
     ::LoadMany(&s,
         UdfModules,
         FileAliases,
         UdfValidateMode,
         OptLLVM,
-        TableNames
+        TableNames,
+        RuntimeLogLevel,
+        LangVer,
+        serializedRuntimeSettings
     );
-}
-
-void TYqlJobBase::Do(const NYT::TRawJobContext& jobContext) {
-    DoImpl(jobContext.GetInputFile(), jobContext.GetOutputFileList());
-    if (JobStats) {
-        JobStats->SetStat(Job_ThreadsCount, GetRunnigThreadsCount());
-    }
+    RuntimeSettings = NYql::CreateRuntimeSettingsFromString(serializedRuntimeSettings);
 }
 
 TCallableVisitFuncProvider TYqlJobBase::MakeTransformProvider(THashMap<TString, TRuntimeNode>* extraArgs) const {

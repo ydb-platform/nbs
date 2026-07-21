@@ -1,46 +1,43 @@
----
-title: "Instructions for initializing the driver in {{ ydb-short-name }}"
-description: "The article describes the examples of the code for connecting to {{ ydb-short-name }} (driver creation) in different {{ ydb-short-name }} SDKs."
----
-
 # Initialize the driver
 
-{% include [work in progress message](_includes/addition.md) %}
+To connect to {{ ydb-short-name }}, you must specify the required parameters (see [Connecting to a {{ ydb-short-name }} server](../../concepts/connect.md)) and optional parameters that control driver behavior.
 
-To connect to {{ ydb-short-name }}, you need to specify the required and additional parameters that define the driver's behavior (learn more in [Connecting to the {{ ydb-short-name }} server](../../concepts/connect.md)).
-
-Below are examples of the code for connecting to {{ ydb-short-name }} (driver creation) in different {{ ydb-short-name }} SDKs.
+Below are examples of connecting to {{ ydb-short-name }} (creating a driver) in different {{ ydb-short-name }} SDKs.
 
 {% list tabs %}
 
-- Go (native)
+- Go
 
-  ```golang
-  package main
+  {% list tabs %}
 
-  import (
-    "context"
+  - Native SDK
 
-    "github.com/ydb-platform/ydb-go-sdk/v3"
-  )
+    ```golang
+    package main
 
-  func main() {
-    ctx, cancel := context.WithCancel(context.Background())
-    defer cancel()
+    import (
+      "context"
 
-    db, err := ydb.Open(ctx, "grpc://localhost:2136/local")
-    if err != nil {
-        panic(err)
+      "github.com/ydb-platform/ydb-go-sdk/v3"
+    )
+
+    func main() {
+      ctx, cancel := context.WithCancel(context.Background())
+      defer cancel()
+
+      db, err := ydb.Open(ctx, "grpc://localhost:2136/local")
+      if err != nil {
+          panic(err)
+      }
+      defer db.Close()
+
+      // ...
     }
-    defer db.Close()
+    ```
 
-    // ...
-  }
-  ```
+  - database/sql
 
-- Go (database/sql)
-
-  {% cut "Using a connector (recommended)" %}
+    {% cut "Using a connector (recommended)" %}
 
     ```golang
     package main
@@ -78,11 +75,12 @@ Below are examples of the code for connecting to {{ ydb-short-name }} (driver cr
     }
     ```
 
-  {% endcut %}
+    {% endcut %}
 
-  {% cut "Using a connection string" %}
+    {% cut "Using a connection string" %}
 
-    The `database/sql` driver is registered when importing the package of a specific driver separated by an underscore:
+    The `database/sql` driver is registered when you import the driver package with a blank import:
+
     ```golang
     package main
 
@@ -103,12 +101,73 @@ Below are examples of the code for connecting to {{ ydb-short-name }} (driver cr
     }
     ```
 
-  {% endcut %}
+    {% endcut %}
+
+  {% endlist %}
 
 - Java
 
+  {% list tabs %}
 
-  {% include [work in progress message](_includes/addition.md) %}
+  - Native SDK
+
+    ```java
+    public void work() {
+        try (GrpcTransport transport = GrpcTransport.forConnectionString("grpc://localhost:2136/local")
+                .build()) {
+            // Work with transport
+            doWork(transport);
+        }
+    }
+    ```
+
+  - JDBC
+
+    ```java
+    public void work() throws SQLException {
+        // tech.ydb.jdbc.YdbDriver must be on the classpath for DriverManager auto-loading
+        try (Connection connection = DriverManager.getConnection("jdbc:ydb:grpc://localhost:2136/local")) {
+            // Work with connection
+            doWork(connection);
+        }
+    }
+    ```
+
+    For Spring Boot, set the URL and driver class in `application.properties` or `application.yml` (`spring.datasource.url`, `spring.datasource.driver-class-name`).
+
+    Spring Boot, ORMs, and other JDBC stacks (Hibernate, JOOQ, MyBatis, and so on) talk to {{ ydb-short-name }} like any JDBC source: add the {{ ydb-short-name }} JDBC dependency and configure the URL — you do not need to configure native `GrpcTransport` separately.
+
+  {% endlist %}
+
+- Python
+
+  {% list tabs %}
+
+  - Native SDK
+
+    ```python
+    import ydb
+
+    with ydb.Driver(connection_string="grpc://localhost:2136?database=/local") as driver:
+      driver.wait(timeout=5)
+      ...
+    ```
+
+  - Native SDK (Asyncio)
+
+    ```python
+    import ydb
+    import asyncio
+
+    async def ydb_init():
+      async with ydb.aio.Driver(endpoint="grpc://localhost:2136", database="/local") as driver:
+        await driver.wait()
+        ...
+
+    asyncio.run(ydb_init())
+    ```
+
+  {% endlist %}
 
 - C# (.NET)
 
@@ -121,6 +180,15 @@ Below are examples of the code for connecting to {{ ydb-short-name }} (driver cr
   );
 
   await using var driver = await Driver.CreateInitialized(config);
+  ```
+
+- JavaScript
+
+  ```javascript
+  import { Driver } from '@ydbjs/core'
+
+  const driver = new Driver('grpc://localhost:2136/local')
+  await driver.ready()
   ```
 
 - PHP
@@ -144,11 +212,26 @@ Below are examples of the code for connecting to {{ ydb-short-name }} (driver cr
       'iam_config'  => [
           // 'root_cert_file' => './CA.pem', // Root CA file (uncomment for dedicated server)
       ],
-      
+
       'credentials' => new \YdbPlatform\Ydb\Auth\Implement\AccessTokenAuthentication('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA') // use from reference/ydb-sdk/auth
   ];
 
   $ydb = new Ydb($config);
+  ```
+
+- Rust
+
+  ```rust
+  use ydb::{AccessTokenCredentials, ClientBuilder, YdbResult};
+
+  #[tokio::main]
+  async fn main() -> YdbResult<()> {
+      let client = ClientBuilder::new_from_connection_string("grpc://localhost:2136/local")?
+          .with_credentials(AccessTokenCredentials::from("..."))
+          .client()?;
+      client.wait().await?;
+      Ok(())
+  }
   ```
 
 {% endlist %}

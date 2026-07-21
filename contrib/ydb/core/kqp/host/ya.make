@@ -7,31 +7,43 @@ SRCS(
     kqp_runner.cpp
     kqp_transform.cpp
     kqp_translate.cpp
-    kqp_type_ann.cpp
     kqp_statement_rewrite.cpp
 )
 
 PEERDIR(
     contrib/ydb/core/base
     contrib/ydb/core/kqp/common
+    contrib/ydb/core/kqp/query_data
     contrib/ydb/core/kqp/federated_query
     contrib/ydb/core/kqp/gateway/utils
     contrib/ydb/core/kqp/opt
+    contrib/ydb/core/kqp/opt/cbo/solver
     contrib/ydb/core/kqp/provider
+    contrib/ydb/core/local_indexes/bloom
+    contrib/ydb/core/tx/columnshard/engines/storage/indexes/min_max/misc
     contrib/ydb/core/tx/long_tx_service/public
+    contrib/ydb/library/yql/dq/opt
+    contrib/ydb/library/yql/providers/common/http_gateway
+    contrib/ydb/library/yql/providers/dq/helper
+    contrib/ydb/library/yql/providers/generic/provider
+    contrib/ydb/library/yql/providers/pq/provider
+    contrib/ydb/library/yql/providers/s3/expr_nodes
+    contrib/ydb/library/yql/core
     contrib/ydb/library/yql/core/services
     contrib/ydb/library/yql/minikql/invoke_builtins
-    contrib/ydb/library/yql/sql
-    contrib/ydb/library/yql/core
+    contrib/ydb/library/yql/parser/pg_wrapper/interface
     contrib/ydb/library/yql/providers/common/codec
-    contrib/ydb/library/yql/providers/common/http_gateway
     contrib/ydb/library/yql/providers/common/udf_resolve
     contrib/ydb/library/yql/providers/config
-    contrib/ydb/library/yql/providers/generic/provider
     contrib/ydb/library/yql/providers/pg/provider
     contrib/ydb/library/yql/providers/result/provider
-    contrib/ydb/library/yql/providers/s3/expr_nodes
-    contrib/ydb/public/sdk/cpp/client/impl/ydb_internal/common
+    contrib/ydb/library/yql/sql
+    contrib/ydb/library/yql/sql/v0
+    contrib/ydb/library/yql/sql/v1
+    contrib/ydb/library/yql/sql/v1/lexer/antlr4
+    contrib/ydb/library/yql/sql/v1/lexer/antlr4_ansi
+    contrib/ydb/library/yql/sql/v1/proto_parser/antlr4
+    contrib/ydb/library/yql/sql/v1/proto_parser/antlr4_ansi
 )
 
 YQL_LAST_ABI_VERSION()

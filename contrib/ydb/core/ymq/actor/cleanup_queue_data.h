@@ -2,13 +2,12 @@
 
 #include <contrib/ydb/core/kqp/common/kqp.h>
 #include <contrib/ydb/public/lib/deprecated/kicli/kicli.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_params/params.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/params/params.h>
 #include <contrib/ydb/core/ymq/base/counters.h>
 
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
-#include <contrib/ydb/library/actors/core/actorsystem.h>
 #include <contrib/ydb/library/actors/core/log.h>
 
 namespace NKikimr::NSQS {

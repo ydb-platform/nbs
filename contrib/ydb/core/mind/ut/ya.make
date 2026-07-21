@@ -2,23 +2,16 @@ UNITTEST_FOR(contrib/ydb/core/mind)
 
 FORK_SUBTESTS()
 
-IF (SANITIZER_TYPE  == "thread" OR WITH_VALGRIND)
-    TIMEOUT(3600)
+IF (SANITIZER_TYPE  == "thread")
     SIZE(LARGE)
-    TAG(ya:fat)
+    INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/large.inc)
     SPLIT_FACTOR(80)
     REQUIREMENTS(
-        cpu:4
         ram:32
     )
 ELSE()
     SPLIT_FACTOR(80)
-    TIMEOUT(600)
     SIZE(MEDIUM)
-    REQUIREMENTS(
-        cpu:4
-        ram:16
-    )
 ENDIF()
 
 PEERDIR(

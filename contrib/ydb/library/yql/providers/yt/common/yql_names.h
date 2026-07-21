@@ -22,6 +22,7 @@ const TStringBuf RowSpecAttrUseNativeYtTypes = "UseNativeYtTypes";
 const TStringBuf RowSpecAttrNativeYtTypeFlags = "NativeYtTypeFlags";
 const TStringBuf RowSpecAttrExplicitYson = "ExplicitYson";
 const TStringBuf RowSpecAttrConstraints = "Constraints";
+const TStringBuf RowSpecAttrColumnOrder = "ColumnOrder";
 
 const TStringBuf YqlReadUdfAttribute = "_yql_read_udf";
 const TStringBuf YqlReadUdfTypeConfigAttribute = "_yql_read_udf_type_config";
@@ -29,6 +30,7 @@ const TStringBuf YqlReadUdfRunConfigAttribute = "_yql_read_udf_run_config";
 const TStringBuf YqlViewPrefixAttribute = "_yql_view_";
 const TStringBuf YqlProtoFieldPrefixAttribute = "_yql_proto_field_";
 const TStringBuf YqlDynamicAttribute = "_yql_dynamic";
+const TStringBuf YqlRLSAttribute = "_yql_rls";
 
 const TStringBuf YqlSysColumnPrefix = "_yql_sys_table";
 const TStringBuf YqlSysColumnPath = "_yql_sys_tablepath";
@@ -52,6 +54,10 @@ const TStringBuf MrFolderName = "MrFolder";
 const TStringBuf MrWalkFoldersName = "MrWalkFolders";
 const TStringBuf MrWalkFoldersImplName = "MrWalkFoldersImpl";
 const TStringBuf MrRangeInputListInternal = "MrRangeInputListInternal";
+const TStringBuf MrPartitionListName = "MrPartitionList";
+const TStringBuf MrPartitionListStrictName = "MrPartitionListStrict";
+const TStringBuf MrPartitionsName = "MrPartitions";
+const TStringBuf MrPartitionsStrictName = "MrPartitionsStrict";
 
 // YT related names
 const TStringBuf READ_SCHEMA_ATTR_NAME = "_read_schema";
@@ -59,6 +65,7 @@ const TStringBuf INFER_SCHEMA_ATTR_NAME = "_infer_schema";
 const TStringBuf SCHEMA_ATTR_NAME = "schema";
 const TStringBuf SCHEMA_MODE_ATTR_NAME = "schema_mode";
 const TStringBuf FORMAT_ATTR_NAME = "_format";
+const TStringBuf NATIVE_STRICT_SCHEMA_ATTR_NAME = "native_strict_schema";
 
 const TStringBuf KeyFilterName = "keyFilter";
 const TStringBuf CurrentYtClusterShortcut = "current";
@@ -68,6 +75,12 @@ const TStringBuf YqlIOSpecRegistry = "registry";
 
 const TStringBuf SecurityTagsName = "security_tags";
 
+// Reserved members for table path/view in MrPartitionList first arg
+const TStringBuf MrPartitionListTableMember = "TablePath";
+const TStringBuf MrPartitionListViewMember = "TableView";
+
 extern const TVector<TStringBuf> YAMR_FIELDS;
+
+extern const TVector<TStringBuf> ORDERED_TABLE_READ_ONLY_FIELDS;
 
 }

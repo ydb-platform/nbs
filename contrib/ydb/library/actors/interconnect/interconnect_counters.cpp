@@ -1,13 +1,57 @@
 #include "interconnect_counters.h"
+#include "interconnect_metrics_aggregator.h"
+
+#include <contrib/ydb/library/actors/core/actor.h>
 
 #include <library/cpp/monlib/metrics/metric_registry.h>
 #include <library/cpp/monlib/metrics/metric_sub_registry.h>
 
 #include <unordered_map>
+#include <utility>
 
 namespace NActors {
 
 namespace {
+
+    static constexpr std::initializer_list<ui32> UtilizationPPM{
+        1'000, 5'000, 10'000, 50'000, 100'000, 200'000, 300'000, 400'000, 500'000, 600'000, 700'000, 800'000,
+        900'000, 950'000, 990'000, 999'000, Max<ui32>()
+    };
+
+    namespace {
+        void UpdateUtilization(auto& prevIndex, auto& array, ui32 value) {
+            auto comp = [](const auto& x, ui32 y) { return std::get<0>(x) < y; };
+            auto it = std::lower_bound(array.begin(), array.end(), value, comp);
+            Y_ABORT_UNLESS(it != array.end());
+            if (const ui32 index = it - array.begin(); index != prevIndex) {
+                auto& [_1, prev] = array[prevIndex];
+                prev->Dec();
+                auto& [_2, cur] = *it;
+                cur->Inc();
+                prevIndex = index;
+            }
+        };
+
+        template <typename TEvent, typename... TArgs>
+        void SendMetricsAggregationEvent(const TInterconnectProxyCommon::TPtr& common, TArgs&&... args) {
+            if (!TlsActivationContext || !common->MetricsAggregatorId) {
+                return;
+            }
+            TActivationContext::Send(new IEventHandle(common->MetricsAggregatorId, TActorId(),
+                new TEvent(std::forward<TArgs>(args)...)));
+        }
+
+        TStringBuf FormatSubscriberActivityName(ui32 activityIndex) {
+            return activityIndex == Max<ui32>() ? TStringBuf("manual") : GetActivityTypeName(activityIndex);
+        }
+
+        TStringBuf GetScopeClassPeerLabel(const TScopeId& localScopeId, const TScopeId& peerScopeId) {
+            if (peerScopeId.first == 0) {
+                return peerScopeId.second ? TStringBuf("system") : TStringBuf("unknown");
+            }
+            return peerScopeId == localScopeId ? TStringBuf("same_tenant") : TStringBuf("other_tenant");
+        }
+    }
 
     class TInterconnectCounters: public IInterconnectMetrics {
     public:
@@ -85,7 +129,11 @@ namespace {
     private:
         const TInterconnectProxyCommon::TPtr Common;
         const bool MergePerDataCenterCounters;
+        const bool MergePerHostCounters;
+        const bool MergePerScopeClassCounters;
+        const bool UseMetricsAggregation;
         const bool MergePerPeerCounters;
+        const bool HasSessionCounters;
         NMonitoring::TDynamicCounterPtr Counters;
         NMonitoring::TDynamicCounterPtr PerSessionCounters;
         NMonitoring::TDynamicCounterPtr PerDataCenterCounters;
@@ -96,24 +144,47 @@ namespace {
         NMonitoring::TDynamicCounters::TCounterPtr Traffic;
         NMonitoring::TDynamicCounters::TCounterPtr Events;
         NMonitoring::TDynamicCounters::TCounterPtr ScopeErrors;
+        TString MetricPeerLabel;
+        TString MetricsAggregationLabel;
+        TString MetricsAggregationPeer;
+        ui32 ConnectedValue = 0;
+        ui32 RdmaRetryWatchdogPendingValue = 0;
+        i64 ClockSkewValue = 0;
+        bool MetricsAggregationRegistered = false;
 
     public:
         TInterconnectCounters(const TInterconnectProxyCommon::TPtr& common)
             : Common(common)
             , MergePerDataCenterCounters(common->Settings.MergePerDataCenterCounters)
+            , MergePerHostCounters(common->Settings.MergePerHostCounters)
+            , MergePerScopeClassCounters(common->Settings.MergePerScopeClassCounters)
+            , UseMetricsAggregation((MergePerHostCounters || MergePerScopeClassCounters) && common->MetricsAggregatorId)
             , MergePerPeerCounters(common->Settings.MergePerPeerCounters)
+            , HasSessionCounters(!MergePerDataCenterCounters && !MergePerPeerCounters)
             , Counters(common->MonCounters)
             , AdaptiveCounters(MergePerDataCenterCounters
                     ? PerDataCenterCounters :
                     MergePerPeerCounters ? Counters : PerSessionCounters)
         {}
 
+        ~TInterconnectCounters() override {
+            UnregisterMetricsAggregation();
+        }
+
         void AddInflightDataAmount(ui64 value) override {
             *InflightDataAmount += value;
         }
 
+        void AddInflightRdmaDataAmount(ui64 value) override {
+            *InflightRdmaDataAmount += value;
+        }
+
         void SubInflightDataAmount(ui64 value) override {
             *InflightDataAmount -= value;
+        }
+
+        void SubInflightRdmaDataAmount(ui64 value) override {
+            *InflightRdmaDataAmount -= value;
         }
 
         void AddTotalBytesWritten(ui64 value) override {
@@ -121,6 +192,16 @@ namespace {
         }
 
         void SetClockSkewMicrosec(i64 value) override {
+            if (UseMetricsAggregation) {
+                if (ClockSkewValue != value) {
+                    ClockSkewValue = value;
+                    if (MetricsAggregationRegistered) {
+                        SendMetricsAggregationEvent<NInterconnectMetricsAggregator::TEvUpdateClockSkew>(Common,
+                            MetricsAggregationLabel, MetricsAggregationPeer, ClockSkewValue);
+                    }
+                }
+                return;
+            }
             *ClockSkewMicrosec = value;
         }
 
@@ -133,7 +214,31 @@ namespace {
         }
 
         void SetConnected(ui32 value) override {
+            if (UseMetricsAggregation) {
+                if (ConnectedValue != value) {
+                    ConnectedValue = value;
+                    if (MetricsAggregationRegistered) {
+                        SendMetricsAggregationEvent<NInterconnectMetricsAggregator::TEvUpdateConnected>(Common,
+                            MetricsAggregationLabel, MetricsAggregationPeer, ConnectedValue);
+                    }
+                }
+                return;
+            }
             *Connected = value;
+        }
+
+        void SetRdmaRetryWatchdogPending(ui32 value) override {
+            if (UseMetricsAggregation) {
+                if (RdmaRetryWatchdogPendingValue != value) {
+                    RdmaRetryWatchdogPendingValue = value;
+                    if (MetricsAggregationRegistered) {
+                        SendMetricsAggregationEvent<NInterconnectMetricsAggregator::TEvUpdateRdmaRetryWatchdogPending>(
+                            Common, MetricsAggregationLabel, MetricsAggregationPeer, RdmaRetryWatchdogPendingValue);
+                    }
+                }
+                return;
+            }
+            *RdmaRetryWatchdogPending = value;
         }
 
         void IncSubscribersCount() override {
@@ -142,6 +247,15 @@ namespace {
 
         void SubSubscribersCount(ui32 value) override {
             *SubscribersCount -= value;
+        }
+
+        void AddSubscribersByActivity(ui32 activityIndex, i64 value) override {
+            auto& counter = SubscribersByActivity[activityIndex];
+            if (!counter) {
+                counter = AdaptiveCounters->GetSubgroup("sensor", "InterconnectSessionSubscribersByActivity")
+                    ->GetNamedCounter("activity", TString(FormatSubscriberActivityName(activityIndex)), false);
+            }
+            *counter += value;
         }
 
         void SubOutputBuffersTotalSize(ui64 value) override {
@@ -194,11 +308,17 @@ namespace {
         void AddInputChannelsIncomingTraffic(ui16 channel, ui64 incomingTraffic) override {
             auto& ch = InputChannels.Get(channel);
             *ch.IncomingTraffic += incomingTraffic;
+            *ch.Traffic += incomingTraffic;
         }
 
         void IncInputChannelsIncomingEvents(ui16 channel) override {
             auto& ch = InputChannels.Get(channel);
             ++*ch.IncomingEvents;
+            ++*ch.Events;
+        }
+
+        void IncScopeErrors() override {
+            ++*ScopeErrors;
         }
 
         void IncRecvSyscalls(ui64 ns) override {
@@ -214,28 +334,45 @@ namespace {
             PingTimeHistogram->Collect(value);
         }
 
+        void UpdateIcQueueTimeHistogram(ui64 value) override {
+            InterconnectQueueTimeHistogram->Collect(value);
+        }
+
+        void UpdateNumEventsInQueueHistogram(ui64 value) override {
+            NumEventsInQueueHistogram->Collect(value);
+        }
+
+        void UpdateRdmaReadTimeHistogram(ui64 value) override {
+            RdmaReadTimeHistogram->Collect(value);
+        }
+
+        void IncRdmaMultipartEvents() override {
+            ++*RdmaMultipartEvents;
+        }
+
         void UpdateOutputChannelTraffic(ui16 channel, ui64 value) override {
             auto& ch = GetOutputChannel(channel);
-            if (ch.OutgoingTraffic) {
-                *ch.OutgoingTraffic += value;
-            }
-            if (ch.Traffic) {
-                *ch.Traffic += value;
-            }
+            *ch.OutgoingTraffic += value;
+            *ch.Traffic += value;
         }
 
         void UpdateOutputChannelEvents(ui16 channel) override {
             auto& ch = GetOutputChannel(channel);
-            if (ch.OutgoingEvents) {
-                ++*ch.OutgoingEvents;
-            }
-            if (ch.Events) {
-                ++*ch.Events;
-            }
+            ++*ch.OutgoingEvents;
+            ++*ch.Events;
         }
 
-        void SetPeerInfo(const TString& name, const TString& dataCenterId) override {
+        void SetUtilization(ui32 total, ui32 starvation) override {
+            UpdateUtilization(PrevUtilization, Utilization, total);
+            UpdateUtilization(PrevStarvation, Starvation, starvation);
+        }
+
+        void SetPeerInfo(const TString& name, const TString& dataCenterId, const TString& peerLabel) override {
+            const TString effectivePeerLabel = peerLabel.empty() ? name : peerLabel;
             if (name != std::exchange(HumanFriendlyPeerHostName, name)) {
+                PerSessionCounters.Reset();
+            }
+            if (effectivePeerLabel != std::exchange(MetricPeerLabel, effectivePeerLabel)) {
                 PerSessionCounters.Reset();
             }
             VALGRIND_MAKE_READABLE(&DataCenterId, sizeof(DataCenterId));
@@ -249,9 +386,9 @@ namespace {
             }
 
             const bool updatePerSession = !PerSessionCounters || updatePerDataCenter;
-            if (updatePerSession) {
+            if (HasSessionCounters && updatePerSession) {
                 auto base = MergePerDataCenterCounters ? PerDataCenterCounters : Counters;
-                PerSessionCounters = base->GetSubgroup("peer", *HumanFriendlyPeerHostName);
+                PerSessionCounters = base->GetSubgroup("peer", MetricPeerLabel);
             }
 
             const bool updateGlobal = !Initialized;
@@ -263,13 +400,16 @@ namespace {
                 false;
 
             if (updatePerSession) {
-                Connected = PerSessionCounters->GetCounter("Connected");
-                Disconnections = PerSessionCounters->GetCounter("Disconnections", true);
-                ClockSkewMicrosec = PerSessionCounters->GetCounter("ClockSkewMicrosec");
-                Traffic = PerSessionCounters->GetCounter("Traffic", true);
-                Events = PerSessionCounters->GetCounter("Events", true);
-                ScopeErrors = PerSessionCounters->GetCounter("ScopeErrors", true);
+                Connected = AdaptiveCounters->GetCounter("Connected");
+                RdmaRetryWatchdogPending = AdaptiveCounters->GetCounter("RdmaRetryWatchdogPendingSessions");
+                Disconnections = AdaptiveCounters->GetCounter("Disconnections", true);
+                ClockSkewMicrosec = AdaptiveCounters->GetCounter("ClockSkewMicrosec");
+                Traffic = AdaptiveCounters->GetCounter("Traffic", true);
+                Events = AdaptiveCounters->GetCounter("Events", true);
+                ScopeErrors = AdaptiveCounters->GetCounter("ScopeErrors", true);
 
+                // Channel wrappers cache Traffic/Events pointers, which change with peer label.
+                OutputChannels.clear();
                 for (const auto& [id, name] : Common->ChannelName) {
                     OutputChannels.try_emplace(id, Counters->GetSubgroup("channel", name), Traffic, Events);
                 }
@@ -279,13 +419,24 @@ namespace {
             }
 
             if (updateAdaptive) {
+                // Activity gauges cache adaptive counter pointers, which change with peer label.
+                SubscribersByActivity.clear();
                 SessionDeaths = AdaptiveCounters->GetCounter("Session_Deaths", true);
                 HandshakeFails = AdaptiveCounters->GetCounter("Handshake_Fails", true);
                 InflyLimitReach = AdaptiveCounters->GetCounter("InflyLimitReach", true);
                 InflightDataAmount = AdaptiveCounters->GetCounter("Inflight_Data");
+                InflightRdmaDataAmount = AdaptiveCounters->GetCounter("InflightRdma_Data");
+                SubscribersCount = AdaptiveCounters->GetCounter("SubscribersCount");
 
                 PingTimeHistogram = AdaptiveCounters->GetHistogram(
                     "PingTimeUs", NMonitoring::ExponentialHistogram(18, 2, 125));
+                InterconnectQueueTimeHistogram = AdaptiveCounters->GetHistogram(
+                    "InterconnectQueueTimeHistogramUs", NMonitoring::ExplicitHistogram({500, 1000, 5000, 10000, 50000, 100000}));
+                NumEventsInQueueHistogram = AdaptiveCounters->GetHistogram(
+                    "NumEventsInQueue", NMonitoring::ExplicitHistogram({0, 1, 2, 6, 24, 120}));
+                RdmaReadTimeHistogram = AdaptiveCounters->GetHistogram(
++                    "RdmaReadTimeUs", NMonitoring::ExplicitHistogram({0, 5, 10, 20, 50, 100, 200, 1000, 10000}));
+                RdmaMultipartEvents = AdaptiveCounters->GetCounter("RdmaMultipartEvents", true);
             }
 
             if (updateGlobal) {
@@ -298,7 +449,6 @@ namespace {
                 UsefulReadWakeups = Counters->GetCounter("UsefulReadWakeups", true);
                 SpuriousWriteWakeups = Counters->GetCounter("SpuriousWriteWakeups", true);
                 UsefulWriteWakeups = Counters->GetCounter("UsefulWriteWakeups", true);
-                SubscribersCount = AdaptiveCounters->GetCounter("SubscribersCount");
                 TotalBytesWritten = Counters->GetCounter("TotalBytesWritten", true);
                 TotalBytesRead = Counters->GetCounter("TotalBytesRead", true);
 
@@ -306,9 +456,32 @@ namespace {
                 for (const char *reason : TDisconnectReason::Reasons) {
                     DisconnectByReason[reason] = disconnectReasonGroup->GetCounter(reason, true);
                 }
+
+                auto group = Counters->GetSubgroup("subsystem", "utilization");
+                auto util = group->GetSubgroup("sensor", "utilization");
+                auto starv = group->GetSubgroup("sensor", "starvation");
+                for (ui32 ppm : UtilizationPPM) {
+                    const TString name = ppm != Max<ui32>() ? ToString(ppm) : "inf";
+                    Utilization.emplace_back(ppm, util->GetNamedCounter("bin", name, false));
+                    Starvation.emplace_back(ppm, starv->GetNamedCounter("bin", name, false));
+                }
+                ++*std::get<1>(Utilization[PrevUtilization]);
+                ++*std::get<1>(Starvation[PrevStarvation]);
+            }
+
+            if (UseMetricsAggregation && updatePerSession) {
+                RebindMetricsAggregation();
             }
 
             Initialized = true;
+        }
+
+        void SetPeerScopeId(const TScopeId& peerScopeId) override {
+            if (!MergePerScopeClassCounters || MergePerHostCounters || !HumanFriendlyPeerHostName || !DataCenterId) {
+                return;
+            }
+            SetPeerInfo(*HumanFriendlyPeerHostName, *DataCenterId,
+                TString(GetScopeClassPeerLabel(Common->LocalScopeId, peerScopeId)));
         }
 
         const TOutputChannel& GetOutputChannel(ui16 index) const {
@@ -317,16 +490,48 @@ namespace {
             return it != OutputChannels.end() ? it->second : OtherOutputChannel;
         }
 
+        void UnregisterMetricsAggregation() {
+            if (!UseMetricsAggregation || !MetricsAggregationRegistered) {
+                return;
+            }
+            SendMetricsAggregationEvent<NInterconnectMetricsAggregator::TEvUnregisterPeer>(Common, MetricsAggregationLabel, MetricsAggregationPeer);
+            MetricsAggregationLabel.clear();
+            MetricsAggregationPeer.clear();
+            MetricsAggregationRegistered = false;
+        }
+
+        void RebindMetricsAggregation() {
+            if (!UseMetricsAggregation || MetricPeerLabel.empty() || !HumanFriendlyPeerHostName) {
+                return;
+            }
+            if (MetricsAggregationRegistered && MetricsAggregationLabel == MetricPeerLabel
+                    && MetricsAggregationPeer == *HumanFriendlyPeerHostName) {
+                return;
+            }
+            UnregisterMetricsAggregation();
+            MetricsAggregationLabel = MetricPeerLabel;
+            MetricsAggregationPeer = *HumanFriendlyPeerHostName;
+            MetricsAggregationRegistered = true;
+            SendMetricsAggregationEvent<NInterconnectMetricsAggregator::TEvRegisterPeer>(Common, MetricsAggregationLabel, MetricsAggregationPeer);
+            SendMetricsAggregationEvent<NInterconnectMetricsAggregator::TEvUpdateConnected>(Common, MetricsAggregationLabel, MetricsAggregationPeer, ConnectedValue);
+            SendMetricsAggregationEvent<NInterconnectMetricsAggregator::TEvUpdateClockSkew>(Common, MetricsAggregationLabel, MetricsAggregationPeer, ClockSkewValue);
+            SendMetricsAggregationEvent<NInterconnectMetricsAggregator::TEvUpdateRdmaRetryWatchdogPending>(
+                Common, MetricsAggregationLabel, MetricsAggregationPeer, RdmaRetryWatchdogPendingValue);
+        }
+
     private:
         NMonitoring::TDynamicCounters::TCounterPtr SessionDeaths;
         NMonitoring::TDynamicCounters::TCounterPtr HandshakeFails;
         NMonitoring::TDynamicCounters::TCounterPtr Connected;
+        NMonitoring::TDynamicCounters::TCounterPtr RdmaRetryWatchdogPending;
         NMonitoring::TDynamicCounters::TCounterPtr Disconnections;
         NMonitoring::TDynamicCounters::TCounterPtr InflightDataAmount;
+        NMonitoring::TDynamicCounters::TCounterPtr InflightRdmaDataAmount;
         NMonitoring::TDynamicCounters::TCounterPtr InflyLimitReach;
         NMonitoring::TDynamicCounters::TCounterPtr OutputBuffersTotalSize;
         NMonitoring::TDynamicCounters::TCounterPtr QueueUtilization;
         NMonitoring::TDynamicCounters::TCounterPtr SubscribersCount;
+        THashMap<ui32, NMonitoring::TDynamicCounters::TCounterPtr> SubscribersByActivity;
         NMonitoring::TDynamicCounters::TCounterPtr SendSyscalls;
         NMonitoring::TDynamicCounters::TCounterPtr SendSyscallsNs;
         NMonitoring::TDynamicCounters::TCounterPtr ClockSkewMicrosec;
@@ -337,6 +542,10 @@ namespace {
         NMonitoring::TDynamicCounters::TCounterPtr UsefulWriteWakeups;
         NMonitoring::TDynamicCounters::TCounterPtr SpuriousWriteWakeups;
         NMonitoring::THistogramPtr PingTimeHistogram;
+        NMonitoring::THistogramPtr InterconnectQueueTimeHistogram;
+        NMonitoring::THistogramPtr NumEventsInQueueHistogram;
+        NMonitoring::THistogramPtr RdmaReadTimeHistogram;
+        NMonitoring::TDynamicCounters::TCounterPtr RdmaMultipartEvents;
 
         std::unordered_map<ui16, TOutputChannel> OutputChannels;
         TOutputChannel OtherOutputChannel;
@@ -344,6 +553,11 @@ namespace {
         THashMap<TString, NMonitoring::TDynamicCounters::TCounterPtr> DisconnectByReason;
 
         NMonitoring::TDynamicCounters::TCounterPtr TotalBytesWritten, TotalBytesRead;
+
+        ui32 PrevUtilization = 0;
+        std::vector<std::tuple<ui32, NMonitoring::TDynamicCounters::TCounterPtr>> Utilization;
+        ui32 PrevStarvation = 0;
+        std::vector<std::tuple<ui32, NMonitoring::TDynamicCounters::TCounterPtr>> Starvation;
     };
 
     class TInterconnectMetrics: public IInterconnectMetrics {
@@ -422,6 +636,9 @@ namespace {
         TInterconnectMetrics(const TInterconnectProxyCommon::TPtr& common)
             : Common(common)
             , MergePerDataCenterMetrics_(common->Settings.MergePerDataCenterCounters)
+            , MergePerHostMetrics_(common->Settings.MergePerHostCounters)
+            , MergePerScopeClassMetrics_(common->Settings.MergePerScopeClassCounters)
+            , UseMetricsAggregation_((MergePerHostMetrics_ || MergePerScopeClassMetrics_) && common->MetricsAggregatorId)
             , MergePerPeerMetrics_(common->Settings.MergePerPeerCounters)
             , Metrics_(common->Metrics)
             , AdaptiveMetrics_(MergePerDataCenterMetrics_
@@ -429,12 +646,24 @@ namespace {
                                MergePerPeerMetrics_ ? Metrics_ : PerSessionMetrics_)
         {}
 
+        ~TInterconnectMetrics() override {
+            UnregisterMetricsAggregation();
+        }
+
         void AddInflightDataAmount(ui64 value) override {
             InflightDataAmount_->Add(value);
         }
 
+        void AddInflightRdmaDataAmount(ui64 value) override {
+            InflightRdmaDataAmount_->Add(value);
+        }
+
         void SubInflightDataAmount(ui64 value) override {
             InflightDataAmount_->Add(-value);
+        }
+
+        void SubInflightRdmaDataAmount(ui64 value) override {
+            InflightRdmaDataAmount_->Add(-value);
         }
 
         void AddTotalBytesWritten(ui64 value) override {
@@ -442,6 +671,16 @@ namespace {
         }
 
         void SetClockSkewMicrosec(i64 value) override {
+            if (UseMetricsAggregation_) {
+                if (ClockSkewValue_ != value) {
+                    ClockSkewValue_ = value;
+                    if (MetricsAggregationRegistered_) {
+                        SendMetricsAggregationEvent<NInterconnectMetricsAggregator::TEvUpdateClockSkew>(Common,
+                            MetricsAggregationLabel_, MetricsAggregationPeer_, ClockSkewValue_);
+                    }
+                }
+                return;
+            }
             ClockSkewMicrosec_->Set(value);
         }
 
@@ -454,7 +693,31 @@ namespace {
         }
 
         void SetConnected(ui32 value) override {
+            if (UseMetricsAggregation_) {
+                if (ConnectedValue_ != value) {
+                    ConnectedValue_ = value;
+                    if (MetricsAggregationRegistered_) {
+                        SendMetricsAggregationEvent<NInterconnectMetricsAggregator::TEvUpdateConnected>(Common,
+                            MetricsAggregationLabel_, MetricsAggregationPeer_, ConnectedValue_);
+                    }
+                }
+                return;
+            }
             Connected_->Set(value);
+        }
+
+        void SetRdmaRetryWatchdogPending(ui32 value) override {
+            if (UseMetricsAggregation_) {
+                if (RdmaRetryWatchdogPendingValue_ != value) {
+                    RdmaRetryWatchdogPendingValue_ = value;
+                    if (MetricsAggregationRegistered_) {
+                        SendMetricsAggregationEvent<NInterconnectMetricsAggregator::TEvUpdateRdmaRetryWatchdogPending>(
+                            Common, MetricsAggregationLabel_, MetricsAggregationPeer_, RdmaRetryWatchdogPendingValue_);
+                    }
+                }
+                return;
+            }
+            RdmaRetryWatchdogPending_->Set(value);
         }
 
         void IncSubscribersCount() override {
@@ -463,6 +726,19 @@ namespace {
 
         void SubSubscribersCount(ui32 value) override {
             SubscribersCount_->Add(-value);
+        }
+
+        void AddSubscribersByActivity(ui32 activityIndex, i64 value) override {
+            auto& gauge = SubscribersByActivity_[activityIndex];
+            if (!gauge) {
+                gauge = AdaptiveMetrics_->IntGauge(
+                    NMonitoring::MakeLabels({
+                        {"sensor", "interconnect.session_subscribers_by_activity"},
+                        {"activity", TString(FormatSubscriberActivityName(activityIndex))},
+                    })
+                );
+            }
+            gauge->Add(value);
         }
 
         void SubOutputBuffersTotalSize(ui64 value) override {
@@ -514,11 +790,17 @@ namespace {
         void AddInputChannelsIncomingTraffic(ui16 channel, ui64 incomingTraffic) override {
             auto& ch = InputChannels_.Get(channel);
             ch.IncomingTraffic->Add(incomingTraffic);
+            ch.Traffic->Add(incomingTraffic);
         }
 
         void IncInputChannelsIncomingEvents(ui16 channel) override {
             auto& ch = InputChannels_.Get(channel);
             ch.IncomingEvents->Inc();
+            ch.Events->Inc();
+        }
+
+        void IncScopeErrors() override {
+            ScopeErrors_->Inc();
         }
 
         void IncRecvSyscalls(ui64 /*ns*/) override {
@@ -531,6 +813,22 @@ namespace {
 
         void UpdatePingTimeHistogram(ui64 value) override {
             PingTimeHistogram_->Record(value);
+        }
+
+        void UpdateIcQueueTimeHistogram(ui64 value) override {
+            InterconnectQueueTimeHistogram_->Record(value);
+        }
+
+        void UpdateNumEventsInQueueHistogram(ui64 value) override {
+            NumEventsInQueueHistogram_->Record(value);
+        }
+
+        void UpdateRdmaReadTimeHistogram(ui64 value) override {
+            RdmaReadTimeHistogram_->Record(value);
+        }
+
+        void IncRdmaMultipartEvents() override {
+            RdmaMultipartEvents_->Inc();
         }
 
         void UpdateOutputChannelTraffic(ui16 channel, ui64 value) override {
@@ -553,8 +851,17 @@ namespace {
             }
         }
 
-        void SetPeerInfo(const TString& name, const TString& dataCenterId) override {
+        void SetUtilization(ui32 total, ui32 starvation) override {
+            UpdateUtilization(PrevUtilization_, Utilization_, total);
+            UpdateUtilization(PrevStarvation_, Starvation_, starvation);
+        }
+
+        void SetPeerInfo(const TString& name, const TString& dataCenterId, const TString& peerLabel) override {
+            const TString effectivePeerLabel = peerLabel.empty() ? name : peerLabel;
             if (name != std::exchange(HumanFriendlyPeerHostName, name)) {
+                PerSessionMetrics_.reset();
+            }
+            if (effectivePeerLabel != std::exchange(MetricPeerLabel_, effectivePeerLabel)) {
                 PerSessionMetrics_.reset();
             }
             VALGRIND_MAKE_READABLE(&DataCenterId, sizeof(DataCenterId));
@@ -572,7 +879,7 @@ namespace {
             if (updatePerSession) {
                 auto base = MergePerDataCenterMetrics_ ? PerDataCenterMetrics_ : Metrics_;
                 PerSessionMetrics_ = std::make_shared<NMonitoring::TMetricSubRegistry>(
-                        NMonitoring::TLabels{{"peer", *HumanFriendlyPeerHostName}}, base);
+                        NMonitoring::TLabels{{"peer", MetricPeerLabel_}}, base);
             }
 
             const bool updateGlobal = !Initialized_;
@@ -592,12 +899,16 @@ namespace {
 
             if (updatePerSession) {
                 Connected_ = createIntGauge(PerSessionMetrics_, "interconnect.connected");
+                RdmaRetryWatchdogPending_ = createIntGauge(PerSessionMetrics_,
+                    "interconnect.rdma_retry_watchdog_pending_sessions");
                 Disconnections_ = createRate(PerSessionMetrics_, "interconnect.disconnections");
                 ClockSkewMicrosec_ = createIntGauge(PerSessionMetrics_, "interconnect.clock_skew_microsec");
                 Traffic_ = createRate(PerSessionMetrics_, "interconnect.traffic");
                 Events_ = createRate(PerSessionMetrics_, "interconnect.events");
                 ScopeErrors_ = createRate(PerSessionMetrics_, "interconnect.scope_errors");
 
+                // Channel wrappers cache Traffic/Events pointers, which change with peer label.
+                OutputChannels_.clear();
                 for (const auto& [id, name] : Common->ChannelName) {
                     OutputChannels_.try_emplace(id, std::make_shared<NMonitoring::TMetricSubRegistry>(
                             NMonitoring::TLabels{{"channel", name}}, Metrics_), Traffic_, Events_);
@@ -609,12 +920,23 @@ namespace {
             }
 
             if (updateAdaptive) {
+                // Activity gauges cache adaptive metric pointers, which change with peer label.
+                SubscribersByActivity_.clear();
                 SessionDeaths_ = createRate(AdaptiveMetrics_, "interconnect.session_deaths");
                 HandshakeFails_ = createRate(AdaptiveMetrics_, "interconnect.handshake_fails");
                 InflyLimitReach_ = createRate(AdaptiveMetrics_, "interconnect.infly_limit_reach");
                 InflightDataAmount_ = createRate(AdaptiveMetrics_, "interconnect.inflight_data");
+                InflightRdmaDataAmount_ = createRate(AdaptiveMetrics_, "interconnect.inflight_rdma_data");
+                SubscribersCount_ = createIntGauge(AdaptiveMetrics_, "interconnect.subscribers_count");
                 PingTimeHistogram_ = AdaptiveMetrics_->HistogramRate(
                         NMonitoring::MakeLabels({{"sensor", "interconnect.ping_time_us"}}), NMonitoring::ExponentialHistogram(18, 2, 125));
+                InterconnectQueueTimeHistogram_ = AdaptiveMetrics_->HistogramRate(
+                        NMonitoring::MakeLabels({{"sensor", "interconnect.ic_queue_time_us"}}), NMonitoring::ExplicitHistogram({500, 1000, 5000, 10000, 50000, 100000}));
+                NumEventsInQueueHistogram_ = AdaptiveMetrics_->HistogramRate(
+                        NMonitoring::MakeLabels({{"sensor", "interconnect.num_events_in_queue"}}), NMonitoring::ExplicitHistogram({0, 1, 2, 6, 24, 120}));
+                RdmaReadTimeHistogram_ = AdaptiveMetrics_->HistogramRate(
+                        NMonitoring::MakeLabels({{"sensor", "interconnect.rdma_read_time_us"}}), NMonitoring::ExplicitHistogram({0, 5, 10, 20, 50, 100, 200, 1000, 10000}));
+                RdmaMultipartEvents_ = createRate(AdaptiveMetrics_, "interconnect.rdma_multipart_events");
             }
 
             if (updateGlobal) {
@@ -625,7 +947,6 @@ namespace {
                 UsefulReadWakeups_ = createRate(Metrics_, "interconnect.useful_read_wakeups");
                 SpuriousWriteWakeups_ = createRate(Metrics_, "interconnect.spurious_write_wakeups");
                 UsefulWriteWakeups_ = createRate(Metrics_, "interconnect.useful_write_wakeups");
-                SubscribersCount_ = createIntGauge(AdaptiveMetrics_, "interconnect.subscribers_count");
                 TotalBytesWritten_ = createRate(Metrics_, "interconnect.total_bytes_written");
                 TotalBytesRead_ = createRate(Metrics_, "interconnect.total_bytes_read");
 
@@ -636,9 +957,41 @@ namespace {
                                 {"reason", reason},
                             }));
                 }
+
+                for (ui32 ppm : UtilizationPPM) {
+                    const TString name = ppm != Max<ui32>() ? ToString(ppm) : "inf";
+                    Utilization_.emplace_back(ppm, Metrics_->IntGauge(
+                        NMonitoring::MakeLabels({
+                            {"subsystem", "utilization"},
+                            {"sensor", "utilization"},
+                            {"bin", name},
+                        })
+                    ));
+                    Starvation_.emplace_back(ppm, Metrics_->IntGauge(
+                        NMonitoring::MakeLabels({
+                            {"subsystem", "utilization"},
+                            {"sensor", "starvation"},
+                            {"bin", name},
+                        })
+                    ));
+                }
+                std::get<1>(Utilization_[PrevUtilization_])->Inc();
+                std::get<1>(Starvation_[PrevStarvation_])->Inc();
+            }
+
+            if (UseMetricsAggregation_ && updatePerSession) {
+                RebindMetricsAggregation();
             }
 
             Initialized_ = true;
+        }
+
+        void SetPeerScopeId(const TScopeId& peerScopeId) override {
+            if (!MergePerScopeClassMetrics_ || MergePerHostMetrics_ || !HumanFriendlyPeerHostName || !DataCenterId) {
+                return;
+            }
+            SetPeerInfo(*HumanFriendlyPeerHostName, *DataCenterId,
+                TString(GetScopeClassPeerLabel(Common->LocalScopeId, peerScopeId)));
         }
 
         const TOutputChannel& GetOutputChannel(ui16 index) const {
@@ -647,29 +1000,73 @@ namespace {
             return it != OutputChannels_.end() ? it->second : OtherOutputChannel_;
         }
 
+        void UnregisterMetricsAggregation() {
+            if (!UseMetricsAggregation_ || !MetricsAggregationRegistered_) {
+                return;
+            }
+            SendMetricsAggregationEvent<NInterconnectMetricsAggregator::TEvUnregisterPeer>(Common, MetricsAggregationLabel_, MetricsAggregationPeer_);
+            MetricsAggregationLabel_.clear();
+            MetricsAggregationPeer_.clear();
+            MetricsAggregationRegistered_ = false;
+        }
+
+        void RebindMetricsAggregation() {
+            if (!UseMetricsAggregation_ || MetricPeerLabel_.empty() || !HumanFriendlyPeerHostName) {
+                return;
+            }
+            if (MetricsAggregationRegistered_ && MetricsAggregationLabel_ == MetricPeerLabel_
+                    && MetricsAggregationPeer_ == *HumanFriendlyPeerHostName) {
+                return;
+            }
+            UnregisterMetricsAggregation();
+            MetricsAggregationLabel_ = MetricPeerLabel_;
+            MetricsAggregationPeer_ = *HumanFriendlyPeerHostName;
+            MetricsAggregationRegistered_ = true;
+            SendMetricsAggregationEvent<NInterconnectMetricsAggregator::TEvRegisterPeer>(Common, MetricsAggregationLabel_, MetricsAggregationPeer_);
+            SendMetricsAggregationEvent<NInterconnectMetricsAggregator::TEvUpdateConnected>(Common,
+                MetricsAggregationLabel_, MetricsAggregationPeer_, ConnectedValue_);
+            SendMetricsAggregationEvent<NInterconnectMetricsAggregator::TEvUpdateClockSkew>(Common,
+                MetricsAggregationLabel_, MetricsAggregationPeer_, ClockSkewValue_);
+            SendMetricsAggregationEvent<NInterconnectMetricsAggregator::TEvUpdateRdmaRetryWatchdogPending>(
+                Common, MetricsAggregationLabel_, MetricsAggregationPeer_, RdmaRetryWatchdogPendingValue_);
+        }
+
     private:
         const TInterconnectProxyCommon::TPtr Common;
         const bool MergePerDataCenterMetrics_;
+        const bool MergePerHostMetrics_;
+        const bool MergePerScopeClassMetrics_;
+        const bool UseMetricsAggregation_;
         const bool MergePerPeerMetrics_;
         std::shared_ptr<NMonitoring::IMetricRegistry> Metrics_;
         std::shared_ptr<NMonitoring::IMetricRegistry> PerSessionMetrics_;
         std::shared_ptr<NMonitoring::IMetricRegistry> PerDataCenterMetrics_;
         std::shared_ptr<NMonitoring::IMetricRegistry>& AdaptiveMetrics_;
         bool Initialized_ = false;
+        TString MetricPeerLabel_;
+        TString MetricsAggregationLabel_;
+        TString MetricsAggregationPeer_;
+        ui32 ConnectedValue_ = 0;
+        ui32 RdmaRetryWatchdogPendingValue_ = 0;
+        i64 ClockSkewValue_ = 0;
+        bool MetricsAggregationRegistered_ = false;
 
-        NMonitoring::IRate* Traffic_;
+        NMonitoring::IRate* Traffic_ = nullptr;
 
-        NMonitoring::IRate* Events_;
-        NMonitoring::IRate* ScopeErrors_;
-        NMonitoring::IRate* Disconnections_;
-        NMonitoring::IIntGauge* Connected_;
+        NMonitoring::IRate* Events_ = nullptr;
+        NMonitoring::IRate* ScopeErrors_ = nullptr;
+        NMonitoring::IRate* Disconnections_ = nullptr;
+        NMonitoring::IIntGauge* Connected_ = nullptr;
+        NMonitoring::IIntGauge* RdmaRetryWatchdogPending_ = nullptr;
 
         NMonitoring::IRate* SessionDeaths_;
         NMonitoring::IRate* HandshakeFails_;
         NMonitoring::IRate* InflyLimitReach_;
         NMonitoring::IRate* InflightDataAmount_;
+        NMonitoring::IRate* InflightRdmaDataAmount_;
         NMonitoring::IRate* OutputBuffersTotalSize_;
         NMonitoring::IIntGauge* SubscribersCount_;
+        THashMap<ui32, NMonitoring::IIntGauge*> SubscribersByActivity_;
         NMonitoring::IRate* SendSyscalls_;
         NMonitoring::IRate* RecvSyscalls_;
         NMonitoring::IRate* SpuriousWriteWakeups_;
@@ -679,6 +1076,10 @@ namespace {
         NMonitoring::IIntGauge* ClockSkewMicrosec_;
 
         NMonitoring::IHistogram* PingTimeHistogram_;
+        NMonitoring::IHistogram* InterconnectQueueTimeHistogram_;
+        NMonitoring::IHistogram* NumEventsInQueueHistogram_;
+        NMonitoring::IHistogram* RdmaReadTimeHistogram_;
+        NMonitoring::IRate* RdmaMultipartEvents_;
 
         THashMap<ui16, TOutputChannel> OutputChannels_;
         TOutputChannel OtherOutputChannel_;
@@ -688,6 +1089,11 @@ namespace {
 
         NMonitoring::IRate* TotalBytesWritten_;
         NMonitoring::IRate* TotalBytesRead_;
+
+        ui32 PrevUtilization_ = 0;
+        std::vector<std::tuple<ui32, NMonitoring::IIntGauge*>> Utilization_;
+        ui32 PrevStarvation_ = 0;
+        std::vector<std::tuple<ui32, NMonitoring::IIntGauge*>> Starvation_;
     };
 
 } // namespace

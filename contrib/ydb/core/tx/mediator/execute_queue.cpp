@@ -34,24 +34,21 @@ namespace NTxMediator {
             TBucket &bucket = SelectBucket(tablet);
             Sort(tx.begin(), tx.end(), TTx::TCmpOrderId());
 
-            LOG_DEBUG(ctx, NKikimrServices::TX_MEDIATOR_PRIVATE, [&]() {
-                TStringBuilder ss;
-                ss << "Mediator exec queue [" << MediatorId << "], step# " << step << " for tablet [" << tablet << "]. TxIds:";
-                for (const auto &x : tx)
-                    ss << " txid# " << x.TxId;
-                ss << " marker# M2";
-                return (TString)ss;
-            }());
+            YDB_LOG_DEBUG_CTX_COMP(ctx, NKikimrServices::TX_MEDIATOR_PRIVATE, "Mediator exec queue",
+                {"mediatorId", MediatorId},
+                {"step", step},
+                {"forTablet", tablet},
+                {"txIds", TTx::DumpTxIds(tx)},
+                {"marker", "M2"});
 
-            LOG_DEBUG_S(ctx, NKikimrServices::TX_MEDIATOR_EXEC_QUEUE, "Actor# " << ctx.SelfID.ToString()
-                << " MediatorId# " << MediatorId << " SEND Ev to# " << bucket.ActiveActor.ToString()
-                << " step# " << step << " forTablet# " << tablet << [&]() {
-                        TStringBuilder ss;
-                        for (const auto &x : tx)
-                            ss << " txid# " << x.TxId;
-                        ss << " marker# M3";
-                        return (TString)ss;
-                    }());
+            YDB_LOG_DEBUG_CTX_COMP(ctx, NKikimrServices::TX_MEDIATOR_EXEC_QUEUE, "SEND Ev",
+                {"actor", ctx.SelfID},
+                {"mediatorId", MediatorId},
+                {"to", bucket.ActiveActor},
+                {"step", step},
+                {"forTablet", tablet},
+                {"txIds", TTx::DumpTxIds(tx)},
+                {"marker", "M3"});
             ctx.Send(bucket.ActiveActor, new TEv(step, tablet, tx));
         }
 
@@ -68,8 +65,11 @@ namespace NTxMediator {
 
             const ui32 totalCoordinators = step->Steps.size();
 
-            LOG_DEBUG_S(ctx, NKikimrServices::TX_MEDIATOR_EXEC_QUEUE, "Actor# " << ctx.SelfID.ToString()
-                << " MediatorId# " << MediatorId << " HANDLE TEvCommitStep " << step->ToString() << " marker# M1");
+            YDB_LOG_DEBUG_CTX_COMP(ctx, NKikimrServices::TX_MEDIATOR_EXEC_QUEUE, "HANDLE TEvCommitStep",
+                {"actor", ctx.SelfID},
+                {"mediatorId", MediatorId},
+                {"step", step->ToString()},
+                {"marker", "M1"});
 
             for (ui32 i = 0; i != totalCoordinators; ++i) {
                 TCoordinatorStep &coord = *step->Steps[i];
@@ -114,9 +114,11 @@ namespace NTxMediator {
             } while (activeTablet != Max<ui64>());
 
             for (const TBucket &bucket : Buckets) {
-                LOG_DEBUG_S(ctx, NKikimrServices::TX_MEDIATOR_EXEC_QUEUE, "Actor# " << ctx.SelfID.ToString()
-                    << " MediatorId# " << MediatorId << " SEND TEvStepPlanComplete to# "
-                    << bucket.ActiveActor.ToString() << " bucket.ActiveActor step# " << step->To);
+                YDB_LOG_DEBUG_CTX_COMP(ctx, NKikimrServices::TX_MEDIATOR_EXEC_QUEUE, "SEND TEvStepPlanComplete to bucket.ActiveActor",
+                    {"actor", ctx.SelfID},
+                    {"mediatorId", MediatorId},
+                    {"to", bucket.ActiveActor},
+                    {"step", step->To});
                 ctx.Send(bucket.ActiveActor, new TEvTxMediator::TEvStepPlanComplete(step->To));
             }
         }
@@ -125,9 +127,11 @@ namespace NTxMediator {
             TEvTxMediator::TEvRequestLostAcks *msg = ev->Get();
             TCoordinatorStep *step = msg->CoordinatorStep.Get();
             const TActorId &ackTo = msg->AckTo;
-            LOG_DEBUG_S(ctx, NKikimrServices::TX_MEDIATOR_EXEC_QUEUE, "Actor# " << ctx.SelfID.ToString()
-                << " MediatorId# " << MediatorId << " HANDLE TEvRequestLostAcks " << step->ToString()
-                << " AckTo# " << ackTo.ToString());
+            YDB_LOG_DEBUG_CTX_COMP(ctx, NKikimrServices::TX_MEDIATOR_EXEC_QUEUE, "HANDLE TEvRequestLostAcks",
+                {"actor", ctx.SelfID},
+                {"mediatorId", MediatorId},
+                {"step", step->ToString()},
+                {"ackTo", ackTo});
 
             Sort(step->TabletsToTransaction.begin(), step->TabletsToTransaction.end(), TCoordinatorStep::TabletToTransactionCmp());
 
@@ -154,21 +158,70 @@ namespace NTxMediator {
             const NKikimrTxMediatorTimecast::TEvWatch &record = ev->Get()->Record;
             // todo: check config coherence
             const TActorId &sender = ev->Sender;
-            LOG_DEBUG_S(ctx, NKikimrServices::TX_MEDIATOR_EXEC_QUEUE, "Actor# " << ctx.SelfID.ToString()
-                << " MediatorId# " << MediatorId << " HANDLE TEvWatch");
+            const TActorId &server = ev->Recipient;
+            YDB_LOG_DEBUG_CTX_COMP(ctx, NKikimrServices::TX_MEDIATOR_EXEC_QUEUE, "HANDLE TEvWatch",
+                {"actor", ctx.SelfID},
+                {"mediatorId", MediatorId});
 
             for (ui32 bucketIdx : record.GetBucket()) {
-                LOG_DEBUG_S(ctx, NKikimrServices::TX_MEDIATOR_EXEC_QUEUE, "Actor# " << ctx.SelfID.ToString()
-                    << " MediatorId# " << MediatorId << " SEND TEvWatchBucket to# "
-                    << Buckets[bucketIdx].ActiveActor.ToString() << " bucket.ActiveActor");
-                ctx.Send(Buckets[bucketIdx].ActiveActor, new TEvTxMediator::TEvWatchBucket(sender));
+                YDB_LOG_DEBUG_CTX_COMP(ctx, NKikimrServices::TX_MEDIATOR_EXEC_QUEUE, "SEND TEvWatchBucket to bucket.ActiveActor",
+                    {"actor", ctx.SelfID},
+                    {"mediatorId", MediatorId},
+                    {"to", Buckets[bucketIdx].ActiveActor});
+                ctx.Send(Buckets[bucketIdx].ActiveActor, new TEvTxMediator::TEvWatchBucket(sender, server));
+            }
+        }
+
+        void Handle(TEvMediatorTimecast::TEvGranularWatch::TPtr &ev, const TActorContext &ctx) {
+            const auto &record = ev->Get()->Record;
+            const ui32 bucketIdx = record.GetBucket();
+
+            YDB_LOG_DEBUG_CTX_COMP(ctx, NKikimrServices::TX_MEDIATOR_EXEC_QUEUE, "HANDLE TEvGranularWatch",
+                {"actor", ctx.SelfID},
+                {"mediatorId", MediatorId},
+                {"from", ev->Sender},
+                {"bucket", bucketIdx});
+
+            if (bucketIdx < Buckets.size()) {
+                ev->Rewrite(ev->GetTypeRewrite(), Buckets[bucketIdx].ActiveActor);
+                ctx.Send(ev.Release());
+            }
+        }
+
+        void Handle(TEvMediatorTimecast::TEvGranularWatchModify::TPtr &ev, const TActorContext &ctx) {
+            const auto &record = ev->Get()->Record;
+            const ui32 bucketIdx = record.GetBucket();
+
+            YDB_LOG_DEBUG_CTX_COMP(ctx, NKikimrServices::TX_MEDIATOR_EXEC_QUEUE, "HANDLE TEvGranularWatchModify",
+                {"actor", ctx.SelfID},
+                {"mediatorId", MediatorId},
+                {"from", ev->Sender},
+                {"bucket", bucketIdx});
+
+            if (bucketIdx < Buckets.size()) {
+                ev->Rewrite(ev->GetTypeRewrite(), Buckets[bucketIdx].ActiveActor);
+                ctx.Send(ev.Release());
+            }
+        }
+
+        void Handle(TEvTxMediator::TEvServerDisconnected::TPtr &ev, const TActorContext &ctx) {
+            const auto* msg = ev->Get();
+
+            YDB_LOG_DEBUG_CTX_COMP(ctx, NKikimrServices::TX_MEDIATOR_EXEC_QUEUE, "HANDLE TEvServerDisconnected",
+                {"actor", ctx.SelfID},
+                {"mediatorId", MediatorId},
+                {"server", msg->ServerId});
+
+            // Broadcast to buckets
+            for (const TBucket &bucket : Buckets) {
+                ctx.Send(bucket.ActiveActor, new TEvTxMediator::TEvServerDisconnected(msg->ServerId));
             }
         }
 
         void Bootstrap(const TActorContext &ctx) {
             Buckets.resize(BucketSelector.Buckets());
             for (ui32 bucketIdx = 0; bucketIdx < Buckets.size(); ++bucketIdx)
-                Buckets[bucketIdx].ActiveActor = ctx.ExecutorThread.RegisterActor(CreateTxMediatorTabletQueue(ctx.SelfID, MediatorId, 1, bucketIdx), TMailboxType::ReadAsFilled);
+                Buckets[bucketIdx].ActiveActor = ctx.Register(CreateTxMediatorTabletQueue(ctx.SelfID, MediatorId, 1, bucketIdx), TMailboxType::ReadAsFilled);
         }
 
     public:
@@ -196,6 +249,9 @@ namespace NTxMediator {
                 HFunc(TEvTxMediator::TEvCommitStep, Handle);
                 HFunc(TEvTxMediator::TEvRequestLostAcks, Handle);
                 HFunc(TEvMediatorTimecast::TEvWatch, Handle);
+                HFunc(TEvMediatorTimecast::TEvGranularWatch, Handle);
+                HFunc(TEvMediatorTimecast::TEvGranularWatchModify, Handle);
+                HFunc(TEvTxMediator::TEvServerDisconnected, Handle);
                 CFunc(TEvents::TSystem::PoisonPill, Die);
                 CFunc(TEvents::TSystem::Bootstrap, Bootstrap);
             }

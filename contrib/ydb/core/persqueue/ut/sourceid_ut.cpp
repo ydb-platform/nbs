@@ -1,7 +1,7 @@
-#include "sourceid.h"
+#include <contrib/ydb/core/persqueue/pqtablet/partition/sourceid.h>
 
 #include <contrib/ydb/core/keyvalue/keyvalue_events.h>
-#include <contrib/ydb/core/persqueue/key.h>
+#include <contrib/ydb/core/persqueue/common/key.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 

@@ -11,9 +11,9 @@ PEERDIR(
     library/cpp/digest/md5
     library/cpp/threading/future
     contrib/ydb/public/lib/yson_value
-    contrib/ydb/public/sdk/cpp/client/ydb_driver
+    contrib/ydb/public/sdk/cpp/src/client/driver
     contrib/ydb/library/yql/core
-    contrib/ydb/library/yql/dq/integration
+    contrib/ydb/library/yql/core/dq_integration
     contrib/ydb/library/yql/dq/runtime
     contrib/ydb/library/yql/dq/tasks
     contrib/ydb/library/yql/dq/type_ann

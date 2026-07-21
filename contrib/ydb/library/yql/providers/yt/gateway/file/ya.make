@@ -3,6 +3,7 @@ LIBRARY()
 SRCS(
     yql_yt_file_comp_nodes.cpp
     yql_yt_file_mkql_compiler.cpp
+    yql_yt_file_row_count.cpp
     yql_yt_file_services.cpp
     yql_yt_file.cpp
     yql_yt_file_text_yson.cpp
@@ -16,6 +17,7 @@ PEERDIR(
     contrib/ydb/library/yql/core/file_storage
     contrib/ydb/library/yql/core/file_storage/proto
     contrib/ydb/library/yql/core/file_storage/http_download
+    contrib/ydb/library/yql/core/issue
     contrib/ydb/library/yql/minikql/comp_nodes
     contrib/ydb/library/yql/public/udf
     contrib/ydb/library/yql/utils
@@ -27,6 +29,7 @@ PEERDIR(
     contrib/ydb/library/yql/providers/common/comp_nodes
     contrib/ydb/library/yql/providers/common/gateway
     contrib/ydb/library/yql/providers/common/mkql
+    contrib/ydb/library/yql/providers/common/mkql_simple_file
     contrib/ydb/library/yql/providers/common/provider
     contrib/ydb/library/yql/providers/common/schema/expr
     contrib/ydb/library/yql/providers/common/schema/mkql

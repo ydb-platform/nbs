@@ -8,7 +8,7 @@ import pytest
 import time
 import contrib.ydb.public.api.protos.draft.fq_pb2 as fq
 import contrib.ydb.public.api.protos.ydb_value_pb2 as ydb
-import contrib.ydb.tests.library.common.yatest_common as yatest_common
+from contrib.ydb.tests.library.common.helpers import plain_or_under_sanitizer
 from contrib.ydb.tests.tools.datastreams_helpers.test_yds_base import TestYdsBase
 from contrib.ydb.tests.tools.fq_runner.kikimr_utils import yq_v1, yq_v2, yq_all
 
@@ -79,7 +79,7 @@ Pear,15,33'''
 
     @yq_v2
     @pytest.mark.parametrize("client", [{"folder_id": "my_folder"}], indirect=True)
-    def test_inference(self, kikimr, s3, client, unique_prefix):
+    def test_json_list_formats(self, kikimr, s3, client, unique_prefix):
         resource = boto3.resource(
             "s3", endpoint_url=s3.s3_url, aws_access_key_id="key", aws_secret_access_key="secret_key"
         )
@@ -92,50 +92,53 @@ Pear,15,33'''
             "s3", endpoint_url=s3.s3_url, aws_access_key_id="key", aws_secret_access_key="secret_key"
         )
 
-        fruits = '''Fruit,Price,Weight,Date
-Banana,3,100,2024-01-02
-Apple,2,22,2024-03-04
-Pear,15,33,2024-05-06'''
-        s3_client.put_object(Body=fruits, Bucket='fbucket', Key='fruits.csv', ContentType='text/plain')
+        fruits = '''[
+    { "date" : "", "datetime" : "", "timestamp" : "", "interval" : "", "date32" : "", "datetime64" : "", "timestamp64" : "", "interval64" : "", "tzDate" : "", "tzDateTime" : "", "tzTimestamp" : "" },
+    { "date" : "", "datetime" : "", "timestamp" : "", "interval" : "", "date32" : "", "datetime64" : "", "timestamp64" : "", "interval64" : "", "tzDate" : "", "tzDateTime" : "", "tzTimestamp" : "" },
+    { "date" : "", "datetime" : "", "timestamp" : "", "interval" : "", "date32" : "", "datetime64" : "", "timestamp64" : "", "interval64" : "", "tzDate" : "", "tzDateTime" : "", "tzTimestamp" : "" }
+]'''
+        s3_client.put_object(Body=fruits, Bucket='fbucket', Key='timestamp.json', ContentType='text/plain')
+
         kikimr.control_plane.wait_bootstrap(1)
         storage_connection_name = unique_prefix + "fruitbucket"
         client.create_storage_connection(storage_connection_name, "fbucket")
 
         sql = f'''
             SELECT *
-            FROM `{storage_connection_name}`.`fruits.csv`
-            WITH (format=csv_with_names, with_infer='true');
+            FROM `{storage_connection_name}`.`/timestamp.json`
+            WITH (
+                format="json_list",
+                schema=(
+                    `date` date,
+                    `datetime` datetime,
+                    `timestamp` timestamp,
+                    `interval` interval,
+                    `date32` date32,
+                    `datetime64` datetime64,
+                    `timestamp64` timestamp64,
+                    `interval64` interval64,
+                    `tzDate` tzDate,
+                    `tzDateTime` tzDateTime,
+                    `tzTimestamp` tzTimestamp
+                ));
             '''
 
         query_id = client.create_query("simple", sql, type=fq.QueryContent.QueryType.ANALYTICS).result.query_id
-        client.wait_query_status(query_id, fq.QueryMeta.COMPLETED)
+        client.wait_query_status(query_id, fq.QueryMeta.FAILED)
 
-        data = client.get_result_data(query_id)
-        result_set = data.result.result_set
-        logging.debug(str(result_set))
-        assert len(result_set.columns) == 4
-        assert result_set.columns[0].name == "Date"
-        assert result_set.columns[0].type.type_id == ydb.Type.DATE
-        assert result_set.columns[1].name == "Fruit"
-        assert result_set.columns[1].type.type_id == ydb.Type.UTF8
-        assert result_set.columns[2].name == "Price"
-        assert result_set.columns[2].type.type_id == ydb.Type.INT64
-        assert result_set.columns[3].name == "Weight"
-        assert result_set.columns[3].type.type_id == ydb.Type.INT64
-        assert len(result_set.rows) == 3
-        assert result_set.rows[0].items[0].uint32_value == 19724
-        assert result_set.rows[0].items[1].text_value == "Banana"
-        assert result_set.rows[0].items[2].int64_value == 3
-        assert result_set.rows[0].items[3].int64_value == 100
-        assert result_set.rows[1].items[0].uint32_value == 19786
-        assert result_set.rows[1].items[1].text_value == "Apple"
-        assert result_set.rows[1].items[2].int64_value == 2
-        assert result_set.rows[1].items[3].int64_value == 22
-        assert result_set.rows[2].items[0].uint32_value == 19849
-        assert result_set.rows[2].items[1].text_value == "Pear"
-        assert result_set.rows[2].items[2].int64_value == 15
-        assert result_set.rows[2].items[3].int64_value == 33
-        assert sum(kikimr.control_plane.get_metering(1)) == 10
+        error_message = str(client.describe_query(query_id).result)
+        assert "Date, Timestamp and Interval types are not allowed in json_list format" in error_message
+        assert "Date" in error_message
+        assert "Datetime" in error_message
+        assert "Timestamp" in error_message
+        assert "Interval" in error_message
+        assert "Date32" in error_message
+        assert "Datetime64" in error_message
+        assert "Timestamp64" in error_message
+        assert "Interval64" in error_message
+        assert "TzDate" in error_message
+        assert "TzDatetime" in error_message
+        assert "TzTimestamp" in error_message
 
     @yq_all
     @pytest.mark.parametrize("client", [{"folder_id": "my_folder"}], indirect=True)
@@ -325,6 +328,72 @@ Pear,15,33,2024-05-06'''
         query_id = client.create_query("simple", sql, type=fq.QueryContent.QueryType.ANALYTICS).result.query_id
         client.wait_query_status(query_id, fq.QueryMeta.FAILED)
 
+    @yq_v2
+    @pytest.mark.parametrize("client", [{"folder_id": "my_folder"}], indirect=True)
+    def test_bad_request_on_invalid_parquet(self, kikimr, s3, client, unique_prefix):
+        resource = boto3.resource(
+            "s3", endpoint_url=s3.s3_url, aws_access_key_id="key", aws_secret_access_key="secret_key"
+        )
+
+        bucket = resource.Bucket("bbucket")
+        bucket.create(ACL='public-read')
+        bucket.objects.all().delete()
+
+        s3_client = boto3.client(
+            "s3", endpoint_url=s3.s3_url, aws_access_key_id="key", aws_secret_access_key="secret_key"
+        )
+
+        s3_client.put_object(Body='not a parquet file', Bucket='bbucket', Key='file.txt', ContentType='text/plain')
+
+        kikimr.control_plane.wait_bootstrap(1)
+        storage_connection_name = unique_prefix + "badbucket"
+        client.create_storage_connection(storage_connection_name, "bbucket")
+
+        sql = f'''
+            select * from `{storage_connection_name}`.`file.txt` with (format=parquet, schema (data string));
+            '''
+
+        query_id = client.create_query("simple", sql, type=fq.QueryContent.QueryType.ANALYTICS).result.query_id
+        client.wait_query_status(query_id, fq.QueryMeta.FAILED)
+
+        error_message = str(client.describe_query(query_id).result)
+        assert ("Query failed with code BAD_REQUEST" in error_message) and ("Parquet magic bytes not found in footer." in error_message)
+
+    @yq_v2
+    @pytest.mark.parametrize("client", [{"folder_id": "my_folder"}], indirect=True)
+    def test_bad_request_on_compression(self, kikimr, s3, client, unique_prefix):
+        resource = boto3.resource(
+            "s3", endpoint_url=s3.s3_url, aws_access_key_id="key", aws_secret_access_key="secret_key"
+        )
+
+        bucket = resource.Bucket("bbucket")
+        bucket.create(ACL='public-read')
+        bucket.objects.all().delete()
+
+        s3_client = boto3.client(
+            "s3", endpoint_url=s3.s3_url, aws_access_key_id="key", aws_secret_access_key="secret_key"
+        )
+
+        s3_client.put_object(Body="invalid uncompressed json file", Bucket='bbucket', Key='file.json', ContentType='text/plain')
+
+        kikimr.control_plane.wait_bootstrap(1)
+        storage_connection_name = unique_prefix + "badbucket"
+        client.create_storage_connection(storage_connection_name, "bbucket")
+
+        sql = f'''
+            select * from `{storage_connection_name}`.`file.json` with (
+                format=csv_with_names,
+                compression='gzip',
+                schema (data timestamp)
+            );
+            '''
+
+        query_id = client.create_query("simple", sql, type=fq.QueryContent.QueryType.ANALYTICS).result.query_id
+        client.wait_query_status(query_id, fq.QueryMeta.FAILED)
+        assert "Query failed with code BAD_REQUEST" in str(
+            client.describe_query(query_id).result
+        )
+
     @yq_v1
     @pytest.mark.parametrize("client", [{"folder_id": "my_folder"}], indirect=True)
     @pytest.mark.parametrize("mvp_external_ydb_endpoint", [{"endpoint": os.getenv("YDB_ENDPOINT")}], indirect=True)
@@ -432,13 +501,13 @@ Pear,15,33,2024-05-06'''
 
         # Check that checkpointing is finished
         def wait_checkpoints(require_query_is_on=False):
-            deadline = time.time() + yatest_common.plain_or_under_sanitizer(300, 900)
+            deadline = time.time() + plain_or_under_sanitizer(300, 900)
             while True:
                 completed = kikimr.control_plane.get_completed_checkpoints(query_id, require_query_is_on)
                 if completed >= 3:
                     break
                 assert time.time() < deadline, "Completed: {}".format(completed)
-                time.sleep(yatest_common.plain_or_under_sanitizer(0.5, 2))
+                time.sleep(plain_or_under_sanitizer(0.5, 2))
 
         logging.debug("Wait checkpoints")
         wait_checkpoints(True)
@@ -454,3 +523,275 @@ Pear,15,33,2024-05-06'''
 
         client.abort_query(query_id)
         client.wait_query(query_id)
+
+    @yq_v2
+    @pytest.mark.parametrize("client", [{"folder_id": "my_folder"}], indirect=True)
+    def test_double_optional_types_validation(self, kikimr, s3, client, unique_prefix):
+        resource = boto3.resource(
+            "s3", endpoint_url=s3.s3_url, aws_access_key_id="key", aws_secret_access_key="secret_key"
+        )
+
+        bucket = resource.Bucket("fbucket")
+        bucket.create(ACL='public-read')
+        bucket.objects.all().delete()
+
+        s3_client = boto3.client(
+            "s3", endpoint_url=s3.s3_url, aws_access_key_id="key", aws_secret_access_key="secret_key"
+        )
+
+        fruits = '''Fruit,Price,Weight
+Banana,3,100
+Apple,2,22
+Pear,15,33'''
+        s3_client.put_object(Body=fruits, Bucket='fbucket', Key='fruits.csv', ContentType='text/plain')
+
+        kikimr.control_plane.wait_bootstrap(1)
+        storage_connection_name = unique_prefix + "fruitbucket"
+        client.create_storage_connection(storage_connection_name, "fbucket")
+
+        sql = f'''
+            SELECT *
+            FROM `{storage_connection_name}`.`fruits.csv`
+            WITH (format='csv_with_names', SCHEMA (
+                Name Int32??,
+            ));
+            '''
+
+        query_id = client.create_query("simple", sql, type=fq.QueryContent.QueryType.ANALYTICS).result.query_id
+        client.wait_query_status(query_id, fq.QueryMeta.FAILED)
+        issues = str(client.describe_query(query_id).result.query.issue)
+
+        assert "double optional types are not supported" in issues, "Incorrect issues: " + issues
+
+        sql = f'''
+            INSERT INTO `{storage_connection_name}`.`insert/`
+            WITH
+            (
+                FORMAT="csv_with_names"
+            )
+            SELECT CAST(42 AS Int32??) as Weight;'''
+
+        query_id = client.create_query("simple", sql, type=fq.QueryContent.QueryType.ANALYTICS).result.query_id
+        client.wait_query_status(query_id, fq.QueryMeta.FAILED)
+        issues = str(client.describe_query(query_id).result.query.issue)
+
+        assert "double optional types are not supported" in issues, "Incorrect issues: " + issues
+
+    @yq_all
+    @pytest.mark.parametrize("client", [{"folder_id": "my_folder"}], indirect=True)
+    def test_json_list_validation(self, kikimr, s3, client, unique_prefix):
+        resource = boto3.resource(
+            "s3", endpoint_url=s3.s3_url, aws_access_key_id="key", aws_secret_access_key="secret_key"
+        )
+
+        bucket = resource.Bucket("fbucket")
+        bucket.create(ACL='public-read-write')
+        bucket.objects.all().delete()
+
+        s3_client = boto3.client(
+            "s3", endpoint_url=s3.s3_url, aws_access_key_id="key", aws_secret_access_key="secret_key"
+        )
+        fruits = '''Fruit,Price,Weight
+Banana,3,100
+Apple,2,22
+Pear,15,33'''
+        s3_client.put_object(Body=fruits, Bucket='fbucket', Key='fruits.csv', ContentType='text/plain')
+
+        storage_connection_name = unique_prefix + "ibucket"
+        client.create_storage_connection(storage_connection_name, "fbucket")
+
+        sql = f'''
+            SELECT * FROM `{storage_connection_name}`.`fruits.csv`
+            WITH (
+                FORMAT='json_list',
+                SCHEMA (
+                    Value Dict<Int32, String>,
+                )
+            );
+        '''
+        query_id = client.create_query("simple", sql, type=fq.QueryContent.QueryType.ANALYTICS).result.query_id
+        client.wait_query_status(query_id, fq.QueryMeta.FAILED)
+        issues = str(client.describe_query(query_id).result.query.issue)
+        assert "unsupported dict key type, it should be String or Utf8" in issues, "Incorrect issues: " + issues
+
+        sql = f"INSERT INTO `{storage_connection_name}`.`/test/`\n" + '''
+            WITH (FORMAT = 'json_list')
+            SELECT * FROM AS_TABLE([
+                <|foo:{123: "abc"}, bar:"xxx"u|>
+            ]);
+        '''
+        query_id = client.create_query("simple", sql, type=fq.QueryContent.QueryType.ANALYTICS).result.query_id
+        client.wait_query_status(query_id, fq.QueryMeta.FAILED)
+        issues = str(client.describe_query(query_id).result.query.issue)
+        assert "unsupported dict key type, it should be String or Utf8" in issues, "Incorrect Issues: " + issues
+
+    @yq_all
+    @pytest.mark.parametrize("client", [{"folder_id": "my_folder"}], indirect=True)
+    def test_schema_validation(self, kikimr, s3, client, unique_prefix):
+        resource = boto3.resource(
+            "s3", endpoint_url=s3.s3_url, aws_access_key_id="key", aws_secret_access_key="secret_key"
+        )
+
+        bucket = resource.Bucket("fbucket")
+        bucket.create(ACL='public-read-write')
+        bucket.objects.all().delete()
+
+        s3_client = boto3.client(
+            "s3", endpoint_url=s3.s3_url, aws_access_key_id="key", aws_secret_access_key="secret_key"
+        )
+        fruits = '''Fruit,Price,Weight
+Banana,3,100
+Apple,2,22
+Pear,15,33'''
+        s3_client.put_object(Body=fruits, Bucket='fbucket', Key='fruits.csv', ContentType='text/plain')
+
+        storage_connection_name = unique_prefix + "ibucket"
+        client.create_storage_connection(storage_connection_name, "fbucket")
+
+        sql = f'''
+            SELECT * FROM `{storage_connection_name}`.`fruits.csv`
+            WITH (
+                FORMAT='csv_with_names',
+                SCHEMA (
+                    Value Date32,
+                )
+            );
+        '''
+        query_id = client.create_query("simple", sql, type=fq.QueryContent.QueryType.ANALYTICS).result.query_id
+        client.wait_query_status(query_id, fq.QueryMeta.FAILED)
+        issues = str(client.describe_query(query_id).result.query.issue)
+        assert "big dates is not supported" in issues, "Incorrect issues: " + issues
+
+        sql = f'''
+            INSERT INTO `{storage_connection_name}`.`/test/`
+            WITH (FORMAT = 'csv_with_names')
+            SELECT * FROM AS_TABLE([
+                <|foo:CAST(CurrentUtcDate() AS Date32), bar:"xxx"u|>
+            ]);
+        '''
+        query_id = client.create_query("simple", sql, type=fq.QueryContent.QueryType.ANALYTICS).result.query_id
+        client.wait_query_status(query_id, fq.QueryMeta.FAILED)
+        issues = str(client.describe_query(query_id).result.query.issue)
+        assert "big dates is not supported" in issues, "Incorrect Issues: " + issues
+
+    @yq_v1
+    @pytest.mark.parametrize("client", [{"folder_id": "my_folder"}], indirect=True)
+    def test_runtime_listing_disabled(self, kikimr, s3, client, unique_prefix):
+        resource = boto3.resource(
+            "s3", endpoint_url=s3.s3_url, aws_access_key_id="key", aws_secret_access_key="secret_key"
+        )
+
+        bucket = resource.Bucket("fbucket")
+        bucket.create(ACL='public-read')
+        bucket.objects.all().delete()
+
+        s3_client = boto3.client(
+            "s3", endpoint_url=s3.s3_url, aws_access_key_id="key", aws_secret_access_key="secret_key"
+        )
+
+        fruits = '''Fruit,Price,Weight
+Banana,3,100
+Apple,2,22
+Pear,15,33'''
+        s3_client.put_object(Body=fruits, Bucket='fbucket', Key='fruits.csv', ContentType='text/plain')
+
+        kikimr.control_plane.wait_bootstrap(1)
+        storage_connection_name = unique_prefix + "fruitbucket"
+        client.create_storage_connection(storage_connection_name, "fbucket")
+
+        sql = f'''
+            PRAGMA s3.UseRuntimeListing="true";
+
+            SELECT * FROM `{storage_connection_name}`.`fruits.csv`
+            WITH (
+                FORMAT = csv_with_names,
+                SCHEMA (
+                    Fruit String NOT NULL,
+                    Price Int NOT NULL,
+                    Weight Int NOT NULL
+                )
+            );
+        '''
+
+        query_id = client.create_query("simple", sql, type=fq.QueryContent.QueryType.ANALYTICS).result.query_id
+        client.wait_query_status(query_id, fq.QueryMeta.COMPLETED)
+
+        describe_string = "{}".format(client.describe_query(query_id).result)
+        assert "Runtime listing is not allowed for federated queries, pragma value was ignored" in describe_string, describe_string
+        assert len(client.get_result_data(query_id).result.result_set.rows) == 3
+
+    @yq_v1
+    @pytest.mark.parametrize("client", [{"folder_id": "my_folder"}], indirect=True)
+    def test_precompute_with_different_result_types(self, kikimr, s3, client, unique_prefix):
+        resource = boto3.resource(
+            "s3", endpoint_url=s3.s3_url, aws_access_key_id="key", aws_secret_access_key="secret_key"
+        )
+
+        bucket = resource.Bucket("fbucket")
+        bucket.create(ACL='public-read')
+        bucket.objects.all().delete()
+
+        s3_client = boto3.client(
+            "s3", endpoint_url=s3.s3_url, aws_access_key_id="key", aws_secret_access_key="secret_key"
+        )
+
+        fruits = '''f1,f2,f3
+Banana,3,100'''
+        s3_client.put_object(Body=fruits, Bucket='fbucket', Key='file1.csv', ContentType='text/plain')
+        fruits = '''f3,f4
+Banana,3'''
+        s3_client.put_object(Body=fruits, Bucket='fbucket', Key='file2.csv', ContentType='text/plain')
+
+        kikimr.control_plane.wait_bootstrap(1)
+        storage_connection_name = unique_prefix + "fruitbucket"
+        client.create_storage_connection(storage_connection_name, "fbucket")
+
+        sql = f'''
+            $input1 =
+                SELECT AGGREGATE_LIST( AsStruct(f1 AS dns_mining_pool))
+                FROM `{storage_connection_name}`.`file1.csv`
+                WITH (format=csv_with_names, SCHEMA (
+                    f1 String NOT NULL,
+                    f2 Int NOT NULL,
+                    f3 Int NOT NULL
+                ));
+
+            $input2 =
+                SELECT AGGREGATE_LIST( AsStruct(f3 AS dns_f_query, f4 AS dns_query1wewqwer) )
+                FROM `{storage_connection_name}`.`file2.csv`
+                WITH (format=csv_with_names, SCHEMA (
+                    f3 String NOT NULL,
+                    f4 Int NOT NULL
+                ));
+
+            $f1 = () -> {{
+                RETURN ListHead(ListMap(
+                    $input1,
+                    ($r) -> (
+                        AsStruct("1" AS dns_mining_pool)
+                    )
+                ))
+            }};
+
+            $f2 = () -> {{
+                RETURN ListHead(ListMap(
+                    $input2,
+                    ($r) -> (
+                        AsStruct("2" AS dns_f_query)
+                    )
+                ))
+            }};
+
+            $parsed = SELECT $f1() AS f1,  $f2() AS f2;
+
+            $parsed =
+                SELECT
+                    p.f1.dns_mining_pool AS f1, p.f2.dns_f_query AS f2
+                FROM $parsed AS p;
+
+            SELECT SOME("MinersPoolsViaDNS") AS event_class FROM $parsed
+            WHERE (f1 == f2 )
+            '''
+
+        query_id = client.create_query("simple", sql, type=fq.QueryContent.QueryType.ANALYTICS).result.query_id
+        client.wait_query_status(query_id, fq.QueryMeta.COMPLETED)

@@ -5,6 +5,8 @@
 #include <contrib/ydb/library/yql/minikql/defs.h>
 #include <contrib/ydb/library/yql/minikql/mkql_node.h>
 #include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node_holders.h>
+#include <contrib/ydb/library/aclib/aclib.h>
+#include <contrib/ydb/library/aclib/user_context.h>
 #include <contrib/ydb/library/mkql_proto/protos/minikql.pb.h>
 #include <contrib/ydb/core/protos/minikql_engine.pb.h>
 #include <library/cpp/random_provider/random_provider.h>
@@ -266,12 +268,14 @@ namespace NMiniKQL {
         bool EvaluateResultType = true;
         bool EvaluateResultValue = true;
         bool LlvmRuntime = false;
+        TIntrusivePtr<NACLib::TUserContext> UserCtx;
 
         TEngineFlatSettings(
                 IEngineFlat::EProtocol protocol,
                 const IFunctionRegistry* functionRegistry,
                 IRandomProvider& randomProvider,
                 ITimeProvider& timeProvider,
+                TIntrusivePtr<NACLib::TUserContext> userCtx = NACLib::TUserContextBuilder().WithUserSID(BUILTIN_ACL_NO_USER_SID).Build(),
                 IEngineFlatHost* host = nullptr,
                 const TAlignedPagePoolCounters& allocCounters = TAlignedPagePoolCounters()
                 )
@@ -282,6 +286,7 @@ namespace NMiniKQL {
             , Host(host)
             , AllocCounters(allocCounters)
             , ForceOnline(false)
+            , UserCtx(userCtx)
         {
             Y_ABORT_UNLESS(FunctionRegistry);
         }

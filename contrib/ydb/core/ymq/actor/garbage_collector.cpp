@@ -1,6 +1,6 @@
 #include "garbage_collector.h"
 
-#include "cfg.h"
+#include <contrib/ydb/core/ymq/actor/cfg/cfg.h>
 #include "log.h"
 #include "events.h"
 #include "executor.h"
@@ -8,6 +8,7 @@
 
 #include <contrib/ydb/core/base/path.h>
 #include <contrib/ydb/core/mon/mon.h>
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 
 #include <contrib/ydb/library/services/services.pb.h>
 
@@ -502,7 +503,7 @@ private:
         } else if (CurrentNode.Kind == TSchemeCacheNavigate::EKind::KindTable) {
             trans->SetOperationType(NKikimrSchemeOp::ESchemeOpDropTable);
         } else {
-            Y_ABORT_UNLESS("Unexpected node kind");
+            Y_ABORT("Unexpected node kind");
         }
 
         LOG_SQS_INFO(GARBAGE_CLEANER_LABEL << " attempts to remove the node " << CanonizePath(CurrentNode.Path));
@@ -567,7 +568,7 @@ public:
         if (mon) {
             NMonitoring::TIndexMonPage * page = mon->RegisterIndexPage("actors", "Actors");
             mon->RegisterActorPage(page, "sqsgc", "SQS Garbage Collector", false,
-                                   TlsActivationContext->ExecutorThread.ActorSystem, SelfId());
+                                   TActivationContext::ActorSystem(), SelfId());
         }
     }
 

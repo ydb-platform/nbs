@@ -7,13 +7,19 @@
 #include <contrib/ydb/core/blobstorage/base/utility.h>
 #include <contrib/ydb/core/blobstorage/lwtrace_probes/blobstorage_probes.h>
 #include <contrib/ydb/core/blobstorage/vdisk/common/align.h>
+#include <contrib/ydb/core/blobstorage/vdisk/common/vdisk_response.h>
 #include <contrib/ydb/core/blobstorage/vdisk/common/vdisk_pdiskctx.h>
+#include <contrib/ydb/core/blobstorage/vdisk/common/vdisk_private_events.h>
 #include <contrib/ydb/core/blobstorage/vdisk/common/vdisk_lsnmngr.h>
 #include <contrib/ydb/core/blobstorage/vdisk/common/blobstorage_dblogcutter.h>
 #include <contrib/ydb/core/blobstorage/vdisk/hulldb/base/blobstorage_blob.h>
+#include <contrib/ydb/core/blobstorage/pdisk/blobstorage_pdisk.h>
+#include <contrib/ydb/core/retro_tracing_impl/spans/lazy_retro_span.h>
 #include <contrib/ydb/library/actors/wilson/wilson_with_span.h>
 #include <contrib/ydb/library/wilson_ids/wilson.h>
 #include <library/cpp/monlib/service/pages/templates.h>
+
+#define YDB_LOG_THIS_FILE_COMPONENT BS_HULLHUGE
 
 using namespace NKikimrServices;
 using namespace NKikimr::NHuge;
@@ -31,8 +37,8 @@ LWTRACE_USING(BLOBSTORAGE_PROVIDER);
             : SeqWriteId(seqWriteId)
         {}
 
-        ui64 Push(ui64 lsn) {
-            Y_ABORT_UNLESS(Fifo.empty() || (--Fifo.end())->second <= lsn);
+        ui64 Push(const TString& prefix, ui64 lsn) {
+            Y_VERIFY_S(Fifo.empty() || (--Fifo.end())->second <= lsn, prefix);
             if (NodeCache.empty()) {
                 Fifo.emplace_hint(Fifo.end(), SeqWriteId, lsn);
                 MaxFifoSize = Max(MaxFifoSize, Fifo.size());
@@ -46,10 +52,10 @@ LWTRACE_USING(BLOBSTORAGE_PROVIDER);
             return SeqWriteId++;
         }
 
-        void Pop(ui64 wId, ui64 lsn, bool logged) {
+        void Pop(const TString& prefix, ui64 wId, ui64 lsn, bool logged) {
             const auto it = Fifo.find(wId);
-            Y_ABORT_UNLESS(it != Fifo.end());
-            Y_ABORT_UNLESS(!logged || it->second <= lsn);
+            Y_VERIFY_S(it != Fifo.end(), prefix);
+            Y_VERIFY_S(!logged || it->second <= lsn, prefix);
             if (NodeCache.size() < 64) {
                 NodeCache.push_back(Fifo.extract(it));
             } else {
@@ -106,19 +112,18 @@ LWTRACE_USING(BLOBSTORAGE_PROVIDER);
     ////////////////////////////////////////////////////////////////////////////
     // TEvHullHugeChunkAllocated
     ////////////////////////////////////////////////////////////////////////////
-    class TEvHullHugeChunkAllocated : public TEventLocal<TEvHullHugeChunkAllocated, TEvBlobStorage::EvHullHugeChunkAllocated> {
-    public:
-        const ui32 ChunkId;
+    struct TEvHullHugeChunkAllocated : TEventLocal<TEvHullHugeChunkAllocated, TEvBlobStorage::EvHullHugeChunkAllocated> {
         const ui32 SlotSize;
+        const bool Success;
 
-        explicit TEvHullHugeChunkAllocated(ui32 chunkId, ui32 slotSize)
-            : ChunkId(chunkId)
-            , SlotSize(slotSize)
+        TEvHullHugeChunkAllocated(ui32 slotSize, bool success)
+            : SlotSize(slotSize)
+            , Success(success)
         {}
 
         TString ToString() const {
             TStringStream str;
-            str << "{ChunkId# " << ChunkId << " SlotSize# " << SlotSize << "}";
+            str << "{SlotSize# " << SlotSize << " Success# " << Success << "}";
             return str.Str();
         }
     };
@@ -175,7 +180,7 @@ LWTRACE_USING(BLOBSTORAGE_PROVIDER);
         ui64 WriteId;
         TDiskPart DiskAddr;
         static void *Cookie;
-        NWilson::TSpan Span;
+        TLazyRetroSpan Span;
 
         friend class TActorBootstrapped<THullHugeBlobWriter>;
 
@@ -195,23 +200,28 @@ LWTRACE_USING(BLOBSTORAGE_PROVIDER);
 
             // prepare write
             const ui8 partId = Item->LogoBlobId.PartId();
-            Y_ABORT_UNLESS(partId != 0);
+            Y_VERIFY_S(partId != 0, HugeKeeperCtx->VCtx->VDiskLogPrefix);
 
             const ui32 storedBlobSize = Item->Data.GetSize();
             const ui32 writtenSize = AlignUpAppendBlockSize(storedBlobSize, HugeKeeperCtx->PDiskCtx->Dsk->AppendBlockSize);
-            Y_ABORT_UNLESS(writtenSize <= HugeSlot.GetSize());
+            Y_VERIFY_S(writtenSize <= HugeSlot.GetSize(), HugeKeeperCtx->VCtx->VDiskLogPrefix);
 
             NPDisk::TEvChunkWrite::TPartsPtr partsPtr(new NPDisk::TEvChunkWrite::TRopeAlignedParts(std::move(Item->Data), writtenSize));
             ui32 chunkId = HugeSlot.GetChunkId();
             ui32 offset = HugeSlot.GetOffset();
             HugeKeeperCtx->LsmHullGroup.LsmHugeBytesWritten() += partsPtr->ByteSize();
-            LOG_DEBUG(ctx, BS_HULLHUGE, VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix,
+            YDB_LOG_DEBUG_CTX(ctx, VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix,
                 "Writer: bootstrap: id# %s storedBlobSize# %u writtenSize# %u blobId# %s wId# %" PRIu64,
                 HugeSlot.ToString().data(), storedBlobSize, writtenSize, Item->LogoBlobId.ToString().data(), WriteId));
-            Span && Span.Event("Send_TEvChunkWrite", {{"ChunkId", chunkId}, {"Offset", offset}, {"WrittenSize", writtenSize}});
+            if (NWilson::TSpan* wilsonSpan = Span.GetWilsonSpanPtr()) {
+                wilsonSpan->Event("Send_TEvChunkWrite", {{"ChunkId", chunkId}, {"Offset", offset}, {"WrittenSize", writtenSize}});
+            }
             auto ev = std::make_unique<NPDisk::TEvChunkWrite>(HugeKeeperCtx->PDiskCtx->Dsk->Owner,
                         HugeKeeperCtx->PDiskCtx->Dsk->OwnerRound, chunkId, offset,
-                        partsPtr, Cookie, true, GetWritePriority(), false);
+                        partsPtr, Cookie, true, GetWritePriority(), Item->WriteSource, false);
+            if (AppData()->FeatureFlags.GetEnableBlobIdInSectorChecksum()) {
+                ev->BlobId = Item->LogoBlobId;
+            }
             ev->Orbit = std::move(Item->Orbit);
             ctx.Send(HugeKeeperCtx->PDiskCtx->PDiskId, ev.release(), 0, 0, Span.GetTraceId());
             DiskAddr = TDiskPart(chunkId, offset, storedBlobSize);
@@ -225,15 +235,19 @@ LWTRACE_USING(BLOBSTORAGE_PROVIDER);
             if (ev->Get()->Status == NKikimrProto::OK) {
                 Span.EndOk();
             } else {
-                Span.EndError(TStringBuilder() << NKikimrProto::EReplyStatus_Name(ev->Get()->Status));
+                if (NWilson::TSpan* wilsonSpan = Span.GetWilsonSpanPtr()) {
+                    wilsonSpan->EndError(TStringBuilder() << NKikimrProto::EReplyStatus_Name(ev->Get()->Status));
+                } else if (TNamedSpan* retroSpan = Span.GetRetroSpanPtr()) {
+                    retroSpan->EndError();
+                }
             }
             CHECK_PDISK_RESPONSE(HugeKeeperCtx->VCtx, ev, ctx);
             ctx.Send(NotifyID, new TEvHullHugeWritten(HugeSlot));
-            ctx.Send(HugeKeeperCtx->SkeletonId, new TEvHullLogHugeBlob(WriteId, Item->LogoBlobId, Item->Ingress, DiskAddr,
-                Item->IgnoreBlock, Item->SenderId, Item->Cookie, Item->HandleClass, std::move(Item->Result), &Item->ExtraBlockChecks),
-                0, 0, Span.GetTraceId());
-            LOG_DEBUG(ctx, BS_HULLHUGE,
-                      VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix,
+            ctx.Send(HugeKeeperCtx->SkeletonId, new TEvHullLogHugeBlob(WriteId, Item->LogoBlobId, Item->Ingress,
+                DiskAddr, Item->IgnoreBlock, Item->IssueKeepFlag, Item->SenderId, Item->Cookie, Item->HandleClass,
+                std::move(Item->Result), &Item->ExtraBlockChecks, Item->WriteSource, Item->RewriteBlob), 0, 0,
+                Span.GetTraceId());
+            YDB_LOG_DEBUG_CTX(ctx, VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix,
                             "Writer: finish: id# %s diskAddr# %s",
                             HugeSlot.ToString().data(), DiskAddr.ToString().data()));
             Die(ctx);
@@ -271,8 +285,8 @@ LWTRACE_USING(BLOBSTORAGE_PROVIDER);
             , DiskAddr()
             , Span(TWilson::VDiskInternals, std::move(traceId), "VDisk.HugeBlobKeeper.Write")
         {
-            if (Span) {
-                Span.Attribute("blob_id", Item->LogoBlobId.ToString());
+            if (NWilson::TSpan* wilsonSpan = Span.GetWilsonSpanPtr()) {
+                wilsonSpan->Attribute("blob_id", Item->LogoBlobId.ToString());
             }
         }
     };
@@ -284,19 +298,19 @@ LWTRACE_USING(BLOBSTORAGE_PROVIDER);
     ////////////////////////////////////////////////////////////////////////////
     class THullHugeBlobChunkAllocator : public TActorBootstrapped<THullHugeBlobChunkAllocator> {
         std::shared_ptr<THugeKeeperCtx> HugeKeeperCtx;
-        const TActorId NotifyID;
+        TActorId ParentId;
         ui64 Lsn;
         std::shared_ptr<THullHugeKeeperPersState> Pers;
         ui32 ChunkId = 0;
-        NWilson::TSpan Span;
+        TLazyRetroSpan Span;
         ui32 SlotSize;
 
         friend class TActorBootstrapped<THullHugeBlobChunkAllocator>;
 
-        void Bootstrap(const TActorContext &ctx) {
+        void Bootstrap(TActorId parentId, const TActorContext &ctx) {
+            ParentId = parentId;
             // reserve chunk
-            LOG_DEBUG(ctx, BS_HULLHUGE,
-                    VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix, "ChunkAllocator: bootstrap"));
+            YDB_LOG_DEBUG_CTX_COMP(ctx, BS_HULLHUGE, VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix, "ChunkAllocator: bootstrap"));
             ctx.Send(HugeKeeperCtx->PDiskCtx->PDiskId,
                     new NPDisk::TEvChunkReserve(HugeKeeperCtx->PDiskCtx->Dsk->Owner,
                         HugeKeeperCtx->PDiskCtx->Dsk->OwnerRound, 1));
@@ -304,13 +318,20 @@ LWTRACE_USING(BLOBSTORAGE_PROVIDER);
         }
 
         void Handle(NPDisk::TEvChunkReserveResult::TPtr &ev, const TActorContext &ctx) {
+            if (ev->Get()->Status == NKikimrProto::OUT_OF_SPACE) {
+                ctx.Send(ParentId, new TEvHullHugeChunkAllocated(SlotSize, false));
+                Die(ctx);
+                Span.EndOk();
+                return;
+            }
+
             CHECK_PDISK_RESPONSE(HugeKeeperCtx->VCtx, ev, ctx);
-            Y_ABORT_UNLESS(ev->Get()->ChunkIds.size() == 1);
+            Y_VERIFY_S(ev->Get()->ChunkIds.size() == 1, HugeKeeperCtx->VCtx->VDiskLogPrefix);
             ChunkId = ev->Get()->ChunkIds.front();
             Lsn = HugeKeeperCtx->LsnMngr->AllocLsnForLocalUse().Point();
+            ctx.Send(HugeKeeperCtx->SkeletonId, new TEvNotifyChunksDeleted(Lsn, ev->Get()->ChunkIds));
 
-            LOG_DEBUG(ctx, BS_HULLHUGE, VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix, "ChunkAllocator: reserved:"
-                " chunkId# %" PRIu32 " Lsn# %" PRIu64, ChunkId, Lsn));
+            YDB_LOG_DEBUG_CTX_COMP(ctx, BS_HULLHUGE, VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix, "ChunkAllocator: reserved:" " chunkId# %" PRIu32 " Lsn# %" PRIu64, ChunkId, Lsn));
 
             // prepare commit record, i.e. commit reserved chunk
             NPDisk::TCommitRecord commitRecord;
@@ -322,32 +343,27 @@ LWTRACE_USING(BLOBSTORAGE_PROVIDER);
             NHuge::TAllocChunkRecoveryLogRec logRec(ChunkId);
             TRcBuf data = TRcBuf(logRec.Serialize());
 
-            LOG_INFO(ctx, NKikimrServices::BS_SKELETON,
-                    VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix,
-                            "huge reserve/commit ChunkIds# %s", FormatList(ev->Get()->ChunkIds).data()));
-            LOG_DEBUG(ctx, NKikimrServices::BS_VDISK_CHUNKS,
-                      VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix,
-                            "COMMIT: PDiskId# %s Lsn# %" PRIu64 " type# HugeChunkAllocator msg# %s",
-                            HugeKeeperCtx->PDiskCtx->PDiskIdString.data(), Lsn, commitRecord.ToString().data()));
+            YDB_LOG_INFO_CTX_COMP(ctx, NKikimrServices::BS_SKELETON, VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix, "huge reserve/commit ChunkIds# %s", FormatList(ev->Get()->ChunkIds).data()));
+            YDB_LOG_DEBUG_CTX_COMP(ctx, NKikimrServices::BS_VDISK_CHUNKS, VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix, "COMMIT: PDiskId# %s Lsn# %" PRIu64 " type# HugeChunkAllocator msg# %s", HugeKeeperCtx->PDiskCtx->PDiskIdString.data(), Lsn, commitRecord.ToString().data()));
 
             ctx.Send(HugeKeeperCtx->LoggerId, new NPDisk::TEvLog(HugeKeeperCtx->PDiskCtx->Dsk->Owner,
                 HugeKeeperCtx->PDiskCtx->Dsk->OwnerRound, TLogSignature::SignatureHugeBlobAllocChunk,
-                commitRecord, data, TLsnSeg(Lsn, Lsn), nullptr));
+                commitRecord, data, TLsnSeg(Lsn, Lsn), nullptr, TWriteSource::HugeKeeperAllocChunk, NPDisk::TEvLog::TCallback()));
 
             // commit changes to the persistent state at once
             const ui64 prevLsn = std::exchange(Pers->LogPos.ChunkAllocationLsn, Lsn);
-            Y_ABORT_UNLESS(prevLsn < Lsn);
+            Y_VERIFY_S(prevLsn < Lsn, HugeKeeperCtx->VCtx->VDiskLogPrefix);
             Pers->Heap->AddChunk(ChunkId);
         }
 
         void Handle(NPDisk::TEvLogResult::TPtr &ev, const TActorContext &ctx) {
             CHECK_PDISK_RESPONSE(HugeKeeperCtx->VCtx, ev, ctx);
-            Y_ABORT_UNLESS(ev->Get()->Results.size() == 1 && ev->Get()->Results.front().Lsn == Lsn);
+            Y_VERIFY_S(ev->Get()->Results.size() == 1 && ev->Get()->Results.front().Lsn == Lsn,
+                HugeKeeperCtx->VCtx->VDiskLogPrefix);
 
-            LOG_DEBUG(ctx, BS_HULLHUGE, VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix, "ChunkAllocator: committed:"
-                " chunkId# %" PRIu32 " LsnSeg# %" PRIu64, ChunkId, Lsn));
+            YDB_LOG_DEBUG_CTX_COMP(ctx, BS_HULLHUGE, VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix, "ChunkAllocator: committed:" " chunkId# %" PRIu32 " LsnSeg# %" PRIu64, ChunkId, Lsn));
 
-            ctx.Send(NotifyID, new TEvHullHugeChunkAllocated(ChunkId, SlotSize));
+            ctx.Send(ParentId, new TEvHullHugeChunkAllocated(SlotSize, true));
             Die(ctx);
             Span.EndOk();
         }
@@ -370,10 +386,9 @@ LWTRACE_USING(BLOBSTORAGE_PROVIDER);
             return NKikimrServices::TActivity::BS_HULL_HUGE_BLOB_CHUNKALLOC;
         }
 
-        THullHugeBlobChunkAllocator(std::shared_ptr<THugeKeeperCtx> hugeKeeperCtx, const TActorId &notifyID,
+        THullHugeBlobChunkAllocator(std::shared_ptr<THugeKeeperCtx> hugeKeeperCtx,
                 std::shared_ptr<THullHugeKeeperPersState> pers, NWilson::TTraceId traceId, ui32 slotSize)
             : HugeKeeperCtx(std::move(hugeKeeperCtx))
-            , NotifyID(notifyID)
             , Pers(std::move(pers))
             , Span(TWilson::VDiskTopLevel, std::move(traceId), "VDisk.HullHugeBlobChunkAllocator")
             , SlotSize(slotSize)
@@ -397,8 +412,7 @@ LWTRACE_USING(BLOBSTORAGE_PROVIDER);
             NHuge::TFreeChunkRecoveryLogRec logRec(ChunksToFree);
             TRcBuf data = TRcBuf(logRec.Serialize());
 
-            LOG_DEBUG(ctx, BS_HULLHUGE, VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix, "ChunkDestroyer: bootstrap:"
-                " chunks# %s Lsn# %" PRIu64, FormatList(ChunksToFree).data(), Lsn));
+            YDB_LOG_DEBUG_CTX_COMP(ctx, BS_HULLHUGE, VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix, "ChunkDestroyer: bootstrap:" " chunks# %s Lsn# %" PRIu64, FormatList(ChunksToFree).data(), Lsn));
 
             // prepare commit record, i.e. commit reserved chunk
             NPDisk::TCommitRecord commitRecord;
@@ -407,28 +421,24 @@ LWTRACE_USING(BLOBSTORAGE_PROVIDER);
             commitRecord.DeleteChunks = ChunksToFree;
             commitRecord.IsStartingPoint = false;
 
-            LOG_INFO(ctx, NKikimrServices::BS_SKELETON,
-                    VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix,
-                            "huge delete ChunkIds# %s", FormatList(commitRecord.DeleteChunks).data()));
-            LOG_DEBUG(ctx, NKikimrServices::BS_VDISK_CHUNKS,
-                      VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix,
-                            "COMMIT: PDiskId# %s Lsn# %" PRIu64 " type# HugeChunkDestroyer msg# %s",
-                            HugeKeeperCtx->PDiskCtx->PDiskIdString.data(), Lsn, commitRecord.ToString().data()));
+            YDB_LOG_INFO_CTX_COMP(ctx, NKikimrServices::BS_SKELETON, VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix, "huge delete ChunkIds# %s", FormatList(commitRecord.DeleteChunks).data()));
+            YDB_LOG_DEBUG_CTX_COMP(ctx, NKikimrServices::BS_VDISK_CHUNKS, VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix, "COMMIT: PDiskId# %s Lsn# %" PRIu64 " type# HugeChunkDestroyer msg# %s", HugeKeeperCtx->PDiskCtx->PDiskIdString.data(), Lsn, commitRecord.ToString().data()));
 
             // send log message
             ctx.Send(HugeKeeperCtx->LoggerId, new NPDisk::TEvLog(HugeKeeperCtx->PDiskCtx->Dsk->Owner,
                 HugeKeeperCtx->PDiskCtx->Dsk->OwnerRound, TLogSignature::SignatureHugeBlobFreeChunk,
-                commitRecord, data, TLsnSeg(Lsn, Lsn), nullptr));
+                commitRecord, data, TLsnSeg(Lsn, Lsn), nullptr, TWriteSource::HugeKeeperFreeChunk, NPDisk::TEvLog::TCallback()));
             TThis::Become(&TThis::StateFunc);
         }
 
         void Handle(NPDisk::TEvLogResult::TPtr &ev, const TActorContext &ctx) {
             CHECK_PDISK_RESPONSE(HugeKeeperCtx->VCtx, ev, ctx);
-            Y_ABORT_UNLESS(ev->Get()->Results.size() == 1 && ev->Get()->Results.front().Lsn == Lsn);
+            Y_VERIFY_S(ev->Get()->Results.size() == 1 && ev->Get()->Results.front().Lsn == Lsn,
+                HugeKeeperCtx->VCtx->VDiskLogPrefix);
 
-            LOG_DEBUG(ctx, BS_HULLHUGE, VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix, "ChunkDestroyer: committed:"
-                " chunks# %s Lsn# %" PRIu64, FormatList(ChunksToFree).data(), Lsn));
+            YDB_LOG_INFO_CTX_COMP(ctx, BS_HULLHUGE, VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix, "ChunkDestroyer: committed:" " chunks# %s Lsn# %" PRIu64, FormatList(ChunksToFree).data(), Lsn));
 
+            ctx.Send(HugeKeeperCtx->SkeletonId, new TEvNotifyChunksDeleted(Lsn, ChunksToFree));
             ctx.Send(NotifyID, new TEvHullHugeChunkFreed);
             Die(ctx);
         }
@@ -467,9 +477,7 @@ LWTRACE_USING(BLOBSTORAGE_PROVIDER);
         friend class TActorBootstrapped<THullHugeBlobEntryPointSaver>;
 
         void Bootstrap(const TActorContext &ctx) {
-            LOG_DEBUG(ctx, BS_HULLHUGE,
-                      VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix,
-                            "EntryPointSaver: bootstrap: lsn# %" PRIu64, EntryPointLsn));
+            YDB_LOG_DEBUG_CTX_COMP(ctx, BS_HULLHUGE, VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix, "EntryPointSaver: bootstrap: lsn# %" PRIu64, EntryPointLsn));
 
             // prepare commit record
             NPDisk::TCommitRecord commitRecord;
@@ -480,17 +488,18 @@ LWTRACE_USING(BLOBSTORAGE_PROVIDER);
             TLsnSeg seg(EntryPointLsn, EntryPointLsn);
             ctx.Send(HugeKeeperCtx->LoggerId,
                     new NPDisk::TEvLog(HugeKeeperCtx->PDiskCtx->Dsk->Owner, HugeKeeperCtx->PDiskCtx->Dsk->OwnerRound,
-                        TLogSignature::SignatureHugeBlobEntryPoint, commitRecord, TRcBuf(Serialized), seg, nullptr)); //FIXME(innokentii): wrapping
+                        TLogSignature::SignatureHugeBlobEntryPoint, commitRecord, TRcBuf(Serialized), seg, nullptr,
+                        TWriteSource::HugeKeeperEntryPoint,
+                        NPDisk::TEvLog::TCallback())); //FIXME(innokentii): wrapping
             TThis::Become(&TThis::StateFunc);
         }
 
         void Handle(NPDisk::TEvLogResult::TPtr &ev, const TActorContext &ctx) {
             CHECK_PDISK_RESPONSE(HugeKeeperCtx->VCtx, ev, ctx);
-            Y_ABORT_UNLESS(ev->Get()->Results.size() == 1 && ev->Get()->Results.front().Lsn == EntryPointLsn);
+            Y_VERIFY_S(ev->Get()->Results.size() == 1 && ev->Get()->Results.front().Lsn == EntryPointLsn,
+                HugeKeeperCtx->VCtx->VDiskLogPrefix);
 
-            LOG_DEBUG(ctx, BS_HULLHUGE,
-                      VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix,
-                            "EntryPointSaver: committed: lsn# %" PRIu64, EntryPointLsn));
+            YDB_LOG_DEBUG_CTX_COMP(ctx, BS_HULLHUGE, VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix, "EntryPointSaver: committed: lsn# %" PRIu64, EntryPointLsn));
 
             ctx.Send(NotifyID, new TEvHullHugeCommitted(EntryPointLsn));
             Die(ctx);
@@ -672,6 +681,8 @@ LWTRACE_USING(BLOBSTORAGE_PROVIDER);
         THullHugeKeeperState State;
         TActiveActors ActiveActors;
         std::unordered_set<ui32> AllocatingChunkPerSlotSize;
+        std::multimap<ui64, std::unique_ptr<IEventHandle>> PendingLockResponses;
+        std::set<ui64> WritesInFlight;
 
         void CheckLsn(ui64 lsn, const char *action) {
             const ui64 firstLsnToKeep = State.FirstLsnToKeep();
@@ -687,37 +698,52 @@ LWTRACE_USING(BLOBSTORAGE_PROVIDER);
                 std::move(item->TraceId), "VDisk.HullHugeKeeper.InWaitQueue"));
         }
 
+        enum class EProcessWriteReason {
+            INITIAL_PUT,
+            RECHECK,
+            OUT_OF_SPACE,
+        };
+
         bool ProcessWrite(std::unique_ptr<TEvHullWriteHugeBlob::THandle>& ev, const TActorContext& ctx,
-                NWilson::TTraceId traceId, bool putToQueue) {
+                NWilson::TTraceId traceId, EProcessWriteReason reason) {
             auto& msg = *ev->Get();
             NHuge::THugeSlot hugeSlot;
             ui32 slotSize;
             if (State.Pers->Heap->Allocate(msg.Data.GetSize(), &hugeSlot, &slotSize)) {
-                const bool inserted = State.Pers->AllocatedSlots.insert(hugeSlot).second;
-                Y_ABORT_UNLESS(inserted);
+                State.Pers->AddSlotInFlight(hugeSlot);
+                State.Pers->AddChunkSize(hugeSlot);
                 const ui64 lsnInfimum = HugeKeeperCtx->LsnMngr->GetLsn();
                 CheckLsn(lsnInfimum, "WriteHugeBlob");
-                const ui64 wId = State.LsnFifo.Push(lsnInfimum);
+                const ui64 wId = State.LsnFifo.Push(HugeKeeperCtx->VCtx->VDiskLogPrefix, lsnInfimum);
+                WritesInFlight.insert(wId);
                 auto aid = ctx.Register(new THullHugeBlobWriter(HugeKeeperCtx, ctx.SelfID, hugeSlot,
                     std::unique_ptr<TEvHullWriteHugeBlob>(ev->Release().Release()), wId, std::move(traceId)));
                 ActiveActors.Insert(aid, __FILE__, __LINE__, ctx, NKikimrServices::BLOBSTORAGE);
                 return true;
+            } else if (reason == EProcessWriteReason::OUT_OF_SPACE) {
+                // cancel this item because we have no space left to allocate a chunk
+                msg.Result->UpdateStatus(NKikimrProto::ERROR, "out of space");
+                SendVDiskResponse(ctx, msg.SenderId, msg.Result.release(), msg.Cookie, HugeKeeperCtx->VCtx, msg.HandleClass);
+                return true;
             } else if (AllocatingChunkPerSlotSize.insert(slotSize).second) {
                 LWTRACK(HugeBlobChunkAllocatorStart, ev->Get()->Orbit);
-                auto aid = ctx.RegisterWithSameMailbox(new THullHugeBlobChunkAllocator(HugeKeeperCtx, ctx.SelfID,
-                    State.Pers, std::move(traceId), slotSize));
+                auto aid = ctx.RegisterWithSameMailbox(new THullHugeBlobChunkAllocator(HugeKeeperCtx, State.Pers,
+                    std::move(traceId), slotSize));
                 ActiveActors.Insert(aid, __FILE__, __LINE__, ctx, NKikimrServices::BLOBSTORAGE);
             }
-            if (putToQueue) {
-                PutToWaitQueue(slotSize, std::move(ev));
+            if (reason == EProcessWriteReason::INITIAL_PUT) {
+                PutToWaitQueue(slotSize, std::move(ev)); // otherwise this item is already in put queue
             }
             return false;
         }
 
-        void ProcessQueue(ui32 slotSize, const TActorContext &ctx) {
+        void ProcessQueue(ui32 slotSize, bool success, const TActorContext &ctx) {
             auto& queue = State.WaitQueue[slotSize];
             auto it = queue.begin();
-            while (it != queue.end() && ProcessWrite(it->Item, ctx, it->Span.GetTraceId(), false)) {
+            const auto reason = success
+                ? EProcessWriteReason::RECHECK
+                : EProcessWriteReason::OUT_OF_SPACE;
+            while (it != queue.end() && ProcessWrite(it->Item, ctx, it->Span.GetTraceId(), reason)) {
                 it->Span.EndOk();
                 ++it;
             }
@@ -734,56 +760,44 @@ LWTRACE_USING(BLOBSTORAGE_PROVIDER);
                 auto aid = ctx.Register(new THullHugeBlobChunkDestroyer(HugeKeeperCtx, ctx.SelfID, std::move(vec), lsn));
                 ActiveActors.Insert(aid, __FILE__, __LINE__, ctx, NKikimrServices::BLOBSTORAGE);
                 const ui64 prevLsn = std::exchange(State.Pers->LogPos.ChunkFreeingLsn, lsn);
-                Y_ABORT_UNLESS(prevLsn < lsn); // although it is useless :)
+                Y_VERIFY_S(prevLsn < lsn, HugeKeeperCtx->VCtx->VDiskLogPrefix); // although it is useless :)
             }
         }
 
         //////////// Cut Log Handler ///////////////////////////////////
         void TryToCutLog(const TActorContext &ctx) {
             if (HugeKeeperCtx->IsReadOnlyVDisk) {
-                LOG_DEBUG(ctx, BS_LOGCUTTER,
-                    VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix,
-                        "THullHugeKeeper: TryToCutLog: terminate; readonly vdisk"));
+                YDB_LOG_DEBUG_CTX_COMP(ctx, BS_LOGCUTTER, VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix, "THullHugeKeeper: TryToCutLog: terminate; readonly vdisk"));
                 return;
             }
             const ui64 firstLsnToKeep = State.FirstLsnToKeep();
-            LOG_DEBUG(ctx, BS_LOGCUTTER,
-                VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix,
-                    "THullHugeKeeper: TryToCutLog: state# %s firstLsnToKeep# %" PRIu64
-                    " FirstLsnToKeepDecomposed# %s", State.ToString().data(), firstLsnToKeep,
-                    State.FirstLsnToKeepDecomposed().data()));
+            YDB_LOG_DEBUG_CTX_COMP(ctx, BS_LOGCUTTER, VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix, "THullHugeKeeper: TryToCutLog: state# %s firstLsnToKeep# %" PRIu64 " FirstLsnToKeepDecomposed# %s", State.ToString().data(), firstLsnToKeep, State.FirstLsnToKeepDecomposed().data()));
 
             // notify log cutter if the FirstLsnToKeep has changed since last reporting
             if (firstLsnToKeep != State.LastReportedFirstLsnToKeep) {
-                Y_VERIFY_S(firstLsnToKeep > State.LastReportedFirstLsnToKeep, "huge keeper log rollback"
+                Y_VERIFY_S(firstLsnToKeep > State.LastReportedFirstLsnToKeep,
+                        HugeKeeperCtx->VCtx->VDiskLogPrefix << "huge keeper log rollback"
                         << " firstLsnToKeep#" << firstLsnToKeep
                         << " State.LastReportedFirstLsnToKeep# " << State.LastReportedFirstLsnToKeep);
                 ctx.Send(HugeKeeperCtx->LogCutterId, new TEvVDiskCutLog(TEvVDiskCutLog::HugeKeeper, firstLsnToKeep));
                 State.LastReportedFirstLsnToKeep = firstLsnToKeep;
 
-                LOG_DEBUG(ctx, BS_LOGCUTTER,
-                    VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix,
-                        "THullHugeKeeper: TryToCutLog: send TEvVDiskCutLog; firstLsnToKeep# %" PRIu64,
-                        firstLsnToKeep));
+                YDB_LOG_DEBUG_CTX_COMP(ctx, BS_LOGCUTTER, VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix, "THullHugeKeeper: TryToCutLog: send TEvVDiskCutLog; firstLsnToKeep# %" PRIu64, firstLsnToKeep));
             }
 
             // do nothing if commit is in progress
             if (State.Committing) {
-                LOG_DEBUG(ctx, BS_LOGCUTTER,
-                    VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix,
-                            "THullHugeKeeper: TryToCutLog: terminate 0; state# %s", State.ToString().data()));
+                YDB_LOG_DEBUG_CTX_COMP(ctx, BS_LOGCUTTER, VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix, "THullHugeKeeper: TryToCutLog: terminate 0; state# %s", State.ToString().data()));
                 return;
             }
 
-            // check what if we issue a new huge hull keeper entry point -- would it allow us to
+            // check that if we issue a new huge hull keeper entry point -- would it allow us to
             // move the FirstLsnToKeep barrier forward? if so, try to issue an entry point, otherwise exit
             const ui64 pendingLsn = State.PendingWrites.empty() ? Max<ui64>() : State.PendingWrites.begin()->first;
             const ui64 minInFlightLsn = Min(pendingLsn, State.LsnFifo.FirstLsnToKeep());
             if (!State.Pers->WouldNewEntryPointAdvanceLog(State.FreeUpToLsn, minInFlightLsn, State.ItemsAfterCommit)) {
                 // if we issue an entry point now, we will achieve nothing, so return
-                LOG_DEBUG(ctx, BS_LOGCUTTER,
-                    VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix,
-                            "THullHugeKeeper: TryToCutLog: terminate 1; state# %s", State.ToString().data()));
+                YDB_LOG_DEBUG_CTX_COMP(ctx, BS_LOGCUTTER, VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix, "THullHugeKeeper: TryToCutLog: terminate 1; state# %s", State.ToString().data()));
                 return;
             }
 
@@ -797,10 +811,8 @@ LWTRACE_USING(BLOBSTORAGE_PROVIDER);
             TString serialized = State.Pers->Serialize();
 
             // run committer
-            LOG_DEBUG(ctx, BS_HULLHUGE,
-                VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix, "THullHugeKeeper: Commit initiated"));
-            LOG_DEBUG(ctx, BS_LOGCUTTER,
-                VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix, "THullHugeKeeper: TryToCutLog: run committer"));
+            YDB_LOG_DEBUG_CTX_COMP(ctx, BS_HULLHUGE, VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix, "THullHugeKeeper: Commit initiated"));
+            YDB_LOG_DEBUG_CTX_COMP(ctx, BS_LOGCUTTER, VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix, "THullHugeKeeper: TryToCutLog: run committer"));
 
             auto aid = ctx.Register(new THullHugeBlobEntryPointSaver(HugeKeeperCtx, ctx.SelfID, lsn, serialized));
             ActiveActors.Insert(aid, __FILE__, __LINE__, ctx, NKikimrServices::BLOBSTORAGE);
@@ -809,28 +821,29 @@ LWTRACE_USING(BLOBSTORAGE_PROVIDER);
 
         template<typename TEvent>
         bool CheckPendingWrite(ui64 writeId, TAutoPtr<TEventHandle<TEvent>>& ev, ui64 lsn, const char *action) {
-            LOG_DEBUG_S(*TlsActivationContext, BS_HULLHUGE, HugeKeeperCtx->VCtx->VDiskLogPrefix << "CheckPendingWrite"
-                << " WriteId# " << writeId
-                << " ProcessingPendingWrite# " << State.ProcessingPendingWrite
-                << " Lsn# " << lsn
-                << " Action# " << action
-                << " LsnFifo# " << State.LsnFifo.ToString()
-                << " PendingWrites.size# " << State.PendingWrites.size()
-                << " FirstPendingWrite# " << (State.PendingWrites.empty() ? 0 : State.PendingWrites.begin()->first));
+            YDB_LOG_DEBUG_COMP(BS_HULLHUGE, "CheckPendingWrite",
+                {"VDiskLogPrefix", HugeKeeperCtx->VCtx->VDiskLogPrefix},
+                {"writeId", writeId},
+                {"processingPendingWrite", State.ProcessingPendingWrite},
+                {"lsn", lsn},
+                {"action", action},
+                {"lsnFifo", State.LsnFifo},
+                {"pendingWrites.size", State.PendingWrites.size()},
+                {"firstPendingWrite", (State.PendingWrites.empty() ? 0 : State.PendingWrites.begin()->first)});
 
-            Y_ABORT_UNLESS(writeId);
+            Y_VERIFY_S(writeId, HugeKeeperCtx->VCtx->VDiskLogPrefix);
             if (State.ProcessingPendingWrite) {
                 return false;
             }
 
             CheckLsn(lsn, action);
-            State.LsnFifo.Pop(writeId, lsn, true);
+            State.LsnFifo.Pop(HugeKeeperCtx->VCtx->VDiskLogPrefix, writeId, lsn, true);
             const bool canProcessNow = State.PendingWrites.empty() && lsn < State.LsnFifo.FirstLsnToKeep();
             if (canProcessNow) {
                 return false;
             } else {
                 const auto [it, inserted] = State.PendingWrites.emplace(lsn, ev.Release());
-                Y_ABORT_UNLESS(inserted);
+                Y_VERIFY_S(inserted, HugeKeeperCtx->VCtx->VDiskLogPrefix);
                 State.MaxPendingWrites = Max(State.MaxPendingWrites, State.PendingWrites.size());
                 ProcessPendingWrites();
                 return true;
@@ -856,44 +869,41 @@ LWTRACE_USING(BLOBSTORAGE_PROVIDER);
 
         //////////// Event Handlers ////////////////////////////////////
         void Handle(TEvHullWriteHugeBlob::TPtr &ev, const TActorContext &ctx) {
-            LOG_DEBUG(ctx, BS_HULLHUGE, VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix,
-                "THullHugeKeeper: TEvHullWriteHugeBlob: %s", std::data(ev->Get()->ToString())));
+            YDB_LOG_DEBUG_CTX_COMP(ctx, BS_HULLHUGE, VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix, "THullHugeKeeper: TEvHullWriteHugeBlob: %s", std::data(ev->Get()->ToString())));
             LWTRACK(HugeKeeperWriteHugeBlobReceived, ev->Get()->Orbit);
             std::unique_ptr<TEvHullWriteHugeBlob::THandle> item(ev.Release());
-            ProcessWrite(item, ctx, item->TraceId.Clone(), true);
+            ProcessWrite(item, ctx, item->TraceId.Clone(), EProcessWriteReason::INITIAL_PUT);
         }
 
         void Handle(TEvHullHugeChunkAllocated::TPtr &ev, const TActorContext &ctx) {
             auto *msg = ev->Get();
-            LOG_DEBUG(ctx, BS_HULLHUGE, VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix, "THullHugeKeeper:"
-                " TEvHullHugeChunkAllocated: %s", msg->ToString().data()));
+            YDB_LOG_DEBUG_CTX_COMP(ctx, BS_HULLHUGE, VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix, "THullHugeKeeper:" " TEvHullHugeChunkAllocated: %s", msg->ToString().data()));
             const size_t numErased = AllocatingChunkPerSlotSize.erase(msg->SlotSize);
-            Y_ABORT_UNLESS(numErased == 1);
+            Y_VERIFY_S(numErased == 1, HugeKeeperCtx->VCtx->VDiskLogPrefix);
             ActiveActors.Erase(ev->Sender);
-            ProcessQueue(msg->SlotSize, ctx);
+            ProcessAllocateSlotTasks(msg->SlotSize, ctx);
+            ProcessQueue(msg->SlotSize, msg->Success, ctx);
         }
 
         void Handle(TEvHullFreeHugeSlots::TPtr &ev, const TActorContext &ctx) {
             TEvHullFreeHugeSlots *msg = ev->Get();
-            Y_ABORT_UNLESS(!msg->HugeBlobs.Empty());
 
-            if (CheckPendingWrite(msg->WId, ev, msg->DeletionLsn, "FreeHugeSlots")) {
+            if (msg->WId && CheckPendingWrite(msg->WId, ev, msg->DeletionLsn, "FreeHugeSlots")) {
                 return;
             }
 
-            LOG_DEBUG(ctx, BS_HULLHUGE,
-                    VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix,
-                            "THullHugeKeeper: TEvHullFreeHugeSlots: %s", msg->ToString().data()));
+            YDB_LOG_DEBUG_CTX_COMP(ctx, BS_HULLHUGE, VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix, "THullHugeKeeper: TEvHullFreeHugeSlots: %s", msg->ToString().data()));
 
-            THashSet<ui32> slotSizes;
             for (const auto &x : msg->HugeBlobs) {
-                slotSizes.insert(State.Pers->Heap->SlotSizeOfThisSize(x.Size));
-                NHuge::TFreeRes freeRes = State.Pers->Heap->Free(x);
-                LOG_DEBUG(ctx, BS_HULLHUGE,
-                          VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix,
-                                "THullHugeKeeper: TEvHullFreeHugeSlots: one slot: addr# %s",
-                                x.ToString().data()));
+                State.Pers->Heap->Free(x);
+                State.Pers->DeleteChunkSize(State.Pers->Heap->ConvertDiskPartToHugeSlot(x));
+                YDB_LOG_DEBUG_CTX_COMP(ctx, BS_HULLHUGE, VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix, "THullHugeKeeper: TEvHullFreeHugeSlots: one slot: addr# %s", x.ToString().data()));
                 ++State.ItemsAfterCommit;
+            }
+
+            for (const TDiskPart& x : msg->AllocatedBlobs) {
+                const bool deleted = State.Pers->DeleteSlotInFlight(State.Pers->Heap->ConvertDiskPartToHugeSlot(x));
+                Y_VERIFY_S(deleted, HugeKeeperCtx->VCtx->VDiskLogPrefix);
             }
 
             auto checkAndSet = [this, msg] (ui64 &dbLsn) {
@@ -914,22 +924,17 @@ LWTRACE_USING(BLOBSTORAGE_PROVIDER);
                 default:
                     Y_ABORT("Impossible case");
             }
-            for (ui32 slotSize : slotSizes) {
-                ProcessQueue(slotSize, ctx);
-            }
             FreeChunks(ctx);
         }
 
         void Handle(TEvHullHugeChunkFreed::TPtr& ev, const TActorContext &ctx) {
-            LOG_DEBUG(ctx, BS_HULLHUGE, VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix, "THullHugeKeeper: TEvHullHugeChunkFreed"));
+            YDB_LOG_DEBUG_CTX_COMP(ctx, BS_HULLHUGE, VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix, "THullHugeKeeper: TEvHullHugeChunkFreed"));
             ActiveActors.Erase(ev->Sender);
         }
 
         void Handle(TEvHullHugeCommitted::TPtr &ev, const TActorContext &ctx) {
-            LOG_DEBUG(ctx, BS_HULLHUGE,
-                VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix,
-                        "THullHugeKeeper: TEvHullHugeCommitted: %s", ev->Get()->ToString().data()));
-            Y_ABORT_UNLESS(State.Committing);
+            YDB_LOG_DEBUG_CTX_COMP(ctx, BS_HULLHUGE, VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix, "THullHugeKeeper: TEvHullHugeCommitted: %s", ev->Get()->ToString().data()));
+            Y_VERIFY_S(State.Committing, HugeKeeperCtx->VCtx->VDiskLogPrefix);
             State.Committing = false;
             ActiveActors.Erase(ev->Sender);
             State.LastCommitTime = TAppData::TimeProvider->Now();
@@ -937,9 +942,7 @@ LWTRACE_USING(BLOBSTORAGE_PROVIDER);
         }
 
         void Handle(TEvHullHugeWritten::TPtr &ev, const TActorContext &ctx) {
-            LOG_DEBUG(ctx, BS_HULLHUGE,
-                VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix,
-                        "THullHugeKeeper: TEvHullHugeWritten: %s", ev->Get()->ToString().data()));
+            YDB_LOG_DEBUG_CTX_COMP(ctx, BS_HULLHUGE, VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix, "THullHugeKeeper: TEvHullHugeWritten: %s", ev->Get()->ToString().data()));
             ActiveActors.Erase(ev->Sender);
         }
 
@@ -947,71 +950,73 @@ LWTRACE_USING(BLOBSTORAGE_PROVIDER);
             const TEvHullHugeBlobLogged *msg = ev->Get();
 
             if (!msg->SlotIsUsed) {
-                State.LsnFifo.Pop(msg->WriteId, msg->RecLsn, false);
+                State.LsnFifo.Pop(HugeKeeperCtx->VCtx->VDiskLogPrefix, msg->WriteId, msg->RecLsn, false);
                 ProcessPendingWrites();
             } else if (CheckPendingWrite(msg->WriteId, ev, msg->RecLsn, "HugeBlobLogged")) {
                 return;
             }
 
-            LOG_DEBUG(ctx, BS_HULLHUGE,
-                VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix,
-                        "THullHugeKeeper: TEvHullHugeBlobLogged: %s", msg->ToString().data()));
+            YDB_LOG_DEBUG_CTX_COMP(ctx, BS_HULLHUGE, VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix, "THullHugeKeeper: TEvHullHugeBlobLogged: %s", msg->ToString().data()));
             // manage log requests in flight
             State.ItemsAfterCommit += msg->SlotIsUsed;
             // manage allocated slots
             const TDiskPart &hugeBlob = msg->HugeBlob;
             NHuge::THugeSlot hugeSlot(State.Pers->Heap->ConvertDiskPartToHugeSlot(hugeBlob));
-            auto nErased = State.Pers->AllocatedSlots.erase(hugeSlot);
-            Y_ABORT_UNLESS(nErased == 1);
+            const bool deleted = State.Pers->DeleteSlotInFlight(hugeSlot);
+            Y_VERIFY_S(deleted, HugeKeeperCtx->VCtx->VDiskLogPrefix);
             // depending on SlotIsUsed...
             if (msg->SlotIsUsed) {
-                Y_VERIFY_S(State.Pers->LogPos.HugeBlobLoggedLsn < msg->RecLsn,
+                Y_VERIFY_S(State.Pers->LogPos.HugeBlobLoggedLsn < msg->RecLsn, HugeKeeperCtx->VCtx->VDiskLogPrefix <<
                         "pers# " << State.Pers->ToString() << " msg# " << msg->ToString());
                 // ...update HugeBlobLoggedLsn (monotonically incremented)
                 State.Pers->LogPos.HugeBlobLoggedLsn = msg->RecLsn;
             } else {
                 // ...free slot
                 State.Pers->Heap->Free(hugeBlob);
+                // and remove chunk size record
+                State.Pers->DeleteChunkSize(hugeSlot);
             }
+
+            size_t numErased = WritesInFlight.erase(msg->WriteId);
+            Y_VERIFY_S(numErased, HugeKeeperCtx->VCtx->VDiskLogPrefix);
+            CheckPendingLockResponses();
         }
 
         void Handle(TEvHugePreCompact::TPtr ev, const TActorContext& ctx) {
             const ui64 lsnInfimum = HugeKeeperCtx->LsnMngr->GetLsn();
             CheckLsn(lsnInfimum, "PreCompact");
-            const ui64 wId = State.LsnFifo.Push(lsnInfimum);
-            LOG_DEBUG_S(ctx, NKikimrServices::BS_HULLHUGE, HugeKeeperCtx->VCtx->VDiskLogPrefix
-                << "THullHugeKeeper: requested PreCompact wId# " << wId
-                << " LsnInfimum# " << lsnInfimum);
+            const ui64 wId = State.LsnFifo.Push(HugeKeeperCtx->VCtx->VDiskLogPrefix, lsnInfimum);
+            YDB_LOG_DEBUG_CTX_COMP(ctx, NKikimrServices::BS_HULLHUGE, "THullHugeKeeper: requested PreCompact",
+                {"VDiskLogPrefix", HugeKeeperCtx->VCtx->VDiskLogPrefix},
+                {"WId", wId},
+                {"lsnInfimum", lsnInfimum});
             ctx.Send(ev->Sender, new TEvHugePreCompactResult(wId), 0, ev->Cookie);
         }
 
         void Handle(TEvHugeLockChunks::TPtr &ev, const TActorContext &ctx) {
             const TEvHugeLockChunks *msg = ev->Get();
-            LOG_DEBUG(ctx, BS_HULLHUGE,
-                VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix,
-                        "THullHugeKeeper: TEvHugeLockChunks: %s", msg->ToString().data()));
+            YDB_LOG_DEBUG_CTX_COMP(ctx, BS_HULLHUGE, VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix, "THullHugeKeeper: TEvHugeLockChunks: %s", msg->ToString().data()));
 
             TDefragChunks lockedChunks;
             lockedChunks.reserve(msg->Chunks.size());
             for (const auto &d : msg->Chunks) {
                 bool locked = State.Pers->Heap->LockChunkForAllocation(d.ChunkId, d.SlotSize);
                 if (locked) {
-                    lockedChunks.emplace_back(d.ChunkId, d.SlotSize);
+                    lockedChunks.push_back(d);
                 }
             }
-            ctx.Send(ev->Sender, new TEvHugeLockChunksResult(std::move(lockedChunks)));
-        }
 
-        void Handle(TEvHugeUnlockChunks::TPtr& ev, const TActorContext& /*ctx*/) {
-            for (const auto& d : ev->Get()->Chunks) {
-                State.Pers->Heap->UnlockChunk(d.ChunkId, d.SlotSize);
+            auto response = std::make_unique<TEvHugeLockChunksResult>(std::move(lockedChunks));
+            auto handle = std::make_unique<IEventHandle>(ev->Sender, SelfId(), response.release());
+            if (WritesInFlight.empty()) {
+                TActivationContext::Send(handle.release());
+            } else {
+                PendingLockResponses.emplace(*--WritesInFlight.end(), std::move(handle));
             }
         }
 
         void Handle(TEvHugeStat::TPtr &ev, const TActorContext &ctx) {
-            LOG_DEBUG(ctx, BS_HULLHUGE,
-                VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix,
-                        "THullHugeKeeper: TEvHugeStat"));
+            YDB_LOG_DEBUG_CTX_COMP(ctx, BS_HULLHUGE, VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix, "THullHugeKeeper: TEvHugeStat"));
 
             auto res = std::make_unique<TEvHugeStatResult>();
             res->Stat = State.Pers->Heap->GetStat();
@@ -1019,10 +1024,33 @@ LWTRACE_USING(BLOBSTORAGE_PROVIDER);
             ctx.Send(ev->Sender, res.release());
         }
 
+        void Handle(TEvHugeShredNotify::TPtr &ev, const TActorContext &ctx) {
+            auto *msg = ev->Get();
+            std::ranges::sort(msg->ChunksToShred);
+            State.Pers->Heap->ShredNotify(msg->ChunksToShred);
+            FreeChunks(ctx);
+
+            auto handle = std::make_unique<IEventHandle>(TEvBlobStorage::EvHugeShredNotifyResult, 0, ev->Sender, SelfId(),
+                nullptr, 0);
+            if (WritesInFlight.empty()) {
+                TActivationContext::Send(handle.release());
+            } else {
+                PendingLockResponses.emplace(*--WritesInFlight.end(), std::move(handle));
+            }
+        }
+
+        void Handle(TEvListChunks::TPtr ev, const TActorContext& ctx) {
+            auto response = std::make_unique<TEvListChunksResult>();
+            State.Pers->Heap->ListChunks(ev->Get()->ChunksOfInterest, response->ChunksHuge);
+            ctx.Send(ev->Sender, response.release(), 0, ev->Cookie);
+        }
+
+        void HandleQueryForbiddenChunks(TAutoPtr<IEventHandle> ev, const TActorContext& ctx) {
+            ctx.Send(ev->Sender, new TEvHugeForbiddenChunks(State.Pers->Heap->GetForbiddenChunks()), 0, ev->Cookie);
+        }
+
         void Handle(NPDisk::TEvCutLog::TPtr &ev, const TActorContext &ctx) {
-            LOG_DEBUG(ctx, BS_LOGCUTTER,
-                VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix,
-                        "THullHugeKeeper: TEvCutLog: %s", ev->Get()->ToString().data()));
+            YDB_LOG_DEBUG_CTX_COMP(ctx, BS_LOGCUTTER, VDISKP(HugeKeeperCtx->VCtx->VDiskLogPrefix, "THullHugeKeeper: TEvCutLog: %s", ev->Get()->ToString().data()));
             State.FreeUpToLsn = ev->Get()->FreeUpToLsn;
         }
 
@@ -1037,7 +1065,6 @@ LWTRACE_USING(BLOBSTORAGE_PROVIDER);
             }
             ctx.Send(ev->Sender, new NMon::TEvHttpInfoRes(str.Str(), TDbMon::HugeKeeperId));
         }
-
 
         void Handle(TEvents::TEvPoisonPill::TPtr &ev, const TActorContext &ctx) {
             Y_UNUSED(ev);
@@ -1054,6 +1081,114 @@ LWTRACE_USING(BLOBSTORAGE_PROVIDER);
             HugeKeeperCtx->VCtx->GetHugeHeapFragmentation().Set(stat.CurrentlyUsedChunks, stat.CanBeFreedChunks);
         }
 
+        void CheckPendingLockResponses() {
+            const ui64 writeId = WritesInFlight.empty() ? Max<ui64>() : *WritesInFlight.begin();
+            std::multimap<ui64, std::unique_ptr<IEventHandle>>::iterator it;
+            for (it = PendingLockResponses.begin(); it != PendingLockResponses.end() && it->first < writeId; ++it) {
+                TActivationContext::Send(it->second.release());
+            }
+            PendingLockResponses.erase(PendingLockResponses.begin(), it);
+        }
+
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+        struct TAllocateSlotsTask {
+            TActorId Sender;
+            ui64 Cookie;
+            std::vector<ui32> BlobSizes;
+            std::vector<TDiskPart> Result;
+            THashMap<ui32, TDynBitMap> Pending;
+
+            TAllocateSlotsTask(TEvHugeAllocateSlots::TPtr& ev)
+                : Sender(ev->Sender)
+                , Cookie(ev->Cookie)
+                , BlobSizes(std::move(ev->Get()->BlobSizes))
+                , Result(BlobSizes.size())
+            {}
+        };
+
+        std::set<std::tuple<ui32, std::shared_ptr<TAllocateSlotsTask>>> SlotSizeToTask;
+
+        void TryToFulfillTask(const std::shared_ptr<TAllocateSlotsTask>& task, ui32 slotSizeToProcess, const TActorContext& ctx) {
+            bool done = true;
+
+            auto processItem = [&](size_t index, TDynBitMap *pending) {
+                auto& result = task->Result[index];
+                Y_DEBUG_ABORT_UNLESS(result.Empty());
+
+                NHuge::THugeSlot hugeSlot;
+                ui32 slotSize;
+                if (State.Pers->Heap->Allocate(task->BlobSizes[index], &hugeSlot, &slotSize)) {
+                    State.Pers->AddSlotInFlight(hugeSlot);
+                    State.Pers->AddChunkSize(hugeSlot);
+                    result = hugeSlot.GetDiskPart();
+                    if (pending) {
+                        Y_DEBUG_ABORT_UNLESS(pending->Get(index));
+                        pending->Reset(index);
+                    }
+                } else {
+                    if (AllocatingChunkPerSlotSize.insert(slotSize).second) {
+                        auto aid = ctx.RegisterWithSameMailbox(new THullHugeBlobChunkAllocator(HugeKeeperCtx,
+                            State.Pers, {}, slotSize));
+                        ActiveActors.Insert(aid, __FILE__, __LINE__, ctx, NKikimrServices::BLOBSTORAGE);
+                    }
+                    done = false;
+                    SlotSizeToTask.emplace(slotSize, task);
+                    if (pending) {
+                        Y_DEBUG_ABORT_UNLESS(pending->Get(index));
+                        return false;
+                    }
+                    task->Pending[slotSize].Set(index);
+                }
+                return true;
+            };
+
+            if (slotSizeToProcess) {
+                const auto it = task->Pending.find(slotSizeToProcess);
+                Y_VERIFY_S(it != task->Pending.end(), HugeKeeperCtx->VCtx->VDiskLogPrefix);
+                auto& pending = it->second;
+                Y_FOR_EACH_BIT(index, pending) {
+                    if (!processItem(index, &pending)) {
+                        break;
+                    }
+                }
+            } else {
+                for (size_t i = 0; i < task->BlobSizes.size(); ++i) {
+                    processItem(i, nullptr);
+                }
+            }
+
+            if (done) {
+                YDB_LOG_DEBUG_CTX_COMP(ctx, NKikimrServices::BS_HULLHUGE, "THullHugeKeeper TryToFulfillTask",
+                    {"VDiskLogPrefix", HugeKeeperCtx->VCtx->VDiskLogPrefix},
+                    {"TEvHugeAllocateSlotsResult", FormatList(task->Result)});
+                Send(task->Sender, new TEvHugeAllocateSlotsResult(std::move(task->Result)), 0, task->Cookie);
+            }
+        }
+
+        void ProcessAllocateSlotTasks(ui32 slotSize, const TActorContext& ctx) {
+            auto it = SlotSizeToTask.lower_bound(std::make_tuple(slotSize, nullptr));
+            while (it != SlotSizeToTask.end() && std::get<0>(*it) == slotSize) {
+                auto node = SlotSizeToTask.extract(it++);
+                TryToFulfillTask(std::get<1>(node.value()), slotSize, ctx);
+            }
+        }
+
+        void Handle(TEvHugeAllocateSlots::TPtr ev, const TActorContext& ctx) {
+            YDB_LOG_DEBUG_CTX_COMP(ctx, NKikimrServices::BS_HULLHUGE, "Handle TEvHugeAllocateSlots",
+                {"VDiskLogPrefix", HugeKeeperCtx->VCtx->VDiskLogPrefix},
+                {"TEvHugeAllocateSlots", FormatList(ev->Get()->BlobSizes)});
+            TryToFulfillTask(std::make_shared<TAllocateSlotsTask>(ev), 0, ctx);
+        }
+
+        void Handle(TEvHugeDropAllocatedSlots::TPtr ev, const TActorContext& /*ctx*/) {
+            for (const auto& p : ev->Get()->Locations) {
+                State.Pers->Heap->Free(p);
+                const bool deleted = State.Pers->DeleteSlotInFlight(State.Pers->Heap->ConvertDiskPartToHugeSlot(p));
+                Y_VERIFY_S(deleted, HugeKeeperCtx->VCtx->VDiskLogPrefix);
+            }
+        }
+
         //////////// Event Handlers ////////////////////////////////////
 
         STFUNC(StateFunc) {
@@ -1066,10 +1201,14 @@ LWTRACE_USING(BLOBSTORAGE_PROVIDER);
                 HFunc(TEvHullHugeCommitted, Handle)
                 HFunc(TEvHullHugeWritten, Handle)
                 HFunc(TEvHullHugeBlobLogged, Handle)
+                HFunc(TEvHugeAllocateSlots, Handle)
+                HFunc(TEvHugeDropAllocatedSlots, Handle)
                 HFunc(TEvHugePreCompact, Handle)
                 HFunc(TEvHugeLockChunks, Handle)
-                HFunc(TEvHugeUnlockChunks, Handle)
                 HFunc(TEvHugeStat, Handle)
+                HFunc(TEvHugeShredNotify, Handle)
+                HFunc(TEvListChunks, Handle)
+                FFunc(TEvBlobStorage::EvHugeQueryForbiddenChunks, HandleQueryForbiddenChunks)
                 HFunc(NPDisk::TEvCutLog, Handle)
                 HFunc(NMon::TEvHttpInfo, Handle)
                 HFunc(TEvents::TEvPoisonPill, Handle)
@@ -1090,8 +1229,8 @@ LWTRACE_USING(BLOBSTORAGE_PROVIDER);
             : HugeKeeperCtx(std::move(hugeKeeperCtx))
             , State(std::move(persState))
         {
-            Y_ABORT_UNLESS(State.Pers->Recovered &&
-                     State.Pers->AllocatedSlots.empty());
+            Y_VERIFY_S(State.Pers->Recovered && State.Pers->SlotsInFlight.empty(),
+                HugeKeeperCtx->VCtx->VDiskLogPrefix);
         }
 
         void Bootstrap(const TActorContext &ctx) {

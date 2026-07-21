@@ -81,7 +81,7 @@ struct TDSProxyEnv {
         TIntrusivePtr<TStoragePoolCounters> storagePoolCounters = perPoolCounters.GetPoolCounters("pool_name");
         TControlWrapper enablePutBatching(DefaultEnablePutBatching, false, true);
         TControlWrapper enableVPatch(DefaultEnableVPatch, false, true);
-        IActor *dsproxy = CreateBlobStorageGroupProxyConfigured(TIntrusivePtr(Info), true, nodeMon,
+        IActor *dsproxy = CreateBlobStorageGroupProxyConfigured(TIntrusivePtr(Info), nullptr, true, nodeMon,
             std::move(storagePoolCounters), TBlobStorageProxyParameters{
                     .Controls = TBlobStorageProxyControlWrappers{
                         .EnablePutBatching = enablePutBatching,
@@ -101,6 +101,25 @@ struct TDSProxyEnv {
         DynCounters = new ::NMonitoring::TDynamicCounters();
         StoragePoolCounters = new NKikimr::TStoragePoolCounters(DynCounters, "", {});
         PerDiskStatsPtr = new TDiskResponsivenessTracker::TPerDiskStats;
+
+        // await until DSProxy is ready by ensuring all VDisks have queues registered
+        {
+            const ui32 groupSize = Info->GetTotalVDisksNum();
+            bool allReady = false;
+            while (!allReady) {
+                TAutoPtr<IEventHandle> queuesInfoHandle;
+                runtime.Send(new IEventHandle(RealProxyActorId, FakeProxyActorId,
+                    new TEvGetQueuesInfo(NKikimrBlobStorage::PutTabletLog)));
+                auto queuesInfo = runtime.GrabEdgeEventRethrow<TEvQueuesInfo>(queuesInfoHandle, TDuration::Seconds(1));
+                allReady = true;
+                for (ui32 orderNum = 0; orderNum < groupSize; ++orderNum) {
+                    if (!queuesInfo->Queues[orderNum].has_value()) {
+                        allReady = false;
+                        break;
+                    }
+                }
+            }
+        }
     }
 
     void SetGroupGeneration(ui32 generation) {
@@ -120,6 +139,7 @@ struct TDSProxyEnv {
                         .Now = TMonotonic::Now(),
                         .StoragePoolCounters = StoragePoolCounters,
                         .RestartCounter = ev->Get()->RestartCounter,
+                        .TraceId = std::move(ev->TraceId),
                         .Event = ev->Get(),
                         .ExecutionRelay = ev->Get()->ExecutionRelay,
                         .LatencyQueueKind = kind,
@@ -127,7 +147,12 @@ struct TDSProxyEnv {
                     .TimeStatsEnabled = Mon->TimeStats.IsEnabled(),
                     .Stats = PerDiskStatsPtr,
                     .EnableRequestMod3x3ForMinLatency = false,
-                }, std::move(ev->TraceId)));
+                    .AccelerationParams = {
+                        // disable slow disk logic to avoid inconsistent accelerations
+                        .SlowDiskThreshold = 1'000'000'000,
+                    },
+                    .LongRequestThreshold = TDuration::Seconds(1),
+                }));
     }
 
     std::unique_ptr<IActor> CreatePutRequestActor(TBatchedVec<TEvBlobStorage::TEvPut::TPtr> &batched,
@@ -169,12 +194,13 @@ struct TDSProxyEnv {
                         .Now = TMonotonic::Now(),
                         .StoragePoolCounters = StoragePoolCounters,
                         .RestartCounter = ev->Get()->RestartCounter,
+                        .TraceId = std::move(ev->TraceId),
                         .Event = ev->Get(),
                         .ExecutionRelay = ev->Get()->ExecutionRelay,
                         .LatencyQueueKind = kind,
                     },
                     .NodeLayout = TNodeLayoutInfoPtr(NodeLayoutInfo)
-                }, std::move(ev->TraceId)));
+                }));
     }
 
     std::unique_ptr<IActor> CreatePatchRequestActor(TEvBlobStorage::TEvPatch::TPtr &ev, bool useVPatch = false) {
@@ -189,11 +215,12 @@ struct TDSProxyEnv {
                     .Now = TMonotonic::Now(),
                     .StoragePoolCounters = StoragePoolCounters,
                     .RestartCounter = ev->Get()->RestartCounter,
+                    .TraceId = std::move(ev->TraceId),
                     .Event = ev->Get(),
                     .ExecutionRelay = ev->Get()->ExecutionRelay
                 },
                 .UseVPatch = useVPatch
-            }, std::move(ev->TraceId)));
+            }));
     }
 };
 
@@ -214,7 +241,7 @@ inline void SetupRuntime(TTestActorRuntime& runtime) {
     runtime.SetEventFilter([](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& ev) {
         if (ev->GetTypeRewrite() == TEvBlobStorage::EvVCheckReadiness) {
             runtime.Send(new IEventHandle(
-                    ev->Sender, ev->Recipient, new TEvBlobStorage::TEvVCheckReadinessResult(NKikimrProto::OK), 0,
+                    ev->Sender, ev->Recipient, new TEvBlobStorage::TEvVCheckReadinessResult(NKikimrProto::OK, false), 0,
                     ev->Cookie), 0, true);
             return true;
         }

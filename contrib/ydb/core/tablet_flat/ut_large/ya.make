@@ -1,15 +1,6 @@
 UNITTEST_FOR(contrib/ydb/core/tablet_flat)
 
-REQUIREMENTS(ram:32)
-
-IF (WITH_VALGRIND)
-    TIMEOUT(2400)
-    TAG(ya:fat)
-    SIZE(LARGE)
-ELSE()
-    TIMEOUT(600)
-    SIZE(MEDIUM)
-ENDIF()
+SIZE(MEDIUM)
 
 SRCS(
     flat_executor_ut_large.cpp

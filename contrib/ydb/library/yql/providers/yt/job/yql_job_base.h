@@ -1,6 +1,7 @@
 #pragma once
 
 #include <contrib/ydb/library/yql/providers/common/codec/yql_codec.h>
+#include <contrib/ydb/library/yql/public/langver/yql_langver.h>
 #include <contrib/ydb/library/yql/public/udf/udf_validate.h>
 #include <contrib/ydb/library/yql/public/udf/udf_counter.h>
 #include <contrib/ydb/library/yql/minikql/mkql_node_visitor.h>
@@ -45,7 +46,7 @@ struct TJobCountersProvider : public NKikimr::NUdf::ICountersProvider, public NK
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 
-class TYqlJobBase: public NYT::IRawJob {
+class TYqlJobBase {
 protected:
     TYqlJobBase() = default;
     virtual ~TYqlJobBase();
@@ -70,16 +71,30 @@ public:
         TableNames = tableNames;
     }
 
-    void Do(const NYT::TRawJobContext& jobContext) override;
-    void Save(IOutputStream& stream) const override;
-    void Load(IInputStream& stream) override;
+    void SetRuntimeLogLevel(NUdf::ELogLevel level) {
+        RuntimeLogLevel = level;
+    }
+
+    void SetLangVer(TLangVersion langver) {
+        LangVer = langver;
+    }
+
+    void SetRuntimeSettings(TRuntimeSettings::TConstPtr runtimeSettings) {
+        RuntimeSettings = runtimeSettings;
+    }
+
+    virtual void Save(IOutputStream& stream) const;
+    virtual void Load(IInputStream& stream);
 
 protected:
     NKikimr::NMiniKQL::TCallableVisitFuncProvider MakeTransformProvider(THashMap<TString, NKikimr::NMiniKQL::TRuntimeNode>* extraArgs = nullptr) const;
+    virtual bool NeedWriteStats() {
+        return true;
+    }
 
     void Init();
 
-    virtual void DoImpl(const TFile& inHandle, const TVector<TFile>& outHandles) = 0;
+    void Finish();
 
 protected:
     // Serializable part (don't forget to add new members to Save/Load)
@@ -88,6 +103,9 @@ protected:
     NKikimr::NUdf::EValidateMode UdfValidateMode = NKikimr::NUdf::EValidateMode::None;
     TString OptLLVM;
     TVector<TString> TableNames;
+    NUdf::ELogLevel RuntimeLogLevel = NUdf::ELogLevel::Info;
+    TLangVersion LangVer = UnknownLangVersion;
+    TRuntimeSettings::TConstPtr RuntimeSettings = MakeRuntimeSettings();
     // End serializable part
 
     ui64 StartCycles = 0;
@@ -100,6 +118,7 @@ protected:
     NKikimr::NMiniKQL::IStatsRegistryPtr JobStats;
     TJobCountersProvider JobCountersProvider;
     THolder<NKikimr::NUdf::ISecureParamsProvider> SecureParamsProvider;
+    NUdf::TUniquePtr<NUdf::ILogProvider> LogProvider;
     THolder<NCommon::TCodecContext> CodecCtx;
 };
 

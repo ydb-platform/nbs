@@ -2,6 +2,7 @@
 
 #include <contrib/ydb/core/protos/table_stats.pb.h>
 #include <contrib/ydb/core/tablet_flat/tablet_flat_executor.h>
+#include <contrib/ydb/core/tx/columnshard/common/path_id.h>
 #include <contrib/ydb/core/tx/columnshard/counters/counters_manager.h>
 #include <contrib/ydb/core/tx/columnshard/engines/column_engine.h>
 
@@ -10,38 +11,43 @@ namespace NKikimr::NColumnShard {
 class TTableStatsBuilder {
 private:
     TCountersManager& Counters;
-    const NTabletFlatExecutor::NFlatExecutorSetup::IExecutor& Executor;
-    NOlap::IColumnEngine& ColumnEngine;
+    const NTabletFlatExecutor::NFlatExecutorSetup::IExecutor* Executor;
 
-public:
-    TTableStatsBuilder(
-        TCountersManager& counters, const NTabletFlatExecutor::NFlatExecutorSetup::IExecutor* executor, NOlap::IColumnEngine& columnEngine)
-        : Counters(counters)
-        , Executor(*executor)
-        , ColumnEngine(columnEngine) {
+    void FillPortionStats(
+        ::NKikimrTableStats::TTableStats& to, const NOlap::TSimplePortionsGroupInfo& from, const NOlap::TSmallBlobsStat& smallBlobs) const {
+        to.SetRowCount(from.GetRecordsCount());
+        to.SetDataSize(from.GetBlobBytes());
+        to.SetSmallBlobsVolumeBytes(smallBlobs.VolumeBytes);
+        to.SetSmallBlobsCount(smallBlobs.Count);
     }
 
-    void FillTableStats(ui64 pathId, ::NKikimrTableStats::TTableStats& tableStats) {
+public:
+    TTableStatsBuilder(TCountersManager& counters, const NTabletFlatExecutor::NFlatExecutorSetup::IExecutor* executor = nullptr)
+        : Counters(counters)
+        , Executor(executor)
+    {
+    }
+
+    void FillTableStats(TInternalPathId pathId, ::NKikimrTableStats::TTableStats& tableStats) {
         Counters.FillTableStats(pathId, tableStats);
 
-        auto columnEngineStats = ColumnEngine.GetStats().FindPtr(pathId);
-        if (columnEngineStats && *columnEngineStats) {
-            auto activeStats = (*columnEngineStats)->Active();
-            tableStats.SetRowCount(activeStats.Rows);
-            tableStats.SetDataSize(activeStats.Bytes);
-        }
+        const auto& portionIndexCounters = Counters.GetPortionIndexCounters();
+        FillPortionStats(tableStats, portionIndexCounters->GetTableStats(pathId, TPortionIndexStats::TDiskUsedPortions()),
+            portionIndexCounters->GetTableSmallBlobs(pathId));
     }
 
     void FillTotalTableStats(::NKikimrTableStats::TTableStats& tableStats) {
         Counters.FillTotalTableStats(tableStats);
 
-        tableStats.SetInFlightTxCount(Executor.GetStats().TxInFly);
-        tableStats.SetHasLoanedParts(Executor.HasLoanedParts());
+        if (Executor) {
+            tableStats.SetInFlightTxCount(Executor->GetStats().TxInFly);
+            tableStats.SetHasLoanedParts(Executor->HasLoanedParts());
+        }
 
-        auto activeStats = ColumnEngine.GetTotalStats().Active();
-        tableStats.SetRowCount(activeStats.Rows);
-        tableStats.SetDataSize(activeStats.Bytes);
+        const auto& portionIndexCounters = Counters.GetPortionIndexCounters();
+        FillPortionStats(tableStats, portionIndexCounters->GetTotalStats(TPortionIndexStats::TDiskUsedPortions()),
+            portionIndexCounters->GetTotalSmallBlobs());
     }
 };
 
-} // namespace NKikimr::NColumnShard
+}   // namespace NKikimr::NColumnShard

@@ -17,12 +17,13 @@ constexpr ui32 StateVersion = 1;
 const TStatKey Hop_NewHopsCount("Hop_NewHopsCount", true);
 const TStatKey Hop_ThrownEventsCount("Hop_ThrownEventsCount", true);
 
-class THoppingCoreWrapper : public TMutableComputationNode<THoppingCoreWrapper> {
+class THoppingCoreWrapper: public TMutableComputationNode<THoppingCoreWrapper> {
     typedef TMutableComputationNode<THoppingCoreWrapper> TBaseComputation;
+
 public:
     using TSelf = THoppingCoreWrapper;
 
-    class TStreamValue : public TComputationValue<TStreamValue> {
+    class TStreamValue: public TComputationValue<TStreamValue> {
     public:
         using TBase = TComputationValue<TStreamValue>;
 
@@ -42,7 +43,8 @@ public:
             , DelayHopCount(delayHopCount)
             , Buckets(IntervalHopCount + DelayHopCount)
             , Ctx(ctx)
-        {}
+        {
+        }
 
     private:
         ui32 GetTraverseCount() const override {
@@ -198,9 +200,8 @@ public:
             }
         }
 
-
         const NUdf::TUnboxedValue Stream;
-        const TSelf *const Self;
+        const TSelf* const Self;
 
         const ui64 HopTime;
         const ui64 IntervalHopCount;
@@ -211,7 +212,7 @@ public:
             bool HasValue = false;
         };
 
-        std::vector<TBucket> Buckets; // circular buffer
+        std::vector<TBucket> Buckets;          // circular buffer
         std::deque<NUdf::TUnboxedValue> Ready; // buffer for fetching results
         ui64 HopIndex = 0;
         bool Started = false;
@@ -261,26 +262,17 @@ public:
         , StateType(stateType)
         , Packer(mutables)
     {
-        Stateless = false;
+        Stateless_ = false;
     }
 
     NUdf::TUnboxedValuePod DoCalculate(TComputationContext& ctx) const {
-        const auto hopTime = Hop->GetValue(ctx).Get<i64>();
-        const auto interval = Interval->GetValue(ctx).Get<i64>();
-        const auto delay = Delay->GetValue(ctx).Get<i64>();
-
-        // TODO: move checks from here
-        MKQL_ENSURE(hopTime > 0, "hop must be positive");
-        MKQL_ENSURE(interval >= hopTime, "interval should be greater or equal to hop");
-        MKQL_ENSURE(delay >= hopTime, "delay should be greater or equal to hop");
-
+        const auto hopTime = Hop->GetValue(ctx).Get<ui64>();
+        const auto interval = Interval->GetValue(ctx).Get<ui64>();
+        const auto delay = Delay->GetValue(ctx).Get<ui64>();
         const auto intervalHopCount = interval / hopTime;
         const auto delayHopCount = delay / hopTime;
 
-        MKQL_ENSURE(intervalHopCount <= 100000, "too many hops in interval");
-        MKQL_ENSURE(delayHopCount <= 100000, "too many hops in delay");
-
-        return ctx.HolderFactory.Create<TStreamValue>(Stream->GetValue(ctx), this, (ui64)hopTime, (ui64)intervalHopCount, (ui64)delayHopCount, ctx);
+        return ctx.HolderFactory.Create<TStreamValue>(Stream->GetValue(ctx), this, hopTime, intervalHopCount, delayHopCount, ctx);
     }
 
 private:
@@ -329,7 +321,7 @@ private:
     TMutableObjectOverBoxedValue<TValuePackerBoxed> Packer;
 };
 
-}
+} // namespace
 
 IComputationNode* WrapHoppingCore(TCallable& callable, const TComputationNodeFactoryContext& ctx) {
     MKQL_ENSURE(callable.GetInputsCount() == 17, "Expected 17 args");
@@ -372,10 +364,10 @@ IComputationNode* WrapHoppingCore(TCallable& callable, const TComputationNodeFac
     auto stateType = hasSaveLoad ? callable.GetInput(10).GetStaticType() : nullptr;
 
     return new THoppingCoreWrapper(ctx.Mutables,
-        stream, item, state, state2, time, inSave, inLoad,
-        outTime, outInit, outUpdate, outSave, outLoad, outMerge, outFinish,
-        hop, interval, delay, stateType);
+                                   stream, item, state, state2, time, inSave, inLoad,
+                                   outTime, outInit, outUpdate, outSave, outLoad, outMerge, outFinish,
+                                   hop, interval, delay, stateType);
 }
 
-}
-}
+} // namespace NMiniKQL
+} // namespace NKikimr

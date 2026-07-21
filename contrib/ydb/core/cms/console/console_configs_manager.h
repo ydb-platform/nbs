@@ -10,10 +10,12 @@
 #include "configs_dispatcher.h"
 
 #include <contrib/ydb/core/actorlib_impl/long_timer.h>
+#include <contrib/ydb/core/base/auth.h>
+#include <contrib/ydb/core/base/appdata_fwd.h>
 #include <contrib/ydb/core/base/tablet_pipe.h>
 #include <contrib/ydb/core/cms/console/util/config_index.h>
+#include <contrib/ydb/core/blobstorage/base/blobstorage_console_events.h>
 #include <contrib/ydb/core/tablet_flat/tablet_flat_executed.h>
-
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/interconnect/interconnect.h>
 
@@ -27,9 +29,40 @@ using NTabletFlatExecutor::TTransactionContext;
 
 class TConsole;
 
+// Converts the unknown/deprecated field maps collected during YAML config validation
+// into the persisted/served proto snapshot. Deprecated fields get Deprecated=true.
+void BuildYamlConfigUnknownFields(
+    const TMap<TString, std::pair<TString, TString>>& unknownFields,
+    const TMap<TString, std::pair<TString, TString>>& deprecatedFields,
+    NKikimrConsole::TYamlConfigUnknownFields& out);
+
 class TConfigsManager : public TActorBootstrapped<TConfigsManager> {
 private:
+
     using TBase = TActorBootstrapped<TConfigsManager>;
+
+    struct TUpdateConfigOpBaseContext {
+        std::optional<TString> Error;
+
+        TMap<TString, std::pair<TString, TString>> DeprecatedFields;
+        TMap<TString, std::pair<TString, TString>> UnknownFields;
+    };
+
+    struct TUpdateConfigOpContext
+        : public TUpdateConfigOpBaseContext
+    {
+        TString UpdatedConfig;
+        ui32 Version;
+        TString Cluster;
+    };
+
+    struct TUpdateDatabaseConfigOpContext
+        : public TUpdateConfigOpBaseContext
+    {
+        TString UpdatedConfig;
+        TString TargetDatabase;
+        ui32 Version;
+    };
 
 public:
     struct TEvPrivate {
@@ -56,6 +89,16 @@ public:
     bool CheckConfig(const NKikimrConsole::TConfigsConfig &config,
                      Ydb::StatusIds::StatusCode &code,
                      TString &error);
+
+
+    void ReplaceMainConfigMetadata(const TString &config, bool force, TUpdateConfigOpContext& opCtx);
+    void ValidateMainConfig(TUpdateConfigOpContext& opCtx);
+
+    void ReplaceDatabaseConfigMetadata(const TString &config, bool force, TUpdateDatabaseConfigOpContext& opCtx);
+    void ValidateDatabaseConfig(TUpdateDatabaseConfigOpContext& opCtx);
+    bool IsDatabaseConfigSelectorsAllowed(const TString& database) const;
+
+    void SendInReply(const TActorId& sender, const TActorId& icSession, std::unique_ptr<IEventBase> ev, ui64 cookie = 0);
 
     void ApplyPendingConfigModifications(const TActorContext &ctx,
                                          TAutoPtr<IEventHandle> ev = nullptr);
@@ -112,10 +155,14 @@ private:
     class TTxUpdateLastProvidedConfig;
     class TTxGetLogTail;
     class TTxLogCleanup;
-    class TTxReplaceYamlConfig;
+    class TTxReplaceYamlConfigBase;
+    class TTxReplaceMainYamlConfig;
+    class TTxReplaceDatabaseYamlConfig;
     class TTxDropYamlConfig;
     class TTxGetYamlConfig;
     class TTxGetYamlMetadata;
+
+    class TConsoleCommitActor;
 
     ITransaction *CreateTxAddConfigSubscription(TEvConsole::TEvAddConfigSubscriptionRequest::TPtr &ev);
     ITransaction *CreateTxCleanupSubscriptions(TEvInterconnect::TEvNodesInfo::TPtr &ev);
@@ -127,8 +174,10 @@ private:
     ITransaction *CreateTxUpdateLastProvidedConfig(TEvConsole::TEvConfigNotificationResponse::TPtr &ev);
     ITransaction *CreateTxGetLogTail(TEvConsole::TEvGetLogTailRequest::TPtr &ev);
     ITransaction *CreateTxLogCleanup();
-    ITransaction *CreateTxReplaceYamlConfig(TEvConsole::TEvReplaceYamlConfigRequest::TPtr &ev);
-    ITransaction *CreateTxSetYamlConfig(TEvConsole::TEvSetYamlConfigRequest::TPtr &ev);
+    ITransaction *CreateTxReplaceMainYamlConfig(TEvConsole::TEvReplaceYamlConfigRequest::TPtr &ev);
+    ITransaction *CreateTxReplaceDatabaseYamlConfig(TEvConsole::TEvReplaceYamlConfigRequest::TPtr &ev);
+    ITransaction *CreateTxSetMainYamlConfig(TEvConsole::TEvSetYamlConfigRequest::TPtr &ev);
+    ITransaction *CreateTxSetDatabaseYamlConfig(TEvConsole::TEvSetYamlConfigRequest::TPtr &ev);
     ITransaction *CreateTxDropYamlConfig(TEvConsole::TEvDropConfigRequest::TPtr &ev);
     ITransaction *CreateTxGetYamlConfig(TEvConsole::TEvGetAllConfigsRequest::TPtr &ev);
     ITransaction *CreateTxGetYamlMetadata(TEvConsole::TEvGetAllMetadataRequest::TPtr &ev);
@@ -154,13 +203,23 @@ private:
     void Handle(TEvInterconnect::TEvNodesInfo::TPtr &ev, const TActorContext &ctx);
     void Handle(TEvConsole::TEvReplaceYamlConfigRequest::TPtr & ev, const TActorContext & ctx);
     void Handle(TEvConsole::TEvSetYamlConfigRequest::TPtr & ev, const TActorContext & ctx);
+    void Handle(TEvConsole::TEvFetchStartupConfigRequest::TPtr & ev, const TActorContext & ctx);
+    void Handle(TEvConsole::TEvGetConfigurationVersionRequest::TPtr & ev, const TActorContext & ctx);
     void HandleUnauthorized(TEvConsole::TEvReplaceYamlConfigRequest::TPtr & ev, const TActorContext & ctx);
     void HandleUnauthorized(TEvConsole::TEvSetYamlConfigRequest::TPtr & ev, const TActorContext & ctx);
     void Handle(TEvConsole::TEvDropConfigRequest::TPtr & ev, const TActorContext & ctx);
     void Handle(TEvPrivate::TEvStateLoaded::TPtr &ev, const TActorContext &ctx);
     void Handle(TEvPrivate::TEvCleanupSubscriptions::TPtr &ev, const TActorContext &ctx);
+    void Handle(TEvBlobStorage::TEvControllerProposeConfigRequest::TPtr &ev, const TActorContext &ctx);
+    void Handle(TEvBlobStorage::TEvControllerConsoleCommitRequest::TPtr &ev, const TActorContext &ctx);
+    void Handle(TEvBlobStorage::TEvControllerValidateConfigRequest::TPtr &ev, const TActorContext &ctx);
+
+    void FailReplaceConfig(TActorId Sender, const TString& error, const TActorContext &ctx);
 
     static bool CheckRights(const TString& userToken);
+
+    template <typename TRequestEvent, typename TResponse>
+    bool CheckSession(TEventHandle<TRequestEvent>& ev, std::unique_ptr<TResponse>& failEvent, TResponse::ProtoRecordType::EStatus status);
 
     template <class T>
     void HandleWithRights(T &ev, const TActorContext &ctx) {
@@ -168,7 +227,25 @@ private:
             HandleUnauthorized(ev, ctx);
         };
 
-        if (CheckRights(ev->Get()->Record.GetUserToken())) {
+        constexpr bool HasBypassAuth = std::is_same_v<
+            std::decay_t<T>,
+            typename TEvConsole::TEvGetAllConfigsRequest::TPtr
+        > || std::is_same_v<
+            std::decay_t<T>,
+            typename TEvConsole::TEvReplaceYamlConfigRequest::TPtr
+        > || std::is_same_v<
+            std::decay_t<T>,
+            typename TEvConsole::TEvSetYamlConfigRequest::TPtr
+        >;
+
+        if constexpr (HasBypassAuth) {
+            if (ev->Get()->Record.HasBypassAuth() && ev->Get()->Record.GetBypassAuth()) {
+                Handle(ev, ctx);
+                return;
+            }
+        }
+
+        if (IsAdministrator(AppData(ctx), ev->Get()->Record.GetUserToken())) {
             Handle(ev, ctx);
         } else {
             if constexpr (HasHandleUnauthorized) {
@@ -201,6 +278,8 @@ private:
             HFunc(TEvConsole::TEvGetAllConfigsRequest, HandleWithRights);
             HFunc(TEvConsole::TEvGetNodeLabelsRequest, HandleWithRights);
             HFunc(TEvConsole::TEvGetAllMetadataRequest, HandleWithRights);
+            HFunc(TEvConsole::TEvFetchStartupConfigRequest, HandleWithRights);
+            HFunc(TEvConsole::TEvGetConfigurationVersionRequest, HandleWithRights);
             HFunc(TEvConsole::TEvAddVolatileConfigRequest, HandleWithRights);
             HFunc(TEvConsole::TEvRemoveVolatileConfigRequest, HandleWithRights);
             FFunc(TEvConsole::EvGetConfigItemsRequest, ForwardToConfigsProvider);
@@ -219,14 +298,16 @@ private:
             HFuncTraced(TEvInterconnect::TEvNodesInfo, Handle);
             HFuncTraced(TEvPrivate::TEvCleanupSubscriptions, Handle);
             HFuncTraced(TEvPrivate::TEvStateLoaded, Handle);
+            HFuncTraced(TEvBlobStorage::TEvControllerProposeConfigRequest, Handle);
+            HFuncTraced(TEvBlobStorage::TEvControllerConsoleCommitRequest, Handle);
+            HFuncTraced(TEvBlobStorage::TEvControllerValidateConfigRequest, Handle);
             FFunc(TEvConsole::EvConfigSubscriptionRequest, ForwardToConfigsProvider);
             FFunc(TEvConsole::EvConfigSubscriptionCanceled, ForwardToConfigsProvider);
             CFunc(TEvPrivate::EvCleanupLog, CleanupLog);
             IgnoreFunc(TEvConfigsDispatcher::TEvSetConfigSubscriptionResponse);
 
         default:
-            Y_ABORT("TConfigsManager::StateWork unexpected event type: %" PRIx32 " event: %s",
-                   ev->GetTypeRewrite(), ev->ToString().data());
+            break;
         }
     }
 
@@ -254,6 +335,7 @@ private:
     TConsole &Self;
     ::NMonitoring::TDynamicCounterPtr Counters;
     TConfigsConfig Config;
+    TString DomainName;
     // All config items by id.
     TConfigIndex ConfigIndex;
     ui64 NextConfigItemId;
@@ -268,13 +350,18 @@ private:
     TSchedulerCookieHolder SubscriptionsCleanupTimerCookieHolder;
 
     TActorId ConfigsProvider;
+    TActorId CommitActor;
     TTxProcessor::TPtr TxProcessor;
     TLogger Logger;
     TSchedulerCookieHolder LogCleanupTimerCookieHolder;
 
     TString ClusterName;
     ui32 YamlVersion = 0;
-    TString YamlConfig;
+    TString MainYamlConfig;
+    // Unknown/deprecated fields of MainYamlConfig, cached from the moment the config was uploaded
+    // (computed during ValidateMainConfig, persisted in Schema::YamlConfig::UnknownFields).
+    NKikimrConsole::TYamlConfigUnknownFields MainYamlConfigUnknownFields;
+    THashMap<TString, TDatabaseYamlConfig> DatabaseYamlConfigs;
     bool YamlDropped = false;
     bool YamlReadOnly = true;
     TMap<ui64, TString> VolatileYamlConfigs;

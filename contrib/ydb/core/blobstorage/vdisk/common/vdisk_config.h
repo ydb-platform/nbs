@@ -2,13 +2,15 @@
 #include "defs.h"
 
 #include "vdisk_performance_params.h"
+#include "blob_header_mode.h"
 #include "vdisk_events_quoter.h"
 
 #include <contrib/ydb/core/blobstorage/groupinfo/blobstorage_groupinfo.h>
 #include <contrib/ydb/core/base/blobstorage.h>
-#include <contrib/ydb/core/protos/blobstorage.pb.h>
 #include <contrib/ydb/core/protos/blobstorage_vdisk_config.pb.h>
-#include <contrib/ydb/core/control/immediate_control_board_impl.h>
+#include <contrib/ydb/core/protos/feature_flags.pb.h>
+#include <contrib/ydb/core/control/lib/immediate_control_board_impl.h>
+#include <contrib/ydb/core/base/feature_flags.h>
 
 namespace NKikimr {
 
@@ -119,22 +121,28 @@ namespace NKikimr {
         ui32 HullSstSizeInChunksLevel;
         ui32 HugeBlobsFreeChunkReservation;
         ui32 MinHugeBlobInBytes;
-        ui32 OldMinHugeBlobInBytes;
         ui32 MilestoneHugeBlobInBytes;
         ui32 HugeBlobOverhead;
+        ui32 HugeBlobStepsBetweenPowersOf2;
         ui32 HullCompLevel0MaxSstsAtOnce;
         ui32 HullCompSortedPartsNum;
         double HullCompLevelRateThreshold;
-        double HullCompFreeSpaceThreshold;
+        TControlWrapper HullCompFreeSpaceThresholdPerMille;
         TControlWrapper FreshCompMaxInFlightWrites;
+        TControlWrapper FreshCompMaxInFlightReads;
         TControlWrapper HullCompMaxInFlightWrites;
         TControlWrapper HullCompMaxInFlightReads;
         TControlWrapper HullCompFullCompPeriodSec;
         TControlWrapper HullCompThrottlerBytesRate;
         TControlWrapper DefragThrottlerBytesRate;
+        TControlWrapper MaxActiveCompactionsPerPDisk;
         double HullCompReadBatchEfficiencyThreshold;
         ui64 AnubisOsirisMaxInFly;
-        bool AddHeader;
+        EBlobHeaderMode BlobHeaderMode;
+
+        static const ui32 TinyDiskHugeBlobStepsBetweenPowersOf2;
+        static const ui32 TinyDiskHullCompLevel0MaxSstsAtOnce;
+        static const ui32 TinyDiskHullCompSortedPartsNum;
 
         //////////////// LOG CUTTER SETTINGS ////////////////
         TDuration RecoveryLogCutterFirstDuration;
@@ -163,7 +171,7 @@ namespace NKikimr {
         TControlWrapper EnableLocalSyncLogDataCutting;
         TControlWrapper EnableSyncLogChunkCompression;
         TControlWrapper MaxSyncLogChunksInFlight;
-        ui32 MaxSyncLogChunkSize;
+        ui32 MaxSyncDataCutterChunkSize;
 
         ///////////// REPL SETTINGS /////////////////////////
         TDuration ReplTimeInterval;
@@ -176,6 +184,8 @@ namespace NKikimr {
         ui32 ReplPrefetchDataSize;
         ui32 ReplMaxResponseSize;
         ui32 ReplInterconnectChannel;
+        TDuration ReplMaxDonorNotReadyDuration;
+        ui32 ReplMaxDonorNotReadyCount;
         ui32 HandoffMaxWaitQueueSize;
         ui32 HandoffMaxWaitQueueByteSize;
         ui32 HandoffMaxInFlightSize;
@@ -218,19 +228,20 @@ namespace NKikimr {
         ui32 MaxResponseSize;
         TDuration DskTrackerInterval;
         bool BarrierValidation;
-        TDuration WhiteboardUpdateInterval;
+        TDuration StatsUpdateInterval;
         bool EnableVDiskCooldownTimeout;
         TControlWrapper EnableVPatch = true;
         bool UseActorSystemTimeInBSQueue = false;
+        ui32 GroupSizeInUnits = 0;
 
         ///////////// BALANCING SETTINGS ////////////////////
-        bool BalancingEnableSend;
-        bool BalancingEnableDelete;
+        bool BalancingEnableSend = false;
+        bool BalancingEnableDelete = false;
         TDuration BalancingJobGranularity;
-        bool BalancingBalanceOnlyHugeBlobs;
-        ui64 BalancingBatchSize;
-        ui64 BalancingMaxToSendPerEpoch;
-        ui64 BalancingMaxToDeletePerEpoch;
+        bool BalancingBalanceOnlyHugeBlobs = false;
+        ui64 BalancingBatchSize = 0;
+        ui64 BalancingMaxToSendPerEpoch = 0;
+        ui64 BalancingMaxToDeletePerEpoch = 0;
         TDuration BalancingReadBatchTimeout;
         TDuration BalancingSendBatchTimeout;
         TDuration BalancingRequestBlobsOnMainTimeout;
@@ -242,12 +253,38 @@ namespace NKikimr {
         TControlWrapper DefaultHugeGarbagePerMille = 300;
         TControlWrapper HugeDefragFreeSpaceBorderPerMille = 260;
         TControlWrapper MaxChunksToDefragInflight = 10;
-        TControlWrapper EnableExplicitCompactionAfterDefrag = 1;
         TControlWrapper GarbageThresholdToRunFullCompactionPerMille = 0;
 
         ///////////// COST METRICS SETTINGS ////////////////
         bool UseCostTracker = true;
         TCostMetricsParametersByMedia CostMetricsParametersByMedia;
+
+        ///////////// THROTTLING SETTINGS //////////////////
+        TControlWrapper ThrottlingDryRun;
+        TControlWrapper ThrottlingMinLevel0SstCount;
+        TControlWrapper ThrottlingMaxLevel0SstCount;
+        TControlWrapper ThrottlingMinInplacedSizeHDD;
+        TControlWrapper ThrottlingMaxInplacedSizeHDD;
+        TControlWrapper ThrottlingMinInplacedSizeSSD;
+        TControlWrapper ThrottlingMaxInplacedSizeSSD;
+        TControlWrapper ThrottlingMinOccupancyPerMille;
+        TControlWrapper ThrottlingMaxOccupancyPerMille;
+        TControlWrapper ThrottlingMinLogChunkCount;
+        TControlWrapper ThrottlingMaxLogChunkCount;
+
+        ///////////// DEEP SCRUBBING ////////////////////////
+        TControlWrapper EnableDeepScrubbing;
+
+        ///////////// SYNC SETTINGS //////////////////
+        TControlWrapper MaxInProgressSyncCount;
+        TControlWrapper EnablePhantomFlagStorage;
+        bool EnablePersistentPhantomFlagStorage = false;
+        TControlWrapper PhantomFlagStorageLimit;
+        TControlWrapper VolatilePhantomFlagStorageBlobSizeLimit;
+        TControlWrapper EnableFreshSyncDataThrottling;
+
+        ///////////// CHUNK Keeper //////////////////
+        TControlWrapper EnableChunkKeeper;
 
         ///////////// FEATURE FLAGS ////////////////////////
         NKikimrConfig::TFeatureFlags FeatureFlags;

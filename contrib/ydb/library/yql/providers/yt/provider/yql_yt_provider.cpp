@@ -1,5 +1,9 @@
+#include "yql_yt_helpers.h"
 #include "yql_yt_provider.h"
 #include "yql_yt_dq_integration.h"
+#include "yql_yt_ytflow_integration.h"
+#include "yql_yt_ytflow_optimize.h"
+#include "yql_yt_layers_integration.h"
 
 #include <contrib/ydb/library/yql/providers/yt/expr_nodes/yql_yt_expr_nodes.h>
 #include <contrib/ydb/library/yql/providers/yt/common/yql_names.h>
@@ -14,9 +18,9 @@
 namespace NYql {
 
 bool TYtTableDescription::Fill(
-    const TString& cluster, const TString& table, TExprContext& ctx,
+    const TString& cluster, const TString& table, const TQContext& qContext, TExprContext& ctx,
     IModuleResolver* moduleResolver, IUrlListerManager* urlListerManager, IRandomProvider& randomProvider,
-    bool allowViewIsolation, IUdfResolver::TPtr udfResolver) {
+    bool allowViewIsolation, IUdfResolver::TPtr udfResolver, const NSQLTranslation::TSqlFlags& sqlFlags) {
     const TStructExprType* type = RowSpec ? RowSpec->GetType() : nullptr;
     if (!type) {
         TVector<const TItemExprType*> items;
@@ -29,8 +33,8 @@ bool TYtTableDescription::Fill(
     }
 
     if (!TYtTableDescriptionBase::Fill(TString{YtProviderName}, cluster,
-        table, type, Meta->SqlView, Meta->SqlViewSyntaxVersion, Meta->Attrs, ctx,
-        moduleResolver, urlListerManager, randomProvider, allowViewIsolation, udfResolver)) {
+        table, type, Meta->SqlView, Meta->SqlViewSyntaxVersion, qContext, Meta->Attrs, ctx,
+        moduleResolver, urlListerManager, randomProvider, allowViewIsolation, udfResolver, sqlFlags)) {
         return false;
     }
     if (QB2RowSpec) {
@@ -66,6 +70,8 @@ void TYtTableDescription::ToYson(NYson::TYsonWriter& writer, const TString& clus
         writer.OnBooleanScalar(RowSpec && RowSpec->IsSorted());
         writer.OnKeyedItem("IsDynamic");
         writer.OnBooleanScalar(Meta->IsDynamic);
+        writer.OnKeyedItem("HasRLS");
+        writer.OnBooleanScalar(Meta->HasRLS);
         writer.OnKeyedItem("UniqueKeys");
         writer.OnBooleanScalar(RowSpec && RowSpec->UniqueKeys);
         writer.OnKeyedItem("CanWrite");
@@ -244,12 +250,12 @@ void TYtTableDescription::SetConstraintsReady() {
 }
 
 bool TYtTableDescription::FillViews(
-    const TString& cluster, const TString& table, TExprContext& ctx,
+    const TString& cluster, const TString& table, const TQContext& qContext, TExprContext& ctx,
     IModuleResolver* moduleResolver, IUrlListerManager* urlListerManager, IRandomProvider& randomProvider,
-    bool allowViewIsolation, IUdfResolver::TPtr udfResolver) {
+    bool allowViewIsolation, IUdfResolver::TPtr udfResolver, const NSQLTranslation::TSqlFlags& sqlFlags) {
     return TYtTableDescriptionBase::FillViews(
-        TString{YtProviderName}, cluster, table, Meta->Attrs, ctx,
-        moduleResolver, urlListerManager, randomProvider, allowViewIsolation, udfResolver);
+        TString{YtProviderName}, cluster, table, Meta->Attrs, qContext, ctx,
+        moduleResolver, urlListerManager, randomProvider, allowViewIsolation, udfResolver, sqlFlags);
 }
 
 const TYtTableDescription& TYtTablesData::GetTable(const TString& cluster, const TString& table, TMaybe<ui32> epoch) const {
@@ -309,6 +315,10 @@ void TYtState::Reset() {
     Checkpoints.clear();
     WalkFoldersState.clear();
     NextEpochId = 1;
+    FlowDependsOnId = 0;
+    if (FullCapture_) {
+        FullCapture_->Reset();
+    }
 }
 
 void TYtState::EnterEvaluation(ui64 id) {
@@ -335,35 +345,47 @@ void TYtState::LeaveEvaluation(ui64 id) {
     }
 }
 
-std::pair<TIntrusivePtr<TYtState>, TStatWriter> CreateYtNativeState(IYtGateway::TPtr gateway, const TString& userName, const TString& sessionId, const TYtGatewayConfig* ytGatewayConfig, TIntrusivePtr<TTypeAnnotationContext> typeCtx) {
-    auto ytState = MakeIntrusive<TYtState>();
+void RecordActivationStat(const TString& attrName,
+                          TYtState& ytState) {
+    with_lock (ytState.StatisticsMutex) {
+        ytState.Statistics[Max<ui32>()].Entries.emplace_back(TStringBuilder() << "Activation:" << attrName, 0, 0, 0, 0, 1);
+    }
+}
+
+std::pair<std::shared_ptr<TYtState>, TStatWriter> CreateYtNativeState(IYtGateway::TPtr gateway, const TString& userName, const TString& sessionId,
+    const TYtGatewayConfig* ytGatewayConfig, TIntrusivePtr<TTypeAnnotationContext> typeCtx,
+    const IOptimizerFactory::TPtr& optFactory, const IDqHelper::TPtr& helper, const TYtTablesData::TPtr& tablesData, const IYtFullCapture::TPtr& fullCapture,
+    const TQContext& qContext)
+{
+    auto ytState = std::make_shared<TYtState>(typeCtx.Get(), qContext);
     ytState->SessionId = sessionId;
     ytState->Gateway = gateway;
-    ytState->Types = typeCtx.Get();
-    ytState->DqIntegration_ = CreateYtDqIntegration(ytState.Get());
-
+    if (tablesData) {
+        ytState->TablesData = tablesData;
+    }
+    ytState->DqIntegration_ = CreateYtDqIntegration(ytState);
+    ytState->OptimizerFactory_ = optFactory;
+    ytState->DqHelper = helper;
+    ytState->YtflowIntegration_ = CreateYtYtflowIntegration(ytState);
+    ytState->YtflowOptimization_ = CreateYtYtflowOptimization(ytState);
+    ytState->LayersIntegration_ = CreateYtLayersIntegration();
+    ytState->FullCapture_ = fullCapture;
     if (ytGatewayConfig) {
-        std::unordered_set<std::string_view> groups;
-        if (ytState->Types->Credentials != nullptr) {
-            groups.insert(ytState->Types->Credentials->GetGroups().begin(), ytState->Types->Credentials->GetGroups().end());
-        }
-        auto filter = [userName, ytState, groups = std::move(groups)](const NYql::TAttr& attr) -> bool {
-            if (!attr.HasActivation()) {
-                return true;
-            }
-            if (NConfig::Allow(attr.GetActivation(), userName, groups)) {
-                with_lock(ytState->StatisticsMutex) {
-                    ytState->Statistics[Max<ui32>()].Entries.emplace_back(TStringBuilder() << "Activation:" << attr.GetName(), 0, 0, 0, 0, 1);
-                }
-                return true;
-            }
-            return false;
+        auto onActivated = [ytState](const TString& attrName) {
+            return RecordActivationStat(attrName, *ytState);
         };
 
-        ytState->Configuration->Init(*ytGatewayConfig, filter, *typeCtx);
+        ytState->Configuration->Init(*ytGatewayConfig, NConfig::MakeActivationFilter<TAttr>(userName, typeCtx->Credentials, onActivated), *typeCtx);
     }
 
-    TStatWriter statWriter = [ytState](ui32 publicId, const TVector<TOperationStatistics::TEntry>& stat) {
+    TYtState::TWeakPtr weakState = ytState;
+
+    TStatWriter statWriter = [weakState](ui32 publicId, const TVector<TOperationStatistics::TEntry>& stat) {
+        auto ytState = weakState.lock();
+        if (!ytState) {
+            return;
+        }
+
         with_lock(ytState->StatisticsMutex) {
             for (size_t i = 0; i < stat.size(); ++i) {
                 ytState->Statistics[publicId].Entries.push_back(stat[i]);
@@ -374,8 +396,8 @@ std::pair<TIntrusivePtr<TYtState>, TStatWriter> CreateYtNativeState(IYtGateway::
     return {ytState, statWriter};
 }
 
-TDataProviderInitializer GetYtNativeDataProviderInitializer(IYtGateway::TPtr gateway, ui32 planLimits) {
-    return [originalGateway = gateway, planLimits] (
+TDataProviderInitializer GetYtNativeDataProviderInitializer(IYtGateway::TPtr gateway, IOptimizerFactory::TPtr optFactory, IDqHelper::TPtr helper, ui32 planLimits) {
+    return [originalGateway = gateway, optFactory, helper, planLimits] (
         const TString& userName,
         const TString& sessionId,
         const TGatewaysConfig* gatewaysConfig,
@@ -392,28 +414,39 @@ TDataProviderInitializer GetYtNativeDataProviderInitializer(IYtGateway::TPtr gat
         Y_UNUSED(progressWriter);
         Y_UNUSED(operationOptions);
         Y_UNUSED(hiddenAborter);
+
+        IYtFullCapture::TPtr fullCapture;
+        if (qContext.CanWrite() && qContext.CaptureMode() == EQPlayerCaptureMode::Full) {
+            fullCapture = CreateYtFullCapture();
+        }
+        auto tablesData = MakeIntrusive<TYtTablesData>();
+
         auto gateway = originalGateway;
         if (qContext) {
             gateway = WrapYtGatewayWithQContext(originalGateway, qContext,
-                typeCtx->RandomProvider, typeCtx->FileStorage);
+                typeCtx->RandomProvider, typeCtx->FileStorage, operationOptions, fullCapture, tablesData, *typeCtx);
         }
 
         TDataProviderInfo info;
         info.SupportsHidden = true;
 
         const TYtGatewayConfig* ytGatewayConfig = gatewaysConfig ? &gatewaysConfig->GetYt() : nullptr;
-        TIntrusivePtr<TYtState> ytState;
+        TYtState::TPtr ytState;
         TStatWriter statWriter;
-        std::tie(ytState, statWriter) = CreateYtNativeState(gateway, userName, sessionId, ytGatewayConfig, typeCtx);
+        std::tie(ytState, statWriter) = CreateYtNativeState(gateway, userName, sessionId, ytGatewayConfig, typeCtx, optFactory, helper, tablesData, fullCapture, qContext);
         ytState->PlanLimits = planLimits;
 
         info.Names.insert({TString{YtProviderName}});
         info.Source = CreateYtDataSource(ytState);
         info.Sink = CreateYtDataSink(ytState);
         info.SupportFullResultDataSink = true;
-        info.OpenSession = [gateway, statWriter](const TString& sessionId, const TString& username,
+        info.OpenSession = [
+            gateway, statWriter, qContext, fullCapture, useSecureTmp = ytState->UseSecureTmp
+        ](
+            const TString& sessionId, const TString& username,
             const TOperationProgressWriter& progressWriter, const TYqlOperationOptions& operationOptions,
-            TIntrusivePtr<IRandomProvider> randomProvider, TIntrusivePtr<ITimeProvider> timeProvider) {
+            TIntrusivePtr<IRandomProvider> randomProvider, TIntrusivePtr<ITimeProvider> timeProvider
+        ) {
             gateway->OpenSession(
                 IYtGateway::TOpenSessionOptions(sessionId)
                     .UserName(username)
@@ -422,6 +455,9 @@ TDataProviderInitializer GetYtNativeDataProviderInitializer(IYtGateway::TPtr gat
                     .RandomProvider(randomProvider)
                     .TimeProvider(timeProvider)
                     .StatWriter(statWriter)
+                    .QContext(qContext)
+                    .FullCapture(fullCapture)
+                    .UseSecureTmp(useSecureTmp)
             );
             return NThreading::MakeFuture();
         };
@@ -431,13 +467,8 @@ TDataProviderInitializer GetYtNativeDataProviderInitializer(IYtGateway::TPtr gat
         };
 
         info.CloseSessionAsync = [ytState, gateway](const TString& sessionId) {
-            return gateway->CloseSession(IYtGateway::TCloseSessionOptions(sessionId)).Apply([ytState](const NThreading::TFuture<void>& future) {
-                // do manual cleanup; otherwise there may be dead nodes at program termination
-                // in setup with several providers
-                ytState->TablesData->CleanupCompiledSQL();
-
-                future.TryRethrow();
-            });
+            ytState->TablesData->CleanupCompiledSQL();
+            return gateway->CloseSession(IYtGateway::TCloseSessionOptions(sessionId));
         };
 
         info.TokenResolver = [ytState, gateway](const TString& url, const TString& alias) -> TString {
@@ -447,16 +478,10 @@ TDataProviderInitializer GetYtNativeDataProviderInitializer(IYtGateway::TPtr gat
                 return {};
             }
 
-            // todo: get token by cluster name from Auth when it will be implemented
-            if (auto token = ytState->Configuration->Auth.Get()) {
+            if (auto token = ytState->ResolveClusterToken(cluster)) {
                 return *token;
             }
 
-            if (cluster) {
-                if (auto p = ytState->Configuration->Tokens.FindPtr(cluster)) {
-                    return *p;
-                }
-            }
             return {};
         };
 
@@ -512,11 +537,16 @@ struct TYtDataSinkFunctions {
         Names.insert(TYtWriteTable::CallableName());
         Names.insert(TYtFill::CallableName());
         Names.insert(TYtTouch::CallableName());
+        Names.insert(TYtCreateTable::CallableName());
         Names.insert(TYtDropTable::CallableName());
+        Names.insert(TYtCreateView::CallableName());
+        Names.insert(TYtDropView::CallableName());
         Names.insert(TCoCommit::CallableName());
         Names.insert(TYtPublish::CallableName());
         Names.insert(TYtEquiJoin::CallableName());
         Names.insert(TYtStatOut::CallableName());
+        Names.insert(TYtMaterialize::CallableName());
+        Names.insert(TYtPersist::CallableName());
     }
 };
 
@@ -536,12 +566,35 @@ bool TYtState::IsHybridEnabled() const {
 }
 
 bool TYtState::IsHybridEnabledForCluster(const std::string_view& cluster) const {
-    return !OnlyNativeExecution && Configuration->_EnableDq.Get(TString(cluster)).GetOrElse(true);
+    YQL_ENSURE(cluster != YtUnspecifiedCluster);
+    return Configuration->_EnableDq.Get(TString(cluster)).GetOrElse(true);
 }
 
 bool TYtState::HybridTakesTooLong() const {
     return TimeSpentInHybrid + (HybridInFlightOprations.empty() ? TDuration::Zero() : NMonotonic::TMonotonic::Now() - HybridStartTime)
             > Configuration->HybridDqTimeSpentLimit.Get().GetOrElse(TDuration::Minutes(20));
+}
+
+TMaybe<TString> TYtState::ResolveClusterToken(const TString& cluster) {
+    YQL_ENSURE(cluster != YtUnspecifiedCluster);
+    // todo: get token by cluster name from Auth when it will be implemented
+    if (auto token = Configuration->Auth.Get()) {
+        return *token;
+    }
+
+    if (cluster) {
+        if (auto* token = Configuration->Tokens.FindPtr(cluster)) {
+            if (*token) {
+                return *token;
+            }
+        }
+
+        if (auto ytTokenResolver = Gateway->GetYtTokenResolver()) {
+            return ytTokenResolver->ResolveClusterToken(cluster);
+        }
+    }
+
+    return {};
 }
 
 }

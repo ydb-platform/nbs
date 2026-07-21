@@ -7,7 +7,7 @@
  * (null-terminated text) or arbitrary binary data.  All storage is allocated
  * with palloc() (falling back to malloc in frontend code).
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *	  src/common/stringinfo.c
@@ -23,9 +23,6 @@
 #else
 
 #include "postgres_fe.h"
-
-/* It's possible we could use a different value for this in frontend code */
-#define MaxAllocSize	((Size) 0x3fffffff) /* 1 gigabyte - 1 */
 
 #endif
 
@@ -211,8 +208,8 @@ appendStringInfoSpaces(StringInfo str, int count)
 		enlargeStringInfo(str, count);
 
 		/* OK, append the spaces */
-		while (--count >= 0)
-			str->data[str->len++] = ' ';
+		memset(&str->data[str->len], ' ', count);
+		str->len += count;
 		str->data[str->len] = '\0';
 	}
 }
@@ -224,7 +221,7 @@ appendStringInfoSpaces(StringInfo str, int count)
  * if necessary. Ensures that a trailing null byte is present.
  */
 void
-appendBinaryStringInfo(StringInfo str, const char *data, int datalen)
+appendBinaryStringInfo(StringInfo str, const void *data, int datalen)
 {
 	Assert(str != NULL);
 
@@ -250,7 +247,7 @@ appendBinaryStringInfo(StringInfo str, const char *data, int datalen)
  * if necessary. Does not ensure a trailing null-byte exists.
  */
 void
-appendBinaryStringInfoNT(StringInfo str, const char *data, int datalen)
+appendBinaryStringInfoNT(StringInfo str, const void *data, int datalen)
 {
 	Assert(str != NULL);
 

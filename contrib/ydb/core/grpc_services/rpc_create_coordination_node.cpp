@@ -1,8 +1,12 @@
 #include "service_coordination.h"
 #include <contrib/ydb/core/grpc_services/base/base.h>
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
+#include <contrib/ydb/core/ydb_convert/kesus_description.h>
 
 #include "rpc_scheme_base.h"
 #include "rpc_common/rpc_common.h"
+
+#include <contrib/ydb/public/api/protos/ydb_coordination.pb.h>
 
 namespace NKikimr {
 namespace NGRpcService {
@@ -47,8 +51,7 @@ private:
         modifyScheme->SetWorkingDir(workingDir);
         modifyScheme->SetOperationType(NKikimrSchemeOp::EOperationType::ESchemeOpCreateKesus);
         auto kesus = modifyScheme->MutableKesus();
-        kesus->SetName(name);
-        kesus->MutableConfig()->CopyFrom(req->config());
+        FillKesusDescription(*kesus, req->config(), name);
         ctx.Send(MakeTxProxyID(), proposeRequest.release());
     }
 

@@ -6,7 +6,7 @@
 #include <contrib/ydb/library/yql/providers/yt/codec/yt_codec.h>
 #include <contrib/ydb/library/yql/providers/common/codec/yql_codec.h>
 #include <contrib/ydb/library/yql/minikql/mkql_node_cast.h>
-#include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node_codegen.h>
+#include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node_codegen.h> // Y_IGNORE
 
 namespace NYql::NDqs {
 NKikimr::NMiniKQL::IComputationNode* CreateDqYtReadBlockWrapper(

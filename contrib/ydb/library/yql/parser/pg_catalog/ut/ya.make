@@ -1,7 +1,5 @@
 UNITTEST_FOR(contrib/ydb/library/yql/parser/pg_catalog)
 
-TAG(ya:manual)
-
 SRCS(
     catalog_ut.cpp
     catalog_consts_ut.cpp
@@ -14,7 +12,7 @@ ADDINCL(
 PEERDIR(
     contrib/ydb/library/yql/public/udf
     contrib/ydb/library/yql/public/udf/service/exception_policy
-    contrib/ydb/library/yql/minikql/comp_nodes/llvm14
+    contrib/ydb/library/yql/minikql/comp_nodes/llvm16
     contrib/ydb/library/yql/parser/pg_wrapper
 )
 

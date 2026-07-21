@@ -1,0 +1,35 @@
+LIBRARY()
+
+ENABLE(SKIP_YQL_STYLE_CPP)
+
+SRCS(
+    dqs_expr_nodes.h
+)
+
+PEERDIR(
+    contrib/ydb/library/yql/core/expr_nodes
+)
+
+SRCDIR(
+    contrib/ydb/library/yql/core/expr_nodes_gen
+)
+
+RUN_PROGRAM(
+    contrib/ydb/library/yql/core/expr_nodes_gen/gen
+    yql_expr_nodes_gen.jnj
+    dqs_expr_nodes.json
+    dqs_expr_nodes.gen.h
+    dqs_expr_nodes.decl.inl.h
+    dqs_expr_nodes.defs.inl.h
+    NDq
+    IN yql_expr_nodes_gen.jnj
+    IN dqs_expr_nodes.json
+    OUT dqs_expr_nodes.gen.h
+    OUT dqs_expr_nodes.decl.inl.h
+    OUT dqs_expr_nodes.defs.inl.h
+    OUTPUT_INCLUDES
+    ${ARCADIA_ROOT}/contrib/ydb/library/yql/core/expr_nodes_gen/yql_expr_nodes_gen.h
+    ${ARCADIA_ROOT}/util/generic/hash_set.h
+)
+
+END()

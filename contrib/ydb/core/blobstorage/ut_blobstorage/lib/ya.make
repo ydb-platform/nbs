@@ -4,6 +4,7 @@ SRCS(
     activity.h
     common.h
     defs.h
+    debug_log.cpp
     env.h
     node_warden_mock_bsc.cpp
     node_warden_mock.h
@@ -11,6 +12,7 @@ SRCS(
     node_warden_mock_state.cpp
     node_warden_mock_state.h
     node_warden_mock_vdisk.h
+    ut_helpers.cpp
 )
 
 PEERDIR(
@@ -25,9 +27,11 @@ PEERDIR(
     contrib/ydb/core/blobstorage/pdisk
     contrib/ydb/core/blobstorage/pdisk/mock
     contrib/ydb/core/blobstorage/vdisk/common
+    contrib/ydb/core/load_test
     contrib/ydb/core/mind
     contrib/ydb/core/mind/bscontroller
     contrib/ydb/core/mind/hive
+    contrib/ydb/core/retro_tracing_impl/distributed_collector
     contrib/ydb/core/sys_view/service
     contrib/ydb/core/tx/scheme_board
     contrib/ydb/core/tx/tx_allocator
@@ -35,9 +39,12 @@ PEERDIR(
     contrib/ydb/core/tx/coordinator
     contrib/ydb/core/tx/scheme_board
     contrib/ydb/core/util
-    contrib/ydb/library/yql/minikql/comp_nodes/llvm14
+    contrib/ydb/core/util/actorsys_test
+    contrib/ydb/library/yql/minikql/comp_nodes/llvm16
     contrib/ydb/library/yql/public/udf/service/exception_policy
     contrib/ydb/library/yql/sql/pg_dummy
+    contrib/ydb/library/yql/providers/yt/comp_nodes/dq/llvm16
+    contrib/ydb/library/yql/providers/yt/comp_nodes/llvm16
 )
 
 END()

@@ -5,13 +5,14 @@ SRCS(
     auth_factory.cpp
     auth_mocks.cpp
     auth_multi_factory.cpp
-    attributes_md5.cpp
-    cfg.cpp
     change_visibility.cpp
     count_queues.cpp
     cleanup_queue_data.cpp
     create_queue.cpp
+    create_topic_tx.cpp
     create_user.cpp
+    deduplicator.cpp
+    deferred_create_topic.cpp
     delete_message.cpp
     delete_queue.cpp
     delete_user.cpp
@@ -19,6 +20,7 @@ SRCS(
     executor.cpp
     fifo_cleanup.cpp
     garbage_collector.cpp
+    get_message_groups.cpp
     get_queue_attributes.cpp
     get_queue_url.cpp
     index_events_processor.cpp
@@ -47,6 +49,7 @@ SRCS(
     service.cpp
     set_queue_attributes.cpp
     tag_queue.cpp
+    topic_pqrb_metrics.cpp
     proxy_service.cpp
     queues_list_reader.cpp
     queue_schema.cpp
@@ -61,7 +64,7 @@ PEERDIR(
     contrib/ydb/library/actors/core
     library/cpp/containers/intrusive_rb_tree
     library/cpp/digest/md5
-    contrib/ydb/library/grpc/client
+    contrib/ydb/public/sdk/cpp/src/library/grpc/client
     contrib/ydb/library/ycloud/impl
     library/cpp/logger
     library/cpp/lwtrace/mon
@@ -80,20 +83,28 @@ PEERDIR(
     contrib/ydb/core/tx/schemeshard
     contrib/ydb/core/tx/tx_proxy
     contrib/ydb/core/util
+    contrib/ydb/core/ymq/attributes
     contrib/ydb/core/ymq/base
+    contrib/ydb/core/ymq/error
     contrib/ydb/core/ymq/proto
     contrib/ydb/core/ymq/queues/common
     contrib/ydb/core/ymq/queues/fifo
     contrib/ydb/core/ymq/queues/std
+    contrib/ydb/core/persqueue/events
+    contrib/ydb/core/persqueue/public/describer
     contrib/ydb/library/aclib
     contrib/ydb/library/http_proxy/authorization
     contrib/ydb/library/http_proxy/error
     contrib/ydb/library/mkql_proto/protos
+    contrib/ydb/library/security
     contrib/ydb/public/lib/scheme_types
     contrib/ydb/public/lib/value
-    contrib/ydb/public/sdk/cpp/client/ydb_types/credentials
+    contrib/ydb/public/sdk/cpp/src/client/types/core_facility
+    contrib/ydb/public/sdk/cpp/src/client/types/credentials
     contrib/ydb/library/yql/minikql
     contrib/ydb/public/lib/deprecated/client
+    contrib/ydb/core/ymq/actor/cloud_events
+    contrib/ydb/core/ymq/actor/cfg
 )
 
 YQL_LAST_ABI_VERSION()
@@ -108,7 +119,11 @@ GENERATE_ENUM_SERIALIZATION(queue_schema.h)
 
 END()
 
+RECURSE(
+    cfg
+    cloud_events
+)
+
 RECURSE_FOR_TESTS(
-    ut
     yc_search_ut
 )

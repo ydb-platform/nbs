@@ -1,8 +1,8 @@
 #include "ut_helpers_query.h"
 
 #include <contrib/ydb/public/api/grpc/ydb_query_v1.grpc.pb.h>
-#include <contrib/ydb/library/grpc/client/grpc_common.h>
-#include <contrib/ydb/library/grpc/client/grpc_client_low.h>
+#include <contrib/ydb/public/sdk/cpp/src/library/grpc/client/grpc_common.h>
+#include <contrib/ydb/public/sdk/cpp/src/library/grpc/client/grpc_client_low.h>
 #include <library/cpp/threading/future/future.h>
 
 #include <util/generic/string.h>
@@ -104,6 +104,28 @@ void EnsureSessionClosed(NYdbGrpc::IStreamRequestCtrl::TPtr p, int expected, boo
         allDoneOk &= (resp->status() == expected);
         if (!allDoneOk) {
             Cerr << "Expected status: " << expected << ", got response: " << resp->DebugString() << Endl;
+        }
+        promise.SetValue();
+    });
+    promise.GetFuture().Wait();
+}
+
+void EnsureSessionClosedWithHint(NYdbGrpc::IStreamRequestCtrl::TPtr p, Ydb::StatusIds::StatusCode expectedStatus,
+    Ydb::Query::SessionState::SessionHintCase expectedHint, bool& allDoneOk)
+{
+    auto* processor = dynamic_cast<NYdbGrpc::IStreamRequestReadProcessor<Ydb::Query::SessionState>*>(p.Get());
+    UNIT_ASSERT(processor);
+
+    auto promise = NThreading::NewPromise<void>();
+    auto resp = std::make_shared<Ydb::Query::SessionState>();
+    processor->Read(resp.get(), [&allDoneOk, resp, promise, expectedStatus, expectedHint](TGrpcStatus grpcStatus) mutable {
+        UNIT_ASSERT(grpcStatus.GRpcStatusCode == grpc::StatusCode::OK);
+        allDoneOk &= (resp->status() == expectedStatus);
+        allDoneOk &= (resp->session_hint_case() == expectedHint);
+        if (!allDoneOk) {
+            Cerr << "Expected status: " << static_cast<int>(expectedStatus)
+                 << ", hint case: " << static_cast<int>(expectedHint)
+                 << ", got response: " << resp->DebugString() << Endl;
         }
         promise.SetValue();
     });

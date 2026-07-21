@@ -1,17 +1,56 @@
 items:
-- name: Сбор логов с помощью FluentBit
-  href: fluent-bit.md
-- name: Плагин-источник данных Grafana
-  href: grafana.md
-- name: Плагины Logstash
-  href: logstash.md
-- name: Миграции с помощью goose
-  href: goose.md
-- name: Миграции с помощью Liquibase
-  href: liquibase.md
-- name: Миграции с помощью Flyway
-  href: flyway.md
-- name: Использование Hibernate
-  href: hibernate.md
-- name: Импорт из источников JDBC
-  href: import-jdbc.md
+- name: Графические пользовательские интерфейсы
+  href: gui/index.md
+  include:
+    mode: link
+    path: gui/toc-ide.yaml
+- name: Визуализация данных (Business Intelligence, BI)
+  href: visualization/index.md
+  include:
+    mode: link
+    path: visualization/toc-visualization.yaml
+- name: Оркестрация
+  href: orchestration/index.md
+  include:
+    mode: link
+    path: orchestration/toc-orchestration.yaml
+- name: Поставка данных
+  href: ingestion/index.md
+  include:
+    mode: link
+    path: ingestion/toc-ingestion.yaml
+- name: Миграции данных
+  href: data-migration/index.md
+  include:
+    mode: link
+    path: data-migration/toc-data-migration.yaml
+- name: Миграции схемы
+  href: migration/index.md
+  include:
+    mode: link
+    path: migration/toc-migration.yaml
+- name: Движки выполнения запросов
+  href: query-engines/index.md
+  include:
+    mode: link
+    path: query-engines/toc-query-engines.yaml
+- name: Объектно-реляционное отображение
+  href: orm/index.md
+  include:
+    mode: link
+    path: orm/toc-orm.yaml
+- name: Spring
+  href: spring/index.md
+  include:
+    mode: link
+    path: spring/toc-spring.yaml
+- name: Векторный поиск
+  href: vectorsearch/index.md
+  include:
+    mode: link
+    path: vectorsearch/toc-vectorsearch.yaml
+- name: Конвертация SQL-диалектов
+  href: sql-translation/index.md
+  include:
+    mode: link
+    path: sql-translation/toc-sql-translation.yaml

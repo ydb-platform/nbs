@@ -1,17 +1,15 @@
 #pragma once
 
+#include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/yql/dq/actors/compute/dq_compute_actor_async_io_factory.h>
 #include <contrib/ydb/library/yql/dq/actors/compute/dq_compute_actor_async_io.h>
-
 #include <contrib/ydb/library/yql/providers/common/token_accessor/client/factory.h>
-#include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node_holders.h>
-
+#include <contrib/ydb/library/yql/providers/pq/gateway/abstract/yql_pq_gateway.h>
 #include <contrib/ydb/library/yql/providers/pq/proto/dq_io.pb.h>
 #include <contrib/ydb/library/yql/providers/pq/proto/dq_task_params.pb.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/driver/driver.h>
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_driver/driver.h>
-
-#include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node_holders.h>
 
 #include <util/generic/size_literals.h>
 #include <util/system/types.h>
@@ -31,8 +29,11 @@ std::pair<IDqComputeActorAsyncOutput*, NActors::IActor*> CreateDqPqWriteActor(
     ISecuredServiceAccountCredentialsFactory::TPtr credentialsFactory,
     IDqComputeActorAsyncOutput::ICallbacks* callbacks,
     const ::NMonitoring::TDynamicCounterPtr& counters,
-    i64 freeSpace = DqPqDefaultFreeSpace);
+    IPqStaticGateway::TPtr pqGateway,
+    bool enableStreamingQueriesCounters,
+    i64 freeSpace = DqPqDefaultFreeSpace,
+    bool enableStreamingQueriesPqSinkDeduplicationFeatureFlag = true);
 
-void RegisterDqPqWriteActorFactory(TDqAsyncIoFactory& factory, NYdb::TDriver driver, ISecuredServiceAccountCredentialsFactory::TPtr credentialsFactory, const ::NMonitoring::TDynamicCounterPtr& counters = MakeIntrusive<::NMonitoring::TDynamicCounters>());
+void RegisterDqPqWriteActorFactory(TDqAsyncIoFactory& factory, NYdb::TDriver driver, ISecuredServiceAccountCredentialsFactory::TPtr credentialsFactory, const IPqStaticGateway::TPtr& pqGateway, const ::NMonitoring::TDynamicCounterPtr& counters = MakeIntrusive<::NMonitoring::TDynamicCounters>(), bool enableStreamingQueriesCounters = true, bool enableDeduplicationFeatureFlag = true);
 
 } // namespace NYql::NDq

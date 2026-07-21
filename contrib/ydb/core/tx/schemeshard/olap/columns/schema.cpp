@@ -15,7 +15,8 @@ void TOlapColumnSchema::ParseFromLocalDB(const NKikimrSchemeOp::TOlapColumnDescr
     Id = columnSchema.GetId();
 }
 
-bool TOlapColumnsDescription::ApplyUpdate(const TOlapColumnsUpdate& schemaUpdate, IErrorCollector& errors, ui32& nextEntityId) {
+bool TOlapColumnsDescription::ApplyUpdate(
+    const TOlapColumnsUpdate& schemaUpdate, IErrorCollector& errors, ui32& nextEntityId) {
     if (Columns.empty() && schemaUpdate.GetAddColumns().empty()) {
         errors.AddError(NKikimrScheme::StatusSchemeError, "No add columns specified");
         return false;
@@ -37,6 +38,12 @@ bool TOlapColumnsDescription::ApplyUpdate(const TOlapColumnsUpdate& schemaUpdate
                 errors.AddError(NKikimrScheme::StatusSchemeError, TStringBuilder() << "column '" << column.GetName() << "' is pk column. its impossible to modify pk");
                 return false;
             }
+        }
+
+        if (column.GetColumnFamilyName().has_value()) {
+            errors.AddError(NKikimrScheme::StatusSchemeError, TStringBuilder()
+                    << "Column FAMILY is not supported for column tables");
+            return false;
         }
         TOlapColumnSchema newColumn(column, nextEntityId++);
         if (newColumn.GetKeyOrder()) {
@@ -66,7 +73,16 @@ bool TOlapColumnsDescription::ApplyUpdate(const TOlapColumnsUpdate& schemaUpdate
         auto it = orderedKeyColumnIds.begin();
         for (ui32 i = 0; i < orderedKeyColumnIds.size(); ++i, ++it) {
             KeyColumnIds.emplace_back(it->second);
-            Y_ABORT_UNLESS(i == it->first);
+            if (i != it->first) {
+                const TString missedColumnName = i < schemaUpdate.GetPrimaryKeyColumnNames().size() ? schemaUpdate.GetPrimaryKeyColumnNames()[i] : "@unknown";
+                errors.AddError(NKikimrScheme::StatusSchemeError, Sprintf("Unknown column '%s' specified in key column list", missedColumnName.data()));
+                return false;
+            }
+        }
+        if (orderedKeyColumnIds.size() < schemaUpdate.GetPrimaryKeyColumnNames().size()) {
+            const TString missedColumnName = schemaUpdate.GetPrimaryKeyColumnNames()[orderedKeyColumnIds.size()];
+            errors.AddError(NKikimrScheme::StatusSchemeError, Sprintf("Unknown column '%s' specified in key column list", missedColumnName.data()));
+            return false;
         }
         if (KeyColumnIds.empty()) {
             errors.AddError(NKikimrScheme::StatusSchemeError, "No primary key specified");
@@ -132,7 +148,7 @@ void TOlapColumnsDescription::Serialize(NKikimrSchemeOp::TColumnTableSchema& tab
     }
 }
 
-bool TOlapColumnsDescription::Validate(const NKikimrSchemeOp::TColumnTableSchema& opSchema, IErrorCollector& errors) const {
+bool TOlapColumnsDescription::ValidateForStore(const NKikimrSchemeOp::TColumnTableSchema& opSchema, IErrorCollector& errors) const {
     const NScheme::TTypeRegistry* typeRegistry = AppData()->TypeRegistry;
 
     ui32 lastColumnId = 0;
@@ -150,6 +166,12 @@ bool TOlapColumnsDescription::Validate(const NKikimrSchemeOp::TColumnTableSchema
         }
         if (colProto.HasId() && colProto.GetId() != col->GetId()) {
             errors.AddError("Column '" + colName + "' has id " + colProto.GetId() + " that does not match schema preset");
+            return false;
+        }
+
+        if (colProto.HasColumnFamilyId()) {
+            errors.AddError(TStringBuilder()
+                << "Column FAMILY is not supported for column tables");
             return false;
         }
 

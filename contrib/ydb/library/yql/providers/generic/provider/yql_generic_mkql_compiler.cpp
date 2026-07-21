@@ -5,7 +5,7 @@
 #include <contrib/ydb/library/yql/core/yql_opt_utils.h>
 #include <contrib/ydb/library/yql/minikql/mkql_node.h>
 #include <contrib/ydb/library/yql/minikql/mkql_node_cast.h>
-#include <contrib/ydb/library/yql/providers/common/mkql/parser.h>
+#include <contrib/ydb/library/yql/providers/dq/mkql/parser.h>
 #include <contrib/ydb/library/yql/providers/common/mkql/yql_type_mkql.h>
 #include <contrib/ydb/library/yql/providers/dq/expr_nodes/dqs_expr_nodes.h>
 
@@ -27,4 +27,4 @@ namespace NYql {
                                    return TRuntimeNode();
                                });
     }
-}
+} // namespace NYql

@@ -10,7 +10,9 @@
 #include <contrib/ydb/core/base/tablet_pipe.h>
 #include <contrib/ydb/core/cms/console/configs_dispatcher.h>
 #include <contrib/ydb/core/protos/console_config.pb.h>
-#include <contrib/ydb/core/tx/schemeshard/schemeshard_build_index.h>
+#include <contrib/ydb/core/tx/schemeshard/index/build_index.h>
+#include <contrib/ydb/core/tx/schemeshard/schemeshard_forced_compaction.h>
+#include <contrib/ydb/core/tx/schemeshard/schemeshard_set_column_constraint.h>
 #include <contrib/ydb/core/engine/mkql_proto.h>
 #include <contrib/ydb/core/ydb_convert/column_families.h>
 #include <contrib/ydb/core/ydb_convert/table_description.h>
@@ -31,27 +33,6 @@ using namespace NActors;
 using namespace NConsole;
 using namespace Ydb;
 
-static bool CheckAccess(const NACLib::TUserToken& userToken, const NSchemeCache::TSchemeCacheNavigate* navigate) {
-    bool isDatabase = true; // first entry is always database
-
-    using TEntry = NSchemeCache::TSchemeCacheNavigate::TEntry;
-
-    for (const TEntry& entry : navigate->ResultSet) {
-        if (!entry.SecurityObject) {
-            continue;
-        }
-
-        const ui32 access = isDatabase ? NACLib::CreateDirectory | NACLib::CreateTable : NACLib::GenericRead | NACLib::GenericWrite;
-        if (!entry.SecurityObject->CheckAccess(access, userToken)) {
-            return false;
-        }
-
-        isDatabase = false;
-    }
-
-    return true;
-}
-
 using TEvAlterTableRequest = TGrpcRequestOperationCall<Ydb::Table::AlterTableRequest,
     Ydb::Table::AlterTableResponse>;
 
@@ -62,6 +43,7 @@ class TAlterTableRPC : public TRpcSchemeRequestActor<TAlterTableRPC, TEvAlterTab
 public:
     TAlterTableRPC(IRequestOpCtx* msg)
         : TBase(msg)
+        , DatabaseName(Request_->GetDatabaseName().GetOrElse(""))
     {}
 
     void Bootstrap(const TActorContext &ctx) {
@@ -105,18 +87,34 @@ public:
                 return;
             }
 
-            PrepareAlterTableAddIndex();
+            PrepareAlterTableWithTxId();
             break;
 
         case EOp::Attribute:
         case EOp::AddChangefeed:
         case EOp::DropChangefeed:
-            GetProxyServices();
+            Navigate(GetProtoRequest()->path());;
             break;
 
         case EOp::DropIndex:
         case EOp::RenameIndex:
             AlterTable(ctx);
+            break;
+        case EOp::Compact:
+            if (!BuildAlterTableCompactRequest(req, &ForcedCompactionSettings, code, error)) {
+                Reply(code, error, NKikimrIssues::TIssuesIds::DEFAULT_ERROR, ctx);
+                return;
+            }
+
+            PrepareAlterTableWithTxId();
+            break;
+        case EOp::SetColumnConstraint:
+            if (!BuildAlterTableSetColumnConstraintRequest(req, &SetColumnConstraintSettings, code, error)) {
+                Reply(code, error, NKikimrIssues::TIssuesIds::DEFAULT_ERROR, ctx);
+                return;
+            }
+
+            PrepareAlterTableWithTxId();
             break;
         }
 
@@ -126,11 +124,12 @@ public:
 private:
     void AlterStateWork(TAutoPtr<IEventHandle>& ev) {
         switch (ev->GetTypeRewrite()) {
-           HFunc(TEvTxUserProxy::TEvAllocateTxIdResult, Handle);
-           HFunc(TEvTxUserProxy::TEvGetProxyServicesResponse, Handle);
+           hFunc(TEvTxUserProxy::TEvAllocateTxIdResult, Handle);
            HFunc(TEvTxProxySchemeCache::TEvNavigateKeySetResult, Handle);
            HFunc(NSchemeShard::TEvIndexBuilder::TEvCreateResponse, Handle);
            HFunc(NSchemeShard::TEvIndexBuilder::TEvGetResponse, Handle);
+           HFunc(NSchemeShard::TEvForcedCompaction::TEvCreateResponse, Handle);
+           HFunc(NSchemeShard::TEvForcedCompaction::TEvGetResponse, Handle);
            default: TBase::StateWork(ev);
         }
     }
@@ -181,67 +180,52 @@ private:
             IEventHandle::FlagTrackDelivery);
     }
 
-    void PrepareAlterTableAddIndex() {
+    void PrepareAlterTableWithTxId() {
         using namespace NTxProxy;
-        LogPrefix = TStringBuilder() << "[AlterTableAddIndexOp " << SelfId() << "] ";
+        LogPrefix = TStringBuilder() << "[AlterTable" << OpType << ' ' << SelfId() << "] ";
         Send(MakeTxProxyID(), new TEvTxUserProxy::TEvAllocateTxId);
     }
 
-    void Handle(TEvTxUserProxy::TEvAllocateTxIdResult::TPtr& ev, const TActorContext& ctx) {
+    void Handle(TEvTxUserProxy::TEvAllocateTxIdResult::TPtr& ev) {
         TXLOG_D("Handle TEvTxUserProxy::TEvAllocateTxIdResult");
 
         const auto* msg = ev->Get();
         TxId = msg->TxId;
-        LogPrefix = TStringBuilder() << "[AlterTableAddIndex " << SelfId() << " TxId# " << TxId << "] ";
+        LogPrefix = TStringBuilder() << "[AlterTable" << OpType << ' ' << SelfId() << " TxId# " << TxId << "] ";
 
-        Navigate(msg->Services.SchemeCache, ctx);
+        Navigate(GetProtoRequest()->path());
     }
 
-    void GetProxyServices() {
-        using namespace NTxProxy;
-        Send(MakeTxProxyID(), new TEvTxUserProxy::TEvGetProxyServicesRequest);
-    }
-
-    void Handle(TEvTxUserProxy::TEvGetProxyServicesResponse::TPtr& ev, const TActorContext& ctx) {
-        Navigate(ev->Get()->Services.SchemeCache, ctx);
-    }
-
-    void Navigate(const TActorId& schemeCache, const TActorContext& ctx) {
-        DatabaseName = Request_->GetDatabaseName()
-            .GetOrElse(DatabaseFromDomain(AppData()));
-
-        const auto& path = GetProtoRequest()->path();
-
-        const auto paths = NKikimr::SplitPath(path);
+    void Navigate(const TString& path) {
+        auto paths = NKikimr::SplitPath(path);
         if (paths.empty()) {
+            auto& ctx = TlsActivationContext->AsActorContext();
             TString error = TStringBuilder() << "Failed to split table path " << path;
             Request_->RaiseIssue(NYql::TIssue(error));
             return Reply(Ydb::StatusIds::BAD_REQUEST, ctx);
         }
 
-        auto ev = CreateNavigateForPath(DatabaseName);
-        {
-            auto& entry = static_cast<TEvTxProxySchemeCache::TEvNavigateKeySet*>(ev)->Request->ResultSet.emplace_back();
-            entry.Path = paths;
-        }
+        auto navigate = MakeHolder<NSchemeCache::TSchemeCacheNavigate>();
+        navigate->DatabaseName = DatabaseName;
 
-        Send(schemeCache, ev);
+        auto& entry = navigate->ResultSet.emplace_back();
+        entry.Operation = NSchemeCache::TSchemeCacheNavigate::OpPath;
+        entry.Path = std::move(paths);
+
+        Send(MakeSchemeCacheID(), new TEvTxProxySchemeCache::TEvNavigateKeySet(navigate));
     }
 
     void Navigate(const TTableId& pathId) {
-        DatabaseName = Request_->GetDatabaseName()
-            .GetOrElse(DatabaseFromDomain(AppData()));
+        auto navigate = MakeHolder<NSchemeCache::TSchemeCacheNavigate>();
+        navigate->DatabaseName = DatabaseName;
 
-        auto ev = CreateNavigateForPath(DatabaseName);
-        {
-            auto& entry = static_cast<TEvTxProxySchemeCache::TEvNavigateKeySet*>(ev)->Request->ResultSet.emplace_back();
-            entry.RequestType = NSchemeCache::TSchemeCacheNavigate::TEntry::ERequestType::ByTableId;
-            entry.TableId = pathId;
-            entry.ShowPrivatePath = true;
-            entry.Operation = NSchemeCache::TSchemeCacheNavigate::OpList;
-        }
+        auto& entry = navigate->ResultSet.emplace_back();
+        entry.Operation = NSchemeCache::TSchemeCacheNavigate::OpList;
+        entry.RequestType = NSchemeCache::TSchemeCacheNavigate::TEntry::ERequestType::ByTableId;
+        entry.TableId = pathId;
+        entry.ShowPrivatePath = true;
 
-        Send(MakeSchemeCacheID(), ev);
+        Send(MakeSchemeCacheID(), new TEvTxProxySchemeCache::TEvNavigateKeySet(navigate));
     }
 
     static bool IsChangefeedOperation(EOp type) {
@@ -276,8 +260,8 @@ private:
             return Reply(Ydb::StatusIds::SCHEME_ERROR, ctx);
         }
 
-        Y_ABORT_UNLESS(!resp->ResultSet.empty());
-        const auto& entry = resp->ResultSet.back();
+        Y_ABORT_UNLESS(resp->ResultSet.size() == 1);
+        const auto& entry = resp->ResultSet.front();
 
         switch (entry.Kind) {
         case NSchemeCache::TSchemeCacheNavigate::KindTable:
@@ -299,7 +283,9 @@ private:
 
         switch (OpType) {
         case EOp::AddIndex:
-            return AlterTableAddIndexOp(resp, ctx);
+            return AlterTableOp(entry, ctx, [this]() {
+                return std::make_unique<NSchemeShard::TEvIndexBuilder::TEvCreateRequest>(TxId, DatabaseName, std::move(IndexBuildSettings));
+            });
         case EOp::Attribute:
             ResolvedPathId = resp->ResultSet.back().TableId.PathId;
             return AlterTable(ctx);
@@ -318,30 +304,60 @@ private:
                 Navigate(entry.TableId);
             }
             break;
+        case EOp::Compact:
+            return AlterTableOp(entry, ctx, [this]() {
+                return std::make_unique<NSchemeShard::TEvForcedCompaction::TEvCreateRequest>(TxId, DatabaseName, std::move(ForcedCompactionSettings));
+            });
+        case EOp::SetColumnConstraint:
+            return AlterTableOp(entry, ctx, [this]() {
+                return std::make_unique<NSchemeShard::TEvSetColumnConstraint::TEvCreateRequest>(TxId, DatabaseName, std::move(SetColumnConstraintSettings));
+            });
         default:
             TXLOG_E("Got unexpected cache response");
             return Reply(Ydb::StatusIds::INTERNAL_ERROR, ctx);
         }
     }
 
-    void AlterTableAddIndexOp(const NSchemeCache::TSchemeCacheNavigate* resp, const TActorContext& ctx) {
-        if (UserToken && !CheckAccess(*UserToken, resp)) {
-            TXLOG_W("Access check failed");
-            return Reply(Ydb::StatusIds::UNAUTHORIZED, ctx);
+    bool CheckAlterAccess(const NSchemeCache::TSchemeCacheNavigate::TEntry& entry, const TActorContext& ctx) {
+        if (!UserToken || !entry.SecurityObject) {
+            return true;
         }
 
-        auto domainInfo = resp->ResultSet.front().DomainInfo;
+        const ui32 access = NACLib::AlterSchema | NACLib::DescribeSchema;
+        if (entry.SecurityObject->CheckAccess(access, *UserToken)) {
+            return true;
+        }
+
+        TXLOG_W("Access check failed");
+        Reply(Ydb::StatusIds::UNAUTHORIZED,
+            TStringBuilder() << "Access denied"
+                << " for# " << UserToken->GetUserSID()
+                << ", path# " << CanonizePath(entry.Path)
+                << ", access# " << NACLib::AccessRightsToString(access),
+            NKikimrIssues::TIssuesIds::ACCESS_DENIED, ctx);
+        return false;
+    }
+
+    void AlterTableOp(const NSchemeCache::TSchemeCacheNavigate::TEntry& entry, const TActorContext& ctx, auto createEventFn) {
+        if (!CheckAlterAccess(entry, ctx)) {
+            return;
+        }
+
+        const auto& domainInfo = entry.DomainInfo;
         if (!domainInfo) {
             TXLOG_E("Got empty domain info");
             return Reply(Ydb::StatusIds::INTERNAL_ERROR, ctx);
         }
 
-        SendAddIndexOpToSS(ctx, domainInfo->ExtractSchemeShard());
+        SendOpToSS(ctx, domainInfo->ExtractSchemeShard(), createEventFn);
     }
 
-    void SendAddIndexOpToSS(const TActorContext& ctx, ui64 schemeShardId) {
+    void SendOpToSS(const TActorContext& ctx, ui64 schemeShardId, auto createEventFn) {
         SetSchemeShardId(schemeShardId);
-        auto ev = std::make_unique<NSchemeShard::TEvIndexBuilder::TEvCreateRequest>(TxId, DatabaseName, std::move(IndexBuildSettings));
+        auto ev = createEventFn();
+        if (UserToken) {
+            ev->Record.SetUserSID(UserToken->GetUserSID());
+        }
         ForwardToSchemeShard(ctx, std::move(ev));
     }
 
@@ -378,8 +394,44 @@ private:
         }
     }
 
+    void Handle(NSchemeShard::TEvForcedCompaction::TEvCreateResponse::TPtr& ev, const TActorContext& ctx) {
+        const auto& response = ev->Get()->Record;
+        const auto status = response.GetStatus();
+        auto issuesProto = response.GetIssues();
+
+        auto getDebugIssues = [issuesProto]() {
+            NYql::TIssues issues;
+            NYql::IssuesFromMessage(issuesProto, issues);
+            return issues.ToString();
+        };
+
+        TXLOG_D("Handle TEvForcedCompaction::TEvCreateResponse"
+            << ", status# " << status
+            << ", issues# " << getDebugIssues()
+            << ", Id# " << response.GetForcedCompaction().GetId());
+
+        if (status == Ydb::StatusIds::SUCCESS) {
+            if (GetOperationMode() == Ydb::Operations::OperationParams::SYNC) {
+                DoSubscribe(ctx);
+            } else {
+                auto op = response.GetForcedCompaction();
+                Ydb::Operations::Operation operation;
+                operation.set_id(NOperationId::ProtoToString(ToOperationId(op)));
+                operation.set_ready(false);
+                ReplyOperation(operation);
+            }
+        } else {
+            Reply(status, issuesProto, ctx);
+        }
+    }
+
     void GetIndexStatus(const TActorContext& ctx) {
         auto request = std::make_unique<NSchemeShard::TEvIndexBuilder::TEvGetRequest>(DatabaseName, TxId);
+        ForwardToSchemeShard(ctx, std::move(request));
+    }
+
+    void GetCompactionStatus(const TActorContext& ctx) {
+        auto request = std::make_unique<NSchemeShard::TEvForcedCompaction::TEvGetRequest>(DatabaseName, TxId);
         ForwardToSchemeShard(ctx, std::move(request));
     }
 
@@ -391,6 +443,8 @@ private:
     void OnNotifyTxCompletionResult(NSchemeShard::TEvSchemeShard::TEvNotifyTxCompletionResult::TPtr& ev, const TActorContext& ctx) override {
         if (OpType == EOp::AddIndex) {
             GetIndexStatus(ctx);
+        } else if (OpType == EOp::Compact) {
+            GetCompactionStatus(ctx);
         } else {
             TBase::OnNotifyTxCompletionResult(ev, ctx);
         }
@@ -411,7 +465,22 @@ private:
         Die(ctx);
     }
 
-    void AlterTable(const TActorContext &ctx, const TMaybe<TString>& overridePath = {}) { 
+    void Handle(NSchemeShard::TEvForcedCompaction::TEvGetResponse::TPtr& ev, const TActorContext& ctx) {
+        const auto& record = ev->Get()->Record;
+
+        TXLOG_D("Handle TEvForcedCompaction::TEvGetResponse: record# " << record.ShortDebugString());
+
+        if (record.GetStatus() != Ydb::StatusIds::SUCCESS) {
+            Request_->ReplyWithYdbStatus(record.GetStatus());
+        } else {
+            Ydb::Operations::Operation op;
+            ::NKikimr::NGRpcService::ToOperation(record.GetForcedCompaction(), &op);
+            Request_->SendOperation(op);
+        }
+        Die(ctx);
+    }
+
+    void AlterTable(const TActorContext &ctx, const TMaybe<TString>& overridePath = {}) {
         const auto req = GetProtoRequest();
         std::unique_ptr<TEvTxUserProxy::TEvProposeTransaction> proposeRequest = CreateProposeTransaction();
         auto modifyScheme = proposeRequest->Record.MutableTransaction()->MutableModifyScheme();
@@ -428,13 +497,15 @@ private:
     }
 
     ui64 TxId = 0;
-    TString DatabaseName;
+    const TString DatabaseName;
     TString LogPrefix;
     TIntrusiveConstPtr<NACLib::TUserToken> UserToken;
     TPathId ResolvedPathId;
     TTableProfiles Profiles;
     EOp OpType;
     NKikimrIndexBuilder::TIndexBuildSettings IndexBuildSettings;
+    NKikimrForcedCompaction::TForcedCompactionSettings ForcedCompactionSettings;
+    NKikimrSetColumnConstraint::TSetColumnConstraintSettings SetColumnConstraintSettings;
 };
 
 void DoAlterTableRequest(std::unique_ptr<IRequestOpCtx> p, const IFacilityProvider& f) {

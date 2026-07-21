@@ -2,6 +2,7 @@
 
 #include <contrib/ydb/core/testlib/actors/test_runtime.h>
 #include <contrib/ydb/core/fq/libs/actors/proxy.h>
+#include <contrib/ydb/core/fq/libs/db_id_async_resolver_impl/http_proxy.h>
 
 #include <contrib/ydb/library/yql/public/issue/yql_issue_message.h>
 

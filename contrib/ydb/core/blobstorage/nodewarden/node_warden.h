@@ -5,9 +5,11 @@
 #include <contrib/ydb/core/blobstorage/vdisk/common/vdisk_config.h>
 #include <contrib/ydb/core/blobstorage/pdisk/blobstorage_pdisk_drivemodel_db.h>
 #include <contrib/ydb/core/blobstorage/pdisk/blobstorage_pdisk_factory.h>
+#include <contrib/ydb/core/nbs/cloud/blockstore/config/protos/ddisk_config.pb.h>
 #include <contrib/ydb/core/protos/config.pb.h>
 #include <contrib/ydb/library/pdisk_io/sector_map.h>
 
+#include <functional>
 #include <util/folder/path.h>
 
 namespace NKikimr {
@@ -21,6 +23,13 @@ namespace NKikimr {
         NKikimrConfig::TBlobStorageConfig BlobStorageConfig;
         NKikimrConfig::TStaticNameserviceConfig NameserviceConfig;
         std::optional<NKikimrConfig::TDomainsConfig> DomainsConfig;
+        std::optional<NKikimrConfig::TSelfManagementConfig> SelfManagementConfig;
+        std::optional<NKikimrConfig::TBridgeConfig> BridgeConfig;
+        std::optional<NKikimrConfig::TDynamicNodeConfig> DynamicNodeConfig;
+        TString ConfigDirPath;
+        std::optional<NKikimrBlobStorage::TYamlConfig> YamlConfig;
+        TString StartupConfigYaml;
+        std::optional<TString> StartupStorageYaml;
         TIntrusivePtr<IPDiskServiceFactory> PDiskServiceFactory;
         TIntrusivePtr<TAllVDiskKinds> AllVDiskKinds;
         TIntrusivePtr<NPDisk::TDriveModelDb> AllDriveModels;
@@ -41,6 +50,14 @@ namespace NKikimr {
         // debugging options
         bool VDiskReplPausedAtStart = false;
         bool UseActorSystemTimeInBSQueue = false;
+        std::optional<ui32> ReplMaxQuantumBytes = std::nullopt;
+        std::optional<ui32> ReplMaxDonorNotReadyCount = std::nullopt;
+        bool TinySyncLog = false;
+
+        std::optional<NYdb::NBS::NProto::TDDiskConfig> DDiskConfig;
+        std::optional<NYdb::NBS::NProto::TPBufferConfig> PBufferConfig;
+
+        std::function<void(TVDiskConfig&)> VDiskConfigPreprocessor;
 
         TNodeWardenConfig(const TIntrusivePtr<IPDiskServiceFactory> &pDiskServiceFactory)
             : PDiskServiceFactory(pDiskServiceFactory)
@@ -60,5 +77,11 @@ namespace NKikimr {
     bool ObtainPDiskKey(NPDisk::TMainKey *key, const NKikimrProto::TKeyConfig& keyConfig);
 
     std::unique_ptr<ICacheAccessor> CreateFileCacheAccessor(const TString& templ, const std::unordered_map<char, TString>& vars);
+
+    inline TActorId MakeDistconfBridgeConnectionCheckerActorId() {
+        return TActorId(0, TStringBuf("DistConfCCkr", 12));
+    }
+
+    IActor *CreateDistconfBridgeConnectionCheckerActor(TBridgePileId selfBridgePileId);
 
 } // NKikimr

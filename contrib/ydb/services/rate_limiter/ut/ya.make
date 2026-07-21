@@ -1,6 +1,9 @@
 UNITTEST_FOR(contrib/ydb/services/rate_limiter)
 
 SIZE(MEDIUM)
+IF (SANITIZER_TYPE)
+    REQUIREMENTS(cpu:2)
+ENDIF()
 
 SRCS(
     rate_limiter_ut.cpp
@@ -8,8 +11,8 @@ SRCS(
 
 PEERDIR(
     contrib/ydb/core/testlib/default
-    contrib/ydb/public/sdk/cpp/client/ydb_coordination
-    contrib/ydb/public/sdk/cpp/client/ydb_rate_limiter
+    contrib/ydb/public/sdk/cpp/src/client/coordination
+    contrib/ydb/public/sdk/cpp/src/client/rate_limiter
 )
 
 YQL_LAST_ABI_VERSION()

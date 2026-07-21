@@ -1,12 +1,14 @@
 #pragma once
 
-#include <contrib/ydb/library/db_pool/db_pool.h>
-
 #include <contrib/ydb/core/fq/libs/common/debug_info.h>
 #include <contrib/ydb/core/fq/libs/config/yq_issue.h>
-#include <contrib/ydb/core/fq/libs/events/events.h>
-#include <contrib/ydb/core/fq/libs/exceptions/exceptions.h>
 #include <contrib/ydb/core/fq/libs/db_schema/db_schema.h>
+#include <contrib/ydb/core/fq/libs/events/events.h>
+
+#include <contrib/ydb/library/actors/core/actorsystem.h>
+#include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/db_pool/db_pool.h>
+#include <contrib/ydb/core/util/exceptions.h>
 
 namespace NFq {
 
@@ -27,7 +29,7 @@ public:
     virtual TAsyncStatus Execute(NYdb::NTable::TSession& session) = 0;
     void Throw(const TString& message);
 
-    NDbPool::TDbPool::TPtr DbPool;
+    NDbPool::TDbPoolPtr DbPool;
     std::weak_ptr<TDbExecutable> SelfHolder;
     NYql::TIssues Issues;
     NYql::TIssues InternalIssues;
@@ -43,7 +45,7 @@ void ParseProto(TDbExecutable& executable, TProto& proto, TResultSetParser& pars
     }
 }
 
-inline TAsyncStatus Exec(NDbPool::TDbPool::TPtr dbPool, TDbExecutable::TPtr executable,
+inline TAsyncStatus Exec(NDbPool::TDbPoolPtr dbPool, TDbExecutable::TPtr executable,
                                                                     const TString& tablePathPrefix) {
     executable->DbPool = dbPool;
     executable->SelfHolder = executable;
@@ -84,7 +86,7 @@ class TDbExecuter : public TDbExecutable {
 public:
     using TCallback = std::function<void(TDbExecuter<TState>&)>;
     using TBuildCallback = std::function<void(TDbExecuter<TState>&, TSqlQueryBuilder&)>;
-    using TResultCallback = std::function<void(TDbExecuter<TState>&, const TVector<NYdb::TResultSet>&)>;
+    using TResultCallback = std::function<void(TDbExecuter<TState>&, const std::vector<NYdb::TResultSet>&)>;
 
 private:
     struct TExecStep {
@@ -98,7 +100,7 @@ private:
     ui32 CurrentStepIndex = 0;
     ui32 InsertStepIndex = 0;
     NActors::TActorId HandlerActorId;
-    TMaybe<TTransaction> Transaction;
+    std::optional<TTransaction> Transaction;
     NActors::TActorSystem* ActorSystem = nullptr;
     TCallback HandlerCallback;
     TCallback StateInitCallback;
@@ -149,14 +151,14 @@ public:
                 .Apply([selfHolder=SelfHolder, session=session](const TFuture<TCommitTransactionResult>& future) {
                     auto self = Lock(selfHolder);
                     if (!self) {
-                        return MakeFuture(TStatus{EStatus::INTERNAL_ERROR, NYql::TIssues{NYql::TIssue{"self has been deleted"}}});
+                        return MakeFuture(TStatus{EStatus::INTERNAL_ERROR, NYdb::NIssue::TIssues{NYdb::NIssue::TIssue{"self has been deleted"}}});
                     }
                     TCommitTransactionResult result = future.GetValue();
                     auto status = static_cast<TStatus>(result);
                     if (!status.IsSuccess()) {
                         return MakeFuture(status);
                     } else {
-                        self->Transaction.Clear();
+                        self->Transaction.reset();
                         return self->NextStep(session);
                     }
                 });
@@ -169,7 +171,7 @@ public:
                     }));
                 }
             }
-            return MakeFuture(TStatus{EStatus::SUCCESS, NYql::TIssues{}});
+            return MakeFuture(TStatus{EStatus::SUCCESS, NYdb::NIssue::TIssues{}});
         } else {
             TSqlQueryBuilder builder(TablePathPrefix, Steps[CurrentStepIndex].Name);
             SkipStep_ = false;
@@ -190,23 +192,23 @@ public:
             .Apply([selfHolder=SelfHolder, session=session](const TFuture<TDataQueryResult>& future) {
                 auto self = Lock(selfHolder);
                 if (!self) {
-                    return MakeFuture(TStatus{EStatus::INTERNAL_ERROR, NYql::TIssues{NYql::TIssue{"self has been deleted"}}});
+                    return MakeFuture(TStatus{EStatus::INTERNAL_ERROR, NYdb::NIssue::TIssues{NYdb::NIssue::TIssue{"self has been deleted"}}});
                 }
 
                 NYdb::NTable::TDataQueryResult result = future.GetValue();
                 auto status = static_cast<TStatus>(result);
 
                 if (status.GetStatus() == EStatus::SCHEME_ERROR) { // retry if table does not exist
-                    self->Transaction.Clear();
-                    return MakeFuture(TStatus{EStatus::UNAVAILABLE, NYql::TIssues{status.GetIssues()}});
+                    self->Transaction.reset();
+                    return MakeFuture(TStatus{EStatus::UNAVAILABLE, NYdb::NIssue::TIssues{status.GetIssues()}});
                 }
                 if (!status.IsSuccess()) {
-                    self->Transaction.Clear();
+                    self->Transaction.reset();
                     return MakeFuture(status);
                 }
 
                 if (self->Steps[self->CurrentStepIndex].Commit) {
-                    self->Transaction.Clear();
+                    self->Transaction.reset();
                 } else if (!self->Transaction) {
                     self->Transaction = result.GetTransaction();
                 }
@@ -214,7 +216,7 @@ public:
                 if (self->Steps[self->CurrentStepIndex].ResultCallback) {
                     try {
                         self->Steps[self->CurrentStepIndex].ResultCallback(*self, result.GetResultSets());
-                    } catch (const TCodeLineException& exception) {
+                    } catch (const NKikimr::TCodeLineException& exception) {
                         NYql::TIssue issue = MakeErrorIssue(exception.Code, exception.GetRawMessage());
                         self->Issues.AddIssue(issue);
                         NYql::TIssue internalIssue = MakeErrorIssue(exception.Code, CurrentExceptionMessage());
@@ -278,4 +280,4 @@ public:
     TState State;
 };
 
-} /* NFq */
+} // namespace NFq

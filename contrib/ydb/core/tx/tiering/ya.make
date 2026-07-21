@@ -3,8 +3,7 @@ LIBRARY()
 SRCS(
     common.cpp
     manager.cpp
-    GLOBAL external_data.cpp
-    snapshot.cpp
+    fetcher.cpp
 )
 
 IF (OS_WINDOWS)
@@ -18,15 +17,18 @@ PEERDIR(
     library/cpp/json/writer
     contrib/ydb/core/blobstorage
     contrib/ydb/core/protos
+    contrib/ydb/core/tx/columnshard/hooks/abstract
     contrib/ydb/core/tx/schemeshard
-    contrib/ydb/core/tx/tiering/rule
     contrib/ydb/core/tx/tiering/tier
     contrib/ydb/core/tablet_flat/protos
     contrib/ydb/core/wrappers
     contrib/ydb/public/api/protos
     contrib/ydb/services/bg_tasks/abstract
     contrib/ydb/services/metadata
+    contrib/ydb/services/scheme_secret
 )
+
+YQL_LAST_ABI_VERSION()
 
 END()
 

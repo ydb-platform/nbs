@@ -4,18 +4,17 @@ GENERATE_ENUM_SERIALIZATION(util.h)
 
 SRCS(
     cache.h
-    compression.cpp
-    compression.h
     debug_info.cpp
     entity_id.cpp
     entity_id.h
-    util.cpp
+    iceberg_processor.cpp
+    iceberg_processor.h
     rows_proto_splitter.cpp
     rows_proto_splitter.h
+    util.cpp
 )
 
 PEERDIR(
-    library/cpp/blockcodecs
     contrib/ydb/core/fq/libs/control_plane_storage/events
     contrib/ydb/core/fq/libs/events
     contrib/ydb/library/yql/providers/common/structured_token

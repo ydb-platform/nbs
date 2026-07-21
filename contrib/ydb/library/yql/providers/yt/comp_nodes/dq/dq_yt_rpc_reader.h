@@ -3,6 +3,7 @@
 #include "dq_yt_reader_impl.h"
 
 #include <yt/yt/core/actions/future.h>
+#include <mutex>
 
 namespace NYql::NDqs {
 
@@ -57,6 +58,8 @@ protected:
 
     virtual void Next() override;
 
+    TString DebugInfo() const override;
+
     void Finish();
 
     void RunNext();
@@ -68,7 +71,6 @@ private:
     std::shared_ptr<TInnerState> InnerState_;
     std::vector<TReaderState> StateByReader_;
     NYT::TRawTableReaderPtr CurrentReader_ = nullptr;
-    bool Eof_ = false;
     const TMkqlIOSpecs* Spec_;
     const NKikimr::NMiniKQL::THolderFactory& HolderFactory_;
     const size_t BlockSize_;

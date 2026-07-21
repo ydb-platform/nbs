@@ -1,10 +1,9 @@
-LIBRARY()
-
-PEERDIR(
-    contrib/ydb/core/formats/arrow/accessor/abstract
-    contrib/ydb/core/formats/arrow/accessor/plain
-    contrib/ydb/core/formats/arrow/accessor/composite_serial
-    contrib/ydb/core/formats/arrow/accessor/sparsed
+RECURSE(
+    abstract
+    plain
+    composite_serial
+    composite
+    dictionary
+    sparsed
+    sub_columns
 )
-
-END()

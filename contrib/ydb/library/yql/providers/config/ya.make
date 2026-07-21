@@ -16,8 +16,11 @@ PEERDIR(
     contrib/ydb/library/yql/providers/common/proto
     contrib/ydb/library/yql/providers/common/provider
     contrib/ydb/library/yql/providers/common/activation
+    contrib/ydb/library/yql/minikql/runtime_settings
 )
 
 YQL_LAST_ABI_VERSION()
 
 END()
+
+RECURSE_FOR_TESTS(ut)

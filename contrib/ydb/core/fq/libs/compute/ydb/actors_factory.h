@@ -5,7 +5,7 @@
 
 #include <contrib/ydb/library/yql/providers/common/metrics/service_counters.h>
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_query/query.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/query/query.h>
 
 #include <util/generic/ptr.h>
 

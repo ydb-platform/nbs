@@ -1,18 +1,20 @@
 LIBRARY()
 
+ENABLE(SKIP_YQL_STYLE_CPP)
+NO_CLANG_TIDY()
+
 PEERDIR(
-    library/cpp/charset
+    library/cpp/charset/lite
     library/cpp/enumbitset
     contrib/ydb/library/yql/minikql
     contrib/ydb/library/yql/public/udf
     contrib/ydb/library/yql/sql/settings
-    contrib/ydb/library/yql/core
+    contrib/ydb/library/yql/core/sql_types
     contrib/ydb/library/yql/core/issue
-    contrib/ydb/library/yql/core/issue/protos
-    contrib/ydb/library/yql/parser/proto_ast
+    contrib/ydb/library/yql/public/issue/protos
     contrib/ydb/library/yql/parser/proto_ast/collect_issues
     contrib/ydb/library/yql/parser/proto_ast/gen/v0
-    contrib/ydb/library/yql/parser/proto_ast/gen/v0_proto_split
+    contrib/ydb/library/yql/sql/v0/lexer
 )
 
 SRCS(

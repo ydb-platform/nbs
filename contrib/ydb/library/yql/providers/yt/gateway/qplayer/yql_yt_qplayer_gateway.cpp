@@ -1,10 +1,19 @@
 #include "yql_yt_qplayer_gateway.h"
 
+#include <contrib/ydb/library/yql/providers/yt/expr_nodes/yql_yt_expr_nodes.h>
+#include <contrib/ydb/library/yql/providers/yt/lib/dump_helpers/yql_yt_dump_helpers.h>
+
 #include <contrib/ydb/library/yql/core/file_storage/storage.h>
-#include <library/cpp/yson/node/node_io.h>
-#include <library/cpp/yson/node/node_builder.h>
+#include <contrib/ydb/library/yql/core/services/yql_transform_pipeline.h>
+#include <contrib/ydb/library/yql/core/yql_expr_optimize.h>
+#include <contrib/ydb/library/yql/utils/log/log.h>
+
 #include <yt/cpp/mapreduce/interface/serialize.h>
 
+#include <library/cpp/yson/node/node_io.h>
+#include <library/cpp/yson/node/node_builder.h>
+
+#include <util/random/random.h>
 #include <util/stream/file.h>
 
 #include <openssl/sha.h>
@@ -20,14 +29,18 @@ namespace {
 
 const TString YtGateway_CanonizePaths = "YtGateway_CanonizePaths";
 const TString YtGateway_GetTableInfo = "YtGateway_GetTableInfo";
+const TString YtGateway_GetTableRange = "YtGateway_GetTableRange";
 const TString YtGateway_GetFolder = "YtGateway_GetFolder";
 const TString YtGateway_GetFolders = "YtGateway_GetFolders";
 const TString YtGateway_ResolveLinks = "YtGateway_ResolveLinks";
+const TString YtGateway_PathStat = "YtGateway_PathStat";
+const TString YtGateway_PathStatMissing = "YtGateway_PathStatMissing";
+const TString YtGateway_TableDumpPath = "YtGateway_TableDumpPath";
 
 TString MakeHash(const TString& str) {
     SHA256_CTX sha;
     SHA256_Init(&sha);
-    SHA256_Update(&sha, str.Data(), str.Size());
+    SHA256_Update(&sha, str.data(), str.size());
     unsigned char hash[SHA256_DIGEST_LENGTH];
     SHA256_Final(hash, &sha);
     return TString((const char*)hash, sizeof(hash));
@@ -37,14 +50,24 @@ class TGateway : public IYtGateway {
 public:
     TGateway(IYtGateway::TPtr inner, const TQContext& qContext,
         const TIntrusivePtr<IRandomProvider>& randomProvider,
-        const TFileStoragePtr& fileStorage)
+        const TFileStoragePtr& fileStorage,
+        const TYqlOperationOptions& operationOptions,
+        const IYtFullCapture::TPtr& fullCapture,
+        const TYtTablesData::TPtr& tablesData,
+        TTypeAnnotationContext& types
+    )
         : Inner_(inner)
         , QContext_(qContext)
         , RandomProvider_(randomProvider)
         , FileStorage_(fileStorage)
+        , OperationOptions_(operationOptions)
+        , FullCapture_(fullCapture)
+        , TablesData_(tablesData)
+        , Types_(types)
     {}
 
     void OpenSession(TOpenSessionOptions&& options) final {
+        SessionGenerations_[options.SessionId()] = 0;
         return Inner_->OpenSession(std::move(options));
     }
 
@@ -53,6 +76,7 @@ public:
     }
 
     NThreading::TFuture<void> CleanupSession(TCleanupSessionOptions&& options) final {
+        ++SessionGenerations_[options.SessionId()];
         return Inner_->CleanupSession(std::move(options));
     }
 
@@ -97,7 +121,7 @@ public:
 
                 if (valueNode.HasKey("Ranges")) {
                     p.Ranges.ConstructInPlace();
-                    for (const auto& r : valueNode["Ranges"].AsString()) {
+                    for (const auto& r : valueNode["Ranges"].AsList()) {
                         NYT::TReadRange range;
                         NYT::Deserialize(range, r);
                         p.Ranges->push_back(range);
@@ -163,8 +187,9 @@ public:
             });
     }
 
-    static TString MakeGetTableInfoKey(const TTableReq& req, ui32 epoch) {
+    static TString MakeGetTableInfoKey(const TTableReq& req, ui32 epoch, ui64 generation) {
         auto tableNode = NYT::TNode()
+            ("Generation", generation)
             ("Cluster", req.Cluster())
             ("Table", req.Table());
 
@@ -196,12 +221,13 @@ public:
     }
 
     NThreading::TFuture<TTableInfoResult> GetTableInfo(TGetTableInfoOptions&& options) final {
+        ui64 generation = SessionGenerations_[options.SessionId()];
         if (QContext_.CanRead()) {
             TTableInfoResult res;
             res.SetSuccess();
             for (const auto& req : options.Tables()) {
                 TTableInfoResult::TTableData data;
-                auto key = MakeGetTableInfoKey(req, options.Epoch());
+                auto key = MakeGetTableInfoKey(req, options.Epoch(), generation);
                 auto item = QContext_.GetReader()->Get({YtGateway_GetTableInfo, key}).GetValueSync();
                 if (!item) {
                     throw yexception() << "Missing replay data";
@@ -217,6 +243,7 @@ public:
                     data.Meta->YqlCompatibleScheme = metaNode["YqlCompatibleScheme"].AsBool();
                     data.Meta->InferredScheme = metaNode["InferredScheme"].AsBool();
                     data.Meta->IsDynamic = metaNode["IsDynamic"].AsBool();
+                    data.Meta->HasRLS = metaNode.HasKey("HasRLS") ? metaNode["HasRLS"].AsBool() : false;
                     data.Meta->SqlView = metaNode["SqlView"].AsString();
                     data.Meta->SqlViewSyntaxVersion = metaNode["SqlViewSyntaxVersion"].AsUint64();
                     for (const auto& x : metaNode["Attrs"].AsMap()) {
@@ -233,18 +260,44 @@ public:
                     data.Stat->ModifyTime = statNode["ModifyTime"].AsUint64();
                     data.Stat->Revision = statNode["Revision"].AsUint64();
                     data.Stat->TableRevision = statNode["TableRevision"].AsUint64();
+                    if (statNode.HasKey("SecurityTags")) {
+                        data.Stat->SecurityTags.clear();
+                        for (auto &e: statNode["SecurityTags"].AsList()) {
+                            data.Stat->SecurityTags.emplace(e.AsString());
+                        }
+                    }
                 }
-                data.WriteLock = options.ReadOnly() ? false : valueNode["WriteLock"].AsBool();
+                data.WriteLock = valueNode["WriteLock"].AsBool();
                 res.Data.push_back(data);
             }
 
-            return NThreading::MakeFuture<TTableInfoResult>(res);
+            if (QContext_.CaptureMode() == EQPlayerCaptureMode::Full) {
+                // Make actual request to create sessions and lock tables
+                for (auto& table : options.Tables()) {
+                    auto dumpPath = GetTableDumpPath(table.Table(), table.Cluster());
+                    if (dumpPath.Defined()) {
+                        AddRandomSuffixToDumpPath(*dumpPath);
+                        table.Table() = *dumpPath;
+                    }
+                }
+
+                return Inner_->GetTableInfo(std::move(options)).Apply([res = std::move(res)] (const NThreading::TFuture<TTableInfoResult>& f) {
+                    if (!f.GetValue().Success()) {
+                        return f.GetValue();
+                    }
+                    return res;
+                });
+            } else {
+                return NThreading::MakeFuture<TTableInfoResult>(std::move(res));
+            }
         }
 
         auto optionsDup = options;
         return Inner_->GetTableInfo(std::move(options))
-            .Subscribe([optionsDup, qContext = QContext_](const NThreading::TFuture<TTableInfoResult>& future) {
-                if (!qContext.CanWrite() || future.HasException()) {
+            .Subscribe([this, optionsDup, generation](const NThreading::TFuture<TTableInfoResult>& future) {
+                YQL_LOG_CTX_ROOT_SESSION_SCOPE(optionsDup.SessionId());
+
+                if (!QContext_.CanWrite() || future.HasException()) {
                     return;
                 }
 
@@ -257,7 +310,7 @@ public:
                 for (size_t i = 0; i < res.Data.size(); ++i) {
                     const auto& req = optionsDup.Tables()[i];
                     const auto& data = res.Data[i];
-                    auto key = MakeGetTableInfoKey(req, optionsDup.Epoch());
+                    auto key = MakeGetTableInfoKey(req, optionsDup.Epoch(), generation);
 
                     auto attrsNode = NYT::TNode::CreateMap();
                     if (data.Meta) {
@@ -272,18 +325,28 @@ public:
                         ("YqlCompatibleScheme",data.Meta->YqlCompatibleScheme)
                         ("InferredScheme",data.Meta->InferredScheme)
                         ("IsDynamic",data.Meta->IsDynamic)
+                        ("HasRLS",data.Meta->HasRLS)
                         ("SqlView",data.Meta->SqlView)
                         ("SqlViewSyntaxVersion",ui64(data.Meta->SqlViewSyntaxVersion))
                         ("Attrs",attrsNode) : NYT::TNode();
 
+
+                    NYT::TNode securityTags = NYT::TNode::CreateList();
+                    if (data.Stat) {
+                        for (const auto& c : data.Stat->SecurityTags) {
+                            securityTags.Add(NYT::TNode(c));
+                        }
+                    }
+
                     auto statNode = data.Stat ? NYT::TNode()
-                        ("Id",data.Stat->Id)
-                        ("RecordsCount",data.Stat->RecordsCount)
-                        ("DataSize",data.Stat->DataSize)
-                        ("ChunkCount",data.Stat->ChunkCount)
-                        ("ModifyTime",data.Stat->ModifyTime)
-                        ("Revision",data.Stat->Revision)
-                        ("TableRevision",data.Stat->TableRevision) : NYT::TNode();
+                        ("Id", data.Stat->Id)
+                        ("RecordsCount", data.Stat->RecordsCount)
+                        ("DataSize", data.Stat->DataSize)
+                        ("ChunkCount", data.Stat->ChunkCount)
+                        ("ModifyTime", data.Stat->ModifyTime)
+                        ("Revision", data.Stat->Revision)
+                        ("TableRevision", data.Stat->TableRevision)
+                        ("SecurityTags", securityTags) : NYT::TNode();
 
                     auto valueNode = NYT::TNode::CreateMap();
                     if (data.Meta) {
@@ -295,26 +358,127 @@ public:
                     valueNode("WriteLock", data.WriteLock);
 
                     auto value = NYT::NodeToYsonString(valueNode, NYT::NYson::EYsonFormat::Binary);
-                    qContext.GetWriter()->Put({YtGateway_GetTableInfo, key},value).GetValueSync();
+                    QContext_.GetWriter()->Put({YtGateway_GetTableInfo, key},value).GetValueSync();
                 }
+
+                DumpTables(res.Data, optionsDup);
             });
     }
 
-    NThreading::TFuture<TTableRangeResult> GetTableRange(TTableRangeOptions&& options) final {
-        if (QContext_.CanRead()) {
-            throw yexception() << "Can't replay GetTableRange";
+    static TString MakeGetTableRangeKey(const TTableRangeOptions& options, ui64 generation) {
+        auto keyNode = NYT::TNode()
+            ("Generation", generation)
+            ("Cluster", options.Cluster())
+            ("Prefix", options.Prefix())
+            ("Suffix", options.Suffix());
+
+        if (options.Filter()) {
+            keyNode("Filter", MakeCacheKey(*options.Filter()));
         }
 
-        return Inner_->GetTableRange(std::move(options));
+        return MakeHash(NYT::NodeToCanonicalYsonString(keyNode, NYT::NYson::EYsonFormat::Binary));
     }
 
-    static TString MakeGetFolderKey(const TFolderOptions& options) {
+    NThreading::TFuture<TTableRangeResult> GetTableRange(TTableRangeOptions&& options) final {
+        ui64 generation = SessionGenerations_[options.SessionId()];
+        TString key;
+        if (QContext_) {
+            key = MakeGetTableRangeKey(options, generation);
+        }
+
+        if (QContext_.CanRead()) {
+            TTableRangeResult res;
+            res.SetSuccess();
+            auto item = QContext_.GetReader()->Get({YtGateway_GetTableRange, key}).GetValueSync();
+            if (!item) {
+                throw yexception() << "Missing replay data";
+            }
+
+            auto listNode = NYT::NodeFromYsonString(item->Value);
+            for (const auto& valueNode : listNode.AsList()) {
+                TCanonizedPath p;
+                p.Path = valueNode["Path"].AsString();
+                if (valueNode.HasKey("Columns")) {
+                    p.Columns.ConstructInPlace();
+                    for (const auto& c : valueNode["Columns"].AsList()) {
+                        p.Columns->push_back(c.AsString());
+                    }
+                }
+
+                if (valueNode.HasKey("Ranges")) {
+                    p.Ranges.ConstructInPlace();
+                    for (const auto& r : valueNode["Ranges"].AsList()) {
+                        NYT::TReadRange range;
+                        NYT::Deserialize(range, r);
+                        p.Ranges->push_back(range);
+                    }
+                }
+
+                if (valueNode.HasKey("AdditionalAttributes")) {
+                    p.AdditionalAttributes = valueNode["AdditionalAttributes"].AsString();
+                }
+
+                res.Tables.push_back(p);
+            }
+
+            return NThreading::MakeFuture<TTableRangeResult>(res);
+        }
+
+        return Inner_->GetTableRange(std::move(options))
+            .Subscribe([key, qContext = QContext_](const NThreading::TFuture<TTableRangeResult>& future) {
+                if (!qContext.CanWrite() || future.HasException()) {
+                    return;
+                }
+
+                const auto& res = future.GetValueSync();
+                if (!res.Success()) {
+                    return;
+                }
+
+                auto listNode = NYT::TNode::CreateList();
+                for (const auto& t : res.Tables) {
+                    listNode.Add();
+                    auto& valueNode = listNode.AsList().back();
+                    valueNode("Path", t.Path);
+                    if (t.Columns) {
+                        NYT::TNode columnsNode = NYT::TNode::CreateList();
+                        for (const auto& c : *t.Columns) {
+                            columnsNode.Add(NYT::TNode(c));
+                        }
+
+                        valueNode("Columns", columnsNode);
+                    }
+
+                    if (t.Ranges) {
+                        NYT::TNode rangesNode = NYT::TNode::CreateList();
+                        for (const auto& r : *t.Ranges) {
+                            NYT::TNode rangeNode;
+                            NYT::TNodeBuilder builder(&rangeNode);
+                            NYT::Serialize(r, &builder);
+                            rangesNode.Add(rangeNode);
+                        }
+
+                        valueNode("Ranges", rangesNode);
+                    }
+
+                    if (t.AdditionalAttributes) {
+                        valueNode("AdditionalAttributes", NYT::TNode(*t.AdditionalAttributes));
+                    }
+                }
+
+                auto value = NYT::NodeToYsonString(listNode, NYT::NYson::EYsonFormat::Binary);
+                qContext.GetWriter()->Put({YtGateway_GetTableRange, key}, value).GetValueSync();
+        });
+    }
+
+    static TString MakeGetFolderKey(const TFolderOptions& options, ui64 generation) {
         auto attrNode = NYT::TNode::CreateList();
         for (const auto& attr : options.Attributes()) {
             attrNode.Add(NYT::TNode(attr));
         }
 
         auto keyNode = NYT::TNode()
+            ("Generation", generation)
             ("Cluster", options.Cluster())
             ("Prefix", options.Prefix())
             ("Attributes", attrNode);
@@ -322,7 +486,7 @@ public:
         return MakeHash(NYT::NodeToCanonicalYsonString(keyNode, NYT::NYson::EYsonFormat::Binary));
     }
 
-    static TString MakeResolveLinksKey(const TResolveOptions& options) {
+    static TString MakeResolveLinksKey(const TResolveOptions& options, ui64 generation) {
         auto itemsNode = NYT::TNode::CreateList();
         for (const auto& item : options.Items()) {
             auto attrNode = NYT::TNode::CreateList();
@@ -339,13 +503,14 @@ public:
         }
 
         auto keyNode = NYT::TNode()
+            ("Generation", generation)
             ("Cluster", options.Cluster())
             ("Items", itemsNode);
 
         return MakeHash(NYT::NodeToCanonicalYsonString(keyNode, NYT::NYson::EYsonFormat::Binary));
     }
 
-    static TString MakeGetFoldersKey(const TBatchFolderOptions& options) {
+    static TString MakeGetFoldersKey(const TBatchFolderOptions& options, ui64 generation) {
         auto itemsNode = NYT::TNode();
         TMap<TString, size_t> order;
         for (size_t i = 0; i < options.Folders().size(); ++i) {
@@ -365,11 +530,12 @@ public:
         }
 
         auto keyNode = NYT::TNode()
+            ("Generation", generation)
             ("Cluster", options.Cluster())
             ("Items", itemsNode);
 
         return MakeHash(NYT::NodeToCanonicalYsonString(keyNode, NYT::NYson::EYsonFormat::Binary));
-    }    
+    }
 
     template <typename T>
     static NYT::TNode SerializeFolderItem(const T& item) {
@@ -391,8 +557,9 @@ public:
     }
 
     NThreading::TFuture<TFolderResult> GetFolder(TFolderOptions&& options) final {
+        ui64 generation = SessionGenerations_[options.SessionId()];
         if (QContext_.CanRead()) {
-            const auto& key = MakeGetFolderKey(options);
+            const auto& key = MakeGetFolderKey(options, generation);
             auto item = QContext_.GetReader()->Get({YtGateway_GetFolder, key}).GetValueSync();
             if (!item) {
                 throw yexception() << "Missing replay data";
@@ -421,7 +588,7 @@ public:
 
         auto optionsDup = options;
         return Inner_->GetFolder(std::move(options))
-            .Subscribe([optionsDup, qContext = QContext_](const NThreading::TFuture<TFolderResult>& future) {
+            .Subscribe([optionsDup, qContext = QContext_, generation](const NThreading::TFuture<TFolderResult>& future) {
                 if (!qContext.CanWrite() || future.HasException()) {
                     return;
                 }
@@ -431,7 +598,7 @@ public:
                     return;
                 }
 
-                const auto& key = MakeGetFolderKey(optionsDup);
+                const auto& key = MakeGetFolderKey(optionsDup, generation);
                 auto valueNode = NYT::TNode();
 
                 if (std::holds_alternative<TFileLinkPtr>(res.ItemsOrFileLink)) {
@@ -451,10 +618,11 @@ public:
     }
 
     NThreading::TFuture<TBatchFolderResult> ResolveLinks(TResolveOptions&& options) final {
+        ui64 generation = SessionGenerations_[options.SessionId()];
         if (QContext_.CanRead()) {
             TBatchFolderResult res;
             res.SetSuccess();
-            const auto& key = MakeResolveLinksKey(options);
+            const auto& key = MakeResolveLinksKey(options, generation);
             auto item = QContext_.GetReader()->Get({YtGateway_ResolveLinks, key}).GetValueSync();
             if (!item) {
                 throw yexception() << "Missing replay data";
@@ -472,7 +640,7 @@ public:
 
         auto optionsDup = options;
         return Inner_->ResolveLinks(std::move(options))
-            .Subscribe([optionsDup, qContext = QContext_](const NThreading::TFuture<TBatchFolderResult>& future) {
+            .Subscribe([optionsDup, qContext = QContext_, generation](const NThreading::TFuture<TBatchFolderResult>& future) {
                 if (!qContext.CanWrite() || future.HasException()) {
                     return;
                 }
@@ -482,7 +650,7 @@ public:
                     return;
                 }
 
-                const auto& key = MakeResolveLinksKey(optionsDup);
+                const auto& key = MakeResolveLinksKey(optionsDup, generation);
                 NYT::TNode valueNode = NYT::TNode::CreateList();
                 for (const auto& item : res.Items) {
                     valueNode.Add(SerializeFolderItem(item));
@@ -494,10 +662,11 @@ public:
     }
 
     NThreading::TFuture<TBatchFolderResult> GetFolders(TBatchFolderOptions&& options) final {
+        ui64 generation = SessionGenerations_[options.SessionId()];
         if (QContext_.CanRead()) {
             TBatchFolderResult res;
             res.SetSuccess();
-            const auto& key = MakeGetFoldersKey(options);
+            const auto& key = MakeGetFoldersKey(options, generation);
             auto item = QContext_.GetReader()->Get({YtGateway_GetFolders, key}).GetValueSync();
             if (!item) {
                 throw yexception() << "Missing replay data";
@@ -515,7 +684,7 @@ public:
 
         auto optionsDup = options;
         return Inner_->GetFolders(std::move(options))
-            .Subscribe([optionsDup, qContext = QContext_](const NThreading::TFuture<TBatchFolderResult>& future) {
+            .Subscribe([optionsDup, qContext = QContext_, generation](const NThreading::TFuture<TBatchFolderResult>& future) {
                 if (!qContext.CanWrite() || future.HasException()) {
                     return;
                 }
@@ -525,7 +694,7 @@ public:
                     return;
                 }
 
-                const auto& key = MakeGetFoldersKey(optionsDup);
+                const auto& key = MakeGetFoldersKey(optionsDup, generation);
                 NYT::TNode valueNode = NYT::TNode::CreateList();
                 for (const auto& item : res.Items) {
                     valueNode.Add(SerializeFolderItem(item));
@@ -538,7 +707,11 @@ public:
 
     NThreading::TFuture<TResOrPullResult> ResOrPull(const TExprNode::TPtr& node, TExprContext& ctx, TResOrPullOptions&& options) final {
         if (QContext_.CanRead()) {
-            throw yexception() << "Can't replay ResOrPull";
+            if (QContext_.CaptureMode() != EQPlayerCaptureMode::Full) {
+                throw yexception() << "Can't replay ResOrPull";
+            }
+
+            return Inner_->ResOrPull(ReplaceTablesWithDump(node, ctx), ctx, std::move(options));
         }
 
         return Inner_->ResOrPull(node, ctx, std::move(options));
@@ -546,15 +719,23 @@ public:
 
     NThreading::TFuture<TRunResult> Run(const TExprNode::TPtr& node, TExprContext& ctx, TRunOptions&& options) final {
         if (QContext_.CanRead()) {
-            throw yexception() << "Can't replay Run";
+            if (QContext_.CaptureMode() != EQPlayerCaptureMode::Full) {
+                throw yexception() << "Can't replay Run";
+            }
+
+            return Inner_->Run(ReplaceTablesWithDump(node, ctx), ctx, std::move(options));
         }
 
         return Inner_->Run(node, ctx, std::move(options));
     }
 
-    NThreading::TFuture<TRunResult> Prepare(const TExprNode::TPtr& node, TExprContext& ctx, TPrepareOptions&& options) const final {
+    NThreading::TFuture<TRunResult> Prepare(const TExprNode::TPtr& node, TExprContext& ctx, TPrepareOptions&& options) final {
         if (QContext_.CanRead()) {
-            throw yexception() << "Can't replay Prepare";
+            if (QContext_.CaptureMode() != EQPlayerCaptureMode::Full) {
+                throw yexception() << "Can't replay Prepare";
+            }
+
+            return Inner_->Prepare(ReplaceTablesWithDump(node, ctx), ctx, std::move(options));
         }
 
         return Inner_->Prepare(node, ctx, std::move(options));
@@ -562,7 +743,11 @@ public:
 
     NThreading::TFuture<TRunResult> GetTableStat(const TExprNode::TPtr& node, TExprContext& ctx, TPrepareOptions&& options) final {
         if (QContext_.CanRead()) {
-            throw yexception() << "Can't replay GetTableStat";
+            if (QContext_.CaptureMode() != EQPlayerCaptureMode::Full) {
+                throw yexception() << "Can't replay GetTableStat";
+            }
+
+            return Inner_->GetTableStat(ReplaceTablesWithDump(node, ctx), ctx, std::move(options));
         }
 
         return Inner_->GetTableStat(node, ctx, std::move(options));
@@ -570,7 +755,11 @@ public:
 
     NThreading::TFuture<TCalcResult> Calc(const TExprNode::TListType& nodes, TExprContext& ctx, TCalcOptions&& options) final {
         if (QContext_.CanRead()) {
-            throw yexception() << "Can't replay Calc";
+            if (QContext_.CaptureMode() != EQPlayerCaptureMode::Full) {
+                throw yexception() << "Can't replay Calc";
+            }
+
+            return Inner_->Calc(ReplaceTablesWithDump(nodes, ctx), ctx, std::move(options));
         }
 
         return Inner_->Calc(nodes, ctx, std::move(options));
@@ -578,14 +767,18 @@ public:
 
     NThreading::TFuture<TPublishResult> Publish(const TExprNode::TPtr& node, TExprContext& ctx, TPublishOptions&& options) final {
         if (QContext_.CanRead()) {
-            throw yexception() << "Can't replay Publish";
+            if (QContext_.CaptureMode() != EQPlayerCaptureMode::Full) {
+                throw yexception() << "Can't replay Publish";
+            }
+
+            return Inner_->Publish(ReplaceTablesWithDump(node, ctx), ctx, std::move(options));
         }
 
         return Inner_->Publish(node, ctx, std::move(options));
     }
 
     NThreading::TFuture<TCommitResult> Commit(TCommitOptions&& options) final {
-        if (QContext_.CanRead()) {
+        if (QContext_.CanRead() && QContext_.CaptureMode() != EQPlayerCaptureMode::Full) {
             throw yexception() << "Can't replay Commit";
         }
 
@@ -594,26 +787,219 @@ public:
 
     NThreading::TFuture<TDropTrackablesResult> DropTrackables(TDropTrackablesOptions&& options) final {
         if (QContext_.CanRead()) {
-            throw yexception() << "Can't replay DropTrackables";
+            if (QContext_.CaptureMode() != EQPlayerCaptureMode::Full) {
+                throw yexception() << "Can't replay DropTrackables";
+            }
+
+            for (auto& path : options.Pathes()) {
+                auto dumpPath = GetTableDumpPath(path.Path, path.Cluster);
+                if (dumpPath.Defined()) {
+                    AddRandomSuffixToDumpPath(*dumpPath);
+                    path.Path = *dumpPath;
+                }
+            }
+
+            return Inner_->DropTrackables(std::move(options));
         }
 
         return Inner_->DropTrackables(std::move(options));
     }
 
-    NThreading::TFuture<TPathStatResult> PathStat(TPathStatOptions&& options) final {
-        if (QContext_.CanRead()) {
-            throw yexception() << "Can't replay PathStat";
+    static TString MakePathStatKey(const TString& cluster, bool extended, const TPathStatReq& req, ui64 generation) {
+        auto node = NYT::TNode()
+            ("Generation", generation)
+            ("Cluster", cluster)
+            ("Extended", extended);
+
+        NYT::TNode pathNode;
+        NYT::TNodeBuilder builder(&pathNode);
+        NYT::Serialize(req.Path(), &builder);
+        auto path = NYT::TNode()
+            ("Path", pathNode)
+            ("IsTemp", req.IsTemp())
+            ("IsAnonymous", req.IsAnonymous())
+            ("Epoch", req.Epoch());
+
+        node("Path", path);
+        return MakeHash(NYT::NodeToCanonicalYsonString(node));
+    }
+
+    static TString SerializePathStat(const TPathStatResult& stat, ui32 index) {
+        Y_ENSURE(index < stat.DataSize.size());
+        Y_ENSURE(index < stat.Extended.size());
+        auto xNode = NYT::TNode();
+        if (!stat.Extended[index].Defined()) {
+            xNode = NYT::TNode::CreateEntity();
+        } else {
+            auto dataWeightMap = NYT::TNode::CreateMap();
+            for (const auto& d : stat.Extended[index]->DataWeight) {
+                dataWeightMap(d.first, d.second);
+            }
+
+            auto uniqCountsMap = NYT::TNode::CreateMap();
+            for (const auto& e : stat.Extended[index]->EstimatedUniqueCounts) {
+                uniqCountsMap(e.first, e.second);
+            }
+
+            xNode = NYT::TNode()
+                ("DataWeight", dataWeightMap)
+                ("EstimatedUniqueCounts", uniqCountsMap);
         }
 
-        return Inner_->PathStat(std::move(options));
+        auto node = NYT::TNode()
+            ("DataSize", stat.DataSize[index])
+            ("Extended", xNode);
+
+        return NYT::NodeToYsonString(node, NYT::NYson::EYsonFormat::Binary);
+    }
+
+    static void DeserializePathStat(const NYT::TNode& node, TPathStatResult& stat, ui32 index) {
+        Y_ENSURE(index < stat.DataSize.size());
+        Y_ENSURE(index < stat.Extended.size());
+        stat.DataSize[index] = node["DataSize"].AsUint64();
+        stat.Extended[index] = Nothing();
+        const auto& x  = node["Extended"];
+        if (!x.IsEntity()) {
+            auto& xValue = stat.Extended[index];
+            xValue.ConstructInPlace();
+            for (const auto& d : x["DataWeight"].AsMap()) {
+                xValue->DataWeight[d.first] = d.second.AsInt64();
+            }
+
+            for (const auto& e : x["EstimatedUniqueCounts"].AsMap()) {
+                xValue->EstimatedUniqueCounts[e.first] = e.second.AsUint64();
+            }
+        }
+    }
+
+    NThreading::TFuture<TPathStatResult> PathStat(TPathStatOptions&& options) final {
+        ui64 generation = SessionGenerations_[options.SessionId()];
+        if (QContext_.CanRead()) {
+            if (QContext_.CaptureMode() == EQPlayerCaptureMode::Full) {
+                // Make real request to avoid problems with temporary tables
+                for (auto& path : options.Paths()) {
+                    auto dumpPath = GetTableDumpPath(path.Path().Path_, options.Cluster());
+                    if (dumpPath.Defined()) {
+                        AddRandomSuffixToDumpPath(*dumpPath);
+                        path.Path().Path_ = *dumpPath;
+                    }
+                }
+
+                return Inner_->PathStat(std::move(options));
+            }
+
+            TPathStatResult res;
+            res.DataSize.resize(options.Paths().size(), 0);
+            res.Extended.resize(options.Paths().size());
+
+            for (ui32 index = 0; index < options.Paths().size(); ++index) {
+                const auto& key = MakePathStatKey(options.Cluster(), options.Extended(), options.Paths()[index], generation);
+                auto item = QContext_.GetReader()->Get({YtGateway_PathStat, key}).GetValueSync();
+                if (!item) {
+                    throw yexception() << "Missing replay data";
+                }
+
+                PathStatKeys_.emplace(key);
+                auto valueNode = NYT::NodeFromYsonString(TStringBuf(item->Value));
+                DeserializePathStat(valueNode, res, index);
+            }
+
+            res.SetSuccess();
+            return NThreading::MakeFuture<TPathStatResult>(res);
+        }
+
+        auto optionsDup = options;
+        return Inner_->PathStat(std::move(options))
+            .Subscribe([optionsDup, qContext = QContext_, generation](const NThreading::TFuture<TPathStatResult>& future) {
+                if (!qContext.CanWrite() || future.HasException()) {
+                    return;
+                }
+
+                const auto& res = future.GetValueSync();
+                if (!res.Success()) {
+                    return;
+                }
+
+                for (ui32 index = 0; index < optionsDup.Paths().size(); ++index) {
+                    const auto& key = MakePathStatKey(optionsDup.Cluster(), optionsDup.Extended(), optionsDup.Paths()[index], generation);
+                    auto value = SerializePathStat(res, index);
+                    qContext.GetWriter()->Put({YtGateway_PathStat, key}, value).GetValueSync();
+                }
+        });
     }
 
     TPathStatResult TryPathStat(TPathStatOptions&& options) final {
+        ui64 generation = SessionGenerations_[options.SessionId()];
         if (QContext_.CanRead()) {
-            throw yexception() << "Can't replay TryPathStat";
+            if (QContext_.CaptureMode() == EQPlayerCaptureMode::Full) {
+                // Make real request to avoid problems with temporary tables
+                for (auto& path : options.Paths()) {
+                    auto dumpPath = GetTableDumpPath(path.Path().Path_, options.Cluster());
+                    if (dumpPath.Defined()) {
+                        AddRandomSuffixToDumpPath(*dumpPath);
+                        path.Path().Path_ = *dumpPath;
+                    }
+                }
+
+                return Inner_->TryPathStat(std::move(options));
+            }
+
+            TPathStatResult res;
+            res.DataSize.resize(options.Paths().size(), 0);
+            res.Extended.resize(options.Paths().size());
+
+            for (ui32 index = 0; index < options.Paths().size(); ++index) {
+                const auto& key = MakePathStatKey(options.Cluster(), options.Extended(), options.Paths()[index], generation);
+                bool allow = false;
+                if (PathStatKeys_.contains(key)) {
+                    allow = true;
+                } else {
+                    auto missingItem = QContext_.GetReader()->Get({YtGateway_PathStatMissing, key}).GetValueSync();
+                    if (!missingItem) {
+                        allow = true;
+                        PathStatKeys_.emplace(key);
+                    }
+                }
+
+                if (!allow) {
+                    return res;
+                }
+
+                auto item = QContext_.GetReader()->Get({YtGateway_PathStat, key}).GetValueSync();
+                if (!item) {
+                    return res;
+                }
+
+                auto valueNode = NYT::NodeFromYsonString(TStringBuf(item->Value));
+                DeserializePathStat(valueNode, res, index);
+            }
+
+            res.SetSuccess();
+            return res;
         }
 
-        return Inner_->TryPathStat(std::move(options));
+        auto optionsDup = options;
+        auto res = Inner_->TryPathStat(std::move(options));
+        if (!QContext_.CanWrite()) {
+            return res;
+        }
+
+        if (!res.Success()) {
+            for (ui32 index = 0; index < optionsDup.Paths().size(); ++index) {
+                const auto& key = MakePathStatKey(optionsDup.Cluster(), optionsDup.Extended(), optionsDup.Paths()[index], generation);
+                QContext_.GetWriter()->Put({YtGateway_PathStatMissing, key}, "1").GetValueSync();
+            }
+
+            return res;
+        }
+
+        for (ui32 index = 0; index < optionsDup.Paths().size(); ++index) {
+            const auto& key = MakePathStatKey(optionsDup.Cluster(), optionsDup.Extended(), optionsDup.Paths()[index], generation);
+            auto value = SerializePathStat(res, index);
+            QContext_.GetWriter()->Put({YtGateway_PathStat, key}, value).GetValueSync();
+        }
+
+        return res;
     }
 
     bool TryParseYtUrl(const TString& url, TString* cluster, TString* path) const final {
@@ -628,12 +1014,28 @@ public:
         return Inner_->GetClusterServer(cluster);
     }
 
-    NYT::TRichYPath GetRealTable(const TString& sessionId, const TString& cluster, const TString& table, ui32 epoch, const TString& tmpFolder) const final {
-        return Inner_->GetRealTable(sessionId, cluster, table, epoch, tmpFolder);
+    NYT::TRichYPath GetRealTable(const TString& sessionId, const TString& cluster, const TString& table, ui32 epoch, const TString& tmpFolder, bool temp, bool anonymous) const final {
+        return Inner_->GetRealTable(sessionId, cluster, table, epoch, tmpFolder, temp, anonymous);
     }
 
     NYT::TRichYPath GetWriteTable(const TString& sessionId, const TString& cluster, const TString& table, const TString& tmpFolder) const final {
         return Inner_->GetWriteTable(sessionId, cluster, table, tmpFolder);
+    }
+
+    NThreading::TFuture<TDownloadTablesResult> DownloadTables(TDownloadTablesOptions&& options) final {
+        if (QContext_.CanRead()) {
+            TDownloadTablesResult res;
+            res.SetSuccess();
+            return NThreading::MakeFuture(std::move(res));
+        }
+        return Inner_->DownloadTables(std::move(options));
+    }
+
+    NThreading::TFuture<TUploadTableResult> UploadTable(TUploadTableOptions&& options) final {
+        if (QContext_.CanRead()) {
+            throw yexception() << "Can't replay UploadTable";
+        }
+        return Inner_->UploadTable(std::move(options));
     }
 
     TFullResultTableResult PrepareFullResultTable(TFullResultTableOptions&& options) final {
@@ -664,18 +1066,196 @@ public:
         return Inner_->AddCluster(cluster);
     }
 
+    TClusterConnectionResult GetClusterConnection(const TClusterConnectionOptions&& options) const override {
+        return Inner_->GetClusterConnection(std::move(options));
+    }
+
+    TMaybe<TString> GetTableFilePath(const TGetTableFilePathOptions&& options) override {
+        return Inner_->GetTableFilePath(std::move(options));
+    }
+
+    NThreading::TFuture<TLayersSnapshotResult> SnapshotLayers(TSnapshotLayersOptions&& options) final {
+        if (QContext_.CanRead()) {
+            throw yexception() << "Can't replay SnapshotLayers";
+        }
+
+        return Inner_->SnapshotLayers(std::move(options));
+    }
+
+    NThreading::TFuture<TDumpResult> Dump(TDumpOptions&& options) override {
+        if (QContext_.CanRead()) {
+            return NThreading::MakeFuture(TDumpResult());
+        }
+
+        return Inner_->Dump(std::move(options));
+    }
+
+private:
+    TMaybe<TString> GetTableDumpPath(const TStringBuf& name, const TStringBuf& cluster) const {
+        return GetDumpPath(name, cluster, YtGateway_TableDumpPath, QContext_);
+    }
+
+    TExprNode::TPtr ReplaceTablesWithDump(TExprNode::TPtr start, TExprContext& ctx) {
+        TNodeOnNodeOwnedMap replaces;
+        VisitExpr(start, [&](const TExprNode::TPtr& node) {
+            if (NNodes::TYtTable::Match(node.Get())) {
+                auto tableInfo = TYtTableBaseInfo::Parse(NNodes::TExprBase(node.Get()));
+
+                auto dumpPath = GetTableDumpPath(tableInfo->Name, tableInfo->Cluster);
+                if (dumpPath.Defined()) {
+                    AddRandomSuffixToDumpPath(*dumpPath);
+
+                    YQL_CLOG(INFO, ProviderYt) << "Substituting table " << tableInfo->Name << " with dump " << *dumpPath << " on cluster " << tableInfo->Cluster;
+                    replaces[node.Get()] = ctx.ChangeChild(*node, NNodes::TYtTable::idx_Name, ctx.NewAtom(node->Pos(), *dumpPath, TNodeFlags::Default));
+
+                    // Add fake table data to allow YT type annotation
+                    for (auto epoch : {tableInfo->Epoch, tableInfo->CommitEpoch}) {
+                        auto& origTableData = TablesData_->GetTable(tableInfo->Cluster, tableInfo->Name, epoch);
+                        TablesData_->GetOrAddTable(tableInfo->Cluster, *dumpPath, epoch) = origTableData;
+                    }
+                }
+
+                return false;
+            }
+
+            return true;
+        });
+        start = ctx.ReplaceNodes(std::move(start), replaces);
+
+        // Run type ann & caclulate constraints
+        TTransformationPipeline pipeline(&Types_);
+        pipeline.AddServiceTransformers();
+        pipeline.AddTypeAnnotationTransformerWithMode(TIssuesIds::CORE_TYPE_ANN, ETypeCheckMode::Repeat);
+        pipeline.AddPostTypeAnnotation(true);
+
+        YQL_ENSURE(InstantTransform(*pipeline.Build(), start, ctx) == IGraphTransformer::TStatus::Ok);
+        return start;
+    }
+
+    TExprNode::TListType ReplaceTablesWithDump(const TExprNode::TListType& starts, TExprContext& ctx) {
+        TExprNode::TListType result;
+        for (const auto& node : starts) {
+            result.push_back(ReplaceTablesWithDump(node, ctx));
+        }
+        return result;
+    }
+
+    void AddRandomSuffixToDumpPath(TString& path) {
+        if (!path.StartsWith(NonExistentTableDumpPrefix)) {
+            return;
+        }
+
+        // Add random suffixes to avoid locking problems during concurrent replays
+        if (!RandomSuffixes_.contains(path)) {
+            RandomSuffixes_[path] = "_" + ToString(RandomNumber<unsigned int>());
+        }
+
+        path += RandomSuffixes_[path];
+    }
+
+    void DumpTables(const TVector<TTableInfoResult::TTableData>& tables, const TGetTableInfoOptions& options) {
+        if (!QContext_.CanWrite() || QContext_.CaptureMode() != EQPlayerCaptureMode::Full || options.Epoch() != 0) {
+            return;
+        }
+        YQL_ENSURE(FullCapture_);
+
+        try {
+            auto dumpOptions = TDumpOptions(options.SessionId()).Config(options.Config());
+            size_t tableDataSize = 0;
+
+            ui64 generation = SessionGenerations_[options.SessionId()];
+            YQL_ENSURE(tables.size() == options.Tables().size());
+            for (size_t i = 0; i < tables.size(); i++) {
+                const auto& req = options.Tables()[i];
+                const auto& tableInfo = tables[i];
+
+                auto key = MakeGetTableInfoKey(req, options.Epoch(), generation);
+                auto dumpKey = MakeDumpKey(req.Table(), req.Cluster());
+
+                TString dumpPath;
+                if (tableInfo.Meta && tableInfo.Meta->DoesExist) {
+                    if (tableInfo.Meta->IsDynamic) {
+                        throw yexception() << "dynamic table " << req.Table() << " on cluster " << req.Cluster();
+                    }
+                    if (tableInfo.Meta->HasRLS) {
+                        throw yexception() << "rls table " << req.Table() << " on cluster " << req.Cluster();
+                    }
+
+                    YQL_ENSURE(tableInfo.Stat);
+                    tableDataSize += tableInfo.Stat->DataSize;
+
+                    dumpPath = MakeDumpPath(req.Table(), req.Cluster(), OperationOptions_, options.Config());
+                    YQL_CLOG(INFO, ProviderYt) << "Dump table " << req.Table() << " to " << dumpPath << " on cluster " << req.Cluster();
+                    dumpOptions.Entries()[req.Cluster()].push_back(TDumpOptions::TEntry {
+                        .SrcPath = req.Table(),
+                        .DstPath = dumpPath,
+                    });
+                } else {
+                    dumpPath = MakeDumpPath(req.Table(), req.Cluster(), OperationOptions_, options.Config(), false);
+                    YQL_CLOG(INFO, ProviderYt) << "Subst table " << req.Table() << " to " << dumpPath << " on cluster " << req.Cluster();
+                }
+
+                QContext_.GetWriter()->Put({ YtGateway_TableDumpPath, dumpKey }, dumpPath).GetValueSync();
+            }
+
+            if (!dumpOptions.Entries().empty()) {
+                auto tableDataSizeLimit = options.Config()->_QueryDumpTableSizeLimit.Get().GetOrElse(DEFAULT_QUERY_DUMP_TABLE_SIZE_LIMIT);
+                if (tableDataSize > tableDataSizeLimit) {
+                    throw yexception() << "data size limit exceeded (" << tableDataSize << " > " << tableDataSizeLimit << ")";
+                }
+
+                auto tableCountLimit = options.Config()->_QueryDumpTableCountPerClusterLimit.Get().GetOrElse(DEFAULT_QUERY_DUMP_TABLE_COUNT_PER_CLUSTER_LIMIT);
+                for (auto& [cluster, tables] : dumpOptions.Entries()) {
+                    if (tables.size() > tableCountLimit) {
+                        throw yexception() << "table count limit exceeded (" << tables.size() << " > " << tableCountLimit << ")";
+                    }
+                }
+
+                FullCapture_->AddOperationFuture(Inner_->Dump(std::move(dumpOptions)).Apply([] (const NThreading::TFuture<IYtGateway::TDumpResult>& f) {
+                    return NCommon::TOperationResult(f.GetValue());
+                }));
+            }
+        } catch (const std::exception& e) {
+            FullCapture_->ReportError(e);
+        }
+    }
+
+    NThreading::TFuture<TDownloadTableResult> DownloadTable(TDownloadTableOptions&& options) override {
+        return Inner_->DownloadTable(std::move(options));
+    }
+
+    NThreading::TFuture<TUploadFilesToCacheResult> UploadFilesToCache(TUploadFilesToCacheOptions&& options) override {
+        return Inner_->UploadFilesToCache(std::move(options));
+    }
+
+    IYtTokenResolver::TPtr GetYtTokenResolver() const override {
+        return Inner_->GetYtTokenResolver();
+    }
+
 private:
     const IYtGateway::TPtr Inner_;
     const TQContext QContext_;
     const TIntrusivePtr<IRandomProvider> RandomProvider_;
     const TFileStoragePtr FileStorage_;
+    const TYqlOperationOptions OperationOptions_;
+    const IYtFullCapture::TPtr FullCapture_;
+    const TYtTablesData::TPtr TablesData_;
+    TTypeAnnotationContext& Types_;
+
+    THashSet<TString> PathStatKeys_;
+    THashMap<TString, ui64> SessionGenerations_;
+
+    THashMap<TString, TString> RandomSuffixes_;
 };
 
 }
 
-IYtGateway::TPtr WrapYtGatewayWithQContext(IYtGateway::TPtr gateway, const TQContext& qContext,
-    const TIntrusivePtr<IRandomProvider>& randomProvider, const TFileStoragePtr& fileStorage) {
-    return MakeIntrusive<TGateway>(gateway, qContext, randomProvider, fileStorage);
+IYtGateway::TPtr WrapYtGatewayWithQContext(
+    IYtGateway::TPtr gateway, const TQContext& qContext, const TIntrusivePtr<IRandomProvider>& randomProvider,
+    const TFileStoragePtr& fileStorage, const TYqlOperationOptions& operationOptions, const IYtFullCapture::TPtr& fullCapture,
+    const TYtTablesData::TPtr& tablesData, TTypeAnnotationContext& types
+) {
+    return MakeIntrusive<TGateway>(gateway, qContext, randomProvider, fileStorage, operationOptions, fullCapture, tablesData, types);
 }
 
 }

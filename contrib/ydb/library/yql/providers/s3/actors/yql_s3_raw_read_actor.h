@@ -18,8 +18,9 @@ std::pair<NYql::NDq::IDqComputeActorAsyncInput*, NActors::IActor*> CreateRawRead
     const TTxId& txId,
     IHTTPGateway::TPtr gateway,
     const NKikimr::NMiniKQL::THolderFactory& holderFactory,
+    std::shared_ptr<NKikimr::NMiniKQL::TScopedAlloc> alloc,
     const TString& url,
-    const TS3Credentials::TAuthInfo& authInfo,
+    const TS3Credentials& credentials,
     const TString& pattern,
     NYql::NS3Lister::ES3PatternVariant patternVariant,
     NYql::NS3Details::TPathList&& paths,
@@ -36,7 +37,8 @@ std::pair<NYql::NDq::IDqComputeActorAsyncInput*, NActors::IActor*> CreateRawRead
     NActors::TActorId fileQueueActor,
     ui64 fileQueueBatchSizeLimit,
     ui64 fileQueueBatchObjectCountLimit,
-    ui64 fileQueueConsumersCountDelta
+    ui64 fileQueueConsumersCountDelta,
+    bool allowLocalFiles
 );
 
 } // namespace NYql::NDq

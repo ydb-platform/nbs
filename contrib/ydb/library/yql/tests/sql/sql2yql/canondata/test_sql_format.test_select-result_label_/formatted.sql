@@ -1,0 +1,3 @@
+SELECT
+    1
+INTO RESULT foo;

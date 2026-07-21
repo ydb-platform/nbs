@@ -14,6 +14,8 @@
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <library/cpp/monlib/service/pages/templates.h>
 
+#define YDB_LOG_THIS_FILE_COMPONENT NKikimrServices::CMS
+
 namespace NKikimr::NConsole {
 
 void TConsole::DefaultSignalTabletActive(const TActorContext &)
@@ -48,13 +50,14 @@ void TConsole::OnActivateExecutor(const TActorContext &ctx)
 
 void TConsole::OnDetach(const TActorContext &ctx)
 {
-    LOG_DEBUG(ctx, NKikimrServices::CMS, "TConsole::OnDetach");
+    YDB_LOG_DEBUG_CTX(ctx, "TConsole::OnDetach");
     Die(ctx);
 }
 
 void TConsole::OnTabletDead(TEvTablet::TEvTabletDead::TPtr &, const TActorContext &ctx)
 {
-    LOG_INFO(ctx, NKikimrServices::CMS, "TConsole::OnTabletDead: %" PRIu64, TabletID());
+    YDB_LOG_INFO_CTX(ctx, "TConsole::OnTabletDead",
+        {"tabletId", TabletID()});
 
     if (Counters)
         Counters->ResetCounters();
@@ -64,9 +67,10 @@ void TConsole::OnTabletDead(TEvTablet::TEvTabletDead::TPtr &, const TActorContex
 
 void TConsole::Enqueue(TAutoPtr<IEventHandle> &ev)
 {
-    LOG_DEBUG(*TlsActivationContext, NKikimrServices::CMS,
-              "TConsole::Enqueue: %" PRIu64 ", event type: %" PRIu32 " event: %s",
-              TabletID(), ev->GetTypeRewrite(), ev->ToString().data());
+    YDB_LOG_DEBUG_CTX(*TlsActivationContext, "TConsole::Enqueue",
+        {"tabletId", TabletID()},
+        {"type", ev->GetTypeRewrite()},
+        {"ev", ev->ToString()});
     InitQueue.push_back(ev);
 }
 
@@ -103,7 +107,7 @@ bool TConsole::OnRenderAppHtmlPage(NMon::TEvRemoteHttpInfo::TPtr ev, const TActo
 
 void TConsole::Cleanup(const TActorContext &ctx)
 {
-    LOG_DEBUG(ctx, NKikimrServices::CMS, "TConsole::Cleanup");
+    YDB_LOG_DEBUG_CTX(ctx, "TConsole::Cleanup");
 
     if (ConfigsManager) {
         ConfigsManager->Detach();
@@ -140,10 +144,11 @@ void TConsole::ProcessEnqueuedEvents(const TActorContext &ctx)
 {
     while (!InitQueue.empty()) {
         TAutoPtr<IEventHandle> &ev = InitQueue.front();
-        LOG_DEBUG(ctx, NKikimrServices::CMS,
-                  "TConsole::Dequeue: %" PRIu64 ", event type: %" PRIu32 " event: %s",
-                  TabletID(), ev->GetTypeRewrite(), ev->ToString().data());
-        ctx.ExecutorThread.Send(ev.Release());
+        YDB_LOG_DEBUG_CTX(ctx, "TConsole::Dequeue",
+            {"tabletId", TabletID()},
+            {"type", ev->GetTypeRewrite()},
+            {"ev", ev->ToString()});
+        ctx.Send(ev.Release());
         InitQueue.pop_front();
     }
 }
@@ -159,6 +164,11 @@ void TConsole::ClearState()
     }
 
     Counters->ResetCounters();
+}
+
+void TConsole::ForwardFromPipe(TAutoPtr<IEventHandle> &ev, const TActorContext &ctx) {
+    ev->Rewrite(ev->GetTypeRewrite(), ConfigsManager->SelfId());
+    ctx.Send(ev.Release());
 }
 
 void TConsole::ForwardToConfigsManager(TAutoPtr<IEventHandle> &ev, const TActorContext &ctx)
@@ -179,6 +189,24 @@ void TConsole::Handle(TEvConsole::TEvGetConfigRequest::TPtr &ev, const TActorCon
 void TConsole::Handle(TEvConsole::TEvSetConfigRequest::TPtr &ev, const TActorContext &ctx)
 {
     TxProcessor->ProcessTx(CreateTxSetConfig(ev), ctx);
+}
+
+bool TConsole::HasTenant(const TString& path) const
+{
+    if (!TenantsManager) {
+        return false;
+    }
+
+    return TenantsManager->HasTenant(path);
+}
+
+TString TConsole::GetDomainName() const
+{
+    if (!TenantsManager) {
+        return {};
+    }
+
+    return TenantsManager->GetDomainName();
 }
 
 IActor *CreateConsole(const TActorId &tablet, TTabletStorageInfo *info)

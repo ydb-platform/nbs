@@ -18,24 +18,22 @@ struct TSectorRestorator {
     ui32 GoodSectorCount;
     ui32 RestoredSectorFlags;
     const TDiskFormat &Format;
-    TActorSystem *ActorSystem;
-    const TActorId PDiskActorId;
-    ui32 PDiskId;
+    const TPDiskCtx *PCtx;
     bool IsErasureEncode;
     TPDiskMon *Mon;
     TBufferPool *BufferPool;
+    TLogoBlobID BlobId;
 
     TSectorRestorator(const bool isTrippleCopy, const ui32 erasureDataParts,
             const bool isErasureEncode, const TDiskFormat &format,
-            TActorSystem *actorSystem, const TActorId pDiskActorId, ui32 pDiskId, TPDiskMon *mon,
-            TBufferPool *bufferPool);
+            const TPDiskCtx *pCtx, TPDiskMon *mon,
+            TBufferPool *bufferPool, TLogoBlobID blobId);
 
     TSectorRestorator(const bool isTrippleCopy, const ui32 erasureDataParts,
-            const bool isErasureEncode, const TDiskFormat &format);
+            const bool isErasureEncode, const TDiskFormat &format, TLogoBlobID blobId);
 
 
-    void Restore(ui8 *source, const ui64 offset, const ui64 magic, const ui64 lastNonce, const bool useT1ha0Hash,
-            TOwner owner);
+    void Restore(ui8 *source, const ui64 offset, const ui64 magic, const ui64 lastNonce, TOwner owner);
 
     void WriteSector(ui8 *sectorData, ui64 writeOffset);
 };

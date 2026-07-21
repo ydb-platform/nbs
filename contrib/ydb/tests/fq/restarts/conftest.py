@@ -5,6 +5,7 @@ import logging
 import pytest
 import requests
 import yatest.common
+import library.python.port_manager
 
 from dataclasses import dataclass
 from contrib.ydb.tests.tools.fq_runner.fq_client import FederatedQueryClient
@@ -31,7 +32,7 @@ class S3:
 
 @pytest.fixture(scope="module")
 def s3(request) -> S3:
-    port_manager = yatest.common.network.PortManager()
+    port_manager = library.python.port_manager.PortManager()
     s3_port = port_manager.get_port()
     s3_url = "http://localhost:{port}".format(port=s3_port)
 
@@ -66,9 +67,9 @@ def stats_mode():
 @pytest.fixture
 def kikimr(request: pytest.FixtureRequest, s3: S3, yq_version: str, stats_mode: str):
     kikimr_extensions = [
+        AddFormatSizeLimitExtension(),
         AddInflightExtension(),
         AddDataInflightExtension(),
-        AddFormatSizeLimitExtension(),
         DefaultConfigExtension(s3.s3_url),
         YQv2Extension(yq_version),
         ComputeExtension(),

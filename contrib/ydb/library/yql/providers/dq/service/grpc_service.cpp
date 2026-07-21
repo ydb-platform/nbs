@@ -25,6 +25,7 @@
 #include <contrib/ydb/public/api/protos/ydb_status_codes.pb.h>
 
 #include <contrib/ydb/library/actors/interconnect/interconnect.h>
+#include <contrib/ydb/library/actors/core/subsystems/stats.h>
 #include <contrib/ydb/library/actors/helpers/future_callback.h>
 #include <library/cpp/build_info/build_info.h>
 #include <library/cpp/svnversion/svnversion.h>
@@ -116,7 +117,7 @@ namespace NYql::NDqs {
                 YQL_LOG_CTX_ROOT_SESSION_SCOPE(TraceId);
                 if (!CtxSubscribed) {
                     auto selfId = ctx.SelfID;
-                    auto* actorSystem = ctx.ExecutorThread.ActorSystem;
+                    auto* actorSystem = ctx.ActorSystem();
                     Ctx->GetFinishFuture().Subscribe([selfId, actorSystem](const NYdbGrpc::IRequestContextBase::TAsyncFinishResult& future) {
                         Y_ABORT_UNLESS(future.HasValue());
                         if (future.GetValue() == NYdbGrpc::IRequestContextBase::EFinishStatus::CANCEL) {
@@ -134,8 +135,7 @@ namespace NYql::NDqs {
             {
                 auto& result = ev->Get()->Record;
                 Yql::DqsProto::ExecuteQueryResult queryResult;
-                queryResult.Mutableresult()->CopyFrom(result.resultset());
-                queryResult.set_yson(result.yson());
+                queryResult.Mutablesample()->CopyFrom(result.sample());
 
                 auto statusCode = result.GetStatusCode();
                 // this code guarantees that query will be considered failed unless the status is SUCCESS
@@ -179,6 +179,7 @@ namespace NYql::NDqs {
                 operation.Mutableresult()->PackFrom(queryResult);
                 *operation.Mutableissues() = result.GetIssues();
                 ResponseBuffer.SetTruncated(result.GetTruncated());
+                ResponseBuffer.SetTimeout(result.GetTimeout());
 
                 Reply(Ydb::StatusIds::SUCCESS, statusCode > 1 || result.GetIssues().size() > 0);
             }
@@ -419,7 +420,7 @@ namespace NYql::NDqs {
                     Request->GetDiscard(),
                     GraphExecutionEventsActorId).Release());
                 auto controlId = Settings->EnableComputeActor.Get().GetOrElse(false) == false ? resultId
-                    :  RegisterChild(NYql::MakeTaskController(TraceId, ExecuterActorId, resultId, Settings, NYql::NCommon::TServiceCounters(Counters, nullptr, ""), TDuration::Seconds(5)).Release());
+                    :  RegisterChild(NYql::MakeTaskController(TraceId, ExecuterActorId, resultId, NActors::TActorId{}, Settings, NYql::NCommon::TServiceCounters(Counters, nullptr, ""), TDuration::Seconds(5)).Release());
                 Send(ExecuterActorId, MakeHolder<TEvGraphRequest>(
                     *Request,
                     controlId,
@@ -605,7 +606,7 @@ namespace NYql::NDqs {
 
             TExecutorThreadStats stat;
             TVector<TExecutorThreadStats> stats;
-            ActorSystem.GetPoolStats(0, poolStats, stats);
+            GetActorSystemStats(ActorSystem).GetPoolStats(0, poolStats, stats);
 
             for (const auto& s : stats) {
                 stat.Aggregate(s);
@@ -848,19 +849,6 @@ namespace NYql::NDqs {
             ctx->Reply(result, Ydb::StatusIds::SUCCESS);
             });
 */
-    }
-
-    void TDqsGrpcService::SetGlobalLimiterHandle(NYdbGrpc::TGlobalLimiter* limiter) {
-        Limiter = limiter;
-    }
-
-    bool TDqsGrpcService::IncRequest() {
-        return Limiter->Inc();
-    }
-
-    void TDqsGrpcService::DecRequest() {
-        Limiter->Dec();
-        Y_ASSERT(Limiter->GetCurrentInFlight() >= 0);
     }
 
     TFuture<void> TDqsGrpcService::Stop() {

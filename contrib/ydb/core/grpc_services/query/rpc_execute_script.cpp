@@ -9,7 +9,7 @@
 #include <contrib/ydb/core/grpc_services/grpc_integrity_trails.h>
 #include <contrib/ydb/core/kqp/common/kqp.h>
 #include <contrib/ydb/public/api/protos/ydb_query.pb.h>
-#include <contrib/ydb/public/lib/operation_id/operation_id.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/library/operation_id/operation_id.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
@@ -90,7 +90,7 @@ public:
         const auto& request = GetProtoRequest();
 
         if (request->operation_params().operation_mode() == Ydb::Operations::OperationParams::SYNC) {
-            issues.AddIssue("ExecuteScript must be asyncronous operation");
+            issues.AddIssue("ExecuteScript must be asynchronous operation");
             return Reply(Ydb::StatusIds::BAD_REQUEST, issues);
         }
 

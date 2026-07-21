@@ -7,8 +7,8 @@ import pytest
 import six
 import time
 
+from contrib.ydb.tests.library.common.helpers import plain_or_under_sanitizer
 from contrib.ydb.tests.tools.datastreams_helpers.test_yds_base import TestYdsBase
-import contrib.ydb.tests.library.common.yatest_common as yatest_common
 from contrib.ydb.tests.tools.fq_runner.fq_client import FederatedQueryClient
 from contrib.ydb.tests.tools.fq_runner.kikimr_runner import StreamingOverKikimr
 from contrib.ydb.tests.tools.fq_runner.kikimr_runner import StreamingOverKikimrConfig
@@ -54,8 +54,8 @@ def kikimr(request):
 
 def wait_until(
     predicate,
-    wait_time=yatest_common.plain_or_under_sanitizer(10, 50),
-    wait_step=yatest_common.plain_or_under_sanitizer(0.5, 2),
+    wait_time=plain_or_under_sanitizer(10, 50),
+    wait_step=plain_or_under_sanitizer(0.5, 2),
 ):
     deadline = time.time() + wait_time
     while time.time() < deadline:
@@ -282,6 +282,9 @@ class TestAlloc(TestYdsBase):
         query_id = client.create_query("simple", sql, type=fq.QueryContent.QueryType.STREAMING).result.query_id
 
         client.wait_query_status(query_id, fq.QueryMeta.RUNNING)
+        assert wait_until((lambda: kikimr.control_plane.get_task_count(1, query_id) > 0)), (
+            "TaskController not started " + query_id
+        )
 
         task_count = kikimr.control_plane.get_task_count(1, query_id)
         assert (
@@ -368,38 +371,11 @@ class TestAlloc(TestYdsBase):
             issues = query.transient_issue
             if len(issues) >= 1:
                 assert issues[0].message.startswith(
-                    "Mkql memory limit exceeded, limit: 1048576"
+                    "Mkql memory limit exceeded"
                 ), "Incorrect message text"
-                assert issues[0].message.endswith("canAllocateExtraMemory: 1"), "Incorrect settings"
-                assert issues[0].issue_code == 2029, "Incorrect issue code" + issues[0].message
+                assert issues[0].issue_code == 0, "Incorrect issue code" + issues[0].message
                 break
         else:
             assert False, "Memory limit was not reached"
 
         assert kikimr.control_plane.get_mkql_allocated(1) == 0, "Incorrect Alloc"
-
-    @pytest.mark.parametrize("kikimr", [(350 * K, 100 * M, 1 * K, 400 * K)], indirect=["kikimr"])
-    def test_hard_limit(self, kikimr):
-        kikimr.control_plane.wait_bootstrap(1)
-        assert kikimr.control_plane.get_mkql_limit(1) == kikimr.mkql_total_memory_limit, "Incorrect Limit"
-        assert kikimr.control_plane.get_mkql_allocated() == 0, "Incorrect Alloc"
-
-        client = FederatedQueryClient("my_folder@my_cloud", streaming_over_kikimr=kikimr)
-        sql = R'''
-            SELECT ListLast(ListCollect(ListFromRange(0, {n} + 1)))
-            '''
-        n = 1
-        for i in range(0, 10):
-            query_id = client.create_query(
-                "simple", sql.format(n=n), type=fq.QueryContent.QueryType.STREAMING
-            ).result.query_id
-            status = client.wait_query_status(query_id, [fq.QueryMeta.COMPLETED, fq.QueryMeta.FAILED])
-            if status == fq.QueryMeta.FAILED:
-                assert i > 1, "First queries must be successfull"
-                query = client.describe_query(query_id).result.query
-                describe_str = str(query)
-                assert "LIMIT_EXCEEDED" in describe_str
-                break
-            n = n * 10
-        else:
-            assert False, "Limit was NOT exceeded"

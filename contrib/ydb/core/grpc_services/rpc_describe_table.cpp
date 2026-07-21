@@ -34,8 +34,9 @@ class TDescribeTableRPC : public TRpcSchemeRequestActor<TDescribeTableRPC, TEvDe
         if (AppData()->AllowPrivateTableDescribeForTest) {
            return true;
         }
-        
-        if (path.EndsWith("/indexImplTable")) {
+
+        auto pathElements = ::NKikimr::SplitPath(path);
+        if (pathElements.size() != 0 && NTableIndex::IsImplTable(pathElements.back())) {
             return true;
         }
 
@@ -58,7 +59,7 @@ public:
         }
 
         auto navigate = MakeHolder<NSchemeCache::TSchemeCacheNavigate>();
-        navigate->DatabaseName = CanonizePath(Request_->GetDatabaseName().GetOrElse(""));
+        navigate->DatabaseName = Request_->GetDatabaseName().GetOrElse("");
         auto& entry = navigate->ResultSet.emplace_back();
         entry.Path = paths;
         entry.Operation = NSchemeCache::TSchemeCacheNavigate::OpList;
@@ -189,6 +190,12 @@ private:
                     return ReplyOnException(ex, "Unable to fill index description");
                 }
 
+                try {
+                    FillMultiColumnStatisticsDescription(describeTableResult, tableDescription);
+                } catch (const std::exception& ex) {
+                    return ReplyOnException(ex, "Unable to fill statistics description");
+                }
+
                 FillChangefeedDescription(describeTableResult, tableDescription);
 
                 if (GetProtoRequest()->include_table_stats()) {
@@ -257,7 +264,7 @@ private:
             return Reply(Ydb::StatusIds::UNAVAILABLE, ctx);
         }
 
-        ShardNodes = std::move(reply.ShardNodes);
+        ShardNodes = std::move(reply.ShardsToNodes);
 
         ProcessDescribeSchemeResult(PendingDescribeResult, ctx);
     }
@@ -297,6 +304,11 @@ private:
 
 void DoDescribeTableRequest(std::unique_ptr<IRequestOpCtx> p, const IFacilityProvider& f) {
     f.RegisterActor(new TDescribeTableRPC(p.release()));
+}
+
+template<>
+IActor* TEvDescribeTableRequest::CreateRpcActor(NKikimr::NGRpcService::IRequestOpCtx* msg) {
+    return new TDescribeTableRPC(msg);
 }
 
 } // namespace NKikimr

@@ -1,16 +1,20 @@
 #pragma once
-#include <contrib/ydb/core/tx/schemeshard/olap/columns/update.h>
-#include <contrib/ydb/core/tx/schemeshard/olap/indexes/update.h>
-#include <contrib/ydb/core/tx/schemeshard/olap/columns/schema.h>
-#include <contrib/ydb/core/tx/schemeshard/olap/indexes/schema.h>
-#include <contrib/ydb/core/tx/schemeshard/olap/options/schema.h>
 #include "update.h"
+
+#include <contrib/ydb/core/tx/schemeshard/olap/columns/schema.h>
+#include <contrib/ydb/core/tx/schemeshard/olap/columns/update.h>
+#include <contrib/ydb/core/tx/schemeshard/olap/indexes/schema.h>
+#include <contrib/ydb/core/tx/schemeshard/olap/indexes/update.h>
+#include <contrib/ydb/core/tx/schemeshard/olap/options/schema.h>
+
+namespace NKikimr::NSchemeShard {
+struct TOperationContext;
+}
 
 namespace NKikimr::NSchemeShard {
 
     class TOlapSchema {
     private:
-        YDB_READONLY_OPT(NKikimrSchemeOp::EColumnTableEngine, Engine);
         YDB_READONLY_DEF(TOlapColumnsDescription, Columns);
         YDB_READONLY_DEF(TOlapIndexesDescription, Indexes);
         YDB_READONLY_DEF(TOlapOptionsDescription, Options);
@@ -21,10 +25,12 @@ namespace NKikimr::NSchemeShard {
     public:
         bool Update(const TOlapSchemaUpdate& schemaUpdate, IErrorCollector& errors);
 
+        bool ParseFromProto(const NKikimrSchemeOp::TColumnTableSchema& tableSchema, IErrorCollector& errors, bool allowNullKeys);
         void ParseFromLocalDB(const NKikimrSchemeOp::TColumnTableSchema& tableSchema);
+        void ParseIndexesFromFullSchema(const NKikimrSchemeOp::TColumnTableSchema& tableSchema);
         void Serialize(NKikimrSchemeOp::TColumnTableSchema& tableSchema) const;
-        bool Validate(const NKikimrSchemeOp::TColumnTableSchema& opSchema, IErrorCollector& errors) const;
-        bool ValidateTtlSettings(const NKikimrSchemeOp::TColumnDataLifeCycle& ttlSettings, IErrorCollector& errors) const;
+        bool ValidateForStore(const NKikimrSchemeOp::TColumnTableSchema& opSchema, IErrorCollector& errors) const;
+        bool ValidateTtlSettings(const NKikimrSchemeOp::TColumnDataLifeCycle& ttlSettings, const TOperationContext& context, IErrorCollector& errors) const;
     };
 
     class TOlapStoreSchemaPreset: public TOlapSchema {

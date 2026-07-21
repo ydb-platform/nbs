@@ -8,10 +8,32 @@
 
 namespace NYql::NMatchRecognize {
 
-constexpr size_t MaxPatternNesting = 20; //Limit recursion for patterns
-constexpr size_t MaxPermutedItems = 6;
+enum class EAfterMatchSkipTo {
+    NextRow,
+    PastLastRow,
+    ToFirst,
+    ToLast,
+    To
+};
 
-//Mixin columns for calculating measures
+struct TAfterMatchSkipTo {
+    EAfterMatchSkipTo To;
+    TString Var;
+
+    [[nodiscard]] bool operator==(const TAfterMatchSkipTo&) const noexcept = default;
+};
+
+enum class ERowsPerMatch {
+    OneRow,
+    AllRows
+};
+enum class EOutputColumnSource {
+    PartitionKey,
+    Measure,
+    Other,
+};
+
+// Mixin columns for calculating measures
 enum class EMeasureInputDataSpecialColumns {
     Classifier = 0,
     MatchNumber = 1,
@@ -32,13 +54,13 @@ using TRowPatternPrimary = std::variant<TString, TRowPattern>;
 
 struct TRowPatternFactor {
     TRowPatternPrimary Primary;
-    uint64_t QuantityMin;
-    uint64_t QuantityMax;
+    ui64 QuantityMin;
+    ui64 QuantityMax;
     bool Greedy;
-    bool Output; //include in output with ALL ROW PER MATCH
+    bool Output; // include in output with ALL ROW PER MATCH
     bool Unused; // optimization flag; is true when the variable is not used in defines and measures
 };
 
 THashSet<TString> GetPatternVars(const TRowPattern&);
 
-}//namespace NYql::NMatchRecognize
+} // namespace NYql::NMatchRecognize

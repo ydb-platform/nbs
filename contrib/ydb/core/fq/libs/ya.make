@@ -23,12 +23,12 @@ RECURSE(
     logs
     metrics
     mock
-    pretty_printers
     private_client
     quota_manager
     rate_limiter
     read_rule
     result_formatter
+    row_dispatcher
     shared_resources
     signer
     tasks_packer

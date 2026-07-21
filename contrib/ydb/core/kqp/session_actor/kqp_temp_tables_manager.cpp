@@ -2,8 +2,9 @@
 
 #include <contrib/ydb/core/base/path.h>
 #include <contrib/ydb/core/kqp/gateway/actors/scheme.h>
-#include <contrib/ydb/core/tx/tx_proxy/proxy.h>
 #include <contrib/ydb/core/kqp/session_actor/kqp_worker_common.h>
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
+#include <contrib/ydb/core/tx/tx_proxy/proxy.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/event_pb.h>
@@ -58,13 +59,14 @@ public:
     {}
 
     void Bootstrap() {
-        if (TempTablesState.TempTables.empty()) {
+        if (!TempTablesState.NeedCleaning) {
+            AFL_ENSURE(TempTablesState.TempTables.empty());
             Finish();
             return;
         }
 
         PathsToTraverse.push_back(
-            NKikimr::SplitPath(GetSessionDirPath(Database, TempTablesState.SessionId)));
+            NKikimr::SplitPath(GetSessionDirPath(Database, TempTablesState.TempDirName)));
         TraverseNext();
         Become(&TKqpTempTablesManager::PathSearchState);
     }
@@ -98,6 +100,7 @@ private:
     void TraverseNext() {
         auto schemeCacheRequest = MakeHolder<NSchemeCache::TSchemeCacheNavigate>();
 
+        schemeCacheRequest->DatabaseName = Database;
         schemeCacheRequest->UserToken = UserToken;
         schemeCacheRequest->ResultSet.resize(PathsToTraverse.size());
 
@@ -105,7 +108,7 @@ private:
             DirsToDrop.push_back(PathsToTraverse[i]);
             schemeCacheRequest->ResultSet[i].Path = PathsToTraverse[i];
             schemeCacheRequest->ResultSet[i].Operation = NSchemeCache::TSchemeCacheNavigate::OpList;
-            schemeCacheRequest->ResultSet[i].SyncVersion = false;
+            schemeCacheRequest->ResultSet[i].SyncVersion = true;
             schemeCacheRequest->ResultSet[i].ShowPrivatePath = true;
         }
 
@@ -117,20 +120,23 @@ private:
     void HandleNavigate(TEvTxProxySchemeCache::TEvNavigateKeySetResult::TPtr& ev) {
         const NSchemeCache::TSchemeCacheNavigate* navigate = ev->Get()->Request.Get();
         if (navigate->ErrorCount != 0) {
-            Finish();
+            LOG_E(TStringBuilder() << "Navigate errors: " << navigate->ErrorCount);
         }
 
         for (const auto& entry : navigate->ResultSet) {
-            if (entry.ListNodeEntry) {
+            if (entry.ListNodeEntry && entry.Status == NSchemeCache::TSchemeCacheNavigate::EStatus::Ok) {
                 for (const auto& child : entry.ListNodeEntry->Children) {
                     if (child.Kind == NSchemeCache::TSchemeCacheNavigate::KindPath) {
                         PathsToTraverse.push_back(entry.Path);
                         PathsToTraverse.back().push_back(child.Name);
-                    } else if (child.Kind == NSchemeCache::TSchemeCacheNavigate::KindTable) {
+                    } else if (child.Kind == NSchemeCache::TSchemeCacheNavigate::KindTable
+                            || child.Kind == NSchemeCache::TSchemeCacheNavigate::KindColumnTable) {
                         TablesToDrop.push_back(entry.Path);
                         TablesToDrop.back().push_back(child.Name);
                     }
                 }
+            } else {
+                LOG_E(TStringBuilder() << "Navigate error. Entry: " << entry.ToString());
             }
         }
 
@@ -166,7 +172,7 @@ private:
             IActor* requestHandler = new TSchemeOpRequestHandler(ev.Release(), promise, true);
             RegisterWithSameMailbox(requestHandler);
 
-            auto actorSystem = TlsActivationContext->AsActorContext().ExecutorThread.ActorSystem;
+            auto actorSystem = TActivationContext::ActorSystem();
             auto selfId = SelfId();
             promise.GetFuture().Subscribe([actorSystem, selfId](const TFuture<IKqpGateway::TGenericResult>& future) {
                 auto ev = MakeHolder<TEvPrivate::TEvDropTableResult>();
@@ -216,7 +222,7 @@ private:
         IActor* requestHandler = new TSchemeOpRequestHandler(ev.Release(), promise, true);
         RegisterWithSameMailbox(requestHandler);
 
-        auto actorSystem = TlsActivationContext->AsActorContext().ExecutorThread.ActorSystem;
+        auto actorSystem = TActivationContext::ActorSystem();
         auto selfId = SelfId();
         promise.GetFuture().Subscribe([actorSystem, selfId](const TFuture<IKqpGateway::TGenericResult>& future) {
             auto ev = MakeHolder<TEvPrivate::TEvRemoveDirResult>();
@@ -228,6 +234,7 @@ private:
     void HandleRemoveDir(TEvPrivate::TEvRemoveDirResult::TPtr& result) {
         if (!result->Get()->Result.Success()) {
             Finish();
+            return;
         }
 
         RemoveNextDir();

@@ -1,30 +1,60 @@
-#include "schemeshard__operation_part.h"
 #include "schemeshard__operation_common.h"
-#include "schemeshard_impl.h"
-#include "schemeshard_path_element.h"
+#include "schemeshard__operation_part.h"
+#include "schemeshard_info_types.h"
 
 #include <contrib/ydb/core/base/path.h>
-#include <contrib/ydb/core/protos/flat_tx_scheme.pb.h>
 #include <contrib/ydb/core/protos/flat_scheme_op.pb.h>
+#include <contrib/ydb/core/protos/flat_tx_scheme.pb.h>
 
 #include <util/generic/algorithm.h>
 
-NKikimrSchemeOp::TModifyScheme CopyTableTask(NKikimr::NSchemeShard::TPath& src, NKikimr::NSchemeShard::TPath& dst, bool omitFollowers, bool isBackup) {
+static bool ShouldOmitAutomaticIndexProcessing(const NKikimrSchemeOp::TCopyTableConfig& descr) {
+    if (descr.GetOmitIndexes()) {
+        return true;  // User explicitly wants to skip indexes
+    }
+
+    if (!descr.GetIndexImplTableCdcStreams().empty()) {
+        return true;  // Incremental backup - manual handling required
+    }
+
+    return false;  // Regular copy - let CreateCopyTable handle indexes automatically
+}
+
+static NKikimrSchemeOp::TModifyScheme CopyAnyTableTask(NKikimr::NSchemeShard::TPath& src, NKikimr::NSchemeShard::TPath& dst, const NKikimrSchemeOp::TCopyTableConfig& descr) {
     using namespace NKikimr::NSchemeShard;
 
-    auto scheme = TransactionTemplate(dst.Parent().PathString(), NKikimrSchemeOp::EOperationType::ESchemeOpCreateTable);
+    auto scheme = TransactionTemplate(dst.Parent().PathString(), src->IsTable() ? NKikimrSchemeOp::EOperationType::ESchemeOpCreateTable : NKikimrSchemeOp::EOperationType::ESchemeOpCreateColumnTable);
     scheme.SetFailOnExist(true);
 
-    auto operation = scheme.MutableCreateTable();
-    operation->SetName(dst.LeafName());
-    operation->SetCopyFromTable(src.PathString());
-    operation->SetOmitFollowers(omitFollowers);
-    operation->SetIsBackup(isBackup);
+    if (src->IsTable()) {
+        auto operation = scheme.MutableCreateTable();
+        operation->SetName(dst.LeafName());
+        operation->SetCopyFromTable(src.PathString());
+        operation->SetOmitFollowers(descr.GetOmitFollowers());
+        operation->SetIsBackup(descr.GetIsBackup());
+        operation->SetAllowUnderSameOperation(descr.GetAllowUnderSameOperation());
+        operation->SetOmitIndexes(ShouldOmitAutomaticIndexProcessing(descr));
+        if (descr.HasCreateSrcCdcStream()) {
+            auto* coOp = scheme.MutableCreateCdcStream();
+            coOp->CopyFrom(descr.GetCreateSrcCdcStream());
+        }
+        if (descr.HasDropSrcCdcStream()) {
+            operation->MutableDropSrcCdcStream()->CopyFrom(descr.GetDropSrcCdcStream());
+        }
+        if (descr.HasTargetPathTargetState()) {
+            operation->SetPathState(descr.GetTargetPathTargetState());
+        }
+    } else {
+        auto operation = scheme.MutableCreateColumnTable();
+        operation->SetName(dst.LeafName());
+        operation->SetCopyFromTable(src.PathString());
+        operation->SetIsBackup(descr.GetIsBackup());
+    }
 
     return scheme;
 }
 
-NKikimrSchemeOp::TModifyScheme CreateIndexTask(NKikimr::NSchemeShard::TTableIndexInfo::TPtr indexInfo, NKikimr::NSchemeShard::TPath& dst) {
+static std::optional<NKikimrSchemeOp::TModifyScheme> CreateIndexTask(NKikimr::NSchemeShard::TTableIndexInfo::TPtr indexInfo, NKikimr::NSchemeShard::TPath& dst) {
     using namespace NKikimr::NSchemeShard;
 
     auto scheme = TransactionTemplate(dst.Parent().PathString(), NKikimrSchemeOp::EOperationType::ESchemeOpCreateTableIndex);
@@ -32,8 +62,9 @@ NKikimrSchemeOp::TModifyScheme CreateIndexTask(NKikimr::NSchemeShard::TTableInde
 
     auto operation = scheme.MutableCreateTableIndex();
     operation->SetName(dst.LeafName());
-
     operation->SetType(indexInfo->Type);
+    operation->SetState(indexInfo->State);
+
     for (const auto& keyName: indexInfo->IndexKeys) {
         *operation->MutableKeyColumnNames()->Add() = keyName;
     }
@@ -42,19 +73,75 @@ NKikimrSchemeOp::TModifyScheme CreateIndexTask(NKikimr::NSchemeShard::TTableInde
         *operation->MutableDataColumnNames()->Add() = dataColumn;
     }
 
+    switch (indexInfo->Type) {
+        case NKikimrSchemeOp::EIndexTypeGlobal:
+        case NKikimrSchemeOp::EIndexTypeGlobalAsync:
+        case NKikimrSchemeOp::EIndexTypeGlobalUnique:
+        case NKikimrSchemeOp::EIndexTypeLocalMinMax:
+        case NKikimrSchemeOp::EIndexTypeLocalCountMinSketch:
+            // no specialized index description
+            Y_ASSERT(std::holds_alternative<std::monostate>(indexInfo->SpecializedIndexDescription));
+            break;
+        case NKikimrSchemeOp::EIndexTypeGlobalJson:
+        case NKikimrSchemeOp::EIndexTypeGlobalJsonCompact:
+            // JSON indexes carry a fulltext description only in rowid mode (__ydb_row_id as doc_id).
+            if (const auto* ft = std::get_if<NKikimrSchemeOp::TFulltextIndexDescription>(&indexInfo->SpecializedIndexDescription)) {
+                *operation->MutableFulltextIndexDescription() = *ft;
+            } else {
+                Y_ASSERT(std::holds_alternative<std::monostate>(indexInfo->SpecializedIndexDescription));
+            }
+            break;
+        case NKikimrSchemeOp::EIndexTypeGlobalVectorKmeansTree:
+            *operation->MutableVectorIndexKmeansTreeDescription() =
+                std::get<NKikimrSchemeOp::TVectorIndexKmeansTreeDescription>(indexInfo->SpecializedIndexDescription);
+            break;
+        case NKikimrSchemeOp::EIndexTypeGlobalFulltextPlain:
+        case NKikimrSchemeOp::EIndexTypeGlobalFulltextRelevance:
+        case NKikimrSchemeOp::EIndexTypeGlobalFulltextCompact:
+        case NKikimrSchemeOp::EIndexTypeGlobalFulltextCompactRelevance:
+            *operation->MutableFulltextIndexDescription() =
+                std::get<NKikimrSchemeOp::TFulltextIndexDescription>(indexInfo->SpecializedIndexDescription);
+            break;
+        case NKikimrSchemeOp::EIndexTypeLocalBloomFilter:
+            *operation->MutableBloomFilterDescription() =
+                std::get<NKikimrSchemeOp::TBloomFilter>(indexInfo->SpecializedIndexDescription);
+            break;
+        case NKikimrSchemeOp::EIndexTypeLocalBloomNgramFilter:
+            *operation->MutableBloomNGrammFilterDescription() =
+                std::get<NKikimrSchemeOp::TBloomNGrammFilter>(indexInfo->SpecializedIndexDescription);
+            break;
+        default:
+            return {}; // reject
+    }
+
     return scheme;
+}
+
+static NKikimr::NSchemeShard::ISubOperation::TPtr CreateCopyAnyTable(
+        const NKikimr::NSchemeShard::TPath& srcPath, NKikimr::NSchemeShard::TOperationId id, const NKikimr::NSchemeShard::TTxTransaction& tx,
+        const THashSet<TString>& localSequences = { }, TMaybe<NKikimr::NSchemeShard::TPathElement::EPathState> targetState = {}) {
+    if (srcPath->IsTable()) {
+        return NKikimr::NSchemeShard::CreateCopyTable(id, tx, localSequences, targetState);
+    }
+    return NKikimr::NSchemeShard::CreateReadOnlyCopyColumnTable(id, tx);
 }
 
 namespace NKikimr::NSchemeShard {
 
-TVector<ISubOperation::TPtr> CreateConsistentCopyTables(TOperationId nextId, const TTxTransaction& tx, TOperationContext& context) {
+bool CreateConsistentCopyTables(
+    TOperationId nextId,
+    const TTxTransaction& tx,
+    TOperationContext& context,
+    TVector<ISubOperation::TPtr>& result)
+{
     Y_ABORT_UNLESS(tx.GetOperationType() == NKikimrSchemeOp::EOperationType::ESchemeOpCreateConsistentCopyTables);
 
     const auto& op = tx.GetCreateConsistentCopyTables();
 
     if (0 == op.CopyTableDescriptionsSize()) {
         TString msg = TStringBuilder() << "no task to do, empty list CopyTableDescriptions";
-        return {CreateReject(nextId, NKikimrScheme::EStatus::StatusInvalidParameter, msg)};
+        result = {CreateReject(nextId, NKikimrScheme::EStatus::StatusInvalidParameter, msg)};
+        return false;
     }
 
     TPath firstPath = TPath::Resolve(op.GetCopyTableDescriptions(0).GetSrcPath(), context.SS);
@@ -66,7 +153,8 @@ TVector<ISubOperation::TPtr> CreateConsistentCopyTables(TOperationId nextId, con
             .IsAtLocalSchemeShard();
 
         if (!checks) {
-            return {CreateReject(nextId, checks.GetStatus(), checks.GetError())};
+            result = {CreateReject(nextId, checks.GetStatus(), checks.GetError())};
+            return false;
         }
     }
 
@@ -80,64 +168,117 @@ TVector<ISubOperation::TPtr> CreateConsistentCopyTables(TOperationId nextId, con
         : limits.MaxConsistentCopyTargets;
 
     if (op.CopyTableDescriptionsSize() > limit) {
-        return {CreateReject(nextId, NKikimrScheme::EStatus::StatusInvalidParameter, TStringBuilder()
+        result = {CreateReject(nextId, NKikimrScheme::EStatus::StatusInvalidParameter, TStringBuilder()
             << "Consistent copy object count limit exceeded"
                 << ", limit: " << limit
                 << ", objects: " << op.CopyTableDescriptionsSize()
         )};
+        return false;
     }
 
     TString errStr;
     if (!context.SS->CheckApplyIf(tx, errStr)) {
-        return {CreateReject(nextId, NKikimrScheme::EStatus::StatusPreconditionFailed, errStr)};
+        result = {CreateReject(nextId, NKikimrScheme::EStatus::StatusPreconditionFailed, errStr)};
+        return false;
     }
-
-    TVector<ISubOperation::TPtr> result;
 
     for (const auto& descr: op.GetCopyTableDescriptions()) {
         const auto& srcStr = descr.GetSrcPath();
         const auto& dstStr = descr.GetDstPath();
 
         TPath srcPath = TPath::Resolve(srcStr, context.SS);
+
         {
             TPath::TChecker checks = srcPath.Check();
             checks.IsResolved()
                   .NotDeleted()
-                  .IsTable()
-                  .IsCommonSensePath()
-                  .IsTheSameDomain(firstPath);
+                  .Or(&TPath::TChecker::IsColumnTable, &TPath::TChecker::IsTable);
+
+            // Allow copying index impl tables when feature flag is enabled
+            if (!srcPath.ShouldSkipCommonPathCheckForIndexImplTable()) {
+                checks.IsCommonSensePath();
+            }
+
+            checks.IsTheSameDomain(firstPath);
 
             if (!checks) {
-                return {CreateReject(nextId, checks.GetStatus(), checks.GetError())};
+                result = {CreateReject(nextId, checks.GetStatus(), checks.GetError())};
+                return false;
             }
         }
 
         TPath dstPath = TPath::Resolve(dstStr, context.SS);
         TPath dstParentPath = dstPath.Parent();
 
-        THashSet<TString> sequences;
-        for (const auto& child: srcPath.Base()->GetChildren()) {
-            auto name = child.first;
-            auto pathId = child.second;
+        THashSet<TString> sequences = GetLocalSequences(context, srcPath);
 
-            TPath childPath = srcPath.Child(name);
-            if (!childPath.IsSequence() || childPath.IsDeleted()) {
-                continue;
-            }
-
-            Y_ABORT_UNLESS(childPath.Base()->PathId == pathId);
-
-            TSequenceInfo::TPtr sequenceInfo = context.SS->Sequences.at(pathId);
-            const auto& sequenceDesc = sequenceInfo->Description;
-            const auto& sequenceName = sequenceDesc.GetName();
-
-            sequences.emplace(sequenceName);
+        if (descr.HasTargetPathTargetState()) {
+            result.push_back(CreateCopyAnyTable(
+                                srcPath,
+                                NextPartId(nextId, result),
+                                CopyAnyTableTask(srcPath, dstPath, descr),
+                                sequences,
+                                descr.GetTargetPathTargetState()));
+        } else {
+            result.push_back(CreateCopyAnyTable(
+                                srcPath,
+                                NextPartId(nextId, result),
+                                CopyAnyTableTask(srcPath, dstPath, descr),
+                                sequences));
         }
 
-        result.push_back(CreateCopyTable(NextPartId(nextId, result),
-            CopyTableTask(srcPath, dstPath, descr.GetOmitFollowers(), descr.GetIsBackup()), sequences));
+        // Log information about the table being copied
+        LOG_TRACE_S(context.Ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
+            "CreateConsistentCopyTables: Processing table"
+            << ", srcPath: " << srcPath.PathString()
+            << ", dstPath: " << dstPath.PathString()
+            << ", pathId: " << srcPath.Base()->PathId
+            << ", childrenCount: " << srcPath.Base()->GetChildren().size()
+            << ", omitIndexes: " << descr.GetOmitIndexes());
 
-        TVector<NKikimrSchemeOp::TSequenceDescription> sequenceDescriptions;
+        // Log table info if available
+        if (context.SS->Tables.contains(srcPath.Base()->PathId)) {
+            TTableInfo::TPtr tableInfo = context.SS->Tables.at(srcPath.Base()->PathId);
+            const auto& tableDesc = tableInfo->TableDescription;
+            LOG_TRACE_S(context.Ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
+                "CreateConsistentCopyTables: Table info"
+                << ", tableIndexesSize: " << tableDesc.TableIndexesSize()
+                << ", isBackup: " << tableInfo->IsBackup);
+
+            for (size_t i = 0; i < static_cast<size_t>(tableDesc.TableIndexesSize()); ++i) {
+                const auto& indexDesc = tableDesc.GetTableIndexes(i);
+                LOG_TRACE_S(context.Ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
+                    "CreateConsistentCopyTables: Table has index in description"
+                    << ", indexName: " << indexDesc.GetName()
+                    << ", indexType: " << NKikimrSchemeOp::EIndexType_Name(indexDesc.GetType()));
+            }
+        }
+
+        // Log column table info if available
+        if (context.SS->ColumnTables.contains(srcPath.Base()->PathId)) {
+            TColumnTableInfo::TPtr tableInfo = context.SS->ColumnTables.at(srcPath.Base()->PathId).GetPtr();
+            const auto& tableDesc = tableInfo->Description;
+            LOG_TRACE_S(context.Ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
+                "CreateConsistentCopyTables: Column Table info"
+                << ", isBackup: " << tableDesc.GetIsBackup());
+        }
+
+        // Log all children
+        for (const auto& child: srcPath.Base()->GetChildren()) {
+            const auto& name = child.first;
+            const auto& pathId = child.second;
+            TPath childPath = srcPath.Child(name);
+
+            LOG_TRACE_S(context.Ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
+                "CreateConsistentCopyTables: Child found"
+                << ", name: " << name
+                << ", pathId: " << pathId
+                << ", isResolved: " << childPath.IsResolved()
+                << ", isDeleted: " << childPath.IsDeleted()
+                << ", isSequence: " << childPath.IsSequence()
+                << ", isTableIndex: " << childPath.IsTableIndex());
+        }
+
         for (const auto& child: srcPath.Base()->GetChildren()) {
             const auto& name = child.first;
             const auto& pathId = child.second;
@@ -146,52 +287,153 @@ TVector<ISubOperation::TPtr> CreateConsistentCopyTables(TOperationId nextId, con
             TPath dstIndexPath = dstPath.Child(name);
 
             if (srcIndexPath.IsDeleted()) {
+                LOG_TRACE_S(context.Ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
+                    "CreateConsistentCopyTables: Skipping deleted child: " << name);
                 continue;
             }
 
             if (srcIndexPath.IsSequence()) {
-                TSequenceInfo::TPtr sequenceInfo = context.SS->Sequences.at(pathId);
-                const auto& sequenceDesc = sequenceInfo->Description;
-                sequenceDescriptions.push_back(sequenceDesc);
+                LOG_TRACE_S(context.Ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
+                    "CreateConsistentCopyTables: Skipping sequence child: " << name);
                 continue;
             }
 
             if (descr.GetOmitIndexes()) {
+                LOG_TRACE_S(context.Ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
+                    "CreateConsistentCopyTables: Skipping due to OmitIndexes: " << name);
                 continue;
             }
 
             if (!srcIndexPath.IsTableIndex()) {
+                LOG_TRACE_S(context.Ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
+                    "CreateConsistentCopyTables: Skipping non-index child: " << name);
                 continue;
             }
 
             Y_ABORT_UNLESS(srcIndexPath.Base()->PathId == pathId);
-            Y_VERIFY_S(srcIndexPath.Base()->GetChildren().size() == 1, srcIndexPath.PathString() << " has children " << srcIndexPath.Base()->GetChildren().size() << " but 1 expected");
-
             TTableIndexInfo::TPtr indexInfo = context.SS->Indexes.at(pathId);
-            result.push_back(CreateNewTableIndex(NextPartId(nextId, result), CreateIndexTask(indexInfo, dstIndexPath)));
+            if (indexInfo->State != NKikimrSchemeOp::EIndexState::EIndexStateReady) {
+                LOG_TRACE_S(context.Ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
+                    "CreateConsistentCopyTables: Skipping a non-ready index " << name << " in state " << indexInfo->State);
+                continue;
+            }
 
-            TString srcImplTableName = srcIndexPath.Base()->GetChildren().begin()->first;
-            TPath srcImplTable = srcIndexPath.Child(srcImplTableName);
-            Y_ABORT_UNLESS(srcImplTable.Base()->PathId == srcIndexPath.Base()->GetChildren().begin()->second);
-            TPath dstImplTable = dstIndexPath.Child(srcImplTableName);
+            LOG_TRACE_S(context.Ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
+                "CreateConsistentCopyTables: Creating index copy operation for: " << name);
 
-            result.push_back(CreateCopyTable(NextPartId(nextId, result),
-                CopyTableTask(srcImplTable, dstImplTable, descr.GetOmitFollowers(), descr.GetIsBackup())));
+            auto scheme = CreateIndexTask(indexInfo, dstIndexPath);
+            if (!scheme) {
+                result = {CreateReject(nextId, NKikimrScheme::EStatus::StatusInvalidParameter,
+                                       TStringBuilder{} << "Consistent copy table doesn't support table with index type " << indexInfo->Type)};
+                return false;
+            }
+            scheme->SetInternal(tx.GetInternal());
+            if (TTableIndexInfo::IsLocalIndex(indexInfo->Type)) {
+                // Column tables use the OLAP local-index op; row tables use the generic one.
+                if (srcPath.Base()->IsColumnTable()) {
+                    result.push_back(CreateNewColumnTableLocalIndex(NextPartId(nextId, result), *scheme));
+                } else {
+                    result.push_back(CreateNewTableIndex(NextPartId(nextId, result), *scheme));
+                }
+                continue; // local indexes have no impl tables
+            } else {
+                result.push_back(CreateNewTableIndex(NextPartId(nextId, result), *scheme));
+            }
+
+            for (const auto& [srcImplTableName, srcImplTablePathId] : srcIndexPath.Base()->GetChildren()) {
+                TPath srcImplTable = srcIndexPath.Child(srcImplTableName);
+                if (srcImplTable.IsDeleted()) {
+                    LOG_TRACE_S(context.Ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
+                        "CreateConsistentCopyTables: Skipping deleted index impl child: " << srcImplTableName);
+                    continue;
+                }
+                Y_ABORT_UNLESS(srcImplTable.Base()->PathId == srcImplTablePathId);
+                TPath dstImplTable = dstIndexPath.Child(srcImplTableName);
+
+                LOG_TRACE_S(context.Ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
+                    "CreateConsistentCopyTables: Creating index impl table copy"
+                    << ", srcImplTable: " << srcImplTable.PathString()
+                    << ", dstImplTable: " << dstImplTable.PathString());
+
+                NKikimrSchemeOp::TCopyTableConfig indexDescr;
+
+                indexDescr.SetOmitFollowers(descr.GetOmitFollowers());
+                indexDescr.SetIsBackup(descr.GetIsBackup());
+                indexDescr.SetAllowUnderSameOperation(descr.GetAllowUnderSameOperation());
+
+                if (descr.HasTargetPathTargetState()) {
+                    indexDescr.SetTargetPathTargetState(descr.GetTargetPathTargetState());
+                }
+
+                indexDescr.SetOmitIndexes(true);
+
+                const TString key = TStringBuilder() << name << '/' << srcImplTableName;
+                auto itCreate = descr.GetIndexImplTableCdcStreams().find(key);
+                if (itCreate != descr.GetIndexImplTableCdcStreams().end()) {
+                    indexDescr.MutableCreateSrcCdcStream()->CopyFrom(itCreate->second);
+                }
+
+                auto itDrop = descr.GetIndexImplTableDropCdcStreams().find(key);
+                if (itDrop != descr.GetIndexImplTableDropCdcStreams().end()) {
+                    indexDescr.MutableDropSrcCdcStream()->CopyFrom(itDrop->second);
+                }
+
+                result.push_back(CreateCopyAnyTable(srcImplTable, NextPartId(nextId, result),
+                    CopyAnyTableTask(srcImplTable, dstImplTable, indexDescr), GetLocalSequences(context, srcImplTable)));
+                AddCopySequences(nextId, tx, context, result, srcImplTable, dstImplTable.PathString());
+            }
         }
 
-        for (auto&& sequenceDescription : sequenceDescriptions) {
-            auto scheme = TransactionTemplate(
-                dstPath.PathString(),
-                NKikimrSchemeOp::EOperationType::ESchemeOpCreateSequence);
-            scheme.SetFailOnExist(true);
+        AddCopySequences(nextId, tx, context, result, srcPath, dstPath.PathString());
+    }
+
+    return true;
+}
+
+THashSet<TString> GetLocalSequences(TOperationContext& context, const TPath& srcPath) {
+    THashSet<TString> sequences;
+    for (const auto& [name, pathId] : srcPath.Base()->GetChildren()) {
+        TPath childPath = srcPath.Child(name);
+        if (!childPath.IsSequence() || childPath.IsDeleted()) {
+            continue;
+        }
+
+        Y_ABORT_UNLESS(childPath.Base()->PathId == pathId);
+
+        TSequenceInfo::TPtr sequenceInfo = context.SS->Sequences.at(pathId);
+        const auto& sequenceDesc = sequenceInfo->Description;
+        const auto& sequenceName = sequenceDesc.GetName();
+
+        sequences.emplace(sequenceName);
+    }
+    return sequences;
+}
+
+void AddCopySequences(TOperationId nextId, const TTxTransaction& tx, TOperationContext& context,
+    TVector<ISubOperation::TPtr>& result, const TPath& srcTable, const TString& dstPath)
+{
+    for (const auto& [subName, subPathId] : srcTable.Base()->GetChildren()) {
+        TPath subPath = srcTable.Child(subName);
+        if (subPath.IsSequence() && !subPath.IsDeleted()) {
+            TSequenceInfo::TPtr sequenceInfo = context.SS->Sequences.at(subPathId);
+            const auto& sequenceDesc = sequenceInfo->Description;
+
+            auto scheme = TransactionTemplate(dstPath, NKikimrSchemeOp::EOperationType::ESchemeOpCreateSequence);
+            scheme.SetFailOnExist(tx.GetFailOnExist());
 
             auto* copySequence = scheme.MutableCopySequence();
-            copySequence->SetCopyFrom(srcPath.PathString() + "/" + sequenceDescription.GetName());
-            *scheme.MutableSequence() = std::move(sequenceDescription);
+            copySequence->SetCopyFrom(subPath.PathString());
+            *scheme.MutableSequence() = sequenceDesc;
 
             result.push_back(CreateCopySequence(NextPartId(nextId, result), scheme));
         }
     }
+}
+
+TVector<ISubOperation::TPtr> CreateConsistentCopyTables(TOperationId nextId, const TTxTransaction& tx, TOperationContext& context) {
+    TVector<ISubOperation::TPtr> result;
+
+    CreateConsistentCopyTables(nextId, tx, context, result);
 
     return result;
 }

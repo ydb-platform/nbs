@@ -1,9 +1,9 @@
 #include "grpc_pq_clusters_updater_actor.h"
 
 #include <contrib/ydb/core/base/appdata.h>
-#include <contrib/ydb/core/persqueue/pq_database.h>
+#include <contrib/ydb/core/persqueue/public/pq_database.h>
 #include <contrib/ydb/library/mkql_proto/protos/minikql.pb.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_result/result.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/result/result.h>
 
 namespace NKikimr {
 namespace NGRpcProxy {
@@ -11,8 +11,9 @@ namespace NGRpcProxy {
 static const int CLUSTERS_UPDATER_TIMEOUT_ON_ERROR = 1;
 
 
-TClustersUpdater::TClustersUpdater(IPQClustersUpdaterCallback* callback)
+TClustersUpdater::TClustersUpdater(IPQClustersUpdaterCallback* callback, TStatus::TPtr& status)
     : Callback(callback)
+    , Status(status)
     {};
 
 void TClustersUpdater::Bootstrap(const NActors::TActorContext& ctx) {
@@ -34,16 +35,22 @@ void TClustersUpdater::Handle(TEvPQClustersUpdater::TEvUpdateClusters::TPtr&, co
     ctx.Send(NKqp::MakeKqpProxyID(ctx.SelfID.NodeId()), req.Release());
 }
 
-void TClustersUpdater::Handle(NNetClassifier::TEvNetClassifier::TEvClassifierUpdate::TPtr& ev, const TActorContext&) {
+void TClustersUpdater::Handle(NNetClassifier::TEvNetClassifier::TEvClassifierUpdate::TPtr& ev, const TActorContext& ctx) {
+    TGuard<TSpinLock> guard(Status->Lock);
+    if (!Status->Running) {
+        return Die(ctx);
+    }
 
     Callback->NetClassifierUpdated(ev->Get()->Classifier);
 }
 
-
-
-
 void TClustersUpdater::Handle(NKqp::TEvKqp::TEvQueryResponse::TPtr &ev, const TActorContext &ctx) {
-    auto& record = ev->Get()->Record.GetRef();
+    TGuard<TSpinLock> guard(Status->Lock);
+    if (!Status->Running) {
+        return Die(ctx);
+    }
+
+    auto& record = ev->Get()->Record;
 
     if (record.GetYdbStatus() == Ydb::StatusIds::SUCCESS) {
         bool local = false;

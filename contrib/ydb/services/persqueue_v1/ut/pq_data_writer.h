@@ -3,7 +3,7 @@
 #include <contrib/ydb/core/testlib/test_pq_client.h>
 #include <contrib/ydb/public/api/grpc/draft/ydb_persqueue_v1.grpc.pb.h>
 #include <contrib/ydb/public/api/protos/persqueue_error_codes_v1.pb.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_persqueue_core/ut/ut_utils/test_server.h>
+#include <contrib/ydb/public/sdk/cpp/src/client/persqueue_public/ut/ut_utils/test_server.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -16,6 +16,7 @@ public:
     TPQDataWriter(const TString& sourceId, NPersQueue::TTestServer& server, const TString& testTopicPath = "topic1")
         : SourceId_(sourceId)
         , Port_(server.GrpcPort)
+        , Database("/" + server.ServerSettings.DomainName)
         , Client(*server.AnnoyingClient)
         , Runtime(server.CleverServer->GetRuntime())
     {
@@ -28,6 +29,7 @@ public:
         Y_UNUSED(Runtime); //TODO: use them to restart PERSQUEUE tablets
 
         grpc::ClientContext context;
+        context.AddMetadata("x-ydb-database", Database);
 
         if (!ticket.empty())
             context.AddMetadata("x-ydb-auth-ticket", ticket);
@@ -230,6 +232,7 @@ public:
 private:
     ui32 WriteImpl(const TString& topic, const TVector<TString>& data, bool error, const TMaybe<TString>& ticket) {
         grpc::ClientContext context;
+        context.AddMetadata("x-ydb-database", Database);
 
         if (ticket)
             context.AddMetadata("x-ydb-auth-ticket", *ticket);
@@ -365,6 +368,7 @@ private:
 private:
     const TString SourceId_;
     const ui16 Port_;
+    const TString Database;
 
     TFlatMsgBusPQClient& Client;
     TTestActorRuntime *Runtime;

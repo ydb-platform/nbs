@@ -150,7 +150,7 @@ namespace boost { namespace locale {
     template<typename CharType, typename CodecvtImpl, int CharSize = sizeof(CharType)>
     class generic_codecvt;
 
-    /// \brief UTF-16 to/from UTF-8 codecvt facet to use with char16_t or wchar_t on Windows
+    /// \brief UTF-16 to/from narrow char codecvt facet to use with char16_t or wchar_t on Windows
     ///
     /// Note in order to fit the requirements of usability by std::wfstream it uses mbstate_t
     /// to handle intermediate states in handling of variable length UTF-16 sequences
@@ -214,9 +214,8 @@ namespace boost { namespace locale {
             // mbstate_t is POD type and should be initialized to 0 (i.a. state = stateT())
             // according to standard. We use it to keep a flag 0/1 for surrogate pair writing
             //
-            // if 0/false no codepoint above >0xFFFF observed, else a codepoint above 0xFFFF was observed
-            // and first pair is written, but no input consumed
-            bool state = *reinterpret_cast<char*>(&std_state) != 0;
+            // If true then only the high surrogate of a codepoint > 0xFFFF was written, but no input consumed.
+            bool low_surrogate_pending = *reinterpret_cast<char*>(&std_state) != 0;
             auto cvt_state = implementation().initial_state(to_unicode_state);
             while(to < to_end && from < from_end) {
                 const char* from_saved = from;
@@ -237,31 +236,29 @@ namespace boost { namespace locale {
                 if(ch <= 0xFFFF)
                     *to++ = static_cast<uchar>(ch);
                 else {
-                    // For other codepoints we do the following
+                    // For other codepoints we can't consume our input as we may find ourselves in a state
+                    // where all input is consumed but not all output written, i.e. only the high surrogate is written.
                     //
-                    // 1. We can't consume our input as we may find ourselves
-                    //    in state where all input consumed but not all output written,i.e. only
-                    //    1st pair is written
-                    // 2. We only write first pair and mark this in the state, we also revert back
-                    //    the from pointer in order to make sure this codepoint would be read
-                    //    once again and then we would consume our input together with writing
-                    //    second surrogate pair
+                    // So we write only the high surrogate and mark this in the state.
+                    // We also set the from pointer to the previous position, i.e. don't consume the input, so this
+                    // codepoint will be read again and then we will consume our input together with writing the low
+                    // surrogate.
                     ch -= 0x10000;
-                    std::uint16_t w1 = static_cast<std::uint16_t>(0xD800 | (ch >> 10));
-                    std::uint16_t w2 = static_cast<std::uint16_t>(0xDC00 | (ch & 0x3FF));
-                    if(!state) {
+                    const std::uint16_t w1 = static_cast<std::uint16_t>(0xD800 | (ch >> 10));
+                    const std::uint16_t w2 = static_cast<std::uint16_t>(0xDC00 | (ch & 0x3FF));
+                    if(!low_surrogate_pending) {
                         from = from_saved;
                         *to++ = w1;
                     } else
                         *to++ = w2;
-                    state = !state;
+                    low_surrogate_pending = !low_surrogate_pending;
                 }
             }
             from_next = from;
             to_next = to;
-            if(r == std::codecvt_base::ok && (from != from_end || state))
+            if(r == std::codecvt_base::ok && (from != from_end || low_surrogate_pending))
                 r = std::codecvt_base::partial;
-            *reinterpret_cast<char*>(&std_state) = state;
+            *reinterpret_cast<char*>(&std_state) = low_surrogate_pending;
             return r;
         }
 
@@ -344,7 +341,7 @@ namespace boost { namespace locale {
         }
     };
 
-    /// \brief UTF-32 to/from UTF-8 codecvt facet to use with char32_t or wchar_t on POSIX platforms
+    /// \brief UTF-32 to/from narrow char codecvt facet to use with char32_t or wchar_t on POSIX platforms
     ///
     /// Its member functions implement standard virtual functions of basic codecvt.
     /// mbstate_t is not used for UTF-32 handling due to fixed length encoding
@@ -456,11 +453,11 @@ namespace boost { namespace locale {
         }
     };
 
-    template<typename CharType, typename CodecvtImpl>
-    class generic_codecvt<CharType, CodecvtImpl, 1> : public std::codecvt<CharType, char, std::mbstate_t>,
-                                                      public generic_codecvt_base {
+    template<typename CodecvtImpl>
+    class generic_codecvt<char, CodecvtImpl, 1> : public std::codecvt<char, char, std::mbstate_t>,
+                                                  public generic_codecvt_base {
     public:
-        typedef CharType uchar;
+        typedef char uchar;
 
         const CodecvtImpl& implementation() const { return *static_cast<const CodecvtImpl*>(this); }
 

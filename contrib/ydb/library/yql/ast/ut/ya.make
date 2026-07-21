@@ -1,7 +1,5 @@
 UNITTEST_FOR(contrib/ydb/library/yql/ast)
 
-TAG(ya:manual)
-
 FORK_SUBTESTS()
 
 SRCS(
@@ -10,9 +8,11 @@ SRCS(
     yql_expr_builder_ut.cpp
     yql_expr_ut.cpp
     yql_type_string_ut.cpp
+    yql_constraint_ut.cpp
 )
 
 PEERDIR(
+    library/cpp/yson/node
 )
 
 END()

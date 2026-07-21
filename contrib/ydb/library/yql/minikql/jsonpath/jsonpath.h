@@ -2,23 +2,19 @@
 
 #include "executor.h"
 
+#include <contrib/ydb/library/yql/minikql/jsonpath/parser/parser.h>
+
 #include <contrib/ydb/library/yql/public/udf/udf_value.h>
 #include <contrib/ydb/library/yql/public/udf/udf_value_builder.h>
 
 namespace NYql::NJsonPath {
 
-const TAstNodePtr ParseJsonPathAst(const TStringBuf path, TIssues& issues, size_t maxParseErrors);
-
-const TJsonPathPtr PackBinaryJsonPath(const TAstNodePtr ast, TIssues& issues);
-
-const TJsonPathPtr ParseJsonPath(const TStringBuf path, TIssues& issues, size_t maxParseErrors);
-
 TVariablesMap DictToVariables(const NUdf::TUnboxedValue& dict);
 
 TResult ExecuteJsonPath(
-    const TJsonPathPtr jsonPath,
+    TJsonPathPtr jsonPath,
     const TValue& json,
     const TVariablesMap& variables,
     const NUdf::IValueBuilder* valueBuilder);
 
-}
+} // namespace NYql::NJsonPath

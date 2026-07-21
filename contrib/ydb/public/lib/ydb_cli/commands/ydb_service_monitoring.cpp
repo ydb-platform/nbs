@@ -1,7 +1,8 @@
 #include "ydb_service_monitoring.h"
 
 #include <contrib/ydb/public/api/grpc/ydb_monitoring_v1.grpc.pb.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_proto/accessor.h>
+#include <contrib/ydb/public/lib/ydb_cli/common/colors.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/proto/accessor.h>
 
 namespace NYdb {
 namespace NConsoleClient {
@@ -17,42 +18,59 @@ TCommandSelfCheck::TCommandSelfCheck()
 {}
 
 void TCommandSelfCheck::Config(TConfig& config) {
+    config.AllowEmptyDatabase = true;
+
     TYdbSimpleCommand::Config(config);
     config.SetFreeArgsNum(0);
 
-    AddFormats(config, { EOutputFormat::Pretty, EOutputFormat::Json });
+    AddOutputFormats(config, { EDataFormat::Pretty, EDataFormat::Json });
 
     config.Opts->AddLongOption('v', "verbose", "Return detailed info about components checked with their statuses.")
         .StoreTrue(&Verbose);
+
+    config.Opts->AddLongOption("no-merge", "Do not merge entries of health check result")
+        .StoreTrue(&NoMerge).Optional();
+
+    config.Opts->AddLongOption("no-cache", "Do not use cached result")
+        .StoreTrue(&NoCache).Optional();
 }
 
 void TCommandSelfCheck::Parse(TConfig& config) {
     TYdbSimpleCommand::Parse(config);
-    ParseFormats();
+    ParseOutputFormats();
 }
 
 int TCommandSelfCheck::Run(TConfig& config) {
-    NMonitoring::TMonitoringClient client(CreateDriver(config));
+    auto driver = CreateDriver(config);
+    NMonitoring::TMonitoringClient client(driver);
     NMonitoring::TSelfCheckSettings settings;
 
     if (Verbose) {
         settings.ReturnVerboseStatus(true);
     }
 
+    if (NoMerge) {
+        settings.NoMerge(true);
+    }
+
+    if (NoCache) {
+        settings.NoCache(true);
+    }
+
     NMonitoring::TSelfCheckResult result = client.SelfCheck(
         FillSettings(settings)
     ).GetValueSync();
-    ThrowOnError(result);
+    NStatusHelpers::ThrowOnErrorOrPrintIssues(result);
     return PrintResponse(result);
 }
 
 int TCommandSelfCheck::PrintResponse(NMonitoring::TSelfCheckResult& result) {
     const auto& proto = NYdb::TProtoAccessor::GetProto(result);
     switch (OutputFormat) {
-        case EOutputFormat::Default:
-        case EOutputFormat::Pretty:
+        case EDataFormat::Default:
+        case EDataFormat::Pretty:
         {
-            NColorizer::TColors colors = NColorizer::AutoColors(Cout);
+            NColorizer::TColors colors = NConsoleClient::AutoColors(Cout);
             TStringBuf statusColor;
             auto hcResultString = SelfCheck_Result_Name(proto.Getself_check_result());
             switch (proto.Getself_check_result()) {
@@ -83,7 +101,7 @@ int TCommandSelfCheck::PrintResponse(NMonitoring::TSelfCheckResult& result) {
             }
             break;
         }
-        case EOutputFormat::Json:
+        case EDataFormat::Json:
         {
             TString json;
             google::protobuf::util::JsonPrintOptions jsonOpts;

@@ -3,9 +3,10 @@
 #include "factories.h"
 #include "service_initializer.h"
 
+#include <contrib/ydb/core/memory_controller/memory_controller.h>
 #include <contrib/ydb/library/actors/core/actorsystem.h>
 #include <contrib/ydb/library/actors/core/log_settings.h>
-#include <contrib/ydb/library/actors/interconnect/poller_tcp.h>
+#include <contrib/ydb/library/actors/interconnect/poller/poller_tcp.h>
 #include <contrib/ydb/library/actors/util/should_continue.h>
 #include <contrib/ydb/library/grpc/server/grpc_server.h>
 #include <contrib/ydb/core/base/appdata.h>
@@ -16,7 +17,7 @@
 #include <contrib/ydb/core/client/server/grpc_server.h>
 #include <contrib/ydb/core/fq/libs/shared_resources/interface/shared_resources.h>
 #include <contrib/ydb/core/kqp/common/kqp.h>
-#include <contrib/ydb/core/base/memobserver.h>
+#include <contrib/ydb/core/base/memory_controller_iface.h>
 #include <contrib/ydb/core/tablet/node_tablet_monitor.h>
 #include <contrib/ydb/core/tablet/tablet_setup.h>
 #include <contrib/ydb/core/ymq/http/http.h>
@@ -24,6 +25,20 @@
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 
 namespace NKikimr {
+
+using TGRpcServers = TVector<std::pair<TString, TAutoPtr<NYdbGrpc::TGRpcServer>>>;
+using TGRpcServersFactory = std::function<TGRpcServers()>;
+
+struct TGRpcServersWrapper {
+    TGRpcServers Servers;
+    TGRpcServersFactory GrpcServersFactory;
+    TMutex Mutex;
+    std::atomic<bool> IsDisabled = false;
+
+    TGuard<TMutex> Guard() {
+        return TGuard<TMutex>(Mutex);
+    }
+};
 
 class TKikimrRunner : public virtual TThrRefBase, private IGlobalObjectStorage {
 protected:
@@ -43,6 +58,8 @@ protected:
     bool EnabledGrpcService = false;
     bool GracefulShutdownSupported = false;
     TDuration MinDelayBeforeShutdown;
+    TDuration DrainTimeout;
+    TDuration CheckForStopInterval;
     THolder<NSQS::TAsyncHttpServer> SqsHttp;
 
     THolder<NYdb::TDriver> YdbDriver;
@@ -54,19 +71,32 @@ protected:
     TIntrusivePtr<NInterconnect::TPollerThreads> PollerThreads;
     TAutoPtr<TAppData> AppData;
 
-    TVector<std::pair<TString, TAutoPtr<NYdbGrpc::TGRpcServer>>> GRpcServers;
-
     TIntrusivePtr<NActors::NLog::TSettings> LogSettings;
     std::shared_ptr<TLogBackend> LogBackend;
     TAutoPtr<TActorSystem> ActorSystem;
 
-    TIntrusivePtr<TMemObserver> MemObserver;
+    TIntrusivePtr<NMemory::IProcessMemoryInfoProvider> ProcessMemoryInfoProvider;
+
+    TVector<NYdb::NGlobalPlugins::IPlugin::TPtr> Plugins;
 
     TKikimrRunner(std::shared_ptr<TModuleFactories> factories = {});
+
+    std::shared_ptr<TGRpcServersWrapper> GRpcServersWrapper;
+    TActorId GRpcServersManager;
 
     virtual ~TKikimrRunner();
 
     virtual void InitializeRegistries(const TKikimrRunConfig& runConfig);
+
+    /**
+     * Initializes the XDS bootstrap configuration for the runner.
+     * This method should be called during the startup sequence, before any components
+     * that depend on XDS configuration are initialized. It reads the relevant settings
+     * from the provided runConfig and sets up the XDS bootstrap environment accordingly.
+     * This is necessary for enabling gRPC XDS features such as dynamic service discovery
+     * and load balancing.
+     */
+    void InitializeXdsBootstrapConfig(const TKikimrRunConfig& runConfig);
 
     void InitializeAllocator(const TKikimrRunConfig& runConfig);
 
@@ -81,6 +111,7 @@ protected:
     void InitializeMonitoringLogin(const TKikimrRunConfig& runConfig);
 
     void InitializeGRpc(const TKikimrRunConfig& runConfig);
+    TGRpcServers CreateGRpcServers(const TKikimrRunConfig& runConfig);
 
     void InitializeKqpController(const TKikimrRunConfig& runConfig);
 
@@ -88,10 +119,14 @@ protected:
 
     void InitializeAppData(const TKikimrRunConfig& runConfig);
 
+    void InitializePlugins(const TKikimrRunConfig& runConfig);
+
     void InitializeActorSystem(
         const TKikimrRunConfig& runConfig,
         TIntrusivePtr<TServiceInitializersList> serviceInitializers,
         const TBasicKikimrServicesMask& serviceMask = {});
+
+    void RecordEmptyDomainSensor();
 
     TIntrusivePtr<TServiceInitializersList> CreateServiceInitializersList(
         const TKikimrRunConfig& runConfig,

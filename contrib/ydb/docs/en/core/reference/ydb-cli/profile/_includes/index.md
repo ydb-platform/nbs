@@ -3,6 +3,7 @@
 A profile is a named set of DB connection parameters stored in a configuration file in the local file system. With profiles, you can reuse data about DB location and authentication parameters, making a CLI call much shorter:
 
 - Calling the `scheme ls` command without a profile:
+
    ```bash
    {{ ydb-cli }} \
    -e grpsc://some.host.in.some.domain:2136 \
@@ -12,6 +13,7 @@ A profile is a named set of DB connection parameters stored in a configuration f
    ```
 
 - Calling the same `scheme ls` command using a profile:
+
    ```bash
    {{ ydb-cli }} -p quickstart scheme ls
    ```
@@ -26,6 +28,6 @@ A profile is a named set of DB connection parameters stored in a configuration f
 
 ## Where profiles are stored {#location}
 
-Profiles are stored locally in a file named `~/ydb/config/config.yaml`.
+Profiles are stored locally in a file named `~/.ydb/config/config.yaml`.
 
 {% include [location_overlay.md](location_overlay.md) %}

@@ -1,10 +1,11 @@
 #pragma once
 
 #include <variant>
-#include <contrib/ydb/library/actors/core/actorsystem.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/mailbox.h>
 #include <contrib/ydb/core/util/simple_cache.h>
+
+#include <grpcpp/support/status.h>
 
 namespace NGrpcActorClient {
 

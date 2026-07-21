@@ -47,8 +47,7 @@ SET(ORIG_SOURCES
 )
 
 PEERDIR(
-    library/cpp/pop_count
-    contrib/ydb/library/binary_json
+    contrib/ydb/library/yql/types/binary_json
     contrib/ydb/library/yql/minikql
     contrib/ydb/library/yql/minikql/arrow
     contrib/ydb/library/yql/public/udf
@@ -63,9 +62,10 @@ ADDINCL(
 
 COPY(
     AUTO
+    WITH_CONTEXT
     FROM ${ORIG_SRC_DIR}
     ${ORIG_SOURCES}
-    OUTPUT_INCLUDES 
+    OUTPUT_INCLUDES
     ${BINDIR}/contrib/ydb/library/yql/minikql/invoke_builtins/mkql_builtins_impl.h
     ${BINDIR}/contrib/ydb/library/yql/minikql/invoke_builtins/mkql_builtins_decimal.h
 )

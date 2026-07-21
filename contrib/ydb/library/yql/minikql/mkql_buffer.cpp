@@ -1,25 +1,40 @@
 #include "mkql_buffer.h"
 
-#include <contrib/ydb/library/yql/utils/rope_over_buffer.h>
+namespace NKikimr::NMiniKQL {
 
-namespace NKikimr {
+#if defined(PROFILE_MEMORY_ALLOCATIONS)
+NMonitoring::TDynamicCounters::TCounterPtr TotalBytesWastedCounter;
 
-namespace NMiniKQL {
+void InitializeGlobalPagedBufferCounters(::NMonitoring::TDynamicCounterPtr root) {
+    NMonitoring::TDynamicCounterPtr subGroup = root->GetSubgroup("counters", "utils")->GetSubgroup("subsystem", "mkqlalloc");
+    TotalBytesWastedCounter = subGroup->GetCounter("PagedBuffer/TotalBytesWasted");
+}
+#endif
 
-const size_t TBufferPage::PageCapacity = TBufferPage::PageAllocSize - sizeof(TBufferPage);
+static_assert(IsValidPageAllocSize(TBufferPage::DefaultPageAllocSize));
 
-TBufferPage* TBufferPage::Allocate() {
-    static_assert(PageAllocSize <= std::numeric_limits<ui32>::max());
-    static_assert(sizeof(TBufferPage) < PageAllocSize, "Page allocation size is too small");
-    void* ptr = malloc(PageAllocSize);
+const size_t TBufferPage::DefaultPageCapacity = TBufferPage::DefaultPageAllocSize - sizeof(TBufferPage);
+
+TBufferPage* TBufferPage::Allocate(size_t pageAllocSize) {
+    void* ptr = malloc(pageAllocSize);
     if (!ptr) {
         throw std::bad_alloc();
     }
     TBufferPage* result = ::new (ptr) TBufferPage();
+#if defined(PROFILE_MEMORY_ALLOCATIONS)
+    // After allocation the whole page capacity is wasted (PageCapacity - PageSize)
+    TotalBytesWastedCounter->Add(pageAllocSize - sizeof(TBufferPage));
+#endif
     return result;
 }
 
-void TBufferPage::Free(TBufferPage* page) {
+void TBufferPage::Free(TBufferPage* page, size_t pageAllocSize) {
+#if defined(PROFILE_MEMORY_ALLOCATIONS)
+    // After free don't account the page's wasted (PageCapacity - PageSize)
+    TotalBytesWastedCounter->Sub(pageAllocSize - sizeof(TBufferPage) - page->Size());
+#else
+    Y_UNUSED(pageAllocSize);
+#endif
     free(page);
 }
 
@@ -27,34 +42,33 @@ void TPagedBuffer::AppendPage() {
     TBufferPage* page = nullptr;
     if (Tail_) {
         auto tailPage = TBufferPage::GetPage(Tail_);
-        auto next = tailPage->Next();
-        if (next) {
+        if (auto next = tailPage->Next()) {
+            // TODO: can we get here?
             page = next;
             page->Clear();
         } else {
-            page = TBufferPage::Allocate();
+            page = TBufferPage::Allocate(PageAllocSize_);
             tailPage->Next_ = page;
         }
         tailPage->Size_ = TailSize_;
         ClosedPagesSize_ += TailSize_;
     } else {
         Y_DEBUG_ABORT_UNLESS(Head_ == nullptr);
-        page = TBufferPage::Allocate();
+        page = TBufferPage::Allocate(PageAllocSize_);
         Head_ = page->Data();
     }
     TailSize_ = 0;
     Tail_ = page->Data();
 }
 
-TRope TPagedBuffer::AsRope(const TConstPtr& buffer) {
-    TRope result;
+using NYql::TChunkedBuffer;
+TChunkedBuffer TPagedBuffer::AsChunkedBuffer(const TConstPtr& buffer) {
+    TChunkedBuffer result;
     buffer->ForEachPage([&](const char* data, size_t size) {
-        result.Insert(result.End(), NYql::MakeReadOnlyRope(buffer, data, size));
+        result.Append(TStringBuf(data, size), buffer);
     });
 
     return result;
 }
 
-} // NMiniKQL
-
-} // NKikimr
+} // namespace NKikimr::NMiniKQL

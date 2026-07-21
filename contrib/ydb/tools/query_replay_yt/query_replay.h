@@ -1,7 +1,5 @@
 #pragma once
 
-#include "query_replay.h"
-
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/scheme/scheme_type_registry.h>
 #include <contrib/ydb/library/actors/core/actorsystem.h>
@@ -17,8 +15,12 @@ struct TQueryReplayConfig {
     TString Cluster;
     TString SrcPath;
     TString DstPath;
+    TString CoreTablePath;
     ui32 ActorSystemThreadsCount = 5;
     TVector<TString> UdfFiles;
+    TString QueryFile;
+    NActors::NLog::EPriority YqlLogLevel = NActors::NLog::EPriority::PRI_ERROR;
+    bool Antlr4ParserIsAmbiguityError = false;
 
     void ParseConfig(int argc, const char** argv);
 };
@@ -30,6 +32,52 @@ namespace NYql {
 using namespace NActors;
 
 THolder<TActorSystemSetup> BuildActorSystemSetup(ui32 threads, ui32 pools = 1);
+
+struct TTableReadAccessInfo {
+    std::string ReadType;
+    i32 PushedLimit = -1;
+    std::vector<std::string> ReadColumns;
+
+    constexpr bool operator==(const TTableReadAccessInfo& other) const {
+        return std::tie(ReadType, PushedLimit, ReadColumns) == std::tie(other.ReadType, other.PushedLimit, other.ReadColumns);
+    }
+
+    constexpr bool operator<(const TTableReadAccessInfo& other) const  {
+        return std::tie(ReadType, PushedLimit, ReadColumns) < std::tie(other.ReadType, other.PushedLimit, other.ReadColumns);
+    }
+};
+
+enum EWriteType : ui32 {
+    Upsert = 1,
+    Erase = 2
+};
+
+struct TTableWriteInfo {
+    std::string WriteType;
+    std::vector<std::string> WriteColumns;
+
+    constexpr bool operator==(const TTableWriteInfo& other) const {
+        return std::tie(WriteType, WriteColumns) == std::tie(other.WriteType, other.WriteColumns);
+    }
+
+    constexpr bool operator<(const TTableWriteInfo& other) const  {
+        return std::tie(WriteType, WriteColumns) < std::tie(other.WriteType, other.WriteColumns);
+    }
+};
+
+struct TTableStats {
+    TString Name;
+    std::vector<TTableReadAccessInfo> Reads;
+    std::vector<TTableWriteInfo> Writes;
+
+    constexpr bool operator==(const TTableStats& other) const {
+        return std::tie(Name, Reads, Writes) == std::tie(other.Name, other.Reads, other.Writes);
+    }
+
+    constexpr bool operator<(const TTableStats& other) const {
+        return std::tie(Name, Reads, Writes) < std::tie(other.Name, other.Reads, other.Writes);
+    }
+};
 
 struct TQueryReplayEvents {
     enum EEv {
@@ -51,6 +99,7 @@ struct TQueryReplayEvents {
         WriteColumnsMismatch,
         UncategorizedPlanMismatch,
         MissingTableMetadata,
+        UncategorizedFailure,
         Unspecified,
     };
 
@@ -69,6 +118,7 @@ struct TQueryReplayEvents {
         TCheckQueryPlanStatus Status = Unspecified;
         TString Message;
         TString Plan;
+        std::map<std::string, TTableStats> EngineTableStats;
 
         TEvCompileResponse(bool success)
             : Success(success)
@@ -77,5 +127,8 @@ struct TQueryReplayEvents {
     };
 };
 
+THashMap<TString, NYql::TKikimrTableMetadataPtr> ExtractStaticMetadata(const NJson::TJsonValue& data);
+
 NActors::IActor* CreateQueryCompiler(TIntrusivePtr<NKikimr::NKqp::TModuleResolverState> moduleResolverState,
-    const NKikimr::NMiniKQL::IFunctionRegistry* functionRegistry, std::shared_ptr<NYql::IHTTPGateway> httpGateway);
+    const NKikimr::NMiniKQL::IFunctionRegistry* functionRegistry, std::shared_ptr<NYql::IHTTPGateway> httpGateway,
+    bool antlr4ParserIsAmbiguityError);

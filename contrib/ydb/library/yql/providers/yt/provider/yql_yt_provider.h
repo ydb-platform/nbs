@@ -6,14 +6,21 @@
 #include "yql_yt_io_discovery_walk_folders.h"
 
 #include <contrib/ydb/library/yql/providers/yt/common/yql_yt_settings.h>
+#include <contrib/ydb/library/yql/providers/yt/lib/full_capture/yql_yt_full_capture.h>
 #include <contrib/ydb/library/yql/providers/yt/lib/row_spec/yql_row_spec.h>
-#include <contrib/ydb/library/yql/dq/integration/yql_dq_integration.h>
+#include <contrib/ydb/library/yql/sql/settings/flags/flags.h>
+#include <contrib/ydb/library/yql/core/cbo/cbo_optimizer_new.h>
+#include <contrib/ydb/library/yql/core/dq_integration/yql_dq_integration.h>
+#include <contrib/ydb/library/yql/core/dq_integration/yql_dq_helper.h>
 #include <contrib/ydb/library/yql/core/yql_data_provider.h>
 #include <contrib/ydb/library/yql/core/yql_execution.h>
 #include <contrib/ydb/library/yql/ast/yql_constraint.h>
 
 #include <library/cpp/time_provider/monotonic.h>
 #include <library/cpp/yson/writer.h>
+
+#include <contrib/ydb/library/yql/providers/ytflow/integration/interface/yql_ytflow_integration.h>
+#include <contrib/ydb/library/yql/providers/ytflow/integration/interface/yql_ytflow_optimization.h>
 
 #include <util/generic/string.h>
 #include <util/generic/set.h>
@@ -42,22 +49,25 @@ struct TYtTableDescription: public TYtTableDescriptionBase {
     bool IsAnonymous = false;
     bool IsReplaced = false;
     TMaybe<bool> MonotonicKeys;
-    size_t WriteValidateCount = 0;
+    std::unordered_map<ui32, size_t> WriteValidateCount; // mutationId -> validate count
     TMaybe<TString> Hash;
     TString ColumnGroupSpec;
+    TSet<TString> ColumnGroupSpecAlts; // All alternative column group representations
+    bool ColumnGroupSpecInherited = false; // Inherit existing column groups without explicit user hints
+    bool RowSpecSortReady = false;
 
     bool Fill(
-        const TString& cluster, const TString& table, TExprContext& ctx,
+        const TString& cluster, const TString& table, const TQContext& qContext, TExprContext& ctx,
         IModuleResolver* moduleResolver, IUrlListerManager* urlListerManager, IRandomProvider& randomProvider,
-        bool allowViewIsolation, IUdfResolver::TPtr udfResolver);
+        bool allowViewIsolation, IUdfResolver::TPtr udfResolver, const NSQLTranslation::TSqlFlags& sqlFlags);
     void ToYson(NYson::TYsonWriter& writer, const TString& cluster, const TString& table, const TString& view) const;
     bool Validate(TPosition pos, TStringBuf cluster, TStringBuf tableName, bool withQB,
         const THashMap<std::pair<TString, TString>, TString>& anonymousLabels, TExprContext& ctx) const;
     void SetConstraintsReady();
     bool FillViews(
-        const TString& cluster, const TString& table, TExprContext& ctx,
+        const TString& cluster, const TString& table, const TQContext& qContext, TExprContext& ctx,
         IModuleResolver* moduleResolver, IUrlListerManager* urlListerManager, IRandomProvider& randomProvider,
-        bool allowViewIsolation, IUdfResolver::TPtr udfResolver);
+        bool allowViewIsolation, IUdfResolver::TPtr udfResolver, const NSQLTranslation::TSqlFlags& sqlFlags);
 };
 
 // Anonymous tables are kept by labels
@@ -79,8 +89,9 @@ private:
 };
 
 
-struct TYtState : public TThrRefBase {
-    using TPtr = TIntrusivePtr<TYtState>;
+struct TYtState {
+    using TPtr = std::shared_ptr<TYtState>;
+    using TWeakPtr = std::weak_ptr<TYtState>;
 
     void Reset();
     void EnterEvaluation(ui64 id);
@@ -88,22 +99,31 @@ struct TYtState : public TThrRefBase {
     bool IsHybridEnabled() const;
     bool IsHybridEnabledForCluster(const std::string_view& cluster) const;
     bool HybridTakesTooLong() const;
+    TMaybe<TString> ResolveClusterToken(const TString& cluster);
+
+    TYtState(TTypeAnnotationContext* types, const TQContext& qContext = {}) {
+        Types = types;
+        Configuration = MakeIntrusive<TYtVersionedConfiguration>(*types, qContext);
+    }
 
     TString SessionId;
     IYtGateway::TPtr Gateway;
     TTypeAnnotationContext* Types = nullptr;
     TMaybe<std::pair<ui32, size_t>> LoadEpochMetadata; // Epoch being committed, settings versions
     THashMap<ui32, TSet<std::pair<TString, TString>>> EpochDependencies; // List of tables, which have to be updated after committing specific epoch
-    TYtVersionedConfiguration::TPtr Configuration = MakeIntrusive<TYtVersionedConfiguration>();
+    TYtVersionedConfiguration::TPtr Configuration;
     TYtTablesData::TPtr TablesData = MakeIntrusive<TYtTablesData>();
     THashMap<std::pair<TString, TString>, TString> AnonymousLabels; // cluster + label -> name
     std::unordered_map<ui64, TString> NodeHash; // unique id -> hash
     THashMap<ui32, TOperationStatistics> Statistics; // public id -> stat
     THashMap<TString, TOperationStatistics> HybridStatistics; // subfolder -> stat
     THashMap<TString, THashMap<TString, TOperationStatistics>> HybridOpStatistics; // operation name -> subfolder -> stat
+    bool FullHybridExecution = true; // flag is not cleared at query finish -> all yt operations were executed through hybrid
     TMutex StatisticsMutex;
     THashSet<std::pair<TString, TString>> Checkpoints; // Set of checkpoint tables
     THolder<IDqIntegration> DqIntegration_;
+    THolder<IYtflowIntegration> YtflowIntegration_;
+    THolder<IYtflowOptimization> YtflowOptimization_;
     ui32 NextEpochId = 1;
     bool OnlyNativeExecution = false;
     bool PassiveExecution = false;
@@ -112,6 +132,14 @@ struct TYtState : public TThrRefBase {
     std::unordered_set<ui32> HybridInFlightOprations;
     THashMap<ui64, TWalkFoldersImpl> WalkFoldersState;
     ui32 PlanLimits = 10;
+    i32 FlowDependsOnId = 0;
+    IOptimizerFactory::TPtr OptimizerFactory_;
+    IDqHelper::TPtr DqHelper;
+    bool IsDqTimeout = false;
+    NLayers::ILayersIntegrationPtr LayersIntegration_;
+    THashMap<TString, THashMap<TString, std::pair<TString, ui64>>> LayersSnapshots;
+    IYtFullCapture::TPtr FullCapture_;
+    std::shared_ptr<std::atomic<bool>> UseSecureTmp = std::make_shared<std::atomic<bool>>(false);  // must be set during table metadata loading (before any major tmp access)
 
 private:
     std::unordered_map<ui64, TYtVersionedConfiguration::TState> ConfigurationEvalStates_;
@@ -120,11 +148,15 @@ private:
 
 
 class TYtGatewayConfig;
-std::pair<TIntrusivePtr<TYtState>, TStatWriter> CreateYtNativeState(IYtGateway::TPtr gateway, const TString& userName, const TString& sessionId, const TYtGatewayConfig* ytGatewayConfig, TIntrusivePtr<TTypeAnnotationContext> typeCtx);
+std::pair<std::shared_ptr<TYtState>, TStatWriter> CreateYtNativeState(IYtGateway::TPtr gateway, const TString& userName, const TString& sessionId,
+    const TYtGatewayConfig* ytGatewayConfig, TIntrusivePtr<TTypeAnnotationContext> typeCtx,
+    const IOptimizerFactory::TPtr& optFactory, const IDqHelper::TPtr& helper,
+    const TYtTablesData::TPtr& tablesData = {}, const IYtFullCapture::TPtr& fullCapture = {},
+    const TQContext& qContext = {});
 TIntrusivePtr<IDataProvider> CreateYtDataSource(TYtState::TPtr state);
 TIntrusivePtr<IDataProvider> CreateYtDataSink(TYtState::TPtr state);
 
-TDataProviderInitializer GetYtNativeDataProviderInitializer(IYtGateway::TPtr gateway, ui32 planLimits = 10);
+TDataProviderInitializer GetYtNativeDataProviderInitializer(IYtGateway::TPtr gateway, IOptimizerFactory::TPtr optFactory, IDqHelper::TPtr helper, ui32 planLimits = 10);
 
 const THashSet<TStringBuf>& YtDataSourceFunctions();
 const THashSet<TStringBuf>& YtDataSinkFunctions();

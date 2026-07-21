@@ -2,13 +2,12 @@ UNITTEST_FOR(contrib/ydb/core/tx/tx_proxy)
 
 FORK_SUBTESTS()
 
-IF (WITH_VALGRIND)
-    TIMEOUT(3600)
-    SIZE(LARGE)
-    TAG(ya:fat)
-ELSE()
-    TIMEOUT(600)
+IF (SANITIZER_TYPE)
     SIZE(MEDIUM)
+    REQUIREMENTS(cpu:4)
+ELSE()
+    SIZE(MEDIUM)
+    REQUIREMENTS(cpu:2)
 ENDIF()
 
 PEERDIR(
@@ -26,7 +25,5 @@ SRCS(
     proxy_ext_tenant_ut.cpp
     proxy_ut_helpers.cpp
 )
-
-REQUIREMENTS(ram:17)
 
 END()

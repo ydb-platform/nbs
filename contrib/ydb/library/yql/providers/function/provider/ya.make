@@ -12,7 +12,7 @@ SRCS(
 )
 
 PEERDIR(
-    contrib/ydb/library/yql/dq/integration
+    contrib/ydb/library/yql/core/dq_integration
     contrib/ydb/library/yql/providers/common/token_accessor/client
     contrib/ydb/library/yql/providers/common/dq
     contrib/ydb/library/yql/providers/common/provider

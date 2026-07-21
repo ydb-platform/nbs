@@ -24,6 +24,8 @@ namespace NKikimr {
 
             static const ui32 SerializedSize = sizeof(ui64) * 7;
 
+            THullHugeRecoveryLogPos() = default;
+
             THullHugeRecoveryLogPos(ui64 allocLsn, ui64 freeLsn, ui64 blobLoggedLsn,
                                     ui64 logoBlobsDelLsn, ui64 blocksDelLsn,
                                     ui64 barriersDelLsn, ui64 entryLsn)
@@ -39,15 +41,13 @@ namespace NKikimr {
             THullHugeRecoveryLogPos(const THullHugeRecoveryLogPos &) = default;
             THullHugeRecoveryLogPos &operator=(const THullHugeRecoveryLogPos &) = default;
 
-            static THullHugeRecoveryLogPos Default() {
-                return THullHugeRecoveryLogPos(0, 0, 0, 0, 0, 0, 0);
-            }
-
             TString ToString() const;
+
             TString Serialize() const;
-            void ParseFromString(const TString &serialized);
-            void ParseFromArray(const char* data, size_t size);
-            static bool CheckEntryPoint(const TString &serialized);
+            void ParseFromArray(const TString& prefix, const char* data, size_t size);
+
+            void SaveToProto(NKikimrVDiskData::THullHugeRecoveryLogPos& logPos) const;
+            void LoadFromProto(const NKikimrVDiskData::THullHugeRecoveryLogPos& logPos);
         };
 
         ////////////////////////////////////////////////////////////////////////////
@@ -71,15 +71,16 @@ namespace NKikimr {
         class THeap;
 
         struct THullHugeKeeperPersState {
-            typedef THashSet<NHuge::THugeSlot> TAllocatedSlots;
             static const ui32 Signature;
+            static const ui32 SignatureV2;
 
             TIntrusivePtr<TVDiskContext> VCtx;
             // current pos
             THullHugeRecoveryLogPos LogPos;
             std::unique_ptr<NHuge::THeap> Heap;
             // slots that are already allocated, but not written to log
-            TAllocatedSlots AllocatedSlots;
+            THashSet<THugeSlot> SlotsInFlight;
+            THashMap<ui32, std::tuple<ui32, ui32>> ChunkToSlotSize;
             // guard to avoid using structure before recovery has been completed
             bool Recovered = false;
             // guid for this instance of pers state
@@ -87,56 +88,50 @@ namespace NKikimr {
             // last reported FirstLsnToKeep; can't decrease
             mutable ui64 FirstLsnToKeepReported = 0;
             ui64 PersistentLsn = 0;
+            bool LoadedFromProto = false;
+            bool EnableTinyDisks = false;
+            TControlWrapper ChunksSoftLocking;
 
             THullHugeKeeperPersState(TIntrusivePtr<TVDiskContext> vctx,
                                      const ui32 chunkSize,
                                      const ui32 appendBlockSize,
                                      const ui32 minHugeBlobInBytes,
-                                     const ui32 oldMinHugeBlobInBytes,
                                      const ui32 milestoneHugeBlobInBytes,
                                      const ui32 maxBlobInBytes,
                                      const ui32 overhead,
+                                     const ui32 stepsBetweenPowersOf2,
+                                     const bool enableTinyDisks,
                                      const ui32 freeChunksReservation,
                                      TControlWrapper chunksSoftLocking,
                                      std::function<void(const TString&)> logFunc);
+
             THullHugeKeeperPersState(TIntrusivePtr<TVDiskContext> vctx,
                                      const ui32 chunkSize,
                                      const ui32 appendBlockSize,
                                      const ui32 minHugeBlobInBytes,
-                                     const ui32 oldMinHugeBlobInBytes,
                                      const ui32 milestoneHugeBlobInBytes,
                                      const ui32 maxBlobInBytes,
                                      const ui32 overhead,
-                                     const ui32 freeChunksReservation,
-                                     const ui64 entryPointLsn,
-                                     const TString &entryPointData,
-                                     TControlWrapper chunksSoftLocking,
-                                     std::function<void(const TString&)> logFunc);
-            THullHugeKeeperPersState(TIntrusivePtr<TVDiskContext> vctx,
-                                     const ui32 chunkSize,
-                                     const ui32 appendBlockSize,
-                                     const ui32 minHugeBlobInBytes,
-                                     const ui32 oldMinHugeBlobInBytes,
-                                     const ui32 milestoneHugeBlobInBytes,
-                                     const ui32 maxBlobInBytes,
-                                     const ui32 overhead,
+                                     const ui32 stepsBetweenPowersOf2,
+                                     const bool enableTinyDisks,
                                      const ui32 freeChunksReservation,
                                      const ui64 entryPointLsn,
                                      const TContiguousSpan &entryPointData,
                                      TControlWrapper chunksSoftLocking,
                                      std::function<void(const TString&)> logFunc);
+
             ~THullHugeKeeperPersState();
 
             TString Serialize() const;
-            void ParseFromString(const TString &data);
             void ParseFromArray(const char* data, size_t size);
-            static TString ExtractLogPosition(const TString &data);
-            static TContiguousSpan ExtractLogPosition(TContiguousSpan data);
-            static bool CheckEntryPoint(const TString &data);
+
+            TString SaveToProto() const;
+            void LoadFromProto(const char* data, size_t size);
+
             static bool CheckEntryPoint(TContiguousSpan data);
             TString ToString() const;
             void RenderHtml(IOutputStream &str) const;
-            ui32 GetMinREALHugeBlobInBytes() const;
+            ui32 GetMinHugeBlobInBytes() const;
             ui64 FirstLsnToKeep(ui64 minInFlightLsn = Max<ui64>()) const;
             TString FirstLsnToKeepDecomposed() const;
             bool WouldNewEntryPointAdvanceLog(ui64 freeUpToLsn, ui64 minInFlightLsn, ui32 itemsAfterCommit) const;
@@ -145,6 +140,13 @@ namespace NKikimr {
             void InitiateNewEntryPointCommit(ui64 lsn, ui64 minInFlightLsn);
             // finish commit
             void EntryPointCommitted(ui64 lsn);
+
+            void AddSlotInFlight(THugeSlot hugeSlot);
+            bool DeleteSlotInFlight(THugeSlot hugeSlot);
+
+            void AddChunkSize(THugeSlot hugeSlot);
+            void DeleteChunkSize(THugeSlot hugeSlot);
+            void RegisterBlob(TDiskPart diskPart);
 
             enum ESlotDelDbType {
                 LogoBlobsDb,
@@ -176,9 +178,6 @@ namespace NKikimr {
             TRlas Apply(const TActorContext &ctx,
                         ui64 lsn,
                         const NHuge::TPutRecoveryLogRec &rec);
-            TRlas ApplyEntryPoint(const TActorContext &ctx,
-                        ui64 lsn,
-                        const TString &data);
             TRlas ApplyEntryPoint(const TActorContext &ctx,
                         ui64 lsn,
                         const TContiguousSpan &data);

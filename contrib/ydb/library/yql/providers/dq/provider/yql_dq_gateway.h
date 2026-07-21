@@ -6,7 +6,7 @@
 #include <contrib/ydb/library/yql/providers/dq/api/protos/service.pb.h>
 #include <contrib/ydb/library/yql/providers/dq/planner/execution_planner.h>
 #include <contrib/ydb/library/yql/providers/dq/common/yql_dq_settings.h>
-#include <contrib/ydb/library/yql/dq/integration/transform/yql_dq_task_transform.h>
+#include <contrib/ydb/library/yql/core/dq_integration/transform/yql_dq_task_transform.h>
 #include <contrib/ydb/library/yql/providers/common/http_gateway/yql_http_gateway.h>
 
 #include <contrib/ydb/library/yql/core/yql_udf_resolver.h>
@@ -14,7 +14,7 @@
 
 #include <contrib/ydb/library/yql/minikql/mkql_function_registry.h>
 #include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_driver/driver.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/driver/driver.h>
 
 namespace NYql {
 
@@ -78,6 +78,7 @@ public:
         bool Retriable = false;
         bool Truncated = false;
         ui64 RowsCount = 0;
+        bool Timeout = false;
 
         TOperationStatistics Statistics;
 

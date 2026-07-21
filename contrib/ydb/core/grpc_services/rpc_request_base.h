@@ -1,6 +1,6 @@
 #pragma once
 
-#include "grpc_request_proxy.h"
+#include "grpc_request_proxy_handle_methods.h"
 #include <contrib/ydb/core/grpc_services/base/base.h>
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/library/ydb_issue/issue_helpers.h>
@@ -53,8 +53,28 @@ protected:
         Reply(response, status);
     }
 
+    void Reply(
+        const Ydb::StatusIds::StatusCode status,
+        const NYql::TIssues& issues
+    ) {
+        TResponse response;
+        if constexpr (HasOperation) {
+            *response.mutable_operation() = MakeOperation(status, issues);
+        } else {
+            response.set_status(status);
+            if (issues.Size()) {
+                response.mutable_issues()->CopyFrom(issues);
+            }
+        }
+        Reply(response, status);
+    }
+
     void Reply(const Ydb::StatusIds::StatusCode status, const TString& error = TString()) {
         Reply(status, ErrorToIssues(error));
+    }
+
+    void Reply(const Ydb::StatusIds::StatusCode status, const TString& error, NKikimrIssues::TIssuesIds::EIssueCode issueCode) {
+        Reply(status, ErrorToIssues(error, issueCode));
     }
 
     void Reply(
@@ -128,21 +148,30 @@ public:
 
     explicit TRpcRequestActor(TRequestCtx* ev)
         : Request(ev)
-        , DatabaseName(Request->GetDatabaseName().GetOrElse(DatabaseFromDomain(AppData())))
+        , UserToken(CreateUserToken(Request.Get()))
     {
-        if (const auto& userToken = Request->GetSerializedToken()) {
-            UserToken = MakeHolder<NACLib::TUserToken>(userToken);
+    }
+
+private:
+    static THolder<const NACLib::TUserToken> CreateUserToken(TRequestCtx* request) {
+        if (const auto& userToken = request->GetSerializedToken()) {
+            return MakeHolder<NACLib::TUserToken>(userToken);
+        } else {
+            return {};
         }
     }
 
 private:
-    static google::protobuf::RepeatedPtrField<Ydb::Issue::IssueMessage> ErrorToIssues(const TString& error) {
+    static google::protobuf::RepeatedPtrField<Ydb::Issue::IssueMessage> ErrorToIssues(const TString& error, std::optional<NKikimrIssues::TIssuesIds::EIssueCode> issueCode=std::nullopt) {
         google::protobuf::RepeatedPtrField<Ydb::Issue::IssueMessage> issues;
 
         if (error) {
             auto& issue = *issues.Add();
             issue.set_severity(NYql::TSeverityIds::S_ERROR);
             issue.set_message(error);
+            if (issueCode) {
+                issue.set_issue_code(*issueCode);
+            }
         }
 
         return issues;
@@ -164,9 +193,24 @@ private:
     }
 
 protected:
-    THolder<TRequestCtx> Request;
-    const TString DatabaseName;
-    THolder<const NACLib::TUserToken> UserToken;
+    const TString& GetDatabaseName() const {
+        if (!DatabaseName_.has_value()) {
+            auto name = Request->GetDatabaseName();
+            if (name) {
+                DatabaseName_.emplace(std::move(*name));
+            } else {
+                DatabaseName_.emplace("");
+            }
+        }
+        return *DatabaseName_;
+    }
+
+protected:
+    const THolder<TRequestCtx> Request;
+    const THolder<const NACLib::TUserToken> UserToken;
+
+private:
+    mutable std::optional<TString> DatabaseName_;
 
 }; // TRpcRequestActor
 

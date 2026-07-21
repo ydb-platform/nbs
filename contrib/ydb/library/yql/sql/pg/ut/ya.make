@@ -1,7 +1,5 @@
 UNITTEST_FOR(contrib/ydb/library/yql/sql/pg)
 
-TAG(ya:manual)
-
 SRCS(
     pg_sql_ut.cpp
     pg_sql_autoparam_ut.cpp

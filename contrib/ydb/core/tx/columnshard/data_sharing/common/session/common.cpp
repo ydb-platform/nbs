@@ -4,7 +4,11 @@
 #include <contrib/ydb/core/tx/columnshard/data_locks/locks/snapshot.h>
 #include <contrib/ydb/core/tx/columnshard/engines/column_engine_logs.h>
 
+#include <contrib/ydb/library/actors/struct_log/log_stack.h>
+
 #include <util/string/builder.h>
+
+#define YDB_LOG_THIS_FILE_COMPONENT NKikimrServices::TX_COLUMNSHARD
 
 namespace NKikimr::NOlap::NDataSharing {
 
@@ -12,51 +16,55 @@ TString TCommonSession::DebugString() const {
     return TStringBuilder() << "{id=" << SessionId << ";context=" << TransferContext.DebugString() << ";state=" << State << ";}";
 }
 
-bool TCommonSession::TryStart(const NColumnShard::TColumnShard& shard) {
-    const NActors::TLogContextGuard lGuard = NActors::TLogContextBuilder::Build()("info", Info);
-    AFL_DEBUG(NKikimrServices::TX_COLUMNSHARD)("info", "Start");
+TConclusionStatus TCommonSession::TryStart(NColumnShard::TColumnShard& shard) {
+    YDB_LOG_CREATE_CONTEXT(
+        {"info", Info});
+    YDB_LOG_DEBUG("",
+        {"info", "Start"});
     AFL_VERIFY(State == EState::Prepared);
 
     AFL_VERIFY(!!LockGuard);
     const auto& index = shard.GetIndexAs<TColumnEngineForLogs>();
-    THashMap<ui64, std::vector<std::shared_ptr<TPortionInfo>>> portionsByPath;
+    THashMap<TInternalPathId, std::vector<std::shared_ptr<TPortionDataAccessor>>> portionsByPath;
     THashSet<TString> StoragesIds;
     for (auto&& i : GetPathIdsForStart()) {
-        auto& portionsVector = portionsByPath[i];
         const auto& g = index.GetGranuleVerified(i);
         for (auto&& p : g.GetPortionsOlderThenSnapshot(GetSnapshotBarrier())) {
-            if (shard.GetDataLocksManager()->IsLocked(*p.second, { "sharing_session:" + GetSessionId() })) {
-                return false;
+            if (shard.GetDataLocksManager()->IsLocked(*p.second, NDataLocks::ELockCategory::Sharing, { "sharing_session:" + GetSessionId() })) {
+                return TConclusionStatus::Fail("failed to start cursor: portion is locked");
             }
-            portionsVector.emplace_back(p.second);
+            //            portionsByPath[i].emplace_back(p.second);
         }
     }
 
     if (shard.GetStoragesManager()->GetSharedBlobsManager()->HasExternalModifications()) {
-        return false;
+        return TConclusionStatus::Fail("failed to start cursor: has external modifications");
     }
 
-    AFL_VERIFY(DoStart(shard, portionsByPath));
-    State = EState::InProgress;
-    return true;
+    TConclusionStatus status = DoStart(shard, std::move(portionsByPath));
+    if (status.Ok()) {
+        State = EState::InProgress;
+    }
+    return status;
 }
 
 void TCommonSession::PrepareToStart(const NColumnShard::TColumnShard& shard) {
-    const NActors::TLogContextGuard lGuard = NActors::TLogContextBuilder::Build()("info", Info);
+    YDB_LOG_CREATE_CONTEXT(
+        {"info", Info});
     AFL_VERIFY(State == EState::Created);
     State = EState::Prepared;
     AFL_VERIFY(!LockGuard);
     LockGuard = shard.GetDataLocksManager()->RegisterLock<NDataLocks::TSnapshotLock>("sharing_session:" + GetSessionId(),
-        TransferContext.GetSnapshotBarrierVerified(), GetPathIdsForStart(), true);
+        TransferContext.GetSnapshotBarrierVerified(), GetPathIdsForStart(), NDataLocks::ELockCategory::Sharing, true);
     shard.GetSharingSessionsManager()->StartSharingSession();
 }
 
 void TCommonSession::Finish(const NColumnShard::TColumnShard& shard, const std::shared_ptr<NDataLocks::TManager>& dataLocksManager) {
-    AFL_VERIFY(State == EState::InProgress);
+    AFL_VERIFY(State == EState::InProgress || State == EState::Prepared);
     State = EState::Finished;
     shard.GetSharingSessionsManager()->FinishSharingSession();
     AFL_VERIFY(LockGuard);
     LockGuard->Release(*dataLocksManager);
 }
 
-}
+}   // namespace NKikimr::NOlap::NDataSharing

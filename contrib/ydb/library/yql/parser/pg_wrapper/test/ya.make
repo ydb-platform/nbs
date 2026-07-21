@@ -1,6 +1,6 @@
-PY3TEST()
+IF (NOT OPENSOURCE)
 
-TAG(ya:manual)
+PY3TEST()
 
 TEST_SRCS(
     test_doc.py
@@ -32,12 +32,11 @@ PEERDIR(
 )
 
 DEPENDS(
-    contrib/ydb/library/yql/tools/yqlrun
+    yql/tools/yqlrun
     contrib/ydb/library/yql/udfs/common/re2
 )
 
-IF (SANITIZER_TYPE == "memory")
-    TAG(ya:not_autocheck) # YQL-15385
+END()
+
 ENDIF()
 
-END()

@@ -1,13 +1,15 @@
+IF (NOT OPENSOURCE)
+
 PY3TEST()
-
-TAG(ya:manual)
-
-
     TEST_SRCS(
         test_sql2yql.py
         test_sql_negative.py
         test_sql_format.py
     )
+
+IF (SANITIZER_TYPE OR NOT OPENSOURCE)
+    REQUIREMENTS(ram:12)
+ENDIF()
 
 IF (SANITIZER_TYPE)
     TIMEOUT(1800)
@@ -21,15 +23,15 @@ ENDIF()
 
     FORK_TESTS()
     FORK_SUBTESTS()
-    SPLIT_FACTOR(5)
+    SPLIT_FACTOR(10)
+
     DEPENDS(
         contrib/ydb/library/yql/tools/sql2yql
-        contrib/ydb/library/yql/tools/yqlrun
         contrib/ydb/library/yql/tools/sql_formatter
         contrib/libs/protobuf/python
     )
     DATA(
-        arcadia/contrib/ydb/library/yql/tests/sql # python files
+        arcadia/contrib/ydb/library/yql/tests/sql/suites
         arcadia/contrib/ydb/library/yql/mount
         arcadia/contrib/ydb/library/yql/cfg/tests
     )
@@ -41,7 +43,7 @@ ENDIF()
 
 NO_CHECK_IMPORTS()
 
-REQUIREMENTS(ram:12)
-
 END()
+
+ENDIF()
 

@@ -1,0 +1,10 @@
+#pragma once
+#include <contrib/ydb/library/yql/parser/proto_ast/common.h>
+
+namespace NSQLTranslationV1 {
+
+NSQLTranslation::TParserFactoryPtr MakeAntlr4AnsiParserFactory(
+    bool isAmbiguityError = false,
+    bool isAmbiguityDebugging = false);
+
+} // namespace NSQLTranslationV1

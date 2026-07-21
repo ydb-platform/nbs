@@ -1,20 +1,19 @@
 #pragma once
 
 #include <contrib/ydb/library/yql/minikql/defs.h>
+#include <contrib/ydb/library/yql/minikql/mkql_node.h>
 #include <contrib/ydb/library/yql/public/udf/udf_value.h>
 #include <util/digest/numeric.h>
 #include <util/generic/vector.h>
 
 #include <arrow/compute/kernel.h>
 
-namespace NKikimr {
-
-namespace NMiniKQL {
+namespace NKikimr::NMiniKQL {
 
 using TFunctionPtr = NUdf::TUnboxedValuePod (*)(const NUdf::TUnboxedValuePod* args);
 
 struct TFunctionParamMetadata {
-    enum EFlags : ui16 {
+    enum EFlags: ui16 {
         FlagIsNullable = 0x01,
     };
 
@@ -23,7 +22,8 @@ struct TFunctionParamMetadata {
     TFunctionParamMetadata(NUdf::TDataTypeId schemeType, ui32 flags)
         : SchemeType(schemeType)
         , Flags(flags)
-    {}
+    {
+    }
 
     bool IsNullable() const {
         return Flags & FlagIsNullable;
@@ -40,11 +40,12 @@ struct TFunctionDescriptor {
         : ResultAndArgs(resultAndArgs)
         , Function(function)
         , Generator(generator)
-    {}
+    {
+    }
 
     const TFunctionParamMetadata* ResultAndArgs = nullptr; // ends with SchemeType zero
     TFunctionPtr Function = nullptr;
-    void *Generator = nullptr;
+    void* Generator = nullptr;
 };
 
 using TFunctionParamMetadataList = std::vector<TFunctionParamMetadata>;
@@ -58,9 +59,10 @@ class TKernelFamily {
 public:
     const arrow::compute::FunctionOptions* FunctionOptions;
 
-    TKernelFamily(const arrow::compute::FunctionOptions* functionOptions = nullptr)
+    explicit TKernelFamily(const arrow::compute::FunctionOptions* functionOptions = nullptr)
         : FunctionOptions(functionOptions)
-    {}
+    {
+    }
 
     virtual ~TKernelFamily() = default;
     virtual const TKernel* FindKernel(const NUdf::TDataTypeId* argTypes, size_t argTypesCount, NUdf::TDataTypeId returnType) const = 0;
@@ -89,6 +91,8 @@ public:
     }
 
     virtual const arrow::compute::ScalarKernel& GetArrowKernel() const = 0;
+    virtual std::shared_ptr<arrow::compute::ScalarKernel> MakeArrowKernel(const TVector<TType*>& argTypes, TType* resultType) const = 0;
+    virtual bool IsPolymorphic() const = 0;
 
     virtual ~TKernel() = default;
 };
@@ -110,23 +114,22 @@ using TKernelMap = std::unordered_map<TKernelMapKey, std::unique_ptr<TKernel>, T
 
 using TKernelFamilyMap = std::unordered_map<TString, std::unique_ptr<TKernelFamily>>;
 
-class TKernelFamilyBase : public TKernelFamily
-{
+class TKernelFamilyBase: public TKernelFamily {
 public:
-    TKernelFamilyBase(const arrow::compute::FunctionOptions* functionOptions = nullptr);
+    explicit TKernelFamilyBase(const arrow::compute::FunctionOptions* functionOptions = nullptr);
 
     const TKernel* FindKernel(const NUdf::TDataTypeId* argTypes, size_t argTypesCount, NUdf::TDataTypeId returnType) const final;
     TVector<const TKernel*> GetAllKernels() const final;
 
     void Adopt(const std::vector<NUdf::TDataTypeId>& argTypes, NUdf::TDataTypeId returnType, std::unique_ptr<TKernel>&& kernel);
+
 private:
-    TKernelMap KernelMap;
+    TKernelMap KernelMap_;
 };
 
-class IBuiltinFunctionRegistry: public TThrRefBase, private TNonCopyable
-{
+class IBuiltinFunctionRegistry: public TThrRefBase, private TNonCopyable {
 public:
-    typedef TIntrusivePtr<IBuiltinFunctionRegistry> TPtr;
+    using TPtr = TIntrusivePtr<IBuiltinFunctionRegistry>;
 
     virtual ui64 GetMetadataEtag() const = 0;
 
@@ -149,5 +152,4 @@ public:
     virtual TVector<std::pair<TString, const TKernelFamily*>> GetAllKernelFamilies() const = 0;
 };
 
-}
-}
+} // namespace NKikimr::NMiniKQL

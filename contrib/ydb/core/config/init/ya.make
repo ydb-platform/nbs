@@ -3,6 +3,8 @@ LIBRARY()
 SRCS(
     init.h
     init.cpp
+    yaml_config_helpers.h
+    yaml_config_helpers.cpp
     init_noop.cpp
     dummy.h
     dummy.cpp
@@ -17,8 +19,9 @@ PEERDIR(
     contrib/ydb/library/yql/minikql
     contrib/ydb/library/yql/public/udf
     contrib/ydb/public/lib/deprecated/kicli
-    contrib/ydb/public/sdk/cpp/client/ydb_discovery
-    contrib/ydb/public/sdk/cpp/client/ydb_driver
+    contrib/ydb/public/sdk/cpp/src/client/config
+    contrib/ydb/public/sdk/cpp/src/client/discovery
+    contrib/ydb/public/sdk/cpp/src/client/driver
 )
 
 GENERATE_ENUM_SERIALIZATION(init.h)

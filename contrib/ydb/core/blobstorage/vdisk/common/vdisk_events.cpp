@@ -1,4 +1,5 @@
 #include "vdisk_events.h"
+#include <contrib/ydb/core/blobstorage/vdisk/hulldb/base/blobstorage_blob.h>
 #include <contrib/ydb/core/blobstorage/vdisk/huge/blobstorage_hullhuge.h>
 #include <contrib/ydb/core/blobstorage/vdisk/hulldb/base/hullbase_barrier.h>
 
@@ -35,29 +36,27 @@ namespace NKikimr {
         }
     }
 
-    void TEvBlobStorage::TEvVPut::StorePayload(TRope&& buffer) {
-        Y_ABORT_UNLESS(KIKIMR_USE_PROTOBUF_WITH_PAYLOAD);
+    void TEvBlobStorage::TEvVPut::StorePayload(TRope&& buffer, bool checksumming) {
+        if (checksumming) {
+            Record.SetChecksum(TDiskBlob::CalculateChecksum(buffer));
+        }
         AddPayload(std::move(buffer));
     }
 
-    void TEvBlobStorage::TEvVMultiPut::StorePayload(NKikimrBlobStorage::TVMultiPutItem &item, const TRcBuf& buffer) {
-        if (KIKIMR_USE_PROTOBUF_WITH_PAYLOAD) {
-            AddPayload(TRope(buffer));
-            Y_DEBUG_ABORT_UNLESS(Record.ItemsSize() == GetPayloadCount());
-        } else {
-            item.SetBuffer(buffer.GetData(), buffer.GetSize());
+    void TEvBlobStorage::TEvVMultiPut::StorePayload(const TRcBuf& buffer, NKikimrBlobStorage::TVMultiPutItem *item,
+            bool checksumming) {
+        TRope rope(buffer);
+        if (checksumming) {
+            item->SetChecksum(TDiskBlob::CalculateChecksum(rope));
         }
+        AddPayload(std::move(rope));
+        Y_DEBUG_ABORT_UNLESS(Record.ItemsSize() == GetPayloadCount());
     }
 
     TRope TEvBlobStorage::TEvVMultiPut::GetItemBuffer(ui64 itemIdx) const {
-        auto &item = Record.GetItems(itemIdx);
-        if (item.HasBuffer()) {
-            return TRope(item.GetBuffer());
-        } else {
-            return GetPayload(itemIdx);
-        }
+        Y_ABORT_UNLESS(itemIdx < GetPayloadCount());
+        return GetPayload(itemIdx);
     }
-
 
     TEvBlobStorage::TEvVGetBarrier::TEvVGetBarrier(const TVDiskID &vdisk, const TKeyBarrier &from, const TKeyBarrier &to, ui32 *maxResults,
             bool showInternals)
@@ -94,7 +93,7 @@ namespace NKikimr {
 
     TEvBlobStorage::TEvVSyncFull::TEvVSyncFull(const TSyncState &syncState, const TVDiskID &sourceVDisk, const TVDiskID &targetVDisk,
             ui64 cookie, NKikimrBlobStorage::ESyncFullStage stage, const TLogoBlobID &logoBlobFrom,
-            ui64 blockTabletFrom, const TKeyBarrier &barrierFrom)
+            ui64 blockTabletFrom, const TKeyBarrier &barrierFrom, NKikimrBlobStorage::EFullSyncProtocol protocol)
     {
         SyncStateFromSyncState(syncState, Record.MutableSyncState());
         VDiskIDFromVDiskID(sourceVDisk, Record.MutableSourceVDiskID());
@@ -104,5 +103,10 @@ namespace NKikimr {
         LogoBlobIDFromLogoBlobID(logoBlobFrom, Record.MutableLogoBlobFrom());
         Record.SetBlockTabletFrom(blockTabletFrom);
         barrierFrom.Serialize(*Record.MutableBarrierFrom());
+        Record.SetProtocol(protocol);
     }
+
+    TEvGetSkeletonStateResult::TEvGetSkeletonStateResult(TActorId chunkKeeperActorId)
+        : ChunkKeeperActorId(chunkKeeperActorId)
+    {}
 } // NKikimr

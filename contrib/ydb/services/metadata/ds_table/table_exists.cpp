@@ -42,7 +42,7 @@ void TTableExistsActor::OnBootstrap() {
     Become(&TTableExistsActor::StateMain);
 
     auto request = MakeHolder<NSchemeCache::TSchemeCacheNavigate>();
-    request->DatabaseName = NKikimr::CanonizePath(AppData()->TenantName);
+    request->DatabaseName = AppData()->TenantName;
     auto& entry = request->ResultSet.emplace_back();
     entry.Operation = NSchemeCache::TSchemeCacheNavigate::OpPath;
     entry.Path = NKikimr::SplitPath(Path);
@@ -51,12 +51,12 @@ void TTableExistsActor::OnBootstrap() {
 }
 
 void TTableExistsActor::Handle(NActors::TEvents::TEvUndelivered::TPtr& /*ev*/) {
-    AFL_WARN(NKikimrServices::METADATA_PROVIDER)("actor", "TTableExistsActor")("event", "undelivered")("self_id", SelfId())("send_to", MakeSchemeCacheID());
+    AFL_DEBUG(NKikimrServices::METADATA_PROVIDER)("actor", "TTableExistsActor")("event", "undelivered")("self_id", SelfId())("send_to", MakeSchemeCacheID());
     OutputController->OnPathExistsCheckFailed("scheme_cache_undelivered_message", Path);
 }
 
 void TTableExistsActor::OnTimeout() {
-    AFL_ERROR(NKikimrServices::METADATA_PROVIDER)("actor", "TTableExistsActor")("event", "timeout")("self_id", SelfId())("send_to", MakeSchemeCacheID());
+    AFL_DEBUG(NKikimrServices::METADATA_PROVIDER)("actor", "TTableExistsActor")("event", "timeout")("self_id", SelfId())("send_to", MakeSchemeCacheID());
     OutputController->OnPathExistsCheckFailed("timeout", Path);
 }
 

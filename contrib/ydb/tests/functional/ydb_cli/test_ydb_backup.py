@@ -1,21 +1,19 @@
 # -*- coding: utf-8 -*-
 
-from contrib.ydb.tests.library.common import yatest_common
-from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
+from contrib.ydb.tests.functional.ydb_cli.ydb_cli_helpers import ydb_bin as backup_bin, BaseCliTestWithDatabase
+from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
+from contrib.ydb.tests.library.harness.kikimr_runner import KiKiMR
 from contrib.ydb.tests.oss.ydb_sdk_import import ydb
 
-from hamcrest import assert_that, is_, is_not, contains_inanyorder, has_item, has_items
-import os
+from hamcrest import assert_that, is_, is_not, contains_inanyorder, has_items, equal_to, empty
+import enum
 import logging
+import os
 import pytest
 
+import yatest
+
 logger = logging.getLogger(__name__)
-
-
-def backup_bin():
-    if os.getenv("YDB_CLI_BINARY"):
-        return yatest_common.binary_path(os.getenv("YDB_CLI_BINARY"))
-    raise RuntimeError("YDB_CLI_BINARY enviroment variable is not specified")
 
 
 def upsert_simple(session, full_path):
@@ -33,7 +31,7 @@ def upsert_simple(session, full_path):
 
 
 def output_path(*args):
-    path = os.path.join(yatest_common.output_path(), *args)
+    path = os.path.join(yatest.common.output_path(), *args)
     os.makedirs(path, exist_ok=False)
     return path
 
@@ -54,6 +52,16 @@ def columns_to_string(columns):
     return list_to_string(columns, lambda col: col.name + ":" + str(col.type.item).strip())
 
 
+def permissions_to_string(permissions):
+    return list_to_string(permissions, lambda p: p.subject + ":" + str(p.permission_names))
+
+
+def sort_permissions(permissions):
+    for permission in permissions:
+        permission.permission_names = sorted(permission.permission_names)
+    return sorted(permissions, key=lambda p: p.subject)
+
+
 def create_table_with_data(session, path, not_null=False):
     path = "/Root/" + path
     session.create_table(
@@ -69,7 +77,40 @@ def create_table_with_data(session, path, not_null=False):
     upsert_simple(session, path)
 
 
-def is_tables_the_same(session, path_left, path_right, check_data=True):
+def modify_permissions(scheme_client, path):
+    path = "/Root/" + path
+    scheme_client.modify_permissions(
+        path,
+        ydb.ModifyPermissionsSettings()
+        .grant_permissions(
+            "alice", (
+                "ydb.generic.read",
+                "ydb.generic.write",
+            )
+        )
+        .grant_permissions(
+            "bob", (
+                "ydb.generic.read",
+            )
+        )
+        .change_owner("eve")
+    )
+
+
+def are_tables_the_same(session, scheme_client, path_left, path_right, check_data=True):
+    if not are_tables_descriptions_the_same(session, path_left, path_right):
+        return False
+
+    if not are_permissions_the_same_for_two_paths(scheme_client, path_left, path_right):
+        return False
+
+    if check_data:
+        return is_data_the_same(session, path_left, path_right)
+
+    return True
+
+
+def are_tables_descriptions_the_same(session, path_left, path_right):
     table_desc_left = session.describe_table(path_left)
     table_desc_right = session.describe_table(path_right)
     if (
@@ -83,10 +124,10 @@ def is_tables_the_same(session, path_left, path_right, check_data=True):
                       "\npath_left# " + path_left + " has columns# " + left_cols + " primary_key# " + left_pk +
                       "\npath_right# " + path_right + " has columns# " + right_cols + " primary_key# " + right_pk)
         return False
+    return True
 
-    if not check_data:
-        return True
 
+def is_data_the_same(session, path_left, path_right):
     table_it_left = session.read_table(path_left, ordered=True)
     table_it_right = session.read_table(path_right, ordered=True)
     left_rows = []
@@ -122,39 +163,160 @@ def is_tables_the_same(session, path_left, path_right, check_data=True):
         processed_rows += rows_to_process
         left_rows = left_rows[rows_to_process:]
         right_rows = right_rows[rows_to_process:]
+
+
+def are_permissions_the_same(permissions_string_left, owner_left, permissions_string_right, owner_right):
+    if owner_left != owner_right or permissions_string_left != permissions_string_right:
+        logging.debug("Permissions (are not the same)!" +
+                      "\nleft object has owner# " + owner_left +
+                      " permissions# " + permissions_string_left +
+                      "\nright object has owner# " + owner_right +
+                      " permissions# " + permissions_string_right)
+        return False
     return True
 
 
-def list_all_dirs(prefix, path=""):
+def are_permissions_the_same_for_two_paths(scheme_client, path_left, path_right):
+    path_left_desc = scheme_client.describe_path(path_left)
+    path_right_desc = scheme_client.describe_path(path_right)
+
+    path_left_permissions = permissions_to_string(sort_permissions(path_left_desc.permissions))
+    path_right_permsissions = permissions_to_string(sort_permissions(path_right_desc.permissions))
+
+    return are_permissions_the_same(path_left_permissions, path_left_desc.owner, path_right_permsissions, path_right_desc.owner)
+
+
+def _topic_codec_sort_key(codec):
+    return int(codec)
+
+
+def _topic_compare_value(value):
+    if isinstance(value, dict):
+        return tuple(sorted((k, _topic_compare_value(v)) for k, v in value.items()))
+    if isinstance(value, (list, tuple, set)):
+        normalized = tuple(_topic_compare_value(v) for v in value)
+        try:
+            return tuple(sorted(normalized))
+        except TypeError:
+            return normalized
+    if isinstance(value, enum.Enum):
+        return int(value)
+    return value
+
+
+def _topic_extra_public_attrs(obj, excluded_names):
+    extra_attrs = []
+    for attr_name in dir(obj):
+        if attr_name.startswith("_") or attr_name in excluded_names:
+            continue
+        try:
+            attr_value = getattr(obj, attr_name)
+        except Exception:
+            continue
+        if callable(attr_value):
+            continue
+        extra_attrs.append((attr_name, _topic_compare_value(attr_value)))
+    return tuple(sorted(extra_attrs))
+
+
+def _topic_consumer_compare_key(consumer):
+    return (
+        consumer.name,
+        consumer.important,
+        consumer.read_from,
+        tuple(sorted(_topic_codec_sort_key(x) for x in consumer.supported_codecs)),
+        tuple(sorted(consumer.attributes.items())),
+        _topic_extra_public_attrs(
+            consumer,
+            {
+                "name",
+                "important",
+                "read_from",
+                "supported_codecs",
+                "attributes",
+            },
+        ),
+    )
+
+
+def topic_description_compare_key(desc):
+    user_attrs = tuple(sorted((k, v) for k, v in desc.attributes.items() if not k.startswith("_")))
+    consumers = tuple(sorted(_topic_consumer_compare_key(c) for c in desc.consumers))
+    partitions = tuple(
+        sorted(
+            (
+                p.partition_id,
+                p.active,
+                tuple(sorted(p.child_partition_ids)),
+                tuple(sorted(p.parent_partition_ids)),
+            )
+            for p in desc.partitions
+        )
+    )
+    ap = desc.auto_partitioning_settings
+    ap_key = None
+    if ap is not None:
+        ap_key = (
+            ap.strategy,
+            ap.stabilization_window,
+            ap.down_utilization_percent,
+            ap.up_utilization_percent,
+        )
+    mm = desc.metering_mode
+    mm_key = int(mm) if mm is not None else None
+    return (
+        desc.min_active_partitions,
+        desc.max_active_partitions,
+        desc.partition_count_limit,
+        desc.retention_period,
+        desc.retention_storage_mb,
+        tuple(sorted(_topic_codec_sort_key(c) for c in desc.supported_codecs)),
+        desc.partition_write_speed_bytes_per_second,
+        desc.partition_write_burst_bytes,
+        user_attrs,
+        consumers,
+        partitions,
+        mm_key,
+        ap_key,
+    )
+
+
+def are_topic_descriptions_equivalent(driver, path_left, path_right):
+    left = driver.topic_client.describe_topic(path_left, include_stats=False)
+    right = driver.topic_client.describe_topic(path_right, include_stats=False)
+    return topic_description_compare_key(left) == topic_description_compare_key(right)
+
+
+@enum.unique
+class ListMode(enum.IntEnum):
+    DIRS = 0,
+    FILES = 1,
+
+
+def fs_recursive_list(prefix, mode=ListMode.DIRS, path=""):
     paths = []
     full_path = os.path.join(prefix, path)
     logger.debug("prefix# " + prefix + " path# " + path)
     for item in os.listdir(full_path):
         item_path = os.path.join(full_path, item)
         if os.path.isdir(item_path):
-            paths.append(os.path.join(path, item))
-            paths += list_all_dirs(prefix, os.path.join(path, item))
-        else:
-            # don't list regular files
-            pass
+            if mode == ListMode.DIRS:
+                paths.append(os.path.join(path, item))
+            paths += fs_recursive_list(prefix, mode, os.path.join(path, item))
+        elif os.path.isfile(item_path):
+            if mode == ListMode.FILES:
+                paths.append(os.path.join(path, item))
     return paths
 
 
-class BaseTestBackupInFiles(object):
-    @classmethod
-    def setup_class(cls):
-        cls.cluster = kikimr_cluster_factory()
-        cls.cluster.start()
-        cls.root_dir = "/Root"
-        driver_config = ydb.DriverConfig(
-            database="/Root",
-            endpoint="%s:%s" % (cls.cluster.nodes[1].host, cls.cluster.nodes[1].port))
-        cls.driver = ydb.Driver(driver_config)
-        cls.driver.wait(timeout=4)
+def is_system_object(object):
+    return object.name.startswith(".")
 
+
+class BaseTestBackupInFiles(BaseCliTestWithDatabase):
     @classmethod
-    def teardown_class(cls):
-        cls.cluster.stop()
+    def get_cluster_configurator(cls):
+        return KikimrConfigGenerator(extra_feature_flags=["enable_resource_pools", "enable_topic_message_level_parallelism"])
 
     @pytest.fixture(autouse=True, scope='class')
     @classmethod
@@ -163,9 +325,8 @@ class BaseTestBackupInFiles(object):
 
     @classmethod
     def create_backup(cls, path, expected_dirs, check_data, additional_args=[]):
-        _, name = os.path.split(path)
         backup_files_dir = output_path(cls.test_name, "backup_files_dir_" + path.replace("/", "_"))
-        execution = yatest_common.execute(
+        execution = yatest.common.execute(
             [
                 backup_bin(),
                 "--verbose",
@@ -179,12 +340,12 @@ class BaseTestBackupInFiles(object):
         )
 
         logger.debug("std_out:\n" + execution.std_out.decode('utf-8'))
-        list_all_dirs(backup_files_dir)
-        logger.debug("list_all_dirs(backup_files_dir)# " + str(list_all_dirs(backup_files_dir)))
+        fs_recursive_list(backup_files_dir)
+        logger.debug("fs_recursive_list(backup_files_dir)# " + str(fs_recursive_list(backup_files_dir)))
         logger.debug("expected_dirs# " + str(expected_dirs))
 
         assert_that(
-            list_all_dirs(backup_files_dir),
+            fs_recursive_list(backup_files_dir),
             has_items(*expected_dirs)
         )
 
@@ -192,13 +353,37 @@ class BaseTestBackupInFiles(object):
             if check_data:
                 assert_that(
                     os.listdir(backup_files_dir + "/" + _dir),
-                    contains_inanyorder("data_00.csv", "scheme.pb")
+                    contains_inanyorder("data_00.csv", "scheme.pb", "permissions.pb")
                 )
             else:
                 assert_that(
                     os.listdir(backup_files_dir + "/" + _dir),
-                    has_item("scheme.pb")
+                    has_items("scheme.pb", "permissions.pb")
                 )
+
+    def scheme_listdir(self, path):
+        return [
+            child.name
+            for child in self.driver.scheme_client.list_directory(path).children
+            if not is_system_object(child)
+        ]
+
+    def create_user(self, user, password="password"):
+        yatest.common.execute(
+            [
+                backup_bin(),
+                "--verbose",
+                "--endpoint", "grpc://localhost:%d" % self.cluster.nodes[1].grpc_port,
+                "--database", "/Root",
+                "yql",
+                "--script", f"CREATE USER {user} PASSWORD '{password}'",
+            ]
+        )
+
+    def create_users(self):
+        self.create_user("alice")
+        self.create_user("bob")
+        self.create_user("eve")
 
 
 class TestBackupSingle(BaseTestBackupInFiles):
@@ -213,7 +398,7 @@ class TestBackupSingle(BaseTestBackupInFiles):
 
         assert_that(
             [child.name for child in self.driver.scheme_client.list_directory("/Root").children],
-            is_(["table", ".sys"])
+            contains_inanyorder("table", ".metadata", ".sys")
         )
 
 
@@ -229,7 +414,7 @@ class TestBackupSingleNotNull(BaseTestBackupInFiles):
 
         assert_that(
             [child.name for child in self.driver.scheme_client.list_directory("/Root").children],
-            is_(["table", ".sys"])
+            contains_inanyorder("table", ".metadata", ".sys")
         )
 
 
@@ -411,7 +596,7 @@ class TestSingleBackupRestore(BaseTestBackupInFiles):
 
         # Backup table
         backup_files_dir = output_path(self.test_name, 'test_single_table_with_data_backup_restore' + postfix, "backup_files_dir")
-        yatest_common.execute(
+        yatest.common.execute(
             [
                 backup_bin(),
                 "--verbose",
@@ -428,7 +613,7 @@ class TestSingleBackupRestore(BaseTestBackupInFiles):
         )
         assert_that(
             [child.name for child in self.driver.scheme_client.list_directory("/Root").children],
-            is_(["folder", ".sys"])
+            contains_inanyorder("folder", ".metadata", ".sys")
         )
 
         # Restore table
@@ -443,22 +628,121 @@ class TestSingleBackupRestore(BaseTestBackupInFiles):
         ]
         if use_bulk_upsert:
             restore_cmd.append("--bulk-upsert")
-        yatest_common.execute(restore_cmd)
+        yatest.common.execute(restore_cmd)
 
         assert_that(
             [child.name for child in self.driver.scheme_client.list_directory("/Root").children],
-            contains_inanyorder("folder", "restored" + postfix, ".sys")
+            contains_inanyorder("folder", "restored" + postfix, ".metadata", ".sys")
         )
         assert_that(
             [child.name for child in self.driver.scheme_client.list_directory("/Root/restored" + postfix).children],
             is_(["table"])
         )
         assert_that(
-            is_tables_the_same(session, "/Root/folder/table", "/Root/restored" + postfix + "/table"),
+            are_tables_the_same(session, self.driver.scheme_client, "/Root/folder/table", "/Root/restored" + postfix + "/table"),
             is_(True)
         )
         session.drop_table("/Root/restored" + postfix + "/table")
         self.driver.scheme_client.remove_directory("/Root/restored" + postfix)
+
+
+class TestTopicBackupRestore(BaseTestBackupInFiles):
+    def test_topic_backup_restore(self):
+        topic_name = "cli_backup_topic"
+        src_topic = "/Root/folder/" + topic_name
+
+        self.driver.scheme_client.make_directory("/Root/folder")
+        self.driver.topic_client.create_topic(
+            src_topic,
+            consumers=["consumer_a"],
+            min_active_partitions=2,
+        )
+        shared_consumer_name = "consumer_shared_cli"
+        yatest.common.execute(
+            [
+                backup_bin(),
+                "--verbose",
+                "--endpoint", "grpc://localhost:%d" % self.cluster.nodes[1].grpc_port,
+                "--database", "/Root",
+                "topic",
+                "consumer",
+                "add",
+                src_topic,
+                "--consumer",
+                shared_consumer_name,
+                "--type",
+                "shared",
+                "--starting-message-timestamp",
+                "1000000000",
+                "--availability-period",
+                "48h",
+                "--supported-codecs",
+                "raw",
+                "--default-processing-timeout",
+                "35m",
+                "--receive-message-wait-time",
+                "18s",
+                "--receive-message-delay",
+                "4s",
+                "--max-processing-attempts",
+                "9",
+            ]
+        )
+        src_desc = self.driver.topic_client.describe_topic(src_topic, include_stats=False)
+        assert_that(
+            sorted(c.name for c in src_desc.consumers),
+            is_(sorted(["consumer_a", shared_consumer_name])),
+        )
+
+        backup_files_dir = output_path(self.test_name, "topic_backup_files_dir")
+        yatest.common.execute(
+            [
+                backup_bin(),
+                "--verbose",
+                "--endpoint", "grpc://localhost:%d" % self.cluster.nodes[1].grpc_port,
+                "--database", "/Root",
+                "tools", "dump",
+                "--path", "/Root/folder",
+                "--output", backup_files_dir,
+            ]
+        )
+        assert_that(os.listdir(backup_files_dir), is_([topic_name]))
+        assert_that(
+            sorted(os.listdir(os.path.join(backup_files_dir, topic_name))),
+            is_(sorted(["create_topic.pb", "permissions.pb"])),
+        )
+
+        restored = "/Root/restored_topic"
+        yatest.common.execute(
+            [
+                backup_bin(),
+                "--verbose",
+                "--endpoint", "grpc://localhost:%d" % self.cluster.nodes[1].grpc_port,
+                "--database", "/Root",
+                "tools", "restore",
+                "--path", restored,
+                "--input", backup_files_dir,
+            ]
+        )
+        dst_topic = restored + "/" + topic_name
+        assert_that(
+            self.scheme_listdir("/Root"),
+            contains_inanyorder("folder", "restored_topic"),
+        )
+        assert_that(self.scheme_listdir(restored), is_([topic_name]))
+        assert_that(
+            are_permissions_the_same_for_two_paths(self.driver.scheme_client, src_topic, dst_topic),
+            is_(True),
+        )
+        assert_that(
+            are_topic_descriptions_equivalent(self.driver, src_topic, dst_topic),
+            is_(True),
+        )
+
+        self.driver.topic_client.drop_topic(dst_topic)
+        self.driver.scheme_client.remove_directory(restored)
+        self.driver.topic_client.drop_topic(src_topic)
+        self.driver.scheme_client.remove_directory("/Root/folder")
 
 
 class TestBackupRestoreInRoot(BaseTestBackupInFiles):
@@ -474,7 +758,7 @@ class TestBackupRestoreInRoot(BaseTestBackupInFiles):
 
         # Backup table
         backup_files_dir = output_path(self.test_name, 'test_single_table_with_data_backup_restore', "backup_files_dir")
-        yatest_common.execute(
+        yatest.common.execute(
             [
                 backup_bin(),
                 "--verbose",
@@ -491,11 +775,11 @@ class TestBackupRestoreInRoot(BaseTestBackupInFiles):
         )
         assert_that(
             [child.name for child in self.driver.scheme_client.list_directory("/Root").children],
-            is_(["folder", ".sys"])
+            contains_inanyorder("folder", ".metadata", ".sys")
         )
 
         # Restore table
-        yatest_common.execute(
+        yatest.common.execute(
             [
                 backup_bin(),
                 "--verbose",
@@ -508,10 +792,10 @@ class TestBackupRestoreInRoot(BaseTestBackupInFiles):
         )
         assert_that(
             [child.name for child in self.driver.scheme_client.list_directory("/Root").children],
-            contains_inanyorder("folder", "table", ".sys")
+            contains_inanyorder("folder", "table", ".metadata", ".sys")
         )
         assert_that(
-            is_tables_the_same(session, "/Root/folder/table", "/Root/table"),
+            are_tables_the_same(session, self.driver.scheme_client, "/Root/folder/table", "/Root/table"),
             is_(True)
         )
 
@@ -529,7 +813,7 @@ class TestBackupRestoreInRootSchemeOnly(BaseTestBackupInFiles):
 
         # Backup table
         backup_files_dir = output_path(self.test_name, 'test_single_table_with_data_backup_restore', "backup_files_dir")
-        yatest_common.execute(
+        yatest.common.execute(
             [
                 backup_bin(),
                 "--verbose",
@@ -547,11 +831,11 @@ class TestBackupRestoreInRootSchemeOnly(BaseTestBackupInFiles):
         )
         assert_that(
             [child.name for child in self.driver.scheme_client.list_directory("/Root").children],
-            is_(["folder", ".sys"])
+            contains_inanyorder("folder", ".metadata", ".sys")
         )
 
         # Restore table
-        yatest_common.execute(
+        yatest.common.execute(
             [
                 backup_bin(),
                 "--verbose",
@@ -564,10 +848,10 @@ class TestBackupRestoreInRootSchemeOnly(BaseTestBackupInFiles):
         )
         assert_that(
             [child.name for child in self.driver.scheme_client.list_directory("/Root").children],
-            contains_inanyorder("folder", "table", ".sys")
+            contains_inanyorder("folder", "table", ".metadata", ".sys")
         )
         assert_that(
-            is_tables_the_same(session, "/Root/folder/table", "/Root/table", False),
+            are_tables_the_same(session, self.driver.scheme_client, "/Root/folder/table", "/Root/table", False),
             is_(True)
         )
 
@@ -584,7 +868,7 @@ class TestIncompleteBackup(BaseTestBackupInFiles):
 
         # Backup table
         backup_files_dir = output_path(self.test_name, "backup_files_dir")
-        yatest_common.execute(
+        yatest.common.execute(
             [
                 backup_bin(),
                 "--verbose",
@@ -601,7 +885,7 @@ class TestIncompleteBackup(BaseTestBackupInFiles):
         )
         assert_that(
             [child.name for child in self.driver.scheme_client.list_directory("/Root").children],
-            is_(["folder", ".sys"])
+            contains_inanyorder("folder", ".metadata", ".sys")
         )
 
         # Create "incomplete" file in folder with backup files
@@ -609,7 +893,7 @@ class TestIncompleteBackup(BaseTestBackupInFiles):
         open(os.path.join(backup_files_dir, "table", "incomplete"), "w").close()
 
         # Restore table and check that it fails without restoring anything
-        execution = yatest_common.execute(
+        execution = yatest.common.execute(
             [
                 backup_bin(),
                 "--verbose",
@@ -627,14 +911,14 @@ class TestIncompleteBackup(BaseTestBackupInFiles):
         )
         assert_that(
             [child.name for child in self.driver.scheme_client.list_directory("/Root").children],
-            is_(["folder", ".sys"])
+            contains_inanyorder("folder", ".metadata", ".sys")
         )
         assert_that(
             [child.name for child in self.driver.scheme_client.list_directory("/Root/folder").children],
             is_(["table"])
         )
 
-        execution = yatest_common.execute(
+        execution = yatest.common.execute(
             [
                 backup_bin(),
                 "--verbose",
@@ -653,7 +937,7 @@ class TestIncompleteBackup(BaseTestBackupInFiles):
         )
         assert_that(
             [child.name for child in self.driver.scheme_client.list_directory("/Root").children],
-            is_(["folder", ".sys"])
+            contains_inanyorder("folder", ".metadata", ".sys")
         )
         assert_that(
             [child.name for child in self.driver.scheme_client.list_directory("/Root/folder").children],
@@ -700,7 +984,7 @@ class TestAlterBackupRestore(BaseTestBackupInFiles):
 
         # Backup table
         backup_files_dir = output_path(self.test_name, 'test_single_table_with_data_backup_restore', "backup_files_dir")
-        yatest_common.execute(
+        yatest.common.execute(
             [
                 backup_bin(),
                 "--verbose",
@@ -717,11 +1001,11 @@ class TestAlterBackupRestore(BaseTestBackupInFiles):
         )
         assert_that(
             [child.name for child in self.driver.scheme_client.list_directory("/Root").children],
-            is_(["folder", ".sys"])
+            contains_inanyorder("folder", ".metadata", ".sys")
         )
 
         # Restore table
-        yatest_common.execute(
+        yatest.common.execute(
             [
                 backup_bin(),
                 "--verbose",
@@ -734,13 +1018,1231 @@ class TestAlterBackupRestore(BaseTestBackupInFiles):
         )
         assert_that(
             [child.name for child in self.driver.scheme_client.list_directory("/Root").children],
-            contains_inanyorder("folder", "restored", ".sys")
+            contains_inanyorder("folder", "restored", ".metadata", ".sys")
         )
         assert_that(
             [child.name for child in self.driver.scheme_client.list_directory("/Root/restored").children],
             is_(["table"])
         )
         assert_that(
-            is_tables_the_same(session, "/Root/folder/table", "/Root/restored/table"),
+            are_tables_the_same(session, self.driver.scheme_client, "/Root/folder/table", "/Root/restored/table"),
             is_(True)
+        )
+
+
+class TestPermissionsBackupRestoreSingleTable(BaseTestBackupInFiles):
+    def test_single_table(self):
+        self.driver.scheme_client.make_directory("/Root/folder")
+
+        session = self.driver.table_client.session().create()
+
+        # Create table and modify permissions on it
+        self.create_users()
+        create_table_with_data(session, "folder/table")
+        modify_permissions(self.driver.scheme_client, "folder/table")
+
+        # Backup table
+        backup_files_dir = output_path(self.test_name, "test_single_table", "backup_files_dir")
+        yatest.common.execute(
+            [
+                backup_bin(),
+                "--verbose",
+                "--endpoint", "grpc://localhost:%d" % self.cluster.nodes[1].grpc_port,
+                "--database", "/Root",
+                "tools", "dump",
+                "--path", "/Root/folder",
+                "--output", backup_files_dir
+            ]
+        )
+        assert_that(
+            os.listdir(backup_files_dir),
+            is_(["table"])
+        )
+        assert_that(
+            self.scheme_listdir("/Root"),
+            is_(["folder"])
+        )
+
+        # Restore table
+        restore_cmd = [
+            backup_bin(),
+            "--verbose",
+            "--endpoint", "grpc://localhost:%d" % self.cluster.nodes[1].grpc_port,
+            "--database", "/Root",
+            "tools", "restore",
+            "--path", "/Root/restored",
+            "--input", backup_files_dir
+        ]
+        yatest.common.execute(restore_cmd)
+
+        assert_that(
+            self.scheme_listdir("/Root"),
+            contains_inanyorder("folder", "restored")
+        )
+        assert_that(
+            self.scheme_listdir("/Root/restored"),
+            is_(["table"])
+        )
+        assert_that(
+            are_tables_the_same(session, self.driver.scheme_client, "/Root/folder/table", "/Root/restored/table"),
+            is_(True)
+        )
+
+
+class TestPermissionsBackupRestoreFolderWithTable(BaseTestBackupInFiles):
+    def test_folder_with_table(self):
+        # Create folder and modify permissions on it
+        self.create_users()
+        self.driver.scheme_client.make_directory("/Root/folder")
+        modify_permissions(self.driver.scheme_client, "folder")
+
+        session = self.driver.table_client.session().create()
+
+        # Create table and modify permissions on it
+        create_table_with_data(session, "folder/table")
+        modify_permissions(self.driver.scheme_client, "folder/table")
+
+        # Backup folder with table
+        backup_files_dir = output_path(self.test_name, "test_folder_with_table", "backup_files_dir")
+        yatest.common.execute(
+            [
+                backup_bin(),
+                "--verbose",
+                "--endpoint", "grpc://localhost:%d" % self.cluster.nodes[1].grpc_port,
+                "--database", "/Root",
+                "tools", "dump",
+                "--path", "/Root",
+                "--output", backup_files_dir
+            ]
+        )
+        assert_that(
+            self.scheme_listdir("/Root"),
+            is_(["folder"])
+        )
+
+        # Restore folder with table
+        restore_cmd = [
+            backup_bin(),
+            "--verbose",
+            "--endpoint", "grpc://localhost:%d" % self.cluster.nodes[1].grpc_port,
+            "--database", "/Root",
+            "tools", "restore",
+            "--path", "/Root/restored",
+            "--input", backup_files_dir
+        ]
+        yatest.common.execute(restore_cmd)
+
+        assert_that(
+            self.scheme_listdir("/Root"),
+            contains_inanyorder("folder", "restored")
+        )
+        assert_that(
+            are_permissions_the_same_for_two_paths(self.driver.scheme_client, "/Root/folder/", "/Root/restored/folder/"),
+            is_(True)
+        )
+        assert_that(
+            are_tables_the_same(session, self.driver.scheme_client, "/Root/folder/table", "/Root/restored/folder/table"),
+            is_(True)
+        )
+
+
+class TestPermissionsBackupRestoreDontOverwriteOnAlreadyExisting(BaseTestBackupInFiles):
+    def test_dont_overwrite_on_already_existing(self):
+        # Create folder and modify permissions on it
+        self.create_users()
+        self.driver.scheme_client.make_directory("/Root/folder")
+        modify_permissions(self.driver.scheme_client, "folder")
+
+        session = self.driver.table_client.session().create()
+
+        # Create table and modify permissions on it
+        create_table_with_data(session, "folder/table")
+        modify_permissions(self.driver.scheme_client, "folder/table")
+
+        # Backup folder with table
+        backup_files_dir = output_path(self.test_name, "test_dont_overwrite_on_already_existing", "backup_files_dir")
+        yatest.common.execute(
+            [
+                backup_bin(),
+                "--verbose",
+                "--endpoint", "grpc://localhost:%d" % self.cluster.nodes[1].grpc_port,
+                "--database", "/Root",
+                "tools", "dump",
+                "--path", "/Root",
+                "--output", backup_files_dir
+            ]
+        )
+        assert_that(
+            self.scheme_listdir("/Root"),
+            is_(["folder"])
+        )
+
+        # Recreate table and folder but without permissions and data
+        session.drop_table("/Root/folder/table")
+        self.driver.scheme_client.remove_directory("/Root/folder")
+        self.driver.scheme_client.make_directory("/Root/folder")
+        session.create_table(
+            "/Root/folder/table",
+            ydb.TableDescription()
+            .with_column(ydb.Column("id", ydb.OptionalType(ydb.PrimitiveType.Uint32)))
+            .with_column(ydb.Column("number", ydb.OptionalType(ydb.PrimitiveType.Uint64)))
+            .with_column(ydb.Column("string", ydb.OptionalType(ydb.PrimitiveType.String)))
+            .with_column(ydb.Column("fixed_point", ydb.OptionalType(ydb.DecimalType())))
+            .with_primary_keys("id")
+        )
+        assert_that(
+            self.scheme_listdir("/Root"),
+            is_(["folder"])
+        )
+
+        # Restore folder with table in already existing folder and table
+        restore_cmd = [
+            backup_bin(),
+            "--verbose",
+            "--endpoint", "grpc://localhost:%d" % self.cluster.nodes[1].grpc_port,
+            "--database", "/Root",
+            "tools", "restore",
+            "--path", "/Root",
+            "--input", backup_files_dir
+        ]
+        yatest.common.execute(restore_cmd)
+        assert_that(
+            self.scheme_listdir("/Root"),
+            is_(["folder"])
+        )
+
+        # Restore folder with table one more time in another folder
+        restore_cmd = [
+            backup_bin(),
+            "--verbose",
+            "--endpoint", "grpc://localhost:%d" % self.cluster.nodes[1].grpc_port,
+            "--database", "/Root",
+            "tools", "restore",
+            "--path", "/Root/restored",
+            "--input", backup_files_dir
+        ]
+        yatest.common.execute(restore_cmd)
+
+        assert_that(
+            self.scheme_listdir("/Root"),
+            contains_inanyorder("folder", "restored")
+        )
+
+        assert_that(
+            are_permissions_the_same_for_two_paths(self.driver.scheme_client, "/Root/folder/", "/Root/restored/folder/"),
+            is_(False)
+        )
+        assert_that(
+            are_tables_descriptions_the_same(session, "/Root/folder/table", "/Root/restored/folder/table"),
+            is_(True)
+        )
+        assert_that(
+            is_data_the_same(session, "/Root/folder/table", "/Root/restored/folder/table"),
+            is_(True)
+        )
+        assert_that(
+            are_permissions_the_same_for_two_paths(self.driver.scheme_client, "/Root/folder/table", "/Root/restored/folder/table"),
+            is_(False)
+        )
+
+
+class TestPermissionsBackupRestoreSchemeOnly(BaseTestBackupInFiles):
+    def test_scheme_only(self):
+        # Create folder and modify permissions on it
+        self.create_users()
+        self.driver.scheme_client.make_directory("/Root/folder")
+        modify_permissions(self.driver.scheme_client, "folder")
+
+        session = self.driver.table_client.session().create()
+
+        # Create table and modify permissions on it
+        create_table_with_data(session, "folder/table")
+        modify_permissions(self.driver.scheme_client, "folder/table")
+
+        # Backup folder with table
+        backup_files_dir = output_path(self.test_name, "test_scheme_only", "backup_files_dir")
+        yatest.common.execute(
+            [
+                backup_bin(),
+                "--verbose",
+                "--endpoint", "grpc://localhost:%d" % self.cluster.nodes[1].grpc_port,
+                "--database", "/Root",
+                "tools", "dump",
+                "--path", "/Root",
+                "--output", backup_files_dir,
+                "--scheme-only",
+            ]
+        )
+        assert_that(
+            self.scheme_listdir("/Root"),
+            is_(["folder"])
+        )
+
+        # Restore folder with table
+        restore_cmd = [
+            backup_bin(),
+            "--verbose",
+            "--endpoint", "grpc://localhost:%d" % self.cluster.nodes[1].grpc_port,
+            "--database", "/Root",
+            "tools", "restore",
+            "--path", "/Root/restored",
+            "--input", backup_files_dir,
+        ]
+        yatest.common.execute(restore_cmd)
+
+        assert_that(
+            self.scheme_listdir("/Root"),
+            contains_inanyorder("folder", "restored")
+        )
+        assert_that(
+            are_permissions_the_same_for_two_paths(self.driver.scheme_client, "/Root/folder/", "/Root/restored/folder/"),
+            is_(True)
+        )
+        assert_that(
+            are_tables_the_same(session, self.driver.scheme_client, "/Root/folder/table", "/Root/restored/folder/table", False),
+            is_(True)
+        )
+
+
+class TestPermissionsBackupRestoreEmptyDir(BaseTestBackupInFiles):
+    def test_empty_dir(self):
+        # Create empty folder and modify permissions on it
+        self.create_users()
+        self.driver.scheme_client.make_directory("/Root/folder")
+        modify_permissions(self.driver.scheme_client, "folder")
+
+        # Backup folder
+        backup_files_dir = output_path(self.test_name, "test_empty_dir", "backup_files_dir")
+        yatest.common.execute(
+            [
+                backup_bin(),
+                "--verbose",
+                "--endpoint", "grpc://localhost:%d" % self.cluster.nodes[1].grpc_port,
+                "--database", "/Root",
+                "tools", "dump",
+                "--path", "/Root",
+                "--output", backup_files_dir
+            ]
+        )
+        assert_that(
+            self.scheme_listdir("/Root"),
+            is_(["folder"])
+        )
+
+        # Restore folder
+        restore_cmd = [
+            backup_bin(),
+            "--verbose",
+            "--endpoint", "grpc://localhost:%d" % self.cluster.nodes[1].grpc_port,
+            "--database", "/Root",
+            "tools", "restore",
+            "--path", "/Root/restored",
+            "--input", backup_files_dir
+        ]
+        yatest.common.execute(restore_cmd)
+
+        assert_that(
+            self.scheme_listdir("/Root"),
+            contains_inanyorder("folder", "restored")
+        )
+        assert_that(
+            are_permissions_the_same_for_two_paths(self.driver.scheme_client, "/Root/folder/", "/Root/restored/folder/"),
+            is_(True)
+        )
+
+
+class TestRestoreACLOption(BaseTestBackupInFiles):
+    def test_restore_acl_option(self):
+        self.driver.scheme_client.make_directory("/Root/folder")
+
+        session = self.driver.table_client.session().create()
+
+        # Create table and modify permissions on it
+        self.create_users()
+        create_table_with_data(session, "folder/table")
+        modify_permissions(self.driver.scheme_client, "folder/table")
+
+        # Backup table
+        backup_files_dir = output_path(self.test_name, "test_single_table", "backup_files_dir")
+        yatest.common.execute(
+            [
+                backup_bin(),
+                "--verbose",
+                "--endpoint", "grpc://localhost:%d" % self.cluster.nodes[1].grpc_port,
+                "--database", "/Root",
+                "tools", "dump",
+                "--path", "/Root/folder",
+                "--output", backup_files_dir
+            ]
+        )
+        assert_that(
+            os.listdir(backup_files_dir),
+            is_(["table"])
+        )
+        assert_that(
+            self.scheme_listdir("/Root"),
+            is_(["folder"])
+        )
+
+        # Restore table
+        restore_cmd = [
+            backup_bin(),
+            "--verbose",
+            "--endpoint", "grpc://localhost:%d" % self.cluster.nodes[1].grpc_port,
+            "--database", "/Root",
+            "tools", "restore",
+            "--path", "/Root/restored",
+            "--input", backup_files_dir,
+            "--restore-acl", "false"
+        ]
+        yatest.common.execute(restore_cmd)
+
+        assert_that(
+            self.scheme_listdir("/Root"),
+            contains_inanyorder("folder", "restored")
+        )
+        assert_that(
+            self.scheme_listdir("/Root/restored"),
+            is_(["table"])
+        )
+        assert_that(
+            are_tables_descriptions_the_same(session, "/Root/folder/table", "/Root/restored/table"),
+            is_(True)
+        )
+        assert_that(
+            is_data_the_same(session, "/Root/folder/table", "/Root/restored/table"),
+            is_(True)
+        )
+        assert_that(
+            are_permissions_the_same_for_two_paths(self.driver.scheme_client, "/Root/folder/table", "/Root/restored/table"),
+            is_(False)
+        )
+
+
+class TestRestoreNoData(BaseTestBackupInFiles):
+    def test_restore_no_data(self):
+        self.driver.scheme_client.make_directory("/Root/folder")
+
+        session = self.driver.table_client.session().create()
+
+        # Create table and modify permissions on it
+        self.create_users()
+        create_table_with_data(session, "folder/table")
+        modify_permissions(self.driver.scheme_client, "folder/table")
+
+        # Backup table
+        backup_files_dir = output_path(self.test_name, "test_single_table", "backup_files_dir")
+        yatest.common.execute(
+            [
+                backup_bin(),
+                "--verbose",
+                "--endpoint", "grpc://localhost:%d" % self.cluster.nodes[1].grpc_port,
+                "--database", "/Root",
+                "tools", "dump",
+                "--path", "/Root/folder",
+                "--output", backup_files_dir
+            ]
+        )
+        assert_that(
+            os.listdir(backup_files_dir),
+            is_(["table"])
+        )
+        assert_that(
+            self.scheme_listdir("/Root"),
+            is_(["folder"])
+        )
+
+        # Restore table
+        restore_cmd = [
+            backup_bin(),
+            "--verbose",
+            "--endpoint", "grpc://localhost:%d" % self.cluster.nodes[1].grpc_port,
+            "--database", "/Root",
+            "tools", "restore",
+            "--path", "/Root/restored",
+            "--input", backup_files_dir,
+            "--restore-data", "false",
+        ]
+        yatest.common.execute(restore_cmd)
+
+        assert_that(
+            self.scheme_listdir("/Root"),
+            contains_inanyorder("folder", "restored")
+        )
+        assert_that(
+            self.scheme_listdir("/Root/restored"),
+            is_(["table"])
+        )
+        assert_that(
+            are_tables_the_same(session, self.driver.scheme_client, "/Root/folder/table", "/Root/restored/table", False),
+            is_(True)
+        )
+        assert_that(
+            is_data_the_same(session, "/Root/folder/table", "/Root/restored/table"),
+            is_(False)
+        )
+
+
+class BaseTestClusterBackupInFiles(BaseCliTestWithDatabase):
+    @classmethod
+    def setup_class(cls):
+        cls.cluster = cls._start_cluster(KikimrConfigGenerator(
+            extra_feature_flags=[
+                "enable_strict_acl_check",
+                "enable_strict_user_management",
+                "enable_database_admin"
+            ],
+            domain_login_only=False,
+            enforce_user_token_requirement=True,
+            default_clusteradmin="root@builtin",
+        ))
+
+        cls.database = os.path.join(cls.root_dir, "db1")
+
+        cls.cluster.create_database(
+            cls.database,
+            storage_pool_units_count={
+                'hdd': 1
+            },
+            timeout_seconds=240,
+            token=cls.cluster.config.default_clusteradmin
+        )
+
+        cls.database_nodes = cls.cluster.register_and_start_slots(cls.database, count=3)
+        cls.cluster.wait_tenant_up(cls.database, cls.cluster.config.default_clusteradmin)
+
+        cls.driver = cls._start_driver(cls.database, ydb.AuthTokenCredentials(cls.cluster.config.default_clusteradmin))
+
+    @classmethod
+    def teardown_class(cls):
+        cls.cluster.unregister_and_stop_slots(cls.database_nodes)
+        super().teardown_class()
+
+    @pytest.fixture(autouse=True, scope='class')
+    @classmethod
+    def set_test_name(cls, request):
+        cls.test_name = request.node.name
+
+    @classmethod
+    def create_backup(cls, command, expected_files, output, additional_args=[], token=""):
+        backup_files_dir = output_path(cls.test_name, output)
+        execution = yatest.common.execute(
+            [
+                backup_bin(),
+                "--verbose",
+                "--endpoint", "grpc://localhost:%d" % cls.cluster.nodes[1].grpc_port,
+            ]
+            + command
+            + ["--output", backup_files_dir]
+            + additional_args,
+            env={"YDB_TOKEN": token}
+        )
+
+        list_result = fs_recursive_list(backup_files_dir, ListMode.FILES)
+
+        logger.debug("std_out:\n" + execution.std_out.decode('utf-8'))
+        logger.debug("fs_recursive_list(backup_files_dir)# " + str(list_result))
+        logger.debug("expected_files# " + str(expected_files))
+
+        assert_that(
+            len(list_result),
+            equal_to(len(expected_files))
+        )
+
+        assert_that(
+            list_result,
+            has_items(*expected_files)
+        )
+
+    @classmethod
+    def create_cluster_backup(cls, expected_files, output="backup_files_dir", additional_args=[]):
+        cls.create_backup(
+            [
+                "--database", cls.root_dir,
+                "admin", "cluster", "dump",
+            ],
+            expected_files,
+            output,
+            additional_args,
+            token=cls.cluster.config.default_clusteradmin,
+        )
+
+    @classmethod
+    def create_database_backup(cls, expected_files, output="backup_files_dir", additional_args=[]):
+        cls.create_backup(
+            [
+                "--database", cls.database,
+                "--user", "dbadmin1", "--no-password",
+                "admin", "database", "dump",
+            ],
+            expected_files,
+            output,
+            additional_args
+        )
+
+    @classmethod
+    def setup_sample_data(cls):
+        pool = ydb.SessionPool(cls.driver)
+        with pool.checkout() as session:
+            session.execute_scheme("CREATE GROUP people")
+            session.execute_scheme("CREATE USER alice PASSWORD '1234'")
+            session.execute_scheme("CREATE USER bob PASSWORD '1234'")
+            session.execute_scheme("ALTER GROUP people ADD USER alice")
+            session.execute_scheme("ALTER GROUP people ADD USER bob")
+
+            session.execute_scheme("CREATE GROUP dbadmins")
+            session.execute_scheme("CREATE USER dbadmin1")
+            session.execute_scheme("CREATE USER dbadmin2 PASSWORD '1234'")
+            session.execute_scheme("ALTER GROUP dbadmins ADD USER dbadmin1")
+            session.execute_scheme("ALTER GROUP dbadmins ADD USER dbadmin2")
+            session.execute_scheme(f'GRANT "ydb.generic.use" on `{cls.database}` TO dbadmins')
+
+            cls.driver.scheme_client.modify_permissions(
+                cls.database,
+                ydb.ModifyPermissionsSettings().change_owner("dbadmins")
+            )
+
+        create_table_with_data(cls.driver.table_client.session().create(), "db1/table")
+
+
+class TestClusterBackup(BaseTestClusterBackupInFiles):
+    def test_cluster_backup(self):
+        self.setup_sample_data()
+
+        self.create_cluster_backup(expected_files=[
+            # cluster metadata
+            "permissions.pb",
+            "create_user.sql",
+            "create_group.sql",
+            "alter_group.sql",
+
+            # database metadata
+            "Root/db1/database.pb",
+            "Root/db1/permissions.pb",
+            "Root/db1/create_user.sql",
+            "Root/db1/create_group.sql",
+            "Root/db1/alter_group.sql",
+        ])
+
+
+class TestDatabaseBackup(BaseTestClusterBackupInFiles):
+    def test_database_backup(self):
+        self.setup_sample_data()
+
+        self.create_database_backup(expected_files=[
+            # database metadata
+            "database.pb",
+            "permissions.pb",
+            "create_user.sql",
+            "create_group.sql",
+            "alter_group.sql",
+
+            # database table
+            "table/scheme.pb",
+            "table/permissions.pb",
+            "table/data_00.csv",
+
+            # system views directory
+            ".sys/permissions.pb",
+
+            # system views
+            ".sys/auth_effective_permissions/system_view.pb",
+            ".sys/auth_effective_permissions/permissions.pb",
+            ".sys/auth_group_members/system_view.pb",
+            ".sys/auth_group_members/permissions.pb",
+            ".sys/auth_groups/system_view.pb",
+            ".sys/auth_groups/permissions.pb",
+            ".sys/auth_owners/system_view.pb",
+            ".sys/auth_owners/permissions.pb",
+            ".sys/auth_permissions/system_view.pb",
+            ".sys/auth_permissions/permissions.pb",
+            ".sys/auth_users/system_view.pb",
+            ".sys/auth_users/permissions.pb",
+            ".sys/compile_cache_queries/system_view.pb",
+            ".sys/compile_cache_queries/permissions.pb",
+            ".sys/nodes/system_view.pb",
+            ".sys/nodes/permissions.pb",
+            ".sys/partition_stats/system_view.pb",
+            ".sys/partition_stats/permissions.pb",
+            ".sys/query_metrics_one_minute/system_view.pb",
+            ".sys/query_metrics_one_minute/permissions.pb",
+            ".sys/query_sessions/system_view.pb",
+            ".sys/query_sessions/permissions.pb",
+            ".sys/resource_pool_classifiers/system_view.pb",
+            ".sys/resource_pool_classifiers/permissions.pb",
+            ".sys/resource_pools/system_view.pb",
+            ".sys/resource_pools/permissions.pb",
+            ".sys/streaming_queries/system_view.pb",
+            ".sys/streaming_queries/permissions.pb",
+            ".sys/top_partitions_by_tli_one_hour/system_view.pb",
+            ".sys/top_partitions_by_tli_one_hour/permissions.pb",
+            ".sys/top_partitions_by_tli_one_minute/system_view.pb",
+            ".sys/top_partitions_by_tli_one_minute/permissions.pb",
+            ".sys/top_partitions_one_hour/system_view.pb",
+            ".sys/top_partitions_one_hour/permissions.pb",
+            ".sys/top_partitions_one_minute/system_view.pb",
+            ".sys/top_partitions_one_minute/permissions.pb",
+            ".sys/top_queries_by_cpu_time_one_hour/system_view.pb",
+            ".sys/top_queries_by_cpu_time_one_hour/permissions.pb",
+            ".sys/top_queries_by_cpu_time_one_minute/system_view.pb",
+            ".sys/top_queries_by_cpu_time_one_minute/permissions.pb",
+            ".sys/top_queries_by_duration_one_hour/system_view.pb",
+            ".sys/top_queries_by_duration_one_hour/permissions.pb",
+            ".sys/top_queries_by_duration_one_minute/system_view.pb",
+            ".sys/top_queries_by_duration_one_minute/permissions.pb",
+            ".sys/top_queries_by_read_bytes_one_hour/system_view.pb",
+            ".sys/top_queries_by_read_bytes_one_hour/permissions.pb",
+            ".sys/top_queries_by_read_bytes_one_minute/system_view.pb",
+            ".sys/top_queries_by_read_bytes_one_minute/permissions.pb",
+            ".sys/top_queries_by_request_units_one_hour/system_view.pb",
+            ".sys/top_queries_by_request_units_one_hour/permissions.pb",
+            ".sys/top_queries_by_request_units_one_minute/system_view.pb",
+            ".sys/top_queries_by_request_units_one_minute/permissions.pb",
+        ])
+
+
+class BaseTestMultipleClusterBackupInFiles(BaseTestClusterBackupInFiles):
+    @classmethod
+    def setup_class(cls):
+        super().setup_class()
+
+        cfg = KikimrConfigGenerator(
+            extra_feature_flags=[
+                "enable_strict_acl_check",
+                "enable_strict_user_management",
+                "enable_database_admin"
+            ],
+            domain_name="Root2",
+            domain_login_only=False,
+            enforce_user_token_requirement=True,
+            default_clusteradmin="root@builtin",
+        )
+
+        cls.restore_cluster = KiKiMR(
+            cfg,
+            cluster_name="restore_cluster"
+        )
+
+        cls.restore_cluster.start()
+
+        cls.restore_root_dir = "/Root2"
+        cls.restore_database = os.path.join(cls.restore_root_dir, "db1")
+        cls.restore_database_nodes = cls.restore_cluster.register_and_start_slots(
+            cls.restore_database,
+            count=1
+        )
+
+        restore_driver_config = ydb.DriverConfig(
+            database=cls.restore_database,
+            endpoint="%s:%s" % (
+                cls.restore_cluster.nodes[1].host,
+                cls.restore_cluster.nodes[1].port
+            ),
+            credentials=ydb.AuthTokenCredentials(cls.cluster.config.default_clusteradmin),
+        )
+        cls.restore_driver = ydb.Driver(restore_driver_config)
+
+    @classmethod
+    def teardown_class(cls):
+        cls.restore_cluster.unregister_and_stop_slots(cls.restore_database_nodes)
+        cls.restore_cluster.stop()
+        super().teardown_class()
+
+    @classmethod
+    def restore(cls, command, input, additional_args=[], token=""):
+        backup_files_dir = os.path.join(
+            yatest.common.output_path(),
+            cls.test_name,
+            input
+        )
+
+        yatest.common.execute(
+            [
+                backup_bin(),
+                "--verbose",
+                "--assume-yes",
+                "--endpoint", f"grpc://localhost:{cls.restore_cluster.nodes[1].grpc_port}",
+            ]
+            + command
+            + ["--input", backup_files_dir, "-w", "240s"]
+            + additional_args,
+            env={"YDB_TOKEN": token}
+        )
+
+    @classmethod
+    def restore_cluster_backup(cls, input="backup_files_dir", additional_args=[]):
+        cls.restore(
+            [
+                "--database", cls.restore_root_dir,
+                "admin", "cluster", "restore"
+            ],
+            input,
+            additional_args,
+            token=cls.restore_cluster.config.default_clusteradmin,
+        )
+
+    @classmethod
+    def restore_database_backup(cls, input="backup_files_dir", additional_args=[]):
+        cls.restore(
+            [
+                "--database", cls.restore_database,
+                "--user", "dbadmin1", "--no-password",
+                "admin", "database", "restore"
+            ],
+            input,
+            additional_args
+        )
+
+
+class TestClusterBackupRestore(BaseTestMultipleClusterBackupInFiles):
+    def test_cluster_backup_restore(self):
+        self.setup_sample_data()
+
+        self.create_cluster_backup(expected_files=[
+            # cluster metadata
+            "permissions.pb",
+            "create_user.sql",
+            "create_group.sql",
+            "alter_group.sql",
+
+            # database metadata
+            "Root/db1/database.pb",
+            "Root/db1/permissions.pb",
+            "Root/db1/create_user.sql",
+            "Root/db1/create_group.sql",
+            "Root/db1/alter_group.sql",
+        ])
+
+        self.restore_cluster_backup()
+
+        self.restore_cluster.wait_tenant_up(self.restore_database, self.cluster.config.default_clusteradmin)
+        self.restore_driver.wait(timeout=10)
+
+
+class TestDatabaseBackupRestore(BaseTestMultipleClusterBackupInFiles):
+    def test_database_backup_restore(self):
+        self.setup_sample_data()
+
+        self.create_cluster_backup(output="cluster_backup", expected_files=[
+            # cluster metadata
+            "permissions.pb",
+            "create_user.sql",
+            "create_group.sql",
+            "alter_group.sql",
+
+            # database metadata
+            "Root/db1/database.pb",
+            "Root/db1/permissions.pb",
+            "Root/db1/create_user.sql",
+            "Root/db1/create_group.sql",
+            "Root/db1/alter_group.sql",
+        ])
+
+        self.create_database_backup(output="database_backup", expected_files=[
+            # database metadata
+            "database.pb",
+            "permissions.pb",
+            "create_user.sql",
+            "create_group.sql",
+            "alter_group.sql",
+
+            # database table
+            "table/scheme.pb",
+            "table/permissions.pb",
+            "table/data_00.csv",
+
+            # system views directory
+            ".sys/permissions.pb",
+
+            # system views
+            ".sys/auth_effective_permissions/system_view.pb",
+            ".sys/auth_effective_permissions/permissions.pb",
+            ".sys/auth_group_members/system_view.pb",
+            ".sys/auth_group_members/permissions.pb",
+            ".sys/auth_groups/system_view.pb",
+            ".sys/auth_groups/permissions.pb",
+            ".sys/auth_owners/system_view.pb",
+            ".sys/auth_owners/permissions.pb",
+            ".sys/auth_permissions/system_view.pb",
+            ".sys/auth_permissions/permissions.pb",
+            ".sys/auth_users/system_view.pb",
+            ".sys/auth_users/permissions.pb",
+            ".sys/compile_cache_queries/system_view.pb",
+            ".sys/compile_cache_queries/permissions.pb",
+            ".sys/nodes/system_view.pb",
+            ".sys/nodes/permissions.pb",
+            ".sys/partition_stats/system_view.pb",
+            ".sys/partition_stats/permissions.pb",
+            ".sys/query_metrics_one_minute/system_view.pb",
+            ".sys/query_metrics_one_minute/permissions.pb",
+            ".sys/query_sessions/system_view.pb",
+            ".sys/query_sessions/permissions.pb",
+            ".sys/resource_pool_classifiers/system_view.pb",
+            ".sys/resource_pool_classifiers/permissions.pb",
+            ".sys/resource_pools/system_view.pb",
+            ".sys/resource_pools/permissions.pb",
+            ".sys/streaming_queries/system_view.pb",
+            ".sys/streaming_queries/permissions.pb",
+            ".sys/top_partitions_by_tli_one_hour/system_view.pb",
+            ".sys/top_partitions_by_tli_one_hour/permissions.pb",
+            ".sys/top_partitions_by_tli_one_minute/system_view.pb",
+            ".sys/top_partitions_by_tli_one_minute/permissions.pb",
+            ".sys/top_partitions_one_hour/system_view.pb",
+            ".sys/top_partitions_one_hour/permissions.pb",
+            ".sys/top_partitions_one_minute/system_view.pb",
+            ".sys/top_partitions_one_minute/permissions.pb",
+            ".sys/top_queries_by_cpu_time_one_hour/system_view.pb",
+            ".sys/top_queries_by_cpu_time_one_hour/permissions.pb",
+            ".sys/top_queries_by_cpu_time_one_minute/system_view.pb",
+            ".sys/top_queries_by_cpu_time_one_minute/permissions.pb",
+            ".sys/top_queries_by_duration_one_hour/system_view.pb",
+            ".sys/top_queries_by_duration_one_hour/permissions.pb",
+            ".sys/top_queries_by_duration_one_minute/system_view.pb",
+            ".sys/top_queries_by_duration_one_minute/permissions.pb",
+            ".sys/top_queries_by_read_bytes_one_hour/system_view.pb",
+            ".sys/top_queries_by_read_bytes_one_hour/permissions.pb",
+            ".sys/top_queries_by_read_bytes_one_minute/system_view.pb",
+            ".sys/top_queries_by_read_bytes_one_minute/permissions.pb",
+            ".sys/top_queries_by_request_units_one_hour/system_view.pb",
+            ".sys/top_queries_by_request_units_one_hour/permissions.pb",
+            ".sys/top_queries_by_request_units_one_minute/system_view.pb",
+            ".sys/top_queries_by_request_units_one_minute/permissions.pb",
+        ])
+
+        self.restore_cluster_backup(input="cluster_backup")
+
+        self.restore_cluster.wait_tenant_up(self.restore_database, self.cluster.config.default_clusteradmin)
+        self.restore_driver.wait(timeout=10)
+
+        self.restore_database_backup(input="database_backup")
+
+
+class TestRestoreReplaceOption(BaseTestBackupInFiles):
+    def ydb_cli(self, args):
+        return yatest.common.execute(
+            [
+                backup_bin(),
+                "-vvv",
+                "--endpoint", "grpc://localhost:%d" % self.cluster.nodes[1].grpc_port,
+                "--database", "/Root",
+            ]
+            + args
+        )
+
+    def try_ydb_cli(self, args):
+        try:
+            result = self.ydb_cli(args)
+            return True, result.stdout.decode("utf-8")
+
+        except yatest.common.process.ExecutionError as exception:
+            return False, exception.execution_result.std_err.decode("utf-8")
+
+    def delete_some_rows(self, session, table):
+        session.transaction().execute(
+            f"""
+            DELETE FROM `{table}` WHERE id == 2;
+            """,
+            commit_tx=True,
+        )
+
+    def test_table_replacement(self):
+        session = self.driver.table_client.session().create()
+
+        create_table_with_data(session, "table")
+
+        # Backup the table
+        backup_files_dir = output_path(self.test_name, "test_table_replacement", "backup_files_dir")
+        self.ydb_cli(["tools", "dump", "--path", ".", "--output", backup_files_dir, "--exclude", ".sys"])
+        assert_that(os.listdir(backup_files_dir), is_(["table"]))
+
+        # Restore the table
+        assert_that(
+            self.try_ydb_cli(
+                ["tools", "restore", "--path", "./restoration/point", "--input", backup_files_dir, "--dry-run"]
+            )[0],
+            is_(False),
+        )
+        assert_that(
+            [child.name for child in self.driver.scheme_client.list_directory("/Root").children],
+            is_not(has_items("restoration")),
+        )
+        self.ydb_cli(["tools", "restore", "--path", "./restoration/point", "--input", backup_files_dir])
+        assert_that(
+            are_tables_the_same(session, self.driver.scheme_client, "/Root/table", "/Root/restoration/point/table"),
+            is_(True),
+        )
+
+        # Replace the table
+        self.delete_some_rows(session, "/Root/restoration/point/table")
+        self.ydb_cli(
+            ["tools", "restore", "--path", "./restoration/point", "--input", backup_files_dir, "--replace", "--dry-run"]
+        )
+        assert_that(
+            are_tables_the_same(session, self.driver.scheme_client, "/Root/table", "/Root/restoration/point/table"),
+            is_(False),
+        )
+        self.ydb_cli(["tools", "restore", "--path", "./restoration/point", "--input", backup_files_dir, "--replace"])
+        assert_that(
+            are_tables_the_same(session, self.driver.scheme_client, "/Root/table", "/Root/restoration/point/table"),
+            is_(True),
+        )
+
+        # Drop the folder
+        self.ydb_cli(["scheme", "rmdir", "--force", "--recursive", "./restoration/point"])
+
+        # Replace a non-existent table with the --verify-existence option turned on
+        assert_that(
+            self.try_ydb_cli(
+                [
+                    "tools",
+                    "restore",
+                    "--path", "./restoration/point",
+                    "--input", backup_files_dir,
+                    "--replace",
+                    "--verify-existence",
+                    "--dry-run",
+                ]
+            )[0],
+            is_(False),
+        )
+        assert_that(
+            self.try_ydb_cli(
+                [
+                    "tools",
+                    "restore",
+                    "--path", "./restoration/point",
+                    "--input", backup_files_dir,
+                    "--replace",
+                    "--verify-existence",
+                ]
+            )[0],
+            is_(False),
+        )
+
+        assert_that(
+            [child.name for child in self.driver.scheme_client.list_directory("/Root").children],
+            contains_inanyorder("table", "restoration", ".metadata", ".sys"),
+        )
+        assert_that(
+            [child.name for child in self.driver.scheme_client.list_directory("/Root/restoration").children],
+            empty()
+        )
+
+        # Replace a non-existent table
+        assert_that(
+            self.try_ydb_cli(
+                [
+                    "tools",
+                    "restore",
+                    "--path", "./restoration/point",
+                    "--input", backup_files_dir,
+                    "--replace",
+                    "--dry-run",
+                ]
+            )[0],
+            is_(False),
+        )
+        assert_that(
+            [child.name for child in self.driver.scheme_client.list_directory("/Root/restoration").children],
+            empty()
+        )
+        self.ydb_cli(["tools", "restore", "--path", "./restoration/point", "--input", backup_files_dir, "--replace"])
+        assert_that(
+            are_tables_the_same(session, self.driver.scheme_client, "/Root/table", "/Root/restoration/point/table"),
+            is_(True),
+        )
+
+
+class TestReplaceSysACLOption(BaseTestBackupInFiles):
+    @classmethod
+    def get_cluster_configurator(cls):
+        return KikimrConfigGenerator()
+
+    def ydb_cli(self, args):
+        return yatest.common.execute(
+            [
+                backup_bin(),
+                '-vvv',
+                '--endpoint', 'grpc://localhost:%d' % self.cluster.nodes[1].grpc_port,
+                '--database', '/Root',
+            ]
+            + args
+        )
+
+    def try_ydb_cli(self, args):
+        try:
+            result = self.ydb_cli(args)
+            return True, result.stdout.decode('utf-8')
+
+        except yatest.common.process.ExecutionError as exception:
+            return False, exception.execution_result.std_err.decode('utf-8')
+
+    def test_disabled_option(self):
+        # Create folder
+        self.driver.scheme_client.make_directory('/Root/folder')
+
+        # Modify permissions on '.sys' dir and 'partition_stats' sys view
+        modify_permissions(self.driver.scheme_client, '.sys')
+        modify_permissions(self.driver.scheme_client, '.sys/partition_stats')
+
+        sys_dir_desc = self.driver.scheme_client.describe_path('/Root/.sys')
+        sys_dir_dumped_permissions = permissions_to_string(sort_permissions(sys_dir_desc.permissions))
+        sys_dir_dumped_owner = sys_dir_desc.owner
+
+        sysview_desc = self.driver.scheme_client.describe_path('/Root/.sys/partition_stats')
+        sysview_dumped_permissions = permissions_to_string(sort_permissions(sysview_desc.permissions))
+        sysview_dumped_owner = sysview_desc.owner
+
+        # Backup the domain
+        backup_files_dir = output_path(self.test_name, 'test_replace_sys_acl_disabled', 'backup_files_dir')
+        self.ydb_cli(['tools', 'dump', '--path', '/Root', '--output', backup_files_dir])
+        assert_that(os.listdir(backup_files_dir), is_(['.sys', 'folder']))
+
+        # Remove directory
+        self.driver.scheme_client.remove_directory('/Root/folder')
+
+        # Modify permissions on '.sys' dir and 'partition_stats' sys view
+        new_permissions_settings = ydb.ModifyPermissionsSettings()\
+            .clear_permissions()\
+            .change_owner('user1')
+
+        self.driver.scheme_client.modify_permissions('/Root/.sys', new_permissions_settings)
+        self.driver.scheme_client.modify_permissions('/Root/.sys/partition_stats', new_permissions_settings)
+
+        # Restore the domain
+        self.ydb_cli(['tools', 'restore', '--path', '/Root', '--input', backup_files_dir, '--replace-sys-acl', 'false'])
+
+        # Check the restored directory
+        assert_that(
+            self.scheme_listdir('/Root'),
+            contains_inanyorder('folder')
+        )
+
+        sys_dir_desc = self.driver.scheme_client.describe_path('/Root/.sys')
+        sys_dir_restored_permissions = permissions_to_string(sort_permissions(sys_dir_desc.permissions))
+        sys_dir_restored_owner = sys_dir_desc.owner
+
+        sysview_desc = self.driver.scheme_client.describe_path('/Root/.sys/partition_stats')
+        sysview_restored_permissions = permissions_to_string(sort_permissions(sysview_desc.permissions))
+        sysview_restored_owner = sysview_desc.owner
+
+        # Check '.sys' restored permissions
+        assert_that(
+            are_permissions_the_same(
+                sys_dir_restored_permissions, sys_dir_restored_owner,
+                sys_dir_dumped_permissions, sys_dir_dumped_owner
+            ),
+            is_(False),
+        )
+
+        # Check sys view 'partition_stats' restored permissions
+        assert_that(
+            are_permissions_the_same(
+                sysview_restored_permissions, sysview_restored_owner,
+                sysview_dumped_permissions, sysview_dumped_owner
+            ),
+            is_(False),
+        )
+
+        # Restore the domain in ordinary directory
+        assert_that(
+            self.try_ydb_cli(
+                ['tools', 'restore', '--path', '/Root/restored', '--input', backup_files_dir, '--replace-sys-acl', 'false']
+            )[0],
+            is_(True),
+        )
+
+        # Check the restored directory
+        assert_that(
+            self.scheme_listdir('/Root/restored'),
+            contains_inanyorder('folder')
+        )
+
+    def test_enabled_option(self):
+        # Create folder
+        self.driver.scheme_client.make_directory('/Root/folder')
+
+        # Modify permissions on '.sys' dir and 'partition_stats' sys view
+        modify_permissions(self.driver.scheme_client, '.sys')
+        modify_permissions(self.driver.scheme_client, '.sys/partition_stats')
+
+        sys_dir_desc = self.driver.scheme_client.describe_path('/Root/.sys')
+        sys_dir_dumped_permissions = permissions_to_string(sort_permissions(sys_dir_desc.permissions))
+        sys_dir_dumped_owner = sys_dir_desc.owner
+
+        sysview_desc = self.driver.scheme_client.describe_path('/Root/.sys/partition_stats')
+        sysview_dumped_permissions = permissions_to_string(sort_permissions(sysview_desc.permissions))
+        sysview_dumped_owner = sysview_desc.owner
+
+        # Backup the domain
+        backup_files_dir = output_path(self.test_name, 'test_replace_sys_acl_disabled', 'backup_files_dir')
+        self.ydb_cli(['tools', 'dump', '--path', '/Root', '--output', backup_files_dir])
+        assert_that(os.listdir(backup_files_dir), is_(['.sys', 'folder']))
+
+        # Remove directory
+        self.driver.scheme_client.remove_directory('/Root/folder')
+
+        # Modify permissions on '.sys' dir and 'partition_stats' sys view
+        new_permissions_settings = ydb.ModifyPermissionsSettings()\
+            .clear_permissions()\
+            .change_owner('user1')
+
+        self.driver.scheme_client.modify_permissions('/Root/.sys', new_permissions_settings)
+        self.driver.scheme_client.modify_permissions('/Root/.sys/partition_stats', new_permissions_settings)
+
+        # Restore the domain
+        self.ydb_cli(['tools', 'restore', '--path', '/Root', '--input', backup_files_dir, '--replace-sys-acl', 'true'])
+
+        # Check the restored directory
+        assert_that(
+            self.scheme_listdir('/Root'),
+            contains_inanyorder('folder')
+        )
+
+        sys_dir_desc = self.driver.scheme_client.describe_path('/Root/.sys')
+        sys_dir_restored_permissions = permissions_to_string(sort_permissions(sys_dir_desc.permissions))
+        sys_dir_restored_owner = sys_dir_desc.owner
+
+        sysview_desc = self.driver.scheme_client.describe_path('/Root/.sys/partition_stats')
+        sysview_restored_permissions = permissions_to_string(sort_permissions(sysview_desc.permissions))
+        sysview_restored_owner = sysview_desc.owner
+
+        # Check '.sys' restored permissions
+        assert_that(
+            are_permissions_the_same(
+                sys_dir_restored_permissions, sys_dir_restored_owner,
+                sys_dir_dumped_permissions, sys_dir_dumped_owner
+            ),
+            is_(True),
+        )
+
+        # Check sys view 'partition_stats' restored permissions
+        assert_that(
+            are_permissions_the_same(
+                sysview_restored_permissions, sysview_restored_owner,
+                sysview_dumped_permissions, sysview_dumped_owner
+            ),
+            is_(True),
+        )
+
+        # Check the sys views compatibility
+        assert_that(
+            self.try_ydb_cli(
+                ["tools", "restore", "--path", "/Root", "--input", backup_files_dir, "--dry-run"]
+            )[0],
+            is_(True),
+        )
+
+        # Restore the domain in ordinary directory
+        assert_that(
+            self.try_ydb_cli(
+                ['tools', 'restore', '--path', '/Root/restored', '--input', backup_files_dir, '--replace-sys-acl', 'true']
+            )[0],
+            is_(True),
+        )
+
+        # Check the restored directory
+        assert_that(
+            self.scheme_listdir('/Root/restored'),
+            contains_inanyorder('folder')
         )

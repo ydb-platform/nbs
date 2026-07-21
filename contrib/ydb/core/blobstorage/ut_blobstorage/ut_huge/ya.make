@@ -11,11 +11,8 @@ PEERDIR(
 )
 
 REQUIREMENTS(ram:32 cpu:4)
-IF (SANITIZER_TYPE OR WITH_VALGRIND)
-    SIZE(LARGE)
-    TAG(ya:fat)
-ELSE()
-    SIZE(MEDIUM)
-ENDIF()
+
+SIZE(LARGE)
+INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/large.inc)
 
 END()

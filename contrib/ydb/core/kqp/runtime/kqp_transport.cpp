@@ -1,13 +1,14 @@
 #include "kqp_transport.h"
 #include <contrib/ydb/library/yql/dq/proto/dq_transport.pb.h>
 
+#include <contrib/ydb/library/yql/minikql/runtime_settings/runtime_settings.h>
+
 #include <contrib/ydb/core/engine/mkql_proto.h>
-#include <contrib/ydb/core/ydb_convert/ydb_convert.h>
+#include <contrib/ydb/core/kqp/common/result_set_format/kqp_result_set_builders.h>
+#include <contrib/ydb/core/kqp/common/kqp_types.h>
 
 #include <contrib/ydb/library/yql/dq/runtime/dq_transport.h>
 #include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node_pack.h>
-#include <contrib/ydb/library/yql/minikql/mkql_node_cast.h>
-#include <contrib/ydb/library/yql/utils/yql_panic.h>
 
 namespace NKikimr {
 namespace NKqp {
@@ -46,44 +47,30 @@ TKqpProtoBuilder::~TKqpProtoBuilder() {
     }
 }
 
-Ydb::ResultSet TKqpProtoBuilder::BuildYdbResultSet(
+void TKqpProtoBuilder::BuildYdbResultSet(
+    Ydb::ResultSet& resultSet,
     TVector<NYql::NDq::TDqSerializedBatch>&& data,
     NKikimr::NMiniKQL::TType* mkqlSrcRowType,
-    const TVector<ui32>* columnOrder)
+    const NFormats::TFormatsSettings& formatsSettings,
+    bool fillSchema,
+    const TVector<ui32>* columnOrder,
+    const TVector<TString>* columnHints)
 {
-    YQL_ENSURE(mkqlSrcRowType->GetKind() == NKikimr::NMiniKQL::TType::EKind::Struct);
-    const auto* mkqlSrcRowStructType = static_cast<const TStructType*>(mkqlSrcRowType);
-
-    Ydb::ResultSet resultSet;
-
-    for (ui32 idx = 0; idx < mkqlSrcRowStructType->GetMembersCount(); ++idx) {
-        auto* column = resultSet.add_columns();
-        ui32 memberIndex = (!columnOrder || columnOrder->empty()) ? idx : (*columnOrder)[idx];
-        column->set_name(TString(mkqlSrcRowStructType->GetMemberName(memberIndex)));
-        ExportTypeToProto(mkqlSrcRowStructType->GetMemberType(memberIndex), *column->mutable_type());
-    }
-
     THolder<TGuard<TScopedAlloc>> guard;
     if (SelfHosted) {
         guard = MakeHolder<TGuard<TScopedAlloc>>(*Alloc);
     }
 
     auto transportVersion = NDqProto::EDataTransportVersion::DATA_TRANSPORT_VERSION_UNSPECIFIED;
+    auto valuePackerVersion = NMiniKQL::EValuePackerVersion::V0;
     if (!data.empty()) {
         transportVersion = static_cast<NDqProto::EDataTransportVersion>(data.front().Proto.GetTransportVersion());
-    }
-    NDq::TDqDataSerializer dataSerializer(*TypeEnv, *HolderFactory, transportVersion);
-    for (auto& part : data) {
-        if (part.RowCount()) {
-            TUnboxedValueBatch rows(mkqlSrcRowType);
-            dataSerializer.Deserialize(std::move(part), mkqlSrcRowType, rows);
-            rows.ForEachRow([&](const NUdf::TUnboxedValue& value) {
-                ExportValueToProto(mkqlSrcRowType, value, *resultSet.add_rows(), columnOrder);
-            });
-        }
+        valuePackerVersion = NDq::FromProto(data.front().Proto.GetValuePackerVersion());
     }
 
-    return resultSet;
+    NDq::TDqDataSerializer dataSerializer(*TypeEnv, *HolderFactory, transportVersion, valuePackerVersion, DefaultDatumValidationMode);
+    NFormats::BuildResultSetFromBatches(&resultSet, formatsSettings, fillSchema, mkqlSrcRowType,
+        dataSerializer, std::move(data), columnOrder, columnHints);
 }
 
 } // namespace NKqp

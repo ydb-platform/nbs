@@ -1,30 +1,33 @@
 #pragma once
 #include <contrib/ydb/core/tx/columnshard/columnshard_impl.h>
-#include <contrib/ydb/core/tx/columnshard/data_sharing/common/transactions/tx_extension.h>
 #include <contrib/ydb/core/tx/columnshard/data_sharing/destination/session/destination.h>
+#include <contrib/ydb/core/tx/columnshard/tablet/ext_tx_base.h>
 
 namespace NKikimr::NOlap::NDataSharing {
 
-class TTxFinishFromSource: public TExtendedTransactionBase<NColumnShard::TColumnShard> {
+class TTxFinishFromSource: public NColumnShard::TExtendedTransactionBase {
 private:
-    using TBase = TExtendedTransactionBase<NColumnShard::TColumnShard>;
+    using TBase = NColumnShard::TExtendedTransactionBase;
     std::shared_ptr<TDestinationSession> Session;
     const TTabletId SourceTabletId;
     bool Finished = false;
+
 protected:
     virtual bool DoExecute(NTabletFlatExecutor::TTransactionContext& txc, const TActorContext& ctx) override;
     virtual void DoComplete(const TActorContext& ctx) override;
+
 public:
     TTxFinishFromSource(NColumnShard::TColumnShard* self, const TTabletId sourceTabletId, const std::shared_ptr<TDestinationSession>& session)
-        : TBase(self)
+        : TBase(self, "finish_from_source")
         , Session(session)
         , SourceTabletId(sourceTabletId)
     {
         Session->GetCursorVerified(SourceTabletId).ReceiveFinished().Validate();
     }
 
-    TTxType GetTxType() const override { return NColumnShard::TXTYPE_DATA_SHARING_FINISH_FROM_SOURCE; }
+    TTxType GetTxType() const override {
+        return NColumnShard::TXTYPE_DATA_SHARING_FINISH_FROM_SOURCE;
+    }
 };
 
-
-}
+}   // namespace NKikimr::NOlap::NDataSharing

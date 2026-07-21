@@ -323,7 +323,7 @@ select avg(f1) from interval_tbl;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.interval_tbl
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.interval_tbl
     
 <sql-statement>
 -- test long interval input
@@ -700,7 +700,7 @@ SELECT f1, f1::INTERVAL DAY TO MINUTE AS "minutes",
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.interval_tbl
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.interval_tbl
     
 <sql-statement>
 -- test inputting and outputting SQL standard interval literals

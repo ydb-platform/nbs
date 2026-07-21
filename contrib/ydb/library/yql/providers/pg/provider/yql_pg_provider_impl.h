@@ -4,7 +4,7 @@
 #include <contrib/ydb/library/yql/core/yql_data_provider.h>
 #include <contrib/ydb/library/yql/providers/common/transform/yql_visit.h>
 #include <contrib/ydb/library/yql/providers/common/transform/yql_exec.h>
-#include <contrib/ydb/library/yql/dq/integration/yql_dq_integration.h>
+#include <contrib/ydb/library/yql/core/dq_integration/yql_dq_integration.h>
 
 #include <util/generic/ptr.h>
 
@@ -20,4 +20,4 @@ THolder<TExecTransformerBase> CreatePgDataSinkExecTransformer(TPgState::TPtr sta
 
 THolder<IDqIntegration> CreatePgDqIntegration(TPgState::TPtr state);
 
-}
+} // namespace NYql

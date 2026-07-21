@@ -2,6 +2,8 @@ LIBRARY()
 
 SRCS(
     bootstrapper.cpp
+    bootstrapper.h
+    bootstrapper_impl.h
     defs.h
     labeled_counters_merger.cpp
     labeled_counters_merger.h
@@ -21,6 +23,7 @@ SRCS(
     tablet_counters_aggregator.h
     tablet_counters_app.cpp
     tablet_counters_app.h
+    tablet_counters_protobuf.cpp
     tablet_counters_protobuf.h
     tablet_exception.h
     tablet_impl.h
@@ -47,8 +50,17 @@ SRCS(
     tablet_setup.h
     tablet_sys.cpp
     tablet_sys.h
+    simple_tablet.cpp
+    simple_tablet.h
     tablet_tracing_signals.cpp
     tablet_tracing_signals.h
+    detailed_metrics/metric_value_aggregator.cpp
+    detailed_metrics/metric_value_aggregator.h
+    detailed_metrics/ydb_metrics_aggregator.cpp
+    detailed_metrics/ydb_metrics_aggregator.h
+    detailed_metrics/ydb_metrics_mapper.cpp
+    detailed_metrics/ydb_metrics_mapper.h
+    detailed_metrics/ydb_metrics_target_counters_base.h
     private/aggregated_counters.cpp
     private/aggregated_counters.h
     private/labeled_db_counters.cpp
@@ -56,6 +68,7 @@ SRCS(
 )
 
 PEERDIR(
+    contrib/ydb/library/actors/async
     contrib/ydb/library/actors/core
     contrib/ydb/library/actors/helpers
     contrib/ydb/library/actors/protos

@@ -132,8 +132,7 @@ public:
     }
 
     void Bootstrap(const TActorContext& ctx) {
-        AppData(ctx)->Icb->RegisterSharedControl(DefaultTimeoutMs,
-                                                "TxLimitControls.DefaultTimeoutMs");
+        TControlBoard::RegisterSharedControl(DefaultTimeoutMs, AppData(ctx)->Icb->TxLimitControls.DefaultTimeoutMs);
 
         WallClockAccepted = Now();
 
@@ -287,17 +286,21 @@ public:
                     break;
             }
 
-            if (entry.KeyDescription->TableId.IsSystemView() && IgnoreSystemViews) {
+            if ((entry.KeyDescription->TableId.IsSystemView() ||
+                 entry.Kind == NSchemeCache::TSchemeCacheNavigate::KindSysView) &&
+                IgnoreSystemViews)
+            {
                 continue;
             }
 
-            if (entry.IsColumnTable) {
+            if (entry.Kind == NSchemeCache::TSchemeCacheNavigate::KindColumnTable) {
                 // OLAP tables don't create snapshots explicitly
                 hasColumnTable = true;
                 continue;
             }
 
-            if (entry.KeyDescription->TableId.IsSystemView() ||
+            if ((entry.KeyDescription->TableId.IsSystemView() ||
+                 entry.Kind == NSchemeCache::TSchemeCacheNavigate::KindSysView) ||
                 TSysTables::IsSystemTable(entry.KeyDescription->TableId))
             {
                 const TString explanation = TStringBuilder()
@@ -409,17 +412,16 @@ public:
     }
 
     void HandleLongTxSnaphot(NLongTxService::TEvLongTxService::TEvAcquireReadSnapshotResult::TPtr& ev, const TActorContext& ctx) {
-        const auto& record = ev->Get()->Record;
-        if (record.GetStatus() == Ydb::StatusIds::SUCCESS) {
-            PlanStep = record.GetSnapshotStep();
-            SnapshotTxId = record.GetSnapshotTxId();
+        const auto* msg = ev->Get();
+        if (msg->Status == Ydb::StatusIds::SUCCESS) {
+            PlanStep = msg->Snapshot.Step;
+            SnapshotTxId = msg->Snapshot.TxId;
             ReportStatus(TEvTxUserProxy::TEvProposeTransactionStatus::EStatus::ExecComplete, NKikimrIssues::TStatusIds::SUCCESS, true, ctx);
         } else {
-            NYql::TIssues issues;
-            NYql::IssuesFromMessage(record.GetIssues(), issues);
+            NYql::TIssues issues = msg->Issues;
             IssueManager.RaiseIssues(issues);
             NKikimrIssues::TStatusIds::EStatusCode statusCode = NKikimrIssues::TStatusIds::ERROR;
-            switch (record.GetStatus()) {
+            switch (msg->Status) {
             case Ydb::StatusIds::SCHEME_ERROR:
                 statusCode = NKikimrIssues::TStatusIds::SCHEME_ERROR;
                 break;
@@ -1071,7 +1073,7 @@ private:
     size_t ResultsReceivedCount = 0;
 
     ui64 PlanStep = 0;
-    ui64 SnapshotTxId = 0;   // SnaphotTxId overrides TxId in case using AcquireReadSnapshot
+    ui64 SnapshotTxId = 0;   // SnapshotTxId overrides TxId in case using AcquireReadSnapshot
     ui64 AggrMinStep = 0;
     ui64 AggrMaxStep = Max<ui64>();
 
@@ -1165,8 +1167,7 @@ public:
     }
 
     void Bootstrap(const TActorContext& ctx) {
-        AppData(ctx)->Icb->RegisterSharedControl(DefaultTimeoutMs,
-                                                "TxLimitControls.DefaultTimeoutMs");
+        TControlBoard::RegisterSharedControl(DefaultTimeoutMs, AppData(ctx)->Icb->TxLimitControls.DefaultTimeoutMs);
 
         WallClockAccepted = Now();
 
@@ -1311,16 +1312,20 @@ public:
         TxProxyMon->TxPrepareResolveHgram->Collect((WallClockResolved - WallClockResolveStarted).MicroSeconds());
 
         for (const auto& entry : msg->Tables) {
-            if (entry.KeyDescription->TableId.IsSystemView() && IgnoreSystemViews) {
+            if ((entry.KeyDescription->TableId.IsSystemView() ||
+                 entry.Kind == NSchemeCache::TSchemeCacheNavigate::KindSysView) &&
+                IgnoreSystemViews)
+            {
                 continue;
             }
 
-            if (entry.IsColumnTable) {
+            if (entry.Kind == NSchemeCache::TSchemeCacheNavigate::KindColumnTable) {
                 // OLAP tables don't create snapshots explicitly
                 continue;
             }
 
-            if (entry.KeyDescription->TableId.IsSystemView() ||
+            if ((entry.KeyDescription->TableId.IsSystemView() ||
+                 entry.Kind == NSchemeCache::TSchemeCacheNavigate::KindSysView) ||
                 TSysTables::IsSystemTable(entry.KeyDescription->TableId))
             {
                 const TString explanation = TStringBuilder()

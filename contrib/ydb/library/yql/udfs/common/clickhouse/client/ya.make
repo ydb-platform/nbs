@@ -1,7 +1,11 @@
 IF (CLANG AND NOT WITH_VALGRIND)
 YQL_UDF_CONTRIB(clickhouse_client_udf)
 
-    YQL_LAST_ABI_VERSION()
+    YQL_ABI_VERSION(
+        2
+        44
+        0
+    )
 
     NO_COMPILER_WARNINGS()
 
@@ -414,7 +418,7 @@ YQL_UDF_CONTRIB(clickhouse_client_udf)
         contrib/libs/pdqsort
         contrib/libs/lz4
         contrib/libs/apache/arrow/src
-        contrib/libs/apache/avro
+        contrib/libs/apache/avro/include
         contrib/libs/apache/orc/c++/include
         contrib/ydb/library/yql/udfs/common/clickhouse/client/base
         contrib/ydb/library/yql/udfs/common/clickhouse/client/base/pcg-random

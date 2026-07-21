@@ -1,6 +1,6 @@
 from typing import Sequence, Mapping
 
-from contrib.ydb.library.yql.providers.generic.connector.tests.utils.settings import Settings
+from contrib.ydb.library.contrib.ydb.library.yql.providers.generic.connector.tests.utils.settings import Settings
 
 import test_case
 

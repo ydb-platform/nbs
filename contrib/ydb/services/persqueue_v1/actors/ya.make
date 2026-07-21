@@ -2,23 +2,34 @@ LIBRARY()
 
 PEERDIR(
     contrib/ydb/library/actors/core
+    contrib/ydb/library/wilson_ids
     library/cpp/containers/disjoint_interval_tree
     library/cpp/string_utils/base64
     contrib/ydb/core/util
     contrib/ydb/core/base
     contrib/ydb/core/grpc_services
-    contrib/ydb/core/persqueue
+    contrib/ydb/core/persqueue/common
+    contrib/ydb/core/persqueue/deferred_publish
     contrib/ydb/core/persqueue/events
+    contrib/ydb/core/persqueue/public
+    contrib/ydb/core/persqueue/public/counters
+    contrib/ydb/core/persqueue/public/cluster_tracker
+    contrib/ydb/core/persqueue/writer
     contrib/ydb/core/protos
     contrib/ydb/core/scheme
     contrib/ydb/core/tx/scheme_cache
+    contrib/ydb/core/ydb_convert
     contrib/ydb/library/aclib
+    contrib/ydb/library/persqueue
     contrib/ydb/library/persqueue/topic_parser
+    contrib/ydb/public/sdk/cpp/src/library/kafka
+    contrib/ydb/library/cloud_permissions
     contrib/ydb/public/api/protos
     contrib/ydb/public/lib/base
     contrib/ydb/services/lib/actors
     contrib/ydb/services/lib/sharding
     contrib/ydb/services/metadata
+    contrib/ydb/services/persqueue_v1/actors/schema
 )
 
 SRCS(
@@ -26,6 +37,8 @@ SRCS(
     codecs.cpp
     commit_offset_actor.h
     commit_offset_actor.cpp
+    distributed_commit_helper.h
+    distributed_commit_helper.cpp
     events.h
     persqueue_utils.h
     persqueue_utils.cpp
@@ -51,6 +64,12 @@ SRCS(
     partition_writer.cpp
     partition_writer_cache_actor.h
     partition_writer_cache_actor.cpp
+    deferred_destination_upsert_actor.h
+    deferred_destination_upsert_actor.cpp
 )
 
 END()
+
+RECURSE(
+    schema
+)

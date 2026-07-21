@@ -1,11 +1,19 @@
 PROGRAM(ydbd)
 
 IF (NOT SANITIZER_TYPE)  # for some reasons some tests with asan are failed, see comment in CPPCOM-32
-    NO_EXPORT_DYNAMIC_SYMBOLS()
+    # Disabling export of dynamic symbols allows to significantly reduce size of the stripped binary,
+    # however, to be able to use dynamic UDFs (the --udfs-dir flag of ydbd server),
+    # required explicit export of symbols from contrib/ydb/library/yql/public/udf/service/exception_policy/udf_service.cpp
+    IF (OS_LINUX)
+        EXPORTS_SCRIPT(contrib/ydb/apps/ydbd/exports.symlist)
+    ELSE()
+        NO_EXPORT_DYNAMIC_SYMBOLS()
+    ENDIF()
 ENDIF()
 
 IF (OS_LINUX)
     ALLOCATOR(TCMALLOC_256K)
+    LINKER_SCRIPT(strip_debug.ld)
 ENDIF()
 
 IF (OS_DARWIN)
@@ -20,8 +28,6 @@ IF (OS_WINDOWS)
 ENDIF()
 
 SRCS(
-    export.cpp
-    export.h
     main.cpp
 )
 
@@ -33,26 +39,31 @@ ENDIF()
 
 PEERDIR(
     contrib/ydb/apps/version
+    contrib/ydb/apps/ydbd/export
     contrib/ydb/core/driver_lib/run
     contrib/ydb/core/protos
     contrib/ydb/core/security
+    contrib/ydb/core/tx/schemeshard
     contrib/ydb/core/ymq/actor
     contrib/ydb/core/ymq/base
+    contrib/ydb/library/breakpad
     contrib/ydb/library/folder_service/mock
     contrib/ydb/library/keys
     contrib/ydb/library/pdisk_io
     contrib/ydb/library/security
+    contrib/ydb/library/yql/udfs/common/clickhouse/client
+    contrib/ydb/library/yql/udfs/common/hybrid_search
+    contrib/ydb/library/yql/udfs/common/knn
+    contrib/ydb/library/yql/udfs/common/roaring
+    contrib/ydb/library/yql/udfs/statistics_internal
     contrib/ydb/library/yql/parser/pg_wrapper
     contrib/ydb/library/yql/sql/pg
-    contrib/ydb/library/yql/udfs/common/clickhouse/client
     contrib/ydb/library/yql/udfs/common/compress_base
-    contrib/ydb/library/yql/udfs/common/datetime
     contrib/ydb/library/yql/udfs/common/datetime2
     contrib/ydb/library/yql/udfs/common/digest
     contrib/ydb/library/yql/udfs/common/histogram
     contrib/ydb/library/yql/udfs/common/hyperloglog
     contrib/ydb/library/yql/udfs/common/ip_base
-    contrib/ydb/library/yql/udfs/common/knn
     contrib/ydb/library/yql/udfs/common/json
     contrib/ydb/library/yql/udfs/common/json2
     contrib/ydb/library/yql/udfs/common/math
@@ -67,30 +78,8 @@ PEERDIR(
     contrib/ydb/library/yql/udfs/common/url_base
     contrib/ydb/library/yql/udfs/common/yson2
     contrib/ydb/library/yql/udfs/logs/dsv
-    contrib/ydb/public/sdk/cpp/client/ydb_persqueue_public/codecs
-)
-
-#
-# DON'T ALLOW NEW DEPENDENCIES WITHOUT EXPLICIT APPROVE FROM  kikimr-dev@ or fomichev@
-#
-CHECK_DEPENDENT_DIRS(
-    ALLOW_ONLY
-    PEERDIRS
-    build
-    certs
-    contrib
-    library
-    tools/archiver
-    tools/enum_parser/enum_parser
-    tools/enum_parser/enum_serialization_runtime
-    tools/rescompressor
-    tools/rorescompiler
-    util
-    contrib/ydb
-    yt
 )
 
 YQL_LAST_ABI_VERSION()
 
 END()
-

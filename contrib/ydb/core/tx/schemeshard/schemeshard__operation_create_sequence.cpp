@@ -1,9 +1,10 @@
-#include "schemeshard__operation_part.h"
 #include "schemeshard__operation_common.h"
+#include "schemeshard__operation_part.h"
 #include "schemeshard_impl.h"
+#include "schemeshard__op_traits.h"
 
-#include <contrib/ydb/core/tx/sequenceshard/public/events.h>
 #include <contrib/ydb/core/mind/hive/hive.h>
+#include <contrib/ydb/core/tx/sequenceshard/public/events.h>
 
 namespace NKikimr::NSchemeShard {
 
@@ -16,7 +17,7 @@ private:
     TString DebugHint() const override {
         return TStringBuilder()
                 << "TCreateSequence TConfigureParts"
-                << " operationId#" << OperationId;
+                << " operationId# " << OperationId;
     }
 
 public:
@@ -170,7 +171,7 @@ private:
     TString DebugHint() const override {
         return TStringBuilder()
                 << "TCreateSequence TPropose"
-                << " operationId#" << OperationId;
+                << " operationId# " << OperationId;
     }
 
 public:
@@ -247,8 +248,24 @@ public:
 };
 
 // fill sequence description with default values
-NKikimrSchemeOp::TSequenceDescription FillSequenceDescription(const NKikimrSchemeOp::TSequenceDescription& descr) {
-    NKikimrSchemeOp::TSequenceDescription result = descr;
+std::optional<NKikimrSchemeOp::TSequenceDescription> FillSequenceDescription(const NKikimrSchemeOp::TSequenceDescription& sequence,
+        const NScheme::TTypeRegistry& typeRegistry, bool pgTypesEnabled,
+        TString& errStr) {
+    NKikimrSchemeOp::TSequenceDescription result = sequence;
+
+    TString dataType;
+    if (!sequence.HasDataType()) {
+        dataType = NScheme::TypeName(NScheme::NTypeIds::Int64);
+    } else {
+        dataType = sequence.GetDataType();
+    }
+
+    auto validationResult = ValidateSequenceType(sequence.GetName(), dataType, typeRegistry, pgTypesEnabled, errStr);
+    if (!validationResult) {
+        return std::nullopt;
+    }
+
+    auto [dataTypeMinValue, dataTypeMaxValue] = *validationResult;
 
     i64 increment = 0;
     if (result.HasIncrement()) {
@@ -260,10 +277,10 @@ NKikimrSchemeOp::TSequenceDescription FillSequenceDescription(const NKikimrSchem
     result.SetIncrement(increment);
 
     i64 minValue = 1;
-    i64 maxValue = Max<i64>();
+    i64 maxValue = dataTypeMaxValue;
     if (increment < 0) {
         maxValue = -1;
-        minValue = Min<i64>();
+        minValue = dataTypeMinValue;
     }
 
     if (result.HasMaxValue()) {
@@ -300,6 +317,7 @@ NKikimrSchemeOp::TSequenceDescription FillSequenceDescription(const NKikimrSchem
     }
 
     result.SetCache(cache);
+    result.SetDataType(dataType);
 
     return result;
 }
@@ -371,19 +389,31 @@ public:
                 .IsResolved()
                 .NotDeleted()
                 .NotUnderDeleting()
-                .IsCommonSensePath()
                 .FailOnRestrictedCreateInTempZone(Transaction.GetAllowCreateInTempDir());
 
             if (checks) {
-                if (parentPath->IsTable()) {
-                    checks.NotBackupTable();
+                if (parentPath.Parent()->IsTableIndex()) {
+                    // Only __ydb_id sequence can be created in the prefixed index
+                    if (name != NTableIndex::NKMeans::IdColumnSequence &&
+                        name != NTableIndex::NFulltext::GenSequence) {
+                        result->SetError(NKikimrScheme::EStatus::StatusNameConflict, "sequences are not allowed in indexes");
+                        return result;
+                    }
+                    checks.IsInsideTableIndexPath()
+                        .IsUnderCreating()
+                        .IsUnderTheSameOperation(OperationId.GetTxId()); // allowed only as part of consistent operations
+                } else if (parentPath->IsTable()) {
+                    checks
+                        .IsCommonSensePath()
+                        .NotBackupTable();
                     // allow immediately inside a normal table
                     if (parentPath.IsUnderOperation()) {
                         checks.IsUnderTheSameOperation(OperationId.GetTxId()); // allowed only as part of consistent operations
                     }
-                } else {
+                } else if (!Transaction.GetAllowAccessToPrivatePaths()) {
                     // otherwise don't allow unexpected object types
-                    checks.IsLikeDirectory();
+                    checks.IsCommonSensePath()
+                          .IsLikeDirectory();
                 }
             }
 
@@ -423,7 +453,7 @@ public:
             }
 
             if (checks) {
-                checks.IsValidLeafName();
+                checks.IsValidLeafName(context.UserToken.Get());
 
                 if (!parentPath->IsTable()) {
                     checks.DepthLimit();
@@ -489,7 +519,15 @@ public:
 
         TSequenceInfo::TPtr sequenceInfo = new TSequenceInfo(0);
         TSequenceInfo::TPtr alterData = sequenceInfo->CreateNextVersion();
-        alterData->Description = FillSequenceDescription(descr);
+        const NScheme::TTypeRegistry* typeRegistry = AppData()->TypeRegistry;
+        auto description = FillSequenceDescription(
+            descr, *typeRegistry, AppData()->FeatureFlags.GetEnableTablePgTypes(), errStr);
+        if (!description) {
+            status = NKikimrScheme::StatusInvalidParameter;
+            result->SetError(status, errStr);
+            return result;
+        }
+        alterData->Description = *description;
 
         if (shardsToCreate) {
             sequenceShard = context.SS->RegisterShardInfo(
@@ -552,7 +590,7 @@ public:
         context.OnComplete.PublishToSchemeBoard(OperationId, dstPath->PathId);
 
         domainInfo->IncPathsInside(context.SS);
-        parentPath->IncAliveChildren();
+        IncAliveChildrenDirect(OperationId, parentPath, context); // for correct discard of ChildrenExist prop
 
         SetState(NextState());
         return result;
@@ -574,6 +612,30 @@ public:
 };
 
 }
+
+using TTag = TSchemeTxTraits<NKikimrSchemeOp::EOperationType::ESchemeOpCreateSequence>;
+
+namespace NOperation {
+
+template <>
+std::optional<TString> GetTargetName<TTag>(
+    TTag,
+    const TTxTransaction& tx)
+{
+    return tx.GetSequence().GetName();
+}
+
+template <>
+bool SetName<TTag>(
+    TTag,
+    TTxTransaction& tx,
+    const TString& name)
+{
+    tx.MutableSequence()->SetName(name);
+    return true;
+}
+
+} // namespace NOperation
 
 ISubOperation::TPtr CreateNewSequence(TOperationId id, const TTxTransaction& tx) {
     return MakeSubOperation<TCreateSequence>(id ,tx);

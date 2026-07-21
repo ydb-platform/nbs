@@ -1,12 +1,14 @@
 #include "service_coordination.h"
 #include <contrib/ydb/core/grpc_services/base/base.h>
 
+#include <contrib/ydb/public/api/protos/ydb_coordination.pb.h>
+
 #include "rpc_scheme_base.h"
 #include "rpc_common/rpc_common.h"
 
 #include <contrib/ydb/core/protos/flat_tx_scheme.pb.h>
 #include <contrib/ydb/core/tx/schemeshard/schemeshard.h>
-#include <contrib/ydb/core/ydb_convert/ydb_convert.h>
+#include <contrib/ydb/core/ydb_convert/kesus_description.h>
 
 namespace NKikimr {
 namespace NGRpcService {
@@ -53,16 +55,9 @@ private:
 
                 Ydb::Coordination::DescribeNodeResult result;
 
-                Ydb::Scheme::Entry* selfEntry = result.mutable_self();
-                selfEntry->set_name(pathDescription.GetSelf().GetName());
-                selfEntry->set_type(static_cast<Ydb::Scheme::Entry::Type>(pathDescription.GetSelf().GetPathType()));
-                ConvertDirectoryEntry(pathDescription.GetSelf(), selfEntry, true);
-
                 if (pathDescription.HasKesus()) {
                     const auto& kesusDescription = pathDescription.GetKesus();
-                    if (kesusDescription.HasConfig()) {
-                        result.mutable_config()->CopyFrom(kesusDescription.GetConfig());
-                    }
+                    FillKesusDescription(result, kesusDescription, pathDescription.GetSelf());
                 }
 
                 return ReplyWithResult(Ydb::StatusIds::SUCCESS, result, ctx);

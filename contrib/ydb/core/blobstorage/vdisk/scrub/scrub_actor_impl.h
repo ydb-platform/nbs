@@ -25,6 +25,7 @@ namespace NKikimr {
 
         ::NMonitoring::TDynamicCounterPtr Counters;
         NMonGroup::TScrubGroup MonGroup;
+        NMonGroup::TDeepScrubbingSubgroups DeepScrubbingSubgroups;
 
         TRopeArena Arena;
 
@@ -112,6 +113,7 @@ namespace NKikimr {
         TIntrusivePtr<TBarriersSnapshot::TBarriersEssence> GetBarriersEssence();
 
         class THugeBlobMerger;
+        class THugeBlobAndIndexMerger;
         class TSstBlobMerger;
         class TBlobLocationExtractorMerger;
 
@@ -119,8 +121,8 @@ namespace NKikimr {
         // PDISK INTERACTION
         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-        std::optional<TRcBuf> Read(const TDiskPart& part);
-        bool IsReadable(const TDiskPart& part);
+        std::optional<TRcBuf> Read(const TDiskPart& part, TLogoBlobID hugeBlobId);
+        bool IsReadable(const TDiskPart& part, TLogoBlobID hugeBlobId);
         void Write(const TDiskPart& part, TString data);
 
         template<typename T>
@@ -148,6 +150,16 @@ namespace NKikimr {
         void ReadOutAndResilverIndex(TLevelSegmentPtr sst);
         std::vector<TBlobOnDisk> MakeBlobList(TLevelSegmentPtr sst);
         void ReadOutSelectedBlobs(std::vector<TBlobOnDisk>&& blobsOnDisk);
+
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        // DEEP SCRUBBING
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+        std::vector<std::tuple<TLogoBlobID, bool>> CheckIntegrityPending;
+
+        void EnqueueCheckIntegrity(const TLogoBlobID& blobId, bool isHuge);
+        void CheckIntegrity();
+        void CheckIntegrity(const TLogoBlobID& blobId, bool isHuge);
 
         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         // DEBUG

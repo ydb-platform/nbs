@@ -1,6 +1,11 @@
 #pragma once
+#include <contrib/ydb/library/yql/providers/common/codec/yt_arrow_converter_interface/yt_arrow_converter.h>
+#include <contrib/ydb/library/yql/providers/common/codec/yt_arrow_converter_interface/yt_arrow_converter_details.h>
+
 #include <contrib/ydb/library/yql/minikql/mkql_node.h>
 #include <contrib/ydb/library/yql/public/udf/arrow/block_item.h>
+#include <contrib/ydb/library/yql/public/udf/arrow/block_builder.h>
+
 #include <arrow/datum.h>
 
 namespace NYql {
@@ -11,7 +16,9 @@ arrow::Datum MakePgScalar(NKikimr::NMiniKQL::TPgType* type, const NUdf::TBlockIt
 using TColumnConverter = std::function<std::shared_ptr<arrow::Array>(const std::shared_ptr<arrow::Array>&)>;
 TColumnConverter BuildPgColumnConverter(const std::shared_ptr<arrow::DataType>& originalType, NKikimr::NMiniKQL::TPgType* targetType);
 
-} // NYql
+std::unique_ptr<IYsonComplexTypeReader> BuildPgYsonColumnReader(const NUdf::TPgTypeDescription& desc);
+std::unique_ptr<IYtColumnConverter> BuildPgTopLevelColumnReader(std::unique_ptr<NKikimr::NUdf::IArrayBuilder>&& builder, const NKikimr::NMiniKQL::TPgType* targetType);
+} // namespace NYql
 
 namespace NKikimr {
 namespace NMiniKQL {
@@ -19,5 +26,5 @@ namespace NMiniKQL {
 class IBlockAggregatorFactory;
 void RegisterPgBlockAggs(THashMap<TString, std::unique_ptr<IBlockAggregatorFactory>>& registry);
 
-}
-}
+} // namespace NMiniKQL
+} // namespace NKikimr

@@ -34,9 +34,14 @@ struct TEvPrivate {
         EvStorageBalancerOut,
         EvDeleteNode,
         EvCanMoveTablets,
-        EvRefreshScaleRecommendation,
         EvUpdateDataCenterFollowers,
+        EvGenerateTestData,
+        EvRefreshScaleRecommendation,
         EvUpdateFollowers,
+        EvUpdateBalanceCounters,
+        EvProcessTabletMetrics,
+        EvReassignInactiveGroupsComplete,
+        EvCompactComplete,
         EvEnd
     };
 
@@ -50,7 +55,9 @@ struct TEvPrivate {
         {}
     };
 
-    struct TEvProcessBootQueue : TEventLocal<TEvProcessBootQueue, EvProcessBootQueue> {};
+    struct TEvProcessBootQueue : TEventLocal<TEvProcessBootQueue, EvProcessBootQueue> {
+        bool ProcessWaitQueue = false; // Only for use in tests
+    };
 
     struct TEvPostponeProcessBootQueue : TEventLocal<TEvPostponeProcessBootQueue, EvPostponeProcessBootQueue> {};
 
@@ -85,9 +92,9 @@ struct TEvPrivate {
 
     struct TEvRestartComplete : TEventLocal<TEvRestartComplete, EvRestartComplete> {
         TFullTabletId TabletId;
-        TStringBuf Status;
+        TString Status;
 
-        TEvRestartComplete(TFullTabletId tabletId, TStringBuf status)
+        TEvRestartComplete(TFullTabletId tabletId, const TString& status)
             : TabletId(tabletId)
             , Status(status)
         {}
@@ -127,15 +134,34 @@ struct TEvPrivate {
 
     struct TEvCanMoveTablets : TEventLocal<TEvCanMoveTablets, EvCanMoveTablets> {};
 
-    struct TEvRefreshScaleRecommendation : TEventLocal<TEvRefreshScaleRecommendation, EvRefreshScaleRecommendation> {};
-
     struct TEvUpdateDataCenterFollowers : TEventLocal<TEvUpdateDataCenterFollowers, EvUpdateDataCenterFollowers> {
         TDataCenterId DataCenter;
 
         TEvUpdateDataCenterFollowers(TDataCenterId dataCenter) : DataCenter(dataCenter) {};
     };
 
+    struct TEvGenerateTestData : TEventLocal<TEvGenerateTestData, EvGenerateTestData> {};
+  
+    struct TEvRefreshScaleRecommendation : TEventLocal<TEvRefreshScaleRecommendation, EvRefreshScaleRecommendation> {};
+
     struct TEvUpdateFollowers : TEventLocal<TEvUpdateFollowers, EvUpdateFollowers> {
+    };
+
+    struct TEvUpdateBalanceCounters : TEventLocal<TEvUpdateBalanceCounters, EvUpdateBalanceCounters> {};
+
+    struct TEvProcessTabletMetrics : TEventLocal<TEvProcessTabletMetrics, EvProcessTabletMetrics> {};
+
+    struct TEvReassignInactiveGroupsComplete : TEventLocal<TEvReassignInactiveGroupsComplete, EvReassignInactiveGroupsComplete> {
+        TString PoolName;
+
+        TEvReassignInactiveGroupsComplete(const TString& poolName) : PoolName(poolName) {};
+    };
+
+    struct TEvCompactComplete : TEventLocal<TEvCompactComplete, EvCompactComplete> {
+        TString PoolName;
+        bool Success;
+
+        TEvCompactComplete(const TString& poolName, bool success) : PoolName(poolName), Success(success) {}
     };
 };
 

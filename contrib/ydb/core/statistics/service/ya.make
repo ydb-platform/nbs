@@ -9,13 +9,14 @@ SRCS(
 )
 
 PEERDIR(
+    library/cpp/json
     contrib/ydb/core/base
     contrib/ydb/core/engine/minikql
     contrib/ydb/core/protos
     contrib/ydb/core/tablet
     contrib/ydb/core/tablet_flat
     contrib/ydb/core/statistics/database    
-    contrib/ydb/library/minsketch
+    contrib/ydb/library/yql/core/minsketch
 )
 
 YQL_LAST_ABI_VERSION()

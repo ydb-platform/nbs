@@ -1,16 +1,31 @@
+#include <fmt/format.h>
 #include <openssl/sha.h>
 
 #include "ydb_service_topic.h"
+#include <util/generic/serialized_enum.h>
 #include <contrib/ydb/public/lib/ydb_cli/commands/ydb_command.h>
+#include <contrib/ydb/public/lib/ydb_cli/commands/ydb_service_scheme.h>
 #include <contrib/ydb/public/lib/ydb_cli/common/command.h>
+#include <contrib/ydb/public/lib/ydb_cli/common/log.h>
+#include <contrib/ydb/public/lib/ydb_cli/common/pretty_table.h>
+#include <contrib/ydb/public/lib/ydb_cli/common/print_utils.h>
+#include <contrib/ydb/public/lib/ydb_cli/common/colors.h>
+#include <contrib/ydb/public/lib/ydb_cli/common/scheme_path_completer.h>
+#include <library/cpp/getopt/small/completer.h>
 #include <contrib/ydb/public/lib/ydb_cli/topic/topic_read.h>
 #include <contrib/ydb/public/lib/ydb_cli/topic/topic_write.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/proto/accessor.h>
 
 #include <util/generic/set.h>
+#include <util/stream/format.h>
 #include <util/stream/str.h>
+#include <util/string/cast.h>
 #include <util/string/hex.h>
 #include <util/string/vector.h>
 #include <util/string/join.h>
+#include <util/string/strip.h>
+
+#define TIMESTAMP_FORMAT_OPTION_DESCRIPTION "Timestamp may be specified in unix time format (seconds from 1970.01.01) or in ISO-8601 format (like 2020-07-10T15:00:00Z)"
 
 namespace NYdb::NConsoleClient {
     namespace {
@@ -19,6 +34,7 @@ namespace NYdb::NConsoleClient {
             {NYdb::NTopic::ECodec::GZIP, "GZIP codec. Data is compressed with GZIP compression algorithm."},
             {NYdb::NTopic::ECodec::LZOP, "LZOP codec. Data is compressed with LZOP compression algorithm."},
             {NYdb::NTopic::ECodec::ZSTD, "ZSTD codec. Data is compressed with ZSTD compression algorithm."},
+            {NYdb::NTopic::ECodec::KAFKA_BATCH, "Kafka batch codec. Messages are packed into Kafka record batches."},
         };
 
         THashMap<TString, NYdb::NTopic::ECodec> ExistingCodecs = {
@@ -26,6 +42,16 @@ namespace NYdb::NConsoleClient {
             std::pair<TString, NYdb::NTopic::ECodec>("gzip", NYdb::NTopic::ECodec::GZIP),
             std::pair<TString, NYdb::NTopic::ECodec>("lzop", NYdb::NTopic::ECodec::LZOP),
             std::pair<TString, NYdb::NTopic::ECodec>("zstd", NYdb::NTopic::ECodec::ZSTD),
+            std::pair<TString, NYdb::NTopic::ECodec>("kafka-batch", NYdb::NTopic::ECodec::KAFKA_BATCH),
+        };
+
+        TVector<ui32> ExistingMetricsLevels = {2, 3};
+
+        THashMap<ui32, TString> MetricsLevelsDescriptions = {
+            {0, "No metrics."},
+            {1, "Database level metrics."},
+            {2, "Database and topic level metrics."},
+            {3, "Database, topic, and partition level metrics."},
         };
 
         THashMap<TString, NTopic::EMeteringMode> ExistingMeteringModes = {
@@ -42,7 +68,7 @@ namespace NYdb::NConsoleClient {
             std::pair<TString, NTopic::EAutoPartitioningStrategy>("disabled", NTopic::EAutoPartitioningStrategy::Disabled),
             std::pair<TString, NTopic::EAutoPartitioningStrategy>("up", NTopic::EAutoPartitioningStrategy::ScaleUp),
             std::pair<TString, NTopic::EAutoPartitioningStrategy>("up-and-down", NTopic::EAutoPartitioningStrategy::ScaleUpAndDown),
-            std::pair<TString, NTopic::EAutoPartitioningStrategy>("puased", NTopic::EAutoPartitioningStrategy::Paused),
+            std::pair<TString, NTopic::EAutoPartitioningStrategy>("paused", NTopic::EAutoPartitioningStrategy::Paused),
         };
 
         THashMap<NTopic::EAutoPartitioningStrategy, TString> AutoscaleStrategiesDescriptions = {
@@ -56,30 +82,38 @@ namespace NYdb::NConsoleClient {
             {ETopicMetadataField::Body, "Message data"},
             {ETopicMetadataField::WriteTime, "Message write time, a UNIX timestamp the message was written to server."},
             {ETopicMetadataField::CreateTime, "Message creation time, a UNIX timestamp provided by the publishing client."},
-            {ETopicMetadataField::MessageGroupID, "Message group id. All messages with the same message group id are guaranteed to be read in FIFO order."},
+            {ETopicMetadataField::ProducerID, "Message producer id. All messages with the same producer id are guaranteed to be read in FIFO order."},
             {ETopicMetadataField::Offset, "Message offset. Offset orders messages in each partition."},
             {ETopicMetadataField::SeqNo, "Message sequence number, used for message deduplication when publishing."},
-            {ETopicMetadataField::Meta, "Message additional metadata."},
+            {ETopicMetadataField::MessageMeta, "Message metadata"},
+            {ETopicMetadataField::SessionMeta, "Message session metadata."},
+            {ETopicMetadataField::PartitionID, "Message partition ID."},
         };
 
         const TVector<ETopicMetadataField> AllTopicMetadataFields = {
             ETopicMetadataField::Body,
             ETopicMetadataField::WriteTime,
             ETopicMetadataField::CreateTime,
-            ETopicMetadataField::MessageGroupID,
+            ETopicMetadataField::ProducerID,
             ETopicMetadataField::Offset,
             ETopicMetadataField::SeqNo,
-            ETopicMetadataField::Meta,
+            ETopicMetadataField::MessageMeta,
+            ETopicMetadataField::SessionMeta,
+            ETopicMetadataField::PartitionID,
         };
 
         const THashMap<TString, ETopicMetadataField> TopicMetadataFieldsMap = {
             {"body", ETopicMetadataField::Body},
             {"write_time", ETopicMetadataField::WriteTime},
             {"create_time", ETopicMetadataField::CreateTime},
-            {"message_group_id", ETopicMetadataField::MessageGroupID},
+            {"message_group_id", ETopicMetadataField::ProducerID},
+            {"producer_id", ETopicMetadataField::ProducerID},
+            {"partition_id", ETopicMetadataField::PartitionID},
             {"offset", ETopicMetadataField::Offset},
             {"seq_no", ETopicMetadataField::SeqNo},
-            {"meta", ETopicMetadataField::Meta},
+            {"message_meta", ETopicMetadataField::MessageMeta},
+            {"session_meta", ETopicMetadataField::SessionMeta},
+            {"meta", ETopicMetadataField::Meta}
         };
 
         THashMap<ETransformBody, TString> TransformBodyDescriptions = {
@@ -89,48 +123,110 @@ namespace NYdb::NConsoleClient {
 
         constexpr TDuration DefaultIdleTimeout = TDuration::Seconds(1);
 
-        bool IsStreamingFormat(EMessagingFormat format) {
-            return format == EMessagingFormat::NewlineDelimited || format == EMessagingFormat::Concatenated;
-        }
     } // namespace
 
-
-        TString PrepareAllowedCodecsDescription(const TString& descriptionPrefix, const TVector<NTopic::ECodec>& codecs) {
-            TStringStream description;
-            description << descriptionPrefix << ". Available codecs: ";
-            NColorizer::TColors colors = NColorizer::AutoColors(Cout);
-            for (const auto& codec : codecs) {
-                auto findResult = CodecsDescriptions.find(codec);
-                Y_ABORT_UNLESS(findResult != CodecsDescriptions.end(),
-                         "Couldn't find description for %s codec", (TStringBuilder() << codec).c_str());
-                description << "\n  " << colors.BoldColor() << codec << colors.OldColor()
-                            << "\n    " << findResult->second;
+    std::function<void(const TString& opt)> TimestampOptionHandler(TMaybe<TInstant>* destination) {
+        return [destination](const TString& opt) {
+            ui64 seconds = 0;
+            if (TryFromString(opt, seconds)) { // unix time
+                destination->ConstructInPlace(TInstant::Seconds(seconds));
+                return;
             }
 
-            return description.Str();
-        }
-
-namespace {
-            NTopic::ECodec ParseCodec(const TString& codecStr, const TVector<NTopic::ECodec>& allowedCodecs) {
-                auto exists = ExistingCodecs.find(to_lower(codecStr));
-                if (exists == ExistingCodecs.end()) {
-                    throw TMisuseException() << "Codec " << codecStr << " is not available for this command";
-                }
-
-                if (std::find(allowedCodecs.begin(), allowedCodecs.end(), exists->second) == allowedCodecs.end()) {
-                    throw TMisuseException() << "Codec " << codecStr << " is not available for this command";
-                }
-
-                return exists->second;
+            TInstant time;
+            if (TInstant::TryParseIso8601(opt, time)) {
+                destination->ConstructInPlace(time);
+                return;
             }
+
+            TStringBuilder err;
+            err << "failed to parse \"" << opt << "\" as a timestamp. It must be either unix time format or ISO-8601 format";
+            throw std::runtime_error(err);
+        };
+    }
+
+    TString PrepareAllowedCodecsDescription(const TString& descriptionPrefix, const TVector<NTopic::ECodec>& codecs) {
+        TStringStream description;
+        description << descriptionPrefix << ". Available codecs: ";
+        NColorizer::TColors colors = NConsoleClient::AutoColors(Cout);
+        for (const auto& codec : codecs) {
+            auto findResult = CodecsDescriptions.find(codec);
+            Y_ABORT_UNLESS(findResult != CodecsDescriptions.end(),
+                        "Couldn't find description for %s codec", (TStringBuilder() << codec).c_str());
+            description << "\n  " << colors.BoldColor() << codec << colors.OldColor()
+                        << "\n    " << findResult->second;
         }
+
+        return description.Str();
+    }
+
+    ui32 ParsePartitionPerTabletValue(TStringBuf s)
+    {
+        auto v = FromString<ui32>(s);
+        if ((v < 1) || (v > 20)) {
+            throw TMisuseException() << "Incorrect number of partitions in PQ tablet (" << v << "). Expected value from 1 to 20";
+        }
+        return v;
+    }
+
+    namespace {
+        NTopic::ECodec ParseCodec(const TString& codecStr, const TVector<NTopic::ECodec>& allowedCodecs) {
+            auto exists = ExistingCodecs.find(to_lower(codecStr));
+            if (exists == ExistingCodecs.end()) {
+                throw TMisuseException() << "Codec " << codecStr << " is not available for this command";
+            }
+
+            if (std::find(allowedCodecs.begin(), allowedCodecs.end(), exists->second) == allowedCodecs.end()) {
+                throw TMisuseException() << "Codec " << codecStr << " is not available for this command";
+            }
+
+            return exists->second;
+        }
+    }
 
     void TCommandWithSupportedCodecs::AddAllowedCodecs(TClientCommand::TConfig& config, const TVector<NYdb::NTopic::ECodec>& supportedCodecs) {
         TString description = PrepareAllowedCodecsDescription("Comma-separated list of supported codecs", supportedCodecs);
+        TVector<NLastGetopt::NComp::TChoice> choices;
+        for (const auto& [name, codec] : ExistingCodecs) {
+            if (std::find(supportedCodecs.begin(), supportedCodecs.end(), codec) != supportedCodecs.end()) {
+                auto it = CodecsDescriptions.find(codec);
+                choices.emplace_back(name, it != CodecsDescriptions.end() ? it->second : "");
+            }
+        }
         config.Opts->AddLongOption("supported-codecs", description)
             .RequiredArgument("STRING")
-            .StoreResult(&SupportedCodecsStr_);
+            .StoreResult(&SupportedCodecsStr_)
+            .Completer(NLastGetopt::NComp::Choice(std::move(choices)));
         AllowedCodecs_ = supportedCodecs;
+    }
+
+    void TCommandWithMetricsLevel::AddMetricsLevels(TClientCommand::TConfig& config) {
+        TStringStream description;
+        description << "Available metrics levels: ";
+        NColorizer::TColors colors = NConsoleClient::AutoColors(Cout);
+        for (const auto& level: ExistingMetricsLevels) {
+            auto findResult = MetricsLevelsDescriptions.find(level);
+            Y_ABORT_UNLESS(findResult != MetricsLevelsDescriptions.end(),
+                     "Couldn't find description for %s metrics level", (TStringBuilder() << level).c_str());
+            description << "\n  " << colors.BoldColor() << level << colors.OldColor()
+                        << "\n    " << findResult->second;
+            if (level == 2 /* database and topic level metrics */) {
+                description << colors.CyanColor() << " (default)" << colors.OldColor();
+            }
+        }
+        TVector<NLastGetopt::NComp::TChoice> choices;
+        for (const auto& level : ExistingMetricsLevels) {
+            auto it = MetricsLevelsDescriptions.find(level);
+            choices.emplace_back(ToString(level), it != MetricsLevelsDescriptions.end() ? it->second : "");
+        }
+        config.Opts->AddLongOption("metrics-level", description.Str())
+            .Optional()
+            .StoreResult(&MetricsLevel_)
+            .Completer(NLastGetopt::NComp::Choice(std::move(choices)));
+    }
+
+    TMaybe<NTopic::EMetricsLevel> TCommandWithMetricsLevel::GetMetricsLevel() const {
+        return MetricsLevel_;
     }
 
     void TCommandWithSupportedCodecs::ParseCodecs() {
@@ -148,7 +244,7 @@ namespace {
     void TCommandWithMeteringMode::AddAllowedMeteringModes(TClientCommand::TConfig& config) {
         TStringStream description;
         description << "Topic metering for serverless databases pricing. Available metering modes: ";
-        NColorizer::TColors colors = NColorizer::AutoColors(Cout);
+        NColorizer::TColors colors = NConsoleClient::AutoColors(Cout);
         for (const auto& mode: ExistingMeteringModes) {
             auto findResult = MeteringModesDescriptions.find(mode.second);
             Y_ABORT_UNLESS(findResult != MeteringModesDescriptions.end(),
@@ -159,9 +255,15 @@ namespace {
                 description << colors.CyanColor() << " (default)" << colors.OldColor();
             }
         }
+        TVector<NLastGetopt::NComp::TChoice> choices;
+        for (const auto& [name, mode] : ExistingMeteringModes) {
+            auto it = MeteringModesDescriptions.find(mode);
+            choices.emplace_back(name, it != MeteringModesDescriptions.end() ? it->second : "");
+        }
         config.Opts->AddLongOption("metering-mode", description.Str())
             .Optional()
-            .StoreResult(&MeteringModeStr_);
+            .StoreResult(&MeteringModeStr_)
+            .Completer(NLastGetopt::NComp::Choice(std::move(choices)));
     }
 
     void TCommandWithMeteringMode::ParseMeteringMode() {
@@ -189,7 +291,7 @@ namespace {
     void TCommandWithAutoPartitioning::AddAutoPartitioning(TClientCommand::TConfig& config, bool isAlter) {
         TStringStream description;
         description << "A strategy to automatically change the number of partitions depending on the load. Available strategies: ";
-        NColorizer::TColors colors = NColorizer::AutoColors(Cout);
+        NColorizer::TColors colors = NConsoleClient::AutoColors(Cout);
         for (const auto& strategy: AutoPartitioningStrategies) {
             auto findResult = AutoscaleStrategiesDescriptions.find(strategy.second);
             Y_ABORT_UNLESS(findResult != AutoscaleStrategiesDescriptions.end(),
@@ -198,10 +300,18 @@ namespace {
                         << "\n    " << findResult->second;
         }
 
+        TVector<NLastGetopt::NComp::TChoice> choices;
+        for (const auto& [name, strategy] : AutoPartitioningStrategies) {
+            auto it = AutoscaleStrategiesDescriptions.find(strategy);
+            choices.emplace_back(name, it != AutoscaleStrategiesDescriptions.end() ? it->second : "");
+        }
+        auto strategyCompleter = NLastGetopt::NComp::Choice(std::move(choices));
+
         if (isAlter) {
             config.Opts->AddLongOption("auto-partitioning-strategy", description.Str())
                 .Optional()
-                .StoreResult(&AutoPartitioningStrategyStr_);
+                .StoreResult(&AutoPartitioningStrategyStr_)
+                .Completer(strategyCompleter);
             config.Opts->AddLongOption("auto-partitioning-stabilization-window-seconds", "Duration in seconds of high or low load before automatically scale the number of partitions")
                 .Optional()
                 .StoreResult(&ScaleThresholdTime_);
@@ -215,7 +325,8 @@ namespace {
             config.Opts->AddLongOption("auto-partitioning-strategy", description.Str())
                 .Optional()
                 .DefaultValue("disabled")
-                .StoreResult(&AutoPartitioningStrategyStr_);
+                .StoreResult(&AutoPartitioningStrategyStr_)
+                .Completer(strategyCompleter);
             config.Opts->AddLongOption("auto-partitioning-stabilization-window-seconds", "Duration in seconds of high or low load before automatically scale the number of partitions")
                 .Optional()
                 .DefaultValue(300)
@@ -281,28 +392,50 @@ namespace {
             .Optional()
             .StoreResult(&MinActivePartitions_)
             .DefaultValue(1);
-        config.Opts->AddLongOption("retention-period-hours", "Duration in hours for which data in topic is stored")
-            .DefaultValue(24)
+        config.Opts->AddLongOption("retention-period-hours", TStringBuilder()
+                << "Duration in hours for which data in topic is stored. Supports time units (e.g., '72h', '1440m'). Plain number interpreted as hours "
+                << "(default: " << NColorizer::StdOut().CyanColor() << RetentionPeriod_.Hours() << NColorizer::StdOut().OldColor() << ")")
+            .Hidden()
             .Optional()
-            .StoreResult(&RetentionPeriodHours_);
+            .RequiredArgument("HOURS")
+            .StoreMappedResult(&RetentionPeriod_, ParseDurationHours);
+        config.Opts->AddLongOption("retention-period", TStringBuilder()
+                << "Duration for which data in topic is stored (ex. '72h', '1440m') "
+                << "(default: " << NColorizer::StdOut().CyanColor() << HumanReadable(RetentionPeriod_) << NColorizer::StdOut().OldColor() << ")")
+            .Optional()
+            .StoreMappedResult(&RetentionPeriod_, ParseDuration);
         config.Opts->AddLongOption("partition-write-speed-kbps", "Partition write speed in kilobytes per second")
             .DefaultValue(1024)
             .Optional()
             .StoreResult(&PartitionWriteSpeedKbps_);
+        config.Opts->AddLongOption("partition-write-speed-mps", "Partition write speed in messages per second")
+            .Optional()
+            .StoreResult(&PartitionWriteSpeedMessagesPerSecond_);
+        config.Opts->AddLongOption("partition-write-burst-messages", "Partition write burst in messages")
+            .Optional()
+            .StoreResult(&PartitionWriteBurstMessages_);
         config.Opts->AddLongOption("retention-storage-mb", "Storage retention in megabytes")
             .DefaultValue(0)
             .Optional()
             .StoreResult(&RetentionStorageMb_);
         config.Opts->SetFreeArgsNum(1);
         SetFreeArgTitle(0, "<topic-path>", "Topic path");
+        SetSchemePathCompletionForTopics(config.Opts->GetOpts().GetFreeArgSpec(0));
         AddAllowedCodecs(config, AllowedCodecs);
         AddAllowedMeteringModes(config);
+        AddMetricsLevels(config);
 
         config.Opts->AddLongOption("auto-partitioning-max-partitions-count", "Maximum number of partitions for topic")
             .Optional()
-            .StoreResult(&MaxActivePartitions_)
-            .DefaultValue(1);
+            .StoreResult(&MaxActivePartitions_);
         AddAutoPartitioning(config, false);
+
+        config.Opts->AddLongOption("partitions-per-tablet", "Partitions per PQ tablet")
+            .Optional()
+            .Hidden()
+            .StoreMappedResult(&PartitionsPerTablet_, ParsePartitionPerTabletValue);
+
+        config.Opts->MutuallyExclusive("retention-period-hours", "retention-period");
     }
 
     void TCommandTopicCreate::Parse(TConfig& config) {
@@ -314,7 +447,7 @@ namespace {
     }
 
     int TCommandTopicCreate::Run(TConfig& config) {
-        TDriver driver = CreateDriver(config);
+        auto driver = CreateDriver(config);
         NYdb::NTopic::TTopicClient topicClient(driver);
 
         auto settings = NYdb::NTopic::TCreateTopicSettings();
@@ -322,28 +455,45 @@ namespace {
         auto autoscaleSettings = NTopic::TAutoPartitioningSettings(
         GetAutoPartitioningStrategy() ? *GetAutoPartitioningStrategy() : NTopic::EAutoPartitioningStrategy::Disabled,
         GetAutoPartitioningStabilizationWindowSeconds() ? TDuration::Seconds(*GetAutoPartitioningStabilizationWindowSeconds()) : TDuration::Seconds(0),
-        GetAutoPartitioningUpUtilizationPercent() ? *GetAutoPartitioningUpUtilizationPercent() : 0,
-        GetAutoPartitioninDownUtilizationPercent() ? *GetAutoPartitioninDownUtilizationPercent() : 0);
+        GetAutoPartitioninDownUtilizationPercent() ? *GetAutoPartitioninDownUtilizationPercent() : 0,
+        GetAutoPartitioningUpUtilizationPercent() ? *GetAutoPartitioningUpUtilizationPercent() : 0);
 
-        settings.PartitioningSettings(MinActivePartitions_, MaxActivePartitions_, autoscaleSettings);
+        ui32 finalMaxActivePartitions = MaxActivePartitions_.Defined() ? *MaxActivePartitions_
+                                      : autoscaleSettings.GetStrategy() != NTopic::EAutoPartitioningStrategy::Disabled ? MinActivePartitions_ + 50
+                                      : MinActivePartitions_;
+
+        settings.PartitioningSettings(MinActivePartitions_, finalMaxActivePartitions, autoscaleSettings);
         settings.PartitionWriteBurstBytes(PartitionWriteSpeedKbps_ * 1_KB);
         settings.PartitionWriteSpeedBytesPerSecond(PartitionWriteSpeedKbps_ * 1_KB);
+        if (PartitionWriteSpeedMessagesPerSecond_.Defined()) {
+            settings.PartitionWriteSpeedMessagesPerSecond(*PartitionWriteSpeedMessagesPerSecond_);
+        }
+        if (PartitionWriteBurstMessages_.Defined()) {
+            settings.PartitionWriteBurstMessages(*PartitionWriteBurstMessages_);
+        }
 
         auto codecs = GetCodecs();
-        if (codecs.empty()) {
-            codecs.push_back(NTopic::ECodec::RAW);
+        if (!codecs.empty()) {
+            settings.SetSupportedCodecs(codecs);
         }
-        settings.SetSupportedCodecs(codecs);
 
         if (GetMeteringMode() != NTopic::EMeteringMode::Unspecified) {
             settings.MeteringMode(GetMeteringMode());
         }
 
-        settings.RetentionPeriod(TDuration::Hours(RetentionPeriodHours_));
+        settings.RetentionPeriod(RetentionPeriod_);
         settings.RetentionStorageMb(RetentionStorageMb_);
 
+        if (PartitionsPerTablet_.Defined()) {
+            settings.AddAttribute("_partitions_per_tablet", ToString(*PartitionsPerTablet_));
+        }
+
+        if (auto level = GetMetricsLevel(); level.Defined()) {
+            settings.MetricsLevel(*level);
+        }
+
         auto status = topicClient.CreateTopic(TopicName, settings).GetValueSync();
-        ThrowOnError(status);
+        NStatusHelpers::ThrowOnErrorOrPrintIssues(status);
         return EXIT_SUCCESS;
     }
 
@@ -356,24 +506,43 @@ namespace {
         config.Opts->AddLongOption("partitions-count", "Initial and minimum number of partitions for topic")
             .Optional()
             .StoreResult(&MinActivePartitions_);
-        config.Opts->AddLongOption("retention-period-hours", "Duration for which data in topic is stored")
+        config.Opts->AddLongOption("retention-period-hours", "Duration in hours for which data in topic is stored. Supports time units (e.g., '72h', '1440m'). Plain number interpreted as hours.")
+            .Hidden()
             .Optional()
-            .StoreResult(&RetentionPeriodHours_);
+            .RequiredArgument("HOURS")
+            .StoreMappedResult(&RetentionPeriod_, ParseDurationHours);
+        config.Opts->AddLongOption("retention-period", "Duration for which data in topic is stored (ex. '72h', '1440m')")
+            .Optional()
+            .StoreMappedResult(&RetentionPeriod_, ParseDuration);
         config.Opts->AddLongOption("partition-write-speed-kbps", "Partition write speed in kilobytes per second")
             .Optional()
             .StoreResult(&PartitionWriteSpeedKbps_);
+        config.Opts->AddLongOption("partition-write-speed-mps", "Partition write speed in messages per second")
+            .Optional()
+            .StoreResult(&PartitionWriteSpeedMessagesPerSecond_);
+        config.Opts->AddLongOption("partition-write-burst-messages", "Partition write burst in messages")
+            .Optional()
+            .StoreResult(&PartitionWriteBurstMessages_);
         config.Opts->AddLongOption("retention-storage-mb", "Storage retention in megabytes")
             .Optional()
             .StoreResult(&RetentionStorageMb_);
+        config.Opts->AddLongOption("content-based-deduplication", "Content based deduplication for topic")
+            .Optional()
+            .Hidden()
+            .StoreTrue(&ContentBasedDeduplication_);
         config.Opts->SetFreeArgsNum(1);
         SetFreeArgTitle(0, "<topic-path>", "Topic path");
+        SetSchemePathCompletionForTopics(config.Opts->GetOpts().GetFreeArgSpec(0));
         AddAllowedCodecs(config, AllowedCodecs);
         AddAllowedMeteringModes(config);
+        AddMetricsLevels(config);
 
         config.Opts->AddLongOption("auto-partitioning-max-partitions-count", "Maximum number of partitions for topic")
             .Optional()
             .StoreResult(&MaxActivePartitions_);
         AddAutoPartitioning(config, true);
+
+        config.Opts->MutuallyExclusive("retention-period-hours", "retention-period");
     }
 
     void TCommandTopicAlter::Parse(TConfig& config) {
@@ -387,31 +556,33 @@ namespace {
     NYdb::NTopic::TAlterTopicSettings TCommandTopicAlter::PrepareAlterSettings(
         NYdb::NTopic::TDescribeTopicResult& describeResult) {
         auto settings = NYdb::NTopic::TAlterTopicSettings();
-        auto partitioningSettings = settings.BeginAlterPartitioningSettings();
+        auto& partitioningSettings = settings.BeginAlterPartitioningSettings();
+        auto& originPartitioningSettings = describeResult.GetTopicDescription().GetPartitioningSettings();
 
-        if (MinActivePartitions_.Defined() && (*MinActivePartitions_ != describeResult.GetTopicDescription().GetPartitioningSettings().GetMinActivePartitions())) {
+        if (MinActivePartitions_.Defined() && (*MinActivePartitions_ != originPartitioningSettings.GetMinActivePartitions())) {
             partitioningSettings.MinActivePartitions(*MinActivePartitions_);
         }
 
-        if (MaxActivePartitions_.Defined() && (*MaxActivePartitions_ != describeResult.GetTopicDescription().GetPartitioningSettings().GetMaxActivePartitions())) {
+        if (MaxActivePartitions_.Defined() && (*MaxActivePartitions_ != originPartitioningSettings.GetMaxActivePartitions())) {
             partitioningSettings.MaxActivePartitions(*MaxActivePartitions_);
         }
 
-        auto autoPartitioningSettings = partitioningSettings.BeginAlterAutoPartitioningSettings();
+        auto& autoPartitioningSettings = partitioningSettings.BeginAlterAutoPartitioningSettings();
+        const auto& originalAutoPartitioningSettings = originPartitioningSettings.GetAutoPartitioningSettings();
 
-        if (GetAutoPartitioningStabilizationWindowSeconds().Defined() && *GetAutoPartitioningStabilizationWindowSeconds() != describeResult.GetTopicDescription().GetPartitioningSettings().GetAutoPartitioningSettings().GetStabilizationWindow().Seconds()) {
+        if (GetAutoPartitioningStabilizationWindowSeconds().Defined() && *GetAutoPartitioningStabilizationWindowSeconds() != originalAutoPartitioningSettings.GetStabilizationWindow().Seconds()) {
             autoPartitioningSettings.StabilizationWindow(TDuration::Seconds(*GetAutoPartitioningStabilizationWindowSeconds()));
         }
 
-        if (GetAutoPartitioningStrategy().Defined() && *GetAutoPartitioningStrategy() != describeResult.GetTopicDescription().GetPartitioningSettings().GetAutoPartitioningSettings().GetStrategy()) {
+        if (GetAutoPartitioningStrategy().Defined() && *GetAutoPartitioningStrategy() != originalAutoPartitioningSettings.GetStrategy()) {
             autoPartitioningSettings.Strategy(*GetAutoPartitioningStrategy());
         }
 
-        if (GetAutoPartitioninDownUtilizationPercent().Defined() && *GetAutoPartitioninDownUtilizationPercent() != describeResult.GetTopicDescription().GetPartitioningSettings().GetAutoPartitioningSettings().GetDownUtilizationPercent()) {
+        if (GetAutoPartitioninDownUtilizationPercent().Defined() && *GetAutoPartitioninDownUtilizationPercent() != originalAutoPartitioningSettings.GetDownUtilizationPercent()) {
             autoPartitioningSettings.DownUtilizationPercent(*GetAutoPartitioninDownUtilizationPercent());
         }
 
-        if (GetAutoPartitioningUpUtilizationPercent().Defined() && *GetAutoPartitioningUpUtilizationPercent() != describeResult.GetTopicDescription().GetPartitioningSettings().GetAutoPartitioningSettings().GetUpUtilizationPercent()) {
+        if (GetAutoPartitioningUpUtilizationPercent().Defined() && *GetAutoPartitioningUpUtilizationPercent() != originalAutoPartitioningSettings.GetUpUtilizationPercent()) {
             autoPartitioningSettings.UpUtilizationPercent(*GetAutoPartitioningUpUtilizationPercent());
         }
 
@@ -420,13 +591,27 @@ namespace {
             settings.SetSupportedCodecs(codecs);
         }
 
-        if (RetentionPeriodHours_.Defined() && describeResult.GetTopicDescription().GetRetentionPeriod() != TDuration::Hours(*RetentionPeriodHours_)) {
-            settings.SetRetentionPeriod(TDuration::Hours(*RetentionPeriodHours_));
+        if (RetentionPeriod_.Defined() && describeResult.GetTopicDescription().GetRetentionPeriod() != RetentionPeriod_) {
+            settings.SetRetentionPeriod(*RetentionPeriod_);
+        }
+
+        if (ContentBasedDeduplication_ && describeResult.GetTopicDescription().GetContentBasedDeduplication() != ContentBasedDeduplication_) {
+            settings.SetContentBasedDeduplication(ContentBasedDeduplication_);
         }
 
         if (PartitionWriteSpeedKbps_.Defined() && describeResult.GetTopicDescription().GetPartitionWriteSpeedBytesPerSecond() / 1_KB != *PartitionWriteSpeedKbps_) {
             settings.SetPartitionWriteSpeedBytesPerSecond(*PartitionWriteSpeedKbps_ * 1_KB);
             settings.SetPartitionWriteBurstBytes(*PartitionWriteSpeedKbps_ * 1_KB);
+        }
+
+        const auto& topicDescription = describeResult.GetTopicDescription();
+        if (PartitionWriteSpeedMessagesPerSecond_.Defined()
+            && topicDescription.GetPartitionWriteSpeedMessagesPerSecond() != *PartitionWriteSpeedMessagesPerSecond_) {
+            settings.SetPartitionWriteSpeedMessagesPerSecond(*PartitionWriteSpeedMessagesPerSecond_);
+        }
+        if (PartitionWriteBurstMessages_.Defined()
+            && topicDescription.GetPartitionWriteBurstMessages() != *PartitionWriteBurstMessages_) {
+            settings.SetPartitionWriteBurstMessages(*PartitionWriteBurstMessages_);
         }
 
         if (GetMeteringMode() != NTopic::EMeteringMode::Unspecified && GetMeteringMode() != describeResult.GetTopicDescription().GetMeteringMode()) {
@@ -437,22 +622,26 @@ namespace {
             settings.SetRetentionStorageMb(*RetentionStorageMb_);
         }
 
+        if (auto level = GetMetricsLevel(); level.Defined()) {
+            settings.SetMetricsLevel(*level);
+        }
+
         return settings;
     }
 
     int TCommandTopicAlter::Run(TConfig& config) {
-        TDriver driver = CreateDriver(config);
+        auto driver = CreateDriver(config);
         NYdb::NTopic::TTopicClient topicClient(driver);
 
         auto topicDescription = topicClient.DescribeTopic(TopicName, {}).GetValueSync();
-        ThrowOnError(topicDescription);
+        NStatusHelpers::ThrowOnErrorOrPrintIssues(topicDescription);
 
         auto describeResult = topicClient.DescribeTopic(TopicName).GetValueSync();
-        ThrowOnError(describeResult);
+        NStatusHelpers::ThrowOnErrorOrPrintIssues(describeResult);
 
         auto settings = PrepareAlterSettings(describeResult);
         auto result = topicClient.AlterTopic(TopicName, settings).GetValueSync();
-        ThrowOnError(result);
+        NStatusHelpers::ThrowOnErrorOrPrintIssues(result);
         return EXIT_SUCCESS;
     }
 
@@ -469,18 +658,19 @@ namespace {
         TYdbCommand::Config(config);
         config.Opts->SetFreeArgsNum(1);
         SetFreeArgTitle(0, "<topic-path>", "Topic path");
+        SetSchemePathCompletionForTopics(config.Opts->GetOpts().GetFreeArgSpec(0));
     }
 
     int TCommandTopicDrop::Run(TConfig& config) {
-        TDriver driver = CreateDriver(config);
+        auto driver = CreateDriver(config);
         NTopic::TTopicClient topicClient(driver);
 
         auto topicDescription = topicClient.DescribeTopic(TopicName, {}).GetValueSync();
-        ThrowOnError(topicDescription);
+        NStatusHelpers::ThrowOnErrorOrPrintIssues(topicDescription);
 
         auto settings = NYdb::NTopic::TDropTopicSettings();
         TStatus status = topicClient.DropTopic(TopicName, settings).GetValueSync();
-        ThrowOnError(status);
+        NStatusHelpers::ThrowOnErrorOrPrintIssues(status);
         return EXIT_SUCCESS;
     }
 
@@ -488,6 +678,7 @@ namespace {
         : TClientCommandTree("consumer", {}, "Consumer operations") {
         AddCommand(std::make_unique<TCommandTopicConsumerAdd>());
         AddCommand(std::make_unique<TCommandTopicConsumerDrop>());
+        AddCommand(std::make_unique<TCommandTopicConsumerDescribe>());
         AddCommand(std::make_unique<TCommandTopicConsumerOffset>());
     }
 
@@ -503,18 +694,51 @@ namespace {
 
     void TCommandTopicConsumerAdd::Config(TConfig& config) {
         TYdbCommand::Config(config);
-        config.Opts->AddLongOption("consumer", "New consumer for topic")
+        config.Opts->AddLongOption('c', "consumer", "New consumer for topic")
             .Required()
             .StoreResult(&ConsumerName_);
-        config.Opts->AddLongOption("starting-message-timestamp", "Unix timestamp starting from '1970-01-01 00:00:00' from which read is allowed")
+        config.Opts->AddLongOption("starting-message-timestamp", "'Written_at' timestamp from which read is allowed. " TIMESTAMP_FORMAT_OPTION_DESCRIPTION)
+            .RequiredArgument("TIMESTAMP")
             .Optional()
-            .StoreResult(&StartingMessageTimestamp_);
+            .Handler(TimestampOptionHandler(&StartingMessageTimestamp_));
         config.Opts->AddLongOption("important", "Is consumer important")
             .Optional()
             .DefaultValue(false)
             .StoreResult(&IsImportant_);
+        config.Opts->AddLongOption("availability-period", "Duration for which uncommited data in topic is retained (ex. '72h', '1440m')")
+            .Optional()
+            .StoreMappedResult(&AvailabilityPeriod_, ParseDuration);
+        config.Opts->AddLongOption("type", "Consumer type. Available options: streaming, shared")
+            .DefaultValue("streaming")
+            .Hidden()
+            .StoreResult(&ConsumerType_);
+        config.Opts->AddLongOption("keep-messages-order", "Keep messages order for shared consumer")
+            .Optional()
+            .Hidden()
+            .StoreResult(&KeepMessagesOrder_);
+        config.Opts->AddLongOption("default-processing-timeout", "Default processing timeout for shared consumer (ex. '1h', '1m', '1s)")
+            .Optional()
+            .Hidden()
+            .StoreMappedResult(&DefaultProcessingTimeout_, ParseDuration);
+        config.Opts->AddLongOption("max-processing-attempts", "Max processing attempts for DLQ for shared consumer")
+            .Optional()
+            .Hidden()
+            .StoreResult(&MaxProcessingAttempts_);
+        config.Opts->AddLongOption("dlq-queue-name", "DLQ queue name for shared consumer")
+            .Optional()
+            .Hidden()
+            .StoreResult(&DlqQueueName_);
+        config.Opts->AddLongOption("receive-message-wait-time", "Receive message wait time for shared consumer (ex. '10s', '1m')")
+            .Optional()
+            .Hidden()
+            .StoreMappedResult(&ReceiveMessageWaitTime_, ParseDuration);
+        config.Opts->AddLongOption("receive-message-delay", "Receive message delay for shared consumer (ex. '1s', '1m')")
+            .Optional()
+            .Hidden()
+            .StoreMappedResult(&ReceiveMessageDelay_, ParseDuration);
         config.Opts->SetFreeArgsNum(1);
         SetFreeArgTitle(0, "<topic-path>", "Topic path");
+        SetSchemePathCompletionForTopics(config.Opts->GetOpts().GetFreeArgSpec(0));
         AddAllowedCodecs(config, AllowedCodecs);
     }
 
@@ -524,31 +748,94 @@ namespace {
         ParseTopicName(config, 0);
     }
 
+    void TCommandTopicConsumerAdd::ValidateConsumerOptions(const TMaybe<NTopic::EConsumerType>& consumerType) {
+        if (consumerType.Defined() && *consumerType != NTopic::EConsumerType::Shared) {
+            if (MaxProcessingAttempts_.Defined()) {
+                throw TMisuseException() << "Invalid option: max-processing-attempts. This option is available only for shared consumer";
+            }
+
+            if (DlqQueueName_.Defined()) {
+                throw TMisuseException() << "Invalid option: dlq-queue-name. This option is available only for shared consumer";
+            }
+
+            if (DefaultProcessingTimeout_.Defined()) {
+                throw TMisuseException() << "Invalid option: default-processing-timeout. This option is available only for shared consumer";
+            }
+
+            if (KeepMessagesOrder_.Defined()) {
+                throw TMisuseException() << "Invalid option: keep-messages-order. This option is available only for shared consumer";
+            }
+        }
+    }
+
     int TCommandTopicConsumerAdd::Run(TConfig& config) {
-        TDriver driver = CreateDriver(config);
+        auto driver = CreateDriver(config);
         NTopic::TTopicClient topicClient(driver);
 
         auto topicDescription = topicClient.DescribeTopic(TopicName, {}).GetValueSync();
-        ThrowOnError(topicDescription);
+        NStatusHelpers::ThrowOnErrorOrPrintIssues(topicDescription);
 
         NYdb::NTopic::TAlterTopicSettings readRuleSettings = NYdb::NTopic::TAlterTopicSettings();
         NYdb::NTopic::TConsumerSettings<NYdb::NTopic::TAlterTopicSettings> consumerSettings(readRuleSettings);
         consumerSettings.ConsumerName(ConsumerName_);
         if (StartingMessageTimestamp_.Defined()) {
-            consumerSettings.ReadFrom(TInstant::Seconds(*StartingMessageTimestamp_));
+            consumerSettings.ReadFrom(*StartingMessageTimestamp_);
         }
 
-        TVector<NTopic::ECodec> codecs = GetCodecs();
-        if (codecs.empty()) {
-            codecs.push_back(NTopic::ECodec::RAW);
+        auto codecs = GetCodecs();
+        if (!codecs.empty()) {
+            consumerSettings.SetSupportedCodecs(codecs);
         }
-        consumerSettings.SetSupportedCodecs(codecs);
         consumerSettings.SetImportant(IsImportant_);
+        if (AvailabilityPeriod_.Defined()) {
+            consumerSettings.AvailabilityPeriod(*AvailabilityPeriod_);
+        }
+
+        auto consumerType = TryFromString<NTopic::EConsumerType>(to_title(ConsumerType_));
+        if (!consumerType.Defined()) {
+            throw TMisuseException() << "Invalid consumer type: " << to_title(ConsumerType_) << ". Valid types: " << GetEnumAllNames<NTopic::EConsumerType>();
+        }
+
+        ValidateConsumerOptions(consumerType);
+
+        consumerSettings.ConsumerType(*consumerType);
+        consumerSettings.KeepMessagesOrder(KeepMessagesOrder_.GetOrElse(false));
+        if (DefaultProcessingTimeout_.Defined()) {
+            consumerSettings.DefaultProcessingTimeout(*DefaultProcessingTimeout_);
+        }
+
+        if (ReceiveMessageWaitTime_.Defined()) {
+            consumerSettings.ReceiveMessageWaitTime(*ReceiveMessageWaitTime_);
+        }
+        if (ReceiveMessageDelay_.Defined()) {
+            consumerSettings.ReceiveMessageDelay(*ReceiveMessageDelay_);
+        }
+
+        if (MaxProcessingAttempts_.Defined() || DlqQueueName_.Defined()) {
+            NYdb::NTopic::TDeadLetterPolicySettings dlqSettings;
+            dlqSettings.Enabled(true);
+
+            NYdb::NTopic::TDeadLetterPolicyConditionSettings conditionSettings;
+            if (MaxProcessingAttempts_.Defined()) {
+                conditionSettings.MaxProcessingAttempts(*MaxProcessingAttempts_);
+            }
+
+            dlqSettings.Condition(conditionSettings);
+
+            if (DlqQueueName_.Defined()) {
+                dlqSettings.Action(NTopic::EDeadLetterAction::Move);
+                dlqSettings.DeadLetterQueue(*DlqQueueName_);
+            } else {
+                dlqSettings.Action(NTopic::EDeadLetterAction::Delete);
+            }
+
+            consumerSettings.DeadLetterPolicy(dlqSettings);
+        }
 
         readRuleSettings.AppendAddConsumers(consumerSettings);
 
         TStatus status = topicClient.AlterTopic(TopicName, readRuleSettings).GetValueSync();
-        ThrowOnError(status);
+        NStatusHelpers::ThrowOnErrorOrPrintIssues(status);
         return EXIT_SUCCESS;
     }
 
@@ -558,11 +845,12 @@ namespace {
 
     void TCommandTopicConsumerDrop::Config(TConfig& config) {
         TYdbCommand::Config(config);
-        config.Opts->AddLongOption("consumer", "Consumer which will be dropped")
+        config.Opts->AddLongOption('c', "consumer", "Consumer which will be dropped")
             .Required()
             .StoreResult(&ConsumerName_);
         config.Opts->SetFreeArgsNum(1);
         SetFreeArgTitle(0, "<topic-path>", "Topic path");
+        SetSchemePathCompletionForTopics(config.Opts->GetOpts().GetFreeArgSpec(0));
     }
 
     void TCommandTopicConsumerDrop::Parse(TConfig& config) {
@@ -571,11 +859,11 @@ namespace {
     }
 
     int TCommandTopicConsumerDrop::Run(TConfig& config) {
-        TDriver driver = CreateDriver(config);
+        auto driver = CreateDriver(config);
         NYdb::NTopic::TTopicClient topicClient(driver);
 
         auto topicDescription = topicClient.DescribeTopic(TopicName, {}).GetValueSync();
-        ThrowOnError(topicDescription);
+        NStatusHelpers::ThrowOnErrorOrPrintIssues(topicDescription);
 
         auto consumers = topicDescription.GetTopicDescription().GetConsumers();
         if (!std::any_of(consumers.begin(), consumers.end(), [&](const auto& consumer) { return consumer.GetConsumerName() == ConsumerName_; }))
@@ -588,10 +876,46 @@ namespace {
         removeReadRuleSettings.AppendDropConsumers(ConsumerName_);
 
         TStatus status = topicClient.AlterTopic(TopicName, removeReadRuleSettings).GetValueSync();
-        ThrowOnError(status);
+        NStatusHelpers::ThrowOnErrorOrPrintIssues(status);
         return EXIT_SUCCESS;
     }
 
+    TCommandTopicConsumerDescribe::TCommandTopicConsumerDescribe()
+        : TYdbCommand("describe", {}, "Consumer describe operation") {
+    }
+
+    void TCommandTopicConsumerDescribe::Config(TConfig& config) {
+        TYdbCommand::Config(config);
+        config.Opts->AddLongOption('c', "consumer", "Consumer to describe")
+            .Required()
+            .StoreResult(&ConsumerName_);
+        config.Opts->AddLongOption("partition-stats", "Show partition statistics")
+            .StoreTrue(&ShowPartitionStats_);
+        config.Opts->SetFreeArgsNum(1);
+        AddOutputFormats(config, { EDataFormat::Pretty, EDataFormat::ProtoJsonBase64 });
+        SetFreeArgTitle(0, "<topic-path>", "Topic path");
+        SetSchemePathCompletionForTopics(config.Opts->GetOpts().GetFreeArgSpec(0));
+    }
+
+    void TCommandTopicConsumerDescribe::Parse(TConfig& config) {
+        TYdbCommand::Parse(config);
+        ParseOutputFormats();
+        ParseTopicName(config, 0);
+    }
+
+    int TCommandTopicConsumerDescribe::Run(TConfig& config) {
+        auto driver = CreateDriver(config);
+        NYdb::NTopic::TTopicClient topicClient(driver);
+
+        auto consumerDescription = topicClient.DescribeConsumer(TopicName, ConsumerName_, NYdb::NTopic::TDescribeConsumerSettings().IncludeStats(ShowPartitionStats_)).GetValueSync();
+        NStatusHelpers::ThrowOnErrorOrPrintIssues(consumerDescription);
+
+        return PrintDescription(this, OutputFormat, consumerDescription.GetConsumerDescription(), &TCommandTopicConsumerDescribe::PrintPrettyResult);
+    }
+
+    int TCommandTopicConsumerDescribe::PrintPrettyResult(const NYdb::NTopic::TConsumerDescription& description) const {
+        return PrintPrettyDescribeConsumerResult(description, ShowPartitionStats_);
+    }
 
     TCommandTopicConsumerCommitOffset::TCommandTopicConsumerCommitOffset()
         : TYdbCommand("commit", {}, "Commit offset for consumer") {
@@ -599,7 +923,7 @@ namespace {
 
     void TCommandTopicConsumerCommitOffset::Config(TConfig& config) {
         TYdbCommand::Config(config);
-        config.Opts->AddLongOption("consumer", "Consumer which offset will be changed")
+        config.Opts->AddLongOption('c', "consumer", "Consumer which offset will be changed")
             .Required()
             .StoreResult(&ConsumerName_);
 
@@ -613,6 +937,7 @@ namespace {
 
         config.Opts->SetFreeArgsNum(1);
         SetFreeArgTitle(0, "<topic-path>", "Topic path");
+        SetSchemePathCompletionForTopics(config.Opts->GetOpts().GetFreeArgSpec(0));
     }
 
     void TCommandTopicConsumerCommitOffset::Parse(TConfig& config) {
@@ -621,11 +946,11 @@ namespace {
     }
 
     int TCommandTopicConsumerCommitOffset::Run(TConfig& config) {
-        TDriver driver = CreateDriver(config);
+        auto driver = CreateDriver(config);
         NYdb::NTopic::TTopicClient topicClient(driver);
 
         auto topicDescription = topicClient.DescribeTopic(TopicName, {}).GetValueSync();
-        ThrowOnError(topicDescription);
+        NStatusHelpers::ThrowOnErrorOrPrintIssues(topicDescription);
 
         auto consumers = topicDescription.GetTopicDescription().GetConsumers();
         if (!std::any_of(consumers.begin(), consumers.end(), [&](const auto& consumer) { return consumer.GetConsumerName() == ConsumerName_; }))
@@ -635,22 +960,27 @@ namespace {
         }
 
         TStatus status = topicClient.CommitOffset(TopicName, PartitionId_, ConsumerName_, Offset_).GetValueSync();
-        ThrowOnError(status);
+        NStatusHelpers::ThrowOnErrorOrPrintIssues(status);
         return EXIT_SUCCESS;
     }
 
     void TCommandWithTransformBody::AddTransform(TClientCommand::TConfig& config) {
         TStringStream description;
         description << "Conversion between a message data in the topic and the client filesystem/terminal. Available options: ";
-        NColorizer::TColors colors = NColorizer::AutoColors(Cout);
+        NColorizer::TColors colors = NConsoleClient::AutoColors(Cout);
         for (const auto& iter : TransformBodyDescriptions) {
             description << "\n  " << colors.BoldColor() << iter.first << colors.OldColor() << "\n    " << iter.second;
         }
 
+        TVector<NLastGetopt::NComp::TChoice> choices;
+        for (const auto& [transform, desc] : TransformBodyDescriptions) {
+            choices.emplace_back(ToString(transform), desc);
+        }
         config.Opts->AddLongOption("transform", description.Str())
             .Optional()
             .DefaultValue("none")
-            .StoreResult(&TransformStr_);
+            .StoreResult(&TransformStr_)
+            .Completer(NLastGetopt::NComp::Choice(std::move(choices)));
     }
 
     void TCommandWithTransformBody::ParseTransform() {
@@ -681,7 +1011,7 @@ namespace {
     void TCommandTopicRead::AddAllowedMetadataFields(TConfig& config) {
         TStringStream description;
         description << "Comma-separated list of message fields to print in Pretty format. If not specified, all fields are printed. Available fields: ";
-        NColorizer::TColors colors = NColorizer::AutoColors(Cout);
+        NColorizer::TColors colors = NConsoleClient::AutoColors(Cout);
         for (const auto& iter : TopicMetadataFieldsDescriptions) {
             description << "\n  " << colors.BoldColor() << iter.first << colors.OldColor() << "\n    " << iter.second;
         }
@@ -695,45 +1025,61 @@ namespace {
         TYdbCommand::Config(config);
         config.Opts->SetFreeArgsNum(1);
         SetFreeArgTitle(0, "<topic-path>", "Topic path");
+        SetSchemePathCompletionForTopics(config.Opts->GetOpts().GetFreeArgSpec(0));
 
         AddMessagingFormats(config, {
                                EMessagingFormat::SingleMessage,
                                EMessagingFormat::Pretty,
                                EMessagingFormat::NewlineDelimited,
                                EMessagingFormat::Concatenated,
+                               EMessagingFormat::JsonArray,
+                               EMessagingFormat::Tsv,
+                               EMessagingFormat::Csv,
+                               EMessagingFormat::JsonStreamConcat,
                            });
 
         // TODO(shmel1k@): improve help.
-        config.Opts->AddLongOption('c', "consumer", "Consumer name.")
-            .Required()
+        config.Opts->AddLongOption('c', "consumer", "Consumer name. If omitted, use --partitions to target specific partitions, or --no-consumer to read all partitions without a consumer.")
+            .Optional()
             .StoreResult(&Consumer_);
+        config.Opts->AddLongOption("no-consumer", "Allows to read all partitions without setting specific partition ids and without consumer.")
+            .Optional()
+            .StoreTrue(&ReadWithoutConsumer_);
+
         config.Opts->AddLongOption('f', "file", "File to write data to. In not specified, data is written to the standard output.")
             .Optional()
             .StoreResult(&File_);
-        config.Opts->AddLongOption("idle-timeout", "Max wait duration for new messages. Topic is considered empty if no new messages arrive within this period.")
+        config.Opts->AddLongOption("idle-timeout", "Max wait duration for the first message. Topic is considered empty if no new messages arrive within this period. Value must include a time unit suffix (e.g., '5s', '1m').")
             .Optional()
             .DefaultValue(DefaultIdleTimeout)
             .StoreResult(&IdleTimeout_);
-        config.Opts->AddLongOption("commit", "Commit messages after successful read")
+        config.Opts->AddLongOption("commit", "Commit messages after successful read.")
             .Optional()
-            .DefaultValue(true)
+            .DefaultValue(false)
             .StoreResult(&Commit_);
         config.Opts->AddLongOption("limit", "Limit on message count to read, 0 - unlimited. "
-                                            "If avobe 0, processing stops when either topic is empty, or the specified limit reached. "
+                                            "If above 0, processing stops when either topic is empty, or the specified limit reached. "
                                             "Must be above 0 for pretty output format."
                                             "\nDefault is 10 for pretty format, unlimited for streaming formats.")
             .Optional()
             .StoreResult(&Limit_);
         config.Opts->AddLongOption('w', "wait", "Wait indefinitely for a first message received. If not specified, command exits on empty topic returning no data to the output.")
             .Optional()
-            .NoArgument()
-            .StoreValue(&Wait_, true);
-        config.Opts->AddLongOption("timestamp", "Timestamp from which messages will be read. If not specified, messages are read from the last commit point for the chosen consumer.")
+            .StoreTrue(&Wait_);
+        config.Opts->AddLongOption("timestamp", "'Written_at' timestamp from which messages will be read. If not specified, messages are read from the last commit point for the chosen consumer. " TIMESTAMP_FORMAT_OPTION_DESCRIPTION)
+            .RequiredArgument("TIMESTAMP")
             .Optional()
-            .StoreResult(&Timestamp_);
-        config.Opts->AddLongOption("partition-ids", "Comma separated list of partition ids to read from. If not specified, messages are read from all partitions.")
+            .Handler(TimestampOptionHandler(&Timestamp_));
+        config.Opts->AddLongOption("partition-ids", "Comma separated list of partition ids to read from. If not specified, messages are read from all partitions. E.g. \"--partition-ids 0,1,10\".")
             .Optional()
-            .SplitHandler(&PartitionIds_, ',');
+            .Hidden()
+            .GetOpt().SplitHandler(&PartitionIds_, ',');
+        config.Opts->AddLongOption("partitions", "Comma separated list of partition ids to read from. If not specified, messages are read from all partitions. E.g. \"--partitions 0,1,10\".")
+            .Optional()
+            .GetOpt().SplitHandler(&PartitionIds_, ',');
+        config.Opts->AddLongOption("start-offset", "Offset to start reading from. If not specified, messages are read from the last commit point for the chosen consumer.\nExactly one partition id should be specified with the '--partitions' option.")
+            .Optional()
+            .StoreResult(&Offset_);
 
         AddAllowedMetadataFields(config);
         AddTransform(config);
@@ -758,7 +1104,12 @@ namespace {
             if (f == TopicMetadataFieldsMap.end()) {
                 throw TMisuseException() << "Field " << field << " not found in available fields"; // TODO(shmel1k@): improve message.
             }
-            set.insert(f->second);
+            if (f->second == ETopicMetadataField::Meta) {
+                set.insert(ETopicMetadataField::MessageMeta);
+                set.insert(ETopicMetadataField::SessionMeta);
+            } else {
+                set.insert(f->second);
+            }
         }
 
         TVector<ETopicMetadataField> result;
@@ -785,10 +1136,15 @@ namespace {
 
     NTopic::TReadSessionSettings TCommandTopicRead::PrepareReadSessionSettings() {
         NTopic::TReadSessionSettings settings;
-        settings.ConsumerName(Consumer_);
+        settings.AutoPartitioningSupport(true);
+        if (Consumer_) {
+            settings.ConsumerName(Consumer_);
+        } else {
+            settings.WithoutConsumer();
+        }
         // settings.ReadAll(); // TODO(shmel1k@): change to read only original?
         if (Timestamp_.Defined()) {
-            settings.ReadFromTimestamp(TInstant::Seconds(*(Timestamp_.Get())));
+            settings.ReadFromTimestamp(*Timestamp_);
         }
 
         // TODO(shmel1k@): partition can be added here.
@@ -799,35 +1155,63 @@ namespace {
         }
 
         settings.AppendTopics(std::move(readSettings));
+
+        // coverity[uninit_use]
+
         return settings;
     }
 
     void TCommandTopicRead::ValidateConfig() {
         // TODO(shmel1k@): add more formats.
-        if (!IsStreamingFormat(MessagingFormat) && (Limit_.Defined() && (Limit_ <= 0 || Limit_ > 500))) {
-            throw TMisuseException() << "OutputFormat " << OutputFormat << " is not compatible with "
-                                     << "limit less and equal '0' or more than '500': '" << *Limit_ << "' was given";
+        if (Limit_.Defined() && Limit_ < 0) {
+            throw TMisuseException() << "Limit must be a non-negative number, but " << *Limit_ << " was given";
         }
+
+        if (Limit_.Defined() && *Limit_ == 0 && (MessagingFormat == EMessagingFormat::Pretty || MessagingFormat == EMessagingFormat::JsonArray)) {
+            throw TMisuseException() << "--limit 0 is not allowed for " << MessagingFormat << " format. Please provide a non-negative --limit.";
+        }
+
+        // validate partitions ids are specified, if no consumer is provided or user explicitly set no-consumer. no-consumer mode will be used.
+        if (Consumer_ && ReadWithoutConsumer_) {
+            throw TMisuseException() << "It is not allowed to specify both --consumer and --no-consumer at the same time";
+        }
+        if (!Consumer_ && !PartitionIds_ && !ReadWithoutConsumer_) {
+            throw TMisuseException() << "Please specify either --consumer or --partitions or explicitly set --no-consumer to read without consumer";
+        }
+
+        if (Offset_ && !(PartitionIds_.size() == 1)) {
+            throw TMisuseException() << "Please specify exactly one partition id with the '--partitions' option from which reading will be performed, starting from the specified offset.";
+        }
+    }
+
+    TTopicReaderSettings TCommandTopicRead::PrepareReaderSettings() const {
+        TTopicReaderSettings::TPartitionReadOffsetMap readOffsets;
+        if (Offset_) {
+            Y_ENSURE(PartitionIds_.size() == 1, "Precondition failed: read with offset requires exactly one partition id; " << LabeledOutput(PartitionIds_.size()));
+            readOffsets[PartitionIds_.at(0)] = *Offset_;
+        }
+        return TTopicReaderSettings(
+            Limit_,
+            Commit_,
+            Wait_,
+            std::move(readOffsets),
+            MessagingFormat,
+            MetadataFields_,
+            GetTransform(),
+            IdleTimeout_);
     }
 
     int TCommandTopicRead::Run(TConfig& config) {
         ValidateConfig();
 
-        auto driver =
-            std::make_unique<TDriver>(CreateDriver(config, CreateLogBackend("cerr", TClientCommand::TConfig::VerbosityLevelToELogPriority(config.VerbosityLevel))));
-        NTopic::TTopicClient topicClient(*driver);
+        auto driver = CreateDriver(config, std::unique_ptr<TLogBackend>(
+            CreateLogBackend("cerr", VerbosityLevelToELogPriority(config.VerbosityLevel)).Release()));
+        NTopic::TTopicClient topicClient(driver);
 
         auto readSession = topicClient.CreateReadSession(PrepareReadSessionSettings());
 
         {
-            TTopicReader reader = TTopicReader(std::move(readSession), TTopicReaderSettings(
-                                                                           Limit_,
-                                                                           Commit_,
-                                                                           Wait_,
-                                                                           MessagingFormat,
-                                                                           MetadataFields_,
-                                                                           GetTransform(),
-                                                                           IdleTimeout_));
+            TTopicReader reader = TTopicReader(std::move(readSession), PrepareReaderSettings());
 
             reader.Init();
 
@@ -845,17 +1229,23 @@ namespace {
             }
         }
 
-        driver->Stop(true);
-
         return EXIT_SUCCESS;
     }
 
     void TCommandWithCodec::AddAllowedCodecs(TClientCommand::TConfig& config, const TVector<NTopic::ECodec>& allowedCodecs) {
         TString description = PrepareAllowedCodecsDescription("Client-side compression algorithm. When read, data will be uncompressed transparently with a codec used on write", allowedCodecs);
+        TVector<NLastGetopt::NComp::TChoice> choices;
+        for (const auto& [name, codec] : ExistingCodecs) {
+            if (std::find(allowedCodecs.begin(), allowedCodecs.end(), codec) != allowedCodecs.end()) {
+                auto it = CodecsDescriptions.find(codec);
+                choices.emplace_back(name, it != CodecsDescriptions.end() ? it->second : "");
+            }
+        }
         config.Opts->AddLongOption("codec", description)
             .Optional()
-            .DefaultValue((TStringBuilder() << NTopic::ECodec::RAW))
-            .StoreResult(&CodecStr_);
+            .DefaultValue("RAW")
+            .StoreResult(&CodecStr_)
+            .Completer(NLastGetopt::NComp::Choice(std::move(choices)));
         AllowedCodecs_ = allowedCodecs;
     }
 
@@ -867,7 +1257,7 @@ namespace {
         Codec_ = ::NYdb::NConsoleClient::ParseCodec(CodecStr_, AllowedCodecs_);
     }
 
-    NTopic::ECodec TCommandWithCodec::GetCodec() const {
+    TMaybe<NTopic::ECodec> TCommandWithCodec::GetCodec() const {
         return Codec_;
     }
 
@@ -879,12 +1269,13 @@ namespace {
         TYdbCommand::Config(config);
         config.Opts->SetFreeArgsNum(1);
         SetFreeArgTitle(0, "<topic-path>", "Topic path");
+        SetSchemePathCompletionForTopics(config.Opts->GetOpts().GetFreeArgSpec(0));
 
         AddMessagingFormats(config, {
                                     EMessagingFormat::NewlineDelimited,
                                     EMessagingFormat::SingleMessage,
-                                    //      EOutputFormat::JsonRawStreamConcat,
-                                    //      EOutputFormat::JsonRawArray,
+                                    //      EDataFormat::JsonRawStreamConcat,
+                                    //      EDataFormat::JsonRawArray,
                                 });
         AddAllowedCodecs(config, AllowedCodecs);
 
@@ -898,6 +1289,15 @@ namespace {
         config.Opts->AddLongOption("message-group-id", "Message group identifier. If not set, all messages from input will get the same identifier based on hex string\nrepresentation of 3 random bytes")
             .Optional()
             .StoreResult(&MessageGroupId_);
+        config.Opts->AddLongOption("partition-id", "Write to an exact partition. If not set, server assigns partition automatically by message-group-id")
+            .Hidden()
+            .Optional()
+            .RequiredArgument("INDEX")
+            .StoreResult(&PartitionId_);
+        config.Opts->AddLongOption("init-seqno-timeout", "Max wait duration for initial seqno. Supports time units (e.g., '5s', '1m'). Plain number interpreted as seconds.")
+            .Optional()
+            .Hidden()
+            .StoreMappedResult(&MessagesWaitTimeout_, &ParseDurationSeconds);
 
         AddTransform(config);
     }
@@ -917,9 +1317,14 @@ namespace {
 
     NTopic::TWriteSessionSettings TCommandTopicWrite::PrepareWriteSessionSettings() {
         NTopic::TWriteSessionSettings settings;
-        settings.Codec(GetCodec());
+        if (auto codec = GetCodec(); codec.Defined()) {
+            settings.Codec(*codec);
+        }
         settings.Path(TopicName);
 
+        if (PartitionId_.Defined()) {
+            settings.PartitionId(*PartitionId_);
+        }
         if (!MessageGroupId_.Defined()) {
             const TString rnd = ToString(TInstant::Now().NanoSeconds());
             SHA_CTX ctx;
@@ -936,21 +1341,24 @@ namespace {
         settings.MessageGroupId(*MessageGroupId_);
         settings.ProducerId(*MessageGroupId_);
 
+        // coverity[uninit_use]
+
         return settings;
     }
 
     int TCommandTopicWrite::Run(TConfig& config) {
         SetInterruptHandlers();
 
-        auto driver =
-            std::make_unique<TDriver>(CreateDriver(config, CreateLogBackend("cerr", TClientCommand::TConfig::VerbosityLevelToELogPriority(config.VerbosityLevel))));
-        NTopic::TTopicClient topicClient(*driver);
+        auto driver = CreateDriver(config, std::unique_ptr<TLogBackend>(
+            CreateLogBackend("cerr", VerbosityLevelToELogPriority(config.VerbosityLevel)).Release()));
+        NTopic::TTopicClient topicClient(driver);
 
         {
-            auto writeSession = NTopic::TTopicClient(*driver).CreateWriteSession(std::move(PrepareWriteSessionSettings()));
+            auto writeSession = NTopic::TTopicClient(driver).CreateWriteSession(std::move(PrepareWriteSessionSettings()));
             auto writer =
                 TTopicWriter(writeSession, std::move(TTopicWriterParams(MessagingFormat, Delimiter_, MessageSizeLimit_, BatchDuration_,
-                                                                        BatchSize_, BatchMessagesCount_, GetTransform())));
+                                                                        BatchSize_, BatchMessagesCount_, GetTransform(),
+                                                                        MessagesWaitTimeout_)));
 
             if (int status = writer.Init(); status) {
                 return status;
@@ -973,7 +1381,6 @@ namespace {
             }
         }
 
-        driver->Stop(true);
         return EXIT_SUCCESS;
     }
 

@@ -1,4 +1,4 @@
-PY2TEST()
+PY3TEST()
 
 TEST_SRCS(
     test.py
@@ -7,7 +7,8 @@ TEST_SRCS(
 IF (SANITIZER_TYPE OR WITH_VALGRIND)
     TIMEOUT(1800)
     SIZE(LARGE)
-    TAG(ya:fat sb:ttl=2)
+    INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/large.inc)
+    REQUIREMENTS(ram:20)
 ELSE()
     TIMEOUT(600)
     SIZE(MEDIUM)
@@ -22,16 +23,16 @@ DEPENDS(
 
 DATA(
     arcadia/contrib/ydb/library/yql/tests/sql
+    arcadia/yt/yql/tests/sql/suites
     arcadia/contrib/ydb/tests/fq/yt
     arcadia/contrib/ydb/tests/fq/yt/cfg
 )
 
 PEERDIR(
+    contrib/ydb/tests/fq/tools
     contrib/ydb/library/yql/tests/common/test_framework
 )
 
 NO_CHECK_IMPORTS()
-
-REQUIREMENTS(ram:20)
 
 END()

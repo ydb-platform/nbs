@@ -4,13 +4,10 @@ FORK_SUBTESTS()
 
 SPLIT_FACTOR(10)
 
-IF (SANITIZER_TYPE == "thread" OR WITH_VALGRIND)
-    TIMEOUT(3600)
+IF (SANITIZER_TYPE)
     SIZE(LARGE)
-    TAG(ya:fat)
-    REQUIREMENTS(ram:16)
+    INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/large.inc)
 ELSE()
-    TIMEOUT(600)
     SIZE(MEDIUM)
 ENDIF()
 
@@ -19,12 +16,13 @@ PEERDIR(
     library/cpp/getopt
     library/cpp/regex/pcre
     library/cpp/svnversion
+    contrib/ydb/core/kqp/runtime
     contrib/ydb/core/kqp/ut/common
     contrib/ydb/core/testlib/default
     contrib/ydb/core/tx
     contrib/ydb/library/yql/public/udf/service/exception_policy
     contrib/ydb/public/lib/yson_value
-    contrib/ydb/public/sdk/cpp/client/ydb_result
+    contrib/ydb/public/sdk/cpp/src/client/result
 )
 
 YQL_LAST_ABI_VERSION()
@@ -32,8 +30,7 @@ YQL_LAST_ABI_VERSION()
 SRCS(
     datashard_ut_read_iterator.cpp
     datashard_ut_read_iterator_ext_blobs.cpp
+    datashard_ut_read_iterator_scheduler.cpp
 )
-
-REQUIREMENTS(ram:32)
 
 END()

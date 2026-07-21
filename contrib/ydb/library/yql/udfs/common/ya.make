@@ -1,7 +1,5 @@
 RECURSE(
-    clickhouse/client
     compress_base
-    datetime
     datetime2
     digest
     file
@@ -10,13 +8,12 @@ RECURSE(
     ip_base
     json
     json2
-    knn
     math
     pire
     protobuf
     python
     re2
-    roaring
+    reservoir_sampling
     set
     stat
     streaming
@@ -25,6 +22,7 @@ RECURSE(
     topfreq
     unicode_base
     url_base
+    vector
     yson2
 )
 
@@ -33,4 +31,3 @@ IF (ARCH_X86_64)
         hyperscan
     )
 ENDIF()
-

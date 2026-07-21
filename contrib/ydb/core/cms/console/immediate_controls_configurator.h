@@ -1,7 +1,7 @@
 #pragma once
 #include "defs.h"
 
-#include <contrib/ydb/core/control/immediate_control_board_impl.h>
+#include <contrib/ydb/core/control/lib/immediate_control_board_impl.h>
 
 #include <util/generic/ptr.h>
 

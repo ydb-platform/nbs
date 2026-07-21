@@ -1,5 +1,7 @@
 #include "yql_s3_actors_factory.h"
 
+#include <contrib/ydb/library/yql/providers/common/proto/gateways_config.pb.h>
+
 namespace NYql::NDq {
 
     class TDefaultS3ActorsFactory : public IS3ActorsFactory {
@@ -45,7 +47,8 @@ namespace NYql::NDq {
             IHTTPGateway::TPtr gateway,
             const IHTTPGateway::TRetryPolicy::TPtr& retryPolicy,
             const TS3ReadActorFactoryConfig& factoryConfig = {},
-            ::NMonitoring::TDynamicCounterPtr counters = nullptr) override {
+            ::NMonitoring::TDynamicCounterPtr counters = nullptr,
+            bool allowLocalFiles = false) override {
 
             Y_UNUSED(factory);
             Y_UNUSED(credentialsFactory);
@@ -53,10 +56,37 @@ namespace NYql::NDq {
             Y_UNUSED(retryPolicy);
             Y_UNUSED(factoryConfig);
             Y_UNUSED(counters);
+            Y_UNUSED(allowLocalFiles);
         }
     };
 
     std::shared_ptr<IS3ActorsFactory> CreateDefaultS3ActorsFactory() {
         return std::make_shared<TDefaultS3ActorsFactory>();
     }
-}
+
+    TS3ReadActorFactoryConfig CreateReadActorFactoryConfig(const ::NYql::TS3GatewayConfig& s3Config) {
+        TS3ReadActorFactoryConfig s3ReadFactoryConfig;
+        if (const ui64 rowsInBatch = s3Config.GetRowsInBatch()) {
+            s3ReadFactoryConfig.RowsInBatch = rowsInBatch;
+        }
+        if (const ui64 maxInflight = s3Config.GetMaxInflight()) {
+            s3ReadFactoryConfig.MaxInflight = maxInflight;
+        }
+        if (const ui64 dataInflight = s3Config.GetDataInflight()) {
+            s3ReadFactoryConfig.DataInflight = dataInflight;
+        }
+        for (auto& formatSizeLimit : s3Config.GetFormatSizeLimit()) {
+            if (formatSizeLimit.GetName()) { // ignore unnamed limits
+                s3ReadFactoryConfig.FormatSizeLimits.emplace(
+                    formatSizeLimit.GetName(), formatSizeLimit.GetFileSizeLimit());
+            }
+        }
+        if (s3Config.HasFileSizeLimit()) {
+            s3ReadFactoryConfig.FileSizeLimit = s3Config.GetFileSizeLimit();
+        }
+        if (s3Config.HasBlockFileSizeLimit()) {
+            s3ReadFactoryConfig.BlockFileSizeLimit = s3Config.GetBlockFileSizeLimit();
+        }
+        return s3ReadFactoryConfig;
+    }
+} // namespace NYql::NDq

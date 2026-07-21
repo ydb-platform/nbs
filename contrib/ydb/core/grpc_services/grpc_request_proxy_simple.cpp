@@ -86,6 +86,10 @@ private:
         request->SendResult(*result, Ydb::StatusIds::SUCCESS);
     }
 
+    void Handle(TEvRequestAuthAndCheck::TPtr& ev, const TActorContext&) {
+        ev->Get()->ReplyWithYdbStatus(Ydb::StatusIds::SUCCESS);
+    }
+
     void Handle(TEvProxyRuntimeEvent::TPtr& event, const TActorContext&) {
         IRequestProxyCtx* requestBaseCtx = event->Get();
         TString validationError;
@@ -199,6 +203,7 @@ void LogRequest(const TEvent& event) {
         ss << ", sdkBuildInfo# " << event->Get()->GetSdkBuildInfo().GetOrElse("undef");
         ss << ", state# " << event->Get()->GetAuthState().State;
         ss << ", database# " << event->Get()->GetDatabaseName().GetOrElse("undef");
+        ss << ", peer# " << event->Get()->GetPeerName();
         ss << ", grpcInfo# " << event->Get()->GetGrpcUserAgent().GetOrElse("undef");
         if (event->Get()->GetDeadline() == TInstant::Max()) {
             ss << ", timeout# undef";
@@ -221,6 +226,7 @@ void TGRpcRequestProxySimple::StateFunc(TAutoPtr<IEventHandle>& ev) {
         hFunc(TEvents::TEvUndelivered, HandleUndelivery);
         HFunc(TEvListEndpointsRequest, PreHandle);
         HFunc(TEvProxyRuntimeEvent, PreHandle);
+        HFunc(TEvRequestAuthAndCheck, PreHandle);
         default:
             Y_ABORT("Unknown request: %u\n", ev->GetTypeRewrite());
         break;

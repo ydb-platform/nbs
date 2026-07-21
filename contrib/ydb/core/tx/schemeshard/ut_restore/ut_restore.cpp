@@ -1,59 +1,74 @@
 #include "ut_helpers/ut_backup_restore_common.h"
 
-#include <contrib/libs/double-conversion/double-conversion/ieee.h>
-
-#include <contrib/ydb/core/base/localdb.h>
-#include <contrib/ydb/core/kqp/ut/common/kqp_ut_common.h>
-#include <contrib/ydb/core/tablet/resource_broker.h>
-#include <contrib/ydb/core/testlib/actors/block_events.h>
-#include <contrib/ydb/core/tx/schemeshard/ut_helpers/helpers.h>
-#include <contrib/ydb/core/tx/schemeshard/ut_helpers/auditlog_helpers.h>
-#include <contrib/ydb/core/tx/schemeshard/schemeshard_private.h>
-#include <contrib/ydb/core/tx/schemeshard/schemeshard_billing_helpers.h>
-#include <contrib/ydb/core/tx/datashard/datashard.h>
-#include <contrib/ydb/core/wrappers/ut_helpers/s3_mock.h>
-#include <contrib/ydb/core/metering/metering.h>
-#include <contrib/ydb/core/ydb_convert/table_description.h>
-
-#include <contrib/ydb/library/binary_json/write.h>
-#include <contrib/ydb/library/dynumber/dynumber.h>
-#include <contrib/ydb/library/uuid/uuid.h>
-
-
 #include <contrib/ydb/public/api/protos/ydb_import.pb.h>
 
-#include <aws/core/Aws.h>
-#include <contrib/libs/zstd/include/zstd.h>
+#include <contrib/ydb/core/backup/common/checksum.h>
+#include <contrib/ydb/core/backup/common/encryption.h>
+#include <contrib/ydb/core/base/localdb.h>
+#include <contrib/ydb/core/base/table_index.h>
+#include <contrib/ydb/core/kqp/ut/common/kqp_ut_common.h>
+#include <contrib/ydb/core/metering/metering.h>
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
+#include <contrib/ydb/core/tablet/resource_broker.h>
+#include <contrib/ydb/core/testlib/actors/block_events.h>
+#include <contrib/ydb/core/testlib/actors/wait_events.h>
+#include <contrib/ydb/core/testlib/audit_helpers/audit_helper.h>
+#include <contrib/ydb/core/tx/datashard/datashard.h>
+#include <contrib/ydb/core/tx/schemeshard/schemeshard_billing_helpers.h>
+#include <contrib/ydb/core/tx/schemeshard/schemeshard_private.h>
+#include <contrib/ydb/core/tx/schemeshard/ut_helpers/helpers.h>
+#include <contrib/ydb/core/tx/schemeshard/ut_helpers/test_with_reboots.h>
+#include <contrib/ydb/core/wrappers/events/get_object.h>
+#include <contrib/ydb/core/wrappers/ut_helpers/s3_mock.h>
+#include <contrib/ydb/core/ydb_convert/table_description.h>
+#include <contrib/ydb/library/aws_init/aws.h>
+
+#include <contrib/ydb/library/yql/types/binary_json/write.h>
+#include <contrib/ydb/library/yql/types/dynumber/dynumber.h>
+#include <contrib/ydb/library/yql/types/uuid/uuid.h>
+
+#include <library/cpp/streams/zstd/zstd.h>
 #include <library/cpp/string_utils/quote/quote.h>
 #include <library/cpp/testing/hook/hook.h>
 
+#include <util/folder/path.h>
+#include <util/folder/tempdir.h>
+#include <util/stream/file.h>
+
+#include <contrib/libs/double-conversion/double-conversion/ieee.h>
+#include <contrib/libs/zstd/include/zstd.h>
+
 #include <util/datetime/base.h>
+#include <util/generic/hash_set.h>
 #include <util/generic/size_literals.h>
 #include <util/generic/vector.h>
 #include <util/string/builder.h>
 #include <util/string/join.h>
 #include <util/string/printf.h>
 
-using namespace NKikimr;
-using namespace NSchemeShardUT_Private;
+#include <regex>
+
 using namespace NKikimr::NSchemeShard;
 using namespace NKikimr::NWrappers::NTestHelpers;
+using namespace NKikimr;
+using namespace NKikimrSchemeOp;
+using namespace NSchemeShardUT_Private;
+
+using namespace NKikimr::Tests;
 
 namespace {
 
-    Aws::SDKOptions Options;
-
     Y_TEST_HOOK_BEFORE_RUN(InitAwsAPI) {
-        Aws::InitAPI(Options);
+        NKikimr::InitAwsAPI();
     }
 
     Y_TEST_HOOK_AFTER_RUN(ShutdownAwsAPI) {
-        Aws::ShutdownAPI(Options);
+        NKikimr::ShutdownAwsAPI();
     }
 
     const TString EmptyYsonStr = R"([[[[];%false]]])";
 
-    TString GenerateScheme(const NKikimrSchemeOp::TPathDescription& pathDesc) {
+    TString GenerateScheme(const TPathDescription& pathDesc) {
         UNIT_ASSERT(pathDesc.HasTable());
         const auto& tableDesc = pathDesc.GetTable();
 
@@ -87,7 +102,7 @@ namespace {
         UNIT_ASSERT(describeResult.GetPathDescription().HasTable());
         const auto& tableDesc = describeResult.GetPathDescription().GetTable();
 
-        NKikimrSchemeOp::TTableDescription scheme;
+        TTableDescription scheme;
         scheme.MutableColumns()->CopyFrom(tableDesc.GetColumns());
         scheme.MutableKeyColumnNames()->CopyFrom(tableDesc.GetKeyColumnNames());
 
@@ -97,14 +112,51 @@ namespace {
         return schemeStr;
     }
 
-    struct TTestData {
+    struct TDataWithChecksum {
         TString Data;
+        TString Checksum;
+
+        TDataWithChecksum() = default;
+
+        TDataWithChecksum(TString&& data)
+            : Data(std::move(data))
+            , Checksum(NBackup::ComputeChecksum(Data))
+        {}
+
+        TDataWithChecksum(const char* data)
+            : TDataWithChecksum(TString(data))
+        {}
+
+        TDataWithChecksum& operator=(const TString& data) {
+            *this = data.data();
+            return *this;
+        }
+
+        TDataWithChecksum& operator=(const char* data) {
+            Data = data;
+            Checksum = NBackup::ComputeChecksum(Data);
+            return *this;
+        }
+
+        operator TString() const {
+            return Data;
+        }
+
+        operator bool() const {
+            return !Data.empty();
+        }
+    };
+
+    struct TTestData {
+        TDataWithChecksum RawData;
+        TString Data; // RawData after compression/encryption
         TString YsonStr;
-        EDataFormat DataFormat = EDataFormat::Csv;
+        EDataFormat DataFormat = EDataFormat::YdbDump;
         ECompressionCodec CompressionCodec;
 
-        TTestData(TString data, TString ysonStr, ECompressionCodec codec = ECompressionCodec::None)
-            : Data(std::move(data))
+        TTestData(TString csvData, TString ysonStr, ECompressionCodec codec = ECompressionCodec::None)
+            : RawData(std::move(csvData))
+            , Data(RawData)
             , YsonStr(std::move(ysonStr))
             , CompressionCodec(codec)
         {
@@ -114,8 +166,11 @@ namespace {
             TStringBuilder result;
 
             switch (DataFormat) {
-            case EDataFormat::Csv:
+            case EDataFormat::YdbDump:
                 result << ".csv";
+                break;
+            case EDataFormat::Parquet:
+                result << ".parquet";
                 break;
             case EDataFormat::Invalid:
                 UNIT_ASSERT_C(false, "Invalid data format");
@@ -137,9 +192,21 @@ namespace {
         }
     };
 
+    struct TImportChangefeed {
+        TDataWithChecksum Changefeed;
+        TDataWithChecksum Topic;
+    };
+
     struct TTestDataWithScheme {
-        TString Scheme;
+        TDataWithChecksum Metadata = R"({"version": 0})";
+        EPathType Type = EPathTypeTable;
+        TDataWithChecksum Scheme;
+        TDataWithChecksum CreationQuery;
+        TDataWithChecksum SysViewDescription;
+        TDataWithChecksum Permissions;
+        TImportChangefeed Changefeed;
         TVector<TTestData> Data;
+        TDataWithChecksum Topic;
 
         TTestDataWithScheme() = default;
 
@@ -241,12 +308,51 @@ namespace {
         }
     }
 
-    TTestDataWithScheme GenerateTestData(const TString& scheme, const TVector<std::pair<TString, ui64>>& shardsConfig) {
+    TTestDataWithScheme GenerateTestData(
+        const TTypedScheme& typedScheme,
+        const TVector<std::pair<TString, ui64>>& shardsConfig = {{"a", 1}},
+        const TString& permissions = "",
+        const TString& metadata = R"({"version": 1})",
+        ECompressionCodec codec = ECompressionCodec::None
+    ) {
         TTestDataWithScheme result;
-        result.Scheme = scheme;
+        result.Type = typedScheme.Type;
+        result.Permissions = permissions;
+        result.Metadata = metadata;
 
-        for (const auto& [keyPrefix, count] : shardsConfig) {
-            result.Data.push_back(GenerateTestData(keyPrefix, count));
+        switch (typedScheme.Type) {
+        case EPathTypeTable:
+            result.Scheme = typedScheme.Scheme;
+            for (const auto& [keyPrefix, count] : shardsConfig) {
+                result.Data.emplace_back(GenerateTestData(codec, keyPrefix, count));
+            }
+            break;
+        case EPathTypeColumnTable:
+            result.Scheme = typedScheme.Scheme;
+            for (const auto& [keyPrefix, count] : shardsConfig) {
+                result.Data.emplace_back(GenerateTestData(codec, keyPrefix, count));
+            }
+            break;
+        case EPathTypeView:
+        case EPathTypeReplication:
+        case EPathTypeTransfer:
+        case EPathTypeExternalDataSource:
+        case EPathTypeExternalTable:
+            result.CreationQuery = typedScheme.Scheme;
+            break;
+        case EPathTypeSysView:
+            result.SysViewDescription = typedScheme.Scheme;
+            break;
+        case EPathTypeCdcStream:
+            result.Changefeed.Changefeed = typedScheme.Scheme;
+            result.Changefeed.Topic = typedScheme.Attributes.GetTopicDescription();
+            break;
+        case EPathTypePersQueueGroup:
+            result.Topic = typedScheme.Scheme;
+            break;
+        default:
+            UNIT_FAIL("cannot create sample test data for the scheme object type: " << typedScheme.Type);
+            return {};
         }
 
         return result;
@@ -255,11 +361,117 @@ namespace {
     THashMap<TString, TString> ConvertTestData(const THashMap<TString, TTestDataWithScheme>& data) {
         THashMap<TString, TString> result;
 
-        for (const auto& [prefix, item] : data) {
-            result.emplace(prefix + "/scheme.pb", item.Scheme);
+        for (const auto& [rawPrefix, item] : data) {
+            TString prefix = rawPrefix;
+            if (!prefix.empty() && !prefix.StartsWith('/')) {
+                prefix = "/" + prefix;
+            }
+
+            bool withChecksum = item.Metadata.Data != R"({"version": 0})";
+
+            auto metadataKey = prefix + "/metadata.json";
+            result.emplace(metadataKey, item.Metadata);
+            if (withChecksum) {
+                result.emplace(NBackup::ChecksumKey(metadataKey), item.Metadata.Checksum);
+            }
+
+            switch (item.Type) {
+            case EPathTypeTable:
+            case EPathTypeColumnTable: {
+                auto schemeKey = prefix + "/scheme.pb";
+                result.emplace(schemeKey, item.Scheme);
+                if (withChecksum) {
+                    result.emplace(NBackup::ChecksumKey(schemeKey), item.Scheme.Checksum);
+                }
+                break;
+            }
+            case EPathTypeView: {
+                auto viewKey = prefix + "/create_view.sql";
+                result.emplace(viewKey, item.CreationQuery);
+                if (withChecksum) {
+                    result.emplace(NBackup::ChecksumKey(viewKey), item.CreationQuery.Checksum);
+                }
+                break;
+            }
+            case EPathTypeSysView: {
+                auto sysViewKey = prefix + "/system_view.pb";
+                result.emplace(sysViewKey, item.SysViewDescription);
+                if (withChecksum) {
+                    result.emplace(NBackup::ChecksumKey(sysViewKey), item.SysViewDescription.Checksum);
+                }
+                break;
+            }
+            case EPathTypeReplication: {
+                auto replicationKey = prefix + "/create_async_replication.sql";
+                result.emplace(replicationKey, item.CreationQuery);
+                if (withChecksum) {
+                    result.emplace(NBackup::ChecksumKey(replicationKey), item.CreationQuery.Checksum);
+                }
+                break;
+            }
+            case EPathTypeTransfer: {
+                auto transferKey = prefix + "/create_transfer.sql";
+                result.emplace(transferKey, item.CreationQuery);
+                if (withChecksum) {
+                    result.emplace(NBackup::ChecksumKey(transferKey), item.CreationQuery.Checksum);
+                }
+                break;
+            }
+            case EPathTypeExternalDataSource: {
+                auto externalDataSourceKey = prefix + "/create_external_data_source.sql";
+                result.emplace(externalDataSourceKey, item.CreationQuery);
+                if (withChecksum) {
+                    result.emplace(NBackup::ChecksumKey(externalDataSourceKey), item.CreationQuery.Checksum);
+                }
+                break;
+            }
+            case EPathTypeExternalTable: {
+                auto externalTableKey = prefix + "/create_external_table.sql";
+                result.emplace(externalTableKey, item.CreationQuery);
+                if (withChecksum) {
+                    result.emplace(NBackup::ChecksumKey(externalTableKey), item.CreationQuery.Checksum);
+                }
+                break;
+            }
+            case EPathTypeCdcStream: {
+                auto changefeedKey = prefix +  "/changefeed_description.pb";
+                auto topicKey = prefix +  "/topic_description.pb";
+                result.emplace(changefeedKey, item.Changefeed.Changefeed);
+                result.emplace(topicKey, item.Changefeed.Topic);
+                if (withChecksum) {
+                    result.emplace(NBackup::ChecksumKey(changefeedKey), item.Changefeed.Changefeed.Checksum);
+                    result.emplace(NBackup::ChecksumKey(topicKey), item.Changefeed.Topic.Checksum);
+                }
+                break;
+            }
+            case EPathTypePersQueueGroup: {
+                auto topicKey = prefix + "/create_topic.pb";
+                result.emplace(topicKey, item.Topic);
+                if (withChecksum) {
+                    result.emplace(NBackup::ChecksumKey(topicKey), item.Topic.Checksum);
+                }
+                break;
+            }
+            default:
+                UNIT_FAIL("cannot determine key for the scheme object type: " << item.Type);
+                return {};
+            }
+
+            if (item.Permissions) {
+                auto permissionsKey = prefix + "/permissions.pb";
+                result.emplace(permissionsKey, item.Permissions);
+                if (withChecksum) {
+                    result.emplace(NBackup::ChecksumKey(permissionsKey), item.Permissions.Checksum);
+                }
+            }
+
             for (ui32 i = 0; i < item.Data.size(); ++i) {
                 const auto& data = item.Data.at(i);
                 result.emplace(Sprintf("%s/data_%02d%s", prefix.data(), i, data.Ext().c_str()), data.Data);
+                if (withChecksum) {
+                    auto rawDataKey = Sprintf("%s/data_%02d.csv", prefix.data(), i);
+                    result.emplace(NBackup::ChecksumKey(rawDataKey), data.RawData.Checksum);
+                }
             }
         }
 
@@ -270,41 +482,11 @@ namespace {
         return ConvertTestData({{"", data}});
     }
 
-    NKikimrMiniKQL::TResult ReadTableImpl(TTestActorRuntime& runtime, ui64 tabletId, const TString& query) {
-        NKikimrMiniKQL::TResult result;
-
-        TString error;
-        NKikimrProto::EReplyStatus status = LocalMiniKQL(runtime, tabletId, query, result, error);
-        UNIT_ASSERT_VALUES_EQUAL_C(status, NKikimrProto::EReplyStatus::OK, error);
-        UNIT_ASSERT_VALUES_EQUAL(error, "");
-
-        return result;
-    }
-
     struct TReadKeyDesc {
         TString Name;
         TString Type;
         TString Atom;
     };
-
-    NKikimrMiniKQL::TResult ReadTable(TTestActorRuntime& runtime, ui64 tabletId,
-            const TString& table = "Table",
-            const TReadKeyDesc& keyDesc = {"key", "Utf8", "\"\""},
-            const TVector<TString>& columns = {"key", "value"},
-            const TString& rangeFlags = "") {
-
-        const auto rangeFmt = Sprintf("'%s (%s '%s)", keyDesc.Name.data(), keyDesc.Type.data(), keyDesc.Atom.data());
-        const auto columnsFmt = "'" + JoinSeq(" '", columns);
-
-        return ReadTableImpl(runtime, tabletId, Sprintf(R"(
-            (
-                (let range '(%s '(%s (Void) )))
-                (let columns '(%s) )
-                (let result (SelectRange '__user__%s range columns '()))
-                (return (AsList (SetResult 'Result result) ))
-            )
-        )", rangeFlags.c_str(), rangeFmt.data(), columnsFmt.data(), table.data()));
-    }
 
     using TDelayFunc = std::function<bool(TAutoPtr<IEventHandle>&)>;
 
@@ -372,12 +554,13 @@ Y_UNIT_TEST_SUITE(TRestoreTests) {
         env.TestWaitNotification(runtime, txId);
     }
 
-    void Restore(TTestBasicRuntime& runtime, const TString& creationScheme, TVector<TTestData>&& data, ui32 readBatchSize = 128) {
+    void Restore(TTestBasicRuntime& runtime, const TString& creationScheme, TVector<TTestData>&& data, ui32 readBatchSize = 128, bool enableDirectPartImport = false) {
         TTestEnv env(runtime, TTestEnvOptions().EnableParameterizedDecimal(true));
+        runtime.GetAppData().FeatureFlags.SetEnableDataShardDirectPartImport(enableDirectPartImport);
         Restore(runtime, env, creationScheme, std::move(data), readBatchSize);
     }
 
-    Y_UNIT_TEST_WITH_COMPRESSION(ShouldSucceedOnSingleShardTable) {
+    Y_UNIT_TEST_WITH_COMPRESSION_FLAG(ShouldSucceedOnSingleShardTable, EnableDataShardDirectPartImport) {
         TTestBasicRuntime runtime;
 
         const auto data = GenerateTestData(Codec, "a", 1);
@@ -387,17 +570,17 @@ Y_UNIT_TEST_SUITE(TRestoreTests) {
             Columns { Name: "key" Type: "Utf8" }
             Columns { Name: "value" Type: "Utf8" }
             KeyColumnNames: ["key"]
-        )", {data});
+        )", {data}, 128, EnableDataShardDirectPartImport);
 
-        auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets);
+        auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets, "Table", {"key"}, {"key", "value"});
         NKqp::CompareYson(data.YsonStr, content);
     }
 
-    bool CheckDefaultFromSequence(const NKikimrSchemeOp::TTableDescription& desc) {
+    bool CheckDefaultFromSequence(const TTableDescription& desc) {
         for (const auto& column: desc.GetColumns()) {
             if (column.GetName() == "key") {
                 switch (column.GetDefaultValueCase()) {
-                    case NKikimrSchemeOp::TColumnDescription::kDefaultFromSequence: {
+                    case TColumnDescription::kDefaultFromSequence: {
                         const auto& fromSequence = column.GetDefaultFromSequence();
                         return fromSequence == "myseq";
                     }
@@ -409,11 +592,11 @@ Y_UNIT_TEST_SUITE(TRestoreTests) {
         return false;
     }
 
-    bool CheckDefaultFromLiteral(const NKikimrSchemeOp::TTableDescription& desc) {
+    bool CheckDefaultFromLiteral(const TTableDescription& desc) {
         for (const auto& column: desc.GetColumns()) {
             if (column.GetName() == "value") {
                 switch (column.GetDefaultValueCase()) {
-                    case NKikimrSchemeOp::TColumnDescription::kDefaultFromLiteral: {
+                    case TColumnDescription::kDefaultFromLiteral: {
                         const auto& fromLiteral = column.GetDefaultFromLiteral();
 
                         TString str;
@@ -471,7 +654,7 @@ value {
             KeyColumnNames: ["key"]
         )", {data});
 
-        auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets);
+        auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets, "Table", {"key"}, {"key", "value"});
         NKqp::CompareYson(data.YsonStr, content);
 
         const auto desc = DescribePath(runtime, "/MyRoot/Table", true, true);
@@ -482,7 +665,7 @@ value {
         UNIT_ASSERT_C(CheckDefaultFromLiteral(table), "Invalid default value");
     }
 
-    Y_UNIT_TEST_WITH_COMPRESSION(ShouldSucceedOnMultiShardTable) {
+    Y_UNIT_TEST_WITH_COMPRESSION_FLAG(ShouldSucceedOnMultiShardTable, EnableDataShardDirectPartImport) {
         TTestBasicRuntime runtime;
 
         const auto a = GenerateTestData(Codec, "a", 1);
@@ -498,19 +681,19 @@ value {
                 Tuple { Optional { Text: "b" } }
               }
             }
-        )", {a, b});
+        )", {a, b}, 128, EnableDataShardDirectPartImport);
 
         {
-            auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets + 0);
+            auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets + 0, "Table", {"key"}, {"key", "value"});
             NKqp::CompareYson(a.YsonStr, content);
         }
         {
-            auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets + 1);
+            auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets + 1, "Table", {"key"}, {"key", "value"});
             NKqp::CompareYson(b.YsonStr, content);
         }
     }
 
-    Y_UNIT_TEST_WITH_COMPRESSION(ShouldSucceedOnLargeData) {
+    Y_UNIT_TEST_WITH_COMPRESSION_FLAG(ShouldSucceedOnLargeData, EnableDataShardDirectPartImport) {
         TTestBasicRuntime runtime;
 
         const auto data = GenerateTestData(Codec, "", 100);
@@ -521,9 +704,9 @@ value {
             Columns { Name: "key" Type: "Uint32" }
             Columns { Name: "value" Type: "Utf8" }
             KeyColumnNames: ["key"]
-        )", {data});
+        )", {data}, 128, EnableDataShardDirectPartImport);
 
-        auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets, "Table", {"key", "Uint32", "0"});
+        auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets, "Table", {"key"}, {"key", "value"});
         NKqp::CompareYson(data.YsonStr, content);
     }
 
@@ -539,7 +722,7 @@ value {
             KeyColumnNames: ["key"]
         )", {data}, batchSize);
 
-        auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets);
+        auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets, "Table", {"key"}, {"key", "value"});
         NKqp::CompareYson(data.YsonStr, content);
     }
 
@@ -621,7 +804,7 @@ value {
         UNIT_ASSERT_VALUES_EQUAL(result->GetRowsProcessed(), 2);
 
         env.TestWaitNotification(runtime, txId);
-        auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets);
+        auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets, "Table", {"key"}, {"key", "value"});
         NKqp::CompareYson(data.YsonStr, content);
     }
 
@@ -663,7 +846,7 @@ value {
             KeyColumnNames: ["key"]
         )", {data}, batchSize);
 
-        auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets);
+        auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets, "Table", {"key"}, {"key", "value"});
         NKqp::CompareYson(data.YsonStr, content);
     }
 
@@ -758,7 +941,7 @@ value {
             KeyColumnNames: ["key"]
         )_", {data}, data.Data.size() + 1);
 
-        auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets, "Table", {"key", "Uint64", "0"}, {
+        auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets, "Table", {"key"}, {
             "key",
             "int32_value",
             "uint32_value",
@@ -1190,7 +1373,7 @@ value {
         UpdateRow(runtime, "Original", 2, "valueB", secondTablet);
 
         // Add delay after copying tables
-        ui64 copyTablesTxId;
+        ui64 copyTablesTxId = 0;
         auto prevObserver = runtime.SetObserverFunc([&](TAutoPtr<IEventHandle>& ev) {
             if (ev->GetTypeRewrite() == TEvSchemeShard::EvModifySchemeTransaction) {
                 const auto* msg = ev->Get<TEvSchemeShard::TEvModifySchemeTransaction>();
@@ -1202,7 +1385,7 @@ value {
         });
 
         TBlockEvents<TEvSchemeShard::TEvNotifyTxCompletionResult> delay(runtime, [&](auto& ev) {
-            return ev->Get()->Record.GetTxId() == copyTablesTxId;
+            return copyTablesTxId != 0 && ev->Get()->Record.GetTxId() == copyTablesTxId;
         });
 
         // Start exporting table
@@ -1280,7 +1463,7 @@ value {
                     << R"(["valueA"])" // value
                 << "];"
             << "];\%false]]]";
-            auto content = ReadTable(runtime, restoredFirstTablet, "Restored", {"key", "Uint32", "0"});
+            auto content = ReadTable(runtime, restoredFirstTablet, "Restored", {"key"}, {"key", "value"});
             NKqp::CompareYson(expectedJson, content);
         }
         {
@@ -1290,7 +1473,7 @@ value {
                     << R"(["valueB"])" // value
                 << "];"
             << "];\%false]]]";
-            auto content = ReadTable(runtime, restoredSecondTablet, "Restored", {"key", "Uint32", "0"});
+            auto content = ReadTable(runtime, restoredSecondTablet, "Restored", {"key"}, {"key", "value"});
             NKqp::CompareYson(expectedJson, content);
         }
     }
@@ -1339,7 +1522,7 @@ value {
         UpdateRow(runtime, "Original", 2, "valueB", firstTablet);
 
         // Add delay after copying tables
-        ui64 copyTablesTxId;
+        ui64 copyTablesTxId = 0;
         auto prevObserver = runtime.SetObserverFunc([&](TAutoPtr<IEventHandle>& ev) {
             if (ev->GetTypeRewrite() == TEvSchemeShard::EvModifySchemeTransaction) {
                 const auto* msg = ev->Get<TEvSchemeShard::TEvModifySchemeTransaction>();
@@ -1351,7 +1534,7 @@ value {
         });
 
         TBlockEvents<TEvSchemeShard::TEvNotifyTxCompletionResult> delay(runtime, [&](auto& ev) {
-            return ev->Get()->Record.GetTxId() == copyTablesTxId;
+            return copyTablesTxId != 0 && ev->Get()->Record.GetTxId() == copyTablesTxId;
         });
 
         // Start exporting table
@@ -1437,19 +1620,20 @@ value {
                     << R"(["valueB"])" // value
                 << "];"
             << "];\%false]]]";
-            auto content = ReadTable(runtime, restoredFirstTablet, "Restored", {"key", "Uint32", "0"});
+            auto content = ReadTable(runtime, restoredFirstTablet, "Restored", {"key"}, {"key", "value"});
             NKqp::CompareYson(expectedJson, content);
         }
         {
             auto expectedJson = "[[[[];\%false]]]";
-            auto content = ReadTable(runtime, restoredSecondTablet, "Restored", {"key", "Uint32", "0"});
+            auto content = ReadTable(runtime, restoredSecondTablet, "Restored", {"key"}, {"key", "value"});
             NKqp::CompareYson(expectedJson, content);
         }
     }
 
-    Y_UNIT_TEST(ExportImportOnSupportedDatatypes) {
+    void ExportImportOnSupportedDatatypesImpl(bool encrypted, bool commonPrefix, bool emptyTable = false) {
         TTestBasicRuntime runtime;
         TTestEnv env(runtime, TTestEnvOptions().EnableParameterizedDecimal(true));
+        runtime.GetAppData().FeatureFlags.SetEnableEncryptedExport(true);
         ui64 txId = 100;
 
         TestCreateTable(runtime, ++txId, "/MyRoot", R"_(
@@ -1483,54 +1667,307 @@ value {
         )_");
         env.TestWaitNotification(runtime, txId);
 
-        const int partitionIdx = 0;
+        if (!emptyTable) {
+            const int partitionIdx = 0;
 
-        const TVector<TCell> keys = {TCell::Make(1ull)};
+            const TVector<TCell> keys = {TCell::Make(1ull)};
 
-        const TString string = "test string";
-        const TString json = R"({"key": "value"})";
-        auto binaryJson = NBinaryJson::SerializeToBinaryJson(json);
-        Y_ABORT_UNLESS(binaryJson.Defined());
+            const TString string = "test string";
+            const TString json = R"({"key": "value"})";
+            auto binaryJson = NBinaryJson::SerializeToBinaryJson(json);
+            Y_ABORT_UNLESS(std::holds_alternative<NBinaryJson::TBinaryJson>(binaryJson));
+            const auto& binaryJsonValue = std::get<NBinaryJson::TBinaryJson>(binaryJson);
 
-        const std::pair<ui64, ui64> decimal = NYql::NDecimal::MakePair(NYql::NDecimal::FromString("16.17", NScheme::DECIMAL_PRECISION, NScheme::DECIMAL_SCALE));
-        const std::pair<ui64, ui64> decimal35 = NYql::NDecimal::MakePair(NYql::NDecimal::FromString("555555555555555.123456789", 35, 10));
-        const TString dynumber = *NDyNumber::ParseDyNumberString("18");
+            const std::pair<ui64, ui64> decimal = NYql::NDecimal::MakePair(NYql::NDecimal::FromString("16.17", NScheme::DECIMAL_PRECISION, NScheme::DECIMAL_SCALE));
+            const std::pair<ui64, ui64> decimal35 = NYql::NDecimal::MakePair(NYql::NDecimal::FromString("555555555555555.123456789", 35, 10));
+            const TString dynumber = *NDyNumber::ParseDyNumberString("18");
 
-        char uuid[16];
-        NUuid::ParseUuidToArray(TString("65df1ec1-a97d-47b2-ae56-3c023da6ee8c"), reinterpret_cast<ui16*>(uuid), false);
+            char uuid[16];
+            NUuid::ParseUuidToArray(TString("65df1ec1-a97d-47b2-ae56-3c023da6ee8c"), reinterpret_cast<ui16*>(uuid), false);
 
-        const TVector<TCell> values = {
-            TCell::Make<i32>(-1), // Int32
-            TCell::Make<ui32>(2), // Uint32
-            TCell::Make<i64>(-3), // Int64
-            TCell::Make<ui64>(4), // Uint64
-            TCell::Make<ui8>(5), // Uint8
-            TCell::Make<bool>(true), // Bool
-            TCell::Make<double>(6.66), // Double
-            TCell::Make<float>(7.77), // Float
-            TCell::Make<ui16>(8), // Date
-            TCell::Make<ui32>(9), // Datetime
-            TCell::Make<ui64>(10), // Timestamp
-            TCell::Make<i64>(-11), // Interval
-            TCell::Make<i32>(-12), // Date32
-            TCell::Make<i64>(-13), // Datetime64
-            TCell::Make<i64>(-14), // Timestamp64
-            TCell::Make<i64>(-15), // Interval64
-            TCell::Make<std::pair<ui64, ui64>>(decimal), // Decimal
-            TCell::Make<std::pair<ui64, ui64>>(decimal35), // Decimal
-            TCell(dynumber.data(), dynumber.size()), // Dynumber
-            TCell(string.data(), string.size()), // String
-            TCell(string.data(), string.size()), // Utf8
-            TCell(json.data(), json.size()), // Json
-            TCell(binaryJson->Data(), binaryJson->Size()), // JsonDocument
-            TCell(uuid, sizeof(uuid)), // Uuid
+            const TVector<TCell> values = {
+                TCell::Make<i32>(-1), // Int32
+                TCell::Make<ui32>(2), // Uint32
+                TCell::Make<i64>(-3), // Int64
+                TCell::Make<ui64>(4), // Uint64
+                TCell::Make<ui8>(5), // Uint8
+                TCell::Make<bool>(true), // Bool
+                TCell::Make<double>(6.66), // Double
+                TCell::Make<float>(7.77), // Float
+                TCell::Make<ui16>(8), // Date
+                TCell::Make<ui32>(9), // Datetime
+                TCell::Make<ui64>(10), // Timestamp
+                TCell::Make<i64>(-11), // Interval
+                TCell::Make<i32>(-12), // Date32
+                TCell::Make<i64>(-13), // Datetime64
+                TCell::Make<i64>(-14), // Timestamp64
+                TCell::Make<i64>(-15), // Interval64
+                TCell::Make<std::pair<ui64, ui64>>(decimal), // Decimal
+                TCell::Make<std::pair<ui64, ui64>>(decimal35), // Decimal
+                TCell(dynumber.data(), dynumber.size()), // Dynumber
+                TCell(string.data(), string.size()), // String
+                TCell(string.data(), string.size()), // Utf8
+                TCell(json.data(), json.size()), // Json
+                TCell(binaryJsonValue.Data(), binaryJsonValue.Size()), // JsonDocument
+                TCell(uuid, sizeof(uuid)), // Uuid
+            };
+
+            const TVector<ui32> keyTags = {1};
+            TVector<ui32> valueTags(values.size());
+            std::iota(valueTags.begin(), valueTags.end(), 2);
+
+            UploadRow(runtime, "/MyRoot/Table", partitionIdx, keyTags, valueTags, keys, values);
+        }
+
+        TPortManager portManager;
+        const ui16 port = portManager.GetPort();
+
+        TS3Mock s3Mock({}, TS3Mock::TSettings(port));
+        UNIT_ASSERT(s3Mock.Start());
+
+        TString encryptionSettings;
+        if (encrypted) {
+            encryptionSettings = R"(encryption_settings {
+                encryption_algorithm: "ChaCha20-Poly1305"
+                symmetric_key {
+                    key: "Very very secret export key!!!!!"
+                }
+            })";
+        }
+        TString exportItems, importItems;
+        if (commonPrefix) {
+            exportItems = R"(
+                source_path: "/MyRoot"
+                destination_prefix: "BackupPrefix"
+                items {
+                    source_path: "/MyRoot/Table"
+                }
+            )";
+            importItems = R"(
+                source_prefix: "BackupPrefix"
+                destination_path: "/MyRoot/Restored"
+            )";
+        } else {
+            exportItems = R"(
+                items {
+                    source_path: "/MyRoot/Table"
+                    destination_prefix: "Backup1"
+                }
+            )";
+            importItems = R"(
+                items {
+                    source_prefix: "Backup1"
+                    destination_path: "/MyRoot/Restored"
+                }
+            )";
+        }
+
+        TestExport(runtime, ++txId, "/MyRoot", Sprintf(R"(
+            ExportToS3Settings {
+              endpoint: "localhost:%d"
+              scheme: HTTP
+              %s
+              %s
+            }
+        )", port, exportItems.c_str(), encryptionSettings.c_str()));
+        env.TestWaitNotification(runtime, txId);
+        TestGetExport(runtime, txId, "/MyRoot");
+
+        TestImport(runtime, ++txId, "/MyRoot", Sprintf(R"(
+            ImportFromS3Settings {
+              endpoint: "localhost:%d"
+              scheme: HTTP
+              %s
+              %s
+            }
+        )", port, importItems.c_str(), encryptionSettings.c_str()));
+        env.TestWaitNotification(runtime, txId);
+        TestGetImport(runtime, txId, "/MyRoot");
+
+        if (!emptyTable) {
+            TString expectedJson = TStringBuilder() << "[[[[["
+                << "[%true];" // bool
+                << "[\"" << -12 << "\"];" // date32
+                << "[\"" << 8 << "\"];" // date
+                << "[\"" << -13 << "\"];" // datetime64
+                << "[\"" << 9 << "\"];" // datetime
+                << "[\"" << "555555555555555.123456789" << "\"];" // decimal35
+                << "[\"" << "16.17" << "\"];" // decimal
+                << "[\"" << 6.66 << "\"];" // double
+                << "[\"" << ".18e2" << "\"];" // dynumber
+                << "[\"" << 7.77f << "\"];" // float
+                << "[\"" << -1 << "\"];" // int32
+                << "[\"" << -3 << "\"];" // int64
+                << "[\"" << -15 << "\"];" // interval64
+                << "[\"" << -11 << "\"];" // interval
+                << "[\"" << "{\\\"key\\\": \\\"value\\\"}" << "\"];" // json
+                << "[\"" << "{\\\"key\\\":\\\"value\\\"}" << "\"];" // jsondoc
+                << "[\"" << 1 << "\"];" // key
+                << "[\"" << "test string" << "\"];" // string
+                << "[\"" << -14 << "\"];" // timestamp64
+                << "[\"" << 10 << "\"];" // timestamp
+                << "[\"" << 2 << "\"];" // uint32
+                << "[\"" << 4 << "\"];" // uint64
+                << "[\"" << 5 << "\"];" // uint8
+                << "[\"" << "test string" << "\"];" // utf8
+                << "[[\"" << "wR7fZX2pskeuVjwCPabujA==" << "\"]]" // uuid
+            << "]];\%false]]]";
+
+            const TVector<TString> readColumns = {
+                "key",
+                "int32_value",
+                "uint32_value",
+                "int64_value",
+                "uint64_value",
+                "uint8_value",
+                "bool_value",
+                "double_value",
+                "float_value",
+                "date_value",
+                "datetime_value",
+                "timestamp_value",
+                "interval_value",
+                "date32_value",
+                "datetime64_value",
+                "timestamp64_value",
+                "interval64_value",
+                "decimal_value",
+                "decimal35_value",
+                "dynumber_value",
+                "string_value",
+                "utf8_value",
+                "json_value",
+                "jsondoc_value",
+                "uuid_value",
+            };
+
+            auto contentOriginalTable = ReadTable(runtime, TTestTxConfig::FakeHiveTablets, "Table", {"key"}, readColumns);
+            NKqp::CompareYson(expectedJson, contentOriginalTable);
+
+            auto contentRestoredTable = ReadTable(runtime, TTestTxConfig::FakeHiveTablets + 2, commonPrefix ? "Table" : "Restored", {"key"}, readColumns);
+            NKqp::CompareYson(expectedJson, contentRestoredTable);
+        }
+    }
+
+    Y_UNIT_TEST(ExportImportOnSupportedDatatypes) {
+        ExportImportOnSupportedDatatypesImpl(false, false);
+    }
+
+    Y_UNIT_TEST(ExportImportOnSupportedDatatypesWithCommonDestPrefix) {
+        ExportImportOnSupportedDatatypesImpl(false, true);
+    }
+
+    Y_UNIT_TEST(ExportImportOnSupportedDatatypesEncrypted) {
+        ExportImportOnSupportedDatatypesImpl(true, true);
+    }
+
+    Y_UNIT_TEST(ExportImportOnSupportedDatatypesEncryptedNoData) {
+        ExportImportOnSupportedDatatypesImpl(true, true, true);
+    }
+
+    Y_UNIT_TEST(ZeroLengthEncryptedFileTreatedAsCorrupted) {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime, TTestEnvOptions().EnableParameterizedDecimal(true));
+        runtime.GetAppData().FeatureFlags.SetEnableEncryptedExport(true);
+        ui64 txId = 100;
+
+        TestCreateTable(runtime, ++txId, "/MyRoot", R"_(
+            Name: "Table"
+            Columns { Name: "key" Type: "Uint64" }
+            Columns { Name: "value" Type: "String" }
+            KeyColumnNames: ["key"]
+        )_");
+        env.TestWaitNotification(runtime, txId);
+
+        TPortManager portManager;
+        const ui16 port = portManager.GetPort();
+
+        TS3Mock s3Mock({}, TS3Mock::TSettings(port));
+        UNIT_ASSERT(s3Mock.Start());
+
+        TestExport(runtime, ++txId, "/MyRoot", Sprintf(R"(
+            ExportToS3Settings {
+              endpoint: "localhost:%d"
+              scheme: HTTP
+              source_path: "/MyRoot"
+              destination_prefix: "BackupPrefix"
+              items {
+                source_path: "/MyRoot/Table"
+              }
+              encryption_settings {
+                encryption_algorithm: "ChaCha20-Poly1305"
+                symmetric_key {
+                    key: "Very very secret export key!!!!!"
+                }
+              }
+            }
+        )", port));
+        env.TestWaitNotification(runtime, txId);
+        TestGetExport(runtime, txId, "/MyRoot");
+
+        // Successfully imports
+        TestImport(runtime, ++txId, "/MyRoot", Sprintf(R"(
+            ImportFromS3Settings {
+              endpoint: "localhost:%d"
+              scheme: HTTP
+              source_prefix: "BackupPrefix"
+              destination_path: "/MyRoot/Restored"
+              encryption_settings {
+                symmetric_key {
+                    key: "Very very secret export key!!!!!"
+                }
+              }
+            }
+        )", port));
+        env.TestWaitNotification(runtime, txId);
+        TestGetImport(runtime, txId, "/MyRoot");
+
+        // Delete data from different files
+        auto checkFailsIfFileIsEmpty = [&](const TString& fileName) {
+            TString& data = s3Mock.GetData()[fileName];
+            UNIT_ASSERT(!data.empty());
+            TString srcData = data;
+            data.clear();
+
+            TestImport(runtime, ++txId, "/MyRoot", Sprintf(R"(
+              ImportFromS3Settings {
+                endpoint: "localhost:%d"
+                scheme: HTTP
+                source_prefix: "BackupPrefix"
+                destination_path: "/MyRoot/Restored2"
+                encryption_settings {
+                  symmetric_key {
+                    key: "Very very secret export key!!!!!"
+                  }
+                }
+              }
+            )", port));
+            env.TestWaitNotification(runtime, txId);
+            TestGetImport(runtime, txId, "/MyRoot", Ydb::StatusIds::CANCELLED);
+
+            data = srcData;
         };
 
-        const TVector<ui32> keyTags = {1};
-        TVector<ui32> valueTags(values.size());
-        std::iota(valueTags.begin(), valueTags.end(), 2);
+        checkFailsIfFileIsEmpty("/BackupPrefix/SchemaMapping/metadata.json.enc");
+        checkFailsIfFileIsEmpty("/BackupPrefix/SchemaMapping/mapping.json.enc");
+        checkFailsIfFileIsEmpty("/BackupPrefix/001/data_00.csv.enc");
+        checkFailsIfFileIsEmpty("/BackupPrefix/001/metadata.json.enc");
+    }
 
-        UploadRow(runtime, "/MyRoot/Table", partitionIdx, keyTags, valueTags, keys, values);
+    Y_UNIT_TEST(ExportImportPg) {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime, TTestEnvOptions().EnableTablePgTypes(true));
+        ui64 txId = 100;
+
+        TestCreateTable(runtime, ++txId, "/MyRoot", R"(
+            Name: "Table"
+            Columns { Name: "key" Type: "Uint32" }
+            Columns { Name: "value" Type: "pgint4" }
+            KeyColumnNames: ["key"]
+        )");
+        env.TestWaitNotification(runtime, txId);
+
+        UploadRow(runtime, "/MyRoot/Table", 0, {1}, {2}, {TCell::Make(55555u)}, {TCell::Make(55555u)});
 
         TPortManager portManager;
         const ui16 port = portManager.GetPort();
@@ -1563,87 +2000,137 @@ value {
         )", port));
         env.TestWaitNotification(runtime, txId);
         TestGetImport(runtime, txId, "/MyRoot");
-
-
-        TString expectedJson = TStringBuilder() << "[[[[["
-            << "[%true];" // bool
-            << "[\"" << -12 << "\"];" // date32
-            << "[\"" << 8 << "\"];" // date
-            << "[\"" << -13 << "\"];" // datetime64
-            << "[\"" << 9 << "\"];" // datetime
-            << "[\"" << "555555555555555.123456789" << "\"];" // decimal35
-            << "[\"" << "16.17" << "\"];" // decimal
-            << "[\"" << 6.66 << "\"];" // double
-            << "[\"" << ".18e2" << "\"];" // dynumber
-            << "[\"" << 7.77f << "\"];" // float
-            << "[\"" << -1 << "\"];" // int32
-            << "[\"" << -3 << "\"];" // int64
-            << "[\"" << -15 << "\"];" // interval64
-            << "[\"" << -11 << "\"];" // interval
-            << "[\"" << "{\\\"key\\\": \\\"value\\\"}" << "\"];" // json
-            << "[\"" << "{\\\"key\\\":\\\"value\\\"}" << "\"];" // jsondoc
-            << "[\"" << 1 << "\"];" // key
-            << "[\"" << "test string" << "\"];" // string
-            << "[\"" << -14 << "\"];" // timestamp64
-            << "[\"" << 10 << "\"];" // timestamp
-            << "[\"" << 2 << "\"];" // uint32
-            << "[\"" << 4 << "\"];" // uint64
-            << "[\"" << 5 << "\"];" // uint8
-            << "[\"" << "test string" << "\"];" // utf8
-            << "[[\"" << "wR7fZX2pskeuVjwCPabujA==" << "\"]]" // uuid
-        << "]];\%false]]]";
-
-        const TReadKeyDesc readKeyDesc = {"key", "Uint64", "0"};
-
-        const TVector<TString> readColumns = {
-            "key",
-            "int32_value",
-            "uint32_value",
-            "int64_value",
-            "uint64_value",
-            "uint8_value",
-            "bool_value",
-            "double_value",
-            "float_value",
-            "date_value",
-            "datetime_value",
-            "timestamp_value",
-            "interval_value",
-            "date32_value",
-            "datetime64_value",
-            "timestamp64_value",
-            "interval64_value",
-            "decimal_value",
-            "decimal35_value",
-            "dynumber_value",
-            "string_value",
-            "utf8_value",
-            "json_value",
-            "jsondoc_value",
-            "uuid_value",
-        };
-
-        auto contentOriginalTable = ReadTable(runtime, TTestTxConfig::FakeHiveTablets, "Table", readKeyDesc, readColumns);
-        NKqp::CompareYson(expectedJson, contentOriginalTable);
-
-        auto contentRestoredTable = ReadTable(runtime, TTestTxConfig::FakeHiveTablets + 2, "Restored", readKeyDesc, readColumns);
-        NKqp::CompareYson(expectedJson, contentRestoredTable);
     }
 
-    Y_UNIT_TEST(ExportImportPg) {
+    Y_UNIT_TEST(ShouldRestoreTableWithMultiColumnStatistics) {
+        TPortManager portManager;
+        const ui16 port = portManager.GetPort();
+
+        TS3Mock s3Mock({}, TS3Mock::TSettings(port));
+        UNIT_ASSERT(s3Mock.Start());
+
         TTestBasicRuntime runtime;
-        TTestEnv env(runtime, TTestEnvOptions().EnableTablePgTypes(true));
+        TTestEnv env(runtime);
         ui64 txId = 100;
 
         TestCreateTable(runtime, ++txId, "/MyRoot", R"(
-            Name: "Table"
+            Name: "Original"
             Columns { Name: "key" Type: "Uint32" }
-            Columns { Name: "value" Type: "pgint4" }
+            Columns { Name: "value" Type: "Utf8" }
             KeyColumnNames: ["key"]
+            MultiColumnStatistics { Name: "s1" ColumnNames: "value" Types: COUNT_MIN_SKETCH }
         )");
         env.TestWaitNotification(runtime, txId);
 
-        UploadRow(runtime, "/MyRoot/Table", 0, {1}, {2}, {TCell::Make(55555u)}, {TCell::Make(55555u)});
+        TestExport(runtime, ++txId, "/MyRoot", Sprintf(R"(
+            ExportToS3Settings {
+              endpoint: "localhost:%d"
+              scheme: HTTP
+              items {
+                source_path: "/MyRoot/Original"
+                destination_prefix: ""
+              }
+            }
+        )", port));
+        env.TestWaitNotification(runtime, txId);
+        TestGetExport(runtime, txId, "/MyRoot");
+
+        TestImport(runtime, ++txId, "/MyRoot", Sprintf(R"(
+            ImportFromS3Settings {
+              endpoint: "localhost:%d"
+              scheme: HTTP
+              items {
+                source_prefix: ""
+                destination_path: "/MyRoot/Restored"
+              }
+            }
+        )", port));
+        env.TestWaitNotification(runtime, txId);
+        TestGetImport(runtime, txId, "/MyRoot");
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/Restored", true, true), {
+            NLs::PathExist,
+            NLs::CheckMultiColumnStatistics("s1", {"value"}, {NKikimrSchemeOp::EMultiColumnStatisticsType::COUNT_MIN_SKETCH}),
+        });
+    }
+
+    Y_UNIT_TEST(ImportStandaloneColumnTableWithMultiColumnStatistics) {
+        TPortManager portManager;
+        const ui16 port = portManager.GetPort();
+
+        TS3Mock s3Mock({}, TS3Mock::TSettings(port));
+        UNIT_ASSERT(s3Mock.Start());
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+
+        runtime.GetAppData().FeatureFlags.SetEnableColumnTablesBackup(true);
+
+        ui64 txId = 100;
+
+        TestCreateColumnTable(runtime, ++txId, "/MyRoot", R"(
+            Name: "OlapTable"
+            ColumnShardCount: 1
+            Schema {
+                Columns { Name: "key" Type: "Uint32" NotNull: true }
+                Columns { Name: "value" Type: "Utf8" }
+                KeyColumnNames: "key"
+            }
+            MultiColumnStatistics { Name: "s1" ColumnNames: "value" Types: COUNT_MIN_SKETCH }
+        )");
+        env.TestWaitNotification(runtime, txId);
+
+        const ui64 exportTxId = ++txId;
+        TestExport(runtime, exportTxId, "/MyRoot", Sprintf(R"(
+            ExportToS3Settings {
+              endpoint: "localhost:%d"
+              scheme: HTTP
+              items {
+                source_path: "/MyRoot/OlapTable"
+                destination_prefix: "OlapStatImportPrefix"
+              }
+            }
+        )", port));
+        env.TestWaitNotification(runtime, exportTxId);
+        TestGetExport(runtime, exportTxId, "/MyRoot", Ydb::StatusIds::SUCCESS);
+
+        const ui64 importId = ++txId;
+        TestImport(runtime, importId, "/MyRoot", Sprintf(R"(
+            ImportFromS3Settings {
+              endpoint: "localhost:%d"
+              scheme: HTTP
+              items {
+                source_prefix: "OlapStatImportPrefix"
+                destination_path: "/MyRoot/OlapImported"
+              }
+            }
+        )", port));
+        env.TestWaitNotification(runtime, importId);
+        TestGetImport(runtime, importId, "/MyRoot", Ydb::StatusIds::SUCCESS);
+
+        TestDescribeResult(DescribePrivatePath(runtime, "/MyRoot/OlapImported", true, true), {
+            NLs::PathExist,
+            NLs::CheckColumnTableMultiColumnStatistics("s1", {"value"}, {NKikimrSchemeOp::EMultiColumnStatisticsType::COUNT_MIN_SKETCH}),
+        });
+    }
+
+    Y_UNIT_TEST(ExportImportDecimalKey) {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime, TTestEnvOptions().EnableParameterizedDecimal(true));
+        ui64 txId = 100;
+
+        TestCreateTable(runtime, ++txId, "/MyRoot", R"_(
+            Name: "Table"
+            Columns { Name: "key" Type: "Decimal(2,1)" }
+            Columns { Name: "value" Type: "Decimal(35,10)" }
+            KeyColumnNames: ["key"]
+        )_");
+        env.TestWaitNotification(runtime, txId);
+
+        const std::pair<ui64, ui64> decimal2 = NYql::NDecimal::MakePair(NYql::NDecimal::FromString("32.1", 2, 1));
+        const std::pair<ui64, ui64> decimal35 = NYql::NDecimal::MakePair(NYql::NDecimal::FromString("555555555555555.123456789", 35, 10));
+        UploadRow(runtime, "/MyRoot/Table", 0, {1}, {2},
+            {TCell::Make<std::pair<ui64, ui64>>(decimal2)}, {TCell::Make<std::pair<ui64, ui64>>(decimal35)});
 
         TPortManager portManager;
         const ui16 port = portManager.GetPort();
@@ -1747,6 +2234,248 @@ value {
         TestGetImport(runtime, txId, "/MyRoot");
     }
 
+     Y_UNIT_TEST_WITH_COMPRESSION(ExportImportWithChecksums) {
+        TPortManager portManager;
+        const ui16 port = portManager.GetPort();
+
+        TS3Mock s3Mock({}, TS3Mock::TSettings(port));
+        UNIT_ASSERT(s3Mock.Start());
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime, TTestEnvOptions().EnableChecksumsExport(true));
+
+        ui64 txId = 100;
+
+        runtime.SetLogPriority(NKikimrServices::DATASHARD_BACKUP, NActors::NLog::PRI_TRACE);
+        runtime.SetLogPriority(NKikimrServices::DATASHARD_RESTORE, NActors::NLog::PRI_TRACE);
+        runtime.SetLogPriority(NKikimrServices::EXPORT, NActors::NLog::PRI_TRACE);
+        runtime.SetLogPriority(NKikimrServices::IMPORT, NActors::NLog::PRI_TRACE);
+
+        // Create table
+        TestCreateTable(runtime, ++txId, "/MyRoot", R"(
+            Name: "Original"
+            Columns { Name: "key" Type: "Uint32" }
+            Columns { Name: "value" Type: "Utf8" }
+            KeyColumnNames: ["key"]
+        )");
+        env.TestWaitNotification(runtime, txId);
+
+        // Upload data
+        UpdateRow(runtime, "Original", 1, "valueA", TTestTxConfig::FakeHiveTablets);
+
+        // Export table
+        const char* compression = Codec == ECompressionCodec::Zstd ? "zstd" : "";
+        TestExport(runtime, ++txId, "/MyRoot", Sprintf(R"(
+            ExportToS3Settings {
+              endpoint: "localhost:%d"
+              scheme: HTTP
+              items {
+                source_path: "/MyRoot/Original"
+                destination_prefix: ""
+              }
+              compression: "%s"
+            }
+        )", port, compression));
+        const ui64 exportId = txId;
+        env.TestWaitNotification(runtime, exportId);
+
+        // Check export
+        TestGetExport(runtime, exportId, "/MyRoot");
+
+        UNIT_ASSERT_VALUES_EQUAL(s3Mock.GetData().size(), 8);
+
+        // Restore table
+        TestImport(runtime, ++txId, "/MyRoot", Sprintf(R"(
+            ImportFromS3Settings {
+              endpoint: "localhost:%d"
+              scheme: HTTP
+              items {
+                source_prefix: ""
+                destination_path: "/MyRoot/Restored"
+              }
+            }
+        )", port));
+        const ui64 importId = txId;
+        env.TestWaitNotification(runtime, importId);
+
+        // Check import
+        TestGetImport(runtime, importId, "/MyRoot");
+
+        // Check data in restored table
+        {
+            auto expectedJson = TStringBuilder() << "[[[["
+                << "["
+                    << R"(["1"];)" // key
+                    << R"(["valueA"])" // value
+                << "];"
+            << "];\%false]]]";
+            auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets + 2, "Restored", {"key"}, {"key", "value"});
+            NKqp::CompareYson(expectedJson, content);
+        }
+    }
+
+    template<ECompressionCodec Codec = ECompressionCodec::None, typename T>
+    void ExportImportWithCorruption(T corruption) {
+        TPortManager portManager;
+        const ui16 port = portManager.GetPort();
+
+        TS3Mock s3Mock({}, TS3Mock::TSettings(port));
+        UNIT_ASSERT(s3Mock.Start());
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime, TTestEnvOptions().EnableChecksumsExport(true).EnablePermissionsExport(true));
+
+        ui64 txId = 100;
+
+        runtime.SetLogPriority(NKikimrServices::DATASHARD_BACKUP, NActors::NLog::PRI_TRACE);
+        runtime.SetLogPriority(NKikimrServices::DATASHARD_RESTORE, NActors::NLog::PRI_TRACE);
+        runtime.SetLogPriority(NKikimrServices::EXPORT, NActors::NLog::PRI_TRACE);
+        runtime.SetLogPriority(NKikimrServices::IMPORT, NActors::NLog::PRI_TRACE);
+
+        // Create table
+        TestCreateTable(runtime, ++txId, "/MyRoot", R"(
+            Name: "Original"
+            Columns { Name: "key" Type: "Uint32" }
+            Columns { Name: "value" Type: "Utf8" }
+            KeyColumnNames: ["key"]
+        )");
+        env.TestWaitNotification(runtime, txId);
+
+        // Upload data
+        UpdateRow(runtime, "Original", 1, "valueA", TTestTxConfig::FakeHiveTablets);
+
+        // Export table
+        const char* compression = Codec == ECompressionCodec::Zstd ? "zstd" : "";
+        TestExport(runtime, ++txId, "/MyRoot", Sprintf(R"(
+            ExportToS3Settings {
+              endpoint: "localhost:%d"
+              scheme: HTTP
+              items {
+                source_path: "/MyRoot/Original"
+                destination_prefix: ""
+              }
+              compression: "%s"
+            }
+        )", port, compression));
+        const ui64 exportId = txId;
+        env.TestWaitNotification(runtime, exportId);
+
+        // Check export
+        TestGetExport(runtime, exportId, "/MyRoot");
+
+        UNIT_ASSERT_VALUES_EQUAL(s3Mock.GetData().size(), 8);
+
+        // Make corruption
+        corruption(s3Mock.GetData());
+
+        // Restore corrupted table
+        TestImport(runtime, ++txId, "/MyRoot", Sprintf(R"(
+            ImportFromS3Settings {
+              endpoint: "localhost:%d"
+              scheme: HTTP
+              items {
+                source_prefix: ""
+                destination_path: "/MyRoot/Restored1"
+              }
+            }
+        )", port));
+        ui64 importId = txId;
+        env.TestWaitNotification(runtime, importId);
+
+        // Check corrupted import
+        TestGetImport(runtime, importId, "/MyRoot", Ydb::StatusIds::CANCELLED);
+
+        // Restore corrupted table with skip checksum validation
+        TestImport(runtime, ++txId, "/MyRoot", Sprintf(R"(
+            ImportFromS3Settings {
+              endpoint: "localhost:%d"
+              scheme: HTTP
+              items {
+                source_prefix: ""
+                destination_path: "/MyRoot/Restored2"
+              }
+              skip_checksum_validation: true
+            }
+        )", port));
+        importId = txId;
+        env.TestWaitNotification(runtime, importId);
+
+        // Check corrupted import with skip checksum validation
+        TestGetImport(runtime, importId, "/MyRoot");
+    }
+
+    Y_UNIT_TEST(ExportImportWithMetadataCorruption) {
+        ExportImportWithCorruption([](auto& s3){
+            s3["/metadata.json"] = "corrupted";
+        });
+    }
+
+    Y_UNIT_TEST(ExportImportWithSchemeCorruption) {
+        ExportImportWithCorruption([](auto& s3){
+            s3["/scheme.pb"] = std::regex_replace(std::string(s3["/scheme.pb"]), std::regex("value"), "val");
+        });
+    }
+
+    Y_UNIT_TEST(ExportImportWithPermissionsCorruption) {
+        ExportImportWithCorruption([](auto& s3){
+            s3["/permissions.pb"] = std::regex_replace(std::string(s3["/permissions.pb"]), std::regex("root"), "alice");
+        });
+    }
+
+    Y_UNIT_TEST_WITH_COMPRESSION(ExportImportWithDataCorruption) {
+        ExportImportWithCorruption<Codec>([](auto& s3){
+            s3["/data_00.csv"] = std::regex_replace(std::string(s3["/data_00.csv"]), std::regex("valueA"), "valueB");
+        });
+    }
+
+    Y_UNIT_TEST(ExportImportWithMetadataChecksumCorruption) {
+        ExportImportWithCorruption([](auto& s3){
+            s3["/metadata.json.sha256"] = "corrupted";
+        });
+    }
+
+    Y_UNIT_TEST(ExportImportWithSchemeChecksumCorruption) {
+        ExportImportWithCorruption([](auto& s3){
+            s3["/scheme.pb.sha256"] = "corrupted";
+        });
+    }
+
+    Y_UNIT_TEST(ExportImportWithPermissionsChecksumCorruption) {
+        ExportImportWithCorruption([](auto& s3){
+            s3["/permissions.pb.sha256"] = "corrupted";
+        });
+    }
+
+    Y_UNIT_TEST_WITH_COMPRESSION(ExportImportWithDataChecksumCorruption) {
+        ExportImportWithCorruption<Codec>([](auto& s3){
+            s3["/data_00.csv.sha256"] = "corrupted";
+        });
+    }
+
+    Y_UNIT_TEST(ExportImportWithMetadataChecksumAbsence) {
+        ExportImportWithCorruption([](auto& s3){
+            s3.erase("/metadata.json.sha256");
+        });
+    }
+
+    Y_UNIT_TEST(ExportImportWithSchemeChecksumAbsence) {
+        ExportImportWithCorruption([](auto& s3){
+            s3.erase("/scheme.pb.sha256");
+        });
+    }
+
+    Y_UNIT_TEST(ExportImportWithPermissionsChecksumAbsence) {
+        ExportImportWithCorruption([](auto& s3){
+            s3.erase("/permissions.pb.sha256");
+        });
+    }
+
+    Y_UNIT_TEST_WITH_COMPRESSION(ExportImportWithDataChecksumAbsence) {
+        ExportImportWithCorruption<Codec>([](auto& s3){
+            s3.erase("/data_00.csv.sha256");
+        });
+    }
+
     Y_UNIT_TEST_WITH_COMPRESSION(ShouldCountWrittenBytesAndRows) {
         TTestBasicRuntime runtime;
         TTestEnv env(runtime);
@@ -1793,7 +2522,7 @@ value {
         ui64 txId = 100;
 
         // prepare table schema with special policy
-        NKikimrSchemeOp::TTableDescription desc;
+        TTableDescription desc;
         desc.SetName("Table");
         desc.AddKeyColumnNames("key");
         {
@@ -1834,10 +2563,10 @@ value {
         env.TestWaitNotification(runtime, txId);
 
         const ui32 expected = data.Data.size() / batchSize + ui32(bool(data.Data.size() % batchSize));
-        UNIT_ASSERT(requests > expected);
+        UNIT_ASSERT_C(requests > expected, TStringBuilder() << "Expected to get more than " << expected << " requests, but got only " << requests);
         UNIT_ASSERT_VALUES_EQUAL(responses, expected);
 
-        auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets, "Table", {"key", "Uint32", "0"});
+        auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets, "Table", {"key"}, {"key", "value"});
         NKqp::CompareYson(data.YsonStr, content);
     }
 
@@ -1856,7 +2585,7 @@ value {
             KeyColumnNames: ["key"]
         )", {data}, batchSize);
 
-        auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets);
+        auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets, "Table", {"key"}, {"key", "value"});
         NKqp::CompareYson(data.YsonStr, content);
     }
 
@@ -1882,7 +2611,7 @@ value {
             KeyColumnNames: ["key"]
         )", {data});
 
-        auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets);
+        auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets, "Table", {"key"}, {"key", "value"});
         NKqp::CompareYson(data.YsonStr, content);
     }
 
@@ -1900,7 +2629,7 @@ value {
             KeyColumnNames: ["key"]
         )", {data});
 
-        auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets, "Table", {"key", "Uint64", "0"});
+        auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets, "Table", {"key"}, {"key", "value"});
         NKqp::CompareYson(data.YsonStr, content);
     }
 
@@ -1923,11 +2652,11 @@ value {
         )", {a, b});
 
         {
-            auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets + 0);
+            auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets + 0, "Table", {"key"}, {"key", "value"});
             NKqp::CompareYson(a.YsonStr, content);
         }
         {
-            auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets + 1);
+            auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets + 1, "Table", {"key"}, {"key", "value"});
             NKqp::CompareYson(b.YsonStr, content);
         }
     }
@@ -1945,7 +2674,7 @@ value {
             KeyColumnNames: ["key"]
         )", {data});
 
-        auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets);
+        auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets, "Table", {"key"}, {"key", "value"});
         NKqp::CompareYson(data.YsonStr, content);
     }
 
@@ -2047,7 +2776,7 @@ value {
         TestCancelTxTable(runtime, ++txId, restoreTxId);
         env.TestWaitNotification(runtime, {restoreTxId, txId});
 
-        auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets);
+        auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets, "Table", {"key"}, {"key", "value"});
         NKqp::CompareYson(data.YsonStr, content);
     }
 
@@ -2113,8 +2842,201 @@ value {
         runtime.Send(progress.Release(), 0, true);
         env.TestWaitNotification(runtime, {restoreTxId, txId});
 
-        auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets);
+        auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets, "Table", {"key"}, {"key", "value"});
         NKqp::CompareYson(data.YsonStr, content);
+    }
+
+    size_t MakeBigEncryptedExport(TS3Mock& s3Mock, const TString& key, const NBackup::TEncryptionIV& iv, size_t encryptedBlockSize, size_t resultFileSize, bool compressed) {
+        const TStringBuf exportPrefix = "/test_bucket/Export123/";
+        NBackup::TEncryptionKey encryptionKey(key);
+
+        // Encode data lines
+        NBackup::TEncryptedFileSerializer serializer("ChaCha20-Poly1305", encryptionKey, NBackup::TEncryptionIV::Combine(iv, NBackup::EBackupFileType::TableData, 0, 0));
+        TString resultEncryptedData;
+        size_t unencryptedDataSize = 0;
+        auto addToResult = [&](TStringBuf data, bool last) {
+            unencryptedDataSize += data.size();
+            TBuffer block = serializer.AddBlock(data, last);
+            resultEncryptedData.append(block.Data(), block.Size());
+        };
+
+        TString resultData;
+        size_t previousSerializePos = 0;
+        TStringOutput output(resultData);
+        IOutputStream* outputStream = &output;
+        std::optional<TZstdCompress> zstd;
+        if (compressed) {
+            zstd.emplace(&output);
+            outputStream = &*zstd;
+        }
+        size_t line = 0;
+        const TString path = compressed ? "001/data_00.csv.zst.enc" : "001/data_00.csv.enc";
+
+        TString bigStr = "X"; // in order not to import too many lines
+        bigStr *= 80;
+
+        Cerr << "Make import file. EncryptedBlockSize: " << encryptedBlockSize
+            << ", ResultFileSize: " << resultFileSize
+            << ", Compressed: " << compressed
+            << ", Path: " << path << Endl;
+
+        auto getNextResultBlock = [&]() {
+            zstd.reset(); // finalize zstd frame (if any)
+
+            TStringBuf block(resultData.data() + previousSerializePos, resultData.size() - previousSerializePos);
+            previousSerializePos = resultData.size();
+
+            // Init new zstd frame
+            if (compressed) {
+                zstd.emplace(&output);
+                outputStream = &*zstd;
+            }
+
+            return block;
+        };
+
+        while (resultData.size() < resultFileSize) {
+            outputStream->Write(TStringBuilder() << ++line << ",\"Encrypted+hello+world+line+" << bigStr << line << "\"\n");
+
+            if (resultData.size() - previousSerializePos >= encryptedBlockSize) {
+                addToResult(getNextResultBlock(), false);
+            }
+        }
+        addToResult(getNextResultBlock(), !compressed /* last */);
+
+        // Handle also theoretical case: add zstd block with empty payload but not empty encoded data
+        if (compressed) {
+            addToResult(getNextResultBlock(), true);
+        }
+
+        Cerr << "Patched file with lines: " << line << Endl;
+        Cerr << "Patched file with size " << unencryptedDataSize << Endl;
+        Cerr << "Patched encrypted file with size " << resultEncryptedData.size() << Endl;
+        s3Mock.GetData()[TStringBuilder() << exportPrefix << path] = resultEncryptedData;
+
+        constexpr bool additionalCheck = true;
+        if (additionalCheck) {
+            // Check that we encoded correctly
+            auto [decodedData, decodedIV] = NBackup::TEncryptedFileDeserializer::DecryptFullFile(
+                encryptionKey,
+                TBuffer(resultEncryptedData.data(), resultEncryptedData.size()));
+
+            TBufferInput input(decodedData);
+            IInputStream* inputStream = &input;
+            std::optional<TZstdDecompress> zstdDecompressor;
+            if (compressed) {
+                zstdDecompressor.emplace(&input);
+                inputStream = &*zstdDecompressor;
+            }
+            size_t decodedLines = 0;
+            try {
+                while (true) {
+                    inputStream->ReadLine();
+                    ++decodedLines;
+                }
+            } catch (const std::exception&) { // end of line
+            }
+            UNIT_ASSERT_VALUES_EQUAL(decodedLines, line);
+        }
+        UNIT_ASSERT(line > 0);
+        return line;
+    }
+
+    TString PrintInProtoText(const NBackup::TEncryptionIV& iv) {
+        TString hex = iv.GetHexString();
+        TStringBuilder result;
+        UNIT_ASSERT_C(hex.size() % 2 == 0, hex.size());
+        for (size_t i = 0; i < hex.size(); i += 2) {
+            result << "\\x";
+            result << hex[i];
+            result << hex[i + 1];
+        }
+        return result;
+    }
+
+    // Test that checks different combinations of:
+    // - downloaded blocks size
+    // - decrypted blocks size
+    // - compression blocks size
+    void ImportBigEncryptedFile(size_t encryptedBlockSize, size_t resultFileSize, size_t readBatchSize, bool compressed) {
+        TString key = "Cool very very secret rand key!!";
+        NBackup::TEncryptionIV iv = NBackup::TEncryptionIV::Generate();
+
+        TPortManager portManager;
+        const ui16 s3Port = portManager.GetPort();
+        TS3Mock::TSettings s3Settings(s3Port);
+        TS3Mock s3Mock(s3Settings);
+        s3Mock.Start();
+
+        const size_t lines = MakeBigEncryptedExport(s3Mock, key, iv, encryptedBlockSize, resultFileSize, compressed);
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime, TTestEnvOptions().EnableChecksumsExport(false));
+
+        runtime.SetLogPriority(NKikimrServices::DATASHARD_RESTORE, NActors::NLog::PRI_TRACE);
+        runtime.SetLogPriority(NKikimrServices::FLAT_TX_SCHEMESHARD, NActors::NLog::PRI_TRACE);
+
+        ui64 txId = 100;
+
+        TString creationScheme = R"(
+            Name: "TestTable"
+            Columns { Name: "Key" Type: "Uint64" }
+            Columns { Name: "Value" Type: "Utf8" }
+            KeyColumnNames: ["Key"]
+        )";
+        TestCreateTable(runtime, ++txId, "/MyRoot", creationScheme);
+        env.TestWaitNotification(runtime, txId);
+
+        const auto desc = DescribePath(runtime, "/MyRoot/TestTable", true, true);
+        UNIT_ASSERT_VALUES_EQUAL(desc.GetStatus(), NKikimrScheme::StatusSuccess);
+
+        NKikimrScheme::EStatus status = (NKikimrScheme::EStatus)TestRestore(runtime, ++txId, "/MyRoot", Sprintf(R"(
+            TableName: "TestTable"
+            TableDescription {
+                %s
+            }
+            S3Settings {
+                Endpoint: "localhost:%d"
+                Scheme: HTTP
+                Bucket: "test_bucket"
+                ObjectKeyPattern: "Export123/001"
+                UseVirtualAddressing: false
+                Limits {
+                    ReadBatchSize: %d
+                }
+            }
+            EncryptionSettings {
+                IV: "%s"
+                SymmetricKey {
+                    key: "%s"
+                }
+            }
+        )", GenerateTableDescription(desc).data(), s3Port, readBatchSize, PrintInProtoText(iv).c_str(), key.c_str()));
+        UNIT_ASSERT_EQUAL(status, NKikimrScheme::StatusAccepted);
+        env.TestWaitNotification(runtime, txId);
+
+        const ui64 rows = CountRows(runtime, "/MyRoot/TestTable");
+        UNIT_ASSERT_VALUES_EQUAL(rows, lines);
+    }
+
+    Y_UNIT_TEST(ImportBigEncryptedFile) {
+        // Read big parts (8 KB), decode small parts
+        ImportBigEncryptedFile(315_B, 10_KB, 8_KB, false);
+
+        // Read big parts (8 KB), decode bigger parts
+        ImportBigEncryptedFile(9_KB, 20_KB, 8_KB, false);
+
+        // Read the whole file at a time
+        ImportBigEncryptedFile(1_KB, 5_KB, 8_KB, false);
+
+        // Read big parts (8 KB), decode small parts
+        ImportBigEncryptedFile(555_B, 10_KB, 8_KB, true);
+
+        // Read big parts (8 KB), decode bigger parts
+        ImportBigEncryptedFile(9_KB, 20_KB, 8_KB, true);
+
+        // Read the whole file at a time
+        ImportBigEncryptedFile(1_KB, 5_KB, 8_KB, true);
     }
 }
 
@@ -2157,12 +3079,14 @@ Y_UNIT_TEST_SUITE(TRestoreWithRebootsTests) {
         t.TestEnv->TestWaitNotification(runtime, t.TxId);
     }
 
-    Y_UNIT_TEST_WITH_COMPRESSION(ShouldSucceedOnSingleShardTable) {
+    Y_UNIT_TEST_WITH_COMPRESSION_FLAG(ShouldSucceedOnSingleShardTable, EnableDataShardDirectPartImport) {
         TPortManager portManager;
         const ui16 port = portManager.GetPort();
 
         TTestWithReboots t;
         t.Run([&](TTestActorRuntime& runtime, bool& activeZone) {
+            runtime.GetAppData().FeatureFlags.SetEnableDataShardDirectPartImport(EnableDataShardDirectPartImport);
+
             const auto data = GenerateTestData(Codec, "a", 1);
 
             Restore(t, runtime, activeZone, port, R"(
@@ -2175,18 +3099,20 @@ Y_UNIT_TEST_SUITE(TRestoreWithRebootsTests) {
             {
                 TInactiveZone inactive(activeZone);
 
-                auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets);
+                auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets, "Table", {"key"}, {"key", "value"});
                 NKqp::CompareYson(data.YsonStr, content);
             }
         });
     }
 
-    Y_UNIT_TEST_WITH_COMPRESSION(ShouldSucceedOnMultiShardTable) {
+    Y_UNIT_TEST_WITH_COMPRESSION_FLAG(ShouldSucceedOnMultiShardTable, EnableDataShardDirectPartImport) {
         TPortManager portManager;
         const ui16 port = portManager.GetPort();
 
         TTestWithReboots t;
         t.Run([&](TTestActorRuntime& runtime, bool& activeZone) {
+            runtime.GetAppData().FeatureFlags.SetEnableDataShardDirectPartImport(EnableDataShardDirectPartImport);
+
             const auto a = GenerateTestData(Codec, "a", 1);
             const auto b = GenerateTestData(Codec, "b", 1);
 
@@ -2205,18 +3131,18 @@ Y_UNIT_TEST_SUITE(TRestoreWithRebootsTests) {
             {
                 TInactiveZone inactive(activeZone);
                 {
-                    auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets + 0);
+                    auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets + 0, "Table", {"key"}, {"key", "value"});
                     NKqp::CompareYson(a.YsonStr, content);
                 }
                 {
-                    auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets + 1);
+                    auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets + 1, "Table", {"key"}, {"key", "value"});
                     NKqp::CompareYson(b.YsonStr, content);
                 }
             }
         });
     }
 
-    Y_UNIT_TEST_WITH_COMPRESSION(ShouldSucceedOnMultiShardTableAndLimitedResources) {
+    Y_UNIT_TEST_WITH_COMPRESSION_FLAG(ShouldSucceedOnMultiShardTableAndLimitedResources, EnableDataShardDirectPartImport) {
         TPortManager portManager;
         const ui16 port = portManager.GetPort();
 
@@ -2224,6 +3150,7 @@ Y_UNIT_TEST_SUITE(TRestoreWithRebootsTests) {
         t.Run([&](TTestActorRuntime& runtime, bool& activeZone) {
             {
                 TInactiveZone inactive(activeZone);
+                runtime.GetAppData().FeatureFlags.SetEnableDataShardDirectPartImport(EnableDataShardDirectPartImport);
 
                 using namespace NResourceBroker;
 
@@ -2257,23 +3184,25 @@ Y_UNIT_TEST_SUITE(TRestoreWithRebootsTests) {
             {
                 TInactiveZone inactive(activeZone);
                 {
-                    auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets + 0);
+                    auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets + 0, "Table", {"key"}, {"key", "value"});
                     NKqp::CompareYson(a.YsonStr, content);
                 }
                 {
-                    auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets + 1);
+                    auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets + 1, "Table", {"key"}, {"key", "value"});
                     NKqp::CompareYson(b.YsonStr, content);
                 }
             }
         });
     }
 
-    Y_UNIT_TEST_WITH_COMPRESSION(ShouldSucceedOnLargeData) {
+    Y_UNIT_TEST_WITH_COMPRESSION_FLAG(ShouldSucceedOnLargeData, EnableDataShardDirectPartImport) {
         TPortManager portManager;
         const ui16 port = portManager.GetPort();
 
         TTestWithReboots t;
         t.Run([&](TTestActorRuntime& runtime, bool& activeZone) {
+            runtime.GetAppData().FeatureFlags.SetEnableDataShardDirectPartImport(EnableDataShardDirectPartImport);
+
             const auto data = GenerateTestData(Codec, "", 100);
             UNIT_ASSERT(data.Data.size() > 128);
 
@@ -2287,7 +3216,7 @@ Y_UNIT_TEST_SUITE(TRestoreWithRebootsTests) {
             {
                 TInactiveZone inactive(activeZone);
 
-                auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets, "Table", {"key", "Uint32", "0"});
+                auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets, "Table", {"key"}, {"key", "value"});
                 NKqp::CompareYson(data.YsonStr, content);
             }
         });
@@ -2312,7 +3241,7 @@ Y_UNIT_TEST_SUITE(TRestoreWithRebootsTests) {
             {
                 TInactiveZone inactive(activeZone);
 
-                auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets);
+                auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets, "Table", {"key"}, {"key", "value"});
                 NKqp::CompareYson(data.YsonStr, content);
             }
         });
@@ -2338,7 +3267,7 @@ Y_UNIT_TEST_SUITE(TRestoreWithRebootsTests) {
             {
                 TInactiveZone inactive(activeZone);
 
-                auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets);
+                auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets, "Table", {"key"}, {"key", "value"});
                 NKqp::CompareYson(data.YsonStr, content);
             }
         });
@@ -2364,7 +3293,7 @@ Y_UNIT_TEST_SUITE(TRestoreWithRebootsTests) {
             {
                 TInactiveZone inactive(activeZone);
 
-                auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets);
+                auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets, "Table", {"key"}, {"key", "value"});
                 NKqp::CompareYson(data.YsonStr, content);
             }
         });
@@ -2390,7 +3319,7 @@ Y_UNIT_TEST_SUITE(TRestoreWithRebootsTests) {
             {
                 TInactiveZone inactive(activeZone);
 
-                auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets, "Table", {"key", "Uint64", "0"});
+                auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets, "Table", {"key"}, {"key", "value"});
                 NKqp::CompareYson(data.YsonStr, content);
             }
         });
@@ -2420,11 +3349,11 @@ Y_UNIT_TEST_SUITE(TRestoreWithRebootsTests) {
             {
                 TInactiveZone inactive(activeZone);
                 {
-                    auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets + 0);
+                    auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets + 0, "Table", {"key"}, {"key", "value"});
                     NKqp::CompareYson(a.YsonStr, content);
                 }
                 {
-                    auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets + 1);
+                    auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets + 1, "Table", {"key"}, {"key", "value"});
                     NKqp::CompareYson(b.YsonStr, content);
                 }
             }
@@ -2507,6 +3436,9 @@ Y_UNIT_TEST_SUITE(TImportTests) {
             )", TStringBuf(serverless ? "/MyRoot/Shared" : dbName).RNextTok('/').data()));
             env.TestWaitNotification(runtime, id);
 
+            const auto describeResult = DescribePath(runtime, serverless ? "/MyRoot/Shared" : dbName);
+            const auto subDomainPathId = describeResult.GetPathId();
+
             TestAlterExtSubDomain(runtime, ++id, "/MyRoot", Sprintf(R"(
                 PlanResolution: 50
                 Coordinators: 1
@@ -2536,9 +3468,9 @@ Y_UNIT_TEST_SUITE(TImportTests) {
                     Name: "%s"
                     ResourcesDomainKey {
                         SchemeShard: %lu
-                        PathId: 2
+                        PathId: %lu
                     }
-                )", TStringBuf(dbName).RNextTok('/').data(), TTestTxConfig::SchemeShard), attrs);
+                )", TStringBuf(dbName).RNextTok('/').data(), TTestTxConfig::SchemeShard, subDomainPathId), attrs);
                 env.TestWaitNotification(runtime, id);
 
                 TestAlterExtSubDomain(runtime, ++id, "/MyRoot", Sprintf(R"(
@@ -2592,13 +3524,15 @@ Y_UNIT_TEST_SUITE(TImportTests) {
 
     void Run(TTestBasicRuntime& runtime, THashMap<TString, TString>&& data, const TString& request,
             Ydb::StatusIds::StatusCode expectedStatus = Ydb::StatusIds::SUCCESS,
-            const TString& dbName = "/MyRoot", bool serverless = false, const TString& userSID = "") {
+            const TString& dbName = "/MyRoot", bool serverless = false, const TString& userSID = "",
+            bool enableDirectPartImport = false) {
 
         TTestEnv env(runtime, TTestEnvOptions());
+        runtime.GetAppData().FeatureFlags.SetEnableDataShardDirectPartImport(enableDirectPartImport);
         Run(runtime, env, std::move(data), request, expectedStatus, dbName, serverless, userSID);
     }
 
-    Y_UNIT_TEST(ShouldSucceedOnSingleShardTable) {
+    Y_UNIT_TEST_FLAG(ShouldSucceedOnSingleShardTable, EnableDataShardDirectPartImport) {
         TTestBasicRuntime runtime;
 
         const auto data = GenerateTestData(R"(
@@ -2622,13 +3556,13 @@ Y_UNIT_TEST_SUITE(TImportTests) {
                 destination_path: "/MyRoot/Table"
               }
             }
-        )");
+        )", Ydb::StatusIds::SUCCESS, "/MyRoot", false, "", EnableDataShardDirectPartImport);
 
-        auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets);
+        auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets, "Table", {"key"}, {"key", "value"});
         NKqp::CompareYson(data.Data[0].YsonStr, content);
     }
 
-    Y_UNIT_TEST(ShouldSucceedOnMultiShardTable) {
+    Y_UNIT_TEST_FLAG(ShouldSucceedOnMultiShardTable, EnableDataShardDirectPartImport) {
         TTestBasicRuntime runtime;
 
         const auto data = GenerateTestData(R"(
@@ -2658,19 +3592,19 @@ Y_UNIT_TEST_SUITE(TImportTests) {
                 destination_path: "/MyRoot/Table"
               }
             }
-        )");
+        )", Ydb::StatusIds::SUCCESS, "/MyRoot", false, "", EnableDataShardDirectPartImport);
 
         {
-            auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets + 0);
+            auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets + 0, "Table", {"key"}, {"key", "value"});
             NKqp::CompareYson(data.Data[0].YsonStr, content);
         }
         {
-            auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets + 1);
+            auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets + 1, "Table", {"key"}, {"key", "value"});
             NKqp::CompareYson(data.Data[1].YsonStr, content);
         }
     }
 
-    void ShouldSucceedOnIndexedTable(ui32 indexes, const TString& indexType = "global_index {}") {
+    void ShouldSucceedOnIndexedTable(ui32 indexes, const TString& indexType = "global_index {}", bool enableDirectPartImport = false) {
         TTestBasicRuntime runtime;
 
         auto scheme = TStringBuilder() << R"(
@@ -2706,30 +3640,211 @@ Y_UNIT_TEST_SUITE(TImportTests) {
                 destination_path: "/MyRoot/Table"
               }
             }
-        )");
+        )", Ydb::StatusIds::SUCCESS, "/MyRoot", false, "", enableDirectPartImport);
 
         {
-            auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets + 0);
+            auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets + 0, "Table", {"key"}, {"key", "value"});
             NKqp::CompareYson(data.Data[0].YsonStr, content);
         }
 
         for (ui32 i = 0; i < indexes; ++i) {
-            auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets + 1 + i,
-                "indexImplTable", {"value", "Utf8", "\"\""}, {"value", "key"}, "'ExcFrom");
+            auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets + 1 + i, "indexImplTable", {"value"}, {"value", "key"}, "'ExcFrom ");
             NKqp::CompareYson(data.Data[0].YsonStr, content);
         }
     }
 
-    Y_UNIT_TEST(ShouldSucceedOnIndexedTable1) {
-        ShouldSucceedOnIndexedTable(1);
+    Y_UNIT_TEST_FLAG(ShouldSucceedOnIndexedTable1, EnableDataShardDirectPartImport) {
+        ShouldSucceedOnIndexedTable(1, "global_index {}", EnableDataShardDirectPartImport);
     }
 
-    Y_UNIT_TEST(ShouldSucceedOnIndexedTable2) {
-        ShouldSucceedOnIndexedTable(2);
+    Y_UNIT_TEST_FLAG(ShouldSucceedOnIndexedTable2, EnableDataShardDirectPartImport) {
+        ShouldSucceedOnIndexedTable(2, "global_index {}", EnableDataShardDirectPartImport);
     }
 
-    Y_UNIT_TEST(ShouldSucceedOnIndexedTable3) {
-        ShouldSucceedOnIndexedTable(1, "");
+    Y_UNIT_TEST_FLAG(ShouldSucceedOnIndexedTable3, EnableDataShardDirectPartImport) {
+        ShouldSucceedOnIndexedTable(1, "", EnableDataShardDirectPartImport);
+    }
+
+    Y_UNIT_TEST_FLAG(ImportStandaloneColumnTableWithLocalBloomIndexes, EnableLocalIndexAsSchemeObject) {
+        TPortManager portManager;
+        const ui16 port = portManager.GetPort();
+
+        TS3Mock s3Mock({}, TS3Mock::TSettings(port));
+        UNIT_ASSERT(s3Mock.Start());
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+
+        runtime.GetAppData().FeatureFlags.SetEnableColumnTablesBackup(true);
+        runtime.GetAppData().FeatureFlags.SetEnableLocalBloomFilterIndex(true);
+        runtime.GetAppData().FeatureFlags.SetEnableLocalBloomNgramFilterIndex(true);
+        runtime.GetAppData().FeatureFlags.SetEnableLocalIndexAsSchemeObject(EnableLocalIndexAsSchemeObject);
+
+        runtime.SetLogPriority(NKikimrServices::EXPORT, NActors::NLog::PRI_TRACE);
+        runtime.SetLogPriority(NKikimrServices::IMPORT, NActors::NLog::PRI_TRACE);
+
+        ui64 txId = 100;
+
+        TestCreateColumnTable(runtime, ++txId, "/MyRoot", R"(
+            Name: "OlapBloomTable"
+            ColumnShardCount: 1
+            Schema {
+                Columns { Name: "timestamp" Type: "Timestamp" NotNull: true }
+                Columns { Name: "resource_id" Type: "Utf8" }
+                Columns { Name: "uid" Type: "Utf8" NotNull: true }
+                KeyColumnNames: "timestamp"
+                KeyColumnNames: "uid"
+                Indexes {
+                    Id: 1
+                    Name: "idx_bloom"
+                    ClassName: "BLOOM_FILTER"
+                    BloomFilter {
+                        FalsePositiveProbability: 0.01
+                        ColumnIds: 2
+                    }
+                }
+                Indexes {
+                    Id: 2
+                    Name: "idx_ngram"
+                    ClassName: "BLOOM_NGRAMM_FILTER"
+                    BloomNGrammFilter {
+                        NGrammSize: 3
+                        FalsePositiveProbability: 0.01
+                        CaseSensitive: true
+                        ColumnId: 2
+                    }
+                }
+            }
+        )");
+        env.TestWaitNotification(runtime, txId);
+
+        auto assertBloomIndexes = [&](const TString& path) {
+            const auto d = DescribePrivatePath(runtime, path, true, true);
+            UNIT_ASSERT_C(d.GetPathDescription().HasColumnTableDescription(), "expected column table at " << path);
+            const auto& schema = d.GetPathDescription().GetColumnTableDescription().GetSchema();
+            THashSet<TString> found;
+            for (const auto& ix : schema.GetIndexes()) {
+                found.insert(ix.GetName());
+            }
+
+            UNIT_ASSERT_C(found.contains("idx_bloom"), "missing idx_bloom on " << path);
+            UNIT_ASSERT_C(found.contains("idx_ngram"), "missing idx_ngram on " << path);
+        };
+
+        assertBloomIndexes("/MyRoot/OlapBloomTable");
+
+        const ui64 exportTxId = ++txId;
+        TestExport(runtime, exportTxId, "/MyRoot", Sprintf(R"(
+            ExportToS3Settings {
+              endpoint: "localhost:%d"
+              scheme: HTTP
+              items {
+                source_path: "/MyRoot/OlapBloomTable"
+                destination_prefix: "OlapBloomImportPrefix"
+              }
+            }
+        )", port));
+        env.TestWaitNotification(runtime, exportTxId);
+        TestGetExport(runtime, exportTxId, "/MyRoot", Ydb::StatusIds::SUCCESS);
+
+        const ui64 importId = ++txId;
+        TestImport(runtime, importId, "/MyRoot", Sprintf(R"(
+            ImportFromS3Settings {
+              endpoint: "localhost:%d"
+              scheme: HTTP
+              items {
+                source_prefix: "OlapBloomImportPrefix"
+                destination_path: "/MyRoot/OlapBloomImported"
+              }
+            }
+        )", port));
+        env.TestWaitNotification(runtime, importId);
+        TestGetImport(runtime, importId, "/MyRoot", Ydb::StatusIds::SUCCESS);
+
+        assertBloomIndexes("/MyRoot/OlapBloomImported");
+    }
+
+    Y_UNIT_TEST(ImportStandaloneColumnTableWithLocalMinMaxIndexes) {
+        TPortManager portManager;
+        const ui16 port = portManager.GetPort();
+
+        TS3Mock s3Mock({}, TS3Mock::TSettings(port));
+        UNIT_ASSERT(s3Mock.Start());
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+
+        runtime.GetAppData().FeatureFlags.SetEnableColumnTablesBackup(true);
+        runtime.GetAppData().FeatureFlags.SetEnableLocalMinMaxIndex(true);
+
+        runtime.SetLogPriority(NKikimrServices::EXPORT, NActors::NLog::PRI_TRACE);
+        runtime.SetLogPriority(NKikimrServices::IMPORT, NActors::NLog::PRI_TRACE);
+
+        ui64 txId = 100;
+
+        TestCreateColumnTable(runtime, ++txId, "/MyRoot", R"(
+            Name: "OlapMinMaxTable"
+            ColumnShardCount: 1
+            Schema {
+                Columns { Name: "timestamp" Type: "Timestamp" NotNull: true }
+                Columns { Name: "resource_id" Type: "Utf8" }
+                Columns { Name: "uid" Type: "Utf8" NotNull: true }
+                KeyColumnNames: "timestamp"
+                KeyColumnNames: "uid"
+                Indexes {
+                    Id: 1
+                    Name: "idx_minmax"
+                    ClassName: "MIN_MAX"
+                    MinMaxIndex {
+                        ColumnId: 2
+                    }
+                }
+            }
+        )");
+        env.TestWaitNotification(runtime, txId);
+
+        auto assertMinMaxIndexes = [&](const TString& path) {
+            const auto d = DescribePrivatePath(runtime, path, true, true);
+            UNIT_ASSERT_C(d.GetPathDescription().HasColumnTableDescription(), "expected column table at " << path);
+            const auto& schema = d.GetPathDescription().GetColumnTableDescription().GetSchema();
+            THashSet<TString> found;
+            for (const auto& ix : schema.GetIndexes()) {
+                found.insert(ix.GetName());
+            }
+            UNIT_ASSERT_C(found.contains("idx_minmax"), "missing idx_minmax on " << path);
+        };
+
+        assertMinMaxIndexes("/MyRoot/OlapMinMaxTable");
+
+        const ui64 exportTxId = ++txId;
+        TestExport(runtime, exportTxId, "/MyRoot", Sprintf(R"(
+            ExportToS3Settings {
+              endpoint: "localhost:%d"
+              scheme: HTTP
+              items {
+                source_path: "/MyRoot/OlapMinMaxTable"
+                destination_prefix: "OlapMinMaxImportPrefix"
+              }
+            }
+        )", port));
+        env.TestWaitNotification(runtime, exportTxId);
+        TestGetExport(runtime, exportTxId, "/MyRoot", Ydb::StatusIds::SUCCESS);
+
+        const ui64 importId = ++txId;
+        TestImport(runtime, importId, "/MyRoot", Sprintf(R"(
+            ImportFromS3Settings {
+              endpoint: "localhost:%d"
+              scheme: HTTP
+              items {
+                source_prefix: "OlapMinMaxImportPrefix"
+                destination_path: "/MyRoot/OlapMinMaxImported"
+              }
+            }
+        )", port));
+        env.TestWaitNotification(runtime, importId);
+        TestGetImport(runtime, importId, "/MyRoot", Ydb::StatusIds::SUCCESS);
+
+        assertMinMaxIndexes("/MyRoot/OlapMinMaxImported");
     }
 
     Y_UNIT_TEST(ShouldSucceedOnManyTables) {
@@ -2745,7 +3860,7 @@ Y_UNIT_TEST_SUITE(TImportTests) {
               type { optional_type { item { type_id: UTF8 } } }
             }
             primary_key: "key"
-        )", {{"a", 1}});
+        )", {{"k", 1}});
 
         const auto b = GenerateTestData(R"(
             columns {
@@ -2757,7 +3872,7 @@ Y_UNIT_TEST_SUITE(TImportTests) {
               type { optional_type { item { type_id: UTF8 } } }
             }
             primary_key: "key"
-        )", {{"b", 1}});
+        )", {{"k", 1}});
 
         Run(runtime, ConvertTestData({{"/a", a}, {"/b", b}}), R"(
             ImportFromS3Settings {
@@ -2765,21 +3880,21 @@ Y_UNIT_TEST_SUITE(TImportTests) {
               scheme: HTTP
               items {
                 source_prefix: "a"
-                destination_path: "/MyRoot/TableA"
+                destination_path: "/MyRoot/DirA/Table"
               }
               items {
                 source_prefix: "b"
-                destination_path: "/MyRoot/TableB"
+                destination_path: "/MyRoot/DirB/Table"
               }
             }
         )");
 
         {
-            auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets + 0, "TableA");
+            auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets + 0, "Table", {"key"}, {"key", "value"});
             NKqp::CompareYson(a.Data[0].YsonStr, content);
         }
         {
-            auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets + 1, "TableB");
+            auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets + 1, "Table", {"key"}, {"key", "value"});
             NKqp::CompareYson(b.Data[0].YsonStr, content);
         }
     }
@@ -2812,7 +3927,7 @@ Y_UNIT_TEST_SUITE(TImportTests) {
             }
         )");
 
-        auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets);
+        auto content = ReadTable(runtime, TTestTxConfig::FakeHiveTablets, "Table", {"key"}, {"key", "value"});
         NKqp::CompareYson(data.Data[0].YsonStr, content);
     }
 
@@ -2864,7 +3979,7 @@ Y_UNIT_TEST_SUITE(TImportTests) {
         const TString expectedBillRecord = R"({"usage":{"start":0,"quantity":50,"finish":0,"unit":"request_unit","type":"delta"},"tags":{},"id":"281474976725758-72075186233409549-2-72075186233409549-4","cloud_id":"CLOUD_ID_VAL","source_wt":0,"source_id":"sless-docapi-ydb-ss","resource_id":"DATABASE_ID_VAL","schema":"ydb.serverless.requests.v1","folder_id":"FOLDER_ID_VAL","version":"1.0.0"})";
 
         UNIT_ASSERT_VALUES_EQUAL(billRecords.size(), 1);
-        UNIT_ASSERT_NO_DIFF(billRecords[0], expectedBillRecord + "\n");
+        MeteringDataEqual(billRecords[0], expectedBillRecord);
     }
 
     Y_UNIT_TEST(ShouldNotWriteBillRecordOnCommonDb) {
@@ -2974,7 +4089,7 @@ Y_UNIT_TEST_SUITE(TImportTests) {
               }
             }
         )", {
-            NLs::HasTtlEnabled("modified_at", TDuration::Hours(2), NKikimrSchemeOp::TTTLSettings::UNIT_SECONDS),
+            NLs::HasTtlEnabled("modified_at", TDuration::Hours(2), TTTLSettings::UNIT_SECONDS),
         });
     }
 
@@ -3024,6 +4139,28 @@ Y_UNIT_TEST_SUITE(TImportTests) {
             }
         )", {
             NLs::UserAttrsEqual({{"key", "value"}}),
+        });
+    }
+
+    Y_UNIT_TEST(ShouldRestoreIncrementalBackupFlag) {
+        ShouldRestoreSettings(R"(
+            attributes {
+              key: "__incremental_backup"
+              value: "{}"
+            }
+        )", {
+            NLs::IncrementalBackup(true),
+        });
+    }
+
+    Y_UNIT_TEST(ShouldRestoreIncrementalBackupFlagNullAsFalse) {
+        ShouldRestoreSettings(R"(
+            attributes {
+              key: "__incremental_backup"
+              value: "null"
+            }
+        )", {
+            NLs::IncrementalBackup(false),
         });
     }
 
@@ -3516,7 +4653,7 @@ Y_UNIT_TEST_SUITE(TImportTests) {
             }
 
             return ev->Get<TEvSchemeShard::TEvModifySchemeTransaction>()->Record
-                .GetTransaction(0).GetOperationType() == NKikimrSchemeOp::ESchemeOpCreateIndexedTable;
+                .GetTransaction(0).GetOperationType() == ESchemeOpCreateIndexedTable;
         });
     }
 
@@ -3527,7 +4664,7 @@ Y_UNIT_TEST_SUITE(TImportTests) {
             }
 
             return ev->Get<TEvSchemeShard::TEvModifySchemeTransaction>()->Record
-                .GetTransaction(0).GetOperationType() == NKikimrSchemeOp::ESchemeOpRestore;
+                .GetTransaction(0).GetOperationType() == ESchemeOpRestore;
         });
     }
 
@@ -3538,7 +4675,7 @@ Y_UNIT_TEST_SUITE(TImportTests) {
             }
 
             return ev->Get<TEvSchemeShard::TEvModifySchemeTransaction>()->Record
-                .GetTransaction(0).GetOperationType() == NKikimrSchemeOp::ESchemeOpApplyIndexBuild;
+                .GetTransaction(0).GetOperationType() == ESchemeOpApplyIndexBuild;
         });
     }
 
@@ -3576,6 +4713,191 @@ Y_UNIT_TEST_SUITE(TImportTests) {
 
         Run(runtime, env, ConvertTestData(data), request, Ydb::StatusIds::PRECONDITION_FAILED);
         Run(runtime, env, ConvertTestData(data), request, Ydb::StatusIds::SUCCESS, "/MyRoot", false, userSID);
+    }
+
+    Y_UNIT_TEST(CheckItemProgress) {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        runtime.UpdateCurrentTime(TInstant::Now());
+        ui64 txId = 100;
+
+        TBlockEvents<NWrappers::NExternalStorage::TEvGetObjectRequest> blockPartition01(runtime, [](const auto& ev) {
+            return ev->Get()->Request.GetKey() == "/data_01.csv";
+        });
+
+        const auto data = GenerateTestData(R"(
+                columns {
+                    name: "key"
+                    type { optional_type { item { type_id: UTF8 } } }
+                }
+                columns {
+                    name: "value"
+                    type { optional_type { item { type_id: UTF8 } } }
+                }
+                partition_at_keys {
+                    split_points {
+                        type { tuple_type { elements { optional_type { item { type_id: UTF8 } } } } }
+                        value { items { text_value: "b" } }
+                    }
+                }
+                primary_key: "key"
+            )",
+            {{"a", 1}, {"b", 1}}
+        );
+
+        TPortManager portManager;
+        const ui16 port = portManager.GetPort();
+
+        TS3Mock s3Mock(ConvertTestData(data), TS3Mock::TSettings(port));
+        UNIT_ASSERT(s3Mock.Start());
+
+        TestImport(runtime, ++txId, "/MyRoot", Sprintf(R"(
+            ImportFromS3Settings {
+              endpoint: "localhost:%d"
+              scheme: HTTP
+              items {
+                source_prefix: ""
+                destination_path: "/MyRoot/Table"
+              }
+            }
+        )", port));
+
+        runtime.WaitFor("get object request into 01 partition", [&]{ return blockPartition01.size() >= 1; });
+
+        bool found = false;
+        for (int attempt = 0; attempt < 100 && !found; ++attempt) {
+            runtime.SimulateSleep(TDuration::MilliSeconds(100));
+            const auto desc = TestGetImport(runtime, txId, "/MyRoot");
+            const auto& item = desc.GetResponse().GetEntry().GetItemsProgress(0);
+            if (item.parts_completed() > 0) {
+                found = true;
+                UNIT_ASSERT_VALUES_EQUAL(item.parts_total(), 2);
+                UNIT_ASSERT_VALUES_EQUAL(item.parts_completed(), 1);
+                UNIT_ASSERT_VALUES_UNEQUAL(item.start_time().seconds(), 0);
+                UNIT_ASSERT_VALUES_EQUAL(item.end_time().seconds(), 0);
+            }
+        }
+        UNIT_ASSERT_C(found, "partition 00 import didn't complete in time");
+
+        blockPartition01.Stop();
+        blockPartition01.Unblock();
+
+        env.TestWaitNotification(runtime, txId);
+
+        const auto desc = TestGetImport(runtime, txId, "/MyRoot");
+        const auto& entry = desc.GetResponse().GetEntry();
+        UNIT_ASSERT_VALUES_EQUAL(entry.GetProgress(), Ydb::Import::ImportProgress::PROGRESS_DONE);
+        UNIT_ASSERT_VALUES_EQUAL(entry.ItemsProgressSize(), 1);
+
+        const auto& item = entry.GetItemsProgress(0);
+        UNIT_ASSERT_VALUES_EQUAL(item.parts_total(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(item.parts_completed(), 2);
+        UNIT_ASSERT_VALUES_UNEQUAL(item.start_time().seconds(), 0);
+        UNIT_ASSERT_VALUES_UNEQUAL(item.end_time().seconds(), 0);
+    }
+
+    Y_UNIT_TEST(CheckItemProgressWithIndexes) {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        runtime.UpdateCurrentTime(TInstant::Now());
+        ui64 txId = 100;
+
+        // Wait for 3'rd index processing
+        TBlockEvents<TEvIndexBuilder::TEvCreateRequest> block2ndIndexBuild(runtime, [&](const auto& ev) {
+            return ev->Get()->Record.GetSettings().Getindex().Getname() == "by_value_2";
+        });
+
+        const auto data = GenerateTestData(R"(
+                columns {
+                    name: "key"
+                    type { optional_type { item { type_id: UTF8 } } }
+                }
+                columns {
+                    name: "value"
+                    type { optional_type { item { type_id: UTF8 } } }
+                }
+                primary_key: "key"
+                partition_at_keys {
+                    split_points {
+                        type { tuple_type { elements { optional_type { item { type_id: UTF8 } } } } }
+                        value { items { text_value: "b" } }
+                    }
+                    split_points {
+                        type { tuple_type { elements { optional_type { item { type_id: UTF8 } } } } }
+                        value { items { text_value: "c" } }
+                    }
+                }
+                indexes {
+                    name: "by_value_1"
+                    index_columns: "value"
+                    global_index {
+                        settings {
+                            partition_at_keys {
+                                split_points {
+                                    type { tuple_type { elements { optional_type { item { type_id: UTF8 } } } } }
+                                    value { items { text_value: "b" } }
+                                }
+                            }
+                        }
+                    }
+                }
+                indexes {
+                    name: "by_value_2"
+                    index_columns: "value"
+                    global_index {}
+                }
+            )",
+            {{"a", 1}, {"b", 1}, {"c", 1}}
+        );
+
+        TPortManager portManager;
+        const ui16 port = portManager.GetPort();
+
+        TS3Mock s3Mock(ConvertTestData(data), TS3Mock::TSettings(port));
+        UNIT_ASSERT(s3Mock.Start());
+
+        TestImport(runtime, ++txId, "/MyRoot", Sprintf(R"(
+            ImportFromS3Settings {
+              endpoint: "localhost:%d"
+              scheme: HTTP
+              items {
+                source_prefix: ""
+                destination_path: "/MyRoot/Table"
+              }
+            }
+        )", port));
+
+        runtime.WaitFor("2'nd index build start", [&]{ return block2ndIndexBuild.size() >= 1; });
+
+        const auto desc_blocked = TestGetImport(runtime, txId, "/MyRoot");
+        const auto& entry_blocked = desc_blocked.GetResponse().GetEntry();
+        UNIT_ASSERT_VALUES_EQUAL(entry_blocked.ItemsProgressSize(), 1);
+        // As only 1 item, it is guaranteed for entry to be in the build indexes state
+        UNIT_ASSERT_VALUES_EQUAL(entry_blocked.GetProgress(), Ydb::Import::ImportProgress::PROGRESS_BUILD_INDEXES);
+
+        const auto& item_blocked = entry_blocked.GetItemsProgress(0);
+        // 3 table parts + 2 indexes each process 3 table parts
+        UNIT_ASSERT_VALUES_EQUAL(item_blocked.parts_total(), 9);
+        // Table and 1'st index processed
+        UNIT_ASSERT_VALUES_EQUAL(item_blocked.parts_completed(), 6);
+        UNIT_ASSERT_VALUES_UNEQUAL(item_blocked.start_time().seconds(), 0);
+        UNIT_ASSERT_VALUES_EQUAL(item_blocked.end_time().seconds(), 0);
+
+        block2ndIndexBuild.Stop();
+        block2ndIndexBuild.Unblock();
+
+        env.TestWaitNotification(runtime, txId);
+
+        const auto desc = TestGetImport(runtime, txId, "/MyRoot");
+        const auto& entry = desc.GetResponse().GetEntry();
+        UNIT_ASSERT_VALUES_EQUAL(entry.GetProgress(), Ydb::Import::ImportProgress::PROGRESS_DONE);
+        UNIT_ASSERT_VALUES_EQUAL(entry.ItemsProgressSize(), 1);
+
+        const auto& item = entry.GetItemsProgress(0);
+        UNIT_ASSERT_VALUES_EQUAL(item.parts_total(), 9);
+        UNIT_ASSERT_VALUES_EQUAL(item.parts_completed(), 9);
+        UNIT_ASSERT_VALUES_UNEQUAL(item.start_time().seconds(), 0);
+        UNIT_ASSERT_VALUES_UNEQUAL(item.end_time().seconds(), 0);
     }
 
     Y_UNIT_TEST(UidAsIdempotencyKey) {
@@ -3749,7 +5071,7 @@ Y_UNIT_TEST_SUITE(TImportTests) {
             }
 
             return ev->Get<TEvSchemeShard::TEvModifySchemeTransaction>()->Record
-                .GetTransaction(0).GetOperationType() == NKikimrSchemeOp::ESchemeOpRestore;
+                .GetTransaction(0).GetOperationType() == ESchemeOpRestore;
         };
 
         THolder<IEventHandle> delayed;
@@ -3919,7 +5241,7 @@ Y_UNIT_TEST_SUITE(TImportTests) {
             }
 
             return ev->Get<TEvSchemeShard::TEvModifySchemeTransaction>()->Record
-                .GetTransaction(0).GetOperationType() == NKikimrSchemeOp::ESchemeOpRestore;
+                .GetTransaction(0).GetOperationType() == ESchemeOpRestore;
         };
 
         THolder<IEventHandle> delayed;
@@ -4042,6 +5364,240 @@ Y_UNIT_TEST_SUITE(TImportTests) {
         const auto& entry = desc.GetResponse().GetEntry();
         UNIT_ASSERT_VALUES_EQUAL(entry.GetProgress(), Ydb::Import::ImportProgress::PROGRESS_PREPARING);
         UNIT_ASSERT_VALUES_EQUAL(entry.GetUserSID(), userSID);
+    }
+
+    Y_UNIT_TEST(TablePermissions) {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        ui64 txId = 100;
+
+        const auto permissions = R"(
+            actions {
+              change_owner: "eve"
+            }
+            actions {
+              grant {
+                subject: "alice"
+                permission_names: "ydb.generic.read"
+              }
+            }
+            actions {
+              grant {
+                subject: "alice"
+                permission_names: "ydb.generic.write"
+              }
+            }
+            actions {
+              grant {
+                subject: "bob"
+                permission_names: "ydb.generic.read"
+              }
+            }
+        )";
+
+        const auto data = GenerateTestData(R"(
+            columns {
+              name: "key"
+              type { optional_type { item { type_id: UTF8 } } }
+            }
+            columns {
+              name: "value"
+              type { optional_type { item { type_id: UTF8 } } }
+            }
+            primary_key: "key"
+        )", {{"a", 1}}, permissions);
+
+        TPortManager portManager;
+        const ui16 port = portManager.GetPort();
+
+        TS3Mock s3Mock(ConvertTestData(data), TS3Mock::TSettings(port));
+        UNIT_ASSERT(s3Mock.Start());
+
+        TestImport(runtime, ++txId, "/MyRoot", Sprintf(R"(
+            ImportFromS3Settings {
+              endpoint: "localhost:%d"
+              scheme: HTTP
+              items {
+                source_prefix: ""
+                destination_path: "/MyRoot/Table"
+              }
+            }
+        )", port));
+        env.TestWaitNotification(runtime, txId);
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/Table"), {
+            NLs::PathExist,
+            NLs::HasOwner("eve"),
+            NLs::HasRight("+R:alice"),
+            NLs::HasRight("+W:alice"),
+            NLs::HasRight("+R:bob")
+        });
+    }
+
+    Y_UNIT_TEST(UnexpectedPermission) {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        ui64 txId = 100;
+
+        const auto permissions = R"(
+            actions {
+              change_owner: "eve"
+            }
+            actions {
+              grant {
+                subject: "alice"
+                permission_names: "ydb.unexpected.permission"
+              }
+            }
+        )";
+
+        const auto data = GenerateTestData(R"(
+            columns {
+              name: "key"
+              type { optional_type { item { type_id: UTF8 } } }
+            }
+            columns {
+              name: "value"
+              type { optional_type { item { type_id: UTF8 } } }
+            }
+            primary_key: "key"
+        )", {{"a", 1}}, permissions);
+
+        TPortManager portManager;
+        const ui16 port = portManager.GetPort();
+
+        TS3Mock s3Mock(ConvertTestData(data), TS3Mock::TSettings(port));
+        UNIT_ASSERT(s3Mock.Start());
+
+        TestImport(runtime, ++txId, "/MyRoot", Sprintf(R"(
+            ImportFromS3Settings {
+              endpoint: "localhost:%d"
+              scheme: HTTP
+              items {
+                source_prefix: ""
+                destination_path: "/MyRoot/Table"
+              }
+            }
+        )", port));
+        env.TestWaitNotification(runtime, txId);
+
+        auto desc = TestGetImport(runtime, txId, "/MyRoot", Ydb::StatusIds::CANCELLED);
+        auto entry = desc.GetResponse().GetEntry();
+        UNIT_ASSERT_VALUES_EQUAL(entry.GetProgress(), Ydb::Import::ImportProgress::PROGRESS_CANCELLED);
+    }
+
+    Y_UNIT_TEST(CorruptedPermissions) {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        ui64 txId = 100;
+
+        const auto permissions = R"(
+            corrupted
+        )";
+
+        const auto data = GenerateTestData(R"(
+            columns {
+              name: "key"
+              type { optional_type { item { type_id: UTF8 } } }
+            }
+            columns {
+              name: "value"
+              type { optional_type { item { type_id: UTF8 } } }
+            }
+            primary_key: "key"
+        )", {{"a", 1}}, permissions);
+
+        TPortManager portManager;
+        const ui16 port = portManager.GetPort();
+
+        TS3Mock s3Mock(ConvertTestData(data), TS3Mock::TSettings(port));
+        UNIT_ASSERT(s3Mock.Start());
+
+        TestImport(runtime, ++txId, "/MyRoot", Sprintf(R"(
+            ImportFromS3Settings {
+              endpoint: "localhost:%d"
+              scheme: HTTP
+              items {
+                source_prefix: ""
+                destination_path: "/MyRoot/Table"
+              }
+            }
+        )", port));
+        env.TestWaitNotification(runtime, txId);
+
+        auto desc = TestGetImport(runtime, txId, "/MyRoot", Ydb::StatusIds::CANCELLED);
+        auto entry = desc.GetResponse().GetEntry();
+        UNIT_ASSERT_VALUES_EQUAL(entry.GetProgress(), Ydb::Import::ImportProgress::PROGRESS_CANCELLED);
+    }
+
+    Y_UNIT_TEST(NoACLOption) {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        ui64 txId = 100;
+
+        const auto permissions = R"(
+            actions {
+              change_owner: "eve"
+            }
+            actions {
+              grant {
+                subject: "alice"
+                permission_names: "ydb.generic.read"
+              }
+            }
+            actions {
+              grant {
+                subject: "alice"
+                permission_names: "ydb.generic.write"
+              }
+            }
+            actions {
+              grant {
+                subject: "bob"
+                permission_names: "ydb.generic.read"
+              }
+            }
+        )";
+
+        const auto data = GenerateTestData(R"(
+            columns {
+              name: "key"
+              type { optional_type { item { type_id: UTF8 } } }
+            }
+            columns {
+              name: "value"
+              type { optional_type { item { type_id: UTF8 } } }
+            }
+            primary_key: "key"
+        )", {{"a", 1}}, permissions);
+
+        TPortManager portManager;
+        const ui16 port = portManager.GetPort();
+
+        TS3Mock s3Mock(ConvertTestData(data), TS3Mock::TSettings(port));
+        UNIT_ASSERT(s3Mock.Start());
+
+        const TString userSID = "user@builtin";
+        TestImport(runtime, ++txId, "/MyRoot", Sprintf(R"(
+            ImportFromS3Settings {
+              endpoint: "localhost:%d"
+              scheme: HTTP
+              items {
+                source_prefix: ""
+                destination_path: "/MyRoot/Table"
+              }
+              no_acl: true
+            }
+        )", port), userSID);
+        env.TestWaitNotification(runtime, txId);
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/Table"), {
+            NLs::PathExist,
+            NLs::HasOwner(userSID),
+            NLs::HasNoRight("+R:alice"),
+            NLs::HasNoRight("+W:alice"),
+            NLs::HasNoRight("+R:bob")
+        });
     }
 
     Y_UNIT_TEST(ShouldBlockMerge) {
@@ -4228,6 +5784,751 @@ Y_UNIT_TEST_SUITE(TImportTests) {
         env.TestWaitNotification(runtime, txId);
     }
 
+    Y_UNIT_TEST(ShouldImportMultiPartitionTable) {
+        // Check that shard iteration order is correct.
+        // With 3 partitions the iteration order could differ from partition order,
+        // routing file-0 data ("a..." rows) to the shard covering "c..."
+        // and producing "key is out of range" failures.
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        ui64 txId = 100;
+
+        const auto data = GenerateTestData(R"(
+            columns {
+              name: "key"
+              type { optional_type { item { type_id: UTF8 } } }
+            }
+            columns {
+              name: "value"
+              type { optional_type { item { type_id: UTF8 } } }
+            }
+            primary_key: "key"
+            partitioning_settings { min_partitions_count: 1 }
+            partition_at_keys {
+              split_points {
+                type { tuple_type { elements { optional_type { item { type_id: UTF8 } } } } }
+                value { items { text_value: "b" } }
+              }
+              split_points {
+                type { tuple_type { elements { optional_type { item { type_id: UTF8 } } } } }
+                value { items { text_value: "c" } }
+              }
+            }
+        )", {{"a", 1}, {"b", 1}, {"c", 1}});
+
+        TPortManager portManager;
+        const ui16 port = portManager.GetPort();
+
+        TS3Mock s3Mock(ConvertTestData(data), TS3Mock::TSettings(port));
+        UNIT_ASSERT(s3Mock.Start());
+
+        TestImport(runtime, ++txId, "/MyRoot", Sprintf(R"(
+            ImportFromS3Settings {
+              endpoint: "localhost:%d"
+              scheme: HTTP
+              items {
+                source_prefix: ""
+                destination_path: "/MyRoot/Table"
+              }
+            }
+        )", port));
+        env.TestWaitNotification(runtime, txId);
+
+        TestGetImport(runtime, txId, "/MyRoot");
+    }
+
+    Y_UNIT_TEST(ShouldImportInvalidView) {
+        TTestBasicRuntime runtime;
+        auto options = TTestEnvOptions()
+            .RunFakeConfigDispatcher(true)
+            .SetupKqpProxy(true);
+        TTestEnv env(runtime, options);
+        ui64 txId = 100;
+
+        THashMap<TString, TTestDataWithScheme> bucketContent(2);
+        bucketContent.emplace("/table", GenerateTestData(R"(
+            columns {
+                name: "key"
+                type { optional_type { item { type_id: UTF8 } } }
+            }
+            primary_key: "key"
+        )"));
+        bucketContent.emplace("/view", GenerateTestData(
+            {
+                EPathTypeView,
+                R"(
+                    -- backup root: "/MyRoot"
+                    CREATE VIEW IF NOT EXISTS `view` WITH security_invoker = TRUE AS SELECT missing FROM `table`;
+                )"
+            }
+        ));
+
+        TPortManager portManager;
+        const ui16 port = portManager.GetPort();
+
+        TS3Mock s3Mock(ConvertTestData(bucketContent), TS3Mock::TSettings(port));
+        UNIT_ASSERT(s3Mock.Start());
+
+        const ui64 importId = ++txId;
+        TestImport(runtime, importId, "/MyRoot", Sprintf(R"(
+            ImportFromS3Settings {
+              endpoint: "localhost:%d"
+              scheme: HTTP
+              items {
+                source_prefix: "table"
+                destination_path: "/MyRoot/table"
+              }
+              items {
+                source_prefix: "view"
+                destination_path: "/MyRoot/view"
+              }
+            }
+        )", port));
+
+        env.TestWaitNotification(runtime, importId);
+        TestGetImport(runtime, importId, "/MyRoot");
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/view"), {
+            NLs::Finished,
+            NLs::IsView
+        });
+    }
+
+    Y_UNIT_TEST(ShouldNotRetryViewCreation) {
+        TTestBasicRuntime runtime;
+        auto options = TTestEnvOptions()
+            .RunFakeConfigDispatcher(true)
+            .SetupKqpProxy(true);
+        TTestEnv env(runtime, options);
+        runtime.SetLogPriority(NKikimrServices::IMPORT, NActors::NLog::PRI_TRACE);
+        ui64 txId = 100;
+
+        THashMap<TString, TTestDataWithScheme> bucketContent(2);
+        bucketContent.emplace("/table", GenerateTestData(R"(
+            columns {
+                name: "key"
+                type { optional_type { item { type_id: UTF8 } } }
+            }
+            columns {
+                name: "value"
+                type { optional_type { item { type_id: UTF8 } } }
+            }
+            primary_key: "key"
+        )"));
+        bucketContent.emplace("/view", GenerateTestData(
+            {
+                EPathTypeView,
+                R"(
+                    -- backup root: "/MyRoot"
+                    CREATE VIEW IF NOT EXISTS `view` WITH security_invoker = TRUE AS SELECT * FROM `table`;
+                )"
+            }
+        ));
+
+        TPortManager portManager;
+        const ui16 port = portManager.GetPort();
+
+        TS3Mock s3Mock(ConvertTestData(bucketContent), TS3Mock::TSettings(port));
+        UNIT_ASSERT(s3Mock.Start());
+
+        ui64 tableCreationTxId = 0;
+        ui64 viewCreationTxId = 0;
+        TBlockEvents<TEvSchemeShard::TEvModifySchemeTransaction> tableCreationBlocker(runtime, [&](auto& ev) {
+            const auto& record = ev->Get()->Record;
+            switch (record.GetTransaction(0).GetOperationType()) {
+            case ESchemeOpCreateIndexedTable:
+                tableCreationTxId = record.GetTxId();
+                return true;
+            case ESchemeOpCreateView:
+                viewCreationTxId = record.GetTxId();
+                return false;
+            default:
+                return false;
+            }
+        });
+
+        TWaitForFirstEvent<TEvSchemeShard::TEvModifySchemeTransactionResult> viewCreationAccepter(runtime, [&](auto& ev) {
+            const auto& record = ev->Get()->Record;
+            if (!viewCreationTxId || viewCreationTxId != record.GetTxId()) {
+                return false;
+            }
+
+            UNIT_ASSERT_VALUES_EQUAL(record.GetStatus(), NKikimrScheme::StatusAccepted);
+            return true;
+        });
+
+        const ui64 importId = ++txId;
+        TestImport(runtime, importId, "/MyRoot", Sprintf(R"(
+            ImportFromS3Settings {
+              endpoint: "localhost:%d"
+              scheme: HTTP
+              items {
+                source_prefix: "table"
+                destination_path: "/MyRoot/table"
+              }
+              items {
+                source_prefix: "view"
+                destination_path: "/MyRoot/view"
+              }
+            }
+        )", port));
+
+        runtime.WaitFor("table creation attempt", [&]{ return !tableCreationBlocker.empty(); });
+        viewCreationAccepter.Wait();
+        env.TestWaitNotification(runtime, viewCreationTxId);
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/view"), {
+            NLs::Finished,
+            NLs::IsView,
+        });
+
+        tableCreationBlocker.Unblock().Stop();
+        env.TestWaitNotification(runtime, tableCreationTxId);
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/table"), {
+            NLs::Finished,
+            NLs::IsTable,
+        });
+
+        env.TestWaitNotification(runtime, importId);
+        TestGetImport(runtime, importId, "/MyRoot");
+    }
+
+    Y_UNIT_TEST(ShouldImportMultipleViews) {
+        TTestBasicRuntime runtime;
+        auto options = TTestEnvOptions()
+            .RunFakeConfigDispatcher(true)
+            .SetupKqpProxy(true);
+        TTestEnv env(runtime, options);
+        runtime.SetLogPriority(NKikimrServices::IMPORT, NActors::NLog::PRI_TRACE);
+        ui64 txId = 100;
+
+        constexpr int ViewLayers = 10;
+        THashMap<TString, TTestDataWithScheme> bucketContent(ViewLayers);
+        for (int i = 0; i < ViewLayers; ++i) {
+            bucketContent.emplace(std::format("/view{}", i), GenerateTestData(
+                {
+                    EPathTypeView,
+                    std::format(R"(
+                            -- backup root: "/MyRoot"
+                            CREATE VIEW IF NOT EXISTS `view` WITH security_invoker = TRUE AS {};
+                        )", i == 0
+                            ? "SELECT 1"
+                            : std::format("SELECT * FROM `view{}`", i - 1)
+                    )
+                }
+            ));
+        }
+
+        TPortManager portManager;
+        const ui16 port = portManager.GetPort();
+
+        TS3Mock s3Mock(ConvertTestData(bucketContent), TS3Mock::TSettings(port));
+        UNIT_ASSERT(s3Mock.Start());
+
+        auto importSettings = TStringBuilder() << std::format(R"(
+                ImportFromS3Settings {{
+                    endpoint: "localhost:{}"
+                    scheme: HTTP
+            )", port
+        );
+        for (int i = ViewLayers - 1; i >= 0; --i) {
+            importSettings << std::format(R"(
+                    items {{
+                        source_prefix: "view{}"
+                        destination_path: "/MyRoot/view{}"
+                    }}
+                )", i, i
+            );
+        }
+        importSettings << '}';
+
+        const ui64 importId = ++txId;
+        TestImport(runtime, importId, "/MyRoot", importSettings);
+
+        env.TestWaitNotification(runtime, importId);
+        TestGetImport(runtime, importId, "/MyRoot");
+
+        for (int i = 0; i < ViewLayers; ++i) {
+            TestDescribeResult(DescribePath(runtime, std::format("/MyRoot/view{}", i)), {
+                NLs::Finished,
+                NLs::IsView
+            });
+        }
+    }
+
+    struct TGeneratedChangefeed {
+        std::pair<TString, TTestDataWithScheme> Changefeed;
+        std::function<void(TTestBasicRuntime&)> Checker;
+    };
+
+    using SchemeFunction = std::function<std::function<void(TTestBasicRuntime&)>(THashMap<TString, TTestDataWithScheme>&, const TString&, const TString&)>;
+
+    struct TTableWithChangefeeds {
+        TString TableName;
+        TString PkType;
+        ui64 ChangefeedCount;
+        SchemeFunction AddedScheme;
+        int MaxPartitions;
+    };
+
+    TGeneratedChangefeed GenChangefeed(ui64 num = 1, bool isPartitioningAvailable = true, const TString& tableName = "Table", int maxPartitions = 3) {
+        const TString changefeedName = TStringBuilder() << "updates_feed" << num;
+        const TString changefeedPath = TStringBuilder() << "/" << tableName << "/" << changefeedName;
+
+        const auto changefeedDesc = Sprintf(R"(
+            name: "%s"
+            mode: MODE_UPDATES
+            format: FORMAT_JSON
+            state: STATE_ENABLED
+        )", changefeedName.c_str());
+
+        const auto topicDesc = Sprintf(R"(
+            partitioning_settings {
+                min_active_partitions: 2
+                max_active_partitions: %d
+                auto_partitioning_settings {
+                    strategy: AUTO_PARTITIONING_STRATEGY_SCALE_UP
+                    partition_write_speed {
+                        stabilization_window {
+                            seconds: 300
+                        }
+                        up_utilization_percent: 80
+                        down_utilization_percent: 20
+                    }
+                }
+            }
+            partitions {
+                active: true
+            }
+            retention_period {
+                seconds: 86400
+            }
+            partition_write_speed_bytes_per_second: 1048576
+            partition_write_burst_bytes: 1048576
+            attributes {
+                key: "_max_partition_message_groups_seqno_stored"
+                value: "6000000"
+            }
+            attributes {
+                key: "_allow_unauthenticated_read"
+                value: "true"
+            }
+            attributes {
+                key: "_allow_unauthenticated_write"
+                value: "true"
+            }
+            attributes {
+                key: "_message_group_seqno_retention_period_ms"
+                value: "1382400000"
+            }
+            consumers {
+                name: "my_consumer"
+                read_from {
+                }
+                attributes {
+                    key: "_service_type"
+                    value: "data-streams"
+                }
+            }
+        )", maxPartitions);
+
+        NAttr::TAttributes attr;
+        attr.emplace(NAttr::EKeys::TOPIC_DESCRIPTION, topicDesc);
+        return {
+            {changefeedPath, GenerateTestData({EPathTypeCdcStream, changefeedDesc, std::move(attr)})},
+            [changefeedPath = TString(changefeedPath), isPartitioningAvailable, maxPartitions](TTestBasicRuntime& runtime) {
+                TestDescribeResult(DescribePath(runtime, "/MyRoot" + changefeedPath, false, false, true), {
+                    NLs::PathExist,
+                });
+                TestDescribeResult(DescribePath(runtime, "/MyRoot" + changefeedPath + "/streamImpl", false, false, true), {
+                    NLs::ConsumerExist("my_consumer"),
+                    NLs::MinTopicPartitionsCountEqual(isPartitioningAvailable ? 2 : 1),
+                    NLs::MaxTopicPartitionsCountEqual(maxPartitions),
+                });
+            }
+        };
+    }
+
+    TVector<std::function<void(TTestBasicRuntime&)>> GenChangefeeds(
+        THashMap<TString, TTestDataWithScheme>& bucketContent,
+        const TTableWithChangefeeds& table)
+    {
+        TVector<std::function<void(TTestBasicRuntime&)>> checkers;
+        checkers.reserve(table.ChangefeedCount);
+        bool isPartitioningAvailable = table.PkType == "UINT32" || table.PkType == "UINT64";
+        for (ui64 i = 1; i <= table.ChangefeedCount; ++i) {
+            const auto genChangefeed = GenChangefeed(i, isPartitioningAvailable, table.TableName, table.MaxPartitions);
+            bucketContent.emplace(genChangefeed.Changefeed);
+            checkers.push_back(genChangefeed.Checker);
+        }
+        return checkers;
+    }
+
+    std::function<void(TTestBasicRuntime&)> AddedSchemeCommon(
+        THashMap<TString, TTestDataWithScheme>& bucketContent,
+        const TString& permissions,
+        const TString& pkType,
+        const TString& tableName = "Table")
+    {
+        const auto data = GenerateTestData(Sprintf(R"(
+            columns {
+              name: "key"
+              type { optional_type { item { type_id: %s } } }
+            }
+            columns {
+              name: "value"
+              type { optional_type { item { type_id: UTF8 } } }
+            }
+            primary_key: "key"
+        )", pkType.c_str()), {{pkType == "UTF8" ? "a" : "", 1}}, permissions);
+
+        bucketContent.emplace("/" + tableName, data);
+        return [&tableName](TTestBasicRuntime& runtime) {
+            TestDescribeResult(DescribePath(runtime, "/MyRoot/" + tableName), {
+                NLs::PathExist
+            });
+        };
+    }
+
+    std::function<void(TTestBasicRuntime&)> AddedScheme(
+        THashMap<TString, TTestDataWithScheme>& bucketContent,
+        const TString& pkType,
+        const TString& tableName = "Table")
+    {
+        return AddedSchemeCommon(bucketContent, "", pkType, tableName);
+    }
+
+    std::function<void(TTestBasicRuntime&)> AddedSchemeWithPermissions(
+        THashMap<TString, TTestDataWithScheme>& bucketContent,
+        const TString& pkType,
+        const TString& tableName = "Table")
+    {
+        const auto permissions = R"(
+            actions {
+              change_owner: "eve"
+            }
+            actions {
+              grant {
+                subject: "alice"
+                permission_names: "ydb.generic.read"
+              }
+            }
+            actions {
+              grant {
+                subject: "alice"
+                permission_names: "ydb.generic.write"
+              }
+            }
+            actions {
+              grant {
+                subject: "bob"
+                permission_names: "ydb.generic.read"
+              }
+            }
+        )";
+        return AddedSchemeCommon(bucketContent, permissions, pkType, tableName);
+    }
+
+    void TestImportChangefeeds(const TVector<TTableWithChangefeeds>& tables) {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        ui64 txId = 100;
+        runtime.GetAppData().FeatureFlags.SetEnableChangefeedsImport(true);
+        runtime.SetLogPriority(NKikimrServices::IMPORT, NActors::NLog::PRI_TRACE);
+
+        THashMap<TString, TTestDataWithScheme> bucketContent;
+        TVector<std::function<void(TTestBasicRuntime&)>> allCheckers;
+
+        for (const auto& table : tables) {
+            auto checkerTable = table.AddedScheme(bucketContent, table.PkType, table.TableName);
+            allCheckers.push_back(checkerTable);
+
+            if (table.ChangefeedCount > 0) {
+                auto checkersChangefeeds = GenChangefeeds(bucketContent, table);
+                allCheckers.insert(allCheckers.end(), checkersChangefeeds.begin(), checkersChangefeeds.end());
+            }
+        }
+
+        TPortManager portManager;
+        const ui16 port = portManager.GetPort();
+
+        TS3Mock s3Mock(ConvertTestData(bucketContent), TS3Mock::TSettings(port));
+        UNIT_ASSERT(s3Mock.Start());
+
+        for (const auto& table : tables) {
+            TestImport(runtime, ++txId, "/MyRoot", Sprintf(R"(
+                ImportFromS3Settings {
+                  endpoint: "localhost:%d"
+                  scheme: HTTP
+                  items {
+                    source_prefix: "%s"
+                    destination_path: "/MyRoot/%s"
+                  }
+                }
+            )", port, table.TableName.c_str(), table.TableName.c_str()));
+            env.TestWaitNotification(runtime, txId);
+        }
+
+        for (const auto& checker : allCheckers) {
+            checker(runtime);
+        }
+    }
+
+    void TestImportChangefeeds(ui64 countChangefeed = 1, SchemeFunction addedScheme = AddedScheme, const TString& pkType = "UTF8", int maxPartitions = 3) {
+        TestImportChangefeeds({{"Table", pkType, countChangefeed, addedScheme, maxPartitions}});
+    }
+
+    Y_UNIT_TEST(Changefeed) {
+        TestImportChangefeeds(1, AddedScheme);
+    }
+
+    // Explicit specification of the number of partitions when creating CDC
+    // is possible only if the first component of the primary key
+    // of the source table is Uint32 or Uint64
+    Y_UNIT_TEST(ChangefeedWithPartitioning) {
+        TestImportChangefeeds(1, AddedScheme, "UINT32");
+    }
+
+    Y_UNIT_TEST(ChangefeedsWithPartitioning) {
+        TestImportChangefeeds(3, AddedScheme, "UINT64");
+    }
+
+    Y_UNIT_TEST(Changefeeds) {
+        TestImportChangefeeds(3, AddedScheme);
+    }
+
+    Y_UNIT_TEST(ChangefeedWithTablePermissions) {
+        TestImportChangefeeds(1, AddedSchemeWithPermissions);
+    }
+
+    Y_UNIT_TEST(ChangefeedsWithTablePermissions) {
+        TestImportChangefeeds(3, AddedSchemeWithPermissions);
+    }
+
+    // Test for tables with similar prefixes
+    Y_UNIT_TEST(ChangefeedTablePrefixConflict) {
+        TestImportChangefeeds({
+            {"table", "UTF8", 0, AddedScheme, 3},         // table without changefeed
+            {"table_prefix", "UTF8", 1, AddedScheme, 3}   // table_prefix with changefeed
+        });
+    }
+
+    // Test that identical changefeeds are correctly applied to their respective tables with common prefix
+    Y_UNIT_TEST(ChangefeedTablePrefixConflictDiffTableDesc) {
+        TestImportChangefeeds({
+            {"table", "UINT32", 1, AddedScheme, 3},       // partitioning available (table property)
+            {"table_prefix", "UTF8", 1, AddedScheme, 3}   // partitioning unavailable (table property)
+        });
+    }
+
+    // Test that changefeeds with different properties are created under their respective tables
+    Y_UNIT_TEST(ChangefeedTablePrefixConflictDiffChangefeedDesc) {
+        TestImportChangefeeds({
+            {"table", "UINT32", 1, AddedScheme, 3},       // max partitions 3 (changefeed property)
+            {"table_prefix", "UTF8", 1, AddedScheme, 4}   // max partitions 4 (changefeed property)
+        });
+    }
+
+    void TestCreateCdcStreams(TTestEnv& env, TTestActorRuntime& runtime, ui64& txId, const TString& dbName, ui64 count, bool isShouldSuccess) {
+        for (ui64 i = 1; i <= count; ++i) {
+            TestCreateCdcStream(runtime, ++txId, dbName, Sprintf(R"(
+                TableName: "Original"
+                StreamDescription {
+                  Name: "Stream_%d"
+                  Mode: ECdcStreamModeKeysOnly
+                  Format: %s
+                }
+            )", i, isShouldSuccess ? "ECdcStreamFormatJson" : "ECdcStreamFormatProto"));
+            env.TestWaitNotification(runtime, txId);
+        }
+    }
+
+    void ChangefeedsExportRestore(bool isShouldSuccess) {
+        TPortManager portManager;
+        const ui16 port = portManager.GetPort();
+
+        TS3Mock s3Mock({}, TS3Mock::TSettings(port));
+        UNIT_ASSERT(s3Mock.Start());
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        ui64 txId = 100;
+
+        runtime.SetLogPriority(NKikimrServices::DATASHARD_BACKUP, NActors::NLog::PRI_TRACE);
+        runtime.SetLogPriority(NKikimrServices::DATASHARD_RESTORE, NActors::NLog::PRI_TRACE);
+        runtime.SetLogPriority(NKikimrServices::EXPORT, NActors::NLog::PRI_TRACE);
+        runtime.SetLogPriority(NKikimrServices::IMPORT, NActors::NLog::PRI_TRACE);
+        runtime.GetAppData().FeatureFlags.SetEnableChangefeedsExport(true);
+        runtime.GetAppData().FeatureFlags.SetEnableChangefeedsImport(true);
+
+        TestCreateTable(runtime, ++txId, "/MyRoot", R"(
+            Name: "Original"
+            Columns { Name: "key" Type: "Uint32" }
+            Columns { Name: "double_value" Type: "Double" }
+            Columns { Name: "float_value" Type: "Float" }
+            KeyColumnNames: ["key"]
+        )");
+        env.TestWaitNotification(runtime, txId);
+
+        TestCreateCdcStreams(env, runtime, txId, "/MyRoot", 3, isShouldSuccess);
+
+        TestExport(runtime, ++txId, "/MyRoot", Sprintf(R"(
+            ExportToS3Settings {
+              endpoint: "localhost:%d"
+              scheme: HTTP
+              items {
+                source_path: "/MyRoot/Original"
+                destination_prefix: ""
+              }
+            }
+        )", port));
+        env.TestWaitNotification(runtime, txId);
+        TestGetExport(runtime, txId, "/MyRoot");
+
+        TestImport(runtime, ++txId, "/MyRoot", Sprintf(R"(
+            ImportFromS3Settings {
+              endpoint: "localhost:%d"
+              scheme: HTTP
+              items {
+                source_prefix: ""
+                destination_path: "/MyRoot/Restored"
+              }
+            }
+        )", port));
+        env.TestWaitNotification(runtime, txId);
+        TestGetImport(runtime, txId, "/MyRoot", isShouldSuccess ? Ydb::StatusIds::SUCCESS : Ydb::StatusIds::CANCELLED);
+    }
+
+    Y_UNIT_TEST(ChangefeedsExportRestore) {
+        ChangefeedsExportRestore(true);
+    }
+
+    Y_UNIT_TEST(ChangefeedsExportRestoreUnhappyPropose) {
+        ChangefeedsExportRestore(false);
+    }
+
+    Y_UNIT_TEST(ShouldSucceedImportTableWithUniqueIndex) {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        ui64 txId = 100;
+        runtime.SetLogPriority(NKikimrServices::IMPORT, NActors::NLog::PRI_TRACE);
+
+        const auto data = GenerateTestData(R"(
+            columns {
+              name: "key"
+              type { optional_type { item { type_id: UTF8 } } }
+            }
+            columns {
+              name: "value"
+              type { optional_type { item { type_id: UTF8 } } }
+            }
+            primary_key: "key"
+            indexes {
+                name: "UniqueIndex"
+                index_columns: "value"
+                global_unique_index { }
+            }
+        )");
+
+        THashMap<TString, TTestDataWithScheme> bucketContent;
+        bucketContent.emplace("", data);
+
+        TPortManager portManager;
+        const ui16 port = portManager.GetPort();
+
+        TS3Mock s3Mock(ConvertTestData(bucketContent), TS3Mock::TSettings(port));
+        UNIT_ASSERT(s3Mock.Start());
+
+        TestImport(runtime, ++txId, "/MyRoot", Sprintf(R"(
+            ImportFromS3Settings {
+              endpoint: "localhost:%d"
+              scheme: HTTP
+              items {
+                source_prefix: ""
+                destination_path: "/MyRoot/Table"
+              }
+            }
+        )", port));
+        env.TestWaitNotification(runtime, txId);
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/Table"), {
+            NLs::PathExist,
+            NLs::IndexesCount(1)
+        });
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/Table/UniqueIndex", false, false, true), {
+            NLs::PathExist,
+            NLs::IndexType(EIndexTypeGlobalUnique),
+            NLs::IndexState(EIndexStateReady)
+        });
+    }
+
+    Y_UNIT_TEST(ShouldSucceedExportImportTableWithUniqueIndex) {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        ui64 txId = 100;
+        runtime.SetLogPriority(NKikimrServices::EXPORT, NActors::NLog::PRI_TRACE);
+        runtime.SetLogPriority(NKikimrServices::IMPORT, NActors::NLog::PRI_TRACE);
+
+        TPortManager portManager;
+        const ui16 port = portManager.GetPort();
+
+        TS3Mock s3Mock({}, TS3Mock::TSettings(port));
+        UNIT_ASSERT(s3Mock.Start());
+
+        TestCreateIndexedTable(runtime, ++txId, "/MyRoot", R"(
+            TableDescription {
+              Name: "Table"
+              Columns { Name: "key" Type: "Uint32" }
+              Columns { Name: "value" Type: "Utf8" }
+              KeyColumnNames: ["key"]
+            }
+            IndexDescription {
+              Name: "ByValue"
+              KeyColumnNames: ["value"]
+              Type: EIndexTypeGlobalUnique
+            }
+        )");
+        env.TestWaitNotification(runtime, txId);
+
+        TestExport(runtime, ++txId, "/MyRoot", Sprintf(R"(
+            ExportToS3Settings {
+              endpoint: "localhost:%d"
+              scheme: HTTP
+              items {
+                source_path: "/MyRoot/Table"
+                destination_prefix: ""
+              }
+            }
+        )", port));
+        env.TestWaitNotification(runtime, txId);
+
+        TestDropTable(runtime, ++txId, "/MyRoot", "Table");
+        env.TestWaitNotification(runtime, txId);
+
+        TestImport(runtime, ++txId, "/MyRoot", Sprintf(R"(
+            ImportFromS3Settings {
+              endpoint: "localhost:%d"
+              scheme: HTTP
+              items {
+                source_prefix: ""
+                destination_path: "/MyRoot/Table"
+              }
+            }
+        )", port));
+        env.TestWaitNotification(runtime, txId);
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/Table"), {
+            NLs::PathExist,
+            NLs::IndexesCount(1)
+        });
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/Table/ByValue", false, false, true), {
+            NLs::PathExist,
+            NLs::IndexType(EIndexTypeGlobalUnique),
+            NLs::IndexState(EIndexStateReady)
+        });
+    }
+
     Y_UNIT_TEST(IgnoreBasicSchemeLimits) {
         TTestBasicRuntime runtime;
         TTestEnv env(runtime);
@@ -4256,14 +6557,17 @@ Y_UNIT_TEST_SUITE(TImportTests) {
         });
         UNIT_ASSERT_UNEQUAL(tenantSchemeShard, 0);
 
+        auto initialSubDomainDesc = DescribePath(runtime, tenantSchemeShard, "/MyRoot/Alice");
+        ui64 expectedSubDomainPaths = initialSubDomainDesc.GetPathDescription().GetDomainDescription().GetPathsInside();
+
         TSchemeLimits basicLimits;
         basicLimits.MaxShards = 4;
-        basicLimits.MaxShardsInPath = 2;
+        basicLimits.MaxShardsInPath = 1;
         SetSchemeshardSchemaLimits(runtime, basicLimits, tenantSchemeShard);
 
         TestDescribeResult(DescribePath(runtime, tenantSchemeShard, "/MyRoot/Alice"), {
             NLs::DomainLimitsIs(basicLimits.MaxPaths, basicLimits.MaxShards),
-            NLs::PathsInsideDomain(0),
+            NLs::PathsInsideDomain(expectedSubDomainPaths),
             NLs::ShardsInsideDomain(3)
         });
 
@@ -4274,6 +6578,7 @@ Y_UNIT_TEST_SUITE(TImportTests) {
             KeyColumnNames: ["Key"]
         )");
         env.TestWaitNotification(runtime, txId, tenantSchemeShard);
+        expectedSubDomainPaths += 1;
 
         TestCreateTable(runtime, tenantSchemeShard, ++txId, "/MyRoot/Alice", R"(
                 Name: "table2"
@@ -4330,44 +6635,2179 @@ Y_UNIT_TEST_SUITE(TImportTests) {
         ));
         env.TestWaitNotification(runtime, importId, tenantSchemeShard);
         TestGetImport(runtime, tenantSchemeShard, importId, "/MyRoot/Alice");
+        expectedSubDomainPaths += 4;
 
         TestDescribeResult(DescribePath(runtime, tenantSchemeShard, "/MyRoot/Alice"), {
             NLs::DomainLimitsIs(basicLimits.MaxPaths, basicLimits.MaxShards),
-            NLs::PathsInsideDomain(5),
+            NLs::PathsInsideDomain(expectedSubDomainPaths),
             NLs::ShardsInsideDomain(7)
         });
     }
-}
 
-Y_UNIT_TEST_SUITE(TImportWithRebootsTests) {
-    void ShouldSucceed(const TString& scheme) {
+    void TestTopic(bool isCorrupted = false) {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        ui64 txId = 100;
+        runtime.SetLogPriority(NKikimrServices::IMPORT, NActors::NLog::PRI_TRACE);
+        auto topic = NDescUT::TSimpleTopic(0, 2);
+
+        const auto data = GenerateTestData({
+                EPathTypePersQueueGroup,
+                isCorrupted ? topic.GetCorruptedPublicFile() : topic.GetPublicProto().DebugString()
+        });
+
+        THashMap<TString, TTestDataWithScheme> bucketContent;
+
+        bucketContent.emplace(topic.GetDir(), data);
+
         TPortManager portManager;
         const ui16 port = portManager.GetPort();
 
-        const auto data = GenerateTestData(scheme, {{"a", 1}});
+        TS3Mock s3Mock(ConvertTestData(bucketContent), TS3Mock::TSettings(port));
+        UNIT_ASSERT(s3Mock.Start());
+
+        TestImport(runtime, ++txId, "/MyRoot", topic.GetImportRequest(port));
+        env.TestWaitNotification(runtime, txId);
+        TestGetImport(runtime, txId, "/MyRoot",  isCorrupted ? Ydb::StatusIds::CANCELLED : Ydb::StatusIds::SUCCESS);
+
+        if (!isCorrupted) {
+            auto consumers = topic.GetConsumers();
+
+            auto describePath = DescribePath(runtime, "/MyRoot" + topic.GetRestoredDir());
+            TestDescribeResult(describePath, {
+                NLs::PathExist,
+                NLs::ConsumersSize(consumers.size()),
+                NLs::ConsumerExist(consumers.at(0).name()),
+                NLs::ConsumerExist(consumers.at(1).name()),
+            });
+        }
+    }
+
+    Y_UNIT_TEST(TopicImport) {
+        TestTopic();
+    }
+
+    Y_UNIT_TEST(CorruptedTopicImport) {
+        TestTopic(true);
+    }
+
+    Y_UNIT_TEST(TopicExportImport) {
+        TPortManager portManager;
+        const ui16 port = portManager.GetPort();
+
+        TS3Mock s3Mock({}, TS3Mock::TSettings(port));
+        UNIT_ASSERT(s3Mock.Start());
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        ui64 txId = 100;
+
+        runtime.SetLogPriority(NKikimrServices::DATASHARD_BACKUP, NActors::NLog::PRI_TRACE);
+        runtime.SetLogPriority(NKikimrServices::DATASHARD_RESTORE, NActors::NLog::PRI_TRACE);
+        runtime.SetLogPriority(NKikimrServices::EXPORT, NActors::NLog::PRI_TRACE);
+        runtime.SetLogPriority(NKikimrServices::IMPORT, NActors::NLog::PRI_TRACE);
+
+        auto topic = NDescUT::TSimpleTopic(1, 0);
+
+        TestCreatePQGroup(runtime, ++txId, "/MyRoot", topic.GetPrivateProto().DebugString());
+        env.TestWaitNotification(runtime, txId);
+
+        TestExport(runtime, ++txId, "/MyRoot", topic.GetExportRequest(port));
+        env.TestWaitNotification(runtime, txId);
+        TestGetExport(runtime, txId, "/MyRoot");
+
+        TestImport(runtime, ++txId, "/MyRoot", topic.GetImportRequest(port));
+        env.TestWaitNotification(runtime, txId);
+        TestGetImport(runtime, txId, "/MyRoot", Ydb::StatusIds::SUCCESS);
+
+        auto describePath = DescribePath(runtime, "/MyRoot" + topic.GetRestoredDir());
+        TestDescribeResult(describePath, {
+            NLs::PathExist,
+        });
+    }
+
+    Y_UNIT_TEST(TopicExportImportWithAllFields) {
+        TPortManager portManager;
+        const ui16 port = portManager.GetPort();
+
+        TS3Mock s3Mock({}, TS3Mock::TSettings(port));
+        UNIT_ASSERT(s3Mock.Start());
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime, TTestEnvOptions{}.EnableTopicMessageLevelParallelism(true));
+        ui64 txId = 100;
+
+        runtime.SetLogPriority(NKikimrServices::DATASHARD_BACKUP, NActors::NLog::PRI_TRACE);
+        runtime.SetLogPriority(NKikimrServices::DATASHARD_RESTORE, NActors::NLog::PRI_TRACE);
+        runtime.SetLogPriority(NKikimrServices::EXPORT, NActors::NLog::PRI_TRACE);
+        runtime.SetLogPriority(NKikimrServices::IMPORT, NActors::NLog::PRI_TRACE);
+
+        TString topicProto = R"(
+            Name: "topic_full_test"
+            TotalGroupCount: 3
+            PartitionPerTablet: 3
+            PQTabletConfig {
+                RequireAuthRead: false
+                RequireAuthWrite: false
+                AbcId: 123
+                AbcSlug: "abc_slug"
+                FederationAccount: "federation_account"
+                EnableCompactification: false
+                TimestampType: "LogAppendTime"
+                PartitionConfig {
+                    LifetimeSeconds: 12
+                    WriteSpeedInBytesPerSecond: 1024
+                    BurstSize: 2048
+                    MaxSizeInPartition: 10
+                    SourceIdLifetimeSeconds: 14
+                    SourceIdMaxCounts: 10000000
+                }
+                Codecs {
+                    Ids: 0
+                    Ids: 1
+                    Ids: 2
+                }
+                MeteringMode: METERING_MODE_RESERVED_CAPACITY
+                PartitionStrategy {
+                    MinPartitionCount: 3
+                    MaxPartitionCount: 10
+                    ScaleThresholdSeconds: 400
+                    ScaleUpPartitionWriteSpeedThresholdPercent: 91
+                    ScaleDownPartitionWriteSpeedThresholdPercent: 31
+                    PartitionStrategyType: CAN_SPLIT
+                }
+                Consumers {
+                    Name: "consumer_1"
+                    Important: true
+                    Codec {
+                        Ids: 0
+                        Ids: 1
+                        Ids: 2
+                    }
+                }
+                Consumers {
+                    Name: "consumer_2"
+                    Important: false
+                    Codec {
+                        Ids: 0
+                        Ids: 1
+                        Ids: 2
+                    }
+                }
+                Consumers {
+                    Name: "consumer_3"
+                    Important: false
+                    Type: CONSUMER_TYPE_MLP
+                    KeepMessageOrder: true
+                    DefaultProcessingTimeoutSeconds: 30
+                    DefaultDelayMessageTimeMs: 5000
+                    DefaultReceiveMessageWaitTimeMs: 3000
+                    DeadLetterPolicyEnabled: true
+                    DeadLetterPolicy: DEAD_LETTER_POLICY_MOVE
+                    MaxProcessingAttempts: 42
+                    DeadLetterQueue: "/MyRoot/dlq_for_topic_full_test"
+                    Codec {
+                        Ids: 0
+                        Ids: 1
+                        Ids: 2
+                    }
+                }
+            }
+        )";
+
+        TestCreatePQGroup(runtime, ++txId, "/MyRoot", topicProto);
+        env.TestWaitNotification(runtime, txId);
+
+        TString exportRequest = Sprintf(R"(
+            ExportToS3Settings {
+              endpoint: "localhost:%d"
+              scheme: HTTP
+              items {
+                source_path: "/MyRoot/topic_full_test"
+                destination_prefix: "topic_export"
+              }
+            }
+        )", port);
+
+        TestExport(runtime, ++txId, "/MyRoot", exportRequest);
+        env.TestWaitNotification(runtime, txId);
+        TestGetExport(runtime, txId, "/MyRoot");
+
+        TString importRequest = Sprintf(R"(
+            ImportFromS3Settings {
+              endpoint: "localhost:%d"
+              scheme: HTTP
+              items {
+                source_prefix: "topic_export"
+                destination_path: "/MyRoot/RestoredTopic"
+              }
+            }
+        )", port);
+
+        TestImport(runtime, ++txId, "/MyRoot", importRequest);
+        env.TestWaitNotification(runtime, txId);
+        TestGetImport(runtime, txId, "/MyRoot", Ydb::StatusIds::SUCCESS);
+
+        auto describePath = DescribePath(runtime, "/MyRoot/RestoredTopic");
+        TestDescribeResult(describePath, {
+            NLs::PathExist,
+        });
+
+        const auto& pathDesc = describePath.GetPathDescription();
+        UNIT_ASSERT(pathDesc.HasPersQueueGroup());
+        const auto& pqGroup = pathDesc.GetPersQueueGroup();
+        UNIT_ASSERT(pqGroup.HasPQTabletConfig());
+        const auto& config = pqGroup.GetPQTabletConfig();
+
+        // Check partition config
+        UNIT_ASSERT(config.HasPartitionConfig());
+        const auto& partConfig = config.GetPartitionConfig();
+        UNIT_ASSERT_VALUES_EQUAL(partConfig.GetLifetimeSeconds(), 12);
+        UNIT_ASSERT_VALUES_EQUAL(partConfig.GetWriteSpeedInBytesPerSecond(), 1024);
+        UNIT_ASSERT_VALUES_EQUAL(partConfig.GetBurstSize(), 2048);
+        UNIT_ASSERT_VALUES_EQUAL(partConfig.GetMaxSizeInPartition(), 10);
+        UNIT_ASSERT_VALUES_EQUAL(partConfig.GetSourceIdLifetimeSeconds(), 14);
+        UNIT_ASSERT_VALUES_EQUAL(partConfig.GetSourceIdMaxCounts(), 10000000);
+
+        // Check codecs
+        UNIT_ASSERT(config.HasCodecs());
+        const auto& codecs = config.GetCodecs();
+        UNIT_ASSERT_VALUES_EQUAL(codecs.IdsSize(), 3);
+        UNIT_ASSERT_VALUES_EQUAL(codecs.GetIds(0), 0);
+        UNIT_ASSERT_VALUES_EQUAL(codecs.GetIds(1), 1);
+        UNIT_ASSERT_VALUES_EQUAL(codecs.GetIds(2), 2);
+
+        // Check metering mode
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<int>(config.GetMeteringMode()),
+            static_cast<int>(NKikimrPQ::TPQTabletConfig::METERING_MODE_RESERVED_CAPACITY)
+        );
+
+        UNIT_ASSERT_VALUES_EQUAL(config.GetRequireAuthRead(), false);
+        UNIT_ASSERT_VALUES_EQUAL(config.GetRequireAuthWrite(), false);
+        UNIT_ASSERT_VALUES_EQUAL(config.GetAbcId(), 123);
+        UNIT_ASSERT_VALUES_EQUAL(config.GetAbcSlug(), "abc_slug");
+        UNIT_ASSERT_VALUES_EQUAL(config.GetFederationAccount(), "federation_account");
+        UNIT_ASSERT_VALUES_EQUAL(config.GetEnableCompactification(), false);
+        UNIT_ASSERT_VALUES_EQUAL(config.GetTimestampType(), "LogAppendTime");
+
+        // Check partition strategy
+        UNIT_ASSERT(config.HasPartitionStrategy());
+        const auto& partStrategy = config.GetPartitionStrategy();
+        UNIT_ASSERT_VALUES_EQUAL(partStrategy.GetMinPartitionCount(), 3);
+        UNIT_ASSERT_VALUES_EQUAL(partStrategy.GetMaxPartitionCount(), 10);
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<int>(partStrategy.GetPartitionStrategyType()),
+            static_cast<int>(NKikimrPQ::TPQTabletConfig::CAN_SPLIT)
+        );
+        UNIT_ASSERT_VALUES_EQUAL(partStrategy.GetScaleThresholdSeconds(), 400);
+        UNIT_ASSERT_VALUES_EQUAL(partStrategy.GetScaleUpPartitionWriteSpeedThresholdPercent(), 91);
+        UNIT_ASSERT_VALUES_EQUAL(partStrategy.GetScaleDownPartitionWriteSpeedThresholdPercent(), 31);
+
+        // Check consumers
+        UNIT_ASSERT_VALUES_EQUAL(config.ConsumersSize(), 3);
+
+        const auto& consumer1 = config.GetConsumers(0);
+        UNIT_ASSERT_VALUES_EQUAL(consumer1.GetName(), "consumer_1");
+        UNIT_ASSERT_VALUES_EQUAL(consumer1.GetImportant(), true);
+        UNIT_ASSERT(consumer1.HasCodec());
+        UNIT_ASSERT_VALUES_EQUAL(consumer1.GetCodec().IdsSize(), 3);
+        UNIT_ASSERT_VALUES_EQUAL(consumer1.GetCodec().GetIds(0), 0);
+        UNIT_ASSERT_VALUES_EQUAL(consumer1.GetCodec().GetIds(1), 1);
+        UNIT_ASSERT_VALUES_EQUAL(consumer1.GetCodec().GetIds(2), 2);
+
+        const auto& consumer2 = config.GetConsumers(1);
+        UNIT_ASSERT_VALUES_EQUAL(consumer2.GetName(), "consumer_2");
+        UNIT_ASSERT_VALUES_EQUAL(consumer2.GetImportant(), false);
+        UNIT_ASSERT(consumer2.HasCodec());
+        UNIT_ASSERT_VALUES_EQUAL(consumer2.GetCodec().IdsSize(), 3);
+        UNIT_ASSERT_VALUES_EQUAL(consumer2.GetCodec().GetIds(0), 0);
+        UNIT_ASSERT_VALUES_EQUAL(consumer2.GetCodec().GetIds(1), 1);
+        UNIT_ASSERT_VALUES_EQUAL(consumer2.GetCodec().GetIds(2), 2);
+
+        const auto& consumer3 = config.GetConsumers(2);
+        UNIT_ASSERT_VALUES_EQUAL(consumer3.GetName(), "consumer_3");
+        UNIT_ASSERT_VALUES_EQUAL(consumer3.GetImportant(), false);
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<int>(consumer3.GetType()),
+            static_cast<int>(NKikimrPQ::TPQTabletConfig::CONSUMER_TYPE_MLP));
+        UNIT_ASSERT_VALUES_EQUAL(consumer3.GetKeepMessageOrder(), true);
+        UNIT_ASSERT_VALUES_EQUAL(consumer3.GetDefaultProcessingTimeoutSeconds(), 30);
+        UNIT_ASSERT_VALUES_EQUAL(consumer3.GetDefaultDelayMessageTimeMs(), 5000);
+        UNIT_ASSERT_VALUES_EQUAL(consumer3.GetDefaultReceiveMessageWaitTimeMs(), 3000);
+        UNIT_ASSERT_VALUES_EQUAL(consumer3.GetDeadLetterPolicyEnabled(), true);
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<int>(consumer3.GetDeadLetterPolicy()),
+            static_cast<int>(NKikimrPQ::TPQTabletConfig::DEAD_LETTER_POLICY_MOVE));
+        UNIT_ASSERT_VALUES_EQUAL(consumer3.GetMaxProcessingAttempts(), 42u);
+        UNIT_ASSERT_VALUES_EQUAL(consumer3.GetDeadLetterQueue(), "/MyRoot/dlq_for_topic_full_test");
+        UNIT_ASSERT(consumer3.HasCodec());
+        UNIT_ASSERT_VALUES_EQUAL(consumer3.GetCodec().IdsSize(), 3);
+        UNIT_ASSERT_VALUES_EQUAL(consumer3.GetCodec().GetIds(0), 0);
+        UNIT_ASSERT_VALUES_EQUAL(consumer3.GetCodec().GetIds(1), 1);
+        UNIT_ASSERT_VALUES_EQUAL(consumer3.GetCodec().GetIds(2), 2);
+
+        // Check partition count
+        UNIT_ASSERT_VALUES_EQUAL(pqGroup.GetTotalGroupCount(), 3);
+        UNIT_ASSERT_VALUES_EQUAL(pqGroup.GetPartitionPerTablet(), 3);
+    }
+
+    Y_UNIT_TEST(UnknownSchemeObjectImport) {
+        TPortManager portManager;
+        const ui16 port = portManager.GetPort();
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        ui64 txId = 100;
+
+        TS3Mock s3Mock({
+            {"/unknown_key", "unknown_scheme_object"},
+            {"/metadata.json", R"({"version": 0})"}
+        }, TS3Mock::TSettings(port));
+        UNIT_ASSERT(s3Mock.Start());
+
+        TestImport(runtime, ++txId, "/MyRoot", Sprintf(R"(
+            ImportFromS3Settings {
+              endpoint: "localhost:%d"
+              scheme: HTTP
+              items {
+                source_prefix: ""
+                destination_path: "/MyRoot/Unknown"
+              }
+            }
+        )", port));
+        env.TestWaitNotification(runtime, txId);
+
+        auto issues = TestGetImport(runtime, txId, "/MyRoot", Ydb::StatusIds::CANCELLED)
+                        .GetResponse().GetEntry().GetIssues();
+        UNIT_ASSERT(!issues.empty());
+        UNIT_ASSERT_EQUAL(issues.begin()->message(), "Unsupported scheme object type");
+    }
+
+    void MaterializedIndex(Ydb::Import::ImportFromS3Settings::IndexPopulationMode mode, const TString& metadata = R"({"version": 1})") {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime, TTestEnvOptions().EnableIndexMaterialization(true));
+
+        const auto a = GenerateTestData(R"(
+            columns {
+              name: "key"
+              type { optional_type { item { type_id: UTF8 } } }
+            }
+            columns {
+              name: "value"
+              type { optional_type { item { type_id: UTF8 } } }
+            }
+            primary_key: "key"
+            indexes {
+              name: "by_value"
+              index_columns: "value"
+              global_index {}
+            }
+        )", {{"a", 1}}, "", metadata);
+
+        const auto b = GenerateTestData(R"(
+            columns {
+              name: "key"
+              type { optional_type { item { type_id: UTF8 } } }
+            }
+            columns {
+              name: "value"
+              type { optional_type { item { type_id: UTF8 } } }
+            }
+            primary_key: "value"
+            primary_key: "key"
+        )", {{"b", 1}}, "", metadata);
+
+        Run(runtime, env, ConvertTestData({{"/a", a}, {"/a/by_value/indexImplTable", b}}), Sprintf(R"(
+            ImportFromS3Settings {
+              endpoint: "localhost:%%d"
+              scheme: HTTP
+              index_population_mode: %s
+              items {
+                source_prefix: "a"
+                destination_path: "/MyRoot/Table"
+              }
+            }
+        )", Ydb::Import::ImportFromS3Settings::IndexPopulationMode_Name(mode).c_str()));
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/Table"), {
+            NLs::PathExist,
+            NLs::IndexesCount(1),
+        });
+    }
+
+    Y_UNIT_TEST(MaterializedIndexBuild) {
+        MaterializedIndex(Ydb::Import::ImportFromS3Settings::INDEX_POPULATION_MODE_BUILD);
+    }
+
+    Y_UNIT_TEST(MaterializedIndexImport) {
+        MaterializedIndex(Ydb::Import::ImportFromS3Settings::INDEX_POPULATION_MODE_IMPORT);
+    }
+
+    Y_UNIT_TEST(MaterializedIndexAuto) {
+        MaterializedIndex(Ydb::Import::ImportFromS3Settings::INDEX_POPULATION_MODE_AUTO);
+    }
+
+    Y_UNIT_TEST(MaterializedIndexOldMetadata) {
+        MaterializedIndex(Ydb::Import::ImportFromS3Settings::INDEX_POPULATION_MODE_IMPORT, R"({"version": 0})");
+    }
+
+    void MaterializedIndexAbsent(Ydb::Import::ImportFromS3Settings::IndexPopulationMode mode, bool shouldFail) {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime, TTestEnvOptions().EnableIndexMaterialization(true));
+
+        const auto a = GenerateTestData(R"(
+            columns {
+              name: "key"
+              type { optional_type { item { type_id: UTF8 } } }
+            }
+            columns {
+              name: "value"
+              type { optional_type { item { type_id: UTF8 } } }
+            }
+            primary_key: "key"
+            indexes {
+              name: "by_value"
+              index_columns: "value"
+              global_index {}
+            }
+        )", {{"a", 1}});
+
+        const auto expectedStatus = shouldFail ? Ydb::StatusIds::CANCELLED : Ydb::StatusIds::SUCCESS;
+        Run(runtime, env, ConvertTestData({{"/a", a}}), Sprintf(R"(
+            ImportFromS3Settings {
+              endpoint: "localhost:%%d"
+              scheme: HTTP
+              index_population_mode: %s
+              items {
+                source_prefix: "a"
+                destination_path: "/MyRoot/Table"
+              }
+            }
+        )", Ydb::Import::ImportFromS3Settings::IndexPopulationMode_Name(mode).c_str()), expectedStatus);
+
+        if (shouldFail) {
+            return;
+        }
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/Table"), {
+            NLs::PathExist,
+            NLs::IndexesCount(1),
+        });
+    }
+
+    Y_UNIT_TEST(MaterializedIndexAbsentBuild) {
+        MaterializedIndexAbsent(Ydb::Import::ImportFromS3Settings::INDEX_POPULATION_MODE_BUILD, false);
+    }
+
+    Y_UNIT_TEST(MaterializedIndexAbsentImport) {
+        MaterializedIndexAbsent(Ydb::Import::ImportFromS3Settings::INDEX_POPULATION_MODE_IMPORT, true);
+    }
+
+    Y_UNIT_TEST(MaterializedIndexAbsentAuto) {
+        MaterializedIndexAbsent(Ydb::Import::ImportFromS3Settings::INDEX_POPULATION_MODE_AUTO, false);
+    }
+
+    void ShouldSucceedOnIndexedTableImpl(
+        bool enableIndexMaterialization,
+        const TString& tableColumns,
+        const TString& primaryKey,
+        const TString& indexProto,
+        NKikimrSchemeOp::EIndexType expectedIndexType,
+        const TVector<TString>& indexKeyColumns)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime, TTestEnvOptions().EnableIndexMaterialization(enableIndexMaterialization));
+
+        auto scheme = TStringBuilder() << tableColumns << R"(
+            primary_key: ")" << primaryKey << R"("
+        )" << indexProto;
+
+        const auto data = GenerateTestData(scheme, {{"", 0}});
+
+        Run(runtime, env, ConvertTestData(data), R"(
+            ImportFromS3Settings {
+              endpoint: "localhost:%d"
+              scheme: HTTP
+              items {
+                source_prefix: ""
+                destination_path: "/MyRoot/Table"
+              }
+            }
+        )");
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/Table"), {
+            NLs::PathExist,
+            NLs::IsTable,
+            NLs::IndexesCount(1),
+        });
+
+        TestDescribeResult(DescribePrivatePath(runtime, "/MyRoot/Table/index", true, true), {
+            NLs::PathExist,
+            NLs::IndexType(expectedIndexType),
+            NLs::IndexState(NKikimrSchemeOp::EIndexState::EIndexStateReady),
+            NLs::IndexKeys(indexKeyColumns),
+        });
+
+        for (const auto& implTable : NTableIndex::GetImplTables(expectedIndexType, indexKeyColumns)) {
+            TestDescribeResult(
+                DescribePrivatePath(runtime,
+                    TString::Join("/MyRoot/Table/index/", implTable), true, true),
+                {NLs::PathExist, NLs::IsTable});
+        }
+    }
+
+    static const TString DefaultIndexedTableColumns = R"(
+        columns {
+          name: "key"
+          type { optional_type { item { type_id: UINT64 } } }
+        }
+        columns {
+          name: "value"
+          type { optional_type { item { type_id: UTF8 } } }
+        }
+    )";
+
+    Y_UNIT_TEST_TWIN(ShouldSucceedOnGlobalSyncIndexedTable, Materialized) {
+        ShouldSucceedOnIndexedTableImpl(Materialized, DefaultIndexedTableColumns, "key", R"(
+            indexes {
+              name: "index"
+              index_columns: "value"
+              global_index {}
+            }
+        )",
+        NKikimrSchemeOp::EIndexTypeGlobal,
+        {"value"});
+    }
+
+    Y_UNIT_TEST_TWIN(ShouldSucceedOnGlobalAsyncIndexedTable, Materialized) {
+        ShouldSucceedOnIndexedTableImpl(Materialized, DefaultIndexedTableColumns, "key", R"(
+            indexes {
+              name: "index"
+              index_columns: "value"
+              global_async_index {}
+            }
+        )",
+        NKikimrSchemeOp::EIndexTypeGlobalAsync,
+        {"value"});
+    }
+
+    Y_UNIT_TEST_TWIN(ShouldSucceedOnGlobalUniqueIndexedTable, Materialized) {
+        ShouldSucceedOnIndexedTableImpl(Materialized, DefaultIndexedTableColumns, "key", R"(
+            indexes {
+              name: "index"
+              index_columns: "value"
+              global_unique_index {}
+            }
+        )",
+        NKikimrSchemeOp::EIndexTypeGlobalUnique,
+        {"value"});
+    }
+
+    Y_UNIT_TEST_TWIN(ShouldSucceedOnGlobalVectorKmeansTreeIndexedTable, Materialized) {
+        ShouldSucceedOnIndexedTableImpl(Materialized, R"(
+            columns {
+              name: "key"
+              type { optional_type { item { type_id: UINT64 } } }
+            }
+            columns {
+              name: "embedding"
+              type { optional_type { item { type_id: STRING } } }
+            }
+        )", "key", R"(
+            indexes {
+              name: "index"
+              index_columns: "embedding"
+              global_vector_kmeans_tree_index {
+                vector_settings {
+                  settings {
+                    metric: DISTANCE_COSINE
+                    vector_type: VECTOR_TYPE_FLOAT
+                    vector_dimension: 1024
+                  }
+                  clusters: 4
+                  levels: 5
+                }
+              }
+            }
+        )",
+        NKikimrSchemeOp::EIndexTypeGlobalVectorKmeansTree,
+        {"embedding"});
+    }
+
+    Y_UNIT_TEST_TWIN(ShouldSucceedOnGlobalVectorKmeansTreePrefixIndexedTable, Materialized) {
+        ShouldSucceedOnIndexedTableImpl(Materialized, R"(
+            columns {
+              name: "prefix"
+              type { optional_type { item { type_id: UINT64 } } }
+            }
+            columns {
+              name: "embedding"
+              type { optional_type { item { type_id: STRING } } }
+            }
+        )", "prefix", R"(
+            indexes {
+              name: "index"
+              index_columns: "prefix"
+              index_columns: "embedding"
+              global_vector_kmeans_tree_index {
+                vector_settings {
+                  settings {
+                    metric: DISTANCE_COSINE
+                    vector_type: VECTOR_TYPE_FLOAT
+                    vector_dimension: 1024
+                  }
+                  clusters: 4
+                  levels: 5
+                }
+              }
+            }
+        )",
+        NKikimrSchemeOp::EIndexTypeGlobalVectorKmeansTree,
+        {"prefix", "embedding"});
+    }
+
+    Y_UNIT_TEST_TWIN(ShouldSucceedOnGlobalFulltextPlainIndexedTable, Materialized) {
+        ShouldSucceedOnIndexedTableImpl(Materialized, R"(
+            columns {
+              name: "key"
+              type { optional_type { item { type_id: UINT64 } } }
+            }
+            columns {
+              name: "value"
+              type { optional_type { item { type_id: UTF8 } } }
+            }
+        )", "key", R"(
+            indexes {
+              name: "index"
+              index_columns: "value"
+              global_fulltext_plain_index {
+                fulltext_settings {
+                  columns: {
+                    column: "value"
+                    analyzers: {
+                      tokenizer: STANDARD
+                      use_filter_lowercase: true
+                    }
+                  }
+                }
+              }
+            }
+        )",
+        NKikimrSchemeOp::EIndexTypeGlobalFulltextPlain,
+        {"value"});
+    }
+
+    Y_UNIT_TEST_TWIN(ShouldSucceedOnGlobalFulltextRelevanceIndexedTable, Materialized) {
+        ShouldSucceedOnIndexedTableImpl(Materialized, R"(
+            columns {
+              name: "key"
+              type { optional_type { item { type_id: UINT64 } } }
+            }
+            columns {
+              name: "value"
+              type { optional_type { item { type_id: UTF8 } } }
+            }
+        )", "key", R"(
+            indexes {
+              name: "index"
+              index_columns: "value"
+              global_fulltext_relevance_index {
+                fulltext_settings {
+                  columns: {
+                    column: "value"
+                    analyzers: {
+                      tokenizer: STANDARD
+                      use_filter_lowercase: true
+                    }
+                  }
+                }
+              }
+            }
+        )",
+        NKikimrSchemeOp::EIndexTypeGlobalFulltextRelevance,
+        {"value"});
+    }
+
+    Y_UNIT_TEST_TWIN(ShouldSucceedOnGlobalJsonIndexedTable, Materialized) {
+        ShouldSucceedOnIndexedTableImpl(Materialized, R"(
+            columns {
+              name: "key"
+              type { optional_type { item { type_id: UINT64 } } }
+            }
+            columns {
+              name: "json"
+              type { optional_type { item { type_id: JSON } } }
+            }
+        )", "key", R"(
+            indexes {
+              name: "index"
+              index_columns: "json"
+              global_json_index {}
+            }
+        )",
+        NKikimrSchemeOp::EIndexTypeGlobalJson,
+        {"json"});
+    }
+
+    Y_UNIT_TEST(ShouldSucceedOnGlobalJsonRowIdAutoProvisionAfterRestore) {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime, TTestEnvOptions());
+        ui64 txId = 200;
+
+        auto& ff = runtime.GetAppData().FeatureFlags;
+        ff.SetEnableJsonIndex(true);
+        ff.SetEnableFulltextIndex(true);
+        ff.SetEnableAddUniqueIndex(true);
+        ff.SetEnableUniqConstraint(true);
+
+        // Import a table with Utf8 PK and a Json column - no JSON index in the import.
+        auto data = GenerateTestData(R"(
+            columns {
+              name: "pk"
+              type { optional_type { item { type_id: UTF8 } } }
+            }
+            columns {
+              name: "data"
+              type { optional_type { item { type_id: JSON } } }
+            }
+            primary_key: "pk"
+        )", {{"a", 1}});
+        // The generated CSV puts a bare word in the Json column, which fails JSON
+        // validation on import. Override it with a row containing valid JSON.
+        data.Data.assign(1, TTestData(TString(R"("a1","{"k":"v"}")") + "\n", EmptyYsonStr));
+
+        Run(runtime, env, ConvertTestData(data), R"(
+            ImportFromS3Settings {
+              endpoint: "localhost:%d"
+              scheme: HTTP
+              items {
+                source_prefix: ""
+                destination_path: "/MyRoot/Table"
+              }
+            }
+        )");
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/Table"), {
+            NLs::PathExist, NLs::IsTable, NLs::IndexesCount(0),
+        });
+
+        // Build a JSON index on the imported table.
+        {
+            Ydb::Table::TableIndex index;
+            index.set_name("json_idx");
+            index.add_index_columns("data");
+            index.mutable_global_json_index();
+            TestBuildIndex(runtime, ++txId, TTestTxConfig::SchemeShard, "/MyRoot", "/MyRoot/Table", index);
+        }
+        env.TestWaitNotification(runtime, txId);
+
+        {
+            auto op = TestGetBuildIndex(runtime, TTestTxConfig::SchemeShard, "/MyRoot", txId);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                op.GetIndexBuild().GetState(), Ydb::Table::IndexBuildState::STATE_DONE,
+                op.DebugString());
+        }
+
+        // Auto-provisioned unique index must be Ready on the restored table.
+        TestDescribeResult(DescribePrivatePath(runtime,
+                TStringBuilder() << "/MyRoot/Table/" << NTableIndex::NFulltext::RowIdUniqueIndexName), {
+            NLs::PathExist,
+            NLs::IndexType(NKikimrSchemeOp::EIndexTypeGlobalUnique),
+            NLs::IndexState(NKikimrSchemeOp::EIndexStateReady),
+        });
+
+        // UseRowIdAsDocId must be set on the JSON index built after restore.
+        {
+            const auto d = DescribePrivatePath(runtime, "/MyRoot/Table/json_idx");
+            const auto& ti = d.GetPathDescription().GetTableIndex();
+            UNIT_ASSERT_C(ti.HasFulltextIndexDescription(),
+                "json_idx after restore+build: FulltextIndexDescription must be set");
+            UNIT_ASSERT_C(ti.GetFulltextIndexDescription().GetUseRowIdAsDocId(),
+                "json_idx after restore+build: UseRowIdAsDocId must be true");
+        }
+
+        // Impl-table must be keyed by [__ydb_token, __ydb_row_id].
+        TestDescribeResult(DescribePrivatePath(runtime,
+                "/MyRoot/Table/json_idx/" + TString(NTableIndex::ImplTable)), {
+            NLs::PathExist,
+            NLs::CheckColumns(TString(NTableIndex::ImplTable),
+                { NTableIndex::NFulltext::TokenColumn, NTableIndex::NFulltext::RowIdColumn },
+                {},
+                { NTableIndex::NFulltext::TokenColumn, NTableIndex::NFulltext::RowIdColumn },
+                /*strictCount=*/ true),
+        });
+    }
+
+    Y_UNIT_TEST(ShouldSucceedOnGlobalJsonRowIdManualInfraAfterRestore) {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime, TTestEnvOptions());
+        ui64 txId = 200;
+
+        auto& ff = runtime.GetAppData().FeatureFlags;
+        ff.SetEnableJsonIndex(true);
+        ff.SetEnableFulltextIndex(true);
+        ff.SetEnableAddUniqueIndex(true);
+        ff.SetEnableUniqConstraint(true);
+
+        // Import a table with Utf8 PK + __ydb_row_id column + unique index on __ydb_row_id.
+        // The JSON index is NOT included in the import; it will be built afterward.
+        auto data = GenerateTestData(Sprintf(R"(
+            columns {
+              name: "pk"
+              type { optional_type { item { type_id: UTF8 } } }
+            }
+            columns {
+              name: "data"
+              type { optional_type { item { type_id: JSON } } }
+            }
+            columns {
+              name: "%s"
+              type { type_id: UINT64 }
+              not_null: true
+            }
+            primary_key: "pk"
+            indexes {
+              name: "uniq_rowid"
+              index_columns: "%s"
+              global_unique_index {}
+            }
+        )", NTableIndex::NFulltext::RowIdColumn, NTableIndex::NFulltext::RowIdColumn), {{"a", 1}});
+        // CSV columns follow scheme order (pk, data, __ydb_row_id). The Json column needs
+        // valid JSON, and the NOT NULL __ydb_row_id column needs an explicit value.
+        data.Data.assign(1, TTestData(TString(R"("a1","{"k":"v"}",1)") + "\n", EmptyYsonStr));
+
+        Run(runtime, env, ConvertTestData(data), R"(
+            ImportFromS3Settings {
+              endpoint: "localhost:%d"
+              scheme: HTTP
+              items {
+                source_prefix: ""
+                destination_path: "/MyRoot/Table"
+              }
+            }
+        )");
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/Table"), {
+            NLs::PathExist, NLs::IsTable, NLs::IndexesCount(1),
+        });
+
+        TestDescribeResult(DescribePrivatePath(runtime, "/MyRoot/Table/uniq_rowid"), {
+            NLs::PathExist,
+            NLs::IndexType(NKikimrSchemeOp::EIndexTypeGlobalUnique),
+            NLs::IndexState(NKikimrSchemeOp::EIndexStateReady),
+        });
+
+        // Build a JSON index; it must detect the existing uniq_rowid infrastructure (Reuse plan).
+        {
+            Ydb::Table::TableIndex index;
+            index.set_name("json_idx");
+            index.add_index_columns("data");
+            index.mutable_global_json_index();
+            TestBuildIndex(runtime, ++txId, TTestTxConfig::SchemeShard, "/MyRoot", "/MyRoot/Table", index);
+        }
+        env.TestWaitNotification(runtime, txId);
+
+        {
+            auto op = TestGetBuildIndex(runtime, TTestTxConfig::SchemeShard, "/MyRoot", txId);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                op.GetIndexBuild().GetState(), Ydb::Table::IndexBuildState::STATE_DONE,
+                op.DebugString());
+        }
+
+        // uniq_rowid must still be the only unique index (no auto-provision duplicate).
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/Table"), {
+            NLs::PathExist, NLs::IsTable, NLs::IndexesCount(2),
+        });
+        TestDescribeResult(DescribePrivatePath(runtime,
+                TStringBuilder() << "/MyRoot/Table/" << NTableIndex::NFulltext::RowIdUniqueIndexName), {
+            NLs::PathNotExist,
+        });
+
+        // UseRowIdAsDocId must be set.
+        {
+            const auto d = DescribePrivatePath(runtime, "/MyRoot/Table/json_idx");
+            const auto& ti = d.GetPathDescription().GetTableIndex();
+            UNIT_ASSERT_C(ti.HasFulltextIndexDescription(),
+                "json_idx after restore+build: FulltextIndexDescription must be set");
+            UNIT_ASSERT_C(ti.GetFulltextIndexDescription().GetUseRowIdAsDocId(),
+                "json_idx after restore+build: UseRowIdAsDocId must be true");
+        }
+
+        // Impl-table must be keyed by [__ydb_token, __ydb_row_id].
+        TestDescribeResult(DescribePrivatePath(runtime,
+                "/MyRoot/Table/json_idx/" + TString(NTableIndex::ImplTable)), {
+            NLs::PathExist,
+            NLs::CheckColumns(TString(NTableIndex::ImplTable),
+                { NTableIndex::NFulltext::TokenColumn, NTableIndex::NFulltext::RowIdColumn },
+                {},
+                { NTableIndex::NFulltext::TokenColumn, NTableIndex::NFulltext::RowIdColumn },
+                /*strictCount=*/ true),
+        });
+    }
+
+    Y_UNIT_TEST(ReplicationImport) {
+        TTestBasicRuntime runtime;
+        auto options = TTestEnvOptions()
+            .RunFakeConfigDispatcher(true)
+            .SetupKqpProxy(true)
+            .InitYdbDriver(true);
+        TTestEnv env(runtime, options);
+        runtime.GetAppData().FeatureFlags.SetEnableReplication(true);
+        runtime.SetLogPriority(NKikimrServices::IMPORT, NActors::NLog::PRI_TRACE);
+        ui64 txId = 100;
+
+        THashMap<TString, TTestDataWithScheme> bucketContent(2);
+        bucketContent.emplace("/Table", GenerateTestData(R"(
+            columns {
+                name: "key"
+                type { optional_type { item { type_id: UTF8 } } }
+            }
+            columns {
+                name: "value"
+                type { optional_type { item { type_id: UTF8 } } }
+            }
+            primary_key: "key"
+        )"));
+        bucketContent.emplace("/Replication", GenerateTestData(
+            {
+                EPathTypeReplication,
+                R"(
+                    -- database: "/MyRoot"
+                    -- backup root: "/MyRoot"
+                    CREATE ASYNC REPLICATION `Replication`
+                    FOR
+                        `/MyRoot/Table` AS `/MyRoot/TableReplica`
+                    WITH (
+                        CONNECTION_STRING = 'grpc://localhost:2135/?database=/MyRoot',
+                        USER = 'user',
+                        PASSWORD_SECRET_NAME = 'pwd-secret-name',
+                        CONSISTENCY_LEVEL = 'Row'
+                    );
+                )"
+            }
+        ));
+
+        TPortManager portManager;
+        const ui16 port = portManager.GetPort();
+
+        TS3Mock s3Mock(ConvertTestData(bucketContent), TS3Mock::TSettings(port));
+        UNIT_ASSERT(s3Mock.Start());
+
+        TestImport(runtime, ++txId, "/MyRoot", Sprintf(R"(
+            ImportFromS3Settings {
+              endpoint: "localhost:%d"
+              scheme: HTTP
+              items {
+                source_prefix: "Table"
+                destination_path: "/MyRoot/Table"
+              }
+              items {
+                source_prefix: "Replication"
+                destination_path: "/MyRoot/Replication"
+              }
+            }
+        )", port));
+
+        env.TestWaitNotification(runtime, txId);
+        TestGetImport(runtime, txId, "/MyRoot");
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/Replication"), {
+            NLs::Finished,
+            NLs::IsReplication,
+        });
+    }
+
+    Y_UNIT_TEST(ReplicationExportImport) {
+        TTestBasicRuntime runtime;
+        auto options = TTestEnvOptions()
+            .RunFakeConfigDispatcher(true)
+            .SetupKqpProxy(true)
+            .InitYdbDriver(true);
+        TTestEnv env(runtime, options);
+        runtime.GetAppData().FeatureFlags.SetEnableReplication(true);
+        runtime.SetLogPriority(NKikimrServices::IMPORT, NActors::NLog::PRI_TRACE);
+        ui64 txId = 100;
+
+        TestCreateReplication(runtime, ++txId, "/MyRoot", R"(
+            Name: "Replication"
+            Config {
+                SrcConnectionParams {
+                    Endpoint: "localhost:2135"
+                    Database: "/MyRoot"
+                    StaticCredentials {
+                        User: "user"
+                        Password: "pwd"
+                        PasswordSecretName: "pwd-secret-name"
+                    }
+                }
+                Specific {
+                    Targets {
+                        SrcPath: "/MyRoot/Table1"
+                        DstPath: "/MyRoot/Table1Replica"
+                    }
+                }
+            }
+        )");
+        env.TestWaitNotification(runtime, txId);
+
+        TPortManager portManager;
+        const ui16 port = portManager.GetPort();
+
+        TS3Mock s3Mock({}, TS3Mock::TSettings(port));
+        UNIT_ASSERT(s3Mock.Start());
+
+        TString exportRequest = Sprintf(R"(
+            ExportToS3Settings {
+                endpoint: "localhost:%d"
+                scheme: HTTP
+                items {
+                    source_path: "/MyRoot/Replication"
+                    destination_prefix: "Replication"
+                }
+            }
+        )", port);
+
+        TestExport(runtime, ++txId, "/MyRoot", exportRequest);
+        env.TestWaitNotification(runtime, txId);
+        TestGetExport(runtime, txId, "/MyRoot");
+
+        TString importRequest = Sprintf(R"(
+            ImportFromS3Settings {
+              endpoint: "localhost:%d"
+              scheme: HTTP
+              items {
+                source_prefix: "Replication"
+                destination_path: "/MyRoot/NewReplication"
+              }
+            }
+        )", port);
+
+        TestImport(runtime, ++txId, "/MyRoot", importRequest);
+        env.TestWaitNotification(runtime, txId);
+        TestGetImport(runtime, txId, "/MyRoot");
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/NewReplication"), {
+            NLs::Finished,
+            NLs::IsReplication,
+        });
+    }
+
+    Y_UNIT_TEST(TransferImport) {
+        TTestBasicRuntime runtime;
+        auto options = TTestEnvOptions()
+            .RunFakeConfigDispatcher(true)
+            .SetupKqpProxy(true)
+            .InitYdbDriver(true);
+        TTestEnv env(runtime, options);
+        runtime.GetAppData().FeatureFlags.SetEnableReplication(true);
+        runtime.SetLogPriority(NKikimrServices::IMPORT, NActors::NLog::PRI_TRACE);
+        ui64 txId = 100;
+
+        THashMap<TString, TTestDataWithScheme> bucketContent(2);
+        bucketContent.emplace("/Table", GenerateTestData(R"(
+            columns {
+                name: "key"
+                type { optional_type { item { type_id: UTF8 } } }
+            }
+            columns {
+                name: "value"
+                type { optional_type { item { type_id: UTF8 } } }
+            }
+            primary_key: "key"
+        )"));
+        bucketContent.emplace("/Transfer", GenerateTestData(
+            {
+                EPathTypeTransfer,
+                R"(
+                    -- database: "/MyRoot"
+                    -- backup root: "/MyRoot"
+                    $transformation_lambda = ($msg) -> { return [ <| partition: $msg._partition, offset: $msg._offset, message: CAST($msg._data AS Utf8) |> ]; };
+
+                    CREATE TRANSFER `Transfer`
+                        FROM `/MyRoot/Topic` TO `/MyRoot/Table` USING $transformation_lambda
+                    WITH (
+                        CONNECTION_STRING = 'grpc://localhost:2135/?database=/MyRoot',
+                        CONSUMER = 'consumerName',
+                        BATCH_SIZE_BYTES = 8388608,
+                        FLUSH_INTERVAL = Interval('PT60S')
+                    );
+                )"
+            }
+        ));
+
+        TPortManager portManager;
+        const ui16 port = portManager.GetPort();
+
+        TS3Mock s3Mock(ConvertTestData(bucketContent), TS3Mock::TSettings(port));
+        UNIT_ASSERT(s3Mock.Start());
+
+        TestImport(runtime, ++txId, "/MyRoot", Sprintf(R"(
+            ImportFromS3Settings {
+              endpoint: "localhost:%d"
+              scheme: HTTP
+              items {
+                source_prefix: "Table"
+                destination_path: "/MyRoot/Table"
+              }
+              items {
+                source_prefix: "Transfer"
+                destination_path: "/MyRoot/Transfer"
+              }
+            }
+        )", port));
+
+        env.TestWaitNotification(runtime, txId);
+        TestGetImport(runtime, txId, "/MyRoot");
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/Transfer"), {
+            NLs::Finished,
+            NLs::IsTransfer,
+        });
+    }
+
+    Y_UNIT_TEST(TransferExportImport) {
+        TTestBasicRuntime runtime;
+        auto options = TTestEnvOptions()
+            .RunFakeConfigDispatcher(true)
+            .SetupKqpProxy(true)
+            .InitYdbDriver(true);
+        TTestEnv env(runtime, options);
+        runtime.GetAppData().FeatureFlags.SetEnableReplication(true);
+        runtime.SetLogPriority(NKikimrServices::IMPORT, NActors::NLog::PRI_TRACE);
+        ui64 txId = 100;
+
+        TestCreateTable(runtime, ++txId, "/MyRoot", R"(
+            Name: "Table"
+            Columns { Name: "key" Type: "Utf8" }
+            Columns { Name: "value" Type: "Utf8" }
+            KeyColumnNames: ["key"]
+        )");
+        env.TestWaitNotification(runtime, txId);
+
+        TestCreateTransfer(runtime, ++txId, "/MyRoot", R"(
+            Name: "Transfer"
+            Config {
+                SrcConnectionParams {
+                    Endpoint: "localhost:2135"
+                    Database: "/MyRoot"
+                }
+                TransferSpecific {
+                    Target {
+                        SrcPath: "/MyRoot/Topic_0"
+                        DstPath: "/MyRoot/Table"
+                        TransformLambda: "PRAGMA OrderedColumns;$transformation_lambda = ($msg) -> { return [ <| partition: $msg._partition, offset: $msg._offset, message: CAST($msg._data AS Utf8) |> ]; };$__ydb_transfer_lambda = $transformation_lambda;"
+                        ConsumerName: "consumerName"
+                    }
+                }
+            }
+        )");
+        env.TestWaitNotification(runtime, txId);
+
+        TPortManager portManager;
+        const ui16 port = portManager.GetPort();
+
+        TS3Mock s3Mock({}, TS3Mock::TSettings(port));
+        UNIT_ASSERT(s3Mock.Start());
+
+        TString exportRequest = Sprintf(R"(
+            ExportToS3Settings {
+                endpoint: "localhost:%d"
+                scheme: HTTP
+                items {
+                    source_path: "/MyRoot/Transfer"
+                    destination_prefix: "Transfer"
+                }
+                items {
+                    source_path: "/MyRoot/Table"
+                    destination_prefix: "Table"
+                }
+            }
+        )", port);
+
+        TestExport(runtime, ++txId, "/MyRoot", exportRequest);
+        env.TestWaitNotification(runtime, txId);
+        TestGetExport(runtime, txId, "/MyRoot");
+
+        TestDropTransfer(runtime, ++txId, "/MyRoot", "Transfer");
+        env.TestWaitNotification(runtime, txId);
+
+        TestDropTable(runtime, ++txId, "/MyRoot", "Table");
+        env.TestWaitNotification(runtime, txId);
+
+        TString importRequest = Sprintf(R"(
+            ImportFromS3Settings {
+                endpoint: "localhost:%d"
+                scheme: HTTP
+                items {
+                    source_prefix: "Transfer"
+                    destination_path: "/MyRoot/Transfer"
+                }
+                items {
+                    source_prefix: "Table"
+                    destination_path: "/MyRoot/Table"
+                }
+            }
+        )", port);
+
+        TestImport(runtime, ++txId, "/MyRoot", importRequest);
+        env.TestWaitNotification(runtime, txId);
+        TestGetImport(runtime, txId, "/MyRoot");
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/Transfer"), {
+            NLs::Finished,
+            NLs::IsTransfer,
+        });
+    }
+
+    Y_UNIT_TEST(ExternalDataSourceImport) {
+        TTestBasicRuntime runtime;
+        auto options = TTestEnvOptions()
+            .RunFakeConfigDispatcher(true)
+            .SetupKqpProxy(true);
+        TTestEnv env(runtime, options);
+        runtime.GetAppData().FeatureFlags.SetEnableExternalDataSources(true);
+        runtime.SetLogPriority(NKikimrServices::IMPORT, NActors::NLog::PRI_TRACE);
+        ui64 txId = 100;
+
+        THashMap<TString, TTestDataWithScheme> bucketContent(1);
+        bucketContent.emplace("/DataSource", GenerateTestData(
+            {
+                EPathTypeExternalDataSource,
+                R"(
+                    -- database: "/MyRoot"
+                    CREATE EXTERNAL DATA SOURCE IF NOT EXISTS `DataSource`
+                    WITH (
+                        SOURCE_TYPE = 'ClickHouse',
+                        LOCATION = 'https://clickhousedb.net',
+                        PASSWORD_SECRET_NAME = 'password_secret',
+                        AUTH_METHOD = 'BASIC',
+                        DATABASE_NAME = 'clickhouse',
+                        LOGIN = 'my_login',
+                        PROTOCOL = 'NATIVE',
+                        USE_TLS = 'TRUE'
+                    );
+                )"
+            }
+        ));
+
+        TPortManager portManager;
+        const ui16 port = portManager.GetPort();
+
+        TS3Mock s3Mock(ConvertTestData(bucketContent), TS3Mock::TSettings(port));
+        UNIT_ASSERT(s3Mock.Start());
+
+        TestImport(runtime, ++txId, "/MyRoot", Sprintf(R"(
+            ImportFromS3Settings {
+              endpoint: "localhost:%d"
+              scheme: HTTP
+              items {
+                source_prefix: "DataSource"
+                destination_path: "/MyRoot/DataSource"
+              }
+            }
+        )", port));
+
+        env.TestWaitNotification(runtime, txId);
+        TestGetImport(runtime, txId, "/MyRoot");
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/DataSource"), {
+            NLs::Finished,
+            NLs::IsExternalDataSource,
+        });
+    }
+
+    Y_UNIT_TEST(ExternalDataSourceExportImport) {
+        TTestBasicRuntime runtime;
+        auto options = TTestEnvOptions()
+            .RunFakeConfigDispatcher(true)
+            .SetupKqpProxy(true);
+        TTestEnv env(runtime, options);
+        runtime.GetAppData().FeatureFlags.SetEnableExternalDataSources(true);
+        runtime.SetLogPriority(NKikimrServices::IMPORT, NActors::NLog::PRI_TRACE);
+        ui64 txId = 100;
+
+        TestCreateExternalDataSource(runtime, ++txId, "/MyRoot", R"(
+            Name: "DataSource"
+            SourceType: "ClickHouse"
+            Location: "https://clickhousedb.net"
+            Auth {
+                Basic {
+                    Login: "my_login",
+                    PasswordSecretName: "password_secret"
+                }
+            }
+            Properties {
+                Properties {
+                    key: "database_name",
+                    value: "clickhouse"
+                }
+                Properties {
+                    key: "protocol",
+                    value: "NATIVE"
+                }
+                Properties {
+                    key: "use_tls",
+                    value: "TRUE"
+                }
+            }
+        )");
+        env.TestWaitNotification(runtime, txId);
+
+        TPortManager portManager;
+        const ui16 port = portManager.GetPort();
+
+        TS3Mock s3Mock({}, TS3Mock::TSettings(port));
+        UNIT_ASSERT(s3Mock.Start());
+
+        TString exportRequest = Sprintf(R"(
+            ExportToS3Settings {
+                endpoint: "localhost:%d"
+                scheme: HTTP
+                items {
+                    source_path: "/MyRoot/DataSource"
+                    destination_prefix: "DataSource"
+                }
+            }
+        )", port);
+
+        TestExport(runtime, ++txId, "/MyRoot", exportRequest);
+        env.TestWaitNotification(runtime, txId);
+        TestGetExport(runtime, txId, "/MyRoot");
+
+        TestDropExternalDataSource(runtime, ++txId, "/MyRoot", "DataSource");
+        env.TestWaitNotification(runtime, txId);
+
+        TString importRequest = Sprintf(R"(
+            ImportFromS3Settings {
+                endpoint: "localhost:%d"
+                scheme: HTTP
+                items {
+                    source_prefix: "DataSource"
+                    destination_path: "/MyRoot/DataSource"
+                }
+            }
+        )", port);
+
+        TestImport(runtime, ++txId, "/MyRoot", importRequest);
+        env.TestWaitNotification(runtime, txId);
+        TestGetImport(runtime, txId, "/MyRoot");
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/DataSource"), {
+            NLs::Finished,
+            NLs::IsExternalDataSource,
+        });
+    }
+
+    Y_UNIT_TEST(ExternalTableImport) {
+        TTestBasicRuntime runtime;
+        auto options = TTestEnvOptions()
+            .RunFakeConfigDispatcher(true)
+            .SetupKqpProxy(true);
+        TTestEnv env(runtime, options);
+        runtime.GetAppData().FeatureFlags.SetEnableExternalDataSources(true);
+        runtime.SetLogPriority(NKikimrServices::IMPORT, NActors::NLog::PRI_TRACE);
+        ui64 txId = 100;
+
+        THashMap<TString, TTestDataWithScheme> bucketContent(2);
+        bucketContent.emplace("/DataSource", GenerateTestData(
+            {
+                EPathTypeExternalDataSource,
+                R"(
+                    -- database: "/MyRoot"
+                    CREATE EXTERNAL DATA SOURCE IF NOT EXISTS `DataSource`
+                    WITH (
+                        SOURCE_TYPE = 'ObjectStorage',
+                        LOCATION = 'https://s3.cloud.net/bucket',
+                        AUTH_METHOD = 'AWS',
+                        AWS_ACCESS_KEY_ID_SECRET_NAME = 'id_secret',
+                        AWS_SECRET_ACCESS_KEY_SECRET_NAME = 'access_secret',
+                        AWS_REGION = 'ru-central-1'
+                    );
+                )"
+            }
+        ));
+        bucketContent.emplace("/ExternalTable", GenerateTestData(
+            {
+                EPathTypeExternalTable,
+                R"(
+                    -- database: "/MyRoot"
+                    -- backup root: "/MyRoot"
+                    CREATE EXTERNAL TABLE IF NOT EXISTS `ExternalTable` (
+                        key Uint64 NOT NULL,
+                        value1 Uint64?,
+                        value2 Utf8 NOT NULL
+                    ) WITH (
+                        DATA_SOURCE = '/MyRoot/DataSource',
+                        LOCATION = 'bucket'
+                    )
+                )"
+            }
+        ));
+
+        TPortManager portManager;
+        const ui16 port = portManager.GetPort();
+
+        TS3Mock s3Mock(ConvertTestData(bucketContent), TS3Mock::TSettings(port));
+        UNIT_ASSERT(s3Mock.Start());
+
+        TestImport(runtime, ++txId, "/MyRoot", Sprintf(R"(
+            ImportFromS3Settings {
+              endpoint: "localhost:%d"
+              scheme: HTTP
+              items {
+                source_prefix: "ExternalTable"
+                destination_path: "/MyRoot/ExternalTable"
+              }
+              items {
+                source_prefix: "DataSource"
+                destination_path: "/MyRoot/DataSource"
+              }
+            }
+        )", port));
+
+        env.TestWaitNotification(runtime, txId);
+        TestGetImport(runtime, txId, "/MyRoot");
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/ExternalTable"), {
+            NLs::Finished,
+            NLs::IsExternalTable,
+        });
+    }
+
+    Y_UNIT_TEST(ExternalTableImportToAnotherDatabase) {
+        TTestBasicRuntime runtime;
+        auto options = TTestEnvOptions()
+            .RunFakeConfigDispatcher(true)
+            .SetupKqpProxy(true);
+        TTestEnv env(runtime, options);
+        runtime.GetAppData().FeatureFlags.SetEnableExternalDataSources(true);
+        runtime.SetLogPriority(NKikimrServices::IMPORT, NActors::NLog::PRI_TRACE);
+        ui64 txId = 100;
+
+        THashMap<TString, TTestDataWithScheme> bucketContent(2);
+        bucketContent.emplace("/DataSource", GenerateTestData(
+            {
+                EPathTypeExternalDataSource,
+                R"(
+                    -- database: "/MyRoot"
+                    CREATE EXTERNAL DATA SOURCE IF NOT EXISTS `DataSource`
+                    WITH (
+                        SOURCE_TYPE = 'ObjectStorage',
+                        LOCATION = 'https://s3.cloud.net/bucket',
+                        AUTH_METHOD = 'AWS',
+                        AWS_ACCESS_KEY_ID_SECRET_NAME = 'id_secret',
+                        AWS_SECRET_ACCESS_KEY_SECRET_NAME = 'access_secret',
+                        AWS_REGION = 'ru-central-1'
+                    );
+                )"
+            }
+        ));
+        bucketContent.emplace("/ExternalTable", GenerateTestData(
+            {
+                EPathTypeExternalTable,
+                R"(
+                    -- database: "/AnotherRoot"
+                    -- backup root: "/AnotherRoot"
+                    CREATE EXTERNAL TABLE IF NOT EXISTS `ExternalTable` (
+                        key Uint64 NOT NULL,
+                        value1 Uint64?,
+                        value2 Utf8 NOT NULL
+                    ) WITH (
+                        DATA_SOURCE = '/AnotherRoot/DataSource',
+                        LOCATION = 'bucket'
+                    )
+                )"
+            }
+        ));
+
+        TPortManager portManager;
+        const ui16 port = portManager.GetPort();
+
+        TS3Mock s3Mock(ConvertTestData(bucketContent), TS3Mock::TSettings(port));
+        UNIT_ASSERT(s3Mock.Start());
+
+        TestImport(runtime, ++txId, "/MyRoot", Sprintf(R"(
+            ImportFromS3Settings {
+              endpoint: "localhost:%d"
+              scheme: HTTP
+              items {
+                source_prefix: "ExternalTable"
+                destination_path: "/MyRoot/ExternalTable"
+              }
+              items {
+                source_prefix: "DataSource"
+                destination_path: "/MyRoot/DataSource"
+              }
+            }
+        )", port));
+
+        env.TestWaitNotification(runtime, txId);
+        TestGetImport(runtime, txId, "/MyRoot");
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/ExternalTable"), {
+            NLs::Finished,
+            NLs::IsExternalTable,
+        });
+    }
+
+    Y_UNIT_TEST(ExternalTableExportImport) {
+        TTestBasicRuntime runtime;
+        auto options = TTestEnvOptions()
+            .RunFakeConfigDispatcher(true)
+            .SetupKqpProxy(true);
+        TTestEnv env(runtime, options);
+        runtime.GetAppData().FeatureFlags.SetEnableExternalDataSources(true);
+        runtime.SetLogPriority(NKikimrServices::IMPORT, NActors::NLog::PRI_TRACE);
+        ui64 txId = 100;
+
+        TestCreateExternalDataSource(runtime, ++txId, "/MyRoot", R"(
+            Name: "DataSource"
+            SourceType: "ObjectStorage"
+            Location: "https://s3.cloud.net/bucket"
+            Auth {
+                Aws {
+                    AwsAccessKeyIdSecretName: "id_secret",
+                    AwsSecretAccessKeySecretName: "access_secret"
+                    AwsRegion: "ru-central-1"
+                }
+            }
+        )");
+        env.TestWaitNotification(runtime, txId);
+
+        TestCreateExternalTable(runtime, ++txId, "/MyRoot", R"(
+            Name: "ExternalTable"
+            SourceType: "General"
+            DataSourcePath: "/MyRoot/DataSource"
+            Location: "bucket"
+            Columns { Name: "key" Type: "Uint64" NotNull: true }
+            Columns { Name: "value1" Type: "Uint64" }
+            Columns { Name: "value2" Type: "Utf8" NotNull: true }
+        )");
+        env.TestWaitNotification(runtime, txId);
+
+        TPortManager portManager;
+        const ui16 port = portManager.GetPort();
+
+        TS3Mock s3Mock({}, TS3Mock::TSettings(port));
+        UNIT_ASSERT(s3Mock.Start());
+
+        TString exportRequest = Sprintf(R"(
+            ExportToS3Settings {
+                endpoint: "localhost:%d"
+                scheme: HTTP
+                items {
+                    source_path: "/MyRoot/DataSource"
+                    destination_prefix: "DataSource"
+                }
+                items {
+                    source_path: "/MyRoot/ExternalTable"
+                    destination_prefix: "ExternalTable"
+                }
+            }
+        )", port);
+
+        TestExport(runtime, ++txId, "/MyRoot", exportRequest);
+        env.TestWaitNotification(runtime, txId);
+        TestGetExport(runtime, txId, "/MyRoot");
+
+        TestDropExternalTable(runtime, ++txId, "/MyRoot", "ExternalTable");
+        env.TestWaitNotification(runtime, txId);
+
+        TestDropExternalDataSource(runtime, ++txId, "/MyRoot", "DataSource");
+        env.TestWaitNotification(runtime, txId);
+
+        TString importRequest = Sprintf(R"(
+            ImportFromS3Settings {
+                endpoint: "localhost:%d"
+                scheme: HTTP
+                items {
+                    source_prefix: "ExternalTable"
+                    destination_path: "/MyRoot/ExternalTable"
+                }
+                items {
+                    source_prefix: "DataSource"
+                    destination_path: "/MyRoot/DataSource"
+                }
+            }
+        )", port);
+
+        TestImport(runtime, ++txId, "/MyRoot", importRequest);
+        env.TestWaitNotification(runtime, txId);
+        TestGetImport(runtime, txId, "/MyRoot");
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/ExternalTable"), {
+            NLs::Finished,
+            NLs::IsExternalTable,
+        });
+    }
+
+    Y_UNIT_TEST(DisableIcbFlags) {
+        TTestBasicRuntime runtime;
+        auto options = TTestEnvOptions()
+            .RunFakeConfigDispatcher(true)
+            .SetupKqpProxy(true)
+            .InitYdbDriver(true);
+        TTestEnv env(runtime, options);
+        runtime.GetAppData().FeatureFlags.SetEnableReplication(true);
+        runtime.SetLogPriority(NKikimrServices::IMPORT, NActors::NLog::PRI_TRACE);
+        ui64 txId = 100;
+
+        TestCreateReplication(runtime, ++txId, "/MyRoot", R"(
+            Name: "Replication"
+            Config {
+                SrcConnectionParams {
+                    Endpoint: "localhost:2135"
+                    Database: "/MyRoot"
+                    StaticCredentials {
+                        User: "user"
+                        Password: "pwd"
+                        PasswordSecretName: "pwd-secret-name"
+                    }
+                }
+                Specific {
+                    Targets {
+                        SrcPath: "/MyRoot/Table1"
+                        DstPath: "/MyRoot/Table1Replica"
+                    }
+                }
+            }
+        )");
+        env.TestWaitNotification(runtime, txId);
+
+        TPortManager portManager;
+        const ui16 port = portManager.GetPort();
+
+        TS3Mock s3Mock({}, TS3Mock::TSettings(port));
+        UNIT_ASSERT(s3Mock.Start());
+
+        TString exportRequest = Sprintf(R"(
+            ExportToS3Settings {
+                endpoint: "localhost:%d"
+                scheme: HTTP
+                items {
+                    source_path: "/MyRoot/Replication"
+                    destination_prefix: "Replication"
+                }
+            }
+        )", port);
+
+        TestExport(runtime, ++txId, "/MyRoot", exportRequest);
+        env.TestWaitNotification(runtime, txId);
+        TestGetExport(runtime, txId, "/MyRoot");
+
+        TString importRequest = Sprintf(R"(
+            ImportFromS3Settings {
+              endpoint: "localhost:%d"
+              scheme: HTTP
+              items {
+                source_prefix: "Replication"
+                destination_path: "/MyRoot/NewReplication"
+              }
+            }
+        )", port);
+
+        TControlBoard::SetValue(0, runtime.GetAppData().Icb->BackupControls.S3Controls.EnableAsyncReplicationImport);
+
+        TestImport(runtime, ++txId, "/MyRoot", importRequest);
+        env.TestWaitNotification(runtime, txId);
+        TestGetImport(runtime, txId, "/MyRoot", Ydb::StatusIds::CANCELLED);
+    }
+
+    Y_UNIT_TEST(ShouldRestoreSystemViewPermissions) {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        runtime.GetAppData().FeatureFlags.SetEnableSysViewPermissionsExport(true);
+
+        ui64 txId = 100;
+
+        const auto permissions = R"(
+            actions {
+                change_owner: "user1@builtin"
+            }
+            actions {
+                grant {
+                    subject: "user2@builtin"
+                    permission_names: "ydb.generic.read"
+                }
+            }
+            actions {
+                grant {
+                    subject: "user2@builtin"
+                    permission_names: "ydb.generic.list"
+                }
+            }
+        )";
+
+        const auto data = GenerateTestData(
+            {
+                EPathTypeSysView,
+                R"(
+                    sys_view_id: 1
+                    sys_view_name: "partition_stats"
+                )"
+            },
+            {},
+            permissions
+        );
+
+        TPortManager portManager;
+        const ui16 port = portManager.GetPort();
 
         TS3Mock s3Mock(ConvertTestData(data), TS3Mock::TSettings(port));
         UNIT_ASSERT(s3Mock.Start());
 
-        TTestWithReboots t;
+        TestImport(runtime, ++txId, "/MyRoot", Sprintf(R"(
+            ImportFromS3Settings {
+                endpoint: "localhost:%d"
+                scheme: HTTP
+                items {
+                    source_prefix: ""
+                    destination_path: "/MyRoot/.sys/partition_stats"
+                }
+            }
+        )", port));
+        env.TestWaitNotification(runtime, txId);
+        TestGetImport(runtime, txId, "/MyRoot");
+
+        TestDescribeResult(DescribePath(runtime, "/MyRoot/.sys/partition_stats"), {
+            NLs::PathExist,
+            NLs::IsSysView,
+            NLs::HasOwner("user1@builtin"),
+            NLs::HasRight("+R:user2@builtin"),
+            NLs::HasRight("+L:user2@builtin"),
+        });
+    }
+
+    Y_UNIT_TEST(ShouldFailOnSystemViewWrongPath) {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        runtime.GetAppData().FeatureFlags.SetEnableSysViewPermissionsExport(true);
+
+        ui64 txId = 100;
+
+        const auto data = GenerateTestData(
+            {
+                EPathTypeSysView,
+                R"(
+                    sys_view_id: 1
+                    sys_view_name: "partition_stats"
+                )"
+            },
+            {}
+        );
+
+        TPortManager portManager;
+        const ui16 port = portManager.GetPort();
+
+        TS3Mock s3Mock(ConvertTestData(data), TS3Mock::TSettings(port));
+        UNIT_ASSERT(s3Mock.Start());
+
+        // Try to import partition_stats system view (sys_view_id=1) to a different system view path (nodes)
+        // Import creation should succeed, but then fail during execution when compatibility check happens
+        TestImport(runtime, ++txId, "/MyRoot", Sprintf(R"(
+            ImportFromS3Settings {
+                endpoint: "localhost:%d"
+                scheme: HTTP
+                items {
+                    source_prefix: ""
+                    destination_path: "/MyRoot/.sys/nodes"
+                }
+            }
+        )", port));
+        env.TestWaitNotification(runtime, txId);
+        TestGetImport(runtime, txId, "/MyRoot", Ydb::StatusIds::CANCELLED);
+    }
+}
+
+Y_UNIT_TEST_SUITE(TImportWithRebootsTests) {
+    struct TImportItem {
+        TString SourcePrefix;
+        TString DestinationPath;
+    };
+
+    static const TVector<TImportItem>& DefaultImportItems() {
+        static const TVector<TImportItem> items = {{"", "/MyRoot/Table"}};
+        return items;
+    }
+
+    TString MakeS3ImportRequestTpl(const TVector<TImportItem>& items, const TString& extraSettings = "") {
+        TStringBuilder sb;
+        sb << "ImportFromS3Settings { endpoint: \"localhost:%d\" scheme: HTTP ";
+        if (extraSettings) sb << extraSettings << " ";
+        for (const auto& item : items) {
+            sb << "items { source_prefix: \"" << item.SourcePrefix
+               << "\" destination_path: \"" << item.DestinationPath << "\" } ";
+        }
+        sb << "}";
+        return sb;
+    }
+
+    TString MakeFsImportRequest(
+        const TString& basePath,
+        const TVector<TImportItem>& items,
+        const TString& extraSettings = "")
+    {
+        TStringBuilder sb;
+        sb << "ImportFromFsSettings { base_path: \"" << basePath << "\" ";
+        if (extraSettings) sb << extraSettings << " ";
+        for (const auto& item : items) {
+            sb << "items { source_path: \"" << item.SourcePrefix
+               << "\" destination_path: \"" << item.DestinationPath << "\" } ";
+        }
+        sb << "}";
+        return sb;
+    }
+
+    void WriteFilesToFs(const TString& basePath, const THashMap<TString, TString>& data) {
+        for (const auto& [key, value] : data) {
+            TStringBuf relKey(key);
+            while (relKey.StartsWith('/')) {
+                relKey.Skip(1);
+            }
+            TFsPath filePath = TFsPath(basePath) / TString(relKey);
+            filePath.Parent().MkDirs();
+            TFileOutput out(filePath.GetPath());
+            out.Write(value);
+            out.Finish();
+        }
+    }
+
+    template <bool IsFs>
+    struct TImportEnv {
+        TMaybe<TPortManager> PortManager;
+        TMaybe<TS3Mock> S3MockInstance;
+        TMaybe<TTempDir> TempDir;
+        TString Request;
+
+        TImportEnv(
+            const THashMap<TString, TString>& data,
+            const TVector<TImportItem>& items,
+            const TString& extraSettings = "")
+        {
+            if constexpr (IsFs) {
+                TempDir.ConstructInPlace();
+                WriteFilesToFs(TempDir->Path(), data);
+                Request = MakeFsImportRequest(TempDir->Path(), items, extraSettings);
+            } else {
+                PortManager.ConstructInPlace();
+                ui16 port = PortManager->GetPort();
+                S3MockInstance.ConstructInPlace(data, TS3Mock::TSettings(port));
+                UNIT_ASSERT(S3MockInstance->Start());
+                Request = Sprintf(MakeS3ImportRequestTpl(items, extraSettings).c_str(), port);
+            }
+        }
+
+        void SetupRuntime(TTestActorRuntime& runtime) {
+            if constexpr (IsFs) {
+                runtime.GetAppData().FeatureFlags.SetEnableFsBackups(true);
+            }
+        }
+    };
+
+    template <bool IsFs>
+    void ShouldSucceed(
+        TTestWithReboots& t,
+        const THashMap<TString, TTypedScheme>& schemes,
+        const TVector<TImportItem>& items = DefaultImportItems(),
+        const TString& extraSettings = "")
+    {
+        THashMap<TString, TTestDataWithScheme> bucketContent(schemes.size());
+        for (const auto& [prefix, typedScheme] : schemes) {
+            bucketContent.emplace(prefix, GenerateTestData(typedScheme));
+        }
+        TImportEnv<IsFs> env(ConvertTestData(bucketContent), items, extraSettings);
+
+        const bool createdByQuery = AnyOf(schemes, [](const auto& scheme) {
+            return scheme.second.Scheme.Contains("CREATE"); // Hack
+        });
+        if (createdByQuery) {
+            t.GetTestEnvOptions().RunFakeConfigDispatcher(true);
+            t.GetTestEnvOptions().SetupKqpProxy(true);
+            t.GetTestEnvOptions().InitYdbDriver(true);
+        }
         t.Run([&](TTestActorRuntime& runtime, bool& activeZone) {
             {
                 TInactiveZone inactive(activeZone);
 
+                env.SetupRuntime(runtime);
+                runtime.SetLogPriority(NKikimrServices::DATASHARD_RESTORE, NActors::NLog::PRI_TRACE);
+                runtime.SetLogPriority(NKikimrServices::IMPORT, NActors::NLog::PRI_TRACE);
+                runtime.GetAppData().FeatureFlags.SetEnableChangefeedsImport(true);
+                runtime.GetAppData().FeatureFlags.SetEnableSysViewPermissionsExport(true);
+                if (createdByQuery) {
+                    runtime.GetAppData().FeatureFlags.SetEnableViews(true);
+                    runtime.GetAppData().FeatureFlags.SetEnableReplication(true);
+                    runtime.GetAppData().FeatureFlags.SetEnableExternalDataSources(true);
+                }
+            }
+
+            const ui64 importId = ++t.TxId;
+            AsyncImport(runtime, importId, "/MyRoot", env.Request);
+            t.TestEnv->TestWaitNotification(runtime, importId);
+
+            {
+                TInactiveZone inactive(activeZone);
+                TestGetImport(runtime, importId, "/MyRoot", {
+                    Ydb::StatusIds::SUCCESS,
+                    Ydb::StatusIds::NOT_FOUND
+                });
+            }
+        });
+    }
+
+    template <bool IsFs>
+    void ShouldSucceed(TTestWithReboots& t, const TTypedScheme& scheme) {
+        ShouldSucceed<IsFs>(t, {{"", scheme}});
+    }
+
+    Y_UNIT_TEST_WITH_REBOOTS_BUCKETS_TWIN(ShouldSucceedOnSimpleTable, 2, 1, false, IsFs) {
+        ShouldSucceed<IsFs>(t, R"(
+            columns {
+              name: "key"
+              type { optional_type { item { type_id: UTF8 } } }
+            }
+            columns {
+              name: "value"
+              type { optional_type { item { type_id: UTF8 } } }
+            }
+            primary_key: "key"
+        )");
+    }
+
+    Y_UNIT_TEST_WITH_REBOOTS_BUCKETS_TWIN(ShouldSucceedOnTableWithChecksum, 2, 1, false, IsFs) {
+        auto data = GenerateTestData(R"(
+            columns {
+              name: "key"
+              type { optional_type { item { type_id: UTF8 } } }
+            }
+            columns {
+              name: "value"
+              type { optional_type { item { type_id: UTF8 } } }
+            }
+            primary_key: "key"
+        )" , {{"a", 1}}, "", R"({"version": 1})");
+
+        TImportEnv<IsFs> env(ConvertTestData(data), DefaultImportItems());
+
+        t.Run([&](TTestActorRuntime& runtime, bool& activeZone) {
+            {
+                TInactiveZone inactive(activeZone);
+
+                env.SetupRuntime(runtime);
                 runtime.SetLogPriority(NKikimrServices::DATASHARD_RESTORE, NActors::NLog::PRI_TRACE);
                 runtime.SetLogPriority(NKikimrServices::IMPORT, NActors::NLog::PRI_TRACE);
             }
 
-            AsyncImport(runtime, ++t.TxId, "/MyRoot", Sprintf(R"(
-                ImportFromS3Settings {
-                  endpoint: "localhost:%d"
-                  scheme: HTTP
-                  items {
-                    source_prefix: ""
-                    destination_path: "/MyRoot/Table"
-                  }
+            const ui64 importId = ++t.TxId;
+            AsyncImport(runtime, importId, "/MyRoot", env.Request);
+            t.TestEnv->TestWaitNotification(runtime, importId);
+
+            {
+                TInactiveZone inactive(activeZone);
+                TestGetImport(runtime, importId, "/MyRoot", {
+                    Ydb::StatusIds::SUCCESS,
+                    Ydb::StatusIds::NOT_FOUND
+                });
+            }
+        });
+    }
+
+    Y_UNIT_TEST_WITH_REBOOTS_BUCKETS_TWIN(ShouldSucceedOnBigCompressedTable, 2, 1, false, IsFs) {
+        auto data = GenerateTestData(R"(
+            columns {
+              name: "key"
+              type { optional_type { item { type_id: UTF8 } } }
+            }
+            columns {
+              name: "value"
+              type { optional_type { item { type_id: UTF8 } } }
+            }
+            primary_key: "key"
+        )" , {{TString(1'000'000, 'a'), 10}}, "", R"({"version": 1})", ECompressionCodec::Zstd);
+
+        TImportEnv<IsFs> env(ConvertTestData(data), DefaultImportItems());
+
+        t.Run([&](TTestActorRuntime& runtime, bool& activeZone) {
+            {
+                TInactiveZone inactive(activeZone);
+
+                env.SetupRuntime(runtime);
+                runtime.SetLogPriority(NKikimrServices::DATASHARD_RESTORE, NActors::NLog::PRI_TRACE);
+                runtime.SetLogPriority(NKikimrServices::IMPORT, NActors::NLog::PRI_TRACE);
+            }
+
+            const ui64 importId = ++t.TxId;
+            AsyncImport(runtime, importId, "/MyRoot", env.Request);
+            t.TestEnv->TestWaitNotification(runtime, importId);
+
+            {
+                TInactiveZone inactive(activeZone);
+                TestGetImport(runtime, importId, "/MyRoot", {
+                    Ydb::StatusIds::SUCCESS,
+                    Ydb::StatusIds::NOT_FOUND
+                });
+            }
+        });
+    }
+
+    Y_UNIT_TEST_WITH_REBOOTS_BUCKETS_TWIN(ShouldSucceedOnIndexedTable, 2, 1, false, IsFs) {
+        ShouldSucceed<IsFs>(t, R"(
+            columns {
+              name: "key"
+              type { optional_type { item { type_id: UTF8 } } }
+            }
+            columns {
+              name: "value"
+              type { optional_type { item { type_id: UTF8 } } }
+            }
+            primary_key: "key"
+            indexes {
+              name: "by_value"
+              index_columns: "value"
+              global_index {}
+            }
+        )");
+    }
+
+    Y_UNIT_TEST_WITH_REBOOTS_BUCKETS_TWIN(ShouldSucceedOnSingleView, 2, 1, false, IsFs) {
+        ShouldSucceed<IsFs>(t,
+            {
+                EPathTypeView,
+                R"(
+                    -- backup root: "/MyRoot"
+                    CREATE VIEW IF NOT EXISTS `view` WITH security_invoker = TRUE AS SELECT 1;
+                )"
+            }
+        );
+    }
+
+    Y_UNIT_TEST_WITH_REBOOTS_BUCKETS_TWIN(ShouldSucceedOnViewsAndTables, 2, 1, false, IsFs) {
+        const THashMap<TString, TTypedScheme> schemes = {
+            {
+                "/view",
+                {
+                    EPathTypeView,
+                    R"(
+                        -- backup root: "/MyRoot"
+                        CREATE VIEW IF NOT EXISTS `view` WITH security_invoker = TRUE AS SELECT 1;
+                    )"
                 }
-            )", port));
+            }, {
+                "/table",
+                {
+                    EPathTypeTable,
+                    R"(
+                        columns {
+                            name: "key"
+                            type { optional_type { item { type_id: UTF8 } } }
+                        }
+                        columns {
+                            name: "value"
+                            type { optional_type { item { type_id: UTF8 } } }
+                        }
+                        primary_key: "key"
+                    )"
+                }
+            }
+        };
+        ShouldSucceed<IsFs>(t, schemes, {{"view", "/MyRoot/View"}, {"table", "/MyRoot/Table"}});
+    }
+
+    Y_UNIT_TEST_WITH_REBOOTS_BUCKETS_TWIN(ShouldSucceedOnDependentView, 2, 1, false, IsFs) {
+        const THashMap<TString, TTypedScheme> schemes = {
+            {
+                "/DependentView",
+                {
+                    EPathTypeView,
+                    R"(
+                        -- backup root: "/MyRoot"
+                        CREATE VIEW IF NOT EXISTS `DependentView` WITH security_invoker = TRUE AS SELECT * FROM `BaseView`;
+                    )"
+                }
+            }, {
+                "/BaseView",
+                {
+                    EPathTypeView,
+                    R"(
+                        -- backup root: "/MyRoot"
+                        CREATE VIEW IF NOT EXISTS `BaseView` WITH security_invoker = TRUE AS SELECT 1;
+                    )"
+                }
+            }
+        };
+        ShouldSucceed<IsFs>(t, schemes, {
+            {"DependentView", "/MyRoot/DependentView"},
+            {"BaseView", "/MyRoot/BaseView"}
+        });
+    }
+
+    Y_UNIT_TEST_WITH_REBOOTS_BUCKETS_TWIN(ShouldSucceedOnSystemView, 2, 1, false, IsFs) {
+        const THashMap<TString, TTypedScheme> schemes = {
+            {
+                "/partition_stats",
+                {
+                    EPathTypeSysView,
+                    R"(
+                        sys_view_id: 1
+                        sys_view_name: "partition_stats"
+                    )"
+                }
+            }
+        };
+        ShouldSucceed<IsFs>(t, schemes, {{"partition_stats", "/MyRoot/.sys/partition_stats"}});
+    }
+
+    Y_UNIT_TEST_WITH_REBOOTS_BUCKETS_TWIN(ShouldSucceedOnSystemViewWithPermissions, 2, 1, false, IsFs) {
+        const TString permissions = R"(
+            actions {
+                change_owner: "user1@builtin"
+            }
+            actions {
+                grant {
+                    subject: "user2@builtin"
+                    permission_names: "ydb.generic.read"
+                }
+            }
+            actions {
+                grant {
+                    subject: "user2@builtin"
+                    permission_names: "ydb.generic.list"
+                }
+            }
+        )";
+
+        THashMap<TString, TTypedScheme> schemes = {
+            {
+                "/partition_stats",
+                {
+                    EPathTypeSysView,
+                    R"(
+                        sys_view_id: 1
+                        sys_view_name: "partition_stats"
+                    )"
+                }
+            }
+        };
+
+        THashMap<TString, TTestDataWithScheme> bucketContent;
+        for (const auto& [prefix, typedScheme] : schemes) {
+            bucketContent.emplace(prefix, GenerateTestData(typedScheme, {}, permissions));
+        }
+
+        TImportEnv<IsFs> env(ConvertTestData(bucketContent), {
+            {"partition_stats", "/MyRoot/.sys/partition_stats"},
+        });
+
+        t.Run([&](TTestActorRuntime& runtime, bool& activeZone) {
+            {
+                TInactiveZone inactive(activeZone);
+                env.SetupRuntime(runtime);
+                runtime.SetLogPriority(NKikimrServices::IMPORT, NActors::NLog::PRI_TRACE);
+                runtime.GetAppData().FeatureFlags.SetEnableSysViewPermissionsExport(true);
+            }
+
+            AsyncImport(runtime, ++t.TxId, "/MyRoot", env.Request);
             t.TestEnv->TestWaitNotification(runtime, t.TxId);
 
             {
@@ -4380,69 +8820,41 @@ Y_UNIT_TEST_SUITE(TImportWithRebootsTests) {
         });
     }
 
-    Y_UNIT_TEST(ShouldSucceedOnSimpleTable) {
-        ShouldSucceed(R"(
-            columns {
-              name: "key"
-              type { optional_type { item { type_id: UTF8 } } }
-            }
-            columns {
-              name: "value"
-              type { optional_type { item { type_id: UTF8 } } }
-            }
-            primary_key: "key"
-        )");
-    }
+    template <bool IsFs>
+    void CancelShouldSucceed(
+        TTestWithReboots& t,
+        const THashMap<TString, TTypedScheme>& schemes,
+        const TVector<TImportItem>& items = DefaultImportItems(),
+        const TString& extraSettings = "")
+    {
+        THashMap<TString, TTestDataWithScheme> bucketContent(schemes.size());
+        for (const auto& [prefix, typedScheme] : schemes) {
+            bucketContent.emplace(prefix, GenerateTestData(typedScheme));
+        }
+        TImportEnv<IsFs> env(ConvertTestData(bucketContent), items, extraSettings);
 
-    Y_UNIT_TEST(ShouldSucceedOnIndexedTable) {
-        ShouldSucceed(R"(
-            columns {
-              name: "key"
-              type { optional_type { item { type_id: UTF8 } } }
-            }
-            columns {
-              name: "value"
-              type { optional_type { item { type_id: UTF8 } } }
-            }
-            primary_key: "key"
-            indexes {
-              name: "by_value"
-              index_columns: "value"
-              global_index {}
-            }
-        )");
-    }
-
-    void CancelShouldSucceed(const TString& scheme) {
-        TPortManager portManager;
-        const ui16 port = portManager.GetPort();
-
-        const auto data = GenerateTestData(scheme, {{"a", 1}});
-
-        TS3Mock s3Mock(ConvertTestData(data), TS3Mock::TSettings(port));
-        UNIT_ASSERT(s3Mock.Start());
-
-        TTestWithReboots t;
+        const bool createsViews = AnyOf(schemes, [](const auto& scheme) {
+            return scheme.second.Type == EPathTypeView;
+        });
+        if (createsViews) {
+            t.GetTestEnvOptions().RunFakeConfigDispatcher(true);
+            t.GetTestEnvOptions().SetupKqpProxy(true);
+        }
         t.Run([&](TTestActorRuntime& runtime, bool& activeZone) {
             {
                 TInactiveZone inactive(activeZone);
 
+                env.SetupRuntime(runtime);
                 runtime.SetLogPriority(NKikimrServices::DATASHARD_RESTORE, NActors::NLog::PRI_TRACE);
                 runtime.SetLogPriority(NKikimrServices::IMPORT, NActors::NLog::PRI_TRACE);
+                runtime.GetAppData().FeatureFlags.SetEnableSysViewPermissionsExport(true);
+                if (createsViews) {
+                    runtime.GetAppData().FeatureFlags.SetEnableViews(true);
+                }
             }
 
-            AsyncImport(runtime, ++t.TxId, "/MyRoot", Sprintf(R"(
-                ImportFromS3Settings {
-                  endpoint: "localhost:%d"
-                  scheme: HTTP
-                  items {
-                    source_prefix: ""
-                    destination_path: "/MyRoot/Table"
-                  }
-                }
-            )", port));
-            t.TestEnv->TestWaitNotification(runtime, t.TxId);
-            const ui64 importId = t.TxId;
+            const ui64 importId = ++t.TxId;
+            AsyncImport(runtime, importId, "/MyRoot", env.Request);
 
             t.TestEnv->ReliablePropose(runtime, CancelImportRequest(++t.TxId, "/MyRoot", importId), {
                 Ydb::StatusIds::SUCCESS,
@@ -4452,17 +8864,26 @@ Y_UNIT_TEST_SUITE(TImportWithRebootsTests) {
 
             {
                 TInactiveZone inactive(activeZone);
-                TestGetImport(runtime, importId, "/MyRoot", {
+                const auto response = TestGetImport(runtime, importId, "/MyRoot", {
                     Ydb::StatusIds::SUCCESS,
                     Ydb::StatusIds::CANCELLED,
                     Ydb::StatusIds::NOT_FOUND
                 });
+                const auto& entry = response.GetResponse().GetEntry();
+                if (entry.GetStatus() == Ydb::StatusIds::CANCELLED) {
+                    UNIT_ASSERT_STRING_CONTAINS(NYql::IssuesFromMessageAsString(entry.GetIssues()), "Cancelled manually");
+                }
             }
         });
     }
 
-    Y_UNIT_TEST(CancelShouldSucceedOnSimpleTable) {
-        CancelShouldSucceed(R"(
+    template <bool IsFs>
+    void CancelShouldSucceed(TTestWithReboots& t, const TTypedScheme& scheme) {
+        CancelShouldSucceed<IsFs>(t, {{"", scheme}});
+    }
+
+    Y_UNIT_TEST_WITH_REBOOTS_BUCKETS_TWIN(CancelShouldSucceedOnSimpleTable, 2, 1, false, IsFs) {
+        CancelShouldSucceed<IsFs>(t, R"(
             columns {
               name: "key"
               type { optional_type { item { type_id: UTF8 } } }
@@ -4475,8 +8896,8 @@ Y_UNIT_TEST_SUITE(TImportWithRebootsTests) {
         )");
     }
 
-    Y_UNIT_TEST(CancelShouldSucceedOnIndexedTable) {
-        CancelShouldSucceed(R"(
+    Y_UNIT_TEST_WITH_REBOOTS_BUCKETS_TWIN(CancelShouldSucceedOnIndexedTable, 2, 1, false, IsFs) {
+        CancelShouldSucceed<IsFs>(t, R"(
             columns {
               name: "key"
               type { optional_type { item { type_id: UTF8 } } }
@@ -4492,5 +8913,596 @@ Y_UNIT_TEST_SUITE(TImportWithRebootsTests) {
               global_index {}
             }
         )");
+    }
+
+    Y_UNIT_TEST_WITH_REBOOTS_BUCKETS_TWIN(CancelShouldSucceedOnSingleView, 2, 1, false, IsFs) {
+        CancelShouldSucceed<IsFs>(t,
+            {
+                EPathTypeView,
+                R"(
+                    -- backup root: "/MyRoot"
+                    CREATE VIEW IF NOT EXISTS `view` WITH security_invoker = TRUE AS SELECT 1;
+                )"
+            }
+        );
+    }
+
+    Y_UNIT_TEST_WITH_REBOOTS_BUCKETS_TWIN(CancelShouldSucceedOnViewsAndTables, 2, 1, false, IsFs) {
+        const THashMap<TString, TTypedScheme> schemes = {
+            {
+                "/view",
+                {
+                    EPathTypeView,
+                    R"(
+                        -- backup root: "/MyRoot"
+                        CREATE VIEW IF NOT EXISTS `view` WITH security_invoker = TRUE AS SELECT 1;
+                    )"
+                }
+            }, {
+                "/table",
+                {
+                    EPathTypeTable,
+                    R"(
+                        columns {
+                            name: "key"
+                            type { optional_type { item { type_id: UTF8 } } }
+                        }
+                        columns {
+                            name: "value"
+                            type { optional_type { item { type_id: UTF8 } } }
+                        }
+                        primary_key: "key"
+                    )"
+                }
+            }
+        };
+        CancelShouldSucceed<IsFs>(t, schemes, {{"view", "/MyRoot/View"}, {"table", "/MyRoot/Table"}});
+    }
+
+    THashMap<TString, TTypedScheme> GetSchemeWithChangefeed() {
+        THashMap<TString, TTypedScheme> schemes;
+
+        const auto changefeedName = "update_changefeed";
+
+        schemes.emplace("", R"(
+            columns {
+              name: "key"
+              type { optional_type { item { type_id: UTF8 } } }
+            }
+            columns {
+              name: "value"
+              type { optional_type { item { type_id: UTF8 } } }
+            }
+            primary_key: "key"
+        )");
+
+        const auto changefeedDesc = Sprintf(R"(
+            name: "%s"
+            mode: MODE_UPDATES
+            format: FORMAT_JSON
+            state: STATE_ENABLED
+        )", changefeedName);
+
+        const auto topicDesc = R"(
+            partitioning_settings {
+                min_active_partitions: 1
+                max_active_partitions: 1
+                auto_partitioning_settings {
+                    strategy: AUTO_PARTITIONING_STRATEGY_DISABLED
+                    partition_write_speed {
+                        stabilization_window {
+                            seconds: 300
+                        }
+                        up_utilization_percent: 80
+                        down_utilization_percent: 20
+                    }
+                }
+            }
+            partitions {
+                active: true
+            }
+            retention_period {
+                seconds: 86400
+            }
+            partition_write_speed_bytes_per_second: 1048576
+            partition_write_burst_bytes: 1048576
+            attributes {
+                key: "_max_partition_message_groups_seqno_stored"
+                value: "6000000"
+            }
+            attributes {
+                key: "_allow_unauthenticated_read"
+                value: "true"
+            }
+            attributes {
+                key: "_allow_unauthenticated_write"
+                value: "true"
+            }
+            attributes {
+                key: "_message_group_seqno_retention_period_ms"
+                value: "1382400000"
+            }
+            consumers {
+                name: "my_consumer"
+                read_from {
+                }
+                attributes {
+                    key: "_service_type"
+                    value: "data-streams"
+                }
+            }
+        )";
+
+        NAttr::TAttributes attr;
+        attr.emplace(NAttr::EKeys::TOPIC_DESCRIPTION, topicDesc);
+
+        schemes.emplace("/update_feed",
+            TTypedScheme {
+                EPathTypeCdcStream,
+                changefeedDesc,
+                std::move(attr)
+            }
+        );
+        return schemes;
+    }
+
+    Y_UNIT_TEST_WITH_REBOOTS_BUCKETS_TWIN(ShouldSucceedOnSingleChangefeed, 2, 1, false, IsFs) {
+        ShouldSucceed<IsFs>(t, GetSchemeWithChangefeed());
+    }
+
+    Y_UNIT_TEST_WITH_REBOOTS_BUCKETS_TWIN(CancelShouldSucceedOnSingleChangefeed, 2, 1, false, IsFs) {
+        CancelShouldSucceed<IsFs>(t, GetSchemeWithChangefeed());
+    }
+
+    THashMap<TString, TTypedScheme> GetSchemeWithUniqueIndex() {
+        THashMap<TString, TTypedScheme> schemes;
+        schemes.emplace("", R"(
+            columns {
+              name: "key"
+              type { optional_type { item { type_id: UTF8 } } }
+            }
+            columns {
+              name: "value"
+              type { optional_type { item { type_id: UTF8 } } }
+            }
+            primary_key: "key"
+            indexes {
+                name: "UniqueIndex"
+                index_columns: "value"
+                global_unique_index { }
+            }
+        )");
+        return schemes;
+    }
+
+    Y_UNIT_TEST_WITH_REBOOTS_BUCKETS_TWIN(ShouldSucceedOnSingleTableWithUniqueIndex, 2, 1, false, IsFs) {
+        ShouldSucceed<IsFs>(t, GetSchemeWithUniqueIndex());
+    }
+
+    Y_UNIT_TEST_WITH_REBOOTS_BUCKETS_TWIN(CancelShouldSucceedOnSingleTableWithUniqueIndex, 2, 1, false, IsFs) {
+        CancelShouldSucceed<IsFs>(t, GetSchemeWithUniqueIndex());
+    }
+
+    Y_UNIT_TEST_WITH_REBOOTS_BUCKETS_TWIN(CancelShouldSucceedOnDependentView, 2, 1, false, IsFs) {
+        const THashMap<TString, TTypedScheme> schemes = {
+            {
+                "/DependentView",
+                {
+                    EPathTypeView,
+                    R"(
+                        -- backup root: "/MyRoot"
+                        CREATE VIEW IF NOT EXISTS `DependentView` WITH security_invoker = TRUE AS SELECT * FROM `BaseView`;
+                    )"
+                }
+            }, {
+                "/BaseView",
+                {
+                    EPathTypeView,
+                    R"(
+                        -- backup root: "/MyRoot"
+                        CREATE VIEW IF NOT EXISTS `BaseView` WITH security_invoker = TRUE AS SELECT 1;
+                    )"
+                }
+            }
+        };
+        CancelShouldSucceed<IsFs>(t, schemes, {
+            {"DependentView", "/MyRoot/DependentView"},
+            {"BaseView", "/MyRoot/BaseView"}
+        });
+    }
+
+    Y_UNIT_TEST_WITH_REBOOTS_BUCKETS_TWIN(CancelShouldSucceedOnSystemView, 2, 1, false, IsFs) {
+        const THashMap<TString, TTypedScheme> schemes = {
+            {
+                "/partition_stats",
+                {
+                    EPathTypeSysView,
+                    R"(
+                        sys_view_id: 1
+                        sys_view_name: "partition_stats"
+                    )"
+                }
+            }
+        };
+        CancelShouldSucceed<IsFs>(t, schemes, {{"partition_stats", "/MyRoot/.sys/partition_stats"}});
+    }
+
+    Y_UNIT_TEST_WITH_REBOOTS_BUCKETS_TWIN(CancelShouldSucceedOnSystemViewWithPermissions, 2, 1, false, IsFs) {
+        const TString permissions = R"(
+            actions {
+                change_owner: "user1@builtin"
+            }
+            actions {
+                grant {
+                    subject: "user2@builtin"
+                    permission_names: "ydb.generic.read"
+                }
+            }
+            actions {
+                grant {
+                    subject: "user2@builtin"
+                    permission_names: "ydb.generic.list"
+                }
+            }
+        )";
+
+        THashMap<TString, TTypedScheme> schemes = {
+            {
+                "/partition_stats",
+                {
+                    EPathTypeSysView,
+                    R"(
+                        sys_view_id: 1
+                        sys_view_name: "partition_stats"
+                    )"
+                }
+            }
+        };
+
+        THashMap<TString, TTestDataWithScheme> bucketContent;
+        for (const auto& [prefix, typedScheme] : schemes) {
+            bucketContent.emplace(prefix, GenerateTestData(typedScheme, {}, permissions));
+        }
+
+        TImportEnv<IsFs> env(ConvertTestData(bucketContent), {
+            {"partition_stats", "/MyRoot/.sys/partition_stats"},
+        });
+
+        t.Run([&](TTestActorRuntime& runtime, bool& activeZone) {
+            {
+                TInactiveZone inactive(activeZone);
+                env.SetupRuntime(runtime);
+                runtime.SetLogPriority(NKikimrServices::IMPORT, NActors::NLog::PRI_TRACE);
+                runtime.GetAppData().FeatureFlags.SetEnableSysViewPermissionsExport(true);
+            }
+
+            const ui64 importId = ++t.TxId;
+            AsyncImport(runtime, importId, "/MyRoot", env.Request);
+
+            t.TestEnv->ReliablePropose(runtime, CancelImportRequest(++t.TxId, "/MyRoot", importId), {
+                Ydb::StatusIds::SUCCESS,
+                Ydb::StatusIds::NOT_FOUND
+            });
+            t.TestEnv->TestWaitNotification(runtime, importId);
+
+            {
+                TInactiveZone inactive(activeZone);
+                const auto response = TestGetImport(runtime, importId, "/MyRoot", {
+                    Ydb::StatusIds::SUCCESS,
+                    Ydb::StatusIds::CANCELLED,
+                    Ydb::StatusIds::NOT_FOUND
+                });
+
+                const auto& entry = response.GetResponse().GetEntry();
+                if (entry.GetStatus() == Ydb::StatusIds::CANCELLED) {
+                    UNIT_ASSERT_STRING_CONTAINS(NYql::IssuesFromMessageAsString(entry.GetIssues()), "Cancelled manually");
+                }
+            }
+        });
+    }
+
+    Y_UNIT_TEST_WITH_REBOOTS_BUCKETS_TWIN(ShouldSucceedOnSingleTopic, 2, 1, false, IsFs) {
+        auto topic = NDescUT::TSimpleTopic(0, 2);
+        ShouldSucceed<IsFs>(t, {
+            {
+                topic.GetDir(),
+                {
+                    EPathTypePersQueueGroup,
+                    topic.GetPublicProto().DebugString()
+                }
+            }
+        }, {{topic.GetDir(), TStringBuilder() << "/MyRoot/Restored/" << topic.GetDir()}});
+    }
+
+    Y_UNIT_TEST_WITH_REBOOTS_BUCKETS_TWIN(ShouldSucceedOnMaterializedIndex, 2, 1, false, IsFs) {
+        const auto a = GenerateTestData(R"(
+            columns {
+              name: "key"
+              type { optional_type { item { type_id: UTF8 } } }
+            }
+            columns {
+              name: "value"
+              type { optional_type { item { type_id: UTF8 } } }
+            }
+            primary_key: "key"
+            indexes {
+              name: "by_value"
+              index_columns: "value"
+              global_index {}
+            }
+        )", {{"a", 1}});
+
+        const auto b = GenerateTestData(R"(
+            columns {
+              name: "key"
+              type { optional_type { item { type_id: UTF8 } } }
+            }
+            columns {
+              name: "value"
+              type { optional_type { item { type_id: UTF8 } } }
+            }
+            primary_key: "value"
+            primary_key: "key"
+        )", {{"b", 1}});
+
+        TImportEnv<IsFs> env(
+            ConvertTestData({{"/a", a}, {"/a/by_value/indexImplTable", b}}),
+            {{"a", "/MyRoot/Table"}},
+            "index_population_mode: INDEX_POPULATION_MODE_IMPORT");
+
+        t.Run([&](TTestActorRuntime& runtime, bool& activeZone) {
+            {
+                TInactiveZone inactive(activeZone);
+
+                env.SetupRuntime(runtime);
+                runtime.SetLogPriority(NKikimrServices::DATASHARD_RESTORE, NActors::NLog::PRI_TRACE);
+                runtime.SetLogPriority(NKikimrServices::IMPORT, NActors::NLog::PRI_TRACE);
+                runtime.GetAppData().FeatureFlags.SetEnableIndexMaterialization(true);
+            }
+
+            const ui64 importId = ++t.TxId;
+            AsyncImport(runtime, importId, "/MyRoot", env.Request);
+            t.TestEnv->TestWaitNotification(runtime, importId);
+
+            {
+                TInactiveZone inactive(activeZone);
+                TestGetImport(runtime, importId, "/MyRoot", {
+                    Ydb::StatusIds::SUCCESS,
+                    Ydb::StatusIds::NOT_FOUND
+                });
+            }
+        });
+    }
+
+    Y_UNIT_TEST_WITH_REBOOTS_BUCKETS_TWIN(ShouldSucceedOnSingleReplication, 2, 1, false, IsFs) {
+        ShouldSucceed<IsFs>(t,
+            {
+                EPathTypeReplication,
+                R"(
+                    -- database: "/MyRoot"
+                    -- backup root: "/MyRoot"
+                    CREATE ASYNC REPLICATION `Replication`
+                    FOR
+                        `/MyRoot/Table` AS `/MyRoot/TableReplica`
+                    WITH (
+                        CONNECTION_STRING = 'grpc://localhost:2135/?database=/MyRoot',
+                        USER = 'user',
+                        PASSWORD_SECRET_NAME = 'pwd-secret-name',
+                        CONSISTENCY_LEVEL = 'Row'
+                    );
+                )"
+            }
+        );
+    }
+
+    Y_UNIT_TEST_WITH_REBOOTS_BUCKETS_TWIN(ShouldSucceedOnSingleTransfer, 2, 1, false, IsFs) {
+        const THashMap<TString, TTypedScheme> schemes = {
+            {
+                "/Table",
+                {
+                    EPathTypeTable,
+                    R"(
+                        columns {
+                        name: "key"
+                        type { optional_type { item { type_id: UTF8 } } }
+                        }
+                        columns {
+                        name: "value"
+                        type { optional_type { item { type_id: UTF8 } } }
+                        }
+                        primary_key: "key"
+                    )"
+                }
+            },
+            {
+                "/Transfer",
+                {
+                    EPathTypeTransfer,
+                    R"(
+                        -- database: "/MyRoot"
+                        -- backup root: "/MyRoot"
+                        $transformation_lambda = ($msg) -> { return [ <| partition: $msg._partition, offset: $msg._offset, message: CAST($msg._data AS Utf8) |> ]; };
+
+                        CREATE TRANSFER `Transfer`
+                            FROM `/MyRoot/Topic` TO `/MyRoot/Table` USING $transformation_lambda
+                        WITH (
+                            CONNECTION_STRING = 'grpc://localhost:2135/?database=/MyRoot',
+                            CONSUMER = 'consumerName',
+                            BATCH_SIZE_BYTES = 8388608,
+                            FLUSH_INTERVAL = Interval('PT60S')
+                        );
+                    )"
+                }
+            },
+        };
+        ShouldSucceed<IsFs>(t, schemes, {{"Table", "/MyRoot/Table"}, {"Transfer", "/MyRoot/Transfer"}});
+    }
+
+    Y_UNIT_TEST_WITH_REBOOTS_BUCKETS_TWIN(ShouldSucceedOnSingleExternalDataSource, 2, 1, false, IsFs) {
+        ShouldSucceed<IsFs>(t,
+            {
+                EPathTypeExternalDataSource,
+                R"(
+                    -- database: "/MyRoot"
+                    CREATE EXTERNAL DATA SOURCE IF NOT EXISTS `DataSource`
+                    WITH (
+                        SOURCE_TYPE = 'ClickHouse',
+                        LOCATION = 'https://clickhousedb.net',
+                        PASSWORD_SECRET_NAME = 'password_secret',
+                        AUTH_METHOD = 'BASIC',
+                        DATABASE_NAME = 'clickhouse',
+                        LOGIN = 'my_login',
+                        PROTOCOL = 'NATIVE',
+                        USE_TLS = 'TRUE'
+                    );
+                )"
+            }
+        );
+    }
+
+    Y_UNIT_TEST_WITH_REBOOTS_BUCKETS_TWIN(ShouldSucceedOnSingleExternalTable, 2, 1, false, IsFs) {
+        const THashMap<TString, TTypedScheme> schemes = {
+            {
+                "/ExternalTable",
+                {
+                    EPathTypeExternalTable,
+                    R"(
+                        -- database: "/MyRoot"
+                        -- backup root: "/MyRoot"
+                        CREATE EXTERNAL TABLE IF NOT EXISTS `ExternalTable` (
+                            key Uint64 NOT NULL,
+                            value1 Uint64?,
+                            value2 Utf8 NOT NULL
+                        ) WITH (
+                            DATA_SOURCE = '/MyRoot/DataSource',
+                            LOCATION = 'bucket'
+                        )
+                    )"
+                }
+            },
+            {
+                "/DataSource",
+                {
+                    EPathTypeExternalDataSource,
+                    R"(
+                        -- database: "/MyRoot"
+                        CREATE EXTERNAL DATA SOURCE IF NOT EXISTS `DataSource`
+                        WITH (
+                            SOURCE_TYPE = 'ObjectStorage',
+                            LOCATION = 'https://s3.cloud.net/bucket',
+                            AUTH_METHOD = 'AWS',
+                            AWS_ACCESS_KEY_ID_SECRET_NAME = 'id_secret',
+                            AWS_SECRET_ACCESS_KEY_SECRET_NAME = 'access_secret',
+                            AWS_REGION = 'ru-central-1'
+                        );
+                    )"
+                }
+            },
+        };
+        ShouldSucceed<IsFs>(t, schemes, {
+            {"ExternalTable", "/MyRoot/ExternalTable"},
+            {"DataSource", "/MyRoot/DataSource"}
+        });
+    }
+
+    // Column Table (OLAP)
+    Y_UNIT_TEST_WITH_REBOOTS_BUCKETS_TWIN(ShouldSucceedOnSingleColumnTable, 2, 1, false, IsFs) {
+        const TTypedScheme columnTableScheme = {
+            EPathTypeColumnTable,
+            R"(
+                columns {
+                    name: "timestamp"
+                    type { type_id: TIMESTAMP }
+                    not_null: true
+                }
+                columns {
+                    name: "value"
+                    type { optional_type { item { type_id: UTF8 } } }
+                }
+                primary_key: "timestamp"
+            )"
+        };
+
+        THashMap<TString, TTestDataWithScheme> bucketContent;
+        bucketContent.emplace("", GenerateTestData(columnTableScheme, {{"", 0}}, "", R"({"version": 1})"));
+
+        TImportEnv<IsFs> env(ConvertTestData(bucketContent), {{"", "/MyRoot/ColumnTable"}});
+
+        t.Run([&](TTestActorRuntime& runtime, bool& activeZone) {
+            {
+                TInactiveZone inactive(activeZone);
+
+                env.SetupRuntime(runtime);
+                runtime.GetAppData().FeatureFlags.SetEnableColumnTablesBackup(true);
+                runtime.SetLogPriority(NKikimrServices::IMPORT, NActors::NLog::PRI_TRACE);
+            }
+
+            const ui64 importId = ++t.TxId;
+            AsyncImport(runtime, importId, "/MyRoot", env.Request);
+            t.TestEnv->TestWaitNotification(runtime, importId);
+
+            {
+                TInactiveZone inactive(activeZone);
+                TestGetImport(runtime, importId, "/MyRoot", {
+                    Ydb::StatusIds::SUCCESS,
+                    Ydb::StatusIds::NOT_FOUND
+                });
+            }
+        });
+    }
+
+    Y_UNIT_TEST_WITH_REBOOTS_BUCKETS_TWIN(CancelShouldSucceedOnSingleColumnTable, 2, 1, false, IsFs) {
+        const TTypedScheme columnTableScheme = {
+            EPathTypeColumnTable,
+            R"(
+                columns {
+                    name: "timestamp"
+                    type { type_id: TIMESTAMP }
+                    not_null: true
+                }
+                columns {
+                    name: "value"
+                    type { optional_type { item { type_id: UTF8 } } }
+                }
+                primary_key: "timestamp"
+            )"
+        };
+
+        THashMap<TString, TTestDataWithScheme> bucketContent;
+        bucketContent.emplace("", GenerateTestData(columnTableScheme, {{"", 0}}, "", R"({"version": 1})"));
+
+        TImportEnv<IsFs> env(ConvertTestData(bucketContent), {{"", "/MyRoot/ColumnTable"}});
+
+        t.Run([&](TTestActorRuntime& runtime, bool& activeZone) {
+            {
+                TInactiveZone inactive(activeZone);
+
+                env.SetupRuntime(runtime);
+                runtime.GetAppData().FeatureFlags.SetEnableColumnTablesBackup(true);
+                runtime.SetLogPriority(NKikimrServices::IMPORT, NActors::NLog::PRI_TRACE);
+            }
+
+            const ui64 importId = ++t.TxId;
+            AsyncImport(runtime, importId, "/MyRoot", env.Request);
+
+            t.TestEnv->ReliablePropose(runtime, CancelImportRequest(++t.TxId, "/MyRoot", importId), {
+                Ydb::StatusIds::SUCCESS,
+                Ydb::StatusIds::NOT_FOUND
+            });
+            t.TestEnv->TestWaitNotification(runtime, importId);
+
+            {
+                TInactiveZone inactive(activeZone);
+                const auto response = TestGetImport(runtime, importId, "/MyRoot", {
+                    Ydb::StatusIds::SUCCESS,
+                    Ydb::StatusIds::CANCELLED,
+                    Ydb::StatusIds::NOT_FOUND
+                });
+                const auto& entry = response.GetResponse().GetEntry();
+                if (entry.GetStatus() == Ydb::StatusIds::CANCELLED) {
+                    UNIT_ASSERT_STRING_CONTAINS(NYql::IssuesFromMessageAsString(entry.GetIssues()), "Cancelled manually");
+                }
+            }
+        });
     }
 }

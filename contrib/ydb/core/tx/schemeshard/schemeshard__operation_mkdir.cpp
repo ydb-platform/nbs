@@ -1,6 +1,9 @@
-#include "schemeshard__operation_part.h"
+#include "schemeshard__op_traits.h"
 #include "schemeshard__operation_common.h"
+#include "schemeshard__operation_part.h"
 #include "schemeshard_impl.h"
+
+#include <contrib/ydb/core/sys_view/common/path.h>
 
 namespace {
 
@@ -14,7 +17,7 @@ private:
     TString DebugHint() const override {
         return TStringBuilder()
             << "MkDir::TPropose"
-            << " operationId#" << OperationId;
+            << " operationId# " << OperationId;
     }
 
 public:
@@ -149,6 +152,7 @@ public:
 
         const TString acl = Transaction.GetModifyACL().GetDiffACL();
 
+        const bool isSystemDir = name == NSysView::SysPathName;
         NSchemeShard::TPath dstPath = parentPath.Child(name);
         {
             NSchemeShard::TPath::TChecker checks = dstPath.Check();
@@ -171,15 +175,19 @@ public:
 
             if (checks) {
                 checks
-                    .IsValidLeafName()
+                    .IsValidLeafName(context.UserToken.Get())
                     .IsValidACL(acl);
             }
 
             if (checks && !context.SS->SystemBackupSIDs.contains(owner)) {
                 checks
                     .DepthLimit()
-                    .PathsLimit()
                     .DirChildrenLimit();
+
+                if (!isSystemDir) {
+                    checks
+                        .PathsLimit();
+                }
             }
 
             if (!checks) {
@@ -258,8 +266,15 @@ public:
                 newDir->TempDirOwnerActorId, newDir->PathId);
         }
 
-        dstPath.DomainInfo()->IncPathsInside(context.SS);
-        parentPath.Base()->IncAliveChildren();
+        EPathCategory pathCategory;
+        if (isSystemDir) {
+            pathCategory = EPathCategory::System;
+        } else {
+            pathCategory = EPathCategory::Regular;
+        }
+
+        dstPath.DomainInfo()->IncPathsInside(context.SS, 1, pathCategory);
+        IncAliveChildrenSafeWithUndo(OperationId, parentPath, context); // for correct discard of ChildrenExist prop
 
         context.OnComplete.ActivateTx(OperationId);
 
@@ -288,6 +303,30 @@ public:
 }
 
 namespace NKikimr::NSchemeShard {
+
+using TTag = TSchemeTxTraits<NKikimrSchemeOp::EOperationType::ESchemeOpMkDir>;
+
+namespace NOperation {
+
+template <>
+std::optional<TString> GetTargetName<TTag>(
+    TTag,
+    const TTxTransaction& tx)
+{
+    return tx.GetMkDir().GetName();
+}
+
+template <>
+bool SetName<TTag>(
+    TTag,
+    TTxTransaction& tx,
+    const TString& name)
+{
+    tx.MutableMkDir()->SetName(name);
+    return true;
+}
+
+} // namespace NOperation
 
 ISubOperation::TPtr CreateMkDir(TOperationId id, const TTxTransaction& tx) {
     return MakeSubOperation<TMkDir>(id, tx);

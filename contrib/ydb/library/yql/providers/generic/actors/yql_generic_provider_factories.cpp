@@ -8,34 +8,62 @@
 namespace NYql::NDq {
 
     void RegisterGenericProviderFactories(TDqAsyncIoFactory& factory,
-                                          ISecuredServiceAccountCredentialsFactory::TPtr credentialsFactory,
+                                          ISecuredServiceAccountCredentialsFactory::TPtr securedServiceAccountCredentialsFactory,
                                           NYql::NConnector::IClient::TPtr genericClient) {
-        auto readActorFactory = [credentialsFactory, genericClient](
+        auto readActorFactory = [securedServiceAccountCredentialsFactory, genericClient](
                                     Generic::TSource&& settings,
                                     IDqAsyncIoFactory::TSourceArguments&& args) {
-            return CreateGenericReadActor(genericClient, std::move(settings), args.InputIndex, args.StatsLevel,
-                                          args.SecureParams, args.TaskParams, args.ComputeActorId, credentialsFactory, args.HolderFactory);
+            return CreateGenericReadActor(
+                genericClient,
+                std::move(settings),
+                args.InputIndex,
+                args.StatsLevel,
+                args.SecureParams,
+                args.TaskId,
+                args.TaskParams,
+                args.ReadRanges,
+                args.ComputeActorId,
+                securedServiceAccountCredentialsFactory,
+                args.HolderFactory,
+                std::move(args.Alloc));
         };
 
-        auto lookupActorFactory = [credentialsFactory, genericClient](NYql::Generic::TLookupSource&& lookupSource, IDqAsyncIoFactory::TLookupSourceArguments&& args) {
+        auto lookupActorFactory = [securedServiceAccountCredentialsFactory, genericClient](Generic::TLookupSource&& lookupSource, IDqAsyncIoFactory::TLookupSourceArguments&& args) {
             return CreateGenericLookupActor(
                 genericClient,
-                credentialsFactory,
+                securedServiceAccountCredentialsFactory,
                 std::move(args.ParentId),
-                args.Alloc,
-                args.KeyTypeHelper,
+                std::move(args.TaskCounters),
+                std::move(args.Alloc),
+                std::move(args.KeyTypeHelper),
                 std::move(lookupSource),
                 args.KeyType,
                 args.PayloadType,
                 args.TypeEnv,
                 args.HolderFactory,
-                args.MaxKeysInRequest);
+                args.MaxKeysInRequest,
+                args.SecureParams,
+                args.IsMultiMatches
+            );
         };
 
-        for (auto& name : {"ClickHouseGeneric", "PostgreSqlGeneric", "YdbGeneric", "MySqlGeneric", "GreenplumGeneric", "MsSQLServerGeneric"}) {
+        for (auto& name : {
+                 "ClickHouseGeneric",
+                 "PostgreSqlGeneric",
+                 "YdbGeneric",
+                 "MySqlGeneric",
+                 "GreenplumGeneric",
+                 "MsSQLServerGeneric",
+                 "OracleGeneric",
+                 "LoggingGeneric",
+                 "IcebergGeneric",
+                 "RedisGeneric",
+                 "PrometheusGeneric",
+                 "MongoDBGeneric",
+                 "OpenSearchGeneric"}) {
             factory.RegisterSource<Generic::TSource>(name, readActorFactory);
             factory.RegisterLookupSource<Generic::TLookupSource>(name, lookupActorFactory);
         }
     }
 
-}
+} // namespace NYql::NDq

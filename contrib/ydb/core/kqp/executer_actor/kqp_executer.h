@@ -1,15 +1,19 @@
 #pragma once
 
 #include <library/cpp/lwtrace/shuttle.h>
+#include <contrib/ydb/core/kqp/common/kqp_batch_operations.h>
 #include <contrib/ydb/core/kqp/common/kqp_tx.h>
 #include <contrib/ydb/core/kqp/common/kqp_event_ids.h>
 #include <contrib/ydb/core/kqp/common/kqp_user_request_context.h>
+#include <contrib/ydb/core/kqp/executer_actor/kqp_partition_helper.h>
 #include <contrib/ydb/core/kqp/executer_actor/shards_resolver/kqp_shards_resolver_events.h>
 #include <contrib/ydb/core/kqp/query_data/kqp_query_data.h>
 #include <contrib/ydb/core/kqp/gateway/kqp_gateway.h>
 #include <contrib/ydb/core/kqp/counters/kqp_counters.h>
 #include <contrib/ydb/core/tx/long_tx_service/public/lock_handle.h>
+#include <contrib/ydb/library/aclib/user_context.h>
 #include <contrib/ydb/library/yql/dq/actors/compute/dq_compute_actor_async_io_factory.h>
+#include <contrib/ydb/library/yql/dq/runtime/dq_channel_service.h>
 #include <contrib/ydb/core/protos/table_service_config.pb.h>
 
 namespace NKikimr {
@@ -30,9 +34,23 @@ struct TEvKqpExecuter {
         IKqpGateway::TKqpSnapshot Snapshot;
         std::optional<NYql::TKikimrPathId> BrokenLockPathId;
         std::optional<ui64> BrokenLockShardId;
+        std::optional<ui64> BrokenLockQuerySpanId;
 
         ui64 ResultRowsCount = 0;
         ui64 ResultRowsBytes = 0;
+        ui64 LocksBrokenAsBreaker = 0;
+        ui64 LocksBrokenAsVictim = 0;
+        TVector<ui64> BreakerQuerySpanIds;  // QuerySpanIds of all queries that broke locks (from DataShard, one per shard/table)
+
+        struct TDeferredBreakerInfo {
+            ui64 QuerySpanId = 0;  // Breaker's QuerySpanId
+            ui32 NodeId = 0;        // Node where breaker's query text is cached
+        };
+        TVector<TDeferredBreakerInfo> DeferredBreakers;  // Breaker info for deferred lock scenarios
+
+        // For BATCH operations only
+        TVector<TSerializedCellVec> BatchOperationMaxKeys;
+        TVector<ui32> BatchOperationKeyIds;
 
         enum class EExecutionType {
             Data,
@@ -67,8 +85,15 @@ struct TEvKqpExecuter {
         }
     };
 
-    struct TEvStreamData : public TEventPB<TEvStreamData, NKikimrKqp::TEvExecuterStreamData,
-        TKqpExecuterEvents::EvStreamData> {};
+    struct TEvStreamData : public TEventPBWithArena<TEvStreamData, NKikimrKqp::TEvExecuterStreamData, TKqpExecuterEvents::EvStreamData> {
+        using TBaseEv = TEventPBWithArena<TEvStreamData, NKikimrKqp::TEvExecuterStreamData, TKqpExecuterEvents::EvStreamData>;
+        using TBaseEv::TEventPBBase;
+
+        TEvStreamData() = default;
+        explicit TEvStreamData(TIntrusivePtr<NActors::TProtoArenaHolder> arena)
+            : TEventPBBase(std::move(arena))
+        {}
+    };
 
     struct TEvStreamDataAck : public TEventPB<TEvStreamDataAck, NKikimrKqp::TEvExecuterStreamDataAck,
         TKqpExecuterEvents::EvStreamDataAck>
@@ -85,9 +110,6 @@ struct TEvKqpExecuter {
         TEvStreamDataAck() = default;
     };
 
-    struct TEvStreamProfile : public TEventPB<TEvStreamProfile, NKikimrKqp::TEvExecuterStreamProfile,
-        TKqpExecuterEvents::EvStreamProfile> {};
-
     // deprecated event, remove in the future releases.
     struct TEvExecuterProgress : public TEventPB<TEvExecuterProgress, NKikimrKqp::TEvExecuterProgress,
             TKqpExecuterEvents::EvProgress> {};
@@ -99,23 +121,73 @@ struct TEvKqpExecuter {
         NYql::TIssues Issues;
         TDuration CpuTime;
     };
+
+    struct TEvTxDelayedExecution : public TEventLocal<TEvTxDelayedExecution,
+        TKqpExecuterEvents::EvDelayedExecution>
+    {
+        TEvTxDelayedExecution(size_t partitionIdx)
+            : PartitionIdx(partitionIdx)
+        {}
+
+        size_t PartitionIdx;
+    };
 };
 
 struct TKqpFederatedQuerySetup;
 
+struct TExecuterMutableConfig : public TAtomicRefCount<TExecuterMutableConfig>{
+    std::atomic<bool> EnableRowsDuplicationCheck = false;
+    std::atomic<i32> RuntimeParameterSizeLimit = 0;
+
+    void ApplyFromTableServiceConfig(const NKikimrConfig::TTableServiceConfig& tableServiceConfig) {
+        EnableRowsDuplicationCheck.store(tableServiceConfig.GetEnableRowsDuplicationCheck());
+        RuntimeParameterSizeLimit.store(tableServiceConfig.GetExtractPredicateParameterListSizeLimit());
+    }
+};
+
+struct TExecuterConfig : TNonCopyable {
+    TIntrusivePtr<TExecuterMutableConfig> MutableConfig;
+    const NKikimrConfig::TTableServiceConfig& TableServiceConfig;
+    const NKikimrConfig::TTliConfig& TliConfig;
+    TIntrusivePtr<NACLib::TUserContext> UserCtx;
+
+    TExecuterConfig(TIntrusivePtr<TExecuterMutableConfig> mutableConfig,
+        const NKikimrConfig::TTableServiceConfig& tableServiceConfig,
+        const NKikimrConfig::TTliConfig& tliConfig,
+        TIntrusivePtr<NACLib::TUserContext> userCtx
+    )
+        : MutableConfig(mutableConfig)
+        , TableServiceConfig(tableServiceConfig)
+        , TliConfig(tliConfig)
+        , UserCtx(userCtx)
+    {}
+
+    NKikimrConfig::TTableServiceConfig::EBlockTrackingMode GetBlockTrackingMode() const {
+#ifdef PROFILE_MEMORY_ALLOCATIONS
+        return NKikimrConfig::TTableServiceConfig::BLOCK_TRACKING_DEEP_COPY;
+#endif
+        return TableServiceConfig.GetBlockTrackingMode();
+    }
+};
+
 IActor* CreateKqpExecuter(IKqpGateway::TExecPhysicalRequest&& request, const TString& database,
-    const TIntrusiveConstPtr<NACLib::TUserToken>& userToken, TKqpRequestCounters::TPtr counters,
-    const NKikimrConfig::TTableServiceConfig& tableServiceConfig,
-    NYql::NDq::IDqAsyncIoFactory::TPtr asyncIoFactory, TPreparedQueryHolder::TConstPtr preparedQuery,
-    const TActorId& creator, const TIntrusivePtr<TUserRequestContext>& userRequestContext, ui32 statementResultIndex,
+    const TIntrusiveConstPtr<NACLib::TUserToken>& userToken, NFormats::TFormatsSettings formatsSettings,
+    TKqpRequestCounters::TPtr counters, const TExecuterConfig& executerConfig,
+    NYql::NDq::IDqAsyncIoFactory::TPtr asyncIoFactory, const TActorId& creator,
+    const TIntrusivePtr<TUserRequestContext>& userRequestContext, ui32 statementResultIndex,
     const std::optional<TKqpFederatedQuerySetup>& federatedQuerySetup, const TGUCSettings::TPtr& GUCSettings,
-    const TShardIdToTableInfoPtr& shardIdToTableInfo);
+    TPartitionPrunerConfig partitionPrunerConfig, TVector<NKikimr::TTableId> tableIdsForSnapshot, const TShardIdToTableInfoPtr& shardIdToTableInfo,
+    const IKqpTransactionManagerPtr& txManager, const TActorId bufferActorId,
+    TMaybe<NBatchOperations::TSettings> batchOperationSettings, const std::optional<TLlvmSettings>& llvmSettings,
+    const NKikimrConfig::TQueryServiceConfig& queryServiceConfig, ui64 generation,
+    std::shared_ptr<NYql::NDq::IDqChannelService> channelService, bool useKqpTasksGraphV2);
 
 IActor* CreateKqpSchemeExecuter(
-    TKqpPhyTxHolder::TConstPtr phyTx, NKikimrKqp::EQueryType queryType, const TActorId& target,
+    TKqpPhyTxHolder::TConstPtr phyTx, NKikimrKqp::EQueryType queryType, TQueryData::TPtr queryData, const TActorId& target,
     const TMaybe<TString>& requestType, const TString& database,
     TIntrusiveConstPtr<NACLib::TUserToken> userToken, const TString& clientAddress,
-    bool temporary, TString SessionId, TIntrusivePtr<TUserRequestContext> ctx,
+    bool temporary, bool createTmpDir, bool isCreateTableAs, TString tempDirName, TIntrusivePtr<TUserRequestContext> ctx,
+    bool expectsResult = false, TTxAllocatorState::TPtr txAlloc = nullptr,
     const TActorId& kqpTempTablesAgentActor = TActorId());
 
 std::unique_ptr<TEvKqpExecuter::TEvTxResponse> ExecuteLiteral(

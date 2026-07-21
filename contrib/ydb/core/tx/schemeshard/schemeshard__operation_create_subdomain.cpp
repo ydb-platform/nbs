@@ -1,10 +1,11 @@
-#include "schemeshard__operation_part.h"
-#include "schemeshard__operation_common_subdomain.h"
+#include "schemeshard__op_traits.h"
 #include "schemeshard__operation_common.h"
+#include "schemeshard__operation_common_subdomain.h"
+#include "schemeshard__operation_part.h"
 #include "schemeshard_impl.h"
 
 #include <contrib/ydb/core/base/subdomain.h>
-#include <contrib/ydb/core/persqueue/config/config.h>
+#include <contrib/ydb/core/persqueue/public/config.h>
 
 namespace {
 
@@ -144,7 +145,7 @@ public:
 
             if (checks) {
                 checks
-                    .IsValidLeafName()
+                    .IsValidLeafName(context.UserToken.Get())
                     .DepthLimit()
                     .PathsLimit() //check capacity on root Domain
                     .DirChildrenLimit()
@@ -343,7 +344,7 @@ public:
         dstPath.DomainInfo()->AddInternalShards(txState, context.SS);
 
         dstPath.Base()->IncShardsInside(shardsToCreate);
-        parentPath.Base()->IncAliveChildren();
+        IncAliveChildrenDirect(OperationId, parentPath, context); // for correct discard of ChildrenExist prop
 
         SetState(NextState());
         return result;
@@ -367,6 +368,30 @@ public:
 }
 
 namespace NKikimr::NSchemeShard {
+
+using TTag = TSchemeTxTraits<NKikimrSchemeOp::EOperationType::ESchemeOpCreateSubDomain>;
+
+namespace NOperation {
+
+template <>
+std::optional<TString> GetTargetName<TTag>(
+    TTag,
+    const TTxTransaction& tx)
+{
+    return tx.GetSubDomain().GetName();
+}
+
+template <>
+bool SetName<TTag>(
+    TTag,
+    TTxTransaction& tx,
+    const TString& name)
+{
+    tx.MutableSubDomain()->SetName(name);
+    return true;
+}
+
+} // namespace NOperation
 
 ISubOperation::TPtr CreateSubDomain(TOperationId id, const TTxTransaction& tx) {
     return MakeSubOperation<TCreateSubDomain>(id, tx);

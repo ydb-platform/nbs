@@ -1,6 +1,6 @@
 #include "events.h"
 
-#include <contrib/ydb/library/yql/core/issue/protos/issue_id.pb.h>
+#include <contrib/ydb/library/yql/public/issue/protos/issue_id.pb.h>
 #include <contrib/ydb/library/yql/public/issue/yql_issue_message.h>
 
 namespace NYql::NDqs {

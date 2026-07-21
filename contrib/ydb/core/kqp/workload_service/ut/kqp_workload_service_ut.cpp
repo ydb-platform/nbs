@@ -3,7 +3,6 @@
 
 #include <contrib/ydb/core/kqp/workload_service/ut/common/kqp_workload_service_ut_common.h>
 
-
 namespace NKikimr::NKqp {
 
 namespace {
@@ -45,7 +44,10 @@ Y_UNIT_TEST_SUITE(KqpWorkloadService) {
             .EnableResourcePools(false)
             .Create();
 
-        TSampleQueries::TSelect42::CheckResult(ydb->ExecuteQuery(TSampleQueries::TSelect42::Query, TQueryRunnerSettings().PoolId("another_pool_id")));
+        const auto& result = ydb->ExecuteQuery(TSampleQueries::TSelect42::Query, TQueryRunnerSettings().PoolId("another_pool_id"));
+        const auto& resultPoolId = result.Response.GetResponse().GetEffectivePoolId();
+        UNIT_ASSERT_EQUAL_C(resultPoolId, NResourcePool::DEFAULT_POOL_ID, resultPoolId);
+        TSampleQueries::TSelect42::CheckResult(result);
     }
 
     Y_UNIT_TEST(WorkloadServiceDisabledByFeatureFlagOnServerless) {
@@ -60,19 +62,19 @@ Y_UNIT_TEST_SUITE(KqpWorkloadService) {
         // Dedicated, enabled
         TSampleQueries::CheckNotFound(ydb->ExecuteQuery(
             TSampleQueries::TSelect42::Query,
-            settings.Database(ydb->GetSettings().GetDedicatedTenantName()).NodeIndex(1)
+            settings.Database(ydb->GetSettings().GetDedicatedTenantName()).NodeIndex(ydb->GetDedicatedTenantInfo().NodeIdx)
         ), poolId);
 
         // Shared, enabled
         TSampleQueries::CheckNotFound(ydb->ExecuteQuery(
             TSampleQueries::TSelect42::Query,
-            settings.Database(ydb->GetSettings().GetSharedTenantName()).NodeIndex(2)
+            settings.Database(ydb->GetSettings().GetSharedTenantName()).NodeIndex(ydb->GetSharedTenantInfo().NodeIdx)
         ), poolId);
 
         // Serverless, disabled
         TSampleQueries::TSelect42::CheckResult(ydb->ExecuteQuery(
             TSampleQueries::TSelect42::Query,
-            settings.Database(ydb->GetSettings().GetServerlessTenantName()).NodeIndex(2)
+            settings.Database(ydb->GetSettings().GetServerlessTenantName()).NodeIndex(ydb->GetServerlessTenantInfo().NodeIdx)
         ));
     }
 
@@ -84,9 +86,9 @@ Y_UNIT_TEST_SUITE(KqpWorkloadService) {
 
         TSampleQueries::CheckNotFound(ydb->ExecuteQuery(TSampleQueries::TSelect42::Query, settings), poolId);
 
-        const TString& tabmleName = "sub_path";
+        const TString& tableName = "sub_path";
         ydb->ExecuteSchemeQuery(TStringBuilder() << R"(
-            CREATE TABLE )" << tabmleName << R"( (
+            CREATE TABLE )" << tableName << R"( (
                 Key Int32,
                 PRIMARY KEY (Key)
             );
@@ -94,7 +96,7 @@ Y_UNIT_TEST_SUITE(KqpWorkloadService) {
 
         TSampleQueries::TSelect42::CheckResult(ydb->ExecuteQuery(
             TSampleQueries::TSelect42::Query,
-            settings.Database(TStringBuilder() << CanonizePath(ydb->GetSettings().DomainName_) << "/" << tabmleName)
+            settings.Database(TStringBuilder() << CanonizePath(ydb->GetSettings().DomainName_) << "/" << tableName)
         ));
     }
 
@@ -107,8 +109,8 @@ Y_UNIT_TEST_SUITE(KqpWorkloadService) {
         if (secondRequest.HasValue()) {
             std::swap(firstRequest, secondRequest);
         }
-        UNIT_ASSERT_C(firstRequest.HasValue(), "One of two requests shoud be rejected");
-        UNIT_ASSERT_C(!secondRequest.HasValue(), "One of two requests shoud be placed in pool");
+        UNIT_ASSERT_C(firstRequest.HasValue(), "One of two requests should be rejected");
+        UNIT_ASSERT_C(!secondRequest.HasValue(), "One of two requests should be placed in pool");
 
         auto result = firstRequest.GetResult();
         UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::OVERLOADED, result.GetIssues().ToOneLineString());
@@ -225,7 +227,7 @@ Y_UNIT_TEST_SUITE(KqpWorkloadService) {
 
         auto settings = TQueryRunnerSettings().HangUpDuringExecution(true);
         auto hangingRequest = ydb->ExecuteQueryAsync(TSampleQueries::TSelect42::Query, settings);
-        ydb->WaitQueryExecution(hangingRequest);        
+        ydb->WaitQueryExecution(hangingRequest);
 
         auto delayedRequest = ydb->ExecuteQueryAsync(TSampleQueries::TSelect42::Query, settings);
         TSampleQueries::CheckCancelled(hangingRequest.GetResult());
@@ -296,7 +298,7 @@ Y_UNIT_TEST_SUITE(KqpWorkloadService) {
 
         // Delay request
         auto result = ydb->ExecuteQueryAsync(TSampleQueries::TSelect42::Query, TQueryRunnerSettings().ExecutionExpected(false));
-        ydb->WaitPoolState({.DelayedRequests = 1, .RunningRequests = 0});
+        ydb->WaitPoolState({.DelayedRequests = 0, .RunningRequests = 0});
 
         // Free load
         ydb->ContinueQueryExecution(result);
@@ -318,6 +320,127 @@ Y_UNIT_TEST_SUITE(KqpWorkloadService) {
         )");
 
         ydb->WaitPoolHandlersCount(0, std::nullopt, TDuration::Seconds(95));
+    }
+
+    void TestWhenDiskSpaceIsExhausted(i32 queryLimit, const TString& table) {
+        auto ydb = TYdbSetupSettings()
+            .NodeCount(1)
+            .CreateSampleTenants(true)
+            .ConcurrentQueryLimit(queryLimit)
+            .DedicatedDiskQuota(10000)
+            .Create();
+
+        const auto& dedicatedTenant = ydb->GetSettings().GetDedicatedTenantName();
+        ydb->CreateSamplePoolOn(dedicatedTenant);
+
+        auto settings = TQueryRunnerSettings()
+            .PoolId(ydb->GetSettings().PoolId_)
+            .NodeIndex(ydb->GetDedicatedTenantInfo().NodeIdx)
+            .Database(dedicatedTenant);
+
+        auto result = ydb->ExecuteQuery(TStringBuilder() << R"(
+            CREATE TABLE big_table (
+                Key Int32,
+                Value String,
+                PRIMARY KEY (Key)
+            );
+        )", settings);
+
+        UNIT_ASSERT_VALUES_EQUAL(result.GetStatus(), NYdb::EStatus::SUCCESS);
+
+        uint i = 1;
+        auto data = TString(1000,'X');
+
+        do {
+            auto insertQuery = TStringBuilder()
+                << "insert into big_table(Key, Value) values("
+                << i++ << ",'" << data << "');";
+            result = ydb->ExecuteQuery(insertQuery, settings);
+        } while (result.GetStatus() == NYdb::EStatus::SUCCESS);
+
+        UNIT_ASSERT_STRING_CONTAINS(
+            result.GetIssues().ToString(),
+            "database is out of disk space"
+        );
+
+        result = ydb->ExecuteQuery(TSampleQueries::TSelect42::Query, settings);
+
+        UNIT_ASSERT_VALUES_EQUAL(result.GetStatus(), NYdb::EStatus::SUCCESS);
+        UNIT_ASSERT_STRING_CONTAINS(
+            result.GetIssues().ToString(),
+            TStringBuilder() << "Error: Disk space exhausted. Table `/Root/test-dedicated/.metadata/workload_manager/" << table
+        );
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            result.GetIssues().begin()->GetCode(),
+            (ui32)NYql::TIssuesIds::KIKIMR_DATABASE_DISK_SPACE_QUOTA_EXCEEDED
+        );
+    }
+
+    Y_UNIT_TEST(TestDiskIsFullRunBelowQueryLimit) {
+        TestWhenDiskSpaceIsExhausted(10, "running_requests");
+    }
+
+    Y_UNIT_TEST(TestDiskIsFullRunOverQueryLimit) {
+        TestWhenDiskSpaceIsExhausted(1, "delayed_requests");
+    }
+
+    //
+    // Verifies that resource pools function correctly after tenant recreation.
+    // Even if the DatabaseId (path) remains the same, a recreated tenant receives
+    // a new internal PathId. The workload service uses DatabaseId as a key for
+    // a cache.
+    //
+    // The workload service must detect this lifecycle change, invalidate any
+    // cached state tied to the same DatabaseId but a different PathId,
+    // and re-resolve metadata to avoid "PathId mismatch" or "Pool not found"
+    // errors in the new database.
+    //
+    Y_UNIT_TEST(TestResourcePoolAfterTenantRecreation) {
+        auto unitKind = "test-recreated-db";
+        auto dbName = "/Root/test-recreated-db";
+        auto tweakFnc = [&](Tests::TServerSettings& serverSettings) -> void {
+            serverSettings.SetDynamicNodeCount(1).AddStoragePool(
+                unitKind,
+                TStringBuilder() << dbName << ":" << unitKind
+            );
+        };
+
+        auto ydb = TYdbSetupSettings()
+            .NodeCount(1)
+            .CreateSampleTenants(false)
+            .EnableResourcePools(true)
+            // turn off to reduce "noise" in a log
+            .EnableStreamingQueries(false)
+            .CreateSamplePool(false)
+            .Create(tweakFnc);
+
+        auto myPoolId = "my_pool";
+        auto defPool = TQueryRunnerSettings().PoolId(NResourcePool::DEFAULT_POOL_ID).Database(dbName);
+        auto myPool = TQueryRunnerSettings().PoolId(myPoolId).Database(dbName);
+
+        Cerr << "------ Creating Tenant" << Endl;
+        ydb->CreateDedicatedTenant(dbName, unitKind);
+        ydb->CreateResourcePool(dbName, myPoolId, NResourcePool::TPoolSettings());
+
+        TSampleQueries::TSelect42::CheckResult(
+            ydb->ExecuteQuery(TSampleQueries::TSelect42::Query, myPool));
+
+        TSampleQueries::TSelect42::CheckResult(
+            ydb->ExecuteQuery(TSampleQueries::TSelect42::Query, defPool));
+
+        Cerr << "------ Droping Tenant" << Endl;
+        ydb->DropDedicatedTenant(dbName);
+
+        Cerr << "------ Creating Tenant" << Endl;
+        ydb->CreateDedicatedTenant(dbName, unitKind);
+
+        // The custom pool is still alive, is it a bug or feature?
+        TSampleQueries::TSelect42::CheckResult(
+            ydb->ExecuteQuery(TSampleQueries::TSelect42::Query, myPool));
+
+        TSampleQueries::TSelect42::CheckResult(
+            ydb->ExecuteQuery(TSampleQueries::TSelect42::Query, defPool));
     }
 }
 
@@ -432,15 +555,15 @@ Y_UNIT_TEST_SUITE(ResourcePoolsDdl) {
         auto settings = TQueryRunnerSettings()
             .PoolId("")
             .Database(serverlessTenant)
-            .NodeIndex(1);
+            .NodeIndex(ydb->GetServerlessTenantInfo().NodeIdx);
 
         const TString& poolId = "my_pool";
-        TSampleQueries::CheckSuccess(ydb->ExecuteQuery(TStringBuilder() << R"(
+        ydb->ExecuteQueryRetry("Wait EnableResourcePoolsOnServerless", TStringBuilder() << R"(
             CREATE RESOURCE POOL )" << poolId << R"( WITH (
                 CONCURRENT_QUERY_LIMIT=1,
                 QUEUE_SIZE=0
             );
-        )", settings));
+        )", settings);
         settings.PoolId(poolId);
 
         auto hangingRequest = ydb->ExecuteQueryAsync(TSampleQueries::TSelect42::Query, settings.HangUpDuringExecution(true));
@@ -480,7 +603,7 @@ Y_UNIT_TEST_SUITE(ResourcePoolsDdl) {
             CREATE RESOURCE POOL )" << poolId << R"( WITH (
                 CONCURRENT_QUERY_LIMIT=0
             );
-        )", EStatus::GENERIC_ERROR, "Cannot create default pool manually, pool will be created automatically during first request execution");
+        )", EStatus::PRECONDITION_FAILED, "Cannot create default pool manually, pool will be created automatically during first request execution");
 
         // Create default pool
         TSampleQueries::TSelect42::CheckResult(ydb->ExecuteQuery(TSampleQueries::TSelect42::Query, TQueryRunnerSettings().PoolId(poolId)));
@@ -489,7 +612,7 @@ Y_UNIT_TEST_SUITE(ResourcePoolsDdl) {
             ALTER RESOURCE POOL )" << poolId << R"( SET (
                 CONCURRENT_QUERY_LIMIT=0
             );
-        )", EStatus::GENERIC_ERROR, "Can not change property concurrent_query_limit for default pool");
+        )", EStatus::PRECONDITION_FAILED, "Can not change property concurrent_query_limit for default pool");
     }
 
     Y_UNIT_TEST(TestAlterResourcePool) {
@@ -533,7 +656,7 @@ Y_UNIT_TEST_SUITE(ResourcePoolsDdl) {
 
         // Wait pool change
         TSampleQueries::TSelect42::CheckResult(ydb->ExecuteQuery(TSampleQueries::TSelect42::Query));  // Force pool update
-        ydb->WaitPoolHandlersCount(2);
+        ydb->WaitPoolHandlersCount(1);
 
         // Check that pool using tables
         auto hangingRequest = ydb->ExecuteQueryAsync(TSampleQueries::TSelect42::Query, TQueryRunnerSettings().HangUpDuringExecution(true));
@@ -561,7 +684,7 @@ Y_UNIT_TEST_SUITE(ResourcePoolsDdl) {
 
         // Wait pool change
         TSampleQueries::TSelect42::CheckResult(ydb->ExecuteQuery(TSampleQueries::TSelect42::Query));  // Force pool update
-        ydb->WaitPoolHandlersCount(2);
+        ydb->WaitPoolHandlersCount(1);
 
         // Check that pool is not using tables
         auto hangingRequest = ydb->ExecuteQueryAsync(TSampleQueries::TSelect42::Query, TQueryRunnerSettings().HangUpDuringExecution(true));
@@ -625,6 +748,69 @@ Y_UNIT_TEST_SUITE(ResourcePoolsDdl) {
         ydb->WaitPoolAccess(userSID, NACLib::EAccessRights::SelectRow, poolId);
         TSampleQueries::TSelect42::CheckResult(ydb->ExecuteQuery(TSampleQueries::TSelect42::Query, settings));
     }
+
+    Y_UNIT_TEST(TestWorkloadConfigOnServerless) {
+        NKikimrConfig::TWorkloadManagerConfig config;
+        config.SetEnabled(true);
+        config.SetConcurrentQueryLimit(1);
+        config.SetQueueSize(0);
+        config.SetDatabaseLoadCpuThreshold(-1);
+        config.SetQueryCpuLimitPercentPerNode(-1);
+        config.SetTotalMemoryLimitPercentPerNode(-1);
+        config.SetTotalCpuLimitPercentPerNode(-1);
+        auto ydb = TYdbSetupSettings()
+            .CreateSampleTenants(true)
+            .EnableResourcePoolsOnServerless(false)
+            .EnableResourcePools(false)
+            .WorkloadManagerConfig(config)
+            .Create();
+
+        const auto& sharedTenant = ydb->GetSettings().GetSharedTenantName();
+        const auto& serverlessTenant = ydb->GetSettings().GetServerlessTenantName();
+        auto settings = TQueryRunnerSettings()
+            .PoolId("")
+            .Database(serverlessTenant)
+            .NodeIndex(ydb->GetServerlessTenantInfo().NodeIdx);
+
+        auto hangingRequest = ydb->ExecuteQueryAsync(TSampleQueries::TSelect42::Query, settings.HangUpDuringExecution(true));
+        ydb->WaitQueryExecution(hangingRequest);
+
+        settings.HangUpDuringExecution(false);
+
+        {  // Rejected result
+            auto result = ydb->ExecuteQuery(TSampleQueries::TSelect42::Query, settings);
+            UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::OVERLOADED, result.GetIssues().ToOneLineString());
+            UNIT_ASSERT_STRING_CONTAINS(result.GetIssues().ToString(), TStringBuilder() << "Request was rejected, number of local pending requests is 1, number of global delayed/running requests is 1, sum of them is larger than allowed limit 0 (including concurrent query limit 1) for pool default");
+        }
+
+        {  // Check tables
+            auto result = ydb->ExecuteQuery(R"(
+                SELECT * FROM `.metadata/workload_manager/running_requests`
+            )", settings.PoolId(NResourcePool::DEFAULT_POOL_ID).Database(ydb->GetSettings().GetSharedTenantName()));
+            TSampleQueries::CheckSuccess(result);
+
+            NYdb::TResultSetParser resultSet(result.GetResultSet(0));
+            {
+                UNIT_ASSERT_C(resultSet.TryNextRow(), "Unexpected row count");
+
+                const auto& databaseId = resultSet.ColumnParser("database").GetOptionalUtf8();
+                UNIT_ASSERT_C(databaseId, "Unexpected database response");
+
+                UNIT_ASSERT_VALUES_EQUAL_C(*databaseId, ydb->FetchDatabase(sharedTenant)->Get()->DatabaseId, "Unexpected database id");
+            }
+            {
+                UNIT_ASSERT_C(resultSet.TryNextRow(), "Unexpected row count");
+
+                const auto& databaseId = resultSet.ColumnParser("database").GetOptionalUtf8();
+                UNIT_ASSERT_C(databaseId, "Unexpected database response");
+
+                UNIT_ASSERT_VALUES_EQUAL_C(*databaseId, ydb->FetchDatabase(serverlessTenant)->Get()->DatabaseId, "Unexpected database id");
+            }
+        }
+
+        ydb->ContinueQueryExecution(hangingRequest);
+        TSampleQueries::TSelect42::CheckResult(hangingRequest.GetResult());
+    }
 }
 
 Y_UNIT_TEST_SUITE(ResourcePoolClassifiersDdl) {
@@ -666,7 +852,7 @@ Y_UNIT_TEST_SUITE(ResourcePoolClassifiersDdl) {
     }
 
     void CreateSampleResourcePoolClassifier(TIntrusivePtr<IYdbSetup> ydb, const TString& classifierId, const TQueryRunnerSettings& settings, const TString& poolId) {
-        TSampleQueries::CheckSuccess(ydb->ExecuteQuery(TStringBuilder() << R"(
+        ydb->ExecuteQueryRetry("Wait EnableResourcePoolsOnServerless", TStringBuilder() << R"(
             GRANT ALL ON `)" << CanonizePath(settings.Database_ ? settings.Database_ : ydb->GetSettings().DomainName_) << R"(` TO `)" << settings.UserSID_ << R"(`;
             CREATE RESOURCE POOL )" << poolId << R"( WITH (
                 CONCURRENT_QUERY_LIMIT=0
@@ -680,7 +866,7 @@ Y_UNIT_TEST_SUITE(ResourcePoolClassifiersDdl) {
             .Database(settings.Database_)
             .NodeIndex(settings.NodeIndex_)
             .PoolId(NResourcePool::DEFAULT_POOL_ID)
-        ));
+        );
     }
 
     TString CreateSampleResourcePoolClassifier(TIntrusivePtr<IYdbSetup> ydb, const TQueryRunnerSettings& settings, const TString& poolId) {
@@ -690,21 +876,11 @@ Y_UNIT_TEST_SUITE(ResourcePoolClassifiersDdl) {
     }
 
     void WaitForFail(TIntrusivePtr<IYdbSetup> ydb, const TQueryRunnerSettings& settings, const TString& poolId) {
-        ydb->WaitFor(TDuration::Seconds(10), "Resource pool classifier fail", [ydb, settings, poolId](TString& errorString) {
-            auto result = ydb->ExecuteQuery(TSampleQueries::TSelect42::Query, settings);
-
-            errorString = result.GetIssues().ToOneLineString();
-            return result.GetStatus() == EStatus::PRECONDITION_FAILED && errorString.Contains(TStringBuilder() << "Resource pool " << poolId << " was disabled due to zero concurrent query limit");
-        });
+        NWorkload::WaitForClassifierFail(ydb, settings, poolId);
     }
 
     void WaitForSuccess(TIntrusivePtr<IYdbSetup> ydb, const TQueryRunnerSettings& settings) {
-        ydb->WaitFor(TDuration::Seconds(10), "Resource pool classifier success", [ydb, settings](TString& errorString) {
-            auto result = ydb->ExecuteQuery(TSampleQueries::TSelect42::Query, settings);
-
-            errorString = result.GetIssues().ToOneLineString();
-            return result.GetStatus() == EStatus::SUCCESS;
-        });
+        NWorkload::WaitForClassifierSuccess(ydb, settings);
     }
 
     Y_UNIT_TEST(TestCreateResourcePoolClassifier) {
@@ -727,7 +903,7 @@ Y_UNIT_TEST_SUITE(ResourcePoolClassifiersDdl) {
             .PoolId("")
             .UserSID("test@user")
             .Database(ydb->GetSettings().GetServerlessTenantName())
-            .NodeIndex(1);
+            .NodeIndex(ydb->GetServerlessTenantInfo().NodeIdx);
 
         const TString& poolId = "my_pool";
         CreateSampleResourcePoolClassifier(ydb, settings, poolId);
@@ -828,11 +1004,11 @@ Y_UNIT_TEST_SUITE(ResourcePoolClassifiersDdl) {
     Y_UNIT_TEST(TestMultiGroupClassification) {
         auto ydb = TYdbSetupSettings().Create();
 
-        auto settings = TQueryRunnerSettings().PoolId("");
+        auto settings = TQueryRunnerSettings().PoolId("").UserSID("no@user");
 
         const TString& poolId = "my_pool";
-        const TString& firstSID = "first@user";
-        const TString& secondSID = "second@user";
+        const TString& firstSID = "first@group";
+        const TString& secondSID = "second@group";
         ydb->ExecuteSchemeQuery(TStringBuilder() << R"(
             CREATE RESOURCE POOL )" << poolId << R"( WITH (
                 CONCURRENT_QUERY_LIMIT=0
@@ -847,6 +1023,8 @@ Y_UNIT_TEST_SUITE(ResourcePoolClassifiersDdl) {
                 MEMBER_NAME=")" << secondSID << R"(",
                 RANK=2
             );
+            GRANT ALL ON `/)" << ydb->GetSettings().DomainName_ << R"(` TO `)" << firstSID << R"(`, `)" << secondSID << R"(`
+            ;
         )");
 
         WaitForFail(ydb, settings.GroupSIDs({firstSID}), poolId);
@@ -861,6 +1039,822 @@ Y_UNIT_TEST_SUITE(ResourcePoolClassifiersDdl) {
 
         WaitForSuccess(ydb, settings.GroupSIDs({firstSID, secondSID}));
     }
+
 }
+
+Y_UNIT_TEST_SUITE(ResourcePoolClassifiersSysView) {
+    Y_UNIT_TEST(TestResourcePoolClassifiersSysViewOnServerless) {
+        auto ydb = TYdbSetupSettings()
+            .CreateSampleTenants(true)
+            .EnableResourcePoolsOnServerless(true)
+            .Create();
+
+        const auto& serverlessTenant = ydb->GetSettings().GetServerlessTenantName();
+        const auto& sharedTenant = ydb->GetSettings().GetSharedTenantName();
+
+        auto settings = TQueryRunnerSettings()
+            .PoolId("")
+            .NodeIndex(ydb->GetServerlessTenantInfo().NodeIdx);
+
+        const TString& poolId = "my_pool";
+        ydb->ExecuteQueryRetry("Wait TestResourcePoolClassifiersSysViewOnServerless", TStringBuilder() << R"(
+            CREATE RESOURCE POOL )" << poolId << R"( WITH (
+                CONCURRENT_QUERY_LIMIT=1,
+                QUEUE_SIZE=0
+            );
+            CREATE RESOURCE POOL CLASSIFIER a_first_classifier WITH (
+                RESOURCE_POOL=")" << poolId << R"(",
+                MEMBER_NAME="staff@builtin",
+                RANK=1
+            );
+            CREATE RESOURCE POOL CLASSIFIER b_second_classifier WITH (
+                RESOURCE_POOL=")" << NResourcePool::DEFAULT_POOL_ID << R"(",
+                MEMBER_NAME="boss@builtin",
+                RANK=2
+            );
+        )", settings.Database(serverlessTenant));
+
+        ydb->ExecuteQueryRetry("Wait TestResourcePoolClassifiersSysViewOnServerless", TStringBuilder() << R"(
+            CREATE RESOURCE POOL )" << poolId << R"( WITH (
+                CONCURRENT_QUERY_LIMIT=1,
+                QUEUE_SIZE=0
+            );
+            CREATE RESOURCE POOL CLASSIFIER a_first_classifier_shared WITH (
+                RESOURCE_POOL=")" << poolId << R"(",
+                MEMBER_NAME="staff@builtin",
+                RANK=1
+            );
+            CREATE RESOURCE POOL CLASSIFIER b_second_classifier_shared WITH (
+                RESOURCE_POOL=")" << NResourcePool::DEFAULT_POOL_ID << R"(",
+                MEMBER_NAME="boss@builtin",
+                RANK=2
+            );
+        )", settings.Database(sharedTenant));
+
+        {  // Check tables
+            auto result = ydb->ExecuteQuery(R"(
+                SELECT * FROM `.sys/resource_pool_classifiers` ORDER BY Name ASC
+            )", settings.PoolId(NResourcePool::DEFAULT_POOL_ID).Database(serverlessTenant));
+            TSampleQueries::CheckSuccess(result);
+
+            NYdb::TResultSetParser resultSet(result.GetResultSet(0));
+            UNIT_ASSERT_C(resultSet.TryNextRow(), "Unexpected row count");
+
+            auto name = resultSet.ColumnParser("Name").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*name, "a_first_classifier");
+            auto rank = resultSet.ColumnParser("Rank").GetOptionalInt64();
+            UNIT_ASSERT_VALUES_EQUAL(*rank, 1);
+            auto memberName = resultSet.ColumnParser("MemberName").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*memberName, "staff@builtin");
+            auto resourcePool = resultSet.ColumnParser("ResourcePool").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*resourcePool, "my_pool");
+
+            UNIT_ASSERT_C(resultSet.TryNextRow(), "Unexpected row count");
+
+            name = resultSet.ColumnParser("Name").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*name, "b_second_classifier");
+            rank = resultSet.ColumnParser("Rank").GetOptionalInt64();
+            UNIT_ASSERT_VALUES_EQUAL(*rank, 2);
+            memberName = resultSet.ColumnParser("MemberName").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*memberName, "boss@builtin");
+            resourcePool = resultSet.ColumnParser("ResourcePool").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*resourcePool, "default");
+
+            UNIT_ASSERT_C(!resultSet.TryNextRow(), "Unexpected row count");
+        }
+
+        {  // Check tables
+            auto result = ydb->ExecuteQuery(R"(
+                SELECT * FROM `.sys/resource_pool_classifiers` ORDER BY Name ASC
+            )", settings.PoolId(NResourcePool::DEFAULT_POOL_ID).Database(sharedTenant));
+            TSampleQueries::CheckSuccess(result);
+
+            NYdb::TResultSetParser resultSet(result.GetResultSet(0));
+            UNIT_ASSERT_C(resultSet.TryNextRow(), "Unexpected row count");
+
+            auto name = resultSet.ColumnParser("Name").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*name, "a_first_classifier_shared");
+            auto rank = resultSet.ColumnParser("Rank").GetOptionalInt64();
+            UNIT_ASSERT_VALUES_EQUAL(*rank, 1);
+            auto memberName = resultSet.ColumnParser("MemberName").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*memberName, "staff@builtin");
+            auto resourcePool = resultSet.ColumnParser("ResourcePool").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*resourcePool, "my_pool");
+
+            UNIT_ASSERT_C(resultSet.TryNextRow(), "Unexpected row count");
+
+            name = resultSet.ColumnParser("Name").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*name, "b_second_classifier_shared");
+            rank = resultSet.ColumnParser("Rank").GetOptionalInt64();
+            UNIT_ASSERT_VALUES_EQUAL(*rank, 2);
+            memberName = resultSet.ColumnParser("MemberName").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*memberName, "boss@builtin");
+            resourcePool = resultSet.ColumnParser("ResourcePool").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*resourcePool, "default");
+
+            UNIT_ASSERT_C(!resultSet.TryNextRow(), "Unexpected row count");
+        }
+    }
+
+    Y_UNIT_TEST(TestResourcePoolClassifiersSysViewFilters) {
+        auto ydb = TYdbSetupSettings()
+            .CreateSampleTenants(true)
+            .EnableResourcePoolsOnServerless(true)
+            .Create();
+
+        const auto& dedicatedTenant = ydb->GetSettings().GetDedicatedTenantName();
+
+        auto settings = TQueryRunnerSettings()
+            .PoolId("")
+            .NodeIndex(ydb->GetDedicatedTenantInfo().NodeIdx);
+
+        const TString& poolId = "my_pool";
+        ydb->ExecuteQueryRetry("Wait TestResourcePoolClassifiersSysViewOnServerless", TStringBuilder() << R"(
+            CREATE RESOURCE POOL )" << poolId << R"( WITH (
+                CONCURRENT_QUERY_LIMIT=1,
+                QUEUE_SIZE=0
+            );
+            CREATE RESOURCE POOL CLASSIFIER a WITH (
+                RESOURCE_POOL=")" << poolId << R"(",
+                MEMBER_NAME="staff@builtin",
+                RANK=1
+            );
+            CREATE RESOURCE POOL CLASSIFIER b WITH (
+                RESOURCE_POOL=")" << NResourcePool::DEFAULT_POOL_ID << R"(",
+                MEMBER_NAME="boss@builtin",
+                RANK=2
+            );
+            CREATE RESOURCE POOL CLASSIFIER c WITH (
+                RESOURCE_POOL=")" << NResourcePool::DEFAULT_POOL_ID << R"(",
+                MEMBER_NAME="super_boss@builtin",
+                RANK=3
+            );
+        )", settings.Database(dedicatedTenant));
+
+        {  // Check tables
+            auto result = ydb->ExecuteQuery(R"(
+                SELECT * FROM `.sys/resource_pool_classifiers` ORDER BY Name ASC
+            )", settings.PoolId(NResourcePool::DEFAULT_POOL_ID).Database(dedicatedTenant));
+            TSampleQueries::CheckSuccess(result);
+
+            NYdb::TResultSetParser resultSet(result.GetResultSet(0));
+            UNIT_ASSERT_C(resultSet.TryNextRow(), "Unexpected row count");
+
+            auto name = resultSet.ColumnParser("Name").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*name, "a");
+            auto rank = resultSet.ColumnParser("Rank").GetOptionalInt64();
+            UNIT_ASSERT_VALUES_EQUAL(*rank, 1);
+            auto memberName = resultSet.ColumnParser("MemberName").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*memberName, "staff@builtin");
+            auto resourcePool = resultSet.ColumnParser("ResourcePool").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*resourcePool, "my_pool");
+
+            UNIT_ASSERT_C(resultSet.TryNextRow(), "Unexpected row count");
+
+            name = resultSet.ColumnParser("Name").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*name, "b");
+            rank = resultSet.ColumnParser("Rank").GetOptionalInt64();
+            UNIT_ASSERT_VALUES_EQUAL(*rank, 2);
+            memberName = resultSet.ColumnParser("MemberName").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*memberName, "boss@builtin");
+            resourcePool = resultSet.ColumnParser("ResourcePool").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*resourcePool, "default");
+
+            UNIT_ASSERT_C(resultSet.TryNextRow(), "Unexpected row count");
+
+            name = resultSet.ColumnParser("Name").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*name, "c");
+            rank = resultSet.ColumnParser("Rank").GetOptionalInt64();
+            UNIT_ASSERT_VALUES_EQUAL(*rank, 3);
+            memberName = resultSet.ColumnParser("MemberName").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*memberName, "super_boss@builtin");
+            resourcePool = resultSet.ColumnParser("ResourcePool").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*resourcePool, "default");
+
+            UNIT_ASSERT_C(!resultSet.TryNextRow(), "Unexpected row count");
+        }
+
+        {  // Check tables
+            auto result = ydb->ExecuteQuery(R"(
+                SELECT * FROM `.sys/resource_pool_classifiers` ORDER BY Name DESC
+            )", settings.PoolId(NResourcePool::DEFAULT_POOL_ID).Database(dedicatedTenant));
+            TSampleQueries::CheckSuccess(result);
+
+            NYdb::TResultSetParser resultSet(result.GetResultSet(0));
+            UNIT_ASSERT_C(resultSet.TryNextRow(), "Unexpected row count");
+
+            auto name = resultSet.ColumnParser("Name").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*name, "c");
+            auto rank = resultSet.ColumnParser("Rank").GetOptionalInt64();
+            UNIT_ASSERT_VALUES_EQUAL(*rank, 3);
+            auto memberName = resultSet.ColumnParser("MemberName").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*memberName, "super_boss@builtin");
+            auto resourcePool = resultSet.ColumnParser("ResourcePool").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*resourcePool, "default");
+
+            UNIT_ASSERT_C(resultSet.TryNextRow(), "Unexpected row count");
+
+            name = resultSet.ColumnParser("Name").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*name, "b");
+            rank = resultSet.ColumnParser("Rank").GetOptionalInt64();
+            UNIT_ASSERT_VALUES_EQUAL(*rank, 2);
+            memberName = resultSet.ColumnParser("MemberName").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*memberName, "boss@builtin");
+            resourcePool = resultSet.ColumnParser("ResourcePool").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*resourcePool, "default");
+
+
+            UNIT_ASSERT_C(resultSet.TryNextRow(), "Unexpected row count");
+
+            name = resultSet.ColumnParser("Name").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*name, "a");
+            rank = resultSet.ColumnParser("Rank").GetOptionalInt64();
+            UNIT_ASSERT_VALUES_EQUAL(*rank, 1);
+            memberName = resultSet.ColumnParser("MemberName").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*memberName, "staff@builtin");
+            resourcePool = resultSet.ColumnParser("ResourcePool").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*resourcePool, "my_pool");
+
+            UNIT_ASSERT_C(!resultSet.TryNextRow(), "Unexpected row count");
+        }
+
+        {  // Check tables
+            auto result = ydb->ExecuteQuery(R"(
+                SELECT * FROM `.sys/resource_pool_classifiers` WHERE Name <= "a"
+            )", settings.PoolId(NResourcePool::DEFAULT_POOL_ID).Database(dedicatedTenant));
+            TSampleQueries::CheckSuccess(result);
+
+            NYdb::TResultSetParser resultSet(result.GetResultSet(0));
+            UNIT_ASSERT_C(resultSet.TryNextRow(), "Unexpected row count");
+
+            auto name = resultSet.ColumnParser("Name").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*name, "a");
+            auto rank = resultSet.ColumnParser("Rank").GetOptionalInt64();
+            UNIT_ASSERT_VALUES_EQUAL(*rank, 1);
+            auto memberName = resultSet.ColumnParser("MemberName").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*memberName, "staff@builtin");
+            auto resourcePool = resultSet.ColumnParser("ResourcePool").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*resourcePool, "my_pool");
+
+            UNIT_ASSERT_C(!resultSet.TryNextRow(), "Unexpected row count");
+        }
+
+        {  // Check tables
+            auto result = ydb->ExecuteQuery(R"(
+                SELECT * FROM `.sys/resource_pool_classifiers` WHERE "a" < Name AND Name < "c"
+            )", settings.PoolId(NResourcePool::DEFAULT_POOL_ID).Database(dedicatedTenant));
+            TSampleQueries::CheckSuccess(result);
+
+            NYdb::TResultSetParser resultSet(result.GetResultSet(0));
+            UNIT_ASSERT_C(resultSet.TryNextRow(), "Unexpected row count");
+
+            auto name = resultSet.ColumnParser("Name").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*name, "b");
+            auto rank = resultSet.ColumnParser("Rank").GetOptionalInt64();
+            UNIT_ASSERT_VALUES_EQUAL(*rank, 2);
+            auto memberName = resultSet.ColumnParser("MemberName").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*memberName, "boss@builtin");
+            auto resourcePool = resultSet.ColumnParser("ResourcePool").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*resourcePool, "default");
+
+            UNIT_ASSERT_C(!resultSet.TryNextRow(), "Unexpected row count");
+        }
+
+        {  // Check tables
+            auto result = ydb->ExecuteQuery(R"(
+                SELECT * FROM `.sys/resource_pool_classifiers` WHERE Name >= "c"
+            )", settings.PoolId(NResourcePool::DEFAULT_POOL_ID).Database(dedicatedTenant));
+            TSampleQueries::CheckSuccess(result);
+
+            NYdb::TResultSetParser resultSet(result.GetResultSet(0));
+            UNIT_ASSERT_C(resultSet.TryNextRow(), "Unexpected row count");
+
+            auto name = resultSet.ColumnParser("Name").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*name, "c");
+            auto rank = resultSet.ColumnParser("Rank").GetOptionalInt64();
+            UNIT_ASSERT_VALUES_EQUAL(*rank, 3);
+            auto memberName = resultSet.ColumnParser("MemberName").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*memberName, "super_boss@builtin");
+            auto resourcePool = resultSet.ColumnParser("ResourcePool").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*resourcePool, "default");
+
+            UNIT_ASSERT_C(!resultSet.TryNextRow(), "Unexpected row count");
+        }
+    }
+}
+
+Y_UNIT_TEST_SUITE(ResourcePoolsSysView) {
+    Y_UNIT_TEST(TestResourcePoolsSysViewOnServerless) {
+        auto ydb = TYdbSetupSettings()
+            .CreateSampleTenants(true)
+            .EnableResourcePoolsOnServerless(true)
+            .Create();
+
+        const auto& serverlessTenant = ydb->GetSettings().GetServerlessTenantName();
+        const auto& sharedTenant = ydb->GetSettings().GetSharedTenantName();
+
+        auto settings = TQueryRunnerSettings()
+            .PoolId("")
+            .NodeIndex(ydb->GetServerlessTenantInfo().NodeIdx);
+
+        ydb->ExecuteQueryRetry("Wait TestResourcePoolClassifiersSysViewOnServerless", TStringBuilder() << R"(
+            CREATE RESOURCE POOL a WITH (
+                CONCURRENT_QUERY_LIMIT=1,
+                QUEUE_SIZE=0
+            );
+            CREATE RESOURCE POOL b WITH (
+                CONCURRENT_QUERY_LIMIT=2,
+                QUEUE_SIZE=0
+            );
+        )", settings.Database(serverlessTenant));
+
+        ydb->ExecuteQueryRetry("Wait TestResourcePoolClassifiersSysViewOnServerless", TStringBuilder() << R"(
+            CREATE RESOURCE POOL c WITH (
+                CONCURRENT_QUERY_LIMIT=1,
+                QUEUE_SIZE=0
+            );
+            CREATE RESOURCE POOL d WITH (
+                CONCURRENT_QUERY_LIMIT=2,
+                QUEUE_SIZE=0
+            );
+        )", settings.Database(sharedTenant));
+
+        {  // Check tables
+            auto result = ydb->ExecuteQuery(R"(
+                SELECT * FROM `.sys/resource_pools` ORDER BY Name ASC
+            )", settings.PoolId(NResourcePool::DEFAULT_POOL_ID).Database(serverlessTenant));
+            TSampleQueries::CheckSuccess(result);
+
+            NYdb::TResultSetParser resultSet(result.GetResultSet(0));
+            UNIT_ASSERT_C(resultSet.TryNextRow(), "Unexpected row count");
+
+            auto name = resultSet.ColumnParser("Name").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*name, "a");
+            auto concurrentQueryLimit = resultSet.ColumnParser("ConcurrentQueryLimit").GetOptionalInt32();
+            UNIT_ASSERT_VALUES_EQUAL(*concurrentQueryLimit, 1);
+            auto queueSize = resultSet.ColumnParser("QueueSize").GetOptionalInt32();
+            UNIT_ASSERT_VALUES_EQUAL(*queueSize, 0);
+            auto databaseLoadCpuThreshold = resultSet.ColumnParser("DatabaseLoadCpuThreshold").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*databaseLoadCpuThreshold, -1);
+            auto resourceWeight = resultSet.ColumnParser("ResourceWeight").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*resourceWeight, -1);
+            auto totalCpuLimitPercentPerNode = resultSet.ColumnParser("TotalCpuLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*totalCpuLimitPercentPerNode, -1);
+            auto queryCpuLimitPercentPerNode = resultSet.ColumnParser("QueryCpuLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*queryCpuLimitPercentPerNode, -1);
+            auto queryMemoryLimitPercentPerNode = resultSet.ColumnParser("QueryMemoryLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*queryMemoryLimitPercentPerNode, -1);
+            auto totalMemoryLimitPercentPerNode = resultSet.ColumnParser("TotalMemoryLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*totalMemoryLimitPercentPerNode, -1);
+
+            UNIT_ASSERT_C(resultSet.TryNextRow(), "Unexpected row count");
+
+            name = resultSet.ColumnParser("Name").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*name, "b");
+            concurrentQueryLimit = resultSet.ColumnParser("ConcurrentQueryLimit").GetOptionalInt32();
+            UNIT_ASSERT_VALUES_EQUAL(*concurrentQueryLimit, 2);
+            queueSize = resultSet.ColumnParser("QueueSize").GetOptionalInt32();
+            UNIT_ASSERT_VALUES_EQUAL(*queueSize, 0);
+            databaseLoadCpuThreshold = resultSet.ColumnParser("DatabaseLoadCpuThreshold").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*databaseLoadCpuThreshold, -1);
+            resourceWeight = resultSet.ColumnParser("ResourceWeight").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*resourceWeight, -1);
+            totalCpuLimitPercentPerNode = resultSet.ColumnParser("TotalCpuLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*totalCpuLimitPercentPerNode, -1);
+            queryCpuLimitPercentPerNode = resultSet.ColumnParser("QueryCpuLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*queryCpuLimitPercentPerNode, -1);
+            queryMemoryLimitPercentPerNode = resultSet.ColumnParser("QueryMemoryLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*queryMemoryLimitPercentPerNode, -1);
+            totalMemoryLimitPercentPerNode = resultSet.ColumnParser("TotalMemoryLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*totalMemoryLimitPercentPerNode, -1);
+
+            UNIT_ASSERT_C(resultSet.TryNextRow(), "Unexpected row count");
+
+            name = resultSet.ColumnParser("Name").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*name, "default");
+            concurrentQueryLimit = resultSet.ColumnParser("ConcurrentQueryLimit").GetOptionalInt32();
+            UNIT_ASSERT_VALUES_EQUAL(*concurrentQueryLimit, -1);
+            queueSize = resultSet.ColumnParser("QueueSize").GetOptionalInt32();
+            UNIT_ASSERT_VALUES_EQUAL(*queueSize, -1);
+            databaseLoadCpuThreshold = resultSet.ColumnParser("DatabaseLoadCpuThreshold").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*databaseLoadCpuThreshold, -1);
+            resourceWeight = resultSet.ColumnParser("ResourceWeight").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*resourceWeight, -1);
+            totalCpuLimitPercentPerNode = resultSet.ColumnParser("TotalCpuLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*totalCpuLimitPercentPerNode, -1);
+            queryCpuLimitPercentPerNode = resultSet.ColumnParser("QueryCpuLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*queryCpuLimitPercentPerNode, -1);
+            queryMemoryLimitPercentPerNode = resultSet.ColumnParser("QueryMemoryLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*queryMemoryLimitPercentPerNode, -1);
+            totalMemoryLimitPercentPerNode = resultSet.ColumnParser("TotalMemoryLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*totalMemoryLimitPercentPerNode, -1);
+
+            UNIT_ASSERT_C(!resultSet.TryNextRow(), "Unexpected row count");
+        }
+
+        {  // Check tables
+            auto result = ydb->ExecuteQuery(R"(
+                SELECT * FROM `.sys/resource_pools` ORDER BY Name ASC
+            )", settings.PoolId(NResourcePool::DEFAULT_POOL_ID).Database(sharedTenant));
+            TSampleQueries::CheckSuccess(result);
+
+            NYdb::TResultSetParser resultSet(result.GetResultSet(0));
+            UNIT_ASSERT_C(resultSet.TryNextRow(), "Unexpected row count");
+
+            auto name = resultSet.ColumnParser("Name").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*name, "c");
+            auto concurrentQueryLimit = resultSet.ColumnParser("ConcurrentQueryLimit").GetOptionalInt32();
+            UNIT_ASSERT_VALUES_EQUAL(*concurrentQueryLimit, 1);
+            auto queueSize = resultSet.ColumnParser("QueueSize").GetOptionalInt32();
+            UNIT_ASSERT_VALUES_EQUAL(*queueSize, 0);
+            auto databaseLoadCpuThreshold = resultSet.ColumnParser("DatabaseLoadCpuThreshold").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*databaseLoadCpuThreshold, -1);
+            auto resourceWeight = resultSet.ColumnParser("ResourceWeight").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*resourceWeight, -1);
+            auto totalCpuLimitPercentPerNode = resultSet.ColumnParser("TotalCpuLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*totalCpuLimitPercentPerNode, -1);
+            auto queryCpuLimitPercentPerNode = resultSet.ColumnParser("QueryCpuLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*queryCpuLimitPercentPerNode, -1);
+            auto queryMemoryLimitPercentPerNode = resultSet.ColumnParser("QueryMemoryLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*queryMemoryLimitPercentPerNode, -1);
+            auto totalMemoryLimitPercentPerNode = resultSet.ColumnParser("TotalMemoryLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*totalMemoryLimitPercentPerNode, -1);
+
+
+            UNIT_ASSERT_C(resultSet.TryNextRow(), "Unexpected row count");
+
+            name = resultSet.ColumnParser("Name").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*name, "d");
+            concurrentQueryLimit = resultSet.ColumnParser("ConcurrentQueryLimit").GetOptionalInt32();
+            UNIT_ASSERT_VALUES_EQUAL(*concurrentQueryLimit, 2);
+            queueSize = resultSet.ColumnParser("QueueSize").GetOptionalInt32();
+            UNIT_ASSERT_VALUES_EQUAL(*queueSize, 0);
+            databaseLoadCpuThreshold = resultSet.ColumnParser("DatabaseLoadCpuThreshold").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*databaseLoadCpuThreshold, -1);
+            resourceWeight = resultSet.ColumnParser("ResourceWeight").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*resourceWeight, -1);
+            totalCpuLimitPercentPerNode = resultSet.ColumnParser("TotalCpuLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*totalCpuLimitPercentPerNode, -1);
+            queryCpuLimitPercentPerNode = resultSet.ColumnParser("QueryCpuLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*queryCpuLimitPercentPerNode, -1);
+            queryMemoryLimitPercentPerNode = resultSet.ColumnParser("QueryMemoryLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*queryMemoryLimitPercentPerNode, -1);
+            totalMemoryLimitPercentPerNode = resultSet.ColumnParser("TotalMemoryLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*totalMemoryLimitPercentPerNode, -1);
+
+            UNIT_ASSERT_C(resultSet.TryNextRow(), "Unexpected row count");
+
+            name = resultSet.ColumnParser("Name").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*name, "default");
+            concurrentQueryLimit = resultSet.ColumnParser("ConcurrentQueryLimit").GetOptionalInt32();
+            UNIT_ASSERT_VALUES_EQUAL(*concurrentQueryLimit, -1);
+            queueSize = resultSet.ColumnParser("QueueSize").GetOptionalInt32();
+            UNIT_ASSERT_VALUES_EQUAL(*queueSize, -1);
+            databaseLoadCpuThreshold = resultSet.ColumnParser("DatabaseLoadCpuThreshold").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*databaseLoadCpuThreshold, -1);
+            resourceWeight = resultSet.ColumnParser("ResourceWeight").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*resourceWeight, -1);
+            totalCpuLimitPercentPerNode = resultSet.ColumnParser("TotalCpuLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*totalCpuLimitPercentPerNode, -1);
+            queryCpuLimitPercentPerNode = resultSet.ColumnParser("QueryCpuLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*queryCpuLimitPercentPerNode, -1);
+            queryMemoryLimitPercentPerNode = resultSet.ColumnParser("QueryMemoryLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*queryMemoryLimitPercentPerNode, -1);
+            totalMemoryLimitPercentPerNode = resultSet.ColumnParser("TotalMemoryLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*totalMemoryLimitPercentPerNode, -1);
+            UNIT_ASSERT_C(!resultSet.TryNextRow(), "Unexpected row count");
+        }
+    }
+
+    Y_UNIT_TEST(TestResourcePoolsSysViewFilters) {
+        auto ydb = TYdbSetupSettings()
+            .CreateSampleTenants(true)
+            .EnableResourcePoolsOnServerless(true)
+            .Create();
+
+        const auto& dedicatedTenant = ydb->GetSettings().GetDedicatedTenantName();
+
+        auto settings = TQueryRunnerSettings()
+            .PoolId("")
+            .NodeIndex(ydb->GetDedicatedTenantInfo().NodeIdx);
+
+        const TString& poolId = "my_pool";
+        ydb->ExecuteQueryRetry("Wait TestResourcePoolClassifiersSysViewOnServerless", TStringBuilder() << R"(
+            CREATE RESOURCE POOL a WITH (
+                CONCURRENT_QUERY_LIMIT=1,
+                QUEUE_SIZE=0
+            );
+            CREATE RESOURCE POOL b WITH (
+                CONCURRENT_QUERY_LIMIT=2,
+                QUEUE_SIZE=0
+            );
+            CREATE RESOURCE POOL c WITH (
+                CONCURRENT_QUERY_LIMIT=3,
+                QUEUE_SIZE=0
+            );
+        )", settings.Database(dedicatedTenant));
+
+        {  // Check tables
+            auto result = ydb->ExecuteQuery(R"(
+                SELECT * FROM `.sys/resource_pools` ORDER BY Name ASC
+            )", settings.PoolId(NResourcePool::DEFAULT_POOL_ID).Database(dedicatedTenant));
+            TSampleQueries::CheckSuccess(result);
+
+            NYdb::TResultSetParser resultSet(result.GetResultSet(0));
+            UNIT_ASSERT_C(resultSet.TryNextRow(), "Unexpected row count");
+
+            auto name = resultSet.ColumnParser("Name").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*name, "a");
+            auto concurrentQueryLimit = resultSet.ColumnParser("ConcurrentQueryLimit").GetOptionalInt32();
+            UNIT_ASSERT_VALUES_EQUAL(*concurrentQueryLimit, 1);
+            auto queueSize = resultSet.ColumnParser("QueueSize").GetOptionalInt32();
+            UNIT_ASSERT_VALUES_EQUAL(*queueSize, 0);
+            auto databaseLoadCpuThreshold = resultSet.ColumnParser("DatabaseLoadCpuThreshold").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*databaseLoadCpuThreshold, -1);
+            auto resourceWeight = resultSet.ColumnParser("ResourceWeight").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*resourceWeight, -1);
+            auto totalCpuLimitPercentPerNode = resultSet.ColumnParser("TotalCpuLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*totalCpuLimitPercentPerNode, -1);
+            auto queryCpuLimitPercentPerNode = resultSet.ColumnParser("QueryCpuLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*queryCpuLimitPercentPerNode, -1);
+            auto queryMemoryLimitPercentPerNode = resultSet.ColumnParser("QueryMemoryLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*queryMemoryLimitPercentPerNode, -1);
+            auto totalMemoryLimitPercentPerNode = resultSet.ColumnParser("TotalMemoryLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*totalMemoryLimitPercentPerNode, -1);
+
+            UNIT_ASSERT_C(resultSet.TryNextRow(), "Unexpected row count");
+
+            name = resultSet.ColumnParser("Name").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*name, "b");
+            concurrentQueryLimit = resultSet.ColumnParser("ConcurrentQueryLimit").GetOptionalInt32();
+            UNIT_ASSERT_VALUES_EQUAL(*concurrentQueryLimit, 2);
+            queueSize = resultSet.ColumnParser("QueueSize").GetOptionalInt32();
+            UNIT_ASSERT_VALUES_EQUAL(*queueSize, 0);
+            databaseLoadCpuThreshold = resultSet.ColumnParser("DatabaseLoadCpuThreshold").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*databaseLoadCpuThreshold, -1);
+            resourceWeight = resultSet.ColumnParser("ResourceWeight").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*resourceWeight, -1);
+            totalCpuLimitPercentPerNode = resultSet.ColumnParser("TotalCpuLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*totalCpuLimitPercentPerNode, -1);
+            queryCpuLimitPercentPerNode = resultSet.ColumnParser("QueryCpuLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*queryCpuLimitPercentPerNode, -1);
+            queryMemoryLimitPercentPerNode = resultSet.ColumnParser("QueryMemoryLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*queryMemoryLimitPercentPerNode, -1);
+            totalMemoryLimitPercentPerNode = resultSet.ColumnParser("TotalMemoryLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*totalMemoryLimitPercentPerNode, -1);
+
+            UNIT_ASSERT_C(resultSet.TryNextRow(), "Unexpected row count");
+
+            name = resultSet.ColumnParser("Name").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*name, "c");
+            concurrentQueryLimit = resultSet.ColumnParser("ConcurrentQueryLimit").GetOptionalInt32();
+            UNIT_ASSERT_VALUES_EQUAL(*concurrentQueryLimit, 3);
+            queueSize = resultSet.ColumnParser("QueueSize").GetOptionalInt32();
+            UNIT_ASSERT_VALUES_EQUAL(*queueSize, 0);
+            databaseLoadCpuThreshold = resultSet.ColumnParser("DatabaseLoadCpuThreshold").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*databaseLoadCpuThreshold, -1);
+            resourceWeight = resultSet.ColumnParser("ResourceWeight").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*resourceWeight, -1);
+            totalCpuLimitPercentPerNode = resultSet.ColumnParser("TotalCpuLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*totalCpuLimitPercentPerNode, -1);
+            queryCpuLimitPercentPerNode = resultSet.ColumnParser("QueryCpuLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*queryCpuLimitPercentPerNode, -1);
+            queryMemoryLimitPercentPerNode = resultSet.ColumnParser("QueryMemoryLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*queryMemoryLimitPercentPerNode, -1);
+            totalMemoryLimitPercentPerNode = resultSet.ColumnParser("TotalMemoryLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*totalMemoryLimitPercentPerNode, -1);
+            UNIT_ASSERT_C(resultSet.TryNextRow(), "Unexpected row count");
+
+            name = resultSet.ColumnParser("Name").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*name, "default");
+            concurrentQueryLimit = resultSet.ColumnParser("ConcurrentQueryLimit").GetOptionalInt32();
+            UNIT_ASSERT_VALUES_EQUAL(*concurrentQueryLimit, -1);
+            queueSize = resultSet.ColumnParser("QueueSize").GetOptionalInt32();
+            UNIT_ASSERT_VALUES_EQUAL(*queueSize, -1);
+            databaseLoadCpuThreshold = resultSet.ColumnParser("DatabaseLoadCpuThreshold").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*databaseLoadCpuThreshold, -1);
+            resourceWeight = resultSet.ColumnParser("ResourceWeight").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*resourceWeight, -1);
+            totalCpuLimitPercentPerNode = resultSet.ColumnParser("TotalCpuLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*totalCpuLimitPercentPerNode, -1);
+            queryCpuLimitPercentPerNode = resultSet.ColumnParser("QueryCpuLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*queryCpuLimitPercentPerNode, -1);
+            queryMemoryLimitPercentPerNode = resultSet.ColumnParser("QueryMemoryLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*queryMemoryLimitPercentPerNode, -1);
+            totalMemoryLimitPercentPerNode = resultSet.ColumnParser("TotalMemoryLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*totalMemoryLimitPercentPerNode, -1);
+
+            UNIT_ASSERT_C(!resultSet.TryNextRow(), "Unexpected row count");
+        }
+
+        {  // Check tables
+            auto result = ydb->ExecuteQuery(R"(
+                SELECT * FROM `.sys/resource_pools` ORDER BY Name DESC
+            )", settings.PoolId(NResourcePool::DEFAULT_POOL_ID).Database(dedicatedTenant));
+            TSampleQueries::CheckSuccess(result);
+
+            NYdb::TResultSetParser resultSet(result.GetResultSet(0));
+            UNIT_ASSERT_C(resultSet.TryNextRow(), "Unexpected row count");
+
+            auto name = resultSet.ColumnParser("Name").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*name, "default");
+            auto concurrentQueryLimit = resultSet.ColumnParser("ConcurrentQueryLimit").GetOptionalInt32();
+            UNIT_ASSERT_VALUES_EQUAL(*concurrentQueryLimit, -1);
+            auto queueSize = resultSet.ColumnParser("QueueSize").GetOptionalInt32();
+            UNIT_ASSERT_VALUES_EQUAL(*queueSize, -1);
+            auto databaseLoadCpuThreshold = resultSet.ColumnParser("DatabaseLoadCpuThreshold").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*databaseLoadCpuThreshold, -1);
+            auto resourceWeight = resultSet.ColumnParser("ResourceWeight").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*resourceWeight, -1);
+            auto totalCpuLimitPercentPerNode = resultSet.ColumnParser("TotalCpuLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*totalCpuLimitPercentPerNode, -1);
+            auto queryCpuLimitPercentPerNode = resultSet.ColumnParser("QueryCpuLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*queryCpuLimitPercentPerNode, -1);
+            auto queryMemoryLimitPercentPerNode = resultSet.ColumnParser("QueryMemoryLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*queryMemoryLimitPercentPerNode, -1);
+            auto totalMemoryLimitPercentPerNode = resultSet.ColumnParser("TotalMemoryLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*totalMemoryLimitPercentPerNode, -1);
+            UNIT_ASSERT_C(resultSet.TryNextRow(), "Unexpected row count");
+
+            name = resultSet.ColumnParser("Name").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*name, "c");
+            concurrentQueryLimit = resultSet.ColumnParser("ConcurrentQueryLimit").GetOptionalInt32();
+            UNIT_ASSERT_VALUES_EQUAL(*concurrentQueryLimit, 3);
+            queueSize = resultSet.ColumnParser("QueueSize").GetOptionalInt32();
+            UNIT_ASSERT_VALUES_EQUAL(*queueSize, 0);
+            databaseLoadCpuThreshold = resultSet.ColumnParser("DatabaseLoadCpuThreshold").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*databaseLoadCpuThreshold, -1);
+            resourceWeight = resultSet.ColumnParser("ResourceWeight").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*resourceWeight, -1);
+            totalCpuLimitPercentPerNode = resultSet.ColumnParser("TotalCpuLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*totalCpuLimitPercentPerNode, -1);
+            queryCpuLimitPercentPerNode = resultSet.ColumnParser("QueryCpuLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*queryCpuLimitPercentPerNode, -1);
+            queryMemoryLimitPercentPerNode = resultSet.ColumnParser("QueryMemoryLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*queryMemoryLimitPercentPerNode, -1);
+            totalMemoryLimitPercentPerNode = resultSet.ColumnParser("TotalMemoryLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*totalMemoryLimitPercentPerNode, -1);
+
+            UNIT_ASSERT_C(resultSet.TryNextRow(), "Unexpected row count");
+
+            name = resultSet.ColumnParser("Name").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*name, "b");
+            concurrentQueryLimit = resultSet.ColumnParser("ConcurrentQueryLimit").GetOptionalInt32();
+            UNIT_ASSERT_VALUES_EQUAL(*concurrentQueryLimit, 2);
+            queueSize = resultSet.ColumnParser("QueueSize").GetOptionalInt32();
+            UNIT_ASSERT_VALUES_EQUAL(*queueSize, 0);
+            databaseLoadCpuThreshold = resultSet.ColumnParser("DatabaseLoadCpuThreshold").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*databaseLoadCpuThreshold, -1);
+            resourceWeight = resultSet.ColumnParser("ResourceWeight").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*resourceWeight, -1);
+            totalCpuLimitPercentPerNode = resultSet.ColumnParser("TotalCpuLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*totalCpuLimitPercentPerNode, -1);
+            queryCpuLimitPercentPerNode = resultSet.ColumnParser("QueryCpuLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*queryCpuLimitPercentPerNode, -1);
+            queryMemoryLimitPercentPerNode = resultSet.ColumnParser("QueryMemoryLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*queryMemoryLimitPercentPerNode, -1);
+            totalMemoryLimitPercentPerNode = resultSet.ColumnParser("TotalMemoryLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*totalMemoryLimitPercentPerNode, -1);
+
+            UNIT_ASSERT_C(resultSet.TryNextRow(), "Unexpected row count");
+
+            name = resultSet.ColumnParser("Name").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*name, "a");
+            concurrentQueryLimit = resultSet.ColumnParser("ConcurrentQueryLimit").GetOptionalInt32();
+            UNIT_ASSERT_VALUES_EQUAL(*concurrentQueryLimit, 1);
+            queueSize = resultSet.ColumnParser("QueueSize").GetOptionalInt32();
+            UNIT_ASSERT_VALUES_EQUAL(*queueSize, 0);
+            databaseLoadCpuThreshold = resultSet.ColumnParser("DatabaseLoadCpuThreshold").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*databaseLoadCpuThreshold, -1);
+            resourceWeight = resultSet.ColumnParser("ResourceWeight").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*resourceWeight, -1);
+            totalCpuLimitPercentPerNode = resultSet.ColumnParser("TotalCpuLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*totalCpuLimitPercentPerNode, -1);
+            queryCpuLimitPercentPerNode = resultSet.ColumnParser("QueryCpuLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*queryCpuLimitPercentPerNode, -1);
+            queryMemoryLimitPercentPerNode = resultSet.ColumnParser("QueryMemoryLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*queryMemoryLimitPercentPerNode, -1);
+            totalMemoryLimitPercentPerNode = resultSet.ColumnParser("TotalMemoryLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*totalMemoryLimitPercentPerNode, -1);
+
+            UNIT_ASSERT_C(!resultSet.TryNextRow(), "Unexpected row count");
+        }
+
+        {  // Check tables
+            auto result = ydb->ExecuteQuery(R"(
+                SELECT * FROM `.sys/resource_pools` WHERE "a" < Name AND Name < "c"
+            )", settings.PoolId(NResourcePool::DEFAULT_POOL_ID).Database(dedicatedTenant));
+            TSampleQueries::CheckSuccess(result);
+
+            NYdb::TResultSetParser resultSet(result.GetResultSet(0));
+            UNIT_ASSERT_C(resultSet.TryNextRow(), "Unexpected row count");
+
+            auto name = resultSet.ColumnParser("Name").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*name, "b");
+            auto concurrentQueryLimit = resultSet.ColumnParser("ConcurrentQueryLimit").GetOptionalInt32();
+            UNIT_ASSERT_VALUES_EQUAL(*concurrentQueryLimit, 2);
+            auto queueSize = resultSet.ColumnParser("QueueSize").GetOptionalInt32();
+            UNIT_ASSERT_VALUES_EQUAL(*queueSize, 0);
+            auto databaseLoadCpuThreshold = resultSet.ColumnParser("DatabaseLoadCpuThreshold").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*databaseLoadCpuThreshold, -1);
+            auto resourceWeight = resultSet.ColumnParser("ResourceWeight").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*resourceWeight, -1);
+            auto totalCpuLimitPercentPerNode = resultSet.ColumnParser("TotalCpuLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*totalCpuLimitPercentPerNode, -1);
+            auto queryCpuLimitPercentPerNode = resultSet.ColumnParser("QueryCpuLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*queryCpuLimitPercentPerNode, -1);
+            auto queryMemoryLimitPercentPerNode = resultSet.ColumnParser("QueryMemoryLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*queryMemoryLimitPercentPerNode, -1);
+            auto totalMemoryLimitPercentPerNode = resultSet.ColumnParser("TotalMemoryLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*totalMemoryLimitPercentPerNode, -1);
+
+            UNIT_ASSERT_C(!resultSet.TryNextRow(), "Unexpected row count");
+        }
+
+        {  // Check tables
+            auto result = ydb->ExecuteQuery(R"(
+                SELECT * FROM `.sys/resource_pools` WHERE Name >= "default"
+            )", settings.PoolId(NResourcePool::DEFAULT_POOL_ID).Database(dedicatedTenant));
+            TSampleQueries::CheckSuccess(result);
+
+            NYdb::TResultSetParser resultSet(result.GetResultSet(0));
+            UNIT_ASSERT_C(resultSet.TryNextRow(), "Unexpected row count");
+
+            auto name = resultSet.ColumnParser("Name").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*name, "default");
+            auto concurrentQueryLimit = resultSet.ColumnParser("ConcurrentQueryLimit").GetOptionalInt32();
+            UNIT_ASSERT_VALUES_EQUAL(*concurrentQueryLimit, -1);
+            auto queueSize = resultSet.ColumnParser("QueueSize").GetOptionalInt32();
+            UNIT_ASSERT_VALUES_EQUAL(*queueSize, -1);
+            auto databaseLoadCpuThreshold = resultSet.ColumnParser("DatabaseLoadCpuThreshold").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*databaseLoadCpuThreshold, -1);
+            auto resourceWeight = resultSet.ColumnParser("ResourceWeight").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*resourceWeight, -1);
+            auto totalCpuLimitPercentPerNode = resultSet.ColumnParser("TotalCpuLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*totalCpuLimitPercentPerNode, -1);
+            auto queryCpuLimitPercentPerNode = resultSet.ColumnParser("QueryCpuLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*queryCpuLimitPercentPerNode, -1);
+            auto queryMemoryLimitPercentPerNode = resultSet.ColumnParser("QueryMemoryLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*queryMemoryLimitPercentPerNode, -1);
+            auto totalMemoryLimitPercentPerNode = resultSet.ColumnParser("TotalMemoryLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*totalMemoryLimitPercentPerNode, -1);
+
+            UNIT_ASSERT_C(!resultSet.TryNextRow(), "Unexpected row count");
+        }
+    }
+}
+
+Y_UNIT_TEST_SUITE(DefaultPoolSettings) {
+    Y_UNIT_TEST(TestResourcePoolsSysViewFilters) {
+        NKikimrConfig::TWorkloadManagerConfig config;
+        config.SetConcurrentQueryLimit(10);
+        config.SetQueueSize(100);
+
+        auto ydb = TYdbSetupSettings()
+            .CreateSampleTenants(true)
+            .EnableResourcePoolsOnServerless(true)
+            .WorkloadManagerConfig(config)
+            .Create();
+
+        const auto& dedicatedTenant = ydb->GetSettings().GetDedicatedTenantName();
+
+        auto settings = TQueryRunnerSettings()
+            .PoolId("")
+            .NodeIndex(ydb->GetDedicatedTenantInfo().NodeIdx);
+
+        {  // Check tables
+            auto result = ydb->ExecuteQuery(R"(
+                SELECT * FROM `.sys/resource_pools` ORDER BY Name ASC
+            )", settings.PoolId(NResourcePool::DEFAULT_POOL_ID).Database(dedicatedTenant));
+            TSampleQueries::CheckSuccess(result);
+
+            NYdb::TResultSetParser resultSet(result.GetResultSet(0));
+            UNIT_ASSERT_C(resultSet.TryNextRow(), "Unexpected row count");
+
+            auto name = resultSet.ColumnParser("Name").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(*name, "default");
+            auto concurrentQueryLimit = resultSet.ColumnParser("ConcurrentQueryLimit").GetOptionalInt32();
+            UNIT_ASSERT_VALUES_EQUAL(*concurrentQueryLimit, 10);
+            auto queueSize = resultSet.ColumnParser("QueueSize").GetOptionalInt32();
+            UNIT_ASSERT_VALUES_EQUAL(*queueSize, 100);
+            auto databaseLoadCpuThreshold = resultSet.ColumnParser("DatabaseLoadCpuThreshold").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*databaseLoadCpuThreshold, -1);
+            auto resourceWeight = resultSet.ColumnParser("ResourceWeight").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*resourceWeight, -1);
+            auto totalCpuLimitPercentPerNode = resultSet.ColumnParser("TotalCpuLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*totalCpuLimitPercentPerNode, -1);
+            auto queryCpuLimitPercentPerNode = resultSet.ColumnParser("QueryCpuLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*queryCpuLimitPercentPerNode, -1);
+            auto queryMemoryLimitPercentPerNode = resultSet.ColumnParser("QueryMemoryLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*queryMemoryLimitPercentPerNode, -1);
+            auto totalMemoryLimitPercentPerNode = resultSet.ColumnParser("TotalMemoryLimitPercentPerNode").GetOptionalDouble();
+            UNIT_ASSERT_VALUES_EQUAL(*totalMemoryLimitPercentPerNode, -1);
+
+            UNIT_ASSERT_C(!resultSet.TryNextRow(), "Unexpected row count");
+        }
+    }
+}
+
+
 
 }  // namespace NKikimr::NKqp

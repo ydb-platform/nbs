@@ -18,7 +18,7 @@ namespace NKikimr::NStorage {
             ConnectedToStaticNode = *nodeId;
             TActivationContext::Send(new IEventHandle(TEvBlobStorage::EvNodeWardenDynamicConfigSubscribe,
                 IEventHandle::FlagSubscribeOnSession, MakeBlobStorageNodeWardenID(ConnectedToStaticNode), SelfId(),
-                nullptr, 0));
+                nullptr, ++StaticNodeSubscriptionCookie));
         } else if (timestamp != TMonotonic::Max()) {
             if (!ReconnectScheduled) {
                 TActivationContext::Schedule(timestamp, new IEventHandle(TEvPrivate::EvReconnect, 0, SelfId(), {}, nullptr, 0));
@@ -33,16 +33,19 @@ namespace NKikimr::NStorage {
         ConnectToStaticNode();
     }
 
-    void TDistributedConfigKeeper::OnStaticNodeConnected(ui32 nodeId, TActorId sessionId) {
-        Y_ABORT_UNLESS(nodeId == ConnectedToStaticNode);
-        Y_ABORT_UNLESS(!StaticNodeSessionId);
-        StaticNodeSessionId = sessionId;
+    void TDistributedConfigKeeper::OnStaticNodeConnected(ui32 nodeId, TActorId sessionId, ui64 cookie) {
+        if (cookie == StaticNodeSubscriptionCookie) {
+            Y_ABORT_UNLESS(nodeId == ConnectedToStaticNode);
+            Y_ABORT_UNLESS(!StaticNodeSessionId);
+            StaticNodeSessionId = sessionId;
+        }
     }
 
-    void TDistributedConfigKeeper::OnStaticNodeDisconnected(ui32 nodeId, TActorId sessionId) {
-        if (nodeId != ConnectedToStaticNode || (StaticNodeSessionId && StaticNodeSessionId != sessionId)) {
+    void TDistributedConfigKeeper::OnStaticNodeDisconnected(ui32 nodeId, TActorId sessionId, ui64 cookie) {
+        if ((StaticNodeSessionId && sessionId != StaticNodeSessionId) || cookie != StaticNodeSubscriptionCookie) {
             return; // possible race with unsubscription
         }
+        Y_ABORT_UNLESS(nodeId == ConnectedToStaticNode);
         ConnectedToStaticNode = 0;
         StaticNodeSessionId = {};
         ConnectToStaticNode();
@@ -63,24 +66,27 @@ namespace NKikimr::NStorage {
             StaticNodeSessionId = {};
             ConnectToStaticNode();
         }
+        if (record.HasCacheUpdate()) {
+            ApplyCacheUpdates(record.MutableCacheUpdate(), 0);
+        }
     }
 
     void TDistributedConfigKeeper::ApplyConfigUpdateToDynamicNodes(bool drop) {
         for (const auto& [sessionId, actorId] : DynamicConfigSubscribers) {
-            PushConfigToDynamicNode(actorId, sessionId);
+            PushConfigToDynamicNode(actorId, sessionId, false);
         }
         if (drop) {
             Y_ABORT_UNLESS(!PartOfNodeQuorum());
             DynamicConfigSubscribers.clear();
-            for (ui32 nodeId : std::exchange(ConnectedDynamicNodes, {})) {
-                UnsubscribeInterconnect(nodeId);
-            }
+            UnsubscribeQueue.insert(ConnectedDynamicNodes.begin(), ConnectedDynamicNodes.end());
+            ConnectedDynamicNodes.clear();
         }
     }
 
     void TDistributedConfigKeeper::OnDynamicNodeDisconnected(ui32 nodeId, TActorId sessionId) {
         ConnectedDynamicNodes.erase(nodeId);
         DynamicConfigSubscribers.erase(sessionId);
+        UnsubscribeQueue.insert(nodeId);
     }
 
     void TDistributedConfigKeeper::HandleDynamicConfigSubscribe(STATEFN_SIG) {
@@ -89,30 +95,36 @@ namespace NKikimr::NStorage {
 
         const bool partOfNodeQuorum = PartOfNodeQuorum();
         if (!partOfNodeQuorum || StorageConfig) {
-            PushConfigToDynamicNode(ev->Sender, sessionId);
+            PushConfigToDynamicNode(ev->Sender, sessionId, true);
         }
         if (!partOfNodeQuorum) {
             return;
         }
 
         const ui32 peerNodeId = ev->Sender.NodeId();
-        if (const auto [it, inserted] = SubscribedSessions.try_emplace(peerNodeId); inserted) {
-            TActivationContext::Send(new IEventHandle(TEvents::TSystem::Subscribe, IEventHandle::FlagTrackDelivery,
-                sessionId, SelfId(), nullptr, 0));
-        }
+        SubscribeToPeerNode(peerNodeId, sessionId);
         ConnectedDynamicNodes.insert(peerNodeId);
         const auto [_, inserted] = DynamicConfigSubscribers.try_emplace(sessionId, ev->Sender);
         Y_ABORT_UNLESS(inserted);
     }
 
-    void TDistributedConfigKeeper::PushConfigToDynamicNode(TActorId actorId, TActorId sessionId) {
+    void TDistributedConfigKeeper::PushConfigToDynamicNode(TActorId actorId, TActorId sessionId, bool addCache) {
         auto ev = std::make_unique<TEvNodeWardenDynamicConfigPush>();
         auto& record = ev->Record;
-        if (StorageConfig) {
-            record.MutableConfig()->CopyFrom(*StorageConfig);
-        }
-        if (!PartOfNodeQuorum()) {
+        if (!PartOfNodeQuorum()) { // this configuration is not reliable, don't push anything
             ev->Record.SetNoQuorum(true);
+        } else if (!StorageConfig) {
+            // no storage configuration -- no nothing
+        } else if (auto *target = record.MutableConfig(); SelfManagementEnabled) {
+            target->CopyFrom(*StorageConfig);
+        } else {
+            target->CopyFrom(*BaseConfig);
+        }
+        if (addCache) {
+            // push full cache to the dynamic node
+            for (auto it = Cache.begin(); it != Cache.end(); ++it) {
+                AddCacheUpdate(record.MutableCacheUpdate(), it, true);
+            }
         }
         auto handle = std::make_unique<IEventHandle>(actorId, SelfId(), ev.release());
         handle->Rewrite(TEvInterconnect::EvForward, sessionId);

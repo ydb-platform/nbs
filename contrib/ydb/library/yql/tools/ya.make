@@ -1,18 +1,21 @@
 RECURSE(
+    arrow_kernels_dump
     astdiff
-    dq
-    dqrun
-    mrjob
-    mrrun
+    langver_dump
+    minirun
     pg_catalog_dump
     pg-make-test
     pgrun
     purebench
-    solomon_emulator
     sql2yql
     sql_formatter
+    sql_functions_dump
+    types_dump
     udf_dep_stub
     udf_probe
     udf_resolver
-    yqlrun
+    yql_complete
+    yql_facade_run
+    yql_highlight
+    yql_linter
 )

@@ -11,11 +11,12 @@ namespace NKikimr {
 namespace NMiniKQL {
 namespace {
 
-class TTryWeakMemberFromDictWrapper : public TMutableComputationNode<TTryWeakMemberFromDictWrapper> {
+class TTryWeakMemberFromDictWrapper: public TMutableComputationNode<TTryWeakMemberFromDictWrapper> {
     typedef TMutableComputationNode<TTryWeakMemberFromDictWrapper> TBaseComputation;
+
 public:
     TTryWeakMemberFromDictWrapper(TComputationMutables& mutables, IComputationNode* otherDict, IComputationNode* restDict, NUdf::TDataTypeId schemeType,
-            NUdf::TUnboxedValue&& memberName, NUdf::TUnboxedValue&& otherIsStrMemberName)
+                                  NUdf::TUnboxedValue&& memberName, NUdf::TUnboxedValue&& otherIsStrMemberName)
         : TBaseComputation(mutables)
         , OtherDict(otherDict)
         , RestDict(restDict)
@@ -26,6 +27,11 @@ public:
     }
 
     NUdf::TUnboxedValuePod DoCalculate(TComputationContext& ctx) const {
+        auto result = DoCalculateImpl(ctx);
+        return result.Release();
+    }
+
+    NUdf::TUnboxedValue DoCalculateImpl(TComputationContext& ctx) const {
         if (const auto& restDict = RestDict->GetValue(ctx)) {
             if (const auto& tryMember = restDict.Lookup(MemberName)) {
                 return SimpleValueFromYson(SchemeType, tryMember.AsStringRef());
@@ -46,7 +52,7 @@ public:
                         stringStream.DoWrite(ref.Data(), size);
                         return stringStream.Value();
                     } else if (SchemeType == NUdf::EDataSlot::String) {
-                        return tryMember.Release();
+                        return tryMember;
                     } else {
                         return {};
                     }
@@ -72,7 +78,7 @@ private:
     const NUdf::TUnboxedValue OtherIsStringMemberName;
 };
 
-}
+} // namespace
 
 IComputationNode* WrapTryWeakMemberFromDict(TCallable& callable, const TComputationNodeFactoryContext& ctx) {
     MKQL_ENSURE(callable.GetInputsCount() == 4, "Expected 4 args");
@@ -102,8 +108,8 @@ IComputationNode* WrapTryWeakMemberFromDict(TCallable& callable, const TComputat
     auto memberNameStr = MakeString(memberName);
     auto otherIsStringMemberNameStr = MakeString("_yql_" + memberName);
     return new TTryWeakMemberFromDictWrapper(ctx.Mutables, otherDict, restDict, static_cast<NUdf::TDataTypeId>(schemeType),
-            std::move(memberNameStr), std::move(otherIsStringMemberNameStr));
+                                             std::move(memberNameStr), std::move(otherIsStringMemberNameStr));
 }
 
-}
-}
+} // namespace NMiniKQL
+} // namespace NKikimr

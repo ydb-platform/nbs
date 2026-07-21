@@ -1,5 +1,7 @@
 #include "kqp_worker_common.h"
 
+#include <contrib/ydb/library/security/util.h>
+
 namespace NKikimr::NKqp {
 
 using namespace NYql;
@@ -112,9 +114,9 @@ void SlowLogQuery(const TActorContext &ctx, const TKikimrConfiguration* config, 
         }
 
         Y_DEBUG_ABORT_UNLESS(extractQueryText);
-        auto queryText = extractQueryText();
+        auto protectedQueryText = NKikimr::ProtectQueryForLoggingIfSensitive(extractQueryText());
 
-        auto paramsText = TStringBuilder()
+        auto paramsSize = TStringBuilder()
             << ToString(parametersSize)
             << 'b';
 
@@ -128,8 +130,8 @@ void SlowLogQuery(const TActorContext &ctx, const TKikimrConfiguration* config, 
             << ", status: " << status
             << ", user: " << username
             << ", results: " << resultsSize << 'b'
-            << ", text: \"" << EscapeC(queryText) << '"'
-            << ", parameters: " << paramsText);
+            << ", text: \"" << EscapeC(protectedQueryText) << '"'
+            << ", parameters: " << paramsSize);
     }
 }
 
@@ -181,8 +183,18 @@ bool CanCacheQuery(const NKqpProto::TKqpPhyQuery& query) {
 
         for (const auto& stage : tx.GetStages()) {
             for (const auto& source : stage.GetSources()) {
-                // S3 provider stores S3 paths to read in AST, so we can't cache such queries
-                if (source.HasExternalSource() && source.GetExternalSource().GetType() == "S3Source") {
+                if (!source.HasExternalSource()) {
+                    continue;
+                }
+                const auto& externalSourceType = source.GetExternalSource().GetType();
+
+                // S3 provider stores S3 paths to read in AST,
+                // S3 and solomon providers may use runtime listing,
+                // YT provider opens read session during compilation,
+                // so we can't cache such queries
+                if (externalSourceType == "S3Source" ||
+                    externalSourceType == "SolomonSource" ||
+                    externalSourceType == YtProviderName) {
                     return false;
                 }
             }

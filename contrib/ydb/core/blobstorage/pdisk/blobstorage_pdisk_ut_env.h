@@ -1,6 +1,8 @@
 #pragma once
 
 #include <contrib/ydb/core/blobstorage/pdisk/mock/pdisk_mock.h>
+#include <contrib/ydb/core/util/random.h>
+
 #include "blobstorage_pdisk_ut.h"
 #include "blobstorage_pdisk_ut_defs.h"
 #include "blobstorage_pdisk_data.h"
@@ -10,6 +12,7 @@
 
 #include <contrib/ydb/core/blobstorage/crypto/default.h>
 #include <contrib/ydb/core/testlib/actors/test_runtime.h>
+#include <contrib/ydb/library/actors/wilson/test_util/fake_wilson_uploader.h>
 
 #include <util/system/hp_timer.h>
 
@@ -19,16 +22,25 @@ struct TActorTestContext {
     using EDiskMode = NPDisk::NSectorMap::EDiskMode;
 public:
     struct TSettings {
-        bool IsBad;
+        bool IsBad = false;
         bool UsePDiskMock = false;
         ui64 DiskSize = 0;
         EDiskMode DiskMode = EDiskMode::DM_NONE;
         ui32 ChunkSize = 128 * (1 << 20);
         bool SmallDisk = false;
         bool SuppressCompatibilityCheck = false;
+        TString UsePath = {}; // If set, use this path instead of a one in a temp dir
+        bool UseSectorMap = true; // If set, use sector map instead of a file
         TAutoPtr<TLogBackend> LogBackend = nullptr;
         bool ReadOnly = false;
         bool InitiallyZeroed = false; // Only for sector map. Zero first 1MiB on start.
+        bool PlainDataChunks = false;
+        std::optional<bool> EnableFormatAndMetadataEncryption;
+        std::optional<bool> EnableSectorEncryption;
+        std::optional<bool> RandomizeMagic = std::nullopt;
+        std::optional<ui64> NonceRandNum = std::nullopt;
+        bool UseRdmaAllocator = false;
+        bool EnablePDiskSpaceColorOverride = false;
     };
 
 private:
@@ -42,13 +54,22 @@ public:
     NPDisk::TMainKey MainKey{ .Keys = { NPDisk::YdbDefaultPDiskSequence }, .IsInitialized = true };
     TTestContext TestCtx;
     TSettings Settings;
+    // this pointer doesn't own the object (only Runtime does)
+    NWilson::TFakeWilsonUploader *WilsonUploader = new NWilson::TFakeWilsonUploader;
+
+    void DoFormatPDisk(ui64 guid, bool enableFormatAndMetadataEncryption = true, std::optional<bool> enableSectorEncryption = std::nullopt) {
+        FormatPDiskForTest(TestCtx.Path, guid, Settings.ChunkSize, Settings.DiskSize,
+            false, TestCtx.SectorMap, Settings.SmallDisk, Settings.PlainDataChunks, enableFormatAndMetadataEncryption,
+            enableSectorEncryption, Settings.RandomizeMagic);
+    }
 
     TIntrusivePtr<TPDiskConfig> DefaultPDiskConfig(bool isBad) {
-        TString path;
-        EntropyPool().Read(&TestCtx.PDiskGuid, sizeof(TestCtx.PDiskGuid));
+        SafeEntropyPoolRead(&TestCtx.PDiskGuid, sizeof(TestCtx.PDiskGuid));
         ui64 formatGuid = TestCtx.PDiskGuid + static_cast<ui64>(isBad);
 
         if (Settings.InitiallyZeroed) {
+            UNIT_ASSERT(Settings.UseSectorMap);
+
             if (Settings.DiskSize) {
                 TestCtx.SectorMap->ForceSize(Settings.DiskSize);
             } else {
@@ -60,30 +81,42 @@ public:
             TestCtx.SectorMap->ZeroInit(1_MB / NPDisk::NSectorMap::SECTOR_SIZE);
         }
 
-        if (!Settings.InitiallyZeroed && !Settings.ReadOnly) {
-            if (Settings.DiskSize) {
-                FormatPDiskForTest(path, formatGuid, Settings.ChunkSize, Settings.DiskSize, false, TestCtx.SectorMap, Settings.SmallDisk);
-            } else {
-                FormatPDiskForTest(path, formatGuid, Settings.ChunkSize, false, TestCtx.SectorMap, Settings.SmallDisk);
-            }
+        // not set by user, keep old behaviour
+        if (!Settings.EnableSectorEncryption.has_value()) {
+            Settings.EnableSectorEncryption = !TestCtx.SectorMap;
+        }
+
+        // here old behaviour is to always encrypt format
+        if (!Settings.EnableFormatAndMetadataEncryption.has_value()) {
+            Settings.EnableFormatAndMetadataEncryption = true;
+        }
+
+        if (!Settings.ReadOnly && !Settings.InitiallyZeroed) {
+            DoFormatPDisk(formatGuid, *Settings.EnableFormatAndMetadataEncryption, *Settings.EnableSectorEncryption);
         }
 
         ui64 pDiskCategory = 0;
-        TIntrusivePtr<TPDiskConfig> pDiskConfig = new TPDiskConfig(path, TestCtx.PDiskGuid, 1, pDiskCategory);
+        TIntrusivePtr<TPDiskConfig> pDiskConfig = new TPDiskConfig(TestCtx.Path, TestCtx.PDiskGuid, 1, pDiskCategory);
         pDiskConfig->GetDriveDataSwitch = NKikimrBlobStorage::TPDiskConfig::DoNotTouch;
         pDiskConfig->WriteCacheSwitch = NKikimrBlobStorage::TPDiskConfig::DoNotTouch;
         pDiskConfig->ChunkSize = Settings.ChunkSize;
         pDiskConfig->SectorMap = TestCtx.SectorMap;
-        pDiskConfig->EnableSectorEncryption = !pDiskConfig->SectorMap;
+        pDiskConfig->EnableFormatAndMetadataEncryption = *Settings.EnableFormatAndMetadataEncryption;
+        pDiskConfig->FeatureFlags.SetEnablePDiskDataEncryption(*Settings.EnableSectorEncryption);
         pDiskConfig->FeatureFlags.SetEnableSmallDiskOptimization(Settings.SmallDisk);
         pDiskConfig->FeatureFlags.SetSuppressCompatibilityCheck(Settings.SuppressCompatibilityCheck);
+        pDiskConfig->FeatureFlags.SetEnablePDiskLogForSmallDisks(false);
+        pDiskConfig->FeatureFlags.SetEnablePDiskSpaceColorOverride(Settings.EnablePDiskSpaceColorOverride);
         pDiskConfig->ReadOnly = Settings.ReadOnly;
+        pDiskConfig->PlainDataChunks = Settings.PlainDataChunks;
+        pDiskConfig->NonceRandNum = Settings.NonceRandNum;
+
         return pDiskConfig;
     }
 
     TActorTestContext(TSettings settings)
-        : Runtime(new TTestActorRuntime(1, true))
-        , TestCtx(false, true, settings.DiskMode, settings.DiskSize)
+        : Runtime(new TTestActorRuntime(1, 1, true, settings.UseRdmaAllocator))
+        , TestCtx(settings.UseSectorMap, settings.DiskMode, settings.DiskSize, settings.UsePath)
         , Settings(settings)
     {
         auto appData = MakeHolder<TAppData>(0, 0, 0, 0, TMap<TString, ui32>(), nullptr, nullptr, nullptr, nullptr);
@@ -95,13 +128,17 @@ public:
         } else {
             Runtime->SetLogBackend(IsLowVerbose ? CreateStderrBackend() : CreateNullBackend());
         }
-        Runtime->Initialize(TTestActorRuntime::TEgg{appData.Release(), nullptr, {}, {}});
+        Runtime->Initialize(TTestActorRuntime::TEgg{appData.Release(), nullptr, {}, {}, {}});
         Runtime->SetLogPriority(NKikimrServices::BS_PDISK, NLog::PRI_NOTICE);
         Runtime->SetLogPriority(NKikimrServices::BS_PDISK_SYSLOG, NLog::PRI_NOTICE);
         Runtime->SetLogPriority(NKikimrServices::BS_PDISK_TEST, NLog::PRI_DEBUG);
+        Runtime->SetLogPriority(NKikimrServices::BS_PDISK_SHRED, NLog::PRI_DEBUG);
         Sender = Runtime->AllocateEdgeActor();
 
-        TIntrusivePtr<TPDiskConfig> cfg = DefaultPDiskConfig(Settings.IsBad);
+        TActorId uploaderId = Runtime->Register(WilsonUploader);
+        Runtime->RegisterService(NWilson::MakeWilsonUploaderId(), uploaderId);
+
+        auto cfg = DefaultPDiskConfig(Settings.IsBad);
         UpdateConfigRecreatePDisk(cfg);
     }
 
@@ -116,13 +153,23 @@ public:
         return Runtime.Get();
     }
 
-    void UpdateConfigRecreatePDisk(TIntrusivePtr<TPDiskConfig> cfg) {
+    void FormatPDisk(const TIntrusivePtr<TPDiskConfig>& cfg) {
+        DoFormatPDisk(TestCtx.PDiskGuid + static_cast<ui64>(Settings.IsBad),
+            cfg->EnableFormatAndMetadataEncryption, cfg->FeatureFlags.GetEnablePDiskDataEncryption()
+        );
+    }
+
+    void UpdateConfigRecreatePDisk(TIntrusivePtr<TPDiskConfig> cfg, bool reformat = false) {
         if (PDiskActor) {
             TestResponse<NPDisk::TEvYardControlResult>(
                     new NPDisk::TEvYardControl(NPDisk::TEvYardControl::PDiskStop, nullptr),
                     NKikimrProto::OK);
             PDisk = nullptr;
             Runtime->Send(new IEventHandle(*PDiskActor, Sender, new TKikimrEvents::TEvPoisonPill));
+        }
+
+        if (reformat) {
+            FormatPDisk(cfg);
         }
 
         if (Settings.UsePDiskMock) {
@@ -138,7 +185,10 @@ public:
     }
 
     void Send(IEventBase* ev) {
-        Runtime->Send(new IEventHandle(*PDiskActor, Sender, ev));
+        auto evh = new IEventHandle(*PDiskActor, Sender, ev);
+        // trace all events to check there is no VERIFY could happen
+        evh->TraceId = NWilson::TTraceId::NewTraceId(NWilson::TTraceId::MAX_VERBOSITY, 4095);
+        Runtime->Send(evh);
     }
 
     NPDisk::TPDisk *GetPDisk() {
@@ -153,13 +203,13 @@ public:
                     NKikimrProto::OK);
             PDisk = reinterpret_cast<NPDisk::TPDisk*>(evControlRes->Cookie);
 
-            PDiskActor = PDisk->PDiskActor;
+            PDiskActor = PDisk->PCtx->PDiskActor;
         }
         return PDisk;
     }
 
     void GracefulPDiskRestart(bool waitForRestart = true) {
-        ui32 pdiskId = GetPDisk()->PDiskId;
+        ui32 pdiskId = GetPDisk()->PCtx->PDiskId;
 
         Send(new TEvBlobStorage::TEvAskWardenRestartPDiskResult(pdiskId, MainKey, true, nullptr));
 
@@ -211,7 +261,7 @@ public:
             UNIT_ASSERT_VALUES_EQUAL_C(evRes->Status, status.value(), evRes->ToString());
         }
 
-        UNIT_ASSERT(evRes->Status == NKikimrProto::OK || !evRes->ErrorReason.empty());
+        UNIT_ASSERT_C(evRes->Status == NKikimrProto::OK || !evRes->ErrorReason.empty(), "Status: " << NKikimrProto::EReplyStatus_Name(evRes->Status) << " ErrorReason: " << evRes->ErrorReason << " ToString: " << evRes->ToString());
 
         // Test that all ToString methods don't VERIFY
         Cnull << evRes->ToString();
@@ -247,25 +297,32 @@ struct TVDiskMock {
 
     TMap<EChunkState, TSet<TChunkIdx>> Chunks;
 
-    TVDiskMock(TActorTestContext *testCtx)
+    TVDiskMock(TActorTestContext *testCtx, bool dynamicGroup = false)
         : TestCtx(testCtx)
-        , VDiskID(Idx.fetch_add(1), 1, 0, 0, 0)
+        , VDiskID(MakeGroupId(dynamicGroup), 1, 0, 0, 0)
     {}
+
+    static ui32 MakeGroupId(bool dynamicGroup) {
+        const ui32 baseId = static_cast<ui32>(Idx.fetch_add(1));
+        return dynamicGroup ? (baseId | 0x80000000u) : baseId;
+    }
 
     TLsnSeg GetLsnSeg() {
         ++LastUsedLsn;
         return {LastUsedLsn, LastUsedLsn};
     };
 
-    void InitFull() {
-        Init();
+    void InitFull(ui32 groupSizeInUnits = 0) {
+        Init(groupSizeInUnits);
         ReadLog();
         SendEvLogImpl(1, {}, true);
     }
 
-    void Init() {
+    void Init(ui32 groupSizeInUnits = 0) {
         const auto evInitRes = TestCtx->TestResponse<NPDisk::TEvYardInitResult>(
-                new NPDisk::TEvYardInit(OwnerRound.fetch_add(1), VDiskID, TestCtx->TestCtx.PDiskGuid),
+                new NPDisk::TEvYardInit(OwnerRound.fetch_add(1), VDiskID,
+                    TestCtx->TestCtx.PDiskGuid, TestCtx->Sender,
+                    {}, Max<ui32>(), groupSizeInUnits),
                 NKikimrProto::OK);
 
         PDiskParams = evInitRes->PDiskParams;
@@ -278,14 +335,14 @@ struct TVDiskMock {
         UNIT_ASSERT_C(commited.empty(), "there are leaked chunks# " << FormatList(commited));
     }
 
-
-    void ReserveChunk() {
+    void ReserveChunk(ui32 chunkCountToReserve = 1) {
         const auto evReserveRes = TestCtx->TestResponse<NPDisk::TEvChunkReserveResult>(
-                new NPDisk::TEvChunkReserve(PDiskParams->Owner, PDiskParams->OwnerRound, 1),
+                new NPDisk::TEvChunkReserve(PDiskParams->Owner, PDiskParams->OwnerRound, chunkCountToReserve),
                 NKikimrProto::OK);
-        UNIT_ASSERT(evReserveRes->ChunkIds.size() == 1);
-        const ui32 reservedChunk = evReserveRes->ChunkIds.front();
-        Chunks[EChunkState::RESERVED].emplace(reservedChunk);
+        UNIT_ASSERT(evReserveRes->ChunkIds.size() == chunkCountToReserve);
+        for (const ui32 reservedChunk : evReserveRes->ChunkIds) {
+            Chunks[EChunkState::RESERVED].emplace(reservedChunk);
+        }
     }
 
     void CommitReservedChunks() {
@@ -295,6 +352,16 @@ struct TVDiskMock {
         SendEvLogImpl(1, rec);
         Chunks[EChunkState::COMMITTED].insert(reservedChunks.begin(), reservedChunks.end());
         reservedChunks.clear();
+    }
+
+    void MarkCommitedChunksDirty() {
+        auto& commited = Chunks[EChunkState::COMMITTED];
+        TStackVec<TChunkIdx, 1> chunksToMark;
+        NPDisk::TCommitRecord rec;
+        for (auto it = commited.begin(); it != commited.end(); ++it) {
+            rec.DirtyChunks.push_back(*it);
+        }
+        SendEvLogImpl(1, rec);
     }
 
     void DeleteCommitedChunks() {
@@ -348,6 +415,49 @@ struct TVDiskMock {
         return LastUsedLsn + 1 - FirstLsnToKeep;
     }
 
+    void PerformHarakiri() {
+        TestCtx->TestResponse<NPDisk::TEvHarakiriResult>(
+            new NPDisk::TEvHarakiri(PDiskParams->Owner, PDiskParams->OwnerRound),
+            NKikimrProto::OK);
+    }
+
+    void RespondToCutLog() {
+        Cerr << __FILE__ << ":" << __LINE__ << Endl;
+        THolder<NPDisk::TEvCutLog> evReq = TestCtx->Recv<NPDisk::TEvCutLog>();
+        if (evReq) {
+            CutLogAllButOne();
+        }
+    }
+
+    void RespondToPreShredCompact(ui64 shredGeneration, NKikimrProto::EReplyStatus status, const TString& errorReason) {
+        THolder<NPDisk::TEvPreShredCompactVDisk> evReq = TestCtx->Recv<NPDisk::TEvPreShredCompactVDisk>();
+        if (evReq) {
+            TestCtx->Send(new NPDisk::TEvPreShredCompactVDiskResult(PDiskParams->Owner, PDiskParams->OwnerRound,
+                shredGeneration, status, errorReason));
+        }
+    }
+
+    void RespondToShred(ui64 shredGeneration, NKikimrProto::EReplyStatus status, const TString& errorReason) {
+        THolder<NPDisk::TEvShredVDisk> evReq = TestCtx->Recv<NPDisk::TEvShredVDisk>();
+        if (evReq) {
+            if (status == NKikimrProto::OK) {
+                auto& commited = Chunks[EChunkState::COMMITTED];
+                NPDisk::TCommitRecord rec;
+                rec.DeleteChunks = TVector<TChunkIdx>();
+                for (const TChunkIdx &idx : evReq->ChunksToShred) {
+                    if (commited.contains(idx)) {
+                        rec.DeleteChunks.push_back(idx);
+                        Chunks[EChunkState::DELETED].insert(idx);
+                        commited.erase(idx);
+                    }
+                }
+                SendEvLogImpl(1, rec);
+            }
+            TestCtx->Send(new NPDisk::TEvShredVDiskResult(PDiskParams->Owner, PDiskParams->OwnerRound,
+                shredGeneration, status, errorReason));
+        }
+    }
+
 private:
     void SendEvLogImpl(const ui64 size, TMaybe<NPDisk::TCommitRecord> commitRec) {
         auto evLog = MakeHolder<NPDisk::TEvLog>(PDiskParams->Owner, PDiskParams->OwnerRound, 0, TRcBuf(PrepareData(size)),
@@ -362,7 +472,6 @@ private:
     }
 
     void SendEvLogImpl(const ui64 size, TMaybe<ui64> firstLsnToKeep, bool isStartingPoint) {
-
         TMaybe<NPDisk::TCommitRecord> rec;
 
         if (firstLsnToKeep || isStartingPoint) {
@@ -375,5 +484,5 @@ private:
     }
 };
 
-void TestChunkWriteReleaseRun();
+void TestChunkWriteReleaseRun(bool encryption);
 }

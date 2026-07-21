@@ -6,20 +6,27 @@ IF (PROFILE_MEMORY_ALLOCATIONS)
     CFLAGS(-DPROFILE_MEMORY_ALLOCATIONS)
 ENDIF()
 
+IF (MUSL)
+    # musl code for CMSG_NXTHDR is broken by this check
+    CFLAGS(-Wno-sign-compare)
+ENDIF()
+
 SRCS(
     channel_scheduler.h
     event_filter.h
     event_holder_pool.h
     events_local.h
-    interconnect_address.cpp
-    interconnect_address.h
     interconnect_channel.cpp
     interconnect_channel.h
+    interconnect_common.cpp
     interconnect_common.h
     interconnect_counters.cpp
     interconnect.h
+    interconnect_direct_session.h
     interconnect_handshake.cpp
     interconnect_handshake.h
+    interconnect_metrics_aggregator.cpp
+    interconnect_metrics_aggregator.h
     interconnect_impl.h
     interconnect_mon.cpp
     interconnect_mon.h
@@ -28,6 +35,7 @@ SRCS(
     interconnect_proxy_wrapper.cpp
     interconnect_proxy_wrapper.h
     interconnect_resolve.cpp
+    interconnect_session_iface.h
     interconnect_stream.cpp
     interconnect_stream.h
     interconnect_tcp_input_session.cpp
@@ -37,35 +45,34 @@ SRCS(
     interconnect_tcp_server.h
     interconnect_tcp_session.cpp
     interconnect_tcp_session.h
+    interconnect_tcp_session_v2.cpp
+    interconnect_tcp_session_v2.h
     interconnect_zc_processor.cpp
     interconnect_zc_processor.h
     load.cpp
     load.h
-    logging.h
     packet.cpp
     packet.h
-    poller_actor.cpp
-    poller_actor.h
-    poller.h
-    poller_tcp.cpp
-    poller_tcp.h
-    poller_tcp_unit.cpp
-    poller_tcp_unit.h
-    poller_tcp_unit_select.cpp
-    poller_tcp_unit_select.h
     profiler.h
     slowpoke_actor.h
     subscription_manager.cpp
     subscription_manager.h
     types.cpp
     types.h
+    v2_event_serializer.cpp
+    v2_event_serializer.h
     watchdog_timer.h
+)
+
+PEERDIR(
+    contrib/ydb/library/uring
 )
 
 IF (OS_LINUX)
     SRCS(
-        poller_tcp_unit_epoll.cpp
-        poller_tcp_unit_epoll.h
+        uring_context.cpp
+        uring_context.h
+        uring_recv_buffer_pool.h
     )
 ENDIF()
 
@@ -77,11 +84,17 @@ PEERDIR(
     contrib/ydb/library/actors/dnscachelib
     contrib/ydb/library/actors/dnsresolver
     contrib/ydb/library/actors/helpers
+    contrib/ydb/library/actors/interconnect/address
+    contrib/ydb/library/actors/interconnect/poller
+    contrib/ydb/library/actors/interconnect/retro_tracing
+    contrib/ydb/library/actors/interconnect/rdma
+    contrib/ydb/library/actors/interconnect/rdma/cq_actor
     contrib/ydb/library/actors/prof
     contrib/ydb/library/actors/protos
     contrib/ydb/library/actors/util
     contrib/ydb/library/actors/wilson
     library/cpp/digest/crc32c
+    library/cpp/html/pcdata
     library/cpp/json
     library/cpp/lwtrace
     library/cpp/monlib/dynamic_counters
@@ -94,8 +107,19 @@ PEERDIR(
 
 END()
 
+IF (OS_LINUX)
+    RECURSE(
+        rdma
+    )
+
+    RECURSE_FOR_TESTS(
+        ut_rdma
+    )
+ENDIF()
+
 RECURSE_FOR_TESTS(
     ut
     ut_fat
     ut_huge_cluster
+    ut_kernel_liveness
 )

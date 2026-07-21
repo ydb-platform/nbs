@@ -34,7 +34,10 @@ public:
         AddHandler({TYtWriteTable::CallableName()}, Hndl(&TYtDataSinkConstraintTransformer::HandleWriteTable));
         AddHandler({TYtFill::CallableName()}, Hndl(&TYtDataSinkConstraintTransformer::HandleFill));
         AddHandler({TYtTouch::CallableName()}, Hndl(&TYtDataSinkConstraintTransformer::HandleTouch));
+        AddHandler({TYtCreateTable::CallableName()}, Hndl(&TYtDataSinkConstraintTransformer::HandleDefault));
         AddHandler({TYtDropTable::CallableName()}, Hndl(&TYtDataSinkConstraintTransformer::HandleDefault));
+        AddHandler({TYtCreateView::CallableName()}, Hndl(&TYtDataSinkConstraintTransformer::HandleDefault));
+        AddHandler({TYtDropView::CallableName()}, Hndl(&TYtDataSinkConstraintTransformer::HandleDefault));
         AddHandler({TCoCommit::CallableName()}, Hndl(&TYtDataSinkConstraintTransformer::HandleCommit));
         AddHandler({TYtPublish::CallableName()}, Hndl(&TYtDataSinkConstraintTransformer::HandlePublish));
         AddHandler({TYtEquiJoin::CallableName()}, Hndl(&TYtDataSinkConstraintTransformer::HandleEquiJoin));
@@ -42,6 +45,9 @@ public:
         AddHandler({TYtStatOut::CallableName()}, Hndl(&TYtDataSinkConstraintTransformer::HandleDefault));
         AddHandler({TYtDqProcessWrite ::CallableName()}, Hndl(&TYtDataSinkConstraintTransformer::HandleDqProcessWrite));
         AddHandler({TYtTryFirst ::CallableName()}, Hndl(&TYtDataSinkConstraintTransformer::HandleTryFirst));
+        AddHandler({TYtMaterialize::CallableName()}, Hndl(&TYtDataSinkConstraintTransformer::HandleMaterialize));
+        AddHandler({TYtPersist::CallableName()}, Hndl(&TYtDataSinkConstraintTransformer::HandlePersist));
+        AddHandler({TYtQLFilter::CallableName()}, Hndl(&TYtDataSinkConstraintTransformer::HandleDefault));
     }
 private:
     static void CopyExcept(TExprNode* dst, const TExprNode& from, const TStringBuf& except) {
@@ -127,28 +133,30 @@ private:
             lambdaNdx = OutLambdaNdx;
         }
 
+        bool emptyInput = false;
         const auto filter = NYql::HasSetting(op.Settings().Ref(), EYtSettingType::Ordered) ?
             [](const std::string_view& name) { return TEmptyConstraintNode::Name() == name || TUniqueConstraintNode::Name() == name || TDistinctConstraintNode::Name() == name || TSortedConstraintNode::Name() == name; }:
             [](const std::string_view& name) { return TEmptyConstraintNode::Name() == name || TUniqueConstraintNode::Name() == name || TDistinctConstraintNode::Name() == name; };
         TConstraintNode::TListType argConstraints;
         if (op.Input().Size() > 1) {
             TMultiConstraintNode::TMapType multiItems;
-            bool allEmpty = true;
+            emptyInput = true;
             for (ui32 index = 0; index < op.Input().Size(); ++index) {
                 auto section = op.Input().Item(index);
                 if (!section.Ref().GetConstraint<TEmptyConstraintNode>()) {
                     multiItems.push_back(std::make_pair(index, section.Ref().GetConstraintSet()));
                     multiItems.back().second.FilterConstraints(filter);
-                    allEmpty = false;
+                    emptyInput = false;
                 }
             }
             if (!multiItems.empty()) {
                 argConstraints.push_back(ctx.MakeConstraint<TMultiConstraintNode>(std::move(multiItems)));
-            } else if (allEmpty) {
+            } else if (emptyInput) {
                 argConstraints.push_back(ctx.MakeConstraint<TEmptyConstraintNode>());
             }
         } else {
             auto set = op.Input().Item(0).Ref().GetConstraintSet();
+            emptyInput = nullptr != set.GetConstraint<TEmptyConstraintNode>();
             set.FilterConstraints(filter);
             argConstraints = set.GetAllConstraints();
             if (singleLambda) {
@@ -196,10 +204,8 @@ private:
         }
 
         SetResultConstraint(input, *input->Child(OutLambdaNdx), op.Output(), ctx);
-        if (op.Input().Size() == 1) {
-            if (auto empty = op.Input().Item(0).Ref().GetConstraint<TEmptyConstraintNode>()) {
-                input->AddConstraint(empty);
-            }
+        if (emptyInput) {
+            input->AddConstraint(ctx.MakeConstraint<TEmptyConstraintNode>());
         }
 
         return TStatus::Ok;
@@ -447,6 +453,32 @@ private:
         input.Ptr()->CopyConstraints(input.Ref().Tail());
         return TStatus::Ok;
     }
+
+    TStatus HandleMaterialize(TExprBase input, TExprContext&) {
+        auto materialize = input.Cast<TYtMaterialize>();
+        const bool skipSort = NYql::HasSetting(materialize.Settings().Ref(), EYtSettingType::Unordered);
+        for (auto c: materialize.Input().Ref().GetAllConstraints()) {
+            if (!skipSort || c->GetName() != TSortedConstraintNode::Name()) {
+                input.Ptr()->AddConstraint(c);
+            }
+        }
+        return TStatus::Ok;
+    }
+
+    TStatus HandlePersist(TExprBase input, TExprContext&) {
+        auto persist = input.Cast<TYtPersist>();
+        const bool skipSort = NYql::HasSetting(persist.Settings().Ref(), EYtSettingType::Unordered);
+        for (auto c: persist.Output().Item(0).Ref().GetAllConstraints()) {
+            if (!skipSort || c->GetName() != TSortedConstraintNode::Name()) {
+                input.Ptr()->AddConstraint(c);
+            }
+        }
+        if (auto empty = persist.Input().Item(0).Ref().GetConstraint<TEmptyConstraintNode>()) {
+            input.Ptr()->AddConstraint(empty);
+        }
+        return TStatus::Ok;
+    }
+
 private:
     const TYtState::TPtr State_;
     const bool SubGraph;

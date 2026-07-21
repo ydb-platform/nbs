@@ -1,43 +1,3 @@
-#include <util/system/platform.h>
-#if defined(_linux_) || defined(_darwin_)
-#include <contrib/ydb/library/yql/udfs/common/clickhouse/client/src/DataTypes/DataTypeArray.h>
-#include <contrib/ydb/library/yql/udfs/common/clickhouse/client/src/DataTypes/DataTypeDate.h>
-#include <contrib/ydb/library/yql/udfs/common/clickhouse/client/src/DataTypes/DataTypeDateTime64.h>
-#include <contrib/ydb/library/yql/udfs/common/clickhouse/client/src/DataTypes/DataTypesDecimal.h>
-#include <contrib/ydb/library/yql/udfs/common/clickhouse/client/src/DataTypes/DataTypeEnum.h>
-#include <contrib/ydb/library/yql/udfs/common/clickhouse/client/src/DataTypes/DataTypeFactory.h>
-#include <contrib/ydb/library/yql/udfs/common/clickhouse/client/src/DataTypes/DataTypeInterval.h>
-#include <contrib/ydb/library/yql/udfs/common/clickhouse/client/src/DataTypes/DataTypeNothing.h>
-#include <contrib/ydb/library/yql/udfs/common/clickhouse/client/src/DataTypes/DataTypeNullable.h>
-#include <contrib/ydb/library/yql/udfs/common/clickhouse/client/src/DataTypes/DataTypeString.h>
-#include <contrib/ydb/library/yql/udfs/common/clickhouse/client/src/DataTypes/DataTypeTuple.h>
-#include <contrib/ydb/library/yql/udfs/common/clickhouse/client/src/DataTypes/DataTypeUUID.h>
-#include <contrib/ydb/library/yql/udfs/common/clickhouse/client/src/DataTypes/DataTypesNumber.h>
-
-#include <contrib/ydb/library/yql/udfs/common/clickhouse/client/src/IO/ReadBuffer.h>
-#include <contrib/ydb/library/yql/udfs/common/clickhouse/client/src/IO/ReadBufferFromFile.h>
-#include <contrib/ydb/library/yql/udfs/common/clickhouse/client/src/Core/Block.h>
-#include <contrib/ydb/library/yql/udfs/common/clickhouse/client/src/Core/ColumnsWithTypeAndName.h>
-
-#include <contrib/ydb/library/yql/udfs/common/clickhouse/client/src/Formats/FormatFactory.h>
-#include <contrib/ydb/library/yql/udfs/common/clickhouse/client/src/Processors/Formats/InputStreamFromInputFormat.h>
-#include <contrib/ydb/library/yql/udfs/common/clickhouse/client/src/Processors/Formats/Impl/ArrowBufferedStreams.h>
-
-#include <arrow/api.h>
-#include <arrow/io/api.h>
-#include <arrow/compute/cast.h>
-#include <arrow/status.h>
-#include <arrow/util/future.h>
-#include <parquet/arrow/reader.h>
-#include <parquet/file_reader.h>
-
-#include <library/cpp/protobuf/util/pb_io.h>
-#include <google/protobuf/text_format.h>
-
-#endif
-
-#include "yql_arrow_column_converters.h"
-#include "yql_s3_actors_util.h"
 #include "yql_s3_read_actor.h"
 #include "yql_s3_source_queue.h"
 
@@ -45,7 +5,7 @@
 #include <contrib/ydb/library/services/services.pb.h>
 
 #include <contrib/ydb/library/yql/core/yql_expr_type_annotation.h>
-#include <contrib/ydb/library/yql/dq/actors/compute/retry_queue.h>
+#include <contrib/ydb/library/yql/dq/actors/common/retry_queue.h>
 #include <contrib/ydb/library/yql/minikql/mkql_string_util.h>
 #include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node_impl.h>
 #include <contrib/ydb/library/yql/minikql/mkql_program_builder.h>
@@ -87,13 +47,53 @@
 #include <util/system/fstat.h>
 
 #include <algorithm>
-#include <queue>
 
 #ifdef THROW
 #undef THROW
 #endif
 #include <library/cpp/string_utils/quote/quote.h>
 #include <library/cpp/xml/document/xml-document.h>
+
+#include <util/system/platform.h>
+#if defined(_linux_) || defined(_darwin_)
+
+#include <arrow/api.h>
+#include <arrow/io/api.h>
+#include <arrow/compute/cast.h>
+#include <arrow/status.h>
+#include <arrow/util/future.h>
+#include <parquet/arrow/reader.h>
+#include <parquet/file_reader.h>
+
+#include <library/cpp/protobuf/util/pb_io.h>
+#include <google/protobuf/text_format.h>
+
+#undef NO_SANITIZE_THREAD
+
+#include <contrib/ydb/library/yql/udfs/common/clickhouse/client/src/DataTypes/DataTypeArray.h>
+#include <contrib/ydb/library/yql/udfs/common/clickhouse/client/src/DataTypes/DataTypeDate.h>
+#include <contrib/ydb/library/yql/udfs/common/clickhouse/client/src/DataTypes/DataTypeDateTime64.h>
+#include <contrib/ydb/library/yql/udfs/common/clickhouse/client/src/DataTypes/DataTypesDecimal.h>
+#include <contrib/ydb/library/yql/udfs/common/clickhouse/client/src/DataTypes/DataTypeEnum.h>
+#include <contrib/ydb/library/yql/udfs/common/clickhouse/client/src/DataTypes/DataTypeFactory.h>
+#include <contrib/ydb/library/yql/udfs/common/clickhouse/client/src/DataTypes/DataTypeInterval.h>
+#include <contrib/ydb/library/yql/udfs/common/clickhouse/client/src/DataTypes/DataTypeNothing.h>
+#include <contrib/ydb/library/yql/udfs/common/clickhouse/client/src/DataTypes/DataTypeNullable.h>
+#include <contrib/ydb/library/yql/udfs/common/clickhouse/client/src/DataTypes/DataTypeString.h>
+#include <contrib/ydb/library/yql/udfs/common/clickhouse/client/src/DataTypes/DataTypeTuple.h>
+#include <contrib/ydb/library/yql/udfs/common/clickhouse/client/src/DataTypes/DataTypeUUID.h>
+#include <contrib/ydb/library/yql/udfs/common/clickhouse/client/src/DataTypes/DataTypesNumber.h>
+
+#include <contrib/ydb/library/yql/udfs/common/clickhouse/client/src/IO/ReadBuffer.h>
+#include <contrib/ydb/library/yql/udfs/common/clickhouse/client/src/IO/ReadBufferFromFile.h>
+#include <contrib/ydb/library/yql/udfs/common/clickhouse/client/src/Core/Block.h>
+#include <contrib/ydb/library/yql/udfs/common/clickhouse/client/src/Core/ColumnsWithTypeAndName.h>
+
+#include <contrib/ydb/library/yql/udfs/common/clickhouse/client/src/Formats/FormatFactory.h>
+#include <contrib/ydb/library/yql/udfs/common/clickhouse/client/src/Processors/Formats/InputStreamFromInputFormat.h>
+#include <contrib/ydb/library/yql/udfs/common/clickhouse/client/src/Processors/Formats/Impl/ArrowBufferedStreams.h>
+
+#endif
 
 #define LOG_E(name, stream) \
     LOG_ERROR_S(*NActors::TlsActivationContext, NKikimrServices::KQP_COMPUTE, name << ": " << this->SelfId() << ", TxId: " << TxId << ". " << stream)
@@ -171,26 +171,31 @@ public:
         ui64 batchSizeLimit,
         ui64 batchObjectCountLimit,
         IHTTPGateway::TPtr gateway,
+        IHTTPGateway::TRetryPolicy::TPtr retryPolicy,
         TString url,
-        TS3Credentials::TAuthInfo authInfo,
+        const TS3Credentials& credentials,
         TString pattern,
         NS3Lister::ES3PatternVariant patternVariant,
-        NS3Lister::ES3PatternType patternType)
+        NS3Lister::ES3PatternType patternType,
+        bool allowLocalFiles)
         : TxId(std::move(txId))
         , PrefetchSize(prefetchSize)
         , FileSizeLimit(fileSizeLimit)
         , ReadLimit(readLimit)
         , MaybeIssues(Nothing())
+        , FatalCode(NYql::NDqProto::StatusIds::EXTERNAL_ERROR)
         , UseRuntimeListing(useRuntimeListing)
         , ConsumersCount(consumersCount)
         , BatchSizeLimit(batchSizeLimit)
         , BatchObjectCountLimit(batchObjectCountLimit)
         , Gateway(std::move(gateway))
+        , RetryPolicy(std::move(retryPolicy))
         , Url(std::move(url))
-        , AuthInfo(std::move(authInfo))
+        , Credentials(credentials)
         , Pattern(std::move(pattern))
         , PatternVariant(patternVariant)
-        , PatternType(patternType) {
+        , PatternType(patternType)
+        , AllowLocalFiles(allowLocalFiles) {
         for (size_t i = 0; i < paths.size(); ++i) {
             NS3::FileQueue::TObjectPath object;
             object.SetPath(paths[i].Path);
@@ -241,6 +246,7 @@ public:
     }
 
     void HandleGetNextBatch(TEvS3Provider::TEvGetNextBatch::TPtr& ev) {
+        ConnectedConsumers.insert(ev->Sender);
         if (HasEnoughToSend()) {
             LOG_D("TS3FileQueueActor", "HandleGetNextBatch sending right away");
             TrySendObjects(ev->Sender, ev->Get()->Record.GetTransportMeta());
@@ -298,6 +304,7 @@ public:
                                     << " and exceeds limit = " << FileSizeLimit;
                 LOG_E("TS3FileQueueActor", errorMessage);
                 MaybeIssues = TIssues{TIssue{errorMessage}};
+                FatalCode = NYql::NDqProto::StatusIds::PRECONDITION_FAILED;
                 return false;
             }
             LOG_T("TS3FileQueueActor", "SaveRetrievedResults adding path: " << object.Path);
@@ -347,6 +354,7 @@ public:
     }
 
     void HandleGetNextBatchForEmptyState(TEvS3Provider::TEvGetNextBatch::TPtr& ev) {
+        ConnectedConsumers.insert(ev->Sender);
         LOG_T(
             "TS3FileQueueActor",
             "HandleGetNextBatchForEmptyState Giving away rest of Objects");
@@ -370,14 +378,16 @@ public:
     }
 
     void HandleGetNextBatchForErrorState(TEvS3Provider::TEvGetNextBatch::TPtr& ev) {
+        ConnectedConsumers.insert(ev->Sender);
         LOG_D(
             "TS3FileQueueActor",
             "HandleGetNextBatchForErrorState Giving away rest of Objects");
-        Send(ev->Sender, new TEvS3Provider::TEvObjectPathReadError(*MaybeIssues, ev->Get()->Record.GetTransportMeta()));
+        Send(ev->Sender, new TEvS3Provider::TEvObjectPathReadError(*MaybeIssues, FatalCode, ev->Get()->Record.GetTransportMeta()));
         TryFinish(ev->Sender, ev->Get()->Record.GetTransportMeta().GetSeqNo());
     }
 
     void HandleUpdateConsumersCount(TEvS3Provider::TEvUpdateConsumersCount::TPtr& ev) {
+        ConnectedConsumers.insert(ev->Sender);
         if (!UpdatedConsumers.contains(ev->Sender)) {
             LOG_D(
                 "TS3FileQueueActor",
@@ -397,6 +407,15 @@ public:
     }
 
     void HandlePoison() {
+        // PoisonTimeout is a safety net for the case where some read actors are never
+        // bootstrapped (e.g. node failure during query startup).  Once we know that all
+        // consumers are alive, we can safely ignore the timeout and let the normal
+        // shutdown path run.
+        if (ConnectedConsumers.size() >= ConsumersCount) {
+            LOG_D("TS3FileQueueActor", "HandlePoison: consumers are active, ignoring PoisonTimeout");
+            return;
+        }
+        LOG_I("TS3FileQueueActor", "HandlePoison: no consumer messages received, shutting down");
         AnswerPendingRequests();
         PassAway();
     }
@@ -488,16 +507,18 @@ private:
             CurrentDirectoryPathIndex = object.GetPathIndex();
             MaybeLister = NS3Lister::MakeS3Lister(
                 Gateway,
+                RetryPolicy,
                 NS3Lister::TListingRequest{
                     Url,
-                    AuthInfo,
+                    Credentials,
                     PatternVariant == NS3Lister::ES3PatternVariant::PathPattern
                         ? Pattern
                         : TStringBuilder{} << object.GetPath() << Pattern,
                     PatternType,
                     object.GetPath()},
                 Nothing(),
-                false);
+                AllowLocalFiles,
+                NActors::TActivationContext::ActorSystem());
             Fetch();
             return true;
         }
@@ -552,7 +573,7 @@ private:
                     if (!MaybeIssues.Defined()) {
                         SendObjects(consumer, requests.front());
                     } else {
-                        Send(consumer, new TEvS3Provider::TEvObjectPathReadError(*MaybeIssues, requests.front()));
+                        Send(consumer, new TEvS3Provider::TEvObjectPathReadError(*MaybeIssues, FatalCode, requests.front()));
                         TryFinish(consumer, requests.front().GetSeqNo());
                     }
                     requests.pop_front();
@@ -597,6 +618,7 @@ private:
     size_t CurrentDirectoryPathIndex = 0;
     THashMap<NActors::TActorId, TDeque<NDqProto::TMessageTransportMeta>> PendingRequests;
     TMaybe<TIssues> MaybeIssues;
+    NYql::NDqProto::StatusIds::StatusCode FatalCode;
     bool UseRuntimeListing;
     ui64 ConsumersCount;
     ui64 BatchSizeLimit;
@@ -609,15 +631,18 @@ private:
     bool HasPendingRequests = false;
     THashSet<NActors::TActorId> StartedConsumers;
     THashSet<NActors::TActorId> UpdatedConsumers;
+    THashSet<NActors::TActorId> ConnectedConsumers;
 
     const IHTTPGateway::TPtr Gateway;
+    const IHTTPGateway::TRetryPolicy::TPtr RetryPolicy;
     const TString Url;
-    const TS3Credentials::TAuthInfo AuthInfo;
+    const TS3Credentials Credentials;
     const TString Pattern;
     const NS3Lister::ES3PatternVariant PatternVariant;
     const NS3Lister::ES3PatternType PatternType;
+    const bool AllowLocalFiles;
 
-    static constexpr TDuration PoisonTimeout = TDuration::Hours(3);
+    static constexpr TDuration PoisonTimeout = TDuration::Minutes(30);
     static constexpr TDuration RoundRobinStageTimeout = TDuration::Seconds(3);
 };
 
@@ -632,11 +657,13 @@ NActors::IActor* CreateS3FileQueueActor(
         ui64 batchSizeLimit,
         ui64 batchObjectCountLimit,
         IHTTPGateway::TPtr gateway,
+        IHTTPGateway::TRetryPolicy::TPtr retryPolicy,
         TString url,
-        TS3Credentials::TAuthInfo authInfo,
+        const TS3Credentials& credentials,
         TString pattern,
         NS3Lister::ES3PatternVariant patternVariant,
-        NS3Lister::ES3PatternType patternType) {
+        NS3Lister::ES3PatternType patternType,
+        bool allowLocalFiles) {
     return new TS3FileQueueActor(
         txId,
         paths,
@@ -648,11 +675,13 @@ NActors::IActor* CreateS3FileQueueActor(
         batchSizeLimit,
         batchObjectCountLimit,
         gateway,
+        retryPolicy,
         url,
-        authInfo,
+        credentials,
         pattern,
         patternVariant,
-        patternType
+        patternType,
+        allowLocalFiles
     );
 }
 

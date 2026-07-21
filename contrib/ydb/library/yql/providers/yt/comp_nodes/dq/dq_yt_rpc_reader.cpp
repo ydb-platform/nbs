@@ -79,6 +79,10 @@ void TParallelFileInputState::Next() {
     Valid_ = NextValue();
 }
 
+TString TParallelFileInputState::DebugInfo() const {
+    return {};
+}
+
 void TParallelFileInputState::Finish() {
     TimerAwaiting_.Report(Spec_->JobStats_);
     MkqlReader_.Finish();
@@ -163,7 +167,7 @@ void ReadCallback(NYT::TErrorOr<NYT::TSharedRef>&& res_, std::shared_ptr<TParall
 }
 
 void ExecuteRead(size_t inputIdx, std::shared_ptr<TParallelFileInputState::TInnerState> state) {
-    state->RawInputs[inputIdx]->Read().SubscribeUnique(BIND([state, inputIdx](NYT::TErrorOr<NYT::TSharedRef>&& res_){
+    state->RawInputs[inputIdx]->Read().AsUnique().Subscribe(BIND([state, inputIdx](NYT::TErrorOr<NYT::TSharedRef>&& res_){
         ReadCallback(std::move(res_), state, inputIdx);
     }));
 }
@@ -173,9 +177,10 @@ void TParallelFileInputState::RunNext() {
     while (auto idx = InnerState_->GetFreeReader()) {
         auto inputIdx = *idx;
         if (!InnerState_->RawInputs[inputIdx]) {
-            CreateInputStream(Settings_->Requests[inputIdx]).SubscribeUnique(BIND([state = InnerState_, inputIdx](NYT::TErrorOr<NYT::NConcurrency::IAsyncZeroCopyInputStreamPtr>&& stream) {
+            CreateInputStream(Settings_->Requests[inputIdx]).AsUnique().Subscribe(BIND([state = InnerState_, inputIdx](NYT::TErrorOr<NYT::NConcurrency::IAsyncZeroCopyInputStreamPtr>&& stream) {
                 if (!stream.IsOK()) {
                     state->Error = stream;
+                    state->WaitPromise.TrySet();
                     return;
                 }
                 state->RawInputs[inputIdx] = std::move(stream.Value());

@@ -1,8 +1,8 @@
 #include "print_operation.h"
 #include "pretty_table.h"
 
-#include <contrib/ydb/public/lib/operation_id/operation_id.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_types/status_codes.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/library/operation_id/operation_id.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/types/status_codes.h>
 
 #include <util/string/builder.h>
 #include <util/string/cast.h>
@@ -14,30 +14,17 @@ namespace {
 
     using namespace NKikimr::NOperationId;
 
-    /// Common
-    TPrettyTable MakeTable(const TOperation&) {
-        return TPrettyTable({"id", "ready", "status"});
-    }
-
-    void PrettyPrint(const TOperation& operation, TPrettyTable& table) {
-        const auto& status = operation.Status();
-
-        auto& row = table.AddRow();
-        row
-            .Column(0, ProtoToString(operation.Id()))
-            .Column(1, operation.Ready() ? "true" : "false")
-            .Column(2, status.GetStatus() == NYdb::EStatus::STATUS_UNDEFINED ? "" : ToString(status.GetStatus()));
-
-        TStringBuilder freeText;
-
+    void AppendIssues(const TStatus& status, TStringBuilder& freeText) {
         if (!status.GetIssues().Empty()) {
             freeText << "Issues: " << Endl;
             for (const auto& issue : status.GetIssues()) {
                 freeText << "  - " << issue << Endl;
             }
         }
-        
-        if (!operation.CreatedBy().Empty()) {
+    }
+
+    void AppendOperationInfo(const TOperation& operation, TStringBuilder& freeText) {
+        if (!operation.CreatedBy().empty()) {
             freeText << "Created by: " << operation.CreatedBy() << Endl;
         }
 
@@ -48,20 +35,38 @@ namespace {
         if (operation.EndTime() != TInstant::Zero()) {
             freeText << "End time: " << operation.EndTime().ToStringUpToSeconds() << Endl;
         }
+    }
 
+    /// Common
+    TPrettyTable MakeTable(const TOperation&) {
+        return TPrettyTable({"id", "ready", "status"});
+    }
+
+    void PrettyPrint(const TOperation& operation, TPrettyTable& table) {
+        const auto& status = operation.Status();
+
+        auto& row = table.AddRow();
+        row
+            .Column(0, operation.Id().ToString())
+            .Column(1, operation.Ready() ? "true" : "false")
+            .Column(2, status.GetStatus() == NYdb::EStatus::STATUS_UNDEFINED ? "" : ToString(status.GetStatus()));
+
+        TStringBuilder freeText;
+        AppendIssues(status, freeText);
+        AppendOperationInfo(operation, freeText);
         row.FreeText(freeText);
     }
 
     template <typename EProgress, typename TMetadata>
-    TString PrintProgress(const TMetadata& metadata) {
+    TString PrintProgress(const TMetadata& metadata, auto&& detailedPrintOn) {
         TStringBuilder result;
 
         result << metadata.Progress;
-        if (metadata.Progress != EProgress::TransferData) {
+        if (!detailedPrintOn(metadata)) {
             return result;
         }
 
-        if (!metadata.ItemsProgress) {
+        if (metadata.ItemsProgress.empty()) {
             return result;
         }
 
@@ -82,6 +87,29 @@ namespace {
         return result;
     }
 
+    template <typename EProgress, typename TMetadata>
+    TString PrintProgress(const TMetadata& metadata) {
+        return PrintProgress<EProgress>(metadata, [](const TMetadata& metadata) {
+            return metadata.Progress == EProgress::TransferData;
+        });
+    }
+
+    template <>
+    TString PrintProgress<NImport::EImportProgress>(const NImport::TImportFromS3Response::TMetadata& metadata) {
+        return PrintProgress<NImport::EImportProgress>(metadata, [](const NImport::TImportFromS3Response::TMetadata& metadata) {
+            return metadata.Progress == NImport::EImportProgress::TransferData ||
+                   metadata.Progress == NImport::EImportProgress::BuildIndexes;
+        });
+    }
+
+    template <>
+    TString PrintProgress<NImport::EImportProgress>(const NImport::TImportFromFsResponse::TMetadata& metadata) {
+        return PrintProgress<NImport::EImportProgress>(metadata, [](const NImport::TImportFromFsResponse::TMetadata& metadata) {
+            return metadata.Progress == NImport::EImportProgress::TransferData ||
+                   metadata.Progress == NImport::EImportProgress::BuildIndexes;
+        });
+    }
+
     /// YT
     TPrettyTable MakeTable(const NExport::TExportToYtResponse&) {
         return TPrettyTable({"id", "ready", "status", "progress", "yt proxy"});
@@ -94,20 +122,14 @@ namespace {
 
         auto& row = table.AddRow();
         row
-            .Column(0, ProtoToString(operation.Id()))
+            .Column(0, operation.Id().ToString())
             .Column(1, operation.Ready() ? "true" : "false")
             .Column(2, status.GetStatus())
             .Column(3, PrintProgress<decltype(metadata.Progress)>(metadata))
-            .Column(4, TStringBuilder() << settings.Host_ << ":" << settings.Port_.GetOrElse(80));
+            .Column(4, TStringBuilder() << settings.Host_ << ":" << settings.Port_.value_or(80));
 
         TStringBuilder freeText;
-
-        if (!status.GetIssues().Empty()) {
-            freeText << "Issues: " << Endl;
-            for (const auto& issue : status.GetIssues()) {
-                freeText << "  - " << issue << Endl;
-            }
-        }
+        AppendIssues(status, freeText);
 
         freeText << "Items: " << Endl;
         for (const auto& item : settings.Item_) {
@@ -117,27 +139,106 @@ namespace {
         }
 
         if (settings.Description_) {
-            freeText << "Description: " << settings.Description_.GetRef() << Endl;
+            freeText << "Description: " << settings.Description_.value() << Endl;
         }
 
         if (settings.NumberOfRetries_) {
-            freeText << "Number of retries: " << settings.NumberOfRetries_.GetRef() << Endl;
+            freeText << "Number of retries: " << settings.NumberOfRetries_.value() << Endl;
         }
 
         freeText << "TypeV3: " << (settings.UseTypeV3_ ? "true" : "false") << Endl;
 
-        if (!operation.CreatedBy().Empty()) {
-            freeText << "Created by: " << operation.CreatedBy() << Endl;
+        AppendOperationInfo(operation, freeText);
+        row.FreeText(freeText);
+    }
+
+    /// S3 & NFS
+
+    template <typename T>
+    constexpr bool IsExportResponse = std::is_same_v<NExport::TExportToS3Response, T>
+                                   || std::is_same_v<NExport::TExportToFsResponse, T>;
+
+    template <typename T>
+    constexpr bool IsImportResponse = std::is_same_v<NImport::TImportFromS3Response, T>
+                                   || std::is_same_v<NImport::TImportFromFsResponse, T>;
+
+    template <typename T>
+    constexpr bool IsS3Response = std::is_same_v<NExport::TExportToS3Response, T>
+                               || std::is_same_v<NImport::TImportFromS3Response, T>;
+
+    template <typename T>
+    constexpr bool IsFsResponse = std::is_same_v<NExport::TExportToFsResponse, T>
+                               || std::is_same_v<NImport::TImportFromFsResponse, T>;
+
+    template <typename T>
+    void AppendExportImportFreeText(const T& operation, TStringBuilder& freeText) {
+        const auto& status = operation.Status();
+        const auto& settings = operation.Metadata().Settings;
+
+        if constexpr (IsExportResponse<T>) {
+            freeText << "Include index data: " << (settings.IncludeIndexData_ ? "true" : "false") << Endl;
+            if constexpr (std::is_same_v<NExport::TExportToS3Response, T>) {
+                freeText << "StorageClass: " << settings.StorageClass_ << Endl;
+            }
+            if (settings.Compression_) {
+                freeText << "Compression: " << *settings.Compression_ << Endl;
+            }
         }
 
-        if (operation.CreateTime() != TInstant::Zero()) {
-            freeText << "Create time: " << operation.CreateTime().ToStringUpToSeconds() << Endl;
+        if constexpr (IsImportResponse<T>) {
+            freeText << "Index population mode: " << settings.IndexPopulationMode_ << Endl;
+
+            if (settings.NoACL_) {
+                freeText << "NoACL: " << *settings.NoACL_ << Endl;
+            }
+
+            if (settings.SkipChecksumValidation_) {
+                freeText << "SkipChecksumValidation: " << *settings.SkipChecksumValidation_ << Endl;
+            }
         }
 
-        if (operation.EndTime() != TInstant::Zero()) {
-            freeText << "End time: " << operation.EndTime().ToStringUpToSeconds() << Endl;
+        AppendIssues(status, freeText);
+
+        freeText << "Items: " << Endl;
+        for (const auto& item : settings.Item_) {
+            freeText
+                << "  - source: " << item.Src << Endl
+                << "    destination: " << item.Dst << Endl;
         }
 
+        if (settings.Description_) {
+            freeText << "Description: " << settings.Description_.value() << Endl;
+        }
+
+        if (settings.NumberOfRetries_) {
+            freeText << "Number of retries: " << settings.NumberOfRetries_.value() << Endl;
+        }
+
+        AppendOperationInfo(operation, freeText);
+    }
+
+    template <typename T>
+    void PrettyPrintExportImport(const T& operation, TPrettyTable& table) {
+        const auto& status = operation.Status();
+        const auto& metadata = operation.Metadata();
+        const auto& settings = metadata.Settings;
+
+        auto& row = table.AddRow();
+        row
+            .Column(0, operation.Id().ToString())
+            .Column(1, operation.Ready() ? "true" : "false")
+            .Column(2, status.GetStatus())
+            .Column(3, PrintProgress<decltype(metadata.Progress)>(metadata));
+
+        if constexpr (IsS3Response<T>) {
+            row.Column(4, settings.Endpoint_)
+               .Column(5, settings.Bucket_);
+        } else {
+            row.Column(4, settings.BasePath_);
+        }
+
+        TStringBuilder freeText;
+        AppendExportImportFreeText(operation, freeText);
         row.FreeText(freeText);
     }
 
@@ -146,74 +247,13 @@ namespace {
         return TPrettyTable({"id", "ready", "status", "progress", "endpoint", "bucket"});
     }
 
-    template <typename T>
-    void PrettyPrintS3(const T& operation, TPrettyTable& table) {
-        const auto& status = operation.Status();
-        const auto& metadata = operation.Metadata();
-        const auto& settings = metadata.Settings;
-
-        auto& row = table.AddRow();
-        row
-            .Column(0, ProtoToString(operation.Id()))
-            .Column(1, operation.Ready() ? "true" : "false")
-            .Column(2, status.GetStatus())
-            .Column(3, PrintProgress<decltype(metadata.Progress)>(metadata))
-            .Column(4, settings.Endpoint_)
-            .Column(5, settings.Bucket_);
-
-        TStringBuilder freeText;
-
-        if constexpr (std::is_same_v<NExport::TExportToS3Response, T>) {
-            freeText << "StorageClass: " << settings.StorageClass_ << Endl;
-            if (settings.Compression_) {
-                freeText << "Compression: " << *settings.Compression_ << Endl;
-            }
-        }
-
-        if (!status.GetIssues().Empty()) {
-            freeText << "Issues: " << Endl;
-            for (const auto& issue : status.GetIssues()) {
-                freeText << "  - " << issue << Endl;
-            }
-        }
-
-        freeText << "Items: " << Endl;
-        for (const auto& item : settings.Item_) {
-            freeText
-                << "  - source: " << item.Src << Endl
-                << "    destination: " << item.Dst << Endl;
-        }
-
-        if (settings.Description_) {
-            freeText << "Description: " << settings.Description_.GetRef() << Endl;
-        }
-
-        if (settings.NumberOfRetries_) {
-            freeText << "Number of retries: " << settings.NumberOfRetries_.GetRef() << Endl;
-        }
-
-        if (!operation.CreatedBy().Empty()) {
-            freeText << "Created by: " << operation.CreatedBy() << Endl;
-        }
-
-        if (operation.CreateTime() != TInstant::Zero()) {
-            freeText << "Create time: " << operation.CreateTime().ToStringUpToSeconds() << Endl;
-        }
-
-        if (operation.EndTime() != TInstant::Zero()) {
-            freeText << "End time: " << operation.EndTime().ToStringUpToSeconds() << Endl;
-        }
-
-        row.FreeText(freeText);
-    }
-
     // export
     TPrettyTable MakeTable(const NExport::TExportToS3Response&) {
         return MakeTableS3();
     }
 
     void PrettyPrint(const NExport::TExportToS3Response& operation, TPrettyTable& table) {
-        PrettyPrintS3(operation, table);
+        PrettyPrintExportImport(operation, table);
     }
 
     // import
@@ -222,7 +262,30 @@ namespace {
     }
 
     void PrettyPrint(const NImport::TImportFromS3Response& operation, TPrettyTable& table) {
-        PrettyPrintS3(operation, table);
+        PrettyPrintExportImport(operation, table);
+    }
+
+    /// NFS
+    TPrettyTable MakeTableNfs() {
+        return TPrettyTable({"id", "ready", "status", "progress", "fs_path"});
+    }
+
+    // export
+    TPrettyTable MakeTable(const NExport::TExportToFsResponse&) {
+        return MakeTableNfs();
+    }
+
+    void PrettyPrint(const NExport::TExportToFsResponse& operation, TPrettyTable& table) {
+        PrettyPrintExportImport(operation, table);
+    }
+
+    // import
+    TPrettyTable MakeTable(const NImport::TImportFromFsResponse&) {
+        return MakeTableNfs();
+    }
+
+    void PrettyPrint(const NImport::TImportFromFsResponse& operation, TPrettyTable& table) {
+        PrettyPrintExportImport(operation, table);
     }
 
     /// Index build
@@ -236,7 +299,7 @@ namespace {
 
         auto& row = table.AddRow();
         row
-            .Column(0, ProtoToString(operation.Id()))
+            .Column(0, operation.Id().ToString())
             .Column(1, operation.Ready() ? "true" : "false")
             .Column(2, status.GetStatus() == NYdb::EStatus::STATUS_UNDEFINED ? "" : ToString(status.GetStatus()))
             .Column(3, metadata.State)
@@ -245,14 +308,69 @@ namespace {
             .Column(6, metadata.Desctiption ? metadata.Desctiption->GetIndexName() : "");
 
         TStringBuilder freeText;
+        AppendIssues(status, freeText);
+        AppendOperationInfo(operation, freeText);
+        row.FreeText(freeText);
+    }
 
-        if (!status.GetIssues().Empty()) {
-            freeText << "Issues: " << Endl;
-            for (const auto& issue : status.GetIssues()) {
-                freeText << "  - " << issue << Endl;
+    TPrettyTable MakeTable(const NYdb::NTable::TAnalyzeOperation&) {
+        return TPrettyTable({"id", "ready", "status", "state", "progress", "paths", "in_progress", "done"});
+    }
+
+    void PrettyPrint(const NYdb::NTable::TAnalyzeOperation& operation, TPrettyTable& table) {
+        const auto& status = operation.Status();
+        const auto& metadata = operation.Metadata();
+
+        auto joinPaths = [](const std::vector<std::string>& v) {
+            TStringBuilder out;
+            for (size_t i = 0; i < v.size(); ++i) {
+                if (i) out << ";";
+                out << v[i];
             }
-        }
+            return out;
+        };
 
+        auto& row = table.AddRow();
+        row
+            .Column(0, operation.Id().ToString())
+            .Column(1, operation.Ready() ? "true" : "false")
+            .Column(2, status.GetStatus() == NYdb::EStatus::STATUS_UNDEFINED ? "" : ToString(status.GetStatus()))
+            .Column(3, metadata.State)
+            .Column(4, FloatToString(metadata.Progress, PREC_POINT_DIGITS, 2) + "%")
+            .Column(5, joinPaths(metadata.Paths))
+            .Column(6, joinPaths(metadata.InProgressPaths))
+            .Column(7, joinPaths(metadata.DonePaths));
+
+        TStringBuilder freeText;
+        AppendIssues(status, freeText);
+        AppendOperationInfo(operation, freeText);
+        row.FreeText(freeText);
+    }
+
+    TPrettyTable MakeTable(const NYdb::NTable::TCompactionOperation&) {
+        return TPrettyTable({"id", "ready", "status", "state", "progress", "table", "cascade", "max inflight", "total", "done"});
+    }
+
+    void PrettyPrint(const NYdb::NTable::TCompactionOperation& operation, TPrettyTable& table) {
+        const auto& status = operation.Status();
+        const auto& metadata = operation.Metadata();
+
+        auto& row = table.AddRow();
+        row
+            .Column(0, operation.Id().ToString())
+            .Column(1, operation.Ready() ? "true" : "false")
+            .Column(2, status.GetStatus() == NYdb::EStatus::STATUS_UNDEFINED ? "" : ToString(status.GetStatus()))
+            .Column(3, metadata.State)
+            .Column(4, FloatToString(metadata.Progress, PREC_POINT_DIGITS, 2) + "%")
+            .Column(5, metadata.Path)
+            .Column(6, metadata.Cascade ? "true" : "false")
+            .Column(7, metadata.MaxInFlight)
+            .Column(8, metadata.Total)
+            .Column(9, metadata.Done);
+
+        TStringBuilder freeText;
+        AppendIssues(status, freeText);
+        AppendOperationInfo(operation, freeText);
         row.FreeText(freeText);
     }
 
@@ -267,7 +385,7 @@ namespace {
 
         auto& row = table.AddRow();
         row
-            .Column(0, ProtoToString(operation.Id()))
+            .Column(0, operation.Id().ToString())
             .Column(1, operation.Ready() ? "true" : "false")
             .Column(2, status.GetStatus() == NYdb::EStatus::STATUS_UNDEFINED ? "" : ToString(status.GetStatus()))
             .Column(3, metadata.ExecutionId)
@@ -275,23 +393,119 @@ namespace {
             .Column(5, metadata.ExecMode);
 
         TStringBuilder freeText;
+        AppendIssues(status, freeText);
+        AppendOperationInfo(operation, freeText);
+        row.FreeText(freeText);
+    }
 
-        if (!status.GetIssues().Empty()) {
-            freeText << "Issues: " << Endl;
-            for (const auto& issue : status.GetIssues()) {
-                freeText << "  - " << issue << Endl;
-            }
+    // Incremental backup
+    TPrettyTable MakeTable(const NYdb::NBackup::TIncrementalBackupResponse&) {
+        return TPrettyTable({"id", "ready", "status", "progress"});
+    }
+
+    TString PrintProgress(const NYdb::NBackup::TIncrementalBackupResponse::TMetadata& metadata) {
+        TStringBuilder result;
+
+        result << metadata.Progress;
+        if (metadata.Progress != NYdb::NBackup::EBackupProgress::TransferData) {
+            return result;
         }
 
+        result << " (" << ToString(metadata.ProgressPercent) + "%)";
+        return result;
+    }
+
+    void PrettyPrint(const NYdb::NBackup::TIncrementalBackupResponse& operation, TPrettyTable& table) {
+        const auto& status = operation.Status();
+        const auto& metadata = operation.Metadata();
+
+        auto& row = table.AddRow();
+        row
+            .Column(0, operation.Id().ToString())
+            .Column(1, operation.Ready() ? "true" : "false")
+            .Column(2, status.GetStatus())
+            .Column(3, PrintProgress(metadata));
+
+        TStringBuilder freeText;
+        AppendIssues(status, freeText);
+        AppendOperationInfo(operation, freeText);
+        row.FreeText(freeText);
+    }
+
+    // Full backup
+    TPrettyTable MakeTable(const NYdb::NBackup::TFullBackupResponse&) {
+        return TPrettyTable({"id", "ready", "status", "progress"});
+    }
+
+    TString PrintProgress(const NYdb::NBackup::TFullBackupResponse::TMetadata& metadata) {
+        TStringBuilder result;
+
+        result << metadata.Progress;
+        if (metadata.Progress != NYdb::NBackup::EBackupProgress::TransferData) {
+            return result;
+        }
+
+        result << " (" << ToString(metadata.ProgressPercent) + "%)";
+        return result;
+    }
+
+    void PrettyPrint(const NYdb::NBackup::TFullBackupResponse& operation, TPrettyTable& table) {
+        const auto& status = operation.Status();
+        const auto& metadata = operation.Metadata();
+
+        auto& row = table.AddRow();
+        row
+            .Column(0, operation.Id().ToString())
+            .Column(1, operation.Ready() ? "true" : "false")
+            .Column(2, status.GetStatus())
+            .Column(3, PrintProgress(metadata));
+
+        TStringBuilder freeText;
+        AppendIssues(status, freeText);
+        AppendOperationInfo(operation, freeText);
+        row.FreeText(freeText);
+    }
+
+    // Incremental restore
+    TPrettyTable MakeTable(const NYdb::NBackup::TBackupCollectionRestoreResponse&) {
+        return TPrettyTable({"id", "ready", "status", "progress"});
+    }
+
+    TString PrintProgress(const NYdb::NBackup::TBackupCollectionRestoreResponse::TMetadata& metadata) {
+        TStringBuilder result;
+
+        result << metadata.Progress;
+        if (metadata.Progress != NYdb::NBackup::ERestoreProgress::TransferData) {
+            return result;
+        }
+
+        result << " (" << ToString(metadata.ProgressPercent) + "%)";
+        return result;
+    }
+
+    void PrettyPrint(const NYdb::NBackup::TBackupCollectionRestoreResponse& operation, TPrettyTable& table) {
+        const auto& status = operation.Status();
+        const auto& metadata = operation.Metadata();
+
+        auto& row = table.AddRow();
+        row
+            .Column(0, operation.Id().ToString())
+            .Column(1, operation.Ready() ? "true" : "false")
+            .Column(2, status.GetStatus())
+            .Column(3, PrintProgress(metadata));
+
+        TStringBuilder freeText;
+        AppendIssues(status, freeText);
+        AppendOperationInfo(operation, freeText);
         row.FreeText(freeText);
     }
 
     // Common
     template <typename T>
-    void PrintOperationImpl(const T& operation, EOutputFormat format) {
+    void PrintOperationImpl(const T& operation, EDataFormat format) {
         switch (format) {
-        case EOutputFormat::Default:
-        case EOutputFormat::Pretty:
+        case EDataFormat::Default:
+        case EDataFormat::Pretty:
         {
             auto table = MakeTable(operation);
             PrettyPrint(operation, table);
@@ -299,11 +513,11 @@ namespace {
             break;
         }
 
-        case EOutputFormat::Json:
+        case EDataFormat::Json:
             Cerr << "Warning! Option --json is deprecated and will be removed soon. "
                 << "Use \"--format proto-json-base64\" option instead." << Endl;
             [[fallthrough]];
-        case EOutputFormat::ProtoJsonBase64:
+        case EDataFormat::ProtoJsonBase64:
             Cout << operation.ToJsonString() << Endl;
             break;
 
@@ -313,27 +527,27 @@ namespace {
     }
 
     template <typename T>
-    void PrintOperationsListImpl(const T& operations, EOutputFormat format) {
+    void PrintOperationsListImpl(const T& operations, EDataFormat format) {
         switch (format) {
-        case EOutputFormat::Default:
-        case EOutputFormat::Pretty:
-            if (operations.GetList()) {
+        case EDataFormat::Default:
+        case EDataFormat::Pretty:
+            if (!operations.GetList().empty()) {
                 auto table = MakeTable(operations.GetList().front());
                 for (const auto& operation : operations.GetList()) {
                     PrettyPrint(operation, table);
                 }
                 Cout << table;
             }
-            if (operations.NextPageToken()) {
+            if (!operations.NextPageToken().empty()) {
                 Cout << Endl << "Next page token: " << operations.NextPageToken() << Endl;
             }
             break;
 
-        case EOutputFormat::Json:
+        case EDataFormat::Json:
             Cerr << "Warning! Option --json is deprecated and will be removed soon. "
                 << "Use \"--format proto-json-base64\" option instead." << Endl;
             [[fallthrough]];
-        case EOutputFormat::ProtoJsonBase64:
+        case EDataFormat::ProtoJsonBase64:
             Cout << operations.ToJsonString() << Endl;
             break;
 
@@ -345,53 +559,115 @@ namespace {
 }
 
 /// Common
-void PrintOperation(const TOperation& operation, EOutputFormat format) {
+void PrintOperation(const TOperation& operation, EDataFormat format) {
     PrintOperationImpl(operation, format);
 }
 
 /// YT
-void PrintOperation(const NExport::TExportToYtResponse& operation, EOutputFormat format) {
+void PrintOperation(const NExport::TExportToYtResponse& operation, EDataFormat format) {
     PrintOperationImpl(operation, format);
 }
 
-void PrintOperationsList(const NOperation::TOperationsList<NExport::TExportToYtResponse>& operations, EOutputFormat format) {
+void PrintOperationsList(const NOperation::TOperationsList<NExport::TExportToYtResponse>& operations, EDataFormat format) {
     PrintOperationsListImpl(operations, format);
 }
 
 /// S3
 // export
-void PrintOperation(const NExport::TExportToS3Response& operation, EOutputFormat format) {
+void PrintOperation(const NExport::TExportToS3Response& operation, EDataFormat format) {
     PrintOperationImpl(operation, format);
 }
 
-void PrintOperationsList(const NOperation::TOperationsList<NExport::TExportToS3Response>& operations, EOutputFormat format) {
+void PrintOperationsList(const NOperation::TOperationsList<NExport::TExportToS3Response>& operations, EDataFormat format) {
     PrintOperationsListImpl(operations, format);
 }
 
 // import
-void PrintOperation(const NImport::TImportFromS3Response& operation, EOutputFormat format) {
+void PrintOperation(const NImport::TImportFromS3Response& operation, EDataFormat format) {
     PrintOperationImpl(operation, format);
 }
 
-void PrintOperationsList(const NOperation::TOperationsList<NImport::TImportFromS3Response>& operations, EOutputFormat format) {
+void PrintOperationsList(const NOperation::TOperationsList<NImport::TImportFromS3Response>& operations, EDataFormat format) {
+    PrintOperationsListImpl(operations, format);
+}
+
+/// NFS
+// export
+void PrintOperation(const NExport::TExportToFsResponse& operation, EDataFormat format) {
+    PrintOperationImpl(operation, format);
+}
+
+void PrintOperationsList(const NOperation::TOperationsList<NExport::TExportToFsResponse>& operations, EDataFormat format) {
+    PrintOperationsListImpl(operations, format);
+}
+
+// import
+void PrintOperation(const NImport::TImportFromFsResponse& operation, EDataFormat format) {
+    PrintOperationImpl(operation, format);
+}
+
+void PrintOperationsList(const NOperation::TOperationsList<NImport::TImportFromFsResponse>& operations, EDataFormat format) {
     PrintOperationsListImpl(operations, format);
 }
 
 /// Index build
-void PrintOperation(const NYdb::NTable::TBuildIndexOperation& operation, EOutputFormat format) {
+void PrintOperation(const NYdb::NTable::TBuildIndexOperation& operation, EDataFormat format) {
     PrintOperationImpl(operation, format);
 }
 
-void PrintOperationsList(const NOperation::TOperationsList<NYdb::NTable::TBuildIndexOperation>& operations, EOutputFormat format) {
+void PrintOperationsList(const NOperation::TOperationsList<NYdb::NTable::TBuildIndexOperation>& operations, EDataFormat format) {
+    PrintOperationsListImpl(operations, format);
+}
+
+void PrintOperation(const NYdb::NTable::TCompactionOperation& operation, EDataFormat format) {
+    PrintOperationImpl(operation, format);
+}
+
+void PrintOperationsList(const NOperation::TOperationsList<NYdb::NTable::TCompactionOperation>& operations, EDataFormat format) {
+    PrintOperationsListImpl(operations, format);
+}
+
+void PrintOperation(const NYdb::NTable::TAnalyzeOperation& operation, EDataFormat format) {
+    PrintOperationImpl(operation, format);
+}
+
+void PrintOperationsList(const NOperation::TOperationsList<NYdb::NTable::TAnalyzeOperation>& operations, EDataFormat format) {
     PrintOperationsListImpl(operations, format);
 }
 
 /// QueryService
-void PrintOperation(const NYdb::NQuery::TScriptExecutionOperation& operation, EOutputFormat format) {
+void PrintOperation(const NYdb::NQuery::TScriptExecutionOperation& operation, EDataFormat format) {
     PrintOperationImpl(operation, format);
 }
 
-void PrintOperationsList(const NOperation::TOperationsList<NYdb::NQuery::TScriptExecutionOperation>& operations, EOutputFormat format) {
+void PrintOperationsList(const NOperation::TOperationsList<NYdb::NQuery::TScriptExecutionOperation>& operations, EDataFormat format) {
+    PrintOperationsListImpl(operations, format);
+}
+
+// Incremental backup
+void PrintOperation(const NYdb::NBackup::TIncrementalBackupResponse& operation, EDataFormat format) {
+    PrintOperationImpl(operation, format);
+}
+
+void PrintOperationsList(const NOperation::TOperationsList<NYdb::NBackup::TIncrementalBackupResponse>& operations, EDataFormat format) {
+    PrintOperationsListImpl(operations, format);
+}
+
+// Full backup
+void PrintOperation(const NYdb::NBackup::TFullBackupResponse& operation, EDataFormat format) {
+    PrintOperationImpl(operation, format);
+}
+
+void PrintOperationsList(const NOperation::TOperationsList<NYdb::NBackup::TFullBackupResponse>& operations, EDataFormat format) {
+    PrintOperationsListImpl(operations, format);
+}
+
+// Incremental restore
+void PrintOperation(const NYdb::NBackup::TBackupCollectionRestoreResponse& operation, EDataFormat format) {
+    PrintOperationImpl(operation, format);
+}
+
+void PrintOperationsList(const NOperation::TOperationsList<NYdb::NBackup::TBackupCollectionRestoreResponse>& operations, EDataFormat format) {
     PrintOperationsListImpl(operations, format);
 }
 
@@ -405,6 +681,9 @@ void Out<NYdb::NQuery::EExecStatus>(IOutputStream& o, NYdb::NQuery::EExecStatus 
         case EExecStatus::Starting:
             o << TStringBuf("starting");
             return;
+        case EExecStatus::Running:
+            o << TStringBuf("running");
+            return;
         case EExecStatus::Aborted:
             o << TStringBuf("aborted");
             return;
@@ -417,8 +696,8 @@ void Out<NYdb::NQuery::EExecStatus>(IOutputStream& o, NYdb::NQuery::EExecStatus 
         case EExecStatus::Unspecified:
             o << TStringBuf("unspecified");
             return;
-        default:
-            o << TStringBuf("unknown");
+        case EExecStatus::Failed:
+            o << TStringBuf("failed");
             return;
     }
 

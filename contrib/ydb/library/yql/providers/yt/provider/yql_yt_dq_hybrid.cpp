@@ -9,16 +9,14 @@
 #include <contrib/ydb/library/yql/providers/common/provider/yql_provider_names.h>
 #include <contrib/ydb/library/yql/providers/common/provider/yql_provider.h>
 #include <contrib/ydb/library/yql/providers/common/transform/yql_optimize.h>
-#include <contrib/ydb/library/yql/providers/dq/expr_nodes/dqs_expr_nodes.h>
+#include <contrib/ydb/library/yql/core/dq_expr_nodes/dq_expr_nodes.h>
+#include <contrib/ydb/library/yql/core/dqs_expr_nodes/dqs_expr_nodes.h>
 #include <contrib/ydb/library/yql/core/expr_nodes/yql_expr_nodes.h>
 #include <contrib/ydb/library/yql/core/yql_expr_type_annotation.h>
 #include <contrib/ydb/library/yql/core/yql_expr_optimize.h>
 #include <contrib/ydb/library/yql/core/yql_opt_utils.h>
 #include <contrib/ydb/library/yql/core/yql_type_helpers.h>
 #include <contrib/ydb/library/yql/core/yql_data_provider.h>
-#include <contrib/ydb/library/yql/dq/expr_nodes/dq_expr_nodes.h>
-#include <contrib/ydb/library/yql/dq/opt/dq_opt_phy.h>
-#include <contrib/ydb/library/yql/dq/type_ann/dq_type_ann.h>
 #include <contrib/ydb/library/yql/utils/log/log.h>
 #include <contrib/ydb/library/yql/utils/yql_panic.h>
 #include <contrib/ydb/library/yql/minikql/mkql_program_builder.h>
@@ -33,7 +31,7 @@ namespace NYql {
 namespace {
 
 using namespace NNodes;
-using namespace NDq;
+using namespace NNodes::NDq;
 
 class TYtDqHybridTransformer : public TOptimizeTransformerBase {
 public:
@@ -42,12 +40,14 @@ public:
         , State_(std::move(state)), Finalizer_(std::move(finalizer))
     {
 #define HNDL(name) "YtDqHybrid-"#name, Hndl(&TYtDqHybridTransformer::name)
-        AddHandler(0, &TYtFill::Match, HNDL(TryYtFillByDq));
-        AddHandler(0, &TYtSort::Match, HNDL(TryYtSortByDq));
-        AddHandler(0, &TYtMap::Match, HNDL(TryYtMapByDq));
-        AddHandler(0, &TYtReduce::Match, HNDL(TryYtReduceByDq));
-        AddHandler(0, &TYtMapReduce::Match, HNDL(TryYtMapReduceByDq));
-        AddHandler(0, &TYtMerge::Match, HNDL(TryYtMergeByDq));
+        if (State_->DqHelper) {
+            AddHandler(0, &TYtFill::Match, HNDL(TryYtFillByDq));
+            AddHandler(0, &TYtSort::Match, HNDL(TryYtSortByDq));
+            AddHandler(0, &TYtMap::Match, HNDL(TryYtMapByDq));
+            AddHandler(0, &TYtReduce::Match, HNDL(TryYtReduceByDq));
+            AddHandler(0, &TYtMapReduce::Match, HNDL(TryYtMapReduceByDq));
+            AddHandler(0, &TYtMerge::Match, HNDL(TryYtMergeByDq));
+        }
 #undef HNDL
     }
 private:
@@ -64,6 +64,10 @@ private:
     }
 
     bool CanReplaceOnHybrid(const TYtOutputOpBase& operation) const {
+        if (operation.DataSink().Cluster().Value() == YtUnspecifiedCluster) {
+            // wait until runtime cluster is assigned
+            return false;
+        }
         const TStringBuf nodeName = operation.Raw()->Content();
         if (!State_->IsHybridEnabledForCluster(operation.DataSink().Cluster().Value())) {
             PushSkipStat("DisabledCluster", nodeName);
@@ -77,6 +81,21 @@ private:
 
         if (operation.Ref().StartsExecution() || operation.Ref().HasResult())
             return false;
+
+        if (!State_->Configuration->UseSystemColumns.Get().GetOrElse(DEFAULT_USE_SYS_COLUMNS)) {
+            PushSkipStat("FalseSystemColumns", nodeName);
+            return false;
+        }
+
+        if (State_->IsDqTimeout) {
+            PushSkipStat("DqTimeout", nodeName);
+            return false;
+        }
+
+        if (State_->OnlyNativeExecution) {
+            PushSkipStat("OnlyNativeExecution", nodeName);
+            return false;
+        }
 
         if (operation.Output().Size() != 1U) {
             PushSkipStat("MultipleOutputs", nodeName);
@@ -120,10 +139,6 @@ private:
             PushSkipStat("NonEmptyKeyFilter", nodeName);
             return false;
         }
-        auto sampleSetting = GetSetting(section.Settings().Ref(), EYtSettingType::Sample);
-        if (sampleSetting && sampleSetting->Child(1)->Child(0)->Content() == "system") {
-            return false;
-        }
         ui64 dataSize = 0ULL, dataChunks = 0ULL;
         for (const auto& path : section.Paths()) {
             const TYtPathInfo info(path);
@@ -132,7 +147,16 @@ private:
                 return false;
             }
             const auto canUseYtPartitioningApi = State_->Configuration->_EnableYtPartitioning.Get(tableInfo->Cluster).GetOrElse(false);
-            if ((info.Ranges || tableInfo->Meta->IsDynamic) && !canUseYtPartitioningApi) {
+            const auto enableDynamicStoreRead = State_->Configuration->EnableDynamicStoreReadInDQ.Get().GetOrElse(false);
+            if ((info.Ranges || info.QLFilter || tableInfo->Meta->IsDynamic) && !canUseYtPartitioningApi) {
+                return false;
+            }
+            if (tableInfo->Meta->IsDynamic && tableInfo->Meta->Attrs.contains("enable_dynamic_store_read") && !enableDynamicStoreRead) {
+                PushSkipStat("DynamicStoreRead", nodeName);
+                return false;
+            }
+            if (tableInfo->Meta->HasRLS) {
+                PushSkipStat("RLSTable", nodeName);
                 return false;
             }
             if (NYql::HasSetting(tableInfo->Settings.Ref(), EYtSettingType::WithQB)) {
@@ -159,7 +183,7 @@ private:
             PushSkipStat("OverLimits", nodeName);
             return false;
         }
-                
+
         return true;
     }
 
@@ -183,6 +207,16 @@ private:
                 if (TCoScriptUdf::Match(node.Get()) && NKikimr::NMiniKQL::IsSystemPython(NKikimr::NMiniKQL::ScriptTypeFromStr(node->Head().Content()))) {
                     return true;
                 }
+
+                if ((TCoScriptUdf::Match(node.Get()) && node->ChildrenSize() > 4) || (TCoUdf::Match(node.Get()) && node->ChildrenSize() == 8)) {
+                    for (const auto& setting: node->Child(TCoScriptUdf::Match(node.Get()) ? 4 : 7)->Children()) {
+                        YQL_ENSURE(setting->Head().IsAtom());
+                        if (setting->Head().Content() == "layers") {
+                            return true;
+                        }
+                    }
+                }
+
 
                 if (const auto& tableContent = TMaybeNode<TYtTableContent>(node)) {
                     if (!flow)
@@ -227,7 +261,7 @@ private:
                                         .Settings<TCoNameValueTupleList>().Build()
                                     .Build()
                                 .Build()
-                                .Settings(TDqStageSettings{.PartitionMode = TDqStageSettings::EPartitionMode::Single}.BuildNode(ctx, fill.Pos()))
+                                .Settings(State_->DqHelper->CreateDqStageSettings(true, ctx, fill.Pos()))
                             .Build()
                             .Index().Build(ctx.GetIndexAsString(0), TNodeFlags::Default)
                         .Build()
@@ -268,31 +302,41 @@ private:
                 .Build()
             .Done();
 
-        TExprNode::TPtr limit;
-        if (const auto& limitNode = NYql::GetSetting(sort.Settings().Ref(), EYtSettingType::Limit)) {
-            limit = GetLimitExpr(limitNode, ctx);
-        }
-
+        TExprNode::TPtr work;
         auto [direct, selector] = GetOutputSortSettings(sort, ctx);
-        auto work = direct && selector ?
-            limit ?
-                Build<TCoTopSort>(ctx, sort.Pos())
+        if (direct && selector) {
+            // Don't use runtime limit for TopSort - it may have max<ui64>() value, which cause TopSort to fail
+            TMaybe<ui64> limit = GetLimit(sort.Settings().Ref());
+            work = limit
+                ? Build<TCoTopSort>(ctx, sort.Pos())
                     .Input(input)
-                    .Count(std::move(limit))
+                    .Count<TCoUint64>()
+                        .Literal()
+                            .Value(ToString(*limit), TNodeFlags::Default)
+                        .Build()
+                    .Build()
                     .SortDirections(std::move(direct))
                     .KeySelectorLambda(std::move(selector))
-                    .Done().Ptr():
-                Build<TCoSort>(ctx, sort.Pos())
+                    .Done().Ptr()
+                : Build<TCoSort>(ctx, sort.Pos())
                     .Input(input)
                     .SortDirections(std::move(direct))
                     .KeySelectorLambda(std::move(selector))
-                    .Done().Ptr():
-            limit ?
-                Build<TCoTake>(ctx, sort.Pos())
+                    .Done().Ptr()
+                ;
+        } else {
+            TExprNode::TPtr limit;
+            if (const auto& limitNode = NYql::GetSetting(sort.Settings().Ref(), EYtSettingType::Limit)) {
+                limit = GetLimitExpr(limitNode, ctx);
+            }
+
+            work = limit
+                ? Build<TCoTake>(ctx, sort.Pos())
                     .Input(input)
                     .Count(std::move(limit))
-                    .Done().Ptr():
-                input.Ptr();
+                    .Done().Ptr()
+                : input.Ptr();
+        }
 
         auto settings = NYql::AddSetting(sort.Settings().Ref(), EYtSettingType::NoDq, {}, ctx);
         auto operation = ctx.ChangeChild(sort.Ref(), TYtTransientOpBase::idx_Settings, std::move(settings));
@@ -314,7 +358,7 @@ private:
                                     .Settings<TCoNameValueTupleList>().Build()
                                 .Build()
                             .Build()
-                            .Settings(TDqStageSettings{.PartitionMode = TDqStageSettings::EPartitionMode::Single}.BuildNode(ctx, sort.Pos()))
+                            .Settings(State_->DqHelper->CreateDqStageSettings(true, ctx, sort.Pos()))
                         .Build()
                         .Index().Build(ctx.GetIndexAsString(0), TNodeFlags::Default)
                     .Build()
@@ -400,7 +444,7 @@ private:
                         .Settings<TCoNameValueTupleList>().Build()
                     .Build()
                 .Build()
-                .Settings(TDqStageSettings{.PartitionMode = ordered ? TDqStageSettings::EPartitionMode::Single : TDqStageSettings::EPartitionMode::Default}.BuildNode(ctx, map.Pos()))
+                .Settings(State_->DqHelper->CreateDqStageSettings(ordered, ctx, map.Pos()))
                 .Done();
 
             if (!ordered) {
@@ -414,7 +458,7 @@ private:
                             .Build()
                         .Build()
                     .Program().Args({"pass"}).Body("pass").Build()
-                    .Settings(TDqStageSettings().BuildNode(ctx, map.Pos()))
+                    .Settings(State_->DqHelper->CreateDqStageSettings(false, ctx, map.Pos()))
                     .Done();
             }
 
@@ -497,7 +541,7 @@ private:
                 sortKeys = ctx.Builder(reduce.Pos())
                     .Lambda()
                         .Param("row")
-                        .Do(std::bind(keysBuilder, std::ref(sort), std::placeholders::_1))
+                        .Do(std::bind_front(keysBuilder, std::ref(sort)))
                     .Seal().Build();
             }
         }
@@ -505,7 +549,7 @@ private:
         const auto extract = TCoLambda(ctx.Builder(reduce.Pos())
             .Lambda()
                 .Param("row")
-                .Do(std::bind(keysBuilder, std::ref(keys), std::placeholders::_1))
+                .Do(std::bind_front(keysBuilder, std::ref(keys)))
             .Seal().Build());
 
         const bool hasGetSysKeySwitch = bool(FindNode(reduce.Reducer().Body().Ptr(),
@@ -627,7 +671,7 @@ private:
                                     .template Settings<TCoNameValueTupleList>().Build()
                                 .Build()
                             .Build()
-                            .Settings(TDqStageSettings{.PartitionMode = TDqStageSettings::EPartitionMode::Single}.BuildNode(ctx, reduce.Pos()))
+                            .Settings(State_->DqHelper->CreateDqStageSettings(true, ctx, reduce.Pos()))
                         .Build()
                         .Index().Build(ctx.GetIndexAsString(0), TNodeFlags::Default)
                     .Build()
@@ -692,6 +736,7 @@ private:
     }
 
     void PushSkipStat(const TStringBuf& statName, const TStringBuf& nodeName) const {
+        State_->FullHybridExecution = false;
         PushHybridStat(statName, nodeName, "SkipReasons");
         PushHybridStat("Skip", nodeName);
     }

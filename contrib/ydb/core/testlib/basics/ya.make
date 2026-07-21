@@ -8,7 +8,6 @@ SRCS(
 )
 
 PEERDIR(
-    contrib/ydb/library/actors/dnsresolver
     library/cpp/regex/pcre
     library/cpp/testing/unittest
     contrib/ydb/core/base
@@ -17,6 +16,7 @@ PEERDIR(
     contrib/ydb/core/blobstorage/nodewarden
     contrib/ydb/core/blobstorage/pdisk
     contrib/ydb/core/client/server
+    contrib/ydb/core/control
     contrib/ydb/core/formats
     contrib/ydb/core/mind
     contrib/ydb/core/node_whiteboard
@@ -26,12 +26,17 @@ PEERDIR(
     contrib/ydb/core/testlib/actors
     contrib/ydb/core/tx/columnshard
     contrib/ydb/core/tx/scheme_board
+    contrib/ydb/core/tx/schemeshard
     contrib/ydb/core/util
-    contrib/ydb/library/yql/minikql/invoke_builtins/llvm14
-    contrib/ydb/library/yql/public/udf/service/exception_policy
+    contrib/ydb/library/actors/dnsresolver
+    contrib/ydb/library/keys
     contrib/ydb/services/kesus
     contrib/ydb/services/persqueue_cluster_discovery
     contrib/ydb/services/ydb
+    contrib/ydb/library/yql/minikql/invoke_builtins/llvm16
+    contrib/ydb/library/yql/public/udf/service/exception_policy
+    contrib/ydb/library/yql/providers/yt/comp_nodes/dq/llvm16
+    contrib/ydb/library/yql/providers/yt/comp_nodes/llvm16
 )
 
 YQL_LAST_ABI_VERSION()
@@ -46,4 +51,5 @@ END()
 
 RECURSE(
     default
+    pg
 )

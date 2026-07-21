@@ -1,7 +1,5 @@
 UNITTEST_FOR(contrib/ydb/library/yql/utils/plan)
 
-TAG(ya:manual)
-
 SRCS(
     plan_utils_ut.cpp
 )

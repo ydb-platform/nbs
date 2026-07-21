@@ -3,7 +3,7 @@
 
 #include <contrib/ydb/core/kqp/common/simple/services.h>
 #include <contrib/ydb/services/persqueue_v1/actors/partition_writer_cache_actor.h>
-#include <contrib/ydb/core/persqueue/write_id.h>
+#include <contrib/ydb/core/persqueue/public/write_id.h>
 
 namespace NKikimr::NPersQueueTests {
 
@@ -117,8 +117,8 @@ void TPartitionWriterCacheActorFixture::SetupEventObserver()
                 // TPartitionWriter only needs a couple of fields
                 //
                 auto response = std::make_unique<NKqp::TEvKqp::TEvQueryResponse>();
-                response->Record.GetRef().SetYdbStatus(Ydb::StatusIds::SUCCESS);
-                NPQ::SetWriteId(*response->Record.GetRef().MutableResponse()->MutableTopicOperations(),
+                response->Record.SetYdbStatus(Ydb::StatusIds::SUCCESS);
+                NPQ::SetWriteId(*response->Record.MutableResponse()->MutableTopicOperations(),
                                 NPQ::TWriteId(0, NextWriteId++));
                 Ctx->Runtime->Send(ev->Sender, ev->Recipient, response.release(), 0, true);
                 return TTestActorRuntime::EEventAction::DROP;

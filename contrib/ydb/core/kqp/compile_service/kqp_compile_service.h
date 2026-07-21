@@ -4,9 +4,14 @@
 #include <contrib/ydb/core/kqp/common/simple/temp_tables.h>
 #include <contrib/ydb/core/kqp/gateway/kqp_gateway.h>
 #include <contrib/ydb/core/kqp/federated_query/kqp_federated_query_helpers.h>
+#include <contrib/ydb/core/kqp/host/kqp_translate.h>
+
+#include <util/system/spinlock.h>
 
 namespace NKikimr {
 namespace NKqp {
+
+class TKqpDbCounters;
 
 enum class ECompileActorAction {
     COMPILE,
@@ -14,7 +19,238 @@ enum class ECompileActorAction {
     SPLIT,
 };
 
-IActor* CreateKqpCompileService(const NKikimrConfig::TTableServiceConfig& tableServiceConfig,
+// How a cache lookup participates in warmup observation-window accounting.
+// Default `None` is fail-safe: new call sites don't pollute counters.
+enum class EWarmupAttributionMode {
+    None,    // no side effects, no counters
+    Client,  // consume pending mark on hit (+inc hit/miss counters)
+    Warmup,  // mark uid on hit (validation), nothing else
+};
+
+class TKqpQueryCacheSnapshot {
+public:
+    struct TEntry {
+        TKqpCompileResult::TConstPtr CompileResult;
+        TInstant LastTouched;
+    };
+
+    struct TUidComparator {
+        bool operator()(const TEntry& a, const TEntry& b) const {
+            return a.CompileResult->Uid < b.CompileResult->Uid;
+        }
+    };
+
+    struct TUidLowerBoundComparator {
+        bool operator()(const TEntry& entry, const TString& uid) const {
+            return entry.CompileResult->Uid < uid;
+        }
+    };
+
+    struct TUidUpperBoundComparator {
+        bool operator()(const TString& uid, const TEntry& entry) const {
+            return uid < entry.CompileResult->Uid;
+        }
+    };
+
+public:
+    TKqpQueryCacheSnapshot() = default;
+    void Clear();
+    void Insert(const TString& uid, const TKqpCompileResult::TConstPtr& compileResult, TInstant now);
+    void Erase(const TString& uid);
+    void Replace(const TString& uid, const TKqpCompileResult::TConstPtr& newResult);
+    void Touch(const TString& uid, TInstant now);
+    TVector<TEntry> GetSnapshot() const;
+    size_t Size() const noexcept { return Entries_.size(); }
+    bool Contains(const TString& uid) const { return Index_.contains(uid); }
+private:
+    TVector<TEntry> Entries_;
+    THashMap<TString, ui32> Index_;
+};
+
+// Cache is shared between query sessions, compile service and kqp proxy.
+// Currently we don't use RW lock, because of cache promotions during lookup:
+// in benchmark both versions (RW spinlock and adaptive W spinlock) show same
+// performance. Might consider RW lock again in future.
+class TKqpQueryCache: public TThrRefBase {
+public:
+    // Opens lazily on first non-warmup access with non-empty pending set,
+    // closes once after the duration (no timer, checked on access).
+    static constexpr TDuration WarmupObservationWindow = TDuration::Minutes(5);
+
+    TKqpQueryCache(size_t size, TDuration ttl)
+        : List(size)
+        , Ttl(ttl) {}
+
+    bool Insert(const TKqpCompileResult::TConstPtr& compileResult, bool isEnableAstCache, bool isPerStatementExecution);
+
+    // Idempotent; no-op once the window is closed.
+    void MarkWarmupInsert(const TString& uid);
+
+    void AttachReplayMessage(const TString uid, TString replayMessage);
+
+    TString ReplayMessageByUid(const TString uid, TDuration timeout);
+
+    TKqpCompileResult::TConstPtr FindByUid(const TString& uid, bool promote) {
+        TGuard<TAdaptiveLock> guard(Lock);
+        return FindByUidImpl(uid, promote);
+    }
+
+    void Replace(const TKqpCompileResult::TConstPtr& compileResult);
+
+    TKqpCompileResult::TConstPtr FindByQuery(const TKqpQueryId& query, bool promote) {
+        TGuard<TAdaptiveLock> guard(Lock);
+        return FindByQueryImpl(query, promote);
+    }
+
+    // find by either uid or query.
+    // warmupAttribution defaults to None so new callers don't pollute counters.
+    TKqpCompileResult::TConstPtr Find(
+        const TMaybe<TString>& uid,
+        TMaybe<TKqpQueryId>& query,
+        TKqpTempTablesState::TConstPtr tempTablesState,
+        bool promote,
+        const NACLib::TSID& userSid,
+        TIntrusivePtr<TKqpCounters> counters,
+        TIntrusivePtr<TKqpDbCounters>& dbCounters,
+        const TActorId& sender,
+        const TActorContext& ctx,
+        EWarmupAttributionMode warmupAttribution = EWarmupAttributionMode::None);
+
+    // warmupAttribution + counters must be set together (Client mode without
+    // counters aborts in AccountWarmupHitImpl); no defaults to keep it explicit.
+    TKqpCompileResult::TConstPtr FindByAst(
+        const TKqpQueryId& query,
+        const NYql::TAstParseResult& ast,
+        bool promote,
+        EWarmupAttributionMode warmupAttribution,
+        TIntrusivePtr<TKqpCounters> counters,
+        TKqpTempTablesState::TConstPtr tempTablesState = nullptr);
+
+    bool EraseByUid(const TString& uid) {
+        TGuard<TAdaptiveLock> guard(Lock);
+        return EraseByUidImpl(uid);
+    }
+
+    size_t Size() const {
+        TGuard<TAdaptiveLock> guard(Lock);
+        return SizeImpl();
+    }
+
+    ui64 Bytes() const {
+        TGuard<TAdaptiveLock> guard(Lock);
+        return BytesImpl();
+    }
+
+    ui64 BytesImpl() const {
+        return ByteSize;
+    }
+
+    TVector<TKqpQueryCacheSnapshot::TEntry> GetSnapshot() const;
+    size_t EraseExpiredQueries();
+
+    void Clear();
+
+private:
+    TKqpCompileResult::TConstPtr FindByUidImpl(const TString& uid, bool promote);
+    TKqpCompileResult::TConstPtr FindByQueryImpl(const TKqpQueryId& query, bool promote);
+    bool EraseByUidImpl(const TString& uid);
+
+    size_t SizeImpl() const {
+        return Index.size();
+    }
+
+    void InsertQuery(const TKqpCompileResult::TConstPtr& compileResult);
+
+    void InsertAst(const TKqpCompileResult::TConstPtr& compileResult) {
+        Y_ENSURE(compileResult->Query);
+        Y_ENSURE(compileResult->GetAst());
+
+        AstIndex.emplace(GetQueryIdWithAst(*compileResult->Query, *compileResult->GetAst()), compileResult->Uid);
+    }
+
+    TKqpQueryId GetQueryIdWithAst(const TKqpQueryId& query, const NYql::TAstParseResult& ast);
+
+    void DecBytes(ui64 bytes) {
+        if (bytes > ByteSize) {
+            ByteSize = 0;
+        } else {
+            ByteSize -= bytes;
+        }
+    }
+
+    void IncBytes(ui64 bytes) {
+        ByteSize += bytes;
+    }
+
+private:
+    struct TCacheEntry {
+        TKqpCompileResult::TConstPtr CompileResult;
+        TInstant ExpiredAt;
+        TString ReplayMessage = "";
+        TInstant LastReplayTime = TInstant::Zero();
+    };
+
+    using TList = TLRUList<TString, TCacheEntry>;
+    using TItem = TList::TItem;
+
+private:
+    TList List;
+    THashSet<TItem, TItem::THash> Index;
+    THashMap<TKqpQueryId, TString, THash<TKqpQueryId>> QueryIndex;
+    THashMap<TKqpQueryId, TString, THash<TKqpQueryId>> AstIndex;
+    ui64 ByteSize = 0;
+    TDuration Ttl;
+
+    TKqpQueryCacheSnapshot Snapshot;
+    TAdaptiveLock Lock;
+
+    // Guarded by Lock (except the two atomics below).
+    THashSet<TString> WarmupPendingHitUids;
+    TInstant WarmupWindowStart = TInstant::Zero();
+    bool WarmupWindowOpened = false;
+
+    // Lock-free fast-path: in steady state (window closed) accounting helpers
+    // bail out before touching Lock. Written under Lock, read without it.
+    TAtomic WarmupWindowClosedAtomic = 0;
+    TAtomic WarmupHasPendingAtomic = 0;
+
+    // Must be called under Lock. May transition open -> closed on expiry.
+    bool RefreshWarmupWindowStateImpl();
+
+    bool WarmupAccountingIsNoopFast() const {
+        return AtomicGet(WarmupWindowClosedAtomic) || !AtomicGet(WarmupHasPendingAtomic);
+    }
+
+    bool TryConsumeWarmupHitImpl(const TString& uid) {
+        if (!RefreshWarmupWindowStateImpl()) {
+            return false;
+        }
+        return WarmupPendingHitUids.erase(uid) != 0;
+    }
+    bool ShouldCountWarmupMissImpl() {
+        return RefreshWarmupWindowStateImpl();
+    }
+
+    void AccountWarmupHitImpl(
+        const TKqpCompileResult::TConstPtr& compileResult,
+        EWarmupAttributionMode mode,
+        const TIntrusivePtr<TKqpCounters>& counters);
+
+    void AccountWarmupMissImpl(
+        EWarmupAttributionMode mode,
+        const TIntrusivePtr<TKqpCounters>& counters);
+};
+
+using TKqpQueryCachePtr = TIntrusivePtr<TKqpQueryCache>;
+
+bool HasTempTablesNameClashes(
+    TKqpCompileResult::TConstPtr compileResult,
+    TKqpTempTablesState::TConstPtr tempTablesState,
+    bool withSessionId = false);
+
+IActor* CreateKqpCompileService(
+    TKqpQueryCachePtr queryCache,
+    const NKikimrConfig::TTableServiceConfig& tableServiceConfig,
     const NKikimrConfig::TQueryServiceConfig& queryServiceConfig,
     const TKqpSettings::TConstPtr& kqpSettings, TIntrusivePtr<TModuleResolverState> moduleResolverState,
     TIntrusivePtr<TKqpCounters> counters, std::shared_ptr<IQueryReplayBackendFactory> queryReplayFactory,
@@ -37,9 +273,10 @@ IActor* CreateKqpCompileActor(const TActorId& owner, const TKqpSettings::TConstP
     ECompileActorAction compileAction = ECompileActorAction::COMPILE,
     TMaybe<TQueryAst> queryAst = {},
     bool collectFullDiagnostics = false,
-    bool PerStatementResult = false,
-    NYql::TExprContext* ctx = nullptr,
-    NYql::TExprNode::TPtr expr = nullptr);
+    bool perStatementResult = false,
+    std::shared_ptr<NYql::TExprContext> ctx = nullptr,
+    NYql::TExprNode::TPtr expr = nullptr,
+    bool usePessimisticLocks = false);
 
 IActor* CreateKqpCompileRequestActor(const TActorId& owner, const TIntrusiveConstPtr<NACLib::TUserToken>& userToken, const TMaybe<TString>& uid,
     TMaybe<TKqpQueryId>&& query, bool keepInCache, const TInstant& deadline, TKqpDbCountersPtr dbCounters,

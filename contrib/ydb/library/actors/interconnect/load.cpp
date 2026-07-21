@@ -82,7 +82,7 @@ namespace NInterconnect {
         )
 
         void Handle(TEvLoadMessage::TPtr& ev, const TActorContext& ctx) {
-            ctx.ExecutorThread.ActorSystem->Send(ev->Forward(Slaves[SlaveIndex]));
+            ctx.ActorSystem()->Send(ev->Forward(Slaves[SlaveIndex]));
             if (++SlaveIndex == Slaves.size()) {
                 SlaveIndex = 0;
             }
@@ -132,16 +132,17 @@ namespace NInterconnect {
         struct TEvPublishResults : TEventLocal<TEvPublishResults, EvPublishResults> {};
 
         struct TMessageInfo {
-            TInstant SendTimestamp;
+            TMonotonic SendTimestamp;
 
-            TMessageInfo(const TInstant& sendTimestamp)
+            TMessageInfo(const TMonotonic& sendTimestamp)
                 : SendTimestamp(sendTimestamp)
             {
             }
         };
 
         const TLoadParams Params;
-        TInstant NextMessageTimestamp;
+        const TFinishCallback FinishCallback;
+        TMonotonic NextMessageTimestamp;
         THashMap<TString, TMessageInfo> InFly;
         ui64 NextId = 1;
         TVector<TActorId> Hops;
@@ -149,13 +150,14 @@ namespace NInterconnect {
         ui64 NumDropped = 0;
         std::shared_ptr<std::atomic_uint64_t> Traffic;
 
+
     public:
         static constexpr IActor::EActivityType ActorActivityType() {
             return IActor::EActivityType::INTERCONNECT_LOAD_ACTOR;
         }
 
-        TLoadActor(const TLoadParams& params)
-            : Params(params)
+        TLoadActor(const TLoadParams& params, const TFinishCallback& finishCallback)
+            : Params(params), FinishCallback(finishCallback)
         {}
 
         void Bootstrap(const TActorContext& ctx) {
@@ -178,7 +180,7 @@ namespace NInterconnect {
             Hops.push_back(ctx.SelfID);
 
             Become(&TLoadActor::StateFunc);
-            NextMessageTimestamp = ctx.Now();
+            NextMessageTimestamp = ctx.Monotonic();
             ResetThroughput(NextMessageTimestamp, *Traffic);
             GenerateMessages(ctx);
             ctx.Schedule(Params.Duration, new TEvents::TEvPoisonPill);
@@ -186,7 +188,7 @@ namespace NInterconnect {
         }
 
         void GenerateMessages(const TActorContext& ctx) {
-            while (InFly.size() < Params.InFlyMax && ctx.Now() >= NextMessageTimestamp) {
+            while (InFly.size() < Params.InFlyMax && ctx.Monotonic() >= NextMessageTimestamp) {
                 // generate payload
                 const ui32 size = Params.SizeMin + RandomNumber(Params.SizeMax - Params.SizeMin + 1);
 
@@ -197,9 +199,11 @@ namespace NInterconnect {
                 // create message and send it to the first hop
                 THolder<TEvLoadMessage> ev;
                 if (Params.UseProtobufWithPayload && size) {
-                    auto buffer = TRopeAlignedBuffer::Allocate(size);
-                    memset(buffer->GetBuffer(), '*', size);
-                    ev.Reset(new TEvLoadMessage(Hops, id, TRope(buffer)));
+                    TRcBuf buffer = Params.RdmaMode
+                        ? ctx.ActorSystem()->GetRcBufAllocator()->AllocRcBuf(size, 0, 0)
+                        : TRcBuf(TRopeAlignedBuffer::Allocate(size));
+                    memset(buffer.GetDataMut(), '*', size);
+                    ev.Reset(new TEvLoadMessage(Hops, id, TRope(std::move(buffer))));
                 } else {
                     TString payload;
                     if (size) {
@@ -212,7 +216,7 @@ namespace NInterconnect {
                 ctx.Send(FirstHop, ev.Release(), IEventHandle::MakeFlags(Params.Channel, 0), cookie);
 
                 // register in the map
-                InFly.emplace(id, TMessageInfo(ctx.Now()));
+                InFly.emplace(id, TMessageInfo(ctx.Monotonic()));
 
                 // put item into timeout queue
                 PutTimeoutQueueItem(ctx, id);
@@ -222,13 +226,13 @@ namespace NInterconnect {
                 if (Params.SoftLoad) {
                     NextMessageTimestamp += duration;
                 } else {
-                    NextMessageTimestamp = ctx.Now() + duration;
+                    NextMessageTimestamp = ctx.Monotonic() + duration;
                 }
             }
 
             // schedule next generate messages call
-            if (NextMessageTimestamp > ctx.Now() && InFly.size() < Params.InFlyMax) {
-                ctx.Schedule(NextMessageTimestamp - ctx.Now(), new TEvGenerateMessages);
+            if (NextMessageTimestamp > ctx.Monotonic() && InFly.size() < Params.InFlyMax) {
+                ctx.Schedule(NextMessageTimestamp - ctx.Monotonic(), new TEvGenerateMessages);
             }
         }
 
@@ -237,8 +241,8 @@ namespace NInterconnect {
             auto it = InFly.find(record.GetId());
             if (it != InFly.end()) {
                 // record message rtt
-                const TDuration rtt = ctx.Now() - it->second.SendTimestamp;
-                UpdateHistogram(ctx.Now(), rtt);
+                const TDuration rtt = ctx.Monotonic() - it->second.SendTimestamp;
+                UpdateHistogram(ctx.Monotonic(), rtt);
 
                 // update throughput
                 UpdateThroughput(ev->Get()->CalculateSerializedSizeCached());
@@ -256,12 +260,12 @@ namespace NInterconnect {
         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
         const TDuration AggregationPeriod = TDuration::Seconds(20);
-        TDeque<std::pair<TInstant, TDuration>> Histogram;
+        TDeque<std::pair<TMonotonic, TDuration>> Histogram;
 
-        void UpdateHistogram(TInstant when, TDuration rtt) {
+        void UpdateHistogram(TMonotonic when, TDuration rtt) {
             Histogram.emplace_back(when, rtt);
 
-            const TInstant barrier = when - AggregationPeriod;
+            const TMonotonic barrier = when - AggregationPeriod;
             while (Histogram && Histogram.front().first < barrier) {
                 Histogram.pop_front();
             }
@@ -271,7 +275,7 @@ namespace NInterconnect {
         // THROUGHPUT
         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-        TInstant ThroughputFirstSample = TInstant::Zero();
+        TMonotonic ThroughputFirstSample = TMonotonic::Zero();
         ui64 ThroughputSamples = 0;
         ui64 ThroughputBytes = 0;
         ui64 TrafficAtBegin = 0;
@@ -281,7 +285,7 @@ namespace NInterconnect {
             ++ThroughputSamples;
         }
 
-        void ResetThroughput(TInstant when, ui64 traffic) {
+        void ResetThroughput(TMonotonic when, ui64 traffic) {
             ThroughputFirstSample = when;
             ThroughputSamples = 0;
             ThroughputBytes = 0;
@@ -292,23 +296,23 @@ namespace NInterconnect {
         // TIMEOUT QUEUE OPERATIONS
         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-        TQueue<std::pair<TInstant, TString>> TimeoutQueue;
+        TQueue<std::pair<TMonotonic, TString>> TimeoutQueue;
 
         void PutTimeoutQueueItem(const TActorContext& ctx, TString id) {
-            TimeoutQueue.emplace(ctx.Now() + TDuration::Minutes(1), std::move(id));
+            TimeoutQueue.emplace(ctx.Monotonic() + TDuration::Minutes(1), std::move(id));
             if (TimeoutQueue.size() == 1) {
                 ScheduleWakeup(ctx);
             }
         }
 
         void ScheduleWakeup(const TActorContext& ctx) {
-            ctx.Schedule(TimeoutQueue.front().first - ctx.Now(), new TEvents::TEvWakeup);
+            ctx.Schedule(TimeoutQueue.front().first - ctx.Monotonic(), new TEvents::TEvWakeup);
         }
 
         void HandleWakeup(const TActorContext& ctx) {
             // ui32 numDropped = 0;
 
-            while (TimeoutQueue && TimeoutQueue.front().first <= ctx.Now()) {
+            while (TimeoutQueue && TimeoutQueue.front().first <= ctx.Monotonic()) {
                 /*numDropped += */InFly.erase(TimeoutQueue.front().second);
                 TimeoutQueue.pop();
             }
@@ -331,7 +335,7 @@ namespace NInterconnect {
         }
 
         void PublishResults(const TActorContext& ctx, bool schedule = true) {
-            const TInstant now = ctx.Now();
+            const TMonotonic now = ctx.Monotonic();
 
             TStringStream msg;
 
@@ -390,16 +394,91 @@ namespace NInterconnect {
             CFunc(EvPublishResults, PublishResults);
             CFunc(EvGenerateMessages, GenerateMessages);
             HFunc(TEvLoadMessage, Handle);
+            HFunc(NMon::TEvHttpInfo, Handle);
         )
+
+        void Handle(NMon::TEvHttpInfo::TPtr& ev, const TActorContext& ctx) {
+            ctx.Send(ev->Sender, new NMon::TEvHttpInfoRes(RenderHTML(false, ctx), ev->Get()->SubRequestId));
+        }
 
         void Die(const TActorContext& ctx) override {
             PublishResults(ctx, false);
+            if (FinishCallback)
+                FinishCallback(ctx, RenderHTML(true, ctx));
             TActorBootstrapped::Die(ctx);
+        }
+
+        TString RenderHTML(bool finished, const TActorContext& ctx) {
+            const auto duration = ctx.Monotonic() - ThroughputFirstSample;
+
+            TStringStream msg;
+
+            TStringStream str;
+            HTML(str) {
+                TABLE_CLASS("table table-condensed") {
+                    TABLEHEAD() {
+                        TABLER() {
+                            TABLEH() { str << "Window"; }
+                            TABLEH() { str << "Bytes";  }
+                            TABLEH() { str << "Samples"; }
+                            TABLEH() { str << "b/s";  }
+                            TABLEH() { str << "Common"; }
+                        }
+                    }
+                    TABLEBODY() {
+                        TABLER() {
+                            TABLED() { str << duration; }
+                            TABLED() { str << ThroughputBytes; }
+                            TABLED() { str << ThroughputSamples; }
+                            TABLED() { str << ui64(ThroughputBytes * 1000000 / duration.MicroSeconds()); }
+                            TABLED() { str << ui64((*Traffic - TrafficAtBegin) * 1000000 / duration.MicroSeconds()); }
+                        }
+                    }
+                }
+                if (Histogram) {
+                    TABLE_CLASS("table table-condensed") {
+                        TABLEHEAD() {
+                            TABLER() {
+                                TABLEH() { str << "Window"; }
+                                TABLEH() { str << "Samples"; }
+                                TABLEH() { str << "0.5";  }
+                                TABLEH() { str << "0.9"; }
+                                TABLEH() { str << "0.99";  }
+                                TABLEH() { str << "0.999"; }
+                                TABLEH() { str << "0.9999";  }
+                                TABLEH() { str << "1.0"; }
+                            }
+                        }
+
+                        const auto duration = Histogram.back().first - Histogram.front().first;
+                        std::vector<TDuration> v;
+                        v.reserve(Histogram.size());
+                        for (const auto& item : Histogram) {
+                            v.push_back(item.second);
+                        }
+                        std::sort(v.begin(), v.end());
+
+                        TABLEBODY() {
+                            TABLER() {
+                                TABLED() { str << duration; }
+                                TABLED() { str << Histogram.size(); }
+                                for (const auto q : {0.5, 0.9, 0.99, 0.999, 0.9999, 1.0}) {
+                                    TABLED() { str << Sprintf(" %.4f# ", q) << v[q * (v.size() - 1U)].ToString().c_str(); }
+                                }
+                            }
+                        }
+                    }
+                }
+                str << "Dropped:" << NumDropped << "</br>";
+                if (finished) {
+                    str << "Finished." << "</br>";
+                }
+            }
+            return str.Str();
         }
     };
 
-    IActor* CreateLoadActor(const TLoadParams& params) {
-        return new TLoadActor(params);
+    IActor* CreateLoadActor(const TLoadParams& params, const TFinishCallback& finishCallback) {
+        return new TLoadActor(params, finishCallback);
     }
-
 }

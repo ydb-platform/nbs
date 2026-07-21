@@ -12,9 +12,7 @@ PEERDIR(
     library/cpp/logger/global
     library/cpp/protobuf/json
     library/cpp/json/yson
-    contrib/ydb/library/yql/utils/log
     contrib/ydb/library/yql/utils/backtrace
-    contrib/ydb/library/yql/providers/yt/lib/log
 )
 
 END()

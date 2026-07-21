@@ -1,5 +1,24 @@
 LIBRARY()
 
+    IF (OS_WINDOWS)
+        CFLAGS(
+            -DKIKIMR_DISABLE_S3_OPS
+        )
+        SRCS(
+            s3_windows_stub.cpp
+            s3_router_stub.cpp
+        )
+    ELSE()
+        SRCS(
+            s3.cpp
+            s3_delete.cpp
+            s3_scan.cpp
+            s3_upload.cpp
+            s3_write.cpp
+            s3_router.cpp
+        )
+    ENDIF()
+
     SRCS(
         blob_depot.cpp
         blob_depot.h
@@ -33,6 +52,11 @@ LIBRARY()
         group_metrics_exchange.cpp
         mon_main.cpp
         mon_main.h
+        recommissioner.cpp
+        recommissioner.h
+        s3.h
+        s3_router.h
+        s3_router_events.h
         space_monitor.cpp
         space_monitor.h
         testing.cpp
@@ -49,6 +73,8 @@ LIBRARY()
         contrib/ydb/core/blobstorage/vdisk/common
         contrib/ydb/core/tablet_flat
         contrib/ydb/core/protos
+        contrib/ydb/core/wrappers
+        contrib/ydb/library/actors/http
     )
 
     GENERATE_ENUM_SERIALIZATION(schema.h)

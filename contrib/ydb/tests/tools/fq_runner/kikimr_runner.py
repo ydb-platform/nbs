@@ -11,24 +11,31 @@ import time
 import ydb
 
 import yatest.common
+from contrib.ydb.tests.library.common.helpers import plain_or_under_sanitizer
 from contrib.ydb.tests.library.harness.kikimr_runner import KiKiMR
 from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
 from contrib.ydb.tests.library.harness.kikimr_port_allocator import KikimrPortManagerPortAllocator
 from contrib.ydb.tests.library.harness.util import LogLevels
-import contrib.ydb.tests.library.common.yatest_common as yatest_common
 
-from contrib.ydb.library.yql.providers.common.proto import gateways_config_pb2
+from contrib.ydb.library.contrib.ydb.library.yql.providers.common.proto import gateways_config_pb2
 
 from contrib.ydb.tests.tools.fq_runner.kikimr_metrics import load_metrics
 
 from contrib.ydb.tests.tools.fq_runner.mvp_mock import MvpMockServer
-from yatest.common.network import PortManager
+import library.python.port_manager
 from multiprocessing import Process
 from concurrent.futures import TimeoutError
 
 logging.getLogger("urllib3.connectionpool").setLevel("INFO")
 logging.getLogger("ydb.tests.library.harness.kikimr_runner").setLevel("INFO")
 logging.getLogger("library.python.retry").setLevel("ERROR")
+
+
+def plain_or_under_sanitizer_wrapper(plain, sanitized):
+    try:
+        return plain_or_under_sanitizer(plain, sanitized)
+    except Exception:
+        return plain
 
 
 class BaseTenant(abc.ABC):
@@ -82,7 +89,7 @@ class BaseTenant(abc.ABC):
             self.config_generator.yaml_config['auth_config'] = {}
         return self.config_generator.yaml_config['auth_config']
 
-    def enable_logging(self, component, level=LogLevels.TRACE):
+    def enable_logging(self, component, level=LogLevels.DEBUG):
         log_config = self.config_generator.yaml_config['log_config']
         if not isinstance(log_config['entry'], list):
             log_config['entry'] = []
@@ -92,7 +99,7 @@ class BaseTenant(abc.ABC):
         self.enable_logging("INTERCONNECT", LogLevels.WARN)  # IC is too verbose
         self.enable_logging("FQ_QUOTA_PROXY")
         self.enable_logging("FQ_QUOTA_SERVICE")
-        self.enable_logging("KQP_COMPUTE", LogLevels.TRACE)
+        self.enable_logging("KQP_COMPUTE", LogLevels.DEBUG)
         self.enable_logging("KQP_YQL")
         self.enable_logging("STREAMS")
         self.enable_logging("STREAMS_STORAGE_SERVICE")  # TODO: rename to YQ_STORAGE_SERVICE
@@ -117,6 +124,9 @@ class BaseTenant(abc.ABC):
         self.enable_logging("FQ_QUOTA_PROXY")
         self.enable_logging("PUBLIC_HTTP")
         self.enable_logging("FQ_CONTROL_PLANE_CONFIG")
+        self.enable_logging("FQ_ROW_DISPATCHER", LogLevels.TRACE)
+        self.enable_logging("KQP_EXECUTER")
+        self.enable_logging("KQP_PROXY")
         # self.enable_logging("GRPC_SERVER")
 
     @abc.abstractclassmethod
@@ -141,11 +151,12 @@ class BaseTenant(abc.ABC):
         gateways['dq']['default_settings'].extend([
             {'name': "AnalyzeQuery", 'value': "true"},
             {'name': "EnableInsert", 'value': "true"},
-            {'name': "ComputeActorType", 'value': "async"},
+            {'name': "ComputeActorType", 'value': "sync"},
         ])
         gateways['yql_core'] = {}
         gateways['yql_core']['flags'] = []
         gateways['yql_core']['flags'].append({'name': "_EnableMatchRecognize"})
+        gateways['yql_core']['flags'].append({'name': "_EnableStreamLookupJoin"})
 
     def fill_storage_config(self, storage, directory):
         storage['endpoint'] = os.getenv("YDB_ENDPOINT")
@@ -172,7 +183,9 @@ class BaseTenant(abc.ABC):
             deadline = time.time() + max_waiting_time_sec
             bill_fname = self.kikimr_cluster.nodes[node_index].cwd + "/metering.bill"
             while time.time() < deadline:
-                meterings_loaded = sum(1 for _ in open(bill_fname))
+                with open(bill_fname) as bill_file:
+                    meterings_loaded = sum(1 for _ in bill_file)
+
                 if meterings_loaded >= meterings_expected:
                     break
 
@@ -213,14 +226,14 @@ class BaseTenant(abc.ABC):
             {"subsystem": "worker_manager", "sensor": "ActiveWorkers"})
         return result if result is not None else 0
 
-    def wait_worker_count(self, node_index, activity, expected_count, timeout=yatest_common.plain_or_under_sanitizer(30, 150)):
+    def wait_worker_count(self, node_index, activity, expected_count, timeout=plain_or_under_sanitizer_wrapper(30, 150)):
         deadline = time.time() + timeout
         while True:
             count = self.get_actor_count(node_index, activity)
             if count >= expected_count:
                 break
             assert time.time() < deadline, "Wait actor count failed"
-            time.sleep(yatest_common.plain_or_under_sanitizer(0.5, 2))
+            time.sleep(plain_or_under_sanitizer_wrapper(0.5, 2))
         pass
 
     def get_mkql_limit(self, node_index):
@@ -265,7 +278,7 @@ class BaseTenant(abc.ABC):
                 self.wait_bootstrap(n)
             assert self.get_actor_count(n, "GRPC_PROXY") > 0, "Node {} died".format(n)
 
-    def wait_bootstrap(self, node_index=None, wait_time=yatest_common.plain_or_under_sanitizer(90, 400)):
+    def wait_bootstrap(self, node_index=None, wait_time=plain_or_under_sanitizer_wrapper(90, 400)):
         if node_index is None:
             for n in self.kikimr_cluster.nodes:
                 self.wait_bootstrap(n, wait_time)
@@ -278,13 +291,13 @@ class BaseTenant(abc.ABC):
                     if self.get_actor_count(node_index, "GRPC_PROXY") == 0:
                         continue
                 except Exception:
-                    time.sleep(yatest_common.plain_or_under_sanitizer(0.3, 2))
+                    time.sleep(plain_or_under_sanitizer_wrapper(0.3, 2))
                     continue
                 break
             self.bootstraped_nodes.add(node_index)
             logging.debug("Node {} has been bootstrapped".format(node_index))
 
-    def wait_discovery(self, node_index=None, wait_time=yatest_common.plain_or_under_sanitizer(30, 150)):
+    def wait_discovery(self, node_index=None, wait_time=plain_or_under_sanitizer_wrapper(30, 150)):
         if node_index is None:
             for n in self.kikimr_cluster.nodes:
                 self.wait_discovery(n, wait_time)
@@ -299,12 +312,12 @@ class BaseTenant(abc.ABC):
                     if peer_count is None or peer_count < self.node_count:
                         continue
                 except Exception:
-                    time.sleep(yatest_common.plain_or_under_sanitizer(0.3, 2))
+                    time.sleep(plain_or_under_sanitizer_wrapper(0.3, 2))
                     continue
                 break
             logging.debug("Node {} discovery finished".format(node_index))
 
-    def wait_workers(self, worker_count, wait_time=yatest_common.plain_or_under_sanitizer(30, 150)):
+    def wait_workers(self, worker_count, wait_time=plain_or_under_sanitizer_wrapper(30, 150)):
         ca_count = worker_count * 2  # we count 2x CAs
         deadline = time.time() + wait_time
         while True:
@@ -354,18 +367,18 @@ class BaseTenant(abc.ABC):
         return self.get_checkpoint_coordinator_metric(query_id, "CompletedCheckpoints",
                                                       expect_counters_exist=expect_counters_exist)
 
-    def wait_completed_checkpoints(self, query_id, checkpoints_count,
-                                   timeout=yatest_common.plain_or_under_sanitizer(30, 150),
+    def wait_completed_checkpoints(self, query_id, expected,
+                                   timeout=plain_or_under_sanitizer_wrapper(30, 150),
                                    expect_counters_exist=False):
         deadline = time.time() + timeout
         while True:
             completed = self.get_completed_checkpoints(query_id, expect_counters_exist=expect_counters_exist)
-            if completed >= checkpoints_count:
+            if completed >= expected:
                 break
-            assert time.time() < deadline, "Wait zero checkpoint failed"
-            time.sleep(yatest_common.plain_or_under_sanitizer(0.5, 2))
+            assert time.time() < deadline, "Wait checkpoint failed, actual current: " + str(completed) + ", expected " + str(expected)
+            time.sleep(plain_or_under_sanitizer_wrapper(0.5, 2))
 
-    def wait_zero_checkpoint(self, query_id, timeout=yatest_common.plain_or_under_sanitizer(30, 150),
+    def wait_zero_checkpoint(self, query_id, timeout=plain_or_under_sanitizer_wrapper(30, 150),
                              expect_counters_exist=False):
         self.wait_completed_checkpoints(query_id, 1, timeout, expect_counters_exist)
 
@@ -379,6 +392,7 @@ class YdbTenant(BaseTenant):
             compute_services=True,
             dc_mapping={},
             extra_feature_flags=None,  # list[str]
+            disabled_feature_flags=None,  # list[str]
             extra_grpc_services=None,  # list[str]
     ):
         assert node_count == 1
@@ -386,6 +400,8 @@ class YdbTenant(BaseTenant):
         assert compute_services is True
         if extra_feature_flags is None:
             extra_feature_flags = []
+        if disabled_feature_flags is None:
+            disabled_feature_flags = []
         if extra_grpc_services is None:
             extra_grpc_services = []
 
@@ -397,8 +413,6 @@ class YdbTenant(BaseTenant):
             KikimrConfigGenerator(
                 domain_name='local',
                 use_in_memory_pdisks=True,
-                disable_iterator_reads=True,
-                disable_iterator_lookups=True,
                 port_allocator=port_allocator,
                 dynamic_storage_pools=[
                     dict(name="dynamic_storage_pool:1",
@@ -411,6 +425,7 @@ class YdbTenant(BaseTenant):
                 enable_pqcd=False,
                 dc_mapping=dc_mapping,
                 extra_feature_flags=extra_feature_flags,
+                disabled_feature_flags=disabled_feature_flags,
                 extra_grpc_services=extra_grpc_services
             ))
 
@@ -432,10 +447,13 @@ class YqTenant(BaseTenant):
             compute_services=True,
             dc_mapping={},
             extra_feature_flags=None,  # list[str]
+            disabled_feature_flags=None,  # list[str]
             extra_grpc_services=None,  # list[str]
     ):
         if extra_feature_flags is None:
             extra_feature_flags = []
+        if disabled_feature_flags is None:
+            disabled_feature_flags = []
         if extra_grpc_services is None:
             extra_grpc_services = []
 
@@ -461,6 +479,7 @@ class YqTenant(BaseTenant):
                 dc_mapping=dc_mapping,
                 public_http_config=public_http_config,
                 extra_feature_flags=extra_feature_flags,
+                disabled_feature_flags=disabled_feature_flags,
                 extra_grpc_services=extra_grpc_services
             ))
 
@@ -476,6 +495,13 @@ class YqTenant(BaseTenant):
         fq_config['test_connection'] = {'enabled': True}
         fq_config['common']['keep_internal_errors'] = True
 
+        fq_config['common']['ydb_driver_config'] = {}
+        fq_config['common']['ydb_driver_config']['network_threads_num'] = 1
+        fq_config['common']['ydb_driver_config']['client_threads_num'] = 1
+
+        fq_config['common']['topic_client_handlers_executor_threads_num'] = 1
+        fq_config['common']['topic_client_compression_executor_threads_num'] = 1
+
         if self.mvp_mock_port is not None:
             fq_config['common']['ydb_mvp_cloud_endpoint'] = "localhost:" + str(self.mvp_mock_port)
 
@@ -484,7 +510,7 @@ class YqTenant(BaseTenant):
             self.config_generator.yaml_config['grpc_config']['skip_scheme_check'] = True
             self.config_generator.yaml_config['grpc_config']['services'] = ["local_discovery", "yq", "yq_private"]
             # yq services
-            fq_config['control_plane_storage']['task_lease_ttl'] = "10s"
+            fq_config['control_plane_storage']['task_lease_ttl'] = "20s"
             self.fill_storage_config(fq_config['control_plane_storage']['storage'], "DbPoolStorage_" + self.uuid)
         else:
             self.config_generator.yaml_config.pop('grpc_config', None)
@@ -504,6 +530,9 @@ class YqTenant(BaseTenant):
             if len(self.config_generator.dc_mapping) > 0:
                 fq_config['nodes_manager']['use_data_center'] = True
             fq_config['enable_task_counters'] = True
+            fq_config['task_controller'] = {}
+            fq_config['task_controller']['ping_period'] = "5s"      # task_lease_ttl / 4
+            fq_config['task_controller']['aggr_period'] = "1s"
         else:
             fq_config['nodes_manager']['enabled'] = False
             fq_config['pending_fetcher']['enabled'] = False
@@ -513,19 +542,27 @@ class YqTenant(BaseTenant):
         self.fill_storage_config(fq_config['checkpoint_coordinator']['storage'],
                                  "CheckpointCoordinatorStorage_" + self.uuid)
 
+        fq_config['row_dispatcher'] = {
+            'enabled': True,
+            'timeout_before_start_session_sec': 5,
+            'send_status_period_sec': 2,
+            'max_session_used_memory': 1000000,
+            'without_consumer': True}
+        fq_config['row_dispatcher']['coordinator'] = {'coordination_node_path': "row_dispatcher"}
+        fq_config['row_dispatcher']['coordinator']['rebalancing_timeout_sec'] = 30
+        fq_config['row_dispatcher']['coordinator']['database'] = {}
+        self.fill_storage_config(fq_config['row_dispatcher']['coordinator']['database'],
+                                 "RowDispatcher_" + self.uuid)
+
         fq_config['quotas_manager'] = {'enabled': True}
+        fq_config['quotas_manager']['quota_descriptions'] = [{
+            'subject_type': 'cloud',
+            'metric_name': 'yq.cpuPercent.count',
+            'hard_limit': 10000,
+            'default_limit': 10000}]
 
         fq_config['rate_limiter'] = {'enabled': True}
-        fq_config['quotas_manager'] = {'enabled': True}
         self.fill_rate_limiter_config(fq_config['rate_limiter'], "RateLimiter_" + self.uuid)
-
-        fq_config['read_actors_factory_config'] = {
-            's3_read_actor_factory_config': {
-                'retry_config': {
-                    'max_retry_time_ms': 3000
-                }
-            }
-        }
 
 
 class TenantType(Enum):
@@ -538,15 +575,19 @@ class TenantConfig:
                  node_count,  # int
                  tenant_type=TenantType.YQ,  # TenantType
                  extra_feature_flags=None,  # list[str]
+                 disabled_feature_flags=None,  # list[str]
                  extra_grpc_services=None  # list[str]
                  ):
         if extra_feature_flags is None:
             extra_feature_flags = []
+        if disabled_feature_flags is None:
+            disabled_feature_flags = []
         if extra_grpc_services is None:
             extra_grpc_services = []
         self.node_count = node_count
         self.tenant_type = tenant_type
         self.extra_feature_flags = extra_feature_flags
+        self.disabled_feature_flags = disabled_feature_flags
         self.extra_grpc_services = extra_grpc_services
 
 
@@ -580,7 +621,7 @@ class StreamingOverKikimr(object):
         if configuration is None:
             configuration = StreamingOverKikimrConfig()
         self.uuid = str(uuid.uuid4())
-        self.mvp_mock_port = PortManager().get_port()
+        self.mvp_mock_port = library.python.port_manager.PortManager().get_port()
         self.mvp_mock_server = Process(target=MvpMockServer(self.mvp_mock_port,  configuration.mvp_external_ydb_endpoint).serve_forever)
         self.tenants = {}
         _tenant_mapping = configuration.tenant_mapping.copy()
@@ -599,6 +640,7 @@ class StreamingOverKikimr(object):
                                       compute_services=compute_services,
                                       dc_mapping=configuration.dc_mapping,
                                       extra_feature_flags=tenant_config.extra_feature_flags,
+                                      disabled_feature_flags=tenant_config.disabled_feature_flags,
                                       extra_grpc_services=tenant_config.extra_grpc_services)
                 else:
                     tenant = YdbTenant(tenant_name=name,
@@ -607,6 +649,7 @@ class StreamingOverKikimr(object):
                                        compute_services=compute_services,
                                        dc_mapping=configuration.dc_mapping,
                                        extra_feature_flags=tenant_config.extra_feature_flags,
+                                       disabled_feature_flags=tenant_config.disabled_feature_flags,
                                        extra_grpc_services=tenant_config.extra_grpc_services)
                 tenant.uuid = self.uuid
                 tenant.cloud_mode = configuration.cloud_mode
@@ -682,6 +725,8 @@ class StreamingOverKikimr(object):
                         ydb.Column('subject_id', ydb.OptionalType(ydb.DataType.String))
                     ).with_column(
                         ydb.Column('vtenant', ydb.OptionalType(ydb.DataType.String))
+                    ).with_column(
+                        ydb.Column('node', ydb.OptionalType(ydb.DataType.String))
                     ).with_primary_keys('subject_type', 'subject_id')
                 )
 
@@ -694,9 +739,9 @@ class StreamingOverKikimr(object):
             for vtenant, tenant in _tenant_mapping.items():
                 query = query + """UPSERT INTO tenants (tenant, vtenant, common, state, state_time) values("{}", "{}", true, 0, CurrentUtcTimestamp());
                 """.format(tenant, vtenant)
-            for cloud, vtenant in configuration.cloud_mapping.items():
-                query = query + """UPSERT INTO mappings (subject_type, subject_id, vtenant) values ("cloud", "{}", "{}");
-                """.format(cloud, vtenant)
+            for cloud, vtenant_with_node in configuration.cloud_mapping.items():
+                query = query + """UPSERT INTO mappings (subject_type, subject_id, vtenant, node) values ("cloud", "{}", "{}", {});
+                """.format(cloud, vtenant_with_node[0], ("\"" + vtenant_with_node[1] + "\"") if vtenant_with_node[1] is not None else 'NULL')
             self.exec_db_statement(query)
             self.control_plane.fq_config['control_plane_storage']['use_db_mapping'] = True
 

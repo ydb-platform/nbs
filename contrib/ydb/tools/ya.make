@@ -1,10 +1,13 @@
 RECURSE(
     blobsan
     cfg
+    disk_obliterator
+    mnc
+    include_sanitizer
+    partcheck
     query_replay
     query_replay_yt
-    simple_queue
-    olap_workload
+    stress_tool
     tsserver
     tstool
     ydbd_slice

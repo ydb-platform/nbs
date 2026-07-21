@@ -1,7 +1,7 @@
 #include "mkql_tostring.h"
 
 #include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node_holders.h>
-#include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node_codegen.h>  // Y_IGNORE
+#include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node_codegen.h> // Y_IGNORE
 #include <contrib/ydb/library/yql/minikql/mkql_node_cast.h>
 #include <contrib/ydb/library/yql/minikql/mkql_node_builder.h>
 #include <contrib/ydb/library/yql/minikql/mkql_type_ops.h>
@@ -32,8 +32,9 @@ namespace NMiniKQL {
 namespace {
 
 template <bool IsOptional>
-class TDecimalToStringWrapper : public TMutableCodegeneratorNode<TDecimalToStringWrapper<IsOptional>> {
+class TDecimalToStringWrapper: public TMutableCodegeneratorNode<TDecimalToStringWrapper<IsOptional>> {
     typedef TMutableCodegeneratorNode<TDecimalToStringWrapper<IsOptional>> TBaseComputation;
+
 public:
     TDecimalToStringWrapper(TComputationMutables& mutables, IComputationNode* data, ui8 precision, ui8 scale)
         : TBaseComputation(mutables, EValueRepresentation::String)
@@ -64,13 +65,11 @@ public:
 
         const auto valType = Type::getInt128Ty(context);
         const auto psType = Type::getInt8Ty(context);
-        const auto valTypePtr = PointerType::getUnqual(valType);
 
         const auto name = "DecimalToString";
         ctx.Codegen.AddGlobalMapping(name, reinterpret_cast<const void*>(&DecimalToString));
-        const auto fnType = NYql::NCodegen::ETarget::Windows != ctx.Codegen.GetEffectiveTarget() ?
-            FunctionType::get(valType, { valType, psType, psType }, false):
-            FunctionType::get(Type::getVoidTy(context), { valTypePtr, valTypePtr, psType, psType }, false);
+        const auto fnType =
+            FunctionType::get(valType, {valType, psType, psType}, false);
         const auto func = ctx.Codegen.GetModule().getOrInsertFunction(name, fnType);
 
         const auto fail = BasicBlock::Create(context, "fail", ctx.Func);
@@ -93,39 +92,21 @@ public:
 
             block = call;
 
-            Value* string;
-            if (NYql::NCodegen::ETarget::Windows != ctx.Codegen.GetEffectiveTarget()) {
-                string = CallInst::Create(func, { GetterForInt128(value, block), precision, scale }, "to_string", block);
-            } else {
-                const auto retPtr = new AllocaInst(valType, 0U, "ret_ptr", block);
-                new StoreInst(GetterForInt128(value, block), retPtr, block);
-                CallInst::Create(func, { retPtr, retPtr, precision, scale }, "", block);
-                string = new LoadInst(valType, retPtr, "res", block);
-            }
+            const auto string = CallInst::Create(func, {GetterForInt128(value, block), precision, scale}, "to_string", block);
 
             res->addIncoming(string, block);
 
             const auto test = CmpInst::Create(Instruction::ICmp, ICmpInst::ICMP_EQ, string, zero, "test", block);
             BranchInst::Create(fail, nice, test, block);
         } else {
-            if (NYql::NCodegen::ETarget::Windows != ctx.Codegen.GetEffectiveTarget()) {
-                result = CallInst::Create(func, { GetterForInt128(value, block), precision, scale }, "to_string", block);
-            } else {
-                const auto retPtr = new AllocaInst(valType, 0U, "ret_ptr", block);
-                new StoreInst(GetterForInt128(value, block), retPtr, block);
-                CallInst::Create(func, { retPtr, retPtr, precision, scale }, "", block);
-                result = new LoadInst(valType, retPtr, "res", block);
-            }
+            result = CallInst::Create(func, {GetterForInt128(value, block), precision, scale}, "to_string", block);
 
             const auto test = CmpInst::Create(Instruction::ICmp, ICmpInst::ICMP_EQ, result, zero, "test", block);
             BranchInst::Create(fail, nice, test, block);
         }
 
         block = fail;
-        const auto doFunc = ConstantInt::get(Type::getInt64Ty(context), GetMethodPtr(&TDecimalToStringWrapper::Throw));
-        const auto doFuncType = FunctionType::get(Type::getVoidTy(context), {}, false);
-        const auto doFuncPtr = CastInst::Create(Instruction::IntToPtr, doFunc, PointerType::getUnqual(doFuncType), "thrower", block);
-        CallInst::Create(doFuncType, doFuncPtr, {}, "", block);
+        EmitFunctionCall<&TDecimalToStringWrapper::Throw>(Type::getVoidTy(context), {}, ctx, block);
         new UnreachableInst(context, block);
 
         block = nice;
@@ -146,14 +127,16 @@ private:
 };
 
 template <bool IsOptional>
-class TToStringWrapper : public TMutableCodegeneratorNode<TToStringWrapper<IsOptional>> {
+class TToStringWrapper: public TMutableCodegeneratorNode<TToStringWrapper<IsOptional>> {
     typedef TMutableCodegeneratorNode<TToStringWrapper<IsOptional>> TBaseComputation;
+
 public:
     TToStringWrapper(TComputationMutables& mutables, IComputationNode* data, NUdf::TDataTypeId schemeType)
         : TBaseComputation(mutables, EValueRepresentation::String)
         , Data(data)
         , SchemeType(NUdf::GetDataSlot(schemeType))
-    {}
+    {
+    }
 
     NUdf::TUnboxedValue DoCalculate(TComputationContext& ctx) const {
         const auto& dataValue = Data->GetValue(ctx);
@@ -170,13 +153,11 @@ public:
 
         const auto valType = Type::getInt128Ty(context);
         const auto slotType = Type::getInt32Ty(context);
-        const auto valTypePtr = PointerType::getUnqual(valType);
 
         const auto name = "DataToString";
         ctx.Codegen.AddGlobalMapping(name, reinterpret_cast<const void*>(&DataToString));
-        const auto fnType = NYql::NCodegen::ETarget::Windows != ctx.Codegen.GetEffectiveTarget() ?
-            FunctionType::get(valType, { valType, slotType }, false):
-            FunctionType::get(Type::getVoidTy(context), { valTypePtr, valTypePtr, slotType }, false);
+        const auto fnType =
+            FunctionType::get(valType, {valType, slotType}, false);
         const auto func = ctx.Codegen.GetModule().getOrInsertFunction(name, fnType);
 
         const auto zero = ConstantInt::get(valType, 0ULL);
@@ -194,18 +175,11 @@ public:
 
             block = call;
 
-            Value* string;
-            if (NYql::NCodegen::ETarget::Windows != ctx.Codegen.GetEffectiveTarget()) {
-                string = CallInst::Create(func, { value, slot }, "to_string", block);
-            } else {
-                const auto retPtr = new AllocaInst(valType, 0U, "ret_ptr", block);
-                new StoreInst(value, retPtr, block);
-                CallInst::Create(func, { retPtr, retPtr, slot }, "", block);
-                string = new LoadInst(valType, retPtr, "res", block);
-            }
+            const auto string = CallInst::Create(func, {value, slot}, "to_string", block);
 
-            if (Data->IsTemporaryValue())
+            if (Data->IsTemporaryValue()) {
                 ValueCleanup(Data->GetRepresentation(), value, ctx, block);
+            }
 
             result->addIncoming(string, block);
             BranchInst::Create(done, block);
@@ -213,18 +187,11 @@ public:
             block = done;
             return result;
         } else {
-            Value* string;
-            if (NYql::NCodegen::ETarget::Windows != ctx.Codegen.GetEffectiveTarget()) {
-                string = CallInst::Create(func, { value, slot }, "to_string", block);
-            } else {
-                const auto retPtr = new AllocaInst(valType, 0U, "ret_ptr", block);
-                new StoreInst(value, retPtr, block);
-                CallInst::Create(func, { retPtr, retPtr, slot}, "", block);
-                string = new LoadInst(valType, retPtr, "res", block);
-            }
+            const auto string = CallInst::Create(func, {value, slot}, "to_string", block);
 
-            if (Data->IsTemporaryValue())
+            if (Data->IsTemporaryValue()) {
                 ValueCleanup(Data->GetRepresentation(), value, ctx, block);
+            }
 
             return string;
         }
@@ -239,20 +206,26 @@ private:
     const NUdf::EDataSlot SchemeType;
 };
 
-class TAsIsWrapper : public TDecoratorCodegeneratorNode<TAsIsWrapper> {
-using TBaseComputation = TDecoratorCodegeneratorNode<TAsIsWrapper>;
+class TAsIsWrapper: public TDecoratorCodegeneratorNode<TAsIsWrapper> {
+    using TBaseComputation = TDecoratorCodegeneratorNode<TAsIsWrapper>;
+
 public:
     TAsIsWrapper(IComputationNode* optional)
         : TBaseComputation(optional)
-    {}
+    {
+    }
 
-    NUdf::TUnboxedValuePod DoCalculate(TComputationContext&, const NUdf::TUnboxedValuePod& value) const { return value; }
+    NUdf::TUnboxedValuePod DoCalculate(TComputationContext&, const NUdf::TUnboxedValuePod& value) const {
+        return value;
+    }
 #ifndef MKQL_DISABLE_CODEGEN
-    Value* DoGenerateGetValue(const TCodegenContext&, Value* value, BasicBlock*&) const { return value; }
+    Value* DoGenerateGetValue(const TCodegenContext&, Value* value, BasicBlock*&) const {
+        return value;
+    }
 #endif
 };
 
-}
+} // namespace
 
 IComputationNode* WrapToString(TCallable& callable, const TComputationNodeFactoryContext& ctx) {
     MKQL_ENSURE(callable.GetInputsCount() == 1, "Expected 1 arg");
@@ -280,5 +253,5 @@ IComputationNode* WrapToString(TCallable& callable, const TComputationNodeFactor
     }
 }
 
-}
-}
+} // namespace NMiniKQL
+} // namespace NKikimr

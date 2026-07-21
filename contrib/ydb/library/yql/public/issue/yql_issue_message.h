@@ -6,18 +6,16 @@
 
 namespace NYql {
 
-namespace NIssue {
-namespace NProto {
+namespace NIssue::NProto {
 class IssueMessage;
-}
-}
+} // namespace NIssue::NProto
 
-template<typename TIssueMessage>
+template <typename TIssueMessage>
 TIssue IssueFromMessage(const TIssueMessage& issueMessage);
-template<typename TIssueMessage>
+template <typename TIssueMessage>
 void IssuesFromMessage(const ::google::protobuf::RepeatedPtrField<TIssueMessage>& message, TIssues& issues);
 
-template<typename TIssueMessage>
+template <typename TIssueMessage>
 TString IssuesFromMessageAsString(const ::google::protobuf::RepeatedPtrField<TIssueMessage>& message) {
     TIssues issues;
     IssuesFromMessage(message, issues);
@@ -26,12 +24,9 @@ TString IssuesFromMessageAsString(const ::google::protobuf::RepeatedPtrField<TIs
 
 NIssue::NProto::IssueMessage IssueToMessage(const TIssue& topIssue);
 
-template<typename TIssueMessage>
+template <typename TIssueMessage>
 void IssueToMessage(const TIssue& topIssue, TIssueMessage* message);
-template<typename TIssueMessage>
+template <typename TIssueMessage>
 void IssuesToMessage(const TIssues& issues, ::google::protobuf::RepeatedPtrField<TIssueMessage>* message);
 
-TString IssueToBinaryMessage(const TIssue& issue);
-TIssue IssueFromBinaryMessage(const TString& binaryMessage);
-
-}
+} // namespace NYql

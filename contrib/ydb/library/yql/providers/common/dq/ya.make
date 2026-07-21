@@ -6,7 +6,7 @@ SRCS(
 )
 
 PEERDIR(
-    contrib/ydb/library/yql/dq/integration
+    contrib/ydb/library/yql/core/dq_integration
 )
 
 END()

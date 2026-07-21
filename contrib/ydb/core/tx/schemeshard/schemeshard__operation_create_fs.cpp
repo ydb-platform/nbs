@@ -1,8 +1,10 @@
-#include "schemeshard__operation_part.h"
+#include "schemeshard__op_traits.h"
 #include "schemeshard__operation_common.h"
+#include "schemeshard__operation_part.h"
 #include "schemeshard_impl.h"
 
 #include <contrib/ydb/core/base/subdomain.h>
+#include <contrib/ydb/core/filestore/core/filestore.h>
 #include <contrib/ydb/core/mind/hive/hive.h>
 
 namespace {
@@ -19,7 +21,7 @@ private:
     TString DebugHint() const override {
         return TStringBuilder()
             << "TCreateFileStore::TConfigureParts"
-            << " operationId#" << OperationId;
+            << " operationId# " << OperationId;
     }
 
 public:
@@ -130,7 +132,7 @@ private:
     TString DebugHint() const override {
         return TStringBuilder()
             << "TCreateFileStore::TPropose"
-            << " operationId#" << OperationId;
+            << " operationId# " << OperationId;
     }
 
 public:
@@ -333,7 +335,7 @@ THolder<TProposeResponse> TCreateFileStore::Propose(
 
         if (checks) {
             checks
-                .IsValidLeafName()
+                .IsValidLeafName(context.UserToken.Get())
                 .DepthLimit()
                 .PathsLimit()
                 .DirChildrenLimit()
@@ -429,7 +431,7 @@ THolder<TProposeResponse> TCreateFileStore::Propose(
     dstPath.DomainInfo()->IncPathsInside(context.SS);
     dstPath.DomainInfo()->AddInternalShards(txState, context.SS);
     dstPath.Base()->IncShardsInside(shardsToCreate);
-    parentPath.Base()->IncAliveChildren();
+    IncAliveChildrenDirect(OperationId, parentPath, context); // for correct discard of ChildrenExist prop
 
     SetState(NextState());
     return result;
@@ -443,15 +445,27 @@ TFileStoreInfo::TPtr TCreateFileStore::CreateFileStoreInfo(
     TFileStoreInfo::TPtr fs = new TFileStoreInfo();
 
     const auto& config = op.GetConfig();
+
     if (!config.HasBlockSize()) {
         status = NKikimrScheme::StatusSchemeError;
         errStr = "Block size is required";
         return nullptr;
     }
 
+    if (config.GetBlockSize() == 0) {
+        status = NKikimrScheme::StatusInvalidParameter;
+        errStr = "Non zero block size is required";
+        return nullptr;
+    }
+
     if (config.HasVersion()) {
         status = NKikimrScheme::StatusSchemeError;
         errStr = "Setting version is not allowed";
+        return nullptr;
+    }
+
+    if (!TFileStoreInfo::ValidateFileStoreConfigSpaceOverflow(config.GetBlockSize(), config.GetBlocksCount(), errStr)) {
+        status = NKikimrScheme::StatusInvalidParameter;
         return nullptr;
     }
 
@@ -520,6 +534,30 @@ TTxState& TCreateFileStore::PrepareChanges(
 }
 
 namespace NKikimr::NSchemeShard {
+
+using TTag = TSchemeTxTraits<NKikimrSchemeOp::EOperationType::ESchemeOpCreateFileStore>;
+
+namespace NOperation {
+
+template <>
+std::optional<TString> GetTargetName<TTag>(
+    TTag,
+    const TTxTransaction& tx)
+{
+    return tx.GetCreateFileStore().GetName();
+}
+
+template <>
+bool SetName<TTag>(
+    TTag,
+    TTxTransaction& tx,
+    const TString& name)
+{
+    tx.MutableCreateFileStore()->SetName(name);
+    return true;
+}
+
+} // namespace NOperation
 
 ISubOperation::TPtr CreateNewFileStore(TOperationId id, const TTxTransaction& tx) {
     return MakeSubOperation<TCreateFileStore>(id, tx);

@@ -4,12 +4,10 @@ FORK_SUBTESTS()
 
 SPLIT_FACTOR(5)
 
-IF (SANITIZER_TYPE == "thread" OR WITH_VALGRIND)
-    TIMEOUT(1800)
+IF (SANITIZER_TYPE == "thread")
     SIZE(LARGE)
-    TAG(ya:fat)
+    INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/large.inc)
 ELSE()
-    TIMEOUT(600)
     SIZE(MEDIUM)
 ENDIF()
 
@@ -20,7 +18,5 @@ PEERDIR(
 SRCS(
     keyvalue_ut_trace.cpp
 )
-
-REQUIREMENTS(ram:16)
 
 END()

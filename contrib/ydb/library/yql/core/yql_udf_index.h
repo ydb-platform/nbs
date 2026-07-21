@@ -8,6 +8,8 @@
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 
+#include <utility>
+
 namespace NYql {
 
 struct TFunctionInfo {
@@ -19,6 +21,9 @@ struct TFunctionInfo {
     TString RunConfigType;
     bool IsStrict = false;
     bool SupportsBlocks = false;
+    TVector<TString> Messages;
+    TLangVersion MinLangVer = UnknownLangVersion;
+    TLangVersion MaxLangVer = UnknownLangVersion;
 };
 
 // todo: specify whether path is frozen
@@ -31,10 +36,10 @@ struct TDownloadLink {
 
     }
 
-    TDownloadLink(bool isUrl, const TString& path, const TString& md5)
+    TDownloadLink(bool isUrl, TString path, TString md5)
         : IsUrl(isUrl)
-        , Path(path)
-        , Md5(md5)
+        , Path(std::move(path))
+        , Md5(std::move(md5))
     {
     }
 
@@ -42,11 +47,11 @@ struct TDownloadLink {
     TDownloadLink& operator=(const TDownloadLink&) = default;
 
     static TDownloadLink Url(const TString& path, const TString& md5 = "") {
-        return { true, path, md5 };
+        return { /*isUrl=*/true, path, md5 };
     }
 
     static TDownloadLink File(const TString& path, const TString& md5 = "") {
-        return { false, path, md5 };
+        return { /*isUrl=*/false, path, md5 };
     }
 
     bool operator==(const TDownloadLink& other) const {
@@ -66,16 +71,18 @@ struct TDownloadLink {
 };
 
 struct TResourceInfo : public TThrRefBase {
-    typedef TIntrusiveConstPtr<TResourceInfo> TPtr;
+    using TPtr = TIntrusiveConstPtr<TResourceInfo>;
 
     bool IsTrusted = false;
     TDownloadLink Link;
     TSet<TString> Modules;
     TMap<TString, TFunctionInfo> Functions;
+    TMap<TString, TSet<TString>> ICaseFuncNames;
 
     void SetFunctions(const TVector<TFunctionInfo>& functions) {
         for (auto& f : functions) {
             Functions.emplace(f.Name, f);
+            ICaseFuncNames[to_lower(f.Name)].insert(f.Name);
         }
     }
 };
@@ -86,7 +93,7 @@ inline bool operator<(const TResourceInfo::TPtr& p1, const TResourceInfo::TPtr& 
 
 class TUdfIndex : public TThrRefBase {
 public:
-    typedef TIntrusivePtr<TUdfIndex> TPtr;
+    using TPtr = TIntrusivePtr<TUdfIndex>;
 
 public:
     // todo: trusted resources should not be replaceble regardless of specified mode
@@ -96,12 +103,21 @@ public:
         RaiseError
     };
 
+    enum class EStatus {
+        Found,
+        NotFound,
+        Ambigious
+    };
+
 public:
     TUdfIndex();
-    bool ContainsModule(const TString& moduleName) const;
-    bool FindFunction(const TString& moduleName, const TString& functionName, TFunctionInfo& function) const;
+    void SetCaseSentiveSearch(bool caseSensitive);
+    bool CanonizeModule(TString& moduleName) const;
+    EStatus ContainsModule(const TString& moduleName) const;
+    EStatus FindFunction(const TString& moduleName, const TString& functionName, TFunctionInfo& function) const;
     TResourceInfo::TPtr FindResourceByModule(const TString& moduleName) const;
 
+    bool ContainsModuleStrict(const TString& moduleName) const;
     /*
     New resource can contain already registered module.
     In this case 'mode' will be used to resolve conflicts.
@@ -114,7 +130,7 @@ public:
     TIntrusivePtr<TUdfIndex> Clone() const;
 
 private:
-    explicit TUdfIndex(const TMap<TString, TResourceInfo::TPtr>& resources);
+    explicit TUdfIndex(const TMap<TString, TResourceInfo::TPtr>& resources, bool caseSensitive);
 
     bool ContainsAnyModule(const TSet<TString>& modules) const;
     TSet<TResourceInfo::TPtr> FindResourcesByModules(const TSet<TString>& modules) const;
@@ -123,11 +139,12 @@ private:
 private:
     // module => Resource
     TMap<TString, TResourceInfo::TPtr> Resources_;
+    bool CaseSensitive_ = true;
+    TMap<TString, TSet<TString>> ICaseModules_;
 };
 
-void LoadRichMetadataToUdfIndex(const IUdfResolver& resolver, const TVector<TString>& paths, bool isTrusted, TUdfIndex::EOverrideMode mode, TUdfIndex& registry);
-void LoadRichMetadataToUdfIndex(const IUdfResolver& resolver, const TMap<TString, TString>& pathsWithMd5, bool isTrusted, TUdfIndex::EOverrideMode mode, TUdfIndex& registry);
-void LoadRichMetadataToUdfIndex(const IUdfResolver& resolver, const TVector<TUserDataBlock>& blocks, TUdfIndex::EOverrideMode mode, TUdfIndex& registry);
-void LoadRichMetadataToUdfIndex(const IUdfResolver& resolver, const TUserDataBlock& block, TUdfIndex::EOverrideMode mode, TUdfIndex& registry);
+void LoadRichMetadataToUdfIndex(const IUdfResolver& resolver, const TVector<TString>& paths, bool isTrusted, TUdfIndex::EOverrideMode mode, TUdfIndex& registry, THoldingFileStorage& storage, NUdf::ELogLevel logLevel = NUdf::ELogLevel::Info);
+void LoadRichMetadataToUdfIndex(const IUdfResolver& resolver, const TMap<TString, TString>& pathsWithMd5, const TMap<TString, TString>& aliasToPath, bool isTrusted, TUdfIndex::EOverrideMode mode, TUdfIndex& registry, THoldingFileStorage& storage, NUdf::ELogLevel logLevel = NUdf::ELogLevel::Info);
+void LoadRichMetadataToUdfIndex(const IUdfResolver& resolver, const TUserDataBlock& block, TUdfIndex::EOverrideMode mode, TUdfIndex& registry, THoldingFileStorage& storage, NUdf::ELogLevel logLevel = NUdf::ELogLevel::Info, const TStringBuf& alias = {}) ;
 
 }

@@ -3,7 +3,7 @@
 
 #include <contrib/ydb/library/yql/dq/opt/dq_opt_stat.h>
 #include <contrib/ydb/library/yql/dq/opt/dq_opt_stat_transformer_base.h>
-#include <contrib/ydb/library/yql/dq/integration/yql_dq_integration.h>
+#include <contrib/ydb/library/yql/core/dq_integration/yql_dq_integration.h>
 #include <contrib/ydb/library/yql/core/yql_expr_optimize.h>
 
 #include <contrib/ydb/library/yql/providers/dq/expr_nodes/dqs_expr_nodes.h>

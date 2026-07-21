@@ -10,11 +10,13 @@ PEERDIR(
     library/cpp/regex/pcre
     library/cpp/string_utils/parse_size
     library/cpp/yson/node
+    library/cpp/json
     yt/cpp/mapreduce/interface
     contrib/ydb/library/yql/ast
     contrib/ydb/library/yql/utils/log
     contrib/ydb/library/yql/providers/common/codec
     contrib/ydb/library/yql/providers/common/config
+    contrib/ydb/library/yql/providers/common/provider
 )
 
 YQL_LAST_ABI_VERSION()

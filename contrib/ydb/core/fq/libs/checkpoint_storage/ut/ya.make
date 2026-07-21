@@ -1,6 +1,11 @@
 UNITTEST_FOR(contrib/ydb/core/fq/libs/checkpoint_storage)
 
-SIZE(MEDIUM)
+IF (SANITIZER_TYPE)
+    SIZE(LARGE)
+    INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/large.inc)
+ELSE()
+    SIZE(MEDIUM)
+ENDIF()
 
 FORK_SUBTESTS()
 
@@ -9,9 +14,10 @@ PEERDIR(
     library/cpp/testing/unittest
     contrib/ydb/core/fq/libs/actors/logging
     contrib/ydb/core/fq/libs/checkpoint_storage/events
+    contrib/ydb/core/testlib
     contrib/ydb/core/testlib/default
     contrib/ydb/library/security
-    contrib/ydb/public/sdk/cpp/client/ydb_table
+    contrib/ydb/public/sdk/cpp/src/client/table
 )
 
 INCLUDE(${ARCADIA_ROOT}/contrib/ydb/public/tools/ydb_recipe/recipe.inc)

@@ -1,27 +1,18 @@
-RECURSE_FOR_TESTS(
-    ut
-)
-
 LIBRARY()
 
 SRCS(
+    meta_cluster_info.cpp
     meta.cpp
     meta_cache.cpp
-    meta_cache.h
-    meta_cloud.h
-    meta_cluster.h
-    meta_clusters.h
-    meta_cp_databases.h
-    meta_cp_databases_verbose.h
-    meta_db_clusters.h
+    meta_settings.cpp
     meta_versions.cpp
-    meta_versions.h
     mvp.cpp
-    mvp.h
 )
 
 PEERDIR(
     contrib/ydb/mvp/core
+    contrib/ydb/mvp/meta/support_links
+    contrib/ydb/mvp/meta/protos
     contrib/ydb/public/api/client/yc_private/resourcemanager
     contrib/ydb/library/yql/public/udf
     contrib/ydb/library/yql/public/udf/service/exception_policy
@@ -30,6 +21,7 @@ PEERDIR(
     contrib/ydb/library/yql/core/expr_nodes
     contrib/ydb/library/aclib/protos
     library/cpp/protobuf/json
+    library/cpp/getopt
 )
 
 YQL_LAST_ABI_VERSION()
@@ -38,4 +30,9 @@ END()
 
 RECURSE(
     bin
+    support_links
+)
+
+RECURSE_FOR_TESTS(
+    ut
 )

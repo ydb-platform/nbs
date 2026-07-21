@@ -13,6 +13,7 @@ PEERDIR(
     contrib/ydb/library/yql/utils
     contrib/ydb/library/yql/providers/common/schema/parser
     contrib/ydb/library/yql/parser/pg_catalog
+    contrib/ydb/library/yql/core
 )
 
 END()

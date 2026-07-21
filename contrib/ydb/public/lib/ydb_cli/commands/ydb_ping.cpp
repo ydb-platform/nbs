@@ -1,0 +1,343 @@
+#include "ydb_ping.h"
+
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/debug/client.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/query/client.h>
+#include <contrib/ydb/public/lib/ydb_cli/common/colors.h>
+
+#include <library/cpp/getopt/small/completer.h>
+#include <library/cpp/threading/future/wait/wait.h>
+#include <library/cpp/time_provider/monotonic.h>
+
+namespace NYdb::NConsoleClient {
+
+namespace {
+
+constexpr int WARMUP_PING_COUNT = 100;
+constexpr int DEFAULT_COUNT = 100;
+constexpr int DEFAULT_INTERVAL_MS = 100;
+constexpr TCommandPing::EPingKind DEFAULT_PING_KIND = TCommandPing::EPingKind::Select1;
+
+const TVector<TString> PingKindDescriptions = {
+    "ping returns right from the GRPC layer",
+    "ping goes through GRPC layer right to the GRPC proxy and returns",
+    "ping goes until query processing layer and returns without any query execution",
+    "ping executes a very simple 'SELECT 1;' query",
+    "ping goes through GRPC layer to SchemeCache and returns",
+    "ping goes through GRPC layer to TxProxy and allocates TxId",
+    "ping goes through GRPC layer including GRPC proxy and creates dummy actors chain to process request",
+};
+
+bool CheckResult(const TStatus& status) {
+    if (status.IsSuccess()) {
+        return true;
+    }
+
+    for (const auto& issue: status.GetIssues()) {
+        Cerr << "Error: " << issue.ToString(true) << Endl;
+    }
+
+    return false;
+}
+
+void PrintPercentilesUsec(std::vector<int>& durations) {
+    std::sort(durations.begin(), durations.end());
+
+    const auto& percentiles = {0.5, 0.9, 0.95, 0.99};
+
+    for (double percentile: percentiles) {
+        size_t index = (size_t)(durations.size() * percentile);
+        std::cout << (int)(percentile * 100) << "%: "
+            << durations[index] << " us" << std::endl;
+    }
+}
+
+} // anonymous
+
+using namespace NKikimr::NOperationId;
+
+TCommandPing::TCommandPing()
+    : TYdbCommand("ping", {}, "ping YDB")
+    , Count(DEFAULT_COUNT)
+    , IntervalMs(DEFAULT_INTERVAL_MS)
+    , PingKind(DEFAULT_PING_KIND)
+{}
+
+void TCommandPing::Config(TConfig& config) {
+    TYdbCommand::Config(config);
+
+    NColorizer::TColors colors = NConsoleClient::AutoColors(Cout);
+    TStringStream pingKindsDescription;
+    pingKindsDescription << "Ping kind, available options:";
+    for (size_t i = 0; i < PingKindDescriptions.size(); ++i) {
+        EPingKind kind = static_cast<EPingKind>(i);
+
+        pingKindsDescription << "\n" << colors.ItalicOn() << kind << colors.ItalicOff()
+            << "\n    " << PingKindDescriptions[i];
+    }
+    pingKindsDescription << "\nDefault: " << PingKind << Endl;
+
+
+    config.Opts->AddLongOption(
+        'c', "count", TStringBuilder() << "stop after <count> replies, default " << DEFAULT_COUNT)
+            .RequiredArgument("COUNT").StoreResult(&Count);
+
+    config.Opts->AddLongOption(
+        'i', "interval", TStringBuilder() << "<interval> ms between pings, default " << DEFAULT_INTERVAL_MS)
+            .RequiredArgument("INTERVAL").StoreResult(&IntervalMs);
+
+    TVector<NLastGetopt::NComp::TChoice> kindChoices;
+    for (size_t i = 0; i < PingKindDescriptions.size(); ++i) {
+        EPingKind kind = static_cast<EPingKind>(i);
+        kindChoices.emplace_back(ToString(kind), PingKindDescriptions[i]);
+    }
+    config.Opts->AddLongOption(
+        'k', "kind", pingKindsDescription.Str())
+            .RequiredArgument("STRING").StoreResult(&PingKind)
+            .Completer(NLastGetopt::NComp::Choice(std::move(kindChoices)));
+}
+
+void TCommandPing::Parse(TConfig& config) {
+    TClientCommand::Parse(config);
+}
+
+int TCommandPing::Run(TConfig& config) {
+    return RunCommand(config);
+}
+
+int TCommandPing::RunCommand(TConfig& config) {
+    auto driver = CreateDriver(config);
+    NQuery::TQueryClient queryClient(driver);
+    NDebug::TDebugClient pingClient(driver);
+    SetInterruptHandlers();
+
+    std::vector<int> durations;
+    durations.reserve(Count);
+    size_t failedCount = 0;
+
+    std::vector<int> durationsTillGrpc;
+    std::vector<int> durationsAfterGrpc;
+    if (PingKind == EPingKind::PlainGrpc) {
+        durationsTillGrpc.reserve(Count);
+        durationsAfterGrpc.reserve(Count);
+    }
+
+    const TString query = "SELECT 1;";
+
+    try {
+        // here we also want the request to be compiled and cached before we
+        // measure the latency. Note, current query client impl will reuse
+        // opened session and it's enough to make a single warming request
+        if (PingKind == EPingKind::Select1) {
+            PingKqpSelect1(queryClient, query);
+        } else {
+            // in case of TLS first pings might be expensive,
+            // also we want to have connection pool "hot" before measurements
+            std::vector<NDebug::TAsyncPlainGrpcPingResult> warmupPings;
+            warmupPings.reserve(WARMUP_PING_COUNT);
+            for (int i = 0; i < WARMUP_PING_COUNT; ++i) {
+                warmupPings.emplace_back(pingClient.PingPlainGrpc(NDebug::TPlainGrpcPingSettings()));
+            }
+            NThreading::WaitAll(warmupPings).GetValueSync();
+        }
+    } catch (const std::exception& ex) {
+        std::cerr << "Warmup failed: " << ex.what() << std::endl;
+        // still try to continue and most probably display failed pings
+    }
+
+    for (int i = 0; i < Count && !IsInterrupted(); ++i) {
+        bool isOk;
+        auto start = NMonotonic::TMonotonic::Now();
+        ui64 deltaUs = 0;
+
+        if (PingKind == EPingKind::PlainGrpc) {
+            auto startWall = TInstant::Now();
+            auto result = pingClient.PingPlainGrpc(NDebug::TPlainGrpcPingSettings()).GetValueSync();
+            auto end = NMonotonic::TMonotonic::Now();
+            auto endWall = TInstant::Now();
+            deltaUs = (end - start).MicroSeconds();
+
+            isOk = CheckResult(result);
+
+            std::cout << i << (isOk ? " ok" : " failed") << " " << " in " << deltaUs << " us";
+
+            if (result.CallBackTs) {
+                auto callbackWall = TInstant::MicroSeconds(result.CallBackTs);
+                if (callbackWall >= startWall && endWall >= callbackWall) {
+                    auto tillCallbackUs = (callbackWall - startWall).MicroSeconds();
+                    auto tillClient = (endWall - callbackWall).MicroSeconds();
+                    durationsTillGrpc.push_back(tillCallbackUs);
+                    durationsAfterGrpc.push_back(tillClient);
+
+                    std::cout << ", till GRPC callback " << tillCallbackUs
+                        << " us, till this client " << tillClient << " us";
+                }
+            }
+
+            std::cout << std::endl;
+        } else {
+            switch (PingKind) {
+            case EPingKind::PlainKqp:
+                isOk = PingPlainKqp(pingClient);
+                break;
+            case EPingKind::GrpcProxy:
+                isOk = PingGrpcProxy(pingClient);
+                break;
+            case EPingKind::Select1:
+                isOk = PingKqpSelect1(queryClient, query);
+                break;
+            case EPingKind::SchemeCache:
+                isOk = PingSchemeCache(pingClient);
+                break;
+            case EPingKind::TxProxy:
+                isOk = PingTxProxy(pingClient);
+                break;
+            case EPingKind::ActorChain:
+                isOk = PingActorChain(pingClient, NDebug::TActorChainPingSettings());
+                break;
+            default:
+                std::cerr << "Unknown ping kind" << std::endl;
+                return EXIT_FAILURE;
+            }
+
+            auto end = NMonotonic::TMonotonic::Now();
+            deltaUs = (end - start).MicroSeconds();
+
+            std::cout << i << (isOk ? " ok" : " failed") << " in " << deltaUs << " us" << std::endl;
+        }
+
+        if (!isOk) {
+            ++failedCount;
+        }
+
+        durations.push_back(deltaUs);
+
+        Sleep(TDuration::MilliSeconds(IntervalMs));
+    }
+
+    std::cout << std::endl;
+    std::cout << "Total: " << durations.size() << ", failed: " << failedCount << std::endl;
+    PrintPercentilesUsec(durations);
+
+    if (!durationsTillGrpc.empty()) {
+        std::cout << std::endl;
+        std::cout << "Till server side GRPC callback:" << std::endl;
+        PrintPercentilesUsec(durationsTillGrpc);
+    }
+
+    if (!durationsAfterGrpc.empty()) {
+        std::cout << std::endl;
+        std::cout << "From GRPC callback to this client:" << std::endl;
+        PrintPercentilesUsec(durationsAfterGrpc);
+    }
+
+    return 0;
+}
+
+bool TCommandPing::PingPlainGrpc(NDebug::TDebugClient& client) {
+    auto asyncResult = client.PingPlainGrpc(NDebug::TPlainGrpcPingSettings());
+    auto result = asyncResult.GetValueSync();
+
+    return CheckResult(result);
+}
+
+bool TCommandPing::PingPlainKqp(NDebug::TDebugClient& client) {
+    auto asyncResult = client.PingKqpProxy(NDebug::TKqpProxyPingSettings());
+    auto result = asyncResult.GetValueSync();
+
+    return CheckResult(result);
+}
+
+bool TCommandPing::PingGrpcProxy(NDebug::TDebugClient& client) {
+    auto asyncResult = client.PingGrpcProxy(NDebug::TGrpcProxyPingSettings());
+    auto result = asyncResult.GetValueSync();
+
+    return CheckResult(result);
+}
+
+bool TCommandPing::PingSchemeCache(NDebug::TDebugClient& client) {
+    auto asyncResult = client.PingSchemeCache(NDebug::TSchemeCachePingSettings());
+    auto result = asyncResult.GetValueSync();
+
+    return CheckResult(result);
+}
+
+bool TCommandPing::PingTxProxy(NDebug::TDebugClient& client) {
+    auto asyncResult = client.PingTxProxy(NDebug::TTxProxyPingSettings());
+    auto result = asyncResult.GetValueSync();
+
+    return CheckResult(result);
+}
+
+bool TCommandPing::PingActorChain(NDebug::TDebugClient& client, const NDebug::TActorChainPingSettings& settings) {
+    auto asyncResult = client.PingActorChain(settings);
+    auto result = asyncResult.GetValueSync();
+
+    return CheckResult(result);
+}
+
+bool TCommandPing::PingKqpSelect1(NQuery::TQueryClient& client, const TString& query) {
+    // Single stream execution
+    NQuery::TExecuteQuerySettings settings;
+
+    // Execute query
+    settings.ExecMode(NQuery::EExecMode::Execute);
+    settings.StatsMode(NQuery::EStatsMode::None);
+
+    settings.Syntax(NQuery::ESyntax::YqlV1);
+
+    auto sessionResult = client.GetSession(NQuery::TCreateSessionSettings()).GetValueSync();
+    NStatusHelpers::ThrowOnErrorOrPrintIssues(sessionResult);
+    auto session = sessionResult.GetSession();
+
+    // Execute query without parameters
+    auto asyncResult = session.StreamExecuteQuery(
+        query,
+        NQuery::TTxControl::NoTx(),
+        settings
+    );
+
+    auto result = asyncResult.GetValueSync();
+    NStatusHelpers::ThrowOnErrorOrPrintIssues(result);
+    while (!IsInterrupted()) {
+        auto streamPart = result.ReadNext().GetValueSync();
+        if (!streamPart.IsSuccess()) {
+            TStringStream ss;
+            ss << "Select1 error: ";
+            streamPart.Out(ss);
+            ss << Endl;
+            Cerr << ss.Str();
+            if (streamPart.EOS()) {
+                return false;
+            }
+            return false;
+        }
+
+        if (streamPart.HasResultSet()) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool TCommandPing::PingKqpSelect1(NQuery::TSession& session, const TString& query) {
+    NQuery::TExecuteQuerySettings settings;
+
+    // Execute query
+    settings.ExecMode(NQuery::EExecMode::Execute);
+    settings.StatsMode(NQuery::EStatsMode::None);
+
+    settings.Syntax(NQuery::ESyntax::YqlV1);
+
+    // Execute query without parameters
+    auto asyncResult = session.ExecuteQuery(
+        query,
+        NQuery::TTxControl::NoTx(),
+        settings
+    );
+
+    auto result = asyncResult.GetValueSync();
+    return result.IsSuccess();
+}
+
+} // NYdb::NConsoleClient

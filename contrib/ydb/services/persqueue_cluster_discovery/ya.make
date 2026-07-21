@@ -13,7 +13,7 @@ PEERDIR(
     contrib/ydb/core/grpc_services
     contrib/ydb/core/mind/address_classification
     contrib/ydb/core/mon
-    contrib/ydb/core/persqueue
+    contrib/ydb/core/persqueue/public
     contrib/ydb/core/protos
     contrib/ydb/core/util
     contrib/ydb/public/api/grpc
@@ -23,6 +23,10 @@ PEERDIR(
 )
 
 END()
+
+RECURSE(
+    cluster_ordering
+)
 
 RECURSE_FOR_TESTS(
     ut

@@ -8,6 +8,7 @@ PROVIDES(
 PEERDIR(
     contrib/ydb/library/yql/parser/pg_wrapper/interface
     contrib/ydb/library/yql/minikql
+    contrib/ydb/library/yql/sql/settings
 )
 
 SRCS(

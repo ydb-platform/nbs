@@ -16,11 +16,15 @@ SET(ORIG_SOURCES
     mkql_block_agg_sum.cpp
     mkql_block_coalesce.cpp
     mkql_block_container.cpp
+    mkql_block_decimal.cpp
     mkql_block_exists.cpp
     mkql_block_getelem.cpp
+    mkql_block_guess.cpp
+    mkql_block_way.cpp
     mkql_block_if.cpp
     mkql_block_just.cpp
     mkql_block_logical.cpp
+    mkql_block_map_join.cpp
     mkql_block_compress.cpp
     mkql_block_func.cpp
     mkql_block_skiptake.cpp
@@ -40,10 +44,12 @@ SET(ORIG_SOURCES
     mkql_decimal_mul.cpp
     mkql_dictitems.cpp
     mkql_discard.cpp
+    mkql_dynamic_variant.cpp
     mkql_element.cpp
     mkql_ensure.cpp
     mkql_enumerate.cpp
     mkql_exists.cpp
+    mkql_expand_map.cpp
     mkql_extend.cpp
     mkql_factory.cpp
     mkql_filter.cpp
@@ -70,22 +76,31 @@ SET(ORIG_SOURCES
     mkql_join_dict.cpp
     mkql_lazy_list.cpp
     mkql_length.cpp
+    mkql_linear.cpp
     mkql_listfromrange.cpp
+    mkql_list_join.cpp
     mkql_logical.cpp
     mkql_lookup.cpp
     mkql_map.cpp
     mkql_mapnext.cpp
     mkql_map_join.cpp
     mkql_match_recognize.cpp
+    mkql_match_recognize_list.cpp
+    mkql_match_recognize_measure_arg.cpp
+    mkql_match_recognize_rows_formatter.cpp
     mkql_multihopping.cpp
     mkql_multimap.cpp
+    mkql_mutdict.cpp
+    mkql_narrow_map.cpp
     mkql_next_value.cpp
     mkql_nop.cpp
     mkql_now.cpp
+    mkql_runtime_feature.cpp
     mkql_null.cpp
     mkql_pickle.cpp
     mkql_prepend.cpp
     mkql_queue.cpp
+    mkql_window_frames_collector_params_deserializer.cpp
     mkql_random.cpp
     mkql_range.cpp
     mkql_reduce.cpp
@@ -128,6 +143,8 @@ SET(ORIG_SOURCES
     mkql_wide_filter.cpp
     mkql_wide_map.cpp
     mkql_wide_top_sort.cpp
+    mkql_window_range_pg_caller.cpp
+    mkql_window_range_pg_caller.h
     mkql_withcontext.cpp
     mkql_zip.cpp
 )
@@ -141,7 +158,7 @@ COPY(
     AUTO
     FROM ${ORIG_SRC_DIR}
     ${ORIG_SOURCES}
-    OUTPUT_INCLUDES 
+    OUTPUT_INCLUDES
     ${BINDIR}/contrib/ydb/library/yql/minikql/computation/mkql_computation_node_codegen.h
     ${BINDIR}/contrib/ydb/library/yql/minikql/computation/mkql_block_impl_codegen.h
     ${BINDIR}/contrib/ydb/library/yql/minikql/computation/mkql_llvm_base.h
@@ -152,13 +169,15 @@ COPY(
 
 PEERDIR(
     contrib/libs/apache/arrow
-    contrib/ydb/library/binary_json
+    contrib/libs/xxhash
+    contrib/ydb/library/yql/types/binary_json
     contrib/ydb/library/yql/minikql
     contrib/ydb/library/yql/minikql/arrow
+    contrib/ydb/library/yql/minikql/runtime_settings
+    contrib/ydb/library/yql/core/sql_types
     contrib/ydb/library/yql/public/udf/arrow
     contrib/ydb/library/yql/parser/pg_wrapper/interface
     contrib/ydb/library/yql/utils
-    contrib/ydb/library/actors/core
     contrib/ydb/library/yql/public/issue/protos
 )
 

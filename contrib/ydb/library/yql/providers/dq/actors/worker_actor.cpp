@@ -2,6 +2,7 @@
 
 #include <contrib/ydb/library/yql/dq/actors/dq.h>
 #include <contrib/ydb/library/yql/dq/actors/compute/dq_task_runner_exec_ctx.h>
+#include <contrib/ydb/library/yql/dq/common/rope_over_buffer.h>
 #include <contrib/ydb/library/yql/providers/dq/common/yql_dq_common.h>
 #include <contrib/ydb/library/yql/providers/dq/task_runner_actor/task_runner_actor.h>
 #include <contrib/ydb/library/yql/providers/dq/runtime/runtime_data.h>
@@ -12,6 +13,7 @@
 
 #include <contrib/ydb/library/yql/minikql/mkql_string_util.h>
 #include <contrib/ydb/library/yql/minikql/mkql_program_builder.h>
+#include <contrib/ydb/library/yql/minikql/runtime_settings/runtime_settings_serialization.h>
 
 #include <contrib/ydb/library/actors/core/event_pb.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
@@ -249,6 +251,7 @@ private:
         Y_ABORT_UNLESS(!Executer);
         Executer = ev->Sender;
         Task = ev->Get()->Record.GetTask();
+        RuntimeSettings = NYql::DeserializeRuntimeSettingsFromProto(Task.GetProgram().GetRuntimeSettings());
 
         Yql::DqsProto::TTaskMeta taskMeta;
         Task.GetMeta().UnpackTo(&taskMeta);
@@ -308,6 +311,7 @@ private:
                         auto& source = SourcesMap[inputId];
                         source.TypeEnv = const_cast<NKikimr::NMiniKQL::TTypeEnvironment*>(&typeEnv);
                         source.ProgramBuilder.emplace(*source.TypeEnv, *FunctionRegistry);
+                        Y_ENSURE(RuntimeSettings, "RuntimeSettings is not set");
                         std::tie(source.Source, source.Actor) =
                             AsyncIoFactory->CreateDqSource(
                             IDqAsyncIoFactory::TSourceArguments {
@@ -322,7 +326,8 @@ private:
                                 .TypeEnv = typeEnv,
                                 .HolderFactory = holderFactory,
                                 .ProgramBuilder = *source.ProgramBuilder,
-                                .MemoryQuotaManager = MemoryQuotaManager
+                                .MemoryQuotaManager = MemoryQuotaManager,
+                                .DatumValidationMode = RuntimeSettings->DatumValidation.Get()
                             });
                         RegisterLocalChild(source.Actor);
                     } else {
@@ -424,8 +429,8 @@ private:
                 TDqSerializedBatch& batch = ev->Get()->Data.front();
                 response.MutableData()->Swap(&batch.Proto);
                 response.MutableData()->ClearPayloadId();
-                if (!batch.Payload.IsEmpty()) {
-                    response.MutableData()->SetPayloadId(responseMsg->AddPayload(std::move(batch.Payload)));
+                if (!batch.Payload.Empty()) {
+                    response.MutableData()->SetPayloadId(responseMsg->AddPayload(MakeReadOnlyRope(std::move(batch.Payload))));
                 }
             }
 
@@ -470,7 +475,7 @@ private:
         } else {
             TDqSerializedBatch data;
             if (response.GetData().HasPayloadId()) {
-                data.Payload = ev->Get()->GetPayload(response.GetData().GetPayloadId());
+                data.Payload = MakeChunkedBuffer(ev->Get()->GetPayload(response.GetData().GetPayloadId()));
             }
             data.Proto = std::move(*response.MutableData());
             data.Proto.ClearPayloadId();
@@ -567,11 +572,11 @@ private:
             return;
         }
 
-        THashSet<ui32> inputChannels;
+        TVector<ui32> inputChannels;
         for (auto& input : InputMap) {
             auto& channel = input.second;
             if (!channel.Requested && !channel.Finished) {
-                inputChannels.insert(channel.ChannelId);
+                inputChannels.push_back(channel.ChannelId);
             }
         }
 
@@ -790,6 +795,7 @@ private:
     TActorId TaskRunnerActor;
 
     NDqProto::TDqTask Task;
+    TRuntimeSettings::TConstPtr RuntimeSettings;
     ui64 StageId = 0;
     bool TaskRunnerPrepared = false;
 

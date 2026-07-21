@@ -2,12 +2,6 @@ UNITTEST_FOR(contrib/ydb/core/tx/schemeshard)
 
 FORK_SUBTESTS()
 
-IF (WITH_VALGRIND)
-    SPLIT_FACTOR(40)
-ENDIF()
-
-TIMEOUT(600)
-
 SIZE(MEDIUM)
 
 PEERDIR(

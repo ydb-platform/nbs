@@ -1,6 +1,10 @@
 #include "columnshard.h"
-#include <contrib/ydb/core/testlib/cs_helper.h>
+
 #include <contrib/ydb/core/base/tablet_pipecache.h>
+#include <contrib/ydb/core/formats/arrow/serializer/native.h>
+#include <contrib/ydb/core/formats/arrow/serializer/parsing.h>
+#include <contrib/ydb/core/testlib/cs_helper.h>
+#include <contrib/ydb/core/tx/columnshard/engines/scheme/objects_cache.h>
 
 extern "C" {
 #include <contrib/ydb/library/yql/parser/pg_wrapper/postgresql/src/include/catalog/pg_type_d.h>
@@ -8,27 +12,6 @@ extern "C" {
 
 namespace NKikimr {
 namespace NKqp {
-
-    TString GetConfigProtoWithName(const TString & tierName) {
-        return TStringBuilder() << "Name : \"" << tierName << "\"\n" <<
-        R"(
-            ObjectStorage : {
-                Endpoint: "fake"
-                Bucket: "fake"
-                SecretableAccessKey: {
-                    Value: {
-                        Data: "secretAccessKey"
-                    }
-                }
-                SecretableSecretKey: {
-                    Value: {
-                        Data: "fakeSecret"
-                    }
-                }
-            }
-        )";
-    }
-
     using namespace NYdb;
 
     TTestHelper::TTestHelper(const TKikimrSettings& settings) {
@@ -36,10 +19,24 @@ namespace NKqp {
         if (!kikimrSettings.FeatureFlags.HasEnableTieringInColumnShard()) {
             kikimrSettings.SetEnableTieringInColumnShard(true);
         }
+        if (!kikimrSettings.FeatureFlags.HasEnableExternalDataSources()) {
+            kikimrSettings.SetEnableExternalDataSources(true);
+            kikimrSettings.AppConfig.MutableQueryServiceConfig()->AddAvailableExternalDataSources("ObjectStorage");
+        }
+
+        if (!kikimrSettings.AppConfig.GetColumnShardConfig().HasStatistics()) {
+            kikimrSettings.AppConfig.MutableColumnShardConfig()->MutableStatistics()->SetReportBaseStatisticsPeriodMs(1000);
+            kikimrSettings.AppConfig.MutableColumnShardConfig()->MutableStatistics()->SetReportExecutorStatisticsPeriodMs(1000);
+        }
 
         Kikimr = std::make_unique<TKikimrRunner>(kikimrSettings);
-        TableClient = std::make_unique<NYdb::NTable::TTableClient>(Kikimr->GetTableClient());
+        TableClient =
+            std::make_unique<NYdb::NTable::TTableClient>(Kikimr->GetTableClient(NYdb::NTable::TClientSettings().AuthToken("root@builtin")));
+        QueryClient =
+            std::make_unique<NYdb::NQuery::TQueryClient>(Kikimr->GetQueryClient(NYdb::NQuery::TClientSettings().AuthToken("root@builtin")));
         Session = std::make_unique<NYdb::NTable::TSession>(TableClient->CreateSession().GetValueSync().GetSession());
+
+        NOlap::TSchemaCachesManager::DropCaches();
     }
 
     NKikimr::NKqp::TKikimrRunner& TTestHelper::GetKikimr() {
@@ -60,34 +57,36 @@ namespace NKqp {
         UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), expectedStatus, result.GetIssues().ToString());
     }
 
+    void TTestHelper::CreateTableQuery(const TColumnTableBase& table, const EStatus expectedStatus) {
+        std::cerr << (table.BuildQuery()) << std::endl;
+        auto it = QueryClient->ExecuteQuery(table.BuildQuery(), NYdb::NQuery::TTxControl::NoTx()).GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL_C(it.GetStatus(), expectedStatus, it.GetIssues().ToString());
+    }
+
     void TTestHelper::CreateTier(const TString& tierName) {
-        auto result = GetSession().ExecuteSchemeQuery("CREATE OBJECT " + tierName + " (TYPE TIER) WITH tierConfig = `" + GetConfigProtoWithName(tierName) + "`").GetValueSync();
+        auto result = GetSession().ExecuteSchemeQuery(R"(
+            UPSERT OBJECT `accessKey` (TYPE SECRET) WITH (value = `secretAccessKey`);
+            UPSERT OBJECT `secretKey` (TYPE SECRET) WITH (value = `fakeSecret`);
+            CREATE EXTERNAL DATA SOURCE `)" + tierName + R"(` WITH (
+                SOURCE_TYPE="ObjectStorage",
+                LOCATION="http://fake.fake/olap-)" + tierName + R"(",
+                AUTH_METHOD="AWS",
+                AWS_ACCESS_KEY_ID_SECRET_NAME="accessKey",
+                AWS_SECRET_ACCESS_KEY_SECRET_NAME="secretKey",
+                AWS_REGION="ru-central1"
+        );
+        )").GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
     }
 
-    TString TTestHelper::CreateTieringRule(const TString& tierName, const TString& columnName) {
-        const TString ruleName = tierName + "_" + columnName;
-        const TString configTieringStr = TStringBuilder() <<  R"({
-            "rules" : [
-                {
-                    "tierName" : ")" << tierName << R"(",
-                    "durationForEvict" : "10d"
-                }
-            ]
-        })";
-        auto result = GetSession().ExecuteSchemeQuery("CREATE OBJECT IF NOT EXISTS " + ruleName + " (TYPE TIERING_RULE) WITH (defaultColumn = " + columnName + ", description = `" + configTieringStr + "`)").GetValueSync();
-        UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
-        return ruleName;
-    }
-
-    void TTestHelper::SetTiering(const TString& tableName, const TString& ruleName) {
-        auto alterQuery = TStringBuilder() << "ALTER TABLE `" << tableName <<  "` SET (TIERING = '" << ruleName << "')";
+    void TTestHelper::SetTiering(const TString& tableName, const TString& tierName, const TString& columnName) {
+        auto alterQuery = TStringBuilder() << "ALTER TABLE `" << tableName <<  "` SET TTL Interval(\"P10D\") TO EXTERNAL DATA SOURCE `" << tierName << "` ON `" << columnName << "`;";
         auto result = GetSession().ExecuteSchemeQuery(alterQuery).GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
     }
 
     void TTestHelper::ResetTiering(const TString& tableName) {
-        auto alterQuery = TStringBuilder() << "ALTER TABLE `" << tableName <<  "` RESET (TIERING)";
+        auto alterQuery = TStringBuilder() << "ALTER TABLE `" << tableName <<  "` RESET (TTL)";
         auto result = GetSession().ExecuteSchemeQuery(alterQuery).GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
     }
@@ -97,15 +96,14 @@ namespace NKqp {
         UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
     }
 
-    void TTestHelper::BulkUpsert(const TColumnTable& table, TTestHelper::TUpdatesBuilder& updates, const Ydb::StatusIds_StatusCode& opStatus /*= Ydb::StatusIds::SUCCESS*/) {
-        Y_UNUSED(opStatus);
+    void TTestHelper::BulkUpsert(const TColumnTable& table, TTestHelper::TUpdatesBuilder& updates,
+        const Ydb::StatusIds_StatusCode& opStatus /*= Ydb::StatusIds::SUCCESS*/, const TString& expectedIssuePrefix /*= ""*/) {
         NKikimr::Tests::NCS::THelper helper(GetKikimr().GetTestServer());
         auto batch = updates.BuildArrow();
-        helper.SendDataViaActorSystem(table.GetName(), batch, opStatus);
+        helper.SendDataViaActorSystem(table.GetName(), batch, opStatus, expectedIssuePrefix);
     }
 
     void TTestHelper::BulkUpsert(const TColumnTable& table, std::shared_ptr<arrow::RecordBatch> batch, const Ydb::StatusIds_StatusCode& opStatus /*= Ydb::StatusIds::SUCCESS*/) {
-        Y_UNUSED(opStatus);
         NKikimr::Tests::NCS::THelper helper(GetKikimr().GetTestServer());
         helper.SendDataViaActorSystem(table.GetName(), batch, opStatus);
     }
@@ -117,6 +115,20 @@ namespace NKqp {
         if (opStatus == EStatus::SUCCESS) {
             UNIT_ASSERT_NO_DIFF(ReformatYson(result), ReformatYson(expected));
         }
+    }
+
+    void TTestHelper::ReadDataExecQuery(const TString& query, const TString& expected, const EStatus opStatus /*= EStatus::SUCCESS*/) const {
+        auto it = QueryClient->StreamExecuteQuery(query, NYdb::NQuery::TTxControl::NoTx()).GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL_C(it.GetStatus(), EStatus::SUCCESS, it.GetIssues().ToString());
+        TString result = StreamResultToYson(it, false, opStatus, "");
+        if (opStatus == EStatus::SUCCESS) {
+            UNIT_ASSERT_NO_DIFF(ReformatYson(result), ReformatYson(expected));
+        }
+    }
+
+    void TTestHelper::ExecuteQuery(const TString& query) const {
+        auto it = QueryClient->ExecuteQuery(query, NYdb::NQuery::TTxControl::NoTx()).GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL_C(it.GetStatus(), EStatus::SUCCESS, it.GetIssues().ToString()); // Means stream successfully get
     }
 
     void TTestHelper::RebootTablets(const TString& tableName) {
@@ -162,6 +174,21 @@ namespace NKqp {
         if (!NullableFlag) {
             str << " NOT NULL";
         }
+        if (DictionaryEncodingFlag) {
+            str << " ENCODING(DICT)";
+        }
+        if (ColumnCompression) {
+            str << " COMPRESSION(";
+            bool haveSome = false;
+            for (const auto& [key, value] : *ColumnCompression) {
+                if (haveSome) {
+                    str << ',';
+                }
+                str << key << '=' << value;
+                haveSome = true;
+            }
+            str << ")";
+        }
         return str;
     }
 
@@ -170,21 +197,34 @@ namespace NKqp {
         return *this;
     }
 
+    TTestHelper::TColumnSchema& TTestHelper::TColumnSchema::SetCompression() {
+        ColumnCompression = std::map<TString, TString>();
+        return *this;
+    }
+
+    TTestHelper::TColumnSchema& TTestHelper::TColumnSchema::SetCompressionSetting(const TString& key, const TString& value) {
+        if (!ColumnCompression) {
+            ColumnCompression = std::map<TString, TString>();
+        }
+        (*ColumnCompression)[key] = value;
+        return *this;
+    }
+
     TString TTestHelper::TColumnTableBase::BuildQuery() const {
         auto str = TStringBuilder() << "CREATE " << GetObjectType() << " `" << Name << "`";
-        str << " (" << BuildColumnsStr(Schema) << ", PRIMARY KEY (" << JoinStrings(PrimaryKey, ", ") << "))";
+        str << " (" << BuildColumnsStr(Schema) << ", PRIMARY KEY (" << JoinStrings(PrimaryKey, ", ") << ")";
+        str << ")";
         if (!Sharding.empty()) {
             str << " PARTITION BY HASH(" << JoinStrings(Sharding, ", ") << ")";
         }
         str << " WITH (STORE = COLUMN";
-        str << ", AUTO_PARTITIONING_MIN_PARTITIONS_COUNT =" << MinPartitionsCount;
+        str << ", AUTO_PARTITIONING_MIN_PARTITIONS_COUNT = " << MinPartitionsCount;
         if (TTLConf) {
             str << ", TTL = " << TTLConf->second << " ON " << TTLConf->first;
         }
         str << ");";
         return str;
     }
-
 
     std::shared_ptr<arrow::Schema> TTestHelper::TColumnTableBase::GetArrowSchema(const TVector<TColumnSchema>& columns) {
         std::vector<std::shared_ptr<arrow::Field>> result;
@@ -193,7 +233,6 @@ namespace NKqp {
         }
         return std::make_shared<arrow::Schema>(result);
     }
-
 
     TString TTestHelper::TColumnTableBase::BuildColumnsStr(const TVector<TColumnSchema>& clumns) const {
         TVector<TString> columnStr;
@@ -206,7 +245,7 @@ namespace NKqp {
     std::shared_ptr<arrow::Field> TTestHelper::TColumnTableBase::BuildField(const TString name, const NScheme::TTypeInfo& typeInfo, bool nullable) const {
         switch (typeInfo.GetTypeId()) {
         case NScheme::NTypeIds::Bool:
-            return arrow::field(name, arrow::boolean(), nullable);
+            return arrow::field(name, arrow::uint8(), nullable);
         case NScheme::NTypeIds::Int8:
             return arrow::field(name, arrow::int8(), nullable);
         case NScheme::NTypeIds::Int16:
@@ -242,7 +281,7 @@ namespace NKqp {
         case NScheme::NTypeIds::Timestamp:
             return arrow::field(name, arrow::timestamp(arrow::TimeUnit::TimeUnit::MICRO), nullable);
         case NScheme::NTypeIds::Interval:
-            return arrow::field(name, arrow::duration(arrow::TimeUnit::TimeUnit::MICRO), nullable);
+            return arrow::field(name, arrow::int64(), nullable);
         case NScheme::NTypeIds::Date32:
             return arrow::field(name, arrow::int32(), nullable);
         case NScheme::NTypeIds::Datetime64:
@@ -251,8 +290,11 @@ namespace NKqp {
             return arrow::field(name, arrow::int64(), nullable);
         case NScheme::NTypeIds::JsonDocument:
             return arrow::field(name, arrow::binary(), nullable);
+        case NScheme::NTypeIds::DyNumber:
+            return arrow::field(name, arrow::binary(), nullable);
         case NScheme::NTypeIds::Decimal:
-            return arrow::field(name, arrow::decimal(typeInfo.GetDecimalType().GetPrecision(), typeInfo.GetDecimalType().GetScale()));
+        case NScheme::NTypeIds::Uuid:
+            return arrow::field(name, std::make_shared<arrow::FixedSizeBinaryType>(NScheme::FSB_SIZE), nullable);
         case NScheme::NTypeIds::Pg:
             switch (NPg::PgTypeIdFromTypeDesc(typeInfo.GetPgTypeDesc())) {
                 case INT2OID:

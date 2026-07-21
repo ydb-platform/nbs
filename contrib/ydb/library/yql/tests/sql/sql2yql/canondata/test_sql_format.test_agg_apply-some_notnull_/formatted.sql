@@ -1,0 +1,10 @@
+PRAGMA EmitAggApply;
+
+SELECT
+    some(key)
+FROM (
+    VALUES
+        (1)
+) AS a (
+    key
+);

@@ -4,13 +4,10 @@ FORK_SUBTESTS()
 
 SPLIT_FACTOR(2)
 
-IF (SANITIZER_TYPE == "thread" OR WITH_VALGRIND)
-    TIMEOUT(3600)
+IF (SANITIZER_TYPE == "thread")
     SIZE(LARGE)
-    TAG(ya:fat)
-    REQUIREMENTS(ram:16)
+    INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/large.inc)
 ELSE()
-    TIMEOUT(600)
     SIZE(MEDIUM)
 ENDIF()
 
@@ -24,7 +21,7 @@ PEERDIR(
     contrib/ydb/core/tx
     contrib/ydb/library/yql/public/udf/service/exception_policy
     contrib/ydb/public/lib/yson_value
-    contrib/ydb/public/sdk/cpp/client/ydb_result
+    contrib/ydb/public/sdk/cpp/src/client/result
 )
 
 YQL_LAST_ABI_VERSION()
@@ -34,7 +31,5 @@ SRCS(
     datashard_ut_common_pq.h
     datashard_ut_volatile.cpp
 )
-
-REQUIREMENTS(ram:32)
 
 END()

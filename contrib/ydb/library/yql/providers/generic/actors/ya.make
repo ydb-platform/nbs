@@ -1,10 +1,10 @@
 LIBRARY()
 
 SRCS(
-    yql_generic_read_actor.cpp
+    yql_generic_credentials_provider.cpp
     yql_generic_lookup_actor.cpp
     yql_generic_provider_factories.cpp
-    yql_generic_token_provider.cpp
+    yql_generic_read_actor.cpp
 )
 
 PEERDIR(
@@ -15,7 +15,7 @@ PEERDIR(
     contrib/ydb/library/yql/providers/generic/proto
     contrib/ydb/library/yql/public/types
     contrib/ydb/library/yql/providers/generic/connector/libcpp
-    contrib/ydb/public/sdk/cpp/client/ydb_types/credentials
+    contrib/ydb/public/sdk/cpp/src/client/types/credentials
 )
 
 YQL_LAST_ABI_VERSION()

@@ -9,37 +9,43 @@ namespace {
 template <typename T>
 bool GenericTryFloatFromString(TStringBuf buf, T& value) {
     value = 0;
-    if (!buf.size() || !TryFromString(buf.data(), buf.size(), value)) {
-        const char* ptr = buf.data();
-        ui32 size = buf.size();
-        char sign = '+';
-        if (*ptr == '+' || *ptr == '-') {
-            sign = *ptr;
-            ++ptr;
-            --size;
-        }
+    if (buf.empty()) {
+        return false;
+    }
 
-        if (size != 3) {
-            return false;
-        }
+    if (TryFromString(buf.data(), buf.size(), value)) {
+        return true;
+    }
 
-        // NaN or Inf (ignoring case)
-        if (AsciiToUpper(ptr[0]) == 'N' && AsciiToUpper(ptr[1]) == 'A' && AsciiToUpper(ptr[2]) == 'N') {
-            value = std::numeric_limits<T>::quiet_NaN();
-        } else if (AsciiToUpper(ptr[0]) == 'I' && AsciiToUpper(ptr[1]) == 'N' && AsciiToUpper(ptr[2]) == 'F') {
-            value = std::numeric_limits<T>::infinity();
-        } else {
-            return false;
-        }
+    const char* ptr = buf.data();
+    ui32 size = buf.size();
+    char sign = '+';
+    if (*ptr == '+' || *ptr == '-') {
+        sign = *ptr;
+        ++ptr;
+        --size;
+    }
 
-        if (sign == '-') {
-            value = -value;
-        }
+    if (size != 3) {
+        return false;
+    }
+
+    // NaN or Inf (ignoring case)
+    if (AsciiToUpper(ptr[0]) == 'N' && AsciiToUpper(ptr[1]) == 'A' && AsciiToUpper(ptr[2]) == 'N') {
+        value = std::numeric_limits<T>::quiet_NaN();
+    } else if (AsciiToUpper(ptr[0]) == 'I' && AsciiToUpper(ptr[1]) == 'N' && AsciiToUpper(ptr[2]) == 'F') {
+        value = std::numeric_limits<T>::infinity();
+    } else {
+        return false;
+    }
+
+    if (sign == '-') {
+        value = -value;
     }
 
     return true;
 }
-}
+} // namespace
 
 float FloatFromString(TStringBuf buf) {
     float result = 0;
@@ -67,4 +73,4 @@ bool TryDoubleFromString(TStringBuf buf, double& value) {
     return GenericTryFloatFromString(buf, value);
 }
 
-}
+} // namespace NYql

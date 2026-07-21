@@ -1,26 +1,30 @@
 #include "dq_pq_write_actor.h"
 #include "probes.h"
 
-#include <contrib/ydb/library/yql/dq/actors/compute/dq_compute_actor_async_io.h>
-#include <contrib/ydb/library/yql/dq/actors/protos/dq_events.pb.h>
-#include <contrib/ydb/library/yql/dq/common/dq_common.h>
-#include <contrib/ydb/library/yql/dq/actors/compute/dq_checkpoints_states.h>
-
-#include <contrib/ydb/library/yql/utils/log/log.h>
-#include <contrib/ydb/library/yql/minikql/comp_nodes/mkql_saveload.h>
-#include <contrib/ydb/library/yql/minikql/mkql_alloc.h>
-#include <contrib/ydb/library/yql/minikql/mkql_string_util.h>
-#include <contrib/ydb/library/yql/providers/pq/proto/dq_io_state.pb.h>
-#include <contrib/ydb/library/yql/utils/yql_panic.h>
-
-#include <contrib/ydb/public/sdk/cpp/client/ydb_topic/topic.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_types/credentials/credentials.h>
+#include <contrib/ydb/core/base/appdata_fwd.h>
 
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/event_local.h>
 #include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/log.h>
+#include <contrib/ydb/library/yql/dq/actors/compute/dq_checkpoints_states.h>
+#include <contrib/ydb/library/yql/dq/actors/compute/dq_compute_actor_async_io.h>
+#include <contrib/ydb/library/yql/dq/actors/protos/dq_events.pb.h>
+#include <contrib/ydb/library/yql/dq/common/dq_common.h>
+#include <contrib/ydb/library/yql/providers/pq/common/pq_events_processor.h>
+#include <contrib/ydb/library/yql/providers/pq/proto/dq_io_state.pb.h>
+#include <contrib/ydb/library/yverify_stream/yverify_stream.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/topic/client.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/federated_topic/federated_topic.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/types/credentials/credentials.h>
+
+#include <contrib/ydb/library/yql/minikql/comp_nodes/mkql_saveload.h>
+#include <contrib/ydb/library/yql/minikql/mkql_alloc.h>
+#include <contrib/ydb/library/yql/minikql/mkql_string_util.h>
+#include <contrib/ydb/library/yql/utils/log/log.h>
+#include <contrib/ydb/library/yql/utils/yql_panic.h>
+
 #include <library/cpp/lwtrace/mon/mon_lwtrace.h>
 
 #include <util/generic/algorithm.h>
@@ -77,6 +81,7 @@ struct TEvPrivate {
         EvBegin = EventSpaceBegin(NActors::TEvents::ES_PRIVATE),
 
         EvPqEventsReady = EvBegin,
+        EvExecuteTopicEvent,
 
         EvEnd
     };
@@ -86,27 +91,50 @@ struct TEvPrivate {
     // Events
 
     struct TEvPqEventsReady : public TEventLocal<TEvPqEventsReady, EvPqEventsReady> {};
+
+    struct TEvExecuteTopicEvent : public TTopicEventBase<TEvExecuteTopicEvent, EvExecuteTopicEvent> {
+        using TTopicEventBase::TTopicEventBase;
+    };
 };
 
-} // namespace
+TString MakeStringForLog(const NDqProto::TCheckpoint& checkpoint) {
+    return TStringBuilder() << "[Checkpoint " << checkpoint.GetGeneration() << "." << checkpoint.GetId() << "] ";
+}
 
-class TDqPqWriteActor : public NActors::TActor<TDqPqWriteActor>, public IDqComputeActorAsyncOutput {
+} // anonymous namespace
+
+class TDqPqWriteActor : public NActors::TActor<TDqPqWriteActor>, public IDqComputeActorAsyncOutput, TTopicEventProcessor<TEvPrivate::TEvExecuteTopicEvent> {
     struct TMetrics {
-        TMetrics(const TTxId& txId, ui64 taskId, const ::NMonitoring::TDynamicCounterPtr& counters)
+        TMetrics(
+            const TTxId& txId,
+            ui64 taskId,
+            const ::NMonitoring::TDynamicCounterPtr& counters,
+            bool enableStreamingQueriesCounters,
+            bool enableCountersPerTask = false)
             : TxId(std::visit([](auto arg) { return ToString(arg); }, txId))
             , Counters(counters) {
-            SubGroup = Counters->GetSubgroup("sink", "PqSink");
-            auto sink = SubGroup->GetSubgroup("tx_id", TxId);
-            auto task = sink->GetSubgroup("task_id", ToString(taskId));
+            if (Counters) {
+                SubGroup = Counters->GetSubgroup("sink", "PqSink");
+            } else {
+                SubGroup = MakeIntrusive<::NMonitoring::TDynamicCounters>();
+            }
+            auto task = SubGroup;
+            if (enableStreamingQueriesCounters) {
+                task = task->GetSubgroup("tx_id", TxId);
+                if (enableCountersPerTask) {
+                    task = task->GetSubgroup("task_id", ToString(taskId));
+                }
+            }
             LastAckLatency = task->GetCounter("LastAckLatencyMs");
             InFlyCheckpoints = task->GetCounter("InFlyCheckpoints");
             InFlyData = task->GetCounter("InFlyData");
             AlreadyWritten = task->GetCounter("AlreadyWritten");
             FirstContinuationTokenMs = task->GetCounter("FirstContinuationTokenMs");
+            EgressDataRate = task->GetCounter("EgressDataRate", true);
         }
 
         ~TMetrics() {
-            SubGroup->RemoveSubgroup("id", TxId);
+            SubGroup->RemoveSubgroup("tx_id", TxId);
         }
 
         TString TxId;
@@ -117,16 +145,19 @@ class TDqPqWriteActor : public NActors::TActor<TDqPqWriteActor>, public IDqCompu
         ::NMonitoring::TDynamicCounters::TCounterPtr InFlyData;
         ::NMonitoring::TDynamicCounters::TCounterPtr AlreadyWritten;
         ::NMonitoring::TDynamicCounters::TCounterPtr FirstContinuationTokenMs;
+        ::NMonitoring::TDynamicCounters::TCounterPtr EgressDataRate;
     };
 
     struct TAckInfo {
-        TAckInfo(i64 messageSize, const TInstant& startTime)
+        TAckInfo(i64 messageSize, const TInstant& startTime, ui64 seqNo)
             : MessageSize(messageSize)
             , StartTime(startTime)
+            , SeqNo(seqNo)
         {}
 
         i64 MessageSize = 0;
         TInstant StartTime;
+        ui64 SeqNo = 0;
     };
 
 public:
@@ -140,18 +171,23 @@ public:
         std::shared_ptr<NYdb::ICredentialsProviderFactory> credentialsProviderFactory,
         IDqComputeActorAsyncOutput::ICallbacks* callbacks,
         const ::NMonitoring::TDynamicCounterPtr& counters,
-        i64 freeSpace)
+        i64 freeSpace,
+        const IPqStaticGateway::TPtr& pqGateway,
+        bool enableStreamingQueriesCounters,
+        bool enableStreamingQueriesPqSinkDeduplicationFeatureFlag)
         : TActor<TDqPqWriteActor>(&TDqPqWriteActor::StateFunc)
         , OutputIndex(outputIndex)
         , TxId(txId)
-        , Metrics(txId, taskId, counters)
+        , Metrics(txId, taskId, counters, enableStreamingQueriesCounters)
         , SinkParams(std::move(sinkParams))
         , Driver(std::move(driver))
         , CredentialsProviderFactory(credentialsProviderFactory)
         , Callbacks(callbacks)
         , LogPrefix(TStringBuilder() << "SelfId: " << this->SelfId() << ", TxId: " << TxId << ", TaskId: " << taskId << ", PQ sink. ")
         , FreeSpace(freeSpace)
-        , TopicClient(Driver, GetTopicClientSettings())
+        , PqGateway(pqGateway)
+        , TaskId(taskId)
+        , EnableDeduplication(enableStreamingQueriesPqSinkDeduplicationFeatureFlag && SinkParams.GetEnableDeduplication())
     { 
         EgressStats.Level = statsLevel;
     }
@@ -212,11 +248,11 @@ public:
 
         if (checkpoint) {
             if (Buffer.empty() && WaitingAcks.empty()) {
-                SINK_LOG_D("Send checkpoint state immediately");
+                SINK_LOG_D(MakeStringForLog(*checkpoint) << "Send checkpoint state immediately");
                 Callbacks->OnAsyncOutputStateSaved(BuildState(*checkpoint), OutputIndex, *checkpoint);
             } else {
                 ui64 seqNo = NextSeqNo + Buffer.size() - 1;
-                SINK_LOG_D("Defer sending the checkpoint, seqNo: " << seqNo);
+                SINK_LOG_D(MakeStringForLog(*checkpoint) << "Defer sending the checkpoint, seqNo: " << seqNo);
                 Metrics.InFlyCheckpoints->Inc();
                 DeferredCheckpoints.emplace(seqNo, *checkpoint);
             }
@@ -227,7 +263,7 @@ public:
             ContinuationToken = std::nullopt;
         }
 
-        while (HandleNewPQEvents()) { } // Write messages while new continuationTokens are arriving
+        while (HandleNewPQEvents()) {} // Write messages while new continuationTokens are arriving
 
         if (FreeSpace <= 0) {
             ShouldNotifyNewFreeSpace = true;
@@ -269,11 +305,24 @@ public:
 private:
     STRICT_STFUNC(StateFunc,
         hFunc(TEvPrivate::TEvPqEventsReady, Handle);
+        hFunc(TEvPrivate::TEvExecuteTopicEvent, HandleTopicEvent);
     )
 
     void Handle(TEvPrivate::TEvPqEventsReady::TPtr&) {
-        while (HandleNewPQEvents()) { }
+        SINK_LOG_T("New PQ write session events arrived");
+
+        if (!Inited) {
+            Init();
+            Inited = true;
+        }
+
+        while (HandleNewPQEvents()) {}
+
         SubscribeOnNextEvent();
+    }
+
+    void Init() {
+        LogPrefix = TStringBuilder() << "SelfId: " << this->SelfId() << ", TxId: " << TxId << ", TaskId: " << TaskId << ", PQ sink. ";
     }
 
     // IActor & IDqComputeActorAsyncOutput
@@ -293,19 +342,42 @@ private:
     }
 
     NYdb::NTopic::TWriteSessionSettings GetWriteSessionSettings() {
-        return NYdb::NTopic::TWriteSessionSettings(SinkParams.GetTopicPath(), GetSourceId(), GetSourceId())
+        auto settings = NYdb::NTopic::TWriteSessionSettings()
+            .Path(SinkParams.GetTopicPath())
+            .TraceId(LogPrefix)
             .MaxMemoryUsage(FreeSpace)
             .Codec(SinkParams.GetClusterType() == NPq::NProto::DataStreams
                 ? NYdb::NTopic::ECodec::RAW
                 : NYdb::NTopic::ECodec::GZIP);
+
+        settings.DeduplicationEnabled(EnableDeduplication);
+        if (EnableDeduplication) {
+            settings.ProducerId(GetSourceId());
+            settings.MessageGroupId(GetSourceId());
+        }
+        return settings;
     }
 
-    NYdb::NTopic::TTopicClientSettings GetTopicClientSettings() {
-        return NYdb::NTopic::TTopicClientSettings()
-            .Database(SinkParams.GetDatabase())
+    IFederatedTopicClient& GetFederatedTopicClient() {
+        if (!FederatedTopicClient) {
+            FederatedTopicClient = PqGateway->GetFederatedTopicClient(Driver, GetFederatedTopicClientSettings());
+        }
+        return *FederatedTopicClient;
+    }
+
+    NYdb::NFederatedTopic::TFederatedTopicClientSettings GetFederatedTopicClientSettings() {
+        NYdb::NFederatedTopic::TFederatedTopicClientSettings opts = PqGateway->GetFederatedTopicClientSettings();
+
+        if (SinkParams.GetUseActorSystemThreadsInTopicClient()) {
+            SetupTopicClientSettings(ActorContext().ActorSystem(), SelfId(), opts);
+        }
+
+        opts.Database(SinkParams.GetDatabase())
             .DiscoveryEndpoint(SinkParams.GetEndpoint())
             .SslCredentials(NYdb::TSslCredentials(SinkParams.GetUseSsl()))
             .CredentialsProviderFactory(CredentialsProviderFactory);
+
+        return opts;
     }
 
     static i64 GetItemSize(const TString& item) {
@@ -314,7 +386,8 @@ private:
 
     void CreateSessionIfNotExists() {
         if (!WriteSession) {
-            WriteSession = TopicClient.CreateWriteSession(GetWriteSessionSettings());
+            SINK_LOG_T("Create new PQ write session");
+            WriteSession = GetFederatedTopicClient().CreateWriteSession(GetWriteSessionSettings());
             SubscribeOnNextEvent();
         }
     }
@@ -323,6 +396,8 @@ private:
         if (!WriteSession) {
             return;
         }
+
+        SINK_LOG_T("Subscribe on next event");
 
         NActors::TActorSystem* actorSystem = NActors::TActivationContext::ActorSystem();
         EventFuture = WriteSession->WaitEvent().Subscribe([actorSystem, selfId = SelfId()](const auto&){
@@ -336,6 +411,8 @@ private:
         }
 
         auto events = WriteSession->GetEvents();
+        SINK_LOG_T("Extracted #" << events.size() << " PQ write session events");
+
         for (auto& event : events) {
             auto issues = std::visit(TTopicEventProcessor{*this}, event);
             if (issues) {
@@ -350,6 +427,7 @@ private:
                 ShouldNotifyNewFreeSpace = false;
             }
         }
+
         CheckFinished();
         return !events.empty();
     }
@@ -371,10 +449,17 @@ private:
     }
 
     void WriteNextMessage(NYdb::NTopic::TContinuationToken&& token) {
-        WriteSession->Write(std::move(token), Buffer.front(), NextSeqNo++);
+        std::optional<uint64_t> seqNo;
+        if (EnableDeduplication) {
+            seqNo = NextSeqNo;
+        }
+        SINK_LOG_T("Write message into PQ session: " << Buffer.front());
+        WriteSession->Write(std::move(token), Buffer.front(), seqNo);
         auto itemSize = GetItemSize(Buffer.front());
-        WaitingAcks.emplace(itemSize, TInstant::Now());
+        WaitingAcks.emplace(itemSize, TInstant::Now(), NextSeqNo);
+        NextSeqNo++;
         EgressStats.Bytes += itemSize;
+        Metrics.EgressDataRate->Add(itemSize);
         Buffer.pop();
     }
 
@@ -401,7 +486,7 @@ private:
 
             for (auto it = ev.Acks.begin(); it != ev.Acks.end(); ++it) {
                 //Y_ABORT_UNLESS(it == ev.Acks.begin() || it->SeqNo == std::prev(it)->SeqNo + 1);
-                LOG_T(Self.LogPrefix << "Ack seq no " << it->SeqNo);
+                LOG_T(Self.LogPrefix << "Ack seq no (from TAcksEvent) " << it->SeqNo);
                 if (it->State == NYdb::NTopic::TWriteSessionEvent::TWriteAck::EEventState::EES_DISCARDED) {
                     TIssues issues;
                     issues.AddIssue(TStringBuilder() << "Message with seqNo " << it->SeqNo << " was discarded");
@@ -412,16 +497,19 @@ private:
                     Self.Metrics.AlreadyWritten->Inc();
                 }
 
+                Y_VALIDATE(!Self.WaitingAcks.empty(), "Got unexpected ack with seq no: " << it->SeqNo);
                 const auto& ackInfo = Self.WaitingAcks.front();
                 Self.Metrics.LastAckLatency->Set((TInstant::Now() - ackInfo.StartTime).MilliSeconds());
                 Self.Metrics.InFlyData->Dec();
                 Self.FreeSpace += ackInfo.MessageSize;
+                ui64 seqNo = ackInfo.SeqNo;        // use seqNo stored on our side because without deduplication we do not specify SeqNo on Write().
+                LOG_T(Self.LogPrefix << "Ack seq no (from WaitingAcks) " << seqNo);
                 Self.WaitingAcks.pop();
 
-                if (!Self.DeferredCheckpoints.empty() && std::get<0>(Self.DeferredCheckpoints.front()) == it->SeqNo) {
-                    Self.ConfirmedSeqNo = it->SeqNo;
+                if (!Self.DeferredCheckpoints.empty() && std::get<0>(Self.DeferredCheckpoints.front()) == seqNo) {
+                    Self.ConfirmedSeqNo = seqNo;
                     const auto& checkpoint = std::get<1>(Self.DeferredCheckpoints.front());
-                    LOG_D(Self.LogPrefix << "Send a deferred checkpoint, seqNo: " << it->SeqNo);
+                    LOG_D(Self.LogPrefix << MakeStringForLog(checkpoint) << "Send a deferred checkpoint, seqNo: " << seqNo);
                     Self.Callbacks->OnAsyncOutputStateSaved(Self.BuildState(checkpoint), Self.OutputIndex, checkpoint);
                     Self.DeferredCheckpoints.pop();
                     Self.Metrics.InFlyCheckpoints->Dec();
@@ -434,6 +522,7 @@ private:
 
         std::optional<TIssues> operator()(NYdb::NTopic::TWriteSessionEvent::TReadyToAcceptEvent& ev) {
             //Y_ABORT_UNLESS(!Self.ContinuationToken);
+            LOG_T(Self.LogPrefix << "Received continuation token, buffer size: " << Self.Buffer.size());
 
             if (*Self.Metrics.FirstContinuationTokenMs == 0) {
                 Self.Metrics.FirstContinuationTokenMs->Set((TInstant::Now() - Self.StartTime).MilliSeconds());
@@ -453,6 +542,7 @@ private:
 
     void CheckFinished() {
         if (Finished && Buffer.empty() && WaitingAcks.empty()) {
+            SINK_LOG_T("Notify PQ sink finished");
             Callbacks->OnAsyncOutputFinished(OutputIndex);
         }
     }
@@ -467,11 +557,11 @@ private:
     NYdb::TDriver Driver;
     std::shared_ptr<NYdb::ICredentialsProviderFactory> CredentialsProviderFactory;
     IDqComputeActorAsyncOutput::ICallbacks* const Callbacks;
-    const TString LogPrefix;
+    TString LogPrefix;
     i64 FreeSpace = 0;
     bool Finished = false;
 
-    NYdb::NTopic::TTopicClient TopicClient;
+    IFederatedTopicClient::TPtr FederatedTopicClient;
     std::shared_ptr<NYdb::NTopic::IWriteSession> WriteSession;
     TString SourceId;
     ui64 NextSeqNo = 1;
@@ -482,6 +572,10 @@ private:
     std::queue<TString> Buffer;
     std::queue<TAckInfo> WaitingAcks; // Size of items which are waiting for acks (used to update free space)
     std::queue<std::tuple<ui64, NDqProto::TCheckpoint>> DeferredCheckpoints;
+    IPqStaticGateway::TPtr PqGateway;
+    ui64 TaskId;
+    bool Inited = false;
+    bool EnableDeduplication = false;
 };
 
 std::pair<IDqComputeActorAsyncOutput*, NActors::IActor*> CreateDqPqWriteActor(
@@ -495,7 +589,10 @@ std::pair<IDqComputeActorAsyncOutput*, NActors::IActor*> CreateDqPqWriteActor(
     ISecuredServiceAccountCredentialsFactory::TPtr credentialsFactory,
     IDqComputeActorAsyncOutput::ICallbacks* callbacks,
     const ::NMonitoring::TDynamicCounterPtr& counters,
-    i64 freeSpace)
+    IPqStaticGateway::TPtr pqGateway,
+    bool enableStreamingQueriesCounters,
+    i64 freeSpace,
+    bool enableStreamingQueriesPqSinkDeduplicationFeatureFlag)
 {
     const TString& tokenName = settings.GetToken().GetName();
     const TString token = secureParams.Value(tokenName, TString());
@@ -511,28 +608,40 @@ std::pair<IDqComputeActorAsyncOutput*, NActors::IActor*> CreateDqPqWriteActor(
         CreateCredentialsProviderFactoryForStructuredToken(credentialsFactory, token, addBearerToToken),
         callbacks,
         counters,
-        freeSpace);
+        freeSpace,
+        pqGateway,
+        enableStreamingQueriesCounters,
+        enableStreamingQueriesPqSinkDeduplicationFeatureFlag);
     return {actor, actor};
 }
 
-void RegisterDqPqWriteActorFactory(TDqAsyncIoFactory& factory, NYdb::TDriver driver, ISecuredServiceAccountCredentialsFactory::TPtr credentialsFactory, const ::NMonitoring::TDynamicCounterPtr& counters) {
+void RegisterDqPqWriteActorFactory(TDqAsyncIoFactory& factory, NYdb::TDriver driver, ISecuredServiceAccountCredentialsFactory::TPtr credentialsFactory, const IPqStaticGateway::TPtr& pqGateway, const ::NMonitoring::TDynamicCounterPtr& counters, bool enableStreamingQueriesCounters, bool enableStreamingQueriesPqSinkDeduplicationFeatureFlag) {
     factory.RegisterSink<NPq::NProto::TDqPqTopicSink>("PqSink",
-        [driver = std::move(driver), credentialsFactory = std::move(credentialsFactory), counters](
+        [driver = std::move(driver), credentialsFactory = std::move(credentialsFactory), counters, pqGateway, enableStreamingQueriesCounters, enableStreamingQueriesPqSinkDeduplicationFeatureFlag](
             NPq::NProto::TDqPqTopicSink&& settings,
             IDqAsyncIoFactory::TSinkArguments&& args)
         {
+            auto txId = args.TxId;
+            auto taskParamsIt = args.TaskParams.find("query_path");
+            if (taskParamsIt != args.TaskParams.end()) {
+                txId = taskParamsIt->second;
+            }
             NLwTraceMonPage::ProbeRegistry().AddProbesList(LWTRACE_GET_PROBES(DQ_PQ_PROVIDER));
             return CreateDqPqWriteActor(
                 std::move(settings),
                 args.OutputIndex,
                 args.StatsLevel,
-                args.TxId,
+                txId,
                 args.TaskId,
                 args.SecureParams,
                 driver,
                 credentialsFactory,
                 args.Callback,
-                counters
+                counters ? counters : args.TaskCounters,
+                pqGateway,
+                enableStreamingQueriesCounters,
+                DqPqDefaultFreeSpace,
+                enableStreamingQueriesPqSinkDeduplicationFeatureFlag
             );
         });
 }

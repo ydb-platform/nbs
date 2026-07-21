@@ -11,6 +11,10 @@
 namespace NKikimr {
 namespace NStat {
 
+namespace {
+
+static const ui8 ShardCount = 4;
+
 // TODO: check for arbitrary set of values of type T (including frequent duplicates)
 // numbers (1..N) were count as a sketch. Check sketch properties
 bool CheckCountMinSketch(const std::shared_ptr<TCountMinSketch>& sketch, const ui32 N) {
@@ -29,13 +33,31 @@ bool CheckCountMinSketch(const std::shared_ptr<TCountMinSketch>& sketch, const u
     return failedEstimatesCount < delta * N;
 }
 
-Y_UNIT_TEST_SUITE(TraverseColumnShard) {
+TTestEnv CreateTestEnv() {
+    return TTestEnv(1, 1, false, [](Tests::TServerSettings& settings) {
+        settings.AppConfig->MutableStatisticsConfig()
+            ->SetEnableBackgroundColumnStatsCollection(true);
+    });
+}
 
+TTableInfo PrepareDatabaseAndTableWithIndexes(TTestEnv& env) {
+    CreateDatabase(env, "Database");
+    return PrepareColumnTableWithIndexes(env, "Database", "Table", ShardCount);
+}
+
+TTableInfo PrepareServerlessDatabaseAndTableWithIndexes(TTestEnv& env) {
+    CreateDatabase(env, "Shared", 1, true);
+    CreateServerlessDatabase(env, "Database", "/Root/Shared");
+    return PrepareColumnTableWithIndexes(env, "Database", "Table", ShardCount);
+}
+
+}
+
+Y_UNIT_TEST_SUITE(TraverseColumnShard) {
     Y_UNIT_TEST(TraverseColumnTable) {
-        TTestEnv env(1, 1);
+        TTestEnv env = CreateTestEnv();
         auto& runtime = *env.GetServer().GetRuntime();
-        const auto databaseInfo = CreateDatabaseColumnTables(env, 1, 10);
-        const auto& tableInfo = databaseInfo.Tables[0];
+        const auto tableInfo = PrepareDatabaseAndTableWithIndexes(env);
 
         WaitForSavedStatistics(runtime, tableInfo.PathId);
 
@@ -45,10 +67,9 @@ Y_UNIT_TEST_SUITE(TraverseColumnShard) {
     }
 
     Y_UNIT_TEST(TraverseServerlessColumnTable) {
-        TTestEnv env(1, 1);
+        TTestEnv env = CreateTestEnv();
         auto& runtime = *env.GetServer().GetRuntime();
-        auto databaseInfo = CreateServerlessDatabaseColumnTables(env, 1, 10);
-        const auto& tableInfo = databaseInfo.Tables[0];
+        const auto tableInfo = PrepareServerlessDatabaseAndTableWithIndexes(env);
 
         WaitForSavedStatistics(runtime, tableInfo.PathId);
 
@@ -58,10 +79,9 @@ Y_UNIT_TEST_SUITE(TraverseColumnShard) {
     }
 
     Y_UNIT_TEST(TraverseColumnTableRebootColumnshard) {
-        TTestEnv env(1, 1);
+        TTestEnv env = CreateTestEnv();
         auto& runtime = *env.GetServer().GetRuntime();
-        const auto databaseInfo = CreateDatabaseColumnTables(env, 1, 10);
-        const auto& tableInfo = databaseInfo.Tables[0];
+        const auto tableInfo = PrepareDatabaseAndTableWithIndexes(env);
         auto sender = runtime.AllocateEdgeActor();
 
         WaitForSavedStatistics(runtime, tableInfo.PathId);
@@ -74,10 +94,9 @@ Y_UNIT_TEST_SUITE(TraverseColumnShard) {
     }    
 
     Y_UNIT_TEST(TraverseColumnTableRebootSaTabletBeforeResolve) {
-        TTestEnv env(1, 1);
+        TTestEnv env = CreateTestEnv();
         auto& runtime = *env.GetServer().GetRuntime();
-        const auto databaseInfo = CreateDatabaseColumnTables(env, 1, 10);
-        const auto& tableInfo = databaseInfo.Tables[0];
+        const auto tableInfo = PrepareDatabaseAndTableWithIndexes(env);
         auto sender = runtime.AllocateEdgeActor();
 
         TBlockEvents<TEvTxProxySchemeCache::TEvResolveKeySetResult> block(runtime);
@@ -100,10 +119,9 @@ Y_UNIT_TEST_SUITE(TraverseColumnShard) {
     }
 
     Y_UNIT_TEST(TraverseColumnTableRebootSaTabletBeforeReqDistribution) {
-        TTestEnv env(1, 1);
+        TTestEnv env = CreateTestEnv();
         auto& runtime = *env.GetServer().GetRuntime();
-        const auto databaseInfo = CreateDatabaseColumnTables(env, 1, 10);
-        const auto& tableInfo = databaseInfo.Tables[0];
+        const auto tableInfo = PrepareDatabaseAndTableWithIndexes(env);
         auto sender = runtime.AllocateEdgeActor();
 
         bool eventSeen = false;
@@ -121,10 +139,9 @@ Y_UNIT_TEST_SUITE(TraverseColumnShard) {
     }
 
     Y_UNIT_TEST(TraverseColumnTableRebootSaTabletBeforeAggregate) {
-        TTestEnv env(1, 1);
+        TTestEnv env = CreateTestEnv();
         auto& runtime = *env.GetServer().GetRuntime();
-        const auto databaseInfo = CreateDatabaseColumnTables(env, 1, 10);
-        const auto& tableInfo = databaseInfo.Tables[0];
+        const auto tableInfo = PrepareDatabaseAndTableWithIndexes(env);
         auto sender = runtime.AllocateEdgeActor();
 
         bool eventSeen = false;
@@ -142,10 +159,9 @@ Y_UNIT_TEST_SUITE(TraverseColumnShard) {
     }
 
     Y_UNIT_TEST(TraverseColumnTableRebootSaTabletBeforeSave) {
-        TTestEnv env(1, 1);
+        TTestEnv env = CreateTestEnv();
         auto& runtime = *env.GetServer().GetRuntime();
-        const auto databaseInfo = CreateDatabaseColumnTables(env, 1, 10);
-        const auto& tableInfo = databaseInfo.Tables[0];
+        const auto tableInfo = PrepareDatabaseAndTableWithIndexes(env);
         auto sender = runtime.AllocateEdgeActor();
 
         bool eventSeen = false;
@@ -163,20 +179,19 @@ Y_UNIT_TEST_SUITE(TraverseColumnShard) {
     }
 
     Y_UNIT_TEST(TraverseColumnTableRebootSaTabletInAggregate) {
-        TTestEnv env(1, 1);
+        TTestEnv env = CreateTestEnv();
         auto& runtime = *env.GetServer().GetRuntime();
-        const auto databaseInfo = CreateDatabaseColumnTables(env, 1, 10);
-        const auto& tableInfo = databaseInfo.Tables[0];
+        const auto tableInfo = PrepareDatabaseAndTableWithIndexes(env);
         auto sender = runtime.AllocateEdgeActor();
 
         int observerCount = 0;
         auto observer = runtime.AddObserver<TEvStatistics::TEvStatisticsRequest>([&](auto& ev){
-            if (++observerCount >= 5) {
+            if (++observerCount >= 2) {
                 ev.Reset();
             }
         });
 
-        runtime.WaitFor("5th TEvStatisticsRequest", [&]{ return observerCount >= 5; });
+        runtime.WaitFor("2nd TEvStatisticsRequest", [&]{ return observerCount >= 2; });
         observer.Remove();
         RebootTablet(runtime, tableInfo.SaTabletId, sender);
 
@@ -185,10 +200,9 @@ Y_UNIT_TEST_SUITE(TraverseColumnShard) {
     }
 
     Y_UNIT_TEST(TraverseColumnTableHiveDistributionZeroNodes) {
-        TTestEnv env(1, 1);
+        TTestEnv env = CreateTestEnv();
         auto& runtime = *env.GetServer().GetRuntime();
-        const auto databaseInfo = CreateDatabaseColumnTables(env, 1, 10);
-        const auto& tableInfo = databaseInfo.Tables[0];
+        const auto tableInfo = PrepareDatabaseAndTableWithIndexes(env);
 
         bool observerFirstExec = true;
         auto observer = runtime.AddObserver<TEvHive::TEvResponseTabletDistribution>(
@@ -231,10 +245,9 @@ Y_UNIT_TEST_SUITE(TraverseColumnShard) {
     }
 
     Y_UNIT_TEST(TraverseColumnTableHiveDistributionAbsentNodes) {
-        TTestEnv env(1, 1);
+        TTestEnv env = CreateTestEnv();
         auto& runtime = *env.GetServer().GetRuntime();
-        const auto databaseInfo = CreateDatabaseColumnTables(env, 1, 10);
-        const auto& tableInfo = databaseInfo.Tables[0];
+        const auto tableInfo = PrepareDatabaseAndTableWithIndexes(env);
 
         bool observerFirstExec = true;
         auto observer = runtime.AddObserver<TEvHive::TEvResponseTabletDistribution>(
@@ -269,10 +282,9 @@ Y_UNIT_TEST_SUITE(TraverseColumnShard) {
     }
 
     Y_UNIT_TEST(TraverseColumnTableAggrStatUnavailableNode) {
-        TTestEnv env(1, 1);
+        TTestEnv env = CreateTestEnv();
         auto& runtime = *env.GetServer().GetRuntime();
-        const auto databaseInfo = CreateDatabaseColumnTables(env, 1, 10);
-        const auto& tableInfo = databaseInfo.Tables[0];
+        const auto tableInfo = PrepareDatabaseAndTableWithIndexes(env);
 
         bool observerFirstExec = true;
         auto observer = runtime.AddObserver<TEvStatistics::TEvAggregateStatisticsResponse>(
@@ -307,10 +319,9 @@ Y_UNIT_TEST_SUITE(TraverseColumnShard) {
     }
 
     Y_UNIT_TEST(TraverseColumnTableAggrStatNonLocalTablet) {
-        TTestEnv env(1, 1);
+        TTestEnv env = CreateTestEnv();
         auto& runtime = *env.GetServer().GetRuntime();
-        const auto databaseInfo = CreateDatabaseColumnTables(env, 1, 10);
-        const auto& tableInfo = databaseInfo.Tables[0];
+        const auto tableInfo = PrepareDatabaseAndTableWithIndexes(env);
 
         bool observerFirstExec = true;
         auto observer = runtime.AddObserver<TEvStatistics::TEvAggregateStatisticsResponse>(

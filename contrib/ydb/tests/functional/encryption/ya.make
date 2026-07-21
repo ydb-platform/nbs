@@ -1,15 +1,14 @@
 PY3TEST()
 
-ENV(YDB_DRIVER_BINARY="contrib/ydb/apps/ydbd/ydbd")
+INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/harness_dep.inc)
 TEST_SRCS(
     test_encryption.py
 )
 
-TIMEOUT(600)
 SIZE(MEDIUM)
+REQUIREMENTS(cpu:4)
 
 DEPENDS(
-    contrib/ydb/apps/ydbd
 )
 
 PEERDIR(
@@ -18,6 +17,8 @@ PEERDIR(
     contrib/ydb/public/sdk/python
 )
 
-REQUIREMENTS(ram:32)
+IF (SANITIZER_TYPE)
+    REQUIREMENTS(ram:32 cpu:4)
+ENDIF()
 
 END()

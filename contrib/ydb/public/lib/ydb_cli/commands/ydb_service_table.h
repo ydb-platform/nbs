@@ -4,15 +4,14 @@
 #include "ydb_common.h"
 
 #include <contrib/ydb/public/lib/ydb_cli/common/format.h>
-#include <contrib/ydb/public/lib/ydb_cli/common/interruptible.h>
-#include <contrib/ydb/public/sdk/cpp/client/draft/ydb_scripting.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_query/client.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_table/table.h>
+#include <contrib/ydb/public/lib/ydb_cli/common/interruptable.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/draft/ydb_scripting.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/query/client.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/table/table.h>
 #include <contrib/ydb/public/lib/ydb_cli/common/parameters.h>
 #include <contrib/ydb/public/lib/json_value/ydb_json_value.h>
 
-namespace NYdb {
-namespace NConsoleClient {
+namespace NYdb::NConsoleClient {
 
 class TCommandTable : public TClientCommandTree {
 public:
@@ -48,19 +47,20 @@ public:
     );
 
     virtual void Config(TConfig& config) override;
-    NYdb::NTable::TSession GetSession(TConfig& config);
+    NYdb::NTable::TSession GetSession(const TDriver& driver);
 };
 
 class TCommandCreateTable : public TTableCommand, public TCommandWithPath {
 public:
     TCommandCreateTable();
     virtual void Config(TConfig& config) override;
-    virtual void Parse(TConfig& config) override;
+    virtual void ExtractParams(TConfig& config) override;
+    virtual void Validate(TConfig& config) override;
     virtual int Run(TConfig& config) override;
 
 private:
     TVector<TString> Columns;
-    TVector<TString> PrimaryKeys;
+    std::vector<std::string> PrimaryKeys;
     TVector<TString> Indexes;
     TString PresetName;
     TString ExecutionPolicy;
@@ -78,13 +78,13 @@ class TCommandDropTable : public TTableCommand, public TCommandWithPath {
 public:
     TCommandDropTable();
     virtual void Config(TConfig& config) override;
-    virtual void Parse(TConfig& config) override;
+    virtual void ExtractParams(TConfig& config) override;
     virtual int Run(TConfig& config) override;
 };
 
 class TCommandQueryBase {
 protected:
-    void CheckQueryOptions() const;
+    void CheckQueryOptions(TClientCommand::TConfig& config) const;
     void CheckQueryFile();
 
 protected:
@@ -92,8 +92,8 @@ protected:
     TString QueryFile;
 };
 
-class TCommandExecuteQuery : public TTableCommand, TCommandQueryBase, TCommandWithParameters,
-    public TInterruptibleCommand
+class TCommandExecuteQuery : public TTableCommand, TCommandQueryBase, TCommandWithParameters, public TCommandWithOutput,
+    public TInterruptableCommand
 {
 public:
     TCommandExecuteQuery();
@@ -115,17 +115,18 @@ public:
     template <typename TIterator>
     bool PrintQueryResponse(TIterator& result);
 
-    void PrintFlameGraph(const TMaybe<TString>& plan);
+    void PrintFlameGraph(const std::optional<std::string>& plan);
 
 private:
     TString CollectStatsMode;
     TMaybe<TString> FlameGraphPath;
-    TString TxMode;
+    TString TxMode = "serializable-rw";
     TString QueryType;
     bool BasicStats = false;
+    TString DiagnosticsFile;
 };
 
-class TCommandExplain : public TTableCommand, public TCommandWithFormat, TCommandQueryBase, TInterruptibleCommand {
+class TCommandExplain : public TTableCommand, public TCommandWithOutput, TCommandQueryBase, TInterruptableCommand {
 public:
     TCommandExplain();
     TCommandExplain(TString query, TString queryType = "data", bool printAst = false);
@@ -135,7 +136,7 @@ public:
     virtual int Run(TConfig& config) override;
 
 private:
-    static void SaveDiagnosticsToFile(const TString& diagnostics);
+    static void SaveDiagnosticsToFile(const std::string& diagnostics);
 
     bool PrintAst = false;
     TString QueryType;
@@ -145,12 +146,13 @@ private:
 };
 
 class TCommandReadTable : public TYdbCommand, public TCommandWithPath,
-    public TCommandWithFormat, public TInterruptibleCommand
+    public TCommandWithInput, public TCommandWithOutput, public TInterruptableCommand
 {
 public:
     TCommandReadTable();
     virtual void Config(TConfig& config) override;
     virtual void Parse(TConfig& config) override;
+    virtual void ExtractParams(TConfig& config) override;
     virtual int Run(TConfig& config) override;
 
 private:
@@ -171,7 +173,7 @@ public:
     TCommandIndexAdd();
 };
 
-class TCommandIndexAddGlobal : public TYdbCommand, public TCommandWithPath, public TCommandWithFormat {
+class TCommandIndexAddGlobal : public TYdbCommand, public TCommandWithPath, public TCommandWithOutput {
 public:
     TCommandIndexAddGlobal(
         NTable::EIndexType type,
@@ -181,6 +183,7 @@ public:
     );
     virtual void Config(TConfig& config) override;
     virtual void Parse(TConfig& config) override;
+    virtual void ExtractParams(TConfig& config) override;
     virtual int Run(TConfig& config) override;
 protected:
     TString IndexName;
@@ -204,17 +207,17 @@ class TCommandIndexDrop : public TYdbCommand, public TCommandWithPath {
 public:
     TCommandIndexDrop();
     virtual void Config(TConfig& config) override;
-    virtual void Parse(TConfig& config) override;
+    virtual void ExtractParams(TConfig& config) override;
     virtual int Run(TConfig& config) override;
 private:
-    TString IndexName;
+    std::string IndexName;
 };
 
 class TCommandIndexRename : public TYdbCommand, public TCommandWithPath {
 public:
     TCommandIndexRename();
     virtual void Config(TConfig& config) override;
-    virtual void Parse(TConfig& config) override;
+    virtual void ExtractParams(TConfig& config) override;
     virtual int Run(TConfig& config) override;
 private:
     TString IndexName;
@@ -226,17 +229,17 @@ class TCommandAttributeAdd : public TYdbCommand, public TCommandWithPath {
 public:
     TCommandAttributeAdd();
     virtual void Config(TConfig& config) override;
-    virtual void Parse(TConfig& config) override;
+    virtual void ExtractParams(TConfig& config) override;
     virtual int Run(TConfig& config) override;
 private:
-    THashMap<TString, TString> Attributes;
+    std::unordered_map<std::string, std::string> Attributes;
 };
 
 class TCommandAttributeDrop : public TYdbCommand, public TCommandWithPath {
 public:
     TCommandAttributeDrop();
     virtual void Config(TConfig& config) override;
-    virtual void Parse(TConfig& config) override;
+    virtual void ExtractParams(TConfig& config) override;
     virtual int Run(TConfig& config) override;
 private:
     TVector<TString> AttributeKeys;
@@ -246,7 +249,7 @@ class TCommandTtlSet : public TYdbCommand, public TCommandWithPath {
 public:
     TCommandTtlSet();
     virtual void Config(TConfig& config) override;
-    virtual void Parse(TConfig& config) override;
+    virtual void ExtractParams(TConfig& config) override;
     virtual int Run(TConfig& config) override;
 private:
     TString ColumnName;
@@ -259,9 +262,8 @@ class TCommandTtlReset : public TYdbCommand, public TCommandWithPath {
 public:
     TCommandTtlReset();
     virtual void Config(TConfig& config) override;
-    virtual void Parse(TConfig& config) override;
+    virtual void ExtractParams(TConfig& config) override;
     virtual int Run(TConfig& config) override;
 };
 
-}
-}
+} // namespace NYdb::NConsoleClient

@@ -5,7 +5,7 @@
 #include "yql_dq_validate.h"
 #include "yql_dq_statistics.h"
 
-#include <contrib/ydb/library/yql/providers/common/config/yql_configuration_transformer.h>
+#include <contrib/ydb/library/yql/providers/common/config/transformer/yql_configuration_transformer.h>
 #include <contrib/ydb/library/yql/providers/common/provider/yql_data_provider_impl.h>
 #include <contrib/ydb/library/yql/providers/common/provider/yql_provider.h>
 #include <contrib/ydb/library/yql/providers/common/provider/yql_provider_names.h>
@@ -51,6 +51,7 @@ public:
         , TypeAnnotationTransformer_([] () { return CreateDqsDataSourceTypeAnnotationTransformer(); })
         , ConstraintsTransformer_([] () { return CreateDqDataSourceConstraintTransformer(); })
         , StatisticsTransformer_([this]() { return CreateDqsStatisticsTransformer(State_, TBaseProviderContext::Instance()); })
+        , ExecutionValidator_([this]() { return MakeHolder<TDqExecutionValidator>(State_); })
     { }
 
     TStringBuf GetName() const override {
@@ -94,7 +95,7 @@ public:
             return CanBuildResultImpl(cons.Cast().Input().Ref(), visited);
         }
 
-        if (!node.IsComposable()) {
+        if (!node.GetTypeAnn()->IsComposable()) {
             return false;
         }
 
@@ -262,7 +263,7 @@ public:
     }
 
     bool ValidateExecution(const TExprNode& node, TExprContext& ctx) override {
-        return ValidateDqExecution(node, *State_->TypeCtx, ctx, State_);
+        return ExecutionValidator_->ValidateDqExecution(node, ctx);
     }
 
     bool CanParse(const TExprNode& node) override {
@@ -276,8 +277,15 @@ public:
     void Reset() final {
         if (ExecTransformer_) {
             ExecTransformer_->Rewind();
+        }
+        if (TypeAnnotationTransformer_) {
             TypeAnnotationTransformer_->Rewind();
+        }
+        if (ConstraintsTransformer_) {
             ConstraintsTransformer_->Rewind();
+        }
+        if (ExecutionValidator_) {
+            ExecutionValidator_->Rewind();
         }
     }
 
@@ -288,6 +296,7 @@ private:
     TLazyInitHolder<TVisitorTransformerBase> TypeAnnotationTransformer_;
     TLazyInitHolder<IGraphTransformer> ConstraintsTransformer_;
     TLazyInitHolder<IGraphTransformer> StatisticsTransformer_;
+    TLazyInitHolder<TDqExecutionValidator> ExecutionValidator_;
 };
 
 }

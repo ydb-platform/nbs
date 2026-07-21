@@ -1,6 +1,8 @@
 #include "impl.h"
 #include "config.h"
 
+#define YDB_LOG_THIS_FILE_COMPONENT BS_CONTROLLER
+
 namespace NKikimr::NBsController {
 
 class TBlobStorageController::TTxNodeReport
@@ -20,7 +22,8 @@ public:
     bool Execute(TTransactionContext& txc, const TActorContext&) override {
         TRequestCounter counter(Self->TabletCounters, NBlobStorageController::COUNTER_NODE_REPORT_USEC);
 
-        STLOG(PRI_DEBUG, BS_CONTROLLER, BSCTXNR01, "TTxNodeReport execute");
+        YDB_LOG_DEBUG("TTxNodeReport execute",
+            {"marker", "BSCTXNR01"});
 
         if (!Self->ValidateIncomingNodeWardenEvent(*Event)) {
             return true;
@@ -83,11 +86,13 @@ public:
                 continue; // ignore incorrect report
             }
 
-            TPDiskId pdiskId(record.GetNodeId(), report.GetPDiskId());
+            const TPDiskId pdiskId(record.GetNodeId(), report.GetPDiskId());
 
             TPDiskInfo *pdisk = State->PDisks.FindForUpdate(pdiskId);
             if (!pdisk) {
                 continue;
+            } else if (report.HasPDiskGuid() && pdisk->Guid != report.GetPDiskGuid()) {
+                continue; // race with reused PDisk id
             }
 
             switch (report.GetPhase()) {
@@ -99,24 +104,39 @@ public:
                         pdisk->Mood = TPDiskMood::Normal;
                     }
                     break;
+
+                case NKikimrBlobStorage::TEvControllerNodeReport::PD_SHRED:
+                    switch (report.GetShredStateCase()) {
+                        case NKikimrBlobStorage::TEvControllerNodeReport::TPDiskReport::kShredGenerationFinished:
+                            Self->ShredState.OnShredFinished(pdiskId, *pdisk, report.GetShredGenerationFinished(), txc);
+                            break;
+
+                        case NKikimrBlobStorage::TEvControllerNodeReport::TPDiskReport::kShredAborted:
+                        case NKikimrBlobStorage::TEvControllerNodeReport::TPDiskReport::SHREDSTATE_NOT_SET:
+                            YDB_LOG_ERROR("Shred aborted due to error",
+                                {"marker", "BSCTXNR00"},
+                                {"PDiskId", pdiskId},
+                                {"errorReason", report.GetShredAborted()});
+                            Self->ShredState.OnShredAborted(pdiskId, *pdisk);
+                            break;
+                    }
+                    break;
             }
         }
 
         State->CheckConsistency();
-        TString error;
-        if (State->Changed() && !Self->CommitConfigUpdates(*State, false, false, false, txc, &error)) {
-            State->Rollback();
-            State.reset();
-        }
+        Self->ValidateAndCommitConfigUpdate(State, TConfigTxFlags(), txc);
         return true;
     }
 
     void Complete(const TActorContext&) override {
-        STLOG(PRI_DEBUG, BS_CONTROLLER, BSCTXNR02, "TTxNodeReport complete");
+        YDB_LOG_DEBUG("TTxNodeReport complete",
+            {"marker", "BSCTXNR02"});
         if (State) {
             State->ApplyConfigUpdates();
             State.reset();
         }
+        Self->ShredState.OnNodeReportTxComplete();
     }
 };
 

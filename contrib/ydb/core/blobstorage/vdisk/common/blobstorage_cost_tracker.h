@@ -10,7 +10,6 @@
 #include <library/cpp/bucket_quoter/bucket_quoter.h>
 #include <contrib/ydb/library/lockfree_bucket/lockfree_bucket.h>
 #include <util/system/compiler.h>
-#include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/core/blobstorage/base/blobstorage_events.h>
 #include <contrib/ydb/core/util/light.h>
 
@@ -94,7 +93,7 @@ public:
         DeviceWriteSpeedBps = costModel.WriteSpeedBps;
         DeviceReadBlockSize = costModel.ReadBlockSize;
         DeviceWriteBlockSize = costModel.WriteBlockSize;
-        HugeBlobSize = costModel.MinREALHugeBlobInBytes;
+        HugeBlobSize = costModel.MinHugeBlobInBytes;
     }
 
 protected:
@@ -229,12 +228,12 @@ public:
         return WriteCost(ev.GetCachedByteSize());
     }
 
-    ui64 GetCost(const TEvBlobStorage::TEvVPut& ev) const { 
+    ui64 GetCost(const TEvBlobStorage::TEvVPut& ev) const {
         const auto &record = ev.Record;
         const NKikimrBlobStorage::EPutHandleClass handleClass = record.GetHandleClass();
-        const ui64 size = record.HasBuffer() ? record.GetBuffer().size() : ev.GetPayload(0).GetSize();
+        const ui64 size = ev.GetBufferBytes();
 
-        NPriPut::EHandleType handleType = NPriPut::HandleType(HugeBlobSize, handleClass, size, true);
+        NPriPut::EHandleType handleType = NPriPut::HandleType(HugeBlobSize, handleClass, size);
         if (handleType == NPriPut::Log) {
             return WriteCost(size);
         } else {
@@ -249,7 +248,7 @@ public:
 
         for (ui64 idx = 0; idx < record.ItemsSize(); ++idx) {
             const ui64 size = ev.GetBufferBytes(idx);
-            NPriPut::EHandleType handleType = NPriPut::HandleType(HugeBlobSize, handleClass, size, true);
+            NPriPut::EHandleType handleType = NPriPut::HandleType(HugeBlobSize, handleClass, size);
             if (handleType == NPriPut::Log) {
                 cost += WriteCost(size);
             } else {
@@ -267,18 +266,10 @@ public:
 
     /////// PDisk requests
     // READS
-    ui64 GetCost(const NPDisk::TEvChunkRead& ev) const {
-        return ReadCost(ev.Size);
-    }
+    ui64 GetCost(const NPDisk::TEvChunkRead& ev) const;
 
     // WRITES
-    ui64 GetCost(const NPDisk::TEvChunkWrite& ev) const {
-        if (ev.PriorityClass == NPriPut::Log) {
-            return WriteCost(ev.PartsPtr->ByteSize());
-        } else {
-            return HugeWriteCost(ev.PartsPtr->ByteSize());
-        }
-    }
+    ui64 GetCost(const NPDisk::TEvChunkWrite& ev) const;
 };
 
 struct TFailTimer {
@@ -359,10 +350,16 @@ public:
         BurstDetector.Set(Bucket.IsEmpty(), SeqnoBurstDetector.fetch_add(1));
     }
 
-    void SetTimeAvailable(ui64 diskTimeAvailableNSec) {
-        ui64 diskTimeAvailable = diskTimeAvailableNSec * GetDiskTimeAvailableScale();
+    void UpdatePDiskParameters(ui32 numSlots, ui32 expectedSlotCount) {
+        ui64 totalTime = 1'000'000'000 * GetDiskTimeAvailableScale();
+        ui64 diskTimeAvailable = totalTime / numSlots;
         DiskTimeAvailable.store(diskTimeAvailable);
         MonGroup->DiskTimeAvailableCtr() = diskTimeAvailable;
+
+        if (expectedSlotCount > 0) {
+            ui64 diskTimeFairShare = totalTime / expectedSlotCount;
+            MonGroup->DiskTimeFairShareNs() = diskTimeFairShare;
+        }
     }
 
 public:
@@ -388,7 +385,7 @@ public:
     template<class TEvent>
     void CountScrubRequest(const TEvent& ev) {
         ui64 cost = GetCost(ev);
-        MonGroup->UserDiskCost() += cost;
+        MonGroup->ScrubDiskCost() += cost;
         CountRequest(cost);
     }
 

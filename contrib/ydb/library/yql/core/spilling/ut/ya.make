@@ -1,23 +1,27 @@
 UNITTEST_FOR(contrib/ydb/library/yql/core/spilling)
 
-TAG(ya:manual)
-
 FORK_SUBTESTS()
 
 SPLIT_FACTOR(60)
 
-IF (SANITIZER_TYPE == "thread" OR WITH_VALGRIND)
-    TIMEOUT(3600)
+REQUIREMENTS(cpu:2)
+IF (SANITIZER_TYPE OR NOT OPENSOURCE)
+    REQUIREMENTS(ram:10)
+ENDIF()
+
+IF (SANITIZER_TYPE == "thread")
     SIZE(LARGE)
-    TAG(ya:fat)
+    INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/large.inc)
 ELSE()
-    TIMEOUT(600)
     SIZE(MEDIUM)
 ENDIF()
 
-SRCS(
-    spilling_ut.cpp
- )
+# https://github.com/ydb-platform/ydb/issues/12513
+IF (SANITIZER_TYPE != "address")
+    SRCS(
+        spilling_ut.cpp
+    )
+ENDIF()
 
 PEERDIR(
     contrib/ydb/library/yql/public/udf
@@ -32,7 +36,5 @@ IF (MKQL_RUNTIME_VERSION)
         -DMKQL_RUNTIME_VERSION=$MKQL_RUNTIME_VERSION
     )
 ENDIF()
-
-REQUIREMENTS(ram:10)
 
 END()

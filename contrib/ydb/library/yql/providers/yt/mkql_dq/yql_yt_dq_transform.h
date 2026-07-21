@@ -1,9 +1,9 @@
 #pragma once
 
-#include <contrib/ydb/library/yql/dq/integration/transform/yql_dq_task_transform.h>
+#include <contrib/ydb/library/yql/core/dq_integration/transform/yql_dq_task_transform.h>
 
 namespace NYql {
 
-TTaskTransformFactory CreateYtDqTaskTransformFactory();
+TTaskTransformFactory CreateYtDqTaskTransformFactory(bool enableReadRanges = false);
 
 }

@@ -1,8 +1,8 @@
 #include <contrib/ydb/core/cms/console/console.h>
-#include <contrib/ydb/core/tx/schemeshard/ut_helpers/helpers.h>
+#include <contrib/ydb/core/protos/table_stats.pb.h>
 #include <contrib/ydb/core/tx/datashard/datashard.h>
 #include <contrib/ydb/core/tx/datashard/ut_common/datashard_ut_common.h>
-#include <contrib/ydb/core/protos/table_stats.pb.h>
+#include <contrib/ydb/core/tx/schemeshard/ut_helpers/helpers.h>
 
 using namespace NKikimr;
 using namespace NSchemeShardUT_Private;
@@ -141,16 +141,33 @@ void SetStatsObserver(TTestActorRuntime& runtime, const std::function<TTestActor
     });
 }
 
-TVector<ui64> GetTableShards(TTestActorRuntime& runtime,
-                             const TString& path
-) {
-    TVector<ui64> shards;
-    auto tableDescription = DescribePath(runtime, path, true);
-    for (const auto& part : tableDescription.GetPathDescription().GetTablePartitions()) {
-        shards.emplace_back(part.GetDatashardId());
-    }
+void SetPqrbTopicStatsSuppressor(TTestActorRuntime& runtime, ui32& allowInjectedTopicStats) {
+    auto originalObserver = runtime.SetObserverFunc([](TAutoPtr<IEventHandle>&) {
+        return TTestActorRuntime::EEventAction::PROCESS;
+    });
+    runtime.SetObserverFunc([originalObserver, &allowInjectedTopicStats](TAutoPtr<IEventHandle>& ev) {
+        if (ev->GetTypeRewrite() == TEvPersQueue::EvPeriodicTopicStats) {
+            if (allowInjectedTopicStats > 0) {
+                --allowInjectedTopicStats;
+                return TTestActorRuntime::EEventAction::PROCESS;
+            }
+            return TTestActorRuntime::EEventAction::DROP;
+        }
+        return originalObserver(ev);
+    });
+}
 
-    return shards;
+void InjectPeriodicTopicStats(
+    TTestActorRuntime& runtime,
+    ui32& allowInjectedTopicStats,
+    ui64 topicId,
+    ui64 generation,
+    ui64 round,
+    ui64 dataSize,
+    ui64 usedReserveSize)
+{
+    ++allowInjectedTopicStats;
+    SendTEvPeriodicTopicStats(runtime, topicId, generation, round, dataSize, usedReserveSize);
 }
 
 TTableId ResolveTableId(TTestActorRuntime& runtime, const TString& path) {
@@ -161,14 +178,16 @@ TTableId ResolveTableId(TTestActorRuntime& runtime, const TString& path) {
 } // namespace
 
 Y_UNIT_TEST_SUITE(TSchemeshardStatsBatchingTest) {
+    constexpr ui64 WRITTEN_TOPIC_DATA_SIZE = 16975350; // unstable value, can change if internal message store changes
+
     Y_UNIT_TEST(ShouldNotBatchWhenDisabled) {
         TTestBasicRuntime runtime;
-        TTestEnv env(runtime);
+        TTestEnvOptions opts;
+        opts.DataShardStatsReportIntervalSeconds(1);
+        TTestEnv env(runtime, opts);
 
         runtime.SetLogPriority(NKikimrServices::TX_DATASHARD, NLog::PRI_TRACE);
         runtime.SetLogPriority(NKikimrServices::FLAT_TX_SCHEMESHARD, NActors::NLog::PRI_TRACE);
-
-        NDataShard::gDbStatsReportInterval = TDuration::Seconds(1);
 
         auto& appData = runtime.GetAppData();
 
@@ -198,12 +217,13 @@ Y_UNIT_TEST_SUITE(TSchemeshardStatsBatchingTest) {
 
     Y_UNIT_TEST(ShouldPersistByBatchSize) {
         TTestBasicRuntime runtime;
-        TTestEnv env(runtime);
+        TTestEnvOptions opts;
+        opts.DataShardStatsReportIntervalSeconds(1);
+        TTestEnv env(runtime, opts);
 
         runtime.SetLogPriority(NKikimrServices::TX_DATASHARD, NLog::PRI_TRACE);
         runtime.SetLogPriority(NKikimrServices::FLAT_TX_SCHEMESHARD, NActors::NLog::PRI_TRACE);
 
-        NDataShard::gDbStatsReportInterval = TDuration::Seconds(1);
         const ui32 batchSize = 2;
 
         auto& appData = runtime.GetAppData();
@@ -259,12 +279,13 @@ Y_UNIT_TEST_SUITE(TSchemeshardStatsBatchingTest) {
 
     Y_UNIT_TEST(ShouldPersistByBatchTimeout) {
         TTestBasicRuntime runtime;
-        TTestEnv env(runtime);
+        TTestEnvOptions opts;
+        opts.DataShardStatsReportIntervalSeconds(1);
+        TTestEnv env(runtime, opts);
 
         runtime.SetLogPriority(NKikimrServices::TX_DATASHARD, NLog::PRI_TRACE);
         runtime.SetLogPriority(NKikimrServices::FLAT_TX_SCHEMESHARD, NActors::NLog::PRI_TRACE);
 
-        NDataShard::gDbStatsReportInterval = TDuration::Seconds(1);
         TDuration dsWakeupInterval = TDuration::Seconds(5); // hardcoded in DS
         TDuration batchTimeout = dsWakeupInterval;
 
@@ -314,10 +335,14 @@ Y_UNIT_TEST_SUITE(TSchemeshardStatsBatchingTest) {
         // disable batching
         appData.SchemeShardConfig.SetStatsBatchTimeoutMs(0);
         appData.SchemeShardConfig.SetStatsMaxBatchSize(0);
+        appData.PQConfig.SetBalancerWakeupIntervalSec(3600);
 
         // apply config via reboot
         TActorId sender = runtime.AllocateEdgeActor();
         GracefulRestartTablet(runtime, TTestTxConfig::SchemeShard, sender);
+
+        ui32 allowInjectedTopicStats = 0;
+        SetPqrbTopicStatsSuppressor(runtime, allowInjectedTopicStats);
 
         const auto Assert = [&] (ui64 expectedAccountSize, ui64 expectedUsedReserveSize) {
             TestDescribeResult(DescribePath(runtime, "/MyRoot/Topic1"),
@@ -378,23 +403,23 @@ Y_UNIT_TEST_SUITE(TSchemeshardStatsBatchingTest) {
         ui64 generation = 1;
         ui64 round = 1;
 
-        SendTEvPeriodicTopicStats(runtime, topic1Id, generation, ++round, 101, 101);
+        InjectPeriodicTopicStats(runtime, allowInjectedTopicStats, topic1Id, generation, ++round, 101, 101);
         Assert(1369, 101); // only reserve size
 
-        SendTEvPeriodicTopicStats(runtime, topic1Id, generation, ++round, 383, 247);
+        InjectPeriodicTopicStats(runtime, allowInjectedTopicStats, topic1Id, generation, ++round, 383, 247);
         Assert(1369 + (383 - 247), 247); // 1505, 247 reserve + exceeding the limit
 
-        SendTEvPeriodicTopicStats(runtime, topic2Id, generation, ++round, 113, 113);
+        InjectPeriodicTopicStats(runtime, allowInjectedTopicStats, topic2Id, generation, ++round, 113, 113);
         Assert(1369 + (383 - 247), 247 + 113); // 1505, 360
 
-        SendTEvPeriodicTopicStats(runtime, topic1Id, generation, ++round, 31, 31);
+        InjectPeriodicTopicStats(runtime, allowInjectedTopicStats, topic1Id, generation, ++round, 31, 31);
         Assert(1369, 31 + 113); // only reserve, data size
 
         TestDropPQGroup(runtime, ++txId, "/MyRoot", "Topic2");
         env.TestWaitNotification(runtime, txId);
         Assert(808, 31);
 
-        SendTEvPeriodicTopicStats(runtime, topic3Id, generation, ++round, 151, 151);
+        InjectPeriodicTopicStats(runtime, allowInjectedTopicStats, topic3Id, generation, ++round, 151, 151);
         Assert(808, 31 + 151);
     }
 
@@ -453,7 +478,7 @@ Y_UNIT_TEST_SUITE(TSchemeshardStatsBatchingTest) {
 
         env.SimulateSleep(runtime, TDuration::Seconds(3)); // Wait TEvPeriodicTopicStats
 
-        Assert(3 * 2678400 * 17, 16975298); // 16975298 - it is unstable value. it can change if internal message store change
+        Assert(3 * 2678400 * 17, WRITTEN_TOPIC_DATA_SIZE);
     }
 
     Y_UNIT_TEST(TopicPeriodicStatMeteringModeRequest) {
@@ -516,10 +541,10 @@ Y_UNIT_TEST_SUITE(TSchemeshardStatsBatchingTest) {
 
         env.SimulateSleep(runtime, TDuration::Seconds(3)); // Wait TEvPeriodicTopicStats
 
-        Assert(16975298, 0); // 16975298 - it is unstable value. it can change if internal message store change
+        Assert(WRITTEN_TOPIC_DATA_SIZE, 0);
 
         stats = NPQ::GetReadBalancerPeriodicTopicStats(runtime, balancerId);
-        UNIT_ASSERT_EQUAL_C(16975298, stats->Record.GetDataSize(), "DataSize from ReadBalancer " << stats->Record.GetDataSize());
+        UNIT_ASSERT_EQUAL_C(WRITTEN_TOPIC_DATA_SIZE, stats->Record.GetDataSize(), "DataSize from ReadBalancer " << stats->Record.GetDataSize());
         UNIT_ASSERT_EQUAL_C(0, stats->Record.GetUsedReserveSize(), "UsedReserveSize from ReadBalancer " << stats->Record.GetUsedReserveSize());
 
         appData.PQConfig.SetBalancerWakeupIntervalSec(30);
@@ -527,7 +552,7 @@ Y_UNIT_TEST_SUITE(TSchemeshardStatsBatchingTest) {
         GracefulRestartTablet(runtime, balancerId, sender);
 
         stats = NPQ::GetReadBalancerPeriodicTopicStats(runtime, balancerId);
-        UNIT_ASSERT_EQUAL_C(16975298, stats->Record.GetDataSize(), "DataSize from ReadBalancer after reload");
+        UNIT_ASSERT_EQUAL_C(WRITTEN_TOPIC_DATA_SIZE, stats->Record.GetDataSize(), "DataSize from ReadBalancer after reload");
         UNIT_ASSERT_EQUAL_C(0, stats->Record.GetUsedReserveSize(), "UsedReserveSize from ReadBalancer after reload");
     }
 
@@ -544,11 +569,15 @@ Y_UNIT_TEST_SUITE(TSchemeshardStatsBatchingTest) {
         // disable batching
         appData.SchemeShardConfig.SetStatsBatchTimeoutMs(0);
         appData.SchemeShardConfig.SetStatsMaxBatchSize(0);
+        appData.PQConfig.SetBalancerWakeupIntervalSec(3600);
 
         // apply config via reboot
         TActorId sender = runtime.AllocateEdgeActor();
 
         GracefulRestartTablet(runtime, TTestTxConfig::SchemeShard, sender);
+
+        ui32 allowInjectedTopicStats = 0;
+        SetPqrbTopicStatsSuppressor(runtime, allowInjectedTopicStats);
 
         const auto AssertTopicSize = [&] (ui64 expectedAccountSize, ui64 expectedUsedReserveSize) {
             TestDescribeResult(DescribePath(runtime, "/MyRoot/Topic1"),
@@ -578,14 +607,14 @@ Y_UNIT_TEST_SUITE(TSchemeshardStatsBatchingTest) {
         ui64 generation = 1;
         ui64 round = 97;
 
-        SendTEvPeriodicTopicStats(runtime, topic1Id, generation, round, 17, 7);
+        InjectPeriodicTopicStats(runtime, allowInjectedTopicStats, topic1Id, generation, round, 17, 7);
         AssertTopicSize(17, 7);
 
         GracefulRestartTablet(runtime, TTestTxConfig::SchemeShard, sender);
 
         AssertTopicSize(17, 7); // loaded from db
 
-        SendTEvPeriodicTopicStats(runtime, topic1Id, generation, round - 1, 19, 7);
+        InjectPeriodicTopicStats(runtime, allowInjectedTopicStats, topic1Id, generation, round - 1, 19, 7);
 
         AssertTopicSize(17, 7); // not changed because round is less
     }
@@ -603,9 +632,9 @@ Y_UNIT_TEST_SUITE(TStoragePoolsStatsPersistence) {
         opts.DisableStatsBatching(true);
         opts.EnablePersistentPartitionStats(true);
         opts.EnableBackgroundCompaction(false);
+        opts.DataShardStatsReportIntervalSeconds(0);
         TTestEnv env(runtime, opts);
 
-        NDataShard::gDbStatsReportInterval = TDuration::Seconds(0);
         NDataShard::gDbStatsDataSizeResolution = 1;
         NDataShard::gDbStatsRowCountResolution = 1;
 
@@ -646,7 +675,7 @@ Y_UNIT_TEST_SUITE(TStoragePoolsStatsPersistence) {
         );
         env.TestWaitNotification(runtime, txId);
 
-        auto shards = GetTableShards(runtime, "/MyRoot/SomeTable");
+        auto shards = GetTableShards(runtime, TTestTxConfig::SchemeShard, "/MyRoot/SomeTable");
         UNIT_ASSERT_VALUES_EQUAL(shards.size(), 1);
         auto& datashard = shards[0];
         constexpr ui32 rowsCount = 100u;

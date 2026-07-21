@@ -7,11 +7,11 @@ message TAuthConfig {
     optional TUserRegistryConfig UserRegistryConfig = 1;
     optional TTVMConfig TVMConfig = 2;
     optional string StaffApiUserToken = 3 [(Ydb.sensitive) = true];
-    optional string BlackBoxEndpoint = 4;
-    optional string AccessServiceEndpoint = 5;
-    optional string UserAccountServiceEndpoint = 6;
-    optional string ServiceAccountServiceEndpoint = 7;
-    optional string StaffEndpoint = 10;
+    optional string BlackBoxEndpoint = 4 [default = "blackbox.yandex-team.ru"];
+    optional string AccessServiceEndpoint = 5 [default = "as.private-api.cloud.yandex.net:4286"];
+    optional string UserAccountServiceEndpoint = 6 [default = "api-adapter.private-api.cloud.yandex.net:8443"];
+    optional string ServiceAccountServiceEndpoint = 7 [default = "api-adapter.private-api.cloud.yandex.net:8443"];
+    optional string StaffEndpoint = 10 [default = "staff-api.yandex-team.ru"];
     optional uint32 GrpcCacheSize = 16 [default = 1024];
     optional uint64 GrpcSuccessLifeTime = 17 [default = 60000]; // ms
     optional uint64 GrpcErrorLifeTime = 18 [default = 10000]; // ms
@@ -42,7 +42,7 @@ message TAuthConfig {
     optional string TVMExpireTime = 54 [default = "2m"]; // the same for TVM tickets
     optional string MinErrorRefreshTime = 55 [default = "1s"]; // min period for refresh of error ticket
     optional string MaxErrorRefreshTime = 56 [default = "1m"]; // max period for refresh of error ticket
-    optional string PathToRootCA = 60; // root CA certificate PEM/x509
+    optional string PathToRootCA = 60 [default = "/etc/ssl/certs/YandexInternalRootCA.pem"]; // root CA certificate PEM/x509
     optional uint32 AccessServiceGrpcKeepAliveTimeMs = 70 [default = 10000]; // CLOUD-27573
     optional uint32 AccessServiceGrpcKeepAliveTimeoutMs = 71 [default = 1000]; // CLOUD-27573
     optional TStaffApiTvmSettings StaffApiTvmSettings = 72;
@@ -56,6 +56,21 @@ message TAuthConfig {
     optional string CertificateAuthenticationDomain = 80 [default = "cert"];
     optional bool EnableLoginAuthentication = 81 [default = true];
     optional string NodeRegistrationToken = 82 [default = "root@builtin", (Ydb.sensitive) = true];
+    optional TPasswordComplexity PasswordComplexity = 83;
+    optional TAccountLockout AccountLockout = 84;
+    optional string AccessServiceTokenName = 85;
+    optional TTokenManager TokenManager = 86;
+    optional string AccessServiceSslTargetNameOverride = 87;
+    optional string UserAccountServiceSslTargetNameOverride = 88;
+    optional string ServiceAccountServiceSslTargetNameOverride = 89;
+    optional string ExternalIdpAuthenticationDomain = 90 [default = "sso"];
+    optional TExternalIdpConfig ExternalIdpConfig = 91;
+    optional TLocalMetadataService LocalMetadataService = 92;
+}
+
+message TLocalMetadataService {
+    optional string Host = 1 [default = "169.254.169.254"];
+    optional uint64 Port = 2 [default = 80];
 }
 
 message TUserRegistryConfig {
@@ -103,10 +118,13 @@ message TLdapAuthentication {
         optional bool Enable = 1 [default = false];
         optional string CaCertFile = 2;
         optional TCertRequire CertRequire = 3 [default = DEMAND];
+        optional string CertFile = 4;
+        optional string KeyFile = 5;
     }
 
     message TExtendedSettings {
         optional bool EnableNestedGroupsSearch = 1 [default = false];
+        optional bool EnableSaslExternalBind = 2 [default = false];
     }
 
     optional string Host = 1; // DEPRECATED: Use Hosts instead it
@@ -121,4 +139,96 @@ message TLdapAuthentication {
     repeated string Hosts = 10;
     optional string Scheme = 11 [default = "ldap"];
     optional TExtendedSettings ExtendedSettings = 12;
+}
+
+message TPasswordComplexity {
+    optional uint32 MinLength = 1;
+    optional uint32 MinLowerCaseCount = 2;
+    optional uint32 MinUpperCaseCount = 3;
+    optional uint32 MinNumbersCount = 4;
+    optional uint32 MinSpecialCharsCount = 5;
+    optional string SpecialChars = 6;
+    optional bool CanContainUsername = 7;
+}
+
+message TAccountLockout {
+    optional uint32 AttemptThreshold = 1 [default = 4];
+    optional string AttemptResetDuration = 2 [default = "1h"];
+}
+
+message TTokenManager {
+    message TTokenProviderSettings {
+        optional string SuccessRefreshPeriod = 1 [default = "1h"];
+        optional string MinErrorRefreshPeriod = 2 [default = "1s"];
+        optional string MaxErrorRefreshPeriod = 3 [default = "1m"];
+        optional string RequestTimeout = 4 [default = "1m"];
+    }
+
+    message TVmMetadataProvider {
+        message TVmMetadataInfo {
+            optional string Id = 1;
+            optional string Endpoint = 2;
+        }
+
+        repeated TVmMetadataInfo ProvidersInfo = 1;
+        optional TTokenProviderSettings Settings = 2;
+    }
+
+    message TTokenAgentProvider {
+        message TTokenAgentInfo {
+            optional string Id = 1;
+            optional string Tag = 2;
+        }
+
+        message TSettings {
+            optional TTokenProviderSettings CommonSettings = 1;
+            optional string Endpoint = 2;
+        }
+
+        repeated TTokenAgentInfo ProvidersInfo = 1;
+        optional TSettings Settings = 2;
+    }
+
+    optional bool Enable = 1 [default = false];
+    optional string RefreshCheckPeriod = 2 [default = "1s"];
+    optional TVmMetadataProvider VmMetadataProvider = 3;
+    optional TTokenAgentProvider TokenAgentProvider = 4;
+}
+
+message TExternalIdpConfig {
+    message TPeriodicSettings {
+        optional string SuccessRefreshPeriod = 1 [default = "1h"];
+        optional string MinErrorRefreshPeriod = 2 [default = "1s"];
+        optional string MaxErrorRefreshPeriod = 3 [default = "5m"];
+        optional string RequestTimeout = 4 [default = "15s"];
+    }
+
+    message TJwksCacheSettings {
+       optional string Timeout = 1 [default = "2h"];
+    }
+
+    // Expected issuer (iss) claim value in the JWT token
+    // OIDC discovery URL will be built via concatenating Issuer and "/.well-known/openid-configuration"
+    optional string Issuer = 1;
+
+    // Expected audience (aud) claim value in the JWT token
+    optional string Audience = 2;
+
+    // Allowed clock skew for JWT validation (exp, nbf, iat claims)
+    optional string AllowedClockSkew = 3 [default = "30s"];
+
+    // JWT claim name to use as the user subject identifier
+    optional string SubjectClaimName = 4 [default = "sub"];
+
+    // JWT claim name to use as the list of groups
+    optional string GroupsClaimName = 5 [default = "groups"];
+
+    // How often to refresh discovery info from the IdP
+    optional TPeriodicSettings DiscoveryPeriodicSettings = 6;
+
+    // How often to refresh the JWKS keys from the IdP
+    optional TPeriodicSettings JwksPeriodicSettings = 7;
+
+    // Cache settings for JWKS keys
+    optional TJwksCacheSettings JwksCacheSettings = 8;
 }

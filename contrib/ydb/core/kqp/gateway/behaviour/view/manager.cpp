@@ -4,6 +4,7 @@
 #include <contrib/ydb/core/kqp/gateway/actors/scheme.h>
 #include <contrib/ydb/core/kqp/gateway/utils/scheme_helpers.h>
 #include <contrib/ydb/core/kqp/provider/yql_kikimr_provider.h>
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 #include <contrib/ydb/core/tx/tx_proxy/proxy.h>
 
 namespace NKikimr::NKqp {
@@ -13,16 +14,6 @@ namespace {
 using TYqlConclusionStatus = TViewManager::TYqlConclusionStatus;
 using TInternalModificationContext = TViewManager::TInternalModificationContext;
 using TExternalModificationContext = TViewManager::TExternalModificationContext;
-
-TYqlConclusionStatus CheckFeatureFlag(const TInternalModificationContext& context) {
-    auto* const actorSystem = context.GetExternalData().GetActorSystem();
-    if (!actorSystem) {
-        ythrow yexception() << "This place needs an actor system. Please contact internal support";
-    }
-    return AppData(actorSystem)->FeatureFlags.GetEnableViews()
-        ? TYqlConclusionStatus::Success()
-        : TYqlConclusionStatus::Fail("Views are disabled. Please contact your system administrator to enable the feature");
-}
 
 std::pair<TString, TString> SplitPathByDb(const TString& objectId,
                                           const TString& database) {
@@ -163,9 +154,6 @@ NThreading::TFuture<TYqlConclusionStatus> TViewManager::DoModify(const NYql::TOb
     };
 
     try {
-        if (const auto status = CheckFeatureFlag(context); status.IsFail()) {
-            return makeFuture(status);
-        }
         switch (context.GetActivityType()) {
             case EActivityType::Alter:
                 return makeFuture(TYqlConclusionStatus::Fail("Alter operation for VIEW objects is not implemented"));
@@ -190,9 +178,6 @@ TViewManager::TYqlConclusionStatus TViewManager::DoPrepare(NKqpProto::TKqpScheme
     Y_UNUSED(manager);
 
     try {
-        if (const auto status = CheckFeatureFlag(context); status.IsFail()) {
-            return status;
-        }
         switch (context.GetActivityType()) {
             case EActivityType::Undefined:
                 return TYqlConclusionStatus::Fail("Undefined operation for a VIEW object");

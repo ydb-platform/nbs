@@ -3,25 +3,27 @@
 #include "factories.h"
 #include "service_initializer.h"
 
+#include <contrib/ydb/core/memory_controller/memory_controller.h>
 #include <contrib/ydb/library/actors/util/affinity.h>
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/base/statestorage.h>
+#include <contrib/ydb/core/base/memory_controller_iface.h>
 #include <contrib/ydb/core/tablet/tablet_setup.h>
 #include <contrib/ydb/core/tablet/node_tablet_monitor.h>
 #include <contrib/ydb/core/tablet_flat/shared_sausagecache.h>
 
 #include <contrib/ydb/core/protos/config.pb.h>
+#include <contrib/ydb/core/raw_socket/sock_ssl.h>
 
 #include <contrib/ydb/public/lib/base/msgbus.h>
 
 #include <contrib/ydb/core/fq/libs/shared_resources/interface/shared_resources.h>
 
 #include <contrib/ydb/library/actors/core/defs.h>
-#include <contrib/ydb/library/actors/core/actorsystem.h>
 #include <contrib/ydb/library/actors/core/log_settings.h>
 #include <contrib/ydb/library/actors/core/scheduler_actor.h>
 #include <contrib/ydb/library/actors/core/scheduler_basic.h>
-#include <contrib/ydb/library/actors/interconnect/poller_tcp.h>
+#include <contrib/ydb/library/actors/interconnect/poller/poller_tcp.h>
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 
 #include <util/generic/vector.h>
@@ -35,6 +37,8 @@ protected:
     NKikimrConfig::TAppConfig& Config;
     const ui32                       NodeId;
     const TKikimrScopeId             ScopeId;
+    const bool                       TinyMode;
+    const TBasicKikimrServicesMask   ServicesMask;
 
 public:
     IKikimrServicesInitializer(const TKikimrRunConfig& runConfig);
@@ -87,10 +91,8 @@ public:
 };
 
 class TSharedCacheInitializer : public IKikimrServicesInitializer {
-    TIntrusivePtr<TMemObserver> MemObserver;
-
 public:
-    TSharedCacheInitializer(const TKikimrRunConfig& runConfig, TIntrusivePtr<TMemObserver> memObserver);
+    TSharedCacheInitializer(const TKikimrRunConfig& runConfig);
 
     void InitializeServices(NActors::TActorSystemSetup *setup, const NKikimr::TAppData *appData) override;
 };
@@ -254,6 +256,11 @@ public:
     TSecurityServicesInitializer(const TKikimrRunConfig& runConfig, std::shared_ptr<TModuleFactories> factories);
 
     void InitializeServices(NActors::TActorSystemSetup *setup, const NKikimr::TAppData *appData) override;
+
+private:
+    void InitializeTokenManager(NActors::TActorSystemSetup* setup, const NKikimr::TAppData* appData);
+    void InitializeLdapAuthProvider(NActors::TActorSystemSetup* setup, const NKikimr::TAppData* appData);
+    void InitializeTicketParser(NActors::TActorSystemSetup* setup, const NKikimr::TAppData* appData);
 };
 
 // grpc_proxy
@@ -329,6 +336,13 @@ public:
     void InitializeServices(NActors::TActorSystemSetup *setup, const NKikimr::TAppData *appData) override;
 };
 
+class TMonPersistentBufferInitializer : public IKikimrServicesInitializer {
+public:
+    TMonPersistentBufferInitializer(const TKikimrRunConfig& runConfig);
+
+    void InitializeServices(NActors::TActorSystemSetup *setup, const NKikimr::TAppData *appData) override;
+};
+
 class TPersQueueL2CacheInitializer : public IKikimrServicesInitializer {
 public:
     TPersQueueL2CacheInitializer(const TKikimrRunConfig& runConfig);
@@ -357,11 +371,17 @@ public:
     void InitializeServices(NActors::TActorSystemSetup* setup, const NKikimr::TAppData* appData) override;
 };
 
-class TMemProfMonitorInitializer : public IKikimrServicesInitializer {
-    TIntrusivePtr<TMemObserver> MemObserver;
-
+class TTopicDeferredPublishRegistryInitializer : public IKikimrServicesInitializer {
 public:
-    TMemProfMonitorInitializer(const TKikimrRunConfig& runConfig, TIntrusivePtr<TMemObserver> memObserver);
+    TTopicDeferredPublishRegistryInitializer(const TKikimrRunConfig& runConfig);
+
+    void InitializeServices(NActors::TActorSystemSetup* setup, const NKikimr::TAppData* appData) override;
+};
+
+class TMemProfMonitorInitializer : public IKikimrServicesInitializer {
+    TIntrusiveConstPtr<NMemory::IProcessMemoryInfoProvider> ProcessMemoryInfoProvider;
+public:
+    TMemProfMonitorInitializer(const TKikimrRunConfig& runConfig, TIntrusiveConstPtr<NMemory::IProcessMemoryInfoProvider> processMemoryInfoProvider);
 
     void InitializeServices(NActors::TActorSystemSetup* setup, const NKikimr::TAppData* appData) override;
 };
@@ -369,6 +389,14 @@ public:
 class TMemoryTrackerInitializer : public IKikimrServicesInitializer {
 public:
     TMemoryTrackerInitializer(const TKikimrRunConfig& runConfig);
+
+    void InitializeServices(NActors::TActorSystemSetup* setup, const NKikimr::TAppData* appData) override;
+};
+
+class TMemoryControllerInitializer : public IKikimrServicesInitializer {
+    TIntrusiveConstPtr<NMemory::IProcessMemoryInfoProvider> ProcessMemoryInfoProvider;
+public:
+    TMemoryControllerInitializer(const TKikimrRunConfig& runConfig, TIntrusiveConstPtr<NMemory::IProcessMemoryInfoProvider> processMemoryInfoProvider);
 
     void InitializeServices(NActors::TActorSystemSetup* setup, const NKikimr::TAppData* appData) override;
 };
@@ -397,27 +425,45 @@ public:
     void InitializeServices(NActors::TActorSystemSetup* setup, const NKikimr::TAppData* appData) override;
 };
 
-class TGroupedMemoryLimiterInitializer: public IKikimrServicesInitializer {
+class TScanGroupedMemoryLimiterInitializer: public IKikimrServicesInitializer {
 public:
-    TGroupedMemoryLimiterInitializer(const TKikimrRunConfig& runConfig);
+    TScanGroupedMemoryLimiterInitializer(const TKikimrRunConfig& runConfig);
     void InitializeServices(NActors::TActorSystemSetup* setup, const NKikimr::TAppData* appData) override;
 };
 
-class TCompConveyorInitializer: public IKikimrServicesInitializer {
+class TCompGroupedMemoryLimiterInitializer: public IKikimrServicesInitializer {
 public:
-    TCompConveyorInitializer(const TKikimrRunConfig& runConfig);
+    TCompGroupedMemoryLimiterInitializer(const TKikimrRunConfig& runConfig);
     void InitializeServices(NActors::TActorSystemSetup* setup, const NKikimr::TAppData* appData) override;
 };
 
-class TScanConveyorInitializer: public IKikimrServicesInitializer {
+class TDeduplicationGroupedMemoryLimiterInitializer: public IKikimrServicesInitializer {
 public:
-    TScanConveyorInitializer(const TKikimrRunConfig& runConfig);
+    TDeduplicationGroupedMemoryLimiterInitializer(const TKikimrRunConfig& runConfig);
     void InitializeServices(NActors::TActorSystemSetup* setup, const NKikimr::TAppData* appData) override;
 };
 
-class TInsertConveyorInitializer: public IKikimrServicesInitializer {
+class TCompPrioritiesInitializer: public IKikimrServicesInitializer {
 public:
-    TInsertConveyorInitializer(const TKikimrRunConfig& runConfig);
+    TCompPrioritiesInitializer(const TKikimrRunConfig& runConfig);
+    void InitializeServices(NActors::TActorSystemSetup* setup, const NKikimr::TAppData* appData) override;
+};
+
+class TCompositeConveyorInitializer : public IKikimrServicesInitializer {
+public:
+    TCompositeConveyorInitializer(const TKikimrRunConfig& runConfig);
+	void InitializeServices(NActors::TActorSystemSetup* setup, const NKikimr::TAppData* appData) override;
+};
+
+class TGeneralCachePortionsMetadataInitializer: public IKikimrServicesInitializer {
+public:
+    TGeneralCachePortionsMetadataInitializer(const TKikimrRunConfig& runConfig);
+    void InitializeServices(NActors::TActorSystemSetup* setup, const NKikimr::TAppData* appData) override;
+};
+
+class TGeneralCacheColumnDataInitializer: public IKikimrServicesInitializer {
+public:
+    TGeneralCacheColumnDataInitializer(const TKikimrRunConfig& runConfig);
     void InitializeServices(NActors::TActorSystemSetup* setup, const NKikimr::TAppData* appData) override;
 };
 
@@ -563,6 +609,13 @@ public:
     void InitializeServices(NActors::TActorSystemSetup* setup, const NKikimr::TAppData* appData) override;
 };
 
+class TCountersInfoProviderInitializer : public IKikimrServicesInitializer {
+public:
+    TCountersInfoProviderInitializer(const TKikimrRunConfig& runConfig);
+
+    void InitializeServices(NActors::TActorSystemSetup* setup, const NKikimr::TAppData* appData) override;
+};
+
 class TFederatedQueryInitializer : public IKikimrServicesInitializer {
 public:
     TFederatedQueryInitializer(const TKikimrRunConfig& runConfig, std::shared_ptr<TModuleFactories> factories, NFq::IYqSharedResources::TPtr yqSharedResources);
@@ -583,15 +636,11 @@ public:
     void InitializeServices(NActors::TActorSystemSetup* setup, const NKikimr::TAppData* appData) override;
 };
 
-class TLocalPgWireServiceInitializer : public IKikimrServicesInitializer {
-public:
-    TLocalPgWireServiceInitializer(const TKikimrRunConfig& runConfig);
-
-    void InitializeServices(NActors::TActorSystemSetup* setup, const NKikimr::TAppData* appData) override;
-};
-
 class TKafkaProxyServiceInitializer : public IKikimrServicesInitializer {
 public:
+    template<typename T>
+    using TSslHolder = NRawSocket::TSslLayer<TStreamSocket>::TSslHolder<T>;
+
     TKafkaProxyServiceInitializer(const TKikimrRunConfig& runConfig);
 
     void InitializeServices(NActors::TActorSystemSetup* setup, const NKikimr::TAppData* appData) override;
@@ -618,7 +667,6 @@ public:
     void InitializeServices(NActors::TActorSystemSetup* setup, const NKikimr::TAppData* appData) override;
 };
 
-#ifndef KIKIMR_DISABLE_S3_OPS
 class TAwsApiInitializer : public IServiceInitializer {
     IGlobalObjectStorage& GlobalObjects;
 
@@ -627,7 +675,27 @@ public:
 
     void InitializeServices(NActors::TActorSystemSetup* setup, const NKikimr::TAppData* appData) override;
 };
+
+class TOverloadManagerInitializer: public IKikimrServicesInitializer {
+public:
+    TOverloadManagerInitializer(const TKikimrRunConfig& runConfig);
+    void InitializeServices(NActors::TActorSystemSetup* setup, const NKikimr::TAppData* appData) override;
+};
+
+#if defined(YDB_EMBEDDED_NBS_ENABLED)
+class TNbsServiceInitializer: public IKikimrServicesInitializer {
+public:
+    TNbsServiceInitializer(const TKikimrRunConfig &runConfig);
+    void InitializeServices(NActors::TActorSystemSetup *setup, const NKikimr::TAppData *appData) override;
+};
 #endif
+
+class TUdfStoreInitializer: public IKikimrServicesInitializer {
+    TIntrusivePtr<NMiniKQL::IMutableFunctionRegistry> FunctionRegistry;
+public:
+    TUdfStoreInitializer(const TKikimrRunConfig& runConfig, TIntrusivePtr<NMiniKQL::IMutableFunctionRegistry> functionRegistry);
+    void InitializeServices(NActors::TActorSystemSetup* setup, const NKikimr::TAppData* appData) override;
+};
 
 } // namespace NKikimrServicesInitializers
 } // namespace NKikimr

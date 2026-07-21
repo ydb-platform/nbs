@@ -1,7 +1,6 @@
 #include "service.h"
 #include "http_request.h"
 
-#include <contrib/ydb/core/statistics/common.h>
 #include <contrib/ydb/core/statistics/events.h>
 #include <contrib/ydb/core/statistics/database/database.h>
 
@@ -16,22 +15,27 @@
 #include <contrib/ydb/core/mon/mon.h>
 #include <contrib/ydb/core/protos/statistics.pb.h>
 #include <contrib/ydb/core/protos/data_events.pb.h>
+#include <contrib/ydb/core/protos/feature_flags.pb.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/log.h>
+#include <contrib/ydb/library/yql/core/minsketch/count_min_sketch.h>
+#include <contrib/ydb/library/yql/core/histogram/eq_width_histogram.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
 
+#include <util/datetime/cputimer.h>
 
 #include <contrib/ydb/library/yql/public/issue/yql_issue_message.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_proto/accessor.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/proto/accessor.h>
 #include <contrib/ydb/core/grpc_services/local_rpc/local_rpc.h>
+
+#define YDB_LOG_THIS_FILE_COMPONENT NKikimrServices::STATISTICS
 
 namespace NKikimr {
 namespace NStat {
 
-using TEvReadRowsRequest = NGRpcService::TGrpcRequestNoOperationCall<Ydb::Table::ReadRowsRequest, Ydb::Table::ReadRowsResponse>;
 using TNavigate = NSchemeCache::TSchemeCacheNavigate;
 
 struct TAggregationStatistics {
@@ -111,7 +115,7 @@ struct TAggregationStatistics {
                     ? &Nodes[i] : nullptr;
             }
         }
-        SA_LOG_E("Child node with the specified id was not found");
+        YDB_LOG_ERROR("Child node with the specified id was not found");
         return nullptr;
     }
 };
@@ -119,8 +123,6 @@ struct TAggregationStatistics {
 class TStatService : public TActorBootstrapped<TStatService> {
 public:
     using TBase = TActorBootstrapped<TStatService>;
-
-    static constexpr TStringBuf StatisticsTable = "/.metadata/_statistics";
 
     TStatService(const TStatServiceSettings& settings)
         : Settings(settings)
@@ -186,7 +188,7 @@ public:
         if (mon) {
             NMonitoring::TIndexMonPage *actorsMonPage = mon->RegisterIndexPage("actors", "Actors");
             mon->RegisterActorPage(actorsMonPage, "statservice", "Statistics service",
-                false, TlsActivationContext->ExecutorThread.ActorSystem, SelfId());
+                false, TActivationContext::ActorSystem(), SelfId());
         }
 
         Become(&TStatService::StateWork);
@@ -221,13 +223,16 @@ public:
             hFunc(NMon::TEvHttpInfoRes, Handle);
             cFunc(TEvents::TEvPoison::EventType, PassAway);
             default:
-                SA_LOG_CRIT("NStat::TStatService: unexpected event# " << ev->GetTypeRewrite() << " " << ev->ToString());
+                YDB_LOG_CRIT("NStat::TStatService: unexpected event",
+                    {"eventType", ev->GetTypeRewrite()},
+                    {"eventString", ev->ToString()});
         }
     }
 
 private:
     void HandleConfig(NConsole::TEvConfigsDispatcher::TEvSetConfigSubscriptionResponse::TPtr&) {
-        SA_LOG_I("Subscribed for config changes on node " << SelfId().NodeId());
+        YDB_LOG_INFO("Subscribed for config changes on node",
+            {"nodeId", SelfId().NodeId()});
     }
 
     void HandleConfig(NConsole::TEvConsole::TEvConfigNotificationRequest::TPtr& ev) {
@@ -247,7 +252,9 @@ private:
 
     bool IsNotCurrentRound(ui64 round) {
         if (round != AggregationStatistics.Round) {
-            SA_LOG_D("Event round " << round << " is different from the current " << AggregationStatistics.Round);
+            YDB_LOG_DEBUG("Event round is different from the current",
+                {"round", round},
+                {"currentRound", AggregationStatistics.Round});
             return true;
         }
         return false;
@@ -270,7 +277,7 @@ private:
 
         auto policy = NTabletPipe::TClientRetryPolicy::WithRetries();
         policy.RetryLimitCount = 2;
-        NTabletPipe::TClientConfig pipeConfig{policy};
+        NTabletPipe::TClientConfig pipeConfig{.RetryPolicy = policy};
         pipeConfig.ForceLocal = true;
         localTablets.TabletsPipes[tabletId] = Register(NTabletPipe::CreateClient(SelfId(), tabletId, pipeConfig));
     }
@@ -292,8 +299,8 @@ private:
             const auto tag = column.GetTag();
 
             for (auto& statistic : column.GetStatistics()) {
-                if (statistic.GetType() == NKikimr::NStat::COUNT_MIN_SKETCH) {
-                    auto data = statistic.GetData().Data();
+                if (statistic.GetType() == static_cast<ui32>(EStatType::COUNT_MIN_SKETCH)) {
+                    auto data = statistic.GetData().data();
                     auto sketch = reinterpret_cast<const TCountMinSketch*>(data);
                     auto& current = AggregationStatistics.CountMinSketches[tag];
 
@@ -312,7 +319,8 @@ private:
         const auto& record = ev->Get()->Record;
         const auto tabletId = record.GetShardTabletId();
 
-        SA_LOG_D("Received TEvStatisticsResponse TabletId: " << tabletId);
+        YDB_LOG_DEBUG("Received TEvStatisticsResponse",
+            {"tabletId", tabletId});
 
         const auto round = ev->Cookie;
         if (IsNotCurrentRound(round)) {
@@ -340,7 +348,7 @@ private:
         const auto round = record.GetRound();
 
         if (IsNotCurrentRound(round)) {
-            SA_LOG_D("Skip TEvAggregateKeepAliveAck");
+            YDB_LOG_DEBUG("Skip TEvAggregateKeepAliveAck");
             return;
         }
 
@@ -350,7 +358,7 @@ private:
     void Handle(TEvPrivate::TEvKeepAliveAckTimeout::TPtr& ev) {
         const auto round = ev->Get()->Round;
         if (IsNotCurrentRound(round)) {
-            SA_LOG_D("Skip TEvKeepAliveAckTimeout");
+            YDB_LOG_DEBUG("Skip TEvKeepAliveAckTimeout");
             return;
         }
 
@@ -365,7 +373,8 @@ private:
 
         // the parent node is unavailable
         // invalidate the subtree with the root in the current node
-        SA_LOG_I("Parent node " << AggregationStatistics.ParentNode.NodeId() << " is unavailable");
+        YDB_LOG_INFO("Parent node is unavailable",
+            {"parentNodeId", AggregationStatistics.ParentNode.NodeId()});
 
 
         ResetAggregationStatistics();
@@ -374,7 +383,7 @@ private:
     void Handle(TEvPrivate::TEvDispatchKeepAlive::TPtr& ev) {
         const auto round = ev->Get()->Round;
         if (IsNotCurrentRound(round)) {
-            SA_LOG_D("Skip TEvDispatchKeepAlive");
+            YDB_LOG_DEBUG("Skip TEvDispatchKeepAlive");
             return;
         }
 
@@ -388,7 +397,7 @@ private:
         const auto round = ev->Get()->Round;
 
         if (IsNotCurrentRound(round)) {
-            SA_LOG_D("Skip TEvKeepAliveTimeout");
+            YDB_LOG_DEBUG("Skip TEvKeepAliveTimeout");
             return;
         }
 
@@ -396,7 +405,7 @@ private:
         auto node = AggregationStatistics.GetProcessingChildNode(nodeId);
 
         if (node == nullptr) {
-            SA_LOG_D("Skip TEvKeepAliveTimeout");
+            YDB_LOG_DEBUG("Skip TEvKeepAliveTimeout");
             return;
         }
 
@@ -411,7 +420,8 @@ private:
 
         node->Status = TAggregationStatistics::TNode::EStatus::Unavailable;
         ++AggregationStatistics.PprocessedNodes;
-        SA_LOG_I("Node " << nodeId << " is unavailable");
+        YDB_LOG_INFO("Node is unavailable",
+            {"nodeId", nodeId});
 
         if (AggregationStatistics.IsCompleted()) {
             OnAggregateStatisticsFinished();
@@ -423,7 +433,7 @@ private:
         const auto round = record.GetRound();
 
         if (IsNotCurrentRound(round)) {
-            SA_LOG_D("Skip TEvAggregateKeepAlive");
+            YDB_LOG_DEBUG("Skip TEvAggregateKeepAlive");
             return;
         }
 
@@ -431,7 +441,7 @@ private:
         auto node = AggregationStatistics.GetProcessingChildNode(nodeId);
 
         if (node == nullptr) {
-            SA_LOG_D( "Skip TEvAggregateKeepAlive");
+            YDB_LOG_DEBUG("Skip TEvAggregateKeepAlive");
             return;
         }
 
@@ -443,13 +453,14 @@ private:
     }
 
     void Handle(TEvStatistics::TEvAggregateStatisticsResponse::TPtr& ev) {
-        SA_LOG_D("Received TEvAggregateStatisticsResponse SenderNodeId: " << ev->Sender.NodeId());
+        YDB_LOG_DEBUG("Received TEvAggregateStatisticsResponse",
+            {"senderNodeId", ev->Sender.NodeId()});
 
         const auto& record = ev->Get()->Record;
         const auto round = record.GetRound();
 
         if (IsNotCurrentRound(round)) {
-            SA_LOG_D("Skip TEvAggregateStatisticsResponse");
+            YDB_LOG_DEBUG("Skip TEvAggregateStatisticsResponse");
             return;
         }
 
@@ -457,7 +468,7 @@ private:
         auto node = AggregationStatistics.GetProcessingChildNode(nodeId);
 
         if (node == nullptr) {
-            SA_LOG_D("Skip TEvAggregateStatisticsResponse");
+            YDB_LOG_DEBUG("Skip TEvAggregateStatisticsResponse");
             return;
         }
 
@@ -497,7 +508,8 @@ private:
     }
 
     void SendAggregateStatisticsResponse() {
-        SA_LOG_D("Send aggregate statistics response to node: " << AggregationStatistics.ParentNode.NodeId());
+        YDB_LOG_DEBUG("Send aggregate statistics response",
+            {"toNode", AggregationStatistics.ParentNode.NodeId()});
 
         auto response = std::make_unique<TEvStatistics::TEvAggregateStatisticsResponse>();
         auto& record = response->Record;
@@ -515,8 +527,8 @@ private:
 
             auto data = it->second.Statistics->AsStringBuf();
             auto statistics = column->AddStatistics();
-            statistics->SetType(NKikimr::NStat::COUNT_MIN_SKETCH);
-            statistics->SetData(data.Data(), data.Size());
+            statistics->SetType(static_cast<ui32>(EStatType::COUNT_MIN_SKETCH));
+            statistics->SetData(data.data(), data.size());
         }
 
         auto failedTablets = record.MutableFailedTablets();
@@ -582,8 +594,10 @@ private:
         const auto& record = ev->Get()->Record;
         const auto round = record.GetRound();
 
-        SA_LOG_D("Received TEvAggregateStatistics from node: " << ev->Sender.NodeId()
-            << ", Round: " << round << ", current Round: " << AggregationStatistics.Round);
+        YDB_LOG_DEBUG("Received TEvAggregateStatistics",
+            {"fromNode", ev->Sender.NodeId()},
+            {"round", round},
+            {"currentRound", AggregationStatistics.Round});
 
         // reset previous state
         if (AggregationStatistics.Round != 0) {
@@ -647,80 +661,16 @@ private:
         }
     }
 
-    void LoadStatistics(const TString& database, const TString& tablePath,
-                        const TPathId& pathId, ui32 statType, ui32 columnTag, ui64 queryId) {
-        SA_LOG_D("[TStatService::LoadStatistics] QueryId[ " << queryId
-            << " ], PathId[ " << pathId << " ], " << " StatType[ " << statType
-            << " ], ColumnTag[ " << columnTag << " ]");
-
-        auto readRowsRequest = Ydb::Table::ReadRowsRequest();
-        readRowsRequest.set_path(tablePath);
-
-        NYdb::TValueBuilder keys_builder;
-        keys_builder.BeginList()
-            .AddListItem()
-                .BeginStruct()
-                    .AddMember("owner_id").Uint64(pathId.OwnerId)
-                    .AddMember("local_path_id").Uint64(pathId.LocalPathId)
-                    .AddMember("stat_type").Uint32(statType)
-                    .AddMember("column_tag").Uint32(columnTag)
-                .EndStruct()
-            .EndList();
-        auto keys = keys_builder.Build();
-        auto protoKeys = readRowsRequest.mutable_keys();
-        *protoKeys->mutable_type() = NYdb::TProtoAccessor::GetProto(keys.GetType());
-        *protoKeys->mutable_value() = NYdb::TProtoAccessor::GetProto(keys);
-
-        auto actorSystem = TlsActivationContext->ActorSystem();
-        auto rpcFuture = NRpcService::DoLocalRpc<TEvReadRowsRequest>(
-            std::move(readRowsRequest), database, Nothing(), TActivationContext::ActorSystem(), true
-        );
-        rpcFuture.Subscribe([replyTo = SelfId(), queryId, actorSystem](const NThreading::TFuture<Ydb::Table::ReadRowsResponse>& future) mutable {
-            const auto& response = future.GetValueSync();
-            auto query_response = std::make_unique<TEvStatistics::TEvLoadStatisticsQueryResponse>();
-
-            if (response.status() == Ydb::StatusIds::SUCCESS) {
-                NYdb::TResultSetParser parser(response.result_set());
-                const auto rowsCount = parser.RowsCount();
-                Y_ABORT_UNLESS(rowsCount < 2);
-
-                if (rowsCount == 0) {
-                    SA_LOG_E("[TStatService::ReadRowsResponse] QueryId[ "
-                        << queryId << " ], RowsCount[ 0 ]");
-                }
-
-                query_response->Success = rowsCount > 0;
-
-                while(parser.TryNextRow()) {
-                    auto& col = parser.ColumnParser("data");
-                    // may be not optional from versions before fix of bug https://github.com/ydb-platform/ydb/issues/15701
-                    if (col.GetKind() == NYdb::TTypeParser::ETypeKind::Optional) {
-                        if (auto opt = col.GetOptionalString()) {
-                            query_response->Data = opt.GetRef();
-                        } else {
-                            query_response->Data.reset();
-                        }
-                    } else {
-                        query_response->Data = col.GetString();
-                    }
-                 }
-            } else {
-                SA_LOG_E("[TStatService::ReadRowsResponse] QueryId[ "
-                    << queryId << " ] " << NYql::IssuesFromMessageAsString(response.issues()));
-                query_response->Success = false;
-            }
-
-            actorSystem->Send(replyTo, query_response.release(), 0, queryId);
-        });
-    }
-
-    void QueryStatistics(const TString& database, const TString& tablePath, ui64 requestId) {
-        SA_LOG_D("[TStatService::QueryStatistics] RequestId[ " << requestId
-            << " ], Database[ " << database << " ], TablePath[ " << tablePath << " ]");
+    void QueryStatistics(const TString& database, ui64 requestId) {
+        YDB_LOG_DEBUG("[TStatService::QueryStatistics]",
+            {"requestId", requestId},
+            {"database", database});
 
         auto it = InFlight.find(requestId);
         if (it == InFlight.end()) {
-            SA_LOG_E("[TStatService::QueryStatistics] RequestId[ " << requestId << " ] Not found");
+
+            YDB_LOG_ERROR("[TStatService::QueryStatistics] Request not found",
+                {"requestId", requestId});
             ReplyFailed(requestId, true);
             return;
         }
@@ -732,15 +682,11 @@ private:
         for (const auto& req : request.StatRequests) {
             auto& response = request.StatResponses.emplace_back();
             response.Req = req;
-            if (!req.ColumnTag) {
-                response.Success = false;
-                ++reqIndex;
-                continue;
-            }
             ui64 queryId = NextLoadQueryCookie++;
             LoadQueriesInFlight[queryId] = std::make_pair(requestId, reqIndex);
 
-            LoadStatistics(database, tablePath, req.PathId, request.StatType, *req.ColumnTag, queryId);
+            DispatchLoadStatisticsQuery(
+                SelfId(), queryId, database, req.PathId, request.StatType, req.ColumnTags);
 
             ++request.ReplyCounter;
             ++reqIndex;
@@ -769,18 +715,20 @@ private:
             return;
         }
 
-        SA_LOG_D("[TStatService::TEvGetStatistics] RequestId[ " << requestId
-            << " ], ReplyToActorId[ " << request.ReplyToActorId
-            << "], StatType[ " << static_cast<ui32>(request.StatType)
-            << " ], StatRequestsCount[ " << request.StatRequests.size() << " ]");
+        YDB_LOG_DEBUG("[TStatService::TEvGetStatistics]",
+            {"requestId", requestId},
+            {"replyToActorId", request.ReplyToActorId},
+            {"statType", static_cast<ui32>(request.StatType)},
+            {"statRequestsCount", request.StatRequests.size()});
 
         auto navigate = std::make_unique<TNavigate>();
+        navigate->DatabaseName = ev->Get()->Database;
         navigate->Cookie = requestId;
         for (const auto& req : request.StatRequests) {
             AddNavigateEntry(navigate->ResultSet, req.PathId, true);
         }
 
-        ui64 cookie = request.StatType == EStatType::COUNT_MIN_SKETCH ? requestId : 0;
+        ui64 cookie = request.StatType == EStatType::SIMPLE ? 0 : requestId;
         Send(MakeSchemeCacheID(), new TEvTxProxySchemeCache::TEvNavigateKeySet(navigate.release()), 0, cookie);
     }
 
@@ -788,7 +736,9 @@ private:
         std::unique_ptr<TNavigate> navigate(ev->Get()->Request.Release());
 
         auto requestId = ev->Cookie == 0 ? navigate->Cookie : ev->Cookie;
-        SA_LOG_D("[TStatService::TEvNavigateKeySetResult] RequestId[ " << requestId << " ]");
+
+        YDB_LOG_DEBUG("[TStatService::TEvNavigateKeySetResult]",
+            {"requestId", requestId});
 
         // Search for the database to query to the statistics table.
         if (ev->Cookie != 0) {
@@ -797,24 +747,27 @@ private:
             });
 
             if (entry == navigate->ResultSet.end()) {
-                SA_LOG_E("[TStatService::TEvNavigateKeySetResult] RequestId[ " << requestId << " ] Navigate failed");
+                YDB_LOG_ERROR("[TStatService::TEvNavigateKeySetResult] Navigate failed",
+                    {"requestId", requestId});
                 ReplyFailed(requestId, true);
                 return;
             }
 
             if (navigate->Cookie == 0) {
                 const auto database = JoinPath(entry->Path);
-                const auto tablePath = CanonizePath(database + StatisticsTable);
-                QueryStatistics(database, tablePath, requestId);
+                QueryStatistics(database, requestId);
                 return;
             }
 
             const auto domainInfo = entry->DomainInfo;
             const auto& pathId = domainInfo->IsServerless() ? domainInfo->ResourcesDomainKey : domainInfo->DomainKey;
 
-            SA_LOG_D("[TStatService::TEvNavigateKeySetResult] RequestId[ " << requestId
-                << " ] resolve DatabasePath[ " << pathId << " ]");
+
+            YDB_LOG_DEBUG("[TStatService::TEvNavigateKeySetResult] resolve database",
+                {"requestId", requestId},
+                {"pathId", pathId});
             auto navigateRequest = std::make_unique<TNavigate>();
+            navigateRequest->DatabaseName = AppData()->DomainsInfo->GetDomain()->Name;
             AddNavigateEntry(navigateRequest->ResultSet, pathId);
 
             Send(MakeSchemeCacheID(), new TEvTxProxySchemeCache::TEvNavigateKeySet(navigateRequest.release()), 0, ev->Cookie);
@@ -838,9 +791,9 @@ private:
                 SyncNode();
             } else {
                 // In case of StatisticsAggregator tablet could not be found,
-                // we need to cancel the current requests. No need to delete CountMinSketch requests.
+                // we need to cancel the current requests. No need to delete column statistic requests.
                 for (auto it = InFlight.begin(); it != InFlight.end();) {
-                    if (EStatType::COUNT_MIN_SKETCH == it->second.StatType) {
+                    if (it->second.StatType != EStatType::SIMPLE) {
                         ++it;
                         continue;
                     }
@@ -886,6 +839,7 @@ private:
 
         auto navigateDomainKey = [this, cookie = ev->Cookie] (const TPathId& domainKey) {
             auto navigateRequest = std::make_unique<TNavigate>();
+            navigateRequest->DatabaseName = AppData()->DomainsInfo->GetDomain()->Name;
             AddNavigateEntry(navigateRequest->ResultSet, domainKey);
             navigateRequest->Cookie = ResolveSACookie;
             Send(MakeSchemeCacheID(), new TEvTxProxySchemeCache::TEvNavigateKeySet(navigateRequest.release()));
@@ -938,9 +892,11 @@ private:
     }
 
     void Handle(TEvStatistics::TEvPropagateStatistics::TPtr& ev) {
-        SA_LOG_D("EvPropagateStatistics, node id = " << SelfId().NodeId());
+        YDB_LOG_DEBUG("EvPropagateStatistics",
+            {"nodeId", SelfId().NodeId()},
+            {"cookie", ev->Cookie});
 
-        Send(ev->Sender, new TEvStatistics::TEvPropagateStatisticsResponse);
+        Send(ev->Sender, new TEvStatistics::TEvPropagateStatisticsResponse, 0, ev->Cookie);
 
         IsStatisticsDisabledInSA = false;
 
@@ -1022,18 +978,20 @@ private:
     void Handle(TEvPrivate::TEvStatisticsRequestTimeout::TPtr& ev) {
         const auto round = ev->Get()->Round;
         if (IsNotCurrentRound(round)) {
-            SA_LOG_D("Skip TEvStatisticsRequestTimeout");
+            YDB_LOG_DEBUG("Skip TEvStatisticsRequestTimeout");
             return;
         }
 
         const auto tabletId = ev->Get()->TabletId;
         auto tabletPipe = AggregationStatistics.LocalTablets.TabletsPipes.find(tabletId);
         if (tabletPipe == AggregationStatistics.LocalTablets.TabletsPipes.end()) {
-            SA_LOG_D("Tablet " << tabletId << " has already been processed");
+            YDB_LOG_DEBUG("Tablet has already been processed",
+                {"tabletId", tabletId});
             return;
         }
 
-        SA_LOG_E("No result was received from the tablet " << tabletId);
+        YDB_LOG_ERROR("No result was received from the tablet",
+            {"tabletId", tabletId});
 
         auto clientId = tabletPipe->second;
         OnTabletError(tabletId);
@@ -1054,17 +1012,18 @@ private:
             columnTags->Add(tag);
         }
 
+        YDB_LOG_DEBUG("TEvStatisticsRequest send",
+            {"clientId", clientId},
+            {"path", *path});
+
         const auto round = AggregationStatistics.Round;
         NTabletPipe::SendData(SelfId(), clientId, request.release(), round);
         Schedule(Settings.StatisticsRequestTimeout, new TEvPrivate::TEvStatisticsRequestTimeout(round, tabletId));
-
-        SA_LOG_D("TEvStatisticsRequest send"
-            << ", client id = " << clientId
-            << ", path = " << *path);
     }
 
     void OnTabletError(ui64 tabletId) {
-        SA_LOG_D("Tablet " << tabletId << " is not local.");
+        YDB_LOG_DEBUG("Tablet is not local",
+            {"tabletId", tabletId});
 
         const auto error = NKikimrStat::TEvAggregateStatisticsResponse::TYPE_NON_LOCAL_TABLET;
         AggregationStatistics.FailedTablets.emplace_back(tabletId, 0, error);
@@ -1082,12 +1041,12 @@ private:
         const auto& clientId = ev->Get()->ClientId;
         const auto& tabletId = ev->Get()->TabletId;
 
-        SA_LOG_D("EvClientConnected"
-            << ", node id = " << ev->Get()->ClientId.NodeId()
-            << ", client id = " << clientId
-            << ", server id = " << ev->Get()->ServerId
-            << ", tablet id = " << tabletId
-            << ", status = " << ev->Get()->Status);
+        YDB_LOG_DEBUG("EvClientConnected",
+            {"nodeId", ev->Get()->ClientId.NodeId()},
+            {"clientId", clientId},
+            {"serverId", ev->Get()->ServerId},
+            {"tabletId", tabletId},
+            {"status", ev->Get()->Status});
 
         if (clientId == SAPipeClientId) {
             IsStatisticsDisabledInSA = false;
@@ -1111,18 +1070,18 @@ private:
             return;
         }
 
-        SA_LOG_D("Skip EvClientConnected");
+        YDB_LOG_DEBUG("Skip EvClientConnected");
     }
 
     void Handle(TEvTabletPipe::TEvClientDestroyed::TPtr& ev) {
         const auto& clientId = ev->Get()->ClientId;
         const auto& tabletId = ev->Get()->TabletId;
 
-        SA_LOG_D("EvClientDestroyed"
-            << ", node id = " << ev->Get()->ClientId.NodeId()
-            << ", client id = " << clientId
-            << ", server id = " << ev->Get()->ServerId
-            << ", tablet id = " << tabletId);
+        YDB_LOG_DEBUG("EvClientDestroyed",
+            {"nodeId", ev->Get()->ClientId.NodeId()},
+            {"clientId", clientId},
+            {"serverId", ev->Get()->ServerId},
+            {"tabletId", tabletId});
 
         if (clientId == SAPipeClientId) {
             IsStatisticsDisabledInSA = false;
@@ -1140,7 +1099,7 @@ private:
             return;
         }
 
-        SA_LOG_D("Skip EvClientDestroyed");
+        YDB_LOG_DEBUG("Skip EvClientDestroyed");
     }
 
     void Handle(TEvStatistics::TEvStatisticsIsDisabled::TPtr&) {
@@ -1153,25 +1112,54 @@ private:
         Y_ABORT_UNLESS(itLoadQuery != LoadQueriesInFlight.end());
         auto [requestId, requestIndex] = itLoadQuery->second;
 
-        SA_LOG_D("TEvLoadStatisticsQueryResponse, request id = " << requestId);
+        YDB_LOG_DEBUG("TEvLoadStatisticsQueryResponse",
+            {"requestId", requestId});
 
         auto itRequest = InFlight.find(requestId);
         if (InFlight.end() == itRequest) {
-            SA_LOG_E("TEvLoadStatisticsQueryResponse, request id = " << requestId
-                << ". Request not found in InFlight");
+            YDB_LOG_ERROR("TEvLoadStatisticsQueryResponse, Request not found in InFlight",
+                {"requestId", requestId});
             return;
         }
-
         auto& request = itRequest->second;
-
         auto& response = request.StatResponses[requestIndex];
-        Y_ABORT_UNLESS(request.StatType == EStatType::COUNT_MIN_SKETCH);
 
         const auto msg = ev->Get();
-
         if (msg->Success && msg->Data) {
-            response.Success = true;
-            response.CountMinSketch.CountMin.reset(TCountMinSketch::FromString(msg->Data->data(), msg->Data->size()));
+            switch (request.StatType) {
+            case EStatType::SIMPLE_COLUMN: {
+                NKikimrStat::TSimpleColumnStatistics data;
+                response.Success = data.ParseFromString(*msg->Data);
+                if (response.Success) {
+                    response.SimpleColumn.Data = std::move(data);
+                }
+                break;
+            }
+            case EStatType::COUNT_MIN_SKETCH:
+                response.Success = true;
+                response.CountMinSketch.CountMin.reset(
+                    TCountMinSketch::FromString(msg->Data->data(), msg->Data->size()));
+                break;
+            case EStatType::EQ_WIDTH_HISTOGRAM:
+                response.Success = true;
+                response.EqWidthHistogram.Data =
+                    std::make_shared<TEqWidthHistogram>(msg->Data->data(), msg->Data->size());
+                break;
+            case EStatType::TABLE_SUMMARY: {
+                NKikimrStat::TTableSummaryStatistics data;
+                response.Success = data.ParseFromString(*msg->Data);
+                if (response.Success) {
+                    response.TableSummary.Data = std::move(data);
+                }
+                break;
+            }
+            default:
+                YDB_LOG_ERROR("TEvLoadStatisticsQueryResponse, unexpected stat type",
+                    {"requestId", requestId},
+                    {"statType", static_cast<int>(request.StatType)});
+                response.Success = false;
+                break;
+            }
         } else {
             response.Success = false;
         }
@@ -1188,9 +1176,9 @@ private:
     }
 
     void Handle(TEvPrivate::TEvRequestTimeout::TPtr& ev) {
-        SA_LOG_D("EvRequestTimeout"
-            << ", pipe client id = " << ev->Get()->PipeClientId
-            << ", schemeshard count = " << ev->Get()->NeedSchemeShards.size());
+        YDB_LOG_DEBUG("EvRequestTimeout",
+            {"pipeClientId", ev->Get()->PipeClientId},
+            {"schemeShardsCount", ev->Get()->NeedSchemeShards.size()});
 
         if (SAPipeClientId != ev->Get()->PipeClientId) {
             return;
@@ -1217,10 +1205,11 @@ private:
             return;
         }
         auto policy = NTabletPipe::TClientRetryPolicy::WithRetries();
-        NTabletPipe::TClientConfig pipeConfig{policy};
+        NTabletPipe::TClientConfig pipeConfig{.RetryPolicy = policy};
         SAPipeClientId = Register(NTabletPipe::CreateClient(SelfId(), StatisticsAggregatorId, pipeConfig));
 
-        SA_LOG_D("ConnectToSA(), pipe client id = " << SAPipeClientId);
+        YDB_LOG_DEBUG("ConnectToSA()",
+            {"pipeClientId", SAPipeClientId});
     }
 
     void SyncNode() {
@@ -1249,7 +1238,8 @@ private:
             Schedule(RequestTimeout, timeout.release());
         }
 
-        SA_LOG_D("SyncNode(), pipe client id = " << SAPipeClientId);
+        YDB_LOG_DEBUG("SyncNode()",
+            {"pipeClientId", SAPipeClientId});
     }
 
     void ReplySuccess(ui64 requestId, bool eraseRequest) {
@@ -1259,9 +1249,10 @@ private:
         }
         auto& request = itRequest->second;
 
-        SA_LOG_D("ReplySuccess(), request id = " << requestId
-            << ", ReplyToActorId = " << request.ReplyToActorId
-            << ", StatRequests.size() = " << request.StatRequests.size());
+        YDB_LOG_DEBUG("ReplySuccess()",
+            {"requestId", requestId},
+            {"replyToActorId", request.ReplyToActorId},
+            {"statRequestsCount", request.StatRequests.size()});
 
         auto itStatistics = Statistics.find(request.SchemeShardId);
         if (itStatistics == Statistics.end()) {
@@ -1305,7 +1296,8 @@ private:
         }
         auto& request = itRequest->second;
 
-        SA_LOG_D("ReplyFailed(), request id = " << requestId);
+        YDB_LOG_DEBUG("ReplyFailed()",
+            {"requestId", requestId});
 
         auto result = std::make_unique<TEvStatistics::TEvGetStatisticsResult>();
         result->Success = false;
@@ -1353,16 +1345,16 @@ private:
 
             str << "InFlight: " << InFlight.size();
             {
-                ui32 simple{ 0 };
-                ui32 countMin{ 0 };
-                for (auto it = InFlight.begin(); it != InFlight.end(); ++it) {
-                    if (it->second.StatType == EStatType::SIMPLE) {
-                        ++simple;
-                    } else if (it->second.StatType == EStatType::COUNT_MIN_SKETCH) {
-                        ++countMin;
-                    }
+                std::unordered_map<EStatType, size_t> counts;
+                for (const auto& [id, req] : InFlight) {
+                    ++counts[req.StatType];
                 }
-                str << "[SIMPLE: " << simple << ", COUNT_MIN_SKETCH: " << countMin << "]" << Endl;
+                str << "[SIMPLE: " << counts[EStatType::SIMPLE]
+                    << ", SIMPLE_COLUMN: " << counts[EStatType::SIMPLE_COLUMN]
+                    << ", COUNT_MIN_SKETCH: " << counts[EStatType::COUNT_MIN_SKETCH]
+                    << ", EQ_WIDTH_HISTOGRAM: " << counts[EStatType::EQ_WIDTH_HISTOGRAM]
+                    << ", TABLE_SUMMARY: " << counts[EStatType::TABLE_SUMMARY]
+                    << "]" << Endl;
             }
             str << "NextRequestId: " << NextRequestId << Endl;
 
@@ -1469,14 +1461,6 @@ private:
                 HTML(str) {
                     FORM_CLASS("form-horizontal") {
                         DIV_CLASS("form-group") {
-                            LABEL_CLASS_FOR("col-sm-2 control-label", "database") {
-                                str << "Database";
-                            }
-                            DIV_CLASS("col-sm-8") {
-                                str << "<input type='text' id='database' name='database' class='form-control' placeholder='/full/database/path'>";
-                            }
-                        }
-                        DIV_CLASS("form-group") {
                             LABEL_CLASS_FOR("col-sm-2 control-label", "path") {
                                 str << "Path";
                             }
@@ -1508,6 +1492,25 @@ private:
                     }
                 }
             });
+            AddPanel(str, "Probe base statistics", [](IOutputStream& str) {
+                HTML(str) {
+                    FORM_CLASS("form-horizontal") {
+                        DIV_CLASS("form-group") {
+                            LABEL_CLASS_FOR("col-sm-2 control-label", "path") {
+                                str << "Path";
+                            }
+                            DIV_CLASS("col-sm-8") {
+                                str << "<input type='text' id='path' name='path' class='form-control' placeholder='/full/path'>";
+                            }
+
+                            str << "<input type=\"hidden\" name=\"action\" value=\"probe_base_stats\"/>";
+                            DIV_CLASS("col-sm-2") {
+                                str << "<input class=\"btn btn-default\" type=\"submit\" value=\"Probe\"/>";
+                            }
+                        }
+                    }
+                }
+            });
 
             PrintStatServiceState(str);
         }
@@ -1522,7 +1525,11 @@ private:
 
         const auto* msg = ev->CastAsLocal<NMon::TEvHttpInfoRes>();
         if (msg != nullptr) {
-            ReplyToMonitoring(msg->Answer);
+            if (msg->ContentType == NMon::IEvHttpInfoRes::Html) {
+                ReplyToMonitoring(msg->Answer);
+            } else {
+                Send(MonitoringActorId, ev->Release());
+            }
         }
     }
 
@@ -1544,18 +1551,13 @@ private:
     }
 
     void Handle(NMon::TEvHttpInfo::TPtr& ev) {
-        if (!EnableColumnStatistics) {
-            Send(ev->Sender, new NMon::TEvHttpInfoRes("Column statistics is disabled"));
-            return;
-        }
-
         HttpRequestActorId = TActorId();
         MonitoringActorId = ev->Sender;
 
         const auto& request = ev->Get()->Request;
         const auto& params = request.GetParams();
 
-        auto getRequestParam = [&params](const TString& name){
+        auto getRequestParam = [&params](const TStringBuf name) {
             auto it = params.find(name);
             return it != params.end() ? it->second : TString();
         };
@@ -1573,10 +1575,22 @@ private:
         }
 
         if (action == "analyze") {
+            if (!EnableColumnStatistics) {
+                ReplyToMonitoring("Column statistics is disabled");
+                return;
+            }
+
             HttpRequestActorId = Register(new THttpRequest(THttpRequest::ERequestType::ANALYZE, {
                 { THttpRequest::EParamType::PATH, path }
-            }, SelfId()));
+                },
+                THttpRequest::EResponseContentType::HTML,
+                SelfId()));
         } else if (action == "status") {
+            if (!EnableColumnStatistics) {
+                ReplyToMonitoring("Column statistics is disabled");
+                return;
+            }
+
             const auto operationId = getRequestParam("operation");
             if (operationId.empty()) {
                 ReplyToMonitoring("'OperationId' parameter is required");
@@ -1586,8 +1600,15 @@ private:
             HttpRequestActorId = Register(new THttpRequest(THttpRequest::ERequestType::STATUS, {
                 { THttpRequest::EParamType::PATH, path },
                 { THttpRequest::EParamType::OPERATION_ID, operationId }
-            }, SelfId()));
+                },
+                THttpRequest::EResponseContentType::HTML,
+                SelfId()));
         } else if (action == "probe") {
+            if (!EnableColumnStatistics) {
+                ReplyToMonitoring("Column statistics is disabled");
+                return;
+            }
+
             const auto column = getRequestParam("column");
             if (column.empty()) {
                 ReplyToMonitoring("'ColumnName' parameter is required");
@@ -1600,18 +1621,36 @@ private:
                 return;
             }
 
-            const auto database = getRequestParam("database");
-            if (database.empty()) {
-                ReplyToMonitoring("'Database' parameter is required");
-                return;
-            }
-
-            HttpRequestActorId = Register(new THttpRequest(THttpRequest::ERequestType::COUNT_MIN_SKETCH_PROBE, {
-                { THttpRequest::EParamType::DATABASE, database },
+            HttpRequestActorId = Register(new THttpRequest(THttpRequest::ERequestType::PROBE_COUNT_MIN_SKETCH, {
                 { THttpRequest::EParamType::PATH, path },
                 { THttpRequest::EParamType::COLUMN_NAME, column },
                 { THttpRequest::EParamType::CELL_VALUE, cell }
-            }, SelfId()));
+                },
+                THttpRequest::EResponseContentType::HTML,
+                SelfId()));
+        } else if (action == "probe_base_stats") {
+            if (!EnableStatistics) {
+                ReplyToMonitoring("Base statistics is disabled");
+                return;
+            }
+
+            auto respContentType = THttpRequest::EResponseContentType::HTML;
+            if (params.Has("json")) {
+                ui32 json = 0;
+                if (!TryFromString(params.Get("json"), json)) {
+                    return ReplyToMonitoring("Failed to parse json parameter -- must be an integer");
+                }
+                if (json) {
+                    respContentType = THttpRequest::EResponseContentType::JSON;
+                }
+            }
+
+            HttpRequestActorId = Register(new THttpRequest(
+                THttpRequest::ERequestType::PROBE_BASE_STATS, {
+                    { THttpRequest::EParamType::PATH, path },
+                },
+                respContentType,
+                SelfId()));
         } else {
             ReplyToMonitoring("Wrong 'action' parameter value");
         }

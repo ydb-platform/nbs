@@ -1,6 +1,6 @@
 #include <library/cpp/testing/unittest/registar.h>
 #include <contrib/ydb/library/actors/core/actor_coroutine.h>
-#include <contrib/ydb/core/util/testactorsys.h>
+#include <contrib/ydb/core/util/actorsys_test/testactorsys.h>
 #include <contrib/ydb/core/blobstorage/base/blobstorage_events.h>
 #include <contrib/ydb/core/blobstorage/backpressure/queue_backpressure_client.h>
 #include <contrib/ydb/core/blobstorage/pdisk/mock/pdisk_mock.h>
@@ -183,9 +183,11 @@ public:
 
         NKikimrProto::EReplyStatus Put(const TVDiskID& vdiskId, const TLogoBlobID& blobId, const TString& data) {
             TRcBuf dataWithHeadroom(TRcBuf::Uninitialized(data.size(), 32));
-            std::memcpy(dataWithHeadroom.UnsafeGetDataMut(), data.data(), data.size());
+            if (data) {
+                std::memcpy(dataWithHeadroom.UnsafeGetDataMut(), data.data(), data.size());
+            }
             Send(GetBackpressureFor(Info->GetOrderNumber(vdiskId)), new TEvBlobStorage::TEvVPut(blobId, TRope(dataWithHeadroom), vdiskId,
-                false, nullptr, TInstant::Max(), NKikimrBlobStorage::EPutHandleClass::TabletLog));
+                false, nullptr, TInstant::Max(), NKikimrBlobStorage::EPutHandleClass::TabletLog, false));
             auto ev = WaitForSpecificEvent<TEvBlobStorage::TEvVPutResult>(&TCoro::ProcessUnexpectedEvent);
             auto& record = ev->Get()->Record;
             UNIT_ASSERT_VALUES_EQUAL(vdiskId, VDiskIDFromVDiskID(record.GetVDiskID()));

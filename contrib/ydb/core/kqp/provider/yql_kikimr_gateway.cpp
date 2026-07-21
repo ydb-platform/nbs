@@ -1,5 +1,7 @@
 #include "yql_kikimr_gateway.h"
 
+#include <util/string/cast.h>
+
 #include <contrib/ydb/library/yql/public/issue/yql_issue_message.h>
 #include <contrib/ydb/library/yql/providers/common/proto/gateways_config.pb.h>
 #include <contrib/ydb/library/yql/parser/pg_wrapper/interface/type_desc.h>
@@ -76,6 +78,22 @@ void TReplicationSettings::TStaticCredentials::Serialize(NKikimrReplication::TSt
     }
 }
 
+void TReplicationSettings::TIamCredentials::Serialize(NKikimrReplication::TIamCredentials& proto) const {
+    InitialToken.Serialize(*proto.MutableInitialToken());
+    if (ServiceAccountId) {
+        proto.SetServiceAccountId(ServiceAccountId);
+    }
+    if (ResourceId) {
+        proto.SetResourceId(ResourceId);
+    }
+}
+
+void TReplicationSettings::TGlobalConsistency::Serialize(NKikimrReplication::TConsistencySettings_TGlobalConsistency& proto) const {
+    if (CommitInterval) {
+        proto.SetCommitIntervalMilliSeconds(CommitInterval.MilliSeconds());
+    }
+}
+
 TFuture<IKikimrGateway::TGenericResult> IKikimrGateway::CreatePath(const TString& path, TCreateDirFunc createDir) {
     auto partsHolder = std::make_shared<TVector<TString>>(NKikimr::SplitPath(path));
     auto& parts = *partsHolder;
@@ -92,43 +110,6 @@ TFuture<IKikimrGateway::TGenericResult> IKikimrGateway::CreatePath(const TString
     return pathPromise.GetFuture();
 }
 
-void IKikimrGateway::BuildIndexMetadata(TTableMetadataResult& loadTableMetadataResult) {
-    auto tableMetadata = loadTableMetadataResult.Metadata;
-    YQL_ENSURE(tableMetadata);
-
-    if (tableMetadata->Indexes.empty()) {
-        return;
-    }
-
-    const auto& cluster = tableMetadata->Cluster;
-    const auto& tableName = tableMetadata->Name;
-    const size_t indexesCount = tableMetadata->Indexes.size();
-
-    NKikimr::NTableIndex::TTableColumns tableColumns;
-    tableColumns.Columns.reserve(tableMetadata->Columns.size());
-    for (auto& column: tableMetadata->Columns) {
-        tableColumns.Columns.insert_noresize(column.first);
-    }
-    tableColumns.Keys = tableMetadata->KeyColumnNames;
-
-    tableMetadata->SecondaryGlobalIndexMetadata.resize(indexesCount);
-    for (size_t i = 0; i < indexesCount; i++) {
-        const auto& index = tableMetadata->Indexes[i];
-        auto indexTablePath = NKikimr::NKqp::NSchemeHelpers::CreateIndexTablePath(tableName, index.Name);
-        NKikimr::NTableIndex::TTableColumns indexTableColumns = NKikimr::NTableIndex::CalcTableImplDescription(
-                    tableColumns,
-                    NKikimr::NTableIndex::TIndexColumns{index.KeyColumns, {}});
-
-        TKikimrTableMetadataPtr indexTableMetadata = new TKikimrTableMetadata(cluster, indexTablePath);
-        indexTableMetadata->DoesExist = true;
-        indexTableMetadata->KeyColumnNames = indexTableColumns.Keys;
-        for (auto& column: indexTableColumns.Columns) {
-            indexTableMetadata->Columns[column] = tableMetadata->Columns.at(column);
-        }
-
-        tableMetadata->SecondaryGlobalIndexMetadata[i] = indexTableMetadata;
-    }
-}
 
 bool TTtlSettings::TryParse(const NNodes::TCoNameValueTupleList& node, TTtlSettings& settings, TString& error) {
     using namespace NNodes;
@@ -138,15 +119,37 @@ bool TTtlSettings::TryParse(const NNodes::TCoNameValueTupleList& node, TTtlSetti
         if (name == "columnName") {
             YQL_ENSURE(field.Value().Maybe<TCoAtom>());
             settings.ColumnName = field.Value().Cast<TCoAtom>().StringValue();
-        } else if (name == "expireAfter") {
-            YQL_ENSURE(field.Value().Maybe<TCoInterval>());
-            auto value = FromString<i64>(field.Value().Cast<TCoInterval>().Literal().Value());
-            if (value < 0) {
-                error = "Interval value cannot be negative";
-                return false;
-            }
+        } else if (name == "tiers") {
+            YQL_ENSURE(field.Value().Maybe<TExprList>());
+            auto listNode = field.Value().Cast<TExprList>();
 
-            settings.ExpireAfter = TDuration::FromValue(value);
+            for (size_t i = 0; i < listNode.Size(); ++i) {
+                auto tierNode = listNode.Item(i);
+
+                std::optional<TString> storageName;
+                TDuration evictionDelay;
+                YQL_ENSURE(tierNode.Maybe<TCoNameValueTupleList>());
+                for (const auto& tierField : tierNode.Cast<TCoNameValueTupleList>()) {
+                    auto tierFieldName = tierField.Name().Value();
+                    if (tierFieldName == "storageName") {
+                        YQL_ENSURE(tierField.Value().Maybe<TCoAtom>());
+                        storageName = tierField.Value().Cast<TCoAtom>().StringValue();
+                    } else if (tierFieldName == "evictionDelay") {
+                        YQL_ENSURE(tierField.Value().Maybe<TCoInterval>());
+                        auto value = FromString<i64>(tierField.Value().Cast<TCoInterval>().Literal().Value());
+                        if (value < 0) {
+                            error = "Interval value cannot be negative";
+                            return false;
+                        }
+                        evictionDelay = TDuration::FromValue(value);
+                    } else {
+                        error = TStringBuilder() << "Unknown field: " << tierFieldName;
+                        return false;
+                    }
+                }
+
+                settings.Tiers.emplace_back(evictionDelay, storageName);
+            }
         } else if (name == "columnUnit") {
             YQL_ENSURE(field.Value().Maybe<TCoAtom>());
             auto value = field.Value().Cast<TCoAtom>().StringValue();
@@ -175,7 +178,7 @@ bool TTableSettings::IsSet() const {
     return CompactionPolicy || PartitionBy || AutoPartitioningBySize || UniformPartitions || PartitionAtKeys
         || PartitionSizeMb || AutoPartitioningByLoad || MinPartitions || MaxPartitions || KeyBloomFilter
         || ReadReplicasSettings || TtlSettings || DataSourcePath || Location || ExternalSourceParameters
-        || StoreExternalBlobs;
+        || StoreExternalBlobs || ExternalDataChannelsCount;
 }
 
 EYqlIssueCode YqlStatusFromYdbStatus(ui32 ydbStatus) {
@@ -216,18 +219,20 @@ EYqlIssueCode YqlStatusFromYdbStatus(ui32 ydbStatus) {
 bool SetColumnType(const TTypeAnnotationNode* typeNode, bool notNull, Ydb::Type& protoType, TString& error) {
     switch (typeNode->GetKind()) {
     case ETypeAnnotationKind::Pg: {
-        const auto pgTypeNode = typeNode->Cast<TPgExprType>();
-        const TString typeName = pgTypeNode->GetName();
-        const auto typeDesc = NKikimr::NPg::TypeDescFromPgTypeName(typeName);
+        const auto* pgTypeNode = typeNode->Cast<TPgExprType>();
+        const auto& typeId = pgTypeNode->GetId();
+        const auto typeDesc = NKikimr::NPg::TypeDescFromPgTypeId(typeId);
         if (typeDesc) {
             Y_ABORT_UNLESS(!notNull, "It is not allowed to create NOT NULL pg columns");
             auto* pg = protoType.mutable_pg_type();
             pg->set_type_name(NKikimr::NPg::PgTypeNameFromTypeDesc(typeDesc));
-            pg->set_type_modifier(NKikimr::NPg::TypeModFromPgTypeName(typeName));
             pg->set_oid(NKikimr::NPg::PgTypeIdFromTypeDesc(typeDesc));
             pg->set_typlen(0);
             pg->set_typmod(0);
             return true;
+        } else {
+            error = TStringBuilder() << "Unknown pg type: " << FormatType(pgTypeNode);
+            return false;
         }
     }
     case ETypeAnnotationKind::Data: {
@@ -235,7 +240,7 @@ bool SetColumnType(const TTypeAnnotationNode* typeNode, bool notNull, Ydb::Type&
         const TStringBuf typeName = dataTypeNode->GetName();
         NUdf::EDataSlot dataSlot = NUdf::GetDataSlot(typeName);
         if (dataSlot == NUdf::EDataSlot::Decimal) {
-            auto dataExprTypeNode = typeNode->Cast<TDataExprParamsType>();  
+            auto dataExprTypeNode = typeNode->Cast<TDataExprParamsType>();
             ui32 precision = FromString(dataExprTypeNode->GetParamOne());
             ui32 scale = FromString(dataExprTypeNode->GetParamTwo());
             if (!NKikimr::NScheme::TDecimalType::Validate(precision, scale, error)) {
@@ -309,7 +314,7 @@ bool ConvertReadReplicasSettingsToProto(const TString settings, Ydb::Table::Read
             << "'. It should be one of: "
             << "1) 'PER_AZ:<read_replicas_count>' to set equal read replicas count for every AZ; "
             << "2) 'ANY_AZ:<read_replicas_count>' to set total read replicas count between all AZs; "
-            << "3) '<az1_name>:<read_replicas_count1>, <az2_name>:<read_replicas_count2>, ...' "
+//          << "3) '<az1_name>:<read_replicas_count1>, <az2_name>:<read_replicas_count2>, ...' "
             << "to specify read replicas count for each AZ in cluster.";
         return false;
     }
@@ -317,15 +322,23 @@ bool ConvertReadReplicasSettingsToProto(const TString settings, Ydb::Table::Read
 }
 
 void ConvertTtlSettingsToProto(const NYql::TTtlSettings& settings, Ydb::Table::TtlSettings& proto) {
-    if (!settings.ColumnUnit) {
-        auto& opts = *proto.mutable_date_type_column();
-        opts.set_column_name(settings.ColumnName);
-        opts.set_expire_after_seconds(settings.ExpireAfter.Seconds());
-    } else {
-        auto& opts = *proto.mutable_value_since_unix_epoch();
-        opts.set_column_name(settings.ColumnName);
-        opts.set_column_unit(static_cast<Ydb::Table::ValueSinceUnixEpochModeSettings::Unit>(*settings.ColumnUnit));
-        opts.set_expire_after_seconds(settings.ExpireAfter.Seconds());
+    for (const auto& tier : settings.Tiers) {
+        auto* outTier = proto.mutable_tiered_ttl()->add_tiers();
+        if (!settings.ColumnUnit) {
+            auto& expr = *outTier->mutable_date_type_column();
+            expr.set_column_name(settings.ColumnName);
+            expr.set_expire_after_seconds(tier.ApplyAfter.Seconds());
+        } else {
+            auto& expr = *outTier->mutable_value_since_unix_epoch();
+            expr.set_column_name(settings.ColumnName);
+            expr.set_column_unit(static_cast<Ydb::Table::ValueSinceUnixEpochModeSettings::Unit>(*settings.ColumnUnit));
+            expr.set_expire_after_seconds(tier.ApplyAfter.Seconds());
+        }
+        if (tier.StorageName) {
+            outTier->mutable_evict_to_external_storage()->set_storage(*tier.StorageName);
+        } else {
+            outTier->mutable_delete_();
+        }
     }
 }
 
@@ -354,69 +367,63 @@ ETableType GetTableTypeFromString(const TStringBuf& tableType) {
 
 
 template<typename TEnumType>
-static std::shared_ptr<THashMap<TString, TEnumType>> MakeEnumMapping(
+static THashMap<TString, TEnumType> MakeEnumMapping(
         const google::protobuf::EnumDescriptor* descriptor, const TString& prefix
 ) {
-    auto result = std::make_shared<THashMap<TString, TEnumType>>();
+    auto result = THashMap<TString, TEnumType>();
     for (auto i = 0; i < descriptor->value_count(); i++) {
         TString name = to_lower(descriptor->value(i)->name());
         TStringBuf nameBuf(name);
         if (!prefix.empty()) {
             nameBuf.SkipPrefix(prefix);
-            result->insert(std::make_pair(
+            result.insert(std::make_pair(
                     TString(nameBuf),
                     static_cast<TEnumType>(descriptor->value(i)->number())
             ));
         }
-        result->insert(std::make_pair(
+        result.insert(std::make_pair(
                 name, static_cast<TEnumType>(descriptor->value(i)->number())
         ));
     }
     return result;
 }
 
-static std::shared_ptr<THashMap<TString, Ydb::Topic::Codec>> GetCodecsMapping() {
-    static std::shared_ptr<THashMap<TString, Ydb::Topic::Codec>> codecsMapping;
-    if (codecsMapping == nullptr) {
-        codecsMapping = MakeEnumMapping<Ydb::Topic::Codec>(Ydb::Topic::Codec_descriptor(), "codec_");
-    }
+static const THashMap<TString, Ydb::Topic::Codec>& GetCodecsMapping() {
+    static const THashMap<TString, Ydb::Topic::Codec> codecsMapping = MakeEnumMapping<Ydb::Topic::Codec>(Ydb::Topic::Codec_descriptor(), "codec_");
     return codecsMapping;
 }
 
-static std::shared_ptr<THashMap<TString, Ydb::Topic::AutoPartitioningStrategy>> GetAutoPartitioningStrategiesMapping() {
-    static std::shared_ptr<THashMap<TString, Ydb::Topic::AutoPartitioningStrategy>> strategiesMapping;
-    if (!strategiesMapping) {
-        strategiesMapping = MakeEnumMapping<Ydb::Topic::AutoPartitioningStrategy>(
+static const THashMap<TString, Ydb::Topic::AutoPartitioningStrategy>& GetAutoPartitioningStrategiesMapping() {
+    static const THashMap<TString, Ydb::Topic::AutoPartitioningStrategy> strategiesMapping = []() {
+        auto strategiesMapping = MakeEnumMapping<Ydb::Topic::AutoPartitioningStrategy>(
             Ydb::Topic::AutoPartitioningStrategy_descriptor(), "auto_partitioning_strategy_");
 
         const TString prefix = "scale_";
-        for (const auto& [key, value] : *strategiesMapping) {
+        for (const auto& [key, value] : strategiesMapping) {
             if (key.StartsWith(prefix)) {
                 TString newKey = key;
                 newKey.erase(0, prefix.length());
 
-                Y_ABORT_UNLESS(strategiesMapping->find(newKey) == strategiesMapping->end());
-                (*strategiesMapping)[newKey] = value;
+                Y_ABORT_UNLESS(!strategiesMapping.contains(newKey));
+                strategiesMapping[newKey] = value;
             }
         }
-    }
+        return strategiesMapping;
+    }();
     return strategiesMapping;
 }
 
-static std::shared_ptr<THashMap<TString, Ydb::Topic::MeteringMode>> GetMeteringModesMapping() {
-    static std::shared_ptr<THashMap<TString, Ydb::Topic::MeteringMode>> metModesMapping;
-    if (metModesMapping == nullptr) {
-        metModesMapping = MakeEnumMapping<Ydb::Topic::MeteringMode>(
-                Ydb::Topic::MeteringMode_descriptor(), "metering_mode_"
-        );
-    }
+static const THashMap<TString, Ydb::Topic::MeteringMode>& GetMeteringModesMapping() {
+    static const THashMap<TString, Ydb::Topic::MeteringMode> metModesMapping = MakeEnumMapping<Ydb::Topic::MeteringMode>(
+        Ydb::Topic::MeteringMode_descriptor(), "metering_mode_");
+
     return metModesMapping;
 }
 
 bool GetTopicMeteringModeFromString(const TString& meteringMode, Ydb::Topic::MeteringMode& result) {
-    auto mapping = GetMeteringModesMapping();
+    const auto& mapping = GetMeteringModesMapping();
     auto normMode = to_lower(meteringMode);
-    auto iter = mapping->find(normMode);
+    auto iter = mapping.find(normMode);
     if (iter.IsEnd()) {
         return false;
     } else {
@@ -426,9 +433,9 @@ bool GetTopicMeteringModeFromString(const TString& meteringMode, Ydb::Topic::Met
 }
 
 bool GetTopicAutoPartitioningStrategyFromString(const TString& strategy, Ydb::Topic::AutoPartitioningStrategy& result) {
-    auto mapping = GetAutoPartitioningStrategiesMapping();
+    const auto& mapping = GetAutoPartitioningStrategiesMapping();
     auto normStrategy = to_lower(strategy);
-    auto iter = mapping->find(normStrategy);
+    auto iter = mapping.find(normStrategy);
     if (iter.IsEnd()) {
         return false;
     } else {
@@ -440,10 +447,10 @@ bool GetTopicAutoPartitioningStrategyFromString(const TString& strategy, Ydb::To
 TVector<Ydb::Topic::Codec> GetTopicCodecsFromString(const TStringBuf& codecsStr) {
     const TVector<TString> codecsList = StringSplitter(codecsStr).Split(',').SkipEmpty();
     TVector<Ydb::Topic::Codec> result;
-    auto mapping = GetCodecsMapping();
+    const auto& mapping = GetCodecsMapping();
     for (const auto& codec : codecsList) {
         auto normCodec = to_lower(Strip(codec));
-        auto iter = mapping->find(normCodec);
+        auto iter = mapping.find(normCodec);
         if (iter.IsEnd()) {
             return {};
         } else {
@@ -451,6 +458,62 @@ TVector<Ydb::Topic::Codec> GetTopicCodecsFromString(const TStringBuf& codecsStr)
         }
     }
     return result;
+}
+
+void FillLocalBloomFilterSetting(TIndexDescription::TLocalBloomFilterDescription& desc,
+    const TString& name, const TString& value, TString& error) {
+    if (name == "false_positive_probability") {
+        double fpp = 0.0;
+        if (!TryFromString<double>(value, fpp)) {
+            error = TStringBuilder() << "Invalid false_positive_probability value: " << value;
+            return;
+        }
+
+        desc.FalsePositiveProbability.emplace(fpp);
+        return;
+    }
+
+    error = TStringBuilder() << "Unknown index setting: " << name;
+    return;
+}
+
+void FillLocalBloomNgramFilterSetting(TIndexDescription::TLocalBloomNgramFilterDescription& desc,
+    const TString& name, const TString& value, TString& error) {
+    if (name == "ngram_size") {
+        ui32 uiValue = 0;
+        if (!TryFromString<ui32>(value, uiValue)) {
+            error = TStringBuilder() << "Invalid ngram_size value: " << value;
+            return;
+        }
+
+        desc.NgramSize.emplace(uiValue);
+        return;
+    }
+
+    if (name == "false_positive_probability") {
+        double fpValue = 0;
+        if (!TryFromString<double>(value, fpValue)) {
+            error = TStringBuilder() << "Invalid false_positive_probability value: " << value;
+            return;
+        }
+
+        desc.FalsePositiveProbability.emplace(fpValue);
+        return;
+    }
+
+    if (name == "case_sensitive") {
+        bool boolValue = true;
+        if (!TryFromString<bool>(value, boolValue)) {
+            error = TStringBuilder() << "Invalid case_sensitive value: " << value;
+            return;
+        }
+
+        desc.CaseSensitive.emplace(boolValue);
+        return;
+    }
+
+    error = TStringBuilder() << "Unknown index setting: " << name;
+    return;
 }
 
 } // namespace NYql

@@ -3,12 +3,10 @@ UNITTEST_FOR(contrib/ydb/core/keyvalue)
 FORK_SUBTESTS()
 
 SPLIT_FACTOR(30)
-IF (WITH_VALGRIND OR SANITIZER_TYPE  == "thread")
-    TIMEOUT(1800)
+IF (SANITIZER_TYPE  == "thread")
     SIZE(LARGE)
-    TAG(ya:fat)
+    INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/large.inc)
 ELSE()
-    TIMEOUT(600)
     SIZE(MEDIUM)
 ENDIF()
 
@@ -17,6 +15,7 @@ PEERDIR(
     library/cpp/regex/pcre
     library/cpp/svnversion
     contrib/ydb/core/testlib/default
+    contrib/ydb/core/util/actorsys_test
 )
 
 YQL_LAST_ABI_VERSION()

@@ -11,15 +11,17 @@
 #include <contrib/ydb/core/base/tablet_pipe.h>
 #include <contrib/ydb/core/client/server/msgbus_server_pq_metacache.h>
 #include <contrib/ydb/core/grpc_services/grpc_request_proxy.h>
+#include <contrib/ydb/core/jaeger_tracing/request_discriminator.h>
 #include <contrib/ydb/core/kqp/common/kqp.h>
 #include <contrib/ydb/core/persqueue/events/global.h>
-#include <contrib/ydb/core/persqueue/pq_rl_helpers.h>
+#include <contrib/ydb/core/persqueue/public/pq_rl_helpers.h>
 #include <contrib/ydb/core/persqueue/writer/partition_chooser.h>
 #include <contrib/ydb/core/persqueue/writer/source_id_encoding.h>
 #include <contrib/ydb/core/persqueue/writer/writer.h>
 #include <contrib/ydb/core/protos/grpc_pq_old.pb.h>
+#include <contrib/ydb/public/sdk/cpp/src/client/persqueue_public/include/aliases.h>
 #include <contrib/ydb/services/metadata/service.h>
-
+#include <contrib/ydb/core/tx/scheme_cache/scheme_cache.h>
 
 namespace NKikimr::NGRpcProxy::V1 {
 
@@ -31,6 +33,7 @@ template<bool UseMigrationProtocol>
 class TWriteSessionActor
     : public NActors::TActorBootstrapped<TWriteSessionActor<UseMigrationProtocol>>
     , private NPQ::TRlHelpers
+    , public NActors::IActorExceptionHandler
 {
     using TSelf = TWriteSessionActor<UseMigrationProtocol>;
     using TClientMessage = std::conditional_t<UseMigrationProtocol, PersQueue::V1::StreamingWriteClientMessage,
@@ -75,6 +78,7 @@ public:
     void Bootstrap(const NActors::TActorContext& ctx);
 
     void Die(const NActors::TActorContext& ctx) override;
+    bool OnUnhandledException(const std::exception& exc) override;
 
     static constexpr NKikimrServices::TActivity::EType ActorActivityType() {
         return NKikimrServices::TActivity::FRONT_PQ_WRITE;
@@ -87,7 +91,7 @@ private:
 
             HFunc(IContext::TEvReadFinished, Handle);
             HFunc(IContext::TEvWriteFinished, Handle);
-            CFunc(IContext::TEvNotifiedWhenDone::EventType, HandleDone);
+            HFunc(IContext::TEvNotifiedWhenDone, Handle);
             HFunc(NGRpcService::TGRpcRequestProxy::TEvRefreshTokenResponse, Handle);
 
             HFunc(TEvPQProxy::TEvDieCommand, HandlePoison)
@@ -115,31 +119,28 @@ private:
     }
 
 
-    void Handle(typename IContext::TEvReadFinished::TPtr& ev, const TActorContext &ctx);
-    void Handle(typename IContext::TEvWriteFinished::TPtr& ev, const TActorContext &ctx);
-    void HandleDone(const TActorContext &ctx);
+    void Handle(typename IContext::TEvReadFinished::TPtr& ev, const TActorContext& ctx);
+    void Handle(typename IContext::TEvWriteFinished::TPtr& ev, const TActorContext& ctx);
+    void Handle(typename IContext::TEvNotifiedWhenDone::TPtr& ev, const TActorContext& ctx);
 
-    void Handle(NGRpcService::TGRpcRequestProxy::TEvRefreshTokenResponse::TPtr& ev, const TActorContext &ctx);
+    void Handle(NGRpcService::TGRpcRequestProxy::TEvRefreshTokenResponse::TPtr& ev, const TActorContext& ctx);
 
     void CheckACL(const TActorContext& ctx);
     void RecheckACL(const TActorContext& ctx);
     // Requests fresh ACL from 'SchemeCache'
-    void InitCheckSchema(const TActorContext& ctx, bool needWaitSchema = false);
+    void InitCheckSchema(const TActorContext& ctx, bool needWaitSchema = false, NWilson::TTraceId traceId = {});
     void Handle(typename TEvWriteInit::TPtr& ev,  const NActors::TActorContext& ctx);
     void Handle(typename TEvWrite::TPtr& ev, const NActors::TActorContext& ctx);
     void Handle(typename TEvUpdateToken::TPtr& ev, const NActors::TActorContext& ctx);
     void Handle(TEvPQProxy::TEvDone::TPtr& ev, const NActors::TActorContext& ctx);
-    void Handle(TEvTxProxySchemeCache::TEvNavigateKeySetResult::TPtr& ev, const TActorContext& ctx);
     void Handle(TEvDescribeTopicsResponse::TPtr& ev, const TActorContext& ctx);
     void LogSession(const TActorContext& ctx);
-    void InitAfterDiscovery(const TActorContext& ctx);
+    bool InitAfterDiscovery(const TActorContext& ctx);
 
     void ProceedPartition(const ui32 partition, const NActors::TActorContext& ctx);
 
-    //void InitCheckACL(const TActorContext& ctx);
-
     void Handle(NPQ::TEvPartitionWriter::TEvInitResult::TPtr& ev, const TActorContext& ctx);
-    void MakeAndSentInitResponse(const TMaybe<ui64>& maxSeqNo, const TActorContext& ctx);
+    void MakeAndSendInitResponse(const TMaybe<ui64>& maxSeqNo, const TActorContext& ctx);
 
     void Handle(NPQ::TEvPartitionWriter::TEvWriteAccepted::TPtr& ev, const TActorContext& ctx);
     void ProcessWriteResponse(const NKikimrClient::TPersQueuePartitionResponse& response, const TActorContext& ctx);
@@ -155,7 +156,8 @@ private:
     void HandlePoison(TEvPQProxy::TEvDieCommand::TPtr& ev, const NActors::TActorContext& ctx);
     void Handle(TEvents::TEvWakeup::TPtr& ev, const TActorContext& ctx);
 
-    void CloseSession(const TString& errorReason, const PersQueue::ErrorCode::ErrorCode errorCode, const NActors::TActorContext& ctx);
+    void CloseSession(const TString& errorReason, const PersQueue::ErrorCode::ErrorCode errorCode, const NActors::TActorContext& ctx,
+                      std::optional<Ydb::StatusIds::StatusCode> statusOverride = std::nullopt);
 
     void CheckFinish(const NActors::TActorContext& ctx);
 
@@ -164,11 +166,26 @@ private:
 
     void SetupBytesWrittenByUserAgentCounter(const TString& topicPath);
     void SetupCounters();
-    void SetupCounters(const TActorContext& ctx, const TString& cloudId, const TString& dbId, const TString& dbPath, const bool isServerless, const TString& folderId);
+    void SetupCounters(const TString& cloudId, const TString& dbId, const TString& dbPath, const bool isServerless, const TString& folderId);
+
+    void CloseSpans(const TString& errorReason, const PersQueue::ErrorCode::ErrorCode errorCode);
 
 private:
-    void CreatePartitionWriterCache(const TActorContext& ctx);
+    bool CreatePartitionWriterCache(const TActorContext& ctx);
     void DestroyPartitionWriterCache(const TActorContext& ctx);
+    NWilson::TSpan GenerateSpan(NJaegerTracing::ERequestType subrequestType, const TStringBuf name) const;
+    NWilson::TSpan GenerateInitSpan() const {
+        return GenerateSpan(NJaegerTracing::ERequestType::TOPIC_STREAMWRITE_INIT, "Topic.WriteSession.Init");
+    }
+    NWilson::TSpan GenerateWriteSpan() const {
+        return GenerateSpan(NJaegerTracing::ERequestType::TOPIC_STREAMWRITE_WRITE, "Topic.WriteSession.Write");
+    }
+    NWilson::TSpan GenerateUpdateTokenSpan() const {
+        return GenerateSpan(NJaegerTracing::ERequestType::TOPIC_STREAMWRITE_UPDATE_TOKEN, "Topic.WriteSession.UpdateToken");
+    }
+
+    using NPQ::TRlHelpers::MaybeRequestQuota;
+    void MaybeRequestQuota(EWakeupTag tag, const TActorContext& ctx);
 
     std::unique_ptr<TEvStreamWriteRequest> Request;
 
@@ -196,7 +213,6 @@ private:
     std::optional<ui32> ExpectedGeneration;
     std::optional<ui64> InitialSeqNo;
 
-    bool PartitionFound = false;
     // 'SourceId' is called 'MessageGroupId' since gRPC data plane API v1
     TString SourceId; // TODO: Replace with 'MessageGroupId' everywhere
     bool UseDeduplication = true;
@@ -251,15 +267,19 @@ private:
     TInstant LastACLCheckTimestamp;
     TInstant LogSessionDeadline;
 
-    NKikimrSchemeOp::TPersQueueGroupDescription Config;
+    TIntrusiveConstPtr<NSchemeCache::TSchemeCacheNavigate::TPQGroupInfo> PQGroupInfo;
     // PQ tablet configuration that we get at the time of session initialization
     NKikimrPQ::TPQTabletConfig InitialPQTabletConfig;
+    std::shared_ptr<NPQ::IPartitionChooser> Chooser;
+    std::shared_ptr<NPQ::TPartitionGraph> PartitionGraph;
 
     NKikimrPQClient::TDataChunk InitMeta;
     TString LocalDC;
     TString ClientDC;
 
     TInstant LastSourceIdUpdate;
+
+    THashMap<ui64, TString> DeferredPublicationExtByInt;
 
     TVector<NPersQueue::TPQLabelsInfo> Aggr;
     NKikimr::NPQ::TMultiCounter SLITotal;
@@ -274,6 +294,9 @@ private:
     TActorId PartitionChooser;
 
     bool SessionClosed = false;
+    NWilson::TSpan Span;
+    NWilson::TSpan InitSpan;
+    NWilson::TSpan UpdateTokenSpan;
 };
 
 }

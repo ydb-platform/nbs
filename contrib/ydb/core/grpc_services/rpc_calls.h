@@ -12,7 +12,6 @@
 #include <contrib/ydb/public/api/protos/ydb_discovery.pb.h>
 #include <contrib/ydb/public/api/protos/ydb_monitoring.pb.h>
 #include <contrib/ydb/public/api/protos/ydb_status_codes.pb.h>
-#include <contrib/ydb/public/api/protos/ydb_table.pb.h>
 #include <contrib/ydb/public/api/protos/draft/ydb_object_storage.pb.h>
 #include <contrib/ydb/public/api/protos/ydb_persqueue_cluster_discovery.pb.h>
 #include <contrib/ydb/public/api/protos/ydb_persqueue_v1.pb.h>
@@ -20,7 +19,7 @@
 
 #include <contrib/ydb/public/api/grpc/draft/dummy.pb.h>
 
-#include <contrib/ydb/public/lib/operation_id/operation_id.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/library/operation_id/operation_id.h>
 
 #include <util/generic/maybe.h>
 
@@ -54,14 +53,11 @@ using TEvStreamPQMigrationReadRequest = TGRpcRequestBiStreamWrapper<TRpcServices
 using TEvStreamTopicWriteRequest = TGRpcRequestBiStreamWrapper<TRpcServices::EvStreamTopicWrite, Ydb::Topic::StreamWriteMessage::FromClient, Ydb::Topic::StreamWriteMessage::FromServer>;
 using TEvStreamTopicReadRequest = TGRpcRequestBiStreamWrapper<TRpcServices::EvStreamTopicRead, Ydb::Topic::StreamReadMessage::FromClient, Ydb::Topic::StreamReadMessage::FromServer>;
 using TEvStreamTopicDirectReadRequest = TGRpcRequestBiStreamWrapper<TRpcServices::EvStreamTopicDirectRead, Ydb::Topic::StreamDirectReadMessage::FromClient, Ydb::Topic::StreamDirectReadMessage::FromServer>;
-using TEvCommitOffsetRequest = TGRpcRequestWrapper<TRpcServices::EvTopicCommitOffset, Ydb::Topic::CommitOffsetRequest, Ydb::Topic::CommitOffsetResponse, true>;
-using TEvPQReadInfoRequest = TGRpcRequestWrapper<TRpcServices::EvPQReadInfo, Ydb::PersQueue::V1::ReadInfoRequest, Ydb::PersQueue::V1::ReadInfoResponse, true>;
-//TODO: Change this to runtime dispatching!
-using TEvDiscoverPQClustersRequest = TGRpcRequestWrapper<TRpcServices::EvDiscoverPQClusters, Ydb::PersQueue::ClusterDiscovery::DiscoverClustersRequest, Ydb::PersQueue::ClusterDiscovery::DiscoverClustersResponse, true>;
-using TEvListFederationDatabasesRequest = TGRpcRequestWrapper<TRpcServices::EvListFederationDatabases, Ydb::FederationDiscovery::ListFederationDatabasesRequest, Ydb::FederationDiscovery::ListFederationDatabasesResponse, true>;
 
-using TEvNodeCheckRequest = TGRpcRequestWrapperNoAuth<TRpcServices::EvNodeCheckRequest, Ydb::Monitoring::NodeCheckRequest, Ydb::Monitoring::NodeCheckResponse>;
 using TEvCoordinationSessionRequest = TGRpcRequestBiStreamWrapper<TRpcServices::EvCoordinationSession, Ydb::Coordination::SessionRequest, Ydb::Coordination::SessionResponse>;
+
+//TODO: Change this to runtime dispatching!
+using TEvListFederationDatabasesRequest = TGRpcRequestWrapper<TRpcServices::EvListFederationDatabases, Ydb::FederationDiscovery::ListFederationDatabasesRequest, Ydb::FederationDiscovery::ListFederationDatabasesResponse, true>; // Used in custom builds
 
 
 // Stream{PQ,Topic}Read/Write specifics.
@@ -118,15 +114,15 @@ struct TRefreshTokenTypeForRequest<TEvStreamTopicWriteRequest> {
 // RefreshToken Send/Reply interface hides lowlevel details.
 // Used to avoid unwanted compile time dependencies.
 //
-void RefreshTokenSendRequest(const TActorContext& ctx, IEventBase* refreshTokenRequest);
+void RefreshTokenSendRequest(const TActorContext& ctx, IEventBase* refreshTokenRequest, NWilson::TTraceId traceId);
 void RefreshTokenReplyUnauthenticated(TActorId recipient, TActorId sender, NYql::TIssues&& issues);
 void RefreshTokenReplyUnavailable(TActorId recipient, NYql::TIssues&& issues);
 
 template <ui32 TRpcId, typename TReq, typename TResp>
-void TGRpcRequestBiStreamWrapper<TRpcId, TReq, TResp>::RefreshToken(const TString& token, const TActorContext& ctx, TActorId id) {
+void TGRpcRequestBiStreamWrapper<TRpcId, TReq, TResp>::RefreshToken(const TString& token, const TActorContext& ctx, TActorId id, NWilson::TTraceId traceId) {
     using TSelf = typename std::remove_pointer<decltype(this)>::type;
     using TRefreshToken = typename TRefreshTokenTypeForRequest<TSelf>::type;
-    RefreshTokenSendRequest(ctx, new TRefreshToken(token, GetDatabaseName().GetOrElse(""), id));
+    RefreshTokenSendRequest(ctx, new TRefreshToken(token, GetDatabaseName().GetOrElse(""), id), std::move(traceId));
 }
 
 template <ui32 TRpcId>

@@ -2,6 +2,8 @@
 
 #include "defs.h"
 
+#include <contrib/ydb/core/protos/test_shard_control.pb.h>
+
 namespace NKikimr::NTestShard {
 
     struct TEvTestShard {

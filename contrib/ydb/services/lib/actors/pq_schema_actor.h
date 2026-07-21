@@ -1,6 +1,10 @@
 #pragma once
 
+#include "consumers_advanced_monitoring_settings.h"
+
 #include <contrib/ydb/core/grpc_services/rpc_scheme_base.h>
+#include <contrib/ydb/core/persqueue/public/schema/common.h>
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 
 #include <contrib/ydb/public/api/grpc/draft/ydb_persqueue_v1.grpc.pb.h>
 #include <contrib/ydb/public/api/protos/persqueue_error_codes_v1.pb.h>
@@ -28,60 +32,32 @@ struct TYdbPqCodes {
         PQCode(PQCode) {}
 };
 
+namespace Ydb::Topic {
+    class CreateTopicRequest;
+    class AlterTopicRequest;
+}
 
 namespace NKikimr::NGRpcProxy::V1 {
 
-    Ydb::StatusIds::StatusCode FillProposeRequestImpl(
-        const TString& name,
-        const Ydb::PersQueue::V1::TopicSettings& settings,
-        NKikimrSchemeOp::TModifyScheme& modifyScheme,
-        const TActorContext& ctx,
-        bool alter,
-        TString& error,
-        const TString& path,
-        const TString& database = TString(),
-        const TString& localDc = TString()
-    );
+    using namespace NKikimr::NPQ;
+    using namespace NKikimr::NPQ::NSchema;
 
-    TYdbPqCodes FillProposeRequestImpl(
-        const TString& name,
-        const Ydb::Topic::CreateTopicRequest& request,
-        NKikimrSchemeOp::TModifyScheme& modifyScheme,
-        TAppData* appData,
-        TString& error,
-        const TString& path,
-        const TString& database = TString(),
-        const TString& localDc = TString()
-    );
-
-    Ydb::StatusIds::StatusCode FillProposeRequestImpl(
-        const Ydb::Topic::AlterTopicRequest& request,
-        NKikimrSchemeOp::TPersQueueGroupDescription& pqDescr,
-        TAppData* appData,
-        TString& error,
-        bool isCdcStream
-    );
-
-
-    struct TClientServiceType {
-        TString Name;
-        ui32 MaxCount;
-        TVector<TString> PasswordHashes;
-    };
-    typedef std::map<TString, TClientServiceType> TClientServiceTypes;
     TClientServiceTypes GetSupportedClientServiceTypes(const NKikimrPQ::TPQConfig& pqConfig);
 
     // Returns true if have duplicated read rules
     Ydb::StatusIds::StatusCode CheckConfig(const NKikimrPQ::TPQTabletConfig& config, const TClientServiceTypes& supportedReadRuleServiceTypes,
                                             TString& error, const NKikimrPQ::TPQConfig& pqConfig,
-                                            const Ydb::StatusIds::StatusCode dubsStatus = Ydb::StatusIds::BAD_REQUEST);
+                                            const EOperation operation = EOperation::Create);
 
+    // TODO remove this function. use AddConsumer instead
     TMsgPqCodes AddReadRuleToConfig(
         NKikimrPQ::TPQTabletConfig *config,
         const Ydb::PersQueue::V1::TopicSettings::ReadRule& rr,
         const TClientServiceTypes& supportedReadRuleServiceTypes,
-        const NKikimrPQ::TPQConfig& pqConfig
+        const NKikimrPQ::TPQConfig& pqConfig,
+        const TConsumersAdvancedMonitoringSettings* consumersAdvancedMonitoringSettings /* nullable */
     );
+
     TString RemoveReadRuleFromConfig(
         NKikimrPQ::TPQTabletConfig *config,
         const NKikimrPQ::TPQTabletConfig& originalConfig,
@@ -136,7 +112,12 @@ namespace NKikimr::NGRpcProxy::V1 {
                 return RespondWithCode(Ydb::StatusIds::UNAUTHORIZED);
             }
 
-            navigateRequest->DatabaseName = CanonizePath(Database);
+            YDB_LOG_DEBUG_CTX_COMP(ctx, NKikimrServices::PERSQUEUE, "SendDescribeProposeRequest",
+                {"database", Database},
+                {"path", GetTopicPath()},
+                {"showPrivate", showPrivate});
+
+            navigateRequest->DatabaseName = Database;
             navigateRequest->ResultSet.emplace_back(NSchemeCache::TSchemeCacheNavigate::TEntry{
                 .Path = NKikimr::SplitPath(GetTopicPath()),
                 .Access = CheckAccessWithWriteTopicPermission ? NACLib::UpdateRow : NACLib::DescribeSchema,
@@ -193,11 +174,12 @@ namespace NKikimr::NGRpcProxy::V1 {
                 return static_cast<TDerived*>(this)->HandleCacheNavigateResponse(ev);
             }
             break;
-            case NSchemeCache::TSchemeCacheNavigate::EStatus::PathErrorUnknown: {
+            case NSchemeCache::TSchemeCacheNavigate::EStatus::PathErrorUnknown:
+            case NSchemeCache::TSchemeCacheNavigate::EStatus::AccessDenied: {
                 AddIssue(
                     FillIssue(
-                        TStringBuilder() << "path '" << path << "' does not exist or you " <<
-                        "do not have access rights",
+                        TStringBuilder() << "path '" << path <<
+                        "' does not exist or you do not have access rights",
                         Ydb::PersQueue::ErrorCode::ACCESS_DENIED
                     )
                 );
@@ -223,6 +205,16 @@ namespace NKikimr::NGRpcProxy::V1 {
                 return RespondWithCode(Ydb::StatusIds::SCHEME_ERROR);
             }
             break;
+            case NSchemeCache::TSchemeCacheNavigate::EStatus::PathNotPath: {
+                AddIssue(
+                    FillIssue(
+                        TStringBuilder() << "path '" << path << "' is not a path",
+                        Ydb::PersQueue::ErrorCode::VALIDATION_ERROR
+                    )
+                );
+                return RespondWithCode(Ydb::StatusIds::SCHEME_ERROR);
+            }
+            break;
             case NSchemeCache::TSchemeCacheNavigate::EStatus::RootUnknown: {
                 AddIssue(
                     FillIssue(
@@ -233,6 +225,16 @@ namespace NKikimr::NGRpcProxy::V1 {
                 return RespondWithCode(Ydb::StatusIds::SCHEME_ERROR);
             }
             break;
+            case NSchemeCache::TSchemeCacheNavigate::EStatus::LookupError:
+            case NSchemeCache::TSchemeCacheNavigate::EStatus::RedirectLookupError: {
+                AddIssue(
+                    FillIssue(
+                        TStringBuilder() << "could not resolve path '" << path << "'",
+                        Ydb::PersQueue::ErrorCode::ERROR
+                    )
+                );
+                return RespondWithCode(Ydb::StatusIds::UNAVAILABLE);
+            }
 
             default:
                 return RespondWithCode(Ydb::StatusIds::GENERIC_ERROR);
@@ -244,7 +246,10 @@ namespace NKikimr::NGRpcProxy::V1 {
             switch (ev->GetTypeRewrite()) {
                 hFunc(TEvTxProxySchemeCache::TEvNavigateKeySetResult, Handle);
             default:
-                Y_ABORT();
+                YDB_LOG_WARN_COMP(NKikimrServices::PERSQUEUE, "Unhandled",
+                    {"eventType", ev->GetTypeRewrite()},
+                    {"event", ev->GetTypeName()});
+                AFL_VERIFY_DEBUG(false)("eventType", ev->GetTypeRewrite())("event", ev->GetTypeName());
             }
         }
 
@@ -257,8 +262,9 @@ namespace NKikimr::NGRpcProxy::V1 {
 
 
     template<class TDerived, class TRequest>
-    class TPQGrpcSchemaBase : public NKikimr::NGRpcService::TRpcSchemeRequestActor<TDerived, TRequest>,
-                              public TPQSchemaBase<TPQGrpcSchemaBase<TDerived, TRequest>> {
+    class TPQGrpcSchemaBase : public NKikimr::NGRpcService::TRpcSchemeRequestActor<TDerived, TRequest>
+                            , public TPQSchemaBase<TPQGrpcSchemaBase<TDerived, TRequest>>
+                            , public NActors::IActorExceptionHandler {
     protected:
         using TBase = NKikimr::NGRpcService::TRpcSchemeRequestActor<TDerived, TRequest>;
         using TActorBase = TPQSchemaBase<TPQGrpcSchemaBase<TDerived, TRequest>>;
@@ -270,16 +276,19 @@ namespace NKikimr::NGRpcProxy::V1 {
         TPQGrpcSchemaBase(NGRpcService::IRequestOpCtx *request, const TString& topicPath)
             : TBase(request)
             , TActorBase(topicPath, this->Request_->GetDatabaseName().GetOrElse(""))
+            , InternalRequest(!!dynamic_cast<NGRpcService::IInternalRequestCtx*>(request))
         {
         }
+
         TPQGrpcSchemaBase(NGRpcService::IRequestOpCtx* request)
             : TBase(request)
             , TActorBase(TBase::GetProtoRequest()->path(), this->Request_->GetDatabaseName().GetOrElse(""))
+            , InternalRequest(!!dynamic_cast<NGRpcService::IInternalRequestCtx*>(request))
         {
         }
 
         TString GetTopicPath() const override {
-            auto path = NPersQueue::GetFullTopicPath(this->ActorContext(), this->Request_->GetDatabaseName(), TActorBase::TopicPath);
+            auto path = NPersQueue::GetFullTopicPath(this->Request_->GetDatabaseName(), TActorBase::TopicPath);
             if (PrivateTopicName) {
                 path = JoinPath(ChildPath(NKikimr::SplitPath(path), *PrivateTopicName));
             }
@@ -292,6 +301,18 @@ namespace NKikimr::NGRpcProxy::V1 {
 
         void HandleCacheNavigateResponse(TEvTxProxySchemeCache::TEvNavigateKeySetResult::TPtr& ev) {
             return static_cast<TDerived*>(this)->HandleCacheNavigateResponse(ev);
+        }
+
+        bool OnUnhandledException(const std::exception& exc) override {
+            auto ctx = *NActors::TlsActivationContext;
+            YDB_LOG_CRIT_CTX_COMP(ctx, NKikimrServices::PERSQUEUE, "Unhandled exception",
+                {"typeName", TypeName(exc)},
+                {"exception", exc.what()},
+                {"currentException", TBackTrace::FromCurrentException().PrintToString()});
+
+            ReplyWithError(Ydb::StatusIds::INTERNAL_ERROR, Ydb::PersQueue::ErrorCode::ERROR, "Internal error");
+
+            return true;
         }
 
 
@@ -315,7 +336,7 @@ namespace NKikimr::NGRpcProxy::V1 {
             SetDatabase(proposal.get(), *this->Request_);
             SetPeerName(proposal.get(), *this->Request_);
 
-            if (this->Request_->GetSerializedToken().empty()) {
+            if (this->Request_->GetSerializedToken().empty() && !InternalRequest) {
                 if (AppData(ctx)->EnforceUserTokenRequirement || AppData(ctx)->PQConfig.GetRequireCredentialsInNewProtocol()) {
                     return ReplyWithError(Ydb::StatusIds::UNAUTHORIZED, Ydb::PersQueue::ErrorCode::ACCESS_DENIED,
                                           "Unauthenticated access is forbidden, please provide credentials");
@@ -340,7 +361,7 @@ namespace NKikimr::NGRpcProxy::V1 {
                 request->UserToken = new NACLib::TUserToken(token);
                 return true;
             }
-            return !(AppData()->EnforceUserTokenRequirement || AppData()->PQConfig.GetRequireCredentialsInNewProtocol());
+            return InternalRequest || !(AppData()->EnforceUserTokenRequirement || AppData()->PQConfig.GetRequireCredentialsInNewProtocol());
         }
 
         bool ProcessCdc(const NSchemeCache::TSchemeCacheNavigate::TEntry& response) override {
@@ -395,13 +416,15 @@ namespace NKikimr::NGRpcProxy::V1 {
         void StateWork(TAutoPtr<IEventHandle>& ev) {
             switch (ev->GetTypeRewrite()) {
                 hFunc(TEvTxProxySchemeCache::TEvNavigateKeySetResult, TActorBase::Handle);
-            default: TBase::StateWork(ev);
+            default:
+                TBase::StateWork(ev);
             }
         }
 
     private:
         TMaybe<TString> PrivateTopicName;
         TMaybe<TString> CdcStreamName;
+        bool InternalRequest = false;
     };
 
     //-----------------------------------------------------------------------------------
@@ -561,6 +584,9 @@ namespace NKikimr::NGRpcProxy::V1 {
 
             auto& item = ev->Get()->Request->ResultSet[0];
             PQGroupInfo = item.PQGroupInfo;
+            for (const auto& partition : PQGroupInfo->Description.GetPartitions()) {
+                TopicPartitionsIds.insert(partition.GetPartitionId());
+            }
             Self = item.Self;
 
             return true;
@@ -623,10 +649,10 @@ namespace NKikimr::NGRpcProxy::V1 {
     protected:
         THolder<TEvResponse> Response;
         TIntrusiveConstPtr<NSchemeCache::TSchemeCacheNavigate::TPQGroupInfo> PQGroupInfo;
+        TSet<i64> TopicPartitionsIds;
         TIntrusiveConstPtr<NSchemeCache::TSchemeCacheNavigate::TDirEntryInfo> Self;
         TMaybe<TString> PrivateTopicName;
         TMaybe<TString> CdcStreamName;
-
     };
 
 }

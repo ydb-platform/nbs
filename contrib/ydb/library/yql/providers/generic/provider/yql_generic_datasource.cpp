@@ -3,14 +3,15 @@
 #include "yql_generic_provider_impl.h"
 
 #include <contrib/ydb/library/yql/core/expr_nodes/yql_expr_nodes.h>
-#include <contrib/ydb/library/yql/providers/common/config/yql_configuration_transformer.h>
+#include <contrib/ydb/library/yql/providers/common/config/transformer/yql_configuration_transformer.h>
 #include <contrib/ydb/library/yql/providers/common/proto/gateways_config.pb.h>
 #include <contrib/ydb/library/yql/providers/common/provider/yql_data_provider_impl.h>
 #include <contrib/ydb/library/yql/providers/common/provider/yql_provider.h>
 #include <contrib/ydb/library/yql/providers/common/provider/yql_provider_names.h>
+#include <contrib/ydb/library/yql/providers/common/structured_token/yql_token_builder.h>
+#include <contrib/ydb/library/yql/utils/log/log.h>
 #include <contrib/ydb/library/yql/providers/generic/connector/libcpp/client.h>
 #include <contrib/ydb/library/yql/providers/generic/expr_nodes/yql_generic_expr_nodes.h>
-#include <contrib/ydb/library/yql/utils/log/log.h>
 
 namespace NYql {
 
@@ -24,7 +25,7 @@ namespace NYql {
                 : State_(state)
                 , ConfigurationTransformer_(MakeHolder<NCommon::TProviderConfigurationTransformer>(State_->Configuration, *State_->Types, TString{GenericProviderName}))
                 , IODiscoveryTransformer_(CreateGenericIODiscoveryTransformer(State_))
-                , LoadMetaDataTransformer_(CreateGenericLoadTableMetadataTransformer(State_))
+                , LoadMetaDataTransformer_(CreateGenericDescribeTableTransformer(State_))
                 , TypeAnnotationTransformer_(CreateGenericDataSourceTypeAnnotationTransformer(State_))
                 , DqIntegration_(CreateGenericDqIntegration(State_))
             {
@@ -104,6 +105,10 @@ namespace NYql {
                 return &State_->Configuration->Tokens;
             }
 
+            const THashSet<TString>& GetValidClusters() override {
+                return State_->Configuration->GetValidClusters();
+            }
+
             bool GetDependencies(const TExprNode& node, TExprNode::TListType& children, bool compact) override {
                 Y_UNUSED(compact);
 
@@ -126,7 +131,7 @@ namespace NYql {
                             auto cluster = dataSource.Cast().Cluster();
                             tableNameBuilder << cluster.Value() << ".";
                         }
-                        tableNameBuilder << '`' << maybeTable.Cast().Value() << '`';
+                        tableNameBuilder << '`' << maybeTable.Cast().Name().Value() << '`';
                         inputs.push_back(
                             TPinInfo(maybeRead.DataSource().Raw(), nullptr, maybeTable.Cast().Raw(), tableNameBuilder, false));
                         return 1;
@@ -140,6 +145,32 @@ namespace NYql {
             }
 
             void AddCluster(const TString& clusterName, const THashMap<TString, TString>& properties) override {
+                auto authMethod = properties.Value("authMethod", "");
+
+                TString structuredToken = "";
+                if (authMethod == "BASIC" || authMethod == "MDB_BASIC") {
+                    const TString& login = properties.Value("login", "");
+                    const TString& passwordReference = properties.Value("passwordReference", "");
+                    const TString& password = properties.Value("password", "");
+                    structuredToken = ComposeStructuredTokenJsonForBasicAuthWithSecret(login, passwordReference, password);
+                } else if (authMethod == "SERVICE_ACCOUNT") {
+                    const TString& serviceAccountId = properties.Value("serviceAccountId", "");
+                    const TString& serviceAccountIdSignature = properties.Value("serviceAccountIdSignature", "");
+                    const TString& serviceAccountIdSignatureReference = properties.Value("serviceAccountIdSignatureReference", "");
+                    structuredToken = ComposeStructuredTokenJsonForServiceAccountWithSecret(serviceAccountId, serviceAccountIdSignatureReference, serviceAccountIdSignature);
+                } else if (authMethod == "TOKEN") {
+                    const TString& token = properties.Value("token", "");
+                    const TString& tokenReference = properties.Value("tokenReference", "");
+                    structuredToken = ComposeStructuredTokenJsonForTokenAuthWithSecret(tokenReference, token);
+                } else if (authMethod == "IAM") {
+                    const TString& serviceAccountId = properties.Value("iamServiceAccountId", "");
+                    const TString& resourceId = properties.Value("iamResourceId", "");
+                    structuredToken = ComposeStructuredTokenJsonForIamAuth(serviceAccountId, resourceId);
+                } else {
+                    ythrow yexception() << "Unknown auth method: " << authMethod;
+                }
+
+                State_->Configuration->Tokens[clusterName] = structuredToken;
                 State_->Configuration->AddCluster(
                     GenericClusterConfigFromProperties(clusterName, properties),
                     State_->DatabaseResolver,
@@ -156,7 +187,7 @@ namespace NYql {
             const THolder<IDqIntegration> DqIntegration_;
         };
 
-    }
+    } // namespace
 
     TIntrusivePtr<IDataProvider> CreateGenericDataSource(TGenericState::TPtr state) {
         return new TGenericDataSource(std::move(state));

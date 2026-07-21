@@ -1,0 +1,116 @@
+#include "write_queue.h"
+
+#include <contrib/ydb/core/tx/columnshard/columnshard_impl.h>
+#include <contrib/ydb/core/tx/columnshard/operations/write_data.h>
+#include <contrib/ydb/core/tx/columnshard/overload_manager/overload_manager_service.h>
+#include <contrib/ydb/core/tx/columnshard/tracing/probes.h>
+#include <contrib/ydb/core/tx/data_events/write_data.h>
+
+namespace NKikimr::NColumnShard {
+
+LWTRACE_USING(YDB_CS);
+
+bool TWriteTask::Execute(TColumnShard* owner, const TActorContext& ctx) const {
+    owner->Counters.GetCSCounters().WritingCounters->OnWritingTaskDequeue(ctx.Monotonic() - Created);
+
+    if (const auto lock = owner->OperationsManager->GetLockOptional(LockId); lock) {
+        if (lock->NeedsAborting()) {
+            Abort(owner, "transaction is aborted", ctx, NKikimrDataEvents::TEvWriteResult::STATUS_LOCKS_BROKEN);
+            return true;
+        }
+    }
+
+    owner->OperationsManager->RegisterLock(LockId, owner->Generation());
+    owner->SubscribeLockIfNotAlready(LockId, LockNodeId);
+    auto writeOperation =
+        owner->OperationsManager->CreateWriteOperation(PathId, LockId, Cookie, GranuleShardingVersionId, ModificationType, IsBulk);
+
+    YDB_LOG_DEBUG_COMP(NKikimrServices::TX_COLUMNSHARD_WRITE, "",
+        {"writingSize", ArrowData->GetSize()},
+        {"operationId", writeOperation->GetIdentifier()},
+        {"inFlight", NOverload::TOverloadManagerServiceOperator::GetShardWritesInFly()},
+        {"sizeInFlight", NOverload::TOverloadManagerServiceOperator::GetShardWritesSizeInFly()});
+
+    AFL_VERIFY(writeOperation);
+    writeOperation->SetBehaviour(Behaviour);
+    const auto applyToMvccSnapshot = MvccSnapshot.Valid() ? MvccSnapshot : owner->GetMaxReadVersionForSchema(Schema->GetVersion());
+    NOlap::TWritingContext wContext(owner->TabletID(), owner->SelfId(), Schema, owner->StoragesManager,
+        owner->Counters.GetIndexationCounters().SplitterCounters, owner->Counters.GetCSCounters().WritingCounters, applyToMvccSnapshot, LockId,
+        LockMode, writeOperation->GetActivityChecker(), Behaviour == EOperationBehaviour::NoTxWrite, owner->BufferizationPortionsWriteActorId,
+        IsBulk);
+    // We don't need to split here portions by the last level
+    // ArrowData->SetSeparationPoints(owner->GetIndexAs<NOlap::TColumnEngineForLogs>().GetGranulePtrVerified(PathId.InternalPathId)->GetBucketPositions());
+    writeOperation->Start(*owner, ArrowData, SourceId, wContext);
+    return true;
+}
+
+void TWriteTask::Abort(
+    TColumnShard* owner, const TString& reason, const TActorContext& ctx, const NKikimrDataEvents::TEvWriteResult::EStatus& status) const {
+    LWPROBE(EvWriteResult, owner->TabletID(), SourceId.ToString(), TxId, Cookie, "write_queue", false, reason);
+    auto result = NEvents::TDataEvents::TEvWriteResult::BuildError(owner->TabletID(), TxId, status, reason);
+    owner->Counters.GetWritesMonitor()->OnFinishWrite(ArrowData->GetSize());
+    if (status == NKikimrDataEvents::TEvWriteResult::STATUS_OVERLOADED && OverloadSubscribeSeqNo) {
+        result->Record.SetOverloadSubscribed(*OverloadSubscribeSeqNo);
+        ctx.Send(NOverload::TOverloadManagerServiceOperator::MakeServiceId(),
+            std::make_unique<NOverload::TEvOverloadSubscribe>(
+                NOverload::TColumnShardInfo{ .ColumnShardId = owner->SelfId(), .TabletId = owner->TabletID() },
+                NOverload::TPipeServerInfo{
+                    .PipeServerId = RecipientId, .InterconnectSessionId = owner->PipeServersInterconnectSessions[RecipientId] },
+                NOverload::TOverloadSubscriberInfo{
+                    .PipeServerId = RecipientId, .OverloadSubscriberId = SourceId, .SeqNo = *OverloadSubscribeSeqNo }));
+    }
+    ctx.Send(SourceId, result.release(), 0, Cookie);
+}
+
+bool TWriteTasksQueue::Drain(const bool onWakeup, const TActorContext& ctx) {
+    if (onWakeup) {
+        WriteTasksOverloadCheckerScheduled = false;
+    }
+    ui32 countTasks = 0;
+    const TMonotonic now = ctx.Monotonic();
+    std::set<TInternalPathId> overloaded;
+    for (auto it = WriteTasks.begin(); it != WriteTasks.end();) {
+        if (it->IsDeprecated(now)) {
+            it->Abort(Owner, "timeout", ctx, NKikimrDataEvents::TEvWriteResult::STATUS_OVERLOADED);
+            Owner->Counters.GetCSCounters().WritingCounters->TimeoutRate->Inc();
+            it = WriteTasks.erase(it);
+        } else if (!overloaded.contains(it->GetInternalPathId())) {
+            auto overloadStatus = Owner->CheckOverloadedWait(it->GetInternalPathId());
+            if (overloadStatus != TColumnShard::EOverloadStatus::None) {
+                overloaded.emplace(it->GetInternalPathId());
+                Owner->Counters.GetCSCounters().OnWaitingOverload(overloadStatus);
+                ++countTasks;
+                YDB_LOG_DEBUG_COMP(NKikimrServices::TX_COLUMNSHARD_WRITE, "",
+                    {"event", "wait_overload"},
+                    {"status", overloadStatus},
+                    {"pathId", it->GetInternalPathId()});
+                ++it;
+            } else {
+                it->Execute(Owner, ctx);
+                it = WriteTasks.erase(it);
+            }
+        } else {
+            ++it;
+        }
+    }
+
+    if (countTasks && !WriteTasksOverloadCheckerScheduled) {
+        Owner->Schedule(TDuration::MilliSeconds(300), new NActors::TEvents::TEvWakeup(1));
+        WriteTasksOverloadCheckerScheduled = true;
+        YDB_LOG_WARN_COMP(NKikimrServices::TX_COLUMNSHARD, "",
+            {"event", "queue_on_write"},
+            {"size", countTasks});
+    }
+    Owner->Counters.GetCSCounters().WritingCounters->QueueWaitSize->Set(WriteTasks.size());
+    return !countTasks;
+}
+
+void TWriteTasksQueue::Enqueue(TWriteTask&& task) {
+    WriteTasks.emplace(std::move(task));
+}
+
+TWriteTasksQueue::~TWriteTasksQueue() {
+    Owner->Counters.GetCSCounters().WritingCounters->QueueWaitSize->Sub(WriteTasks.size());
+}
+
+}   // namespace NKikimr::NColumnShard

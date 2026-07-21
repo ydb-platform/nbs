@@ -1,14 +1,14 @@
 #include "yql_s3_provider_impl.h"
 
-#include <contrib/ydb/library/yql/core/expr_nodes/yql_expr_nodes.h>
+#include <contrib/ydb/library/yql/providers/s3/common/util.h>
 #include <contrib/ydb/library/yql/providers/s3/expr_nodes/yql_s3_expr_nodes.h>
 #include <contrib/ydb/library/yql/providers/s3/path_generator/yql_s3_path_generator.h>
 #include <contrib/ydb/library/yql/providers/s3/range_helpers/path_list_reader.h>
 
+#include <contrib/ydb/library/yql/core/expr_nodes/yql_expr_nodes.h>
+#include <contrib/ydb/library/yql/providers/common/provider/yql_data_provider_impl.h>
 #include <contrib/ydb/library/yql/providers/common/provider/yql_provider.h>
 #include <contrib/ydb/library/yql/providers/common/provider/yql_provider_names.h>
-#include <contrib/ydb/library/yql/providers/common/provider/yql_data_provider_impl.h>
-
 #include <contrib/ydb/library/yql/utils/log/log.h>
 
 namespace NYql {
@@ -290,7 +290,7 @@ bool EnsureParquetTypeSupported(TPositionHandle position, const TTypeAnnotationN
 
 class TS3DataSourceTypeAnnotationTransformer : public TVisitorTransformerBase {
 public:
-    TS3DataSourceTypeAnnotationTransformer(TS3State::TPtr state)
+    explicit TS3DataSourceTypeAnnotationTransformer(TS3State::TPtr state)
         : TVisitorTransformerBase(true)
         , State_(state)
     {
@@ -303,7 +303,11 @@ public:
     }
 
     TStatus HandleS3SourceSettings(const TExprNode::TPtr& input, TExprContext& ctx) {
-        if (!EnsureMinArgsCount(*input, 4U, ctx)) {
+        if (!EnsureMinMaxArgsCount(*input, 5, 8, ctx)) {
+            return TStatus::Error;
+        }
+
+        if (!EnsureWorldType(*input->Child(TS3SourceSettings::idx_World), ctx)) {
             return TStatus::Error;
         }
 
@@ -335,7 +339,11 @@ public:
     }
 
     TStatus HandleS3ParseSettings(const TExprNode::TPtr& input, TExprContext& ctx) {
-        if (!EnsureMinMaxArgsCount(*input, 7U, 8U, ctx)) {
+        if (!EnsureMinMaxArgsCount(*input, 8, 9, ctx)) {
+            return TStatus::Error;
+        }
+
+        if (!EnsureWorldType(*input->Child(TS3ParseSettings::idx_World), ctx)) {
             return TStatus::Error;
         }
 
@@ -429,11 +437,11 @@ public:
             return IGraphTransformer::TStatus::Error;
         }
 
-        if (const auto* filterLambdaType = filterLambda->GetTypeAnn()) {
+        if (const auto filterLambdaType = filterLambda->GetTypeAnn()) {
             if (filterLambdaType->GetKind() != ETypeAnnotationKind::Data) {
                 return IGraphTransformer::TStatus::Error;
             }
-            const TDataExprType* dataExprType = static_cast<const TDataExprType*>(filterLambdaType);
+            auto dataExprType = filterLambdaType->Cast<TDataExprType>();
             if (dataExprType->GetSlot() != EDataSlot::Bool) {
                 return IGraphTransformer::TStatus::Error;
             }
@@ -444,6 +452,8 @@ public:
     }
 
     TStatus HandleRead(const TExprNode::TPtr& input, TExprContext& ctx) {
+        State_->Configuration->CheckDisabledPragmas(ctx);
+
         if (!EnsureMinMaxArgsCount(*input, 6U, 7U, ctx)) {
             return TStatus::Error;
         }
@@ -452,7 +462,8 @@ public:
             return TStatus::Error;
         }
 
-        if (!EnsureSpecificDataSource(*input->Child(TS3ReadObject::idx_DataSource), S3ProviderName, ctx)) {
+        const auto* dataSourceNode = input->Child(TS3ReadObject::idx_DataSource);
+        if (!EnsureSpecificDataSource(*dataSourceNode, S3ProviderName, ctx)) {
             return TStatus::Error;
         }
 
@@ -478,10 +489,35 @@ public:
 
         std::vector<TString> partitionedBy;
         TString projection;
+        const auto useCoro = State_->Configuration->SourceCoroActor.GetOrDefault();
         {
             TS3Object s3Object(input->Child(TS3ReadObject::idx_Object));
             auto format = s3Object.Format().Ref().Content();
             const TStructExprType* structRowType = rowType->Cast<TStructExprType>();
+
+            const auto& clusterSettings = State_->Configuration->Clusters.at(TS3DataSource(dataSourceNode).Cluster().StringValue());
+            if (clusterSettings.Url.StartsWith("file://")) {
+                bool hasErrors = false;
+
+                if (!useCoro) {
+                    ctx.AddError(TIssue(ctx.GetPosition(dataSourceNode->Pos()), "Reading from files is not supported with disabled pragma s3.SourceCoroActor, to read from files use: PRAGMA s3.SourceCoroActor = \"TRUE\""));
+                    hasErrors = true;
+                }
+
+                if (State_->Configuration->AsyncDecompressing.GetOrDefault()) {
+                    ctx.AddError(TIssue(ctx.GetPosition(dataSourceNode->Pos()), "Reading from files is not supported with enabled pragma s3.AsyncDecompressing, to read from files use: PRAGMA s3.AsyncDecompressing = \"FALSE\""));
+                    hasErrors = true;
+                }
+
+                if (IsIn({"raw", "json_list"}, format)) {
+                    ctx.AddError(TIssue(ctx.GetPosition(dataSourceNode->Pos()), TStringBuilder() << "Reading from files is not supported with format '" << format << "'"));
+                    hasErrors = true;
+                }
+
+                if (hasErrors) {
+                    return TStatus::Error;
+                }
+            }
 
             THashSet<TStringBuf> columns;
             for (const TItemExprType* item : structRowType->GetItems()) {
@@ -520,6 +556,25 @@ public:
                 return TStatus::Error;
             }
 
+            if (!NS3Util::ValidateS3ReadSchema(rowTypeNode.Pos(), format, structRowType, useCoro, ctx)) {
+                return TStatus::Error;
+            }
+
+            if (format == "csv"sv) {
+                static constexpr TStringBuf CsvRequiresExplicitSchemaColumnNames =
+                    "csv format requires SCHEMA with explicitly listed column names to determine column order"sv;
+                if (input->ChildrenSize() <= TS3ReadObject::idx_ColumnOrder) {
+                    ctx.AddError(TIssue(ctx.GetPosition(input->Pos()), TString{CsvRequiresExplicitSchemaColumnNames}));
+                    return TStatus::Error;
+                }
+                const auto* columnOrder = input->Child(TS3ReadObject::idx_ColumnOrder);
+                // userschema can supply an empty atom list as the column-order tail (SCHEMA = ()) тАФ same as missing order.
+                if (!columnOrder->IsList() || columnOrder->ChildrenSize() == 0) {
+                    ctx.AddError(TIssue(ctx.GetPosition(columnOrder->Pos()), TString{CsvRequiresExplicitSchemaColumnNames}));
+                    return TStatus::Error;
+                }
+            }
+
             // Filter
             const TStatus filterAnnotationStatus = AnnotateFilterPredicate(input, TS3ReadObject::idx_FilterPredicate, structRowType, ctx);
             if (filterAnnotationStatus != TStatus::Ok) {
@@ -537,7 +592,7 @@ public:
             return TStatus::Error;
         }
 
-        if (objectNode->Child(TS3Object::idx_Format)->Content() == "parquet") {
+        if (objectNode->Child(TS3Object::idx_Format)->Content() == "parquet" && useCoro) {
             YQL_ENSURE(State_->Types->ArrowResolver);
             bool allTypesSupported = true;
             for (const auto& item : rowType->Cast<TStructExprType>()->GetItems()) {
@@ -573,7 +628,7 @@ public:
                 }
                 columnOrder.push_back(ToString(col));
             }
-            return State_->Types->SetColumnOrder(*input, columnOrder, ctx);
+            return State_->Types->SetColumnOrder(*input, TColumnOrder(columnOrder), ctx);
         }
 
         return TStatus::Ok;
@@ -630,7 +685,16 @@ public:
                     if (!ExtractSettingValue(setting.Tail(), "compression"sv, format, {}, ctx, compression)) {
                         return false;
                     }
-                    return NCommon::ValidateCompressionForInput(format, compression, ctx);
+                    if (!NCommon::ValidateCompressionForInput(format, compression, ctx)) {
+                        return false;
+                    }
+                    if (compression == "lz4"sv && (format == "raw"sv || format == "json_list"sv)) {
+                        ctx.AddError(TIssue(ctx.GetPosition(setting.Pos()),
+                            TStringBuilder() << "Compression '" << compression << "' is not supported for format '" << format
+                                             << "'. Use one of: gzip, zstd, brotli, bzip2, xz"));
+                        return false;
+                    }
+                    return true;
                 }
 
                 if (name == "partitionedby"sv) {
@@ -700,6 +764,14 @@ public:
                     return true;
                 }
 
+                if (name == "data.date.format"sv) {
+                    TStringBuf unused;
+                    if (!ExtractSettingValue(setting.Tail(), "data.date.format"sv, format, {}, ctx, unused)) {
+                        return false;
+                    }
+                    return true;
+                }
+
                 if (name == "readmaxbytes"sv) {
                     TStringBuf unused;
                     if (!ExtractSettingValue(setting.Tail(), "read_max_bytes"sv, format, "raw"sv, ctx, unused)) {
@@ -710,12 +782,16 @@ public:
 
                 if (name == "csvdelimiter"sv) {
                     auto& value = setting.Tail();
-                    TStringBuf delimiter;
-                    if (!ExtractSettingValue(value, "csv_delimiter"sv, format, "csv_with_names"sv, ctx, delimiter)) {
+                    if (format != "csv_with_names"sv && format != "csv"sv) {
+                        ctx.AddError(TIssue(ctx.GetPosition(value.Pos()),
+                            TStringBuilder() << "csv_delimiter can only be used with csv_with_names or csv format"));
                         return false;
                     }
-
-                    if (delimiter.Size() != 1) {
+                    TStringBuf delimiter;
+                    if (!ExtractSettingValue(value, "csv_delimiter"sv, format, {}, ctx, delimiter)) {
+                        return false;
+                    }
+                    if (delimiter.size() != 1) {
                         ctx.AddError(TIssue(ctx.GetPosition(value.Pos()), "csv_delimiter must be single character"));
                         return false;
                     }
@@ -777,11 +853,12 @@ public:
             };
             if (!EnsureValidSettings(*input->Child(TS3Object::idx_Settings),
                                      { "compression"sv, "partitionedby"sv, "projection"sv, "data.interval.unit"sv, "constraints"sv,
-                                        "data.datetime.formatname"sv, "data.datetime.format"sv, "data.timestamp.formatname"sv, "data.timestamp.format"sv,
+                                        "data.datetime.formatname"sv, "data.datetime.format"sv, "data.timestamp.formatname"sv, "data.timestamp.format"sv, "data.date.format"sv,
                                         "readmaxbytes"sv, "csvdelimiter"sv, "directories"sv, "filepattern"sv, "pathpattern"sv, "pathpatternvariant"sv }, validator, ctx))
             {
                 return TStatus::Error;
             }
+
             if (haveProjection && !havePartitionedBy) {
                 ctx.AddError(TIssue(ctx.GetPosition(input->Child(TS3Object::idx_Settings)->Pos()), "Missing partitioned_by setting for projection"));
                 return TStatus::Error;
@@ -801,11 +878,12 @@ public:
         input->SetTypeAnn(ctx.MakeType<TUnitExprType>());
         return TStatus::Ok;
     }
+
 private:
     const TS3State::TPtr State_;
 };
 
-}
+} // anonymous namespace
 
 THolder<TVisitorTransformerBase> CreateS3DataSourceTypeAnnotationTransformer(TS3State::TPtr state) {
     return MakeHolder<TS3DataSourceTypeAnnotationTransformer>(state);

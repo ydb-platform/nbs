@@ -13,10 +13,12 @@ SRCS(
     dsproxy_assimilate.cpp
     dsproxy_block.cpp
     dsproxy_collect.cpp
+    dsproxy_check_integrity_get.cpp
     dsproxy_discover.cpp
     dsproxy_discover_m3dc.cpp
     dsproxy_discover_m3of4.cpp
     dsproxy_get.cpp
+    dsproxy_get_block.cpp
     dsproxy_get_impl.cpp
     dsproxy_get_impl.h
     dsproxy_indexrestoreget.cpp
@@ -66,9 +68,12 @@ PEERDIR(
     contrib/ydb/core/blobstorage/common
     contrib/ydb/core/blobstorage/groupinfo
     contrib/ydb/core/blobstorage/storagepoolmon
+    contrib/ydb/core/blobstorage/vdisk/common
     contrib/ydb/core/blobstorage/vdisk/ingress
-    contrib/ydb/core/control
+    contrib/ydb/core/control/lib
+    contrib/ydb/core/retro_tracing_impl/spans
     contrib/ydb/core/util
+    contrib/ydb/library/actors/retro_tracing/collector
 )
 
 END()

@@ -1,0 +1,13 @@
+title: Essentials docs
+service: yql
+
+ci:
+  secret: sec-01g9mj0b528x9wg348pdh5nv8n
+  runtime:
+    sandbox:
+      owner: YQL
+
+  includes:
+    docs: ci/registry/common/docs/docs.a.yaml
+
+  extends: docs#/any/default-config

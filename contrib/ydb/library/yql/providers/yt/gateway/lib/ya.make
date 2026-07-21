@@ -1,14 +1,29 @@
 LIBRARY()
 
 SRCS(
+    downloader.cpp
+    downloader.h
+    exec_ctx.h
+    exec_ctx.cpp
+    map_builder.h
+    map_builder.cpp
     query_cache.cpp
     query_cache.h
-    temp_files.cpp
-    temp_files.h
+    reduce_builder.h
+    reduce_builder-inl.h
+    reduce_builder.cpp
+    session.h
+    session.cpp
     transaction_cache.cpp
     transaction_cache.h
+    transform.cpp
+    transform.h
+    qb2.cpp
+    qb2.h
     user_files.cpp
     user_files.h
+    yt_attrs.h
+    yt_attrs.cpp
     yt_helpers.cpp
     yt_helpers.h
 )
@@ -29,6 +44,8 @@ PEERDIR(
     contrib/ydb/library/yql/core/type_ann
     contrib/ydb/library/yql/providers/common/codec
     contrib/ydb/library/yql/providers/common/gateway
+    contrib/ydb/library/yql/providers/common/metrics
+    contrib/ydb/library/yql/providers/yt/provider
     contrib/ydb/library/yql/providers/yt/common
     contrib/ydb/library/yql/providers/yt/lib/hash
     contrib/ydb/library/yql/providers/yt/lib/res_pull

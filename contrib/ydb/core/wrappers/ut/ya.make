@@ -9,19 +9,19 @@ IF (NOT OS_WINDOWS)
         contrib/ydb/library/actors/core
         library/cpp/digest/md5
         library/cpp/testing/unittest
-        contrib/libs/aws-sdk-cpp/aws-cpp-sdk-core
         contrib/ydb/core/protos
         contrib/ydb/core/testlib/basics/default
-        contrib/ydb/library/yql/minikql/comp_nodes/llvm14
+        contrib/ydb/core/util
         contrib/ydb/core/wrappers/ut_helpers
+        contrib/ydb/library/aws_init
+        contrib/ydb/library/yql/minikql/comp_nodes/llvm16
     )
     SRCS(
         s3_wrapper_ut.cpp
+        fs_storage_ut.cpp
     )
 ENDIF()
 
 YQL_LAST_ABI_VERSION()
-
-REQUIREMENTS(ram:12)
 
 END()

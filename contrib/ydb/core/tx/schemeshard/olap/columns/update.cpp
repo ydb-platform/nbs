@@ -5,6 +5,8 @@
 #include <contrib/ydb/core/scheme_types/scheme_type_registry.h>
 #include <contrib/ydb/core/formats/arrow/serializer/abstract.h>
 #include <contrib/ydb/core/formats/arrow/arrow_helpers.h>
+#include <contrib/ydb/core/formats/arrow/accessor/common/const.h>
+#include <contrib/ydb/core/protos/config.pb.h>
 
 extern "C" {
 #include <contrib/ydb/library/yql/parser/pg_wrapper/postgresql/src/include/catalog/pg_type_d.h>
@@ -12,16 +14,92 @@ extern "C" {
 
 namespace NKikimr::NSchemeShard {
 
-    bool TOlapColumnAdd::ParseFromRequest(const NKikimrSchemeOp::TOlapColumnDescription& columnSchema, IErrorCollector& errors) {
-        if (!columnSchema.GetName()) {
-            errors.AddError("Columns cannot have an empty name");
+namespace {
+
+bool IsValidColumnNameForColumnTable(const TString& name) {
+    if (IsValidColumnName(name, false)) {
+        return true;
+    }
+
+    if (!AppDataVerified().ColumnShardConfig.GetAllowExtraSymbolsForColumnTableColumns()) {
+        return false;
+    }
+
+    return std::all_of(name.begin(), name.end(),
+            [](char c) { return std::isalnum(c) || c == '_' || c == '-' || c == '@'; });
+}
+
+}
+
+bool TOlapColumnDiff::ParseFromRequest(const NKikimrSchemeOp::TOlapColumnDiff& columnSchema, IErrorCollector& errors) {
+    Name = columnSchema.GetName();
+    if (!!columnSchema.GetStorageId()) {
+        StorageId = columnSchema.GetStorageId();
+    }
+    if (!Name) {
+        errors.AddError("empty field name");
+        return false;
+    }
+    if (columnSchema.HasDefaultValue()) {
+        DefaultValue = columnSchema.GetDefaultValue();
+    }
+    if (columnSchema.HasDataAccessorConstructor()) {
+        const auto& dacProto = columnSchema.GetDataAccessorConstructor();
+        if (dacProto.GetClassName() == NArrow::NAccessor::TGlobalConst::UndefinedAccessorName) {
+            AccessorConstructor.emplace();
+        } else {
+            NArrow::NAccessor::TRequestedConstructorContainer container;
+            if (!container.DeserializeFromProto(dacProto)) {
+                errors.AddError("cannot parse accessor constructor from proto");
+                return false;
+            }
+            AccessorConstructor = std::move(container);
+        }
+    } else {
+        AccessorConstructor = std::nullopt;
+    }
+
+    if (columnSchema.HasColumnFamilyName()) {
+        ColumnFamilyName = columnSchema.GetColumnFamilyName();
+    }
+
+    if (columnSchema.HasSerializer()) {
+        Serializer = NArrow::NSerialization::TSerializerContainer();
+        if (columnSchema.GetSerializer().HasClassName()) {
+            if (!Serializer->DeserializeFromProto(columnSchema.GetSerializer())) {
+                errors.AddError("cannot parse serializer diff from proto");
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+bool TOlapColumnBase::ParseFromRequest(const NKikimrSchemeOp::TOlapColumnDescription& columnSchema, IErrorCollector& errors) {
+    if (!columnSchema.GetName()) {
+        errors.AddError("Columns cannot have an empty name");
+        return false;
+    }
+    Name = columnSchema.GetName();
+    if (!IsValidColumnNameForColumnTable(Name)) {
+        errors.AddError(Sprintf("Invalid name for column '%s'", Name.data()));
+        return false;
+    }
+    NotNullFlag = columnSchema.GetNotNull();
+    TypeName = columnSchema.GetType();
+    StorageId = columnSchema.GetStorageId();
+    if (columnSchema.HasColumnFamilyId()) {
+        errors.AddError("Column FAMILY is not supported for column tables");
+        return false;
+    }
+    if (columnSchema.HasSerializer()) {
+        if (!AppData()->FeatureFlags.GetEnableOlapCompression()) {
+            errors.AddError("Compression is disabled for OLAP tables");
             return false;
         }
-        Name = columnSchema.GetName();
-        NotNullFlag = columnSchema.GetNotNull();
-        TypeName = columnSchema.GetType();
-        StorageId = columnSchema.GetStorageId();
-        if (columnSchema.HasSerializer()) {
+        // Deserialize only non-empty serializers
+        if (columnSchema.GetSerializer().HasClassName()) {
             NArrow::NSerialization::TSerializerContainer serializer;
             if (!serializer.DeserializeFromProto(columnSchema.GetSerializer())) {
                 errors.AddError("Cannot parse serializer info");
@@ -29,221 +107,276 @@ namespace NKikimr::NSchemeShard {
             }
             Serializer = serializer;
         }
-        if (columnSchema.HasDictionaryEncoding()) {
-            auto settings = NArrow::NDictionary::TEncodingSettings::BuildFromProto(columnSchema.GetDictionaryEncoding());
-            if (!settings) {
-                errors.AddError("Cannot parse dictionary compression info: " + settings.GetErrorMessage());
-                return false;
-            }
-            DictionaryEncoding = *settings;
-        }
-
-        if (columnSchema.HasTypeId()) {
-            errors.AddError(TStringBuilder() << "Cannot set TypeId for column '" << Name << ", use Type");
-            return false;
-        }
-
-        if (!columnSchema.HasType()) {
-            errors.AddError(TStringBuilder() << "Missing Type for column '" << Name);
-            return false;
-        }
-
-        TString errStr;
-        Y_ABORT_UNLESS(AppData()->TypeRegistry);
-        if (!GetTypeInfo(AppData()->TypeRegistry->GetType(TypeName), columnSchema.GetTypeInfo(), TypeName, Name, Type, errStr)) {
-            errors.AddError(errStr);
-            return false;
-        }
-
-        if (Type.GetTypeId() == NScheme::NTypeIds::Pg) {
-            if (!TOlapColumnAdd::IsAllowedPgType(NPg::PgTypeIdFromTypeDesc(Type.GetPgTypeDesc()))) {
-                errors.AddError(TStringBuilder() << "Type '" << TypeName << "' specified for column '" << Name << "' is not supported");
-                return false;
-            }
-        } else {
-            if (!IsAllowedType(Type.GetTypeId())){
-                errors.AddError(TStringBuilder() << "Type '" << TypeName << "' specified for column '" << Name << "' is not supported");
-                return false;
-            }
-        }
-
-
-        auto arrowTypeResult = NArrow::GetArrowType(Type);
-        const auto arrowTypeStatus = arrowTypeResult.status();
-        if (!arrowTypeStatus.ok()) {
-            errors.AddError(TStringBuilder() << "Column '" << Name << "': " << arrowTypeStatus.ToString());
-            return false;
-        }
-        if (columnSchema.HasDefaultValue()) {
-            auto conclusion = DefaultValue.DeserializeFromProto(columnSchema.GetDefaultValue());
-            if (conclusion.IsFail()) {
-                errors.AddError(conclusion.GetErrorMessage());
-                return false;
-            }
-            if (!DefaultValue.IsCompatibleType(*arrowTypeResult)) {
-                errors.AddError("incompatible types for default write: def" + DefaultValue.DebugString() + ", col:" + (*arrowTypeResult)->ToString());
-                return false;
-            }
-        }
-        return true;
     }
 
-    void TOlapColumnAdd::ParseFromLocalDB(const NKikimrSchemeOp::TOlapColumnDescription& columnSchema) {
-        Name = columnSchema.GetName();
-        TypeName = columnSchema.GetType();
-        StorageId = columnSchema.GetStorageId();
+    if (columnSchema.HasTypeId()) {
+        errors.AddError(TStringBuilder() << "Cannot set TypeId for column '" << Name << ", use Type");
+        return false;
+    }
 
-        if (columnSchema.HasTypeInfo()) {
-            Type = NScheme::TypeInfoModFromProtoColumnType(
-                columnSchema.GetTypeId(), &columnSchema.GetTypeInfo())
-                .TypeInfo;
-        } else {
-            Type = NScheme::TypeInfoModFromProtoColumnType(
-                columnSchema.GetTypeId(), nullptr)
-                .TypeInfo;
+    if (!columnSchema.HasType()) {
+        errors.AddError(TStringBuilder() << "Missing Type for column '" << Name);
+        return false;
+    }
+
+    TString errStr;
+    Y_ABORT_UNLESS(AppData()->TypeRegistry);
+    if (!GetTypeInfo(AppData()->TypeRegistry->GetType(TypeName), columnSchema.GetTypeInfo(), TypeName, Name, Type, errStr)) {
+        errors.AddError(errStr);
+        return false;
+    }
+
+    if (Type.GetTypeId() == NScheme::NTypeIds::Pg) {
+        if (!IsAllowedPgType(NPg::PgTypeIdFromTypeDesc(Type.GetPgTypeDesc()))) {
+            errors.AddError(TStringBuilder() << "Type '" << TypeName << "' specified for column '" << Name << "' is not supported");
+            return false;
         }
-        auto arrowType = NArrow::TStatusValidator::GetValid(NArrow::GetArrowType(Type));
-        if (columnSchema.HasDefaultValue()) {
-            DefaultValue.DeserializeFromProto(columnSchema.GetDefaultValue()).Validate();
-            AFL_VERIFY(DefaultValue.IsCompatibleType(arrowType));
-        }
-        if (columnSchema.HasSerializer()) {
-            NArrow::NSerialization::TSerializerContainer serializer;
-            AFL_VERIFY(serializer.DeserializeFromProto(columnSchema.GetSerializer()));
-            Serializer = serializer;
-        } else if (columnSchema.HasCompression()) {
-            NArrow::NSerialization::TSerializerContainer serializer;
-            serializer.DeserializeFromProto(columnSchema.GetCompression()).Validate();
-            Serializer = serializer;
-        }
-        if (columnSchema.HasDataAccessorConstructor()) {
-            NArrow::NAccessor::TConstructorContainer container;
-            AFL_VERIFY(container.DeserializeFromProto(columnSchema.GetDataAccessorConstructor()));
-            AccessorConstructor = container;
-        }
-        if (columnSchema.HasDictionaryEncoding()) {
-            auto settings = NArrow::NDictionary::TEncodingSettings::BuildFromProto(columnSchema.GetDictionaryEncoding());
-            Y_ABORT_UNLESS(settings.IsSuccess());
-            DictionaryEncoding = *settings;
-        }
-        if (columnSchema.HasNotNull()) {
-            NotNullFlag = columnSchema.GetNotNull();
-        } else {
-            NotNullFlag = false;
+    } else {
+        if (!IsAllowedType(Type.GetTypeId())) {
+            errors.AddError(TStringBuilder() << "Type '" << TypeName << "' specified for column '" << Name << "' is not supported");
+            return false;
         }
     }
 
-    void TOlapColumnAdd::Serialize(NKikimrSchemeOp::TOlapColumnDescription& columnSchema) const {
-        columnSchema.SetName(Name);
-        columnSchema.SetType(TypeName);
-        columnSchema.SetNotNull(NotNullFlag);
-        columnSchema.SetStorageId(StorageId);
-        *columnSchema.MutableDefaultValue() = DefaultValue.SerializeToProto();
-        if (Serializer) {
-            Serializer->SerializeToProto(*columnSchema.MutableSerializer());
-        }
-        if (AccessorConstructor) {
-            *columnSchema.MutableDataAccessorConstructor() = AccessorConstructor.SerializeToProto();
-        }
-        if (DictionaryEncoding) {
-            *columnSchema.MutableDictionaryEncoding() = DictionaryEncoding->SerializeToProto();
-        }
-
-        auto columnType = NScheme::ProtoColumnTypeFromTypeInfoMod(Type, "");
-        columnSchema.SetTypeId(columnType.TypeId);
-        if (columnType.TypeInfo) {
-            *columnSchema.MutableTypeInfo() = *columnType.TypeInfo;
-        }
+    auto arrowTypeResult = NArrow::GetArrowType(Type);
+    const auto arrowTypeStatus = arrowTypeResult.status();
+    if (!arrowTypeStatus.ok()) {
+        errors.AddError(TStringBuilder() << "Column '" << Name << "': " << arrowTypeStatus.ToString());
+        return false;
     }
 
-    bool TOlapColumnAdd::ApplyDiff(const TOlapColumnDiff& diffColumn, IErrorCollector& errors) {
-        Y_ABORT_UNLESS(GetName() == diffColumn.GetName());
-        if (diffColumn.GetDefaultValue()) {
-            auto conclusion = DefaultValue.ParseFromString(*diffColumn.GetDefaultValue(), Type);
-            if (conclusion.IsFail()) {
-                errors.AddError(conclusion.GetErrorMessage());
+    if (columnSchema.HasDataAccessorConstructor()) {
+        const auto& dacProto = columnSchema.GetDataAccessorConstructor();
+        if (dacProto.GetClassName() != NArrow::NAccessor::TGlobalConst::UndefinedAccessorName) {
+            if (dacProto.GetClassName() == NArrow::NAccessor::TGlobalConst::DictionaryAccessorName) {
+                if (!IsAllowedDictionaryType(Type.GetTypeId())) {
+                    errors.AddError(NKikimrScheme::StatusSchemeError, TStringBuilder()
+                        << "DICTIONARY encoding is not supported for type '" << TypeName << "' of column '" << Name << "'");
+                    return false;
+                }
+            }
+            if (!AccessorConstructor.DeserializeFromProto(dacProto)) {
+                errors.AddError("cannot parse accessor constructor from proto");
                 return false;
             }
         }
-        if (!!diffColumn.GetAccessorConstructor()) {
-            auto conclusion = diffColumn.GetAccessorConstructor()->BuildConstructor();
+    }
+
+    if (columnSchema.HasDefaultValue()) {
+        auto conclusion = DefaultValue.DeserializeFromProto(columnSchema.GetDefaultValue());
+        if (conclusion.IsFail()) {
+            errors.AddError(conclusion.GetErrorMessage());
+            return false;
+        }
+        if (!DefaultValue.IsCompatibleType(*arrowTypeResult)) {
+            errors.AddError(
+                "incompatible types for default write: def" + DefaultValue.DebugString() + ", col:" + (*arrowTypeResult)->ToString());
+            return false;
+        }
+    }
+    return true;
+}
+
+void TOlapColumnBase::ParseFromLocalDB(const NKikimrSchemeOp::TOlapColumnDescription& columnSchema) {
+    Name = columnSchema.GetName();
+    TypeName = columnSchema.GetType();
+    StorageId = columnSchema.GetStorageId();
+
+    if (columnSchema.HasTypeInfo()) {
+        Type = NScheme::TypeInfoModFromProtoColumnType(columnSchema.GetTypeId(), &columnSchema.GetTypeInfo()).TypeInfo;
+    } else {
+        Type = NScheme::TypeInfoModFromProtoColumnType(columnSchema.GetTypeId(), nullptr).TypeInfo;
+    }
+    auto arrowType = NArrow::TStatusValidator::GetValid(NArrow::GetArrowType(Type));
+    if (columnSchema.HasDefaultValue()) {
+        DefaultValue.DeserializeFromProto(columnSchema.GetDefaultValue()).Validate();
+        AFL_VERIFY(DefaultValue.IsCompatibleType(arrowType));
+    }
+    if (columnSchema.HasColumnFamilyId()) {
+        // TODO: do something?
+    }
+    if (columnSchema.HasSerializer()) {
+        NArrow::NSerialization::TSerializerContainer serializer;
+        AFL_VERIFY(serializer.DeserializeFromProto(columnSchema.GetSerializer()));
+        Serializer = serializer;
+    } else if (columnSchema.HasCompression()) {
+        NArrow::NSerialization::TSerializerContainer serializer;
+        serializer.DeserializeFromProto(columnSchema.GetCompression()).Validate();
+        Serializer = serializer;
+    }
+    if (columnSchema.HasDataAccessorConstructor()) {
+        NArrow::NAccessor::TConstructorContainer container;
+        AFL_VERIFY(container.DeserializeFromProto(columnSchema.GetDataAccessorConstructor()));
+        AccessorConstructor = container;
+    }
+    if (columnSchema.HasNotNull()) {
+        NotNullFlag = columnSchema.GetNotNull();
+    } else {
+        NotNullFlag = false;
+    }
+}
+
+void TOlapColumnBase::Serialize(NKikimrSchemeOp::TOlapColumnDescription& columnSchema) const {
+    columnSchema.SetName(Name);
+    columnSchema.SetType(TypeName);
+    columnSchema.SetNotNull(NotNullFlag);
+    columnSchema.SetStorageId(StorageId);
+    *columnSchema.MutableDefaultValue() = DefaultValue.SerializeToProto();
+
+    if (Serializer) {
+        Serializer.SerializeToProto(*columnSchema.MutableSerializer());
+    }
+    if (AccessorConstructor) {
+        *columnSchema.MutableDataAccessorConstructor() = AccessorConstructor.SerializeToProto();
+    } else {
+        columnSchema.ClearDataAccessorConstructor();
+    }
+
+    auto columnType = NScheme::ProtoColumnTypeFromTypeInfoMod(Type, "");
+    columnSchema.SetTypeId(columnType.TypeId);
+    if (columnType.TypeInfo) {
+        *columnSchema.MutableTypeInfo() = *columnType.TypeInfo;
+    }
+}
+
+bool TOlapColumnBase::ApplyDiff(const TOlapColumnDiff& diffColumn, IErrorCollector& errors) {
+    Y_ABORT_UNLESS(GetName() == diffColumn.GetName());
+    if (diffColumn.GetDefaultValue()) {
+        auto conclusion = DefaultValue.ParseFromString(*diffColumn.GetDefaultValue(), Type);
+        if (conclusion.IsFail()) {
+            errors.AddError(conclusion.GetErrorMessage());
+            return false;
+        }
+    }
+    if (diffColumn.GetAccessorConstructor()) {
+        const auto& requested = *diffColumn.GetAccessorConstructor();
+        if (!requested) {
+            AccessorConstructor = NArrow::NAccessor::TConstructorContainer();
+        } else {
+            auto conclusion = requested.GetObjectPtr()->BuildConstructor();
             if (conclusion.IsFail()) {
                 errors.AddError(conclusion.GetErrorMessage());
                 return false;
             }
             AccessorConstructor = conclusion.DetachResult();
         }
-        if (diffColumn.GetStorageId()) {
-            StorageId = *diffColumn.GetStorageId();
+    }
+    if (diffColumn.GetStorageId()) {
+        StorageId = *diffColumn.GetStorageId();
+    }
+    if (diffColumn.GetColumnFamilyName().has_value()) {
+        errors.AddError(NKikimrScheme::StatusSchemeError, TStringBuilder()
+            << "Column FAMILY is not supported for column tables");
+        return false;
+    }
+    if (diffColumn.GetSerializer()) {
+        if (*diffColumn.GetSerializer()) {
+            Serializer = *diffColumn.GetSerializer();
+        } else {
+            Serializer = NArrow::NSerialization::TSerializerContainer();
         }
-        if (diffColumn.GetSerializer()) {
-            Serializer = diffColumn.GetSerializer();
-        }
-        {
-            auto result = diffColumn.GetDictionaryEncoding().Apply(DictionaryEncoding);
-            if (!result) {
-                errors.AddError("Cannot merge dictionary encoding info: " + result.GetErrorMessage());
-                return false;
-            }
-        }
-        return true;
     }
 
-    bool TOlapColumnAdd::IsAllowedType(ui32 typeId) {
-        if (!NScheme::NTypeIds::IsYqlType(typeId)) {
+    if (AccessorConstructor && AccessorConstructor.GetClassName() == NArrow::NAccessor::TGlobalConst::DictionaryAccessorName) {
+        if (!IsAllowedDictionaryType(Type.GetTypeId())) {
+            errors.AddError(NKikimrScheme::StatusSchemeError, TStringBuilder()
+                << "DICTIONARY encoding is not supported for type '" << TypeName << "' of column '" << Name << "'");
             return false;
         }
-
-        switch (typeId) {
-            case NYql::NProto::Bool:
-            case NYql::NProto::Interval:
-            case NYql::NProto::DyNumber:
-                return false;
-            default:
-                break;
-        }
-        return true;
     }
 
-    bool TOlapColumnAdd::IsAllowedPgType(ui32 pgTypeId) {
-        switch (pgTypeId) {
-            case INT2OID:
-            case INT4OID:
-            case INT8OID:
-            case FLOAT4OID:
-            case FLOAT8OID:
-                return true;
-            default:
-                break;
-        }
+    return true;
+}
+
+bool TOlapColumnBase::IsAllowedType(ui32 typeId) {
+    if (!NScheme::NTypeIds::IsYqlType(typeId)) {
         return false;
     }
 
-    bool TOlapColumnAdd::IsAllowedPkType(ui32 typeId) {
-        switch (typeId) {
-            case NYql::NProto::Int8:
-            case NYql::NProto::Uint8: // Byte
-            case NYql::NProto::Int16:
-            case NYql::NProto::Uint16:
-            case NYql::NProto::Int32:
-            case NYql::NProto::Uint32:
-            case NYql::NProto::Int64:
-            case NYql::NProto::Uint64:
-            case NYql::NProto::String:
-            case NYql::NProto::Utf8:
-            case NYql::NProto::Date:
-            case NYql::NProto::Datetime:
-            case NYql::NProto::Timestamp:
-            case NYql::NProto::Date32:
-            case NYql::NProto::Datetime64:
-            case NYql::NProto::Timestamp64:
-            case NYql::NProto::Interval64:
-            case NYql::NProto::Decimal:
-                return true;
-            default:
-                return false;
-        }
+    return true;
+}
+
+bool TOlapColumnBase::IsAllowedPgType(ui32 pgTypeId) {
+    switch (pgTypeId) {
+        case INT2OID:
+        case INT4OID:
+        case INT8OID:
+        case FLOAT4OID:
+        case FLOAT8OID:
+            return true;
+        default:
+            break;
     }
+    return false;
+}
+
+bool TOlapColumnBase::IsAllowedPkType(ui32 typeId) {
+    switch (typeId) {
+        case NYql::NProto::Bool:
+        case NYql::NProto::Int8:
+        case NYql::NProto::Uint8:  // Byte
+        case NYql::NProto::Int16:
+        case NYql::NProto::Uint16:
+        case NYql::NProto::Int32:
+        case NYql::NProto::Uint32:
+        case NYql::NProto::Int64:
+        case NYql::NProto::Uint64:
+        case NYql::NProto::String:
+        case NYql::NProto::Utf8:
+        case NYql::NProto::Date:
+        case NYql::NProto::Datetime:
+        case NYql::NProto::Timestamp:
+        case NYql::NProto::Date32:
+        case NYql::NProto::Datetime64:
+        case NYql::NProto::Timestamp64:
+        case NYql::NProto::Interval64:
+        case NYql::NProto::Interval:
+        case NYql::NProto::Decimal:
+        case NYql::NProto::DyNumber:
+        case NYql::NProto::Uuid:
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool TOlapColumnBase::IsAllowedDictionaryType(ui32 typeId) {
+    switch (typeId) {
+        case NYql::NProto::Bool:
+        case NYql::NProto::Int8:
+        case NYql::NProto::Uint8:
+        case NYql::NProto::Int16:
+        case NYql::NProto::Uint16:
+        case NYql::NProto::Int32:
+        case NYql::NProto::Uint32:
+        case NYql::NProto::Int64:
+        case NYql::NProto::Uint64:
+        case NYql::NProto::Float:
+        case NYql::NProto::Double:
+        case NYql::NProto::String:
+        case NYql::NProto::Utf8:
+        case NYql::NProto::Date:
+        case NYql::NProto::Datetime:
+        case NYql::NProto::Timestamp:
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool TOlapColumnAdd::ParseFromRequest(const NKikimrSchemeOp::TOlapColumnDescription& columnSchema, IErrorCollector& errors) {
+    if (columnSchema.HasColumnFamilyName()) {
+        ColumnFamilyName = columnSchema.GetColumnFamilyName();
+    }
+    return TBase::ParseFromRequest(columnSchema, errors);
+}
+
+void TOlapColumnAdd::ParseFromLocalDB(const NKikimrSchemeOp::TOlapColumnDescription& columnSchema) {
+    if (columnSchema.HasColumnFamilyName()) {
+        ColumnFamilyName = columnSchema.GetColumnFamilyName();
+    }
+    TBase::ParseFromLocalDB(columnSchema);
+}
 
     bool TOlapColumnsUpdate::Parse(const NKikimrSchemeOp::TAlterColumnTableSchema& alterRequest, IErrorCollector& errors) {
         for (const auto& column : alterRequest.GetDropColumns()) {
@@ -293,6 +426,7 @@ namespace NKikimr::NSchemeShard {
                 errors.AddError(NKikimrScheme::StatusSchemeError, TStringBuilder() << "Duplicate key column '" << pkKey << "'");
                 return false;
             }
+            PrimaryKeyColumnNames.emplace_back(pkKey);
         }
 
         TSet<TString> columnNames;

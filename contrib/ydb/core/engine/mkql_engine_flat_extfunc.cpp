@@ -2,6 +2,7 @@
 #include "mkql_engine_flat_impl.h"
 #include "mkql_keys.h"
 #include <contrib/ydb/core/kqp/common/kqp_types.h>
+#include <contrib/ydb/library/aclib/user_context.h>
 #include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node_holders.h>
 #include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node_holders_codegen.h>
 #include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node_pack.h>
@@ -28,7 +29,7 @@ namespace {
         }
 
         const auto literal = AS_VALUE(TDataLiteral, data);
-        // TODO: support pg types
+        // no need to support pg types in the deprecated minikql engine
         auto typeInfo = NScheme::TTypeInfo(literal->GetType()->GetSchemeType());
         return MakeCell(typeInfo, literal->AsValue(), env, false);
     }
@@ -233,7 +234,7 @@ namespace {
                 ExtractRow(Row, Owner->RowType, row, *engineCtx.Env);
 
                 if (!engineCtx.Host->IsPathErased(Owner->TableId) && engineCtx.Host->IsMyKey(Owner->TableId, row)) {
-                    engineCtx.Host->EraseRow(Owner->TableId, row);
+                    engineCtx.Host->EraseRow(Owner->TableId, row, Owner->UserCtx);
                 }
             }
 
@@ -241,11 +242,12 @@ namespace {
             const NUdf::TUnboxedValue Row;
         };
 
-        TEraseRowWrapper(TComputationMutables& mutables, const TTableId& tableId, TTupleType* rowType, IComputationNode* row)
+        TEraseRowWrapper(TComputationMutables& mutables, const TTableId& tableId, TTupleType* rowType, IComputationNode* row, TIntrusivePtr<NACLib::TUserContext> userCtx)
             : TBaseComputation(mutables)
             , TableId(tableId)
             , RowType(rowType)
             , Row(row)
+            , UserCtx(userCtx)
         {
         }
 
@@ -261,6 +263,7 @@ namespace {
         const TTableId TableId;
         TTupleType* const RowType;
         IComputationNode* const Row;
+        TIntrusivePtr<NACLib::TUserContext> UserCtx;
     };
 
     class TUpdateRowWrapper : public TMutableComputationNode<TUpdateRowWrapper> {
@@ -314,7 +317,7 @@ namespace {
                         }
                     }
 
-                    engineCtx.Host->UpdateRow(Owner->TableId, row, commands);
+                    engineCtx.Host->UpdateRow(Owner->TableId, row, commands, Owner->UserCtx);
                 }
             }
 
@@ -324,13 +327,14 @@ namespace {
         };
 
         TUpdateRowWrapper(TComputationMutables& mutables, const TTableId& tableId, TTupleType* rowType, IComputationNode* row,
-            TStructLiteral* updateStruct, IComputationNode* update)
+            TStructLiteral* updateStruct, IComputationNode* update, TIntrusivePtr<NACLib::TUserContext> userCtx)
             : TBaseComputation(mutables)
             , TableId(tableId)
             , RowType(rowType)
             , Row(row)
             , UpdateStruct(updateStruct)
             , Update(update)
+            , UserCtx(userCtx)
         {
         }
 
@@ -349,6 +353,7 @@ namespace {
         IComputationNode* const Row;
         TStructLiteral* const UpdateStruct;
         IComputationNode* const Update;
+        TIntrusivePtr<NACLib::TUserContext> UserCtx;
     };
 
     IComputationNode* WrapAsDummy(TComputationMutables& mutables) {
@@ -638,14 +643,14 @@ namespace {
                 keyColumnsCount = partKeyColumnsCount;
                 for (ui32 i = 0; i < partKeyColumnsCount; ++i) {
                     auto partType = ReadUnaligned<NUdf::TDataTypeId>(partTypes + i * sizeof(NUdf::TDataTypeId));
-                    // TODO: support pg types
+                    // no need to support pg types in the deprecated minikql engine
                     types.push_back(NScheme::TTypeInfo(partType));
                 }
             } else {
                 MKQL_ENSURE(keyColumnsCount == partKeyColumnsCount, "Mismatch of key columns count");
                 for (ui32 i = 0; i < keyColumnsCount; ++i) {
                     auto partType = ReadUnaligned<NUdf::TDataTypeId>(partTypes + i * sizeof(NUdf::TDataTypeId));
-                    // TODO: support pg types
+                    // no need to support pg types in the deprecated minikql engine
                     MKQL_ENSURE(partType == types[i].GetTypeId(), "Mismatch of key columns type");
                 }
             }
@@ -738,7 +743,7 @@ namespace {
         return ctx.NodeFactory.CreateImmutableNode(std::move(result));
     }
 
-    IComputationNode* WrapEraseRow(TCallable& callable, const TComputationNodeFactoryContext& ctx) {
+    IComputationNode* WrapEraseRow(TCallable& callable, const TComputationNodeFactoryContext& ctx, TIntrusivePtr<NACLib::TUserContext> userCtx) {
         MKQL_ENSURE(callable.GetInputsCount() == 2, "Expected 2 arg");
 
         auto tableNode = callable.GetInput(0);
@@ -746,10 +751,10 @@ namespace {
         auto tupleType = AS_TYPE(TTupleType, callable.GetInput(1));
 
         return new TEraseRowWrapper(ctx.Mutables, tableId, tupleType,
-            LocateNode(ctx.NodeLocator, callable, 1));
+            LocateNode(ctx.NodeLocator, callable, 1), userCtx);
     }
 
-    IComputationNode* WrapUpdateRow(TCallable& callable, const TComputationNodeFactoryContext& ctx, IEngineFlatHost* host) {
+    IComputationNode* WrapUpdateRow(TCallable& callable, const TComputationNodeFactoryContext& ctx, IEngineFlatHost* host, TIntrusivePtr<NACLib::TUserContext> userCtx) {
         MKQL_ENSURE(callable.GetInputsCount() == 3, "Expected 3 arg");
 
         auto tableNode = callable.GetInput(0);
@@ -789,7 +794,7 @@ namespace {
         }
 
         return new TUpdateRowWrapper(ctx.Mutables, tableId, tupleType,
-            LocateNode(ctx.NodeLocator, callable, 1), structUpdate, LocateNode(ctx.NodeLocator, callable, 2));
+            LocateNode(ctx.NodeLocator, callable, 1), structUpdate, LocateNode(ctx.NodeLocator, callable, 2), userCtx);
     }
 
     IComputationNode* WrapMergedTakeResults(TCallable& callable, TIncomingResults::const_iterator resultIt,
@@ -832,9 +837,9 @@ namespace {
     }
 }
 
-TComputationNodeFactory GetFlatShardExecutionFactory(TShardExecData& execData, bool validateOnly) {
+TComputationNodeFactory GetFlatShardExecutionFactory(TShardExecData& execData, bool validateOnly, TIntrusivePtr<NACLib::TUserContext> userCtx) {
     auto builtins = GetBuiltinFactory();
-    return [builtins, &execData, validateOnly]
+    return [builtins, &execData, validateOnly, userCtx]
         (TCallable& callable, const TComputationNodeFactoryContext& ctx) -> IComputationNode* {
         const TEngineFlatSettings& settings = execData.Settings;
         const TFlatEngineStrings& strings = execData.Strings;
@@ -874,11 +879,11 @@ TComputationNodeFactory GetFlatShardExecutionFactory(TShardExecData& execData, b
         }
 
         if (nameStr == strings.EraseRow) {
-            return WrapEraseRow(callable, ctx);
+            return WrapEraseRow(callable, ctx, userCtx);
         }
 
         if (nameStr == strings.UpdateRow) {
-            return WrapUpdateRow(callable, ctx, settings.Host);
+            return WrapUpdateRow(callable, ctx, settings.Host, userCtx);
         }
 
         if (nameStr == strings.AcquireLocks) {

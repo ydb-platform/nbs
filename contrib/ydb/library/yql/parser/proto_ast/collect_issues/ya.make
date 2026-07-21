@@ -1,12 +1,7 @@
 LIBRARY()
 
 PEERDIR(
-    contrib/ydb/library/yql/public/issue
-    contrib/ydb/library/yql/parser/proto_ast
-)
-
-SRCS(
-    collect_issues.h
+    contrib/ydb/library/yql/parser/common
 )
 
 END()

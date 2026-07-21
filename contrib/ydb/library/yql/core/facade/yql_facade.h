@@ -8,11 +8,14 @@
 #include <contrib/ydb/library/yql/core/url_preprocessing/interface/url_preprocessing.h>
 #include <contrib/ydb/library/yql/core/yql_type_annotation.h>
 #include <contrib/ydb/library/yql/core/yql_user_data.h>
+#include <contrib/ydb/library/yql/core/layers/remote_layer_provider.h>
 #include <contrib/ydb/library/yql/core/qplayer/storage/interface/yql_qstorage.h>
+#include <contrib/ydb/library/yql/providers/common/gateways_utils/gateways_utils.h>
 #include <contrib/ydb/library/yql/providers/config/yql_config_provider.h>
 #include <contrib/ydb/library/yql/providers/result/provider/yql_result_provider.h>
 #include <contrib/ydb/library/yql/providers/common/proto/gateways_config.pb.h>
 #include <contrib/ydb/library/yql/public/issue/yql_issue.h>
+#include <contrib/ydb/library/yql/public/langver/yql_langver.h>
 #include <contrib/ydb/library/yql/sql/sql.h>
 
 #include <library/cpp/random_provider/random_provider.h>
@@ -24,11 +27,9 @@
 
 #include <functional>
 
-namespace NKikimr {
-namespace NMiniKQL {
-    class IFunctionRegistry;
-}
-}
+namespace NKikimr::NMiniKQL {
+class IFunctionRegistry;
+} // namespace NKikimr::NMiniKQL
 
 namespace NYql {
 
@@ -40,16 +41,19 @@ using TProgramFactoryPtr = TIntrusivePtr<TProgramFactory>;
 ///////////////////////////////////////////////////////////////////////////////
 // TProgramFactory
 ///////////////////////////////////////////////////////////////////////////////
-class TProgramFactory: public TThrRefBase, private TMoveOnly
-{
+class TProgramFactory: public TThrRefBase, private TMoveOnly {
 public:
     TProgramFactory(
         bool useRepeatableRandomAndTimeProviders,
         const NKikimr::NMiniKQL::IFunctionRegistry* functionRegistry,
         ui64 nextUniqueId,
         const TVector<TDataProviderInitializer>& dataProvidersInit,
-        const TString& runner);
+        TString runner);
 
+    void SetIssueReportTarget(const TString& reportTarget);
+    void SetLanguageVersion(TLangVersion version);
+    void SetMaxLanguageVersion(TLangVersion version);
+    void SetVolatileResults();
     void AddUserDataTable(const TUserDataTable& userDataTable);
     void SetCredentials(TCredentials::TPtr credentials);
     void SetGatewaysConfig(const TGatewaysConfig* gatewaysConfig);
@@ -61,26 +65,33 @@ public:
     void SetUrlPreprocessing(IUrlPreprocessing::TPtr urlPreprocessing);
     void EnableRangeComputeFor();
     void SetArrowResolver(IArrowResolver::TPtr arrowResolver);
+    void SetUdfResolverLogfile(const TString& path);
+    void AddRemoteLayersProvider(const TString& alias, NLayers::IRemoteLayerProviderPtr provider);
 
     TProgramPtr Create(
-            const TFile& file,
-            const TString& sessionId = TString(),
-            const TQContext& qContext = {});
+        const TFile& file,
+        const TString& sessionId = TString(),
+        const TQContext& qContext = {});
 
     TProgramPtr Create(
-            const TString& filename,
-            const TString& sourceCode,
-            const TString& sessionId = TString(),
-            EHiddenMode hiddenMode = EHiddenMode::Disable,
-            const TQContext& qContext = {});
+        const TString& filename,
+        const TString& sourceCode,
+        const TString& sessionId = TString(),
+        EHiddenMode hiddenMode = EHiddenMode::Disable,
+        const TQContext& qContext = {});
 
     void UnrepeatableRandom();
+
 private:
+    TString IssueReportTarget_;
     const bool UseRepeatableRandomAndTimeProviders_;
-    bool UseUnrepeatableRandom = false;
+    bool UseUnrepeatableRandom_ = false;
     const NKikimr::NMiniKQL::IFunctionRegistry* FunctionRegistry_;
     const ui64 NextUniqueId_;
     TVector<TDataProviderInitializer> DataProvidersInit_;
+    TLangVersion LangVer_ = UnknownLangVersion;
+    TLangVersion MaxLangVer_ = UnknownLangVersion;
+    bool VolatileResults_ = false;
     TUserDataTable UserDataTable_;
     TCredentials::TPtr Credentials_;
     const TGatewaysConfig* GatewaysConfig_;
@@ -94,20 +105,25 @@ private:
     TString Runner_;
     bool EnableRangeComputeFor_ = false;
     IArrowResolver::TPtr ArrowResolver_;
+    TMaybe<TString> UdfResolverLogfile_;
+    THashMap<TString, NLayers::IRemoteLayerProviderPtr> RemoteLayersProviders_;
 };
 
 ///////////////////////////////////////////////////////////////////////////////
 // TProgram
 ///////////////////////////////////////////////////////////////////////////////
-class TProgram: public TThrRefBase, private TNonCopyable
-{
+class TProgram: public TThrRefBase, private TNonCopyable {
 public:
     friend TProgramFactory;
     using TStatus = IGraphTransformer::TStatus;
     using TFutureStatus = NThreading::TFuture<TStatus>;
 
 public:
-    ~TProgram();
+    ~TProgram() override;
+
+    void SetLanguageVersion(TLangVersion version);
+    void SetMaxLanguageVersion(TLangVersion version);
+    void SetVolatileResults();
 
     void AddCredentials(const TVector<std::pair<TString, TCredential>>& credentials);
     void ClearCredentials();
@@ -117,6 +133,8 @@ public:
     bool ParseYql();
     bool ParseSql();
     bool ParseSql(const NSQLTranslation::TTranslationSettings& settings);
+
+    TStatus TestPartialTypecheck();
 
     bool Compile(const TString& username, bool skipLibraries = false);
 
@@ -133,56 +151,56 @@ public:
     TFutureStatus ValidateAsync(const TString& username, IOutputStream* exprOut = nullptr, bool withTypes = false);
 
     TStatus Optimize(
-            const TString& username,
-            IOutputStream* traceOut = nullptr,
-            IOutputStream* tracePlan = nullptr,
-            IOutputStream* exprOut = nullptr,
-            bool withTypes = false);
+        const TString& username,
+        IOutputStream* traceOut = nullptr,
+        IOutputStream* tracePlan = nullptr,
+        IOutputStream* exprOut = nullptr,
+        bool withTypes = false);
 
     TFutureStatus OptimizeAsync(
-            const TString& username,
-            IOutputStream* traceOut = nullptr,
-            IOutputStream* tracePlan = nullptr,
-            IOutputStream* exprOut = nullptr,
-            bool withTypes = false);
+        const TString& username,
+        IOutputStream* traceOut = nullptr,
+        IOutputStream* tracePlan = nullptr,
+        IOutputStream* exprOut = nullptr,
+        bool withTypes = false);
 
     TStatus Run(
-            const TString& username,
-            IOutputStream* traceOut = nullptr,
-            IOutputStream* tracePlan = nullptr,
-            IOutputStream* exprOut = nullptr,
-            bool withTypes = false);
+        const TString& username,
+        IOutputStream* traceOut = nullptr,
+        IOutputStream* tracePlan = nullptr,
+        IOutputStream* exprOut = nullptr,
+        bool withTypes = false);
 
     TFutureStatus RunAsync(
-            const TString& username,
-            IOutputStream* traceOut = nullptr,
-            IOutputStream* tracePlan = nullptr,
-            IOutputStream* exprOut = nullptr,
-            bool withTypes = false);
+        const TString& username,
+        IOutputStream* traceOut = nullptr,
+        IOutputStream* tracePlan = nullptr,
+        IOutputStream* exprOut = nullptr,
+        bool withTypes = false);
 
     TStatus LineageWithConfig(
-            const TString& username,
-            const IPipelineConfigurator& pipelineConf);
+        const TString& username,
+        const IPipelineConfigurator& pipelineConf);
 
     TFutureStatus LineageAsyncWithConfig(
-            const TString& username,
-            const IPipelineConfigurator& pipelineConf);
+        const TString& username,
+        const IPipelineConfigurator& pipelineConf);
 
     TStatus OptimizeWithConfig(
-            const TString& username,
-            const IPipelineConfigurator& pipelineConf);
+        const TString& username,
+        const IPipelineConfigurator& pipelineConf);
 
     TFutureStatus OptimizeAsyncWithConfig(
-            const TString& username,
-            const IPipelineConfigurator& pipelineConf);
+        const TString& username,
+        const IPipelineConfigurator& pipelineConf);
 
     TStatus RunWithConfig(
-            const TString& username,
-            const IPipelineConfigurator& pipelineConf);
+        const TString& username,
+        const IPipelineConfigurator& pipelineConf);
 
     TFutureStatus RunAsyncWithConfig(
-            const TString& username,
-            const IPipelineConfigurator& pipelineConf);
+        const TString& username,
+        const IPipelineConfigurator& pipelineConf);
 
     TFutureStatus ContinueAsync();
 
@@ -192,28 +210,18 @@ public:
     [[nodiscard]]
     NThreading::TFuture<void> Abort();
 
-    inline TIssues Issues() {
-        if (ExprCtx_) {
-            return ExprCtx_->IssueManager.GetIssues();
-        } else {
-            return {};
-        }
-    }
-
-    inline TIssues CompletedIssues() const {
-        if (ExprCtx_) {
-            return ExprCtx_->IssueManager.GetCompletedIssues();
-        } else {
-            return {};
-        }
-    }
+    TIssues Issues() const;
+    TIssues CompletedIssues() const;
+    void FinalizeIssues();
 
     void Print(IOutputStream* exprOut, IOutputStream* planOut, bool cleanPlan = false);
 
     inline void PrintErrorsTo(IOutputStream& out) const {
-        if (ExprCtx_) {
-            ExprCtx_->IssueManager.GetIssues().PrintWithProgramTo(out, Filename_, SourceCode_);
-        }
+        Issues().PrintWithProgramTo(out, Filename_, SourceCode_);
+    }
+
+    inline TAstNode* AstRoot() {
+        return AstRoot_;
     }
 
     inline const TAstNode* AstRoot() const {
@@ -230,14 +238,14 @@ public:
 
     inline bool HasResults() const {
         return ResultProviderConfig_ &&
-                !ResultProviderConfig_->CommittedResults.empty();
+               !ResultProviderConfig_->CommittedResults.empty();
     }
 
     inline const TVector<TString>& Results() const {
         return ResultProviderConfig_->CommittedResults;
     }
 
-    TMaybe<TString> GetQueryAst();
+    TMaybe<TString> GetQueryAst(TMaybe<size_t> memoryLimit = {});
     TMaybe<TString> GetQueryPlan(const TPlanSettings& settings = {});
 
     void SetDiagnosticFormat(NYson::EYsonFormat format) {
@@ -262,11 +270,19 @@ public:
     TString ResultsAsString() const;
     void ConfigureYsonResultFormat(NYson::EYsonFormat format);
 
-    inline IOutputStream* ExprStream() const { return ExprStream_; }
-    inline IOutputStream* PlanStream() const { return PlanStream_; }
+    inline IOutputStream* ExprStream() const {
+        return ExprStream_;
+    }
+    inline IOutputStream* PlanStream() const {
+        return PlanStream_;
+    }
 
-    NYson::EYsonFormat GetResultFormat() const { return ResultFormat_; }
-    NYson::EYsonFormat GetOutputFormat() const { return OutputFormat_; }
+    NYson::EYsonFormat GetResultFormat() const {
+        return ResultFormat_;
+    }
+    NYson::EYsonFormat GetOutputFormat() const {
+        return OutputFormat_;
+    }
 
     void SetValidateOptions(NUdf::EValidateMode validateMode);
     void SetDisableNativeUdfSupport(bool disable);
@@ -317,6 +333,12 @@ public:
     }
 
     void SetParametersYson(const TString& parameters);
+
+    void SetProjectSlug(const TString& slug) {
+        Y_ENSURE(!TypeCtx_, "TypeCtx_ already created");
+        OperationOptions_.ProjectSlug = slug;
+    }
+
     // should be used after Compile phase
     bool ExtractQueryParametersMetadata();
 
@@ -339,36 +361,59 @@ public:
         return UsedClusters_;
     }
 
+    TString GetSourceCode() const;
+    bool IsFullCaptureReady() const;
+    void CommitFullCapture() const;
+
+    void SetEnableLineage() {
+        EnableLineage_ = true;
+    }
+
+    void SetFuzzUntypedLambda() {
+        FuzzUntypedLambda_ = true;
+    }
+
+    void SetFuzzUniversal() {
+        FuzzUniversal_ = true;
+    }
+
 private:
     TProgram(
+        TString issueReportTarget,
         const NKikimr::NMiniKQL::IFunctionRegistry* functionRegistry,
-        const TIntrusivePtr<IRandomProvider> randomProvider,
-        const TIntrusivePtr<ITimeProvider> timeProvider,
+        TIntrusivePtr<IRandomProvider> randomProvider,
+        TIntrusivePtr<ITimeProvider> timeProvider,
         ui64 nextUniqueId,
         const TVector<TDataProviderInitializer>& dataProvidersInit,
-        const TUserDataTable& userDataTable,
+        TLangVersion langVer,
+        TLangVersion maxLangVer,
+        bool volatileResults,
+        TUserDataTable userDataTable,
         const TCredentials::TPtr& credentials,
-        const IModuleResolver::TPtr& modules,
-        const IUrlListerManagerPtr& urlListerManager,
+        IModuleResolver::TPtr modules,
+        IUrlListerManagerPtr urlListerManager,
         const IUdfResolver::TPtr& udfResolver,
         const TUdfIndex::TPtr& udfIndex,
-        const TUdfIndexPackageSet::TPtr& udfIndexPackageSet,
+        TUdfIndexPackageSet::TPtr udfIndexPackageSet,
         const TFileStoragePtr& fileStorage,
         const IUrlPreprocessing::TPtr& urlPreprocessing,
         const TGatewaysConfig* gatewaysConfig,
-        const TString& filename,
-        const TString& sourceCode,
-        const TString& sessionId,
+        TString filename,
+        TString sourceCode,
+        TString sessionId,
         const TString& runner,
         bool enableRangeComputeFor,
-        const IArrowResolver::TPtr& arrowResolver,
+        IArrowResolver::TPtr arrowResolver,
         EHiddenMode hiddenMode,
-        const TQContext& qContext);
+        const TQContext& qContext,
+        THashMap<TString, NLayers::IRemoteLayerProviderPtr> remoteLayersProviders);
 
     TTypeAnnotationContextPtr BuildTypeAnnotationContext(const TString& username);
     TTypeAnnotationContextPtr GetAnnotationContext() const;
     TTypeAnnotationContextPtr ProvideAnnotationContext(const TString& username);
     bool CollectUsedClusters();
+    bool CheckParameters();
+    bool ValidateLangVersion();
 
     NThreading::TFuture<void> OpenSession(const TString& username);
 
@@ -383,49 +428,57 @@ private:
 
     bool FillParseResult(NYql::TAstParseResult&& astRes, NYql::TWarningRules* warningRules = nullptr);
     TString GetSessionId() const;
-    TString TakeSessionId();
 
     NThreading::TFuture<IGraphTransformer::TStatus> AsyncTransformWithFallback(bool applyAsyncChanges);
     void SaveExprRoot();
 
 private:
     std::optional<bool> CheckFallbackIssues(const TIssues& issues);
-    void HandleSourceCode(TString& sourceCode);
-    void HandleTranslationSettings(NSQLTranslation::TTranslationSettings& loadedSettings,
-        const NSQLTranslation::TTranslationSettings*& currentSettings);
+    void HandleSourceCode();
+    void HandleTranslationSettings(NSQLTranslation::TTranslationSettings& settings);
+
+    const TString IssueReportTarget_;
 
     const NKikimr::NMiniKQL::IFunctionRegistry* FunctionRegistry_;
     const TIntrusivePtr<IRandomProvider> RandomProvider_;
     const TIntrusivePtr<ITimeProvider> TimeProvider_;
     const ui64 NextUniqueId_;
+
+    TAstNode* AstRoot_;
+    std::unique_ptr<TMemoryPool> AstPool_;
+    TAutoPtr<TExprContext> ExprCtx_;
+    TTypeAnnotationContextPtr TypeCtx_;
+    const IModuleResolver::TPtr Modules_;
+
     TVector<TDataProviderInitializer> DataProvidersInit_;
+    TLangVersion LangVer_;
+    TLangVersion MaxLangVer_;
+    TMaybe<NSQLTranslation::TSqlFlags> SqlFlags_;
+
+    bool VolatileResults_;
     TAdaptiveLock DataProvidersLock_;
     TVector<TDataProviderInfo> DataProviders_;
     TYqlOperationOptions OperationOptions_;
     TCredentials::TPtr Credentials_;
-    const IUrlListerManagerPtr UrlListerManager_;
+    IUrlListerManagerPtr UrlListerManager_;
     IUdfResolver::TPtr UdfResolver_;
     const TUdfIndex::TPtr UdfIndex_;
     const TUdfIndexPackageSet::TPtr UdfIndexPackageSet_;
     const TFileStoragePtr FileStorage_;
+    const IUrlPreprocessing::TPtr UrlPreprocessing_;
     TUserDataTable SavedUserDataTable_;
     TUserDataStorage::TPtr UserDataStorage_;
     const TGatewaysConfig* GatewaysConfig_;
-    TGatewaysConfig LoadedGatewaysConfig_;
     TString Filename_;
     TString SourceCode_;
     ESourceSyntax SourceSyntax_;
     ui16 SyntaxVersion_;
 
-    TAstNode* AstRoot_;
-    std::unique_ptr<TMemoryPool> AstPool_;
-    TAutoPtr<TExprContext> ExprCtx_;
-    const IModuleResolver::TPtr Modules_;
     TExprNode::TPtr ExprRoot_;
     TExprNode::TPtr SavedExprRoot_;
     mutable TAdaptiveLock SessionIdLock_;
     TString SessionId_;
-    TTypeAnnotationContextPtr TypeCtx_;
+    NThreading::TFuture<void> CloseLastSessionFuture_;
     TAutoPtr<IPlanBuilder> PlanBuilder_;
     TAutoPtr<IGraphTransformer> Transformer_;
     TIntrusivePtr<TResultProviderConfig> ResultProviderConfig_;
@@ -451,10 +504,23 @@ private:
     const IArrowResolver::TPtr ArrowResolver_;
     i64 FallbackCounter_ = 0;
     const EHiddenMode HiddenMode_ = EHiddenMode::Disable;
-    THiddenQueryAborter AbortHidden_ = [](){};
+    THiddenQueryAborter AbortHidden_ = []() {};
     TMaybe<TString> LineageStr_;
 
     TQContext QContext_;
+    TIssues FinalIssues_;
+    TMaybe<TIssue> ParametersIssue_;
+    bool EnableLineage_ = false;
+    bool FuzzUntypedLambda_ = false;
+    bool FuzzUniversal_ = false;
+    THashMap<TString, NLayers::IRemoteLayerProviderPtr> RemoteLayersProviders_;
 };
 
-} // namspace NYql
+TGatewaySQLFlags SQLFlagsFromQContext(const TQContext& context);
+THolder<TGatewaysConfig> GatewaysConfigFromQContext(const TQContext& context);
+
+bool HasFullCapture(const IQReaderPtr& reader);
+
+TProgram::TStatus WaitExecution(TProgramPtr program, TProgram::TFutureStatus futureStatus);
+
+} // namespace NYql

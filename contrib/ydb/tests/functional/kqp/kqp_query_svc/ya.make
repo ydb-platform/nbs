@@ -7,9 +7,9 @@ ENV(YDB_ERASURE=block_4-2)
 PEERDIR(
     library/cpp/threading/local_executor
     contrib/ydb/public/lib/ut_helpers
-    contrib/ydb/public/sdk/cpp/client/ydb_discovery
-    contrib/ydb/public/sdk/cpp/client/ydb_query
-    contrib/ydb/public/sdk/cpp/client/draft
+    contrib/ydb/public/sdk/cpp/src/client/discovery
+    contrib/ydb/public/sdk/cpp/src/client/query
+    contrib/ydb/public/sdk/cpp/src/client/draft
 )
 
 SRCS(
@@ -19,8 +19,9 @@ SRCS(
 INCLUDE(${ARCADIA_ROOT}/contrib/ydb/public/tools/ydb_recipe/recipe.inc)
 
 SIZE(MEDIUM)
-TIMEOUT(30)
 
-REQUIREMENTS(ram:16)
+IF (SANITIZER_TYPE)
+    REQUIREMENTS(ram:16 cpu:4)
+ENDIF()
 
 END()

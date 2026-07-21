@@ -4,6 +4,7 @@ SRCS(
     gc.cpp
     storage_proxy.cpp
     storage_service.cpp
+    storage_settings.cpp
     ydb_checkpoint_storage.cpp
     ydb_state_storage.cpp
 )
@@ -22,8 +23,9 @@ PEERDIR(
     contrib/ydb/library/security
     contrib/ydb/library/yql/dq/actors/compute
     contrib/ydb/library/yql/dq/proto
-    contrib/ydb/public/sdk/cpp/client/ydb_scheme
-    contrib/ydb/public/sdk/cpp/client/ydb_table
+    contrib/ydb/public/sdk/cpp/adapters/issue
+    contrib/ydb/public/sdk/cpp/src/client/scheme
+    contrib/ydb/public/sdk/cpp/src/client/table
 )
 
 YQL_LAST_ABI_VERSION()

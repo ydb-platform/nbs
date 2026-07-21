@@ -12,6 +12,7 @@
 #include <contrib/ydb/core/kqp/host/kqp_host.h>
 #include <contrib/ydb/core/sys_view/service/sysview_service.h>
 #include <contrib/ydb/library/aclib/aclib.h>
+#include <contrib/ydb/library/security/util.h>
 #include <contrib/ydb/library/ydb_issue/issue_helpers.h>
 
 #include <contrib/ydb/library/yql/utils/actor_log/log.h>
@@ -43,6 +44,12 @@ namespace {
 #define LOG_T(msg) LOG_TRACE_S(*TlsActivationContext, NKikimrServices::KQP_WORKER, LogPrefix() << msg)
 
 using TQueryResult = IKqpHost::TQueryResult;
+
+enum EReplyFlags : ui32 {
+    QUERY_REPLY_FLAG_RESULTS = 1,
+    QUERY_REPLY_FLAG_PLAN = 2,
+    QUERY_REPLY_FLAG_AST = 4,
+};
 
 struct TKqpQueryState {
     TActorId Sender;
@@ -123,7 +130,7 @@ public:
             Config->_KqpTablePathPrefix = Settings.Database;
         }
 
-        ApplyServiceConfig(*Config, Settings.TableService);
+        Config->ApplyServiceConfig(Settings.TableService);
 
         Config->FreezeDefaults();
 
@@ -183,22 +190,22 @@ public:
         std::shared_ptr<NYql::IKikimrGateway::IKqpTableMetadataLoader> loader = std::make_shared<TKqpTableMetadataLoader>(
             Settings.Cluster, TlsActivationContext->ActorSystem(), Config, false, nullptr);
         Gateway = CreateKikimrIcGateway(Settings.Cluster, QueryState->RequestEv->GetType(), Settings.Database, QueryState->RequestEv->GetDatabaseId(), std::move(loader),
-            ctx.ExecutorThread.ActorSystem, ctx.SelfID.NodeId(), RequestCounters, QueryServiceConfig);
+            ctx.ActorSystem(), ctx.SelfID.NodeId(), RequestCounters, QueryServiceConfig);
 
         Config->FeatureFlags = AppData(ctx)->FeatureFlags;
 
         KqpHost = CreateKqpHost(Gateway, Settings.Cluster, Settings.Database, Config, ModuleResolverState->ModuleResolver, FederatedQuerySetup,
-            QueryState->RequestEv->GetUserToken(), GUCSettings, QueryServiceConfig, Settings.ApplicationName, AppData(ctx)->FunctionRegistry, 
+            QueryState->RequestEv->GetUserToken(), GUCSettings, QueryServiceConfig, Settings.ApplicationName, AppData(ctx)->FunctionRegistry,
             !Settings.LongSession, false, nullptr, nullptr, nullptr, QueryState->RequestEv->GetUserRequestContext());
 
         auto& queryRequest = QueryState->RequestEv;
         QueryState->ProxyRequestId = proxyRequestId;
         QueryState->KeepSession = Settings.LongSession || queryRequest->GetKeepSession();
         QueryState->StartTime = now;
-        QueryState->ReplyFlags = queryRequest->Record.GetRequest().GetReplyFlags();
+        QueryState->ReplyFlags = EReplyFlags::QUERY_REPLY_FLAG_RESULTS;
 
         if (GetStatsMode(QueryState->RequestEv.get(), EKikimrStatsMode::None) > EKikimrStatsMode::Basic) {
-            QueryState->ReplyFlags |= NKikimrKqp::QUERY_REPLY_FLAG_AST;
+            QueryState->ReplyFlags |= EReplyFlags::QUERY_REPLY_FLAG_AST;
         }
 
         NCpuTime::TCpuTimer timer;
@@ -207,7 +214,7 @@ public:
             QueryState->QueryDeadlines.CancelAt = now + QueryState->RequestEv->GetCancelAfter();
         }
 
-        auto timeoutMs = GetQueryTimeout(QueryState->RequestEv->GetType(), QueryState->RequestEv->GetOperationTimeout().MilliSeconds(), Settings.TableService, Settings.QueryService);
+        auto timeoutMs = GetQueryTimeout(QueryState->RequestEv->GetType(), QueryState->RequestEv->GetOperationTimeout().MilliSeconds(), Settings.TableService, Settings.QueryService, QueryState->RequestEv->GetDisableDefaultTimeout());
         QueryState->QueryDeadlines.TimeoutAt = now + timeoutMs;
 
         auto onError = [this, &ctx] (Ydb::StatusIds::StatusCode status, const TString& message) {
@@ -478,7 +485,7 @@ private:
 
             case NKikimrKqp::QUERY_ACTION_EXPLAIN: {
                 // Force reply flags
-                QueryState->ReplyFlags |= NKikimrKqp::QUERY_REPLY_FLAG_PLAN | NKikimrKqp::QUERY_REPLY_FLAG_AST;
+                QueryState->ReplyFlags |= EReplyFlags::QUERY_REPLY_FLAG_PLAN | EReplyFlags::QUERY_REPLY_FLAG_AST;
                 if (!ExplainQuery(ctx, QueryState->RequestEv->GetQuery(), queryType)) {
                     onBadRequest(QueryState->Error);
                     return;
@@ -579,9 +586,6 @@ private:
                 execSettings.UsePgParser = false;
                 execSettings.SyntaxVersion = 1;
                 break;
-            case Ydb::Query::Syntax::SYNTAX_PG:
-                execSettings.UsePgParser = true;
-                break;
             default:
                 break;
         }
@@ -601,9 +605,6 @@ private:
                         execSettings.SyntaxVersion = 1;
                         break;
 
-                    case Ydb::Query::Syntax::SYNTAX_PG:
-                        execSettings.UsePgParser = true;
-                        break;
                     default:
                         break;
                 }
@@ -706,7 +707,7 @@ private:
     void ContinueQueryProcess(const TActorContext &ctx) {
         Y_ABORT_UNLESS(QueryState);
 
-        TActorSystem* actorSystem = ctx.ExecutorThread.ActorSystem;
+        TActorSystem* actorSystem = ctx.ActorSystem();
         TActorId selfId = ctx.SelfID;
         ui32 queryId = QueryId;
 
@@ -722,7 +723,7 @@ private:
     void ContinueCleanup(const TActorContext &ctx) {
         Y_ABORT_UNLESS(CleanupState);
 
-        TActorSystem* actorSystem = ctx.ExecutorThread.ActorSystem;
+        TActorSystem* actorSystem = ctx.ActorSystem();
         TActorId selfId = ctx.SelfID;
         ui32 queryId = QueryId;
 
@@ -738,7 +739,7 @@ private:
     bool Reply(THolder<TEvKqp::TEvQueryResponse>&& responseEv, const TActorContext &ctx) {
         Y_ABORT_UNLESS(QueryState);
 
-        auto& record = responseEv->Record.GetRef();
+        auto& record = responseEv->Record;
         auto& response = *record.MutableResponse();
         const auto& status = record.GetYdbStatus();
 
@@ -747,7 +748,7 @@ private:
             response.SetSessionId(SessionId);
         }
 
-        ctx.Send(QueryState->Sender, responseEv.Release(), 0, QueryState->ProxyRequestId);
+        ctx.Send<ESendingType::Tail>(QueryState->Sender, responseEv.Release(), 0, QueryState->ProxyRequestId);
         LOG_D("Sent query response back to proxy, proxyRequestId: " << QueryState->ProxyRequestId
             << ", proxyId: " << QueryState->Sender.ToString());
 
@@ -785,10 +786,10 @@ private:
         Y_ABORT_UNLESS(QueryState);
         auto& queryResult = QueryState->QueryResult;
 
-        auto responseEv = MakeHolder<TEvKqp::TEvQueryResponse>();
+        auto responseEv = MakeHolder<TEvKqp::TEvQueryResponse>(QueryState->QueryResult.ProtobufArenaPtr);
         FillResponse(responseEv->Record);
 
-        auto& record = responseEv->Record.GetRef();
+        auto& record = responseEv->Record;
         auto status = record.GetYdbStatus();
 
         auto now = TAppData::TimeProvider->Now();
@@ -846,7 +847,7 @@ private:
             record.MutableResponse()->SetQueryPlan(queryResult.QueryPlan);
         }
 
-        AddTrailingInfo(responseEv->Record.GetRef());
+        AddTrailingInfo(responseEv->Record);
         return Reply(std::move(responseEv), ctx);
     }
 
@@ -863,12 +864,12 @@ private:
     {
         LOG_W(message);
         auto response = std::make_unique<TEvKqp::TEvQueryResponse>();
-        response->Record.GetRef().SetYdbStatus(ydbStatus);
+        response->Record.SetYdbStatus(ydbStatus);
         auto issue = MakeIssue(NKikimrIssues::TIssuesIds::DEFAULT_ERROR, message);
         NYql::TIssues issues;
         issues.AddIssue(issue);
-        NYql::IssuesToMessage(issues, response->Record.GetRef().MutableResponse()->MutableQueryIssues());
-        AddTrailingInfo(response->Record.GetRef());
+        NYql::IssuesToMessage(issues, response->Record.MutableResponse()->MutableQueryIssues());
+        AddTrailingInfo(response->Record);
         return Send(sender, response.release(), 0, proxyRequestId);
     }
 
@@ -906,10 +907,11 @@ private:
             case NKikimrKqp::QUERY_TYPE_SQL_SCRIPT:
             case NKikimrKqp::QUERY_TYPE_SQL_SCRIPT_STREAMING: {
                 TString text = ExtractQueryText();
-                if (IsQueryAllowedToLog(text)) {
+                if (!NKikimr::IsQueryWithSensitiveInfo(text)) {
                     auto userSID = QueryState->RequestEv->GetUserToken()->GetUserSID();
                     CollectQueryStats(ctx, stats, queryDuration, text,
-                        userSID, QueryState->RequestEv->GetParametersSize(), database, type, requestUnits);
+                        userSID, QueryState->RequestEv->GetParametersSize(), database, type, requestUnits,
+                        QueryState->RequestEv->GetTraceId());
                 }
                 break;
             }
@@ -922,24 +924,20 @@ private:
         return QueryState->RequestEv->GetQuery();
     }
 
-    void FillResponse(TEvKqp::TProtoArenaHolder<NKikimrKqp::TEvQueryResponse>& record) {
+    void FillResponse(NKikimrKqp::TEvQueryResponse& record) {
         Y_ABORT_UNLESS(QueryState);
 
         auto& queryResult = QueryState->QueryResult;
-        auto arena = queryResult.ProtobufArenaPtr;
-        if (arena) {
-            record.Realloc(arena);
-        }
-        auto& ev = record.GetRef();
+        auto& ev = record;
 
         bool replyResults = IsExecuteAction(QueryState->RequestEv->GetAction());
         bool replyPlan = true;
         bool replyAst = true;
 
         // TODO: Handle in KQP to avoid generation of redundant data
-        replyResults = replyResults && (QueryState->ReplyFlags & NKikimrKqp::QUERY_REPLY_FLAG_RESULTS);
-        replyPlan = replyPlan && (QueryState->ReplyFlags & NKikimrKqp::QUERY_REPLY_FLAG_PLAN);
-        replyAst = replyAst && (QueryState->ReplyFlags & NKikimrKqp::QUERY_REPLY_FLAG_AST);
+        replyResults = replyResults && (QueryState->ReplyFlags & EReplyFlags::QUERY_REPLY_FLAG_RESULTS);
+        replyPlan = replyPlan && (QueryState->ReplyFlags & EReplyFlags::QUERY_REPLY_FLAG_PLAN);
+        replyAst = replyAst && (QueryState->ReplyFlags & EReplyFlags::QUERY_REPLY_FLAG_AST);
 
         auto ydbStatus = GetYdbStatus(queryResult);
         auto issues = queryResult.Issues();
@@ -950,9 +948,8 @@ private:
         if (replyResults) {
             auto resp = ev.MutableResponse();
             for (auto& result : queryResult.Results) {
-                // If we have result it must be allocated on protobuf arena
-                Y_ASSERT(result->GetArena());
-                Y_ASSERT(resp->GetArena() == result->GetArena());
+                YQL_ENSURE(result->GetArena());
+                YQL_ENSURE(result->GetArena() == resp->GetArena());
                 resp->AddYdbResults()->Swap(result);
             }
         } else {

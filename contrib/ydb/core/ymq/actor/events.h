@@ -1,5 +1,5 @@
 #pragma once
-#include "defs.h"
+#include <contrib/ydb/core/ymq/actor/cfg/defs.h>
 
 #include <contrib/ydb/core/base/defs.h>
 #include <contrib/ydb/core/tx/scheme_cache/scheme_cache.h>
@@ -141,6 +141,18 @@ struct TSqsEvents {
         EvActionCounterChanged,
         EvLocalCounterChanged,
 
+        EvDeduplicateMessageBatch,
+        EvDeduplicateMessageBatchResponse,
+
+        EvGetMessageGroups,
+        EvGetMessageGroupsResponse,
+
+        /// Periodic wakeup for deferred LogBroker topic creation (SQS service self-schedules).
+        EvPeriodicCreateTopic,
+
+        /// Result of deferred PersQueue topic creation (see deferred_create_topic.cpp).
+        EvDeferredTopicCreationResult,
+
         EvEnd,
     };
 
@@ -158,6 +170,11 @@ struct TSqsEvents {
         // has operator<<
     };
 
+    struct TUserSettings {
+        size_t MigrationCompatibility: 1 = 0;
+        size_t MigrationFinished: 1 = 0;
+    };
+
     struct TEvGetConfiguration : public NActors::TEventLocal<TEvGetConfiguration, EvGetConfiguration> {
         TString  RequestId;
         TString  UserName;
@@ -165,6 +182,8 @@ struct TSqsEvents {
         TString  FolderId;
         bool EnableThrottling = true;
         ui64 Flags = 0;
+
+        TUserSettings Settings;
 
         enum EFlags {
             NeedQueueLeader = 1,
@@ -217,10 +236,15 @@ struct TSqsEvents {
         bool UserExists = false;
         bool QueueExists = false;
 
+        // User settings
+        TUserSettings Settings;
+
         // Event processing was throttled
         bool Throttled = false;
 
         // Queue info
+        TString QueueName;
+        TString FolderId;
         ui32 TablesFormat = 0;
         ui64 QueueVersion = 0;
         ui64 Shards = 1;
@@ -228,6 +252,7 @@ struct TSqsEvents {
         TMaybe<TQueueAttributes> QueueAttributes;
         TMaybe<NJson::TJsonMap> QueueTags;
         TIntrusivePtr<TQuoterResourcesForActions> QuoterResources;
+        bool TopicCreated = false;
 
         // Counters
         TIntrusivePtr<::NMonitoring::TDynamicCounters> SqsCoreCounters; // Raw counters interface. Is is not prefered to use them
@@ -279,6 +304,7 @@ struct TSqsEvents {
     };
 
     struct TEvExecuted : public NActors::TEventPB<TEvExecuted, NKikimrTxUserProxy::TEvProposeTransactionStatus, EvExecuted> {
+        using TEventBase = NActors::TEventPB<TEvExecuted, NKikimrTxUserProxy::TEvProposeTransactionStatus, EvExecuted>;
         using TRecord = ProtoRecordType;
 
         TExecutedCallback Cb;
@@ -294,7 +320,7 @@ struct TSqsEvents {
         { }
 
         TEvExecuted(const TRecord& rec, TExecutedCallback cb, ui64 shard)
-            : TEventPB(rec)
+            : TEventBase(rec)
             , Cb(cb)
             , Shard(shard)
         { }
@@ -421,7 +447,8 @@ struct TSqsEvents {
     };
 
     struct TEvActionCounterChanged: public NActors::TEventPB<TEvActionCounterChanged, NKikimrClient::TSqsActionCounterChanged, EvActionCounterChanged> {
-        using TEventPB::TEventPB;
+        using TEventBase = NActors::TEventPB<TEvActionCounterChanged, NKikimrClient::TSqsActionCounterChanged, EvActionCounterChanged>;
+        using TEventBase::TEventBase;
     };
 
     struct TEvLocalCounterChanged: public NActors::TEventLocal<TEvLocalCounterChanged, EvLocalCounterChanged> {
@@ -443,12 +470,14 @@ struct TSqsEvents {
 
     // Request that is sent from proxy to sqs service actor on other (leader) node
     struct TEvSqsRequest : public NActors::TEventPB<TEvSqsRequest, NKikimrClient::TSqsRequest, EvSqsRequest> {
-        using TEventPB::TEventPB;
+        using TEventBase = NActors::TEventPB<TEvSqsRequest, NKikimrClient::TSqsRequest, EvSqsRequest>;
+        using TEventBase::TEventBase;
     };
 
     // Response to TEvSqsRequest
     struct TEvSqsResponse : public NActors::TEventPB<TEvSqsResponse, NKikimrClient::TSqsResponse, EvSqsResponse> {
-        using TEventPB::TEventPB;
+        using TEventBase = NActors::TEventPB<TEvSqsResponse, NKikimrClient::TSqsResponse, EvSqsResponse>;
+        using TEventBase::TEventBase;
     };
 
     // Request for proxying request to sqs service actor on other (leader) node
@@ -556,6 +585,15 @@ struct TSqsEvents {
     };
 
     struct TEvQueueLeaderDecRef : public NActors::TEventLocal<TEvQueueLeaderDecRef, EvQueueLeaderDecRef> {
+    };
+
+    struct TEvPeriodicCreateTopic : public NActors::TEventLocal<TEvPeriodicCreateTopic, EvPeriodicCreateTopic> {
+    };
+
+    struct TEvDeferredTopicCreationResult : public NActors::TEventLocal<TEvDeferredTopicCreationResult, EvDeferredTopicCreationResult> {
+        TString UserName;
+        TString QueueName;
+        bool Success = false;
     };
 
     struct TEvGetQueueId : public NActors::TEventLocal<TEvGetQueueId, EvGetQueueId> {
@@ -693,6 +731,29 @@ struct TSqsEvents {
         std::vector<TMessageResult> Statuses;
     };
 
+    struct TEvDeduplicateMessageBatch : public NActors::TEventLocal<TEvDeduplicateMessageBatch, EvDeduplicateMessageBatch> {
+        TString RequestId;
+        TString SenderId;
+        std::vector<TString> DeduplicationMessageIds;
+    };
+
+    struct TEvDeduplicateMessageBatchResponse : public NActors::TEventLocal<TEvDeduplicateMessageBatchResponse, EvDeduplicateMessageBatchResponse> {
+        TEvDeduplicateMessageBatchResponse(std::unordered_map<TString, std::pair<TString, ui64>>&& blockedDeduplicationMessageIds)
+            : StatusCode(Ydb::StatusIds::SUCCESS)
+            , BlockedDeduplicationMessageIds(std::move(blockedDeduplicationMessageIds))
+        {
+        }
+
+        TEvDeduplicateMessageBatchResponse(Ydb::StatusIds::StatusCode statusCode)
+            : StatusCode(statusCode)
+        {
+        }
+
+        Ydb::StatusIds::StatusCode StatusCode = Ydb::StatusIds::SUCCESS;
+        // deduplication message id -> sequenceNumber
+        std::unordered_map<TString, std::pair<TString, ui64>> BlockedDeduplicationMessageIds;
+    };
+
     // Request to try to receive message batch.
     // While processing this request leader doesn't perform long polling.
     struct TEvReceiveMessageBatch : public NActors::TEventLocal<TEvReceiveMessageBatch, EvReceiveMessageBatch> {
@@ -722,6 +783,32 @@ struct TSqsEvents {
             TString SenderId;
         };
         std::vector<TMessageResult> Messages;
+    };
+
+    struct TEvGetMessageGroups : public NActors::TEventLocal<TEvGetMessageGroups, EvGetMessageGroups> {
+        TEvGetMessageGroups(TString requestId)
+            : RequestId(std::move(requestId))
+        {
+        }
+
+        TString RequestId;
+    };
+
+    struct TEvGetMessageGroupsResponse : public NActors::TEventLocal<TEvGetMessageGroupsResponse, EvGetMessageGroupsResponse> {
+
+        TEvGetMessageGroupsResponse(std::vector<TString>&& messageGroups)
+            : StatusCode(Ydb::StatusIds::SUCCESS)
+            , MessageGroups(std::move(messageGroups))
+        {
+        }
+
+        TEvGetMessageGroupsResponse(Ydb::StatusIds::StatusCode statusCode)
+            : StatusCode(statusCode)
+        {
+        }
+
+        Ydb::StatusIds::StatusCode StatusCode;
+        std::vector<TString> MessageGroups;
     };
 
     struct TEvDeleteMessageBatch : public NActors::TEventLocal<TEvDeleteMessageBatch, EvDeleteMessageBatch> {
@@ -869,6 +956,7 @@ struct TSqsEvents {
             ui64 ShardsCount = 0;
             TInstant CreatedTimestamp;
             bool IsFifo = false;
+            bool TopicCreated = false;
 
             bool operator<(const TQueueRecord& r) const {
                 return std::tie(UserName, QueueName) < std::tie(r.UserName, r.QueueName);

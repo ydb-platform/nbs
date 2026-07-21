@@ -20,3 +20,10 @@
 
 {% include notitle [yql.md](../yql.md) %}
 
+## Аналитика {#analytics}
+
+{% include notitle [analytics.md](../analytics.md) %}
+
+## Известные проблемы {#known-issues}
+
+{% include notitle [known-issues.md](../known-issues.md) %}

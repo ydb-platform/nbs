@@ -39,6 +39,24 @@ const TString& GetPersistentExecPathMd5()
     return md5;
 }
 
+void MergeAnnotations(
+    const NYT::TNode::TMapType& attrs,
+    const TString& attribute,
+    NYT::TNode& annotations)
+{
+    if (auto attrAnnotations = attrs.FindPtr(attribute)) {
+        if (!attrAnnotations->IsMap()) {
+            throw yexception() << "Operation attribute " << attribute.Quote() << " should be a map";
+        }
+        for (const auto& [k, v] : attrAnnotations->AsMap()) {
+            auto it = annotations.AsMap().find(k);
+            if (it == annotations.AsMap().end()) {
+                annotations[k] = v;
+            }
+        }
+    }
+}
+
 }
 
 TMaybe<TString> GetPool(
@@ -50,7 +68,7 @@ TMaybe<TString> GetPool(
     if (auto val = settings->Pool.Get(execCtx.Cluster_)) {
         pool = *val;
     }
-    else if (auto val = settings->StaticPool.Get()) {
+    else if (auto val = settings->StaticPool.Get(execCtx.Cluster_)) {
         pool = *val;
     }
     else if (settings->Auth.Get().GetOrElse(TString()).empty()) {
@@ -66,7 +84,9 @@ void FillSpec(NYT::TNode& spec,
     const TTransactionCache::TEntry::TPtr& entry,
     double extraCpu,
     const TMaybe<double>& secondExtraCpu,
-    EYtOpProps opProps)
+    EYtOpProps opProps,
+    const TSet<TString>& addSecTags,
+    const TVector<TString>& layerPaths)
 {
     auto& cluster = execCtx.Cluster_;
 
@@ -74,6 +94,11 @@ void FillSpec(NYT::TNode& spec,
         NYT::TNode tmpSpec = *val;
         NYT::MergeNodes(tmpSpec, spec);
         spec = std::move(tmpSpec);
+    }
+
+    const auto supportRLSTables = settings->_EnableRLSTablesSupport.Get(cluster).GetOrElse(DEFAULT_ENABLE_RLS_TABLES_SUPPORT);
+    if (supportRLSTables && AnyOf(execCtx.InputTables_, [](const auto& input) { return input.RLS; })) {
+        spec["omit_inaccessible_rows"] = true;
     }
 
     auto& sampling = execCtx.Sampling;
@@ -187,8 +212,22 @@ void FillSpec(NYT::TNode& spec,
         }
     }
 
+    NYT::TNode annotations;
     if (auto val = settings->Annotations.Get(cluster)) {
-        spec["annotations"] = *val;
+        annotations = NYT::TNode::CreateMap(val.Get()->AsMap());
+    } else {
+        annotations = NYT::TNode::CreateMap();
+    }
+
+    // merge annotations from attributes
+    if (auto attrs = execCtx.Session_->OperationOptions_.AttrsYson.GetOrElse(TString())) {
+        NYT::TNode attributes = NYT::NodeFromYsonString(attrs);
+        MergeAnnotations(attributes.AsMap(), "yt_annotations", annotations);
+        MergeAnnotations(attributes.AsMap(), "nirvana_yt_annotations", annotations);
+    }
+
+    if (!annotations.Empty()) {
+        spec["annotations"] = std::move(annotations);
     }
 
     if (auto val = settings->StartedBy.Get(cluster)) {
@@ -304,7 +343,7 @@ void FillSpec(NYT::TNode& spec,
         if (auto val = settings->IntermediateAccount.Get(cluster)) {
             spec["intermediate_data_account"] = *val;
         }
-        else if (auto tmpFolder = GetTablesTmpFolder(*settings)) {
+        else if (auto tmpFolder = GetTablesTmpFolder(*settings, cluster, execCtx.Session_->UseSecureTmp_, execCtx.Session_->OperationOptions_)) {
             auto attrs = entry->Tx->Get(tmpFolder + "/@", NYT::TGetOptions().AttributeFilter(NYT::TAttributeFilter().AddAttribute(TString("account"))));
             if (attrs.HasKey("account")) {
                 spec["intermediate_data_account"] = attrs["account"];
@@ -371,6 +410,15 @@ void FillSpec(NYT::TNode& spec,
         if (opProps.HasFlags(EYtOpProp::WithReducer)) {
             spec["reducer"]["environment"]["TZ"] = TString("UTC0");
         }
+    }
+
+    auto probabily = TString(std::to_string(settings->_EnforceRegexpProbabilityFail.Get().GetOrElse(0)));
+    if (opProps.HasFlags(EYtOpProp::WithMapper)) {
+        spec["mapper"]["environment"]["YQL_RE2_REGEXP_PROBABILITY_FAIL"] = probabily;
+    }
+
+    if (opProps.HasFlags(EYtOpProp::WithReducer)) {
+        spec["reducer"]["environment"]["YQL_RE2_REGEXP_PROBABILITY_FAIL"] = probabily;
     }
 
     if (settings->SuspendIfAccountLimitExceeded.Get(cluster).GetOrElse(false)) {
@@ -440,6 +488,10 @@ void FillSpec(NYT::TNode& spec,
         spec["user_file_columnar_statistics"]["enabled"] = settings->TableContentColumnarStatistics.Get(cluster).GetOrElse(true);
     }
 
+    if (layerPaths.size() && settings->LayerPaths.Get(cluster)) {
+        throw yexception() << "Can't use both pragma Layer and yt.LayerPaths";
+    }
+
     if (auto val = settings->LayerPaths.Get(cluster)) {
         if (opProps.HasFlags(EYtOpProp::WithMapper)) {
             NYT::TNode& layersNode = spec["mapper"]["layer_paths"];
@@ -451,6 +503,21 @@ void FillSpec(NYT::TNode& spec,
             NYT::TNode& layersNode = spec["reducer"]["layer_paths"];
             for (auto& path: *val) {
                 layersNode.Add(NYT::AddPathPrefix(path, NYT::TConfig::Get()->Prefix));
+            }
+        }
+    }
+
+    if (layerPaths.size()) {
+        if (opProps.HasFlags(EYtOpProp::WithMapper)) {
+            NYT::TNode& layersNode = spec["mapper"]["layer_paths"];
+            for (auto it = layerPaths.rbegin(); it != layerPaths.rend(); ++it) {
+                layersNode.Add(*it); // already snapshoted files, no prefix needed
+            }
+        }
+        if (opProps.HasFlags(EYtOpProp::WithReducer)) {
+            NYT::TNode& layersNode = spec["reducer"]["layer_paths"];
+            for (auto it = layerPaths.rbegin(); it != layerPaths.rend(); ++it) {
+                layersNode.Add(*it); // already snapshoted files, no prefix needed
             }
         }
     }
@@ -468,7 +535,7 @@ void FillSpec(NYT::TNode& spec,
         spec["max_speculative_job_count_per_task"] = i64(*val);
     }
 
-    if (auto val = settings->NetworkProject.Get(cluster)) {
+    if (auto val = settings->NetworkProject.Get(cluster).OrElse(settings->StaticNetworkProject.Get(cluster))) {
         if (opProps.HasFlags(EYtOpProp::WithMapper)) {
             spec["mapper"]["network_project"] = *val;
         }
@@ -477,7 +544,7 @@ void FillSpec(NYT::TNode& spec,
         }
     }
     if (!opProps.HasFlags(EYtOpProp::IntermediateData)) {
-        if (auto val = settings->_ForceJobSizeAdjuster.Get(cluster)) {
+        if (auto val = settings->ForceJobSizeAdjuster.Get(cluster)) {
             spec["force_job_size_adjuster"] = *val;
         }
     }
@@ -488,6 +555,49 @@ void FillSpec(NYT::TNode& spec,
 
     if (opProps.HasFlags(EYtOpProp::WithReducer)) {
         spec["reducer"]["environment"]["TMPDIR"] = ".";
+    }
+
+    if (!addSecTags.empty()) {
+        auto secTagsNode = NYT::TNode::CreateList();
+        for (const auto& tag : addSecTags) {
+            secTagsNode.Add(tag);
+        }
+        spec["additional_security_tags"] = std::move(secTagsNode);
+    }
+
+    if (auto val = settings->ValidatePool.Get(cluster)) {
+        spec["require_specified_pools_existence"] = *val;
+    }
+}
+
+void CheckSpecForSecretsImpl(
+    const NYT::TNode& spec,
+    const ISecretMasker::TPtr& secretMasker,
+    const TYtSettings::TConstPtr& settings
+) {
+    if (!settings->_ForbidSensitiveDataInOperationSpec.Get().GetOrElse(DEFAULT_FORBID_SENSITIVE_DATA_IN_OPERATION_SPEC)) {
+        return;
+    }
+
+    YQL_ENSURE(secretMasker);
+
+    // Secure vault is guaranteed not to be exposed by YT
+    auto cleanSpec = spec.AsMap();
+    cleanSpec.erase("secure_vault");
+    auto maskedSpecStr = NYT::NodeToYsonString(cleanSpec);
+
+    auto secrets = secretMasker->Mask(maskedSpecStr);
+    if (!secrets.empty()) {
+        auto maskedSpecStrBuf = TStringBuf(maskedSpecStr);
+
+        TVector<TString> maskedSecrets;
+        for (auto& secret : secrets) {
+            maskedSecrets.push_back(TStringBuilder() << "\"" << maskedSpecStrBuf.substr(secret.From, secret.Len) << "\"");
+        }
+
+        YQL_LOG_CTX_THROW TErrorException(TIssuesIds::YT_OP_SPEC_CONTAINS_SECRETS)
+            << "YT operation spec contains sensitive data (masked): "
+            << JoinSeq(", ", maskedSecrets);
     }
 }
 
@@ -526,13 +636,36 @@ void FillUserJobSpecImpl(NYT::TUserJobSpec& spec,
         }
     }
 
-    const TString binTmpFolder = settings->BinaryTmpFolder.Get().GetOrElse(TString());
-    if (!localRun && binTmpFolder) {
-        const TDuration binExpiration = settings->BinaryExpirationInterval.Get().GetOrElse(TDuration());
-        TTransactionCache::TEntry::TPtr entry = execCtx.GetOrCreateEntry(settings);
-        TString bin = mrJobBin.empty() ? GetPersistentExecPath() : mrJobBin;
-        const auto binSize = TFileStat(bin).Size;
-        YQL_ENSURE(binSize != 0);
+    TVector<std::pair<TString, TString>> mrJobSystemLibs;
+    if (execCtx.Config_->MrJobSystemLibsWithMd5Size() > 0) {
+        mrJobSystemLibs.reserve(execCtx.Config_->MrJobSystemLibsWithMd5Size());
+
+        for (const auto& systemLib : execCtx.Config_->GetMrJobSystemLibsWithMd5()) {
+            mrJobSystemLibs.push_back({systemLib.GetFile(), systemLib.GetMd5()});
+
+            const auto libSize = TFileStat(systemLib.GetFile()).Size;
+            YQL_ENSURE(libSize != 0);
+            fileMemUsage += libSize;
+        }
+
+        spec.AddEnvironment("LD_LIBRARY_PATH", ".");
+    }
+
+    if (settings->UseDefaultArrowAllocatorInJobs.Get().GetOrElse(false)) {
+        spec.AddEnvironment("YQL_USE_DEFAULT_ARROW_ALLOCATOR", "1");
+    }
+
+    if (!localRun) {
+        for (size_t i = 0; i < mrJobSystemLibs.size(); i++) {
+            if (!mrJobSystemLibs[i].second) {
+                if (GetEnv("YQL_LOCAL") == "1") {
+                    // do not calculate heavy md5 in local mode (YQL-15353)
+                    mrJobSystemLibs[i].second = MD5::Calc(mrJobSystemLibs[i].first);
+                } else {
+                    mrJobSystemLibs[i].second = MD5::File(mrJobSystemLibs[i].first);
+                }
+            }
+        }
 
         if (mrJobBin.empty()) {
             mrJobBinMd5 = GetPersistentExecPathMd5();
@@ -544,17 +677,67 @@ void FillUserJobSpecImpl(NYT::TUserJobSpec& spec,
                 mrJobBinMd5 = MD5::File(mrJobBin);
             }
         }
+    }
 
-        auto mrJobSnapshot = entry->GetBinarySnapshot(binTmpFolder, *mrJobBinMd5, bin, binExpiration);
-        spec.JobBinaryCypressPath(mrJobSnapshot.first, mrJobSnapshot.second);
+    const TString binTmpFolder = settings->BinaryTmpFolder.Get(cluster).GetOrElse(TString());
+    const TString binCacheFolder = settings->_BinaryCacheFolder.Get(cluster).GetOrElse(TString());
+    if (!localRun && (binTmpFolder || binCacheFolder)) {
+        TString bin = mrJobBin.empty() ? GetPersistentExecPath() : mrJobBin;
+        const auto binSize = TFileStat(bin).Size;
+        YQL_ENSURE(binSize != 0);
         fileMemUsage += binSize;
+        TTransactionCache::TEntry::TPtr entry = execCtx.GetOrCreateEntry(settings);
+        bool useBinCache = false;
+        if (binCacheFolder) {
+            if (auto snapshot = entry->GetBinarySnapshotFromCache(binCacheFolder, *mrJobBinMd5, "mrjob")) {
+                spec.JobBinaryCypressPath(snapshot->first, snapshot->second);
+                useBinCache = true;
+            }
+        }
+        if (!useBinCache) {
+            if (binTmpFolder) {
+                const TDuration binExpiration = settings->BinaryExpirationInterval.Get().GetOrElse(TDuration());
+                auto mrJobSnapshot = entry->GetBinarySnapshot(binTmpFolder, *mrJobBinMd5, bin, binExpiration);
+                spec.JobBinaryCypressPath(mrJobSnapshot.first, mrJobSnapshot.second);
+            } else if (!mrJobBin.empty()) {
+                spec.JobBinaryLocalPath(mrJobBin, mrJobBinMd5);
+            }
+        }
+
+        for (size_t i = 0; i < mrJobSystemLibs.size(); i++) {
+            bool useBinCache = false;
+            if (binCacheFolder) {
+                if (auto snapshot = entry->GetBinarySnapshotFromCache(binCacheFolder, mrJobSystemLibs[i].second, mrJobSystemLibs[i].first)) {
+                    spec.AddFile(snapshot->first);
+                    useBinCache = true;
+                }
+            }
+            if (!useBinCache) {
+                if (binTmpFolder) {
+                    const TDuration binExpiration = settings->BinaryExpirationInterval.Get().GetOrElse(TDuration());
+                    auto libSnapshot = entry->GetBinarySnapshot(binTmpFolder, mrJobSystemLibs[i].second, mrJobSystemLibs[i].first, binExpiration);
+                    spec.AddFile(libSnapshot.first);
+                } else {
+                    NYT::TAddLocalFileOptions opts;
+                    opts.MD5CheckSum(mrJobSystemLibs[i].second);
+                    spec.AddLocalFile(mrJobSystemLibs[i].first, opts);
+                }
+            }
+        }
+
     }
     else if (!mrJobBin.empty()) {
         const auto binSize = TFileStat(mrJobBin).Size;
         YQL_ENSURE(binSize != 0);
         spec.JobBinaryLocalPath(mrJobBin, mrJobBinMd5);
+        for (auto file : mrJobSystemLibs) {
+            NYT::TAddLocalFileOptions opts;
+            opts.MD5CheckSum(file.second);
+            spec.AddLocalFile(file.first, opts);
+        }
         fileMemUsage += binSize;
     }
+
     auto defaultMemoryLimit = settings->DefaultMemoryLimit.Get(cluster).GetOrElse(0);
     ui64 tmpFsSize = settings->UseTmpfs.Get(cluster).GetOrElse(false)
         ? (ui64)settings->ExtraTmpfsSize.Get(cluster).GetOrElse(8_MB)
@@ -562,9 +745,10 @@ void FillUserJobSpecImpl(NYT::TUserJobSpec& spec,
 
     if (defaultMemoryLimit || fileMemUsage || llvmMemUsage || extraUsage.Memory || tmpFsSize) {
         const ui64 memIoBuffers = YQL_JOB_CODEC_MEM * (static_cast<size_t>(!execCtx.InputTables_.empty()) + execCtx.OutTables_.size());
+        const ui64 arrowMemoryPoolReserve = (execCtx.BlockStatus != TOperationProgress::EOpBlockStatus::None ? YQL_ARROW_MEMORY_POOL_RESERVE : 0);
         const ui64 finalMemLimit = Max<ui64>(
             defaultMemoryLimit,
-            128_MB + fileMemUsage + extraUsage.Memory + tmpFsSize + memIoBuffers,
+            128_MB + fileMemUsage + extraUsage.Memory + tmpFsSize + memIoBuffers + arrowMemoryPoolReserve,
             llvmMemUsage + memIoBuffers // LLVM consumes memory only once on job start, but after IO initialization
         );
         YQL_CLOG(DEBUG, ProviderYt) << "Job memory limit: " << finalMemLimit
@@ -574,6 +758,7 @@ void FillUserJobSpecImpl(NYT::TUserJobSpec& spec,
             << ", extra: " << extraUsage.Memory
             << ", extra tmpfs: " << tmpFsSize
             << ", I/O buffers: " << memIoBuffers
+            << ", Arrow pool reserve: " << arrowMemoryPoolReserve
             << ")";
         spec.MemoryLimit(static_cast<i64>(finalMemLimit));
     }
@@ -589,7 +774,10 @@ void FillOperationOptionsImpl(NYT::TOperationOptions& opOpts,
 {
     opOpts.UseTableFormats(true);
     opOpts.CreateOutputTables(false);
-    if (TString tmpFolder = settings->TmpFolder.Get().GetOrElse(TString())) {
+    if (auto minSize = settings->_MinJobStateSizeToPassViaFile.Get().GetOrElse(DEFAULT_MIN_JOB_STATE_SIZE_TO_PASS_VIA_FILE)) {
+        opOpts.MinJobStateSizeToPassViaFile(minSize);
+    }
+    if (TString tmpFolder = settings->TmpFolder.Get(entry->Cluster).GetOrElse(TString())) {
         opOpts.FileStorage(tmpFolder);
 
         if (!entry->CacheTxId.IsEmpty()) {

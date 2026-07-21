@@ -9,17 +9,15 @@ class TTestFeatureFlagsHolder {
 public:
     TFeatureFlags FeatureFlags;
 
-#define FEATURE_FLAG_SETTER(name)                    \
-    TDerived& Set##name(std::optional<bool> value) { \
-        if (value) {                                 \
-            FeatureFlags.Set##name(*value);          \
-        }                                            \
-        return *static_cast<TDerived*>(this);        \
-    }
+    #define FEATURE_FLAG_SETTER(name) \
+        TDerived& Set##name(std::optional<bool> value) { \
+            if (value) { \
+                FeatureFlags.Set##name(*value); \
+            } \
+            return *static_cast<TDerived*>(this); \
+        }
 
     FEATURE_FLAG_SETTER(AllowYdbRequestsWithoutDatabase)
-    FEATURE_FLAG_SETTER(EnableSystemViews)
-    FEATURE_FLAG_SETTER(CheckDatabaseAccessPermission)
     FEATURE_FLAG_SETTER(EnablePersistentQueryStats)
     FEATURE_FLAG_SETTER(EnablePersistentPartitionStats)
     FEATURE_FLAG_SETTER(AllowUpdateChannelsBindingOfSolomonPartitions)
@@ -40,35 +38,57 @@ public:
     FEATURE_FLAG_SETTER(EnableDataShardGenericReadSets)
     FEATURE_FLAG_SETTER(EnableAlterDatabaseCreateHiveFirst)
     FEATURE_FLAG_SETTER(EnableDataShardVolatileTransactions)
-    FEATURE_FLAG_SETTER(EnableTopicServiceTx)
     FEATURE_FLAG_SETTER(EnableTopicDiskSubDomainQuota)
-    FEATURE_FLAG_SETTER(EnablePQConfigTransactionsAtSchemeShard)
     FEATURE_FLAG_SETTER(EnableScriptExecutionOperations)
     FEATURE_FLAG_SETTER(EnableExternalDataSources)
     FEATURE_FLAG_SETTER(EnableForceImmediateEffectsExecution)
-    FEATURE_FLAG_SETTER(EnableTopicSplitMerge)
     FEATURE_FLAG_SETTER(EnableTempTables)
     FEATURE_FLAG_SETTER(EnableChangefeedDynamoDBStreamsFormat)
     FEATURE_FLAG_SETTER(EnableChangefeedDebeziumJsonFormat)
     FEATURE_FLAG_SETTER(EnableUniqConstraint)
-    FEATURE_FLAG_SETTER(EnableTopicMessageMeta)
     FEATURE_FLAG_SETTER(EnableUuidAsPrimaryKey)
     FEATURE_FLAG_SETTER(EnableTablePgTypes)
     FEATURE_FLAG_SETTER(EnableServerlessExclusiveDynamicNodes)
     FEATURE_FLAG_SETTER(EnableAccessServiceBulkAuthorization)
+    FEATURE_FLAG_SETTER(EnableAccessServiceV2Interface)
     FEATURE_FLAG_SETTER(EnableAddColumsWithDefaults)
     FEATURE_FLAG_SETTER(EnableReplaceIfExistsForExternalEntities)
     FEATURE_FLAG_SETTER(EnableCMSRequestPriorities)
     FEATURE_FLAG_SETTER(EnableTableDatetime64)
     FEATURE_FLAG_SETTER(EnableResourcePools)
     FEATURE_FLAG_SETTER(EnableChangefeedsOnIndexTables)
-    FEATURE_FLAG_SETTER(EnablePgSyntax)
+    FEATURE_FLAG_SETTER(EnableBackupService)
+    FEATURE_FLAG_SETTER(EnableGranularTimecast)
     FEATURE_FLAG_SETTER(EnableTieringInColumnShard)
     FEATURE_FLAG_SETTER(EnableMetadataObjectsOnServerless)
     FEATURE_FLAG_SETTER(EnableOlapCompression)
     FEATURE_FLAG_SETTER(EnableParameterizedDecimal)
-
-#undef FEATURE_FLAG_SETTER
+    FEATURE_FLAG_SETTER(EnableFollowerStats)
+    FEATURE_FLAG_SETTER(EnableChecksumsExport)
+    FEATURE_FLAG_SETTER(EnableReplication)
+    FEATURE_FLAG_SETTER(EnableStrictUserManagement)
+    FEATURE_FLAG_SETTER(EnableDatabaseAdmin)
+    FEATURE_FLAG_SETTER(EnablePermissionsExport)
+    FEATURE_FLAG_SETTER(EnableLocalDBBtreeIndex)
+    FEATURE_FLAG_SETTER(EnableSharedMetadataAccessorCache)
+    FEATURE_FLAG_SETTER(EnableSystemNamesProtection)
+    FEATURE_FLAG_SETTER(EnableRealSystemViewPaths)
+    FEATURE_FLAG_SETTER(EnableDataShardWriteAlwaysVolatile)
+    FEATURE_FLAG_SETTER(EnableStreamingQueries)
+    FEATURE_FLAG_SETTER(EnableSecureScriptExecutions)
+    FEATURE_FLAG_SETTER(EnableSkipConflictCheckForTopicsInTransaction)
+    FEATURE_FLAG_SETTER(EnableTopicMessageLevelParallelism)
+    FEATURE_FLAG_SETTER(EnableTopicAutopartitioningForReplication)
+    FEATURE_FLAG_SETTER(EnableAccessToIndexImplTables)
+    FEATURE_FLAG_SETTER(EnableIndexMaterialization)
+    FEATURE_FLAG_SETTER(EnableTopicsSqlIoOperations)
+    FEATURE_FLAG_SETTER(EnableDataShardSplitHistogramSorting)
+    FEATURE_FLAG_SETTER(EnableDataShardSplitKeySelection)
+    FEATURE_FLAG_SETTER(EnableDataShardSplitHistogramOmission)
+    FEATURE_FLAG_SETTER(EnableCsDictionaryEncoding)
+    FEATURE_FLAG_SETTER(EnableDataShardDetailedMetrics)
+    FEATURE_FLAG_SETTER(EnableTopicDeferredPublish)
+    #undef FEATURE_FLAG_SETTER
 };
 
-}   // namespace NKikimr
+} // NKikimr

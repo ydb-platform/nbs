@@ -23,6 +23,7 @@ PEERDIR(
     contrib/ydb/library/yql/core/file_storage/defs
     contrib/ydb/library/yql/core/file_storage/download
     contrib/ydb/library/yql/core/file_storage/http_download
+    contrib/ydb/library/yql/public/issue
     contrib/ydb/library/yql/utils
     contrib/ydb/library/yql/utils/log
     contrib/ydb/library/yql/utils/fetch

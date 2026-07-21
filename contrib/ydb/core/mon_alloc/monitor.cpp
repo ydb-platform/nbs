@@ -20,6 +20,8 @@
 #include <util/stream/str.h>
 #include <util/stream/file.h>
 
+#define YDB_LOG_THIS_FILE_COMPONENT NKikimrServices::MEMORY_PROFILER
+
 
 namespace NKikimr {
     using TDynamicCountersPtr = TIntrusivePtr<::NMonitoring::TDynamicCounters>;
@@ -288,11 +290,8 @@ namespace NKikimr {
             struct TDumpLogConfig {
                 static constexpr double RssUsageHard = 0.9;
                 static constexpr double RssUsageSoft = 0.85;
-                static constexpr double RssUsageSoftLimit = 0.75;
-                static constexpr double RssUsageNotifySlowLimit = 0.5;
                 static constexpr TDuration RepeatInterval = TDuration::Seconds(10);
                 static constexpr TDuration DumpInterval = TDuration::Minutes(10);
-                static constexpr TDuration NotifySlowInterval = TDuration::Seconds(10);
             };
 
             enum {
@@ -302,13 +301,12 @@ namespace NKikimr {
 
             struct TEvDumpLogStats : public TEventLocal<TEvDumpLogStats, EvDumpLogStats> {};
 
-            const TIntrusivePtr<TMemObserver> MemObserver;
             const TDuration Interval;
+            const TIntrusiveConstPtr<NMemory::IProcessMemoryInfoProvider> ProcessMemoryInfoProvider;
             const std::unique_ptr<IAllocMonitor> AllocMonitor;
             const TString FilePathPrefix;
 
             TInstant LogMemoryStatsTime = TInstant::Now() - TDumpLogConfig::DumpInterval;
-            TInstant NotifyMemoryStatsTime = TInstant::Now() - TDumpLogConfig::NotifySlowInterval;
 
             bool IsDangerous = false;
 
@@ -317,9 +315,9 @@ namespace NKikimr {
                 return EActivityType::ACTORLIB_STATS;
             }
 
-            TMemProfMonitor(TIntrusivePtr<TMemObserver> memObserver, TDuration interval, std::unique_ptr<IAllocMonitor> allocMonitor, const TString& filePathPrefix)
-                : MemObserver(std::move(memObserver))
-                , Interval(interval)
+            TMemProfMonitor(TDuration interval, TIntrusiveConstPtr<NMemory::IProcessMemoryInfoProvider> processMemoryInfoProvider, std::unique_ptr<IAllocMonitor> allocMonitor, const TString& filePathPrefix)
+                : Interval(interval)
+                , ProcessMemoryInfoProvider(std::move(processMemoryInfoProvider))
                 , AllocMonitor(std::move(allocMonitor))
                 , FilePathPrefix(filePathPrefix)
             {}
@@ -327,20 +325,19 @@ namespace NKikimr {
             void Bootstrap(const TActorContext& ctx) {
                 NActors::TMon* mon = AppData(ctx)->Mon;
                 if (!mon) {
-                    LOG_ERROR(ctx, NKikimrServices::MEMORY_PROFILER,
-                              "Could not register actor page, 'mon' is null");
+                    YDB_LOG_ERROR_CTX(ctx, "Could not register actor page, 'mon' is null");
                     Die(ctx);
                     return;
                 }
 
-                LOG_NOTICE_S(ctx, NKikimrServices::MEMORY_PROFILER, "Bootstrapped");
+                YDB_LOG_NOTICE_CTX(ctx, "Bootstrapped");
 
                 auto* indexPage = mon->RegisterIndexPage("memory", "Memory");
                 mon->RegisterActorPage(
                     indexPage, "statistics", "Statistics",
-                    false, ctx.ExecutorThread.ActorSystem, ctx.SelfID);
+                    false, ctx.ActorSystem(), ctx.SelfID);
 
-                AllocMonitor->RegisterPages(mon, ctx.ExecutorThread.ActorSystem, ctx.SelfID);
+                AllocMonitor->RegisterPages(mon, ctx.ActorSystem(), ctx.SelfID);
                 AllocMonitor->RegisterControls(AppData(ctx)->Icb);
 
                 Become(&TThis::StateWork);
@@ -356,6 +353,16 @@ namespace NKikimr {
                 }
             }
 
+            std::optional<TMemoryUsage> TryGetMemoryUsage() const noexcept {
+                auto processMemoryInfo = ProcessMemoryInfoProvider->Get();
+                if (processMemoryInfo.AnonRss.has_value()) {
+                    return TMemoryUsage{
+                        processMemoryInfo.AnonRss.value(),
+                        processMemoryInfo.CGroupLimit.value_or(0)};
+                }
+                return {};
+            }
+
             void LogMemoryStats(const TActorContext& ctx, size_t limit) noexcept {
                 LogMemoryStatsTime = TInstant::Now();
 
@@ -366,9 +373,11 @@ namespace NKikimr {
                         TString fileName = FilePathPrefix + name + ".mem";
                         TFileOutput out(fileName);
                         AllocMonitor->DumpForLog(out, limit);
-                        LOG_WARN_S(ctx, NKikimrServices::MEMORY_PROFILER, "Memory stats saved to " + fileName);
+                        YDB_LOG_WARN_CTX(ctx, "Memory stats saved",
+                            {"filename", fileName});
                     } catch (const std::exception& err) {
-                        LOG_WARN_S(ctx, NKikimrServices::MEMORY_PROFILER, err.what());
+                        YDB_LOG_WARN_CTX(ctx, "Memory stats save error",
+                            {"err", err.what()});
                     }
                 } else {
                     TStringStream out;
@@ -376,14 +385,15 @@ namespace NKikimr {
                     TVector<TString> split;
                     Split(out.Str(), "\n", split);
                     for (const auto& line : split) {
-                        LOG_WARN_S(ctx, NKikimrServices::MEMORY_PROFILER, line);
+                        YDB_LOG_WARN_CTX(ctx, line);
                     }
                 }
             }
 
             void LogMemoryStatsIfNeeded(const TActorContext& ctx, TMemoryUsage memoryUsage) noexcept {
                 auto usage = memoryUsage.Usage();
-                LOG_DEBUG_S(ctx, NKikimrServices::MEMORY_PROFILER, memoryUsage.ToString());
+                YDB_LOG_DEBUG_CTX(ctx, "Dump memory usage",
+                    {"memoryUsage", memoryUsage});
                 if (IsDangerous && usage < TDumpLogConfig::RssUsageSoft) {
                     IsDangerous = false;
                 } else if (!IsDangerous && usage > TDumpLogConfig::RssUsageHard) {
@@ -398,34 +408,20 @@ namespace NKikimr {
             void HandleWakeup(const TActorContext& ctx) noexcept {
                 AllocMonitor->Update(Interval);
 
-                std::optional<TMemoryUsage> memoryUsage = TAllocState::TryGetMemoryUsage();
+                std::optional<TMemoryUsage> memoryUsage = TryGetMemoryUsage();
                 if (memoryUsage) {
                     LogMemoryStatsIfNeeded(ctx, memoryUsage.value());
-
-                    TMemObserver::TMemStat stat{
-                        // Note: we use allocated memory because AnonRss has lag
-                        TAllocState::GetAllocatedMemoryEstimate(), 
-                        memoryUsage->CGroupLimit, 
-                        static_cast<ui64>(memoryUsage->CGroupLimit * TDumpLogConfig::RssUsageSoftLimit)};
-
-                    if (memoryUsage->AnonRss > TDumpLogConfig::RssUsageNotifySlowLimit ||
-                            TInstant::Now() - NotifyMemoryStatsTime > TDumpLogConfig::NotifySlowInterval) {
-                        NotifyMemoryStatsTime = TInstant::Now();
-                        MemObserver->NotifyStat(stat);
-                    } else {
-                        // fast path: don't call callback, but update current stat
-                        MemObserver->SetStat(stat);
-                    }
                 }
-                
+
                 ctx.Schedule(Interval, new TEvents::TEvWakeup());
             }
 
             void HandleDump(TEvDumpLogStats::TPtr&, const TActorContext& ctx) noexcept {
                 if (IsDangerous) {
-                    std::optional<TMemoryUsage> memoryUsage = TAllocState::TryGetMemoryUsage();
+                    std::optional<TMemoryUsage> memoryUsage = TryGetMemoryUsage();
                     if (memoryUsage) {
-                        LOG_WARN_S(ctx, NKikimrServices::MEMORY_PROFILER, memoryUsage->ToString());
+                        YDB_LOG_WARN_CTX(ctx, "Dum memory usage",
+                            {"memoryUsage", memoryUsage->ToString()});
                         LogMemoryStats(ctx, 256);
                     }
                 }
@@ -447,10 +443,10 @@ namespace NKikimr {
         };
     }
 
-    IActor* CreateMemProfMonitor(TIntrusivePtr<TMemObserver> memObserver, ui32 intervalSec, TDynamicCountersPtr counters, const TString& filePathPrefix) {
+    IActor* CreateMemProfMonitor(TDuration interval, TIntrusiveConstPtr<NMemory::IProcessMemoryInfoProvider> processMemoryInfoProvider, TDynamicCountersPtr counters, const TString& filePathPrefix) {
         return new TMemProfMonitor(
-            memObserver,
-            TDuration::Seconds(intervalSec),
+            interval,
+            processMemoryInfoProvider,
             CreateAllocMonitor(GetServiceCounters(counters, "utils")),
             filePathPrefix);
     }

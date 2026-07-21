@@ -11,3 +11,8 @@ PEERDIR(
 )
 
 END()
+
+RECURSE(
+    gen
+)
+

@@ -1,0 +1,106 @@
+# -*- coding: utf-8 -*-
+import time
+import json
+import collections
+import ssl
+import urllib.request
+
+
+class KikimrMonitor(object):
+    def __init__(self, host, mon_port, update_interval_seconds=1.0, use_https=False, token=None):
+        super(KikimrMonitor, self).__init__()
+        self.__host = host
+        self.__mon_port = mon_port
+        protocol = "https" if use_https else "http"
+        self.__monitoring_address = "{protocol}://{host}:{mon_port}".format(protocol=protocol, host=host, mon_port=mon_port)
+        self.__counters_url = "{monitoring_address}/counters/json".format(monitoring_address=self.__monitoring_address)
+        self.__use_https = use_https
+        self.__token = token
+        self.__pdisks = set()
+        self.__data = {}
+        self.__next_update_time = time.time()
+        self.__update_interval_seconds = update_interval_seconds
+        self._by_sensor_name = collections.defaultdict(list)
+
+    def __open_url(self, url_str):
+        """Open URL with optional HTTPS and token authentication"""
+        req = urllib.request.Request(url_str)
+        if self.__token:
+            req.add_header('Authorization', self.__token)
+        if self.__use_https:
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            return urllib.request.urlopen(req, context=ctx)
+        else:
+            return urllib.request.urlopen(req)
+
+    def tabletcounters(self, tablet_id):
+        url_str = "{monitoring_address}/viewer/json/tabletcounters?tablet_id={tablet_id}".format(
+            monitoring_address=self.__monitoring_address, tablet_id=tablet_id
+        )
+        url = self.__open_url(url_str)
+        return json.load(url)
+
+    @property
+    def pdisks(self):
+        return tuple(self.__pdisks)
+
+    def fetch(self, deadline=60):
+        self.__update_if_required(force_update=True, deadline=deadline)
+        return self
+
+    def __update_if_required(self, force_update=False, deadline=None):
+        if not force_update and time.time() < self.__next_update_time:
+            return
+
+        try:
+            url = self.__open_url(self.__counters_url)
+        except Exception:
+            return False
+        try:
+            raw = json.load(url)
+        except ValueError:
+            return False
+
+        self.__data = {}
+        for sensor_dict in raw.get('sensors', ()):
+            labels = sensor_dict.get('labels', {})
+            sensor_name = labels.get('sensor')
+            value = sensor_dict.get('value', None)
+            key = self.normalize(labels)
+
+            if labels.get('counters', None) == 'pdisks':
+                if 'pdisk' in labels:
+                    self.__pdisks.add(int(labels['pdisk']))
+
+            if value is not None:
+                self.__data[key] = value
+                self._by_sensor_name[sensor_name].append(
+                    (key, value))
+
+        deadline = deadline if deadline is not None else self.__update_interval_seconds
+        self.__next_update_time = time.time() + deadline
+        return True
+
+    def get_by_name(self, sensor):
+        return self._by_sensor_name.get(sensor, [])
+
+    @staticmethod
+    def normalize(labels):
+        return tuple(
+            (key, value)
+            for key, value in sorted(labels.items(), key=lambda x: x[0])
+        )
+
+    def has_actual_data(self):
+        return self.__update_if_required(force_update=True)
+
+    def force_update(self):
+        self.__update_if_required(force_update=True)
+
+    def sensor(self, counters, sensor, _default=None, **kwargs):
+        self.__update_if_required()
+        kwargs.update({'counters': counters, 'sensor': sensor})
+        key = self.normalize(kwargs)
+        return self.__data.get(key, _default)

@@ -1,36 +1,251 @@
-from conftest import BaseTestSet
+from conftest import BaseTestSet, LOGGER
 from contrib.ydb.tests.olap.scenario.helpers import (
     ScenarioTestHelper,
     TestContext,
     CreateTable,
     CreateTableStore,
     DropTable,
+    DropTableStore,
+    skip_test,
 )
+from contrib.ydb.tests.olap.common.thread_helper import TestThread, TestThreads
 from helpers.tiering_helper import (
     ObjectStorageParams,
-    AlterTier,
-    CreateTierIfNotExists,
-    AlterTieringRule,
-    CreateTieringRuleIfNotExists,
-    TierConfig,
-    TieringPolicy,
-    TieringRule,
-    DropTier,
-    DropTieringRule,
+    CreateExternalDataSource,
+    DropExternalDataSource,
+    CreateSecret,
+    DropSecret,
 )
 import helpers.data_generators as dg
-from helpers.table_helper import AlterTable
+from helpers.table_helper import AlterTable, ResetSetting, AlterTableStore
 
 from contrib.ydb.tests.olap.lib.utils import get_external_param
-from ydb import PrimitiveType
+from contrib.ydb.tests.olap.lib.ydb_cluster import YdbCluster
+from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
+from contrib.ydb.tests.library.harness.util import LogLevels
+
+from ydb import PrimitiveType, StatusCode
+import library.python.port_manager
+from moto.server import ThreadedMotoServer
+
+import boto3
+from botocore.exceptions import ClientError
 import datetime
 import random
-import threading
-from typing import Iterable
+import os
 import time
+from typing import Iterable
+from string import ascii_lowercase
 
 
-class TestAlterTiering(BaseTestSet):
+class TestLoop:
+
+    __test__ = False
+
+    def __init__(self, duration: datetime.timedelta):
+        self._deadline = datetime.datetime.now() + duration
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if datetime.datetime.now() < self._deadline:
+            return None
+        raise StopIteration
+
+
+class S3:
+    def __init__(self):
+        self.port_manager = library.python.port_manager.PortManager()
+        self._server = None
+
+    def start_server(self) -> str:
+        port = self.port_manager.get_port()
+
+        self._server = ThreadedMotoServer(port=port)
+        self._server.start()
+        return f'http://localhost:{port}'
+
+    def is_server_started(self) -> bool:
+        return self._server is not None
+
+    def _make_s3_resource(self, access_key, secret_key, endpoint) -> boto3.Session:
+        session = boto3.Session(
+            aws_access_key_id=(access_key),
+            aws_secret_access_key=(secret_key),
+            region_name='ru-central1',
+        )
+        return session.resource('s3', endpoint_url=endpoint)
+
+    def create_bucket(self, bucket_config: ObjectStorageParams):
+        s3 = self._make_s3_resource(
+            bucket_config.access_key,
+            bucket_config.secret_key,
+            bucket_config.endpoint,
+        )
+        try:
+            s3.create_bucket(
+                Bucket=bucket_config.bucket,
+                CreateBucketConfiguration={'LocationConstraint': 'ru-central1'},
+            )
+        except ClientError as e:
+            # Creating test buckets should be idempotent between retries/reruns.
+            code = e.response.get('Error', {}).get('Code', '')
+            if code not in {'BucketAlreadyOwnedByYou', 'BucketAlreadyExists'}:
+                raise
+
+    def recreate_bucket(self, bucket_config: ObjectStorageParams):
+        s3 = self._make_s3_resource(
+            bucket_config.access_key,
+            bucket_config.secret_key,
+            bucket_config.endpoint,
+        )
+        bucket = s3.Bucket(bucket_config.bucket)
+
+        try:
+            # Remove all object versions first to support versioned buckets.
+            bucket.object_versions.delete()
+            bucket.objects.all().delete()
+            bucket.delete()
+        except ClientError as e:
+            code = e.response.get('Error', {}).get('Code', '')
+            if code not in {'NoSuchBucket', '404'}:
+                raise
+
+        self.create_bucket(bucket_config)
+
+    def count_objects(self, bucket_config: ObjectStorageParams):
+        s3 = self._make_s3_resource(
+            bucket_config.access_key,
+            bucket_config.secret_key,
+            bucket_config.endpoint,
+        )
+        bucket = s3.Bucket(bucket_config.bucket)
+        return sum(1 for _ in bucket.objects.all())
+
+
+class TieringTestBase(BaseTestSet):
+    @classmethod
+    def _get_cluster_config(cls):
+        cfg = KikimrConfigGenerator(
+            extra_feature_flags=[
+                'enable_external_data_sources',
+                'enable_tiering_in_column_shard',
+                'enable_column_store',
+            ],
+            column_shard_config={
+                'lag_for_compaction_before_tierings_ms': 0,
+                'compaction_actualization_lag_ms': 0,
+                'optimizer_freshness_check_duration_ms': 0,
+                'small_portion_detect_size_limit': 0,
+                'alter_object_enabled': True,
+                'bulk_upsert_require_all_columns': False,
+            },
+            additional_log_configs={
+                'TX_TIERING': LogLevels.DEBUG,
+                'TX_TIERING_BLOBS_TIER': LogLevels.TRACE,
+                'TX_COLUMNSHARD_ACTUALIZATION': LogLevels.TRACE,
+            },
+            query_service_config=dict(
+                available_external_data_sources=["ObjectStorage"]
+            ),
+        )
+        # aws_client_config lives at the top-level app config (not inside column_shard_config).
+        cfg.yaml_config['aws_client_config'] = {
+            # executor_threads_count controls TS3ThreadsPoolByEndpoint — a SHARED thread pool
+            # across ALL S3 clients for the same endpoint (moto). This is the effective global
+            # limit on concurrent S3 operations from ALL column-shard tablets combined.
+            # - Too low: eviction PUTs starve when scan GETs occupy all threads
+            #   → write buffer overflow → "Cannot write data (TIMEOUT)"
+            # - Too high: moto overwhelmed with concurrent connections
+            #   → "curlCode: 28, Timeout was reached"
+            # 6 threads allows enough eviction throughput while keeping moto load manageable.
+            'executor_threads_count': 8,
+        }
+        return cfg
+
+    def _setup_tiering_test(self, ctx):
+        random.seed(0)
+
+        LOGGER.info('Initializing test parameters')
+        self.s3_endpoint = get_external_param('s3-endpoint', '')
+        self.s3_buckets = list(get_external_param('s3-buckets', 'ydb-tiering-test-1,ydb-tiering-test-2').split(','))
+        self.s3_access_key = os.getenv('S3_ACCESS_KEY', 'access_key')
+        self.s3_secret_key = os.getenv('S3_SECRET_KEY', 'secret_key')
+
+        assert len(self.s3_buckets) == 2, len(self.s3_buckets)
+
+        self.s3 = S3()
+        if not self.s3_endpoint:
+            LOGGER.info('Starting S3 server')
+            self.s3_endpoint = self.s3.start_server()
+
+        LOGGER.info('Preparing scheme objects')
+        sth = ScenarioTestHelper(ctx)
+
+        self.access_key_secret = self._get_test_prefix() + '_access_key'
+        self.secret_key_secret = self._get_test_prefix() + '_secret_key'
+        self._drop_secret_if_exists(sth, self.access_key_secret)
+        self._drop_secret_if_exists(sth, self.secret_key_secret)
+        sth.execute_scheme_query(CreateSecret(self.access_key_secret, self.s3_access_key))
+        sth.execute_scheme_query(CreateSecret(self.secret_key_secret, self.s3_secret_key))
+
+        self.s3_configs = [
+            ObjectStorageParams(
+                endpoint=self.s3_endpoint,
+                bucket=bucket,
+                access_key_secret=sth.get_full_path(self.access_key_secret),
+                secret_key_secret=sth.get_full_path(self.secret_key_secret),
+                access_key=self.s3_access_key,
+                secret_key=self.s3_secret_key,
+            )
+            for bucket in self.s3_buckets
+        ]
+
+        for config in self.s3_configs:
+            self.s3.recreate_bucket(config)
+
+        self.sources: list[str] = []
+        for i, s3_config in enumerate(self.s3_configs):
+            self.sources.append(f'tier{i}')
+            self._override_external_data_source(sth, self.sources[-1], s3_config)
+
+    def _tier_down_tiering_test(self, ctx):
+        LOGGER.info('Tiering down scheme objects')
+        sth = ScenarioTestHelper(ctx)
+
+        # NOTE: evicted data is not erased when the colummnstore is deleted
+        # assert all(s3.count_objects(bucket) == 0 for bucket in s3_configs)
+
+        for source in self.sources:
+            sth.execute_scheme_query(DropExternalDataSource(source))
+
+        sth.execute_scheme_query(DropSecret(self.access_key_secret))
+        sth.execute_scheme_query(DropSecret(self.secret_key_secret))
+
+    def _override_external_data_source(self, sth, path, config):
+        sth.execute_scheme_query(CreateExternalDataSource(path, config, True))
+
+    def _drop_secret_if_exists(self, sth: ScenarioTestHelper, secret_name: str):
+        sth.execute_scheme_query(
+            DropSecret(secret_name),
+            expected_status={StatusCode.SUCCESS, StatusCode.SCHEME_ERROR},
+        )
+
+    def _get_test_duration(self, test_class: str) -> datetime.timedelta:
+        class_to_duration = {
+            'SMALL': datetime.timedelta(minutes=2),
+            'MEDIUM': datetime.timedelta(hours=6),
+            'LARGE': datetime.timedelta(days=2),
+        }
+        assert test_class in class_to_duration, test_class
+        return class_to_duration[test_class]
+
+    def _get_test_prefix(self):
+        return type(self).__name__
+
+
+class TestAlterTiering(TieringTestBase):
     schema1 = (
         ScenarioTestHelper.Schema()
         .with_column(name='timestamp', type=PrimitiveType.Timestamp, not_null=True)
@@ -40,113 +255,175 @@ class TestAlterTiering(BaseTestSet):
         .with_key_columns('timestamp', 'writer', 'value')
     )
 
-    class TestThread(threading.Thread):
-        def run(self) -> None:
-            self.exc = None
-            try:
-                self.ret = self._target(*self._args, **self._kwargs)
-            except BaseException as e:
-                self.exc = e
-
-        def join(self, timeout=None):
-            super().join(timeout)
-            if self.exc:
-                raise self.exc
-            return self.ret
-
-    def _drop_tables(self, prefix: str, count: int, ctx: TestContext):
+    def _loop_bulk_upsert(
+        self,
+        ctx: TestContext,
+        table: str,
+        writer_id: int,
+        duration: datetime.timedelta,
+    ):
+        loop = TestLoop(duration)
         sth = ScenarioTestHelper(ctx)
-        for i in range(count):
-            sth.execute_scheme_query(DropTable(f'store/{prefix}_{i}'))
 
-    def _upsert(self, ctx: TestContext, table: str, writer_id: int, duration: datetime.timedelta):
-        deadline = datetime.datetime.now() + duration
-        sth = ScenarioTestHelper(ctx)
-        rows_written = 0
-        i = 0
-        while datetime.datetime.now() < deadline:
+        for _ in loop:
+            begin = datetime.datetime.now()
             sth.bulk_upsert(
                 table,
                 dg.DataGeneratorPerColumn(self.schema1, 1000)
-                .with_column('timestamp', dg.ColumnValueGeneratorRandom(null_probability=0))
+                .with_column(
+                    'timestamp',
+                    dg.ColumnValueGeneratorLambda(lambda: int(datetime.datetime.now().timestamp() * 1000000)),
+                )
                 .with_column('writer', dg.ColumnValueGeneratorConst(writer_id))
-                .with_column('value', dg.ColumnValueGeneratorSequential(rows_written))
-                .with_column('data', dg.ColumnValueGeneratorConst(random.randbytes(1024)))
+                .with_column('value', dg.ColumnValueGeneratorSequential())
+                .with_column(
+                    'data',
+                    dg.ColumnValueGeneratorConst(random.randbytes(1024)),
+                ),
             )
-            rows_written += 1000
-            i += 1
-            if rows_written > 100000 and i % 10 == 0:
-                scan_result = sth.execute_scan_query(f'SELECT COUNT(*) FROM `{sth.get_full_path("store/table")}` WHERE writer == {writer_id}')
-                assert scan_result.result_set.rows[0][0] == rows_written
+            # do 3 times less writes so that moto server can handle all writes.
+            time.sleep((datetime.datetime.now() - begin).total_seconds()*2)
 
-    def _change_tiering_rule(self, ctx: TestContext, table: str, tiering_rules: Iterable[str], duration: datetime.timedelta):
-        deadline = datetime.datetime.now() + duration
+    def _loop_scan(
+        self,
+        ctx: TestContext,
+        table: str,
+        duration: datetime.timedelta,
+        allow_scan_errors: bool = False,
+    ):
+        loop = TestLoop(duration)
         sth = ScenarioTestHelper(ctx)
-        while datetime.datetime.now() < deadline:
-            for tiering_rule in tiering_rules:
-                sth.execute_scheme_query(AlterTable(table).set_tiering(tiering_rule))
-            sth.execute_scheme_query(AlterTable(table).reset_tiering())
 
-    def scenario_alter_tiering_rule_while_writing(self, ctx: TestContext):
-        test_duration = datetime.timedelta(seconds=400)
+        expected_scan_status = {StatusCode.SUCCESS, StatusCode.GENERIC_ERROR} if allow_scan_errors else {StatusCode.SUCCESS}
 
-        s3_endpoint = get_external_param('s3-endpoint', 'storage.yandexcloud.net')
-        s3_access_key = get_external_param('s3-access-key', 'YCAJEM3Pg9fMyuX9ZUOJ_fake')
-        s3_secret_key = get_external_param('s3-secret-key', 'YCM7Ovup55wDkymyEtO8pw5F10_L5jtVY8w_fake')
-        s3_buckets = get_external_param('s3-buckets', 'ydb-tiering-test-1,ydb-tiering-test-2').split(',')
+        for _ in loop:
+            LOGGER.info('executing SELECT')
+            begin = datetime.datetime.now()
 
-        s3_configs = [
-            ObjectStorageParams(
-                scheme='HTTP',
-                verify_ssl=False,
-                endpoint=s3_endpoint,
-                bucket=bucket,
-                access_key=s3_access_key,
-                secret_key=s3_secret_key
-            ) for bucket in s3_buckets
+            sth.execute_query(
+                f'SELECT MIN(writer) FROM `{sth.get_full_path(table)}`',
+                expected_status=expected_scan_status,
+                ignore_error={"Query invalidated on scheme/internal error during Data execution"}  # https://github.com/ydb-platform/ydb/issues/12854
+            )
+            time.sleep((datetime.datetime.now() - begin).total_seconds())
+
+    def _loop_set_ttl(
+        self,
+        ctx: TestContext,
+        table: str,
+        sources: Iterable[str],
+        duration: datetime.timedelta,
+    ):
+        loop = TestLoop(duration)
+        sth = ScenarioTestHelper(ctx)
+
+        for _ in loop:
+            for source in sources:
+                LOGGER.info(f'setting eviction to `{source}`')
+                sth.execute_scheme_query(
+                    AlterTable(table).set_ttl(
+                        [
+                            (
+                                datetime.timedelta(seconds=1),
+                                sth.get_full_path(source),
+                            )
+                        ],
+                        'timestamp',
+                    ),
+                    retries=2,
+                )
+            LOGGER.info('resetting eviction')
+            sth.execute_scheme_query(AlterTable(table).action(ResetSetting('TTL')), retries=2)
+
+    def _loop_add_drop_column(self, ctx: TestContext, store: str, duration: datetime.timedelta):
+        loop = TestLoop(duration)
+        sth = ScenarioTestHelper(ctx)
+
+        column_name = 'tmp_column_' + ''.join(random.choice(ascii_lowercase) for _ in range(8))
+        data_types = [
+            PrimitiveType.Int8,
+            PrimitiveType.Uint64,
+            PrimitiveType.Datetime,
+            PrimitiveType.Utf8,
         ]
 
+        for _ in loop:
+            LOGGER.info('executing ADD COLUMN')
+            sth.execute_scheme_query(
+                AlterTableStore(store).add_column(sth.Column(column_name, random.choice(data_types))),
+                retries=100,
+            )
+            LOGGER.info('executing DROP COLUMN')
+            sth.execute_scheme_query(AlterTableStore(store).drop_column(column_name), retries=100)
+
+    def scenario_many_tables(self, ctx: TestContext):
+        skip_test.check_test_for_skipping(ctx)
+
+        self._setup_tiering_test(ctx)
+
+        self.test_duration = self._get_test_duration(get_external_param('test-class', 'SMALL'))
+        self.n_tables = 2
+        self.n_writers = 2
+
         sth = ScenarioTestHelper(ctx)
 
-        tiers: list[str] = []
-        tiering_rules: list[str] = []
-        for i, s3_config in enumerate(s3_configs):
-            tiers.append(f'TestAlterTiering:tier{i}')
-            tiering_rules.append(f'TestAlterTiering:tiering_rule{i}')
+        sth.execute_scheme_query(CreateTableStore('store').with_schema(self.schema1).existing_ok())
+        YdbCluster.get_ydb_driver().table_client.session().create().execute_scheme(
+            f'ALTER OBJECT `{sth.get_full_path("store")}` (TYPE TABLESTORE) SET (ACTION=UPSERT_OPTIONS, `COMPACTION_PLANNER.CLASS_NAME`=`lc-buckets`, `COMPACTION_PLANNER.FEATURES`=`'
+            f'    {{"levels" : [{{"class_name" : "Zero", "portions_live_duration" : "5s", "expected_blobs_size" : 1000000000000, "portions_count_available" : 2}},'
+            f'                  {{"class_name" : "Zero"}}]}}`);'
+        )
 
-            tier_config = TierConfig(tiers[-1], s3_config)
-            tiering_config = TieringPolicy().with_rule(TieringRule(tiers[-1], '1s'))
+        sth = ScenarioTestHelper(ctx)
+        self.tables: list[str] = []
+        for i in range(self.n_tables):
+            self.tables.append(f'store/table{i}')
+            sth.execute_scheme_query(CreateTable(self.tables[-1]).with_schema(self.schema1).existing_ok())
 
-            sth.execute_scheme_query(CreateTierIfNotExists(tiers[-1], tier_config))
-            sth.execute_scheme_query(CreateTieringRuleIfNotExists(tiering_rules[-1], 'timestamp', tiering_config))
+        LOGGER.info('Starting workload threads')
+        threads: TestThreads = TestThreads()
 
-            sth.execute_scheme_query(AlterTier(tiers[-1], tier_config))
-            sth.execute_scheme_query(AlterTieringRule(tiering_rules[-1], 'timestamp', tiering_config))
+        threads.append(
+            TestThread(
+                target=self._loop_add_drop_column,
+                args=[ctx, 'store', self.test_duration],
+            )
+        )
+        for i, table in enumerate(self.tables):
+            for writer in range(self.n_writers):
+                threads.append(
+                    TestThread(
+                        target=self._loop_bulk_upsert,
+                        args=[
+                            ctx,
+                            table,
+                            i * self.n_writers + writer,
+                            self.test_duration,
+                        ],
+                    )
+                )
+            threads.append(
+                TestThread(
+                    target=self._loop_set_ttl,
+                    args=[
+                        ctx,
+                        table,
+                        random.sample(self.sources, len(self.sources)),
+                        self.test_duration,
+                    ],
+                )
+            )
+            threads.append(TestThread(target=self._loop_scan, args=[ctx, table, self.test_duration]))
 
-        sth.execute_scheme_query(CreateTableStore('store').with_schema(self.schema1))
-        sth.execute_scheme_query(CreateTable('store/table').with_schema(self.schema1))
+        threads.start_and_wait_all()
 
-        threads = []
+        assert any(self.s3.count_objects(bucket) != 0 for bucket in self.s3_configs)
 
-        threads.append(self.TestThread(
-            target=self._change_tiering_rule,
-            args=[ctx, 'store/table', tiering_rules, test_duration]
-        ))
-        writer_id_offset = random.randint(0, 1 << 30)
-        for i in range(4):
-            threads.append(self.TestThread(target=self._upsert, args=[ctx, 'store/table', writer_id_offset + i, test_duration]))
+        for table in self.tables:
+            sth.execute_scheme_query(AlterTable(table).action(ResetSetting('TTL')), retries=2)
 
-        for thread in threads:
-            thread.start()
-        for thread in threads:
-            thread.join()
+        for table in self.tables:
+            sth.execute_scheme_query(DropTable(table), retries=5)
+        sth.execute_scheme_query(DropTableStore('store'), retries=5)
 
-        for tiering in tiering_rules:
-            sth.execute_scheme_query(DropTieringRule(tiering))
-        for tier in tiers:
-            sth.execute_scheme_query(DropTier(tier))
-
-        sth.execute_scheme_query(AlterTable('store/table').set_ttl('P1D', 'timestamp'))
-
-        while sth.execute_scan_query(f'SELECT COUNT(*) FROM `{sth.get_full_path("store/table")}`').result_set.rows[0][0]:
-            time.sleep(10)
+        self._tier_down_tiering_test(ctx)

@@ -1,15 +1,21 @@
 #include "ls_checks.h"
 
+#include <algorithm>
+
+#include <google/protobuf/text_format.h>
+#include <contrib/ydb/public/api/protos/ydb_cms.pb.h>
+#include <contrib/ydb/public/api/protos/ydb_coordination.pb.h>
+#include <contrib/ydb/public/lib/scheme_types/scheme_type_id.h>
+
 #include <contrib/ydb/core/engine/mkql_proto.h>
+#include <contrib/ydb/core/protos/bind_channel_storage_pool.pb.h>
+#include <contrib/ydb/core/protos/blockstore_config.pb.h>
+#include <contrib/ydb/core/protos/pqconfig.pb.h>
 #include <contrib/ydb/core/scheme/scheme_tablecell.h>
 #include <contrib/ydb/core/scheme/scheme_tabledefs.h>
 #include <contrib/ydb/core/scheme/scheme_types_proto.h>
-#include <contrib/ydb/public/lib/scheme_types/scheme_type_id.h>
-#include <contrib/ydb/public/api/protos/ydb_cms.pb.h>
-#include <contrib/ydb/core/protos/pqconfig.pb.h>
-#include <contrib/ydb/core/protos/blockstore_config.pb.h>
-#include <contrib/ydb/core/protos/bind_channel_storage_pool.pb.h>
-#include <contrib/ydb/public/api/protos/ydb_coordination.pb.h>
+
+#include <contrib/ydb/library/login/protos/login.pb.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -159,6 +165,14 @@ TCheckFunc ExtractDomainHive(ui64* domainHiveId) {
         UNIT_ASSERT(domainDesc.HasProcessingParams());
         const auto& procParams = domainDesc.GetProcessingParams();
         *domainHiveId = procParams.GetHive();
+    };
+}
+
+TCheckFunc ExtractChildren(TVector<TString>* children) {
+    return [=] (const NKikimrScheme::TEvDescribeSchemeResult& record) {
+        for (const auto& c : record.GetPathDescription().GetChildren()) {
+            children->push_back(c.GetName());
+        }
     };
 }
 
@@ -437,42 +451,69 @@ TCheckFunc UserAttrsHas(TUserAttrs attrs) {
 }
 
 void IsTable(const NKikimrScheme::TEvDescribeSchemeResult& record) {
-    UNIT_ASSERT_VALUES_EQUAL(record.GetStatus(), NKikimrScheme::StatusSuccess);
-    const auto& pathDescr = record.GetPathDescription();
-    const auto& selfPath = pathDescr.GetSelf();
-    UNIT_ASSERT_VALUES_EQUAL(selfPath.GetPathType(), NKikimrSchemeOp::EPathTypeTable);
+    CheckPathType(record, NKikimrSchemeOp::EPathTypeTable);
+}
+
+void IsColumnTable(const NKikimrScheme::TEvDescribeSchemeResult& record) {
+    CheckPathType(record, NKikimrSchemeOp::EPathTypeColumnTable);
 }
 
 void IsExternalTable(const NKikimrScheme::TEvDescribeSchemeResult& record) {
-    UNIT_ASSERT_VALUES_EQUAL(record.GetStatus(), NKikimrScheme::StatusSuccess);
-    const auto& pathDescr = record.GetPathDescription();
-    const auto& selfPath = pathDescr.GetSelf();
-    UNIT_ASSERT_VALUES_EQUAL(selfPath.GetPathType(), NKikimrSchemeOp::EPathTypeExternalTable);
+    CheckPathType(record, NKikimrSchemeOp::EPathTypeExternalTable);
 }
 
 void IsExternalDataSource(const NKikimrScheme::TEvDescribeSchemeResult& record) {
-    UNIT_ASSERT_VALUES_EQUAL(record.GetStatus(), NKikimrScheme::StatusSuccess);
-    const auto& pathDescr = record.GetPathDescription();
-    const auto& selfPath = pathDescr.GetSelf();
-    UNIT_ASSERT_VALUES_EQUAL(selfPath.GetPathType(), NKikimrSchemeOp::EPathTypeExternalDataSource);
+    CheckPathType(record, NKikimrSchemeOp::EPathTypeExternalDataSource);
 }
 
 void IsView(const NKikimrScheme::TEvDescribeSchemeResult& record) {
-    UNIT_ASSERT_VALUES_EQUAL(record.GetStatus(), NKikimrScheme::StatusSuccess);
-    const auto& pathDescr = record.GetPathDescription();
-    const auto& selfPath = pathDescr.GetSelf();
-    UNIT_ASSERT_VALUES_EQUAL(selfPath.GetPathType(), NKikimrSchemeOp::EPathTypeView);
+    CheckPathType(record, NKikimrSchemeOp::EPathTypeView);
 }
 
 void IsResourcePool(const NKikimrScheme::TEvDescribeSchemeResult& record) {
+    CheckPathType(record, NKikimrSchemeOp::EPathTypeResourcePool);
+}
+
+void IsBackupCollection(const NKikimrScheme::TEvDescribeSchemeResult& record) {
+    CheckPathType(record, NKikimrSchemeOp::EPathTypeBackupCollection);
+}
+
+void IsSysView(const NKikimrScheme::TEvDescribeSchemeResult& record) {
+    CheckPathType(record, NKikimrSchemeOp::EPathTypeSysView);
+}
+
+void IsSecret(const NKikimrScheme::TEvDescribeSchemeResult& record) {
+    CheckPathType(record, NKikimrSchemeOp::EPathTypeSecret);
+}
+
+void IsStreamingQuery(const NKikimrScheme::TEvDescribeSchemeResult& record) {
+    CheckPathType(record, NKikimrSchemeOp::EPathTypeStreamingQuery);
+}
+
+void IsDirectory(const NKikimrScheme::TEvDescribeSchemeResult& record) {
+    CheckPathType(record, NKikimrSchemeOp::EPathTypeDir);
+}
+
+void IsReplication(const NKikimrScheme::TEvDescribeSchemeResult& record) {
+    CheckPathType(record, NKikimrSchemeOp::EPathTypeReplication);
+}
+
+void IsTransfer(const NKikimrScheme::TEvDescribeSchemeResult& record) {
+    CheckPathType(record, NKikimrSchemeOp::EPathTypeTransfer);
+}
+
+void IsTestShardSet(const NKikimrScheme::TEvDescribeSchemeResult& record) {
+    CheckPathType(record, NKikimrSchemeOp::EPathTypeTestShardSet);
+}
+
+void CheckPathType(const NKikimrScheme::TEvDescribeSchemeResult& record, NKikimrSchemeOp::EPathType pathType) {
     UNIT_ASSERT_VALUES_EQUAL(record.GetStatus(), NKikimrScheme::StatusSuccess);
     const auto& pathDescr = record.GetPathDescription();
     const auto& selfPath = pathDescr.GetSelf();
-    UNIT_ASSERT_VALUES_EQUAL(selfPath.GetPathType(), NKikimrSchemeOp::EPathTypeResourcePool);
+    UNIT_ASSERT_VALUES_EQUAL(selfPath.GetPathType(), pathType);
 }
 
-TCheckFunc CheckColumns(const TString& name, const TSet<TString>& columns, const TSet<TString>& droppedColumns, const TSet<TString> keyColumns,
-                        NKikimrSchemeOp::EPathState pathState) {
+TCheckFunc CheckColumns(const TString& name, const TSet<TString>& columns, const TSet<TString>& droppedColumns, const TSet<TString> keyColumns, bool strictCount) {
     return [=] (const NKikimrScheme::TEvDescribeSchemeResult& record) {
         UNIT_ASSERT(record.HasPathDescription());
         NKikimrSchemeOp::TPathDescription descr = record.GetPathDescription();
@@ -483,12 +524,13 @@ TCheckFunc CheckColumns(const TString& name, const TSet<TString>& columns, const
         TString curName = self.GetName();
         ui32 curPathState = self.GetPathState();
         UNIT_ASSERT_STRINGS_EQUAL(curName, name);
-        UNIT_ASSERT_VALUES_EQUAL(curPathState, (ui32)pathState);
+        UNIT_ASSERT_VALUES_EQUAL(curPathState, (ui32)NKikimrSchemeOp::EPathState::EPathStateNoChanges);
 
         UNIT_ASSERT(descr.HasTable());
         NKikimrSchemeOp::TTableDescription table = descr.GetTable();
         UNIT_ASSERT(table.ColumnsSize());
 
+        UNIT_ASSERT(!strictCount || columns.size() - droppedColumns.size() == table.ColumnsSize());
         for (auto& col : table.GetColumns()) {
             UNIT_ASSERT(col.HasName());
             UNIT_ASSERT(col.HasId());
@@ -499,6 +541,7 @@ TCheckFunc CheckColumns(const TString& name, const TSet<TString>& columns, const
             UNIT_ASSERT(!droppedColumns.contains(name));
         }
 
+        UNIT_ASSERT(!strictCount || keyColumns.size() == table.KeyColumnNamesSize());
         for (auto& keyName : table.GetKeyColumnNames()) {
             UNIT_ASSERT(keyColumns.contains(keyName));
         }
@@ -703,6 +746,21 @@ TCheckFunc PQPartitionsInsideDomain(ui64 count) {
     };
 }
 
+TCheckFunc PQGroupsInsideDomain(ui64 count) {
+    return [=] (const NKikimrScheme::TEvDescribeSchemeResult& record) {
+        UNIT_ASSERT_C(IsGoodDomainStatus(record.GetStatus()), "Unexpected status: " << record.GetStatus());
+
+        const auto& pathDescr = record.GetPathDescription();
+        const auto& domain = pathDescr.GetDomainDescription();
+        const auto& curCount = domain.GetPQGroupsInside();
+
+        UNIT_ASSERT_EQUAL_C(curCount, count,
+                            "pq groups inside domain count mismatch, domain with id " << domain.GetDomainKey().GetPathId() <<
+                                " has count " << curCount <<
+                                " but expected " << count);
+    };
+}
+
 DESCRIBE_ASSERT_EQUAL(TopicReservedStorage, ui64, subdomain.GetDiskSpaceUsage().GetTopics().GetReserveSize(), "Topic ReserveSize")
 DESCRIBE_ASSERT_EQUAL(TopicAccountSize, ui64, subdomain.GetDiskSpaceUsage().GetTopics().GetAccountSize(), "Topic AccountSize")
 DESCRIBE_ASSERT_GE(TopicAccountSizeGE, ui64, subdomain.GetDiskSpaceUsage().GetTopics().GetAccountSize(), "Topic AccountSize")
@@ -779,6 +837,25 @@ TCheckFunc DomainLimitsIs(ui64 maxPaths, ui64 maxShards, ui64 maxPQPartitions) {
     };
 }
 
+TCheckFunc SchemeLimits(const NKikimrSubDomains::TSchemeLimits& expected) {
+    return [=] (const NKikimrScheme::TEvDescribeSchemeResult& record) {
+        UNIT_ASSERT_VALUES_EQUAL(record.GetStatus(), NKikimrScheme::StatusSuccess);
+        const auto& domain = record.GetPathDescription().GetDomainDescription();
+        const auto& actual = domain.GetSchemeLimits();
+
+        TString diff;
+        google::protobuf::util::MessageDifferencer differencer;
+        differencer.ReportDifferencesToString(&diff);
+        //NOTE: because SetSchemeshardSchemaLimits mangles ExtraPathSymbolsAllowed's default value
+        differencer.IgnoreField(NKikimrSubDomains::TSchemeLimits::descriptor()->FindFieldByName("ExtraPathSymbolsAllowed"));
+        UNIT_ASSERT_C(differencer.Compare(actual, expected),
+            "scheme limits mismatch, subdomain PathId " << domain.GetDomainKey().GetPathId() << " limits"
+            << " differ from the expected ones: "
+            << diff
+        );
+    };
+}
+
 TCheckFunc FreezeStateEqual(NKikimrSchemeOp::EFreezeState expectedState) {
     return [=] (const NKikimrScheme::TEvDescribeSchemeResult& record) {
         UNIT_ASSERT_VALUES_EQUAL(record.GetStatus(), NKikimrScheme::StatusSuccess);
@@ -815,6 +892,12 @@ TCheckFunc IndexesCount(ui32 count) {
     };
 }
 
+TCheckFunc ColumnTableIndexesCount(ui32 count) {
+    return [=] (const NKikimrScheme::TEvDescribeSchemeResult& record) {
+        UNIT_ASSERT_VALUES_EQUAL(record.GetPathDescription().GetColumnTableDescription().GetSchema().IndexesSize(), count);
+    };
+}
+
 TCheckFunc IndexType(NKikimrSchemeOp::EIndexType type) {
     return [=] (const NKikimrScheme::TEvDescribeSchemeResult& record) {
         UNIT_ASSERT_VALUES_EQUAL(record.GetPathDescription().GetTableIndex().GetType(), type);
@@ -841,6 +924,65 @@ TCheckFunc IndexDataColumns(const TVector<TString>& dataColumnNames) {
         UNIT_ASSERT_VALUES_EQUAL(record.GetPathDescription().GetTableIndex().DataColumnNamesSize(), dataColumnNames.size());
         for (ui32 colId = 0; colId < dataColumnNames.size(); ++colId) {
             UNIT_ASSERT_VALUES_EQUAL(record.GetPathDescription().GetTableIndex().GetDataColumnNames(colId), dataColumnNames.at(colId));
+        }
+    };
+}
+
+TCheckFunc KMeansTreeDescription(Ydb::Table::VectorIndexSettings_Metric metric,
+                                  Ydb::Table::VectorIndexSettings_VectorType vectorType,
+                                  ui32 vectorDimension,
+                                  ui32 clusters,
+                                  ui32 levels
+                                  ) {
+    return [=] (const NKikimrScheme::TEvDescribeSchemeResult& record) {
+        if (record.GetPathDescription().GetTableIndex().HasVectorIndexKmeansTreeDescription()) {
+            const auto& settings = record.GetPathDescription().GetTableIndex().GetVectorIndexKmeansTreeDescription().GetSettings();
+            UNIT_ASSERT_VALUES_EQUAL(settings.settings().metric(), metric);
+            UNIT_ASSERT_VALUES_EQUAL(settings.settings().vector_type(), vectorType);
+            UNIT_ASSERT_VALUES_EQUAL(settings.settings().vector_dimension(), vectorDimension);
+            UNIT_ASSERT_VALUES_EQUAL(settings.clusters(), clusters);
+            UNIT_ASSERT_VALUES_EQUAL(settings.levels(), levels);
+        } else {
+            UNIT_FAIL("oneof SpecializedIndexDescription should be set.");
+        }
+    };
+}
+
+TCheckFunc SpecializedIndexDescription(const TString& proto) {
+    return [=] (const NKikimrScheme::TEvDescribeSchemeResult& record) {
+        switch (record.GetPathDescription().GetTableIndex().GetSpecializedIndexDescriptionCase()) {
+            case NKikimrSchemeOp::TIndexDescription::kVectorIndexKmeansTreeDescription: {
+                auto actual = record.GetPathDescription().GetTableIndex().GetVectorIndexKmeansTreeDescription().GetSettings();
+                Ydb::Table::KMeansTreeSettings expected;
+                UNIT_ASSERT(google::protobuf::TextFormat::ParseFromString(proto, &expected));
+                UNIT_ASSERT_C(google::protobuf::util::MessageDifferencer::Equals(actual, expected),
+                    TStringBuilder() << "Expected"
+                        << expected.ShortDebugString()
+                        << " but got "
+                        << actual.ShortDebugString());
+                break;
+            }
+            case NKikimrSchemeOp::TIndexDescription::kFulltextIndexDescription: {
+                auto actual = record.GetPathDescription().GetTableIndex().GetFulltextIndexDescription().GetSettings();
+                Ydb::Table::FulltextIndexSettings expected;
+                UNIT_ASSERT(google::protobuf::TextFormat::ParseFromString(proto, &expected));
+                UNIT_ASSERT_C(google::protobuf::util::MessageDifferencer::Equals(actual, expected),
+                    TStringBuilder() << "Expected"
+                        << expected.ShortDebugString()
+                        << " but got "
+                        << actual.ShortDebugString());
+                break;
+            }
+            case NKikimrSchemeOp::TIndexDescription::kBloomFilterDescription:
+            case NKikimrSchemeOp::TIndexDescription::kBloomNGrammFilterDescription:
+                break;
+            case NKikimrSchemeOp::TIndexDescription::SPECIALIZEDINDEXDESCRIPTION_NOT_SET: {
+                UNIT_ASSERT_C(proto == "SPECIALIZEDINDEXDESCRIPTION_NOT_SET",
+                    TStringBuilder() << "Expected"
+                        << proto
+                        << " but got SPECIALIZEDINDEXDESCRIPTION_NOT_SET");
+                break;
+            }
         }
     };
 }
@@ -911,9 +1053,27 @@ TCheckFunc StreamVirtualTimestamps(bool value) {
     };
 }
 
+TCheckFunc StreamUserSIDs(bool value) {
+    return [=] (const NKikimrScheme::TEvDescribeSchemeResult& record) {
+        UNIT_ASSERT_VALUES_EQUAL(record.GetPathDescription().GetCdcStreamDescription().GetUserSIDs(), value);
+    };
+}
+
+TCheckFunc StreamTraceIds(bool value) {
+    return [=] (const NKikimrScheme::TEvDescribeSchemeResult& record) {
+        UNIT_ASSERT_VALUES_EQUAL(record.GetPathDescription().GetCdcStreamDescription().GetTraceIds(), value);
+    };
+}
+
 TCheckFunc StreamResolvedTimestamps(const TDuration& value) {
     return [=] (const NKikimrScheme::TEvDescribeSchemeResult& record) {
         UNIT_ASSERT_VALUES_EQUAL(record.GetPathDescription().GetCdcStreamDescription().GetResolvedTimestampsIntervalMs(), value.MilliSeconds());
+    };
+}
+
+TCheckFunc StreamSchemaChanges(bool value) {
+    return [=] (const NKikimrScheme::TEvDescribeSchemeResult& record) {
+        UNIT_ASSERT_VALUES_EQUAL(record.GetPathDescription().GetCdcStreamDescription().GetSchemaChanges(), value);
     };
 }
 
@@ -935,6 +1095,25 @@ TCheckFunc RetentionPeriod(const TDuration& value) {
     return [=] (const NKikimrScheme::TEvDescribeSchemeResult& record) {
         UNIT_ASSERT_VALUES_EQUAL(value.Seconds(), record.GetPathDescription().GetPersQueueGroup()
             .GetPQTabletConfig().GetPartitionConfig().GetLifetimeSeconds());
+    };
+}
+
+TCheckFunc ConsumerExist(const TString& name) {
+    return [=] (const NKikimrScheme::TEvDescribeSchemeResult& record) {
+        bool isExist = false;
+        for (const auto& consumer : record.GetPathDescription().GetPersQueueGroup().GetPQTabletConfig().GetConsumers()) {
+            if (consumer.GetName() == name) {
+                isExist = true;
+                break;
+            }
+        }
+        UNIT_ASSERT(isExist);
+    };
+}
+
+TCheckFunc ConsumersSize(ui64 size) {
+    return [=] (const NKikimrScheme::TEvDescribeSchemeResult& record) {
+        UNIT_ASSERT_EQUAL(record.GetPathDescription().GetPersQueueGroup().GetPQTabletConfig().ConsumersSize(), size);
     };
 }
 
@@ -1045,6 +1224,18 @@ void NoMaxPartitionsCount(const NKikimrScheme::TEvDescribeSchemeResult& record) 
     UNIT_ASSERT(!record.GetPathDescription().GetTable().GetPartitionConfig().GetPartitioningPolicy().HasMaxPartitionsCount());
 }
 
+TCheckFunc MinTopicPartitionsCountEqual(ui32 count) {
+    return [=] (const NKikimrScheme::TEvDescribeSchemeResult& record) {
+        UNIT_ASSERT_VALUES_EQUAL(record.GetPathDescription().GetPersQueueGroup().GetPQTabletConfig().GetPartitionStrategy().GetMinPartitionCount(), count);
+    };
+}
+
+TCheckFunc MaxTopicPartitionsCountEqual(ui32 count) {
+    return [=] (const NKikimrScheme::TEvDescribeSchemeResult& record) {
+        UNIT_ASSERT_VALUES_EQUAL(record.GetPathDescription().GetPersQueueGroup().GetPQTabletConfig().GetPartitionStrategy().GetMaxPartitionCount(), count);
+    };
+}
+
 TCheckFunc PartitioningByLoadStatus(bool status) {
     return [=] (const NKikimrScheme::TEvDescribeSchemeResult& record) {
         UNIT_ASSERT_VALUES_EQUAL(record.GetPathDescription().GetTable().GetPartitionConfig().GetPartitioningPolicy().GetSplitByLoadSettings().GetEnabled(), status);
@@ -1113,6 +1304,9 @@ TCheckFunc HasTtlEnabled(const TString& columnName, const TDuration& expireAfter
         UNIT_ASSERT_VALUES_EQUAL(ttl.GetEnabled().GetColumnName(), columnName);
         UNIT_ASSERT_VALUES_EQUAL(ttl.GetEnabled().GetColumnUnit(), columnUnit);
         UNIT_ASSERT_VALUES_EQUAL(ttl.GetEnabled().GetExpireAfterSeconds(), expireAfter.Seconds());
+        UNIT_ASSERT_VALUES_EQUAL(ttl.GetEnabled().TiersSize(), 1);
+        UNIT_ASSERT(ttl.GetEnabled().GetTiers(0).HasDelete());
+        UNIT_ASSERT_VALUES_EQUAL(ttl.GetEnabled().GetTiers(0).GetApplyAfterSeconds(), expireAfter.Seconds());
     };
 }
 
@@ -1126,6 +1320,12 @@ TCheckFunc HasTtlDisabled() {
 TCheckFunc IsBackupTable(bool value) {
     return [=] (const NKikimrScheme::TEvDescribeSchemeResult& record) {
         UNIT_ASSERT_VALUES_EQUAL(value, record.GetPathDescription().GetTable().GetIsBackup());
+    };
+}
+
+TCheckFunc IsRestoreTable(bool value) {
+    return [=] (const NKikimrScheme::TEvDescribeSchemeResult& record) {
+        UNIT_ASSERT_VALUES_EQUAL(value, record.GetPathDescription().GetTable().GetIsRestore());
     };
 }
 
@@ -1186,12 +1386,22 @@ TCheckFunc HasColumnTableTtlSettingsDisabled() {
     };
 }
 
-TCheckFunc HasColumnTableTtlSettingsTiering(const TString& tieringName) {
+TCheckFunc HasColumnTableTtlSettingsTier(const TString& columnName, const TDuration& evictAfter, const std::optional<TString>& storageName) {
     return [=] (const NKikimrScheme::TEvDescribeSchemeResult& record) {
         const auto& table = record.GetPathDescription().GetColumnTableDescription();
         UNIT_ASSERT(table.HasTtlSettings());
         const auto& ttl = table.GetTtlSettings();
-        UNIT_ASSERT_EQUAL(ttl.GetUseTiering(), tieringName);
+        UNIT_ASSERT(ttl.HasEnabled());
+        UNIT_ASSERT_VALUES_EQUAL(ttl.GetEnabled().GetColumnName(), columnName);
+        UNIT_ASSERT_VALUES_EQUAL(ttl.GetEnabled().TiersSize(), 1);
+        const auto& tier = ttl.GetEnabled().GetTiers(0);
+        UNIT_ASSERT_VALUES_EQUAL(tier.GetApplyAfterSeconds(), evictAfter.Seconds());
+        if (storageName) {
+            UNIT_ASSERT(tier.HasEvictToExternalStorage());
+            UNIT_ASSERT_VALUES_EQUAL(tier.GetEvictToExternalStorage().GetStorage(), storageName);
+        } else {
+            UNIT_ASSERT(tier.HasDelete());
+        }
     };
 }
 
@@ -1201,9 +1411,35 @@ TCheckFunc HasOwner(const TString& owner) {
     };
 }
 
-void CheckEffectiveRight(const NKikimrScheme::TEvDescribeSchemeResult& record, const TString& right, bool mustHave) {
+TCheckFunc HasGroup(const TString& group, const TSet<TString> members) {
+    return [=](const NKikimrScheme::TEvDescribeSchemeResult& record) {
+        std::optional<TSet<TString>> actualMembers;
+        for (const auto& sid : record.GetPathDescription().GetDomainDescription().GetSecurityState().GetSids()) {
+            if (sid.GetName() == group && sid.GetType() == NLoginProto::ESidType::GROUP) {
+                actualMembers.emplace();
+                for (const auto& member : sid.GetMembers()) {
+                    actualMembers->insert(member);
+                }
+            }
+        }
+        UNIT_ASSERT_C(actualMembers.has_value(), "Group " + group + " not found");
+        UNIT_ASSERT_VALUES_EQUAL(members, actualMembers.value());
+    };
+}
+
+TCheckFunc HasNoGroup(const TString& group) {
+    return [=](const NKikimrScheme::TEvDescribeSchemeResult& record) {
+        for (const auto& sid : record.GetPathDescription().GetDomainDescription().GetSecurityState().GetSids()) {
+            if (sid.GetName() == group && sid.GetType() == NLoginProto::ESidType::GROUP) {
+                UNIT_FAIL("Group " + group + " exists");
+            }
+        }
+    };
+}
+
+void CheckRight(const NKikimrScheme::TEvDescribeSchemeResult& record, const TString& right, bool mustHave, bool isEffective) {
     const auto& self = record.GetPathDescription().GetSelf();
-    TSecurityObject src(self.GetOwner(), self.GetEffectiveACL(), false);
+    TSecurityObject src(self.GetOwner(), isEffective ? self.GetEffectiveACL() : self.GetACL(), false);
 
     NACLib::TSecurityObject required;
     required.FromString(right);
@@ -1221,21 +1457,33 @@ void CheckEffectiveRight(const NKikimrScheme::TEvDescribeSchemeResult& record, c
             }
         }
 
-        UNIT_ASSERT_C(!(has ^ mustHave), "" << (mustHave ? "no " : "") << "ace found"
+        UNIT_ASSERT_C(!(has ^ mustHave), "" << record.GetPath() << " ace check fail"
             << ", got " << src.ShortDebugString()
-            << ", required " << required.ShortDebugString());
+            << ", required " << (mustHave ? "" : "no ") << required.ShortDebugString());
     }
+}
+
+TCheckFunc HasRight(const TString& right) {
+    return [=] (const NKikimrScheme::TEvDescribeSchemeResult& record) {
+        CheckRight(record, right, true, false);
+    };
+}
+
+TCheckFunc HasNoRight(const TString& right) {
+    return [=] (const NKikimrScheme::TEvDescribeSchemeResult& record) {
+        CheckRight(record, right, false, false);
+    };
 }
 
 TCheckFunc HasEffectiveRight(const TString& right) {
     return [=] (const NKikimrScheme::TEvDescribeSchemeResult& record) {
-        CheckEffectiveRight(record, right, true);
+        CheckRight(record, right, true, true);
     };
 }
 
-TCheckFunc HasNotEffectiveRight(const TString& right) {
+TCheckFunc HasNoEffectiveRight(const TString& right) {
     return [=] (const NKikimrScheme::TEvDescribeSchemeResult& record) {
-        CheckEffectiveRight(record, right, false);
+        CheckRight(record, right, false, true);
     };
 }
 
@@ -1322,7 +1570,7 @@ TCheckFunc SplitBoundaries(TVector<T>&& expectedBoundaries) {
     };
 }
 
-template TCheckFunc SplitBoundaries<ui32>(TVector<ui32>&&);
+template TCheckFunc SplitBoundaries<ui64>(TVector<ui64>&&);
 
 TCheckFunc ServerlessComputeResourcesMode(NKikimrSubDomains::EServerlessComputeResourcesMode serverlessComputeResourcesMode) {
     return [=] (const NKikimrScheme::TEvDescribeSchemeResult& record) {
@@ -1358,6 +1606,72 @@ void HasOffloadConfigBase(const NKikimrScheme::TEvDescribeSchemeResult& record, 
 #undef DESCRIBE_ASSERT_EQUAL
 #undef DESCRIBE_ASSERT_GE
 #undef DESCRIBE_ASSERT
+
+TCheckFunc IncrementalBackup(bool flag) {
+    return [=] (const NKikimrScheme::TEvDescribeSchemeResult& record) {
+        const auto& attrs = record.GetPathDescription().GetUserAttributes();
+        TMap<TString, TString> attrsMap;
+        for (const auto& attr : attrs) {
+            attrsMap[attr.GetKey()] = attr.GetValue();
+        }
+        if (flag) {
+            UNIT_ASSERT(attrsMap["__incremental_backup"] == "{}");
+        } else {
+            UNIT_ASSERT(!attrsMap.contains("__incremental_backup") || attrsMap["__incremental_backup"] == "null");
+        }
+    };
+}
+
+TCheckFunc CheckPathState(NKikimrSchemeOp::EPathState pathState) {
+    return [=] (const NKikimrScheme::TEvDescribeSchemeResult& record) {
+        UNIT_ASSERT(record.HasPathDescription());
+        NKikimrSchemeOp::TPathDescription descr = record.GetPathDescription();
+
+        UNIT_ASSERT(descr.HasSelf());
+        auto self = descr.GetSelf();
+        UNIT_ASSERT(self.HasCreateFinished());
+        ui32 curPathState = self.GetPathState();
+        UNIT_ASSERT_VALUES_EQUAL(curPathState, (ui32)pathState);
+    };
+}
+
+TCheckFunc CheckMultiColumnStatistics(const TString& name, const TVector<TString>& columns, const TVector<NKikimrSchemeOp::EMultiColumnStatisticsType>& types) {
+    return [=] (const NKikimrScheme::TEvDescribeSchemeResult& record) {
+        const auto& table = record.GetPathDescription().GetTable();
+        const auto& stats = table.GetMultiColumnStatistics();
+        auto it = std::find_if(stats.begin(), stats.end(),
+            [&](const auto& s) { return s.GetName() == name; });
+        UNIT_ASSERT_C(it != stats.end(), "MultiColumnStatistics '" << name << "' not found");
+        const auto& stat = *it;
+        UNIT_ASSERT_VALUES_EQUAL(stat.ColumnNamesSize(), static_cast<i32>(columns.size()));
+        for (i32 i = 0; i < static_cast<i32>(columns.size()); ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(stat.GetColumnNames(i), columns[i]);
+        }
+        UNIT_ASSERT_VALUES_EQUAL(stat.TypesSize(), static_cast<i32>(types.size()));
+        for (i32 i = 0; i < static_cast<i32>(types.size()); ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(static_cast<int>(stat.GetTypes(i)), static_cast<int>(types[i]));
+        }
+    };
+}
+
+TCheckFunc CheckColumnTableMultiColumnStatistics(const TString& name, const TVector<TString>& columns, const TVector<NKikimrSchemeOp::EMultiColumnStatisticsType>& types) {
+    return [=] (const NKikimrScheme::TEvDescribeSchemeResult& record) {
+        const auto& tableDesc = record.GetPathDescription().GetColumnTableDescription();
+        const auto& stats = tableDesc.GetMultiColumnStatistics();
+        auto it = std::find_if(stats.begin(), stats.end(),
+            [&](const auto& s) { return s.GetName() == name; });
+        UNIT_ASSERT_C(it != stats.end(), "MultiColumnStatistics '" << name << "' not found");
+        const auto& stat = *it;
+        UNIT_ASSERT_VALUES_EQUAL(stat.ColumnNamesSize(), static_cast<i32>(columns.size()));
+        for (i32 i = 0; i < static_cast<i32>(columns.size()); ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(stat.GetColumnNames(i), columns[i]);
+        }
+        UNIT_ASSERT_VALUES_EQUAL(stat.TypesSize(), static_cast<i32>(types.size()));
+        for (i32 i = 0; i < static_cast<i32>(types.size()); ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(static_cast<int>(stat.GetTypes(i)), static_cast<int>(types[i]));
+        }
+    };
+}
 
 } // NLs
 } // NSchemeShardUT_Private

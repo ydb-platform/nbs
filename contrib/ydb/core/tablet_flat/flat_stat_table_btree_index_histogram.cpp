@@ -83,7 +83,7 @@ class TTableHistogramBuilderBtreeIndex {
         //   1. Initial
         //   2. Closed - after processing TEvent.IsBegin = false
 
-        bool Open(ui64& openedRowCount, ui64& openedDataSize) noexcept {
+        bool Open(ui64& openedRowCount, ui64& openedDataSize) {
             if (Y_LIKELY(State == ENodeState::Initial)) {
                 State = ENodeState::Opened;
                 openedRowCount += GetRowCount();
@@ -93,13 +93,13 @@ class TTableHistogramBuilderBtreeIndex {
             return false;            
         }
 
-        bool Close(ui64& openedRowCount, ui64& closedRowCount, ui64& openedDataSize, ui64& closedDataSize) noexcept {
+        bool Close(ui64& openedRowCount, ui64& closedRowCount, ui64& openedDataSize, ui64& closedDataSize) {
             if (State == ENodeState::Opened) {
                 State = ENodeState::Closed;
                 ui64 rowCount = GetRowCount();
                 ui64 dataSize = GetDataSize();
-                Y_ABORT_UNLESS(openedRowCount >= rowCount);
-                Y_ABORT_UNLESS(openedDataSize >= dataSize);
+                Y_ENSURE(openedRowCount >= rowCount);
+                Y_ENSURE(openedDataSize >= dataSize);
                 openedRowCount -= rowCount;
                 openedDataSize -= dataSize;
                 closedRowCount += rowCount;
@@ -114,13 +114,13 @@ class TTableHistogramBuilderBtreeIndex {
             return false;
         }
 
-        bool IgnoreOpened(ui64& openedRowCount, ui64& openedDataSize) noexcept {
+        bool IgnoreOpened(ui64& openedRowCount, ui64& openedDataSize) {
             if (Y_LIKELY(State == ENodeState::Opened)) {
                 State = ENodeState::Ignored;
                 ui64 rowCount = GetRowCount();
                 ui64 dataSize = GetDataSize();
-                Y_ABORT_UNLESS(openedRowCount >= rowCount);
-                Y_ABORT_UNLESS(openedDataSize >= dataSize);
+                Y_ENSURE(openedRowCount >= rowCount);
+                Y_ENSURE(openedDataSize >= dataSize);
                 openedRowCount -= rowCount;
                 openedDataSize -= dataSize;
                 return true;
@@ -147,7 +147,7 @@ class TTableHistogramBuilderBtreeIndex {
     struct TNodeEventKeyGreater {
         const TKeyCellDefaults& KeyDefaults;
 
-        bool operator ()(const TEvent& a, const TEvent& b) const noexcept {
+        bool operator ()(const TEvent& a, const TEvent& b) const {
             return Compare(a, b) > 0;
         }
 
@@ -197,13 +197,13 @@ class TTableHistogramBuilderBtreeIndex {
     };
 
     struct TNodeRowCountLess {
-        bool operator ()(const TNodeState* a, const TNodeState* b) const noexcept {
+        bool operator ()(const TNodeState* a, const TNodeState* b) const {
             return a->GetRowCount() < b->GetRowCount();
         }
     };
 
     struct TNodeDataSizeLess {
-        bool operator ()(const TNodeState* a, const TNodeState* b) const noexcept {
+        bool operator ()(const TNodeState* a, const TNodeState* b) const {
             return a->GetDataSize() < b->GetDataSize();
         }
     };
@@ -469,7 +469,7 @@ private:
                                 currentKeyRowCountOpens += node->GetRowCount();
                             }
                         }
-                        Y_ABORT_UNLESS(currentKeyRowCountOpens <= openedRowCount);
+                        Y_ENSURE(currentKeyRowCountOpens <= openedRowCount);
                         ui64 currentKeyPointerRowCount = closedRowCount + (openedRowCount - currentKeyRowCountOpens) / 2;
                         if ((stats.RowCountHistogram.empty() ? 0 : stats.RowCountHistogram.back().Value) < currentKeyPointerRowCount && currentKeyPointerRowCount < stats.RowCount) {
                             AddKey(stats.RowCountHistogram, currentKeyPointer.GetKey(), currentKeyPointerRowCount);
@@ -488,7 +488,7 @@ private:
                                 currentKeyDataSizeOpens += node->GetDataSize();
                             }
                         }
-                        Y_ABORT_UNLESS(currentKeyDataSizeOpens <= openedDataSize);
+                        Y_ENSURE(currentKeyDataSizeOpens <= openedDataSize);
                         ui64 currentKeyPointerDataSize = closedDataSize + (openedDataSize - currentKeyDataSizeOpens) / 2;
                         if ((stats.DataSizeHistogram.empty() ? 0 : stats.DataSizeHistogram.back().Value) < currentKeyPointerDataSize && currentKeyPointerDataSize < stats.DataSize.Size) {
                             AddKey(stats.DataSizeHistogram, currentKeyPointer.GetKey(), currentKeyPointerDataSize);
@@ -539,7 +539,7 @@ private:
     }
 
     bool TryLoadNode(const TNodeState& parent, const auto& addNode) {
-        Y_ABORT_UNLESS(parent.Level);
+        Y_ENSURE(parent.Level);
 
         auto page = Env->TryGetPage(parent.Part, parent.PageId, {});
         if (!page) {
@@ -590,12 +590,12 @@ private:
     }
 
     static int CompareKeys(const TCellsIterable& left_, const TCellsIterable& right_, const TKeyCellDefaults& keyDefaults) {
-        Y_ABORT_UNLESS(left_);
-        Y_ABORT_UNLESS(right_);
+        Y_ENSURE(left_);
+        Y_ENSURE(right_);
 
         auto left = left_.Iter(), right = right_.Iter();
         size_t end = Max(left.Count(), right.Count());
-        Y_ABORT_UNLESS(end <= keyDefaults.Size(), "Key schema is smaller than compared keys");
+        Y_ENSURE(end <= keyDefaults.Size(), "Key schema is smaller than compared keys");
         
         for (size_t pos = 0; pos < end; ++pos) {
             const auto& leftCell = pos < left.Count() ? left.Next() : keyDefaults.Defs[pos];

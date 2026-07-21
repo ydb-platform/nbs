@@ -4,7 +4,9 @@
 #include <util/system/condvar.h>
 #include <util/system/info.h>
 
-#define SINGLE_THREAD 0
+#include <bit>
+
+#define SINGLE_THREAD 1
 
 namespace {
 
@@ -45,7 +47,7 @@ bool DoTestCase(TBlobStorageGroupType::EErasureSpecies erasure, const std::set<s
         const TLogoBlobID blobId(id, partIdx + 1);
         TRope buffer = type.PartSize(blobId) ? parts.Parts[partIdx].OwnedString : TRope(TString());
         env.Runtime->Send(new IEventHandle(queueId, sender, new TEvBlobStorage::TEvVPut(blobId, buffer,
-            info->GetVDiskId(orderNum), false, nullptr, TInstant::Max(), NKikimrBlobStorage::TabletLog)),
+            info->GetVDiskId(orderNum), false, nullptr, TInstant::Max(), NKikimrBlobStorage::TabletLog, false)),
             sender.NodeId());
         auto res = env.WaitForEdgeActorEvent<TEvBlobStorage::TEvVPutResult>(sender);
         Y_ABORT_UNLESS(res->Get()->Record.GetStatus() == NKikimrProto::OK);
@@ -241,7 +243,7 @@ void DoTest(TBlobStorageGroupType::EErasureSpecies erasure) {
                     v.push_back(1 << i); // main
                 } else {
                     for (ui32 j = 1; j < (1 << type.TotalPartCount()); ++j) {
-                        if (PopCount(j) <= 1) {
+                        if (std::popcount(j) <= 1) {
                             v.push_back(j); // handoff
                         }
                     }

@@ -14,7 +14,7 @@ PEERDIR(
     contrib/ydb/core/kqp/ut/common
     contrib/ydb/library/yql/providers/common/db_id_async_resolver
     contrib/ydb/library/yql/providers/common/structured_token
-    contrib/ydb/library/yql/providers/generic/connector/api/common
+    contrib/ydb/library/yql/providers/common/proto
     contrib/ydb/library/yql/providers/generic/connector/libcpp
 )
 

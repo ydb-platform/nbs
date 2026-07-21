@@ -1,27 +1,33 @@
 #include "service_operation.h"
 
 #include "operation_helpers.h"
+#include "rpc_backup_base.h"
 #include "rpc_export_base.h"
 #include "rpc_import_base.h"
 #include "rpc_operation_request_base.h"
-
-#include <contrib/ydb/core/grpc_services/base/base.h>
-#include <google/protobuf/text_format.h>
+#include "rpc_restore_base.h"
 
 #include <contrib/ydb/core/base/tablet_pipe.h>
 #include <contrib/ydb/core/cms/console/console.h>
+#include <contrib/ydb/core/grpc_services/base/base.h>
+#include <contrib/ydb/core/grpc_services/rpc_common/rpc_common.h>
 #include <contrib/ydb/core/kqp/common/kqp.h>
 #include <contrib/ydb/core/kqp/common/events/script_executions.h>
 #include <contrib/ydb/core/protos/flat_tx_scheme.pb.h>
+#include <contrib/ydb/core/statistics/events.h>
 #include <contrib/ydb/core/tx/schemeshard/schemeshard.h>
-#include <contrib/ydb/core/tx/schemeshard/schemeshard_build_index.h>
+#include <contrib/ydb/core/tx/schemeshard/schemeshard_backup.h>
+#include <contrib/ydb/core/tx/schemeshard/index/build_index.h>
 #include <contrib/ydb/core/tx/schemeshard/schemeshard_export.h>
+#include <contrib/ydb/core/tx/schemeshard/schemeshard_forced_compaction.h>
 #include <contrib/ydb/core/tx/schemeshard/schemeshard_import.h>
 #include <contrib/ydb/core/tx/tx_proxy/proxy.h>
-#include <contrib/ydb/library/yql/public/issue/yql_issue_message.h>
-#include <contrib/ydb/public/lib/operation_id/operation_id.h>
-
 #include <contrib/ydb/library/actors/core/hfunc.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/library/operation_id/operation_id.h>
+
+#include <contrib/ydb/library/yql/public/issue/yql_issue_message.h>
+
+#include <google/protobuf/text_format.h>
 
 #include <util/string/cast.h>
 
@@ -35,8 +41,11 @@ using namespace Ydb;
 using TEvGetOperationRequest = TGrpcRequestOperationCall<Ydb::Operations::GetOperationRequest,
     Ydb::Operations::GetOperationResponse>;
 
-class TGetOperationRPC : public TRpcOperationRequestActor<TGetOperationRPC, TEvGetOperationRequest, true>,
-                         public TExportConv {
+class TGetOperationRPC
+    : public TRpcOperationRequestActor<TGetOperationRPC, TEvGetOperationRequest, true>
+    , public TExportConv
+    , public TBackupCollectionRestoreConv
+{
     ui32 GetRequiredAccessRights() const override {
         return NACLib::GenericRead;
     }
@@ -51,6 +60,16 @@ class TGetOperationRPC : public TRpcOperationRequestActor<TGetOperationRPC, TEvG
             return "[GetIndexBuild]";
         case TOperationId::SCRIPT_EXECUTION:
             return "[GetScriptExecution]";
+        case TOperationId::INCREMENTAL_BACKUP:
+            return "[GetIncrementalBackup]";
+        case TOperationId::RESTORE:
+            return "[GetBackupCollectionRestore]";
+        case TOperationId::COMPACTION:
+            return "[GetForcedCompaction]";
+        case TOperationId::FULL_BACKUP:
+            return "[GetFullBackup]";
+        case TOperationId::ANALYZE:
+            return "[GetAnalyze]";
         default:
             return "[Untagged]";
         }
@@ -59,14 +78,111 @@ class TGetOperationRPC : public TRpcOperationRequestActor<TGetOperationRPC, TEvG
     IEventBase* MakeRequest() override {
         switch (OperationId_.GetKind()) {
         case TOperationId::EXPORT:
-            return new NSchemeShard::TEvExport::TEvGetExportRequest(DatabaseName, RawOperationId_);
+            return new NSchemeShard::TEvExport::TEvGetExportRequest(GetDatabaseName(), RawOperationId_);
         case TOperationId::IMPORT:
-            return new NSchemeShard::TEvImport::TEvGetImportRequest(DatabaseName, RawOperationId_);
+            return new NSchemeShard::TEvImport::TEvGetImportRequest(GetDatabaseName(), RawOperationId_);
         case TOperationId::BUILD_INDEX:
-            return new NSchemeShard::TEvIndexBuilder::TEvGetRequest(DatabaseName, RawOperationId_);
+            return new NSchemeShard::TEvIndexBuilder::TEvGetRequest(GetDatabaseName(), RawOperationId_);
+        case TOperationId::INCREMENTAL_BACKUP:
+            return new NSchemeShard::TEvBackup::TEvGetIncrementalBackupRequest(GetDatabaseName(), RawOperationId_);
+        case TOperationId::RESTORE:
+            return new NSchemeShard::TEvBackup::TEvGetBackupCollectionRestoreRequest(GetDatabaseName(), RawOperationId_);
+        case TOperationId::COMPACTION:
+            return new NSchemeShard::TEvForcedCompaction::TEvGetRequest(GetDatabaseName(), RawOperationId_);
+        case TOperationId::FULL_BACKUP:
+            return new NSchemeShard::TEvBackup::TEvGetFullBackupRequest(GetDatabaseName(), RawOperationId_);
         default:
             Y_ABORT("unreachable");
         }
+    }
+
+    void HandleNavigateResult(TEvTxProxySchemeCache::TEvNavigateKeySetResult::TPtr& ev) {
+        if (OperationId_.GetKind() == TOperationId::ANALYZE) {
+            HandleSANavigateResult(ev);
+        } else {
+            TRpcOperationRequestActor::Handle(ev);
+        }
+    }
+
+    // SA-specific navigation (two-hop, mirrors TRpcAnalyzeOperationRequestActor)
+    void ResolveStatisticsAggregatorForAnalyze() {
+        using TNavigate = NSchemeCache::TSchemeCacheNavigate;
+        auto req = MakeHolder<TNavigate>();
+        req->DatabaseName = GetDatabaseName();
+        auto& entry = req->ResultSet.emplace_back();
+        entry.Operation = TNavigate::OpPath;
+        entry.Path = NKikimr::SplitPath(GetDatabaseName());
+        entry.RedirectRequired = false;
+        Send(MakeSchemeCacheID(), new TEvTxProxySchemeCache::TEvNavigateKeySet(req.Release()),
+             0, SANav1Cookie);
+    }
+
+    void HandleSANavigateResult(TEvTxProxySchemeCache::TEvNavigateKeySetResult::TPtr& ev) {
+        const auto& request = ev->Get()->Request;
+        if (request->ResultSet.empty() || request->ErrorCount > 0) {
+            return ReplyWithStatus(StatusIds::SCHEME_ERROR);
+        }
+        const auto& entry = request->ResultSet.front();
+        if (!entry.DomainInfo) {
+            return ReplyWithStatus(StatusIds::INTERNAL_ERROR);
+        }
+
+        if (!this->CheckAccess(CanonizePath(entry.Path), entry.SecurityObject, GetRequiredAccessRights())) {
+            return;
+        }
+
+        if (ev->Cookie == SANav2Cookie) {
+            // Second hop: got resources domain
+            if (!entry.DomainInfo->Params.HasStatisticsAggregator()) {
+                return ReplyWithStatus(StatusIds::INTERNAL_ERROR);
+            }
+            SendToSA(entry.DomainInfo->Params.GetStatisticsAggregator());
+            return;
+        }
+
+        // First hop
+        const auto& domainInfo = entry.DomainInfo;
+        if (!domainInfo->IsServerless()) {
+            if (domainInfo->Params.HasStatisticsAggregator()) {
+                SendToSA(domainInfo->Params.GetStatisticsAggregator());
+            } else {
+                NavigateDomainKeyForSA(domainInfo->DomainKey);
+            }
+        } else {
+            NavigateDomainKeyForSA(domainInfo->ResourcesDomainKey);
+        }
+    }
+
+    void NavigateDomainKeyForSA(const TPathId& domainKey) {
+        using TNavigate = NSchemeCache::TSchemeCacheNavigate;
+        auto nav = MakeHolder<TNavigate>();
+        nav->DatabaseName = GetDatabaseName();
+        auto& entry = nav->ResultSet.emplace_back();
+        entry.TableId = TTableId(domainKey.OwnerId, domainKey.LocalPathId);
+        entry.Operation = TNavigate::EOp::OpPath;
+        entry.RequestType = TNavigate::TEntry::ERequestType::ByTableId;
+        entry.RedirectRequired = false;
+        Send(MakeSchemeCacheID(), new TEvTxProxySchemeCache::TEvNavigateKeySet(nav.Release()),
+             0, SANav2Cookie);
+    }
+
+    void SendToSA(ui64 saTabletId) {
+        NTabletPipe::TClientConfig config;
+        config.RetryPolicy = {.RetryLimitCount = 3};
+        SAPipeClient_ = RegisterWithSameMailbox(NTabletPipe::CreateClient(SelfId(), saTabletId, config));
+        NTabletPipe::SendData(SelfId(), SAPipeClient_,
+            new NStat::TEvStatistics::TEvAnalyzeOpGetRequest(GetDatabaseName(), AnalyzeOperationId_));
+    }
+
+    void Handle(NStat::TEvStatistics::TEvAnalyzeOpGetResponse::TPtr& ev, const TActorContext& ctx) {
+        const auto& record = ev->Get()->Record;
+        if (record.GetStatus() != Ydb::StatusIds::SUCCESS) {
+            ReplyGetOperationResponse(true, ctx, record.GetStatus());
+            return;
+        }
+        TEvGetOperationRequest::TResponse resp;
+        ::NKikimr::NGRpcService::ToOperation(record.GetAnalyzeOperation(), resp.mutable_operation());
+        Reply(resp, ctx);
     }
 
     void PassAway() override {
@@ -74,7 +190,7 @@ class TGetOperationRPC : public TRpcOperationRequestActor<TGetOperationRPC, TEvG
             NTabletPipe::CloseClient(SelfId(), PipeActorId_);
             PipeActorId_ = TActorId();
         }
-
+        NTabletPipe::CloseAndForgetClient(SelfId(), SAPipeClient_);
         TRpcOperationRequestActor::PassAway();
     }
 
@@ -94,10 +210,23 @@ public:
             case TOperationId::EXPORT:
             case TOperationId::IMPORT:
             case TOperationId::BUILD_INDEX:
+            case TOperationId::INCREMENTAL_BACKUP:
+            case TOperationId::RESTORE:
+            case TOperationId::COMPACTION:
+            case TOperationId::FULL_BACKUP:
                 if (!TryGetId(OperationId_, RawOperationId_)) {
                     return ReplyWithStatus(StatusIds::BAD_REQUEST);
                 }
                 ResolveDatabase();
+                break;
+            case TOperationId::ANALYZE:
+                if (!AppData()->FeatureFlags.GetEnableAnalyzeLongRunningOperation()) {
+                    return ReplyWithStatus(StatusIds::UNSUPPORTED);
+                }
+                if (!TryGetUlidId(OperationId_, AnalyzeOperationId_)) {
+                    return ReplyWithStatus(StatusIds::BAD_REQUEST);
+                }
+                ResolveStatisticsAggregatorForAnalyze();
                 break;
             case TOperationId::SCRIPT_EXECUTION:
                 SendGetScriptExecutionOperation();
@@ -121,7 +250,13 @@ public:
             HFunc(NSchemeShard::TEvExport::TEvGetExportResponse, Handle);
             HFunc(NSchemeShard::TEvImport::TEvGetImportResponse, Handle);
             HFunc(NSchemeShard::TEvIndexBuilder::TEvGetResponse, Handle);
+            HFunc(NSchemeShard::TEvForcedCompaction::TEvGetResponse, Handle);
             HFunc(NKqp::TEvGetScriptExecutionOperationResponse, Handle);
+            HFunc(NSchemeShard::TEvBackup::TEvGetIncrementalBackupResponse, Handle);
+            HFunc(NSchemeShard::TEvBackup::TEvGetBackupCollectionRestoreResponse, Handle);
+            HFunc(NSchemeShard::TEvBackup::TEvGetFullBackupResponse, Handle);
+            HFunc(NStat::TEvStatistics::TEvAnalyzeOpGetResponse, Handle);
+            hFunc(TEvTxProxySchemeCache::TEvNavigateKeySetResult, HandleNavigateResult);
 
         default:
             return StateBase(ev);
@@ -167,7 +302,7 @@ private:
 
         IActor* pipeActor = NTabletPipe::CreateClient(ctx.SelfID, tid);
         Y_ABORT_UNLESS(pipeActor);
-        PipeActorId_ = ctx.ExecutorThread.RegisterActor(pipeActor);
+        PipeActorId_ = ctx.Register(pipeActor);
 
         auto request = MakeHolder<NConsole::TEvConsole::TEvGetOperationRequest>();
         request->Record.MutableRequest()->set_id(GetProtoRequest()->id());
@@ -194,7 +329,7 @@ private:
 
         IActor* pipeActor = NTabletPipe::CreateClient(ctx.SelfID, schemeShardTabletId);
         Y_ABORT_UNLESS(pipeActor);
-        PipeActorId_ = ctx.ExecutorThread.RegisterActor(pipeActor);
+        PipeActorId_ = ctx.Register(pipeActor);
 
         auto request = MakeHolder<NSchemeShard::TEvSchemeShard::TEvNotifyTxCompletion>();
         request->Record.SetTxId(txId);
@@ -202,7 +337,7 @@ private:
     }
 
     void SendGetScriptExecutionOperation() {
-        Send(NKqp::MakeKqpProxyID(SelfId().NodeId()), new NKqp::TEvGetScriptExecutionOperation(DatabaseName, OperationId_));
+        Send(NKqp::MakeKqpProxyID(SelfId().NodeId()), new NKqp::TEvGetScriptExecutionOperation(GetDatabaseName(), OperationId_, GetUserSID(*Request)));
     }
 
     void Handle(NSchemeShard::TEvExport::TEvGetExportResponse::TPtr& ev, const TActorContext& ctx) {
@@ -243,6 +378,22 @@ private:
         }
     }
 
+    void Handle(NSchemeShard::TEvForcedCompaction::TEvGetResponse::TPtr& ev, const TActorContext& ctx) {
+        const auto& record = ev->Get()->Record;
+
+        LOG_D("Handle TEvForcedCompaction::TEvGetResponse"
+            << ": record# " << record.ShortDebugString());
+
+        if (record.GetStatus() != Ydb::StatusIds::SUCCESS) {
+            ReplyGetOperationResponse(true, ctx, record.GetStatus());
+        } else {
+            TEvGetOperationRequest::TResponse resp;
+
+            ::NKikimr::NGRpcService::ToOperation(record.GetForcedCompaction(), resp.mutable_operation());
+            Reply(resp, ctx);
+        }
+    }
+
     void Handle(NKqp::TEvGetScriptExecutionOperationResponse::TPtr& ev, const TActorContext& ctx) {
         TEvGetOperationRequest::TResponse resp;
         auto deferred = resp.mutable_operation();
@@ -259,6 +410,39 @@ private:
         if (ev->Get()->Metadata) {
             deferred->mutable_metadata()->Swap(ev->Get()->Metadata.Get());
         }
+        Reply(resp, ctx);
+    }
+
+    void Handle(NSchemeShard::TEvBackup::TEvGetIncrementalBackupResponse::TPtr& ev, const TActorContext& ctx) {
+        const auto& record = ev->Get()->Record;
+
+        LOG_D("Handle TEvBackup::TEvGetIncrementalBackupResponse"
+            << ": record# " << record.ShortDebugString());
+
+        TEvGetOperationRequest::TResponse resp;
+        *resp.mutable_operation() = TIncrementalBackupConv::ToOperation(record.GetIncrementalBackup());
+        Reply(resp, ctx);
+    }
+
+    void Handle(NSchemeShard::TEvBackup::TEvGetBackupCollectionRestoreResponse::TPtr& ev, const TActorContext& ctx) {
+        const auto& record = ev->Get()->Record;
+
+        LOG_D("Handle TEvBackup::TEvGetBackupCollectionRestoreResponse"
+            << ": record# " << record.ShortDebugString());
+
+        TEvGetOperationRequest::TResponse resp;
+        *resp.mutable_operation() = TBackupCollectionRestoreConv::ToOperation(record.GetBackupCollectionRestore());
+        Reply(resp, ctx);
+    }
+
+    void Handle(NSchemeShard::TEvBackup::TEvGetFullBackupResponse::TPtr& ev, const TActorContext& ctx) {
+        const auto& record = ev->Get()->Record;
+
+        LOG_D("Handle TEvBackup::TEvGetFullBackupResponse"
+            << ": record# " << record.ShortDebugString());
+
+        TEvGetOperationRequest::TResponse resp;
+        *resp.mutable_operation() = TFullBackupConv::ToOperation(record.GetFullBackup());
         Reply(resp, ctx);
     }
 
@@ -315,7 +499,12 @@ private:
 
     TOperationId OperationId_;
     ui64 RawOperationId_ = 0;
+    TString AnalyzeOperationId_;   // 16-byte binary ULID for ANALYZE ops
     TActorId PipeActorId_;
+    TActorId SAPipeClient_;
+
+    static constexpr ui64 SANav1Cookie = 100;
+    static constexpr ui64 SANav2Cookie = 101;
 };
 
 void DoGetOperationRequest(std::unique_ptr<IRequestOpCtx> p, const IFacilityProvider& f) {

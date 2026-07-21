@@ -2,6 +2,7 @@ LIBRARY()
 
 SRCS(
     ydb_clickhouse_internal.cpp
+    ydb_debug.cpp
     ydb_dummy.cpp
     ydb_export.cpp
     ydb_import.cpp
@@ -9,6 +10,7 @@ SRCS(
     ydb_operation.cpp
     ydb_query.cpp
     ydb_scheme.cpp
+    ydb_secret.cpp
     ydb_scripting.cpp
     ydb_table.cpp
     ydb_object_storage.cpp
@@ -38,8 +40,6 @@ END()
 
 RECURSE_FOR_TESTS(
     backup_ut
-    sdk_sessions_ut
-    sdk_sessions_pool_ut
     table_split_ut
     ut
 )

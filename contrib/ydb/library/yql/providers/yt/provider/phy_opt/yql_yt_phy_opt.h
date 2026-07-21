@@ -34,11 +34,21 @@ private:
 
     NNodes::TMaybeNode<NNodes::TExprBase> DqWrite(NNodes::TExprBase node, TExprContext& ctx, IOptimizationContext& optCtx, const TGetParents& getParents) const;
 
+    NNodes::TMaybeNode<NNodes::TExprBase> Materialize(NNodes::TExprBase node, TExprContext& ctx) const;
+
+    NNodes::TMaybeNode<NNodes::TExprBase> DqMaterialize(NNodes::TExprBase node, TExprContext& ctx, IOptimizationContext& optCtx, const TGetParents& getParents) const;
+
     NNodes::TMaybeNode<NNodes::TExprBase> YtDqProcessWrite(NNodes::TExprBase node, TExprContext& ctx) const;
+
+    NNodes::TMaybeNode<NNodes::TExprBase> Create(NNodes::TExprBase node, TExprContext& ctx) const;
 
     NNodes::TMaybeNode<NNodes::TExprBase> Write(NNodes::TExprBase node, TExprContext& ctx) const;
 
     NNodes::TMaybeNode<NNodes::TExprBase> Fill(NNodes::TExprBase node, TExprContext& ctx) const;
+
+    NNodes::TMaybeNode<NNodes::TExprBase> FillToMaterialize(NNodes::TExprBase node, TExprContext& ctx) const;
+
+    NNodes::TMaybeNode<NNodes::TExprBase> BypassPersistBeforePublish(NNodes::TExprBase node, TExprContext& ctx, const TGetParents& getParents) const;
 
     NNodes::TMaybeNode<NNodes::TExprBase> TakeOrSkip(NNodes::TExprBase node, TExprContext& ctx, const TGetParents& getParents) const;
 
@@ -68,12 +78,21 @@ private:
     // <cmpItem> := '(<cmpOp> <value>)
     NNodes::TMaybeNode<NNodes::TExprBase> ExtractKeyRangeLegacy(NNodes::TExprBase node, TExprContext& ctx) const;
 
+    NNodes::TMaybeNode<NNodes::TExprBase> ExtractQLFilters(NNodes::TExprBase node, TExprContext& ctx) const;
+
+    NNodes::TMaybeNode<NNodes::TExprBase> OptimizeQLFilterType(NNodes::TExprBase node, TExprContext& ctx) const;
+
     NNodes::TMaybeNode<NNodes::TExprBase> FuseReduce(NNodes::TExprBase node, TExprContext& ctx, const TGetParents& getParents) const;
+
+    NNodes::TMaybeNode<NNodes::TExprBase> FuseReduceWithTrivialMap(NNodes::TExprBase node, TExprContext& ctx, const TGetParents& getParents) const;
 
     NNodes::TMaybeNode<NNodes::TExprBase> FuseInnerMap(NNodes::TExprBase node, TExprContext& ctx, const TGetParents& getParents) const;
 
     NNodes::TMaybeNode<NNodes::TExprBase> FuseOuterMap(NNodes::TExprBase node, TExprContext& ctx, const TGetParents& getParents) const;
-    NNodes::TMaybeNode<NNodes::TExprBase> AssumeSorted(NNodes::TExprBase node, TExprContext& ctx, const TGetParents& getParents) const;
+
+    NNodes::TMaybeNode<NNodes::TExprBase> FuseMapToMapReduce(NNodes::TExprBase node, TExprContext& ctx, const TGetParents& getParents) const;
+
+    NNodes::TMaybeNode<NNodes::TExprBase> AssumeConstraints(NNodes::TExprBase node, TExprContext& ctx, const TGetParents& getParents) const;
 
     NNodes::TMaybeNode<NNodes::TExprBase> LambdaFieldsSubset(NNodes::TYtWithUserJobsOpBase op, size_t lambdaIdx, TExprContext& ctx, const TGetParents& getParents) const;
 
@@ -91,7 +110,17 @@ private:
 
     NNodes::TMaybeNode<NNodes::TExprBase> EquiJoin(NNodes::TExprBase node, TExprContext& ctx, const TGetParents& getParents) const;
 
+    template <class TNodeType>
+    NNodes::TMaybeNode<NNodes::TExprBase> ConvertSpecificTablesToStatic(NNodes::TExprBase node, TExprContext& ctx, std::function<bool(const TYtTableMetaInfo::TPtr&)> tableChecker) const;
+
+    template <class TNodeType>
+    NNodes::TMaybeNode<NNodes::TExprBase> ConvertDynamicTablesToStatic(NNodes::TExprBase node, TExprContext& ctx) const;
+
+    NNodes::TMaybeNode<NNodes::TExprBase> ConvertRLSTablesToStatic(NNodes::TExprBase node, TExprContext& ctx) const;
+
     NNodes::TMaybeNode<NNodes::TExprBase> EarlyMergeJoin(NNodes::TExprBase node, TExprContext& ctx) const;
+
+    NNodes::TMaybeNode<NNodes::TExprBase> AddPruneKeys(NNodes::TExprBase node, TExprContext& ctx) const;
 
     NNodes::TMaybeNode<NNodes::TExprBase> RuntimeEquiJoin(NNodes::TExprBase node, TExprContext& ctx) const;
 
@@ -122,18 +151,24 @@ private:
 
     NNodes::TMaybeNode<NNodes::TExprBase> MapToMerge(NNodes::TExprBase node, TExprContext& ctx) const;
 
-    NNodes::TMaybeNode<NNodes::TExprBase> UnorderedPublishTarget(NNodes::TExprBase node, TExprContext& ctx) const;
-
-    NNodes::TMaybeNode<NNodes::TExprBase> AddTrivialMapperForNativeYtTypes(NNodes::TExprBase node, TExprContext& ctx) const;
-
     NNodes::TMaybeNode<NNodes::TExprBase> YtDqWrite(NNodes::TExprBase node, TExprContext& ctx) const;
 
     NNodes::TMaybeNode<NNodes::TExprBase> PushDownYtMapOverSortedMerge(NNodes::TExprBase node, TExprContext& ctx, const TGetParents& getParents) const;
 
     NNodes::TMaybeNode<NNodes::TExprBase> MergeToCopy(NNodes::TExprBase node, TExprContext& ctx) const;
 
+    NNodes::TMaybeNode<NNodes::TExprBase> ForceTransform(NNodes::TExprBase node, TExprContext& ctx) const;
+
+    NNodes::TMaybeNode<NNodes::TExprBase> UpdateDataSinkCluster(NNodes::TExprBase node, TExprContext& ctx) const;
+
+    NNodes::TMaybeNode<NNodes::TExprBase> UpdateDataSourceCluster(NNodes::TExprBase node, TExprContext& ctx) const;
+
+    NNodes::TMaybeNode<NNodes::TExprBase> PushPruneKeysIntoYtOperation(NNodes::TExprBase node, TExprContext& ctx) const;
+
     template <typename TLMapType>
     NNodes::TMaybeNode<NNodes::TExprBase> LMap(NNodes::TExprBase node, TExprContext& ctx) const;
+
+    NNodes::TMaybeNode<NNodes::TExprBase> UnessentialFilter(NNodes::TExprBase node, TExprContext& ctx) const;
 
     template<bool WithList>
     NNodes::TCoLambda MakeJobLambda(NNodes::TCoLambda lambda, bool useFlow, TExprContext& ctx) const;
@@ -143,11 +178,12 @@ private:
         return NNodes::TMaybeNode<TExpr>(YtCleanupWorld(node.Ptr(), ctx, State_));
     }
 
-    TMaybe<bool> CanFuseLambdas(const NNodes::TCoLambda& innerLambda, const NNodes::TCoLambda& outerLambda, TExprContext& ctx) const;
+    NNodes::TExprBase RebuildKeyFilterAfterPushDown(NNodes::TExprBase filter, size_t usedKeysCount, TExprContext& ctx) const;
 
+    NNodes::TMaybeNode<NNodes::TExprBase> OptimizeAssumeConstraints(TPositionHandle pos, NNodes::TExprBase input, const TConstraintSet& constraints, TExprContext& ctx, const TGetParents& getParents) const;
 
 private:
     const TYtState::TPtr State_;
 };
 
-}  // namespace NYql
+} // namespace NYql

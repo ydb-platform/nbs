@@ -5,6 +5,7 @@ import "contrib/ydb/public/api/protos/ydb_operation.proto";
 import "contrib/ydb/public/api/protos/ydb_value.proto";
 import "contrib/ydb/library/yql/dq/actors/protos/dq_stats.proto";
 import "contrib/ydb/library/yql/dq/proto/dq_tasks.proto";
+import "contrib/ydb/library/yql/dq/proto/dq_transport.proto";
 
 package Yql.DqsProto;
 
@@ -25,6 +26,7 @@ message ResponseMetric {
 message ExecuteQueryResult {
     Ydb.ResultSet result = 1;
     bytes yson = 2;
+    repeated NYql.NDqProto.TData sample = 3;
 }
 
 message TFile {
@@ -96,6 +98,7 @@ message ExecuteGraphResponse {
     Ydb.Operations.Operation Operation = 1;
     repeated ResponseMetric Metric = 2;
     bool Truncated = 3;
+    bool Timeout = 4;
 }
 
 message SvnRevisionRequest {
@@ -269,6 +272,7 @@ message ClusterStatusResponse {
         string StartTime = 21;
         bool Dead = 23;
         RegisterNodeRequest.TRusage Rusage = 25;
+        string RequestStartTime = 27;
     }
 
     string Revision = 1;
@@ -279,6 +283,7 @@ message ClusterStatusResponse {
         repeated File Resources = 2;
         string OperationId = 3;
         string UserName = 4;
+        string EnqueueTime = 5;
     }
     repeated WaitInfo WaitList = 4;
 
@@ -291,6 +296,7 @@ message ClusterStatusResponse {
         int64 WaitTime = 3;
         int64 UseCount = 4;
         int64 TryCount = 5;
+        bool Uploaded = 9;
     }
 
     repeated ResourceStat Resource = 5;
@@ -306,6 +312,7 @@ message ClusterStatusResponse {
         repeated string File = 4;
         uint32 Pid = 5;
         string Address = 6;
+        string StartTime = 7;
     };
 
     repeated TServiceNode ServiceNode = 10;

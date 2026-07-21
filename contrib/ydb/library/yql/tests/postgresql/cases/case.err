@@ -100,7 +100,7 @@ SELECT CASE WHEN i > 100 THEN 1/0 ELSE 0 END FROM case_tbl;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.case_tbl
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.case_tbl
     
 <sql-statement>
 -- Test for cases involving untyped literals in test expression

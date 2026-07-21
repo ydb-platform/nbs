@@ -5,6 +5,8 @@
 #include <contrib/ydb/library/yql/ast/yql_gc_nodes.h>
 #include <util/system/mutex.h>
 
+#include <utility>
+
 #ifndef YQL_OPERATION_STATISTICS_CUSTOM_FIELDS
 #define YQL_OPERATION_STATISTICS_CUSTOM_FIELDS
 #endif
@@ -69,13 +71,37 @@ namespace NYql {
 
         TMaybe<TCounters> Counters;
 
-        TOperationProgress(const TString& category, ui32 id,
-            EState state, const TString& stage = "")
-            : Category(category)
+        struct TAlert final {
+            TString Type;
+            TString Message;
+
+            bool operator == (const TAlert& rhs) const noexcept {
+                return (Type == rhs.Type) &&
+                       (Message == rhs.Message);
+            }
+
+            bool operator != (const TAlert& rhs) const noexcept {
+                return !operator==(rhs);
+            }
+        };
+
+        TVector<TAlert> Alerts;
+
+        TOperationProgress(TString  category, ui32 id,
+            EState state, const TString& stage = "", const TVector<TAlert>& alerts = {})
+            : Category(std::move(category))
             , Id(id)
             , State(state)
             , Stage(stage, TInstant::Now())
+            , Alerts(alerts)
         {
+        }
+
+        static EOpBlockStatus CombineBlockStatuses(EOpBlockStatus lhs, EOpBlockStatus rhs) {
+            if (lhs == rhs) {
+                return lhs;
+            }
+            return EOpBlockStatus::Partial;
         }
     };
 
@@ -92,11 +118,11 @@ namespace NYql {
 
             TEntry(TString name, TMaybe<i64> sum, TMaybe<i64> max, TMaybe<i64> min, TMaybe<i64> avg, TMaybe<i64> count)
                 : Name(std::move(name))
-                , Sum(std::move(sum))
-                , Max(std::move(max))
-                , Min(std::move(min))
-                , Avg(std::move(avg))
-                , Count(std::move(count))
+                , Sum(sum)
+                , Max(max)
+                , Min(min)
+                , Avg(avg)
+                , Count(count)
             {
             }
 

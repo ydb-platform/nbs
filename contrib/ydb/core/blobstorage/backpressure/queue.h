@@ -4,6 +4,8 @@
 #include "common.h"
 #include "event.h"
 
+#include <contrib/ydb/core/retro_tracing_impl/spans/lazy_retro_span.h>
+
 namespace NKikimr::NBsQueue {
 
 static constexpr size_t MaxUnusedItems = 1024;
@@ -31,19 +33,10 @@ class TBlobStorageQueue {
         }
     };
 
-    template<typename TDerived>
-    struct TSenderNode : public TRbTreeItem<TSenderNode<TDerived>, TCompare<TActorId>> {
-        const TActorId& GetKey() const {
-            return static_cast<const TDerived&>(*this).Event.GetSender();
-        }
-    };
-
-    struct TItem
-        : public TSenderNode<TItem>
-    {
+    struct TItem {
         EItemQueue Queue;
         TCostModel::TMessageCostEssence CostEssence;
-        NWilson::TSpan Span;
+        TLazyRetroSpan Span;
         TEventHolder Event;
         ui64 MsgId;
         ui64 SequenceId;
@@ -73,10 +66,9 @@ class TBlobStorageQueue {
             , DirtyCost(true)
             , ProcessingTimer(useActorSystemTime)
         {
-            if (Span) {
-                Span
-                    .Attribute("event", TypeName<TEvent>())
-                    .Attribute("local", local);
+            if (NWilson::TSpan* wilsonSpan = Span.GetWilsonSpanPtr()) {
+                wilsonSpan->Attribute("event", TypeName<TEvent>());
+                wilsonSpan->Attribute("local", local);
             }
         }
 
@@ -103,10 +95,7 @@ class TBlobStorageQueue {
         {}
     };
 
-    using TSenderMap = TRbTree<TSenderNode<TItem>, TCompare<TActorId>>;
-
     TQueues Queues;
-    TSenderMap SenderToItems;
     THashMap<std::pair<ui64, ui64>, TItemList::iterator> InFlightLookup;
 
     ui64 WindowSize;
@@ -154,6 +143,7 @@ public:
     ::NMonitoring::TDynamicCounters::TCounterPtr QueueSerializedBytes;
     ::NMonitoring::TDynamicCounters::TCounterPtr QueueDeserializedItems;
     ::NMonitoring::TDynamicCounters::TCounterPtr QueueDeserializedBytes;
+    ::NMonitoring::TDynamicCounters::TCounterPtr QueueConnected;
     ::NMonitoring::TDynamicCounters::TCounterPtr QueueSize;
 
 public:
@@ -233,7 +223,6 @@ public:
 
         newIt->Iterator = newIt;
         SetItemQueue(*newIt, EItemQueue::Waiting);
-        SenderToItems.Insert(&*newIt);
 
         // count item
         ++*QueueItemsPut;

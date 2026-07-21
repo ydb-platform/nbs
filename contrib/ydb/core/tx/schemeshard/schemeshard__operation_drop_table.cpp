@@ -1,8 +1,10 @@
-#include "schemeshard__operation_part.h"
 #include "schemeshard__operation_common.h"
+#include "schemeshard__operation_part.h"
+#include "schemeshard__operation.h"
 #include "schemeshard_impl.h"
 
 #include <contrib/ydb/core/base/subdomain.h>
+#include <contrib/ydb/core/mind/hive/hive.h>
 
 namespace {
 
@@ -36,12 +38,13 @@ void DropPath(NIceDb::TNiceDb& db,
     context.SS->PersistUserAttributes(db, path->PathId, path->UserAttrs, nullptr);
 
     const auto isBackupTable = context.SS->IsBackupTable(path->PathId);
+    const EPathCategory pathCategory = isBackupTable ? EPathCategory::Backup : EPathCategory::Regular;
 
     auto domainInfo = context.SS->ResolveDomainInfo(path->PathId);
-    domainInfo->DecPathsInside(context.SS, 1, isBackupTable);
+    domainInfo->DecPathsInside(context.SS, 1, pathCategory);
 
     auto parentDir = path.Parent();
-    parentDir->DecAliveChildren(1, isBackupTable);
+    DecAliveChildrenDirect(operationId, parentDir.Base(), context, isBackupTable);
     ++parentDir->DirAlterVersion;
     context.SS->PersistPathDirAlterVersion(db, parentDir.Base());
 
@@ -61,7 +64,7 @@ private:
     TString DebugHint() const override {
         return TStringBuilder()
                 << "TDropTable TDropParts"
-                << " operationId#" << OperationId;
+                << " operationId# " << OperationId;
     }
 
 public:
@@ -124,7 +127,7 @@ public:
             NKikimrTxDataShard::TFlatSchemeTransaction tx;
             context.SS->FillSeqNo(tx, seqNo);
             tx.MutableDropTable()->SetId_Deprecated(pathId.LocalPathId);
-            PathIdFromPathId(pathId, tx.MutableDropTable()->MutablePathId());
+            pathId.ToProto(tx.MutableDropTable()->MutablePathId());
             tx.MutableDropTable()->SetName(path->Name);
             Y_PROTOBUF_SUPPRESS_NODISCARD tx.SerializeToString(&txBody);
         }
@@ -151,7 +154,7 @@ private:
     TString DebugHint() const override {
         return TStringBuilder()
                 << "TDropTable TPropose"
-                << " operationId#" << OperationId;
+                << " operationId# " << OperationId;
     }
 
 public:
@@ -260,7 +263,7 @@ public:
         LOG_INFO_S(context.Ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
                    DebugHint() << " HandleReply TEvPrivate::TEvCompletePublication"
                                << ", msg: " << ev->Get()->ToString()
-                               << ", at tablet" << ssId);
+                               << ", at tablet# " << ssId);
 
         Y_ABORT_UNLESS(ActivePathId == ev->Get()->PathId);
 
@@ -279,7 +282,7 @@ public:
         LOG_INFO_S(context.Ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
                    DebugHint() << " ProgressState"
                                << ", operation type: " << TTxState::TypeName(txState->TxType)
-                               << ", at tablet" << ssId);
+                               << ", at tablet# " << ssId);
 
 
         TPath path = TPath::Init(txState->TargetPathId, context.SS);
@@ -340,7 +343,7 @@ public:
         LOG_INFO_S(context.Ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
                    DebugHint() << " HandleReply TEvPrivate::TEvCompleteBarrier"
                                << ", msg: " << ev->Get()->ToString()
-                               << ", at tablet" << ssId);
+                               << ", at tablet# " << ssId);
 
         TTxState* txState = context.SS->FindTx(OperationId);
         Y_ABORT_UNLESS(txState);
@@ -364,7 +367,7 @@ public:
         LOG_INFO_S(context.Ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
                    DebugHint() << " ProgressState"
                                << ", operation type: " << TTxState::TypeName(txState->TxType)
-                               << ", at tablet" << ssId);
+                               << ", at tablet# " << ssId);
 
         context.OnComplete.Barrier(OperationId, "RenamePathBarrier");
 
@@ -530,9 +533,14 @@ public:
                 if (parent.Base()->IsTableIndex()) {
                     checks
                         .IsTableIndex()
-                        .IsInsideTableIndexPath()
-                        .IsUnderDeleting()
-                        .IsUnderTheSameOperation(OperationId.GetTxId()); //allow only as part of drop base table
+                        .IsInsideTableIndexPath();
+                    // Not build index impl tables can be dropped only as part of drop index
+                    // build index impl tables dropped multiple times during index construction
+                    if (!NTableIndex::IsBuildImplTable(name)) {
+                        checks
+                            .IsUnderDeleting()
+                            .IsUnderTheSameOperation(OperationId.GetTxId());
+                    }
                 } else {
                     checks
                         .IsLikeDirectory()
@@ -576,8 +584,8 @@ public:
         Y_ABORT_UNLESS(context.SS->Tables.contains(path.Base()->PathId));
         TTableInfo::TPtr table = context.SS->Tables.at(path.Base()->PathId);
         Y_ABORT_UNLESS(table->GetPartitions().size());
-        for (auto& shard : table->GetPartitions()) {
-            auto shardIdx = shard.ShardIdx;
+        for (const auto* shard : table->GetPartitions()) {
+            auto shardIdx = shard->ShardIdx;
             context.MemChanges.GrabShard(context.SS, shardIdx);
             context.DbChanges.PersistShard(shardIdx);
 
@@ -626,6 +634,14 @@ ISubOperation::TPtr CreateDropTable(TOperationId id, const TTxTransaction& tx) {
 ISubOperation::TPtr CreateDropTable(TOperationId id, TTxState::ETxState state) {
     Y_ABORT_UNLESS(state != TTxState::Invalid);
     return MakeSubOperation<TDropTable>(id, state);
+}
+
+bool CreateDropTable(TOperationId id, const TTxTransaction& tx, TOperationContext& context, TVector<ISubOperation::TPtr>& result) {
+    Y_UNUSED(context);
+    Y_ABORT_UNLESS(tx.GetOperationType() == NKikimrSchemeOp::EOperationType::ESchemeOpDropTable);
+
+    result.push_back(CreateDropTable(NextPartId(id, result), tx));
+    return true;
 }
 
 }

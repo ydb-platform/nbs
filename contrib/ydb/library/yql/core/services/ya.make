@@ -16,7 +16,6 @@ SRCS(
 )
 
 PEERDIR(
-    contrib/libs/openssl
     library/cpp/string_utils/base64
     library/cpp/yson
     contrib/ydb/library/yql/ast/serialize

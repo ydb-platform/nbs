@@ -4,6 +4,7 @@
 #include "datashard_impl.h"
 #include "execution_unit_kind.h"
 
+#include <contrib/ydb/library/aclib/user_context.h>
 #include <contrib/ydb/library/actors/wilson/wilson_span.h>
 
 namespace NKikimr::NDataShard {
@@ -36,19 +37,6 @@ public:
 private:
     TEvDataShard::TEvGetShardState::TPtr Ev;
     THolder<TEvDataShard::TEvGetShardStateResult> Result;
-};
-
-class TDataShard::TTxInit : public NTabletFlatExecutor::TTransactionBase<TDataShard> {
-public:
-    TTxInit(TDataShard* ds);
-    bool Execute(TTransactionContext& txc, const TActorContext& ctx) override;
-    void Complete(const TActorContext &ctx) override;
-    TTxType GetTxType() const override { return TXTYPE_INIT; }
-private:
-    bool CreateScheme(TTransactionContext &txc);
-    bool ReadEverything(TTransactionContext &txc);
-private:
-    TVector<IDataShardChangeCollector::TChange> ChangeRecords;
 };
 
 class TDataShard::TTxPlanStep : public NTabletFlatExecutor::TTransactionBase<TDataShard> {
@@ -86,7 +74,8 @@ public:
                               TEvDataShard::TEvProposeTransaction::TPtr &&ev,
                               TInstant receivedAt, ui64 tieBreakerIndex,
                               bool delayed,
-                              NWilson::TSpan &&datashardTransactionSpan);
+                              NWilson::TSpan &&datashardTransactionSpan,
+                              TIntrusivePtr<NACLib::TUserContext> userCtx);
 
     bool Execute(NTabletFlatExecutor::TTransactionContext &txc,
                  const TActorContext &ctx) override;
@@ -111,6 +100,7 @@ protected:
     bool Rescheduled = false;
     bool WaitComplete = false;
     NWilson::TSpan DatashardTransactionSpan;
+    TIntrusivePtr<NACLib::TUserContext> UserCtx;
 };
 
 class TDataShard::TTxWrite: public NTabletFlatExecutor::TTransactionBase<TDataShard> {
@@ -123,7 +113,7 @@ public:
              NWilson::TSpan &&datashardTransactionSpan);
     bool Execute(TTransactionContext& txc, const TActorContext& ctx) override;
     void Complete(const TActorContext& ctx) override;
-    
+    TTxType GetTxType() const override { return TXTYPE_WRITE; }
 protected:
     TOperation::TPtr Op;
     NEvents::TDataEvents::TEvWrite::TPtr Ev;
@@ -311,14 +301,21 @@ private:
     TRowVersion MvccVersion = TRowVersion::Min();
 };
 
-class TDataShard::TTxExecuteMvccStateChange: public NTabletFlatExecutor::TTransactionBase<TDataShard> {
+// Attaches a directly-built part (direct part import) as a bottom layer of the
+// restored table and persists the final restore progress in the same commit.
+class TDataShard::TTxS3DirectWriteFinish
+    : public NTabletFlatExecutor::TTransactionBase<TDataShard>
+{
 public:
-    TTxExecuteMvccStateChange(TDataShard* ds);
+    TTxS3DirectWriteFinish(TDataShard* ds, TEvDataShard::TEvS3DirectWriteFinish::TPtr& ev);
     bool Execute(TTransactionContext& txc, const TActorContext& ctx) override;
     void Complete(const TActorContext& ctx) override;
-    TTxType GetTxType() const override { return TXTYPE_EXECUTE_MVCC_STATE_CHANGE; }
+    TTxType GetTxType() const override { return TXTYPE_S3_DIRECT_WRITE_FINISH; }
+
 private:
-    bool ActivateWaitingOps = false;
+    TEvDataShard::TEvS3DirectWriteFinish::TPtr Ev;
+    bool Success = false;
+    TString Error;
 };
 
 }

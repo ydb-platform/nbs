@@ -4,9 +4,10 @@
 #include <contrib/ydb/core/grpc_services/grpc_request_proxy.h>
 #include <contrib/ydb/core/grpc_services/rpc_deferrable.h>
 #include <contrib/ydb/core/grpc_services/rpc_scheme_base.h>
-#include <contrib/ydb/core/persqueue/partition.h>
-#include <contrib/ydb/core/persqueue/pq_rl_helpers.h>
-#include <contrib/ydb/core/persqueue/write_meta.h>
+#include <contrib/ydb/core/protos/sqs.pb.h>
+#include <contrib/ydb/core/persqueue/pqtablet/partition/partition.h>
+#include <contrib/ydb/core/persqueue/public/pq_rl_helpers.h>
+#include <contrib/ydb/core/persqueue/public/write_meta/write_meta.h>
 
 #include <contrib/ydb/public/api/protos/ydb_topic.pb.h>
 #include <contrib/ydb/services/lib/actors/pq_schema_actor.h>
@@ -22,6 +23,8 @@
 
 #include "utils.h"
 #include "contrib/ydb/core/ymq/actor/log.h"
+
+#define YDB_LOG_THIS_FILE_COMPONENT NKikimrServices::SQS
 
 
 using namespace NActors;
@@ -96,7 +99,7 @@ namespace NKikimr::NYmq::V1 {
                 operation.set_status(Ydb::StatusIds::StatusCode::StatusIds_StatusCode_SUCCESS);
                 Ydb::Ymq::V1::QueueTags queueTags;
                 for (const auto& t: resp.GetQueueTags()) {
-                    (*queueTags.mutable_tags())[t.GetKey()] = t.GetValue();
+                    queueTags.mutable_tags()->emplace(t.GetKey(), t.GetValue());
                 }
                 operation.mutable_metadata()->PackFrom(queueTags);
                 operation.mutable_result()->PackFrom(this->GetResult(resp));
@@ -130,21 +133,18 @@ namespace NKikimr::NYmq::V1 {
         , UserSid(GetMetaValue(request, USER_SID))
         , RequestId(GetMetaValue(request, REQUEST_ID))
         , SecurityToken(GetMetaValue(request, SECURITY_TOKEN))
+        , SourceAddress(GetMetaValue(request, SOURCE_ADDRESS))
         {
         }
 
         ~TBaseRpcRequestActor() = default;
 
         void Bootstrap(const NActors::TActorContext& ctx) {
-            LOG_DEBUG_S(
-                ctx,
-                NKikimrServices::SQS,
-                TStringBuilder() << "Got new request in YMQ proxy."
-                << " FolderId: " << FolderId
-                << ", CloudId: " << CloudId
-                << ", UserSid: " << UserSid
-                << ", RequestId: " << RequestId;
-            );
+            YDB_LOG_DEBUG_CTX(ctx, "Got new request in YMQ proxy",
+                {"folderId", FolderId},
+                {"cloudId", CloudId},
+                {"userSid", UserSid},
+                {"requestId", RequestId});
             TSqsRequest sqsRequest;
 
             sqsRequest.SetRequestId(RequestId);
@@ -154,6 +154,7 @@ namespace NKikimr::NYmq::V1 {
             request->MutableAuth()->SetUserName(CloudId);
             request->MutableAuth()->SetFolderId(FolderId);
             request->MutableAuth()->SetUserSID(UserSid);
+            request->MutableAuth()->SetSourceAddress(SourceAddress);
 
             if (SecurityToken) {
                 request->MutableCredentials()->SetOAuthToken(SecurityToken);
@@ -168,12 +169,16 @@ namespace NKikimr::NYmq::V1 {
     protected:
         virtual TRequest* GetRequest(TSqsRequest&) = 0;
         virtual THolder<TReplyCallback> CreateReplyCallback() = 0;
+
     private:
         const TString FolderId;
         const TString CloudId;
         const TString UserSid;
         const TString RequestId;
         const TString SecurityToken;
+
+    protected:
+        const TString SourceAddress;
     };
 
     template<class TEvYmqRequest, class TRequest, class TReplyCallback>
@@ -247,6 +252,7 @@ namespace NKikimr::NYmq::V1 {
         NKikimr::NSQS::TCreateQueueRequest* GetRequest(TSqsRequest& requestHolder) override {
             auto result = requestHolder.MutableCreateQueue();
             result->SetQueueName(GetProtoRequest()->queue_name());
+            result->SetSourceAddress(SourceAddress);
             for (auto &srcAttribute : GetProtoRequest()->attributes()) {
                 auto dstAttribute = result->MutableAttributes()->Add();
                 dstAttribute->SetName(srcAttribute.first);
@@ -368,7 +374,7 @@ namespace NKikimr::NYmq::V1 {
                     dstAttribute.set_binary_value(srcAttribute.GetBinaryValue());
                     dstAttribute.set_data_type(srcAttribute.GetDataType());
                     dstAttribute.set_string_value(srcAttribute.GetStringValue());
-                    dstMessage.mutable_message_attributes()->insert({srcAttribute.GetName(), dstAttribute});
+                    dstMessage.mutable_message_attributes()->emplace(srcAttribute.GetName(), dstAttribute);
                 }
 
                 dstMessage.set_message_id(srcMessage.GetMessageId());
@@ -431,17 +437,17 @@ namespace NKikimr::NYmq::V1 {
 
     template <typename T>
     void AddAttribute(Ydb::Ymq::V1::GetQueueAttributesResult& result, const TString& name, T value) {
-        result.Mutableattributes()->insert({name, std::to_string(value)});
+        result.Mutableattributes()->emplace(name, std::to_string(value));
     };
 
     template<>
     void AddAttribute<TString>(Ydb::Ymq::V1::GetQueueAttributesResult& result, const TString& name, TString value) {
-        result.Mutableattributes()->insert({name, value});
+        result.Mutableattributes()->emplace(name, value);
     };
 
     template <>
     void AddAttribute(Ydb::Ymq::V1::GetQueueAttributesResult& result, const TString& name, bool value) {
-        (*result.Mutableattributes())[name] = value ? "true" : "false";
+        result.Mutableattributes()->emplace(name, value ? "true" : "false");
     };
 
     class TGetQueueAttributesReplyCallback : public TReplyCallback<
@@ -666,6 +672,7 @@ namespace NKikimr::NYmq::V1 {
         NKikimr::NSQS::TDeleteQueueRequest* GetRequest(TSqsRequest& requestHolder) override {
             auto result = requestHolder.MutableDeleteQueue();
             result->SetQueueName(CloudIdAndResourceIdFromQueueUrl(GetProtoRequest()->queue_url()).second);
+            result->SetSourceAddress(SourceAddress);
             return result;
         }
     };
@@ -795,7 +802,6 @@ namespace NKikimr::NYmq::V1 {
 
         Ydb::Ymq::V1::SendMessageBatchResult GetResult(const NKikimrClient::TSqsResponse& response) override {
             Ydb::Ymq::V1::SendMessageBatchResult result;
-            response.GetSendMessageBatch();
             for (auto& entry : response.GetSendMessageBatch().GetEntries()) {
                 if (entry.GetError().HasErrorCode()) {
                     auto currentFailed = result.Addfailed();
@@ -980,7 +986,7 @@ namespace NKikimr::NYmq::V1 {
             const auto& tags = GetResponse(resp);
 
             for (const auto& t: tags.GetTags()) {
-                (*result.mutable_tags())[t.GetKey()] = t.GetValue();
+                result.mutable_tags()->emplace(t.GetKey(), t.GetValue());
             }
 
             return result;
@@ -1040,6 +1046,7 @@ namespace NKikimr::NYmq::V1 {
         NKikimr::NSQS::TTagQueueRequest* GetRequest(TSqsRequest& requestHolder) override {
             auto result = requestHolder.MutableTagQueue();
             result->SetQueueName(CloudIdAndResourceIdFromQueueUrl(GetProtoRequest()->queue_url()).second);
+            result->SetSourceAddress(SourceAddress);
             for (const auto& [key, value]: GetProtoRequest()->Gettags()) {
                 auto tag = requestHolder.MutableTagQueue()->MutableTags()->Add();
                 tag->SetKey(key);
@@ -1087,8 +1094,9 @@ namespace NKikimr::NYmq::V1 {
         NKikimr::NSQS::TUntagQueueRequest* GetRequest(TSqsRequest& requestHolder) override {
             auto result = requestHolder.MutableUntagQueue();
             result->SetQueueName(CloudIdAndResourceIdFromQueueUrl(GetProtoRequest()->queue_url()).second);
+            result->SetSourceAddress(SourceAddress);
             for (const auto& key: GetProtoRequest()->Gettag_keys()) {
-                requestHolder.MutableUntagQueue()->AddTagKeys(key);
+                result->AddTagKeys(key);
             }
             return result;
         }

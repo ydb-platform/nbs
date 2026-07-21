@@ -1,5 +1,9 @@
 #include "add_data.h"
 
+#include <contrib/ydb/library/actors/core/log.h>
+
+#define YDB_LOG_THIS_FILE_COMPONENT NKikimrServices::EXT_INDEX
+
 namespace NKikimr::NCSIndex {
 
 void TDataUpserter::OnDescriptionSuccess(NMetadata::NProvider::TTableInfo&& result, const TString& /*requestId*/) {
@@ -8,13 +12,13 @@ void TDataUpserter::OnDescriptionSuccess(NMetadata::NProvider::TTableInfo&& resu
     AtomicCounter.Inc();
     for (auto&& i : Indexes) {
         if (i.IsDelete()) {
-            ALS_WARN(NKikimrServices::EXT_INDEX) << "extractor is removing";
+            YDB_LOG_WARN("Extractor is removing");
         } else if (!i.IsActive()) {
-            ALS_WARN(NKikimrServices::EXT_INDEX) << "extractor not active yet";
+            YDB_LOG_WARN("Extractor not active yet");
         } else {
-            ALS_DEBUG(NKikimrServices::EXT_INDEX) << "add data";
+            YDB_LOG_DEBUG("Add data");
             AtomicCounter.Inc();
-            TActivationContext::ActorSystem()->Register(new TIndexUpsertActor(Data, i, pkFields, i.GetIndexTablePath(), SelfContainer));
+            TActivationContext::ActorSystem()->Register(new TIndexUpsertActor(Data, i, pkFields, DatabaseName, i.GetIndexTablePath(), SelfContainer));
         }
     }
     OnIndexUpserted();

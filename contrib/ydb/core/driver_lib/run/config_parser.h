@@ -49,7 +49,11 @@ protected:
         ui32 MonitoringPort;
         TString MonitoringAddress;
         TString MonitoringCertificateFile;
+        TString MonitoringPrivateKeyFile;
+        TString MonitoringCaFile;
         ui32 MonitoringThreads;
+        ui32 MonitoringMaxRequestsPerSecond;
+        TDuration MonitoringInactivityTimeout;
         TString RestartsCountFile;
         bool StartTracingBusProxy;
         TString TracePath;

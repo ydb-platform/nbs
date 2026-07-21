@@ -1,0 +1,14 @@
+IF (NOT EXPORT_CMAKE OR NOT OPENSOURCE OR OPENSOURCE_PROJECT != "yt")
+
+SUBSCRIBER(g:yql)
+
+YQL_UDF_TEST()
+
+SIZE(MEDIUM)
+
+DEPENDS(contrib/ydb/library/yql/udfs/language/yql)
+
+END()
+
+ENDIF()
+

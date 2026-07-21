@@ -6,9 +6,10 @@
 #include <contrib/ydb/core/blobstorage/vdisk/common/vdisk_pdiskctx.h>
 #include <contrib/ydb/core/blobstorage/vdisk/vdisk_services.h>
 #include <contrib/ydb/core/blobstorage/vdisk/vdisk_actor.h>
+#include <contrib/ydb/core/blobstorage/pdisk/blobstorage_pdisk.h>
 #include <contrib/ydb/core/blobstorage/pdisk/blobstorage_pdisk_tools.h>
 
-#include <contrib/ydb/core/mon/sync_http_mon.h>
+#include <contrib/ydb/core/mon/mon.h>
 #include <contrib/ydb/core/scheme/scheme_type_registry.h>
 
 #include <contrib/ydb/library/actors/core/executor_pool_basic.h>
@@ -19,6 +20,8 @@
 #include <library/cpp/testing/unittest/tests_data.h>
 
 #include <util/folder/dirut.h>
+
+#define YDB_LOG_THIS_FILE_COMPONENT NActorsServices::TEST
 
 using namespace NKikimr;
 
@@ -75,6 +78,8 @@ void TOnePDisk::FormatDisk(bool force) {
         const NPDisk::TKey chunkKey = RandomNumber<ui64>();
         const NPDisk::TKey logKey = RandomNumber<ui64>();
         const NPDisk::TKey sysLogKey = RandomNumber<ui64>();
+        TFormatOptions options;
+        options.EnableSmallDiskOptimization = false;
         FormatPDisk(Filename,       // path
                     DiskSize,       // diskSizeBytes                // 0 for device
                     4 << 10,        // sectorSizeBytes
@@ -85,11 +90,7 @@ void TOnePDisk::FormatDisk(bool force) {
                     sysLogKey,      // sysLogKey
                     NPDisk::YdbDefaultPDiskSequence,          // mainKey
                     "",             // textMessage
-                    false,          // isErasureEncode
-                    false,          // trimEntireDevice
-                    nullptr,        // sectorMap
-                    false           // enableSmallDiskOptimization
-                    );
+                    options);
     }
 }
 
@@ -367,13 +368,12 @@ void TConfiguration::Prepare(IVDiskSetup *vdiskSetup, bool newPDisks, bool runRe
     //////////////////////////////////////////////////////////////////////////////
 
     ///////////////////////// MONITORING SETTINGS /////////////////////////////////
-    Monitoring.reset(new NActors::TSyncHttpMon({
+    Monitoring.reset(new NActors::TMon({
         .Port = 8088,
         .Title = "at"
     }));
     NMonitoring::TIndexMonPage *actorsMonPage = Monitoring->RegisterIndexPage("actors", "Actors");
     Monitoring->RegisterCountersPage("counters", "Counters", Counters);
-    Monitoring->Start();
     loggerActor->Log(Now(), NKikimr::NLog::PRI_NOTICE, NActorsServices::TEST, "Monitoring settings set up");
     //////////////////////////////////////////////////////////////////////////////
 
@@ -390,11 +390,13 @@ void TConfiguration::Prepare(IVDiskSetup *vdiskSetup, bool newPDisks, bool runRe
     loggerActor->Log(Now(), NKikimr::NLog::PRI_NOTICE, NActorsServices::TEST, "Actor system created");
 
     ActorSystem1->Start();
-    LOG_NOTICE(*ActorSystem1, NActorsServices::TEST, "Actor system started");
+    Monitoring->Start(ActorSystem1.get());
+    YDB_LOG_NOTICE_CTX(*ActorSystem1, "Actor system started");
 
 }
 
 void TConfiguration::Shutdown() {
+    Monitoring->Stop();
     ActorSystem1->Stop();
     ActorSystem1.reset();
 }
@@ -423,7 +425,8 @@ class TDbInitWaitActor : public TActorBootstrapped<TDbInitWaitActor> {
     }
 
     void Finish(const TActorContext &ctx, bool ok) {
-        LOG_NOTICE(ctx, NActorsServices::TEST, "%s", (ok ? "DB IS READY" : "DB INIT TIMEOUT"));
+        YDB_LOG_NOTICE_CTX(ctx, "TDBInitWaitActor finish",
+            {"dbStatus", (ok ? "DB IS READY" : "DB INIT TIMEOUT")});
         Conf->DbInitEvent.Signal();
         Die(ctx);
     }

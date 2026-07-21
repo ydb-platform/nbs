@@ -2,20 +2,20 @@
 
 #include "schema.h"
 
-#include <functional>
+#include <contrib/ydb/core/fq/libs/config/protos/issue_id.pb.h>
+#include <contrib/ydb/core/fq/libs/control_plane_storage/events/events.h>
+#include <contrib/ydb/core/fq/libs/db_schema/db_schema.h>
+#include <contrib/ydb/core/util/exceptions.h>
+#include <contrib/ydb/public/api/protos/draft/fq.pb.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/params/params.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/params/params.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/result/result.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/table/table.h>
 
 #include <util/generic/fwd.h>
 #include <util/string/printf.h>
 
-#include <contrib/ydb/public/api/protos/draft/fq.pb.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_params/params.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_params/params.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_result/result.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_table/table.h>
-
-#include <contrib/ydb/core/fq/libs/control_plane_storage/events/events.h>
-#include <contrib/ydb/core/fq/libs/db_schema/db_schema.h>
-#include <contrib/ydb/core/fq/libs/exceptions/exceptions.h>
+#include <functional>
 
 namespace NFq {
 
@@ -130,7 +130,7 @@ TValidationQuery CreateIdempotencyKeyValidator(const TString& scope,
     auto validator = [response, parseProtobufError](NYdb::NTable::TDataQueryResult result) {
         const auto& resultSets = result.GetResultSets();
         if (resultSets.size() != 1) {
-            ythrow TCodeLineException(TIssuesIds::INTERNAL_ERROR) << "internal error, result set size is not equal to 1 but equal " << resultSets.size();
+            ythrow NKikimr::TCodeLineException(TIssuesIds::INTERNAL_ERROR) << "internal error, result set size is not equal to 1 but equal " << resultSets.size();
         }
 
         NYdb::TResultSetParser parser(resultSets.back());
@@ -140,7 +140,7 @@ TValidationQuery CreateIdempotencyKeyValidator(const TString& scope,
 
         if (!response->first.ParseFromString(*parser.ColumnParser(RESPONSE_COLUMN_NAME).GetOptionalString())) {
             parseProtobufError->Inc();
-            ythrow TCodeLineException(TIssuesIds::INTERNAL_ERROR) << "Error parsing proto message for response. Please contact internal support";
+            ythrow NKikimr::TCodeLineException(TIssuesIds::INTERNAL_ERROR) << "Error parsing proto message for response. Please contact internal support";
         }
 
         return true;
@@ -166,7 +166,7 @@ TValidationQuery CreateIdempotencyKeyValidator(const TString& scope,
     auto validator = [response, parseProtobufError](NYdb::NTable::TDataQueryResult result) {
         const auto& resultSets = result.GetResultSets();
         if (resultSets.size() != 1) {
-            ythrow TCodeLineException(TIssuesIds::INTERNAL_ERROR) << "internal error, result set size is not equal to 1 but equal " << resultSets.size();
+            ythrow NKikimr::TCodeLineException(TIssuesIds::INTERNAL_ERROR) << "internal error, result set size is not equal to 1 but equal " << resultSets.size();
         }
 
         NYdb::TResultSetParser parser(resultSets.back());
@@ -176,7 +176,7 @@ TValidationQuery CreateIdempotencyKeyValidator(const TString& scope,
 
         if (!response->first.ParseFromString(*parser.ColumnParser(RESPONSE_COLUMN_NAME).GetOptionalString())) {
             parseProtobufError->Inc();
-            ythrow TCodeLineException(TIssuesIds::INTERNAL_ERROR) << "Error parsing proto message for response. Please contact internal support";
+            ythrow NKikimr::TCodeLineException(TIssuesIds::INTERNAL_ERROR) << "Error parsing proto message for response. Please contact internal support";
         }
 
         response->second.IdempotencyResult = true;

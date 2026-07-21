@@ -12,19 +12,21 @@ private:
 public:
     using TReadMetadataPtr = TReadMetadataBase::TConstPtr;
 
-    TTxScan(NColumnShard::TColumnShard* self, TEvColumnShard::TEvScan::TPtr& ev)
+    TTxScan(NColumnShard::TColumnShard* self, TEvDataShard::TEvKqpScan::TPtr& ev)
         : TBase(self)
-        , Ev(ev) {
+        , Ev(ev)
+    {
     }
 
     bool Execute(TTransactionContext& txc, const TActorContext& ctx) override;
     void Complete(const TActorContext& ctx) override;
+
     TTxType GetTxType() const override {
         return NColumnShard::TXTYPE_START_SCAN;
     }
 
 private:
-    TEvColumnShard::TEvScan::TPtr Ev;
+    TEvDataShard::TEvKqpScan::TPtr Ev;
 };
 
 }   // namespace NKikimr::NOlap::NReader

@@ -27,12 +27,18 @@ class TExtCountersUpdaterActor
     TCounterPtr StorageUsedBytesOnHdd;
     TVector<TCounterPtr> CpuUsedCorePercents;
     TVector<TCounterPtr> CpuLimitCorePercents;
+    TCounterPtr TotalCores;
     THistogramPtr ExecuteLatencyMs;
 
     TCounterPtr AnonRssSize;
     TCounterPtr CGroupMemLimit;
+    TCounterPtr MemoryHardLimit;
+    TCounterPtr InterconnectSentBytes;
+    TCounterPtr InterconnectReceivedBytes;
+    ui64 InterconnectSentBytesPrev = 0;
+    ui64 InterconnectReceivedBytesPrev = 0;
     TVector<TCounterPtr> PoolElapsedMicrosec;
-    TVector<TCounterPtr> PoolCurrentThreadCount;
+    TVector<TCounterPtr> PoolPotentialMaxThreadPercent;
     TVector<ui64> PoolElapsedMicrosecPrevValue;
     TVector<ui64> ExecuteLatencyMsValues;
     TVector<ui64> ExecuteLatencyMsPrevValues;
@@ -73,6 +79,17 @@ public:
                 "resources.cpu.limit_core_percents", false);
         }
 
+        double totalCores = 0;
+        for (const auto& pool : Config.Pools) {
+            if (pool.Name != "IO") {
+                totalCores += pool.ThreadCount;
+            }
+        }
+        TotalCores = ydbGroup->GetNamedCounter("name", "resources.cpu.total_core_percents", false);
+        if (TotalCores) {
+            TotalCores->Set(totalCores * 100);
+        }
+
         ExecuteLatencyMs = ydbGroup->FindNamedHistogram("name", "table.query.execution.latency_milliseconds");
 
         Schedule(TDuration::Seconds(1), new TEvents::TEvWakeup);
@@ -88,17 +105,35 @@ private:
             CGroupMemLimit = utilsGroup->FindCounter("Process/CGroupMemLimit");
 
             PoolElapsedMicrosec.resize(Config.Pools.size());
-            PoolCurrentThreadCount.resize(Config.Pools.size());
+            PoolPotentialMaxThreadPercent.resize(Config.Pools.size());
             PoolElapsedMicrosecPrevValue.resize(Config.Pools.size());
             for (size_t i = 0; i < Config.Pools.size(); ++i) {
                 auto poolGroup = utilsGroup->FindSubgroup("execpool", Config.Pools[i].Name);
                 if (poolGroup) {
                     PoolElapsedMicrosec[i] = poolGroup->FindCounter("ElapsedMicrosec");
-                    PoolCurrentThreadCount[i] = poolGroup->FindCounter("CurrentThreadCount");
+                    PoolPotentialMaxThreadPercent[i] = poolGroup->FindCounter("PotentialMaxThreadCountPercent");
                     if (PoolElapsedMicrosec[i]) {
                         PoolElapsedMicrosecPrevValue[i] = PoolElapsedMicrosec[i]->Val();
                     }
                 }
+            }
+        }
+        if (!MemoryHardLimit) {
+            auto utilsGroup = GetServiceCounters(AppData()->Counters, "utils");
+            auto memoryControllerGroup = utilsGroup->FindSubgroup("component", "memory_controller");
+            if (memoryControllerGroup) {
+                MemoryHardLimit = memoryControllerGroup->FindCounter("Stats/HardLimit");
+            }
+        }
+        if (!InterconnectSentBytes) {
+            auto interconnectGroup = GetServiceCounters(AppData()->Counters, "interconnect");
+            InterconnectSentBytes = interconnectGroup->FindCounter("TotalBytesWritten");
+            InterconnectReceivedBytes = interconnectGroup->FindCounter("TotalBytesRead");
+            if (InterconnectSentBytes) {
+                InterconnectSentBytesPrev = InterconnectSentBytes->Val();
+            }
+            if (InterconnectReceivedBytes) {
+                InterconnectReceivedBytesPrev = InterconnectReceivedBytes->Val();
             }
         }
     }
@@ -110,8 +145,10 @@ private:
             MemoryUsedBytes->Set(AnonRssSize->Val());
             metrics->AddMetric("resources.memory.used_bytes", AnonRssSize->Val());
         }
-        if (CGroupMemLimit) {
+        if (CGroupMemLimit && !MemoryHardLimit) {
             MemoryLimitBytes->Set(CGroupMemLimit->Val());
+        } else if (MemoryHardLimit) {
+            MemoryLimitBytes->Set(MemoryHardLimit->Val());
         }
         if (StorageUsedBytes->Val() != 0) {
             metrics->AddMetric("resources.storage.used_bytes", StorageUsedBytes->Val());
@@ -136,11 +173,11 @@ private:
                     }
                     PoolElapsedMicrosecPrevValue[i] = elapsedMs;
                 }
-                if (PoolCurrentThreadCount[i] && PoolCurrentThreadCount[i]->Val()) {
-                    limitCore = PoolCurrentThreadCount[i]->Val();
-                    CpuLimitCorePercents[i]->Set(limitCore * 100);
+                if (PoolPotentialMaxThreadPercent[i] && PoolPotentialMaxThreadPercent[i]->Val()) {
+                    limitCore = PoolPotentialMaxThreadPercent[i]->Val();
+                    CpuLimitCorePercents[i]->Set(limitCore);
                 } else {
-                    limitCore = Config.Pools[i].ThreadCount * 100;
+                    limitCore = Config.Pools[i].ThreadCount;
                     CpuLimitCorePercents[i]->Set(limitCore * 100);
                 }
                 if (limitCore > 0) {
@@ -149,6 +186,16 @@ private:
                 }
             }
             metrics->AddMetric("resources.cpu.usage", cpuUsage);
+        }
+        if (InterconnectSentBytes) {
+            ui64 sentBytes = InterconnectSentBytes->Val();
+            metrics->AddMetric("resources.network.sent_bytes", sentBytes - InterconnectSentBytesPrev);
+            InterconnectSentBytesPrev = sentBytes;
+        }
+        if (InterconnectReceivedBytes) {
+            ui64 receivedBytes = InterconnectReceivedBytes->Val();
+            metrics->AddMetric("resources.network.received_bytes", receivedBytes - InterconnectReceivedBytesPrev);
+            InterconnectReceivedBytesPrev = receivedBytes;
         }
         if (ExecuteLatencyMs) {
             THistogramSnapshotPtr snapshot = ExecuteLatencyMs->Snapshot();
@@ -160,19 +207,19 @@ private:
             }
             ui64 total = 0;
             for (ui32 n = 0; n < count; ++n) {
-                ui64 value = snapshot->Value(n);;
+                ui64 value = snapshot->Value(n);
                 ui64 diff = value - ExecuteLatencyMsPrevValues[n];
                 total += diff;
                 ExecuteLatencyMsValues[n] = diff;
                 ExecuteLatencyMsPrevValues[n] = value;
                 if (ExecuteLatencyMsBounds[n] == 0) {
                     NMonitoring::TBucketBound bound = snapshot->UpperBound(n);
-                    ExecuteLatencyMsBounds[n] = bound == Max<NMonitoring::TBucketBound>() ? Max<ui64>() : bound;
+                    ExecuteLatencyMsBounds[n] = bound == Max<NMonitoring::TBucketBound>() ? Max<ui64>() : ui64(bound);
                 }
             }
             metrics->AddMetric("queries.requests", total);
             if (total != 0) {
-                metrics->AddHistogramMetric("queries.latencies", ExecuteLatencyMsValues, ExecuteLatencyMsBounds);
+                metrics->AddHistogramMetric("queries.latencies", ExecuteLatencyMsBounds, ExecuteLatencyMsValues);
             }
         }
         if (metrics->Record.MetricsSize() > 0) {

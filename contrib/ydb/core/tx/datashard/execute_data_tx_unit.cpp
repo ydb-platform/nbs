@@ -1,3 +1,5 @@
+#include "datashard_impl.h"
+#include "datashard_integrity_trails.h"
 #include "datashard_kqp.h"
 #include "execution_unit_ctors.h"
 #include "setup_sys_locks.h"
@@ -68,14 +70,14 @@ EExecutionStatus TExecuteDataTxUnit::Execute(TOperation::TPtr op,
 
     if (op->IsImmediate()) {
         // Every time we execute immediate transaction we may choose a new mvcc version
-        op->MvccReadWriteVersion.reset();
+        op->CachedMvccVersion.reset();
     }
 
     TActiveTransaction* tx = dynamic_cast<TActiveTransaction*>(op.Get());
-    Y_VERIFY_S(tx, "cannot cast operation of kind " << op->GetKind());
+    Y_ENSURE(tx, "cannot cast operation of kind " << op->GetKind());
 
     if (tx->IsTxDataReleased()) {
-        switch (Pipeline.RestoreDataTx(tx, txc, ctx)) {
+        switch (Pipeline.RestoreDataTx(tx, txc, ctx, tx->GetUserCtx())) {
             case ERestoreDataStatus::Ok:
                 break;
 
@@ -86,7 +88,7 @@ EExecutionStatus TExecuteDataTxUnit::Execute(TOperation::TPtr op,
                 // For immediate transactions we want to translate this into a propose failure
                 if (op->IsImmediate()) {
                     const auto& dataTx = tx->GetDataTx();
-                    Y_ABORT_UNLESS(!dataTx->Ready());
+                    Y_ENSURE(!dataTx->Ready());
                     op->SetAbortedFlag();
                     BuildResult(op, NKikimrTxDataShard::TEvProposeTransactionResult::ERROR);
                     op->Result()->SetProcessError(dataTx->Code(), dataTx->GetErrors());
@@ -94,7 +96,7 @@ EExecutionStatus TExecuteDataTxUnit::Execute(TOperation::TPtr op,
                 }
 
                 // For planned transactions errors are not expected
-                Y_ABORT("Failed to restore tx data: %s", tx->GetDataTx()->GetErrors().c_str());
+                Y_ENSURE(false, "Failed to restore tx data: " << tx->GetDataTx()->GetErrors());
         }
     }
 
@@ -102,12 +104,12 @@ EExecutionStatus TExecuteDataTxUnit::Execute(TOperation::TPtr op,
     TSetupSysLocks guardLocks(op, DataShard, &locksDb);
 
     IEngineFlat* engine = tx->GetDataTx()->GetEngine();
-    Y_VERIFY_S(engine, "missing engine for " << *op << " at " << DataShard.TabletID());
+    Y_ENSURE(engine, "missing engine for " << *op << " at " << DataShard.TabletID());
 
     if (op->IsImmediate() && !tx->ReValidateKeys(txc.DB.GetScheme())) {
         // Immediate transactions may be reordered with schema changes and become invalid
         const auto& dataTx = tx->GetDataTx();
-        Y_ABORT_UNLESS(!dataTx->Ready());
+        Y_ENSURE(!dataTx->Ready());
         op->SetAbortedFlag();
         BuildResult(op, NKikimrTxDataShard::TEvProposeTransactionResult::ERROR);
         op->Result()->SetProcessError(dataTx->Code(), dataTx->GetErrors());
@@ -153,7 +155,11 @@ EExecutionStatus TExecuteDataTxUnit::Execute(TOperation::TPtr op,
                     // Lock cannot be created and we must abort
                     op->SetAbortedFlag();
                     BuildResult(op, NKikimrTxDataShard::TEvProposeTransactionResult::LOCKS_BROKEN);
+                    op->Result()->Record.MutableTxStats()->SetLocksBrokenAsVictim(1);
                     return EExecutionStatus::Executed;
+
+                case EEnsureCurrentLock::Missing:
+                    Y_ENSURE(false, "unreachable");
             }
         }
     }
@@ -233,9 +239,8 @@ void TExecuteDataTxUnit::ExecuteDataTx(TOperation::TPtr op,
     DataShard.ReleaseCache(*tx);
     tx->GetDataTx()->ResetCounters();
 
-    auto [readVersion, writeVersion] = DataShard.GetReadWriteVersions(tx);
-    tx->GetDataTx()->SetReadVersion(readVersion);
-    tx->GetDataTx()->SetWriteVersion(writeVersion);
+    auto mvccVersion = DataShard.GetMvccVersion(tx);
+    tx->GetDataTx()->SetMvccVersion(mvccVersion);
 
     // TODO: is it required to always prepare outgoing read sets?
     if (!engine->IsAfterOutgoingReadsetsExtracted()) {
@@ -269,14 +274,14 @@ void TExecuteDataTxUnit::ExecuteDataTx(TOperation::TPtr op,
                 break;
             case IEngineFlat::EResult::Cancelled:
                 LOG_NOTICE_S(ctx, NKikimrServices::TX_DATASHARD, errorMessage);
-                Y_ABORT_UNLESS(tx->GetDataTx()->CanCancel());
+                Y_ENSURE(tx->GetDataTx()->CanCancel());
                 break;
             default:
                 if (op->IsReadOnly() || op->IsImmediate()) {
                     LOG_CRIT_S(ctx, NKikimrServices::TX_DATASHARD, errorMessage);
                 } else {
                     // TODO: Kill only current datashard tablet.
-                    Y_FAIL_S("Unexpected execution error in read-write transaction: "
+                    Y_ENSURE(false, "Unexpected execution error in read-write transaction: "
                              << errorMessage);
                 }
                 break;
@@ -326,13 +331,14 @@ void TExecuteDataTxUnit::ExecuteDataTx(TOperation::TPtr op,
         TVector<ui64> participants; // empty participants
         DataShard.GetVolatileTxManager().PersistAddVolatileTx(
             tx->GetTxId(),
-            writeVersion,
+            mvccVersion,
             commitTxIds,
             tx->GetDataTx()->GetVolatileDependencies(),
             participants,
             tx->GetDataTx()->GetVolatileChangeGroup(),
             tx->GetDataTx()->GetVolatileCommitOrdered(),
             /* arbiter */ false,
+            /* disable expectations */ false,
             txc);
     }
 
@@ -342,11 +348,23 @@ void TExecuteDataTxUnit::ExecuteDataTx(TOperation::TPtr op,
 
     AddLocksToResult(op, ctx);
 
+    if (!guardLocks.LockTxId) {
+        mvccVersion.ToProto(op->Result()->Record.MutableCommitVersion());
+    }
+
     Pipeline.AddCommittingOp(op);
 }
 
 void TExecuteDataTxUnit::AddLocksToResult(TOperation::TPtr op, const TActorContext& ctx) {
-    auto [locks, _] = DataShard.SysLocksTable().ApplyLocks();
+    auto [locks, locksBrokenByTx] = DataShard.SysLocksTable().ApplyLocks();
+    op->Result()->Record.MutableTxStats()->SetLocksBrokenAsBreaker(locksBrokenByTx.size());
+    if (!locksBrokenByTx.empty()) {
+        if (auto breakerQuerySpanId = DataShard.SysLocksTable().GetCurrentBreakerQuerySpanId()) {
+            op->Result()->Record.MutableTxStats()->AddBreakerQuerySpanIds(*breakerQuerySpanId);
+        }
+    }
+    NDataIntegrity::LogIntegrityTrailsLocks(ctx, DataShard.TabletID(), op->GetTxId(), locksBrokenByTx);
+
     for (const auto& lock : locks) {
         if (lock.IsError()) {
             LOG_NOTICE_S(TActivationContext::AsActorContext(), NKikimrServices::TX_DATASHARD,

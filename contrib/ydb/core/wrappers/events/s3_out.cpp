@@ -7,8 +7,7 @@
 #include <util/generic/vector.h>
 #include <util/string/join.h>
 
-namespace NKikimr {
-namespace NWrappers {
+namespace NKikimr::NWrappers {
 
 using namespace Aws::S3::Model;
 
@@ -57,7 +56,7 @@ void OutOutcome(IOutputStream& out, const Aws::Utils::Outcome<T, Aws::S3::S3Erro
     if (outcome.IsSuccess()) {
         out << outcome.GetResult();
     } else {
-        out << outcome.GetError().GetMessage().c_str();
+        out << outcome.GetError();
     }
 }
 
@@ -221,5 +220,12 @@ void Out(IOutputStream& out, const TStringOutcome& outcome) {
     OutOutcome(out, outcome);
 }
 
-} // NWrappers
-} // NKikimr
+void Out(IOutputStream& out, const Aws::S3::S3Error& error) {
+    const auto responseCode = error.GetResponseCode();
+    if (responseCode != Aws::Http::HttpResponseCode::REQUEST_NOT_MADE) {
+        out << static_cast<int>(responseCode) << " ";
+    }
+    out << error.GetMessage().c_str();
+}
+
+} // NKikimr::NWrappers

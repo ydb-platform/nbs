@@ -4,7 +4,7 @@
 #include <contrib/ydb/core/base/tablet_pipe.h>
 #include <contrib/ydb/core/blobstorage/pdisk/blobstorage_pdisk.h>
 #include <contrib/ydb/core/blobstorage/base/blobstorage_events.h>
-#include <contrib/ydb/core/control/immediate_control_board_impl.h>
+#include <contrib/ydb/core/control/lib/dynamic_control_board_impl.h>
 #include <contrib/ydb/core/keyvalue/keyvalue_events.h>
 
 #include <library/cpp/histogram/hdr/histogram.h>
@@ -79,7 +79,7 @@ public:
             write->SetStorageChannel(
                     IsInline ?  NKikimrClient::TKeyValueRequest::INLINE : NKikimrClient::TKeyValueRequest::MAIN);
             write->SetPriority(NKikimrClient::TKeyValueRequest::REALTIME);
-            BytesInFlight += DataBuffer.Size();
+            BytesInFlight += DataBuffer.size();
             ++ItemsInFlight;
             ++OperationIdx;
         }
@@ -209,7 +209,7 @@ public:
         TestStartTime = TAppData::TimeProvider->Now();
         LOG_INFO_S(ctx, NKikimrServices::BS_LOAD_TEST, "Tag# " << Tag << " Bootstrap, Workers.size# " << Workers.size());
         for (auto& worker : Workers) {
-            AppData(ctx)->Icb->RegisterLocalControl(worker->MaxInFlight,
+            AppData(ctx)->Dcb->RegisterLocalControl(worker->MaxInFlight,
                     Sprintf("KeyValueWriteLoadActor_MaxInFlight_%04" PRIu64 "_%04" PRIu32, Tag, worker->Idx));
         }
         LOG_INFO_S(ctx, NKikimrServices::BS_LOAD_TEST, "Tag# " << Tag << " last TEvKeyValueResult, "

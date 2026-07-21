@@ -4,12 +4,16 @@
 
 #include <contrib/ydb/core/testlib/actors/test_runtime.h>
 
+#include <contrib/ydb/core/testlib/test_client.h>
 #include <contrib/ydb/core/tx/scheme_cache/scheme_cache.h>
 
 #include <contrib/ydb/public/lib/yson_value/ydb_yson_value.h>
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_query/client.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_scheme/scheme.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/query/client.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/scheme/scheme.h>
+
+#include <contrib/ydb/core/protos/workload_manager_config.pb.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/table/table.h>
 
 
 namespace NKikimr::NKqp::NWorkload {
@@ -28,6 +32,7 @@ struct TQueryRunnerSettings {
     FLUENT_SETTING_DEFAULT(TString, UserSID, "user@" BUILTIN_SYSTEM_DOMAIN);
     FLUENT_SETTING_DEFAULT(TVector<TString>, GroupSIDs, {});
     FLUENT_SETTING_DEFAULT(TString, Database, "");
+    FLUENT_SETTING_DEFAULT(TString, ApplicationName, "");
 
     // Runner settings
     FLUENT_SETTING_DEFAULT(bool, HangUpDuringExecution, false);
@@ -69,10 +74,15 @@ struct TYdbSetupSettings {
     FLUENT_SETTING_DEFAULT(ui32, NodeCount, 1);
     FLUENT_SETTING_DEFAULT(TString, DomainName, "Root");
     FLUENT_SETTING_DEFAULT(bool, CreateSampleTenants, false);
+    FLUENT_SETTING_DEFAULT(bool, CreateSamplePool, true);
     FLUENT_SETTING_DEFAULT(bool, EnableResourcePools, true);
+    FLUENT_SETTING_DEFAULT(bool, EnableResourcePoolsScheduler, true);
     FLUENT_SETTING_DEFAULT(bool, EnableResourcePoolsOnServerless, false);
     FLUENT_SETTING_DEFAULT(bool, EnableMetadataObjectsOnServerless, true);
     FLUENT_SETTING_DEFAULT(bool, EnableExternalDataSourcesOnServerless, true);
+    FLUENT_SETTING_DEFAULT(bool, EnableStreamingQueries, true);
+    FLUENT_SETTING(NKikimrConfig::TWorkloadManagerConfig, WorkloadManagerConfig);
+    FLUENT_SETTING_DEFAULT(i32, DedicatedDiskQuota, -1);
 
     // Default pool settings
     FLUENT_SETTING_DEFAULT(TString, PoolId, "sample_pool_id");
@@ -80,10 +90,13 @@ struct TYdbSetupSettings {
     FLUENT_SETTING_DEFAULT(i32, QueueSize, -1);
     FLUENT_SETTING_DEFAULT(TDuration, QueryCancelAfter, FUTURE_WAIT_TIMEOUT);
     FLUENT_SETTING_DEFAULT(double, QueryMemoryLimitPercentPerNode, -1);
+    FLUENT_SETTING_DEFAULT(double, TotalMemoryLimitPercentPerNode, -1);
     FLUENT_SETTING_DEFAULT(double, DatabaseLoadCpuThreshold, -1);
 
+    FLUENT_SETTING_DEFAULT(bool, WorkSafeWithGlobalObjects, true);
+
     NResourcePool::TPoolSettings GetDefaultPoolSettings() const;
-    TIntrusivePtr<IYdbSetup> Create() const;
+    TIntrusivePtr<IYdbSetup> Create(std::function<void(Tests::TServerSettings&)> fnc = nullptr) const;
 
     TString GetDedicatedTenantName() const;
     TString GetSharedTenantName() const;
@@ -95,6 +108,9 @@ public:
     // Cluster helpers
     virtual void UpdateNodeCpuInfo(double usage, ui32 threads, ui64 nodeIndex = 0) = 0;
 
+    virtual NYdb::NTable::TTableClient GetTableClient(
+        NYdb::NTable::TClientSettings settings = NYdb::NTable::TClientSettings()) const = 0;
+
     // Scheme queries helpers
     virtual NYdb::NScheme::TSchemeClient GetSchemeClient() const = 0;
     virtual void ExecuteSchemeQuery(const TString& query, NYdb::EStatus expectedStatus = NYdb::EStatus::SUCCESS, const TString& expectedMessage = "") const = 0;
@@ -104,6 +120,7 @@ public:
     // Generic query helpers
     virtual TQueryRunnerResult ExecuteQuery(const TString& query, TQueryRunnerSettings settings = TQueryRunnerSettings()) const = 0;
     virtual TQueryRunnerResultAsync ExecuteQueryAsync(const TString& query, TQueryRunnerSettings settings = TQueryRunnerSettings()) const = 0;
+    virtual void ExecuteQueryRetry(const TString& retryMessage, const TString& query, TQueryRunnerSettings settings = TQueryRunnerSettings(), TDuration timeout = FUTURE_WAIT_TIMEOUT) const = 0;
 
     // Async query execution actions
     virtual void WaitQueryExecution(const TQueryRunnerResultAsync& query, TDuration timeout = FUTURE_WAIT_TIMEOUT) const = 0;
@@ -111,6 +128,9 @@ public:
     virtual NActors::TActorId CreateInFlightCoordinator(ui32 numberRequests, ui32 expectedInFlight) const = 0;
 
     // Pools actions
+    virtual void CreateResourcePool(const TString& poolId, const NResourcePool::TPoolSettings& settings) const = 0;
+    virtual void CreateSamplePoolOn(const TString& databaseId) const = 0;
+    virtual void CreateResourcePool(const TString& databaseId, const TString& poolId, const NResourcePool::TPoolSettings& settings) const = 0;
     virtual TPoolStateDescription GetPoolDescription(TDuration leaseDuration = FUTURE_WAIT_TIMEOUT, const TString& poolId = "") const = 0;
     virtual void WaitPoolState(const TPoolStateDescription& state, const TString& poolId = "") const = 0;
     virtual void WaitPoolHandlersCount(i64 finalCount, std::optional<i64> initialCount = std::nullopt, TDuration timeout = FUTURE_WAIT_TIMEOUT) const = 0;
@@ -118,11 +138,32 @@ public:
     virtual void ValidateWorkloadServiceCounters(bool checkTableCounters = true, const TString& poolId = "") const = 0;
     virtual TEvFetchDatabaseResponse::TPtr FetchDatabase(const TString& database) const = 0;
 
-    // Coomon helpers
+    // Common helpers
+    virtual ui64 GetGrpcPort() const = 0;
     virtual TTestActorRuntime* GetRuntime() const = 0;
     virtual const TYdbSetupSettings& GetSettings() const = 0;
     static void WaitFor(TDuration timeout, TString description, std::function<bool(TString&)> callback);
+
+    // Db management
+    virtual void CreateDedicatedTenant(const TString& path, const TString& unitKind) = 0;
+    virtual void DropDedicatedTenant(const TString& path) = 0;
+
+    struct TTenantInfo {
+        TLocalPathId PathId;
+        ui64 GrpcPort = 0;
+        ui32 NodeIdx = 0;
+    };
+    virtual TTenantInfo GetDedicatedTenantInfo() const = 0;
+    virtual TTenantInfo GetSharedTenantInfo() const = 0;
+    virtual TTenantInfo GetServerlessTenantInfo() const = 0;
 };
+
+// Common classifier helpers
+
+void WaitForClassifierFail(TIntrusivePtr<IYdbSetup> ydb, const TQueryRunnerSettings& settings, const TString& poolId);
+void WaitForClassifierFail(TIntrusivePtr<IYdbSetup> ydb, const TString& query, const TQueryRunnerSettings& settings, const TString& poolId);
+void WaitForClassifierSuccess(TIntrusivePtr<IYdbSetup> ydb, const TQueryRunnerSettings& settings);
+void WaitForClassifierSuccess(TIntrusivePtr<IYdbSetup> ydb, const TString& query, const TQueryRunnerSettings& settings);
 
 // Test queries
 
@@ -135,7 +176,7 @@ struct TSampleQueries {
     template <typename TResult>
     static void CheckCancelled(const TResult& result) {
         UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), NYdb::EStatus::CANCELLED, result.GetIssues().ToString());
-        UNIT_ASSERT_STRING_CONTAINS(result.GetIssues().ToString(), "Request timeout exceeded, cancelling after");
+        UNIT_ASSERT_STRING_CONTAINS(result.GetIssues().ToString(), "Request was canceled");
     }
 
     template <typename TResult>

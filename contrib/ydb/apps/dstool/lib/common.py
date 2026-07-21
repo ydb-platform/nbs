@@ -17,11 +17,19 @@ from functools import wraps
 from inspect import signature
 from operator import attrgetter, itemgetter
 from collections import defaultdict
+from itertools import cycle, islice
+from types import SimpleNamespace
 import contrib.ydb.core.protos.grpc_pb2_grpc as kikimr_grpc
 import contrib.ydb.core.protos.msgbus_pb2 as kikimr_msgbus
 import contrib.ydb.core.protos.blobstorage_config_pb2 as kikimr_bsconfig
 import contrib.ydb.core.protos.blobstorage_base3_pb2 as kikimr_bs3
 import contrib.ydb.core.protos.cms_pb2 as kikimr_cms
+import contrib.ydb.public.api.protos.draft.ydb_bridge_pb2 as ydb_bridge
+from contrib.ydb.public.api.grpc.draft import ydb_bridge_v1_pb2_grpc as bridge_grpc_server
+from contrib.ydb.public.api.grpc.draft import ydb_nbs_v1_pb2_grpc as nbs_grpc_server
+from contrib.ydb.public.api.protos.ydb_status_codes_pb2 import StatusIds
+from contrib.ydb.apps.dstool.lib.arg_parser import print_error_with_usage
+import contrib.ydb.apps.dstool.lib.table as table
 import typing
 
 
@@ -34,22 +42,59 @@ EVirtualGroupState = kikimr_bs3.EVirtualGroupState
 TGroupDecommitStatus = kikimr_bs3.TGroupDecommitStatus
 
 
+class InvalidParameterError(Exception):
+    """Exception raised for invalid command line parameter."""
+    def __init__(self, parser, parameter_name, parameter, message=""):
+        self.parser = parser
+        self.parameter = parameter
+        self.parameter_name = parameter_name
+        self.message = message
+        super().__init__(self.message)
+
+    def print(self):
+        print_error_with_usage(self.parser, f"ERROR: invalid parameter '{self.parameter_name}' with value '{self.parameter}'. {self.message}")
+
+
 class EndpointInfo:
-    def __init__(self, protocol: str, host: str, port: int):
+    def __init__(self, protocol: str, host: str, grpc_port: int, mon_port: int):
         self.protocol = protocol
-        self.port = port
+        self.grpc_port = grpc_port
+        self.mon_port = mon_port
         self.host = host
+
+    @property
+    def full(self):
+        if self.protocol in ('http', 'https'):
+            return f'{self.protocol}://{self.host_with_mon_port}'
+        else:
+            return f'{self.protocol}://{self.host_with_grpc_port}'
+
+    @property
+    def host_with_port(self):
+        if self.protocol in ('http', 'https'):
+            return self.host_with_mon_port
+        else:
+            return self.host_with_grpc_port
+
+    @property
+    def host_with_grpc_port(self):
+        return f'{self.host}:{self.grpc_port}'
+
+    @property
+    def host_with_mon_port(self):
+        return f'{self.host}:{self.mon_port}'
 
 
 class ConnectionParams:
-    ENDPOINT_HELP = 'Default protocol is http, default port is 8765'
+    ENDPOINT_HELP = 'Endpoint is specified as PROTOCOL://HOST[:PORT]. Can be specified multiple times with different protocols.'
 
     def __init__(self):
         self.hosts = set()
         self.endpoints = dict()
-        self.grpc_port = None
-        self.mon_port = None
-        self.mon_protocol = None
+        self.grpc_port = 2135
+        self.mon_port = 8765
+        self.grpc_protocol = 'grpc'
+        self.mon_protocol = 'http'
         self.token_type = None
         self.token = None
         self.domain = None
@@ -59,10 +104,20 @@ class ConnectionParams:
         self.cafile = None
         self.cadata = None
         self.insecure = None
-        self.http = None
+        self.parser = None
+        self.use_ip = None
+        self.http_endpoints = dict()
+        self.grpc_endpoints = dict()
+        self.args = None
+        self.printed_warning_about_not_assigned_http_protocol = False
+        self.printed_warning_about_not_assigned_grpc_protocol = False
 
     def make_endpoint_info(self, endpoint: str):
-        return EndpointInfo(*self.get_protocol_host_port(endpoint))
+        protocol, host, port = self.get_protocol_host_port(endpoint)
+        grpc_port = self.grpc_port if protocol not in ('grpc', 'grpcs') else port
+        mon_port = self.mon_port if protocol not in ('http', 'https') else port
+        endpoint_info = EndpointInfo(protocol, host, grpc_port, mon_port)
+        return endpoint_info
 
     def get_protocol_host_port(self, endpoint):
         protocol, sep, endpoint = endpoint.rpartition('://')
@@ -72,7 +127,7 @@ class ConnectionParams:
         if sep == ':':
             return protocol, endpoint, int(port)
         else:
-            return protocol, endpoint, self.mon_port
+            return protocol, endpoint, self.grpc_port if protocol in ('grpc', 'grpcs') else self.mon_port
 
     def get_cafile_data(self):
         if self.cafile is None:
@@ -96,75 +151,124 @@ class ConnectionParams:
                 netloc = new_netloc
         return netloc
 
-    def make_url(self, host, path, params):
-        endpoint_info = self.endpoints[host] if host in self.endpoints else self.make_endpoint_info(host)
-        netloc = self.get_netloc(endpoint_info.host, endpoint_info.port)
-        return urllib.parse.urlunsplit((endpoint_info.protocol, netloc, path, urllib.parse.urlencode(params), ''))
+    def make_url(self, endpoint, path, params):
+        if self.use_ip:
+            location = self.get_netloc(endpoint.host, endpoint.port)
+        else:
+            location = endpoint.host_with_port
+        return urllib.parse.urlunsplit((endpoint.protocol, location, path, urllib.parse.urlencode(params), ''))
 
-    def parse_token(self, token_file):
+    def assign_token(self, typed_token):
+        self.token_type, self.token = typed_token
+        if self.token and self.token.endswith('@builtin'):
+            self.token_type = None
+
+    def parse_token(self, token_file, iam_token_file=None):
         if token_file:
-            self.token = token_file.readline().rstrip('\r\n')
+            self.assign_token(self.read_token_from_file(token_file, 'OAuth'))
             token_file.close()
-        if self.token is None:
-            self.token = os.getenv('YDB_TOKEN')
-            if self.token is not None:
-                self.token = self.token.strip()
-        if self.token is None:
-            try:
-                path = os.path.expanduser(os.path.join('~', '.ydb', 'token'))
-                with open(path) as f:
-                    self.token = f.readline().strip('\r\n')
-            except Exception:
-                pass
+            return
 
-        if self.token is not None:
-            if len(self.token.split(' ')) == 2:
-                self.token_type, self.token = self.token.split(' ')
-            else:
-                if not self.token.endswith('@builtin'):
-                    self.token_type = 'OAuth'
+        if iam_token_file:
+            self.assign_token(self.read_token_from_file(iam_token_file, 'Bearer'))
+            iam_token_file.close()
+            return
+
+        token_value = os.getenv('YDB_TOKEN')
+        if token_value is not None:
+            self.assign_token(self.parse_token_value(token_value, 'OAuth'))
+            return
+
+        token_value = os.getenv('IAM_TOKEN')
+        if token_value is not None:
+            self.assign_token(self.parse_token_value(token_value, 'Bearer'))
+            return
+
+        default_token_paths = [
+            ('OAuth', os.path.expanduser(os.path.join('~', '.ydb', 'token'))),
+            ('Bearer', os.path.expanduser(os.path.join('~', '.ydb', 'iam_token'))),
+        ]
+        for token_type, token_file_path in default_token_paths:
+            self.assign_token(self.read_token_file(token_file_path, token_type))
+            if self.token is not None:
+                return
+
+    def read_token_from_file(self, token_file, default_token_type):
+        if token_file is None:
+            return default_token_type, None
+        token_value = token_file.readline().rstrip('\r\n')
+        return self.parse_token_value(token_value, default_token_type)
+
+    def read_token_file(self, token_file_path, default_token_type):
+        if token_file_path is None:
+            return default_token_type, None
+        try:
+            return self.read_token_from_file_and_close(open(token_file_path, 'r'), default_token_type)
+        except Exception:
+            return default_token_type, None
+
+    def parse_token_value(self, token_value, default_token_type):
+        if token_value is None:
+            return default_token_type, None
+        splitted = token_value.strip().split(' ')
+        if len(splitted) == 2:
+            return splitted
+        else:
+            return default_token_type, token_value
 
     def apply_args(self, args, with_localhost=True):
+        self.args = args
         self.grpc_port = args.grpc_port
         self.mon_port = args.mon_port
-        self.mon_protocol = args.mon_protocol
 
+        protocols = defaultdict(int)
         if args.endpoint:
             for endpoint in args.endpoint:
                 endpoint_info = self.make_endpoint_info(endpoint)
-                if self.mon_protocol is None:
-                    self.mon_protocol = endpoint_info.protocol
-                host_with_port = '{0}:{1}'.format(endpoint_info.host, endpoint_info.port)
+                if endpoint_info.protocol not in ('http', 'https', 'grpc', 'grpcs'):
+                    raise InvalidParameterError(self.parser, '--endpoint', endpoint, 'Invalid protocol specified for endpoint')
+                protocols[endpoint_info.protocol] += 1
+                host_with_port = endpoint_info.host_with_port
                 self.hosts.add(endpoint_info.host)
                 self.endpoints[endpoint_info.host] = endpoint_info
                 self.endpoints[host_with_port] = endpoint_info
+                if endpoint_info.protocol in ('http', 'https'):
+                    self.http_endpoints[host_with_port] = endpoint_info
+                else:
+                    self.grpc_endpoints[host_with_port] = endpoint_info
 
-        if self.mon_protocol is None:
-            self.mon_protocol = 'http'
+        if 'grpc' not in protocols and 'grpcs' in protocols:
+            self.grpc_protocol = 'grpcs'
+        if 'http' not in protocols and 'https' in protocols:
+            self.mon_protocol = 'https'
 
-        self.parse_token(args.token_file)
+        self.parse_token(args.token_file, args.iam_token_file)
         self.domain = 1
-        self.verbose = args.verbose
+        self.verbose = args.verbose or args.debug
+        self.debug = args.debug
         self.quiet = args.quiet
         self.http_timeout = args.http_timeout
         self.cafile = args.cafile
         self.insecure = args.insecure
-        self.http = args.http
 
     def add_host_access_options(self, parser, with_endpoint=True):
+        self.parser = parser
         parser.add_argument('--verbose', '-v', action='store_true', help='Be verbose during operation')
+        parser.add_argument('--debug', '-d', action='store_true', help='Be very verbose during operation')
         parser.add_argument('--quiet', '-q', action='store_true', help="Don't show non-vital messages")
         g = parser.add_argument_group('Server access options')
         if with_endpoint:
             g.add_argument('--endpoint', '-e', metavar='[PROTOCOL://]HOST[:PORT]', type=str, required=True, action='append', help=ConnectionParams.ENDPOINT_HELP)
         g.add_argument('--grpc-port', type=int, default=2135, metavar='PORT', help='GRPC port to use for procedure invocation')
         g.add_argument('--mon-port', type=int, default=8765, metavar='PORT', help='HTTP monitoring port for viewer JSON access')
-        g.add_argument('--mon-protocol', type=str, metavar='PROTOCOL', choices=('http', 'https'), help='HTTP monitoring protocol for viewer JSON access')
-        g.add_argument('--token-file', type=FileType(encoding='ascii'), metavar='PATH', help='Path to token file')
-        g.add_argument('--ca-file', metavar='PATH', dest='cafile', type=str, help='Path to a file containing the PEM encoding of the server root certificates for tls connections.')
-        g.add_argument('--http', action='store_true', help='Use HTTP to connect to blob storage controller instead of GRPC')
+        token_group = g.add_mutually_exclusive_group()
+        token_group.add_argument('--token-file', type=FileType(encoding='ascii'), metavar='PATH', help='Path to token file')
+        token_group.add_argument('--iam-token-file', type=FileType(encoding='ascii'), metavar='PATH', help='Path to IAM token file')
+        g.add_argument('--ca-file', metavar='PATH', dest='cafile', type=str, help='File containing PEM encoded root certificates for SSL/TLS connections. '
+                                                                                  'If this parameter is empty, the default roots will be used.')
         g.add_argument('--http-timeout', type=int, default=5, help='Timeout for blocking socket I/O operations during HTTP(s) queries')
         g.add_argument('--insecure', action='store_true', help='Allow insecure HTTPS fetching')
+        g.add_argument('--use-ip', action='store_true', help='Use IP addresses instead of hostnames when connecting to endpoints')
 
 
 connection_params = ConnectionParams()
@@ -173,10 +277,6 @@ connection_params = ConnectionParams()
 def set_connection_params_type(connection_params_type: type):
     global connection_params
     connection_params = connection_params_type()
-
-
-def make_url(host, path, params):
-    return connection_params.make_url(host, path, params)
 
 
 get_pdisk_id = attrgetter('NodeId', 'PDiskId')
@@ -189,6 +289,20 @@ get_vdisk_id_short = attrgetter('FailRealmIdx', 'FailDomainIdx', 'VDiskIdx')
 
 def get_vslot_extended_id(vslot):
     return *get_vslot_id(vslot.VSlotId), *get_vdisk_id(vslot)
+
+
+def get_pdisk_inferred_settings(pdisk):
+    if (pdisk.PDiskMetrics.HasField('SlotCount')):
+        return pdisk.PDiskMetrics.SlotCount, pdisk.PDiskMetrics.SlotSizeInUnits
+    else:
+        return pdisk.ExpectedSlotCount, pdisk.PDiskConfig.SlotSizeInUnits
+
+
+def get_vslot_owner_weight(group_size_in_units, pdisk_slot_size_in_units):
+    # Identical to blobstorage/pdisk/blobstorage_pdisk_config.h GetOwnerWeight()
+    vu = group_size_in_units if group_size_in_units else 1
+    pu = pdisk_slot_size_in_units if pdisk_slot_size_in_units else 1
+    return int(vu / pu) + (1 if (vu % pu) else 0)
 
 
 class Location(typing.NamedTuple):
@@ -259,49 +373,141 @@ class GroupSelectionError(Exception):
     pass
 
 
-def query_random_host_with_retry(retries=5, explicit_host_param=None, http=False):
+def filter_good_endpoints(endpoints):
+    return [endpoint for endpoint in endpoints if endpoint.host_with_port not in bad_hosts]
+
+
+def get_random_endpoints_for_query(request_type=None, items_count=1, filter=None):
+    if request_type == 'http':
+        endpoints = connection_params.http_endpoints
+    elif request_type == 'grpc':
+        endpoints = connection_params.grpc_endpoints
+    else:
+        endpoints = connection_params.endpoints
+    endpoints = list(endpoints.values())
+    if filter:
+        endpoints = filter(endpoints)
+    random.shuffle(endpoints)
+    return endpoints[:items_count]
+
+
+def retry_query_with_endpoints(query, endpoints, request_type, query_name, max_retries=5):
+    try_index = 0
+    result = None
+    for endpoint in endpoints:
+        try:
+            result = query(endpoint)
+            break
+        except Exception as e:
+            try_index += 1
+            if isinstance(e, urllib.error.URLError):
+                bad_hosts.add(endpoint.host_with_port)
+            if not connection_params.quiet:
+                print(f'WARNING: failed to fetch data from host {endpoint.host_with_port} in {query_name}: {e} ({type(e).__module__}.{type(e).__name__})', file=sys.stderr)
+                if request_type == 'http' and try_index == max_retries:
+                    print('HINT: consider trying different protocol for endpoints when experiencing massive fetch failures from different hosts', file=sys.stderr)
+            if try_index == max_retries:
+                raise ConnectionError("Can't connect to specified addresses")
+    return try_index, result
+
+
+def query_random_host_with_retry(retries=5, request_type=None):
     def wrapper(func):
         sig = signature(func)
 
         @wraps(func)
         def wrapped(*args, **kwargs):
-            explicit_host = None
-            if explicit_host_param is not None:
-                explicit_host = sig.bind(*args, **kwargs).arguments.get(explicit_host_param)
+            binded = sig.bind(*args, **kwargs)
+            explicit_host = binded.arguments.pop('explicit_host', None)
+            host = binded.arguments.pop('host', None)
+            endpoint = binded.arguments.pop('endpoint', None)
+            endpoints = binded.arguments.pop('endpoints', None)
 
-            allowed_hosts = {explicit_host} if explicit_host is not None else connection_params.hosts
-            hosts_to_query = []
+            if endpoint is not None or host is not None:
+                return func(*args, **kwargs)
+
+            if explicit_host is not None and explicit_host in connection_params.endpoints:
+                explicit_endpoint = connection_params.endpoints[explicit_host]
+            elif explicit_host is not None:
+                explicit_endpoint = connection_params.make_endpoint_info(f'{connection_params.mon_protocol}://{explicit_host}')
+            else:
+                explicit_endpoint = None
+
+            def send_query(endpoint):
+                return func(*args, **kwargs, endpoint=endpoint)
+            setattr(send_query, '_name', func.__name__)
 
             try_index = 0
-            while True:
-                # regenerate host list if it got empty
-                if not hosts_to_query:
-                    hosts_to_query = list(allowed_hosts - bad_hosts) or list(allowed_hosts)
-                    random.shuffle(hosts_to_query)
+            result = None
+            if explicit_endpoint:
+                try_index, result = retry_query_with_endpoints(send_query, [explicit_endpoint] * retries, request_type, func.__name__, retries)
+                return result
 
-                host = hosts_to_query.pop()
-                try:
-                    return func(*args, **kwargs, host=host)
-                except Exception as e:
-                    try_index += 1
-                    if isinstance(e, urllib.error.URLError):
-                        bad_hosts.add(host)
-                    if not connection_params.quiet:
-                        print(f'WARNING: failed to fetch data from host {host} in {func.__name__}: {e}', file=sys.stderr)
-                        if http and try_index == retries:
-                            print('HINT: consider trying different protocol for endpoints when experiencing massive fetch failures from different hosts', file=sys.stderr)
-                    if try_index == retries:
-                        raise ConnectionError("Can't connect to specified addresses")
+            if endpoints:
+                try_index, result = retry_query_with_endpoints(send_query, endpoints, request_type, func.__name__, retries)
+                return result
+
+            if result is not None:
+                return result
+
+            print_if_verbose(connection_params.args, 'INFO: using random hosts', file=sys.stderr)
+
+            endpoints = get_random_endpoints_for_query(request_type=request_type, items_count=retries - try_index, filter=filter_good_endpoints)
+            sub_try_index, result = retry_query_with_endpoints(send_query, endpoints, request_type, func.__name__, retries - try_index)
+            try_index += sub_try_index
+
+            if result is not None:
+                return result
+
+            if request_type == 'http' and connection_params.grpc_endpoints:
+                if not connection_params.http_endpoints and not connection_params.printed_warning_about_not_assigned_http_protocol:
+                    print_if_not_quiet(
+                        connection_params.args,
+                        'WARNING: endpoint for http requests is not specified, grpc endpoints will be used instead with conversion to http. '
+                        'You can specify additional endpoints with "http" or "https" protocol.',
+                        file=sys.stderr)
+                    connection_params.printed_warning_about_not_assigned_http_protocol = True
+                print_if_verbose(connection_params.args, 'INFO: failed with http endpoints, try to use grpc endpoints', file=sys.stderr)
+                endpoints = get_random_endpoints_for_query(request_type='grpc', items_count=retries - try_index, filter=filter_good_endpoints)
+                sub_try_index, result = retry_query_with_endpoints(send_query, endpoints, request_type, func.__name__, retries - try_index)
+                try_index += sub_try_index
+
+            if request_type == 'grpc' and connection_params.http_endpoints:
+                if not connection_params.grpc_endpoints and not connection_params.printed_warning_about_not_assigned_grpc_protocol:
+                    print_if_not_quiet(
+                        connection_params.args,
+                        'WARNING: endpoint for grpc requests is not specified, http endpoints will be used instead with conversion to grpc. '
+                        'You can specify additional endpoints with "grpc" or "grpcs" protocol.',
+                        file=sys.stderr)
+                    connection_params.printed_warning_about_not_assigned_grpc_protocol = True
+                print_if_verbose(connection_params.args, 'INFO: failed with grpc endpoints, try to use http endpoints', file=sys.stderr)
+                endpoints = get_random_endpoints_for_query(request_type='http', items_count=retries - try_index, filter=filter_good_endpoints)
+                sub_try_index, result = retry_query_with_endpoints(send_query, endpoints, request_type, func.__name__, retries - try_index)
+                try_index += sub_try_index
+
+            if result is not None:
+                return result
+
+            print_if_verbose(connection_params.args, 'INFO: failed with all endpoints, retry them', file=sys.stderr)
+
+            endpoints = get_random_endpoints_for_query(request_type=None, items_count=retries - try_index, filter=None)
+            endpoints = list(islice(cycle(endpoints), retries - try_index))
+            sub_try_index, result = retry_query_with_endpoints(lambda endpoint: func(*args, **kwargs, endpoint=endpoint), endpoints, request_type, func.__name__, retries - try_index)
+            return result
 
         return wrapped
     return wrapper
 
 
 @inmemcache('fetch', ['path', 'params', 'explicit_host', 'fmt'], 'cache')
-@query_random_host_with_retry(explicit_host_param='explicit_host', http=True)
-def fetch(path, params={}, explicit_host=None, fmt='json', host=None, cache=True, method=None, data=None, content_type=None, accept=None):
-    url = connection_params.make_url(host, path, params)
-    if connection_params.verbose:
+@query_random_host_with_retry(request_type='http')
+def fetch(path, params={}, explicit_host=None, fmt='json', host=None, cache=True, method=None, data=None, content_type=None, accept=None, endpoint=None, endpoints=None):
+    if endpoint is None and host is not None:
+        endpoint = connection_params.make_endpoint_info(f'{connection_params.mon_protocol}://{host}')
+    if endpoint.protocol not in ('http', 'https'):
+        endpoint = connection_params.make_endpoint_info(f'{connection_params.mon_protocol}://{endpoint.host_with_mon_port}')
+    url = connection_params.make_url(endpoint, path, params)
+    if connection_params.debug:
         print('INFO: fetching %s' % url, file=sys.stderr)
     request = urllib.request.Request(url, data=data, method=method)
     if connection_params.token and url.startswith('http'):
@@ -327,31 +533,31 @@ def fetch(path, params={}, explicit_host=None, fmt='json', host=None, cache=True
             assert False, 'ERROR: invalid stream fmt specified: %s' % fmt
 
 
-@query_random_host_with_retry(explicit_host_param='explicit_host')
-def invoke_grpc(func, *params, explicit_host=None, host=None):
+@query_random_host_with_retry(request_type='grpc')
+def invoke_grpc(func, *params, explicit_host=None, endpoint=None, stub_factory=kikimr_grpc.TGRpcServerStub, endpoints=None):
     options = [
         ('grpc.max_receive_message_length', 256 << 20),  # 256 MiB
     ]
-    if connection_params.verbose:
+    if connection_params.debug:
         p = ', '.join('<<< %s >>>' % text_format.MessageToString(param, as_one_line=True) for param in params)
-        print('INFO: issuing %s(%s) @%s:%d protocol %s' % (func, p, host, connection_params.grpc_port,
-              connection_params.mon_protocol), file=sys.stderr)
+        print('INFO: issuing %s(%s) @%s:%d protocol %s' % (func, p, endpoint.host, endpoint.grpc_port,
+              endpoint.protocol), file=sys.stderr)
 
     def work(channel):
         try:
-            stub = kikimr_grpc.TGRpcServerStub(channel)
+            stub = stub_factory(channel)
             res = getattr(stub, func)(*params)
-            if connection_params.verbose:
+            if connection_params.debug:
                 print('INFO: result <<< %s >>>' % text_format.MessageToString(res, as_one_line=True), file=sys.stderr)
             return res
         except Exception as e:
-            if connection_params.verbose:
+            if connection_params.debug:
                 print('ERROR: exception %s' % e, file=sys.stderr)
             raise ConnectionError("Can't connect to specified addresses by gRPC protocol")
 
-    hostport = '%s:%d' % (host, connection_params.grpc_port)
+    hostport = endpoint.host_with_grpc_port
     retval = None
-    if connection_params.mon_protocol == 'grpcs':
+    if endpoint.protocol == 'grpcs':
         creds = grpc.ssl_channel_credentials(connection_params.get_cafile_data())
         with grpc.secure_channel(hostport, creds, options) as channel:
             retval = work(channel)
@@ -361,20 +567,11 @@ def invoke_grpc(func, *params, explicit_host=None, host=None):
     return retval
 
 
-def invoke_bsc_request(request):
-    if connection_params.http:
-        tablet_id = 72057594037932033
-        data = request.SerializeToString()
-        res = fetch('tablets/app', params=dict(TabletID=tablet_id, exec=1), fmt='raw', cache=False, method='POST',
-                    data=data, content_type='application/x-protobuf', accept='application/x-protobuf')
-        m = kikimr_bsconfig.TConfigResponse()
-        m.MergeFromString(res)
-        return m
-
+def invoke_grpc_bsc_request(request, endpoint=None):
     bs_request = kikimr_msgbus.TBlobStorageConfigRequest(Domain=connection_params.domain, Request=request)
     if connection_params.token is not None:
         bs_request.SecurityToken = connection_params.token
-    bs_response = invoke_grpc('BlobStorageConfig', bs_request)
+    bs_response = invoke_grpc('BlobStorageConfig', bs_request, endpoint=endpoint)
     if bs_response.Status != 1:
         # remove security token from error message
         bs_request.SecurityToken = ''
@@ -382,6 +579,24 @@ def invoke_bsc_request(request):
         response_s = text_format.MessageToString(bs_response, as_one_line=True)
         raise QueryError('Failed to gRPC-query blob storage controller; request: %s; response: %s' % (request_s, response_s))
     return bs_response.BlobStorageConfigResponse
+
+
+def invoke_http_bsc_request(request, endpoint=None):
+    tablet_id = 72057594037932033
+    data = request.SerializeToString()
+    res = fetch('tablets/app', params=dict(TabletID=tablet_id, exec=1), fmt='raw', cache=False, method='POST',
+                data=data, content_type='application/x-protobuf', accept='application/x-protobuf', endpoint=endpoint)
+    m = kikimr_bsconfig.TConfigResponse()
+    m.MergeFromString(res)
+    return m
+
+
+@query_random_host_with_retry(request_type=None)
+def invoke_bsc_request(request, explicit_host=None, endpoint=None):
+    if endpoint.protocol in ('http', 'https'):
+        return invoke_http_bsc_request(request, endpoint=endpoint)
+    else:
+        return invoke_grpc_bsc_request(request, endpoint=endpoint)
 
 
 def cms_host_restart_request(user, host, reason, duration_usec, max_avail):
@@ -402,6 +617,73 @@ def cms_host_restart_request(user, host, reason, duration_usec, max_avail):
         return None
     else:
         return '%s: %s' % (kikimr_cms.TStatus.ECode.Name(response.Status.Code), response.Status.Reason)
+
+
+def get_piles_info():
+    request = ydb_bridge.GetClusterStateRequest()
+    response = invoke_grpc('GetClusterState', request, stub_factory=bridge_grpc_server.BridgeServiceStub)
+    result = ydb_bridge.GetClusterStateResult()
+    response.operation.result.Unpack(result)
+    return result
+
+
+def promote_pile(pile_id):
+    request = ydb_bridge.UpdateClusterStateRequest()
+    request.updates.add().CopyFrom(ydb_bridge.PileStateUpdate(
+        pile_id=pile_id,
+        state=ydb_bridge.PileState.PROMOTED
+    ))
+    invoke_grpc('UpdateClusterState', request, stub_factory=bridge_grpc_server.BridgeServiceStub)
+
+
+def set_primary_pile(primary_pile_id, synchronized_piles):
+    request = ydb_bridge.UpdateClusterStateRequest()
+    request.updates.add().CopyFrom(ydb_bridge.PileStateUpdate(
+        pile_id=primary_pile_id,
+        state=ydb_bridge.PileState.PRIMARY
+    ))
+    for pile_id in synchronized_piles:
+        request.updates.add().CopyFrom(ydb_bridge.PileStateUpdate(
+            pile_id=pile_id,
+            state=ydb_bridge.PileState.SYNCHRONIZED
+        ))
+    invoke_grpc('UpdateClusterState', request, stub_factory=bridge_grpc_server.BridgeServiceStub)
+
+
+def disconnect_pile(pile_id, pile_to_endpoints):
+    request = ydb_bridge.UpdateClusterStateRequest()
+    request.updates.add().CopyFrom(ydb_bridge.PileStateUpdate(
+        pile_id=pile_id,
+        state=ydb_bridge.PileState.DISCONNECTED
+    ))
+    request.specific_pile_ids.append(pile_id)
+    invoke_grpc('UpdateClusterState', request, stub_factory=bridge_grpc_server.BridgeServiceStub, endpoints=pile_to_endpoints[pile_id])
+    other_pile_ids = [x for x in pile_to_endpoints.keys() if x != pile_id]
+    request = ydb_bridge.UpdateClusterStateRequest()
+    request.updates.add().CopyFrom(ydb_bridge.PileStateUpdate(
+        pile_id=pile_id,
+        state=ydb_bridge.PileState.DISCONNECTED,
+    ))
+    request.specific_pile_ids.extend(other_pile_ids)
+    invoke_grpc('UpdateClusterState', request, stub_factory=bridge_grpc_server.BridgeServiceStub, endpoints=pile_to_endpoints[other_pile_ids[0]])
+
+
+def connect_pile(pile_id, pile_to_endpoints):
+    request = ydb_bridge.UpdateClusterStateRequest()
+    request.updates.add().CopyFrom(ydb_bridge.PileStateUpdate(
+        pile_id=pile_id,
+        state=ydb_bridge.PileState.NOT_SYNCHRONIZED,
+    ))
+    request.specific_pile_ids.append(pile_id)
+    invoke_grpc('UpdateClusterState', request, stub_factory=bridge_grpc_server.BridgeServiceStub, endpoints=pile_to_endpoints[pile_id])
+    other_pile_ids = [x for x in pile_to_endpoints.keys() if x != pile_id]
+    request = ydb_bridge.UpdateClusterStateRequest()
+    request.updates.add().CopyFrom(ydb_bridge.PileStateUpdate(
+        pile_id=pile_id,
+        state=ydb_bridge.PileState.NOT_SYNCHRONIZED,
+    ))
+    request.specific_pile_ids.extend(other_pile_ids)
+    invoke_grpc('UpdateClusterState', request, stub_factory=bridge_grpc_server.BridgeServiceStub, endpoints=pile_to_endpoints[other_pile_ids[0]])
 
 
 def create_bsc_request(args):
@@ -454,6 +736,26 @@ def create_readonly_request(args, vslot, value):
 
 def invoke_wipe_request(request):
     return invoke_bsc_request(request)
+
+
+def invoke_nbs_request(request_type, request):
+    return invoke_grpc(request_type, request, stub_factory=nbs_grpc_server.NbsServiceStub)
+
+
+def get_status(response):
+    return response.operation.ready and response.operation.status == StatusIds.SUCCESS
+
+
+def get_status_str(response):
+    success = get_status(response)
+
+    return 'success' if success else 'failure'
+
+
+def print_nbs_request_result(args, request, response):
+    status = get_status(response)
+    error_reason = 'Request has failed: \n{0}\n{1}\n'.format(request, response)
+    print_status(args, status, error_reason)
 
 
 @inmemcache('base_config_and_storage_pools', cache_enable_param='cache')
@@ -543,21 +845,21 @@ def bytes_to_string(num, round, suffix):
     return f'{res}{right}{suffix}'
 
 
-def gib_string(num):
-    return bytes_to_string(num, 1024 ** 3, '')
+def gb_string(num):
+    return bytes_to_string(num, 1000 ** 3, ' GB')
 
 
 def bytes_string(num):
-    if num > 1024 ** 5:
-        return bytes_to_string(num, 1024 ** 5, ' PiB')
-    if num > 1024 ** 4:
-        return bytes_to_string(num, 1024 ** 4, ' TiB')
-    if num > 1024 ** 3:
-        return bytes_to_string(num, 1024 ** 3, ' GiB')
-    if num > 1024 ** 2:
-        return bytes_to_string(num, 1024 ** 2, ' MiB')
-    if num > 1024:
-        return bytes_to_string(num, 1024, ' kiB')
+    if num > 1000 ** 5:
+        return bytes_to_string(num, 1000 ** 5, ' PB')
+    if num > 1000 ** 4:
+        return bytes_to_string(num, 1000 ** 4, ' TB')
+    if num > 1000 ** 3:
+        return bytes_to_string(num, 1000 ** 3, ' GB')
+    if num > 1000 ** 2:
+        return bytes_to_string(num, 1000 ** 2, ' MB')
+    if num > 1000:
+        return bytes_to_string(num, 1000, ' kB')
     return bytes_to_string(num, 1, '')
 
 
@@ -682,12 +984,28 @@ def build_node_fqdn_maps(base_config):
     return node_id_to_host, host_to_node_id
 
 
+def build_pile_to_node_id_map(base_config):
+    pile_to_node_id_map = defaultdict(list)
+    for node in base_config.Node:
+        pile_to_node_id_map[node.Location.BridgePileName].append(node.NodeId)
+    return pile_to_node_id_map
+
+
 def build_pdisk_map(base_config):
     pdisk_map = {
         get_pdisk_id(pdisk): pdisk
         for pdisk in base_config.PDisk
     }
     return pdisk_map
+
+
+def build_donors_per_pdisk_map(base_config):
+    donors_per_vdisk = defaultdict(int)
+    for vslot in base_config.VSlot:
+        for donor in vslot.Donors:
+            pdisk_id = get_pdisk_id(donor.VSlotId)
+            donors_per_vdisk[pdisk_id] += 1
+    return donors_per_vdisk
 
 
 def build_pdisk_static_slots_map(base_config):
@@ -701,11 +1019,16 @@ def build_pdisk_static_slots_map(base_config):
 def build_pdisk_usage_map(base_config, count_donors=False, storage_pool=None):
     pdisk_usage_map = {}
 
+    group_size_map = {group.GroupId: group.GroupSizeInUnits for group in base_config.Group}
+
+    pdisk_slot_size_in_units_map = {}
     for pdisk in base_config.PDisk:
         if storage_pool is not None and not pdisk_matches_storage_pool(pdisk, storage_pool):
             continue
         pdisk_id = get_pdisk_id(pdisk)
         pdisk_usage_map[pdisk_id] = pdisk.NumStaticSlots
+        _, slot_size_in_units = get_pdisk_inferred_settings(pdisk)
+        pdisk_slot_size_in_units_map[pdisk_id] = slot_size_in_units
 
     for vslot in base_config.VSlot:
         if not (vslot.GroupId & 0x80000000):  # don't count vslots from static groups twice
@@ -713,10 +1036,13 @@ def build_pdisk_usage_map(base_config, count_donors=False, storage_pool=None):
         pdisk_id = get_pdisk_id(vslot.VSlotId)
         if pdisk_id not in pdisk_usage_map:
             continue
-        pdisk_usage_map[pdisk_id] += 1
+        group_size_in_units = group_size_map.get(vslot.GroupId, 0)
+        weight = get_vslot_owner_weight(group_size_in_units, pdisk_slot_size_in_units_map.get(pdisk_id, 0))
+        pdisk_usage_map[pdisk_id] += weight
         for donor in vslot.Donors if count_donors else []:
             donor_pdisk_id = get_pdisk_id(donor.VSlotId)
-            pdisk_usage_map[donor_pdisk_id] += 1
+            donor_weight = get_vslot_owner_weight(group_size_in_units, pdisk_slot_size_in_units_map.get(donor_pdisk_id, 0))
+            pdisk_usage_map[donor_pdisk_id] += donor_weight
 
     return pdisk_usage_map
 
@@ -824,20 +1150,23 @@ def fetch_json_info(entity, nodes=None, enums=1):
     elif entity == 'vdiskinfo':
         section, keycols = 'VDiskStateInfo', ['NodeId', 'PDiskId', 'VDiskSlotId']
 
-        def merge(x, y):
+        def merge_fn(x, y):
             return max([x, y], key=lambda x: x.get('GroupGeneration', 0))
+        merge = merge_fn
     elif entity == 'tabletinfo':
         section, keycols = 'TabletStateInfo', ['TabletId']
 
-        def merge(x, y):
+        def merge_fn(x, y):
             return max([x, y], key=lambda x: x.get('Generation', 0))
+        merge = merge_fn
     elif entity == 'bsgroupinfo':
         section, keycols = 'BSGroupStateInfo', ['GroupID']
 
-        def merge(x, y):
+        def merge_fn(x, y):
             return x if x.get('GroupGeneration', 0) > y.get('GroupGeneration', 0) else \
                 y if y.get('GroupGeneration', 0) > x.get('GroupGeneration', 0) else \
                 x if x.get('VDiskIds', []) else y
+        merge = merge_fn
     else:
         assert False
     res = {}
@@ -879,11 +1208,26 @@ def fetch_node_mon_map(nodes=None):
     }
 
 
+def fetch_node_to_endpoint_map(nodes=None):
+    res = {}
+    for node_id, sysinfo in fetch_json_info('sysinfo', nodes).items():
+        grpc_port = None
+        mon_port = None
+        for ep in sysinfo.get('Endpoints', []):
+            if ep['Name'] == 'grpc':
+                grpc_port = int(ep['Address'][1:])
+            elif ep['Name'] == 'http-mon':
+                mon_port = int(ep['Address'][1:])
+        res[node_id] = EndpointInfo('grpc', sysinfo['Host'], grpc_port, mon_port)
+    return res
+
+
 def get_vslots_by_vdisk_ids(base_config, vdisk_ids):
     vdisk_vslot_map = {}
     for v in base_config.VSlot:
         vdisk_vslot_map['[%08x:_:%u:%u:%u]' % (v.GroupId, v.FailRealmIdx, v.FailDomainIdx, v.VDiskIdx)] = v
         vdisk_vslot_map['[%08x:%u:%u:%u:%u]' % (v.GroupId, v.GroupGeneration, v.FailRealmIdx, v.FailDomainIdx, v.VDiskIdx)] = v
+        vdisk_vslot_map['(%d-%u-%u-%u-%u)' % (v.GroupId, v.GroupGeneration, v.FailRealmIdx, v.FailDomainIdx, v.VDiskIdx)] = v
 
     res = []
     for string in vdisk_ids:
@@ -895,21 +1239,7 @@ def get_vslots_by_vdisk_ids(base_config, vdisk_ids):
     return res
 
 
-def fetch_vdisk_status(hostname):
-    res = []
-    try:
-        j = fetch('viewer/json/vdiskinfo', dict(enums=1, node_id=0), hostname, cache=False)
-    except Exception:
-        return []
-    for v in j.get('VDiskStateInfo', []):
-        try:
-            res.append((hostname, *get_vslot_id_json(v), *get_vdisk_id_json(v['VDiskId']), v['VDiskState'], v['Replicated']))
-        except KeyError:
-            pass
-    return res
-
-
-def filter_healthy_groups(groups, node_mon_map, base_config, vslot_map):
+def filter_healthy_groups(groups, base_config, vslot_map):
     res = {
         group.GroupId: len(group.VSlotId)
         for group in base_config.Group
@@ -935,11 +1265,18 @@ def add_host_access_options(parser):
 
 
 def add_vdisk_ids_option(g, required=False):
-    g.add_argument('--vdisk-ids', type=str, nargs='+', required=required, help='Space separated list of vdisk ids in format [GroupId:_:FailRealm:FailDomain:VDiskIdx]')
+    help_text = (
+        'Space separated list of vdisk ids in formats: '
+        '[GroupId(hex):_:FailRealm:FailDomain:VDiskIdx], '
+        '[GroupId(hex):GroupGen:FailRealm:FailDomain:VDiskIdx], '
+        'or (GroupId(dec)-GroupGen-FailRealm-FailDomain-VDiskIdx)'
+    )
+    g.add_argument('--vdisk-ids', type=str, nargs='+', required=required, help=help_text)
 
 
 def add_pdisk_ids_option(p, required=False):
-    p.add_argument('--pdisk-ids', type=str, nargs='+', required=required, help='Space separated list of pdisk ids in format [NodeId:PDiskId]')
+    p.add_argument('--pdisk-ids', type=str, nargs='+', required=required,
+                   help='Space separated list of pdisk ids in format [NodeId:PDiskId] (brackets optional)')
 
 
 def add_group_ids_option(p, required=False):
@@ -974,14 +1311,18 @@ def flush_cache():
     cache.clear()
 
 
-def print_json_result(status: str, description: str = None, file=sys.stdout):
+def print_json_result(status: str, description: str = None, file=None):
+    if file is None:
+        file = sys.stdout
     d = {'status': status}
     if description is not None:
         d['description'] = description
     print(json.dumps(d), file=file)
 
 
-def print_result(format: str, status: str, description: str = None, file=sys.stderr):
+def print_result(format: str, status: str, description: str = None, file=None):
+    if file is None:
+        file = sys.stderr
     if format == 'json':
         print_json_result(status, description)
     else:
@@ -994,19 +1335,7 @@ def print_result(format: str, status: str, description: str = None, file=sys.std
 def print_request_result(args, request, response):
     success = is_successful_bsc_response(response)
     error_reason = 'Request has failed: \n{0}\n{1}\n'.format(request, response)
-    print_status_if_verbose(args, success, error_reason)
-
-
-def print_status_if_verbose(args, success, error_reason):
-    format = getattr(args, 'format', 'pretty')
-    verbose = getattr(args, 'verbose', False)
-    if success:
-        print_result(format, 'success')
-    else:
-        if verbose:
-            print_result(format, 'error', error_reason)
-        else:
-            print_result(format, 'error', 'add --verbose for more info')
+    print_status(args, success, error_reason)
 
 
 def print_status_if_not_quiet(args, success, error_reason):
@@ -1043,3 +1372,58 @@ def is_dynamic_group(groupId):
 
 def is_successful_bsc_response(response):
     return response.Success or 'transaction rollback' in response.ErrorDescription
+
+
+def dump_group_mapper_error(response: kikimr_bsconfig.TConfigResponse, args):
+    verbose = getattr(args, 'verbose', False)
+    err: kikimr_bsconfig.TGroupMapperError | None = None
+
+    if (len(response.Status) == 1) and verbose:
+        for fail_param in response.Status[0].FailParam:
+            if fail_param.HasField("GroupMapperError"):
+                err = fail_param.GroupMapperError
+
+    if err is None:
+        return
+
+    table_args = SimpleNamespace(sort_by=None, columns=None, format=args.format, no_header=None)
+
+    def table_generator(data: typing.Iterable[kikimr_bsconfig.TGroupMapperError.TStats], print_domain: bool = True):
+        all_columns = []
+        if print_domain:
+            all_columns += ['Domain']
+        all_columns += [
+            'All slots are occupied',
+            'Not enough space',
+            'Not accepting new slots',
+            'Not operational',
+            'Decommission',
+        ]
+        table_output = table.TableOutput(all_columns)
+        rows = []
+        for st in data:
+            row = {}
+            if print_domain:
+                row['Domain'] = f"{st.Domain}"
+            row['All slots are occupied'] = str(st.AllSlotsAreOccupied)
+            row['Not enough space'] = str(st.NotEnoughSpace)
+            row['Not accepting new slots'] = str(st.NotAcceptingNewSlots)
+            row['Not operational'] = str(st.NotOperational)
+            row['Decommission'] = str(st.Decommission)
+            rows.append(row)
+
+        table_output.dump(rows, table_args)
+
+    print("Total stats")
+    table_generator([err.TotalStats], print_domain=False)
+    if len(err.MatchingDomainsStats) > 0:
+        print("Matching domains")
+        table_generator(err.MatchingDomainsStats)
+    else:
+        print("No matching domains")
+    print(f"OK Discs Count: {err.OkDisksCount}")
+    print(
+        f"Missing {err.RealmLocationKey}s Count: {err.MissingFailRealmsCount}\n"
+        f"{err.RealmLocationKey}s With Missing {err.DomainLocationKey}s Count: {err.FailRealmsWithMissingDomainsCount}\n"
+        f"{err.DomainLocationKey}s With Missing Disks Count: {err.DomainsWithMissingDisksCount}"
+    )

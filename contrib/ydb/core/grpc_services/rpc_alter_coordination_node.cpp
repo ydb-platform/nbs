@@ -1,5 +1,9 @@
 #include "service_coordination.h"
 #include <contrib/ydb/core/grpc_services/base/base.h>
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
+#include <contrib/ydb/core/ydb_convert/kesus_description.h>
+
+#include <contrib/ydb/public/api/protos/ydb_coordination.pb.h>
 
 #include "rpc_scheme_base.h"
 #include "rpc_common/rpc_common.h"
@@ -48,8 +52,7 @@ private:
         modifyScheme->SetOperationType(NKikimrSchemeOp::EOperationType::ESchemeOpAlterKesus);
 
         auto desc = modifyScheme->MutableKesus();
-        desc->SetName(name);
-        desc->MutableConfig()->CopyFrom(req->config());
+        FillKesusDescription(*desc, req->config(), name);
 
         ctx.Send(MakeTxProxyID(), proposeRequest.release());
     }

@@ -1,0 +1,14 @@
+RECURSE(
+    common
+    workloads
+    indexes
+    topics
+    stress
+    rolling
+    udf
+    federated_queries
+    s3_backups
+    olap
+    streaming
+    result_set_format
+)

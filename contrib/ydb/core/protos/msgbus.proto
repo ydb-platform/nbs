@@ -3,7 +3,6 @@ import "contrib/ydb/library/actors/protos/interconnect.proto";
 import "contrib/ydb/core/protos/console_base.proto";
 import "contrib/ydb/core/protos/console_config.proto";
 import "contrib/ydb/core/protos/console_tenant.proto";
-import "contrib/ydb/core/protos/datashard_load.proto";
 import "contrib/ydb/core/protos/tablet_counters.proto";
 import "contrib/ydb/core/protos/flat_scheme_op.proto";
 import "contrib/ydb/core/protos/tx_proxy.proto";
@@ -13,7 +12,6 @@ import "contrib/ydb/core/protos/bind_channel_storage_pool.proto";
 import "contrib/ydb/core/protos/msgbus_kv.proto";
 import "contrib/ydb/core/protos/msgbus_pq.proto";
 import "contrib/ydb/core/protos/scheme_log.proto";
-import "contrib/ydb/core/protos/base.proto";
 import "contrib/ydb/core/protos/tablet.proto";
 import "contrib/ydb/core/protos/blobstorage_config.proto";
 import "contrib/ydb/core/protos/node_broker.proto";
@@ -21,7 +19,6 @@ import "contrib/ydb/core/protos/cms.proto";
 import "contrib/ydb/core/protos/sqs.proto";
 import "contrib/ydb/core/protos/query_stats.proto";
 import "contrib/ydb/core/protos/subdomains.proto";
-import "contrib/ydb/core/protos/load_test.proto";
 import "contrib/ydb/public/api/protos/annotations/sensitive.proto";
 import "contrib/ydb/public/api/protos/ydb_operation.proto";
 import "contrib/ydb/public/api/protos/draft/persqueue_error_codes.proto";
@@ -245,9 +242,6 @@ message TResponse {
     // TChooseProxyRequest
     optional string ProxyName = 1050;
     optional uint64 ProxyCookie = 1051;
-
-    // Login
-    optional string UserToken = 1102;
 }
 
 message TFakeConfigDummy {
@@ -257,38 +251,6 @@ message TFakeConfigDummy {
 message TTabletCountersRequest {
     optional uint64 TabletID = 1;
     optional bool ConnectToFollower = 2;
-
-    optional bool WithRetry = 10;
-    optional uint64 Timeout = 11;
-}
-
-message TLocalMKQL {
-    message TProgram {
-        optional bytes Bin = 1;
-        optional string Text = 2;
-    };
-
-    message TParams {
-        optional bytes Bin = 1;
-        optional string Text = 2;
-    }
-
-    optional uint64 TabletID = 1;
-    optional NKikimrTxUserProxy.TMiniKQLTransaction Program = 2;
-    optional bool ConnectToFollower = 3;
-
-    optional string SecurityToken = 5;
-
-    optional bool WithRetry = 10;
-    optional uint64 Timeout = 11;
-}
-
-message TLocalSchemeTx {
-    optional uint64 TabletID = 1;
-    optional bool ConnectToFollower = 2;
-    optional NTabletFlatScheme.TSchemeChanges SchemeChanges = 3;
-    optional bool DryRun = 4;
-    optional string SecurityToken = 5;
 
     optional bool WithRetry = 10;
     optional uint64 Timeout = 11;
@@ -358,7 +320,6 @@ message TLocalEnumerateTablets {
     optional uint64 DomainUid = 1; // mandatory
     optional uint32 NodeId = 2; // optional, msgbus proxy will contact it's own node if not set
     optional NKikimrTabletBase.TTabletTypes.EType TabletType = 3; // optional, local will enumerate all tablets if not set
-    optional string SecurityToken = 4 [(Ydb.sensitive) = true];
 }
 
 message TLocalEnumerateTabletsResult {
@@ -400,11 +361,6 @@ message TMessageBusTraceRequest {
 message TMessageBusTraceStatus {
     optional bool TraceActive = 1;
     optional bytes Path = 2;
-};
-
-message TTabletKillRequest {
-    optional uint64 TabletID = 1;
-    optional string SecurityToken = 2 [(Ydb.sensitive) = true];
 };
 
 message TTabletStateRequest {
@@ -643,6 +599,7 @@ message TInterconnectDebug {
     optional uint64 Duration = 10;
     optional bool UseProtobufWithPayload = 11;
     optional string ServicePool = 12;
+    optional uint32 NumLoadActors = 15 [default = 1];
 
     optional uint32 ClosePeerSocketNodeId = 100;
     optional uint32 CloseInputSessionNodeId = 101;
@@ -656,6 +613,7 @@ message TInterconnectDebug {
     optional uint64 RescheduleMax = 205;
 
     optional string SecurityToken = 13 [(Ydb.sensitive) = true];
+    optional uint32 RdmaMode = 14;
 }
 
 message TConsoleRequest {
@@ -679,6 +637,7 @@ message TConsoleRequest {
     }
     optional string DomainName = 100;
     optional string SecurityToken = 101 [(Ydb.sensitive) = true];
+    optional uint64 TimeoutMs = 102;
 }
 
 message TConsoleResponse {
@@ -701,48 +660,3 @@ message TConsoleResponse {
     }
     optional NKikimrConsole.TStatus Status = 100;
 }
-
-message TTestShardControlRequest {
-    message TSizeInterval {
-        optional uint64 Weight = 1; // nonzero
-        optional uint32 Min = 2;
-        optional uint32 Max = 3;
-        optional bool Inline = 4; // if true, then keys are stored as inline values of KV tablet rows
-    }
-    message TTimeInterval { // Poisson distribution of events
-        optional uint64 Weight = 1; // nonzero
-        optional double Frequency = 2; // events per second
-        optional uint32 MaxIntervalMs = 3; // max interval between two events in milliseconds
-    }
-    message TCmdInitialize {
-        optional string StorageServerHost = 1; // location of storage server containing tablet actual state
-        optional int32 StorageServerPort = 2; // part of storage server location
-        optional uint64 MaxDataBytes = 3; // when total length of stored keys reaches MaxDataBytes...
-        optional uint64 MinDataBytes = 4; // then random keys are collected until total length drops below MinDataBytes
-        optional uint32 MaxInFlight = 5;
-        optional uint64 ValidateAfterBytes = 9; // number of bytes to write before starting automatic validation
-        optional uint32 MaxReadsInFlight = 10;
-        optional bool ResetWritePeriodOnFull = 11; // restart write periods when inflight is full
-        repeated TSizeInterval Sizes = 6; // distrubution of generated value size
-        repeated TTimeInterval WritePeriods = 7; // time between two events
-        repeated TTimeInterval RestartPeriods = 8; // time between automatic restarts
-        optional uint32 PatchRequestsFractionPPM = 12;
-        optional uint32 PutTraceFractionPPM = 13;
-        optional uint32 PutTraceVerbosity = 14 [default = 15];
-    }
-
-    optional uint64 TabletId = 1;
-    oneof Command {
-        TCmdInitialize Initialize = 2;
-    }
-    optional string SecurityToken = 3 [(Ydb.sensitive) = true];
-}
-
-message TTestShardControlResponse {
-}
-
-message TLoginRequest {
-    optional string Database = 1;
-    optional string User = 2;
-    optional string Password = 3;
-};

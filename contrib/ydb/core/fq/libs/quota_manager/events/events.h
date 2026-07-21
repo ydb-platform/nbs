@@ -18,6 +18,7 @@
 namespace NFq {
 
 constexpr auto SUBJECT_TYPE_CLOUD = "cloud";
+constexpr auto SUBJECT_TYPE_SCOPE = "scope";
 
 // Quota per cloud
 constexpr auto QUOTA_ANALYTICS_COUNT_LIMIT    = "yq.analyticsQuery.count";
@@ -59,10 +60,17 @@ template <typename T>
 struct TTimedValue {
     T Value;
     TInstant UpdatedAt;
+
     TTimedValue() = default;
+
     TTimedValue(const TTimedValue&) = default;
-    TTimedValue(T value, const TInstant& updatedAt = TInstant::Zero()) : Value(value), UpdatedAt(updatedAt) {}
-    TTimedValue &operator=(const TTimedValue& other) = default;
+
+    explicit TTimedValue(T value, const TInstant& updatedAt = TInstant::Zero())
+        : Value(value)
+        , UpdatedAt(updatedAt)
+    {}
+
+    TTimedValue& operator=(const TTimedValue& other) = default;
 };
 
 using TTimedUint64 = TTimedValue<ui64>;

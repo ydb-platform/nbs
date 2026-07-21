@@ -34,11 +34,13 @@ namespace NKikimr {
         HugeBlobsFreeChunkReservation = 1;
         SetupHugeBytes();
         HugeBlobOverhead = 8u;
+        HugeBlobStepsBetweenPowersOf2 = 6u;
         HullCompLevel0MaxSstsAtOnce = 8u;
         HullCompSortedPartsNum = 8u;
         HullCompLevelRateThreshold = 1.0;
-        HullCompFreeSpaceThreshold = 2.0;
+        HullCompFreeSpaceThresholdPerMille = 2000; // default ratio is 2x
         FreshCompMaxInFlightWrites = 10;
+        FreshCompMaxInFlightReads = 10; // when moving huge blobs
         HullCompMaxInFlightWrites = 10;
         HullCompMaxInFlightReads = 20;
         HullCompFullCompPeriodSec = 0;
@@ -46,7 +48,7 @@ namespace NKikimr {
         DefragThrottlerBytesRate = 0;
         HullCompReadBatchEfficiencyThreshold = 0.5;  // don't issue reads if there are more gaps than the useful data
         AnubisOsirisMaxInFly = 1000;
-        AddHeader = true;
+        BlobHeaderMode = EBlobHeaderMode::OLD_HEADER;
 
         RecoveryLogCutterFirstDuration = TDuration::Seconds(10);
         RecoveryLogCutterRegularDuration = TDuration::Seconds(30);
@@ -65,7 +67,7 @@ namespace NKikimr {
         SyncLogAdvisedIndexedBlockSize = ui32(1) << ui32(20);       // 1 MB
         SyncLogMaxMemAmount = ui64(64) << ui64(20);                 // 64 MB
 
-        MaxSyncLogChunkSize = ui32(16) << ui32(10);                 // 32 Kb
+        MaxSyncDataCutterChunkSize = ui32(256) << ui32(10);         // 256 Kb
 
         ReplTimeInterval = TDuration::Seconds(60);                  // 60 seconds
         ReplRequestTimeout = TDuration::Seconds(10);                // 10 seconds
@@ -77,6 +79,8 @@ namespace NKikimr {
         ReplPrefetchDataSize = 32 << 20;
         ReplMaxResponseSize = 10 << 20;
         ReplInterconnectChannel = TInterconnectChannels::IC_BLOBSTORAGE_ASYNC_DATA;
+        ReplMaxDonorNotReadyDuration = TDuration::Minutes(10);
+        ReplMaxDonorNotReadyCount = 100;
         HandoffMaxWaitQueueSize = 10000;
         HandoffMaxWaitQueueByteSize = 32u << 20u;
         HandoffMaxInFlightSize = 1000;
@@ -121,7 +125,7 @@ namespace NKikimr {
 
         MaxResponseSize = ui32(8) << ui32(20);                      // 8 MB
         DskTrackerInterval = TDuration::Seconds(1);
-        WhiteboardUpdateInterval = TDuration::Seconds(1);
+        StatsUpdateInterval = TDuration::Seconds(1);
         EnableVDiskCooldownTimeout = false;
 
 #ifdef NDEBUG
@@ -131,6 +135,10 @@ namespace NKikimr {
 #endif
 
     }
+
+    const ui32 TVDiskConfig::TinyDiskHugeBlobStepsBetweenPowersOf2 = 3u;
+    const ui32 TVDiskConfig::TinyDiskHullCompLevel0MaxSstsAtOnce = 2u;
+    const ui32 TVDiskConfig::TinyDiskHullCompSortedPartsNum = 2u;
 
     void TVDiskConfig::SetupHugeBytes() {
         switch (BaseInfo.DeviceType) {
@@ -142,9 +150,7 @@ namespace NKikimr {
                 MinHugeBlobInBytes = 512u << 10u;
                 break;
         }
-        OldMinHugeBlobInBytes = MinHugeBlobInBytes; // preserved to migrate entry point state correctly 
         MilestoneHugeBlobInBytes = 512u << 10u;  // for compatibility reasons it must be 512KB
-
     }
 
     void TVDiskConfig::Merge(const NKikimrBlobStorage::TVDiskConfig &update) {

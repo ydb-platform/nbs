@@ -29,6 +29,8 @@ items:
     href: balancing-prefer-local.md
   - name: Предпочитать конкретную зону доступности
     href: balancing-prefer-location.md
+  - name: Предпочитать пайл c конкретным состоянием
+    href: balancing-prefer-pile.md
 - name: Выполнение повторных запросов
   href: retry.md
 - name: Установить размер пула сессий
@@ -39,13 +41,17 @@ items:
   href: bulk-upsert.md
 - name: Установка режима выполнения транзакции
   href: tx-control.md
-- name: Диагностика проблем
+- name: Настройка TTL
+  href: ttl.md
+- name: Векторный поиск
+  href: vector-search.md
+- name: Координация
   items:
-  - name: Обзор
-    href: debug.md
-  - name: Включить логирование
-    href: debug-logs.md
-  - name: Подключить метрики в Prometheus
-    href: debug-prometheus.md
-  - name: Подключить трассировку в Jaeger
-    href: debug-jaeger.md
+  - name: Распределённая блокировка
+    href: distributed-lock.md
+  - name: Выбор лидера
+    href: leader-election.md
+  - name: Обнаружение сервисов
+    href: service-discovery.md
+  - name: Публикация конфигурации
+    href: config-publication.md

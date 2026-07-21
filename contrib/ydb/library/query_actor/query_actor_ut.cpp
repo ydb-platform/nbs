@@ -1,6 +1,6 @@
 #include "query_actor.h"
 #include <contrib/ydb/core/testlib/test_client.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_result/result.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/result/result.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 #include <library/cpp/testing/unittest/tests_data.h>
@@ -223,7 +223,7 @@ Y_UNIT_TEST_SUITE(QueryActorTest) {
                         .Uint64(TableSize)
                         .Build();
 
-                RunStreamQuery(sql, &params, Value.Size() * 10);
+                RunStreamQuery(sql, &params, Value.size() * 10);
             }
 
             void OnStreamResult(NYdb::TResultSet&& resultSet) override {
@@ -233,8 +233,8 @@ Y_UNIT_TEST_SUITE(QueryActorTest) {
                 UNIT_ASSERT_VALUES_EQUAL_C(result.ColumnsCount(), 1, "Invalid number of columns");
 
                 while (result.TryNextRow()) {
-                    const TString& row = result.ColumnParser(0).GetUtf8();
-                    UNIT_ASSERT_VALUES_EQUAL_C(row, Value, "Ivalid row value");
+                    const std::string& row = result.ColumnParser(0).GetUtf8();
+                    UNIT_ASSERT_VALUES_EQUAL_C(TString{row}, Value, "Ivalid row value");
 
                     if (ReadedRows >= RowsToRead) {
                         CancelStreamQuery();
@@ -273,6 +273,29 @@ Y_UNIT_TEST_SUITE(QueryActorTest) {
             UNIT_ASSERT_VALUES_EQUAL_C(result.StatusCode, Ydb::StatusIds::SUCCESS, result.Issues.ToOneLineString());
             UNIT_ASSERT_VALUES_EQUAL(result.ResultSets[0].RowsCount(), 1000);
         }
+    }
+
+    Y_UNIT_TEST(StartQueryDuringShutdown) {
+        TTestServer server;
+
+        auto& runtime = *server.Server->GetRuntime();
+        runtime.Send(NKqp::MakeKqpProxyID(runtime.GetFirstNodeId()), {}, new NKqp::TEvKqp::TEvInitiateShutdownRequest(
+            MakeIntrusive<NKqp::TKqpShutdownState>()
+        ));
+
+        struct TQuery : public TTestQueryActorBase {
+            void OnRunQuery() override {
+                RunDataQuery("SELECT 42");
+            }
+
+            void OnQueryResult() override {
+                Finish();
+            }
+        };
+
+        auto result = server.RunQueryActor<TQuery>();
+        UNIT_ASSERT_VALUES_EQUAL_C(result.StatusCode, Ydb::StatusIds::OVERLOADED, result.Issues.ToOneLineString());
+        UNIT_ASSERT_STRING_CONTAINS(result.Issues.ToOneLineString(), "system shutdown requested");
     }
 }
 

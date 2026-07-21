@@ -1,5 +1,9 @@
 #include "partition_writer_cache_actor.h"
+#include "deferred_destination_upsert_actor.h"
+#include <contrib/ydb/core/persqueue/deferred_publish/constants.h>
 #include <contrib/ydb/core/persqueue/writer/writer.h>
+
+#define YDB_LOG_THIS_FILE_COMPONENT NKikimrServices::PQ_WRITE_PROXY
 
 namespace NKikimr::NGRpcProxy::V1 {
 
@@ -21,13 +25,32 @@ void TPartitionWriterCacheActor::Bootstrap(const TActorContext& ctx)
     this->Become(&TPartitionWriterCacheActor::StateWork);
 }
 
-void TPartitionWriterCacheActor::RegisterPartitionWriter(const TString& sessionId, const TString& txId,
-                                                         const TActorContext& ctx)
+bool TPartitionWriterCacheActor::OnUnhandledException(const std::exception& exc) {
+    auto ctx = *NActors::TlsActivationContext;
+    YDB_LOG_CRIT_CTX(ctx, "Unhandled exception",
+        {"typeName", TypeName(exc)},
+        {"exception", exc.what()},
+        {"backTrace", TBackTrace::FromCurrentException().PrintToString()});
+
+    for (auto& [k, w] : Writers) {
+        ReplyError(k.first, k.second, EErrorCode::InternalError, "Internal error", 0, ctx.AsActorContext());
+    }
+
+    this->Become(&TPartitionWriterCacheActor::StateBroken);
+
+    return true;
+}
+
+void TPartitionWriterCacheActor::RegisterPartitionWriter(
+    const TString& sessionId,
+    const TString& txId,
+    const TMaybe<NPQ::TDeferredPublishWriterOpts>& deferredPublish,
+    const TActorContext& ctx)
 {
     std::pair<TString, TString> key(sessionId, txId);
 
     auto writer = std::make_unique<TPartitionWriter>();
-    writer->Actor = CreatePartitionWriter(sessionId, txId, ctx);
+    writer->Actor = CreatePartitionWriter(sessionId, txId, deferredPublish, ctx);
     writer->LastActivity = ctx.Now();
 
     Writers.emplace(key, std::move(writer));
@@ -35,13 +58,14 @@ void TPartitionWriterCacheActor::RegisterPartitionWriter(const TString& sessionI
 
 void TPartitionWriterCacheActor::RegisterDefaultPartitionWriter(const TActorContext& ctx)
 {
-    RegisterPartitionWriter("", "", ctx);
+    RegisterPartitionWriter("", "", Nothing(), ctx);
 }
 
 STFUNC(TPartitionWriterCacheActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(NPQ::TEvPartitionWriter::TEvTxWriteRequest, Handle);
+        HFunc(NPQ::TEvPartitionWriter::TEvRequestDeferredDestinationUpsert, HandleDeferredDestinationUpsertRequest);
         HFunc(NPQ::TEvPartitionWriter::TEvInitResult, Handle);
         HFunc(NPQ::TEvPartitionWriter::TEvWriteAccepted, Handle);
         HFunc(NPQ::TEvPartitionWriter::TEvWriteResponse, Handle);
@@ -67,16 +91,16 @@ void TPartitionWriterCacheActor::Handle(NPQ::TEvPartitionWriter::TEvTxWriteReque
 {
     auto& event = *ev->Get();
 
-    if (auto* writer = GetPartitionWriter(event.SessionId, event.TxId, ctx); writer) {
+    if (auto* writer = GetPartitionWriter(event.SessionId, event.TxId, event.DeferredPublish, ctx); writer) {
         if (PendingWriteAccepted.Expected == Max<ui64>()) {
-            Y_ABORT_UNLESS(PendingWriteResponse.Expected == Max<ui64>());
+            AFL_ENSURE(PendingWriteResponse.Expected == Max<ui64>());
 
             PendingWriteAccepted.Expected = event.Request->GetCookie();
             PendingWriteResponse.Expected = event.Request->GetCookie();
         }
 
         writer->LastActivity = ctx.Now();
-        writer->OnWriteRequest(std::move(event.Request), ctx);
+        writer->OnWriteRequest(std::move(event.Request), std::move(ev->TraceId), ctx);
     } else {
         ReplyError(event.SessionId, event.TxId,
                    EErrorCode::OverloadError, "limit of active transactions has been exceeded",
@@ -96,13 +120,27 @@ void TPartitionWriterCacheActor::HandleOnBroken(NPQ::TEvPartitionWriter::TEvTxWr
                ctx);
 }
 
+void TPartitionWriterCacheActor::HandleDeferredDestinationUpsertRequest(
+    NPQ::TEvPartitionWriter::TEvRequestDeferredDestinationUpsert::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto& request = *ev->Get();
+    ctx.Register(CreateDeferredDestinationUpsertActor(ev->Sender, {
+        .IntPublicationId = request.IntPublicationId,
+        .TopicPath = request.TopicPath,
+        .Database = request.Database,
+        .PartitionId = request.PartitionId,
+        .TabletId = request.TabletId,
+    }));
+}
+
 void TPartitionWriterCacheActor::Handle(NPQ::TEvPartitionWriter::TEvInitResult::TPtr& ev, const TActorContext& ctx)
 {
     auto& result = *ev->Get();
 
     auto key = std::make_pair(result.SessionId, result.TxId);
     auto p = Writers.find(key);
-    Y_ABORT_UNLESS(p != Writers.end());
+    AFL_ENSURE(p != Writers.end());
 
     if (result.IsSuccess()) {
         p->second->OnEvInitResult(ev);
@@ -123,7 +161,7 @@ void TPartitionWriterCacheActor::TryForwardToOwner(TEvent* event, TEventQueue<TE
                                                    ui64 cookie,
                                                    const TActorContext& ctx)
 {
-    Y_ABORT_UNLESS(queue.Expected != Max<ui64>());
+    AFL_ENSURE(queue.Expected != Max<ui64>());
 
     if (queue.Expected == cookie) {
         ctx.Send(Owner, event);
@@ -147,9 +185,9 @@ void TPartitionWriterCacheActor::Handle(NPQ::TEvPartitionWriter::TEvWriteAccepte
 
     auto key = std::make_pair(result.SessionId, result.TxId);
     auto p = Writers.find(key);
-    Y_ABORT_UNLESS(p != Writers.end());
+    AFL_ENSURE(p != Writers.end());
 
-    if (result.Cookie == p->second->SentRequests.front()) {
+    if (result.Cookie == p->second->SentRequests.front().Cookie) {
         p->second->OnWriteAccepted(result, ctx);
 
         TryForwardToOwner(ev->Release().Release(), PendingWriteAccepted,
@@ -158,7 +196,7 @@ void TPartitionWriterCacheActor::Handle(NPQ::TEvPartitionWriter::TEvWriteAccepte
     } else {
         ReplyError(result.SessionId, result.TxId,
                    EErrorCode::InternalError, "out of order reserve bytes response from server, may be previous is lost",
-                   p->second->SentRequests.front(),
+                   p->second->SentRequests.front().Cookie,
                    ctx);
         this->Become(&TPartitionWriterCacheActor::StateBroken);
     }
@@ -166,15 +204,15 @@ void TPartitionWriterCacheActor::Handle(NPQ::TEvPartitionWriter::TEvWriteAccepte
 
 void TPartitionWriterCacheActor::Handle(NPQ::TEvPartitionWriter::TEvWriteResponse::TPtr& ev, const TActorContext& ctx)
 {
-    const auto& result = *ev->Get();
+    auto& result = *ev->Get();
 
     auto key = std::make_pair(result.SessionId, result.TxId);
     auto p = Writers.find(key);
-    Y_ABORT_UNLESS(p != Writers.end());
+    AFL_ENSURE(p != Writers.end());
 
     if (result.IsSuccess()) {
         ui64 cookie = result.Record.GetPartitionResponse().GetCookie();
-        if (cookie == p->second->AcceptedRequests.front()) {
+        if (cookie == p->second->AcceptedRequests.front().Cookie) {
             p->second->OnWriteResponse(result);
 
             TryForwardToOwner(ev->Release().Release(), PendingWriteResponse,
@@ -183,7 +221,7 @@ void TPartitionWriterCacheActor::Handle(NPQ::TEvPartitionWriter::TEvWriteRespons
         } else {
             ReplyError(result.SessionId, result.TxId,
                        EErrorCode::InternalError, "out of order write response from server, may be previous is lost",
-                       p->second->AcceptedRequests.front(),
+                       p->second->AcceptedRequests.front().Cookie,
                        ctx);
             this->Become(&TPartitionWriterCacheActor::StateBroken);
         }
@@ -208,8 +246,11 @@ void TPartitionWriterCacheActor::Handle(TEvents::TEvPoisonPill::TPtr& ev, const 
     Die(ctx);
 }
 
-auto TPartitionWriterCacheActor::GetPartitionWriter(const TString& sessionId, const TString& txId,
-                                                    const TActorContext& ctx) -> TPartitionWriter*
+auto TPartitionWriterCacheActor::GetPartitionWriter(
+    const TString& sessionId,
+    const TString& txId,
+    const TMaybe<NPQ::TDeferredPublishWriterOpts>& deferredPublish,
+    const TActorContext& ctx) -> TPartitionWriter*
 {
     auto key = std::make_pair(sessionId, txId);
 
@@ -224,17 +265,17 @@ auto TPartitionWriterCacheActor::GetPartitionWriter(const TString& sessionId, co
         }
     }
 
-    RegisterPartitionWriter(sessionId, txId, ctx);
+    RegisterPartitionWriter(sessionId, txId, deferredPublish, ctx);
 
     p = Writers.find(key);
-    Y_ABORT_UNLESS(p != Writers.end());
+    AFL_ENSURE(p != Writers.end());
 
     return p->second.get();
 }
 
 bool TPartitionWriterCacheActor::TryDeleteOldestWriter(const TActorContext& ctx)
 {
-    Y_ABORT_UNLESS(!Writers.empty());
+    AFL_ENSURE(!Writers.empty());
 
     auto minLastActivity = TInstant::Max();
     auto oldest = Writers.end();
@@ -263,11 +304,17 @@ bool TPartitionWriterCacheActor::TryDeleteOldestWriter(const TActorContext& ctx)
     return true;
 }
 
-TActorId TPartitionWriterCacheActor::CreatePartitionWriter(const TString& sessionId, const TString& txId,
-                                                           const TActorContext& ctx)
+TActorId TPartitionWriterCacheActor::CreatePartitionWriter(
+    const TString& sessionId,
+    const TString& txId,
+    const TMaybe<NPQ::TDeferredPublishWriterOpts>& deferredPublish,
+    const TActorContext& ctx)
 {
     NPQ::TPartitionWriterOpts opts = Opts;
-    if (sessionId && txId) {
+    if (deferredPublish) {
+        opts.WithDeferredPublish(deferredPublish->IntPublicationId, deferredPublish->ExtPublicationId);
+        opts.WithTxId(txId);
+    } else if (sessionId && txId) {
         opts.WithSessionId(sessionId);
         opts.WithTxId(txId);
     }

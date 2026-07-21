@@ -4,7 +4,7 @@
 #include <contrib/ydb/core/base/path.h>
 #include <contrib/ydb/core/tx/tx_proxy/proxy.h>
 #include <contrib/ydb/core/util/proto_duration.h>
-#include "contrib/ydb/core/grpc_services/grpc_request_proxy.h"
+#include "contrib/ydb/core/grpc_services/base/base.h"
 
 namespace NKikimr {
 namespace NGRpcService {
@@ -24,6 +24,16 @@ inline void SetAuthToken(TEv& ev, const IRequestCtx& ctx) {
     if (ctx.GetSerializedToken()) {
         ev->Record.SetUserToken(ctx.GetSerializedToken());
     }
+}
+
+inline std::optional<TString> GetUserSID(const IRequestCtx& ctx) {
+    if (const auto& serializedToken = ctx.GetSerializedToken()) {
+        if (NACLibProto::TUserToken userToken; userToken.ParseFromString(serializedToken)) {
+            return userToken.GetUserSID();
+        }
+    }
+
+    return std::nullopt;
 }
 
 template<typename TEv>

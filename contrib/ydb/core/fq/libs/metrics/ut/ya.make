@@ -1,13 +1,12 @@
 UNITTEST_FOR(contrib/ydb/core/fq/libs/metrics)
 
-FORK_SUBTESTS()
-
-IF (SANITIZER_TYPE OR WITH_VALGRIND)
+IF (SANITIZER_TYPE)
     SIZE(MEDIUM)
 ENDIF()
 
 SRCS(
     metrics_ut.cpp
+    sanitize_label_ut.cpp
 )
 
 YQL_LAST_ABI_VERSION()

@@ -1,0 +1,46 @@
+LIBRARY(sqs_workload)
+
+SRCS(
+    sqs_workload.cpp
+    sqs_workload_read_scenario.cpp
+    sqs_workload_reader.cpp
+    sqs_workload_run.cpp
+    sqs_workload_run_read.cpp
+    sqs_workload_run_write.cpp
+    sqs_workload_scenario.cpp
+    sqs_workload_stats.cpp
+    sqs_workload_stats_collector.cpp
+    sqs_workload_write_scenario.cpp
+    sqs_workload_writer.cpp
+    sqs_workload_init.cpp
+    sqs_workload_init_scenario.cpp
+    sqs_workload_clean.cpp
+    sqs_workload_clean_scenario.cpp
+    http_client.cpp
+    sqs_client_wrapper.cpp
+    message_groups_locker.cpp
+)
+
+PEERDIR(
+    contrib/ydb/library/yql/public/issue
+    contrib/ydb/library/yql/public/issue/protos
+    contrib/ydb/library/backup
+    contrib/ydb/public/api/grpc
+    contrib/ydb/public/api/protos
+    contrib/ydb/public/api/protos/annotations
+    contrib/ydb/public/sdk/cpp/src/library/operation_id
+    contrib/ydb/public/sdk/cpp/src/client/draft
+    contrib/ydb/public/sdk/cpp/src/client/driver
+    contrib/ydb/public/sdk/cpp/src/client/proto
+    contrib/ydb/public/sdk/cpp/src/client/table
+    contrib/ydb/public/sdk/cpp/src/client/topic
+    contrib/ydb/public/sdk/cpp/src/client/types/operation
+    contrib/ydb/public/sdk/cpp/src/client/types/status
+    contrib/ydb/public/lib/ydb_cli/commands/sqs_workload/sqs_json
+    library/cpp/containers/concurrent_hash
+    library/cpp/unified_agent_client
+    library/cpp/histogram/hdr
+    contrib/libs/fmt
+)
+
+END()

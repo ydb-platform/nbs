@@ -16,6 +16,8 @@
 #include <contrib/ydb/library/yql/public/issue/yql_issue_message.h>
 #include <contrib/ydb/library/yql/public/issue/yql_issue_manager.h>
 
+#define YDB_LOG_THIS_FILE_COMPONENT NKikimrServices::MSGBUS_PROXY
+
 namespace NKikimr {
 namespace NMsgBusProxy {
 
@@ -74,6 +76,7 @@ public:
     void StateWork(TAutoPtr<NActors::IEventHandle>& ev) {
         switch (ev->GetTypeRewrite()) {
             HFunc(NSchemeShard::TEvSchemeShard::TEvDescribeSchemeResult, Handle);
+            CFunc(TEvents::TSystem::PoisonPill, TBase::Cancel);
         }
     }
 
@@ -147,8 +150,6 @@ TBusResponse* ProposeTransactionStatusToResponse(EResponseStatus status,
     return response.Release();
 }
 
-//void TMessageBusServerProxy::Handle(TEvBusProxy::TEvRequest::TPtr& ev, const TActorContext& ctx); // see msgbus_server_request.cpp
-
 //void TMessageBusServerProxy::Handle(TEvBusProxy::TEvPersQueue::TPtr& ev, const TActorContext& ctx); // see msgbus_server_scheme_request.cpp
 //void TMessageBusServerProxy::Handle(TEvBusProxy::TEvFlatTxRequest::TPtr& ev, const TActorContext& ctx); // see msgbus_server_scheme_request.cpp
 
@@ -165,7 +166,7 @@ void TMessageBusServerProxy::Handle(TEvBusProxy::TEvFlatDescribeRequest::TPtr& e
 //void TMessageBusServerProxy::Handle(TEvBusProxy::TEvDbOperation::TPtr& ev, const TActorContext& ctx); // see msgbus_server_db.cpp
 
 void TMessageBusServerProxy::Bootstrap(const TActorContext& ctx) {
-    LOG_TRACE_S(ctx, NKikimrServices::MSGBUS_PROXY, "TMessageBusServerProxy::Bootstrap");
+    YDB_LOG_TRACE_CTX(ctx, "TMessageBusServerProxy::Bootstrap");
 
     SelfID = ctx.SelfID;
 
@@ -175,11 +176,11 @@ void TMessageBusServerProxy::Bootstrap(const TActorContext& ctx) {
     DbOperationsCounters = new TMessageBusDbOpsCounters(AppData(ctx)->Counters);
 
     auto cacheConfig = MakeIntrusive<NSchemeCache::TSchemeCacheConfig>(AppData(ctx), SchemeCacheCounters);
-    SchemeCache = ctx.ExecutorThread.RegisterActor(CreateSchemeBoardSchemeCache(cacheConfig.Get()));
+    SchemeCache = ctx.Register(CreateSchemeBoardSchemeCache(cacheConfig.Get()));
     PqMetaCache = CreatePersQueueMetaCacheV2Id();
 
     if (Server) {
-        Server->InitSession(ctx.ExecutorThread.ActorSystem, ctx.SelfID);
+        Server->InitSession(ctx.ActorSystem(), ctx.SelfID);
     }
 
     Become(&TThis::StateFunc);

@@ -172,7 +172,7 @@
  *
  *			Jan Wieck
  *
- * Copyright (c) 1999-2021, PostgreSQL Global Development Group
+ * Copyright (c) 1999-2023, PostgreSQL Global Development Group
  *
  * src/common/pg_lzcompress.c
  * ----------
@@ -727,19 +727,34 @@ pglz_decompress(const char *source, int32 slen, char *dest,
 				int32		len;
 				int32		off;
 
+				/*
+				 * A match tag is at least 2 bytes; if the length nibble is
+				 * 0x0f the tag is 3 bytes (extended length).  Verify we have
+				 * enough source data before reading them.
+				 */
+				if (unlikely(sp + 2 > srcend))
+					return -1;
+
 				len = (sp[0] & 0x0f) + 3;
 				off = ((sp[0] & 0xf0) << 4) | sp[1];
 				sp += 2;
 				if (len == 18)
+				{
+					if (unlikely(sp >= srcend))
+						return -1;
 					len += *sp++;
+				}
 
 				/*
-				 * Check for corrupt data: if we fell off the end of the
-				 * source, or if we obtained off = 0, we have problems.  (We
-				 * must check this, else we risk an infinite loop below in the
-				 * face of corrupt data.)
+				 * Check for corrupt data: if we obtained off = 0, or if off
+				 * is more than the distance back to the buffer start, we have
+				 * problems.  (We must check for off = 0, else we risk an
+				 * infinite loop below in the face of corrupt data. Likewise,
+				 * the upper limit on off prevents accessing outside the
+				 * buffer boundaries.)
 				 */
-				if (unlikely(sp > srcend || off == 0))
+				if (unlikely(off == 0 ||
+							 off > (dp - (unsigned char *) dest)))
 					return -1;
 
 				/*
@@ -825,7 +840,7 @@ pglz_decompress(const char *source, int32 slen, char *dest,
 
 
 /* ----------
- * pglz_max_compressed_size -
+ * pglz_maximum_compressed_size -
  *
  *		Calculate the maximum compressed size for a given amount of raw data.
  *		Return the maximum size, or total compressed size if maximum size is

@@ -1,5 +1,7 @@
 #include "grpc_request_context_wrapper.h"
 
+#include <util/generic/set.h>
+
 namespace NKikimr::NPublicHttp {
 
     TGrpcRequestContextWrapper::TGrpcRequestContextWrapper(const THttpRequestContext& requestContext, std::unique_ptr<NProtoBuf::Message> request, TReplySender replySender)
@@ -16,10 +18,6 @@ namespace NKikimr::NPublicHttp {
     }
 
     const NProtoBuf::Message* TGrpcRequestContextWrapper::GetRequest() const {
-        return Request.get();
-    }
-
-    NProtoBuf::Message* TGrpcRequestContextWrapper::GetRequestMut() {
         return Request.get();
     }
 
@@ -60,15 +58,17 @@ namespace NKikimr::NPublicHttp {
 
     TVector<TStringBuf> TGrpcRequestContextWrapper::GetPeerMetaValues(TStringBuf key) const {
         if (key == "x-ydb-database"sv) {
-            return { RequestContext.GetDb() };
+            MetaValueCache = RequestContext.GetDb();
+            return { TStringBuf(MetaValueCache) };
         }
 
         if (key == "x-ydb-fq-project"sv) {
-            return { LongProject };
+            return { TStringBuf(LongProject) };
         }
 
         if (key == "x-ydb-auth-ticket"sv) {
-            return { RequestContext.GetToken() };
+            MetaValueCache = RequestContext.GetToken();
+            return { TStringBuf(MetaValueCache) };
         }
 
         return { };

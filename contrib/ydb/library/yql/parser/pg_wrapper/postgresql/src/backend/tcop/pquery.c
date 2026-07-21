@@ -3,7 +3,7 @@
  * pquery.c
  *	  POSTGRES process query command code
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -157,7 +157,7 @@ ProcessQuery(PlannedStmt *plan,
 	/*
 	 * Run the plan to completion.
 	 */
-	ExecutorRun(queryDesc, ForwardScanDirection, 0L, true);
+	ExecutorRun(queryDesc, ForwardScanDirection, 0, true);
 
 	/*
 	 * Build command completion status data, if caller wants one.
@@ -177,6 +177,9 @@ ProcessQuery(PlannedStmt *plan,
 				break;
 			case CMD_DELETE:
 				SetQueryCompletion(qc, CMDTAG_DELETE, queryDesc->estate->es_processed);
+				break;
+			case CMD_MERGE:
+				SetQueryCompletion(qc, CMDTAG_MERGE, queryDesc->estate->es_processed);
 				break;
 			default:
 				SetQueryCompletion(qc, CMDTAG_UNKNOWN, queryDesc->estate->es_processed);
@@ -437,8 +440,8 @@ PortalStart(Portal portal, ParamListInfo params,
 	QueryDesc  *queryDesc;
 	int			myeflags;
 
-	AssertArg(PortalIsValid(portal));
-	AssertState(portal->status == PORTAL_DEFINED);
+	Assert(PortalIsValid(portal));
+	Assert(portal->status == PORTAL_DEFINED);
 
 	/*
 	 * Set up global portal context pointers.
@@ -667,6 +670,8 @@ PortalSetResultFormat(Portal portal, int nFormats, int16 *formats)
  * isTopLevel: true if query is being executed at backend "top level"
  * (that is, directly from a client command message)
  *
+ * run_once: ignored, present only to avoid an API break in stable branches.
+ *
  * dest: where to send output of primary (canSetTag) query
  *
  * altdest: where to send output of non-primary queries
@@ -691,7 +696,7 @@ PortalRun(Portal portal, long count, bool isTopLevel, bool run_once,
 	MemoryContext savePortalContext;
 	MemoryContext saveMemoryContext;
 
-	AssertArg(PortalIsValid(portal));
+	Assert(PortalIsValid(portal));
 
 	TRACE_POSTGRESQL_QUERY_EXECUTE_START();
 
@@ -710,10 +715,6 @@ PortalRun(Portal portal, long count, bool isTopLevel, bool run_once,
 	 * Check for improper portal use, and mark portal active.
 	 */
 	MarkPortalActive(portal);
-
-	/* Set run_once flag.  Shouldn't be clear if previously set. */
-	Assert(!portal->run_once || run_once);
-	portal->run_once = run_once;
 
 	/*
 	 * Set up global portal context pointers.
@@ -919,7 +920,7 @@ PortalRunSelect(Portal portal,
 		{
 			PushActiveSnapshot(queryDesc->snapshot);
 			ExecutorRun(queryDesc, direction, (uint64) count,
-						portal->run_once);
+						false);
 			nprocessed = queryDesc->estate->es_processed;
 			PopActiveSnapshot();
 		}
@@ -959,7 +960,7 @@ PortalRunSelect(Portal portal,
 		{
 			PushActiveSnapshot(queryDesc->snapshot);
 			ExecutorRun(queryDesc, direction, (uint64) count,
-						portal->run_once);
+						false);
 			nprocessed = queryDesc->estate->es_processed;
 			PopActiveSnapshot();
 		}
@@ -1352,24 +1353,15 @@ PortalRunMulti(Portal portal,
 		PopActiveSnapshot();
 
 	/*
-	 * If a query completion data was supplied, use it.  Otherwise use the
-	 * portal's query completion data.
-	 *
-	 * Exception: Clients expect INSERT/UPDATE/DELETE tags to have counts, so
-	 * fake them with zeros.  This can happen with DO INSTEAD rules if there
-	 * is no replacement query of the same type as the original.  We print "0
-	 * 0" here because technically there is no query of the matching tag type,
-	 * and printing a non-zero count for a different query type seems wrong,
-	 * e.g.  an INSERT that does an UPDATE instead should not print "0 1" if
-	 * one row was updated.  See QueryRewrite(), step 3, for details.
+	 * If a command tag was requested and we did not fill in a run-time-
+	 * determined tag above, copy the parse-time tag from the Portal.  (There
+	 * might not be any tag there either, in edge cases such as empty prepared
+	 * statements.  That's OK.)
 	 */
-	if (qc && qc->commandTag == CMDTAG_UNKNOWN)
-	{
-		if (portal->qc.commandTag != CMDTAG_UNKNOWN)
-			CopyQueryCompletion(qc, &portal->qc);
-		/* If the caller supplied a qc, we should have set it by now. */
-		Assert(qc->commandTag != CMDTAG_UNKNOWN);
-	}
+	if (qc &&
+		qc->commandTag == CMDTAG_UNKNOWN &&
+		portal->qc.commandTag != CMDTAG_UNKNOWN)
+		CopyQueryCompletion(qc, &portal->qc);
 }
 
 /*
@@ -1396,15 +1388,12 @@ PortalRunFetch(Portal portal,
 	MemoryContext savePortalContext;
 	MemoryContext oldContext;
 
-	AssertArg(PortalIsValid(portal));
+	Assert(PortalIsValid(portal));
 
 	/*
 	 * Check for improper portal use, and mark portal active.
 	 */
 	MarkPortalActive(portal);
-
-	/* If supporting FETCH, portal can't be run-once. */
-	Assert(!portal->run_once);
 
 	/*
 	 * Set up global portal context pointers.
@@ -1691,13 +1680,8 @@ DoPortalRewind(Portal portal)
 	if (portal->atStart && !portal->atEnd)
 		return;
 
-	/*
-	 * Otherwise, cursor should allow scrolling.  However, we're only going to
-	 * enforce that policy fully beginning in v15.  In older branches, insist
-	 * on this only if the portal has a holdStore.  That prevents users from
-	 * seeing that the holdStore may not have all the rows of the query.
-	 */
-	if ((portal->cursorOptions & CURSOR_OPT_NO_SCROLL) && portal->holdStore)
+	/* Otherwise, cursor must allow scrolling */
+	if (portal->cursorOptions & CURSOR_OPT_NO_SCROLL)
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("cursor can only scan forward"),

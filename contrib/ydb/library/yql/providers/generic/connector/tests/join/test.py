@@ -1,8 +1,8 @@
 import pytest
 
-from contrib.ydb.library.yql.providers.generic.connector.api.common.data_source_pb2 import EDataSourceKind
-from contrib.ydb.library.yql.providers.generic.connector.tests.utils.settings import Settings
-from contrib.ydb.library.yql.providers.generic.connector.tests.utils.run.runners import runner_types, configure_runner
+from contrib.ydb.library.contrib.ydb.library.yql.providers.common.proto.gateways_config_pb2 import EGenericDataSourceKind
+from contrib.ydb.library.contrib.ydb.library.yql.providers.generic.connector.tests.utils.settings import Settings
+from contrib.ydb.library.contrib.ydb.library.yql.providers.generic.connector.tests.utils.run.runners import configure_runner
 
 import conftest
 import scenario
@@ -13,26 +13,23 @@ from test_case import TestCase
 tc_collection = Collection(
     Settings.from_env(
         docker_compose_dir=conftest.docker_compose_dir,
-        data_source_kinds=[EDataSourceKind.CLICKHOUSE, EDataSourceKind.POSTGRESQL],
+        data_source_kinds=[EGenericDataSourceKind.CLICKHOUSE, EGenericDataSourceKind.POSTGRESQL],
     )
 )
 
 
-@pytest.mark.parametrize("runner_type", runner_types)
 @pytest.mark.parametrize("test_case", tc_collection.get('join'), ids=tc_collection.ids('join'))
 @pytest.mark.usefixtures("settings")
 @pytest.mark.usefixtures("clients")
 def test_join(
     request: pytest.FixtureRequest,
     settings: Settings,
-    runner_type: str,
     clients: conftest.Clients,
     test_case: TestCase,
 ):
-    runner = configure_runner(runner_type=runner_type, settings=settings)
+    runner = configure_runner(settings=settings)
     scenario.join(
         test_name=request.node.name,
-        clickhouse_client=clients.ClickHouse,
         postgresql_client=clients.PostgreSQL,
         runner=runner,
         settings=settings,

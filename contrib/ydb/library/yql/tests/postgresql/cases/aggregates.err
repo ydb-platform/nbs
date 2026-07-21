@@ -972,21 +972,21 @@ insert into minmaxtest1 values(13), (14);
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.minmaxtest1
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.minmaxtest1
     
 <sql-statement>
 insert into minmaxtest2 values(15), (16);
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.minmaxtest2
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.minmaxtest2
     
 <sql-statement>
 insert into minmaxtest3 values(17), (18);
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.minmaxtest3
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.minmaxtest3
     
 <sql-statement>
 explain (costs off)
@@ -1030,7 +1030,7 @@ select max(min(unique1)) from tenk1;
     -stdin-:<main>:1:1: Fatal: Execution of node: Result
     	-- check for correct detection of nested-aggregate errors
 	^
-        -stdin-:<main>:1:1: Fatal: ydb/library/yql/providers/common/mkql/yql_provider_mkql.cpp:364  GetCallable(): requirement Callables.cend() != compiler failed, message: Missed callable: PgAgg
+        -stdin-:<main>:1:1: Fatal: ydb/library/contrib/ydb/library/yql/providers/common/mkql/yql_provider_mkql.cpp:364  GetCallable(): requirement Callables.cend() != compiler failed, message: Missed callable: PgAgg
         	-- check for correct detection of nested-aggregate errors
 	^
 <sql-statement>
@@ -1041,7 +1041,7 @@ select (select max(min(unique1)) from int8_tbl) from tenk1;
     -stdin-:<main>:1:8: Fatal: Execution of node: YtMapReduce!
     	select (select max(min(unique1)) from int8_tbl) from tenk1;
 	       ^
-        -stdin-:<main>:1:8: Fatal: ydb/library/yql/providers/common/mkql/yql_provider_mkql.cpp:364  GetCallable(): requirement Callables.cend() != compiler failed, message: Missed callable: PgAgg
+        -stdin-:<main>:1:8: Fatal: ydb/library/contrib/ydb/library/yql/providers/common/mkql/yql_provider_mkql.cpp:364  GetCallable(): requirement Callables.cend() != compiler failed, message: Missed callable: PgAgg
         	select (select max(min(unique1)) from int8_tbl) from tenk1;
 	       ^
 <sql-statement>
@@ -1447,7 +1447,7 @@ select * from agg_view1;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.agg_view1
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.agg_view1
     
 <sql-statement>
 select pg_get_viewdef('agg_view1'::regclass);
@@ -1477,7 +1477,7 @@ select * from agg_view1;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.agg_view1
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.agg_view1
     
 <sql-statement>
 select pg_get_viewdef('agg_view1'::regclass);
@@ -1507,7 +1507,7 @@ select * from agg_view1;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.agg_view1
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.agg_view1
     
 <sql-statement>
 select pg_get_viewdef('agg_view1'::regclass);
@@ -1536,7 +1536,7 @@ select * from agg_view1;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.agg_view1
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.agg_view1
     
 <sql-statement>
 select pg_get_viewdef('agg_view1'::regclass);
@@ -1565,7 +1565,7 @@ select * from agg_view1;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.agg_view1
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.agg_view1
     
 <sql-statement>
 select pg_get_viewdef('agg_view1'::regclass);
@@ -1594,7 +1594,7 @@ select * from agg_view1;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.agg_view1
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.agg_view1
     
 <sql-statement>
 select pg_get_viewdef('agg_view1'::regclass);
@@ -1624,7 +1624,7 @@ select * from agg_view1;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.agg_view1
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.agg_view1
     
 <sql-statement>
 select pg_get_viewdef('agg_view1'::regclass);
@@ -2232,7 +2232,7 @@ select * from aggordview1 order by ten;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.aggordview1
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.aggordview1
     
 <sql-statement>
 drop view aggordview1;
@@ -3347,7 +3347,7 @@ set work_mem to default;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.agg_group_1
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.agg_group_1
     
 <sql-statement>
 (select * from agg_hash_2 except select * from agg_group_2)
@@ -3356,7 +3356,7 @@ set work_mem to default;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.agg_group_2
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.agg_group_2
     
 <sql-statement>
 (select * from agg_hash_3 except select * from agg_group_3)
@@ -3365,7 +3365,7 @@ set work_mem to default;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.agg_hash_3
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.agg_hash_3
     
 <sql-statement>
 (select * from agg_hash_4 except select * from agg_group_4)
@@ -3374,7 +3374,7 @@ set work_mem to default;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.agg_hash_4
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.agg_hash_4
     
 <sql-statement>
 drop table agg_group_1;

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "backup_mock.h"
+
 #include <library/cpp/http/server/http.h>
 #include <library/cpp/cgiparam/cgiparam.h>
 
@@ -11,7 +13,7 @@ namespace NKikimr {
 namespace NWrappers {
 namespace NTestHelpers {
 
-class TS3Mock: public THttpServer::ICallBack {
+class TS3Mock: public TBackupMock, public THttpServer::ICallBack {
 public:
     struct TSettings {
         THttpServer::TOptions HttpOptions;
@@ -47,6 +49,7 @@ private:
         bool HttpNotImplemented(const TReplyParams& params);
         void MaybeContinue(const TReplyParams& params);
         bool HttpServeRead(const TReplyParams& params, EMethod method, const TStringBuf path);
+        bool HttpServeList(const TReplyParams& params, TStringBuf bucketName, const TString& prefix);
         bool HttpServeWrite(const TReplyParams& params, TStringBuf path, const TCgiParameters& queryParams);
         bool HttpServeAction(const TReplyParams& params, EMethod method, TStringBuf path, const TCgiParameters& queryParams);
 
@@ -65,11 +68,12 @@ public:
     explicit TS3Mock(THashMap<TString, TString>&& data, const TSettings& settings = {});
     explicit TS3Mock(const THashMap<TString, TString>& data, const TSettings& settings = {});
 
-    TClientRequest* CreateClient();
+    TClientRequest* CreateClient() override;
     bool Start();
     const char* GetError();
 
-    const THashMap<TString, TString>& GetData() const { return Data; }
+    const THashMap<TString, TString>& GetData() const override { return Data; }
+    THashMap<TString, TString>& GetData() override { return Data; }
 
 private:
     const TSettings Settings;

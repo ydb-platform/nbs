@@ -1,10 +1,9 @@
 #pragma once
 
-#include "defs.h"
-#include <contrib/ydb/core/scheme/scheme_pathid.h>
-
+#include <contrib/ydb/core/base/statestorage.h>
 #include <contrib/ydb/core/protos/flat_tx_scheme.pb.h>
 #include <contrib/ydb/core/protos/scheme_board.pb.h>
+#include <contrib/ydb/core/scheme/scheme_pathid.h>
 
 #include <contrib/ydb/library/actors/core/log.h>
 
@@ -64,5 +63,59 @@ NKikimrScheme::TEvDescribeSchemeResult DeserializeDescribeSchemeResult(const TSt
 NKikimrScheme::TEvDescribeSchemeResult* DeserializeDescribeSchemeResult(const TString& serialized, google::protobuf::Arena* arena);
 TString JsonFromDescribeSchemeResult(const TString& serialized);
 
+struct TClusterState {
+    ui64 Generation = 0;
+    ui64 Guid = 0;
+
+    TClusterState() = default;
+    explicit TClusterState(const TStateStorageInfo* info);
+    explicit TClusterState(const NKikimrSchemeBoard::TClusterState& proto);
+    void ToProto(NKikimrSchemeBoard::TClusterState& proto) const;
+
+    explicit operator bool() const;
+    bool operator==(const TClusterState& other) const;
+    void Out(IOutputStream& out) const;
+};
+
+// Two bad root schemeshard owner-ids that were misconfigured to have higher values than their tenants
+// These need special handling to be treated as "always lower" in path resolution
+constexpr ui64 BAD_ROOT_SCHEMESHARD_ID_1 = 72075186232723360ULL;
+constexpr ui64 BAD_ROOT_SCHEMESHARD_ID_2 = 72075186232623600ULL;
+
+// Returns true if lhs path id is less than rhs path id.
+// Bad root schemeshard owner-ids are treated as always less than any other non-zero owner-id,
+// to handle legacy misconfigured clusters where root schemeshard has a higher owner-id
+// than tenant schemeshards.
+// Otherwise behaves identically to the standard TPathId less-than comparison.
+inline bool PathIdLessThan(const TPathId& lhs, const TPathId& rhs) {
+    // Preserve standard less-than semantics when either OwnerId is zero.
+    // Bad root schemeshard ids are treated as "always less", which would invert
+    // the ordering against OwnerId == 0 compared to the standard operator<.
+    if (!lhs.OwnerId || !rhs.OwnerId) {
+        return lhs < rhs;
+    }
+
+    const bool lhsIsBad = lhs.OwnerId == BAD_ROOT_SCHEMESHARD_ID_1 || lhs.OwnerId == BAD_ROOT_SCHEMESHARD_ID_2;
+    const bool rhsIsBad = rhs.OwnerId == BAD_ROOT_SCHEMESHARD_ID_1 || rhs.OwnerId == BAD_ROOT_SCHEMESHARD_ID_2;
+
+    if (lhsIsBad && rhsIsBad) {
+        return lhs < rhs;
+    }
+
+    if (lhsIsBad) {
+        return true;
+    }
+
+    if (rhsIsBad) {
+        return false;
+    }
+
+    return lhs < rhs;
+}
+
 } // NSchemeBoard
 } // NKikimr
+
+Y_DECLARE_OUT_SPEC(inline, NKikimr::NSchemeBoard::TClusterState, o, x) {
+    return x.Out(o);
+}

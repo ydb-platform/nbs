@@ -1,10 +1,12 @@
 #include "merger.h"
+
 #include <contrib/ydb/core/tx/columnshard/engines/scheme/index_info.h>
+
 #include <contrib/ydb/library/formats/arrow/simple_arrays_cache.h>
 
 namespace NKikimr::NOlap {
 
-NKikimr::TConclusionStatus IMerger::Finish() {
+NKikimr::NOlap::IMerger::TYdbConclusionStatus IMerger::Finish() {
     while (!IncomingFinished) {
         auto result = OnIncomingOnly(IncomingPosition);
         if (result.IsFail()) {
@@ -12,13 +14,13 @@ NKikimr::TConclusionStatus IMerger::Finish() {
         }
         IncomingFinished = !IncomingPosition.NextPosition(1);
     }
-    return TConclusionStatus::Success();
+    return TYdbConclusionStatus::Success();
 }
 
-NKikimr::TConclusionStatus IMerger::AddExistsDataOrdered(const std::shared_ptr<arrow::Table>& data) {
+NKikimr::NOlap::IMerger::TYdbConclusionStatus IMerger::AddExistsDataOrdered(const std::shared_ptr<arrow::Table>& data) {
     AFL_VERIFY(data);
-    NArrow::NMerger::TRWSortableBatchPosition existsPosition(data, 0, Schema->GetPKColumnNames(),
-        Schema->GetIndexInfo().GetColumnSTLNames(Schema->GetIndexInfo().GetColumnIds(false)), false);
+    NArrow::NMerger::TRWSortableBatchPosition existsPosition(
+        data, 0, Schema->GetPKColumnNames(), Schema->GetIndexInfo().GetColumnSTLNames(false), false);
     bool exsistFinished = !existsPosition.InitPosition(0);
     while (!IncomingFinished && !exsistFinished) {
         auto cmpResult = IncomingPosition.Compare(existsPosition);
@@ -40,14 +42,15 @@ NKikimr::TConclusionStatus IMerger::AddExistsDataOrdered(const std::shared_ptr<a
         }
     }
     AFL_VERIFY(exsistFinished);
-    return TConclusionStatus::Success();
+    return TYdbConclusionStatus::Success();
 }
 
-NKikimr::TConclusionStatus TUpdateMerger::OnEqualKeys(const NArrow::NMerger::TSortableBatchPosition& exists, const NArrow::NMerger::TSortableBatchPosition& incoming) {
+NKikimr::NOlap::IMerger::TYdbConclusionStatus TUpdateMerger::OnEqualKeys(
+    const NArrow::NMerger::TSortableBatchPosition& exists, const NArrow::NMerger::TSortableBatchPosition& incoming) {
     auto rGuard = Builder.StartRecord();
     AFL_VERIFY(Schema->GetIndexInfo().GetColumnIds(false).size() == exists.GetData().GetColumns().size())
-        ("index", Schema->GetIndexInfo().GetColumnIds(false).size())("exists", exists.GetData().GetColumns().size());
-    for (i32 columnIdx = 0; columnIdx < Schema->GetIndexInfo().ArrowSchema()->num_fields(); ++columnIdx) {
+    ("index", Schema->GetIndexInfo().GetColumnIds(false).size())("exists", exists.GetData().GetColumns().size());
+    for (i32 columnIdx = 0; columnIdx < Schema->GetIndexInfo().ArrowSchema().num_fields(); ++columnIdx) {
         const std::optional<ui32>& incomingColumnIdx = IncomingColumnRemap[columnIdx];
         if (incomingColumnIdx && HasIncomingDataFlags[*incomingColumnIdx]->GetView(incoming.GetPosition())) {
             const ui32 idxChunk = incoming.GetData().GetPositionInChunk(*incomingColumnIdx, incoming.GetPosition());
@@ -57,17 +60,18 @@ NKikimr::TConclusionStatus TUpdateMerger::OnEqualKeys(const NArrow::NMerger::TSo
             rGuard.Add(*exists.GetData().GetPositionAddress(columnIdx).GetArray(), idxChunk);
         }
     }
-    return TConclusionStatus::Success();
+    return TYdbConclusionStatus::Success();
 }
 
-TUpdateMerger::TUpdateMerger(const std::shared_ptr<arrow::RecordBatch>& incoming, const std::shared_ptr<ISnapshotSchema>& actualSchema,
-    const TString& insertDenyReason, const std::optional<NArrow::NMerger::TSortableBatchPosition>& defaultExists /*= {}*/)
+TUpdateMerger::TUpdateMerger(const NArrow::TContainerWithIndexes<arrow::RecordBatch>& incoming,
+    const std::shared_ptr<ISnapshotSchema>& actualSchema, const TString& insertDenyReason,
+    const std::optional<NArrow::NMerger::TSortableBatchPosition>& defaultExists /*= {}*/)
     : TBase(incoming, actualSchema)
-    , Builder(actualSchema->GetIndexInfo().ArrowSchema()->fields())
+    , Builder({ actualSchema->GetIndexInfo().ArrowSchema().begin(), actualSchema->GetIndexInfo().ArrowSchema().end() })
     , DefaultExists(defaultExists)
     , InsertDenyReason(insertDenyReason)
 {
-    for (auto&& f : actualSchema->GetIndexInfo().ArrowSchema()->fields()) {
+    for (auto&& f : actualSchema->GetIndexInfo().ArrowSchema()) {
         auto fIdx = IncomingData->schema()->GetFieldIndex(f->name());
         if (fIdx == -1) {
             IncomingColumnRemap.emplace_back();
@@ -87,4 +91,11 @@ TUpdateMerger::TUpdateMerger(const std::shared_ptr<arrow::RecordBatch>& incoming
     }
 }
 
+NArrow::TContainerWithIndexes<arrow::RecordBatch> TUpdateMerger::BuildResultBatch() {
+    auto resultBatch = Builder.Finalize();
+    AFL_VERIFY(Schema->GetColumnsCount() == (ui32)resultBatch->num_columns() + IIndexInfo::SpecialColumnsCount)("schema", Schema->GetColumnsCount())(
+                                              "result", resultBatch->num_columns());
+    return NArrow::TContainerWithIndexes<arrow::RecordBatch>(resultBatch);
 }
+
+}   // namespace NKikimr::NOlap

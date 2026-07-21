@@ -1,4 +1,10 @@
 #pragma once
+#include "meta_versions.h"
+
+#include <contrib/ydb/mvp/core/core_ydb.h>
+#include <contrib/ydb/mvp/core/core_ydb_impl.h>
+#include <contrib/ydb/mvp/core/merger.h>
+
 #include <util/generic/hash_set.h>
 #include <contrib/ydb/library/actors/core/actorsystem.h>
 #include <contrib/ydb/library/actors/core/actor.h>
@@ -8,9 +14,9 @@
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/http/http.h>
 #include <contrib/ydb/public/lib/deprecated/client/grpc_client.h>
-#include <contrib/ydb/library/grpc/client/grpc_client_low.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_driver/driver.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_table/table.h>
+#include <contrib/ydb/public/sdk/cpp/src/library/grpc/client/grpc_client_low.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/driver/driver.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/table/table.h>
 #include <contrib/ydb/public/api/grpc/ydb_scheme_v1.grpc.pb.h>
 #include <contrib/ydb/public/api/grpc/ydb_operation_v1.grpc.pb.h>
 #include <contrib/ydb/public/api/grpc/ydb_table_v1.grpc.pb.h>
@@ -18,15 +24,10 @@
 #include <contrib/ydb/public/api/grpc/ydb_scripting_v1.grpc.pb.h>
 #include <contrib/ydb/public/api/protos/ydb_discovery.pb.h>
 #include <contrib/ydb/public/api/protos/ydb_table.pb.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_proto/accessor.h>
-#include <contrib/ydb/public/sdk/cpp/client/draft/ydb_scripting.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_result/result.h>
-#include <contrib/ydb/core/kqp/provider/yql_kikimr_results.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/proto/accessor.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/draft/ydb_scripting.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/result/result.h>
 #include <contrib/ydb/core/ydb_convert/ydb_convert.h>
-#include <contrib/ydb/mvp/core/core_ydb.h>
-#include <contrib/ydb/mvp/core/core_ydb_impl.h>
-#include "meta_versions.h"
-#include <contrib/ydb/mvp/core/merger.h>
 
 namespace NMVP {
 
@@ -55,9 +56,9 @@ public:
     {}
 
     void Bootstrap(const NActors::TActorContext& ctx) {
-        Client = std::make_shared<NYdb::NTable::TTableClient>(std::move(Location.GetTableClient(Request, NYdb::NTable::TClientSettings().Database(Location.RootDomain))));
+        Client = std::make_shared<NYdb::NTable::TTableClient>(std::move(Location.GetTableClient(TMVP::GetMetaDatabaseClientSettings(Request, Location))));
 
-        NActors::TActorSystem* actorSystem = ctx.ExecutorThread.ActorSystem;
+        NActors::TActorSystem* actorSystem = ctx.ActorSystem();
         NActors::TActorId actorId = ctx.SelfID;
 
         CreateLoadVersionsActor(actorId, Client, Location.RootDomain, ctx);
@@ -77,7 +78,7 @@ public:
 
             auto session = result.GetSession();
             TString query = TStringBuilder() << "SELECT * FROM `" + Location.RootDomain + "/ydb/MasterClusterExt.db`";
-            NActors::TActorSystem* actorSystem = ctx.ExecutorThread.ActorSystem;
+            NActors::TActorSystem* actorSystem = ctx.ActorSystem();
             NActors::TActorId actorId = ctx.SelfID;
             session.ExecuteDataQuery(query,
                                      NYdb::NTable::TTxControl::BeginTx(

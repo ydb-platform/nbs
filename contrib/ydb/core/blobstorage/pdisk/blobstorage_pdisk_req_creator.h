@@ -19,8 +19,7 @@ LWTRACE_USING(BLOBSTORAGE_PROVIDER);
 class TReqCreator {
 private:
     // PDisk info
-    const ui32 PDiskId;
-    TActorSystem *ActorSystem;
+    std::shared_ptr<TPDiskCtx> PCtx;
     TPDiskMon *Mon;
     TDriveModel *Model;
     TAtomic *EstimatedLogChunkIdx;
@@ -127,7 +126,7 @@ private:
         // Note that call to Classify() is thread-safe (thanks to the fact that queues are not created dynamically)
         Classify(request);
         CountRequest(*request);
-        LWTRACK(PDiskNewRequest, request->Orbit, PDiskId, request->ReqId.Id, HPSecondsFloat(request->CreationTime),
+        LWTRACK(PDiskNewRequest, request->Orbit, PCtx->PDiskId, request->ReqId.Id, HPSecondsFloat(request->CreationTime),
                 double(request->Cost) / 1000000.0, request->IsSensitive, request->IsFast,
                 request->Owner, request->PriorityClass, (ui32)request->GetType());
         double tmpBurstMs = 0;
@@ -137,7 +136,7 @@ private:
             } else {
                 tmpBurstMs = Mon->BestEffortBurst.Increment(request->Cost);
             }
-            LWTRACK(PDiskBurst, request->Orbit, PDiskId, request->ReqId.Id, HPSecondsFloat(request->CreationTime),
+            LWTRACK(PDiskBurst, request->Orbit, PCtx->PDiskId, request->ReqId.Id, HPSecondsFloat(request->CreationTime),
                     request->IsSensitive, double(request->Cost) / 1000000.0, tmpBurstMs);
         }
         if (burstMs) {
@@ -160,6 +159,8 @@ private:
         CASE_COUNT_REQUEST(ChunkReserve);
         CASE_COUNT_REQUEST(YardControl);
         CASE_COUNT_REQUEST(LogRead);
+        CASE_COUNT_REQUEST(ShredPDisk);
+        CASE_COUNT_REQUEST(ShredVDiskResult);
         default: break;
         }
     }
@@ -172,48 +173,53 @@ private:
 
     template<typename TEv>
     static TString ToString(const TAutoPtr<NActors::TEventHandle<TEv>> &ev) {
-        Y_ABORT_UNLESS(ev && ev->Get());
+        Y_VERIFY(ev && ev->Get());
         return ev->Get()->ToString();
     }
 
 public:
-    TReqCreator(ui32 pDiskId, TPDiskMon *mon, TDriveModel *model, TAtomic *estimatedChunkIdx, bool separateHugePriorities)
-        : PDiskId(pDiskId)
-        , ActorSystem(nullptr)
+    TReqCreator(std::shared_ptr<TPDiskCtx> pCtx, TPDiskMon *mon, TDriveModel *model, TAtomic *estimatedChunkIdx, bool separateHugePriorities)
+        : PCtx(std::move(pCtx))
         , Mon(mon)
         , Model(model)
         , EstimatedLogChunkIdx(estimatedChunkIdx)
         , SeparateHugePriorities(separateHugePriorities)
-        , LastReqId(ui64(PDiskId) * 10000000ull)
+        , LastReqId(ui64(PCtx->PDiskId) * 10000000ull)
     {}
-
-    void SetActorSystem(TActorSystem *actorSystem) {
-        ActorSystem = actorSystem;
-    }
 
     template<typename TReq, typename TEvPtr>
     [[nodiscard]] TReq* CreateFromEvPtr(TEvPtr &ev, double *burstMs = nullptr) {
         auto& sender = ev->Sender;
-        LOG_DEBUG_S(*ActorSystem, NKikimrServices::BS_PDISK, "PDiskId# " << PDiskId << " ev# "
-                << ToString(ev) << " Sender# " << sender.LocalId() << " ReqId# " << AtomicGet(LastReqId));
-        auto req = MakeHolder<TReq>(ev, PDiskId, AtomicIncrement(LastReqId));
+        YDB_LOG_P_LOG(PRI_DEBUG, "CreateReqFromEv",
+            {"marker", "BPD01"},
+            {"ev", ToString(ev)},
+            {"sender", sender.LocalId()},
+            {"reqId", AtomicGet(LastReqId)});
+        auto req = MakeHolder<TReq>(ev, PCtx->PDiskId, AtomicIncrement(LastReqId));
+        req->SetCookie(ev->Cookie);
         NewRequest(req.Get(), burstMs);
         return req.Release();
     }
 
     template<typename TReq, typename TEv>
-    [[nodiscard]] TReq* CreateFromEv(TEv &&ev, const TActorId &sender, double *burstMs = nullptr) {
-        LOG_DEBUG_S(*ActorSystem, NKikimrServices::BS_PDISK, "PDiskId# " << PDiskId << " ev# "
-                << ToString(ev) << " Sender# " << sender.LocalId() << " ReqId# " << AtomicGet(LastReqId));
+    [[nodiscard]] TReq* CreateFromEv(TEv &&ev, const TActorId &sender, ui64 cookie = 0, double *burstMs = nullptr) {
+        YDB_LOG_P_LOG(PRI_DEBUG, "CreateReqFromEv with sender",
+            {"marker", "BPD01"},
+            {"ev", ToString(ev)},
+            {"sender", sender.LocalId()},
+            {"reqId", AtomicGet(LastReqId)});
         auto req = MakeHolder<TReq>(std::forward<TEv>(ev), sender, AtomicIncrement(LastReqId));
+        req->SetCookie(cookie);
         NewRequest(req.Get(), burstMs);
         return req.Release();
     }
 
     template<typename TReq, typename... TArgs>
     [[nodiscard]] TReq* CreateFromArgs(TArgs&&... args) {
-        LOG_DEBUG_S(*ActorSystem, NKikimrServices::BS_PDISK, "PDiskId# " << PDiskId << " create req# "
-                << TypeName<TReq>() << " ReqId# " << AtomicGet(LastReqId));
+        YDB_LOG_P_LOG(PRI_DEBUG, "CreateReqFromArgs",
+            {"marker", "BPD01"},
+            {"req", TypeName<TReq>()},
+            {"reqId", AtomicGet(LastReqId)});
         auto req = MakeHolder<TReq>(std::forward<TArgs>(args)..., AtomicIncrement(LastReqId));
         NewRequest(req.Get(), nullptr);
         return req.Release();
@@ -221,26 +227,25 @@ public:
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // TODO: Make all functions in style
-    [[nodiscard]] TChunkTrim* CreateChunkTrim(ui32 chunkIdx, ui32 offset, ui64 size, const NWilson::TSpan& parent) {
-        NWilson::TSpan span = parent.CreateChild(TWilson::PDiskTopLevel, "PDisk.ChunkTrim");
-        span.Attribute("chunk_idx", chunkIdx)
-            .Attribute("offset", offset)
-            .Attribute("size", static_cast<i64>(size))
-            .Attribute("pdisk_id", PDiskId);
+    [[nodiscard]] TChunkTrim* CreateChunkTrim(ui32 chunkIdx, ui32 offset, ui64 size) {
         Mon->Trim.CountRequest(size);
-        return CreateFromArgs<TChunkTrim>(chunkIdx, offset, size, std::move(span));
+        return CreateFromArgs<TChunkTrim>(chunkIdx, offset, size);
     }
 
     [[nodiscard]] TLogWrite* CreateLogWrite(NPDisk::TEvLog &ev, const TActorId &sender, double& burstMs, NWilson::TTraceId traceId) {
-        NWilson::TSpan span(TWilson::PDiskTopLevel, std::move(traceId), "PDisk.LogWrite", NWilson::EFlags::AUTO_END, ActorSystem);
-        span.Attribute("pdisk_id", PDiskId);
+        NWilson::TSpan span(TWilson::PDiskTopLevel, std::move(traceId), "PDisk.LogWrite", NWilson::EFlags::AUTO_END, PCtx->ActorSystem);
+        span.Attribute("pdisk_id", PCtx->PDiskId);
 
         TReqId reqId(TReqId::LogWrite, AtomicIncrement(LastReqId));
-        LOG_DEBUG(*ActorSystem, NKikimrServices::BS_PDISK, "PDiskId# %" PRIu32 " %s Sender# %" PRIu64 " ReqId# %" PRIu64,
-            (ui32)PDiskId, ev.ToString().c_str(), (ui64)sender.LocalId(), (ui64)reqId.Id);
+        YDB_LOG_P_LOG(PRI_DEBUG, "CreateLogWrite",
+            {"marker", "BPD01"},
+            {"event", ev},
+            {"sender", sender.LocalId()},
+            {"reqId", reqId.Id});
         Mon->QueueRequests->Inc();
         *Mon->QueueBytes += ev.Data.size();
         Mon->WriteLog.CountRequest(ev.Data.size());
+        Mon->CountLogWriteOpRequest(ev.WriteSource, ev.Data.size());
         if (ev.Data.size() > (1 << 20)) {
             Mon->WriteHugeLog.CountRequest();
         }
@@ -249,12 +254,15 @@ public:
 
     [[nodiscard]] TChunkRead* CreateChunkRead(const NPDisk::TEvChunkRead &ev, const TActorId &sender, double& burstMs,
             NWilson::TTraceId traceId) {
-        NWilson::TSpan span(TWilson::PDiskTopLevel, std::move(traceId), "PDisk.ChunkRead", NWilson::EFlags::AUTO_END, ActorSystem);
-        span.Attribute("pdisk_id", PDiskId);
+        NWilson::TSpan span(TWilson::PDiskTopLevel, std::move(traceId), "PDisk.ChunkRead", NWilson::EFlags::AUTO_END, PCtx->ActorSystem);
+        span.Attribute("pdisk_id", PCtx->PDiskId);
 
         TReqId reqId(TReqId::ChunkRead, AtomicIncrement(LastReqId));
-        LOG_DEBUG(*ActorSystem, NKikimrServices::BS_PDISK, "PDiskId# %" PRIu32 " %s Sender# %" PRIu64 " ReqId# %" PRIu64,
-            (ui32)PDiskId, ev.ToString().c_str(), (ui64)sender.LocalId(), (ui64)reqId.Id);
+        YDB_LOG_P_LOG(PRI_DEBUG, "CreateChunkRead",
+            {"marker", "BPD01"},
+            {"event", ev},
+            {"sender", sender.LocalId()},
+            {"reqId", reqId.Id});
         Mon->QueueRequests->Inc();
         *Mon->QueueBytes += ev.Size;
         Mon->GetReadCounter(ev.PriorityClass)->CountRequest(ev.Size);
@@ -263,21 +271,40 @@ public:
         return NewRequest(read, &burstMs);
     }
 
+    [[nodiscard]] TChunkReadRaw *CreateChunkReadRaw(TEventHandle<TEvChunkReadRaw>& ev) {
+        NWilson::TSpan span(TWilson::PDiskTopLevel, std::move(ev.TraceId), "PDisk.ChunkReadRaw", NWilson::EFlags::AUTO_END,
+            PCtx->ActorSystem);
+        span.Attribute("pdisk_id", PCtx->PDiskId);
+        return NewRequest(new TChunkReadRaw(*ev.Get(), ev.Sender, ev.Cookie, AtomicIncrement(LastReqId), std::move(span)));
+    }
+
     [[nodiscard]] TChunkWrite* CreateChunkWrite(const NPDisk::TEvChunkWrite &ev, const TActorId &sender, double& burstMs,
             NWilson::TTraceId traceId) {
-        NWilson::TSpan span(TWilson::PDiskTopLevel, std::move(traceId), "PDisk.ChunkWrite", NWilson::EFlags::AUTO_END, ActorSystem);
-        span.Attribute("pdisk_id", PDiskId);
+        NWilson::TSpan span(TWilson::PDiskTopLevel, std::move(traceId), "PDisk.ChunkWrite", NWilson::EFlags::AUTO_END, PCtx->ActorSystem);
+        span.Attribute("pdisk_id", PCtx->PDiskId);
 
         TReqId reqId(TReqId::ChunkWrite, AtomicIncrement(LastReqId));
-        LOG_DEBUG(*ActorSystem, NKikimrServices::BS_PDISK, "PDiskId# %" PRIu32 " %s Sender# %" PRIu64 " ReqId# %" PRIu64,
-            (ui32)PDiskId, ev.ToString().c_str(), (ui64)sender.LocalId(), (ui64)reqId.Id);
+        YDB_LOG_P_LOG(PRI_DEBUG, "CreateChunkWrite",
+            {"marker", "BPD01"},
+            {"event", ev},
+            {"sender", sender.LocalId()},
+            {"reqId", reqId.Id});
         Mon->QueueRequests->Inc();
         ui32 size = ev.PartsPtr ? ev.PartsPtr->ByteSize() : 0;
         ev.Validate();
         *Mon->QueueBytes += size;
         Mon->GetWriteCounter(ev.PriorityClass)->CountRequest(size);
+        Mon->CountChunkWriteOpRequest(ev.WriteSource, size);
         return NewRequest(new TChunkWrite(ev, sender, reqId, std::move(span)), &burstMs);
     }
+
+    [[nodiscard]] TChunkWriteRaw *CreateChunkWriteRaw(TEventHandle<TEvChunkWriteRaw>& ev) {
+        NWilson::TSpan span(TWilson::PDiskTopLevel, std::move(ev.TraceId), "PDisk.ChunkWriteRaw", NWilson::EFlags::AUTO_END,
+            PCtx->ActorSystem);
+        span.Attribute("pdisk_id", PCtx->PDiskId);
+        return NewRequest(new TChunkWriteRaw(*ev.Get(), ev.Sender, ev.Cookie, AtomicIncrement(LastReqId), std::move(span)));
+    }
+
 };
 
 } // namespace NKikimr::NPDisk {

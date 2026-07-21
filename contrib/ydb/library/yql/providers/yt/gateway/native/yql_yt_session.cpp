@@ -12,20 +12,21 @@ namespace NYql {
 namespace NNative {
 
 TSession::TSession(IYtGateway::TOpenSessionOptions&& options, size_t numThreads)
-    : UserName_(std::move(options.UserName()))
-    , ProgressWriter_(std::move(options.ProgressWriter()))
+    : TSessionBase(options.SessionId_, std::move(options.UserName()), std::move(options.RandomProvider()), std::move(options.TimeProvider()),
+    std::move(options.OperationOptions()), std::move(options.ProgressWriter()), std::move(options.UseSecureTmp())
+)
     , StatWriter_(std::move(options.StatWriter()))
-    , OperationOptions_(std::move(options.OperationOptions()))
-    , RandomProvider_(std::move(options.RandomProvider()))
-    , TimeProvider_(std::move(options.TimeProvider()))
     , DeterministicMode_(GetEnv("YQL_DETERMINISTIC_MODE"))
     , OperationSemaphore(nullptr)
+    , LocalCalcSemaphore_(nullptr)
     , TxCache_(UserName_)
-    , SessionId_(options.SessionId_)
+    , QContext_(options.QContext())
+    , FullCapture_(options.FullCapture())
 {
     InitYtApiOnce(OperationOptions_.AttrsYson);
 
-    Queue_ = TAsyncQueue::Make(numThreads, "YtGateway");
+    QueueOwned_ = TAsyncQueue::Make(numThreads, "YtGateway");
+    Queue_ = QueueOwned_;
     if (options.CreateOperationTracker()) {
         OpTracker_ = MakeIntrusive<TOperationTracker>();
     }
@@ -35,7 +36,7 @@ void TSession::StopQueueAndTracker() {
     if (OpTracker_) {
         OpTracker_->Stop();
     }
-    Queue_->Stop();
+    QueueOwned_.reset();
 }
 
 void TSession::Close() {
@@ -54,10 +55,6 @@ void TSession::Close() {
     StopQueueAndTracker();
 }
 
-NYT::TNode TSession::CreateSpecWithDesc(const TVector<std::pair<TString, TString>>& code) const {
-    return YqlOpOptionsToSpec(OperationOptions_, UserName_, code);
-}
-
 NYT::TNode TSession::CreateTableAttrs() const {
     return YqlOpOptionsToAttrs(OperationOptions_);
 }
@@ -67,6 +64,15 @@ void TSession::EnsureInitializedSemaphore(const TYtSettings::TConstPtr& settings
         if (!OperationSemaphore) {
             const size_t parallelOperationsLimit = settings->ParallelOperationsLimit.Get().GetOrElse(1U << 20);
             OperationSemaphore = NThreading::TAsyncSemaphore::Make(parallelOperationsLimit);
+        }
+    }
+}
+
+void TSession::InitLocalCalcSemaphore(const TYtSettings::TConstPtr& settings) {
+    with_lock(Mutex_) {
+        if(!LocalCalcSemaphore_) {
+            const size_t localCalcLimit = settings->LocalCalcLimit.Get().GetOrElse(1U);
+            LocalCalcSemaphore_ = MakeHolder<TFastSemaphore>(localCalcLimit);
         }
     }
 }

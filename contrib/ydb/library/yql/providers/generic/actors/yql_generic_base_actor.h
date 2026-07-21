@@ -1,6 +1,8 @@
 #pragma once
+#include <variant>
 #include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/library/actors/core/event_local.h>
+#include <contrib/ydb/library/yql/providers/generic/connector/api/service/protos/connector.pb.h>
 #include <contrib/ydb/library/yql/providers/generic/connector/libcpp/client.h>
 #include <contrib/ydb/library/yql/minikql/mkql_alloc.h>
 #include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node_holders.h>
@@ -8,9 +10,9 @@
 
 namespace NYql::NDq {
 
-    template <typename TDerived>
+    template <typename TDerived, typename TEvState = std::monostate>
     class TGenericBaseActor: public NActors::TActorBootstrapped<TDerived> {
-    protected: //Events
+    protected: // Events
         // Event ids
         enum EEventIds: ui32 {
             EvBegin = EventSpaceBegin(NActors::TEvents::ES_PRIVATE),
@@ -21,6 +23,7 @@ namespace NYql::NDq {
             EvReadSplitsPart,
             EvReadSplitsFinished,
             EvError,
+            EvRetry,
             EvEnd
         };
 
@@ -33,6 +36,7 @@ namespace NYql::NDq {
             }
 
             NConnector::IListSplitsStreamIterator::TPtr Iterator;
+            TEvState State;
         };
 
         struct TEvListSplitsPart: NActors::TEventLocal<TEvListSplitsPart, EvListSplitsPart> {
@@ -42,6 +46,7 @@ namespace NYql::NDq {
             }
 
             NConnector::NApi::TListSplitsResponse Response;
+            TEvState State;
         };
 
         struct TEvListSplitsFinished: NActors::TEventLocal<TEvListSplitsFinished, EvListSplitsFinished> {
@@ -51,6 +56,7 @@ namespace NYql::NDq {
             }
 
             NYdbGrpc::TGrpcStatus Status;
+            TEvState State;
         };
 
         struct TEvReadSplitsIterator: NActors::TEventLocal<TEvReadSplitsIterator, EvReadSplitsIterator> {
@@ -60,6 +66,7 @@ namespace NYql::NDq {
             }
 
             NConnector::IReadSplitsStreamIterator::TPtr Iterator;
+            TEvState State;
         };
 
         struct TEvReadSplitsPart: NActors::TEventLocal<TEvReadSplitsPart, EvReadSplitsPart> {
@@ -69,6 +76,7 @@ namespace NYql::NDq {
             }
 
             NConnector::NApi::TReadSplitsResponse Response;
+            TEvState State;
         };
 
         struct TEvReadSplitsFinished: NActors::TEventLocal<TEvReadSplitsFinished, EvReadSplitsFinished> {
@@ -78,6 +86,7 @@ namespace NYql::NDq {
             }
 
             NYdbGrpc::TGrpcStatus Status;
+            TEvState State;
         };
 
         struct TEvError: NActors::TEventLocal<TEvError, EvError> {
@@ -87,9 +96,10 @@ namespace NYql::NDq {
             }
 
             NConnector::NApi::TError Error;
+            TEvState State;
         };
 
-    protected: //TODO move common logic here
+    protected: // TODO move common logic here
     };
 
 } // namespace NYql::NDq

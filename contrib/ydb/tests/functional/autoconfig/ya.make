@@ -1,21 +1,22 @@
 PY3TEST()
 
-ENV(YDB_DRIVER_BINARY="contrib/ydb/apps/ydbd/ydbd")
+INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/harness_dep.inc)
 TEST_SRCS(
     test_actorsystem.py
 )
 
-REQUIREMENTS(
-    cpu:4
-    ram:16
-)
-TIMEOUT(600)
-SIZE(MEDIUM)
+IF (SANITIZER_TYPE)
+    REQUIREMENTS(ram:16 cpu:4)
+    SIZE(LARGE)
+    INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/large.inc)
+ELSE()
+    SIZE(MEDIUM)
+    REQUIREMENTS(cpu:2)
+ENDIF()
 
 SPLIT_FACTOR(20)
 
 DEPENDS(
-    contrib/ydb/apps/ydbd
 )
 
 PEERDIR(

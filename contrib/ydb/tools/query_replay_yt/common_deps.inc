@@ -6,11 +6,7 @@ SET(YDB_REPLAY_SRCS
 )
 
 SET(YDB_REPLAY_PEERDIRS
-    contrib/ydb/library/actors/core
-    contrib/ydb/library/actors/interconnect
     library/cpp/getopt
-    contrib/ydb/library/grpc/client
-    contrib/ydb/library/grpc/server
     library/cpp/regex/pcre
     contrib/ydb/core/actorlib_impl
     contrib/ydb/core/base
@@ -44,15 +40,17 @@ SET(YDB_REPLAY_PEERDIRS
     contrib/ydb/core/tx/mediator
     contrib/ydb/core/tx/time_cast
     contrib/ydb/core/tx/tx_proxy
-    contrib/ydb/library/yql/core/services/mounts
-    contrib/ydb/library/yql/minikql/comp_nodes/llvm14
-    contrib/ydb/library/yql/providers/yt/codec/codegen
-    contrib/ydb/library/yql/providers/yt/comp_nodes/llvm14
-    contrib/ydb/library/yql/public/udf/service/exception_policy
+    contrib/ydb/library/actors/core
+    contrib/ydb/library/actors/interconnect
+    contrib/ydb/library/grpc/server
+    contrib/ydb/library/yql/udfs/common/clickhouse/client
+    contrib/ydb/library/yql/udfs/common/knn
+    contrib/ydb/library/yql/udfs/common/roaring
     contrib/ydb/public/api/protos
     contrib/ydb/public/lib/base
     contrib/ydb/public/lib/deprecated/kicli
-    contrib/ydb/public/sdk/cpp/client/ydb_table
+    contrib/ydb/public/sdk/cpp/src/client/table
+    contrib/ydb/public/sdk/cpp/src/library/grpc/client
     contrib/ydb/services/cms
     contrib/ydb/services/datastreams
     contrib/ydb/services/discovery
@@ -61,24 +59,35 @@ SET(YDB_REPLAY_PEERDIRS
     contrib/ydb/services/persqueue_v1
     contrib/ydb/services/rate_limiter
     contrib/ydb/services/ydb
-    contrib/ydb/library/yql/udfs/common/clickhouse/client
-    contrib/ydb/library/yql/udfs/common/datetime
+    contrib/ydb/library/yql/core/services/mounts
+    contrib/ydb/library/yql/minikql/comp_nodes/llvm16
+    contrib/ydb/library/yql/parser/pg_wrapper
+    contrib/ydb/library/yql/public/udf/service/exception_policy
+    contrib/ydb/library/yql/sql/pg
+    contrib/ydb/library/yql/udfs/common/compress_base
     contrib/ydb/library/yql/udfs/common/datetime2
     contrib/ydb/library/yql/udfs/common/digest
+    contrib/ydb/library/yql/udfs/common/file
     contrib/ydb/library/yql/udfs/common/histogram
     contrib/ydb/library/yql/udfs/common/hyperloglog
     contrib/ydb/library/yql/udfs/common/hyperscan
+    contrib/ydb/library/yql/udfs/common/ip_base
     contrib/ydb/library/yql/udfs/common/json
     contrib/ydb/library/yql/udfs/common/json2
     contrib/ydb/library/yql/udfs/common/math
     contrib/ydb/library/yql/udfs/common/pire
+    contrib/ydb/library/yql/udfs/common/protobuf
     contrib/ydb/library/yql/udfs/common/re2
     contrib/ydb/library/yql/udfs/common/set
     contrib/ydb/library/yql/udfs/common/stat
+    contrib/ydb/library/yql/udfs/common/streaming
     contrib/ydb/library/yql/udfs/common/string
     contrib/ydb/library/yql/udfs/common/top
     contrib/ydb/library/yql/udfs/common/topfreq
+    contrib/ydb/library/yql/udfs/common/url_base
     contrib/ydb/library/yql/udfs/common/yson2
     contrib/ydb/library/yql/udfs/logs/dsv
-    contrib/ydb/library/yql/sql/pg_dummy
+    contrib/ydb/library/yql/providers/yt/codec/codegen
+    contrib/ydb/library/yql/providers/yt/comp_nodes/dq/llvm16
+    contrib/ydb/library/yql/providers/yt/comp_nodes/llvm16
 )

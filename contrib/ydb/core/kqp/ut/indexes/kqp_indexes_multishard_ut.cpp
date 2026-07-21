@@ -1,7 +1,8 @@
 #include <contrib/ydb/core/kqp/ut/common/kqp_ut_common.h>
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_proto/accessor.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_table/table.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/proto/accessor.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/table/table.h>
+#include <contrib/ydb/public/sdk/cpp/adapters/issue/issue.h>
 #include <contrib/ydb/core/protos/flat_scheme_op.pb.h>
 
 #include <library/cpp/json/json_reader.h>
@@ -173,7 +174,7 @@ void FillTable(NYdb::NTable::TSession& session) {
 
 Y_UNIT_TEST_SUITE(KqpUniqueIndex) {
     Y_UNIT_TEST(InsertFkAlreadyExist) {
-        TKikimrRunner kikimr(SyntaxV1Settings());
+        TKikimrRunner kikimr;
         CreateTableWithMultishardIndex(kikimr.GetTestClient(), IG_UNIQUE);
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
@@ -191,7 +192,7 @@ Y_UNIT_TEST_SUITE(KqpUniqueIndex) {
     }
 
     Y_UNIT_TEST(InsertFkPartialColumnSet) {
-        TKikimrRunner kikimr(SyntaxV1Settings());
+        TKikimrRunner kikimr;
         CreateTableWithMultishardIndex(kikimr.GetTestClient(), IG_UNIQUE);
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
@@ -215,7 +216,7 @@ Y_UNIT_TEST_SUITE(KqpUniqueIndex) {
     }
 
     Y_UNIT_TEST(ReplaceFkPartialColumnSet) {
-        TKikimrRunner kikimr(SyntaxV1Settings());
+        TKikimrRunner kikimr;
         CreateTableWithMultishardIndex(kikimr.GetTestClient(), IG_UNIQUE);
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
@@ -239,7 +240,7 @@ Y_UNIT_TEST_SUITE(KqpUniqueIndex) {
     }
 
     Y_UNIT_TEST(ReplaceFkAlreadyExist) {
-        TKikimrRunner kikimr(SyntaxV1Settings());
+        TKikimrRunner kikimr;
         CreateTableWithMultishardIndex(kikimr.GetTestClient(), IG_UNIQUE);
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
@@ -270,7 +271,7 @@ Y_UNIT_TEST_SUITE(KqpUniqueIndex) {
     }
 
     Y_UNIT_TEST(UpdateFkAlreadyExist) {
-        TKikimrRunner kikimr(SyntaxV1Settings());
+        TKikimrRunner kikimr;
         CreateTableWithMultishardIndex(kikimr.GetTestClient(), IG_UNIQUE);
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
@@ -351,7 +352,7 @@ Y_UNIT_TEST_SUITE(KqpUniqueIndex) {
     }
 
     Y_UNIT_TEST(UpdateFkSameValue) {
-        TKikimrRunner kikimr(SyntaxV1Settings());
+        TKikimrRunner kikimr;
         CreateTableWithMultishardIndex(kikimr.GetTestClient(), IG_UNIQUE);
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
@@ -391,7 +392,7 @@ Y_UNIT_TEST_SUITE(KqpUniqueIndex) {
     }
 
     Y_UNIT_TEST(UpdateOnFkSelectResultSameValue) {
-        TKikimrRunner kikimr(SyntaxV1Settings());
+        TKikimrRunner kikimr;
         CreateTableWithMultishardIndex(kikimr.GetTestClient(), IG_UNIQUE);
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
@@ -427,11 +428,13 @@ Y_UNIT_TEST_SUITE(KqpUniqueIndex) {
     }
 
     void UpdateOnHidenChanges(bool dataColumn) {
-        TKikimrRunner kikimr(SyntaxV1Settings());
+        TKikimrRunner kikimr;
         CreateTableWithMultishardIndex(kikimr.GetTestClient(), IG_UNIQUE, dataColumn);
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
         FillTable(session);
+
+        const bool isStreamIndex = kikimr.GetTestServer().GetSettings().AppConfig->GetTableServiceConfig().GetEnableIndexStreamWrite();
 
         {
             const TString query(Q_(R"(
@@ -454,24 +457,43 @@ Y_UNIT_TEST_SUITE(KqpUniqueIndex) {
 
             auto result = ExecuteDataQuery(session, query);
 
-            UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), NYdb::EStatus::SUCCESS, result.GetIssues().ToString());
+            UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), isStreamIndex ? NYdb::EStatus::PRECONDITION_FAILED : NYdb::EStatus::SUCCESS, result.GetIssues().ToString());
         }
 
-        {
-            const auto yson = ReadTableToYson(session, "/Root/MultiShardIndexed/index/indexImplTable");
-            if (dataColumn) {
-                const TString expected = R"([[[1000000000u];[2u];["mod_22"]];[[1000000001u];[1u];["mod_11"]];[[3000000000u];[3u];["v3"]];[[4294967295u];[4u];["v4"]]])";
-                UNIT_ASSERT_VALUES_EQUAL(yson, expected);
-            } else {
-                const TString expected = R"([[[1000000000u];[2u]];[[1000000001u];[1u]];[[3000000000u];[3u]];[[4294967295u];[4u]]])";
+        if (isStreamIndex) {
+            {
+                const auto yson = ReadTableToYson(session, "/Root/MultiShardIndexed/index/indexImplTable");
+                if (dataColumn) {
+                    const TString expected = R"([[[1000000000u];[1u];["v1"]];[[2000000000u];[2u];["v2"]];[[3000000000u];[3u];["v3"]];[[4294967295u];[4u];["v4"]]])";
+                    UNIT_ASSERT_VALUES_EQUAL(yson, expected);
+                } else {
+                    const TString expected = R"([[[1000000000u];[1u]];[[2000000000u];[2u]];[[3000000000u];[3u]];[[4294967295u];[4u]]])";
+                    UNIT_ASSERT_VALUES_EQUAL(yson, expected);
+                }
+            }
+
+            {
+                const auto yson = ReadTableToYson(session, "/Root/MultiShardIndexed");
+                const TString expected = R"([[[1u];[1000000000u];["v1"]];[[2u];[2000000000u];["v2"]];[[3u];[3000000000u];["v3"]];[[4u];[4294967295u];["v4"]]])";
                 UNIT_ASSERT_VALUES_EQUAL(yson, expected);
             }
-        }
+        } else {
+            {
+                const auto yson = ReadTableToYson(session, "/Root/MultiShardIndexed/index/indexImplTable");
+                if (dataColumn) {
+                    const TString expected = R"([[[1000000000u];[2u];["mod_22"]];[[1000000001u];[1u];["mod_11"]];[[3000000000u];[3u];["v3"]];[[4294967295u];[4u];["v4"]]])";
+                    UNIT_ASSERT_VALUES_EQUAL(yson, expected);
+                } else {
+                    const TString expected = R"([[[1000000000u];[2u]];[[1000000001u];[1u]];[[3000000000u];[3u]];[[4294967295u];[4u]]])";
+                    UNIT_ASSERT_VALUES_EQUAL(yson, expected);
+                }
+            }
 
-        {
-            const auto yson = ReadTableToYson(session, "/Root/MultiShardIndexed");
-            const TString expected = R"([[[1u];[1000000001u];["mod_11"]];[[2u];[1000000000u];["mod_22"]];[[3u];[3000000000u];["v3"]];[[4u];[4294967295u];["v4"]]])";
-            UNIT_ASSERT_VALUES_EQUAL(yson, expected);
+            {
+                const auto yson = ReadTableToYson(session, "/Root/MultiShardIndexed");
+                const TString expected = R"([[[1u];[1000000001u];["mod_11"]];[[2u];[1000000000u];["mod_22"]];[[3u];[3000000000u];["v3"]];[[4u];[4294967295u];["v4"]]])";
+                UNIT_ASSERT_VALUES_EQUAL(yson, expected);
+            }
         }
     }
 
@@ -480,7 +502,7 @@ Y_UNIT_TEST_SUITE(KqpUniqueIndex) {
     }
 
     Y_UNIT_TEST(UpdateOnFkAlreadyExist) {
-        TKikimrRunner kikimr(SyntaxV1Settings());
+        TKikimrRunner kikimr;
         CreateTableWithMultishardIndex(kikimr.GetTestClient(), IG_UNIQUE);
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
@@ -511,7 +533,7 @@ Y_UNIT_TEST_SUITE(KqpUniqueIndex) {
     }
 
     Y_UNIT_TEST(InsertFkPkOverlap) {
-        TKikimrRunner kikimr(SyntaxV1Settings());
+        TKikimrRunner kikimr;
         CreateTableWithMultishardIndexComplexFkPk(kikimr.GetTestClient(), IG_UNIQUE);
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
@@ -529,7 +551,7 @@ Y_UNIT_TEST_SUITE(KqpUniqueIndex) {
     }
 
     Y_UNIT_TEST(UpdateFkPkOverlap) {
-        TKikimrRunner kikimr(SyntaxV1Settings());
+        TKikimrRunner kikimr;
         CreateTableWithMultishardIndexComplexFkPk(kikimr.GetTestClient(), IG_UNIQUE);
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
@@ -626,7 +648,7 @@ Y_UNIT_TEST_SUITE(KqpUniqueIndex) {
     }
 
     Y_UNIT_TEST(InsertNullInPk) {
-        TKikimrRunner kikimr(SyntaxV1Settings());
+        TKikimrRunner kikimr;
         CreateTableWithMultishardIndex(kikimr.GetTestClient(), IG_UNIQUE);
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
@@ -654,7 +676,7 @@ Y_UNIT_TEST_SUITE(KqpUniqueIndex) {
     }
 
     Y_UNIT_TEST(InsertNullInFk) {
-        TKikimrRunner kikimr(SyntaxV1Settings());
+        TKikimrRunner kikimr;
         CreateTableWithMultishardIndex(kikimr.GetTestClient(), IG_UNIQUE);
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
@@ -688,7 +710,7 @@ Y_UNIT_TEST_SUITE(KqpUniqueIndex) {
     }
 
     Y_UNIT_TEST(InsertNullInComplexFk) {
-        TKikimrRunner kikimr(SyntaxV1Settings());
+        TKikimrRunner kikimr;
         CreateTableWithMultishardIndexComplexFk(kikimr.GetTestClient(), IG_UNIQUE);
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
@@ -741,7 +763,7 @@ Y_UNIT_TEST_SUITE(KqpUniqueIndex) {
     }
 
     Y_UNIT_TEST(UpsertExplicitNullInComplexFk) {
-        TKikimrRunner kikimr(SyntaxV1Settings());
+        TKikimrRunner kikimr;
         CreateTableWithMultishardIndexComplexFk(kikimr.GetTestClient(), IG_UNIQUE);
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
@@ -796,7 +818,7 @@ Y_UNIT_TEST_SUITE(KqpUniqueIndex) {
     }
 
     Y_UNIT_TEST(UpsertImplicitNullInComplexFk) {
-        TKikimrRunner kikimr(SyntaxV1Settings());
+        TKikimrRunner kikimr;
         CreateTableWithMultishardIndexComplexFk(kikimr.GetTestClient(), IG_UNIQUE);
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
@@ -883,7 +905,7 @@ Y_UNIT_TEST_SUITE(KqpUniqueIndex) {
     }
 
     Y_UNIT_TEST(UpdateImplicitNullInComplexFk2) {
-        TKikimrRunner kikimr(SyntaxV1Settings());
+        TKikimrRunner kikimr;
         CreateTableWithMultishardIndexComplexFk(kikimr.GetTestClient(), IG_UNIQUE);
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
@@ -939,7 +961,7 @@ Y_UNIT_TEST_SUITE(KqpUniqueIndex) {
     }
 
     Y_UNIT_TEST(UpdateOnNullInComplexFk) {
-        TKikimrRunner kikimr(SyntaxV1Settings());
+        TKikimrRunner kikimr;
         CreateTableWithMultishardIndexComplexFk(kikimr.GetTestClient(), IG_UNIQUE);
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
@@ -1190,7 +1212,7 @@ Y_UNIT_TEST_SUITE(KqpUniqueIndex) {
     }
 
     Y_UNIT_TEST(InsertNullInComplexFkDuplicate) {
-        TKikimrRunner kikimr(SyntaxV1Settings());
+        TKikimrRunner kikimr;
         CreateTableWithMultishardIndexComplexFk(kikimr.GetTestClient(), IG_UNIQUE);
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
@@ -1216,7 +1238,7 @@ Y_UNIT_TEST_SUITE(KqpUniqueIndex) {
     }
 
     Y_UNIT_TEST(InsertFkDuplicate) {
-        TKikimrRunner kikimr(SyntaxV1Settings());
+        TKikimrRunner kikimr;
         CreateTableWithMultishardIndex(kikimr.GetTestClient(), IG_UNIQUE);
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
@@ -1253,7 +1275,7 @@ Y_UNIT_TEST_SUITE(KqpUniqueIndex) {
     }
 
     Y_UNIT_TEST(InsertComplexFkPkOverlapDuplicate) {
-        TKikimrRunner kikimr(SyntaxV1Settings());
+        TKikimrRunner kikimr;
         CreateTableWithMultishardIndexComplexFkPk(kikimr.GetTestClient(), IG_UNIQUE);
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
@@ -1291,11 +1313,13 @@ Y_UNIT_TEST_SUITE(KqpUniqueIndex) {
     }
 
     Y_UNIT_TEST(ReplaceFkDuplicate) {
-        TKikimrRunner kikimr(SyntaxV1Settings());
+        TKikimrRunner kikimr;
         CreateTableWithMultishardIndex(kikimr.GetTestClient(), IG_UNIQUE);
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
         FillTable(session);
+
+        const bool isStreamIndex = kikimr.GetTestServer().GetSettings().AppConfig->GetTableServiceConfig().GetEnableIndexStreamWrite();
 
         {
             const TString query(Q_(R"(
@@ -1317,7 +1341,7 @@ Y_UNIT_TEST_SUITE(KqpUniqueIndex) {
             )"));
 
             auto result = ExecuteDataQuery(session, query);
-            UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), NYdb::EStatus::PRECONDITION_FAILED, result.GetIssues().ToString());
+            UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), isStreamIndex ? NYdb::EStatus::SUCCESS : NYdb::EStatus::PRECONDITION_FAILED, result.GetIssues().ToString());
         }
 
         {
@@ -1352,7 +1376,7 @@ Y_UNIT_TEST_SUITE(KqpUniqueIndex) {
 
 Y_UNIT_TEST_SUITE(KqpMultishardIndex) {
     Y_UNIT_TEST(SortedRangeReadDesc) {
-        TKikimrRunner kikimr(SyntaxV1Settings());
+        TKikimrRunner kikimr;
         CreateTableWithMultishardIndex(kikimr.GetTestClient(), IG_SYNC);
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
@@ -1370,7 +1394,7 @@ Y_UNIT_TEST_SUITE(KqpMultishardIndex) {
     }
 
     Y_UNIT_TEST(SecondaryIndexSelectNull) {
-        TKikimrRunner kikimr(SyntaxV1Settings());
+        TKikimrRunner kikimr;
         CreateTableWithMultishardIndex(kikimr.GetTestClient(), IG_SYNC);
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
@@ -1445,7 +1469,7 @@ Y_UNIT_TEST_SUITE(KqpMultishardIndex) {
     }
 
     Y_UNIT_TEST(SecondaryIndexSelect) {
-        TKikimrRunner kikimr(SyntaxV1Settings());
+        TKikimrRunner kikimr;
         CreateTableWithMultishardIndex(kikimr.GetTestClient(), IG_SYNC);
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
@@ -1561,7 +1585,7 @@ Y_UNIT_TEST_SUITE(KqpMultishardIndex) {
 
             auto result = ExecuteDataQuery(session, query);
 
-            UNIT_ASSERT_C(HasIssue(result.GetIssues(), NYql::TIssuesIds::KIKIMR_WRONG_INDEX_USAGE,
+            UNIT_ASSERT_C(HasIssue(NYdb::NAdapters::ToYqlIssues(result.GetIssues()), NYql::TIssuesIds::KIKIMR_WRONG_INDEX_USAGE,
                 [](const NYql::TIssue& issue) {
                     return issue.GetMessage().Contains("Given predicate is not suitable for used index: index");
                 }), result.GetIssues().ToString());
@@ -1577,7 +1601,7 @@ Y_UNIT_TEST_SUITE(KqpMultishardIndex) {
 
             auto result = ExecuteDataQuery(session, query);
 
-            UNIT_ASSERT_C(HasIssue(result.GetIssues(), NYql::TIssuesIds::KIKIMR_WRONG_INDEX_USAGE,
+            UNIT_ASSERT_C(HasIssue(NYdb::NAdapters::ToYqlIssues(result.GetIssues()), NYql::TIssuesIds::KIKIMR_WRONG_INDEX_USAGE,
                 [](const NYql::TIssue& issue) {
                     return issue.GetMessage().Contains("Given predicate is not suitable for used index: index");
                 }), result.GetIssues().ToString());
@@ -1598,7 +1622,7 @@ Y_UNIT_TEST_SUITE(KqpMultishardIndex) {
     }
 
     Y_UNIT_TEST(YqWorksFineAfterAlterIndexTableDirectly) {
-        TKikimrRunner kikimr(SyntaxV1Settings());
+        TKikimrRunner kikimr;
         CreateTableWithMultishardIndex(kikimr.GetTestClient(), IG_SYNC);
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
@@ -1640,15 +1664,9 @@ Y_UNIT_TEST_SUITE(KqpMultishardIndex) {
         }
     }
 
-    Y_UNIT_TEST_TWIN(DataColumnUpsertMixedSemantic, StreamLookup) {
-        NKikimrConfig::TAppConfig appConfig;
-        appConfig.MutableTableServiceConfig()->SetEnableKqpDataQueryStreamLookup(StreamLookup);
-        appConfig.MutableTableServiceConfig()->SetEnableKqpDataQuerySourceRead(StreamLookup);
-
+    Y_UNIT_TEST(DataColumnUpsertMixedSemantic) {
         auto setting = NKikimrKqp::TKqpSetting();
-        auto serverSettings = TKikimrSettings()
-            .SetAppConfig(appConfig)
-            .SetKqpSettings({setting});
+        auto serverSettings = TKikimrSettings().SetKqpSettings({setting});
 
         TKikimrRunner kikimr(serverSettings);
         auto db = kikimr.GetTableClient();
@@ -1689,15 +1707,9 @@ Y_UNIT_TEST_SUITE(KqpMultishardIndex) {
         }
     }
 
-    Y_UNIT_TEST_TWIN(DataColumnWriteNull, StreamLookup) {
-        NKikimrConfig::TAppConfig appConfig;
-        appConfig.MutableTableServiceConfig()->SetEnableKqpDataQueryStreamLookup(StreamLookup);
-        appConfig.MutableTableServiceConfig()->SetEnableKqpDataQuerySourceRead(StreamLookup);
-
+    Y_UNIT_TEST(DataColumnWriteNull) {
         auto setting = NKikimrKqp::TKqpSetting();
-        auto serverSettings = TKikimrSettings()
-            .SetAppConfig(appConfig)
-            .SetKqpSettings({setting});
+        auto serverSettings = TKikimrSettings().SetKqpSettings({setting});
 
         TKikimrRunner kikimr(serverSettings);
         auto db = kikimr.GetTableClient();
@@ -1772,15 +1784,9 @@ Y_UNIT_TEST_SUITE(KqpMultishardIndex) {
         }
     }
 
-    Y_UNIT_TEST_TWIN(DataColumnWrite, StreamLookup) {
-        NKikimrConfig::TAppConfig appConfig;
-        appConfig.MutableTableServiceConfig()->SetEnableKqpDataQueryStreamLookup(StreamLookup);
-        appConfig.MutableTableServiceConfig()->SetEnableKqpDataQuerySourceRead(StreamLookup);
-
+    Y_UNIT_TEST(DataColumnWrite) {
         auto setting = NKikimrKqp::TKqpSetting();
-        auto serverSettings = TKikimrSettings()
-            .SetAppConfig(appConfig)
-            .SetKqpSettings({setting});
+        auto serverSettings = TKikimrSettings().SetKqpSettings({setting});
 
         TKikimrRunner kikimr(serverSettings);
         auto db = kikimr.GetTableClient();
@@ -2173,15 +2179,9 @@ Y_UNIT_TEST_SUITE(KqpMultishardIndex) {
         }
     }
 
-    Y_UNIT_TEST_TWIN(DataColumnSelect, StreamLookup) {
-        NKikimrConfig::TAppConfig appConfig;
-        appConfig.MutableTableServiceConfig()->SetEnableKqpDataQueryStreamLookup(StreamLookup);
-        appConfig.MutableTableServiceConfig()->SetEnableKqpDataQuerySourceRead(StreamLookup);
-
+    Y_UNIT_TEST(DataColumnSelect) {
         auto setting = NKikimrKqp::TKqpSetting();
-        auto serverSettings = TKikimrSettings()
-            .SetAppConfig(appConfig)
-            .SetKqpSettings({setting});
+        auto serverSettings = TKikimrSettings().SetKqpSettings({setting});
 
         TKikimrRunner kikimr(serverSettings);
         auto db = kikimr.GetTableClient();
@@ -2271,15 +2271,9 @@ Y_UNIT_TEST_SUITE(KqpMultishardIndex) {
         }
     }
 
-    Y_UNIT_TEST_TWIN(DuplicateUpsert, StreamLookup) {
-        NKikimrConfig::TAppConfig appConfig;
-        appConfig.MutableTableServiceConfig()->SetEnableKqpDataQueryStreamLookup(StreamLookup);
-        appConfig.MutableTableServiceConfig()->SetEnableKqpDataQuerySourceRead(StreamLookup);
-
+    Y_UNIT_TEST(DuplicateUpsert) {
         auto setting = NKikimrKqp::TKqpSetting();
-        auto serverSettings = TKikimrSettings()
-            .SetAppConfig(appConfig)
-            .SetKqpSettings({setting});
+        auto serverSettings = TKikimrSettings().SetKqpSettings({setting});
 
         TKikimrRunner kikimr(serverSettings);
         auto db = kikimr.GetTableClient();
@@ -2308,14 +2302,8 @@ Y_UNIT_TEST_SUITE(KqpMultishardIndex) {
         }
     }
 
-    Y_UNIT_TEST_TWIN(SortByPk, StreamLookup) {
-        NKikimrConfig::TAppConfig appConfig;
-        appConfig.MutableTableServiceConfig()->SetEnableKqpDataQueryStreamLookup(StreamLookup);
-        appConfig.MutableTableServiceConfig()->SetEnableKqpDataQuerySourceRead(StreamLookup);
-
-        auto serverSettings = TKikimrSettings()
-            .SetAppConfig(appConfig);
-
+    Y_UNIT_TEST(SortByPk) {
+        TKikimrSettings serverSettings;
         TKikimrRunner kikimr(serverSettings);
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
@@ -2533,13 +2521,8 @@ Y_UNIT_TEST_SUITE(KqpMultishardIndex) {
         CheckWriteIntoRenamingIndex(true);
     }
 
-    Y_UNIT_TEST_TWIN(CheckPushTopSort, StreamLookup) {
-        NKikimrConfig::TAppConfig appConfig;
-        appConfig.MutableTableServiceConfig()->SetEnableKqpDataQuerySourceRead(StreamLookup);
-
-        auto serverSettings = TKikimrSettings()
-            .SetAppConfig(appConfig);
-
+    Y_UNIT_TEST(CheckPushTopSort) {
+        TKikimrSettings serverSettings;
         TKikimrRunner kikimr(serverSettings);
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
@@ -2560,6 +2543,12 @@ Y_UNIT_TEST_SUITE(KqpMultishardIndex) {
             LIMIT 2;
         )");
 
+        {
+            auto explainResult = session.ExplainDataQuery(query).GetValueSync();
+            UNIT_ASSERT_C(explainResult.IsSuccess(), explainResult.GetIssues().ToString());
+            Cerr << "CheckPushTopSort AST: " << explainResult.GetAst() << Endl;
+        }
+
         NYdb::NTable::TExecDataQuerySettings execSettings;
         execSettings.CollectQueryStats(ECollectQueryStatsMode::Basic);
         auto result = session.ExecuteDataQuery(
@@ -2567,6 +2556,8 @@ Y_UNIT_TEST_SUITE(KqpMultishardIndex) {
                 TTxControl::BeginTx().CommitTx(),
                 execSettings)
             .ExtractValueSync();
+
+        
         UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
 
         AssertTableStats(result, "/Root/MultiShardIndexedWithDataColumn", {

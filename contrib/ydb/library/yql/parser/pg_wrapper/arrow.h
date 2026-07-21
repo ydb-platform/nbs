@@ -15,6 +15,7 @@
 extern "C" {
 #include "postgres.h"
 #include "fmgr.h"
+#include "varatt.h"
 #include "catalog/pg_type_d.h"
 #include "catalog/pg_collation_d.h"
 }
@@ -338,11 +339,11 @@ struct TGenericExec {
         if constexpr (!TArgsPolicy::VarArgs) {
             if (TArgsPolicy::IsFixedArg.size() == 2) {
                 if (batch.values[0].is_scalar()) {
-                    return Dispatch3<HasScalars, HasNulls, EScalarArgBinary::First>(batch, length, state, builder);                
+                    return Dispatch3<HasScalars, HasNulls, EScalarArgBinary::First>(batch, length, state, builder);
                 }
 
                 if (batch.values[1].is_scalar()) {
-                    return Dispatch3<HasScalars, HasNulls, EScalarArgBinary::Second>(batch, length, state, builder);                
+                    return Dispatch3<HasScalars, HasNulls, EScalarArgBinary::Second>(batch, length, state, builder);
                 }
             }
         }
@@ -377,8 +378,8 @@ struct TGenericExec {
                 if (!constexpr_for_tuple([&](auto const& j, auto const& v) {
                     NullableDatum d;
                     if (HasScalars && (
-                        (ScalarArgBinary == EScalarArgBinary::First && j == 0) || 
-                        (ScalarArgBinary == EScalarArgBinary::Second && j == 1) || 
+                        (ScalarArgBinary == EScalarArgBinary::First && j == 0) ||
+                        (ScalarArgBinary == EScalarArgBinary::Second && j == 1) ||
                         inputArgsAccessor.IsScalar[j])) {
                         d = inputArgsAccessor.Scalars[j];
                     } else {
@@ -400,7 +401,7 @@ struct TGenericExec {
                     }
 
                     fcinfo->args[j] = d;
-                    return true;            
+                    return true;
                 }, TArgsPolicy::IsFixedArg)) {
                     if constexpr (IsFixedResult) {
                         fixedResultValidMask[i] = 0;
@@ -581,7 +582,7 @@ public:
     }
 
     NUdf::TUnboxedValue Build() final {
-        return Ctx_.HolderFactory.CreateArrowBlock(Builder_.Build(true));
+        return Ctx_.HolderFactory.CreateArrowBlock(Builder_.Build(true), Ctx_.RuntimeSettings.DatumValidation.Get());
     }
 
 private:
@@ -626,19 +627,19 @@ private:
             if (!HasInitValue && IsTransStrict) {
                 Y_ENSURE(AggDesc_.ArgTypes.size() == 1);
             }
-            
+
             const auto& transDesc = NPg::LookupProc(AggDesc_.TransFuncId);
             for (ui32 i = 1; i < transDesc.ArgTypes.size(); ++i) {
                 IsFixedArg_.push_back(NPg::LookupType(transDesc.ArgTypes[i]).PassByValue);
             }
 
             Zero(TransFuncInfo_);
-            fmgr_info(AggDesc_.TransFuncId, &TransFuncInfo_);
+            GetPgFuncAddr(AggDesc_.TransFuncId, TransFuncInfo_);
             Y_ENSURE(TransFuncInfo_.fn_addr);
             auto nargs = NPg::LookupProc(AggDesc_.TransFuncId).ArgTypes.size();
             if constexpr (HasSerialize) {
                 Zero(SerializeFuncInfo_);
-                fmgr_info(AggDesc_.SerializeFuncId, &SerializeFuncInfo_);
+                GetPgFuncAddr(AggDesc_.SerializeFuncId, SerializeFuncInfo_);
                 Y_ENSURE(SerializeFuncInfo_.fn_addr);
             }
 
@@ -651,13 +652,14 @@ private:
                 }
 
                 TypeIOParam_ = MakeTypeIOParam(transTypeDesc);
-                fmgr_info(inFuncId, &InFuncInfo_);
+                GetPgFuncAddr(inFuncId, InFuncInfo_);
                 Y_ENSURE(InFuncInfo_.fn_addr);
 
                 LOCAL_FCINFO(inCallInfo, 3);
                 inCallInfo->flinfo = &this->InFuncInfo_;
                 inCallInfo->nargs = 3;
                 inCallInfo->fncollation = DEFAULT_COLLATION_OID;
+                inCallInfo->context = (Node*)NKikimr::NMiniKQL::TlsAllocState->CurrentContext;
                 inCallInfo->isnull = false;
                 inCallInfo->args[0] = { (Datum)this->AggDesc_.InitValue.c_str(), false };
                 inCallInfo->args[1] = { ObjectIdGetDatum(this->TypeIOParam_), false };
@@ -923,7 +925,7 @@ SkipCall:;
             InputArgsAccessor_.Bind(Values_, 1);
             BatchNum_ = batchNum;
         }
-        
+
         void InitKey(void* state, ui64 batchNum, const NKikimr::NUdf::TUnboxedValue* columns, ui64 row) final {
             new(state) NullableDatum();
             auto typedState = (NullableDatum*)state;
@@ -1158,7 +1160,7 @@ SkipCall:;
             combineCallInfo->args[0] = *typedState;
             combineCallInfo->args[1] = deser;
             auto ret = this->CombineFunc_(combineCallInfo);
-            if constexpr (!HasDeserialize) {                
+            if constexpr (!HasDeserialize) {
                 if (!combineCallInfo->isnull && ret == d.value) {
                     typedState->isnull = false;
                     typedState->value = CloneDatumToAggContext<IsTransTypeFixed>(d.value, this->TransTypeLen_);
@@ -1168,6 +1170,24 @@ SkipCall:;
 
             CopyState<IsTransTypeFixed>({ret, combineCallInfo->isnull}, *typedState);
             SaveToAggContext<IsTransTypeFixed>(*typedState, this->TransTypeLen_);
+        }
+
+        void SerializeState(void* state, NUdf::TOutputBuffer& buffer) final {
+            Y_ENSURE(false, "Unimplemented");
+            Y_UNUSED(state);
+            Y_UNUSED(buffer);
+        }
+
+        void DeserializeState(void* state, NUdf::TInputBuffer& buffer) final {
+            Y_ENSURE(false, "Unimplemented");
+            Y_UNUSED(state);
+            Y_UNUSED(buffer);
+        }
+
+        void DeserializeAndUpdateState(void* state, NUdf::TInputBuffer& buffer) final {
+            Y_ENSURE(false, "Unimplemented");
+            Y_UNUSED(state);
+            Y_UNUSED(buffer);
         }
 
         std::unique_ptr<NKikimr::NMiniKQL::IAggColumnBuilder> MakeResultBuilder(ui64 size) final {
@@ -1308,7 +1328,8 @@ private:
 
 TExecFunc FindExec(Oid oid);
 
-const NPg::TAggregateDesc& ResolveAggregation(const TString& name, NKikimr::NMiniKQL::TTupleType* tupleType, const std::vector<ui32>& argsColumns, NKikimr::NMiniKQL::TType* returnType);
+const NPg::TAggregateDesc& ResolveAggregation(const TString& name, NKikimr::NMiniKQL::TTupleType* tupleType,
+    const std::vector<ui32>& argsColumns, NKikimr::NMiniKQL::TType* returnType, ui32 hint = 0);
 
 }
 

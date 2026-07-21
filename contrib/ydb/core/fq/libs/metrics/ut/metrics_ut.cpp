@@ -1,5 +1,5 @@
 #include <contrib/ydb/core/fq/libs/metrics/status_code_counters.h>
-#include <contrib/ydb/library/yql/core/issue/protos/issue_id.pb.h>
+#include <contrib/ydb/library/yql/public/issue/protos/issue_id.pb.h>
 
 #include <library/cpp/testing/unittest/tests_data.h>
 #include <library/cpp/testing/unittest/registar.h>

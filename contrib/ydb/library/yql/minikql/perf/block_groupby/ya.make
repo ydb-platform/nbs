@@ -3,11 +3,11 @@ PROGRAM()
 PEERDIR(
     contrib/libs/apache/arrow
     contrib/ydb/library/yql/minikql/arrow
-    contrib/ydb/library/yql/minikql/comp_nodes/llvm14
+    contrib/ydb/library/yql/minikql/comp_nodes/llvm16
     contrib/ydb/library/yql/public/udf
     contrib/ydb/library/yql/public/udf/service/exception_policy
     contrib/ydb/library/yql/sql/pg_dummy
-	library/cpp/getopt
+    library/cpp/getopt
 )
 
 SRCS(

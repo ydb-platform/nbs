@@ -6,6 +6,7 @@
 #include <contrib/ydb/core/blobstorage/pdisk/blobstorage_pdisk.h>
 #include <contrib/ydb/core/blobstorage/pdisk/blobstorage_pdisk_tools.h>
 #include <contrib/ydb/library/actors/protos/services_common.pb.h>
+#include <contrib/ydb/library/pdisk_io/aio.h>
 #include <library/cpp/testing/unittest/registar.h>
 #include <util/random/fast.h>
 #include <util/folder/tempdir.h>
@@ -20,6 +21,8 @@ using namespace NKikimr::NIncrHuge;
 #include "test_actor_concurrent.h"
 #include "test_actor_seq.h"
 #include "faulty_pdisk.h"
+
+#define YDB_LOG_THIS_FILE_COMPONENT NActorsServices::TEST
 
 class TTestEnv {
 public:
@@ -59,8 +62,10 @@ public:
             PDiskGuid = Now().GetValue();
             PDiskKey = 1;
             MainKey = NPDisk::TMainKey{ .Keys = { 1 }, .IsInitialized = true };
-            FormatPDisk(Path, DiskSize, 4096, ChunkSize, PDiskGuid, PDiskKey, PDiskKey, PDiskKey, MainKey.Keys.back(), "incrhuge",
-                false, false, nullptr, false);
+            TFormatOptions options;
+            options.EnableSmallDiskOptimization = false;
+            FormatPDisk(Path, DiskSize, 4096, ChunkSize, PDiskGuid, PDiskKey, PDiskKey, PDiskKey,
+                MainKey.Keys.back(), "incrhuge", options);
         }
 
         PDiskId = MakeBlobStoragePDiskID(1, 1);
@@ -202,7 +207,7 @@ Y_UNIT_TEST_SUITE(TIncrHugeBasicTest) {
 
         env.Setup(false);
         env.Start();
-        LOG_DEBUG(*env.ActorSystem, NActorsServices::TEST, "starting recovery");
+        YDB_LOG_DEBUG_CTX(*env.ActorSystem, "Starting recovery");
         const ui32 numActions = NSan::PlainOrUnderSanitizer(5000, 1000);
         actor = new TTestActorConcurrent(env.KeeperId, &event, state, numActions, 2);
         env.ActorSystem->Register(actor);
@@ -228,7 +233,7 @@ Y_UNIT_TEST_SUITE(TIncrHugeBasicTest) {
 
         env.Setup(false);
         env.Start();
-        LOG_DEBUG(*env.ActorSystem, NActorsServices::TEST, "starting recovery");
+        YDB_LOG_DEBUG_CTX(*env.ActorSystem, "Starting recovery");
         actor = new TTestActorConcurrent(env.KeeperId, &event, state, 0, 2);
         env.ActorSystem->Register(actor);
         event.WaitI();
@@ -244,7 +249,8 @@ Y_UNIT_TEST_SUITE(TIncrHugeBasicTest) {
 
             env.Setup(true, counter, &event);
             env.Start();
-            LOG_DEBUG(*env.ActorSystem, NActorsServices::TEST, "=== starting Counter# %" PRIu32, counter);
+            YDB_LOG_DEBUG_CTX(*env.ActorSystem, "=== starting",
+                {"counter", counter});
             actor = new TTestActorSeq(env.KeeperId, state, 1, nullptr);
             env.ActorSystem->Register(actor);
             event.WaitI();
@@ -254,7 +260,7 @@ Y_UNIT_TEST_SUITE(TIncrHugeBasicTest) {
 
             env.Setup(false);
             env.Start();
-            LOG_DEBUG(*env.ActorSystem, NActorsServices::TEST, "=== restarting 1");
+            YDB_LOG_DEBUG_CTX(*env.ActorSystem, "=== restarting 1");
             actor = new TTestActorSeq(env.KeeperId, state, 1, &event);
             env.ActorSystem->Register(actor);
             usleep(5 * 1000 * 1000);
@@ -264,7 +270,7 @@ Y_UNIT_TEST_SUITE(TIncrHugeBasicTest) {
 
             env.Setup(false);
             env.Start();
-            LOG_DEBUG(*env.ActorSystem, NActorsServices::TEST, "=== restarting 2");
+            YDB_LOG_DEBUG_CTX(*env.ActorSystem, "=== restarting 2");
             actor = new TTestActorSeq(env.KeeperId, state, 1, &event);
             env.ActorSystem->Register(actor);
             event.WaitI();

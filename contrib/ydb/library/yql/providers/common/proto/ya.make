@@ -7,11 +7,11 @@ SRCS(
 
 PEERDIR(
     contrib/ydb/library/yql/protos
-    contrib/ydb/library/yql/providers/generic/connector/api/common
+    contrib/ydb/library/yql/utils/fetch/proto
+    contrib/ydb/library/yql/minikql/runtime_settings/proto
+    contrib/ydb/library/yql/providers/common/proto/activation
 )
 
-IF (NOT PY_PROTOS_FOR)
-    EXCLUDE_TAGS(GO_PROTO)
-ENDIF()
+EXCLUDE_TAGS(GO_PROTO)
 
 END()

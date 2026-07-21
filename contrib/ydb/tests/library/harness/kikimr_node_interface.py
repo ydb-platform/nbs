@@ -2,7 +2,7 @@
 import abc
 import signal
 
-from contrib.ydb.tests.library.harness import kikimr_monitoring as monitoring
+from contrib.ydb.tests.library.clients.kikimr_monitoring import KikimrMonitor
 
 
 class NodeInterface(object):
@@ -41,7 +41,7 @@ class NodeInterface(object):
 
     @property
     def monitor(self):
-        return monitoring.KikimrMonitor(self.host, self.mon_port)
+        return KikimrMonitor(self.host, self.mon_port, use_https=getattr(self, 'mon_uses_https', False), token=getattr(self, '_monitor_token', None))
 
     @abc.abstractproperty
     def cwd(self):

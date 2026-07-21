@@ -7,14 +7,12 @@
 #include <contrib/ydb/core/kqp/workload_service/tables/table_queries.h>
 #include <contrib/ydb/core/kqp/workload_service/ut/common/kqp_workload_service_ut_common.h>
 
-
 namespace NKikimr::NKqp {
 
 namespace {
 
 using namespace NActors;
 using namespace NWorkload;
-
 
 void CheckPoolDescription(TIntrusivePtr<IYdbSetup> ydb, ui64 expectedQueueSize, ui64 expectedInFlight, TDuration leaseDuration = FUTURE_WAIT_TIMEOUT) {
     const auto& description = ydb->GetPoolDescription(leaseDuration);
@@ -27,7 +25,7 @@ void DelayRequest(TIntrusivePtr<IYdbSetup> ydb, const TString& sessionId, TDurat
     auto runtime = ydb->GetRuntime();
     const auto& edgeActor = runtime->AllocateEdgeActor();
 
-    runtime->Register(CreateDelayRequestActor(edgeActor, CanonizePath(settings.DomainName_), settings.PoolId_, sessionId, TInstant::Now(), Nothing(), leaseDuration, runtime->GetAppData().Counters));
+    runtime->Register(CreateDelayRequestActor(edgeActor, CanonizePath(settings.DomainName_), settings.PoolId_, sessionId, TInstant::Now(), std::nullopt, leaseDuration, runtime->GetAppData().Counters));
     auto response = runtime->GrabEdgeEvent<TEvPrivate::TEvDelayRequestResponse>(edgeActor, FUTURE_WAIT_TIMEOUT);
     UNIT_ASSERT_VALUES_EQUAL_C(response->Get()->Status, Ydb::StatusIds::SUCCESS, response->Get()->Issues.ToOneLineString());
     UNIT_ASSERT_VALUES_EQUAL(response->Get()->SessionId, sessionId);
@@ -48,7 +46,7 @@ void StartRequest(TIntrusivePtr<IYdbSetup> ydb, const TString& sessionId, TDurat
 }  // anonymous namespace
 
 Y_UNIT_TEST_SUITE(KqpWorkloadServiceTables) {
-    Y_UNIT_TEST(TestCreateWorkloadSerivceTables) {
+    Y_UNIT_TEST(TestCreateWorkloadServiceTables) {
         constexpr ui32 nodesCount = 5;
         auto ydb = TYdbSetupSettings()
             .NodeCount(nodesCount)
@@ -76,7 +74,7 @@ Y_UNIT_TEST_SUITE(KqpWorkloadServiceTables) {
     Y_UNIT_TEST(TestTablesIsNotCreatingForUnlimitedPool) {
         auto ydb = TYdbSetupSettings()
             .ConcurrentQueryLimit(-1)
-            .QueryMemoryLimitPercentPerNode(50)
+            .TotalMemoryLimitPercentPerNode(50)
             .Create();
 
         TSampleQueries::TSelect42::CheckResult(ydb->ExecuteQuery(TSampleQueries::TSelect42::Query));

@@ -3,16 +3,16 @@
 #include "ydb_command.h"
 #include "ydb_common.h"
 
-#include <contrib/ydb/public/sdk/cpp/client/draft/ydb_scripting.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/draft/ydb_scripting.h>
 #include <contrib/ydb/public/lib/ydb_cli/common/format.h>
-#include <contrib/ydb/public/lib/ydb_cli/common/interruptible.h>
+#include <contrib/ydb/public/lib/ydb_cli/common/interruptable.h>
 #include <contrib/ydb/public/lib/ydb_cli/common/parameters.h>
 
 namespace NYdb {
 namespace NConsoleClient {
 
-class TCommandYql : public TYdbOperationCommand, public TCommandWithParameters,
-    public TInterruptibleCommand
+class TCommandYql : public TYdbOperationCommand, public TCommandWithParameters, public TCommandWithOutput,
+    public TInterruptableCommand
 {
 public:
     TCommandYql();

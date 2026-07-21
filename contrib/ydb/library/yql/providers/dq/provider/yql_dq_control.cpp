@@ -7,7 +7,7 @@
 
 #include <contrib/ydb/public/lib/yson_value/ydb_yson_value.h>
 
-#include <contrib/ydb/library/grpc/client/grpc_client_low.h>
+#include <contrib/ydb/public/sdk/cpp/src/library/grpc/client/grpc_client_low.h>
 
 #include <library/cpp/svnversion/svnversion.h>
 
@@ -54,7 +54,7 @@ public:
         };
 
         NYdbGrpc::TCallMeta meta;
-        meta.Timeout = TDuration::Seconds(1);
+        meta.Timeout = std::chrono::seconds(1);
         Service->DoRequest<Yql::DqsProto::IsReadyRequest, Yql::DqsProto::IsReadyResponse>(
             request, callback, &Yql::DqsProto::DqService::Stub::AsyncIsReady, meta);
 

@@ -17,7 +17,6 @@ PEERDIR(
     library/cpp/threading/future
     contrib/ydb/core/base
     contrib/ydb/core/engine
-    contrib/ydb/core/kqp/provider
     contrib/ydb/core/scheme
     contrib/ydb/library/yql/ast
     contrib/ydb/library/yql/core

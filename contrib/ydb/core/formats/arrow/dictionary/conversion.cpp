@@ -1,6 +1,5 @@
 #include "conversion.h"
 #include <contrib/ydb/core/formats/arrow/switch/switch_type.h>
-#include <contrib/ydb/core/formats/arrow/size_calcer.h>
 #include <contrib/ydb/library/formats/arrow/simple_builder/filler.h>
 #include <contrib/ydb/library/formats/arrow/simple_builder/array.h>
 

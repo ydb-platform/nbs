@@ -1,0 +1,9 @@
+PY3TEST()
+INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/harness_dep.inc)
+ENV(YDB_USE_IN_MEMORY_PDISKS=true)
+ENV(YDB_SQS_MIGRATION_STAGE=topic_creation)
+INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/functional/sqs/migration/suites/common.inc)
+TEST_SRCS(
+    contrib/ydb/tests/functional/sqs/common/test_garbage_collection.py
+)
+END()

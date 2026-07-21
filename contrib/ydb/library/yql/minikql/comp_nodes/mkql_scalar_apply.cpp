@@ -12,13 +12,14 @@
 #include <contrib/ydb/library/yql/minikql/computation/mkql_value_builder.h>
 #include <contrib/ydb/library/yql/minikql/mkql_node_cast.h>
 #include <contrib/ydb/library/yql/parser/pg_wrapper/interface/utils.h>
+#include <contrib/ydb/library/yql/minikql/runtime_settings/runtime_settings_configuration.h>
 
 namespace NKikimr {
 namespace NMiniKQL {
 
 namespace {
 
-class TScalarApplyWrapper : public TMutableComputationNode<TScalarApplyWrapper> {
+class TScalarApplyWrapper: public TMutableComputationNode<TScalarApplyWrapper> {
 public:
     struct TAccessors {
         TAccessors(const TVector<TType*>& argsTypes, TType* returnType, const NUdf::IPgBuilder& pgBuilder)
@@ -41,7 +42,7 @@ public:
         bool ScalarsProcessed = false;
     };
 
-    struct TKernelState : public arrow::compute::KernelState {
+    struct TKernelState: public arrow::compute::KernelState {
         TKernelState(const TVector<TType*>& argsTypes, TType* returnType, const TComputationContext& originalContext)
             : Alloc(__LOCATION__)
             , TypeEnv(Alloc)
@@ -53,10 +54,27 @@ public:
             , Accessors(argsTypes, returnType, *PgBuilder)
             , RandomProvider(CreateDefaultRandomProvider())
             , TimeProvider(CreateDefaultTimeProvider())
-            , Ctx(HolderFactory, &ValueBuilder, TComputationOptsFull(
-                nullptr, Alloc.Ref(), TypeEnv, *RandomProvider, *TimeProvider, NUdf::EValidatePolicy::Exception, originalContext.SecureParamsProvider, originalContext.CountersProvider),
-                originalContext.Mutables, *NYql::NUdf::GetYqlMemoryPool())
+            , Ctx(
+                  HolderFactory,
+                  &ValueBuilder, TComputationOptsFull(nullptr,
+                                                      Alloc.Ref(),
+                                                      TypeEnv,
+                                                      *RandomProvider,
+                                                      *TimeProvider,
+                                                      NUdf::EValidatePolicy::Exception,
+                                                      originalContext.SecureParamsProvider,
+
+                                                      originalContext.CountersProvider,
+                                                      originalContext.LogProvider,
+                                                      originalContext.LangVer,
+                                                      originalContext.GetRuntimeSettingsSharedPtr()),
+
+                  originalContext.Mutables,
+                  *NYql::NUdf::GetYqlMemoryPool(),
+                  originalContext.NotConsumedLinear,
+                  originalContext.GetRuntimeSettingsSharedPtr())
         {
+            Alloc.Ref().EnableArrowTracking = false;
             Alloc.Release();
         }
 
@@ -78,7 +96,7 @@ public:
         TComputationContext Ctx;
     };
 
-    class TArrowNode : public IArrowKernelComputationNode {
+    class TArrowNode: public IArrowKernelComputationNode {
     public:
         TArrowNode(const TScalarApplyWrapper* parent, TComputationContext& originalContext)
             : Parent_(parent)
@@ -130,7 +148,7 @@ public:
     friend class TArrowNode;
 
     TScalarApplyWrapper(TComputationMutables& mutables, const TVector<TType*>& argsTypes, TType* returnType,
-        TVector<IComputationNode*>&& args, TVector<IComputationExternalNode*>&& lambdaArgs, IComputationNode* lambdaRoot)
+                        TVector<IComputationNode*>&& args, TVector<IComputationExternalNode*>&& lambdaArgs, IComputationNode* lambdaRoot)
         : TMutableComputationNode(mutables)
         , StateIndex_(mutables.CurValueIndex++)
         , ArgsTypes_(argsTypes)
@@ -154,11 +172,11 @@ public:
         }
 
         auto& state = GetState(ctx);
-        return ctx.HolderFactory.CreateArrowBlock(CalculateImpl(providers, state.Accessors, ctx.ArrowMemoryPool, ctx));
+        return ctx.HolderFactory.CreateArrowBlock(CalculateImpl(providers, state.Accessors, ctx.ArrowMemoryPool, ctx), ctx.RuntimeSettings.DatumValidation.Get());
     }
 
     arrow::Datum CalculateImpl(const TVector<TDatumProvider>& providers, TAccessors& accessors, arrow::MemoryPool& memoryPool,
-        TComputationContext& ctx) const {
+                               TComputationContext& ctx) const {
         TVector<arrow::Datum> args;
         args.reserve(providers.size());
         size_t length = 1;
@@ -199,9 +217,7 @@ public:
                         continue;
                     }
 
-                    auto item = args[j].is_scalar() ?
-                        accessors.ArgsReaders[j]->GetScalarItem(*args[j].scalar()) :
-                        accessors.ArgsReaders[j]->GetItem(*args[j].array(), i);
+                    auto item = args[j].is_scalar() ? accessors.ArgsReaders[j]->GetScalarItem(*args[j].scalar()) : accessors.ArgsReaders[j]->GetItem(*args[j].array(), i);
                     auto value = accessors.ArgsConverters[j]->MakeValue(item, ctx.HolderFactory);
                     LambdaArgs_[j]->SetValue(ctx, value);
                 }
@@ -223,14 +239,14 @@ private:
         }
 
         for (ui32 i = 0; i < Args_.size(); ++i) {
-            Args_[i]->AddDependence(LambdaArgs_[i]);
+            Args_[i]->AddDependent(LambdaArgs_[i]);
             this->Own(LambdaArgs_[i]);
         }
 
         this->DependsOn(LambdaRoot_);
     }
 
-    struct TState : public TComputationValue<TState> {
+    struct TState: public TComputationValue<TState> {
         using TComputationValue::TComputationValue;
 
         TState(TMemoryUsageInfo* memInfo, const TVector<TType*>& argsTypes, TType* returnType, const NUdf::IPgBuilder& pgBuilder)
@@ -274,8 +290,8 @@ IComputationNode* WrapScalarApply(TCallable& callable, const TComputationNodeFac
     }
 
     return new TScalarApplyWrapper(ctx.Mutables, argsTypes, callable.GetType()->GetReturnType(),
-        std::move(args), std::move(lambdaArgs), lambdaRoot);
+                                   std::move(args), std::move(lambdaArgs), lambdaRoot);
 }
 
-}
-}
+} // namespace NMiniKQL
+} // namespace NKikimr

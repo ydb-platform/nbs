@@ -12,6 +12,8 @@
 #include <chrono>
 #include <queue>
 
+#define YDB_LOG_THIS_FILE_COMPONENT WILSON_SERVICE_ID
+
 namespace NWilson {
 
     using namespace NActors;
@@ -45,14 +47,16 @@ namespace NWilson {
                 TMonotonic ExpirationTimestamp;
             };
 
-            TBatch(ui64 maxSpansInBatch, ui64 maxBytesInBatch, TString serviceName)
+            TBatch(ui64 maxSpansInBatch, ui64 maxBytesInBatch, const TMap<TString, TString>& attributes)
                 : MaxSpansInBatch(maxSpansInBatch)
                 , MaxBytesInBatch(maxBytesInBatch)
             {
                 auto *rspan = Request.add_resource_spans();
-                auto *serviceNameAttr = rspan->mutable_resource()->add_attributes();
-                serviceNameAttr->set_key("service.name");
-                serviceNameAttr->mutable_value()->set_string_value(std::move(serviceName));
+                for (const auto& [key, value] : attributes) {
+                    auto *attr = rspan->mutable_resource()->add_attributes();
+                    attr->set_key(key);
+                    attr->mutable_value()->set_string_value(value);
+                }
                 ScopeSpans = rspan->add_scope_spans();
             }
 
@@ -107,7 +111,7 @@ namespace NWilson {
             bool WakeupScheduled = false;
 
             TString CollectorUrl;
-            TString ServiceName;
+            const TMap<TString, TString> SpanAttributes;
             TMap<TString, TString> Headers;
 
             TRegisterMonPageCallback RegisterMonPage;
@@ -132,6 +136,12 @@ namespace NWilson {
             TString ErrStr;
             TString LastCommitTraceErrStr;
 
+            NMonitoring::TDynamicCounters::TCounterPtr DroppedSpansCounter;
+            NMonitoring::TDynamicCounters::TCounterPtr SentSpansCounter;
+            NMonitoring::TDynamicCounters::TCounterPtr SentBytesCounter;
+            NMonitoring::TDynamicCounters::TCounterPtr SentSpanBatchesOkCounter;
+            NMonitoring::TDynamicCounters::TCounterPtr SentSpanBatchesErrCounter;
+
         public:
             TWilsonUploader(TWilsonUploaderParams params)
                 : MaxSpansPerSecond(params.MaxExportedSpansPerSecond)
@@ -141,11 +151,16 @@ namespace NWilson {
                 , MaxSpanTimeInQueue(TDuration::Seconds(params.SpanExportTimeoutSeconds))
                 , MaxExportInflight(params.MaxExportRequestsInflight)
                 , CollectorUrl(std::move(params.CollectorUrl))
-                , ServiceName(std::move(params.ServiceName))
+                , SpanAttributes(GetSpanAttributes(params.ServiceName))
                 , Headers(params.Headers)
                 , RegisterMonPage(params.RegisterMonPage)
                 , GrpcSigner(std::move(params.GrpcSigner))
-                , CurrentBatch(MaxSpansInBatch, MaxBytesInBatch, ServiceName)
+                , CurrentBatch(MaxSpansInBatch, MaxBytesInBatch, SpanAttributes)
+                , DroppedSpansCounter(params.Counters ? params.Counters->GetCounter("WilsonUploaderDroppedSpans", true) : MakeIntrusive<NMonitoring::TCounterForPtr>(true))
+                , SentSpansCounter(params.Counters ? params.Counters->GetCounter("WilsonUploaderSentSpans", true) : MakeIntrusive<NMonitoring::TCounterForPtr>(true))
+                , SentBytesCounter(params.Counters ? params.Counters->GetCounter("WilsonUploaderSentBytes", true) : MakeIntrusive<NMonitoring::TCounterForPtr>(true))
+                , SentSpanBatchesOkCounter(params.Counters ? params.Counters->GetCounter("WilsonUploaderSentSpanBatchesOk", "true") : MakeIntrusive<NMonitoring::TCounterForPtr>(true))
+                , SentSpanBatchesErrCounter(params.Counters ? params.Counters->GetCounter("WilsonUploaderSentSpanBatchesErr", "true") : MakeIntrusive<NMonitoring::TCounterForPtr>(true))
             {}
 
             ~TWilsonUploader() {
@@ -154,19 +169,28 @@ namespace NWilson {
 
             static constexpr char ActorName[] = "WILSON_UPLOADER_ACTOR";
 
+            static TMap<TString, TString> GetSpanAttributes(const TString& serviceName) {
+                TMap<TString, TString> attributes;
+                attributes["service.name"] = serviceName;
+                if (TString podUid = getenv("POD_UID")) {
+                    attributes["k8s.pod.uid"] = podUid;
+                }
+                return attributes;
+            }
+
             void Bootstrap() {
                 Become(&TThis::StateWork);
 
                 if (MaxSpansPerSecond == 0) {
-                    ALOG_WARN(WILSON_SERVICE_ID, "max_spans_per_second should be greater than 0, changing to 1");
+                    YDB_LOG_WARN("Max_spans_per_second should be greater than 0, changing to 1");
                     MaxSpansPerSecond = 1;
                 }
                 if (MaxSpansInBatch == 0) {
-                    ALOG_WARN(WILSON_SERVICE_ID, "max_spans_in_batch shold be greater than 0, changing to 1");
+                    YDB_LOG_WARN("Max_spans_in_batch shold be greater than 0, changing to 1");
                     MaxSpansInBatch = 1;
                 }
                 if (MaxExportInflight == 0) {
-                    ALOG_WARN(WILSON_SERVICE_ID, "max_span_export_inflight should be greater than 0, changing to 1");
+                    YDB_LOG_WARN("Max_span_export_inflight should be greater than 0, changing to 1");
                     MaxExportInflight = 1;
                 }
 
@@ -175,14 +199,16 @@ namespace NWilson {
                 ui16 port;
                 if (!TryGetSchemeHostAndPort(CollectorUrl, scheme, host, port)) {
                     ErrStr = "Failed to parse collector url (" + CollectorUrl + " was provided). Wilson wouldn't work";
-                    ALOG_ERROR(WILSON_SERVICE_ID, ErrStr);
+                    YDB_LOG_ERROR("Failed to parse collector url. Wilson wouldn't work",
+                        {"url", CollectorUrl});
                     Become(&TThis::StateBroken);
                     return;
                 } else if (scheme != "grpc://" && scheme != "grpcs://") {
                     TStringStream ss;
                     ss << "Wrong scheme provided: " << scheme << " (only grpc:// and grpcs:// are supported). Wilson wouldn't work";
                     ErrStr = ss.Str();
-                    ALOG_ERROR(WILSON_SERVICE_ID, ErrStr);
+                    YDB_LOG_ERROR("Wrong scheme provided (only grpc:// and grpcs:// are supported). Wilson wouldn't work",
+                        {"scheme", scheme});
                     Become(&TThis::StateBroken);
                     return;
                 }
@@ -190,7 +216,7 @@ namespace NWilson {
                                               scheme == "grpcs://" ? grpc::SslCredentials({}) : grpc::InsecureChannelCredentials());
                 Stub = NServiceProto::TraceService::NewStub(Channel);
 
-                ALOG_INFO(WILSON_SERVICE_ID, "TWilsonUploader::Bootstrap");
+                YDB_LOG_INFO("TWilsonUploader::Bootstrap");
             }
 
             void Registered(TActorSystem* sys, const TActorId& owner) override {
@@ -203,14 +229,18 @@ namespace NWilson {
 
             void Handle(TEvWilson::TPtr ev) {
                 if (SpansSizeBytes >= MaxPendingSpanBytes) {
-                    ALOG_ERROR(WILSON_SERVICE_ID, "dropped span due to overflow");
+                    DroppedSpansCounter->Inc();
+                    YDB_LOG_ERROR("Dropped span due to overflow");
                 } else {
                     const TMonotonic now = TActivationContext::Monotonic();
                     const TMonotonic expirationTimestamp = now + MaxSpanTimeInQueue;
                     auto& span = ev->Get()->Span;
                     const ui32 size = span.ByteSizeLong();
                     if (size > MaxBytesInBatch) {
-                        ALOG_ERROR(WILSON_SERVICE_ID, "dropped span of size " << size << ", which exceeds max batch size " << MaxBytesInBatch);
+                        DroppedSpansCounter->Inc();
+                        YDB_LOG_ERROR("Dropped span of size which exceeds max batch size",
+                            {"size", size},
+                            {"maxBytesInBatch", MaxBytesInBatch});
                         return;
                     }
                     TSpan spanItem {
@@ -236,7 +266,8 @@ namespace NWilson {
                 Y_ABORT_UNLESS(!BatchCompletionScheduled);
                 auto cookie = NextBatchCompletion.GetValue();
                 TActivationContext::Schedule(NextBatchCompletion, new IEventHandle(TEvents::TSystem::Wakeup, 0, SelfId(), {}, nullptr, cookie));
-                ALOG_TRACE(WILSON_SERVICE_ID, "scheduling batch completion w/ cookie=" << cookie);
+                YDB_LOG_TRACE("Scheduling batch completion w/",
+                    {"cookie", cookie});
                 BatchCompletionScheduled = true;
             }
 
@@ -252,7 +283,7 @@ namespace NWilson {
                     return;
                 }
                 BatchQueue.push(std::move(CurrentBatch).Complete());
-                CurrentBatch = TBatch(MaxSpansInBatch, MaxBytesInBatch, ServiceName);
+                CurrentBatch = TBatch(MaxSpansInBatch, MaxBytesInBatch, SpanAttributes);
             }
 
             void TryToSend() {
@@ -271,8 +302,9 @@ namespace NWilson {
                 }
 
                 if (numSpansDropped) {
-                    ALOG_ERROR(WILSON_SERVICE_ID,
-                        "dropped " << numSpansDropped << " span(s) due to expiration");
+                    DroppedSpansCounter->Add(numSpansDropped);
+                    YDB_LOG_ERROR("Dropped span(s) due to expiration",
+                        {"numSpansDropped", numSpansDropped});
                 }
 
                 if (ExportRequestsCount >= MaxExportInflight || BatchQueue.empty()) {
@@ -285,15 +317,19 @@ namespace NWilson {
                 TBatch::TData batch = std::move(BatchQueue.front());
                 BatchQueue.pop();
 
-                ALOG_DEBUG(WILSON_SERVICE_ID, "exporting batch of " << batch.SizeSpans << " spans, total spans size: " << batch.SizeBytes);
+                YDB_LOG_DEBUG("Exporting batch of spans, total spans",
+                    {"spans", batch.SizeSpans},
+                    {"size", batch.SizeBytes});
                 Y_ABORT_UNLESS(batch.Request.resource_spansSize() == 1 && batch.Request.resource_spans(0).scope_spansSize() == 1);
                 for (const auto& span : batch.Request.resource_spans(0).scope_spans(0).spans()) {
-                    ALOG_DEBUG(WILSON_SERVICE_ID, "exporting span"
-                        << " TraceId# " << HexEncode(span.trace_id())
-                        << " SpanId# " << HexEncode(span.span_id())
-                        << " ParentSpanId# " << HexEncode(span.parent_span_id())
-                        << " Name# " << span.name());
+                    YDB_LOG_DEBUG("Exporting span",
+                        {"traceId", HexEncode(span.trace_id())},
+                        {"spanId", HexEncode(span.span_id())},
+                        {"parentSpanId", HexEncode(span.parent_span_id())},
+                        {"name", span.name()});
                 }
+                SentSpansCounter->Add(batch.SizeSpans);
+                SentBytesCounter->Add(batch.SizeBytes);
 
                 NextSendTimestamp = now + TDuration::MicroSeconds((batch.SizeSpans * 1'000'000) / MaxSpansPerSecond);
                 SpansSizeBytes -= batch.SizeBytes;
@@ -313,7 +349,8 @@ namespace NWilson {
                     .Reader = std::move(reader),
                 });
                 uploadData->Reader->Finish(&uploadData->Response, &uploadData->Status, uploadData.get());
-                ALOG_TRACE(WILSON_SERVICE_ID, "started export request " << (void*)uploadData.get());
+                YDB_LOG_TRACE("Started export request",
+                    {"request", static_cast<void*>(uploadData.get())});
                 ExportRequests.PushBack(uploadData.release());
                 ++ExportRequestsCount;
             }
@@ -326,14 +363,18 @@ namespace NWilson {
                 bool ok;
                 while (CQ.AsyncNext(&tag, &ok, std::chrono::system_clock::now()) == grpc::CompletionQueue::GOT_EVENT) {
                     auto node = std::unique_ptr<TExportRequestData>(static_cast<TExportRequestData*>(tag));
-                    ALOG_TRACE(WILSON_SERVICE_ID, "finished export request " << (void*)node.get());
+                    YDB_LOG_TRACE("Finished export request",
+                        {"node", static_cast<void*>(node.get())});
                     if (!node->Status.ok()) {
+                        SentSpanBatchesErrCounter->Inc();
                         LastCommitTraceErrStr = node->Status.error_message();
 
-                        ALOG_ERROR(WILSON_SERVICE_ID,
-                            "failed to commit traces: " << node->Status.error_message());
+                        YDB_LOG_ERROR("Failed to commit",
+                            {"traces", node->Status.error_message()});
+                    } else {
+                        SentSpanBatchesOkCounter->Inc();
                     }
-                    
+
                     --ExportRequestsCount;
                     node->Unlink();
                 }
@@ -355,7 +396,8 @@ namespace NWilson {
 
             void HandleWakeup(TEvents::TEvWakeup::TPtr& ev) {
                 const auto cookie = ev->Cookie;
-                ALOG_TRACE(WILSON_SERVICE_ID, "wakeup received w/ cookie=" << cookie);
+                YDB_LOG_TRACE("Wakeup received w/",
+                    {"cookie", cookie});
                 if (cookie == 0) {
                     Y_ABORT_UNLESS(WakeupScheduled);
                     WakeupScheduled = false;
@@ -404,6 +446,12 @@ namespace NWilson {
                         str << "Current batch queue size: " << BatchQueue.size();
                     }
                     PARA() {
+                        str << "Sent spans: " << SentBytesCounter->Val();
+                    }
+                    PARA() {
+                        str << "Dropped spans: " << DroppedSpansCounter->Val();
+                    }
+                    PARA() {
                         std::string state;
                         switch (Channel->GetState(false)) {
                             case GRPC_CHANNEL_IDLE:
@@ -437,7 +485,10 @@ namespace NWilson {
                         str << "MaxSpanTimeInQueue# " << MaxSpanTimeInQueue << '\n';
                         str << "MaxExportInflight# " << MaxExportInflight << '\n';
                         str << "CollectorUrl# " << CollectorUrl << '\n';
-                        str << "ServiceName# " << ServiceName << '\n';
+                        str << "SpanAttributes# " << '\n';
+                        for (const auto& [key, value] : SpanAttributes) {
+                            str << '\t' << key << ": " << value << '\n';
+                        }
                         str << "Headers# " << '\n';
                         for (const auto& [key, value] : Headers) {
                             str << '\t' << key << ": " << value << '\n';
@@ -446,7 +497,7 @@ namespace NWilson {
                 }
 
                 auto* result = new NMon::TEvHttpInfoRes(str.Str(), 0, NMon::IEvHttpInfoRes::EContentType::Html);
-                
+
                 Send(ev->Sender, result);
             }
 

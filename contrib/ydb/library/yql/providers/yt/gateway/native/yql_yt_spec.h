@@ -46,7 +46,15 @@ void FillSpec(NYT::TNode& spec,
     const TTransactionCache::TEntry::TPtr& entry,
     double extraCpu,
     const TMaybe<double>& secondExtraCpu,
-    EYtOpProps opProps = 0);
+    EYtOpProps opProps = 0,
+    const TSet<TString>& addSecTags = {},
+    const TVector<TString>& layerPaths = {});
+
+void CheckSpecForSecretsImpl(
+    const NYT::TNode& spec,
+    const ISecretMasker::TPtr& secretMasker,
+    const TYtSettings::TConstPtr& settings
+);
 
 void FillSecureVault(NYT::TNode& spec, const IYtGateway::TSecureParams& secureParams);
 
@@ -65,10 +73,6 @@ void FillOperationOptionsImpl(NYT::TOperationOptions& opOpts,
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 
-namespace NPrivate {
-    Y_HAS_MEMBER(SecureParams);
-}
-
 template <class TOptions>
 inline void FillSpec(NYT::TNode& spec,
     const TExecContext<TOptions>& execCtx,
@@ -77,18 +81,31 @@ inline void FillSpec(NYT::TNode& spec,
     const TMaybe<double>& secondExtraCpu,
     EYtOpProps opProps = 0)
 {
-    FillSpec(spec, execCtx, execCtx.Options_.Config(), entry, extraCpu, secondExtraCpu, opProps);
-    if constexpr (NPrivate::THasSecureParams<TOptions>::value) {
+    TSet<TString> addSecTags = {};
+    if constexpr (::NYql::NPrivate::THasAdditionalSecurityTags<TOptions>::value) {
+        addSecTags = execCtx.Options_.AdditionalSecurityTags();
+    }
+    if constexpr (::NYql::NPrivate::THasLayersPaths<TOptions>::value) {
+        FillSpec(spec, execCtx, execCtx.Options_.Config(), entry, extraCpu, secondExtraCpu, opProps, addSecTags, execCtx.Options_.LayersPaths());
+    } else {
+        FillSpec(spec, execCtx, execCtx.Options_.Config(), entry, extraCpu, secondExtraCpu, opProps, addSecTags, {});
+    }
+    if constexpr (::NYql::NPrivate::THasSecureParams<TOptions>::value) {
         FillSecureVault(spec, execCtx.Options_.SecureParams());
     }
 }
 
 template <class TDerived, class TExecParamsPtr>
-inline void FillOperationSpec(NYT::TUserOperationSpecBase<TDerived>& spec, const TExecParamsPtr& execCtx) {
+inline void FillOperationSpec(NYT::TOperationSpecBase<TDerived>& spec, const TExecParamsPtr& execCtx) {
     if (auto val = execCtx->Options_.Config()->DefaultMaxJobFails.Get()) {
         spec.MaxFailedJobCount(*val);
     }
-    if (auto val = execCtx->Options_.Config()->CoreDumpPath.Get()) {
+}
+
+template <class TDerived, class TExecParamsPtr>
+inline void FillUserOperationSpec(NYT::TUserOperationSpecBase<TDerived>& spec, const TExecParamsPtr& execCtx) {
+    FillOperationSpec(spec, execCtx);
+    if (auto val = execCtx->Options_.Config()->CoreDumpPath.Get(execCtx->Cluster_)) {
         spec.CoreTablePath(*val);
     }
 }
@@ -111,6 +128,11 @@ inline void FillOperationOptions(NYT::TOperationOptions& opOpts,
     const TTransactionCache::TEntry::TPtr& entry)
 {
     FillOperationOptionsImpl(opOpts, execCtx->Options_.Config(), entry);
+}
+
+template <class TExecParamsPtr>
+inline void CheckSpecForSecrets(const NYT::TNode& spec, const TExecParamsPtr& execCtx) {
+    CheckSpecForSecretsImpl(spec, execCtx->SecretMasker, execCtx->Options_.Config());
 }
 
 } // NNative

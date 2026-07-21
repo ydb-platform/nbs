@@ -10,19 +10,24 @@
 #include <contrib/ydb/core/testlib/test_client.h>
 #include <contrib/ydb/core/testlib/basics/appdata.h>
 #include <contrib/ydb/core/tx/schemeshard/schemeshard.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_query/client.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_driver/driver.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_scheme/scheme.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_table/table.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/query/client.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/driver/driver.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/scheme/scheme.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/table/table.h>
 #include <contrib/ydb/services/ydb/ydb_common_ut.h>
 
-#include <contrib/ydb/library/actors/interconnect/interconnect_impl.h>
 #include <contrib/ydb/core/tx/scheme_cache/scheme_cache.h>
+#include <contrib/ydb/core/base/counters.h>
 
 #include <contrib/ydb/public/api/grpc/ydb_table_v1.grpc.pb.h>
+#include <contrib/ydb/public/lib/ut_helpers/ut_helpers_query.h>
 
 #include <util/generic/vector.h>
+#include <util/system/hp_timer.h>
+
+#include <atomic>
 #include <memory>
+#include <thread>
 
 namespace NKikimr::NKqp {
 
@@ -196,7 +201,7 @@ Y_UNIT_TEST_SUITE(KqpProxy) {
             runtime->Send(new IEventHandle(kqpProxy, sender, ev.Release()));
             TAutoPtr<IEventHandle> handle;
             auto reply = runtime->GrabEdgeEventRethrow<TEvKqp::TEvQueryResponse>(sender);
-            UNIT_ASSERT_VALUES_EQUAL(reply->Get()->Record.GetRef().GetYdbStatus(), Ydb::StatusIds::BAD_REQUEST);
+            UNIT_ASSERT_VALUES_EQUAL(reply->Get()->Record.GetYdbStatus(), Ydb::StatusIds::BAD_REQUEST);
         };
 
         SendBadRequestToSession("ydb://session/1?id=ZjY5NWRlM2EtYWMyYjA5YWEtNzQ0MTVlYTMtM2Q4ZDgzOWQ=&node_id=1234&node_id=12345");
@@ -238,8 +243,8 @@ Y_UNIT_TEST_SUITE(KqpProxy) {
         runtime->Send(new IEventHandle(kqpProxy, sender, ev.Release()));
         TAutoPtr<IEventHandle> handle;
         auto reply = runtime->GrabEdgeEventRethrow<TEvKqp::TEvQueryResponse>(sender);
-        UNIT_ASSERT_VALUES_EQUAL(reply->Get()->Record.GetRef().GetYdbStatus(), Ydb::StatusIds::BAD_REQUEST);
-        UNIT_ASSERT_VALUES_EQUAL(reply->Get()->Record.GetRef().GetResponse().GetQueryIssues().at(0).message(), "<main>: Error: SomeUniqTextForUt\n");
+        UNIT_ASSERT_VALUES_EQUAL(reply->Get()->Record.GetYdbStatus(), Ydb::StatusIds::BAD_REQUEST);
+        UNIT_ASSERT_VALUES_EQUAL(reply->Get()->Record.GetResponse().GetQueryIssues().at(0).message(), "<main>: Error: SomeUniqTextForUt\n");
     }
 
     Y_UNIT_TEST(LoadedMetadataAfterCompilationTimeout) {
@@ -299,7 +304,7 @@ Y_UNIT_TEST_SUITE(KqpProxy) {
             runtime->Send(new IEventHandle(kqpProxy, sender, ev.release()));
             TAutoPtr<IEventHandle> handle;
             auto reply = runtime->GrabEdgeEventRethrow<TEvKqp::TEvQueryResponse>(sender);
-            UNIT_ASSERT_VALUES_EQUAL(reply->Get()->Record.GetRef().GetYdbStatus(), Ydb::StatusIds::SUCCESS);
+            UNIT_ASSERT_VALUES_EQUAL(reply->Get()->Record.GetYdbStatus(), Ydb::StatusIds::SUCCESS);
         };
 
         auto SendQuery = [&](const TString& sessionId, const TString& queryText) {
@@ -314,7 +319,7 @@ Y_UNIT_TEST_SUITE(KqpProxy) {
             runtime->Send(new IEventHandle(kqpProxy, sender, ev.release()));
             TAutoPtr<IEventHandle> handle;
             auto reply = runtime->GrabEdgeEventRethrow<TEvKqp::TEvQueryResponse>(sender);
-            UNIT_ASSERT_VALUES_EQUAL(reply->Get()->Record.GetRef().GetYdbStatus(), Ydb::StatusIds::TIMEOUT);
+            UNIT_ASSERT_VALUES_EQUAL(reply->Get()->Record.GetYdbStatus(), Ydb::StatusIds::TIMEOUT);
         };
 
         TString sessionId = CreateSession(runtime, kqpProxy, sender);
@@ -374,7 +379,7 @@ Y_UNIT_TEST_SUITE(KqpProxy) {
 
             TAutoPtr<IEventHandle> handle;
             auto reply = runtime->GrabEdgeEventRethrow<TEvKqp::TEvQueryResponse>(handle);
-            UNIT_ASSERT_VALUES_EQUAL(reply->Record.GetRef().GetYdbStatus(), Ydb::StatusIds::SUCCESS);
+            UNIT_ASSERT_VALUES_EQUAL(reply->Record.GetYdbStatus(), Ydb::StatusIds::SUCCESS);
         }
     }
 
@@ -448,7 +453,7 @@ Y_UNIT_TEST_SUITE(KqpProxy) {
 
                 TAutoPtr<IEventHandle> handle;
                 auto reply = runtime->GrabEdgeEventRethrow<TEvKqp::TEvQueryResponse>(handle);
-                auto status = reply->Record.GetRef().GetYdbStatus();
+                auto status = reply->Record.GetYdbStatus();
                 UNIT_ASSERT(status == Ydb::StatusIds::SUCCESS || status == Ydb::StatusIds::TIMEOUT);
 
                 if (status == Ydb::StatusIds::SUCCESS) {
@@ -544,34 +549,44 @@ Y_UNIT_TEST_SUITE(KqpProxy) {
         NYdb::TKikimrWithGrpcAndRootSchema server(appConfig);
         server.Server_->GetRuntime()->SetLogPriority(NKikimrServices::KQP_PROXY, NActors::NLog::PRI_DEBUG);
 
-        ui16 grpc = server.GetPort();
-        auto connection = NYdb::TDriver(NYdb::TDriverConfig()
+        // Grant `connect` to user
+        {
+            ui16 grpc = server.GetPort();
+            auto connection = NYdb::TDriver(NYdb::TDriverConfig()
+            .SetEndpoint(TStringBuilder() << "localhost:" << grpc)
+            .SetDatabase("/Root")
+            .SetAuthToken("root@builtin"));
+
+            NYdb::NTable::TTableClient tableClient(connection);
+            auto session = tableClient.CreateSession().GetValueSync().GetSession();
+            auto result = session.ExecuteSchemeQuery("GRANT CONNECT ON `/Root` TO `user@builtin`").ExtractValueSync();
+            UNIT_ASSERT_C(result.IsSuccess(), result.GetIssues().ToString());
+        }
+
+        {
+            ui16 grpc = server.GetPort();
+            auto connection = NYdb::TDriver(NYdb::TDriverConfig()
             .SetEndpoint(TStringBuilder() << "localhost:" << grpc)
             .SetDatabase("/Root")
             .SetAuthToken("user@builtin"));
-        NYdb::NQuery::TQueryClient client(connection);
 
-        // Wait until KQP proxy is set up
-        {
-            NYdb::EStatus scriptStatus = NYdb::EStatus::UNAVAILABLE;
+            // Wait until KQP proxy is set up
+            NYdb::EStatus scriptStatus;
+            NYdb::NQuery::TQueryClient client(connection);
             do {
                 auto executeScrptsResult = client.ExecuteScript("SELECT 42").ExtractValueSync();
                 scriptStatus = executeScrptsResult.Status().GetStatus();
                 UNIT_ASSERT_C(scriptStatus == NYdb::EStatus::UNAVAILABLE || scriptStatus == NYdb::EStatus::SUCCESS, executeScrptsResult.Status().GetIssues().ToString());
-                UNIT_ASSERT(scriptStatus == NYdb::EStatus::UNAVAILABLE || executeScrptsResult.Metadata().ExecutionId);
+                UNIT_ASSERT(scriptStatus == NYdb::EStatus::UNAVAILABLE || !executeScrptsResult.Metadata().ExecutionId.empty());
                 Sleep(TDuration::MilliSeconds(10));
             } while (scriptStatus == NYdb::EStatus::UNAVAILABLE);
+
+            // Check access to `.metadata/script_executions`
+            NYdb::NTable::TTableClient tableClient(connection);
+            auto session = tableClient.CreateSession().GetValueSync().GetSession();
+            auto result = session.ExecuteDataQuery("SELECT * FROM `.metadata/script_executions`", NYdb::NTable::TTxControl::BeginTx().CommitTx()).ExtractValueSync();
+            UNIT_ASSERT_VALUES_EQUAL(result.GetStatus(), NYdb::EStatus::SCHEME_ERROR);
         }
-
-        NYdb::NTable::TTableClient tableClient(connection);
-        auto session = tableClient.CreateSession().GetValueSync().GetSession();
-        auto result = session.ExecuteDataQuery("SELECT * FROM `.metadata/script_executions`", NYdb::NTable::TTxControl::BeginTx().CommitTx()).ExtractValueSync();
-        UNIT_ASSERT_VALUES_EQUAL(result.GetStatus(), NYdb::EStatus::SCHEME_ERROR);
-
-        NYdb::NScheme::TSchemeClient schemeClient(connection);
-        auto listResult = schemeClient.ListDirectory("/Root/.metadata").GetValueSync();
-        UNIT_ASSERT_VALUES_EQUAL_C(listResult.GetStatus(), NYdb::EStatus::UNAUTHORIZED, listResult.GetIssues().ToString());
-        UNIT_ASSERT_STRING_CONTAINS(listResult.GetIssues().ToString(), "Access denied");
     }
 
     Y_UNIT_TEST(ExecuteScriptFailsWithoutFeatureFlag) {
@@ -642,15 +657,134 @@ Y_UNIT_TEST_SUITE(KqpProxy) {
             promise.GetFuture().GetValueSync();
         };
 
-        const auto& dedicatedTennant = ydb->GetSettings().GetDedicatedTenantName();
-        checkCache(dedicatedTennant, dedicatedTennant, 2);
+        const auto& dedicatedTenant = ydb->GetSettings().GetDedicatedTenantName();
+        checkCache(dedicatedTenant, dedicatedTenant, ydb->GetDedicatedTenantInfo().NodeIdx);
 
-        const auto& sharedTennant = ydb->GetSettings().GetSharedTenantName();
-        checkCache(sharedTennant, sharedTennant, 1);
+        const auto& sharedTenant = ydb->GetSettings().GetSharedTenantName();
+        checkCache(sharedTenant, sharedTenant, ydb->GetSharedTenantInfo().NodeIdx);
 
-        const auto& serverlessTennant = ydb->GetSettings().GetServerlessTenantName();
-        checkCache(serverlessTennant, TStringBuilder() << ":4:" << serverlessTennant, 1);
+        const auto& serverlessTenant = ydb->GetSettings().GetServerlessTenantName();
+        const auto& serverlessInfo = ydb->GetServerlessTenantInfo();
+        checkCache(serverlessTenant, TStringBuilder() << ":" << serverlessInfo.PathId << ":" << serverlessTenant, serverlessInfo.NodeIdx);
     }
 
-} // namspace NKqp
+    Y_UNIT_TEST(CreateDeleteSessionsSequential) {
+        TPortManager tp;
+        ui16 mbusport = tp.GetPort(2134);
+        auto settings = Tests::TServerSettings(mbusport);
+
+        Tests::TServer server(settings);
+        Tests::TClient client(settings);
+
+        server.GetRuntime()->SetLogPriority(NKikimrServices::KQP_PROXY, NActors::NLog::PRI_ERROR);
+        client.InitRootScheme();
+        auto runtime = server.GetRuntime();
+
+        TActorId kqpProxy = MakeKqpProxyID(runtime->GetNodeId(0));
+        TActorId sender = runtime->AllocateEdgeActor();
+
+        const ui32 SessionsCount = 1000;
+
+        THPTimer timer;
+
+        for (ui32 i = 0; i < SessionsCount; ++i) {
+            TString sessionId = CreateSession(runtime, kqpProxy, sender);
+            UNIT_ASSERT(!sessionId.empty());
+
+            auto closeEv = MakeHolder<TEvKqp::TEvCloseSessionRequest>();
+            closeEv->Record.MutableRequest()->SetSessionId(sessionId);
+            runtime->Send(new IEventHandle(kqpProxy, sender, closeEv.Release()));
+        }
+
+        double elapsed = timer.Passed();
+        Cerr << "Sequential create+close: " << SessionsCount << " sessions in " << elapsed << " seconds" << Endl;
+        Cerr << "Throughput: " << (SessionsCount / elapsed) << " create+close ops/sec" << Endl;
+
+        auto counters = GetServiceCounters(runtime->GetAppData(0).Counters, "ydb");
+        for (ui32 attempt = 0; attempt < 100; ++attempt) {
+            ui64 activeSessions = counters->GetNamedCounter("name", "table.session.active_count", false)->Val();
+            if (activeSessions == 0) {
+                break;
+            }
+            Sleep(TDuration::MilliSeconds(100));
+        }
+
+        ui64 activeSessions = counters->GetNamedCounter("name", "table.session.active_count", false)->Val();
+        UNIT_ASSERT_VALUES_EQUAL_C(activeSessions, 0, "All sessions should be closed after cleanup");
+    }
+
+    Y_UNIT_TEST(CreateDeleteSessionsStress) {
+        NKikimrConfig::TAppConfig appConfig;
+        NYdb::TKikimrWithGrpcAndRootSchema server(appConfig);
+        server.Server_->GetRuntime()->SetLogPriority(NKikimrServices::KQP_PROXY, NActors::NLog::PRI_ERROR);
+
+        ui16 grpc = server.GetPort();
+        TString location = TStringBuilder() << "localhost:" << grpc;
+        auto clientConfig = NGRpcProxy::TGRpcClientConfig(location);
+
+        const ui32 ThreadCount = 10;
+        const ui32 SessionsPerThread = 100;
+
+        std::atomic<ui32> totalCreated{0};
+        std::atomic<ui32> totalDeleted{0};
+        std::atomic<bool> hasErrors{false};
+
+        THPTimer timer;
+
+        TVector<std::thread> threads;
+        threads.reserve(ThreadCount);
+        for (ui32 t = 0; t < ThreadCount; ++t) {
+            threads.emplace_back([&clientConfig, &totalCreated, &totalDeleted, &hasErrors, sessionsPerThread = SessionsPerThread]() {
+                for (ui32 i = 0; i < sessionsPerThread; ++i) {
+                    TString sessionId = NTestHelpers::CreateQuerySession(clientConfig);
+                    if (sessionId.empty()) {
+                        Cerr << "Failed to create session" << Endl;
+                        hasErrors.store(true);
+                        return;
+                    }
+                    totalCreated.fetch_add(1);
+
+                    bool deleteOk = true;
+                    NTestHelpers::CheckDelete(clientConfig, sessionId, Ydb::StatusIds::SUCCESS, deleteOk);
+                    if (!deleteOk) {
+                        Cerr << "Failed to delete session: " << sessionId << Endl;
+                        hasErrors.store(true);
+                        return;
+                    }
+                    totalDeleted.fetch_add(1);
+                }
+            });
+        }
+
+        for (auto& t : threads) {
+            t.join();
+        }
+
+        double elapsed = timer.Passed();
+        ui32 totalOps = totalCreated.load() + totalDeleted.load();
+
+        Cerr << "Concurrent stress test: " << ThreadCount << " threads, "
+             << SessionsPerThread << " sessions/thread" << Endl;
+        Cerr << "Created: " << totalCreated.load() << ", Deleted: " << totalDeleted.load() << Endl;
+        Cerr << "Total time: " << elapsed << " seconds" << Endl;
+        Cerr << "Throughput: " << (totalOps / elapsed) << " ops/sec" << Endl;
+
+        UNIT_ASSERT_C(!hasErrors.load(), "No errors during stress test");
+        UNIT_ASSERT_VALUES_EQUAL(totalCreated.load(), ThreadCount * SessionsPerThread);
+        UNIT_ASSERT_VALUES_EQUAL(totalDeleted.load(), ThreadCount * SessionsPerThread);
+
+        auto counters = GetServiceCounters(server.Server_->GetRuntime()->GetAppData(0).Counters, "ydb");
+        for (ui32 attempt = 0; attempt < 100; ++attempt) {
+            ui64 activeSessions = counters->GetNamedCounter("name", "table.session.active_count", false)->Val();
+            if (activeSessions == 0) {
+                break;
+            }
+            Sleep(TDuration::MilliSeconds(100));
+        }
+
+        ui64 activeSessions = counters->GetNamedCounter("name", "table.session.active_count", false)->Val();
+        UNIT_ASSERT_VALUES_EQUAL_C(activeSessions, 0, "All sessions should be closed after stress test");
+    }
+
+} // namespace NKqp
 } // namespace NKikimr

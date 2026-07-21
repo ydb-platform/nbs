@@ -1,14 +1,14 @@
 #include "agent_impl.h"
-#include "blocks.h"
 #include "blob_mapping_cache.h"
+
+#define YDB_LOG_THIS_FILE_COMPONENT BLOB_DEPOT_AGENT
 
 namespace NKikimr::NBlobDepot {
 
     template<>
-    TBlobDepotAgent::TQuery *TBlobDepotAgent::CreateQuery<TEvBlobStorage::EvDiscover>(std::unique_ptr<IEventHandle> ev) {
+    TBlobDepotAgent::TQuery *TBlobDepotAgent::CreateQuery<TEvBlobStorage::EvDiscover>(std::unique_ptr<IEventHandle> ev,
+            TMonotonic received) {
         class TDiscoverQuery : public TBlobStorageQuery<TEvBlobStorage::TEvDiscover> {
-            ui32 GetBlockedGenerationRetriesRemain = 10;
-
             bool DoneWithBlockedGeneration = false;
             bool DoneWithData = false;
 
@@ -22,22 +22,27 @@ namespace NKikimr::NBlobDepot {
             using TBlobStorageQuery::TBlobStorageQuery;
 
             void Initiate() override {
-                BDEV_QUERY(BDEV16, "TEvDiscover_begin", (U.TabletId, Request.TabletId), (U.ReadBody, Request.ReadBody),
-                    (U.MinGeneration, Request.MinGeneration));
+                YDB_LOG_TRACE_COMP(BLOB_DEPOT_EVENTS, "TEvDiscover_begin",
+                    {"marker", "BDEV16"},
+                    {"VG", Agent.VirtualGroupId},
+                    {"BDT", Agent.TabletId},
+                    {"G", Agent.BlobDepotGeneration},
+                    {"Q", QueryId},
+                    {"U.TabletId", Request.TabletId},
+                    {"U.ReadBody", Request.ReadBody},
+                    {"U.MinGeneration", Request.MinGeneration});
 
                 GenerateInitialResolve();
                 IssueResolve();
+                CheckBlockedGeneration();
+            }
 
-                if (Request.DiscoverBlockedGeneration) {
-                    const auto status = Agent.BlocksManager.CheckBlockForTablet(Request.TabletId, Max<ui32>(), this, &BlockedGeneration);
-                    if (status == NKikimrProto::OK) {
-                        DoneWithBlockedGeneration = true;
-                    } else if (status != NKikimrProto::UNKNOWN) {
-                        EndWithError(status, "tablet was deleted");
-                    }
-                } else {
-                    DoneWithBlockedGeneration = true;
+            void CheckBlockedGeneration() {
+                if (!DoneWithBlockedGeneration) {
+                    DoneWithBlockedGeneration = !Request.DiscoverBlockedGeneration ||
+                        CheckBlockForTablet(Request.TabletId, std::nullopt, &BlockedGeneration) == NKikimrProto::OK;
                 }
+                CheckIfDone();
             }
 
             void GenerateInitialResolve() {
@@ -58,7 +63,10 @@ namespace NKikimr::NBlobDepot {
             }
 
             void IssueResolve() {
-                STLOG(PRI_DEBUG, BLOB_DEPOT_AGENT, BDA49, "IssueResolve", (AgentId, Agent.LogId), (QueryId, GetQueryId()));
+                YDB_LOG_DEBUG("IssueResolve",
+                    {"marker", "BDA49"},
+                    {"agentId", Agent.LogId},
+                    {"queryId", GetQueryId()});
                 Agent.Issue(Resolve, this, nullptr);
             }
 
@@ -66,12 +74,18 @@ namespace NKikimr::NBlobDepot {
                 if (std::holds_alternative<TTabletDisconnected>(response)) {
                     return EndWithError(NKikimrProto::ERROR, "BlobDepot tablet disconnected");
                 } else if (auto *p = std::get_if<TEvBlobStorage::TEvGetResult*>(&response)) {
-                    STLOG(PRI_DEBUG, BLOB_DEPOT_AGENT, BDA50, "TEvGetResult", (AgentId, Agent.LogId),
-                        (QueryId, GetQueryId()), (Response, *p));
+                    YDB_LOG_DEBUG("TEvGetResult",
+                        {"marker", "BDA50"},
+                        {"agentId", Agent.LogId},
+                        {"queryId", GetQueryId()},
+                        {"response", *p});
                     TQuery::HandleGetResult(context, **p);
                 } else if (auto *p = std::get_if<TEvBlobDepot::TEvResolveResult*>(&response)) {
-                    STLOG(PRI_DEBUG, BLOB_DEPOT_AGENT, BDA51, "TEvResolveResult", (AgentId, Agent.LogId),
-                        (QueryId, GetQueryId()), (Response, (*p)->Record));
+                    YDB_LOG_DEBUG("TEvResolveResult",
+                        {"marker", "BDA51"},
+                        {"agentId", Agent.LogId},
+                        {"queryId", GetQueryId()},
+                        {"response", (*p)->Record});
                     if (context) {
                         TQuery::HandleResolveResult(std::move(context), **p);
                     } else {
@@ -83,23 +97,19 @@ namespace NKikimr::NBlobDepot {
             }
 
             void OnUpdateBlock() override {
-                STLOG(PRI_DEBUG, BLOB_DEPOT_AGENT, BDA18, "OnUpdateBlock", (AgentId, Agent.LogId),
-                    (QueryId, GetQueryId()));
-
-                const auto status = Agent.BlocksManager.CheckBlockForTablet(Request.TabletId, Max<ui32>(), this, &BlockedGeneration);
-                if (status == NKikimrProto::OK) {
-                    DoneWithBlockedGeneration = true;
-                    CheckIfDone();
-                } else if (status != NKikimrProto::UNKNOWN) {
-                    EndWithError(status, "tablet was deleted");
-                } else if (!--GetBlockedGenerationRetriesRemain) {
-                    EndWithError(NKikimrProto::ERROR, "too many retries to obtain blocked generation");
-                }
+                YDB_LOG_DEBUG("OnUpdateBlock",
+                    {"marker", "BDA18"},
+                    {"agentId", Agent.LogId},
+                    {"queryId", GetQueryId()});
+                CheckBlockedGeneration();
             }
 
             void HandleResolveResult(ui64 id, TRequestContext::TPtr context, TEvBlobDepot::TEvResolveResult& msg) {
-                STLOG(PRI_DEBUG, BLOB_DEPOT_AGENT, BDA19, "HandleResolveResult", (AgentId, Agent.LogId),
-                    (QueryId, GetQueryId()), (Msg, msg.Record));
+                YDB_LOG_DEBUG("HandleResolveResult",
+                    {"marker", "BDA19"},
+                    {"agentId", Agent.LogId},
+                    {"queryId", GetQueryId()},
+                    {"msg", msg.Record});
 
                 Agent.BlobMappingCache.HandleResolveResult(id, msg.Record, nullptr);
 
@@ -152,8 +162,11 @@ namespace NKikimr::NBlobDepot {
             }
 
             void OnRead(ui64 /*tag*/, TReadOutcome&& outcome) override {
-                STLOG(PRI_DEBUG, BLOB_DEPOT_AGENT, BDA20, "OnRead", (AgentId, Agent.LogId),
-                    (QueryId, GetQueryId()), (Outcome, outcome));
+                YDB_LOG_DEBUG("OnRead",
+                    {"marker", "BDA20"},
+                    {"agentId", Agent.LogId},
+                    {"queryId", GetQueryId()},
+                    {"outcome", outcome});
 
                 std::visit(TOverloaded{
                     [&](TReadOutcome::TOk& ok) {
@@ -178,8 +191,17 @@ namespace NKikimr::NBlobDepot {
             void CheckIfDone() {
                 if (DoneWithBlockedGeneration && DoneWithData) {
                     Y_VERIFY_S(!Id || !Request.ReadBody || Buffer.size() == Id.BlobSize(), "Id# " << Id << " Buffer.size# " << Buffer.size());
-                    BDEV_QUERY(BDEV17, "TEvDiscover_end", (Status, NKikimrProto::OK), (ErrorReason, ""), (Id, Id),
-                        (Buffer.size, Buffer.size()), (BlockedGeneration, BlockedGeneration));
+                    YDB_LOG_TRACE_COMP(BLOB_DEPOT_EVENTS, "TEvDiscover_end",
+                        {"marker", "BDEV17"},
+                        {"VG", Agent.VirtualGroupId},
+                        {"BDT", Agent.TabletId},
+                        {"G", Agent.BlobDepotGeneration},
+                        {"Q", QueryId},
+                        {"status", NKikimrProto::OK},
+                        {"errorReason", ""},
+                        {"id", Id},
+                        {"Buffer.size", Buffer.size()},
+                        {"blockedGeneration", BlockedGeneration});
                     EndWithSuccess(Id
                         ? std::make_unique<TEvBlobStorage::TEvDiscoverResult>(Id, Request.MinGeneration, Buffer, BlockedGeneration)
                         : std::make_unique<TEvBlobStorage::TEvDiscoverResult>(NKikimrProto::NODATA, Request.MinGeneration, BlockedGeneration));
@@ -187,16 +209,23 @@ namespace NKikimr::NBlobDepot {
             }
 
             void EndWithError(NKikimrProto::EReplyStatus status, const TString& errorReason) {
-                BDEV_QUERY(BDEV18, "TEvDiscover_end", (Status, status), (ErrorReason, errorReason));
+                YDB_LOG_TRACE_COMP(BLOB_DEPOT_EVENTS, "TEvDiscover_end",
+                    {"marker", "BDEV18"},
+                    {"VG", Agent.VirtualGroupId},
+                    {"BDT", Agent.TabletId},
+                    {"G", Agent.BlobDepotGeneration},
+                    {"Q", QueryId},
+                    {"status", status},
+                    {"errorReason", errorReason});
                 TBlobStorageQuery::EndWithError(status, errorReason);
             }
-            
+
             ui64 GetTabletId() const override {
                 return Request.TabletId;
             }
         };
 
-        return new TDiscoverQuery(*this, std::move(ev));
+        return new TDiscoverQuery(*this, std::move(ev), received);
     }
 
 } // NKikimr::NBlobDepot

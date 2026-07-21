@@ -4,10 +4,10 @@
 #include "events.h"
 
 #include <contrib/ydb/core/persqueue/events/global.h>
-#include <contrib/ydb/core/persqueue/partition_key_range/partition_key_range.h>
-#include <contrib/ydb/core/persqueue/pq_rl_helpers.h>
-#include <contrib/ydb/core/persqueue/utils.h>
-#include <contrib/ydb/core/persqueue/write_meta.h>
+#include <contrib/ydb/core/persqueue/public/partition_key_range/partition_key_range.h>
+#include <contrib/ydb/core/persqueue/public/pq_rl_helpers.h>
+#include <contrib/ydb/core/persqueue/public/utils.h>
+#include <contrib/ydb/core/persqueue/public/write_meta/write_meta.h>
 #include <contrib/ydb/core/persqueue/writer/partition_chooser.h>
 #include <contrib/ydb/core/protos/msgbus_pq.pb.h>
 #include <contrib/ydb/core/protos/grpc_pq_old.pb.h>
@@ -24,6 +24,7 @@ namespace NKikimr::NDataStreams::V1 {
         TString Key;
         TString ExplicitHash;
         TString Ip;
+        TString ChoosePartitionKey;
     };
 
     TString GetSerializedData(const TPutRecordsItem& item) {
@@ -108,6 +109,7 @@ namespace NKikimr::NDataStreams::V1 {
                 w->SetData(GetSerializedData(item));
                 w->SetPartitionKey(item.Key);
                 w->SetExplicitHash(item.ExplicitHash);
+                w->SetChoosePartitionKey(item.ChoosePartitionKey);
                 w->SetDisableDeduplication(true);
                 w->SetCreateTimeMS(TInstant::Now().MilliSeconds());
                 w->SetUncompressedSize(item.Data.size());
@@ -262,7 +264,7 @@ namespace NKikimr::NDataStreams::V1 {
 
     template<class TDerived, class TProto>
     void TPutRecordsActorBase<TDerived, TProto>::Die(const TActorContext& ctx) {
-        TRlHelpers::PassAway(TDerived::SelfId());
+        TRlHelpers::PassAway(this->SelfId());
         TBase::Die(ctx);
     }
 
@@ -312,7 +314,7 @@ namespace NKikimr::NDataStreams::V1 {
         entry.Path = NKikimr::SplitPath(this->GetTopicPath());
         entry.Operation = NSchemeCache::TSchemeCacheNavigate::OpList;
         entry.SyncVersion = true;
-        schemeCacheRequest->DatabaseName = CanonizePath(this->Request_->GetDatabaseName().GetOrElse(""));
+        schemeCacheRequest->DatabaseName = this->Request_->GetDatabaseName().GetOrElse("");
         schemeCacheRequest->ResultSet.emplace_back(entry);
         ctx.Send(MakeSchemeCacheID(), MakeHolder<TEvTxProxySchemeCache::TEvNavigateKeySet>(schemeCacheRequest.release()));
     }
@@ -325,7 +327,7 @@ namespace NKikimr::NDataStreams::V1 {
 
         const NSchemeCache::TSchemeCacheNavigate* navigate = ev->Get()->Request.Get();
         auto topicInfo = navigate->ResultSet.begin();
-        if (AppData(this->ActorContext())->EnforceUserTokenRequirement || AppData(this->ActorContext())->PQConfig.GetRequireCredentialsInNewProtocol()) {
+        if (!this->Request_->GetSerializedToken().empty()) {
             NACLib::TUserToken token(this->Request_->GetSerializedToken());
             if (!topicInfo->SecurityObject->CheckAccess(NACLib::EAccessRights::UpdateRow, token)) {
                 return this->ReplyWithError(Ydb::StatusIds::UNAUTHORIZED,
@@ -450,7 +452,7 @@ namespace NKikimr::NDataStreams::V1 {
 
         TString hashKey = NPQ::AsKeyBound(GetHashKey(record));
         auto* partition = chooser->GetPartition(hashKey);
-        items[partition->PartitionId].push_back(TPutRecordsItem{record.data(), record.partition_key(), record.explicit_hash_key(), Ip});
+        items[partition->PartitionId].push_back(TPutRecordsItem{record.data(), record.partition_key(), record.explicit_hash_key(), Ip, hashKey});
         PartitionToActor[partition->PartitionId].RecordIndexes.push_back(index);
     }
 

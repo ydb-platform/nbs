@@ -1,0 +1,3 @@
+SELECT
+    Yql::String(AsAtom('a' || CAST(Unicode::ToUpper("b"u) AS String)))
+;

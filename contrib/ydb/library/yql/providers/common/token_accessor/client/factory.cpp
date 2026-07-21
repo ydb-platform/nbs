@@ -1,6 +1,13 @@
 #include "factory.h"
 #include "bearer_credentials_provider.h"
 #include "token_accessor_client_factory.h"
+#include <contrib/ydb/core/base/appdata.h>
+#include <contrib/ydb/core/protos/auth.pb.h>
+#include <contrib/ydb/core/protos/replication.pb.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/driver/driver.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/types/credentials/credentials.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/iam/iam.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/iam_private/iam.h>
 #include <contrib/ydb/library/yql/providers/common/structured_token/yql_structured_token.h>
 #include <contrib/ydb/library/yql/providers/common/structured_token/yql_token_builder.h>
 #include <util/string/cast.h>
@@ -85,6 +92,37 @@ std::shared_ptr<NYdb::ICredentialsProviderFactory> CreateCredentialsProviderFact
         return WrapWithBearerIfNeeded(NYdb::CreateOAuthCredentialsProviderFactory(parser.GetIAMToken()), addBearerToToken); // OK for any static token (OAuth, IAM).
     }
 
+    if (parser.HasIamAuth()) {
+        NYdb::TIamServiceParams iamParams;
+        if (!NKikimr::AppData()->FeatureFlags.GetEnableExternalDataSourceAuthMethodIam()) {
+            throw yexception() << "AUTH_METHOD=IAM is disabled. Please contact your system administrator to enable it";
+        }
+        const auto& serviceControl = NKikimr::AppData()->ReplicationConfig.GetIamServiceControl();
+
+        TString serviceAccountId;
+        TString resourceId;
+        parser.GetIamAuth(serviceAccountId, resourceId);
+
+        NYdb::TIamHost vmMetadataParams;
+        if (NKikimr::AppData()->AuthConfig.HasLocalMetadataService()) {
+            vmMetadataParams.Host = NKikimr::AppData()->AuthConfig.GetLocalMetadataService().GetHost();
+            vmMetadataParams.Port = NKikimr::AppData()->AuthConfig.GetLocalMetadataService().GetPort();
+        }
+        iamParams.SystemServiceAccountCredentials = NYdb::CreateIamCredentialsProviderFactory(vmMetadataParams);
+        iamParams.Endpoint = serviceControl.GetEndpoint();
+        iamParams.EnableSsl = serviceControl.GetEnableSsl();
+        iamParams.ServiceId = serviceControl.GetServiceId();
+        iamParams.MicroserviceId = serviceControl.GetMicroserviceId();
+        iamParams.ResourceType = serviceControl.GetResourceType();
+        iamParams.ResourceId = resourceId;
+        iamParams.TargetServiceAccountId = serviceAccountId;
+
+        return CreateIamServiceCredentialsProviderFactory(iamParams);
+    }
+    if (parser.HasTransientToken()) {
+        return NYdb::CreateOAuthCredentialsProviderFactory(parser.GetTransientToken()); // Expected serialized NACLib::TUserToken with authorized user SID and list of group SIDs.
+    }
+
     if (parser.HasServiceAccountIdAuth()) {
         TString id;
         TString signature;
@@ -94,6 +132,15 @@ std::shared_ptr<NYdb::ICredentialsProviderFactory> CreateCredentialsProviderFact
             ythrow yexception() << "You must provide credentials factory instance to transform service account credentials into IAM-token.";
         }
         return WrapWithBearerIfNeeded(factory->Create(id, signature), addBearerToToken);
+    }
+
+    if (parser.HasBasicAuth()) {
+        TString login;
+        TString password;
+        parser.GetBasicAuth(login, password);
+        return NYdb::CreateLoginCredentialsProviderFactory({
+            .User = login,
+            .Password = password});
     }
 
     if (parser.IsNoAuth()) {

@@ -1,18 +1,11 @@
-IF (YQL_PACKAGED)
-    PACKAGE()
-        FROM_SANDBOX(FILE {FILE_RESOURCE_ID} OUT_NOAUTO
-            liburl_udf.so
-        )
-    END()
-ELSE ()
 YQL_UDF_CONTRIB(url_udf)
     
     YQL_ABI_VERSION(
         2
-        37
+        46
         0
     )
-    
+
     SRCS(
         url_base.cpp
     )
@@ -23,8 +16,6 @@ YQL_UDF_CONTRIB(url_udf)
     )
     
     END()
-ENDIF ()
-
 
 RECURSE_FOR_TESTS(
     test

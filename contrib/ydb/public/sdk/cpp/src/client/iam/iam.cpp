@@ -1,0 +1,186 @@
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/iam/iam.h>
+
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/iam/common/generic_provider.h>
+
+#include <contrib/ydb/public/api/client/yc_public/iam/iam_token_service.pb.h>
+#include <contrib/ydb/public/api/client/yc_public/iam/iam_token_service.grpc.pb.h>
+
+#include <library/cpp/json/json_reader.h>
+#include <library/cpp/http/simple/http_client.h>
+
+#include <mutex>
+
+using namespace yandex::cloud::iam::v1;
+
+namespace NYdb::inline Dev {
+
+class TIAMCredentialsProvider : public ICredentialsProvider {
+public:
+    TIAMCredentialsProvider(const TIamHost& params)
+        : HttpClient_(TSimpleHttpClient(TString(params.Host), params.Port))
+        , Request_("/computeMetadata/v1/instance/service-accounts/default/token")
+        , NextTicketUpdate_(TInstant::Zero())
+        , RefreshPeriod_(params.RefreshPeriod)
+    {
+        GetTicket();
+    }
+
+    std::string GetAuthInfo() const override {
+        std::string ticket;
+        TInstant nextTicketUpdate;
+        auto now = TInstant::Now();
+        std::optional<TString> lastErrorMessage;
+        {
+            std::lock_guard lock(Lock_);
+            if (LastErrorMessage_.has_value() && now > ExpiresAt_) {
+                Ticket_.clear();
+            }
+            ticket = Ticket_;
+            nextTicketUpdate = NextTicketUpdate_;
+            lastErrorMessage = LastErrorMessage_;
+        }
+        if (now >= nextTicketUpdate) {
+            GetTicket();
+            {
+                std::lock_guard lock(Lock_);
+                if (LastErrorMessage_.has_value() && now > ExpiresAt_) {
+                    Ticket_.clear();
+                }
+                ticket = Ticket_;
+                lastErrorMessage = LastErrorMessage_;
+            }
+        }
+        if (ticket.empty() && lastErrorMessage.has_value()) {
+            throw yexception() << *lastErrorMessage;
+        }
+        return ticket;
+    }
+
+    bool IsValid() const override {
+        return true;
+    }
+
+private:
+    TSimpleHttpClient HttpClient_;
+    std::string Request_;
+    mutable std::mutex Lock_;
+    mutable std::string Ticket_;
+    mutable TInstant NextTicketUpdate_;
+    mutable TInstant ExpiresAt_ = TInstant::Zero();
+    mutable std::optional<TString> LastErrorMessage_;
+    TDuration RefreshPeriod_;
+
+    void GetTicket() const {
+        try {
+            TStringStream out;
+            TSimpleHttpClient::THeaders headers;
+            headers["Metadata-Flavor"] = "Google";
+            HttpClient_.DoGet(Request_, &out, headers);
+            NJson::TJsonValue resp;
+            NJson::ReadJsonTree(&out, &resp, true);
+
+            auto respMap = resp.GetMap();
+
+            std::string ticket;
+            if (auto it = respMap.find("access_token"); it == respMap.end())
+                ythrow yexception() << "Result doesn't contain access_token";
+            else if (ticket = it->second.GetStringSafe(); ticket.empty())
+                ythrow yexception() << "Got empty ticket";
+
+            const auto now = TInstant::Now();
+            TInstant nextUpdate;
+            TDuration expiresIn;
+            TInstant expiresAt = TInstant::Max();
+            if (auto it = respMap.find("expires_in"); it != respMap.end()) {
+                auto seconds = it->second.GetUInteger();
+                if (seconds > 0) {
+                    expiresIn = TDuration::Seconds(seconds);
+                    expiresAt = now + expiresIn;
+                }
+            } else if (auto it = respMap.find("expiry"); it != respMap.end()) {
+                try {
+                    TInstant expiry;
+                    if (TInstant::TryParseIso8601(it->second.GetStringSafe(), expiry) && expiry > now) {
+                        expiresIn = expiry - now;
+                        expiresAt = expiry;
+                    }
+                } catch (...) {
+                    expiresAt = now;
+                }
+            }
+            if (expiresIn > TDuration::Zero()) {
+                const auto halfLife = expiresIn / 2;
+                const auto interval = std::max(std::min(halfLife, RefreshPeriod_), TDuration::MilliSeconds(100));
+                nextUpdate = now + interval;
+            } else {
+                nextUpdate = now + std::min(RefreshPeriod_, TDuration::Minutes(30));
+            }
+
+            {
+                std::lock_guard lock(Lock_);
+                Ticket_ = std::move(ticket);
+                NextTicketUpdate_ = nextUpdate;
+                ExpiresAt_ = expiresAt;
+                LastErrorMessage_.reset();
+            }
+        } catch (...) {
+            std::lock_guard lock(Lock_);
+            NextTicketUpdate_ = TInstant::Now() + std::min(RefreshPeriod_, TDuration::Seconds(10));
+            LastErrorMessage_ = CurrentExceptionMessage();
+        }
+    }
+};
+
+class TIamCredentialsProviderFactory : public ICredentialsProviderFactory {
+public:
+    TIamCredentialsProviderFactory(const TIamHost& params): Params_(params) {}
+
+    TCredentialsProviderPtr CreateProvider() const final {
+        return NCredentials::NDetail::GetOrCreateCachedProvider(
+            GetClientIdentity(),
+            [this] {
+                return std::make_shared<TIAMCredentialsProvider>(Params_);
+            });
+    }
+
+    // Keep the facility-taking path driver-scoped; only the no-arg path is process-wide cached.
+    TCredentialsProviderPtr CreateProvider(std::weak_ptr<ICoreFacility>) const final {
+        return std::make_shared<TIAMCredentialsProvider>(Params_);
+    }
+
+    std::string GetClientIdentity() const final {
+        return TStringBuilder() <<
+                "TIamCredentialsProviderFactory" << '\t' <<
+                Params_.Host << ':' << Params_.Port << '@' << Params_.RefreshPeriod;
+    }
+
+private:
+    TIamHost Params_;
+};
+
+/// Acquire an IAM token using a local metadata service on a virtual machine.
+TCredentialsProviderFactoryPtr CreateIamCredentialsProviderFactory(const TIamHost& params ) {
+    return std::make_shared<TIamCredentialsProviderFactory>(params);
+}
+
+TCredentialsProviderFactoryPtr CreateIamJwtFileCredentialsProviderFactory(const TIamJwtFilename& params) {
+    TIamJwtParams jwtParams = { params, ReadJwtKeyFile(params.JwtFilename) };
+    return std::make_shared<TIamJwtCredentialsProviderFactory<CreateIamTokenRequest,
+                                                              CreateIamTokenResponse,
+                                                              IamTokenService>>(std::move(jwtParams));
+}
+
+TCredentialsProviderFactoryPtr CreateIamJwtParamsCredentialsProviderFactory(const TIamJwtContent& params) {
+    TIamJwtParams jwtParams = { params, ParseJwtParams(params.JwtContent) };
+    return std::make_shared<TIamJwtCredentialsProviderFactory<CreateIamTokenRequest,
+                                                              CreateIamTokenResponse,
+                                                              IamTokenService>>(std::move(jwtParams));
+}
+
+TCredentialsProviderFactoryPtr CreateIamOAuthCredentialsProviderFactory(const TIamOAuth& params) {
+    return std::make_shared<TIamOAuthCredentialsProviderFactory<CreateIamTokenRequest,
+                                                                CreateIamTokenResponse,
+                                                                IamTokenService>>(params);
+}
+
+}

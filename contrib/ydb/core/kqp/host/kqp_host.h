@@ -32,12 +32,17 @@ public:
         TMaybe<bool> DocumentApiRestricted;
         TMaybe<bool> UsePgParser;
         TMaybe<TSqlVersion> SyntaxVersion;
+        i32 RuntimeParameterSizeLimit = 0;
+        bool RuntimeParameterSizeLimitSatisfied = false;
+        TMaybe<NSQLTranslation::EYqlSelect> YqlSelect;
 
         TString ToString() const {
             return TStringBuilder() << "TExecSettings{"
                 << " DocumentApiRestricted: " << DocumentApiRestricted
                 << " UsePgParser: " << UsePgParser
                 << " SyntaxVersion: " << SyntaxVersion
+                << " RuntimeParameterSizeLimit: " << RuntimeParameterSizeLimit
+                << " RuntimeParameterSizeLimitSatisfied: " << RuntimeParameterSizeLimitSatisfied
                 << " }";
         }
     };
@@ -45,6 +50,7 @@ public:
     struct TPrepareSettings: public TExecSettings {
         TMaybe<bool> IsInternalCall;
         TMaybe<bool> ConcurrentResults;
+        bool UsePessimisticLocks = false;
 
         TString ToString() const {
             return TStringBuilder() << "TPrepareSettings{"
@@ -53,6 +59,7 @@ public:
                 << " SyntaxVersion: " << SyntaxVersion
                 << " IsInternalCall: " << IsInternalCall
                 << " ConcurrentResults: " << ConcurrentResults
+                << " UsePessimisticLocks: " << UsePessimisticLocks
                 << " }";
         }
     };
@@ -89,7 +96,7 @@ public:
     virtual IAsyncQueryResultPtr PrepareGenericQuery(const TKqpQueryRef& query, const TPrepareSettings& settings, NYql::TExprNode::TPtr expr = nullptr) = 0;
 
     /* Federated queries */
-    virtual IAsyncQueryResultPtr PrepareGenericScript(const TKqpQueryRef& query, const TPrepareSettings& settings) = 0;
+    virtual IAsyncQueryResultPtr PrepareGenericScript(const TKqpQueryRef& query, const TPrepareSettings& settings, NYql::TExprNode::TPtr expr = nullptr) = 0;
 
     /* Scripting */
     virtual IAsyncQueryResultPtr ValidateYqlScript(const TKqpQueryRef& script) = 0;
@@ -107,13 +114,16 @@ public:
         const NActors::TActorId& target, const TExecScriptSettings& settings) = 0;
 
     /* Split */
-    struct TSplitResult {
-        THolder<NYql::TExprContext> Ctx;
+    struct TSplitResult : public NYql::NCommon::TOperationResult {
+        std::shared_ptr<NYql::TExprContext> Ctx;
         TVector<NYql::TExprNode::TPtr> Exprs;
         NYql::TExprNode::TPtr World;
     };
 
-    virtual TSplitResult SplitQuery(const TKqpQueryRef& query, const TPrepareSettings& settings) = 0;
+    using IAsyncSplitResult = NYql::IKikimrAsyncResult<TSplitResult>;
+    using IAsyncSplitcResultPtr = TIntrusivePtr<IAsyncSplitResult>;
+
+    virtual IAsyncSplitcResultPtr SplitQuery(const TKqpQueryRef& query, const TPrepareSettings& settings) = 0;
 };
 
 TIntrusivePtr<IKqpHost> CreateKqpHost(TIntrusivePtr<IKqpGateway> gateway,
@@ -122,7 +132,8 @@ TIntrusivePtr<IKqpHost> CreateKqpHost(TIntrusivePtr<IKqpGateway> gateway,
     const NKikimrConfig::TQueryServiceConfig& queryServiceConfig, const TMaybe<TString>& applicationName = Nothing(), const NKikimr::NMiniKQL::IFunctionRegistry* funcRegistry = nullptr,
     bool keepConfigChanges = false, bool isInternalCall = false, TKqpTempTablesState::TConstPtr tempTablesState = nullptr,
     NActors::TActorSystem* actorSystem = nullptr /*take from TLS by default*/,
-    NYql::TExprContext* ctx = nullptr, const TIntrusivePtr<TUserRequestContext>& userRequestContext = nullptr);
+    NYql::TExprContext* ctx = nullptr, const TIntrusivePtr<TUserRequestContext>& userRequestContext = nullptr,
+    bool usePessimisticLocks = false);
 
 } // namespace NKqp
 } // namespace NKikimr

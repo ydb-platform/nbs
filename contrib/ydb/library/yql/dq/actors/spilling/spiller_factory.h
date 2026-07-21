@@ -3,10 +3,13 @@
 #include "compute_storage.h"
 
 #include <contrib/ydb/library/yql/minikql/computation/mkql_spiller_factory.h>
+#include <contrib/ydb/library/yql/minikql/computation/mkql_spiller.h>
+#include <contrib/ydb/library/yql/dq/actors/spilling/spilling_counters.h>
 
 namespace NYql::NDq {
 
 using namespace NActors;
+using namespace NKikimr::NMiniKQL;
 
 class TDqSpillerFactory : public NKikimr::NMiniKQL::ISpillerFactory
 {
@@ -19,12 +22,18 @@ public:
     {
     }
 
-    void SetTaskCounters(TIntrusivePtr<TSpillingTaskCounters> spillingTaskCounters) override {
+    void SetTaskCounters(const TIntrusivePtr<TSpillingTaskCounters>& spillingTaskCounters) override {
         SpillingTaskCounters_ = spillingTaskCounters;
     }
 
-    NKikimr::NMiniKQL::ISpiller::TPtr CreateSpiller() override {
+    ISpiller::TPtr CreateSpiller() override {
         return std::make_shared<TDqComputeStorage>(TxId_, WakeUpCallback_, ErrorCallback_, SpillingTaskCounters_, ActorSystem_);
+    }
+
+    void SetMemoryReportingCallbacks(ISpiller::TMemoryReportCallback reportAlloc,
+            ISpiller::TMemoryReportCallback reportFree) override {
+        Y_UNUSED(reportAlloc);
+        Y_UNUSED(reportFree);
     }
 
 private:
@@ -36,3 +45,4 @@ private:
 };
 
 } // namespace NYql::NDq
+

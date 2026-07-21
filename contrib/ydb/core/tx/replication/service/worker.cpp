@@ -1,7 +1,12 @@
 #include "logging.h"
+#include "service.h"
+#include "topic_reader_stats.h"
 #include "worker.h"
 
 #include <contrib/ydb/core/base/appdata.h>
+#include <contrib/ydb/core/protos/counters_replication.pb.h>
+#include <contrib/ydb/core/transfer/transfer_writer.h>
+#include <contrib/ydb/core/tx/replication/ydb_proxy/topic_message.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/services/services.pb.h>
@@ -12,38 +17,40 @@
 
 namespace NKikimr::NReplication::NService {
 
-TEvWorker::TEvData::TRecord::TRecord(ui64 offset, const TString& data, TInstant createTime)
-    : Offset(offset)
-    , Data(data)
-    , CreateTime(createTime)
+TEvWorker::TEvPoll::TEvPoll(bool skipCommit)
+    : SkipCommit(skipCommit)
 {
 }
 
-TEvWorker::TEvData::TRecord::TRecord(ui64 offset, TString&& data, TInstant createTime)
+TString TEvWorker::TEvPoll::ToString() const {
+    return TStringBuilder() << ToStringHeader() << " {"
+        << " SkipCommit: " << SkipCommit
+    << " }";
+}
+
+TEvWorker::TEvCommit::TEvCommit(size_t offset)
     : Offset(offset)
-    , Data(std::move(data))
-    , CreateTime(createTime)
 {
 }
 
-TEvWorker::TEvData::TEvData(const TString& source, const TVector<TRecord>& records)
-    : Source(source)
+TString TEvWorker::TEvCommit::ToString() const {
+    return TStringBuilder() << ToStringHeader() << " {"
+        << " Offset: " << Offset
+    << " }";
+}
+
+TEvWorker::TEvData::TEvData(ui32 partitionId, const TString& source, const TVector<TTopicMessage>& records)
+    : PartitionId(partitionId)
+    , Source(source)
     , Records(records)
 {
 }
 
-TEvWorker::TEvData::TEvData(const TString& source, TVector<TRecord>&& records)
-    : Source(source)
+TEvWorker::TEvData::TEvData(ui32 partitionId, const TString& source, TVector<TTopicMessage>&& records)
+    : PartitionId(partitionId)
+    , Source(source)
     , Records(std::move(records))
 {
-}
-
-void TEvWorker::TEvData::TRecord::Out(IOutputStream& out) const {
-    out << "{"
-        << " Offset: " << Offset
-        << " Data: " << Data.size() << "b"
-        << " CreateTime: " << CreateTime.ToStringUpToSeconds()
-    << " }";
 }
 
 TString TEvWorker::TEvData::ToString() const {
@@ -71,10 +78,55 @@ TEvWorker::TEvStatus::TEvStatus(TDuration lag)
 {
 }
 
+TEvWorker::TEvStatus::TEvStatus(std::unique_ptr<TWorkerDetailedStats>&& detailedStats)
+    : Lag(TDuration::Zero())
+    , DetailedStats(std::move(detailedStats))
+{
+}
+
+TEvWorker::TEvStatus* TEvWorker::TEvStatus::FromOperation(EWorkerOperation operation) {
+    auto detailedStats = std::make_unique<TWorkerDetailedStats>();
+    detailedStats->CurrentOperation = operation;
+    return new TEvStatus(std::move(detailedStats));
+}
+
 TString TEvWorker::TEvStatus::ToString() const {
     return TStringBuilder() << ToStringHeader() << " {"
         << " Lag: " << Lag
+        << " HasStats: " << (DetailedStats != nullptr)
     << " }";
+}
+
+TEvWorker::TEvDataEnd::TEvDataEnd(ui64 partitionId, TVector<ui64>&& adjacentPartitionsIds, TVector<ui64>&& childPartitionsIds)
+    : PartitionId(partitionId)
+    , AdjacentPartitionsIds(std::move(adjacentPartitionsIds))
+    , ChildPartitionsIds(std::move(childPartitionsIds))
+{
+}
+
+TString TEvWorker::TEvDataEnd::ToString() const {
+    return TStringBuilder() << ToStringHeader() << " {"
+        << " PartitionId: " << PartitionId
+        << " AdjacentPartitionsIds: " << JoinSeq(", ", AdjacentPartitionsIds)
+        << " ChildPartitionsIds: " << JoinSeq(", ", ChildPartitionsIds)
+    << " }";
+}
+
+TEvWorker::TEvTerminateWriter::TEvTerminateWriter(ui64 partitionId)
+    : PartitionId(partitionId)
+{
+}
+
+TString TEvWorker::TEvTerminateWriter::ToString() const {
+    return TStringBuilder() << ToStringHeader() << " {"
+        << " PartitionId: " << PartitionId
+    << " }";
+}
+
+TEvWorker::TEvStatsWakeup::TEvStatsWakeup(ui64 sessionToAdd, ui64 sessionToRemove)
+    : SessionToAdd(sessionToAdd)
+    , SessionToRemove(sessionToRemove)
+{
 }
 
 class TWorker: public TActorBootstrapped<TWorker> {
@@ -135,7 +187,7 @@ class TWorker: public TActorBootstrapped<TWorker> {
                 << ": sender# " << ev->Sender);
 
             Reader.Registered();
-            if (!InFlightData) {
+            if (!InFlightData && !TerminateWriter) {
                 Send(Reader, new TEvWorker::TEvPoll());
             }
         } else if (ev->Sender == Writer) {
@@ -144,7 +196,9 @@ class TWorker: public TActorBootstrapped<TWorker> {
 
             Writer.Registered();
             if (InFlightData) {
-                Send(Writer, new TEvWorker::TEvData(InFlightData->Source, InFlightData->Records));
+                Send(Writer, new TEvWorker::TEvData(InFlightData->PartitionId, InFlightData->Source, InFlightData->Records));
+            } else if (TerminateWriter) {
+                Send(Writer, new TEvWorker::TEvTerminateWriter(TerminateWriter->PartitionId));
             }
         } else {
             LOG_W("Handshake from unknown actor"
@@ -165,15 +219,30 @@ class TWorker: public TActorBootstrapped<TWorker> {
         if (InFlightData) {
             const auto& records = InFlightData->Records;
             auto it = MinElementBy(records, [](const auto& record) {
-                return record.CreateTime;
+                return record.GetCreateTime();
             });
 
             if (it != records.end()) {
-                Lag = TlsActivationContext->Now() - it->CreateTime;
+                Lag = TlsActivationContext->Now() - it->GetCreateTime();
             }
         }
 
         InFlightData.Reset();
+        TerminateWriter.Reset();
+        if (Reader) {
+            Send(ev->Forward(Reader));
+        }
+    }
+
+    void Handle(TEvWorker::TEvCommit::TPtr& ev) {
+        LOG_D("Handle " << ev->Get()->ToString());
+
+        if (ev->Sender != Writer) {
+            LOG_W("Commit from unknown actor"
+                << ": sender# " << ev->Sender);
+            return;
+        }
+
         if (Reader) {
             Send(ev->Forward(Reader));
         }
@@ -189,7 +258,28 @@ class TWorker: public TActorBootstrapped<TWorker> {
         }
 
         Y_ABORT_UNLESS(!InFlightData);
-        InFlightData = MakeHolder<TEvWorker::TEvData>(ev->Get()->Source, ev->Get()->Records);
+        InFlightData = MakeHolder<TEvWorker::TEvData>(ev->Get()->PartitionId, ev->Get()->Source, ev->Get()->Records);
+
+        if (ev->Get()->Stats) {
+            Send(Parent, MakeEvStatusFromReaderStats(std::move(ev->Get()->Stats)));
+        }
+
+        if (Writer) {
+            Send(ev->Forward(Writer));
+        }
+    }
+
+    void Handle(TEvWorker::TEvTerminateWriter::TPtr& ev) {
+        LOG_D("Handle " << ev->Get()->ToString());
+
+        if (ev->Sender != Reader) {
+            LOG_W("Terminate writer from unknown actor"
+                << ": sender# " << ev->Sender);
+            return;
+        }
+
+        Y_ABORT_UNLESS(!TerminateWriter);
+        TerminateWriter = MakeHolder<TEvWorker::TEvTerminateWriter>(ev->Get()->PartitionId);
 
         if (Writer) {
             Send(ev->Forward(Writer));
@@ -199,16 +289,35 @@ class TWorker: public TActorBootstrapped<TWorker> {
     void Handle(TEvWorker::TEvGone::TPtr& ev) {
         if (ev->Sender == Reader) {
             LOG_I("Reader has gone"
-                << ": sender# " << ev->Sender);
+                << ": sender# " << ev->Sender
+                << ": " << ev->Get()->ToString());
             MaybeRecreateActor(ev, Reader);
         } else if (ev->Sender == Writer) {
             LOG_I("Writer has gone"
-                << ": sender# " << ev->Sender);
+                << ": sender# " << ev->Sender
+                << ": " << ev->Get()->ToString());
             MaybeRecreateActor(ev, Writer);
         } else {
             LOG_W("Unknown actor has gone"
                 << ": sender# " << ev->Sender);
         }
+    }
+
+    void Handle(TEvWorker::TEvStatus::TPtr& ev) {
+        LOG_D("Handle " << ev->Get()->ToString());
+        if (!ev->Get()->DetailedStats) {
+            LOG_W("Unexpected TEvWorker::TEvStatus with no stats, ignored"
+                << ": sender# " << ev->Sender);
+            return;
+        }
+        Forward(ev);
+    }
+
+    std::unique_ptr<TEvWorker::TEvStatus> MakeEvStatusFromReaderStats(std::unique_ptr<TWorkerDetailedStats>&& stats) const {
+        Y_ENSURE(stats->ReaderStats);
+        std::unique_ptr<TEvWorker::TEvStatus> ev{TEvWorker::TEvStatus::FromOperation(EWorkerOperation::NONE)};
+        ev->DetailedStats->ReaderStats = std::move(stats->ReaderStats);
+        return std::move(ev);
     }
 
     void MaybeRecreateActor(TEvWorker::TEvGone::TPtr& ev, TActorInfo& info) {
@@ -232,6 +341,19 @@ class TWorker: public TActorBootstrapped<TWorker> {
         Send(ev->Forward(Parent));
 
         PassAway();
+    }
+
+    void Handle(TEvService::TEvTxIdResult::TPtr& ev) {
+        LOG_D("Handle " << ev->Get()->ToString());
+        Send(ev->Forward(Writer));
+    }
+
+    template <typename TEventPtr>
+    void Forward(TEventPtr& ev) {
+        LOG_D("Handle " << ev->Get()->ToString());
+
+        ev->Sender = SelfId();
+        Send(ev->Forward(Parent));
     }
 
     void ScheduleLagReport() {
@@ -264,7 +386,7 @@ public:
     }
 
     explicit TWorker(
-            const TActorId& parent, 
+            const TActorId& parent,
             std::function<IActor*(void)>&& createReaderFn,
             std::function<IActor*(void)>&& createWriterFn)
         : Parent(parent)
@@ -287,8 +409,15 @@ public:
         switch (ev->GetTypeRewrite()) {
             hFunc(TEvWorker::TEvHandshake, Handle);
             hFunc(TEvWorker::TEvPoll, Handle);
+            hFunc(TEvWorker::TEvCommit, Handle);
             hFunc(TEvWorker::TEvData, Handle);
+            hFunc(TEvWorker::TEvDataEnd, Forward);
             hFunc(TEvWorker::TEvGone, Handle);
+            hFunc(TEvWorker::TEvTerminateWriter, Handle);
+            hFunc(TEvWorker::TEvStatus, Handle);
+            hFunc(TEvService::TEvGetTxId, Forward);
+            hFunc(TEvService::TEvTxIdResult, Handle);
+            hFunc(TEvService::TEvHeartbeat, Forward);
             sFunc(TEvents::TEvWakeup, ReportLag);
             sFunc(TEvents::TEvPoison, PassAway);
         }
@@ -303,7 +432,9 @@ private:
     TActorInfo Reader;
     TActorInfo Writer;
     THolder<TEvWorker::TEvData> InFlightData;
+    THolder<TEvWorker::TEvTerminateWriter> TerminateWriter;
     TDuration Lag;
+    TInstant StartTime = TInstant::Zero();
 };
 
 IActor* CreateWorker(

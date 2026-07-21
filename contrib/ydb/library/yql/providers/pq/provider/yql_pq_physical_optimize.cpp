@@ -1,16 +1,18 @@
 #include "yql_pq_provider_impl.h"
 #include "yql_pq_helpers.h"
+#include "yql_pq_settings.h"
 
-#include <contrib/ydb/library/yql/core/yql_opt_utils.h>
 #include <contrib/ydb/library/yql/dq/expr_nodes/dq_expr_nodes.h>
 #include <contrib/ydb/library/yql/dq/opt/dq_opt.h>
 #include <contrib/ydb/library/yql/dq/opt/dq_opt_phy.h>
-#include <contrib/ydb/library/yql/utils/log/log.h>
-#include <contrib/ydb/library/yql/providers/common/transform/yql_optimize.h>
-#include <contrib/ydb/library/yql/providers/dq/expr_nodes/dqs_expr_nodes.h>
 #include <contrib/ydb/library/yql/providers/pq/common/yql_names.h>
+#include <contrib/ydb/library/yql/providers/dq/expr_nodes/dqs_expr_nodes.h>
 #include <contrib/ydb/library/yql/providers/pq/expr_nodes/yql_pq_expr_nodes.h>
+
+#include <contrib/ydb/library/yql/core/yql_opt_utils.h>
+#include <contrib/ydb/library/yql/providers/common/transform/yql_optimize.h>
 #include <contrib/ydb/library/yql/providers/result/expr_nodes/yql_res_expr_nodes.h>
+#include <contrib/ydb/library/yql/utils/log/log.h>
 
 namespace NYql {
 
@@ -28,6 +30,7 @@ public:
 #define HNDL(name) "PhysicalOptimizer-"#name, Hndl(&TPqPhysicalOptProposalTransformer::name)
         AddHandler(0, &TCoLeft::Match, HNDL(TrimReadWorld));
         AddHandler(0, &TPqWriteTopic::Match, HNDL(PqWriteTopic));
+        AddHandler(0, &TPqInsert::Match, HNDL(PqInsert));
 #undef HNDL
 
         SetGlobal(0); // Stage 0 of this optimizer is global => we can remap nodes.
@@ -124,11 +127,95 @@ public:
         return dqQueryBuilder.Done();
     }
 
+    TMaybeNode<TExprBase> PqInsert(TExprBase node, TExprContext& ctx, IOptimizationContext& optCtx, const TGetParents& getParents) const {
+        const auto insert = node.Cast<TPqInsert>();
+        const auto& topicNode = insert.Topic();
+        const TString cluster(topicNode.Cluster().Value());
+        if (!State_->FindTopicMeta(topicNode)) {
+            ctx.AddError(TIssue(ctx.GetPosition(insert.Pos()), TStringBuilder() << "Unknown topic `" << cluster << "`.`" << topicNode.Path().StringValue() << "`"));
+            return nullptr;
+        }
+
+        auto dqSinkBuilder = Build<TDqSink>(ctx, insert.Pos())
+            .DataSink(insert.DataSink())
+            .Settings<TDqPqTopicSink>()
+                .Topic(topicNode)
+                .Settings(BuildTopicWriteSettings(cluster, insert.Pos(), ctx))
+                .Token<TCoSecureParam>()
+                    .Name()
+                        .Value(TStringBuilder() << "cluster:default_" << cluster)
+                        .Build()
+                    .Build()
+                .Build();
+
+        const auto input = insert.Input();
+        if (IsDqPureExpr(input)) {
+            YQL_CLOG(INFO, ProviderPq) << "Optimize PqInsert `" << cluster << "`.`" << topicNode.Path().StringValue() << "`, build pure stage with sink";
+
+            const auto dqSink = dqSinkBuilder
+                .Index().Build(0)
+                .Done();
+
+            return Build<TDqStage>(ctx, insert.Pos())
+                .Inputs().Build()
+                .Program<TCoLambda>()
+                    .Args({})
+                    .Body<TCoToFlow>()
+                        .Input(input)
+                        .Build()
+                    .Build()
+                .Outputs()
+                    .Add(dqSink)
+                    .Build()
+                .Settings().Build()
+                .Done();
+        }
+
+        if (!TDqCnUnionAll::Match(input.Raw())) {
+            return node;
+        }
+
+        const auto dqUnion = input.Cast<TDqCnUnionAll>();
+        if (!NDq::IsSingleConsumerConnection(dqUnion, *getParents())) {
+            return node;
+        }
+
+        YQL_CLOG(INFO, ProviderPq) << "Optimize PqInsert `" << cluster << "`.`" << topicNode.Path().StringValue() << "`, push into existing stage";
+
+        const auto dqUnionOutput = dqUnion.Output();
+        const auto dqSink = dqSinkBuilder
+            .Index(dqUnionOutput.Index())
+            .Done();
+
+        const auto inputStage = dqUnionOutput.Stage().Cast<TDqStage>();
+
+        auto outputsBuilder = Build<TDqStageOutputsList>(ctx, topicNode.Pos());
+        if (const auto outputs = inputStage.Outputs()) {
+            outputsBuilder.InitFrom(outputs.Cast());
+            YQL_ENSURE(inputStage.Program().Body().Maybe<TDqReplicate>(), "Can not push multiple async outputs into stage without TDqReplicate");
+        }
+        outputsBuilder.Add(dqSink);
+
+        const auto dqStageWithSink = Build<TDqStage>(ctx, inputStage.Pos())
+            .InitFrom(inputStage)
+            .Outputs(outputsBuilder.Done())
+            .Done();
+
+        optCtx.RemapNode(inputStage.Ref(), dqStageWithSink.Ptr());
+
+        const auto dqResult = Build<TCoNth>(ctx, dqStageWithSink.Pos())
+            .Tuple(dqStageWithSink)
+            .Index(dqUnionOutput.Index())
+            .Done();
+
+        return ctx.NewList(dqStageWithSink.Pos(), {dqResult.Ptr()});
+    }
+
 private:
     TPqState::TPtr State_;
 };
 
-} // namespace
+} // anonymous namespace
 
 THolder<IGraphTransformer> CreatePqPhysicalOptProposalTransformer(TPqState::TPtr state) {
     return MakeHolder<TPqPhysicalOptProposalTransformer>(std::move(state));

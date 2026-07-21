@@ -47,28 +47,28 @@
                                                         "Name": "Limit"
                                                     },
                                                     {
+                                                        "Blocks": "True",
                                                         "Inputs": [
                                                             {
                                                                 "InternalOperatorId": 2
                                                             }
                                                         ],
                                                         "Name": "Filter",
-                                                        "Predicate": "UserID == 435090932899640449"
+                                                        "Predicate": "UserID == 435090932899640449",
+                                                        "Pushdown": "True"
                                                     },
                                                     {
                                                         "Inputs": [],
                                                         "Name": "TableFullScan",
+                                                        "Path": "/local/clickbench/plans/column/hits",
                                                         "ReadColumns": [
-                                                            "UserID"
-                                                        ],
-                                                        "ReadLimit": "1001",
-                                                        "ReadRanges": [
                                                             "CounterID (-\u221e, +\u221e)",
                                                             "EventDate (-\u221e, +\u221e)",
                                                             "UserID (-\u221e, +\u221e)",
                                                             "EventTime (-\u221e, +\u221e)",
                                                             "WatchID (-\u221e, +\u221e)"
                                                         ],
+                                                        "ReadLimit": "1001",
                                                         "Scan": "Sequential",
                                                         "SsaProgram": {
                                                             "Command": [
@@ -118,8 +118,7 @@
                                                                         ]
                                                                     }
                                                                 }
-                                                            ],
-                                                            "Version": 4
+                                                            ]
                                                         },
                                                         "Table": "clickbench/plans/column/hits"
                                                     }
@@ -135,7 +134,10 @@
                             }
                         ]
                     }
-                ]
+                ],
+                "Stats": {
+                    "ResourcePoolId": "default"
+                }
             },
             "tables": [
                 {

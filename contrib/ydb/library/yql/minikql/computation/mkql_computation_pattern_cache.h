@@ -1,11 +1,13 @@
 #pragma once
 
 #include "mkql_computation_node.h"
+#include "mkql_computation_pattern_cache_program_key.h"
 
 #include <contrib/ydb/library/yql/minikql/mkql_node.h>
 #include <library/cpp/threading/future/future.h>
 
 #include <memory>
+#include <mutex>
 
 namespace NKikimr::NMiniKQL {
 
@@ -26,7 +28,7 @@ struct TPatternCacheEntry {
 
     TStructType* ParamsStruct;
     IComputationPattern::TPtr Pattern;
-    size_t SizeForCache = 0; // set only by cache to lock the size, which can slightly vary when pattern is used
+    size_t SizeForCache = 0;             // set only by cache to lock the size, which can slightly vary when pattern is used
     std::atomic<size_t> AccessTimes = 0; // set only by cache
     std::atomic<bool> IsInCache = false; // set only by cache
 
@@ -35,7 +37,7 @@ struct TPatternCacheEntry {
         SizeForCache = Alloc.GetAllocated();
     }
 
-    TPatternCacheEntry(bool useAlloc = true)
+    explicit TPatternCacheEntry(bool useAlloc = true)
         : Alloc(__LOCATION__)
         , Env(Alloc)
         , UseAlloc(useAlloc)
@@ -58,78 +60,90 @@ using TPatternCacheEntryFuture = NThreading::TFuture<TPatternCacheEntryPtr>;
 
 class TComputationPatternLRUCache {
 public:
-    struct Config {
-        Config(size_t maxSizeBytes, size_t maxCompiledSizeBytes)
+    struct TConfig {
+        TConfig(size_t maxSizeBytes, size_t maxCompiledSizeBytes)
             : MaxSizeBytes(maxSizeBytes)
             , MaxCompiledSizeBytes(maxCompiledSizeBytes)
-        {}
+        {
+        }
 
-        Config(size_t maxSizeBytes, size_t maxCompiledSizeBytes, size_t patternAccessTimesBeforeTryToCompile)
+        TConfig(size_t maxSizeBytes, size_t maxCompiledSizeBytes, size_t patternAccessTimesBeforeTryToCompile)
             : MaxSizeBytes(maxSizeBytes)
             , MaxCompiledSizeBytes(maxCompiledSizeBytes)
             , PatternAccessTimesBeforeTryToCompile(patternAccessTimesBeforeTryToCompile)
-        {}
-
-        const size_t MaxSizeBytes;
-        const size_t MaxCompiledSizeBytes;
-        const std::optional<size_t> PatternAccessTimesBeforeTryToCompile;
-
-        bool operator==(const Config & rhs) {
-            return std::tie(MaxSizeBytes, MaxCompiledSizeBytes, PatternAccessTimesBeforeTryToCompile) ==
-                std::tie(rhs.MaxSizeBytes, rhs.MaxCompiledSizeBytes, rhs.PatternAccessTimesBeforeTryToCompile);
+        {
         }
 
-        bool operator!=(const Config & rhs) {
+        size_t MaxSizeBytes;
+        size_t MaxCompiledSizeBytes;
+        const std::optional<size_t> PatternAccessTimesBeforeTryToCompile;
+
+        bool operator==(const TConfig& rhs) {
+            return std::tie(MaxSizeBytes, MaxCompiledSizeBytes, PatternAccessTimesBeforeTryToCompile) ==
+                   std::tie(rhs.MaxSizeBytes, rhs.MaxCompiledSizeBytes, rhs.PatternAccessTimesBeforeTryToCompile);
+        }
+
+        bool operator!=(const TConfig& rhs) {
             return !(*this == rhs);
         }
     };
 
-    TComputationPatternLRUCache(const Config& configuration, NMonitoring::TDynamicCounterPtr counters = MakeIntrusive<NMonitoring::TDynamicCounters>());
+    // TODO(YQL-20086): Migrate YDB to TConfig
+    using Config = TConfig;
 
+    explicit TComputationPatternLRUCache(const TConfig& configuration,
+                                         NMonitoring::TDynamicCounterPtr counters = MakeIntrusive<NMonitoring::TDynamicCounters>());
     ~TComputationPatternLRUCache();
 
     static TPatternCacheEntryPtr CreateCacheEntry(bool useAlloc = true) {
         return std::make_shared<TPatternCacheEntry>(useAlloc);
     }
 
-    TPatternCacheEntryPtr Find(const TString& serializedProgram);
-    TPatternCacheEntryFuture FindOrSubscribe(const TString& serializedProgram);
+    TPatternCacheEntryPtr Find(const TProgramKey& key);
+    TPatternCacheEntryFuture FindOrSubscribe(const TProgramKey& key);
 
-    void EmplacePattern(const TString& serializedProgram, TPatternCacheEntryPtr& patternWithEnv);
+    void EmplacePattern(const TProgramKey& key, TPatternCacheEntryPtr patternWithEnv);
 
-    void NotifyPatternCompiled(const TString& serializedProgram);
-    void NotifyPatternMissing(const TString& serializedProgram);
+    void NotifyPatternCompiled(const TProgramKey& key);
+    void NotifyPatternMissing(const TProgramKey& key);
 
     size_t GetSize() const;
 
     void CleanCache();
 
-    Config GetConfiguration() const {
-        std::lock_guard lock(Mutex);
-        return Configuration;
+    // Adjusts the size limits in-place, preserving cached entries.
+    // PatternAccessTimesBeforeTryToCompile must match the existing configuration;
+    // a different value requires recreating the cache.
+    void UpdateConfiguration(const TConfig& configuration);
+
+    void UpdatePatternCurrentUsageInfo();
+
+    TConfig GetConfiguration() const {
+        std::lock_guard lock(Mutex_);
+        return Configuration_;
     }
 
     size_t GetMaxSizeBytes() const {
-        std::lock_guard lock(Mutex);
-        return Configuration.MaxSizeBytes;
+        std::lock_guard lock(Mutex_);
+        return Configuration_.MaxSizeBytes;
     }
 
     i64 GetCacheHits() const {
-        return *Hits;
+        return *Hits_;
     }
 
     void IncNotSuitablePattern() {
-        ++*NotSuitablePattern;
+        ++*NotSuitablePattern_;
     }
 
     size_t GetPatternsToCompileSize() const {
-        std::lock_guard lock(Mutex);
-        return PatternsToCompile.size();
+        std::lock_guard lock(Mutex_);
+        return PatternsToCompile_.size();
     }
 
-    void GetPatternsToCompile(THashMap<TString, TPatternCacheEntryPtr> & result) {
-        std::lock_guard lock(Mutex);
-        result.swap(PatternsToCompile);
+    void GetPatternsToCompile(THashMap<TProgramKey, TPatternCacheEntryPtr>& result) {
+        std::lock_guard lock(Mutex_);
+        result.swap(PatternsToCompile_);
     }
 
 private:
@@ -137,26 +151,26 @@ private:
 
     static constexpr size_t CacheMaxElementsSize = 10000;
 
-    void AccessPattern(const TString& serializedProgram, TPatternCacheEntryPtr entry);
+    void AccessPattern(const TProgramKey& key, TPatternCacheEntryPtr entry);
 
-    mutable std::mutex Mutex;
-    THashMap<TString, TVector<NThreading::TPromise<TPatternCacheEntryPtr>>> Notify; // protected by Mutex
-    std::unique_ptr<TLRUPatternCacheImpl> Cache;                                    // protected by Mutex
-    THashMap<TString, TPatternCacheEntryPtr> PatternsToCompile;                     // protected by Mutex
+    mutable std::mutex Mutex_;
+    THashMap<TProgramKey, TVector<NThreading::TPromise<TPatternCacheEntryPtr>>> Notify_; // protected by Mutex
+    std::unique_ptr<TLRUPatternCacheImpl> Cache_;                                        // protected by Mutex
+    THashMap<TProgramKey, TPatternCacheEntryPtr> PatternsToCompile_;                     // protected by Mutex
 
-    const Config Configuration;
+    TConfig Configuration_;
 
-    NMonitoring::TDynamicCounters::TCounterPtr Hits;
-    NMonitoring::TDynamicCounters::TCounterPtr HitsCompiled;
-    NMonitoring::TDynamicCounters::TCounterPtr Waits;
-    NMonitoring::TDynamicCounters::TCounterPtr Misses;
-    NMonitoring::TDynamicCounters::TCounterPtr NotSuitablePattern;
-    NMonitoring::TDynamicCounters::TCounterPtr SizeItems;
-    NMonitoring::TDynamicCounters::TCounterPtr SizeCompiledItems;
-    NMonitoring::TDynamicCounters::TCounterPtr SizeBytes;
-    NMonitoring::TDynamicCounters::TCounterPtr SizeCompiledBytes;
-    NMonitoring::TDynamicCounters::TCounterPtr MaxSizeBytesCounter;
-    NMonitoring::TDynamicCounters::TCounterPtr MaxCompiledSizeBytesCounter;
+    NMonitoring::TDynamicCounters::TCounterPtr Hits_;
+    NMonitoring::TDynamicCounters::TCounterPtr HitsCompiled_;
+    NMonitoring::TDynamicCounters::TCounterPtr Waits_;
+    NMonitoring::TDynamicCounters::TCounterPtr Misses_;
+    NMonitoring::TDynamicCounters::TCounterPtr NotSuitablePattern_;
+    NMonitoring::TDynamicCounters::TCounterPtr SizeItems_;
+    NMonitoring::TDynamicCounters::TCounterPtr SizeCompiledItems_;
+    NMonitoring::TDynamicCounters::TCounterPtr SizeBytes_;
+    NMonitoring::TDynamicCounters::TCounterPtr SizeCompiledBytes_;
+    NMonitoring::TDynamicCounters::TCounterPtr MaxSizeBytesCounter_;
+    NMonitoring::TDynamicCounters::TCounterPtr MaxCompiledSizeBytesCounter_;
 };
 
 } // namespace NKikimr::NMiniKQL

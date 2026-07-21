@@ -3,6 +3,7 @@ LIBRARY()
 SRCS(
     read_attributes_utils.cpp
     rewrite_io_utils.cpp
+    yql_kikimr_constraints.cpp
     yql_kikimr_datasink.cpp
     yql_kikimr_datasource.cpp
     yql_kikimr_exec.cpp
@@ -26,20 +27,30 @@ SRCS(
 
 PEERDIR(
     contrib/ydb/core/base
-    contrib/ydb/core/protos
     contrib/ydb/core/docapi
+    contrib/ydb/core/kqp/expr_nodes
+    contrib/ydb/core/kqp/opt/cbo
+    contrib/ydb/core/local_indexes/bloom
     contrib/ydb/core/kqp/query_data
+    contrib/ydb/core/protos
+    contrib/ydb/core/scheme
+    contrib/ydb/core/tx/columnshard/engines/storage/indexes/min_max/misc
     contrib/ydb/library/aclib
     contrib/ydb/library/aclib/protos
-    contrib/ydb/library/binary_json
-    contrib/ydb/library/dynumber
-    contrib/ydb/library/yql/core/services
-    contrib/ydb/library/yql/minikql
-    contrib/ydb/library/yql/public/decimal
+    contrib/ydb/library/ydb_issue/proto
+    contrib/ydb/library/yql/dq/common
+    contrib/ydb/library/yql/dq/constraints
+    contrib/ydb/library/yql/dq/expr_nodes
+    contrib/ydb/library/yql/dq/opt
+    contrib/ydb/library/yql/providers/dq/expr_nodes
     contrib/ydb/public/lib/scheme_types
-    contrib/ydb/public/sdk/cpp/client/ydb_topic
+    contrib/ydb/public/sdk/cpp/src/client/topic
+    contrib/ydb/services/metadata/optimization
+    contrib/ydb/library/yql/core
     contrib/ydb/library/yql/core/expr_nodes
+    contrib/ydb/library/yql/core/services
     contrib/ydb/library/yql/core/peephole_opt
+    contrib/ydb/library/yql/minikql
     contrib/ydb/library/yql/parser/pg_wrapper/interface
     contrib/ydb/library/yql/providers/common/codec
     contrib/ydb/library/yql/providers/common/config
@@ -47,13 +58,21 @@ PEERDIR(
     contrib/ydb/library/yql/providers/common/proto
     contrib/ydb/library/yql/providers/common/provider
     contrib/ydb/library/yql/providers/common/schema/expr
-    contrib/ydb/library/yql/providers/dq/expr_nodes
+    contrib/ydb/library/yql/providers/common/transform
     contrib/ydb/library/yql/providers/pg/expr_nodes
     contrib/ydb/library/yql/providers/result/expr_nodes
     contrib/ydb/library/yql/providers/result/provider
-    contrib/ydb/library/yql/sql
-    contrib/ydb/library/ydb_issue/proto
+    contrib/ydb/library/yql/public/decimal
     contrib/ydb/library/yql/public/issue
+    contrib/ydb/library/yql/types/binary_json
+    contrib/ydb/library/yql/types/dynumber
+    contrib/ydb/library/yql/sql
+    contrib/ydb/library/yql/sql/settings
+    contrib/ydb/library/yql/sql/v1
+    contrib/ydb/library/yql/sql/v1/lexer/antlr4
+    contrib/ydb/library/yql/sql/v1/lexer/antlr4_ansi
+    contrib/ydb/library/yql/sql/v1/proto_parser/antlr4
+    contrib/ydb/library/yql/sql/v1/proto_parser/antlr4_ansi
     contrib/ydb/library/yql/utils/log
 )
 
@@ -98,6 +117,7 @@ ELSE()
 ENDIF()
 
 GENERATE_ENUM_SERIALIZATION(yql_kikimr_provider.h)
+GENERATE_ENUM_SERIALIZATION(yql_kikimr_gateway.h)
 
 END()
 

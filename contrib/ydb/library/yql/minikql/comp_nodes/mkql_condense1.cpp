@@ -4,7 +4,7 @@
 #include <contrib/ydb/library/yql/minikql/mkql_node_cast.h>
 #include <contrib/ydb/library/yql/minikql/mkql_node_builder.h>
 #include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node_holders.h>
-#include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node_codegen.h>  // Y_IGNORE
+#include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node_codegen.h> // Y_IGNORE
 
 namespace NKikimr {
 namespace NMiniKQL {
@@ -12,10 +12,11 @@ namespace NMiniKQL {
 namespace {
 
 template <bool Interruptable, bool UseCtx>
-class TCondense1FlowWrapper : public TStatefulFlowCodegeneratorNode<TCondense1FlowWrapper<Interruptable, UseCtx>> {
+class TCondense1FlowWrapper: public TStatefulFlowCodegeneratorNode<TCondense1FlowWrapper<Interruptable, UseCtx>> {
     typedef TStatefulFlowCodegeneratorNode<TCondense1FlowWrapper<Interruptable, UseCtx>> TBaseComputation;
+
 public:
-     TCondense1FlowWrapper(
+    TCondense1FlowWrapper(
         TComputationMutables& mutables,
         EValueRepresentation kind,
         IComputationNode* flow,
@@ -24,13 +25,20 @@ public:
         IComputationNode* outSwitch,
         IComputationNode* initState,
         IComputationNode* updateState)
-        : TBaseComputation(mutables, flow, kind, EValueRepresentation::Embedded),
-            Flow(flow), Item(item), State(state), Switch(outSwitch), InitState(initState), UpdateState(updateState)
-    {}
+        : TBaseComputation(mutables, flow, kind, EValueRepresentation::Embedded)
+        ,
+        Flow(flow)
+        , Item(item)
+        , State(state)
+        , Switch(outSwitch)
+        , InitState(initState)
+        , UpdateState(updateState)
+    {
+    }
 
     NUdf::TUnboxedValuePod DoCalculate(NUdf::TUnboxedValue& state, TComputationContext& ctx) const {
         if (state.IsFinish()) {
-            return static_cast<const NUdf::TUnboxedValuePod&>(state);
+            return state;
         } else if (state.HasValue()) {
             if constexpr (UseCtx) {
                 CleanupCurrentContext();
@@ -105,10 +113,7 @@ public:
         block = step;
 
         if constexpr (UseCtx) {
-            const auto cleanup = ConstantInt::get(Type::getInt64Ty(context), GetMethodPtr(&CleanupCurrentContext));
-            const auto cleanupType = FunctionType::get(Type::getVoidTy(context), {}, false);
-            const auto cleanupPtr = CastInst::Create(Instruction::IntToPtr, cleanup, PointerType::getUnqual(cleanupType), "cleanup_ctx", block);
-            CallInst::Create(cleanupType, cleanupPtr, {}, "", block);
+            EmitFunctionCall<&CleanupCurrentContext>(Type::getVoidTy(context), {}, ctx, block);
         }
 
         new StoreInst(GetEmpty(context), statePtr, block);
@@ -117,7 +122,7 @@ public:
 
         block = frst;
 
-        const auto invalid = IsInvalid(state, block);
+        const auto invalid = IsInvalid(state, block, context);
         const auto empty = PHINode::Create(invalid->getType(), 3U, "empty", work);
         empty->addIncoming(invalid, block);
         BranchInst::Create(work, block);
@@ -151,7 +156,7 @@ public:
             const auto reset = GetNodeValue(Switch, ctx, block);
             if constexpr (Interruptable) {
                 const auto pass = BasicBlock::Create(context, "pass", ctx.Func);
-                BranchInst::Create(stop, pass, IsEmpty(reset, block), block);
+                BranchInst::Create(stop, pass, IsEmpty(reset, block, context), block);
                 block = pass;
             }
 
@@ -203,10 +208,11 @@ private:
 };
 
 template <bool Interruptable, bool UseCtx>
-class TCondense1Wrapper : public TCustomValueCodegeneratorNode<TCondense1Wrapper<Interruptable, UseCtx>> {
+class TCondense1Wrapper: public TCustomValueCodegeneratorNode<TCondense1Wrapper<Interruptable, UseCtx>> {
     typedef TCustomValueCodegeneratorNode<TCondense1Wrapper<Interruptable, UseCtx>> TBaseComputation;
+
 public:
-    class TValue : public TComputationValue<TValue> {
+    class TValue: public TComputationValue<TValue> {
     public:
         using TBase = TComputationValue<TValue>;
 
@@ -219,7 +225,8 @@ public:
             , Stream(std::move(stream))
             , Ctx(ctx)
             , State(state)
-        {}
+        {
+        }
 
     private:
         ui32 GetTraverseCount() const final {
@@ -255,7 +262,8 @@ public:
             }
 
             while (true) {
-                const auto status = Stream.Fetch(State.Item->RefValue(Ctx));
+                NYql::NUdf::TUnboxedValue fetchResult;
+                const auto status = Stream.Fetch(fetchResult);
                 if (status == NUdf::EFetchStatus::Yield) {
                     return status;
                 }
@@ -263,6 +271,8 @@ public:
                 if (status == NUdf::EFetchStatus::Finish) {
                     break;
                 }
+
+                State.Item->SetValue(Ctx, std::move(fetchResult));
 
                 if (ESqueezeState::Idle == State.Stage) {
                     State.Stage = ESqueezeState::Work;
@@ -317,13 +327,14 @@ public:
         , Stream(stream)
         , State(item, state, outSwitch, initState, updateState, inSave, outSave, inLoad, outLoad, stateType)
     {
-        this->Stateless = false;
+        this->Stateless_ = false;
     }
 
     NUdf::TUnboxedValuePod DoCalculate(TComputationContext& ctx) const {
 #ifndef MKQL_DISABLE_CODEGEN
-        if (ctx.ExecuteLLVM && Fetch)
+        if (ctx.ExecuteLLVM && Fetch) {
             return ctx.HolderFactory.Create<TSqueezeCodegenValue>(State, Fetch, ctx, Stream->GetValue(ctx));
+        }
 #endif
         return ctx.HolderFactory.Create<TValue>(Stream->GetValue(ctx), State, ctx);
     }
@@ -366,11 +377,12 @@ private:
         MKQL_ENSURE(codegenStateArg, "State arg must be codegenerator node.");
 
         const auto& name = TBaseComputation::MakeName("Fetch");
-        if (const auto f = module.getFunction(name.c_str()))
+        if (const auto f = module.getFunction(name.c_str())) {
             return f;
+        }
 
         const auto valueType = Type::getInt128Ty(context);
-        const auto containerType = codegen.GetEffectiveTarget() == NYql::NCodegen::ETarget::Windows ? static_cast<Type*>(PointerType::getUnqual(valueType)) : static_cast<Type*>(valueType);
+        const auto containerType = static_cast<Type*>(valueType);
         const auto contextType = GetCompContextType(context);
         const auto statusType = Type::getInt32Ty(context);
         const auto stateType = Type::getInt8Ty(context);
@@ -378,6 +390,8 @@ private:
 
         TCodegenContext ctx(codegen);
         ctx.Func = cast<Function>(module.getOrInsertFunction(name.c_str(), funcType).getCallee());
+
+        DISubprogramAnnotator annotator(ctx, ctx.Func);
 
         auto args = ctx.Func->arg_begin();
 
@@ -389,8 +403,7 @@ private:
         const auto main = BasicBlock::Create(context, "main", ctx.Func);
         auto block = main;
 
-        const auto container = codegen.GetEffectiveTarget() == NYql::NCodegen::ETarget::Windows ?
-            new LoadInst(valueType, containerArg, "load_container", false, block) : static_cast<Value*>(containerArg);
+        const auto container = static_cast<Value*>(containerArg);
 
         const auto step = BasicBlock::Create(context, "step", ctx.Func);
         const auto none = BasicBlock::Create(context, "none", ctx.Func);
@@ -408,10 +421,7 @@ private:
         block = step;
 
         if constexpr (UseCtx) {
-            const auto cleanup = ConstantInt::get(Type::getInt64Ty(context), GetMethodPtr(&CleanupCurrentContext));
-            const auto cleanupType = FunctionType::get(Type::getVoidTy(context), {}, false);
-            const auto cleanupPtr = CastInst::Create(Instruction::IntToPtr, cleanup, PointerType::getUnqual(cleanupType), "cleanup_ctx", block);
-            CallInst::Create(cleanupType, cleanupPtr, {}, "", block);
+            EmitFunctionCall<&CleanupCurrentContext>(Type::getVoidTy(context), {}, ctx, block);
         }
 
         new StoreInst(ConstantInt::get(state0->getType(), static_cast<ui8>(ESqueezeState::Work)), statePtr, block);
@@ -420,8 +430,9 @@ private:
 
         block = loop;
 
-        const auto itemPtr = codegenItemArg->CreateRefValue(ctx, block);
-        const auto status = CallBoxedValueVirtualMethod<NUdf::TBoxedValueAccessor::EMethod::Fetch>(statusType, container, codegen, block, itemPtr);
+        const auto [status, itemPtr] = RefValueWithCallResult(codegenItemArg, ctx, block, [&](Value* itemPtr) {
+            return CallBoxedValueFetch(container, ctx, block, itemPtr);
+        });
 
         const auto ychk = CmpInst::Create(Instruction::ICmp, ICmpInst::ICMP_EQ, status, ConstantInt::get(status->getType(), static_cast<ui32>(NUdf::EFetchStatus::Yield)), "ychk", block);
 
@@ -477,7 +488,7 @@ private:
 
             block = swap;
             new StoreInst(ConstantInt::get(state1->getType(), static_cast<ui8>(ESqueezeState::NeedInit)), statePtr, block);
-            SafeUnRefUnboxed(valuePtr, ctx, block);
+            SafeUnRefUnboxedOne(valuePtr, ctx, block);
             const auto state = codegenStateArg->CreateGetValue(ctx, block);
             new StoreInst(state, valuePtr, block);
             ValueAddRef(State.State->GetRepresentation(), valuePtr, ctx, block);
@@ -506,7 +517,7 @@ private:
 
         block = fill;
 
-        SafeUnRefUnboxed(valuePtr, ctx, block);
+        SafeUnRefUnboxedOne(valuePtr, ctx, block);
         const auto result = codegenStateArg->CreateGetValue(ctx, block);
         new StoreInst(result, valuePtr, block);
         ValueAddRef(State.State->GetRepresentation(), valuePtr, ctx, block);
@@ -525,7 +536,7 @@ private:
     TSqueezeState State;
 };
 
-}
+} // namespace
 
 template <bool UseCtx>
 IComputationNode* WrapCondense1Impl(TCallable& callable, const TComputationNodeFactoryContext& ctx) {
@@ -597,5 +608,5 @@ IComputationNode* WrapSqueeze1(TCallable& callable, const TComputationNodeFactor
     return new TCondense1Wrapper<false, false>(ctx.Mutables, stream, item, state, nullptr, initState, updateState, inSave, outSave, inLoad, outLoad, stateType);
 }
 
-}
-}
+} // namespace NMiniKQL
+} // namespace NKikimr

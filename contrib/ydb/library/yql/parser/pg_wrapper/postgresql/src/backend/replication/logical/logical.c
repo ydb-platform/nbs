@@ -2,7 +2,7 @@
  * logical.c
  *	   PostgreSQL logical decoding coordination
  *
- * Copyright (c) 2012-2021, PostgreSQL Global Development Group
+ * Copyright (c) 2012-2023, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/replication/logical/logical.c
@@ -93,6 +93,11 @@ static void stream_message_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *tx
 static void stream_truncate_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 									   int nrelations, Relation relations[], ReorderBufferChange *change);
 
+/* callback to update txn's progress */
+static void update_progress_txn_cb_wrapper(ReorderBuffer *cache,
+										   ReorderBufferTXN *txn,
+										   XLogRecPtr lsn);
+
 static void LoadOutputPlugin(OutputPluginCallbacks *callbacks, const char *plugin);
 
 /*
@@ -119,23 +124,21 @@ CheckLogicalDecodingRequirements(void)
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("logical decoding requires a database connection")));
 
-	/* ----
-	 * TODO: We got to change that someday soon...
-	 *
-	 * There's basically three things missing to allow this:
-	 * 1) We need to be able to correctly and quickly identify the timeline a
-	 *	  LSN belongs to
-	 * 2) We need to force hot_standby_feedback to be enabled at all times so
-	 *	  the primary cannot remove rows we need.
-	 * 3) support dropping replication slots referring to a database, in
-	 *	  dbase_redo. There can't be any active ones due to HS recovery
-	 *	  conflicts, so that should be relatively easy.
-	 * ----
-	 */
 	if (RecoveryInProgress())
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("logical decoding cannot be used while in recovery")));
+	{
+		/*
+		 * This check may have race conditions, but whenever
+		 * XLOG_PARAMETER_CHANGE indicates that wal_level has changed, we
+		 * verify that there are no existing logical replication slots. And to
+		 * avoid races around creating a new slot,
+		 * CheckLogicalDecodingRequirements() is called once before creating
+		 * the slot, and once when logical decoding is initially starting up.
+		 */
+		if (GetActiveWalLevelOnStandby() < WAL_LEVEL_LOGICAL)
+			ereport(ERROR,
+					(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+					 errmsg("logical decoding on standby requires wal_level >= logical on the primary")));
+	}
 }
 
 /*
@@ -148,6 +151,7 @@ StartupDecodingContext(List *output_plugin_options,
 					   TransactionId xmin_horizon,
 					   bool need_full_snapshot,
 					   bool fast_forward,
+					   bool in_create,
 					   XLogReaderRoutine *xl_routine,
 					   LogicalOutputPluginWriterPrepareWrite prepare_write,
 					   LogicalOutputPluginWriterWrite do_write,
@@ -202,12 +206,13 @@ StartupDecodingContext(List *output_plugin_options,
 	if (!ctx->reader)
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
-				 errmsg("out of memory")));
+				 errmsg("out of memory"),
+				 errdetail("Failed while allocating a WAL reading processor.")));
 
 	ctx->reorder = ReorderBufferAllocate();
 	ctx->snapshot_builder =
 		AllocateSnapshotBuilder(ctx->reorder, xmin_horizon, start_lsn,
-								need_full_snapshot, slot->data.initial_consistent_point);
+								need_full_snapshot, slot->data.two_phase_at);
 
 	ctx->reorder->private_data = ctx;
 
@@ -277,6 +282,12 @@ StartupDecodingContext(List *output_plugin_options,
 	ctx->reorder->commit_prepared = commit_prepared_cb_wrapper;
 	ctx->reorder->rollback_prepared = rollback_prepared_cb_wrapper;
 
+	/*
+	 * Callback to support updating progress during sending data of a
+	 * transaction (and its subtransactions) to the output plugin.
+	 */
+	ctx->reorder->update_progress_txn = update_progress_txn_cb_wrapper;
+
 	ctx->out = makeStringInfo();
 	ctx->prepare_write = prepare_write;
 	ctx->write = do_write;
@@ -285,6 +296,8 @@ StartupDecodingContext(List *output_plugin_options,
 	ctx->output_plugin_options = output_plugin_options;
 
 	ctx->fast_forward = fast_forward;
+
+	ctx->in_create = in_create;
 
 	MemoryContextSwitchTo(old_context);
 
@@ -329,6 +342,12 @@ CreateInitDecodingContext(const char *plugin,
 	NameData	plugin_name;
 	LogicalDecodingContext *ctx;
 	MemoryContext old_context;
+
+	/*
+	 * On a standby, this check is also required while creating the slot.
+	 * Check the comments in the function.
+	 */
+	CheckLogicalDecodingRequirements();
 
 	/* shorter lines... */
 	slot = MyReplicationSlot;
@@ -385,11 +404,11 @@ CreateInitDecodingContext(const char *plugin,
 	 * without further interlock its return value might immediately be out of
 	 * date.
 	 *
-	 * So we have to acquire the ProcArrayLock to prevent computation of new
-	 * xmin horizons by other backends, get the safe decoding xid, and inform
-	 * the slot machinery about the new limit. Once that's done the
-	 * ProcArrayLock can be released as the slot machinery now is
-	 * protecting against vacuum.
+	 * So we have to acquire both the ReplicationSlotControlLock and the
+	 * ProcArrayLock to prevent concurrent computation and update of new xmin
+	 * horizons by other backends, get the safe decoding xid, and inform the
+	 * slot machinery about the new limit. Once that's done both locks can be
+	 * released as the slot machinery now is protecting against vacuum.
 	 *
 	 * Note that, temporarily, the data, not just the catalog, xmin has to be
 	 * reserved if a data snapshot is to be exported.  Otherwise the initial
@@ -402,6 +421,7 @@ CreateInitDecodingContext(const char *plugin,
 	 *
 	 * ----
 	 */
+	LWLockAcquire(ReplicationSlotControlLock, LW_EXCLUSIVE);
 	LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
 
 	xmin_horizon = GetOldestSafeDecodingTransactionId(!need_full_snapshot);
@@ -416,12 +436,13 @@ CreateInitDecodingContext(const char *plugin,
 	ReplicationSlotsComputeRequiredXmin(true);
 
 	LWLockRelease(ProcArrayLock);
+	LWLockRelease(ReplicationSlotControlLock);
 
 	ReplicationSlotMarkDirty();
 	ReplicationSlotSave();
 
 	ctx = StartupDecodingContext(NIL, restart_lsn, xmin_horizon,
-								 need_full_snapshot, false,
+								 need_full_snapshot, false, true,
 								 xl_routine, prepare_write, do_write,
 								 update_progress);
 
@@ -432,10 +453,12 @@ CreateInitDecodingContext(const char *plugin,
 	MemoryContextSwitchTo(old_context);
 
 	/*
-	 * We allow decoding of prepared transactions iff the two_phase option is
-	 * enabled at the time of slot creation.
+	 * We allow decoding of prepared transactions when the two_phase is
+	 * enabled at the time of slot creation, or when the two_phase option is
+	 * given at the streaming start, provided the plugin supports all the
+	 * callbacks for two-phase.
 	 */
-	ctx->twophase &= MyReplicationSlot->data.two_phase;
+	ctx->twophase &= slot->data.two_phase;
 
 	ctx->reorder->output_rewrites = ctx->options.receive_rewrites;
 
@@ -504,6 +527,29 @@ CreateDecodingContext(XLogRecPtr start_lsn,
 				 errmsg("replication slot \"%s\" was not created in this database",
 						NameStr(slot->data.name))));
 
+	/*
+	 * Check if slot has been invalidated due to max_slot_wal_keep_size. Avoid
+	 * "cannot get changes" wording in this errmsg because that'd be
+	 * confusingly ambiguous about no changes being available when called from
+	 * pg_logical_slot_get_changes_guts().
+	 */
+	if (MyReplicationSlot->data.invalidated == RS_INVAL_WAL_REMOVED)
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("can no longer get changes from replication slot \"%s\"",
+						NameStr(MyReplicationSlot->data.name)),
+				 errdetail("This slot has been invalidated because it exceeded the maximum reserved size.")));
+
+	if (MyReplicationSlot->data.invalidated != RS_INVAL_NONE)
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("can no longer get changes from replication slot \"%s\"",
+						NameStr(MyReplicationSlot->data.name)),
+				 errdetail("This slot has been invalidated because it was conflicting with recovery.")));
+
+	Assert(MyReplicationSlot->data.invalidated == RS_INVAL_NONE);
+	Assert(MyReplicationSlot->data.restart_lsn != InvalidXLogRecPtr);
+
 	if (start_lsn == InvalidXLogRecPtr)
 	{
 		/* continue from last position */
@@ -518,8 +564,12 @@ CreateDecodingContext(XLogRecPtr start_lsn,
 		 * xlog records didn't result in anything relevant for logical
 		 * decoding. Clients have to be able to do that to support synchronous
 		 * replication.
+		 *
+		 * Starting at a different LSN than requested might not catch certain
+		 * kinds of client errors; so the client may wish to check that
+		 * confirmed_flush_lsn matches its expectations.
 		 */
-		elog(DEBUG1, "cannot stream from %X/%X, minimum is %X/%X, forwarding",
+		elog(LOG, "%X/%X has been already streamed, forwarding to %X/%X",
 			 LSN_FORMAT_ARGS(start_lsn),
 			 LSN_FORMAT_ARGS(slot->data.confirmed_flush));
 
@@ -528,7 +578,7 @@ CreateDecodingContext(XLogRecPtr start_lsn,
 
 	ctx = StartupDecodingContext(output_plugin_options,
 								 start_lsn, InvalidTransactionId, false,
-								 fast_forward, xl_routine, prepare_write,
+								 fast_forward, false, xl_routine, prepare_write,
 								 do_write, update_progress);
 
 	/* call output plugin initialization callback */
@@ -538,10 +588,24 @@ CreateDecodingContext(XLogRecPtr start_lsn,
 	MemoryContextSwitchTo(old_context);
 
 	/*
-	 * We allow decoding of prepared transactions iff the two_phase option is
-	 * enabled at the time of slot creation.
+	 * We allow decoding of prepared transactions when the two_phase is
+	 * enabled at the time of slot creation, or when the two_phase option is
+	 * given at the streaming start, provided the plugin supports all the
+	 * callbacks for two-phase.
 	 */
-	ctx->twophase &= MyReplicationSlot->data.two_phase;
+	ctx->twophase &= (slot->data.two_phase || ctx->twophase_opt_given);
+
+	/* Mark slot to allow two_phase decoding if not already marked */
+	if (ctx->twophase && !slot->data.two_phase)
+	{
+		SpinLockAcquire(&slot->mutex);
+		slot->data.two_phase = true;
+		slot->data.two_phase_at = start_lsn;
+		SpinLockRelease(&slot->mutex);
+		ReplicationSlotMarkDirty();
+		ReplicationSlotSave();
+		SnapBuildSetTwoPhaseAt(ctx->snapshot_builder, start_lsn);
+	}
 
 	ctx->reorder->output_rewrites = ctx->options.receive_rewrites;
 
@@ -587,9 +651,9 @@ DecodingContextFindStartpoint(LogicalDecodingContext *ctx)
 		/* the read_page callback waits for new WAL */
 		record = XLogReadRecord(ctx->reader, &err);
 		if (err)
-			elog(ERROR, "%s", err);
+			elog(ERROR, "could not find logical decoding starting point: %s", err);
 		if (!record)
-			elog(ERROR, "no record found"); /* shouldn't happen */
+			elog(ERROR, "could not find logical decoding starting point");
 
 		LogicalDecodingProcessRecord(ctx, ctx->reader);
 
@@ -602,7 +666,8 @@ DecodingContextFindStartpoint(LogicalDecodingContext *ctx)
 
 	SpinLockAcquire(&slot->mutex);
 	slot->data.confirmed_flush = ctx->reader->EndRecPtr;
-	slot->data.initial_consistent_point = ctx->reader->EndRecPtr;
+	if (slot->data.two_phase)
+		slot->data.two_phase_at = ctx->reader->EndRecPtr;
 	SpinLockRelease(&slot->mutex);
 }
 
@@ -652,12 +717,14 @@ OutputPluginWrite(struct LogicalDecodingContext *ctx, bool last_write)
  * Update progress tracking (if supported).
  */
 void
-OutputPluginUpdateProgress(struct LogicalDecodingContext *ctx)
+OutputPluginUpdateProgress(struct LogicalDecodingContext *ctx,
+						   bool skipped_xact)
 {
 	if (!ctx->update_progress)
 		return;
 
-	ctx->update_progress(ctx, ctx->write_location, ctx->write_xid);
+	ctx->update_progress(ctx, ctx->write_location, ctx->write_xid,
+						 skipped_xact);
 }
 
 /*
@@ -724,6 +791,7 @@ startup_cb_wrapper(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool i
 
 	/* set output state */
 	ctx->accept_writes = false;
+	ctx->end_xact = false;
 
 	/* do the actual work: call callback */
 	ctx->callbacks.startup_cb(ctx, opt, is_init);
@@ -751,6 +819,7 @@ shutdown_cb_wrapper(LogicalDecodingContext *ctx)
 
 	/* set output state */
 	ctx->accept_writes = false;
+	ctx->end_xact = false;
 
 	/* do the actual work: call callback */
 	ctx->callbacks.shutdown_cb(ctx);
@@ -786,6 +855,7 @@ begin_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn)
 	ctx->accept_writes = true;
 	ctx->write_xid = txn->xid;
 	ctx->write_location = txn->first_lsn;
+	ctx->end_xact = false;
 
 	/* do the actual work: call callback */
 	ctx->callbacks.begin_cb(ctx, txn);
@@ -817,6 +887,7 @@ commit_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	ctx->accept_writes = true;
 	ctx->write_xid = txn->xid;
 	ctx->write_location = txn->end_lsn; /* points to the end of the record */
+	ctx->end_xact = true;
 
 	/* do the actual work: call callback */
 	ctx->callbacks.commit_cb(ctx, txn, commit_lsn);
@@ -857,6 +928,7 @@ begin_prepare_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn)
 	ctx->accept_writes = true;
 	ctx->write_xid = txn->xid;
 	ctx->write_location = txn->first_lsn;
+	ctx->end_xact = false;
 
 	/*
 	 * If the plugin supports two-phase commits then begin prepare callback is
@@ -901,6 +973,7 @@ prepare_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	ctx->accept_writes = true;
 	ctx->write_xid = txn->xid;
 	ctx->write_location = txn->end_lsn; /* points to the end of the record */
+	ctx->end_xact = true;
 
 	/*
 	 * If the plugin supports two-phase commits then prepare callback is
@@ -945,6 +1018,7 @@ commit_prepared_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	ctx->accept_writes = true;
 	ctx->write_xid = txn->xid;
 	ctx->write_location = txn->end_lsn; /* points to the end of the record */
+	ctx->end_xact = true;
 
 	/*
 	 * If the plugin support two-phase commits then commit prepared callback
@@ -990,6 +1064,7 @@ rollback_prepared_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	ctx->accept_writes = true;
 	ctx->write_xid = txn->xid;
 	ctx->write_location = txn->end_lsn; /* points to the end of the record */
+	ctx->end_xact = true;
 
 	/*
 	 * If the plugin support two-phase commits then rollback prepared callback
@@ -1033,12 +1108,14 @@ change_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	ctx->write_xid = txn->xid;
 
 	/*
-	 * report this change's lsn so replies from clients can give an up2date
+	 * Report this change's lsn so replies from clients can give an up-to-date
 	 * answer. This won't ever be enough (and shouldn't be!) to confirm
 	 * receipt of this transaction, but it might allow another transaction's
 	 * commit to be confirmed with one message.
 	 */
 	ctx->write_location = change->lsn;
+
+	ctx->end_xact = false;
 
 	ctx->callbacks.change_cb(ctx, txn, relation, change);
 
@@ -1073,12 +1150,14 @@ truncate_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	ctx->write_xid = txn->xid;
 
 	/*
-	 * report this change's lsn so replies from clients can give an up2date
+	 * Report this change's lsn so replies from clients can give an up-to-date
 	 * answer. This won't ever be enough (and shouldn't be!) to confirm
 	 * receipt of this transaction, but it might allow another transaction's
 	 * commit to be confirmed with one message.
 	 */
 	ctx->write_location = change->lsn;
+
+	ctx->end_xact = false;
 
 	ctx->callbacks.truncate_cb(ctx, txn, nrelations, relations, change);
 
@@ -1107,6 +1186,7 @@ filter_prepare_cb_wrapper(LogicalDecodingContext *ctx, TransactionId xid,
 
 	/* set output state */
 	ctx->accept_writes = false;
+	ctx->end_xact = false;
 
 	/* do the actual work: call callback */
 	ret = ctx->callbacks.filter_prepare_cb(ctx, xid, gid);
@@ -1137,6 +1217,7 @@ filter_by_origin_cb_wrapper(LogicalDecodingContext *ctx, RepOriginId origin_id)
 
 	/* set output state */
 	ctx->accept_writes = false;
+	ctx->end_xact = false;
 
 	/* do the actual work: call callback */
 	ret = ctx->callbacks.filter_by_origin_cb(ctx, origin_id);
@@ -1174,6 +1255,7 @@ message_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	ctx->accept_writes = true;
 	ctx->write_xid = txn != NULL ? txn->xid : InvalidTransactionId;
 	ctx->write_location = message_lsn;
+	ctx->end_xact = false;
 
 	/* do the actual work: call callback */
 	ctx->callbacks.message_cb(ctx, txn, message_lsn, transactional, prefix,
@@ -1210,12 +1292,14 @@ stream_start_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	ctx->write_xid = txn->xid;
 
 	/*
-	 * report this message's lsn so replies from clients can give an up2date
-	 * answer. This won't ever be enough (and shouldn't be!) to confirm
-	 * receipt of this transaction, but it might allow another transaction's
-	 * commit to be confirmed with one message.
+	 * Report this message's lsn so replies from clients can give an
+	 * up-to-date answer. This won't ever be enough (and shouldn't be!) to
+	 * confirm receipt of this transaction, but it might allow another
+	 * transaction's commit to be confirmed with one message.
 	 */
 	ctx->write_location = first_lsn;
+
+	ctx->end_xact = false;
 
 	/* in streaming mode, stream_start_cb is required */
 	if (ctx->callbacks.stream_start_cb == NULL)
@@ -1257,12 +1341,14 @@ stream_stop_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	ctx->write_xid = txn->xid;
 
 	/*
-	 * report this message's lsn so replies from clients can give an up2date
-	 * answer. This won't ever be enough (and shouldn't be!) to confirm
-	 * receipt of this transaction, but it might allow another transaction's
-	 * commit to be confirmed with one message.
+	 * Report this message's lsn so replies from clients can give an
+	 * up-to-date answer. This won't ever be enough (and shouldn't be!) to
+	 * confirm receipt of this transaction, but it might allow another
+	 * transaction's commit to be confirmed with one message.
 	 */
 	ctx->write_location = last_lsn;
+
+	ctx->end_xact = false;
 
 	/* in streaming mode, stream_stop_cb is required */
 	if (ctx->callbacks.stream_stop_cb == NULL)
@@ -1303,6 +1389,7 @@ stream_abort_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	ctx->accept_writes = true;
 	ctx->write_xid = txn->xid;
 	ctx->write_location = abort_lsn;
+	ctx->end_xact = true;
 
 	/* in streaming mode, stream_abort_cb is required */
 	if (ctx->callbacks.stream_abort_cb == NULL)
@@ -1347,6 +1434,7 @@ stream_prepare_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	ctx->accept_writes = true;
 	ctx->write_xid = txn->xid;
 	ctx->write_location = txn->end_lsn;
+	ctx->end_xact = true;
 
 	/* in streaming mode with two-phase commits, stream_prepare_cb is required */
 	if (ctx->callbacks.stream_prepare_cb == NULL)
@@ -1387,6 +1475,7 @@ stream_commit_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	ctx->accept_writes = true;
 	ctx->write_xid = txn->xid;
 	ctx->write_location = txn->end_lsn;
+	ctx->end_xact = true;
 
 	/* in streaming mode, stream_commit_cb is required */
 	if (ctx->callbacks.stream_commit_cb == NULL)
@@ -1428,12 +1517,14 @@ stream_change_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	ctx->write_xid = txn->xid;
 
 	/*
-	 * report this change's lsn so replies from clients can give an up2date
+	 * Report this change's lsn so replies from clients can give an up-to-date
 	 * answer. This won't ever be enough (and shouldn't be!) to confirm
 	 * receipt of this transaction, but it might allow another transaction's
 	 * commit to be confirmed with one message.
 	 */
 	ctx->write_location = change->lsn;
+
+	ctx->end_xact = false;
 
 	/* in streaming mode, stream_change_cb is required */
 	if (ctx->callbacks.stream_change_cb == NULL)
@@ -1479,6 +1570,7 @@ stream_message_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	ctx->accept_writes = true;
 	ctx->write_xid = txn != NULL ? txn->xid : InvalidTransactionId;
 	ctx->write_location = message_lsn;
+	ctx->end_xact = false;
 
 	/* do the actual work: call callback */
 	ctx->callbacks.stream_message_cb(ctx, txn, message_lsn, transactional, prefix,
@@ -1520,14 +1612,55 @@ stream_truncate_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	ctx->write_xid = txn->xid;
 
 	/*
-	 * report this change's lsn so replies from clients can give an up2date
+	 * Report this change's lsn so replies from clients can give an up-to-date
 	 * answer. This won't ever be enough (and shouldn't be!) to confirm
 	 * receipt of this transaction, but it might allow another transaction's
 	 * commit to be confirmed with one message.
 	 */
 	ctx->write_location = change->lsn;
 
+	ctx->end_xact = false;
+
 	ctx->callbacks.stream_truncate_cb(ctx, txn, nrelations, relations, change);
+
+	/* Pop the error context stack */
+	error_context_stack = errcallback.previous;
+}
+
+static void
+update_progress_txn_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
+							   XLogRecPtr lsn)
+{
+	LogicalDecodingContext *ctx = cache->private_data;
+	LogicalErrorCallbackState state;
+	ErrorContextCallback errcallback;
+
+	Assert(!ctx->fast_forward);
+
+	/* Push callback + info on the error context stack */
+	state.ctx = ctx;
+	state.callback_name = "update_progress_txn";
+	state.report_location = lsn;
+	errcallback.callback = output_plugin_error_callback;
+	errcallback.arg = (void *) &state;
+	errcallback.previous = error_context_stack;
+	error_context_stack = &errcallback;
+
+	/* set output state */
+	ctx->accept_writes = false;
+	ctx->write_xid = txn->xid;
+
+	/*
+	 * Report this change's lsn so replies from clients can give an up-to-date
+	 * answer. This won't ever be enough (and shouldn't be!) to confirm
+	 * receipt of this transaction, but it might allow another transaction's
+	 * commit to be confirmed with one message.
+	 */
+	ctx->write_location = lsn;
+
+	ctx->end_xact = false;
+
+	OutputPluginUpdateProgress(ctx, false);
 
 	/* Pop the error context stack */
 	error_context_stack = errcallback.previous;
@@ -1546,6 +1679,7 @@ LogicalIncreaseXminForSlot(XLogRecPtr current_lsn, TransactionId xmin)
 {
 	bool		updated_xmin = false;
 	ReplicationSlot *slot;
+	bool		got_new_xmin = false;
 
 	slot = MyReplicationSlot;
 
@@ -1583,8 +1717,18 @@ LogicalIncreaseXminForSlot(XLogRecPtr current_lsn, TransactionId xmin)
 	{
 		slot->candidate_catalog_xmin = xmin;
 		slot->candidate_xmin_lsn = current_lsn;
+
+		/*
+		 * Log new xmin at an appropriate log level after releasing the
+		 * spinlock.
+		 */
+		got_new_xmin = true;
 	}
 	SpinLockRelease(&slot->mutex);
+
+	if (got_new_xmin)
+		elog(DEBUG1, "got new catalog xmin %u at %X/%X", xmin,
+			 LSN_FORMAT_ARGS(current_lsn));
 
 	/* candidate already valid with the current flush position, apply */
 	if (updated_xmin)
@@ -1615,6 +1759,7 @@ LogicalIncreaseRestartDecodingForSlot(XLogRecPtr current_lsn, XLogRecPtr restart
 	/* don't overwrite if have a newer restart lsn */
 	if (restart_lsn <= slot->data.restart_lsn)
 	{
+		SpinLockRelease(&slot->mutex);
 	}
 
 	/*
@@ -1625,6 +1770,7 @@ LogicalIncreaseRestartDecodingForSlot(XLogRecPtr current_lsn, XLogRecPtr restart
 	{
 		slot->candidate_restart_valid = current_lsn;
 		slot->candidate_restart_lsn = restart_lsn;
+		SpinLockRelease(&slot->mutex);
 
 		/* our candidate can directly be used */
 		updated_lsn = true;
@@ -1635,7 +1781,7 @@ LogicalIncreaseRestartDecodingForSlot(XLogRecPtr current_lsn, XLogRecPtr restart
 	 * might never end up updating if the receiver acks too slowly. A missed
 	 * value here will just cause some extra effort after reconnecting.
 	 */
-	if (slot->candidate_restart_valid == InvalidXLogRecPtr)
+	else if (slot->candidate_restart_valid == InvalidXLogRecPtr)
 	{
 		slot->candidate_restart_valid = current_lsn;
 		slot->candidate_restart_lsn = restart_lsn;
@@ -1686,7 +1832,19 @@ LogicalConfirmReceivedLocation(XLogRecPtr lsn)
 
 		SpinLockAcquire(&MyReplicationSlot->mutex);
 
-		MyReplicationSlot->data.confirmed_flush = lsn;
+		/*
+		 * Prevent moving the confirmed_flush backwards, as this could lead to
+		 * data duplication issues caused by replicating already replicated
+		 * changes.
+		 *
+		 * This can happen when a client acknowledges an LSN it doesn't have
+		 * to do anything for, and thus didn't store persistently. After a
+		 * restart, the client can send the prior LSN that it stored
+		 * persistently as an acknowledgement, but we need to ignore such an
+		 * LSN. See similar case handling in CreateDecodingContext.
+		 */
+		if (lsn > MyReplicationSlot->data.confirmed_flush)
+			MyReplicationSlot->data.confirmed_flush = lsn;
 
 		/* if we're past the location required for bumping xmin, do so */
 		if (MyReplicationSlot->candidate_xmin_lsn != InvalidXLogRecPtr &&
@@ -1724,7 +1882,15 @@ LogicalConfirmReceivedLocation(XLogRecPtr lsn)
 
 		SpinLockRelease(&MyReplicationSlot->mutex);
 
-		/* first write new xmin to disk, so we know what's up after a crash */
+		/*
+		 * First, write new xmin and restart_lsn to disk so we know what's up
+		 * after a crash.  Even when we do this, the checkpointer can see the
+		 * updated restart_lsn value in the shared memory; then, a crash can
+		 * happen before we manage to write that value to the disk.  Thus,
+		 * checkpointer still needs to make special efforts to keep WAL
+		 * segments required by the restart_lsn written to the disk.  See
+		 * CreateCheckPoint() and CreateRestartPoint() for details.
+		 */
 		if (updated_xmin || updated_restart)
 		{
 			ReplicationSlotMarkDirty();
@@ -1751,7 +1917,14 @@ LogicalConfirmReceivedLocation(XLogRecPtr lsn)
 	else
 	{
 		SpinLockAcquire(&MyReplicationSlot->mutex);
-		MyReplicationSlot->data.confirmed_flush = lsn;
+
+		/*
+		 * Prevent moving the confirmed_flush backwards. See comments above
+		 * for the details.
+		 */
+		if (lsn > MyReplicationSlot->data.confirmed_flush)
+			MyReplicationSlot->data.confirmed_flush = lsn;
+
 		SpinLockRelease(&MyReplicationSlot->mutex);
 	}
 }
@@ -1790,7 +1963,6 @@ UpdateDecodingStats(LogicalDecodingContext *ctx)
 		 (long long) rb->totalTxns,
 		 (long long) rb->totalBytes);
 
-	namestrcpy(&repSlotStat.slotname, NameStr(ctx->slot->data.name));
 	repSlotStat.spill_txns = rb->spillTxns;
 	repSlotStat.spill_count = rb->spillCount;
 	repSlotStat.spill_bytes = rb->spillBytes;
@@ -1800,7 +1972,7 @@ UpdateDecodingStats(LogicalDecodingContext *ctx)
 	repSlotStat.total_txns = rb->totalTxns;
 	repSlotStat.total_bytes = rb->totalBytes;
 
-	pgstat_report_replslot(&repSlotStat);
+	pgstat_report_replslot(ctx->slot, &repSlotStat);
 
 	rb->spillTxns = 0;
 	rb->spillCount = 0;

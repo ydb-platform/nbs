@@ -1,7 +1,7 @@
 #include "nodes.h"
 
 #include <contrib/ydb/core/sys_view/common/events.h>
-#include <contrib/ydb/core/sys_view/common/schema.h>
+#include <contrib/ydb/core/sys_view/common/registry.h>
 #include <contrib/ydb/core/sys_view/common/scan_actor_base_impl.h>
 #include <contrib/ydb/core/node_whiteboard/node_whiteboard.h>
 
@@ -17,17 +17,18 @@ namespace NSysView {
 using namespace NActors;
 using namespace NNodeWhiteboard;
 
-class TNodesScan : public TScanActorBase<TNodesScan> {
+class TNodesScan : public TScanActorWithoutBackPressure<TNodesScan> {
 public:
-    using TBase  = TScanActorBase<TNodesScan>;
+    using TBase = TScanActorWithoutBackPressure<TNodesScan>;
 
     static constexpr auto ActorActivityType() {
         return NKikimrServices::TActivity::KQP_SYSTEM_VIEW_SCAN;
     }
 
-    TNodesScan(const NActors::TActorId& ownerId, ui32 scanId, const TTableId& tableId,
+    TNodesScan(const NActors::TActorId& ownerId, ui32 scanId,
+        const TString& database, const NKikimrSysView::TSysViewDescription& sysViewInfo,
         const TTableRange& tableRange, const TArrayRef<NMiniKQL::TKqpComputeContextBase::TColumn>& columns)
-        : TBase(ownerId, scanId, tableId, tableRange, columns)
+        : TBase(ownerId, scanId, database, sysViewInfo, tableRange, columns)
     {
         const auto& cellsFrom = TableRange.From.GetCells();
         if (cellsFrom.size() == 1 && !cellsFrom[0].IsNull()) {
@@ -56,7 +57,7 @@ public:
 
     STFUNC(StateScan) {
         switch (ev->GetTypeRewrite()) {
-            hFunc(NKqp::TEvKqpCompute::TEvScanDataAck, Handle);
+            sFunc(NKqp::TEvKqpCompute::TEvScanDataAck, HandleAck);
             hFunc(TEvInterconnect::TEvNodesInfo, Handle);
             hFunc(TEvWhiteboard::TEvSystemStateResponse, Handle);
             hFunc(TEvents::TEvUndelivered, Undelivered);
@@ -72,14 +73,7 @@ public:
     }
 
 private:
-    void ProceedToScan() override {
-        Become(&TNodesScan::StateScan);
-        if (AckReceived) {
-            StartScan();
-        }
-    }
-
-    void StartScan() {
+    void StartScan() final {
         if (IsEmptyRange || TenantNodes.empty()) {
             ReplyEmptyAndDie();
             return;
@@ -95,10 +89,6 @@ private:
             Send(whiteboardId, request.Release(),
                 IEventHandle::FlagTrackDelivery | IEventHandle::FlagSubscribeOnSession, nodeId);
         }
-    }
-
-    void Handle(NKqp::TEvKqpCompute::TEvScanDataAck::TPtr&) {
-        StartScan();
     }
 
     void Handle(TEvInterconnect::TEvNodesInfo::TPtr& ev) {
@@ -274,10 +264,11 @@ private:
     THashMap<TNodeId, THolder<TEvWhiteboard::TEvSystemStateResponse>> WBSystemInfo;
 };
 
-THolder<NActors::IActor> CreateNodesScan(const NActors::TActorId& ownerId, ui32 scanId, const TTableId& tableId,
+THolder<NActors::IActor> CreateNodesScan(const NActors::TActorId& ownerId, ui32 scanId,
+    const TString& database, const NKikimrSysView::TSysViewDescription& sysViewInfo,
     const TTableRange& tableRange, const TArrayRef<NMiniKQL::TKqpComputeContextBase::TColumn>& columns)
 {
-    return MakeHolder<TNodesScan>(ownerId, scanId, tableId, tableRange, columns);
+    return MakeHolder<TNodesScan>(ownerId, scanId, database, sysViewInfo, tableRange, columns);
 }
 
 } // NSysView

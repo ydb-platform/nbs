@@ -1,9 +1,29 @@
-{% include [concepts/index/intro.md](_includes/index/intro.md) %}
+# {{ ydb-short-name }} Concepts
 
-{% include [concepts/index/when_use.md](_includes/index/when_use.md) %}
+This documentation section covers the fundamental concepts and architectural principles behind {{ ydb-short-name }}. This information will help you better understand what's going on when you follow more practical content that can be found in [other sections tailored for specific roles](#see-also).
 
-{% include [concepts/index/how_it_works.md](_includes/index/how_it_works.md) %}
+The following topics provide comprehensive coverage of {{ ydb-short-name }}'s core functionality, from high-level architecture and data models to advanced features like transactions, indexing, and federated queries.
 
-## What's next?
+- [Glossary](glossary.md)
+- [Architecture](architecture/index.md)
+- [Connecting to a database](connect.md)
+- [Schema objects](datamodel/index.md)
+- [Cluster topology](topology.md)
+- [Bridge mode](bridge.md)
+- [Transactions](transactions.md)
+- [Secondary indexes](query_execution/secondary_indexes.md)
+- [Vector search](query_execution/vector_search.md)
+- [Change Data Capture (CDC)](cdc.md)
+- [Time to live and eviction](ttl.md)
+- [Database limits](limits-ydb.md)
+- [Multi-Version Concurrency Control (MVCC)](query_execution/mvcc.md)
+- [Asynchronous replication](async-replication.md)
+- [Query optimizer](query_execution/optimizer.md)
+- [Federated queries](query_execution/federated_query/index.md)
+- [Streaming queries](streaming-query.md)
 
-If you are interested in more specifics about various aspects of YDB, check out neighboring articles in this documentation section. If you are ready to jump into more practical content, you can continue to the [quick start](../quickstart.md) or [YQL](../dev/yql-tutorial/index.md) tutorials.
+## See Also {#see-also}
+
+- [{#T}](../devops/index.md)
+- [{#T}](../dev/index.md)
+- [{#T}](../security/index.md)

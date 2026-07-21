@@ -15,16 +15,24 @@
 #include <contrib/ydb/core/kqp/common/kqp_user_request_context.h>
 #include <contrib/ydb/core/kqp/common/kqp.h>
 #include <contrib/ydb/core/kqp/common/simple/temp_tables.h>
+#include <contrib/ydb/core/kqp/compile_service/kqp_compile_service.h>
 
 #include <contrib/ydb/library/actors/core/monotonic_provider.h>
 
 #include <util/generic/noncopyable.h>
 #include <util/generic/string.h>
+#include <util/random/random.h>
 
 #include <map>
 #include <memory>
 
 namespace NKikimr::NKqp {
+
+namespace NWorkload {
+class IQueryClassifier;
+} // namespace NWorkload
+
+class TKqpQueryCache;
 
 // basically it's a state that holds all the context
 // about the specific query execution.
@@ -50,7 +58,7 @@ public:
 
     TKqpQueryState(TEvKqp::TEvQueryRequest::TPtr& ev, ui64 queryId, const TString& database, const TMaybe<TString>& applicationName,
         const TString& cluster, TKqpDbCountersPtr dbCounters, bool longSession, const NKikimrConfig::TTableServiceConfig& tableServiceConfig,
-        const NKikimrConfig::TQueryServiceConfig& queryServiceConfig, const TString& sessionId, TMonotonic startedAt)
+        const NKikimrConfig::TQueryServiceConfig& queryServiceConfig, const TString& sessionId, TMonotonic startedAt, i32 runtimeParameterSizeLimit)
         : QueryId(queryId)
         , Database(database)
         , ApplicationName(applicationName)
@@ -59,21 +67,34 @@ public:
         , Sender(ev->Sender)
         , ProxyRequestId(ev->Cookie)
         , ParametersSize(ev->Get()->GetParametersSize())
+        , QueryPhysicalGraph(ev->Get()->GetQueryPhysicalGraph())
+        , Generation(ev->Get()->GetGeneration())
         , RequestActorId(ev->Get()->GetRequestActorId())
         , IsDocumentApiRestricted_(IsDocumentApiRestricted(ev->Get()->GetRequestType()))
+        , IsWarmupCompilation_(ev->Get()->GetIsWarmupCompilation())
         , StartTime(TInstant::Now())
         , KeepSession(ev->Get()->GetKeepSession() || longSession)
         , UserToken(ev->Get()->GetUserToken())
+        , UserTraceId((ev->Get()->GetUserCtx() != nullptr && ev->Get()->GetUserCtx()->GetUserTraceId()) ? ev->Get()->GetUserCtx()->GetUserTraceId().Clone() : NWilson::TTraceId())
         , ClientAddress(ev->Get()->GetClientAddress())
         , StartedAt(startedAt)
+        , FormatsSettings(ev->Get()->GetResultSetFormat(), ev->Get()->GetSchemaInclusionMode(), ev->Get()->GetArrowFormatSettings())
+        , RuntimeParameterSizeLimit(runtimeParameterSizeLimit)
+        , RuntimeParameterSizeLimitSatisfied(runtimeParameterSizeLimit > 0)
     {
         RequestEv.reset(ev->Release().Release());
-        bool enableImplicitQueryParameterTypes = tableServiceConfig.GetEnableImplicitQueryParameterTypes() ||
-            AppData()->FeatureFlags.GetEnableImplicitQueryParameterTypes();
-        if (enableImplicitQueryParameterTypes && !RequestEv->GetYdbParameters().empty()) {
+
+        if (!RequestEv->GetYdbParameters().empty()) {
             QueryParameterTypes = std::make_shared<std::map<TString, Ydb::Type>>();
+
             for (const auto& [name, typedValue] : RequestEv->GetYdbParameters()) {
                 QueryParameterTypes->insert({name, typedValue.Gettype()});
+
+                if ((typedValue.type().has_list_type() || typedValue.type().has_tuple_type()) &&
+                    typedValue.value().items().size() > static_cast<i32>(runtimeParameterSizeLimit))
+                {
+                    RuntimeParameterSizeLimitSatisfied = false;
+                }
             }
         }
 
@@ -85,6 +106,18 @@ public:
         KqpSessionSpan = NWilson::TSpan(
             TWilsonKqp::KqpSession, std::move(ev->TraceId),
             "Session.query." + NKikimrKqp::EQueryAction_Name(QueryAction), NWilson::EFlags::AUTO_END);
+        if (KqpSessionSpan && AppData()) {
+            KqpSessionSpan.Attribute("database", AppData()->TenantName);
+        }
+        if (IS_INFO_LOG_ENABLED(NKikimrServices::TLI)) {
+            if (KqpSessionSpan) {
+                QuerySpanId = *reinterpret_cast<const ui64*>(KqpSessionSpan.GetTraceId().GetSpanIdPtr());
+            } else {
+                while (QuerySpanId == 0) { // avoid 0 as query span id
+                    QuerySpanId = RandomNumber<ui64>();
+                }
+            }
+        }
         if (RequestEv->GetUserRequestContext()) {
             UserRequestContext = RequestEv->GetUserRequestContext();
         } else {
@@ -93,6 +126,14 @@ public:
         UserRequestContext->PoolId = RequestEv->GetPoolId();
         UserRequestContext->PoolConfig = RequestEv->GetPoolConfig();
         UserRequestContext->DatabaseId = RequestEv->GetDatabaseId();
+        QueryClassifier = RequestEv->GetWmQueryClassifier();
+
+        if (RequestEv->GetSaveQueryPhysicalGraph() && !QueryPhysicalGraph) {
+            YQL_ENSURE(QueryType == NKikimrKqp::EQueryType::QUERY_TYPE_SQL_GENERIC_SCRIPT);
+            YQL_ENSURE(QueryAction == NKikimrKqp::EQueryAction::QUERY_ACTION_EXECUTE);
+            YQL_ENSURE(HasImplicitTx());
+            SaveQueryPhysicalGraph = true;
+        }
     }
 
     // the monotonously growing counter, the ordinal number of the query,
@@ -100,6 +141,7 @@ public:
     // this counter may be used as a cookie by a session actor to reject events
     // with cookie less than current QueryId.
     ui64 QueryId = 0;
+    ui64 QuerySpanId = 0;
     TString Database;
     TMaybe<TString> ApplicationName;
     TString Cluster;
@@ -107,6 +149,7 @@ public:
     TActorId Sender;
     ui64 ProxyRequestId = 0;
     std::unique_ptr<TEvKqp::TEvQueryRequest> RequestEv;
+    std::shared_ptr<NWorkload::IQueryClassifier> QueryClassifier;
     ui64 ParametersSize = 0;
     TPreparedQueryHolder::TConstPtr PreparedQuery;
     TKqpCompileResult::TConstPtr CompileResult;
@@ -116,21 +159,28 @@ public:
     TQueryData::TPtr QueryData;
     NKikimrKqp::EQueryAction QueryAction;
     NKikimrKqp::EQueryType QueryType;
+    bool SaveQueryPhysicalGraph = false;
+    std::shared_ptr<const NKikimrKqp::TQueryPhysicalGraph> QueryPhysicalGraph;
+    const i64 Generation = 0;
 
     TActorId RequestActorId;
 
     ui64 CurrentTx = 0;
     TIntrusivePtr<TUserRequestContext> UserRequestContext;
     bool IsDocumentApiRestricted_ = false;
+    bool IsWarmupCompilation_ = false;
 
     TInstant StartTime;
     TInstant ContinueTime;
     NYql::TKikimrQueryDeadlines QueryDeadlines;
     TKqpQueryStats QueryStats;
+    TString QueryAst;
     bool KeepSession = false;
     TIntrusiveConstPtr<NACLib::TUserToken> UserToken;
+    NWilson::TTraceId UserTraceId;
     TString ClientAddress;
     NActors::TMonotonic StartedAt;
+    bool CompilationRunning = false;
 
     THashMap<NKikimr::TTableId, ui64> TableVersions;
 
@@ -151,7 +201,7 @@ public:
     TKqpTempTablesState::TConstPtr TempTablesState;
     TMaybe<TActorId> PoolHandlerActor;
 
-    THolder<NYql::TExprContext> SplittedCtx;
+    std::shared_ptr<NYql::TExprContext> SplittedCtx;
     TVector<NYql::TExprNode::TPtr> SplittedExprs;
     NYql::TExprNode::TPtr SplittedWorld;
     int NextSplittedExpr = 0;
@@ -167,16 +217,26 @@ public:
     ui32 StatementResultSize = 0;
 
     TMaybe<TString> CommandTagName;
-    THashSet<uint32_t> ParticipantNodes;
+    THashSet<ui32> ParticipantNodes;
+
+    NFormats::TFormatsSettings FormatsSettings;
+
+    i32 RuntimeParameterSizeLimit = 0;
+    bool RuntimeParameterSizeLimitSatisfied = false;
+
 
     bool IsLocalExecution(ui32 nodeId) const {
         if (RequestEv->GetRequestCtx() == nullptr) {
             return false;
         }
-        if (ParticipantNodes.size() == 1) {
+        if (IsSingleNodeExecution()) {
             return *ParticipantNodes.begin() == nodeId;
         }
         return false;
+    }
+
+    bool IsSingleNodeExecution() const {
+        return ParticipantNodes.size() == 1;
     }
 
     NKikimrKqp::EQueryAction GetAction() const {
@@ -235,12 +295,20 @@ public:
             QueryDeadlines.CancelAt = now + cancelAfter;
         }
 
-        auto timeoutMs = GetQueryTimeout(GetType(), timeout.MilliSeconds(), tableService, queryService);
-        QueryDeadlines.TimeoutAt = now + timeoutMs;
+        auto timeoutDuration = GetQueryTimeout(GetType(), timeout.MilliSeconds(), tableService, queryService, RequestEv->GetDisableDefaultTimeout());
+        QueryDeadlines.TimeoutAt = now + timeoutDuration;
     }
 
     bool HasTopicOperations() const {
         return RequestEv->HasTopicOperations();
+    }
+
+    bool HasKafkaApiOperations() const {
+        return RequestEv->HasKafkaApiOperations();
+    }
+
+    bool HasDeferredPublication() const {
+        return RequestEv->HasDeferredPublication();
     }
 
     bool GetQueryKeepInCache() const {
@@ -257,6 +325,14 @@ public:
 
     bool IsCreateTableAs() const {
         return IsSplitted();
+    }
+
+    const NFormats::TFormatsSettings& GetFormatsSettings() const {
+        return FormatsSettings;
+    }
+
+    ui64 GetQuerySpanId() const {
+        return QuerySpanId;
     }
 
     // todo: gvit
@@ -290,14 +366,40 @@ public:
                 if (source.GetTypeCase() == NKqpProto::TKqpSource::kReadRangesSource) {
                     addTable(source.GetReadRangesSource().GetTable());
                 }
+
+                if (source.GetTypeCase() == NKqpProto::TKqpSource::kFullTextSource) {
+                    const auto& fullText = source.GetFullTextSource();
+                    addTable(fullText.GetTable());
+                    // The compiled plan also pins each index impl table's (dict/docs/stats/posting)
+                    // schema version, and those advance independently of the main table (e.g. on
+                    // build finalize). Track them too, otherwise a cached plan with a stale impl-table
+                    // version is never invalidated and every read fails with SCHEME_ERROR until the
+                    // plan is evicted.
+                    for (const auto& indexTable : fullText.GetIndexTables()) {
+                        addTable(indexTable.GetTable());
+                    }
+                }
             }
+
+            auto fillFromSink = [&addTable](const auto& sink) {
+                YQL_ENSURE(sink.GetInternalSink().GetSettings().template Is<NKikimrKqp::TKqpTableSinkSettings>());
+                NKikimrKqp::TKqpTableSinkSettings settings;
+                YQL_ENSURE(sink.GetInternalSink().GetSettings().UnpackTo(&settings), "Failed to unpack settings");
+                addTable(settings.GetTable());
+                for (const auto& index : settings.GetIndexes()) {
+                    addTable(index.GetTable());
+                }
+            };
 
             for (const auto& sink : stage.GetSinks()) {
                 if (sink.GetTypeCase() == NKqpProto::TKqpSink::kInternalSink) {
-                    YQL_ENSURE(sink.GetInternalSink().GetSettings().Is<NKikimrKqp::TKqpTableSinkSettings>());
-                    NKikimrKqp::TKqpTableSinkSettings settings;
-                    YQL_ENSURE(sink.GetInternalSink().GetSettings().UnpackTo(&settings), "Failed to unpack settings");
-                    addTable(settings.GetTable());
+                    fillFromSink(sink);
+                }
+            }
+
+            for (const auto& transform : stage.GetOutputTransforms()) {
+                if (transform.GetTypeCase() == NKqpProto::TKqpOutputTransform::kInternalSink) {
+                    fillFromSink(transform);
                 }
             }
         }
@@ -325,8 +427,16 @@ public:
         return RequestEv->GetQuery();
     }
 
-    const ::NKikimrKqp::TTopicOperationsRequest& GetTopicOperations() const {
+    const ::NKikimrKqp::TTopicOperationsRequest& GetTopicOperationsFromRequest() const {
         return RequestEv->GetTopicOperations();
+    }
+
+    const ::NKikimrKqp::TKafkaApiOperationsRequest& GetKafkaApiOperationsFromRequest() const {
+        return RequestEv->GetKafkaApiOperations();
+    }
+
+    const ::NKikimrKqp::TTopicDeferredPublicationRequest& GetDeferredPublicationFromRequest() const {
+        return RequestEv->GetDeferredPublication();
     }
 
     bool NeedPersistentSnapshot() const {
@@ -339,6 +449,17 @@ public:
 
     bool NeedSnapshot(const NYql::TKikimrConfiguration& config) const {
         return ::NKikimr::NKqp::NeedSnapshot(*TxCtx, config, /*rollback*/ false, Commit, PreparedQuery->GetPhysicalQuery());
+    }
+
+    TVector<NKikimr::TTableId> GetTableIdsForSnapshot() const {
+        if (!Commit) {
+            return {};
+        }
+        TVector<NKikimr::TTableId> tableIds;
+        for (const auto& [tableId, _] : TableVersions) {
+            tableIds.push_back(tableId);
+        }
+        return tableIds;
     }
 
     bool ShouldCommitWithCurrentTx(const TKqpPhyTxHolder::TConstPtr& tx) {
@@ -357,19 +478,18 @@ public:
             return true;
         }
 
-        if (HasTxSinkInTx(tx)) {
-            // At current time transactional internal sinks require separate tnx with commit.
+        if (TxCtx->EffectiveIsolationLevel == NKqpProto::ISOLATION_LEVEL_READ_COMMITTED_RW) {
+            // Read Committed transactions can't be committed with changes
             return false;
         }
 
         if (TxCtx->HasOlapTable) {
-            // HTAP/OLAP transactions always use separate commit.
+            // Olap sink results can't be committed with changes
             return false;
         }
 
-        if (TxCtx->HasUncommittedChangesRead || AppData()->FeatureFlags.GetEnableForceImmediateEffectsExecution()) {
+        if (TxCtx->NeedUncommittedChangesFlush || AppData()->FeatureFlags.GetEnableForceImmediateEffectsExecution()) {
             if (tx && tx->GetHasEffects()) {
-                YQL_ENSURE(tx->ResultsSize() == 0);
                 // commit can be applied to the last transaction with effects
                 return CurrentTx + 1 == phyQuery.TransactionsSize();
             }
@@ -382,20 +502,25 @@ public:
     }
 
     bool ShouldAcquireLocks(const TKqpPhyTxHolder::TConstPtr& tx) {
-        if (*TxCtx->EffectiveIsolationLevel != NKikimrKqp::ISOLATION_LEVEL_SERIALIZABLE) {
+        Y_UNUSED(tx);
+        if (*TxCtx->EffectiveIsolationLevel != NKqpProto::ISOLATION_LEVEL_SERIALIZABLE &&
+                *TxCtx->EffectiveIsolationLevel != NKqpProto::ISOLATION_LEVEL_STRICT_SERIALIZABLE &&
+                *TxCtx->EffectiveIsolationLevel != NKqpProto::ISOLATION_LEVEL_SNAPSHOT_RW &&
+                *TxCtx->EffectiveIsolationLevel != NKqpProto::ISOLATION_LEVEL_READ_COMMITTED_RW) {
             return false;
         }
 
         // Inconsistent writes (CTAS) don't require locks.
-        if (IsSplitted() && !HasTxSinkInTx(tx)) {
+        if (IsSplitted()) {
             return false;
         }
 
-        if (TxCtx->Locks.GetLockTxId() && !TxCtx->Locks.Broken()) {
+        AFL_ENSURE(!TxCtx->TxManager->BrokenLocks());
+        if (TxCtx->LockHandle.GetLockId() && !TxCtx->TxManager->GetLockIssue()) {
             return true;  // Continue to acquire locks
         }
 
-        if (TxCtx->Locks.Broken()) {
+        if (TxCtx->TxManager->GetLockIssue()) {
             YQL_ENSURE(TxCtx->GetSnapshot().IsValid() && !TxCtx->TxHasEffects());
             return false;  // Do not acquire locks after first lock issue
         }
@@ -422,15 +547,15 @@ public:
         return true;
     }
 
-    TKqpPhyTxHolder::TConstPtr GetCurrentPhyTx() {
+    TKqpPhyTxHolder::TConstPtr GetCurrentPhyTx(NMiniKQL::TTypeEnvironment& txTypeEnv) {
         const auto& phyQuery = PreparedQuery->GetPhysicalQuery();
         auto tx = PreparedQuery->GetPhyTxOrEmpty(CurrentTx);
 
         if (TxCtx->CanDeferEffects()) {
-            // At current time sinks require separate tnx with commit.
-            while (tx && tx->GetHasEffects() && !HasTxSinkInTx(tx)) {
-                QueryData->CreateKqpValueMap(tx);
-                bool success = TxCtx->AddDeferredEffect(tx, QueryData);
+            // Olap sinks require separate tnx with commit.
+            while (tx && tx->GetHasEffects() && !TxCtx->HasOlapTable && tx->ResultsSize() == 0) {
+                QueryData->PrepareParameters(tx, PreparedQuery, txTypeEnv);
+                bool success = TxCtx->AddDeferredEffect(tx, QueryData, GetQuerySpanId());
                 YQL_ENSURE(success);
                 if (CurrentTx + 1 < phyQuery.TransactionsSize()) {
                     ++CurrentTx;
@@ -445,40 +570,6 @@ public:
         return tx;
     }
 
-    bool HasTxSinkInStage(const ::NKqpProto::TKqpPhyStage& stage) const {
-        for (const auto& sink : stage.GetSinks()) {
-            if (sink.GetTypeCase() == NKqpProto::TKqpSink::kInternalSink && sink.GetInternalSink().GetSettings().Is<NKikimrKqp::TKqpTableSinkSettings>()) {
-                NKikimrKqp::TKqpTableSinkSettings settings;
-                YQL_ENSURE(sink.GetInternalSink().GetSettings().UnpackTo(&settings), "Failed to unpack settings");
-                if (!settings.GetInconsistentTx()) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    bool HasTxSink() const {
-        const auto& query = PreparedQuery->GetPhysicalQuery();
-        for (auto& tx : query.GetTransactions()) {
-            for (const auto& stage : tx.GetStages()) {
-                if (HasTxSinkInStage(stage)) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    bool HasTxSinkInTx(const TKqpPhyTxHolder::TConstPtr& tx) const {
-        for (const auto& stage : tx->GetStages()) {
-            if (HasTxSinkInStage(stage)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     bool HasTxControl() const {
         return RequestEv->HasTxControl();
     }
@@ -488,6 +579,8 @@ public:
     const ::Ydb::Table::TransactionControl& GetTxControl() const {
         return RequestEv->GetTxControl();
     }
+
+    NKqpProto::EIsolationLevel GetIsolationLevel(TKqpTransactionContext* txCtx = nullptr) const;
 
     bool ProcessingLastStatement() const {
         return CurrentStatementId + 1 >= Statements.size();
@@ -518,17 +611,27 @@ public:
     // execution.
     std::unique_ptr<TEvTxProxySchemeCache::TEvNavigateKeySet> BuildNavigateKeySet();
     // same the context of the compiled query to the query state.
+    bool SaveAndCheckCompileResult(TKqpCompileResult::TConstPtr compileResult);
     bool SaveAndCheckCompileResult(TEvKqp::TEvCompileResponse* ev);
     bool SaveAndCheckParseResult(TEvKqp::TEvParseResponse&& ev);
     bool SaveAndCheckSplitResult(TEvKqp::TEvSplitResponse* ev);
+
+    bool TryGetFromCache(
+        TKqpQueryCache& cache,
+        const TGUCSettings::TPtr& gUCSettingsPtr,
+        TIntrusivePtr<TKqpCounters>& counters,
+        const TActorId& sender,
+        TKqpTransactionContext* txCtx = nullptr,
+        EWarmupAttributionMode warmupAttribution = EWarmupAttributionMode::None);
+
     // build the compilation request.
-    std::unique_ptr<TEvKqp::TEvCompileRequest> BuildCompileRequest(std::shared_ptr<std::atomic<bool>> cookie, const TGUCSettings::TPtr& gUCSettingsPtr);
+    std::unique_ptr<TEvKqp::TEvCompileRequest> BuildCompileRequest(std::shared_ptr<std::atomic<bool>> cookie, const TGUCSettings::TPtr& gUCSettingsPtr, TKqpTransactionContext* txCtx = nullptr);
     // TODO(gvit): get rid of code duplication in these requests,
     // use only one of these requests.
-    std::unique_ptr<TEvKqp::TEvRecompileRequest> BuildReCompileRequest(std::shared_ptr<std::atomic<bool>> cookie, const TGUCSettings::TPtr& gUCSettingsPtr);
+    std::unique_ptr<TEvKqp::TEvRecompileRequest> BuildReCompileRequest(std::shared_ptr<std::atomic<bool>> cookie, const TGUCSettings::TPtr& gUCSettingsPtr, TKqpTransactionContext* txCtx = nullptr);
 
     std::unique_ptr<TEvKqp::TEvCompileRequest> BuildSplitRequest(std::shared_ptr<std::atomic<bool>> cookie, const TGUCSettings::TPtr& gUCSettingsPtr);
-    std::unique_ptr<TEvKqp::TEvCompileRequest> BuildCompileSplittedRequest(std::shared_ptr<std::atomic<bool>> cookie, const TGUCSettings::TPtr& gUCSettingsPtr);
+    std::unique_ptr<TEvKqp::TEvCompileRequest> BuildCompileSplittedRequest(std::shared_ptr<std::atomic<bool>> cookie, const TGUCSettings::TPtr& gUCSettingsPtr, TKqpTransactionContext* txCtx = nullptr);
 
     bool ProcessingLastStatementPart();
     bool PrepareNextStatementPart();
@@ -589,11 +692,6 @@ public:
         return CpuTime;
     }
 
-    // Returns nullptr in case of no local event
-    google::protobuf::Arena* GetArena() {
-        return RequestEv->GetArena();
-    }
-
     bool GetCollectDiagnostics() {
         return RequestEv->GetCollectDiagnostics();
     }
@@ -603,13 +701,15 @@ public:
     }
 
     //// Topic ops ////
-    void AddOffsetsToTransaction();
+    void FillTopicOperations();
+    void FillDeferredPublicationOperations();
     bool TryMergeTopicOffsets(const NTopic::TTopicOperations &operations, TString& message);
     std::unique_ptr<NSchemeCache::TSchemeCacheNavigate> BuildSchemeCacheNavigate();
     bool IsAccessDenied(const NSchemeCache::TSchemeCacheNavigate& response, TString& message);
     bool HasErrors(const NSchemeCache::TSchemeCacheNavigate& response, TString& message);
 
     bool HasUserToken() const;
+
 };
 
 

@@ -1,8 +1,12 @@
 RECURSE(
     decimal
-    embedded
     fastcheck
     issue
+    langver
     purecalc
+    result_format
+    sql_format
+    types
     udf
+    udf_meta
 )

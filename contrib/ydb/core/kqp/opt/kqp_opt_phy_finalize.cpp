@@ -1,8 +1,13 @@
 #include "kqp_opt_impl.h"
 
-#include <contrib/ydb/library/yql/core/yql_expr_optimize.h>
+#include <contrib/ydb/core/kqp/common/kqp_user_request_context.h>
+#include <contrib/ydb/core/kqp/common/kqp_yql.h>
+#include <contrib/ydb/core/kqp/provider/yql_kikimr_settings.h>
 #include <contrib/ydb/library/yql/dq/opt/dq_opt_phy.h>
 #include <contrib/ydb/library/yql/dq/opt/dq_opt_phy_finalizing.h>
+
+#include <contrib/ydb/library/yql/core/yql_expr_optimize.h>
+#include <contrib/ydb/library/yql/utils/log/log.h>
 
 namespace NKikimr::NKqp::NOpt {
 
@@ -287,7 +292,6 @@ bool FindPrecomputedOutputs(TDqStageBase stage, const TParentsMap& parentsMap) {
     return false;
 }
 
-
 TExprBase ReplicatePrecompute(TDqStageBase stage, TExprContext& ctx, const TParentsMap& parentsMap) {
     for (size_t i = 0; i < stage.Inputs().Size(); ++i) {
         auto input = stage.Inputs().Item(i);
@@ -342,7 +346,7 @@ TExprBase ReplicatePrecompute(TDqStageBase stage, TExprContext& ctx, const TPare
 
 NYql::IGraphTransformer::TStatus ReplicatePrecomputeRule(const TExprNode::TPtr& input, TExprNode::TPtr& output, TExprContext& ctx) {
     TParentsMap parents;
-    GatherParents(*input, parents, true);
+    GatherParents(*input, parents);
     auto stages = CollectNodes<TDqStageBase>(input);
     for (auto& stage : stages) {
         auto applied = ReplicatePrecompute(stage, ctx, parents);

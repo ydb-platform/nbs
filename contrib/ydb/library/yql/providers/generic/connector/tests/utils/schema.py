@@ -1,34 +1,42 @@
 from dataclasses import dataclass
 import datetime
-from typing import TypeAlias, List, Any, Optional, Sequence, Dict
+from typing import List, Any, Optional, Sequence, Dict
 
-from yt import yson
-from yt.yson.yson_types import YsonEntity
 import contrib.ydb.public.api.protos.ydb_value_pb2 as ydb_value
-from contrib.ydb.library.yql.providers.generic.connector.api.common.data_source_pb2 import EDataSourceKind
+from contrib.ydb.library.contrib.ydb.library.yql.providers.common.proto.gateways_config_pb2 import EGenericDataSourceKind
 from contrib.ydb.public.api.protos.ydb_value_pb2 import Type, OptionalType
 
-import contrib.ydb.library.yql.providers.generic.connector.tests.utils.types.clickhouse as clickhouse
-import contrib.ydb.library.yql.providers.generic.connector.tests.utils.types.postgresql as postgresql
-import contrib.ydb.library.yql.providers.generic.connector.tests.utils.types.ydb as Ydb
-
-YsonList: TypeAlias = yson.yson_types.YsonList
+import contrib.ydb.library.contrib.ydb.library.yql.providers.generic.connector.tests.utils.types.clickhouse as clickhouse
+import contrib.ydb.library.contrib.ydb.library.yql.providers.generic.connector.tests.utils.types.mysql as mysql
+import contrib.ydb.library.contrib.ydb.library.yql.providers.generic.connector.tests.utils.types.oracle as oracle
+import contrib.ydb.library.contrib.ydb.library.yql.providers.generic.connector.tests.utils.types.ms_sql_server as ms_sql_server
+import contrib.ydb.library.contrib.ydb.library.yql.providers.generic.connector.tests.utils.types.postgresql as postgresql
+import contrib.ydb.library.contrib.ydb.library.yql.providers.generic.connector.tests.utils.types.ydb as Ydb
 
 
 @dataclass
 class DataSourceType:
     ch: clickhouse.Type = None
+    ms: ms_sql_server.Type = None
+    my: mysql.Type = None
+    ora: oracle.Type = None
     pg: postgresql.Type = None
     ydb: Ydb.Type = None
 
-    def pick(self, kind: EDataSourceKind.ValueType) -> str:
+    def pick(self, kind: EGenericDataSourceKind.ValueType) -> str:
         target = None
         match kind:
-            case EDataSourceKind.CLICKHOUSE:
+            case EGenericDataSourceKind.CLICKHOUSE:
                 target = self.ch
-            case EDataSourceKind.POSTGRESQL:
+            case EGenericDataSourceKind.MS_SQL_SERVER:
+                target = self.ms
+            case EGenericDataSourceKind.MYSQL:
+                target = self.my
+            case EGenericDataSourceKind.ORACLE:
+                target = self.ora
+            case EGenericDataSourceKind.POSTGRESQL:
                 target = self.pg
-            case EDataSourceKind.YDB:
+            case EGenericDataSourceKind.YDB:
                 target = self.ydb
             case _:
                 raise Exception(f'invalid data source: {kind}')
@@ -47,22 +55,6 @@ class Column:
             return self.name == __value.name and self.ydb_type == __value.ydb_type
         else:
             raise Exception(f"can't compare 'Column' with '{__value.__class__}'")
-
-    @classmethod
-    def from_yson(cls, src: YsonList):
-        name = src[0]
-        type_info = src[1]
-        assert isinstance(type_info, list), type_info
-
-        ydb_type = None
-
-        if type_info[0] == 'OptionalType':
-            primitive_type = ydb_value.Type(type_id=cls.__parse_primitive_type(type_info[1][1]))
-            ydb_type = ydb_value.Type(optional_type=ydb_value.OptionalType(item=primitive_type))
-        else:
-            ydb_type = ydb_value.Type(type_id=cls.__parse_primitive_type(type_info[1]))
-
-        return cls(name=name, ydb_type=ydb_type, data_source_type=None)
 
     @classmethod
     def from_json(cls, src: Dict):
@@ -124,16 +116,9 @@ class Column:
             case 'type_id':
                 return self.__cast_primitive_type(self.ydb_type.type_id, value)
             case 'optional_type':
-                if value is None:  # kqprun return None if value is not presented
+                if value is None:
                     return None
-                elif isinstance(value, YsonEntity):  # dqrun return YsonEntity if value is not presented
-                    if value == None:  # noqa
-                        return None
-
-                    raise ValueError(f'unexpected YSONEntity: {value}')
-                elif isinstance(value, list):  # dqrun return list with presented value
-                    return self.__cast_primitive_type(self.ydb_type.optional_type.item.type_id, value[0])
-                else:  # kqprun return presented value
+                else:
                     return self.__cast_primitive_type(self.ydb_type.optional_type.item.type_id, value)
 
             case _:
@@ -180,7 +165,7 @@ class Column:
             case _:
                 raise Exception(f"invalid type '{primitive_type_id}' for value '{value}'")
 
-    def format_for_data_source(self, kind: EDataSourceKind.ValueType) -> str:
+    def format_for_data_source(self, kind: EGenericDataSourceKind.ValueType) -> str:
         return f'{self.name} {self.data_source_type.pick(kind)}'
 
 
@@ -330,14 +315,10 @@ class Schema:
         return result
 
     @classmethod
-    def from_yson(cls, src: YsonList):
-        return cls(columns=ColumnList(*map(Column.from_yson, src)))
-
-    @classmethod
     def from_json(cls, src: Dict):
         return cls(columns=ColumnList(*map(Column.from_json, src)))
 
-    def yql_column_list(self, kind: EDataSourceKind.ValueType) -> str:
+    def yql_column_list(self, kind: EGenericDataSourceKind.ValueType) -> str:
         return ", ".join(map(lambda col: col.format_for_data_source(kind), self.columns))
 
     def select_every_column(self) -> SelectWhat:
@@ -348,6 +329,9 @@ class Schema:
         '''
         items = [SelectWhat.Item(name=col.name) for col in self.columns]
         return SelectWhat(*items)
+
+
+# FIXME: switch to snake case in function names
 
 
 def makeYdbTypeFromTypeID(type_id: Type.PrimitiveTypeId) -> Type:

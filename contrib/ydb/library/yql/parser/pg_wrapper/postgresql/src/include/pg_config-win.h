@@ -87,6 +87,7 @@
 
 /* Define to 1 if you have the `strchrnul' function. */
 #undef HAVE_STRCHRNUL
+#define HAVE_DECL_STRCHRNUL 0
 
 /* Define to 1 if you have the `backtrace_symbols' function. */
 #undef HAVE_BACKTRACE_SYMBOLS
@@ -176,3 +177,8 @@
 
 /* srand is PostgreSQL's implementation of srandom from stdlib.h for windows. */
 #define srandom srand
+
+#define BLCKSZ 8192
+
+#undef HAVE_POSIX_FALLOCATE
+

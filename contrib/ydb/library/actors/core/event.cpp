@@ -9,6 +9,8 @@ namespace NActors {
         Max<ui64>(), Max<ui64>()
     };
 
+    const TEventSerializedData IEventHandle::EmptyBuffer;
+
     TString IEventHandle::GetTypeName() const {
         return HasEvent() ? TypeName(*(const_cast<IEventHandle*>(this)->GetBase())) : TypeName(*this);
     }
@@ -31,7 +33,7 @@ namespace NActors {
         if (Event) {
             TAllocChunkSerializer serializer;
             Event->SerializeToArcadiaStream(&serializer);
-            auto chainBuf = serializer.Release(Event->CreateSerializationInfo());
+            auto chainBuf = serializer.Release(Event->CreateSerializationInfo(false));
             Event.Reset();
             return chainBuf;
         }
@@ -45,9 +47,16 @@ namespace NActors {
         if (Event) {
             TAllocChunkSerializer serializer;
             Event->SerializeToArcadiaStream(&serializer);
-            Buffer = serializer.Release(Event->CreateSerializationInfo());
+            Buffer = serializer.Release(Event->CreateSerializationInfo(false));
             return Buffer;
         }
         return new TEventSerializedData;
     }
+
+#ifndef NDEBUG
+    void IEventHandle::DoTrackNextEvent() {
+        TrackNextEvent = true;
+    }
+#endif
+
 }

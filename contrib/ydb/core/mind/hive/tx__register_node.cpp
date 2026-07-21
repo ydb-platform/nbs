@@ -23,6 +23,8 @@ public:
         TNodeId nodeId = Local.NodeId();
         TNodeInfo& node = Self->GetNode(nodeId);
         if (node.Local != Local) {
+            Self->RemoveNodeFromSegments(&node);
+
             TInstant now = TActivationContext::Now();
             node.Statistics.AddRestartTimestamp(now.MilliSeconds());
             node.ActualizeNodeStatistics(now);
@@ -66,6 +68,15 @@ public:
             node.ServicedDomains.swap(servicedDomains);
             node.LastSeenServicedDomains = node.ServicedDomains;
             node.Name = name;
+            if (Record.HasBridgePileId()) {
+                node.BridgePileId = TBridgePileId::FromProto(&Record, &decltype(Record)::GetBridgePileId);
+                Self->GetPile(node.BridgePileId).Nodes.insert(nodeId);
+                db.Table<Schema::Node>().Key(nodeId).Update<Schema::Node::BridgePileId>(node.BridgePileId.GetLocalDb());
+            } else {
+                Y_ENSURE(!Self->BridgeInfo, "Running in bridge mode, but node " << nodeId << " has no pile");
+            }
+
+            Self->UpdateNodeSegments(&node);
         }
         if (Record.HasSystemLocation() && Record.GetSystemLocation().HasDataCenter()) {
             node.Location = TNodeLocation(Record.GetSystemLocation());

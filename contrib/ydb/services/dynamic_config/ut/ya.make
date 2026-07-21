@@ -2,7 +2,7 @@ UNITTEST_FOR(contrib/ydb/services/dynamic_config)
 
 FORK_SUBTESTS()
 
-IF (SANITIZER_TYPE OR WITH_VALGRIND)
+IF (SANITIZER_TYPE)
     SIZE(MEDIUM)
 ENDIF()
 
@@ -12,7 +12,7 @@ SRCS(
 
 PEERDIR(
     library/cpp/getopt
-    contrib/ydb/library/grpc/client
+    contrib/ydb/public/sdk/cpp/src/library/grpc/client
     library/cpp/regex/pcre
     library/cpp/svnversion
     contrib/ydb/core/testlib/default

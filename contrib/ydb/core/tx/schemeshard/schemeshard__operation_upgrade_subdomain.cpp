@@ -1,9 +1,10 @@
-#include "schemeshard__operation_part.h"
 #include "schemeshard__operation_common.h"
-#include "schemeshard_path_describer.h"
+#include "schemeshard__operation_part.h"
 #include "schemeshard_impl.h"
 
+#include <contrib/ydb/core/base/path.h>
 #include <contrib/ydb/core/base/subdomain.h>
+#include <contrib/ydb/core/mind/hive/hive.h>
 #include <contrib/ydb/core/scheme/scheme_types_proto.h>
 
 namespace {
@@ -37,7 +38,7 @@ public:
         LOG_INFO_S(context.Ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
                    DebugHint() << " ProgressState"
                                << ", operation type: " << TTxState::TypeName(txState->TxType)
-                               << ", at tablet" << ssId);
+                               << ", at tablet# " << ssId);
 
         bool isDone = true;
 
@@ -230,6 +231,7 @@ public:
             colDescr->SetDeleteVersion(column.DeleteVersion);
             colDescr->SetFamily(column.Family);
             colDescr->SetNotNull(column.NotNull);
+            colDescr->SetSetNotNullInProgress(column.SetNotNullInProgress);
             colDescr->SetIsBuildInProgress(column.IsBuildInProgress);
             if (column.DefaultKind != ETableColumnDefaultKind::None) {
                 colDescr->SetDefaultKind(ui32(column.DefaultKind));
@@ -238,16 +240,16 @@ public:
         }
 
         for (ui32 partNum = 0; partNum < tableInfo->GetPartitions().size(); ++partNum) {
-            const TTableShardInfo& partition = tableInfo->GetPartitions().at(partNum);
+            const TTableShardInfo* partition = tableInfo->GetPartitions().at(partNum);
 
             auto partDescr = descr.AddPartitions();
             partDescr->SetId(partNum);
-            partDescr->SetRangeEnd(partition.EndOfRange);
-            partDescr->MutableShardIdx()->SetOwnerId(partition.ShardIdx.GetOwnerId());
-            partDescr->MutableShardIdx()->SetLocalId(ui64(partition.ShardIdx.GetLocalId()));
-            if (tableInfo->PerShardPartitionConfig.contains(partition.ShardIdx)) {
+            partDescr->SetRangeEnd(partition->EndOfRange);
+            partDescr->MutableShardIdx()->SetOwnerId(partition->ShardIdx.GetOwnerId());
+            partDescr->MutableShardIdx()->SetLocalId(ui64(partition->ShardIdx.GetLocalId()));
+            if (tableInfo->PerShardPartitionConfig.contains(partition->ShardIdx)) {
                 TString partitionConfig;
-                Y_PROTOBUF_SUPPRESS_NODISCARD tableInfo->PerShardPartitionConfig.at(partition.ShardIdx).SerializeToString(&partitionConfig);
+                Y_PROTOBUF_SUPPRESS_NODISCARD tableInfo->PerShardPartitionConfig.at(partition->ShardIdx).SerializeToString(&partitionConfig);
                 partDescr->SetPartitionConfig(partitionConfig);
             }
         }
@@ -308,6 +310,9 @@ public:
             case NKikimrSchemeOp::EPathType::EPathTypeExternalDataSource:
             case NKikimrSchemeOp::EPathType::EPathTypeView:
             case NKikimrSchemeOp::EPathType::EPathTypeResourcePool:
+            case NKikimrSchemeOp::EPathType::EPathTypeSysView:
+            case NKikimrSchemeOp::EPathType::EPathTypeSecret:
+            case NKikimrSchemeOp::EPathType::EPathTypeStreamingQuery:
                 Y_ABORT_UNLESS(!path.Base()->IsRoot());
                 //no shards
                 break;
@@ -322,8 +327,8 @@ public:
                 *event->Record.MutableTable() = DescribeTable(context, pathId);
 
                 TTableInfo::TPtr tableInfo = context.SS->Tables.at(pathId);
-                for (auto part: tableInfo->GetPartitions()) {
-                    TShardIdx shardIdx = part.ShardIdx;
+                for (const auto* part: tableInfo->GetPartitions()) {
+                    TShardIdx shardIdx = part->ShardIdx;
                     *migrateShards->Add() = DescribeShard(context, shardIdx);
                 }
 
@@ -361,7 +366,10 @@ public:
             case NKikimrSchemeOp::EPathType::EPathTypeCdcStream:
             case NKikimrSchemeOp::EPathType::EPathTypeSequence:
             case NKikimrSchemeOp::EPathType::EPathTypeReplication:
+            case NKikimrSchemeOp::EPathType::EPathTypeTransfer:
             case NKikimrSchemeOp::EPathType::EPathTypeBlobDepot:
+            case NKikimrSchemeOp::EPathType::EPathTypeBackupCollection:
+            case NKikimrSchemeOp::EPathType::EPathTypeTestShardSet:
                 Y_ABORT("UNIMPLEMENTED");
             case NKikimrSchemeOp::EPathType::EPathTypeInvalid:
                 Y_UNREACHABLE();
@@ -374,7 +382,7 @@ public:
         TTabletId ssId = context.SS->SelfTabletId();
         LOG_INFO_S(context.Ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
                    DebugHint() << " HandleReply TEvSchemeShard::TEvMigrateSchemeShardResult"
-                               << ", at tablet" << ssId);
+                               << ", at tablet# " << ssId);
 
         Y_ABORT_UNLESS(ev->Get()->GetPathId().OwnerId == context.SS->TabletID());
 
@@ -402,7 +410,7 @@ public:
 
         LOG_INFO_S(context.Ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
                    DebugHint() << " ProgressState"
-                               << ", at tablet" << ssId);
+                               << ", at tablet# " << ssId);
 
         TTxState* txState = context.SS->FindTx(OperationId);
         Y_ABORT_UNLESS(txState);
@@ -472,7 +480,7 @@ public:
         TTabletId ssId = context.SS->SelfTabletId();
         LOG_INFO_S(context.Ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
                    DebugHint() << " HandleReply TEvSchemeShard::TEvPublishTenantAsReadOnlyResult"
-                               << ", at tablet" << ssId);
+                               << ", at tablet# " << ssId);
 
         Y_ABORT_UNLESS(TTabletId(ev->Get()->Record.GetTenantSchemeShard()) == TenantSchemeShardId);
 
@@ -487,7 +495,7 @@ public:
 
         LOG_INFO_S(context.Ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
                    DebugHint() << " ProgressState"
-                               << ", at tablet" << ssId);
+                               << ", at tablet# " << ssId);
 
         TTxState* txState = context.SS->FindTx(OperationId);
         Y_ABORT_UNLESS(txState);
@@ -547,7 +555,7 @@ public:
 
         LOG_INFO_S(context.Ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
                    DebugHint() << " HandleReply TEvPrivate::TEvCommitTenantUpdate"
-                               << ", at tablet" << ssId);
+                               << ", at tablet# " << ssId);
 
         TTxState* txState = context.SS->FindTx(OperationId);
         Y_ABORT_UNLESS(txState);
@@ -587,7 +595,7 @@ public:
 
         LOG_INFO_S(context.Ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
                    DebugHint() << " HandleReply TEvPrivate::TEvUndoTenantUpdate"
-                               << ", at tablet" << ssId);
+                               << ", at tablet# " << ssId);
 
         TTxState* txState = context.SS->FindTx(OperationId);
         Y_ABORT_UNLESS(txState);
@@ -652,7 +660,7 @@ public:
 
         LOG_INFO_S(context.Ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
                    DebugHint() << " ProgressState"
-                               << ", at tablet" << ssId);
+                               << ", at tablet# " << ssId);
 
         TPathId pathId = txState->TargetPathId;
         TPathElement::TPtr item = context.SS->PathsById.at(pathId);
@@ -716,7 +724,7 @@ public:
 
         LOG_INFO_S(context.Ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
                    DebugHint() << " ProgressState"
-                               << ", at tablet" << ssId);
+                               << ", at tablet# " << ssId);
 
         TTxState* txState = context.SS->FindTx(OperationId);
         Y_ABORT_UNLESS(txState);
@@ -767,7 +775,7 @@ public:
 
         LOG_INFO_S(context.Ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
                    DebugHint() << " HandleReply TEvDataShard::TEvMigrateSchemeShardResponse"
-                               << ", at tablet" << ssId);
+                               << ", at tablet# " << ssId);
 
         auto dataShardId = TTabletId(record.GetTabletId());
         auto status = record.GetStatus();
@@ -828,7 +836,7 @@ public:
 
         LOG_INFO_S(context.Ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
                    DebugHint() << " ProgressState"
-                               << ", at tablet" << ssId);
+                               << ", at tablet# " << ssId);
 
         TPathId targetPathId = txState->TargetPathId;
 
@@ -849,8 +857,8 @@ public:
                 {
                     Y_ABORT_UNLESS(context.SS->Tables.contains(pId));
                     TTableInfo::TPtr table = context.SS->Tables.at(pId);
-                    for (auto item: table->GetPartitions()) {
-                        auto shardIdx = item.ShardIdx;
+                    for (const auto* item: table->GetPartitions()) {
+                        auto shardIdx = item->ShardIdx;
                         const auto& shardInfo = context.SS->ShardInfos.at(shardIdx);
 
                         bool inserted = false;
@@ -928,7 +936,7 @@ public:
 
         LOG_INFO_S(context.Ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
                    DebugHint() << " ProgressState"
-                               << ", at tablet" << ssId);
+                               << ", at tablet# " << ssId);
 
         TPathId pathId = txState->TargetPathId;
 
@@ -994,7 +1002,7 @@ public:
 
         LOG_INFO_S(context.Ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
                    DebugHint() << " ProgressState"
-                               << ", at tablet" << ssId);
+                               << ", at tablet# " << ssId);
 
         TTxState* txState = context.SS->FindTx(OperationId);
         Y_ABORT_UNLESS(txState);
@@ -1297,7 +1305,7 @@ private:
 
     TString DebugHint() const override {
         return TStringBuilder()
-            << "TDecisionDone operationId#" << OperationId;
+            << "TDecisionDone operationId# " << OperationId;
     }
 
 public:
@@ -1374,7 +1382,7 @@ public:
                     "TUpgradeSubDomainDecision Propose "
                        << " path: " << parentPathStr << "/" << name
                        << " decision: " << NKikimrSchemeOp::TUpgradeSubDomain::EDecision_Name(decision)
-                       << ", at tablet" << ssId);
+                       << ", at tablet# " << ssId);
 
         auto result = MakeHolder<TProposeResponse>(NKikimrScheme::StatusAccepted, ui64(OperationId.GetTxId()), ui64(ssId));
         TString errStr;

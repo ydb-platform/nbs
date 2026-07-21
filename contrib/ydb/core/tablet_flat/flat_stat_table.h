@@ -22,7 +22,7 @@ public:
     {}
 
     void Add(THolder<TStatsScreenedPartIterator> iterator) {
-        Y_ABORT_UNLESS(iterator->IsValid());
+        Y_ENSURE(iterator->IsValid());
         Iterators.PushBack(std::move(iterator));
         TStatsScreenedPartIterator* iteratorPtr = Iterators.back();
         Heap.push(iteratorPtr);
@@ -71,12 +71,12 @@ public:
     }
 
     TDbTupleRef GetCurrentKey() const {
-        Y_ABORT_UNLESS(!Heap.empty());
+        Y_ENSURE(!Heap.empty());
         return Heap.top()->GetCurrentKey();
     }
 
 private:
-    int CompareKeys(const TDbTupleRef& a, const TDbTupleRef& b) const noexcept {
+    int CompareKeys(const TDbTupleRef& a, const TDbTupleRef& b) const {
         return ComparePartKeys(a.Cells(), b.Cells(), *KeyDefaults);
     }
 
@@ -104,6 +104,7 @@ struct TStats {
     ui64 RowCount = 0;
     TChanneledDataSize DataSize = { };
     TChanneledDataSize IndexSize = { };
+    ui64 ByKeyFilterSize = 0;
     THistogram RowCountHistogram;
     THistogram DataSizeHistogram;
 
@@ -111,6 +112,7 @@ struct TStats {
         RowCount = 0;
         DataSize = { };
         IndexSize = { };
+        ByKeyFilterSize = 0;
         RowCountHistogram.clear();
         DataSizeHistogram.clear();
     }
@@ -119,15 +121,17 @@ struct TStats {
         std::swap(RowCount, other.RowCount);
         std::swap(DataSize, other.DataSize);
         std::swap(IndexSize, other.IndexSize);
+        std::swap(ByKeyFilterSize, other.ByKeyFilterSize);
         RowCountHistogram.swap(other.RowCountHistogram);
         DataSizeHistogram.swap(other.DataSizeHistogram);
     }
 
-    TString ToString() const noexcept {
+    TString ToString() const {
         return TStringBuilder() 
             << "RowCount: " << RowCount
             << " DataSize: " << DataSize.Size
             << " IndexSize: " << IndexSize.Size
+            << " ByKeyFilterSize: " << ByKeyFilterSize
             << " RowCountHistogram: " << RowCountHistogram.size()
             << " DataSizeHistogram: " << DataSizeHistogram.size();
     }
@@ -170,7 +174,7 @@ public:
 
         TString old = Sample[idx].first;
         auto oit = KeyRefCount.find(old);
-        Y_ABORT_UNLESS(oit != KeyRefCount.end());
+        Y_ENSURE(oit != KeyRefCount.end());
         --oit->second;
 
         // Delete the key if this was the last reference

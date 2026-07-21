@@ -1,19 +1,15 @@
 UNITTEST_FOR(contrib/ydb/library/yql/core)
 
-TAG(ya:manual)
-
 SRCS(
-    yql_csv_ut.cpp
-    yql_execution_ut.cpp
+    yql_column_order_ut.cpp
+    yql_default_valid_value_ut.cpp
     yql_expr_constraint_ut.cpp
-    yql_expr_discover_ut.cpp
+    yql_range_frame_collector_bounds_ut.cpp
     yql_expr_optimize_ut.cpp
-    yql_expr_providers_ut.cpp
-    yql_expr_type_annotation_ut.cpp
     yql_library_compiler_ut.cpp
     yql_opt_utils_ut.cpp
     yql_udf_index_ut.cpp
-    yql_qplayer_ut.cpp
+    yql_window_frame_settings_pg_ut.cpp
 )
 
 PEERDIR(
@@ -21,6 +17,7 @@ PEERDIR(
     library/cpp/yson/node
     contrib/ydb/library/yql/ast
     contrib/ydb/library/yql/core
+    contrib/ydb/library/yql/core/cbo/simple
     contrib/ydb/library/yql/core/facade
     contrib/ydb/library/yql/core/services
     contrib/ydb/library/yql/core/services/mounts
@@ -30,17 +27,16 @@ PEERDIR(
     contrib/ydb/library/yql/public/udf
     contrib/ydb/library/yql/public/udf/service/exception_policy
     contrib/ydb/library/yql/core/type_ann
-    contrib/ydb/library/yql/core/ut_common
     contrib/ydb/library/yql/providers/common/provider
     contrib/ydb/library/yql/providers/common/schema/parser
+    contrib/ydb/library/yql/providers/pure
     contrib/ydb/library/yql/providers/result/provider
-    contrib/ydb/library/yql/providers/yt/gateway/file
-    contrib/ydb/library/yql/providers/yt/provider
-    contrib/ydb/library/yql/providers/yt/codec/codegen
-    contrib/ydb/library/yql/providers/yt/comp_nodes/llvm14
-    contrib/ydb/library/yql/minikql/comp_nodes/llvm14
-    contrib/ydb/library/yql/minikql/invoke_builtins/llvm14
+    contrib/ydb/library/yql/minikql/comp_nodes/llvm16
+    contrib/ydb/library/yql/minikql/invoke_builtins/llvm16
+    contrib/ydb/library/yql/parser/pg_wrapper
     contrib/ydb/library/yql/sql/pg
+    contrib/ydb/library/yql/sql
+    contrib/ydb/library/yql/sql/v1
     contrib/ydb/library/yql/udfs/common/string
 )
 

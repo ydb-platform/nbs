@@ -2,20 +2,20 @@ from dataclasses import dataclass
 import datetime
 from typing import Sequence
 
-from contrib.ydb.library.yql.providers.generic.connector.api.common.data_source_pb2 import EDataSourceKind, EProtocol
-from contrib.ydb.library.yql.providers.generic.connector.api.service.protos.connector_pb2 import EDateTimeFormat
+from contrib.ydb.library.contrib.ydb.library.yql.providers.common.proto.gateways_config_pb2 import EGenericDataSourceKind, EGenericProtocol
+from contrib.ydb.library.contrib.ydb.library.yql.providers.generic.connector.api.service.protos.connector_pb2 import EDateTimeFormat
 from contrib.ydb.public.api.protos.ydb_value_pb2 import Type
 
-import contrib.ydb.library.yql.providers.generic.connector.tests.common_test_cases.select_positive_common as select_positive_common
-import contrib.ydb.library.yql.providers.generic.connector.tests.utils.types.postgresql as postgresql
-from contrib.ydb.library.yql.providers.generic.connector.tests.utils.schema import (
+import contrib.ydb.library.contrib.ydb.library.yql.providers.generic.connector.tests.common_test_cases.select_positive_common as select_positive_common
+import contrib.ydb.library.contrib.ydb.library.yql.providers.generic.connector.tests.utils.types.postgresql as postgresql
+from contrib.ydb.library.contrib.ydb.library.yql.providers.generic.connector.tests.utils.schema import (
     Schema,
     Column,
     ColumnList,
     DataSourceType,
     SelectWhat,
 )
-from contrib.ydb.library.yql.providers.generic.connector.tests.utils.settings import GenericSettings
+from contrib.ydb.library.contrib.ydb.library.yql.providers.generic.connector.tests.utils.settings import GenericSettings
 
 
 @dataclass
@@ -92,8 +92,8 @@ class Factory:
             data_out_=data_out,
             select_what=SelectWhat.asterisk(schema.columns),
             select_where=None,
-            data_source_kind=EDataSourceKind.POSTGRESQL,
-            protocol=EProtocol.NATIVE,
+            data_source_kind=EGenericDataSourceKind.POSTGRESQL,
+            protocol=EGenericProtocol.NATIVE,
             schema=schema,
             pragmas=dict(),
         )
@@ -150,8 +150,8 @@ class Factory:
             data_out_=data_out,
             select_what=SelectWhat.asterisk(schema.columns),
             select_where=None,
-            data_source_kind=EDataSourceKind.POSTGRESQL,
-            protocol=EProtocol.NATIVE,
+            data_source_kind=EGenericDataSourceKind.POSTGRESQL,
+            protocol=EGenericProtocol.NATIVE,
             schema=schema,
             pragmas=dict(),
         )

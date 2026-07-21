@@ -1,38 +1,17 @@
 #pragma once
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_driver/driver.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_types/operation/operation.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/driver/driver.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/types/operation/operation.h>
+#include <contrib/ydb/public/lib/ydb_cli/common/command.h>
+#include <contrib/ydb/public/lib/ydb_cli/common/duration.h>
 
-namespace NYdb {
-namespace NConsoleClient {
-
-class TYdbErrorException : public yexception {
-public:
-    TYdbErrorException(NYdb::TStatus status)
-        : Status(std::move(status))
-    { }
-
-    friend IOutputStream& operator<<(IOutputStream& out, const TYdbErrorException& e) {
-        return out << e.Status;
-    }
-
-private:
-    NYdb::TStatus Status;
-};
-
-inline void ThrowOnError(NYdb::TStatus status) {
-    if (!status.IsSuccess()) {
-        throw TYdbErrorException(status) << status;
-    } else if (status.GetIssues()) {
-        Cerr << status;
-    }
-}
+namespace NYdb::NConsoleClient {
 
 inline void ThrowOnError(const NYdb::TOperation& operation) {
-    if (!operation.Ready())
+    if (!operation.Ready()) {
         return;
-    ThrowOnError(operation.Status());
+    }
+    NStatusHelpers::ThrowOnError(operation.Status());
 }
 
-}
-}
+} // namespace NYdb::NConsoleClient

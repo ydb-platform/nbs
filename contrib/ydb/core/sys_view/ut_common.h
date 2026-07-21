@@ -1,14 +1,19 @@
 #pragma once
 
 #include <contrib/ydb/core/testlib/test_client.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_result/result.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_table/table.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_scheme/scheme.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/result/result.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/table/table.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/query/query.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/scheme/scheme.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
 namespace NKikimr {
 namespace NSysView {
+
+NKikimrSchemeOp::TPathDescription DescribePath(TTestActorRuntime& runtime, TString&& path);
+
+NYdb::NQuery::TExecuteQueryResult ExecuteQuery(NYdb::NQuery::TSession& session, const std::string& query);
 
 NKikimrSubDomains::TSubDomainSettings GetSubDomainDeclareSettings(
     const TString &name, const TStoragePools &pools = {});
@@ -16,18 +21,36 @@ NKikimrSubDomains::TSubDomainSettings GetSubDomainDeclareSettings(
 NKikimrSubDomains::TSubDomainSettings GetSubDomainDefaultSettings(
     const TString &name, const TStoragePools &pools = {});
 
+struct TTestEnvSettings {
+    ui32 StoragePools = 0;
+    ui32 PqTabletsN = 0;
+    bool EnableSVP = false;
+    bool EnableForceFollowers = false;
+    bool ShowCreateTable = false;
+    bool AlterObjectEnabled = false;
+    bool EnableSparsedColumns = false;
+    bool EnableOlapCompression = false;
+    bool EnableTableCacheModes = false;
+    bool EnableFulltextIndex = false;
+    bool EnableCsDictionaryEncoding = false;
+    bool EnableLocalBloomFilterIndex = false;
+    bool EnableLocalBloomNgramFilterIndex = false;
+    bool EnableLocalIndexAsSchemeObject = false;
+    bool EnableLocalMinMaxIndex = false;
+    NKikimrProto::TAuthConfig AuthConfig = {};
+    TMaybe<ui32> DataShardStatsReportIntervalSeconds;
+    NKikimrConfig::TTableServiceConfig TableServiceConfig;
+};
+
 class TTestEnv {
 public:
     class TDisableSourcesTag {};
     static TDisableSourcesTag DisableSourcesTag;
 
 public:
-    TTestEnv(ui32 staticNodes = 1, ui32 dynamicNodes = 4, ui32 storagePools = 0,
-        ui32 pqTabletsN = 0, bool enableSVP = false, bool disableSources = false);
+    TTestEnv(ui32 staticNodes = 1, ui32 dynamicNodes = 4, const TTestEnvSettings& settings = {});
 
-    template<typename... Args>
-    TTestEnv(TDisableSourcesTag, Args&&... args)
-        : TTestEnv(std::forward<Args>(args)..., false)
+    TTestEnv(const TTestEnvSettings& settings) : TTestEnv(1, 4, settings)
     {
     }
 
@@ -78,6 +101,12 @@ private:
     THolder<NYdb::TDriver> Driver;
     TVector<ui64> PqTabletIds;
 };
+
+void CreateTenant(TTestEnv& env, const TString& tenantName, bool extSchemeShard = true, ui64 nodesCount = 2);
+
+void CreateTenants(TTestEnv& env, bool extSchemeShard = true);
+
+void CreateTenantsAndTables(TTestEnv& env, bool extSchemeShard = true, ui64 partitionCount = 1);
 
 } // NSysView
 } // NKikimr

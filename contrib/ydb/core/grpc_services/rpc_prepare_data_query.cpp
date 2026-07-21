@@ -9,7 +9,7 @@
 
 #include <contrib/ydb/core/protos/console_config.pb.h>
 #include <contrib/ydb/core/ydb_convert/ydb_convert.h>
-#include <contrib/ydb/public/lib/operation_id/operation_id.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/library/operation_id/operation_id.h>
 
 #include <contrib/ydb/library/yql/public/issue/yql_issue_message.h>
 #include <contrib/ydb/library/yql/public/issue/yql_issue.h>
@@ -84,7 +84,7 @@ public:
     }
 
     void Handle(NKqp::TEvKqp::TEvQueryResponse::TPtr& ev, const TActorContext& ctx) {
-        const auto& record = ev->Get()->Record.GetRef();
+        const auto& record = ev->Get()->Record;
         SetCost(record.GetConsumedRu());
         AddServerHintsIfAny(record);
 

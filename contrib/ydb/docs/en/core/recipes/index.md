@@ -3,4 +3,7 @@
 This section of {{ ydb-short-name }} documentation contains ready-to-use recipes for various aspects of interacting with {{ ydb-short-name }}. They are grouped into the following categories:
 
 * [{#T}](ydb-sdk/index.md)
-* [{#T}](yql/index.md)
+* [{#T}](ydb-cli/index.md)
+* [{#T}](transfer/index.md)
+* [{#T}](./streaming_queries/index.md)
+* [{#T}](../yql/reference/recipes/index.md)

@@ -1,0 +1,26 @@
+#include <contrib/ydb/library/yql/public/purecalc/purecalc.h>
+#include <contrib/ydb/library/yql/public/purecalc/io_specs/protobuf/spec.h>
+#include <contrib/ydb/library/yql/public/purecalc/ut/protos/test_structs.pb.h>
+#include <contrib/ydb/library/yql/public/purecalc/ut/empty_stream.h>
+
+#include <library/cpp/testing/unittest/registar.h>
+
+Y_UNIT_TEST_SUITE(TestFatalError) {
+Y_UNIT_TEST(TestFailType) {
+    using namespace NYql::NPureCalc;
+
+    auto options = TProgramFactoryOptions();
+    auto factory = MakeProgramFactory(options);
+
+    try {
+        factory->MakePullListProgram(
+            TProtobufInputSpec<NPureCalcProto::TStringMessage>(),
+            TProtobufOutputSpec<NPureCalcProto::TStringMessage>(),
+            R"(pragma warning("disable","4510");select unwrap(cast(Yql::FailMe(AsAtom('type')) as Utf8)) as X;)",
+            ETranslationMode::SQL);
+        UNIT_FAIL("Exception is expected");
+    } catch (const TCompileError& e) {
+        UNIT_ASSERT_C(e.GetIssues().Contains("abnormal"), e.GetIssues());
+    }
+}
+} // Y_UNIT_TEST_SUITE(TestFatalError)

@@ -746,7 +746,7 @@ SELECT * FROM v_window;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.v_window
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.v_window
     
 <sql-statement>
 SELECT pg_get_viewdef('v_window');
@@ -775,7 +775,7 @@ SELECT * FROM v_window;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.v_window
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.v_window
     
 <sql-statement>
 SELECT pg_get_viewdef('v_window');
@@ -804,7 +804,7 @@ SELECT * FROM v_window;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.v_window
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.v_window
     
 <sql-statement>
 SELECT pg_get_viewdef('v_window');
@@ -833,7 +833,7 @@ SELECT * FROM v_window;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.v_window
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.v_window
     
 <sql-statement>
 SELECT pg_get_viewdef('v_window');
@@ -862,7 +862,7 @@ SELECT * FROM v_window;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.v_window
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.v_window
     
 <sql-statement>
 SELECT pg_get_viewdef('v_window');
@@ -890,7 +890,7 @@ SELECT * FROM v_window;
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.v_window
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.v_window
     
 <sql-statement>
 SELECT pg_get_viewdef('v_window');
@@ -2969,7 +2969,7 @@ SELECT rank() OVER (ORDER BY 1), count(*) FROM empsalary GROUP BY 1;
     -stdin-:<main>:1:1: Fatal: Execution of node: YtMap!
     	SELECT rank() OVER (ORDER BY 1), count(*) FROM empsalary GROUP BY 1;
 	^
-        -stdin-:<main>:1:1: Fatal: ydb/library/yql/providers/common/mkql/yql_provider_mkql.cpp:364  GetCallable(): requirement Callables.cend() != compiler failed, message: Missed callable: PgWindowCall
+        -stdin-:<main>:1:1: Fatal: ydb/library/contrib/ydb/library/yql/providers/common/mkql/yql_provider_mkql.cpp:364  GetCallable(): requirement Callables.cend() != compiler failed, message: Missed callable: PgWindowCall
         	SELECT rank() OVER (ORDER BY 1), count(*) FROM empsalary GROUP BY 1;
 	^
 <sql-statement>

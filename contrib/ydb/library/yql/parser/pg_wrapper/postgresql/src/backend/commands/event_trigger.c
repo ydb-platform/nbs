@@ -3,7 +3,7 @@
  * event_trigger.c
  *	  PostgreSQL EVENT TRIGGER support code.
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -13,6 +13,7 @@
  */
 #include "postgres.h"
 
+#include "access/genam.h"
 #include "access/htup_details.h"
 #include "access/table.h"
 #include "access/xact.h"
@@ -20,10 +21,12 @@
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/objectaccess.h"
+#include "catalog/pg_attrdef.h"
 #include "catalog/pg_event_trigger.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_opfamily.h"
+#include "catalog/pg_policy.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_trigger.h"
 #include "catalog/pg_ts_config.h"
@@ -94,10 +97,12 @@ static void AlterEventTriggerOwner_internal(Relation rel,
 static void error_duplicate_filter_variable(const char *defname);
 static Datum filter_list_to_array(List *filterlist);
 static Oid	insert_event_trigger_tuple(const char *trigname, const char *eventname,
-									   Oid evtOwner, Oid funcoid, List *tags);
+									   Oid evtOwner, Oid funcoid, List *taglist);
 static void validate_ddl_tags(const char *filtervar, List *taglist);
 static void validate_table_rewrite_tags(const char *filtervar, List *taglist);
 static void EventTriggerInvoke(List *fn_oid_list, EventTriggerData *trigdata);
+static bool obtain_object_name_namespace(const ObjectAddress *object,
+										 SQLDropObject *obj);
 static const char *stringify_grant_objtype(ObjectType objtype);
 static const char *stringify_adefprivs_objtype(ObjectType objtype);
 
@@ -351,8 +356,7 @@ filter_list_to_array(List *filterlist)
 		pfree(result);
 	}
 
-	return PointerGetDatum(construct_array(data, l, TEXTOID,
-										   -1, false, TYPALIGN_INT));
+	return PointerGetDatum(construct_array_builtin(data, l, TEXTOID));
 }
 
 /*
@@ -380,7 +384,7 @@ AlterEventTrigger(AlterEventTrigStmt *stmt)
 	evtForm = (Form_pg_event_trigger) GETSTRUCT(tup);
 	trigoid = evtForm->oid;
 
-	if (!pg_event_trigger_ownercheck(trigoid, GetUserId()))
+	if (!object_ownercheck(EventTriggerRelationId, trigoid, GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_EVENT_TRIGGER,
 					   stmt->trigname);
 
@@ -472,7 +476,7 @@ AlterEventTriggerOwner_internal(Relation rel, HeapTuple tup, Oid newOwnerId)
 	if (form->evtowner == newOwnerId)
 		return;
 
-	if (!pg_event_trigger_ownercheck(form->oid, GetUserId()))
+	if (!object_ownercheck(EventTriggerRelationId, form->oid, GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_EVENT_TRIGGER,
 					   NameStr(form->evtname));
 
@@ -940,6 +944,7 @@ EventTriggerSupportsObjectType(ObjectType obtype)
 		case OBJECT_DATABASE:
 		case OBJECT_TABLESPACE:
 		case OBJECT_ROLE:
+		case OBJECT_PARAMETER_ACL:
 			/* no support for global objects */
 			return false;
 		case OBJECT_EVENT_TRIGGER:
@@ -973,6 +978,7 @@ EventTriggerSupportsObjectType(ObjectType obtype)
 		case OBJECT_POLICY:
 		case OBJECT_PROCEDURE:
 		case OBJECT_PUBLICATION:
+		case OBJECT_PUBLICATION_NAMESPACE:
 		case OBJECT_PUBLICATION_REL:
 		case OBJECT_ROUTINE:
 		case OBJECT_RULE:
@@ -1014,6 +1020,8 @@ EventTriggerSupportsObjectClass(ObjectClass objclass)
 		case OCLASS_DATABASE:
 		case OCLASS_TBLSPACE:
 		case OCLASS_ROLE:
+		case OCLASS_ROLE_MEMBERSHIP:
+		case OCLASS_PARAMETER_ACL:
 			/* no support for global objects */
 			return false;
 		case OCLASS_EVENT_TRIGGER:
@@ -1050,6 +1058,7 @@ EventTriggerSupportsObjectClass(ObjectClass objclass)
 		case OCLASS_EXTENSION:
 		case OCLASS_POLICY:
 		case OCLASS_PUBLICATION:
+		case OCLASS_PUBLICATION_NAMESPACE:
 		case OCLASS_PUBLICATION_REL:
 		case OCLASS_SUBSCRIPTION:
 		case OCLASS_TRANSFORM:
@@ -1140,9 +1149,9 @@ trackDroppedObjectsNeeded(void)
 	 * true if any sql_drop, table_rewrite, ddl_command_end event trigger
 	 * exists
 	 */
-	return list_length(EventCacheLookup(EVT_SQLDrop)) > 0 ||
-		list_length(EventCacheLookup(EVT_TableRewrite)) > 0 ||
-		list_length(EventCacheLookup(EVT_DDLCommandEnd)) > 0;
+	return (EventCacheLookup(EVT_SQLDrop) != NIL) ||
+		(EventCacheLookup(EVT_TableRewrite) != NIL) ||
+		(EventCacheLookup(EVT_DDLCommandEnd) != NIL);
 }
 
 /*
@@ -1176,12 +1185,6 @@ EventTriggerSQLDropAddObject(const ObjectAddress *object, bool original, bool no
 
 	Assert(EventTriggerSupportsObjectClass(getObjectClass(object)));
 
-	/* don't report temp schemas except my own */
-	if (object->classId == NamespaceRelationId &&
-		(isAnyTempNamespace(object->objectId) &&
-		 !isTempNamespace(object->objectId)))
-		return;
-
 	oldcxt = MemoryContextSwitchTo(currentEventTriggerState->cxt);
 
 	obj = palloc0(sizeof(SQLDropObject));
@@ -1189,21 +1192,172 @@ EventTriggerSQLDropAddObject(const ObjectAddress *object, bool original, bool no
 	obj->original = original;
 	obj->normal = normal;
 
+	if (object->classId == NamespaceRelationId)
+	{
+		/* Special handling is needed for temp namespaces */
+		if (isTempNamespace(object->objectId))
+			obj->istemp = true;
+		else if (isAnyTempNamespace(object->objectId))
+		{
+			/* don't report temp schemas except my own */
+			pfree(obj);
+			MemoryContextSwitchTo(oldcxt);
+			return;
+		}
+		obj->objname = get_namespace_name(object->objectId);
+	}
+	else if (object->classId == AttrDefaultRelationId)
+	{
+		/* We treat a column default as temp if its table is temp */
+		ObjectAddress colobject;
+
+		colobject = GetAttrDefaultColumnAddress(object->objectId);
+		if (OidIsValid(colobject.objectId))
+		{
+			if (!obtain_object_name_namespace(&colobject, obj))
+			{
+				pfree(obj);
+				MemoryContextSwitchTo(oldcxt);
+				return;
+			}
+		}
+	}
+	else if (object->classId == TriggerRelationId)
+	{
+		/* Similarly, a trigger is temp if its table is temp */
+		/* Sadly, there's no lsyscache.c support for trigger objects */
+		Relation	pg_trigger_rel;
+		ScanKeyData skey[1];
+		SysScanDesc sscan;
+		HeapTuple	tuple;
+		Oid			relid;
+
+		/* Fetch the trigger's table OID the hard way */
+		pg_trigger_rel = table_open(TriggerRelationId, AccessShareLock);
+		ScanKeyInit(&skey[0],
+					Anum_pg_trigger_oid,
+					BTEqualStrategyNumber, F_OIDEQ,
+					ObjectIdGetDatum(object->objectId));
+		sscan = systable_beginscan(pg_trigger_rel, TriggerOidIndexId, true,
+								   NULL, 1, skey);
+		tuple = systable_getnext(sscan);
+		if (HeapTupleIsValid(tuple))
+			relid = ((Form_pg_trigger) GETSTRUCT(tuple))->tgrelid;
+		else
+			relid = InvalidOid; /* shouldn't happen */
+		systable_endscan(sscan);
+		table_close(pg_trigger_rel, AccessShareLock);
+		/* Do nothing if we didn't find the trigger */
+		if (OidIsValid(relid))
+		{
+			ObjectAddress relobject;
+
+			relobject.classId = RelationRelationId;
+			relobject.objectId = relid;
+			/* Arbitrarily set objectSubId nonzero so as not to fill objname */
+			relobject.objectSubId = 1;
+			if (!obtain_object_name_namespace(&relobject, obj))
+			{
+				pfree(obj);
+				MemoryContextSwitchTo(oldcxt);
+				return;
+			}
+		}
+	}
+	else if (object->classId == PolicyRelationId)
+	{
+		/* Similarly, a policy is temp if its table is temp */
+		/* Sadly, there's no lsyscache.c support for policy objects */
+		Relation	pg_policy_rel;
+		ScanKeyData skey[1];
+		SysScanDesc sscan;
+		HeapTuple	tuple;
+		Oid			relid;
+
+		/* Fetch the policy's table OID the hard way */
+		pg_policy_rel = table_open(PolicyRelationId, AccessShareLock);
+		ScanKeyInit(&skey[0],
+					Anum_pg_policy_oid,
+					BTEqualStrategyNumber, F_OIDEQ,
+					ObjectIdGetDatum(object->objectId));
+		sscan = systable_beginscan(pg_policy_rel, PolicyOidIndexId, true,
+								   NULL, 1, skey);
+		tuple = systable_getnext(sscan);
+		if (HeapTupleIsValid(tuple))
+			relid = ((Form_pg_policy) GETSTRUCT(tuple))->polrelid;
+		else
+			relid = InvalidOid; /* shouldn't happen */
+		systable_endscan(sscan);
+		table_close(pg_policy_rel, AccessShareLock);
+		/* Do nothing if we didn't find the policy */
+		if (OidIsValid(relid))
+		{
+			ObjectAddress relobject;
+
+			relobject.classId = RelationRelationId;
+			relobject.objectId = relid;
+			/* Arbitrarily set objectSubId nonzero so as not to fill objname */
+			relobject.objectSubId = 1;
+			if (!obtain_object_name_namespace(&relobject, obj))
+			{
+				pfree(obj);
+				MemoryContextSwitchTo(oldcxt);
+				return;
+			}
+		}
+	}
+	else
+	{
+		/* Generic handling for all other object classes */
+		if (!obtain_object_name_namespace(object, obj))
+		{
+			/* don't report temp objects except my own */
+			pfree(obj);
+			MemoryContextSwitchTo(oldcxt);
+			return;
+		}
+	}
+
+	/* object identity, objname and objargs */
+	obj->objidentity =
+		getObjectIdentityParts(&obj->address, &obj->addrnames, &obj->addrargs,
+							   false);
+
+	/* object type */
+	obj->objecttype = getObjectTypeDescription(&obj->address, false);
+
+	slist_push_head(&(currentEventTriggerState->SQLDropList), &obj->next);
+
+	MemoryContextSwitchTo(oldcxt);
+}
+
+/*
+ * Fill obj->objname, obj->schemaname, and obj->istemp based on object.
+ *
+ * Returns true if this object should be reported, false if it should
+ * be ignored because it is a temporary object of another session.
+ */
+static bool
+obtain_object_name_namespace(const ObjectAddress *object, SQLDropObject *obj)
+{
 	/*
 	 * Obtain schema names from the object's catalog tuple, if one exists;
 	 * this lets us skip objects in temp schemas.  We trust that
 	 * ObjectProperty contains all object classes that can be
 	 * schema-qualified.
+	 *
+	 * Currently, this function does nothing for object classes that are not
+	 * in ObjectProperty, but we might sometime add special cases for that.
 	 */
 	if (is_objectclass_supported(object->classId))
 	{
 		Relation	catalog;
 		HeapTuple	tuple;
 
-		catalog = table_open(obj->address.classId, AccessShareLock);
+		catalog = table_open(object->classId, AccessShareLock);
 		tuple = get_catalog_object_by_oid(catalog,
 										  get_object_attnum_oid(object->classId),
-										  obj->address.objectId);
+										  object->objectId);
 
 		if (tuple)
 		{
@@ -1211,7 +1365,7 @@ EventTriggerSQLDropAddObject(const ObjectAddress *object, bool original, bool no
 			Datum		datum;
 			bool		isnull;
 
-			attnum = get_object_attnum_namespace(obj->address.classId);
+			attnum = get_object_attnum_namespace(object->classId);
 			if (attnum != InvalidAttrNumber)
 			{
 				datum = heap_getattr(tuple, attnum,
@@ -1229,10 +1383,9 @@ EventTriggerSQLDropAddObject(const ObjectAddress *object, bool original, bool no
 					}
 					else if (isAnyTempNamespace(namespaceId))
 					{
-						pfree(obj);
+						/* no need to fill any fields of *obj */
 						table_close(catalog, AccessShareLock);
-						MemoryContextSwitchTo(oldcxt);
-						return;
+						return false;
 					}
 					else
 					{
@@ -1242,10 +1395,10 @@ EventTriggerSQLDropAddObject(const ObjectAddress *object, bool original, bool no
 				}
 			}
 
-			if (get_object_namensp_unique(obj->address.classId) &&
-				obj->address.objectSubId == 0)
+			if (get_object_namensp_unique(object->classId) &&
+				object->objectSubId == 0)
 			{
-				attnum = get_object_attnum_name(obj->address.classId);
+				attnum = get_object_attnum_name(object->classId);
 				if (attnum != InvalidAttrNumber)
 				{
 					datum = heap_getattr(tuple, attnum,
@@ -1258,24 +1411,8 @@ EventTriggerSQLDropAddObject(const ObjectAddress *object, bool original, bool no
 
 		table_close(catalog, AccessShareLock);
 	}
-	else
-	{
-		if (object->classId == NamespaceRelationId &&
-			isTempNamespace(object->objectId))
-			obj->istemp = true;
-	}
 
-	/* object identity, objname and objargs */
-	obj->objidentity =
-		getObjectIdentityParts(&obj->address, &obj->addrnames, &obj->addrargs,
-							   false);
-
-	/* object type */
-	obj->objecttype = getObjectTypeDescription(&obj->address, false);
-
-	slist_push_head(&(currentEventTriggerState->SQLDropList), &obj->next);
-
-	MemoryContextSwitchTo(oldcxt);
+	return true;
 }
 
 /*
@@ -1288,10 +1425,6 @@ Datum
 pg_event_trigger_dropped_objects(PG_FUNCTION_ARGS)
 {
 	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
-	TupleDesc	tupdesc;
-	Tuplestorestate *tupstore;
-	MemoryContext per_query_ctx;
-	MemoryContext oldcontext;
 	slist_iter	iter;
 
 	/*
@@ -1304,42 +1437,17 @@ pg_event_trigger_dropped_objects(PG_FUNCTION_ARGS)
 				 errmsg("%s can only be called in a sql_drop event trigger function",
 						"pg_event_trigger_dropped_objects()")));
 
-	/* check to see if caller supports us returning a tuplestore */
-	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("set-valued function called in context that cannot accept a set")));
-	if (!(rsinfo->allowedModes & SFRM_Materialize))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("materialize mode required, but it is not allowed in this context")));
-
-	/* Build a tuple descriptor for our result type */
-	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
-		elog(ERROR, "return type must be a row type");
-
 	/* Build tuplestore to hold the result rows */
-	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
-	oldcontext = MemoryContextSwitchTo(per_query_ctx);
-
-	tupstore = tuplestore_begin_heap(true, false, work_mem);
-	rsinfo->returnMode = SFRM_Materialize;
-	rsinfo->setResult = tupstore;
-	rsinfo->setDesc = tupdesc;
-
-	MemoryContextSwitchTo(oldcontext);
+	InitMaterializedSRF(fcinfo, 0);
 
 	slist_foreach(iter, &(currentEventTriggerState->SQLDropList))
 	{
 		SQLDropObject *obj;
 		int			i = 0;
-		Datum		values[12];
-		bool		nulls[12];
+		Datum		values[12] = {0};
+		bool		nulls[12] = {0};
 
 		obj = slist_container(SQLDropObject, next, iter.cur);
-
-		MemSet(values, 0, sizeof(values));
-		MemSet(nulls, 0, sizeof(nulls));
 
 		/* classid */
 		values[i++] = ObjectIdGetDatum(obj->address.classId);
@@ -1396,11 +1504,9 @@ pg_event_trigger_dropped_objects(PG_FUNCTION_ARGS)
 			nulls[i++] = true;
 		}
 
-		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
+		tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc,
+							 values, nulls);
 	}
-
-	/* clean up and return the tuplestore */
-	tuplestore_donestoring(tupstore);
 
 	return (Datum) 0;
 }
@@ -1644,7 +1750,7 @@ EventTriggerAlterTableEnd(void)
 	parent = currentEventTriggerState->currentCommand->parent;
 
 	/* If no subcommands, don't collect */
-	if (list_length(currentEventTriggerState->currentCommand->d.alterTable.subcmds) != 0)
+	if (currentEventTriggerState->currentCommand->d.alterTable.subcmds != NIL)
 	{
 		MemoryContext oldcxt;
 
@@ -1799,8 +1905,11 @@ EventTriggerCollectAlterTSConfig(AlterTSConfigurationStmt *stmt, Oid cfgId,
 	command->in_extension = creating_extension;
 	ObjectAddressSet(command->d.atscfg.address,
 					 TSConfigRelationId, cfgId);
-	command->d.atscfg.dictIds = palloc(sizeof(Oid) * ndicts);
-	memcpy(command->d.atscfg.dictIds, dictIds, sizeof(Oid) * ndicts);
+	if (ndicts > 0)
+	{
+		command->d.atscfg.dictIds = palloc_array(Oid, ndicts);
+		memcpy(command->d.atscfg.dictIds, dictIds, sizeof(Oid) * ndicts);
+	}
 	command->d.atscfg.ndicts = ndicts;
 	command->parsetree = (Node *) copyObject(stmt);
 
@@ -1847,10 +1956,6 @@ Datum
 pg_event_trigger_ddl_commands(PG_FUNCTION_ARGS)
 {
 	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
-	TupleDesc	tupdesc;
-	Tuplestorestate *tupstore;
-	MemoryContext per_query_ctx;
-	MemoryContext oldcontext;
 	ListCell   *lc;
 
 	/*
@@ -1862,36 +1967,14 @@ pg_event_trigger_ddl_commands(PG_FUNCTION_ARGS)
 				 errmsg("%s can only be called in an event trigger function",
 						"pg_event_trigger_ddl_commands()")));
 
-	/* check to see if caller supports us returning a tuplestore */
-	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("set-valued function called in context that cannot accept a set")));
-	if (!(rsinfo->allowedModes & SFRM_Materialize))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("materialize mode required, but it is not allowed in this context")));
-
-	/* Build a tuple descriptor for our result type */
-	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
-		elog(ERROR, "return type must be a row type");
-
 	/* Build tuplestore to hold the result rows */
-	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
-	oldcontext = MemoryContextSwitchTo(per_query_ctx);
-
-	tupstore = tuplestore_begin_heap(true, false, work_mem);
-	rsinfo->returnMode = SFRM_Materialize;
-	rsinfo->setResult = tupstore;
-	rsinfo->setDesc = tupdesc;
-
-	MemoryContextSwitchTo(oldcontext);
+	InitMaterializedSRF(fcinfo, 0);
 
 	foreach(lc, currentEventTriggerState->commandList)
 	{
 		CollectedCommand *cmd = lfirst(lc);
 		Datum		values[9];
-		bool		nulls[9];
+		bool		nulls[9] = {0};
 		ObjectAddress addr;
 		int			i = 0;
 
@@ -1908,8 +1991,6 @@ pg_event_trigger_ddl_commands(PG_FUNCTION_ARGS)
 		if (cmd->type == SCT_Simple &&
 			!OidIsValid(cmd->d.simple.address.objectId))
 			continue;
-
-		MemSet(nulls, 0, sizeof(nulls));
 
 		switch (cmd->type)
 		{
@@ -1982,11 +2063,7 @@ pg_event_trigger_ddl_commands(PG_FUNCTION_ARGS)
 								elog(ERROR,
 									 "invalid null namespace in object %u/%u/%d",
 									 addr.classId, addr.objectId, addr.objectSubId);
-							/* XXX not quite get_namespace_name_or_temp */
-							if (isAnyTempNamespace(schema_oid))
-								schema = pstrdup("pg_temp");
-							else
-								schema = get_namespace_name(schema_oid);
+							schema = get_namespace_name_or_temp(schema_oid);
 
 							table_close(catalog, AccessShareLock);
 						}
@@ -2060,11 +2137,9 @@ pg_event_trigger_ddl_commands(PG_FUNCTION_ARGS)
 				break;
 		}
 
-		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
+		tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc,
+							 values, nulls);
 	}
-
-	/* clean up and return the tuplestore */
-	tuplestore_donestoring(tupstore);
 
 	PG_RETURN_VOID();
 }
@@ -2100,6 +2175,8 @@ stringify_grant_objtype(ObjectType objtype)
 			return "LARGE OBJECT";
 		case OBJECT_SCHEMA:
 			return "SCHEMA";
+		case OBJECT_PARAMETER_ACL:
+			return "PARAMETER";
 		case OBJECT_PROCEDURE:
 			return "PROCEDURE";
 		case OBJECT_ROUTINE:
@@ -2130,6 +2207,7 @@ stringify_grant_objtype(ObjectType objtype)
 		case OBJECT_OPFAMILY:
 		case OBJECT_POLICY:
 		case OBJECT_PUBLICATION:
+		case OBJECT_PUBLICATION_NAMESPACE:
 		case OBJECT_PUBLICATION_REL:
 		case OBJECT_ROLE:
 		case OBJECT_RULE:
@@ -2210,8 +2288,10 @@ stringify_adefprivs_objtype(ObjectType objtype)
 		case OBJECT_OPCLASS:
 		case OBJECT_OPERATOR:
 		case OBJECT_OPFAMILY:
+		case OBJECT_PARAMETER_ACL:
 		case OBJECT_POLICY:
 		case OBJECT_PUBLICATION:
+		case OBJECT_PUBLICATION_NAMESPACE:
 		case OBJECT_PUBLICATION_REL:
 		case OBJECT_ROLE:
 		case OBJECT_RULE:

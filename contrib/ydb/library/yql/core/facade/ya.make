@@ -20,15 +20,25 @@ PEERDIR(
     contrib/ydb/library/yql/core/credentials
     contrib/ydb/library/yql/core/qplayer/storage/interface
     contrib/ydb/library/yql/core/qplayer/udf_resolver
+    contrib/ydb/library/yql/core/qplayer/url_lister
     contrib/ydb/library/yql/sql
+    contrib/ydb/library/yql/sql/v1
+    contrib/ydb/library/yql/sql/v1/lexer/antlr4
+    contrib/ydb/library/yql/sql/v1/lexer/antlr4_ansi
+    contrib/ydb/library/yql/sql/v1/proto_parser/antlr4
+    contrib/ydb/library/yql/sql/v1/proto_parser/antlr4_ansi
+    contrib/ydb/library/yql/parser/pg_wrapper/interface
     contrib/ydb/library/yql/utils/log
     contrib/ydb/library/yql/core
     contrib/ydb/library/yql/core/type_ann
+    contrib/ydb/library/yql/core/langver
+    contrib/ydb/library/yql/public/langver
     contrib/ydb/library/yql/providers/common/config
     contrib/ydb/library/yql/providers/common/proto
     contrib/ydb/library/yql/providers/common/provider
     contrib/ydb/library/yql/providers/common/udf_resolve
     contrib/ydb/library/yql/providers/common/arrow_resolve
+    contrib/ydb/library/yql/providers/common/gateways_utils
     contrib/ydb/library/yql/providers/config
     contrib/ydb/library/yql/providers/result/provider
 )

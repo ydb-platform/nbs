@@ -4,6 +4,7 @@ NO_CHECK_IMPORTS()
 
 DATA(arcadia/contrib/ydb/core/external_sources/s3/ut/docker-compose.yml)
 ENV(COMPOSE_PROJECT_NAME=s3)
+ENV(TZ="UTC+13")
 
 IF (AUTOCHECK) 
     # Temporarily disable these tests due to infrastructure incompatibility
@@ -22,19 +23,25 @@ IF (AUTOCHECK)
     )
 
     REQUIREMENTS(
-        cpu:all
+        cpu:4
         container:4467981730
         dns:dns64
     )
 ENDIF()
 
+ENV(COMPOSE_HTTP_TIMEOUT=1200)  # during parallel tests execution there could be huge disk io, which triggers timeouts in docker-compose 
 INCLUDE(${ARCADIA_ROOT}/library/recipes/docker_compose/recipe.inc)
 
 IF (OPENSOURCE)
-    # Including of docker_compose/recipe.inc automatically converts these tests into LARGE, 
-    # which makes it impossible to run them during precommit checks on Github CI. 
-    # Next several lines forces these tests to be MEDIUM. To see discussion, visit YDBOPS-8928.
-    SIZE(MEDIUM)
+    IF (SANITIZER_TYPE)
+        # Too huge for precommit check with sanitizers
+        SIZE(LARGE)
+    ELSE()
+        # Including of docker_compose/recipe.inc automatically converts these tests into LARGE, 
+        # which makes it impossible to run them during precommit checks on Github CI. 
+        # Next several lines forces these tests to be MEDIUM. To see discussion, visit YDBOPS-8928.
+        SIZE(MEDIUM)
+    ENDIF()
     SET(TEST_TAGS_VALUE)
     SET(TEST_REQUIREMENTS_VALUE)
 
@@ -42,7 +49,7 @@ IF (OPENSOURCE)
     # otherwise CI system would be overloaded due to simultaneous launch of many Docker containers.
     # See DEVTOOLSSUPPORT-44103, YA-1759 for details.
     TAG(ya:not_autocheck)
-    REQUIREMENTS(cpu:all)
+    REQUIREMENTS(cpu:4)
 ENDIF()
 
 SRCS(
@@ -55,8 +62,9 @@ PEERDIR(
     contrib/ydb/core/kqp/ut/common
     contrib/ydb/core/kqp/ut/federated_query/common
     contrib/ydb/library/yql/sql/pg_dummy
-    contrib/ydb/public/sdk/cpp/client/ydb_types/operation
+    contrib/ydb/public/sdk/cpp/src/client/types/operation
     contrib/ydb/library/actors/core
+    contrib/ydb/library/aws_init
 )
 
 DEPENDS(

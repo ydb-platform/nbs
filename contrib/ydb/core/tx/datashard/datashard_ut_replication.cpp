@@ -30,11 +30,11 @@ Y_UNIT_TEST_SUITE(DataShardReplication) {
 
         CreateShardedTable(server, sender, "/Root", "table-1", TShardedTableOptions()
             .Replicated(true)
-            .ReplicationConsistency(EReplicationConsistency::Strong)
+            .ReplicationConsistencyLevel(EConsistencyLevel::Global)
         );
         CreateShardedTable(server, sender, "/Root", "table-2", TShardedTableOptions()
             .Replicated(true)
-            .ReplicationConsistency(EReplicationConsistency::Strong)
+            .ReplicationConsistencyLevel(EConsistencyLevel::Global)
         );
 
         auto shards1 = GetTableShards(server, sender, "/Root/table-1");
@@ -106,11 +106,11 @@ Y_UNIT_TEST_SUITE(DataShardReplication) {
 
         CreateShardedTable(server, sender, "/Root", "table-1", TShardedTableOptions()
             .Replicated(true)
-            .ReplicationConsistency(EReplicationConsistency::Strong)
+            .ReplicationConsistencyLevel(EConsistencyLevel::Global)
         );
         CreateShardedTable(server, sender, "/Root", "table-2", TShardedTableOptions()
             .Replicated(true)
-            .ReplicationConsistency(EReplicationConsistency::Strong)
+            .ReplicationConsistencyLevel(EConsistencyLevel::Global)
         );
 
         auto shards1 = GetTableShards(server, sender, "/Root/table-1");
@@ -231,8 +231,10 @@ Y_UNIT_TEST_SUITE(DataShardReplication) {
     Y_UNIT_TEST(ReplicatedTable) {
         TPortManager pm;
         TServerSettings serverSettings(pm.GetPort(2134));
+        NKikimrConfig::TAppConfig app;
         serverSettings.SetDomainName("Root")
-            .SetUseRealThreads(false);
+            .SetUseRealThreads(false)
+            .SetAppConfig(app);
 
         Tests::TServer::TPtr server = new TServer(serverSettings);
         auto &runtime = *server->GetRuntime();
@@ -245,7 +247,7 @@ Y_UNIT_TEST_SUITE(DataShardReplication) {
 
         ExecSQL(server, sender, "SELECT * FROM `/Root/table-1`");
         ExecSQL(server, sender, "INSERT INTO `/Root/table-1` (key, value) VALUES (1, 10);", true,
-            Ydb::StatusIds::GENERIC_ERROR);
+            Ydb::StatusIds::BAD_REQUEST);
 
         WaitTxNotification(server, sender, AsyncAlterDropReplicationConfig(server, "/Root", "table-1"));
         ExecSQL(server, sender, "INSERT INTO `/Root/table-1` (key, value) VALUES (1, 10);");
@@ -266,7 +268,7 @@ Y_UNIT_TEST_SUITE(DataShardReplication) {
         InitRoot(server, sender);
         CreateShardedTable(server, sender, "/Root", "table-1", TShardedTableOptions()
             .Replicated(true)
-            .ReplicationConsistency(EReplicationConsistency::Weak)
+            .ReplicationConsistencyLevel(EConsistencyLevel::Row)
         );
 
         auto shards = GetTableShards(server, sender, "/Root/table-1");
@@ -324,7 +326,7 @@ Y_UNIT_TEST_SUITE(DataShardReplication) {
         InitRoot(server, sender);
         CreateShardedTable(server, sender, "/Root", "table-1", TShardedTableOptions()
             .Replicated(true)
-            .ReplicationConsistency(EReplicationConsistency::Weak)
+            .ReplicationConsistencyLevel(EConsistencyLevel::Row)
         );
 
         auto shards = GetTableShards(server, sender, "/Root/table-1");

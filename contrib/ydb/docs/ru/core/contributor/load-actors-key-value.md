@@ -2,8 +2,6 @@
 
 Нагружает Key-value таблетку.
 
-{% include notitle [addition](../_includes/addition.md) %}
-
 ## Конфигурация актора {#options}
 
 ```proto
@@ -21,3 +19,5 @@ message TKeyValueLoad {
     repeated TWorkerConfig Workers = 7;
 }
 ```
+
+{% include [career](./_includes/career.md) %}

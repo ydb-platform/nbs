@@ -4,15 +4,19 @@
 #include "yql_yt_helpers.h"
 #include "yql_yt_optimize.h"
 
-#include <contrib/ydb/library/yql/providers/dq/expr_nodes/dqs_expr_nodes.h>
 #include <contrib/ydb/library/yql/providers/yt/gateway/lib/yt_helpers.h>
 #include <contrib/ydb/library/yql/providers/yt/expr_nodes/yql_yt_expr_nodes.h>
 #include <contrib/ydb/library/yql/providers/yt/common/yql_configuration.h>
 #include <contrib/ydb/library/yql/providers/yt/lib/expr_traits/yql_expr_traits.h>
 #include <contrib/ydb/library/yql/providers/yt/lib/hash/yql_hash_builder.h>
 #include <contrib/ydb/library/yql/providers/yt/provider/yql_yt_helpers.h>
+#include <contrib/ydb/library/yql/providers/yt/provider/yql_yt_layers_integration.h>
+#include <contrib/ydb/library/yql/providers/yt/provider/phy_opt/yql_yt_phy_opt_helper.h>
+
+#include <contrib/ydb/library/yql/providers/common/codec/yql_codec_type_flags.h>
 #include <contrib/ydb/library/yql/providers/common/provider/yql_provider.h>
 #include <contrib/ydb/library/yql/providers/common/transform/yql_exec.h>
+#include <contrib/ydb/library/yql/providers/common/schema/expr/yql_expr_schema.h>
 #include <contrib/ydb/library/yql/core/type_ann/type_ann_expr.h>
 #include <contrib/ydb/library/yql/core/yql_execution.h>
 #include <contrib/ydb/library/yql/core/yql_graph_transformer.h>
@@ -20,8 +24,6 @@
 #include <contrib/ydb/library/yql/ast/yql_ast.h>
 
 #include <contrib/ydb/library/yql/providers/result/expr_nodes/yql_res_expr_nodes.h>
-#include <contrib/ydb/library/yql/dq/expr_nodes/dq_expr_nodes.h>
-#include <contrib/ydb/library/yql/dq/opt/dq_opt.h>
 
 #include <yt/cpp/mapreduce/common/helpers.h>
 
@@ -93,7 +95,7 @@ public:
                 TYtMerge::CallableName(),
                 TYtMapReduce::CallableName(),
             },
-            RequireAllOf({TYtTransientOpBase::idx_World, TYtTransientOpBase::idx_Input}),
+            RequireForTransientOp(),
             Hndl(&TYtDataSinkExecTransformer::HandleOutputOp<true>)
         );
         AddHandler(
@@ -104,10 +106,11 @@ public:
             RequireFirst(),
             Hndl(&TYtDataSinkExecTransformer::HandleOutputOp<true>)
         );
-        AddHandler({TYtReduce::CallableName()}, RequireAllOf({TYtTransientOpBase::idx_World, TYtTransientOpBase::idx_Input}), Hndl(&TYtDataSinkExecTransformer::HandleReduce));
+        AddHandler({TYtReduce::CallableName()}, RequireForTransientOp(), Hndl(&TYtDataSinkExecTransformer::HandleReduce));
         AddHandler({TYtOutput::CallableName()}, RequireFirst(), Pass());
         AddHandler({TYtPublish::CallableName()}, RequireAllOf({TYtPublish::idx_World, TYtPublish::idx_Input}), Hndl(&TYtDataSinkExecTransformer::HandlePublish));
-        AddHandler({TYtDropTable::CallableName()}, RequireFirst(), Hndl(&TYtDataSinkExecTransformer::HandleDrop));
+        AddHandler({TYtCreateView::CallableName(), TYtDropTable::CallableName(), TYtDropView::CallableName()}, RequireFirst(),
+            Hndl(&TYtDataSinkExecTransformer::HandleIsolatedOp));
         AddHandler({TCoCommit::CallableName()}, RequireFirst(), Hndl(&TYtDataSinkExecTransformer::HandleCommit));
         AddHandler({TYtEquiJoin::CallableName()}, RequireSequenceOf({TYtEquiJoin::idx_World, TYtEquiJoin::idx_Input}),
             Hndl(&TYtDataSinkExecTransformer::HandleEquiJoin));
@@ -116,11 +119,27 @@ public:
         AddHandler({TYtDqProcessWrite::CallableName()}, RequireFirst(),
             Hndl(&TYtDataSinkExecTransformer::HandleYtDqProcessWrite));
         AddHandler({TYtTryFirst::CallableName()}, RequireFirst(), Hndl(&TYtDataSinkExecTransformer::HandleTryFirst));
+        AddHandler({TYtPersist::CallableName()}, RequireAllOf({TYtPersist::idx_World, TYtPersist::idx_Input}), Hndl(&TYtDataSinkExecTransformer::HandleOutputOp<true>));
     }
 
     void Rewind() override {
         Delegated_->clear();
         TExecTransformerBase::Rewind();
+    }
+
+    static TExecTransformerBase::TPrerequisite RequireForTransientOp() {
+        return [] (const TExprNode::TPtr& input) {
+            auto status = RequireChild(*input, TYtTransientOpBase::idx_World);
+            // We have to run input only if it has no settings to calculate.
+            // Otherwise, we first of all wait world completion.
+            // Then begins node execution, which run settings calculation.
+            // And after that, starts input execution
+            // See YQL-19303
+            if (!HasNodesToCalculate(input->ChildPtr(TYtTransientOpBase::idx_Input))) {
+                status = status.Combine(RequireChild(*input, TYtTransientOpBase::idx_Input));
+            }
+            return status;
+        };
     }
 
 private:
@@ -135,6 +154,7 @@ private:
         const IYtGateway::TRunResult& res, const TExprNode::TPtr& input, TExprNode::TPtr& output, TExprContext& ctx, bool markFinished)
     {
         if (markFinished && !TYtDqProcessWrite::Match(input.Get())) {
+            state->FullHybridExecution = false;
             PushHybridStats(state, "YtExecution", input->Content());
         }
         auto outSection = TYtOutputOpBase(input).Output();
@@ -189,6 +209,10 @@ private:
             return CalculateNodes(State_, input, cluster, needCalc, ctx);
         }
 
+        if (auto opInput = op.Maybe<TYtTransientOpBase>().Input()) {
+            YQL_ENSURE(opInput.Ref().GetState() == TExprNode::EState::ExecutionComplete);
+        }
+
         auto outSection = op.Output();
 
         size_t outWithoutName = 0;
@@ -226,7 +250,7 @@ private:
         }
 
         bool hasNonDeterministicFunctions = false;
-        if (const auto status = PeepHoleOptimizeBeforeExec(optimizedNode, optimizedNode, State_, hasNonDeterministicFunctions, ctx); status.Level != TStatus::Ok) {
+        if (const auto status = PeepHoleOptimizeBeforeExec(optimizedNode, optimizedNode, State_, hasNonDeterministicFunctions, ctx, false); status.Level != TStatus::Ok) {
             return SyncStatus(status);
         }
 
@@ -243,16 +267,97 @@ private:
         NCommon::FillSecureParams(optimizedNode, *State_->Types, secureParams);
 
         auto config = State_->Configuration->GetSettingsForNode(*input);
-        const auto queryCacheMode = config->QueryCacheMode.Get().GetOrElse(EQueryCacheMode::Disable);
+
+        YQL_CLOG(DEBUG, ProviderYt) << "Executing " << input->Content() << " (UniqueId=" << input->UniqueId() << ")";
+
+        auto cypressPaths = BuildLayersPaths(optimizedNode, cluster, State_->Types->LayersRegistry,State_->LayersIntegration_, config, ctx);
+        if (!cypressPaths) {
+            return SyncError();
+        }
+        auto& snapshots = State_->LayersSnapshots[cluster];
+        TVector<TString> needSnapshots;
+        for (const auto& path: *cypressPaths) {
+            if (!snapshots.contains(path)) {
+                needSnapshots.emplace_back(path);
+            }
+        }
+        if (needSnapshots.size()) {
+            auto snapshotResult = State_->Gateway->SnapshotLayers(
+                IYtGateway::TSnapshotLayersOptions(State_->SessionId)
+                    .Cluster(cluster)
+                    .Layers(needSnapshots)
+                    .Config(config)
+            );
+            return WrapFutureCallback(snapshotResult,
+                [input, needSnapshots, state=State_, cluster](const IYtGateway::TLayersSnapshotResult& res, const TExprNode::TPtr&, TExprNode::TPtr&, TExprContext&)
+                {
+                    auto& snapshots = state->LayersSnapshots[cluster];
+                    for (size_t i = 0; i < needSnapshots.size(); ++i) {
+                        snapshots[needSnapshots[i]] = res.Data[i];
+                    }
+                    input->SetState(TExprNode::EState::ExecutionRequired);
+                    return IGraphTransformer::TStatus(IGraphTransformer::TStatus::Repeat, true);
+                }
+            );
+        }
+
+        TVector<std::pair<TString, ui64>> snaphsotsResult(Reserve(cypressPaths->size()));
+        TVector<TString> finalCypressPaths(Reserve(cypressPaths->size()));
+        for (const auto& path: *cypressPaths) {
+            auto ptr = snapshots.FindPtr(path);
+            YQL_ENSURE(ptr);
+            snaphsotsResult.emplace_back(*ptr);
+            finalCypressPaths.emplace_back(ptr->first);
+        }
+
+        auto queryCacheMode = config->QueryCacheMode.Get().GetOrElse(EQueryCacheMode::Disable);
+        TMaybe<TString> parentOutputHash;
         if (queryCacheMode != EQueryCacheMode::Disable) {
             if (!hasNonDeterministicFunctions) {
-                operationHash = TYtNodeHashCalculator(State_, cluster, config).GetHash(*optimizedNode);
+                TYtNodeHashCalculator hashCalculator(State_, cluster, config);
+                parentOutputHash = hashCalculator.GetParentOutputHash(*input);
+                operationHash = hashCalculator.GetHash(*optimizedNode);
+                if (!operationHash.empty()) {
+                    THashBuilder builder;
+                    builder << TYtNodeHashCalculator::MakeSalt(settings, cluster) << operationHash << snaphsotsResult.size();
+                    for (size_t i = 0; i < snaphsotsResult.size(); ++i) {
+                        builder << snaphsotsResult[i].first << snaphsotsResult[i].second;
+                    }
+                    operationHash = builder.Finish();
+                }
             }
             YQL_CLOG(DEBUG, ProviderYt) << "Operation hash: " << HexEncode(operationHash).Quote()
                 << ", cache mode: " << queryCacheMode;
         }
 
-        YQL_CLOG(DEBUG, ProviderYt) << "Executing " << input->Content() << " (UniqueId=" << input->UniqueId() << ")";
+        TSet<TString> addSecTags;
+        if (settings->TableContentDeliveryMode.Get(cluster) == ETableContentDeliveryMode::File || TYtFill::Match(input.Get())) {
+            for (size_t pos = 0; pos < optimizedNode->ChildrenSize(); pos++) {
+                auto childPtr = optimizedNode->ChildPtr(pos);
+                if (childPtr->Type() == TExprNode::Lambda) {
+                    VisitExpr(childPtr->TailPtr(), [&addSecTags](const TExprNode::TPtr& node) -> bool {
+                        if (TYtTableContent::Match(node.Get())) {
+                            auto tableContent = TYtTableContent(node.Get());
+                            if (auto readTable = tableContent.Input().Maybe<TYtReadTable>()) {
+                                for (auto section : readTable.Cast().Input()) {
+                                    for (auto path : section.Paths()) {
+                                        if (auto tableBase = path.Table().Maybe<TYtTableBase>()) {
+                                            if (auto stat = TYtTableBaseInfo::GetStat(tableBase.Cast())) {
+                                                for (const auto& tag : stat->SecurityTags) {
+                                                    addSecTags.insert(tag);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            return false;
+                        }
+                        return true;
+                    });
+                }
+            }
+        }
 
         return State_->Gateway->Run(optimizedNode, ctx,
             IYtGateway::TRunOptions(State_->SessionId)
@@ -264,14 +369,34 @@ private:
                 .Config(std::move(config))
                 .OptLLVM(State_->Types->OptLLVM.GetOrElse(TString()))
                 .OperationHash(operationHash)
+                .OutputHash(parentOutputHash)
                 .SecureParams(secureParams)
+                .RuntimeLogLevel(State_->Types->RuntimeLogLevel)
+                .LangVer(State_->Types->LangVer)
+                .RuntimeSettings(State_->Types->RuntimeSettings)
+                .AdditionalSecurityTags(addSecTags)
+                .LayersPaths(std::move(finalCypressPaths))
             );
     }
 
+    bool AssignRuntimeCluster(const TYtOpBase& input, TExprNode::TPtr& output, TExprContext& ctx) {
+        if (input.DataSink().Cluster().StringValue() == YtUnspecifiedCluster) {
+            TString cluster = GetRuntimeCluster(input.Ref(), State_);
+            YQL_CLOG(DEBUG, ProviderYt) << "Assigning runtime cluster " << cluster << " for node " << input.Ref().Content();
+            output = ctx.ChangeChild(input.Ref(), TYtOpBase::idx_DataSink, NPrivate::MakeDataSink(input.DataSink().Pos(), cluster, ctx).Ptr());
+            return true;
+        }
+        return false;
+    }
+
     template <bool MarkFinished>
-    TStatusCallbackPair HandleOutputOp(const TExprNode::TPtr& input, TExprContext& ctx) {
+    TStatusCallbackPair HandleOutputOp(const TExprNode::TPtr& input, TExprNode::TPtr& output, TExprContext& ctx) {
         if (input->HasResult() && input->GetResult().Type() == TExprNode::World) {
             return SyncOk();
+        }
+
+        if (AssignRuntimeCluster(TYtOpBase(input), output, ctx)) {
+            return SyncRepeatWithRestart();
         }
 
         TString operationHash;
@@ -300,6 +425,7 @@ private:
                 output = input->HeadPtr();
                 break;
             case TExprNode::EState::Error: {
+                State_->FullHybridExecution = false;
                 PushHybridStats(State_, "Fallback", input->TailPtr()->Content());
                 if (State_->Configuration->HybridDqExecutionFallback.Get().GetOrElse(true)) {
                     output = input->TailPtr();
@@ -315,15 +441,19 @@ private:
         return SyncStatus(TStatus(TStatus::Repeat, true));
     }
 
-    TStatusCallbackPair HandleReduce(const TExprNode::TPtr& input, TExprContext& ctx) {
+    TStatusCallbackPair HandleReduce(const TExprNode::TPtr& input, TExprNode::TPtr& output, TExprContext& ctx) {
         TYtReduce reduce(input);
 
         if (!NYql::HasSetting(reduce.Settings().Ref(), EYtSettingType::FirstAsPrimary)) {
-            return HandleOutputOp<true>(input, ctx);
+            return HandleOutputOp<true>(input, output, ctx);
         }
 
         if (input->HasResult() && input->GetResult().Type() == TExprNode::World) {
             return SyncOk();
+        }
+
+        if (AssignRuntimeCluster(TYtOpBase(input), output, ctx)) {
+            return SyncRepeatWithRestart();
         }
 
         TString operationHash;
@@ -382,10 +512,8 @@ private:
             }));
     }
 
-    TStatusCallbackPair HandleDrop(const TExprNode::TPtr& input, TExprContext& ctx) {
+    TStatusCallbackPair HandleIsolatedOp(const TExprNode::TPtr& input, TExprContext& ctx) {
         input->SetState(TExprNode::EState::ExecutionInProgress);
-
-        auto drop = TYtDropTable(input);
 
         auto newWorld = ctx.ShallowCopy(*input->Child(0));
         newWorld->SetTypeAnn(input->Child(0)->GetTypeAnn());
@@ -450,7 +578,7 @@ private:
             }
         }
         nextDescription.Hash = nextHash;
-        if (!nextDescription.Hash->Empty()) {
+        if (!nextDescription.Hash->empty()) {
             YQL_CLOG(INFO, ProviderYt) << "Using publish hash \"" << HexEncode(*nextDescription.Hash) << "\" for table " << cluster << "." << path << "#" << commitEpoch;
         }
 
@@ -538,11 +666,15 @@ private:
         );
     }
 
-    TStatusCallbackPair HandleYtDqProcessWrite(const TExprNode::TPtr& input, TExprContext& ctx) {
+    TStatusCallbackPair HandleYtDqProcessWrite(const TExprNode::TPtr& input, TExprNode::TPtr& output, TExprContext& ctx) {
         const TYtDqProcessWrite op(input);
         const auto section = op.Output().Cast<TYtOutSection>();
-        Y_ENSURE(section.Size() == 1, "TYtDqProcessWrite expects 1 output table but got " << section.Size());
+        YQL_ENSURE(section.Size() == 1, "YtDqProcessWrite expects 1 output table but got " << section.Size());
         const TYtOutTable tmpTable = section.Item(0);
+
+        if (AssignRuntimeCluster(op, output, ctx)) {
+            return SyncRepeatWithRestart();
+        }
 
         if (!input->HasResult()) {
             if (!tmpTable.Name().Value().empty()) {
@@ -587,7 +719,7 @@ private:
         }
         else {
             // Fourth iteration: everything is done, return ok status.
-            Y_ENSURE(input->GetResult().Type() == TExprNode::World, "Unexpected result type: " << input->GetResult().Type());
+            YQL_ENSURE(input->GetResult().Type() == TExprNode::World, "Unexpected result type: " << input->GetResult().Type());
             return SyncOk();
         }
     }
@@ -621,7 +753,7 @@ private:
         }
 
         bool hasNonDeterministicFunctions = false;
-        if (const auto status = PeepHoleOptimizeBeforeExec(optimizedNode, optimizedNode, State_, hasNonDeterministicFunctions, ctx); status.Level != TStatus::Ok) {
+        if (const auto status = PeepHoleOptimizeBeforeExec(optimizedNode, optimizedNode, State_, hasNonDeterministicFunctions, ctx, false); status.Level != TStatus::Ok) {
             return SyncStatus(status);
         }
 
@@ -637,10 +769,23 @@ private:
         TString operationHash;
         if (const auto queryCacheMode = config->QueryCacheMode.Get().GetOrElse(EQueryCacheMode::Disable); queryCacheMode != EQueryCacheMode::Disable) {
             if (!hasNonDeterministicFunctions) {
-                operationHash = TYtNodeHashCalculator(State_, cluster, config).GetHash(*input);
+                operationHash = TYtNodeHashCalculator(State_, cluster, config).GetHash(*optimizedNode);
             }
             YQL_CLOG(DEBUG, ProviderYt) << "Operation hash: " << HexEncode(operationHash).Quote() << ", cache mode: " << queryCacheMode;
         }
+
+        TSet<TString> securityTags;
+        VisitExpr(optimizedNode->ChildPtr(TYtDqProcessWrite::idx_Input), [&securityTags](const TExprNode::TPtr& node) -> bool {
+            if (TYtTableBase::Match(node.Get())) {
+                if (auto stat = TYtTableBaseInfo::GetStat(TExprBase(node))) {
+                    for (const auto& tag : stat->SecurityTags) {
+                        securityTags.insert(tag);
+                    }
+                }
+                return false;
+            }
+            return true;
+        });
 
         YQL_CLOG(DEBUG, ProviderYt) << "Preparing " << input->Content() << " (UniqueId=" << input->UniqueId() << ")";
 
@@ -649,6 +794,7 @@ private:
                 .PublicId(State_->Types->TranslateOperationId(input->UniqueId()))
                 .Config(std::move(config))
                 .OperationHash(operationHash)
+                .SecurityTags(securityTags)
             );
 
         return WrapModifyFuture(future, [operationHash, state = State_](const IYtGateway::TRunResult& res,
@@ -672,10 +818,9 @@ private:
         }
 
         if (!delegatedNode) {
-            const auto cluster = op.DataSink().Cluster();
+            const auto clusterStr = op.DataSink().Cluster().StringValue();
             const auto config = State_->Configuration->GetSettingsForNode(*input);
-            const auto tmpFolder = GetTablesTmpFolder(*config);
-            auto clusterStr = TString{cluster.Value()};
+            const auto tmpFolder = GetTablesTmpFolder(*config, clusterStr, State_->UseSecureTmp, State_->Types->OperationOptions);
 
             delegatedNode = input->ChildPtr(TYtDqProcessWrite::idx_Input);
 
@@ -698,7 +843,7 @@ private:
                 NYT::TNode spec;
                 rowSpec.FillCodecNode(spec[YqlRowSpecAttribute]);
                 outSpec = NYT::TNode::CreateMap()(TString{YqlIOSpecTables}, NYT::TNode::CreateList().Add(spec));
-                type = rowSpec.GetTypeNode();
+                type = NCommon::TypeToYsonNode(rowSpec.GetExtendedType(ctx));
             }
 
             // These settings will be passed to YT peephole callback from DQ

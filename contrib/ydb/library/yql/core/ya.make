@@ -1,14 +1,15 @@
 LIBRARY()
 
+ENABLE(SKIP_YQL_STYLE_CPP)
+
 SRCS(
     yql_aggregate_expander.cpp
-    yql_atom_enums.h
     yql_callable_transform.cpp
     yql_callable_transform.h
     yql_cost_function.cpp
-    yql_csv.cpp
-    yql_csv.h
     yql_data_provider.h
+    yql_default_valid_value.cpp
+    yql_default_valid_value.h
     yql_execution.cpp
     yql_execution.h
     yql_expr_constraint.cpp
@@ -19,6 +20,10 @@ SRCS(
     yql_expr_optimize.h
     yql_expr_type_annotation.cpp
     yql_expr_type_annotation.h
+    yql_expr_type_annotation_pg.cpp
+    yql_expr_type_annotation_pg.h
+    yql_func_stack.cpp
+    yql_func_stack.h
     yql_gc_transformer.cpp
     yql_gc_transformer.h
     yql_graph_transformer.cpp
@@ -27,9 +32,15 @@ SRCS(
     yql_holding_file_storage.h
     yql_join.cpp
     yql_join.h
+    yql_module_helpers.cpp
     yql_library_compiler.cpp
+    yql_linear_checker.cpp
+    yql_layers_helpers.cpp
+    yql_opt_hopping.cpp
     yql_opt_match_recognize.cpp
     yql_opt_match_recognize.h
+    yql_opt_normalize_depends_on.cpp
+    yql_opt_normalize_depends_on.h
     yql_opt_proposed_by_data.cpp
     yql_opt_proposed_by_data.h
     yql_opt_range.cpp
@@ -40,6 +51,10 @@ SRCS(
     yql_opt_utils.h
     yql_opt_window.cpp
     yql_opt_window.h
+    yql_opt_window_stream_transformers.cpp
+    yql_opt_window_stream_transformers.h
+    yql_sql_combine_expander.cpp
+    yql_sql_combine_expander.h
     yql_statistics.cpp
     yql_type_annotation.cpp
     yql_type_annotation.h
@@ -55,6 +70,16 @@ SRCS(
     yql_user_data.h
     yql_user_data_storage.cpp
     yql_user_data_storage.h
+    yql_window_features.cpp
+    yql_window_features.h
+    yql_window_frame_setting_bound.h
+    yql_window_frame_settings.cpp
+    yql_window_frame_settings.h
+    yql_window_frames_collector_params_serializer.cpp
+    yql_window_frames_collector_params_serializer.h
+    yql_window_frame_settings_pg.cpp
+    yql_window_frame_settings_pg.h
+    yql_sqlselect.cpp
 )
 
 PEERDIR(
@@ -62,32 +87,37 @@ PEERDIR(
     library/cpp/random_provider
     library/cpp/threading/future
     library/cpp/time_provider
+    library/cpp/type_info/tz
     library/cpp/yson
     library/cpp/yson/node
+    library/cpp/containers/stack_vector
     contrib/ydb/library/yql/ast
     contrib/ydb/library/yql/core/file_storage
     contrib/ydb/library/yql/core/sql_types
     contrib/ydb/library/yql/core/credentials
     contrib/ydb/library/yql/core/url_lister/interface
     contrib/ydb/library/yql/core/url_preprocessing/interface
+    contrib/ydb/library/yql/core/layers
+    contrib/ydb/library/yql/core/langver
     contrib/ydb/library/yql/minikql
-    contrib/ydb/library/yql/minikql/jsonpath
-    contrib/ydb/library/minsketch
+    contrib/ydb/library/yql/minikql/jsonpath/parser
+    contrib/ydb/library/yql/core/minsketch
+    contrib/ydb/library/yql/core/histogram
     contrib/ydb/library/yql/protos
     contrib/ydb/library/yql/public/udf
-    contrib/ydb/library/yql/public/udf/tz
+    contrib/ydb/library/yql/public/langver
     contrib/ydb/library/yql/sql/settings
+    contrib/ydb/library/yql/sql
     contrib/ydb/library/yql/utils
     contrib/ydb/library/yql/utils/log
     contrib/ydb/library/yql/core/expr_nodes
     contrib/ydb/library/yql/providers/common/proto
+    contrib/ydb/library/yql/minikql/runtime_settings
 )
 
 GENERATE_ENUM_SERIALIZATION(yql_data_provider.h)
 
 GENERATE_ENUM_SERIALIZATION(yql_user_data.h)
-
-GENERATE_ENUM_SERIALIZATION(yql_atom_enums.h)
 
 GENERATE_ENUM_SERIALIZATION(yql_type_annotation.h)
 
@@ -98,25 +128,35 @@ YQL_LAST_ABI_VERSION()
 END()
 
 RECURSE(
-    arrow_kernels
     cbo
-    common_opt
     credentials
+    dq_expr_nodes
+    dq_integration
+    dqs_expr_nodes
+    file_storage
+    issue
+    langver
+    layers
+    minsketch
+    pg_ext
+    pg_settings
+    poly_args
+    sql_types
+    url_lister
+    url_preprocessing
+    user_data
+    arrow_kernels
+    common_opt
     expr_nodes
     expr_nodes_gen
     extract_predicate
     facade
-    file_storage
-    issue
     peephole_opt
     qplayer
     services
-    spilling
-    sql_types
     type_ann
     url_lister
     url_preprocessing
-    user_data
 )
 
 RECURSE_FOR_TESTS(ut)

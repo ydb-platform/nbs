@@ -17,10 +17,10 @@
 #include <contrib/ydb/library/yql/utils/utf8.h>
 #include <contrib/ydb/library/yql/public/decimal/yql_decimal.h>
 
-#include <contrib/ydb/library/binary_json/write.h>
-#include <contrib/ydb/library/dynumber/dynumber.h>
+#include <contrib/ydb/library/yql/types/binary_json/write.h>
+#include <contrib/ydb/library/yql/types/dynumber/dynumber.h>
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_proto/accessor.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/proto/accessor.h>
 
 #include <util/string/vector.h>
 #include <util/generic/size_literals.h>
@@ -266,7 +266,7 @@ public:
     }
 
     TString GetDatabase() {
-        return Request->GetDatabaseName().GetOrElse(DatabaseFromDomain(AppData()));
+        return Request->GetDatabaseName().GetOrElse("");
     }
 
     const TString& GetTable() {
@@ -339,6 +339,14 @@ public:
         Become(&TThis::MainState);
 
         LOG_DEBUG_S(TlsActivationContext->AsActorContext(), NKikimrServices::RPC_REQUEST, "TReadRowsRPC bootstraped ");
+
+        auto selfId = ctx.SelfID;
+        auto* actorSystem = ctx.ActorSystem();
+        auto clientLostCb = [selfId, actorSystem]() {
+            actorSystem->Send(selfId, new TRpcServices::TEvForgetOperation());
+        };
+
+        Request->SetFinishAction(std::move(clientLostCb));
     }
 
     bool ResolveTable() {
@@ -352,6 +360,7 @@ public:
         entry.SyncVersion = false;
         entry.ShowPrivatePath = false;
         auto request = std::make_unique<NSchemeCache::TSchemeCacheNavigate>();
+        request->DatabaseName = GetDatabase();
         request->ResultSet.emplace_back(entry);
         Send(MakeSchemeCacheID(), new TEvTxProxySchemeCache::TEvNavigateKeySet(request.release()), 0, 0, Span.GetTraceId());
         return true;
@@ -386,7 +395,7 @@ public:
         OwnerId = entry.Self->Info.GetSchemeshardId();
         TableId = entry.Self->Info.GetPathId();
 
-        if (entry.TableId.IsSystemView()) {
+        if (entry.TableId.IsSystemView() || entry.Kind == NSchemeCache::TSchemeCacheNavigate::KindSysView) {
             return ReplyWithError(Ydb::StatusIds::SCHEME_ERROR,
                 Sprintf("Table '%s' is a system view. ReadRows is not supported.", GetTable().c_str()));
         }
@@ -436,6 +445,7 @@ public:
         auto keyRange = MakeHolder<TKeyDesc>(entry.TableId, range, TKeyDesc::ERowOperation::Read, KeyColumnTypes, columns);
 
         auto request = std::make_unique<NSchemeCache::TSchemeCacheRequest>();
+        request->DatabaseName = GetDatabase();
         request->ResultSet.emplace_back(std::move(keyRange));
         Send(MakeSchemeCacheID(), new TEvTxProxySchemeCache::TEvResolveKeySet(request.release()), 0, 0, Span.GetTraceId());
     }
@@ -455,7 +465,7 @@ public:
         }
     }
 
-    void Handle(TEvTxProxySchemeCache::TEvResolveKeySetResult::TPtr &ev) {
+    void Handle(TEvTxProxySchemeCache::TEvResolveKeySetResult::TPtr& ev) {
         TEvTxProxySchemeCache::TEvResolveKeySetResult *msg = ev->Get();
         auto& resolvePartitionsResult = msg->Request;
 
@@ -520,8 +530,7 @@ public:
             if (it == ShardIdToReadState.end()) {
                 TStringStream ss;
                 ss << "Got unknown shardId from TEvReadResult# " << shardId << ", status# " << statusCode;
-                ReplyWithError(statusCode, ss.Str(), &issues);
-                return;
+                return ReplyWithError(statusCode, ss.Str(), &issues);
             }
 
             switch (statusCode) {
@@ -548,8 +557,7 @@ public:
                     statusCode = Ydb::StatusIds::ABORTED;
                 }
                 it->second.Status = statusCode;
-                ReplyWithError(statusCode, ss.Str(), &issues);
-                return;
+                return ReplyWithError(statusCode, ss.Str(), &issues);
             }
             }
             if (!msg->Record.HasFinished() || !msg->Record.GetFinished()) {
@@ -598,7 +606,7 @@ public:
             }
             case NScheme::NTypeIds::Decimal: {
                 return NYdb::TTypeBuilder().Decimal(NYdb::TDecimalType(
-                        typeInfo.GetDecimalType().GetPrecision(), 
+                        typeInfo.GetDecimalType().GetPrecision(),
                         typeInfo.GetDecimalType().GetScale()))
                     .Build();
             }
@@ -704,7 +712,7 @@ public:
     {
         auto* resp = CreateResponse();
         resp->set_status(status);
-        if (!errorMsg.Empty() || issues) {
+        if (!errorMsg.empty() || issues) {
             const NYql::TIssue& issue = MakeIssue(NKikimrIssues::TIssuesIds::DEFAULT_ERROR, errorMsg);
             auto* protoIssue = resp->add_issues();
             NYql::IssueToMessage(issue, protoIssue);
@@ -724,6 +732,32 @@ public:
         LOG_DEBUG_S(TlsActivationContext->AsActorContext(), NKikimrServices::RPC_REQUEST, "TReadRowsRPC sent result");
         Request->Reply(resp, status);
         PassAway();
+    }
+
+    void CancelReads() {
+        TStringStream ss;
+        ss << "TReadRowsRPC CancelReads, shardIds# [";
+
+        bool hasActiveReads = false;
+
+        for (const auto& [shardId, state] : ShardIdToReadState) {
+            if (state.Status != Ydb::StatusIds::STATUS_CODE_UNSPECIFIED) {
+                // Read has already finished for this shard
+                continue;
+            }
+            auto request = std::make_unique<TEvDataShard::TEvReadCancel>();
+            auto& record = request->Record;
+            record.SetReadId(shardId); // shardId is also a readId
+            Send(PipeCache, new TEvPipeCache::TEvForward(request.release(), shardId, true), IEventHandle::FlagTrackDelivery, 0, Span.GetTraceId());
+            ss << shardId << ", ";
+            hasActiveReads = true;
+        }
+
+        ss << "]";
+
+        if (hasActiveReads) {
+            LOG_WARN_S(TlsActivationContext->AsActorContext(), NKikimrServices::RPC_REQUEST, ss.Str());
+        }
     }
 
     void HandleTimeout(TEvents::TEvWakeup::TPtr&) {
@@ -761,9 +795,17 @@ public:
         ReplyWithError(Ydb::StatusIds::TIMEOUT, errorMessage, nullptr, &errorLog);
     }
 
+    void HandleForget(TRpcServices::TEvForgetOperation::TPtr& ev) {
+        Y_UNUSED(ev);
+
+        ReplyWithError(Ydb::StatusIds::CANCELLED, TStringBuilder() << "ReadRows from table " << GetTable()
+            << " cancelled, because client disconnected");
+    }
+
     void ReplyWithError(const Ydb::StatusIds::StatusCode& status, const TString& errorMsg,
         const ::google::protobuf::RepeatedPtrField<Ydb::Issue::IssueMessage>* issues = nullptr, const TString* logAppendix = nullptr)
     {
+        CancelReads();
         auto message = TStringBuilder() << "TReadRowsRPC ReplyWithError: " << errorMsg;
         if (logAppendix) {
             message << *logAppendix;
@@ -776,7 +818,7 @@ public:
         return ReplyWithError(Ydb::StatusIds::INTERNAL_ERROR, "Internal error: pipe cache is not available, the cluster might not be configured properly");
     }
 
-    void Handle(TEvPipeCache::TEvDeliveryProblem::TPtr &ev) {
+    void Handle(TEvPipeCache::TEvDeliveryProblem::TPtr& ev) {
         return ReplyWithError(Ydb::StatusIds::UNAVAILABLE, TStringBuilder() << "Failed to connect to shard " << ev->Get()->TabletId);
     }
 
@@ -800,6 +842,7 @@ public:
             hFunc(TEvPipeCache::TEvDeliveryProblem, Handle);
 
             hFunc(TEvents::TEvWakeup, HandleTimeout);
+            hFunc(TRpcServices::TEvForgetOperation, HandleForget);
         }
     }
 

@@ -3,6 +3,8 @@
 #include <util/generic/algorithm.h>
 #include <util/generic/size_literals.h>
 
+#include <contrib/ydb/library/aclib/user_context.h>
+
 #include <optional>
 
 namespace NKikimr::NDataShard {
@@ -78,7 +80,7 @@ class TDataShard::TTxRequestChangeRecords: public TTransactionBase<TDataShard> {
             return NTable::EReady::Gone;
         }
 
-        Y_VERIFY_S(basic.IsValid() && details.IsValid(), "Inconsistent basic and details"
+        Y_ENSURE(basic.IsValid() && details.IsValid(), "Inconsistent basic and details"
             << ", basic.IsValid: " << basic.IsValid()
             << ", details.IsValid: " << details.IsValid()
             << ", order: " << order);
@@ -114,14 +116,27 @@ class TDataShard::TTxRequestChangeRecords: public TTransactionBase<TDataShard> {
             .WithBody(details.template GetValue<typename TDetailsTable::Body>())
             .WithSource(source);
 
+        NACLib::TUserContextBuilder userCtxBuilder;
+        if (details.template HaveValue<typename TDetailsTable::UserSID>()) {
+            userCtxBuilder.WithUserSID(details.template GetValue<typename TDetailsTable::UserSID>());
+        }
+        if (details.template HaveValue<typename TDetailsTable::UserTraceId>()) {
+            const auto value = details.template GetValue<typename TDetailsTable::UserTraceId>();
+
+            NActorsProto::TTraceId serializedTraceId;
+            serializedTraceId.SetData(value);
+            userCtxBuilder.WithUserTraceId(NWilson::TTraceId(serializedTraceId));
+        }
+        builder.WithUserCtx(userCtxBuilder.Build());
+
         if constexpr (HaveLock) {
-            Y_ABORT_UNLESS(commited);
+            Y_ENSURE(commited);
             builder
                 .WithGroup(commited->Group)
                 .WithStep(commited->Step)
                 .WithTxId(commited->TxId);
         } else {
-            Y_ABORT_UNLESS(!commited);
+            Y_ENSURE(!commited);
             builder
                 .WithGroup(basic.template GetValue<typename TBasicTable::Group>())
                 .WithStep(basic.template GetValue<typename TBasicTable::PlanStep>())
@@ -186,6 +201,7 @@ class TDataShard::TTxRequestChangeRecords: public TTransactionBase<TDataShard> {
                         TChangeRecordBuilder(result.Record)
                             .WithLockId(itQueue->second.LockId)
                             .WithLockOffset(itQueue->second.LockOffset)
+                            .WithUserCtx(result.Record->GetUserCtx())
                             .Build()
                     );
                 } else {
@@ -233,7 +249,7 @@ public:
             LOG_DEBUG_S(ctx, NKikimrServices::TX_DATASHARD, "Send " << records.size() << " change records"
                 << ": to# " << to
                 << ", at tablet# " << Self->TabletID());
-            ctx.Send(to, new NChangeExchange::TEvChangeExchange::TEvRecords(std::make_shared<TChangeRecordContainer<NKikimr::NDataShard::TChangeRecord>>(std::move(records))));
+            ctx.Send(to, new NChangeExchange::TEvChangeExchange::TEvRecords(std::move(records)));
         }
 
         size_t forgotten = 0;
@@ -375,10 +391,10 @@ public:
         LOG_NOTICE_S(ctx, NKikimrServices::TX_DATASHARD, "TTxChangeExchangeSplitAck Execute"
             << ", at tablet# " << Self->TabletID());
 
-        Y_ABORT_UNLESS(!Self->ChangesQueue);
+        Y_ENSURE(!Self->ChangesQueue);
 
         Self->ChangeExchangeSplitter.Ack();
-        Y_ABORT_UNLESS(Self->ChangeExchangeSplitter.Done());
+        Y_ENSURE(Self->ChangeExchangeSplitter.Done());
 
         for (const auto dstTabletId : Self->ChangeSenderActivator.GetDstSet()) {
             if (Self->SplitSrcSnapshotSender.Acked(dstTabletId) && !Self->ChangeSenderActivator.Acked(dstTabletId)) {

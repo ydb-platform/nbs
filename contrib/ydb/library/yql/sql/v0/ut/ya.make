@@ -1,6 +1,7 @@
 UNITTEST_FOR(contrib/ydb/library/yql/sql/v0)
 
-TAG(ya:manual)
+ENABLE(SKIP_YQL_STYLE_CPP)
+NO_CLANG_TIDY()
 
 SRCS(
     sql_ut.cpp

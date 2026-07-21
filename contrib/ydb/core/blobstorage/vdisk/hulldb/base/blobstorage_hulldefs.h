@@ -131,12 +131,14 @@ namespace NKikimr {
         const bool BarrierValidation;
         const ui32 HullSstSizeInChunksFresh;
         const ui32 HullSstSizeInChunksLevel;
-        const double HullCompFreeSpaceThreshold;
         const double HullCompReadBatchEfficiencyThreshold;
         const TDuration HullCompStorageRatioCalcPeriod;
         const TDuration HullCompStorageRatioMaxCalcDuration;
-        const bool AddHeader;
 
+        ui32 HullCompLevel0MaxSstsAtOnce;
+        ui32 HullCompSortedPartsNum;
+
+        NMonGroup::TCompactionStrategyGroup CompactionStrategyGroup;
         NMonGroup::TLsmHullGroup LsmHullGroup;
         NMonGroup::TLsmHullSpaceGroup LsmHullSpaceGroup;
 
@@ -151,11 +153,12 @@ namespace NKikimr {
                 bool barrierValidation,
                 ui32 hullSstSizeInChunksFresh,
                 ui32 hullSstSizeInChunksLevel,
-                double hullCompFreeSpaceThreshold,
                 double hullCompReadBatchEfficiencyThreshold,
                 TDuration hullCompStorageRatioCalcPeriod,
                 TDuration hullCompStorageRatioMaxCalcDuration,
-                bool addHeader);
+                ui32 hullCompLevel0MaxSstsAtOnce,
+                ui32 hullCompSortedPartsNum
+        );
 
         void UpdateSpaceCounters(const NHullComp::TSstRatio& prev, const NHullComp::TSstRatio& current);
     };
@@ -168,12 +171,16 @@ namespace NKikimr {
     struct TPutRecoveryLogRecOpt {
         TLogoBlobID Id;
         TString Data;
+        bool IssueKeepFlag;
 
-        static TString Serialize(const TBlobStorageGroupType &gtype, const TLogoBlobID &id, const TRope &rope);
+        static TString Serialize(const TBlobStorageGroupType &gtype, const TLogoBlobID &id, const TRope &rope,
+            bool issueKeepFlag);
         // Will serialize inplace if container has enough headroom and right (single) underlying type
-        static TRcBuf SerializeZeroCopy(const TBlobStorageGroupType &gtype, const TLogoBlobID &id, TRope &&rope);
+        static TRcBuf SerializeZeroCopy(const TBlobStorageGroupType &gtype, const TLogoBlobID &id, TRope &&rope,
+            bool issueKeepFlag);
         // Will serialize inplace if container has enough headroom
-        static TRcBuf SerializeZeroCopy(const TBlobStorageGroupType &gtype, const TLogoBlobID &id, TRcBuf &&data);
+        static TRcBuf SerializeZeroCopy(const TBlobStorageGroupType &gtype, const TLogoBlobID &id, TRcBuf &&data,
+            bool issueKeepFlag);
         bool ParseFromString(const TBlobStorageGroupType &gtype, const TString &data);
         bool ParseFromArray(const TBlobStorageGroupType &gtype, const char* data, size_t size);
         TString ToString() const;
@@ -187,4 +194,3 @@ namespace NKikimr {
     };
 
 } // NKikimr
-

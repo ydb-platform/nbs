@@ -1,7 +1,10 @@
 LIBRARY()
 
 SRCS(
+    defs.cpp
     defs.h
+    flat_backup.cpp
+    flat_backup.h
     flat_boot_lease.cpp
     flat_boot_misc.cpp
     flat_comp.cpp
@@ -12,12 +15,17 @@ SRCS(
     flat_database.h
     flat_dbase_scheme.cpp
     flat_dbase_apply.cpp
+    flat_direct_part_writer.h
     flat_exec_broker.cpp
     flat_exec_commit.cpp
     flat_exec_commit_mgr.cpp
     flat_exec_seat.cpp
     flat_executor.cpp
     flat_executor.h
+    flat_executor_backup.cpp
+    flat_executor_backup.h
+    flat_executor_backup_common.cpp
+    flat_executor_backup_common.h
     flat_executor_bootlogic.cpp
     flat_executor_bootlogic.h
     flat_executor_borrowlogic.cpp
@@ -30,11 +38,14 @@ SRCS(
     flat_executor_gclogic.cpp
     flat_executor_gclogic.h
     flat_bio_actor.cpp
+    flat_executor_recovery.cpp
+    flat_executor_recovery.h
     flat_executor_snapshot.cpp
     flat_executor_tx_env.cpp
     flat_executor_tx_env.h
     flat_executor_txloglogic.cpp
     flat_executor_txloglogic.h
+    flat_executor_vacuum_logic.cpp
     flat_fwd_misc.cpp
     flat_iterator.h
     flat_load_blob_queue.cpp
@@ -72,9 +83,9 @@ SRCS(
     flat_update_op.h
     probes.cpp
     shared_handle.cpp
+    shared_cache_counters.cpp
     shared_sausagecache.cpp
     shared_sausagecache.h
-    shared_cache_memtable.h
     tablet_flat_executor.h
     tablet_flat_executor.cpp
     tablet_flat_executed.h
@@ -83,12 +94,15 @@ SRCS(
 )
 
 GENERATE_ENUM_SERIALIZATION(flat_comp_gen.h)
-
-GENERATE_ENUM_SERIALIZATION(flat_part_loader.h)
-
 GENERATE_ENUM_SERIALIZATION(flat_executor_compaction_logic.h)
-
+GENERATE_ENUM_SERIALIZATION(flat_executor_recovery.h)
+GENERATE_ENUM_SERIALIZATION(flat_executor_vacuum_logic.h)
+GENERATE_ENUM_SERIALIZATION(flat_page_iface.h)
+GENERATE_ENUM_SERIALIZATION(flat_part_loader.h)
 GENERATE_ENUM_SERIALIZATION(flat_row_eggs.h)
+GENERATE_ENUM_SERIALIZATION(flat_scan_iface.h)
+GENERATE_ENUM_SERIALIZATION(shared_cache_s3fifo.h)
+GENERATE_ENUM_SERIALIZATION(shared_cache_events.h)
 
 IF (KIKIMR_TABLET_BORROW_WITHOUT_META)
     CFLAGS(
@@ -106,16 +120,20 @@ PEERDIR(
     library/cpp/containers/stack_vector
     library/cpp/digest/crc32c
     library/cpp/html/pcdata
+    library/cpp/http/io
+    library/cpp/json/writer
     library/cpp/lwtrace
     library/cpp/lwtrace/mon
+    library/cpp/openssl/crypto
     contrib/ydb/core/base
-    contrib/ydb/core/control
+    contrib/ydb/core/control/lib
     contrib/ydb/core/protos
     contrib/ydb/core/tablet
     contrib/ydb/core/tablet_flat/protos
     contrib/ydb/core/util
-    contrib/ydb/library/binary_json
-    contrib/ydb/library/dynumber
+    contrib/ydb/core/io_formats/json
+    contrib/ydb/library/yql/types/binary_json
+    contrib/ydb/library/yql/types/dynumber
     contrib/ydb/library/mkql_proto/protos
 )
 

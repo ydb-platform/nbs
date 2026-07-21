@@ -84,16 +84,15 @@ namespace NPDisk {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 class TPDisk;
+struct TPDiskCtx;
 
 class TSysLogReader : public TThrRefBase {
     TPDisk *const PDisk;
-    TActorSystem *const ActorSystem;
-    const TActorId ReplyTo;
+    std::shared_ptr<TPDiskCtx> PCtx;
     const TReqId ReqId;
 
     THolder<TEvReadLogResult> Result;
 
-    TPDiskStreamCypher Cypher;
     TVector<ui64> BadOffsets;
 
     ui32 SizeToRead;

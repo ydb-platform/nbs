@@ -6,7 +6,7 @@
 
 #include <contrib/ydb/core/testlib/test_client.h>
 
-#include <contrib/ydb/library/actors/http/http_proxy.cpp>
+#include <contrib/ydb/library/actors/http/http_proxy.h>
 #include <library/cpp/testing/unittest/tests_data.h>
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -21,7 +21,7 @@ using namespace Tests;
 static THolder<TTempFileHandle> CreateNetDataFile(const TString& content) {
     auto netDataFile = MakeHolder<TTempFileHandle>();
 
-    netDataFile->Write(content.Data(), content.Size());
+    netDataFile->Write(content.data(), content.size());
     netDataFile->FlushData();
 
     return netDataFile;

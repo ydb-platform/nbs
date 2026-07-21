@@ -2,8 +2,7 @@
 
 namespace NYql {
 
-ui64 TDqIntegrationBase::Partition(const TDqSettings&, size_t, const TExprNode&,
-    TVector<TString>&, TString*, TExprContext&, bool) {
+ui64 TDqIntegrationBase::Partition(const TExprNode&, TVector<TString>&, TString*, TExprContext&, const TPartitionSettings&) {
     return 0;
 }
 
@@ -18,11 +17,11 @@ bool TDqIntegrationBase::CanRead(const TExprNode&, TExprContext&, bool) {
     return false;
 }
 
-TMaybe<ui64> TDqIntegrationBase::EstimateReadSize(ui64, ui32, const TVector<const TExprNode*> &, TExprContext&) {
+TMaybe<ui64> TDqIntegrationBase::EstimateReadSize(ui64, ui32, const TVector<const TExprNode*>&, TExprContext&) {
     return Nothing();
 }
 
-TExprNode::TPtr TDqIntegrationBase::WrapRead(const TDqSettings&, const TExprNode::TPtr& read, TExprContext&) {
+TExprNode::TPtr TDqIntegrationBase::WrapRead(const TExprNode::TPtr& read, TExprContext&, const TWrapReadSettings&) {
     return read;
 }
 
@@ -30,6 +29,11 @@ TMaybe<TOptimizerStatistics> TDqIntegrationBase::ReadStatistics(const TExprNode:
     Y_UNUSED(readWrap);
     Y_UNUSED(ctx);
     return Nothing();
+}
+
+TExprNode::TPtr TDqIntegrationBase::RecaptureWrite(const TExprNode::TPtr& write, TExprContext& ctx) {
+    Y_UNUSED(ctx);
+    return write;
 }
 
 TMaybe<bool> TDqIntegrationBase::CanWrite(const TExprNode&, TExprContext&) {
@@ -44,14 +48,18 @@ TExprNode::TPtr TDqIntegrationBase::WrapWrite(const TExprNode::TPtr& write, TExp
     return write;
 }
 
-void TDqIntegrationBase::RegisterMkqlCompiler(NCommon::TMkqlCallableCompilerBase&)  {
+void TDqIntegrationBase::RegisterMkqlCompiler(NCommon::TMkqlCallableCompilerBase&) {
 }
 
 bool TDqIntegrationBase::CanFallback() {
     return false;
 }
 
-void TDqIntegrationBase::FillSourceSettings(const TExprNode&, ::google::protobuf::Any&, TString&, size_t) {
+void TDqIntegrationBase::FillSourceSettings(const TExprNode&, ::google::protobuf::Any&, TString&, size_t, TExprContext&) {
+}
+
+TMaybe<IDqIntegration::TSourceWatermarksSettings> TDqIntegrationBase::ExtractSourceWatermarksSettings(const TExprNode& /*node*/, const ::google::protobuf::Any& /*settings*/, const TString& /*sourceType*/) {
+    return Nothing();
 }
 
 void TDqIntegrationBase::FillLookupSourceSettings(const TExprNode& node, ::google::protobuf::Any& settings, TString& sourceType) {
@@ -70,7 +78,7 @@ void TDqIntegrationBase::FillTransformSettings(const TExprNode&, ::google::proto
 void TDqIntegrationBase::Annotate(const TExprNode&, THashMap<TString, TString>&) {
 }
 
-bool TDqIntegrationBase::PrepareFullResultTableParams(const TExprNode&, TExprContext&, THashMap<TString, TString>&, THashMap<TString, TString>&) {
+bool TDqIntegrationBase::PrepareFullResultTableParams(const TExprNode&, TExprContext&, THashMap<TString, TString>&, THashMap<TString, TString>&, const TMaybe<TColumnOrder>&) {
     return false;
 }
 
@@ -86,6 +94,9 @@ bool TDqIntegrationBase::FillSinkPlanProperties(const NNodes::TExprBase&, TMap<T
 }
 
 void TDqIntegrationBase::ConfigurePeepholePipeline(bool, const THashMap<TString, TString>&, TTransformationPipeline*) {
+}
+
+void TDqIntegrationBase::NotifyDqTimeout() {
 }
 
 } // namespace NYql

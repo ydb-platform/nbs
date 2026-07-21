@@ -10,7 +10,7 @@
 
 #include <library/cpp/threading/future/future.h>
 
-#include <util/generic/bt_exception.h>
+#include <util/generic/yexception.h>
 
 
 namespace NKikimr {
@@ -43,9 +43,8 @@ struct TMiniKQLCompileActorEvents {
         End
     };
     static_assert(End < EventSpaceEnd(NActors::TEvents::ES_PRIVATE), "expect End < EventSpaceEnd(TEvents::ES_PRIVATE)");
-    struct TEvCompileResult : public NActors::TEventBase<TEvCompileResult, CompileResult> {
+    struct TEvCompileResult : public NActors::TEventLocal<TEvCompileResult, CompileResult> {
         explicit TEvCompileResult(const TMiniKQLCompileResult& result, THashMap<TString, ui64> &&resolveCookies);
-        DEFINE_SIMPLE_LOCAL_EVENT(TEvCompileResult, "EvCompileResult");
 
         TMiniKQLCompileResult Result;
         THashMap<TString, ui64> CompileResolveCookies;

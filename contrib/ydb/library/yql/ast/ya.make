@@ -24,6 +24,7 @@ SRCS(
 )
 
 PEERDIR(
+    contrib/libs/openssl
     library/cpp/colorizer
     library/cpp/containers/sorted_vector
     library/cpp/containers/stack_vector
@@ -36,10 +37,12 @@ PEERDIR(
     contrib/ydb/library/yql/utils
     contrib/ydb/library/yql/utils/fetch
     contrib/ydb/library/yql/core/issue
+    contrib/ydb/library/yql/core/sql_types
     contrib/ydb/library/yql/core/url_lister/interface
     contrib/ydb/library/yql/parser/pg_catalog
-    contrib/ydb/public/api/protos
 )
+
+YQL_LAST_ABI_VERSION()
 
 END()
 

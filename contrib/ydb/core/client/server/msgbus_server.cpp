@@ -5,6 +5,8 @@
 #include "msgbus_http_server.h"
 #include "grpc_server.h"
 
+#define YDB_LOG_THIS_FILE_COMPONENT NKikimrServices::MSGBUS_REQUEST
+
 namespace NKikimr {
 namespace NMsgBusProxy {
 
@@ -23,6 +25,8 @@ public:
     virtual TIntrusiveConstPtr<NACLib::TUserToken> GetInternalToken() const {
         return {};
     }
+
+    virtual void SetFinishAction(std::function<void()>&& cb) = 0;
 };
 
 class TBusMessageContext::TImplMessageBus
@@ -77,129 +81,8 @@ public:
     }
 
     THolder<TMessageBusSessionIdentHolder::TImpl> CreateSessionIdentHolder() override;
-};
 
-class TBusMessageContext::TImplGRpc
-    : public TBusMessageContext::TImpl
-{
-    NGRpcProxy::IRequestContext *RequestContext;
-    THolder<NBus::TBusMessage> Message;
-
-public:
-    TImplGRpc(NGRpcProxy::IRequestContext *requestContext, int type)
-        : RequestContext(requestContext)
-    {
-        switch (type) {
-#define MTYPE(TYPE) \
-            case TYPE::MessageType: \
-                Message.Reset(new TYPE()); \
-                try { \
-                    static_cast<TYPE&>(*Message).Record = dynamic_cast<const TYPE::RecordType&>(*RequestContext->GetRequest()); \
-                } catch (const std::bad_cast&) { \
-                    Y_ABORT("incorrect request message type"); \
-                } \
-                return;
-
-            MTYPE(TBusRequest)
-            MTYPE(TBusResponse)
-            MTYPE(TBusFakeConfigDummy)
-            MTYPE(TBusSchemeInitRoot)
-            MTYPE(TBusTypesRequest)
-            MTYPE(TBusTypesResponse)
-            MTYPE(TBusHiveCreateTablet)
-            MTYPE(TBusOldHiveCreateTablet)
-            MTYPE(TBusHiveCreateTabletResult)
-            MTYPE(TBusLocalEnumerateTablets)
-            MTYPE(TBusOldLocalEnumerateTablets)
-            MTYPE(TBusLocalEnumerateTabletsResult)
-            MTYPE(TBusKeyValue)
-            MTYPE(TBusOldKeyValue)
-            MTYPE(TBusKeyValueResponse)
-            MTYPE(TBusPersQueue)
-            MTYPE(TBusTabletKillRequest)
-            MTYPE(TBusTabletStateRequest)
-            MTYPE(TBusTabletCountersRequest)
-            MTYPE(TBusTabletLocalMKQL)
-            MTYPE(TBusTabletLocalSchemeTx)
-            MTYPE(TBusSchemeOperation)
-            MTYPE(TBusSchemeOperationStatus)
-            MTYPE(TBusSchemeDescribe)
-            MTYPE(TBusOldFlatDescribeRequest)
-            MTYPE(TBusOldFlatDescribeResponse)
-            MTYPE(TBusBlobStorageConfigRequest)
-            MTYPE(TBusNodeRegistrationRequest)
-            MTYPE(TBusCmsRequest)
-            MTYPE(TBusChooseProxy)
-            MTYPE(TBusSqsRequest)
-            MTYPE(TBusStreamRequest)
-            MTYPE(TBusInterconnectDebug)
-            MTYPE(TBusConsoleRequest)
-            MTYPE(TBusResolveNode)
-            MTYPE(TBusFillNode)
-            MTYPE(TBusDrainNode)
-            MTYPE(TBusTestShardControlRequest)
-            MTYPE(TBusLoginRequest)
-#undef MTYPE
-        }
-
-        Y_ABORT();
-    }
-
-    ~TImplGRpc() {
-        ForgetRequest();
-    }
-
-    void ForgetRequest() {
-        if (RequestContext) {
-            RequestContext->ReplyError("request wasn't processed properly");
-            RequestContext = nullptr;
-        }
-    }
-
-    NBus::TBusMessage* GetMessage() override {
-        return Message.Get();
-    }
-
-    NBus::TBusMessage* ReleaseMessage() override {
-        return Message.Release();
-    }
-
-    void SendReply(NBus::TBusMessage *resp) {
-        Y_ABORT_UNLESS(RequestContext);
-        switch (const ui32 type = resp->GetHeader()->Type) {
-#define REPLY_OPTION(TYPE) \
-            case TYPE::MessageType: { \
-                auto *msg = dynamic_cast<TYPE *>(resp); \
-                Y_ABORT_UNLESS(msg); \
-                RequestContext->Reply(msg->Record); \
-                break; \
-            }
-
-            REPLY_OPTION(TBusResponse)
-            REPLY_OPTION(TBusNodeRegistrationResponse)
-            REPLY_OPTION(TBusCmsResponse)
-            REPLY_OPTION(TBusSqsResponse)
-            REPLY_OPTION(TBusConsoleResponse)
-#undef REPLY_OPTION
-
-            default:
-                Y_ABORT("unexpected response type %" PRIu32, type);
-        }
-        RequestContext = nullptr;
-    }
-
-    void SendReplyMove(NBus::TBusMessageAutoPtr response) override {
-        SendReply(response.Get());
-    }
-
-    TVector<TStringBuf> FindClientCert() const override {
-        return RequestContext->FindClientCert();
-    };
-
-    THolder<TMessageBusSessionIdentHolder::TImpl> CreateSessionIdentHolder() override;
-
-    TString GetPeerName() const override {
-        return RequestContext->GetPeer();
+    void SetFinishAction(std::function<void()>&& /*cb*/) override {
     }
 };
 
@@ -233,18 +116,9 @@ public:
             MTYPE(TBusHiveCreateTablet)
             MTYPE(TBusOldHiveCreateTablet)
             MTYPE(TBusHiveCreateTabletResult)
-            MTYPE(TBusLocalEnumerateTablets)
-            MTYPE(TBusOldLocalEnumerateTablets)
-            MTYPE(TBusLocalEnumerateTabletsResult)
-            MTYPE(TBusKeyValue)
-            MTYPE(TBusOldKeyValue)
-            MTYPE(TBusKeyValueResponse)
             MTYPE(TBusPersQueue)
-            MTYPE(TBusTabletKillRequest)
             MTYPE(TBusTabletStateRequest)
             MTYPE(TBusTabletCountersRequest)
-            MTYPE(TBusTabletLocalMKQL)
-            MTYPE(TBusTabletLocalSchemeTx)
             MTYPE(TBusSchemeOperation)
             MTYPE(TBusSchemeOperationStatus)
             MTYPE(TBusSchemeDescribe)
@@ -254,7 +128,6 @@ public:
             MTYPE(TBusNodeRegistrationRequest)
             MTYPE(TBusCmsRequest)
             MTYPE(TBusChooseProxy)
-            MTYPE(TBusSqsRequest)
             MTYPE(TBusStreamRequest)
             MTYPE(TBusInterconnectDebug)
             MTYPE(TBusConsoleRequest)
@@ -262,16 +135,13 @@ public:
             MTYPE(TBusFillNode)
             MTYPE(TBusDrainNode)
             MTYPE(TBusTestShardControlRequest)
-            MTYPE(TBusLoginRequest)
 #undef MTYPE
         }
 
         Y_ABORT();
     }
 
-    ~TImplNoOpGrpc() {
-        ForgetRequest();
-    }
+    ~TImplNoOpGrpc() = default;
 
     void ForgetRequest() {
         if (RequestContext) {
@@ -329,6 +199,10 @@ public:
     TIntrusiveConstPtr<NACLib::TUserToken> GetInternalToken() const override {
         return RequestContext->GetInternalToken();
     }
+
+    void SetFinishAction(std::function<void()>&& cb) override {
+        RequestContext->SetFinishAction(std::move(cb));
+    }
 };
 
 TBusMessageContext::TBusMessageContext()
@@ -340,10 +214,6 @@ TBusMessageContext::TBusMessageContext(const TBusMessageContext& other)
 
 TBusMessageContext::TBusMessageContext(NBus::TOnMessageContext &messageContext, IMessageWatcher *messageWatcher)
     : Impl(new TImplMessageBus(messageContext, messageWatcher))
-{}
-
-TBusMessageContext::TBusMessageContext(NGRpcProxy::IRequestContext *requestContext, int type)
-    : Impl(new TImplGRpc(requestContext, type))
 {}
 
 TBusMessageContext::TBusMessageContext(std::unique_ptr<NGRpcService::IRequestNoOpCtx> requestContext, int type)
@@ -398,6 +268,7 @@ public:
     virtual TIntrusiveConstPtr<NACLib::TUserToken> GetInternalToken() const {
         return {};
     }
+    virtual void SetFinishAction(std::function<void()>&& cb) = 0;
 };
 
 class TMessageBusSessionIdentHolder::TImplMessageBus
@@ -441,51 +312,14 @@ public:
     TVector<TStringBuf> FindClientCert() const override {
         return {};
     }
+
+    void SetFinishAction(std::function<void()>&& /*cb*/) override {
+    }
 };
 
 THolder<TMessageBusSessionIdentHolder::TImpl> TBusMessageContext::TImplMessageBus::CreateSessionIdentHolder() {
     return MakeHolder<TMessageBusSessionIdentHolder::TImplMessageBus>(static_cast<NBus::TOnMessageContext&>(*this));
 }
-
-class TMessageBusSessionIdentHolder::TImplGRpc
-    : public TMessageBusSessionIdentHolder::TImpl
-{
-    TIntrusivePtr<TBusMessageContext::TImplGRpc> Context;
-
-public:
-    TImplGRpc(TIntrusivePtr<TBusMessageContext::TImplGRpc> context)
-        : Context(context)
-    {
-    }
-
-    ~TImplGRpc() {
-        if (Context) {
-            Context->ForgetRequest();
-        }
-    }
-
-    void SendReply(NBus::TBusMessage *resp) override {
-        Y_ABORT_UNLESS(Context);
-        Context->SendReply(resp);
-
-        auto context = std::move(Context);
-    }
-
-    void SendReplyMove(NBus::TBusMessageAutoPtr resp) override {
-        Y_ABORT_UNLESS(Context);
-        Context->SendReplyMove(resp);
-
-        auto context = std::move(Context);
-    }
-
-    TVector<TStringBuf> FindClientCert() const override {
-        return Context->FindClientCert();
-    }
-
-    ui64 GetTotalTimeout() const override {
-        return 90000;
-    }
-};
 
 class TMessageBusSessionIdentHolder::TImplNoOpGrpc
     : public TMessageBusSessionIdentHolder::TImpl
@@ -498,11 +332,7 @@ public:
     {
     }
 
-    ~TImplNoOpGrpc() {
-        if (Context) {
-            Context->ForgetRequest();
-        }
-    }
+    ~TImplNoOpGrpc() = default;
 
     void SendReply(NBus::TBusMessage *resp) override {
         Y_ABORT_UNLESS(Context);
@@ -529,11 +359,11 @@ public:
     TIntrusiveConstPtr<NACLib::TUserToken> GetInternalToken() const override {
         return Context->GetInternalToken();
     }
-};
 
-THolder<TMessageBusSessionIdentHolder::TImpl> TBusMessageContext::TImplGRpc::CreateSessionIdentHolder() {
-    return MakeHolder<TMessageBusSessionIdentHolder::TImplGRpc>(this);
-}
+    void SetFinishAction(std::function<void()>&& cb) override {
+        Context->SetFinishAction(std::move(cb));
+    }
+};
 
 THolder<TMessageBusSessionIdentHolder::TImpl> TBusMessageContext::TImplNoOpGrpc::CreateSessionIdentHolder() {
     return MakeHolder<TMessageBusSessionIdentHolder::TImplNoOpGrpc>(this);
@@ -576,6 +406,10 @@ TVector<TStringBuf> TMessageBusSessionIdentHolder::FindClientCert() const {
 TIntrusiveConstPtr<NACLib::TUserToken> TMessageBusSessionIdentHolder::GetInternalToken() const {
     Y_ABORT_UNLESS(Impl);
     return Impl->GetInternalToken();
+}
+
+void TMessageBusSessionIdentHolder::SetFinishAction(std::function<void()>&& cb) {
+    Impl->SetFinishAction(std::move(cb));
 }
 
 
@@ -696,8 +530,6 @@ void TMessageBusServer::OnMessage(TBusMessageContext &msg) {
     const ui32 msgType = msg.GetMessage()->GetHeader()->Type;
 
     switch (msgType) {
-    case MTYPE_CLIENT_REQUEST:
-        return ClientProxyRequest<TEvBusProxy::TEvRequest>(msg);
     case MTYPE_CLIENT_SCHEME_INITROOT:
         return ClientProxyRequest<TEvBusProxy::TEvInitRoot>(msg);
     case MTYPE_CLIENT_SCHEME_NAVIGATE:
@@ -707,12 +539,6 @@ void TMessageBusServer::OnMessage(TBusMessageContext &msg) {
     case MTYPE_CLIENT_HIVE_CREATE_TABLET:
     case MTYPE_CLIENT_OLD_HIVE_CREATE_TABLET:
         return ClientActorRequest(CreateMessageBusHiveCreateTablet, msg);
-    case MTYPE_CLIENT_LOCAL_ENUMERATE_TABLETS:
-    case MTYPE_CLIENT_OLD_LOCAL_ENUMERATE_TABLETS:
-        return ClientActorRequest(CreateMessageBusLocalEnumerateTablets, msg);
-    case MTYPE_CLIENT_KEYVALUE:
-    case MTYPE_CLIENT_OLD_KEYVALUE:
-        return ClientActorRequest(CreateMessageBusKeyValue, msg);
     case MTYPE_CLIENT_PERSQUEUE:
         return ClientProxyRequest<TEvBusProxy::TEvPersQueue>(msg);
     case MTYPE_CLIENT_CHOOSE_PROXY:
@@ -721,12 +547,6 @@ void TMessageBusServer::OnMessage(TBusMessageContext &msg) {
         return ClientActorRequest(CreateMessageBusTabletStateRequest, msg);
     case MTYPE_CLIENT_TABLET_COUNTERS_REQUEST:
         return ClientActorRequest(CreateMessageBusTabletCountersRequest, msg);
-    case MTYPE_CLIENT_LOCAL_MINIKQL:
-        return ClientActorRequest(CreateMessageBusLocalMKQL, msg);
-    case MTYPE_CLIENT_LOCAL_SCHEME_TX:
-        return ClientActorRequest(CreateMessageBusLocalSchemeTx, msg);
-    case MTYPE_CLIENT_TABLET_KILL_REQUEST:
-        return ClientActorRequest(CreateMessageBusTabletKillRequest, msg);
     case MTYPE_CLIENT_FLAT_TX_REQUEST:
         return ClientProxyRequest<TEvBusProxy::TEvFlatTxRequest>(msg);
     case MTYPE_CLIENT_FLAT_TX_STATUS_REQUEST:
@@ -744,16 +564,12 @@ void TMessageBusServer::OnMessage(TBusMessageContext &msg) {
         return ClientActorRequest(CreateMessageBusResolveNode, msg);
     case MTYPE_CLIENT_CMS_REQUEST:
         return ClientActorRequest(CreateMessageBusCmsRequest, msg);
-    case MTYPE_CLIENT_SQS_REQUEST:
-        return ClientActorRequest(CreateMessageBusSqsRequest, msg);
     case MTYPE_CLIENT_INTERCONNECT_DEBUG:
         return ClientActorRequest(CreateMessageBusInterconnectDebug, msg);
     case MTYPE_CLIENT_CONSOLE_REQUEST:
         return ClientActorRequest(CreateMessageBusConsoleRequest, msg);
     case MTYPE_CLIENT_TEST_SHARD_CONTROL:
         return ClientActorRequest(CreateMessageBusTestShardControl, msg);
-    case MTYPE_CLIENT_LOGIN_REQUEST:
-        return ClientActorRequest(CreateMessageBusLoginRequest, msg);
     default:
         return UnknownMessage(msg);
     }
@@ -762,11 +578,12 @@ void TMessageBusServer::OnMessage(TBusMessageContext &msg) {
 void TMessageBusServer::OnError(TAutoPtr<NBus::TBusMessage> msg, NBus::EMessageStatus status) {
     if (ActorSystem) {
         if (status == NBus::MESSAGE_SHUTDOWN) {
-            LOG_DEBUG_S(*ActorSystem, NKikimrServices::MSGBUS_REQUEST, "Msgbus client disconnected before reply was sent"
-                    << " msg# " << msg->Describe());
+            YDB_LOG_DEBUG_CTX(*ActorSystem, "Msgbus client disconnected before reply was sent",
+                {"msg", msg->Describe()});
         } else {
-            LOG_ERROR_S(*ActorSystem, NKikimrServices::MSGBUS_REQUEST, "Failed to send reply over msgbus status# " << status
-                    << " msg# " << msg->Describe());
+            YDB_LOG_ERROR_CTX(*ActorSystem, "Failed to send reply over msgbus",
+                {"status", status},
+                {"msg", msg->Describe()});
         }
     }
 }

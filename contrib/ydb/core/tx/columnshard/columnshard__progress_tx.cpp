@@ -3,7 +3,10 @@
 
 #include <contrib/ydb/core/tx/columnshard/operations/write.h>
 
+#include <contrib/ydb/library/actors/struct_log/log_stack.h>
 #include <contrib/ydb/library/yql/dq/actors/compute/dq_compute_actor.h>
+
+#define YDB_LOG_THIS_FILE_COMPONENT NKikimrServices::TX_COLUMNSHARD_TX
 
 namespace NKikimr::NColumnShard {
 
@@ -20,7 +23,8 @@ private:
 public:
     TTxProgressTx(TColumnShard* self)
         : TTransactionBase(self)
-        , TabletTxNo(++Self->TabletTxCounter) {
+        , TabletTxNo(++Self->TabletTxCounter)
+    {
     }
 
     TTxType GetTxType() const override {
@@ -28,12 +32,14 @@ public:
     }
 
     bool Execute(TTransactionContext& txc, const TActorContext& ctx) override {
-        NActors::TLogContextGuard logGuard =
-            NActors::TLogContextBuilder::Build(NKikimrServices::TX_COLUMNSHARD)("tablet_id", Self->TabletID())("tx_state", "execute");
-        Y_ABORT_UNLESS(Self->ProgressTxInFlight);
+        YDB_LOG_CREATE_CONTEXT_COMP(NKikimrServices::TX_COLUMNSHARD_TX,
+            {"tabletId", Self->TabletID()},
+            {"txState", "TTxProgressTx::Execute"},
+            {"txCurrent", Self->InProgressTxId});
+        AFL_VERIFY(Self->ProgressTxScheduled);
         Self->Counters.GetTabletCounters()->SetCounter(COUNTER_TX_COMPLETE_LAG, Self->GetTxCompleteLag().MilliSeconds());
 
-        const size_t removedCount = Self->ProgressTxController->CleanExpiredTxs(txc);
+        const size_t removedCount = Self->ProgressTxController->CleanExpiredTxs();
         if (removedCount > 0) {
             // We cannot continue with this transaction, start a new transaction
             AbortedThroughRemoveExpired = true;
@@ -41,37 +47,58 @@ public:
             return true;
         }
 
+        Self->ProgressTxScheduled = false;
         // Process a single transaction at the front of the queue
         const auto plannedItem = Self->ProgressTxController->GetFirstPlannedTx();
         if (!!plannedItem) {
             PlannedQueueItem.emplace(plannedItem->PlanStep, plannedItem->TxId);
-            ui64 step = plannedItem->PlanStep;
-            ui64 txId = plannedItem->TxId;
-            TxOperator = Self->ProgressTxController->GetTxOperatorVerified(txId);
+            const ui64 step = plannedItem->PlanStep;
+            const ui64 txId = plannedItem->TxId;
+            YDB_LOG_CREATE_CONTEXT_COMP(NKikimrServices::TX_COLUMNSHARD_TX,
+                {"txId", txId});
+            TxOperator = Self->ProgressTxController->GetTxOperator(txId, ETxOperatorStatus::InProgress);
+            YDB_LOG_DEBUG("",
+                {"event", "PlannedItemStart"},
+                {"opType", TxOperator->GetOpType()});
             if (auto txPrepare = TxOperator->BuildTxPrepareForProgress(Self)) {
+                YDB_LOG_DEBUG("",
+                    {"event", "PlannedItemStart"},
+                    {"details", "BuildTxPrepareForProgress"},
+                    {"opType", TxOperator->GetOpType()});
                 AbortedThroughRemoveExpired = true;
-                Self->ProgressTxInFlight = txId;
+                Self->InProgressTxId = txId;
                 Self->Execute(txPrepare.release(), ctx);
                 return true;
+            } else if (TxOperator->IsInProgress()) {
+                AbortedThroughRemoveExpired = true;
+                YDB_LOG_DEBUG("",
+                    {"event", "PlannedItemContinue"},
+                    {"opType", TxOperator->GetOpType()});
+                AFL_VERIFY(Self->InProgressTxId == txId);
+                return true;
             } else {
+                YDB_LOG_DEBUG("",
+                    {"event", "PlannedItemStart"},
+                    {"details", "PopFirstPlannedTx"},
+                    {"opType", TxOperator->GetOpType()});
                 Self->ProgressTxController->PopFirstPlannedTx();
             }
             StartExecution = TMonotonic::Now();
 
             LastCompletedTx = NOlap::TSnapshot(step, txId);
-            if (LastCompletedTx > Self->LastCompletedTx) {
-                NIceDb::TNiceDb db(txc.DB);
-                Schema::SaveSpecialValue(db, Schema::EValueIds::LastCompletedStep, LastCompletedTx->GetPlanStep());
-                Schema::SaveSpecialValue(db, Schema::EValueIds::LastCompletedTxId, LastCompletedTx->GetTxId());
-            }
+            AFL_VERIFY(LastCompletedTx > Self->LastCompletedTx)("self.last_completed_tx", Self->LastCompletedTx)(
+                "last_completed_step", LastCompletedTx);
+            NIceDb::TNiceDb db(txc.DB);
+            Schema::SaveSpecialValue(db, Schema::EValueIds::LastCompletedStep, LastCompletedTx->GetPlanStep());
+            Schema::SaveSpecialValue(db, Schema::EValueIds::LastCompletedTxId, LastCompletedTx->GetTxId());
 
             AFL_VERIFY(TxOperator->ProgressOnExecute(*Self, NOlap::TSnapshot(step, txId), txc));
             Self->ProgressTxController->ProgressOnExecute(txId, txc);
             Self->Counters.GetTabletCounters()->IncCounter(COUNTER_PLANNED_TX_COMPLETED);
         }
-        Self->ProgressTxInFlight = std::nullopt;
+        Self->InProgressTxId = 0;
         if (!!Self->ProgressTxController->GetPlannedTx()) {
-            Self->EnqueueProgressTx(ctx, std::nullopt);
+            Self->EnqueueProgressTx(ctx);
         }
         return true;
     }
@@ -80,8 +107,9 @@ public:
         if (AbortedThroughRemoveExpired) {
             return;
         }
-        NActors::TLogContextGuard logGuard =
-            NActors::TLogContextBuilder::Build(NKikimrServices::TX_COLUMNSHARD)("tablet_id", Self->TabletID())("tx_state", "complete");
+        YDB_LOG_CREATE_CONTEXT_COMP(NKikimrServices::TX_COLUMNSHARD_TX,
+            {"tabletId", Self->TabletID()},
+            {"txState", "TTxProgressTx::Complete"});
         if (TxOperator) {
             TxOperator->ProgressOnComplete(*Self, ctx);
             Self->RescheduleWaitingReads();
@@ -99,17 +127,26 @@ public:
             Self->GetProgressTxController().GetCounters().OnTxExecuteDuration(TxOperator->GetOpType(), TMonotonic::Now() - *StartExecution);
             Self->GetProgressTxController().GetCounters().OnTxLiveDuration(TxOperator->GetOpType(), TMonotonic::Now() - ConstructionInstant);
         }
-        Self->SetupIndexation();
     }
 };
 
-void TColumnShard::EnqueueProgressTx(const TActorContext& ctx, const std::optional<ui64> continueTxId) {
-    AFL_DEBUG(NKikimrServices::TX_COLUMNSHARD)("event", "EnqueueProgressTx")("tablet_id", TabletID());
-    if (continueTxId) {
-        AFL_VERIFY(!ProgressTxInFlight || ProgressTxInFlight == continueTxId)("current", ProgressTxInFlight)("expected", continueTxId);
+void TColumnShard::EnqueueProgressTx(const TActorContext& ctx, const ui64 continueTxId) {
+    YDB_LOG_DEBUG("",
+        {"event", "EnqueueProgressTx"},
+        {"tabletId", TabletID()},
+        {"txId", continueTxId});
+    // While a particular tx is in the distributed commit process, only its own nudge can advance it.
+    // So, skip everything else.
+    if (InProgressTxId != 0 && continueTxId != InProgressTxId) {
+        return;
     }
-    if (!ProgressTxInFlight || ProgressTxInFlight == continueTxId) {
-        ProgressTxInFlight = continueTxId.value_or(0);
+    if (!ProgressTxScheduled) {
+        YDB_LOG_DEBUG("",
+            {"event", "EnqueueProgressTxStart"},
+            {"tabletId", TabletID()},
+            {"txId", continueTxId},
+            {"txCurrent", InProgressTxId});
+        ProgressTxScheduled = true;
         Execute(new TTxProgressTx(this), ctx);
     }
 }

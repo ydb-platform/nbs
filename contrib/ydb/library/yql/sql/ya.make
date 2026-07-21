@@ -2,14 +2,11 @@ LIBRARY()
 
 PEERDIR(
     library/cpp/deprecated/split
-    contrib/ydb/library/yql/parser/pg_wrapper/interface
+    contrib/ydb/library/yql/ast
+    contrib/ydb/library/yql/parser/proto_ast
+    contrib/ydb/library/yql/parser/lexer_common
+    contrib/ydb/library/yql/public/issue
     contrib/ydb/library/yql/sql/settings
-    contrib/ydb/library/yql/sql/v0
-    contrib/ydb/library/yql/sql/v0/lexer
-    contrib/ydb/library/yql/sql/v1
-    contrib/ydb/library/yql/sql/v1/format
-    contrib/ydb/library/yql/sql/v1/lexer
-    contrib/ydb/library/yql/sql/v1/proto_parser
     contrib/ydb/library/yql/utils
 )
 

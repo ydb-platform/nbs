@@ -1,13 +1,17 @@
 LIBRARY()
+
 PEERDIR(
+    contrib/libs/brotli/c/dec
     contrib/libs/fmt
-    contrib/libs/poco/Util
-    contrib/libs/brotli/dec
     contrib/libs/libbz2
     contrib/libs/lz4
     contrib/libs/lzma
+    contrib/libs/poco/Util
     contrib/libs/zstd
+    contrib/ydb/core/util
+    contrib/ydb/library/yql/dq/actors/protos
     contrib/ydb/library/yql/udfs/common/clickhouse/client
+    contrib/ydb/library/yql/utils
 )
 
 ADDINCL(
@@ -36,3 +40,6 @@ YQL_LAST_ABI_VERSION()
 
 END()
 
+RECURSE_FOR_TESTS(
+    ut
+)

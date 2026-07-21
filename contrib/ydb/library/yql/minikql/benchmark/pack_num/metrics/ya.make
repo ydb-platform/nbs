@@ -1,6 +1,4 @@
-PY2TEST()
-
-TAG(ya:manual)
+PY3TEST()
 
 SIZE(LARGE)
 
@@ -17,5 +15,6 @@ TEST_SRCS(
 DEPENDS(
     contrib/ydb/library/yql/minikql/benchmark/pack_num
 )
+
 
 END()

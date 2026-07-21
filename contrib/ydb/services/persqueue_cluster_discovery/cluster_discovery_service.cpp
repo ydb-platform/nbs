@@ -4,10 +4,11 @@
 #include "counters.h"
 
 #include <contrib/ydb/core/base/appdata.h>
+#include <contrib/ydb/core/grpc_services/base/base.h>
 #include <contrib/ydb/core/grpc_services/grpc_request_proxy.h>
 #include <contrib/ydb/core/mind/address_classification/net_classifier.h>
 #include <contrib/ydb/core/mon/mon.h>
-#include <contrib/ydb/core/persqueue/cluster_tracker.h>
+#include <contrib/ydb/core/persqueue/public/cluster_tracker/cluster_tracker.h>
 #include <contrib/ydb/core/util/address_classifier.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -15,6 +16,8 @@
 #include <algorithm>
 
 #include <contrib/ydb/core/protos/pqconfig.pb.h>
+
+#define YDB_LOG_THIS_FILE_COMPONENT NKikimrServices::PERSQUEUE_CLUSTER_TRACKER
 
 namespace NKikimr::NPQ::NClusterDiscovery {
 
@@ -67,7 +70,7 @@ private:
     }
 
     void SubscribeToClusterTracker() {
-        LOG_DEBUG_S(Ctx(), NKikimrServices::PERSQUEUE_CLUSTER_TRACKER, "TClusterDiscoveryServiceActor: send TEvClusterTracker::TEvSubscribe");
+        YDB_LOG_DEBUG_CTX(Ctx(), "TClusterDiscoveryServiceActor: send TEvClusterTracker::TEvSubscribe");
         Send(NPQ::NClusterTracker::MakeClusterTrackerID(), new NPQ::NClusterTracker::TEvClusterTracker::TEvSubscribe);
     }
 
@@ -188,7 +191,7 @@ private:
         NActors::TMon* mon = AppData(Ctx())->Mon;
         if (mon) {
             NMonitoring::TIndexMonPage * page = mon->RegisterIndexPage("actors", "Actors");
-            mon->RegisterActorPage(page, "pqcd", "PersQueue Cluster Discovery", false, Ctx().ExecutorThread.ActorSystem, Ctx().SelfID);
+            mon->RegisterActorPage(page, "pqcd", "PersQueue Cluster Discovery", false, Ctx().ActorSystem(), Ctx().SelfID);
         }
     }
 
@@ -196,22 +199,23 @@ private:
         switch (ev->GetTypeRewrite()) {
             hFunc(NNetClassifier::TEvNetClassifier::TEvClassifierUpdate, HandleClassifierUpdateWhileIniting);
             hFunc(NClusterTracker::TEvClusterTracker::TEvClustersUpdate, HandleClustersUpdateWhileIniting);
-            hFunc(NGRpcService::TEvDiscoverPQClustersRequest, HandleDiscoverPQClustersRequestWhileIniting);
+            fFunc(NGRpcService::TRpcServices::EvDiscoverPQClusters, HandleDiscoverPQClustersRequestWhileIniting);
             hFunc(NMon::TEvHttpInfo, HandleHttpRequest);
             hFunc(TEvents::TEvWakeup, UpdateTimedCounters);
         }
     }
 
-    void RespondServiceUnavailable(NGRpcService::TEvDiscoverPQClustersRequest::TPtr& ev) {
+    void RespondServiceUnavailable(NGRpcService::TEvDiscoverPQClustersRequest* ev) {
         Counters->DroppedRequestsCount->Inc();
 
-        ev->Get()->ReplyWithYdbStatus(Ydb::StatusIds::UNAVAILABLE);
+        ev->ReplyWithYdbStatus(Ydb::StatusIds::UNAVAILABLE);
     }
 
-    void HandleDiscoverPQClustersRequestWhileIniting(NGRpcService::TEvDiscoverPQClustersRequest::TPtr& ev) {
+    void HandleDiscoverPQClustersRequestWhileIniting(TAutoPtr<NActors::IEventHandle>& ev) {
+        ev->DropRewrite();
         Counters->TotalRequestsCount->Inc();
 
-        RespondServiceUnavailable(ev);
+        RespondServiceUnavailable(ev->Get<NGRpcService::TEvDiscoverPQClustersRequest>());
     }
 
     void HandleClassifierUpdateWhileWorking(NNetClassifier::TEvNetClassifier::TEvClassifierUpdate::TPtr& ev) {
@@ -222,15 +226,16 @@ private:
         UpdateClustersList(ev);
     }
 
-    void HandleDiscoverPQClustersRequestWhileWorking(NGRpcService::TEvDiscoverPQClustersRequest::TPtr& ev) {
+    void HandleDiscoverPQClustersRequestWhileWorking(TAutoPtr<NActors::IEventHandle>& ev) {
+        ev->DropRewrite();
         Counters->TotalRequestsCount->Inc();
 
         if (!IsHealthy()) {
-            RespondServiceUnavailable(ev);
+            RespondServiceUnavailable(ev->Get<NGRpcService::TEvDiscoverPQClustersRequest>());
             return;
         }
 
-        IActor* actor = NWorker::CreateClusterDiscoveryWorker(ev, DatacenterClassifier, CloudNetworksClassifier, ClustersList, Counters);
+        IActor* actor = NWorker::CreateClusterDiscoveryWorker(THolder(ev->Release<NGRpcService::TEvDiscoverPQClustersRequest>().Release()), DatacenterClassifier, CloudNetworksClassifier, ClustersList, Counters);
         Register(actor, TMailboxType::HTSwap, AppData(Ctx())->UserPoolId);
     }
 
@@ -238,7 +243,7 @@ private:
         switch (ev->GetTypeRewrite()) {
             hFunc(NNetClassifier::TEvNetClassifier::TEvClassifierUpdate, HandleClassifierUpdateWhileWorking);
             hFunc(NClusterTracker::TEvClusterTracker::TEvClustersUpdate, HandleClustersUpdateWhileWorking);
-            hFunc(NGRpcService::TEvDiscoverPQClustersRequest, HandleDiscoverPQClustersRequestWhileWorking);
+            fFunc(NGRpcService::TRpcServices::EvDiscoverPQClusters, HandleDiscoverPQClustersRequestWhileWorking);
             hFunc(NMon::TEvHttpInfo, HandleHttpRequest);
             hFunc(TEvents::TEvWakeup, UpdateTimedCounters);
         }

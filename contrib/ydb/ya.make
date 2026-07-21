@@ -1,10 +1,16 @@
 RECURSE(
     apps
+    docs
     core
     library
     mvp
     public
     services
-    tests
     tools
 )
+
+IF(NOT EXPORT_CMAKE)
+  RECURSE(
+    tests
+  )
+ENDIF()

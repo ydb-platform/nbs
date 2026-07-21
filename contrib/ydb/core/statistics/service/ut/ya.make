@@ -4,22 +4,19 @@ FORK_SUBTESTS()
 
 SPLIT_FACTOR(60)
 
-IF (WITH_VALGRIND)
-    TIMEOUT(3600)
-    SIZE(LARGE)
-    TAG(ya:fat)
-ELSE()
-    TIMEOUT(600)
-    SIZE(MEDIUM)
-ENDIF()
+REQUIREMENTS(cpu:2)
+SIZE(MEDIUM)
 
 YQL_LAST_ABI_VERSION()
 
 PEERDIR(
     library/cpp/testing/unittest
+    contrib/ydb/library/yql/udfs/statistics_internal
     contrib/ydb/core/protos
     contrib/ydb/core/testlib/default
     contrib/ydb/core/statistics/ut_common
+    contrib/ydb/library/yql/udfs/common/digest
+    contrib/ydb/library/yql/udfs/common/hyperloglog
 )
 
 SRCS(

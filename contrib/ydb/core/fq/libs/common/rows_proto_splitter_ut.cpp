@@ -1,6 +1,6 @@
 #include "rows_proto_splitter.h"
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_result/result.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/result/result.h>
 #include <contrib/ydb/services/ydb/ydb_common_ut.h>
 
 namespace NFq {

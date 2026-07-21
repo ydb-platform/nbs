@@ -58,7 +58,7 @@ namespace NKikimr {
     {
         TLogoBlobsSnapshot::TIndexForwardIterator it(hullCtx, snapshot);
         for (const auto& item : extremeQueries) {
-            Y_ABORT_UNLESS(item.HasId());
+            Y_VERIFY_S(item.HasId(), hullCtx->VCtx->VDiskLogPrefix);
             const TLogoBlobID& id = LogoBlobIDFromLogoBlobID(item.GetId());
             const TLogoBlobID& full = id.FullID();
 
@@ -68,11 +68,7 @@ namespace NKikimr {
                 const bool keep = ingress.KeepUnconditionally(TIngress::IngressMode(hullCtx->VCtx->Top->GType));
                 TString explanation;
                 if (!suppressBarrierCheck && !keepChecker(full, keep, &explanation)) {
-                    LOG_INFO(ctx, NKikimrServices::BS_HULLRECS,
-                            VDISKP(hullCtx->VCtx->VDiskLogPrefix,
-                                "Db# LogoBlobs getting blob beyond the barrier id# %s ingress# %s barrier# %s",
-                                id.ToString().data(), ingress.ToString(hullCtx->VCtx->Top.get(),
-                                hullCtx->VCtx->ShortSelfVDisk, id).data(), explanation.data()));
+                    YDB_LOG_INFO_CTX_COMP(ctx, NKikimrServices::BS_HULLRECS, VDISKP(hullCtx->VCtx->VDiskLogPrefix, "Db# LogoBlobs getting blob beyond the barrier id# %s ingress# %s barrier# %s", id.ToString().data(), ingress.ToString(hullCtx->VCtx->Top.get(), hullCtx->VCtx->ShortSelfVDisk, id).data(), explanation.data()));
                 }
             }
         }
@@ -103,7 +99,7 @@ namespace NKikimr {
             return CreateLevelIndexExtremeQueryActor(queryCtx, parentId,
                     std::move(fullSnap.LogoBlobsSnap), std::move(fullSnap.BarriersSnap), ev, std::move(result), replSchedulerId);
         } else {
-            Y_ABORT("Impossible case");
+            Y_ABORT_S(queryCtx->HullCtx->VCtx->VDiskLogPrefix << "Impossible case");
         }
     }
 
@@ -138,6 +134,15 @@ namespace NKikimr {
             if (record.ExtremeQueriesSize() == 0)
                 return false; // we need to have one
 
+            for (const auto& query : record.GetExtremeQueries()) {
+                TLogoBlobID blobId = LogoBlobIDFromLogoBlobID(query.GetId());
+                if (!TErasureType::IsCrcModeValid(blobId.CrcMode())) {
+                    // We shouldn't be able to create TEvGet request with invalid CrcMode at all
+                    // something went wrong
+                    return false;
+                }
+            }
+
             return true;
         }
 
@@ -155,9 +160,7 @@ namespace NKikimr {
             std::unique_ptr<TEvBlobStorage::TEvVDbStatResult> result)
     {
         result->SetError();
-        LOG_DEBUG(ctx, NKikimrServices::BS_VDISK_OTHER,
-                VDISKP(vctx->VDiskLogPrefix,
-                    "TEvVDbStatResult: %s", result->ToString().data()));
+        YDB_LOG_DEBUG_CTX_COMP(ctx, NKikimrServices::BS_VDISK_OTHER, VDISKP(vctx->VDiskLogPrefix, "TEvVDbStatResult: %s", result->ToString().data()));
         SendVDiskResponse(ctx, ev->Sender, result.release(), ev->Cookie, vctx, {});
     }
 

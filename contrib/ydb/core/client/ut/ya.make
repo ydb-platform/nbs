@@ -4,20 +4,14 @@ FORK_SUBTESTS()
 
 SPLIT_FACTOR(60)
 
-IF (SANITIZER_TYPE == "thread" OR WITH_VALGRIND)
-    TIMEOUT(3600)
+REQUIREMENTS(cpu:2)
+IF (SANITIZER_TYPE == "thread")
     SIZE(LARGE)
     REQUIREMENTS(
-        cpu:4
         ram:32
     )
-    TAG(ya:fat)
+    INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/large.inc)
 ELSE()
-    REQUIREMENTS(
-        cpu:4
-        ram:16
-    )
-    TIMEOUT(600)
     SIZE(MEDIUM)
 ENDIF()
 
@@ -26,6 +20,7 @@ PEERDIR(
     library/cpp/regex/pcre
     library/cpp/svnversion
     contrib/ydb/core/client/scheme_cache_lib
+    contrib/ydb/core/tablet_flat
     contrib/ydb/core/tablet_flat/test/libs/rows
     contrib/ydb/core/testlib/default
 )
@@ -36,10 +31,8 @@ INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/supp/ubsan_supp.inc)
 
 SRCS(
     cancel_tx_ut.cpp
-    client_ut.cpp
     flat_ut.cpp
     locks_ut.cpp
-    query_stats_ut.cpp
     object_storage_listing_ut.cpp
 )
 

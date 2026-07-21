@@ -8,7 +8,11 @@
 #include <contrib/ydb/core/base/ticket_parser.h>
 #include <contrib/ydb/core/mon/mon.h>
 #include <contrib/ydb/core/security/certificate_check/cert_check.h>
+#include <contrib/ydb/core/security/external_idp/external_idp_provider.h>
 #include <contrib/ydb/core/security/ldap_auth_provider/ldap_auth_provider.h>
+#include <contrib/ydb/core/security/token_manager/token_manager.h>
+#include <contrib/ydb/core/security/util/counters.h>
+#include <contrib/ydb/core/security/util/net.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/log.h>
@@ -23,10 +27,14 @@
 #include <contrib/ydb/library/ycloud/impl/user_account_service.h>
 
 #include <library/cpp/digest/md5/md5.h>
+#include <library/cpp/html/pcdata/pcdata.h>
 
 #include <util/generic/queue.h>
+#include <util/generic/strbuf.h>
 #include <util/stream/file.h>
 #include <util/string/vector.h>
+
+#include <util/string/join.h>
 
 namespace NKikimr {
 
@@ -92,7 +100,9 @@ private:
 
     using TEvAccessServiceAuthenticateRequest = TEvRequestWithKey<NCloud::TEvAccessService::TEvAuthenticateRequest>;
     using TEvAccessServiceAuthorizeRequest = TEvRequestWithKey<NCloud::TEvAccessService::TEvAuthorizeRequest>;
-    using TEvAccessServiceBulkAuthorizeRequest = TEvRequestWithKey<NCloud::TEvAccessService::TEvBulkAuthorizeRequest>;
+    using TEvAccessServiceAuthenticateRequestV2 = TEvRequestWithKey<NCloud::TEvAccessService::TEvAuthenticateRequestV2>;
+    using TEvAccessServiceAuthorizeRequestV2 = TEvRequestWithKey<NCloud::TEvAccessService::TEvAuthorizeRequestV2>;
+    using TEvAccessServiceBulkAuthorizeRequestV2 = TEvRequestWithKey<NCloud::TEvAccessService::TEvBulkAuthorizeRequestV2>;
     using TEvAccessServiceGetUserAccountRequest = TEvRequestWithKey<NCloud::TEvUserAccountService::TEvGetUserAccountRequest>;
     using TEvAccessServiceGetServiceAccountRequest = TEvRequestWithKey<NCloud::TEvServiceAccountService::TEvGetServiceAccountRequest>;
     using TEvNebiusAccessServiceAuthorizeRequest = TEvRequestWithKey<NNebiusCloud::TEvAccessService::TEvAuthorizeRequest>;
@@ -123,6 +133,7 @@ protected:
         static constexpr const char* NebiusAccessServiceAuthType = "NebiusAccessService";
         static constexpr const char* ApiKeyAuthType = "ApiKey";
         static constexpr const char* CertificateAuthType = "Certificate";
+        static constexpr const char* ExternalIdpAuthType = "ExternalIdp";
 
         TString Ticket;
         typename TDerived::ETokenType TokenType = TDerived::ETokenType::Unknown;
@@ -143,7 +154,7 @@ protected:
         TStackVec<TString> AdditionalSIDs;
         bool RefreshRetryableErrorImmediately = false;
         TExternalAuthInfo ExternalAuthInfo;
-        bool IsLowAccessServiceRequestPriority = false;
+        bool IsLowRequestPriority = false;
 
         TTokenRecordBase(const TStringBuf ticket)
             : Ticket(ticket)
@@ -184,13 +195,13 @@ protected:
                     CurrentDelay = Min(CurrentDelay * scaleFactor, ticketParser->MaxErrorRefreshTime - ticketParser->MinErrorRefreshTime);
                 }
             } else {
-                SetRefreshTime(now, ticketParser->RefreshTime - ticketParser->RefreshTime / 2);
+                SetRefreshTime(now, ticketParser->RefreshTime);
             }
         }
 
         template <typename T>
         void SetOkRefreshTime(TTicketParserImpl<T>* ticketParser, TInstant now) {
-            SetRefreshTime(now, ticketParser->RefreshTime - ticketParser->RefreshTime / 2);
+            SetRefreshTime(now, ticketParser->RefreshTime);
         }
 
         void SetRefreshTime(TInstant now, TDuration delay) {
@@ -220,6 +231,8 @@ protected:
                     return ApiKeyAuthType;
                 case TDerived::ETokenType::Certificate:
                     return CertificateAuthType;
+                case TDerived::ETokenType::ExternalIdp:
+                    return ExternalIdpAuthType;
             }
         }
 
@@ -229,6 +242,7 @@ protected:
                 case TDerived::ETokenType::Certificate:
                     return false;
                 case TDerived::ETokenType::Login:
+                case TDerived::ETokenType::ExternalIdp:
                     return true;
                 default:
                     return Signature.AccessKeyId.empty();
@@ -273,6 +287,12 @@ protected:
             if (TokenType == TDerived::ETokenType::NebiusAccessService) {
                 return SanitizeNebiusTicket(Ticket);
             }
+            if (TokenType == TDerived::ETokenType::Login) {
+                return NLogin::TLoginProvider::SanitizeJwtToken(Ticket);
+            }
+            if (TokenType == TDerived::ETokenType::ExternalIdp) {
+                return NLogin::TLoginProvider::SanitizeJwtToken(Ticket);
+            }
             return MaskTicket(Ticket);
         }
     };
@@ -291,7 +311,7 @@ protected:
         if ((record.TokenType == TDerived::ETokenType::AccessService || record.TokenType == TDerived::ETokenType::NebiusAccessService || record.TokenType == TDerived::ETokenType::ApiKey) && record.Signature.AccessKeyId) {
             return GetAsSignatureExpireTime(now);
         }
-        if (record.TokenType == TDerived::ETokenType::Login) {
+        if (record.TokenType == TDerived::ETokenType::Login || record.TokenType == TDerived::ETokenType::ExternalIdp) {
             return record.ExpireTime;
         }
         return now + ExpireTime;
@@ -299,6 +319,10 @@ protected:
 
     bool AccessServiceEnabled() const {
         return (AccessServiceValidatorV1 && AccessServiceValidatorV2) || NebiusAccessServiceValidator;
+    }
+
+    bool ExternalIdpEnabled() const {
+        return static_cast<bool>(ExternalIdpProvider);
     }
 
     bool ApiKeyEnabled() const {
@@ -320,9 +344,12 @@ private:
     ::NMonitoring::TDynamicCounters::TCounterPtr CounterTicketsCertificate;
     ::NMonitoring::TDynamicCounters::TCounterPtr CounterTicketsLogin;
     ::NMonitoring::TDynamicCounters::TCounterPtr CounterTicketsAS;
+    ::NMonitoring::TDynamicCounters::TCounterPtr CounterTicketsExternalIdp;
     ::NMonitoring::TDynamicCounters::TCounterPtr CounterTicketsCacheHit;
     ::NMonitoring::TDynamicCounters::TCounterPtr CounterTicketsCacheMiss;
-    ::NMonitoring::THistogramPtr CounterTicketsBuildTime;
+    ::NMonitoring::TDynamicCounters::TCounterPtr CounterWrongPeernameFormat;
+    ::NMonitoring::THistogramPtr CounterTicketsHighPriorityBuildTime;
+    ::NMonitoring::THistogramPtr CounterTicketsLowPriorityBuildTime;
 
     TDuration RefreshPeriod = TDuration::Seconds(1); // how often do we check for ticket freshness/expiration
     TDuration RefreshTime = TDuration::Hours(1); // within this time we will try to refresh valid ticket
@@ -336,6 +363,7 @@ private:
     TActorId UserAccountService;
     TActorId ServiceAccountService;
     TActorId NebiusAccessServiceValidator;
+    TActorId ExternalIdpProvider;
     TString UserAccountDomain;
     TString AccessServiceDomain;
     TString ServiceDomain;
@@ -343,6 +371,8 @@ private:
     TPriorityQueue<TTokenRefreshRecord> RefreshQueue;
     std::unordered_map<TString, NLogin::TLoginProvider> LoginProviders;
     bool UseLoginProvider = false;
+    std::unordered_map<TString, TString> ServiceTokens;
+    std::unordered_map<TString, std::pair<TInstant, std::unordered_set<TString>>> DeferredLoginTokens;
 
     TDerived* GetDerived() {
         return static_cast<TDerived*>(this);
@@ -418,9 +448,12 @@ private:
             }
         }
 
-        if (record.IsLowAccessServiceRequestPriority) {
-            auto& headers = request->Headers;
+        auto& headers = request->Headers;
+        if (record.IsLowRequestPriority) {
             headers["x-ya-priority"] = "low";
+        }
+        if (!record.PeerName.empty()) {
+            headers["x-user-ip"] = record.PeerName;
         }
 
         return request;
@@ -479,20 +512,39 @@ private:
 
     template <typename TTokenRecord>
     void AccessServiceAuthorize(const TString& key, TTokenRecord& record) const {
-        for (const auto& [permissionName, permissionRecord] : record.Permissions) {
-            BLOG_TRACE("Ticket " << record.GetMaskedTicket() << " asking for AccessServiceAuthorization(" << permissionName << ")");
+        const bool useV2 = AppData()->FeatureFlags.GetEnableAccessServiceV2Interface();
 
-            auto request = CreateAccessServiceRequest<TEvAccessServiceAuthorizeRequest>(key, record);
+        const auto setupAccessServiceRequest = [&](auto& request, const TString& permissionName) {
             request->Request.set_permission(permissionName);
             AddResourcePaths(record, permissionName, &request->Request);
+        };
+
+        for (const auto& [permissionName, permissionRecord] : record.Permissions) {
+            BLOG_TRACE("Ticket " << record.GetMaskedTicket() << " asking for AccessServiceAuthorization" << (useV2 ? "V2" : "V1") << "(" << permissionName << ")");
             record.ResponsesLeft++;
-            Send(AccessServiceValidatorV1, request.Release());
+
+            if (useV2) {
+                auto request = CreateAccessServiceRequest<TEvAccessServiceAuthorizeRequestV2>(key, record);
+                setupAccessServiceRequest(request, permissionName);
+                Send(AccessServiceValidatorV2, request.Release());
+            } else {
+                auto request = CreateAccessServiceRequest<TEvAccessServiceAuthorizeRequest>(key, record);
+                setupAccessServiceRequest(request, permissionName);
+                Send(AccessServiceValidatorV1, request.Release());
+            }
         }
     }
 
     template <typename TTokenRecord>
     void AccessServiceBulkAuthorize(const TString& key, TTokenRecord& record) const {
-        auto request = CreateAccessServiceRequest<TEvAccessServiceBulkAuthorizeRequest>(key, record);
+        auto request = CreateAccessServiceRequest<TEvAccessServiceBulkAuthorizeRequestV2>(key, record);
+        if (Config.HasAccessServiceTokenName() && Config.GetTokenManager().GetEnable()) {
+            auto it = ServiceTokens.find(Config.GetAccessServiceTokenName());
+            if (it != ServiceTokens.end()) {
+                request->Token = it->second;
+                BLOG_TRACE("Create BulkAuthorizeV2 request with token: " << MaskTicket(request->Token));
+            }
+        }
         TStringBuilder requestForPermissions;
         for (const auto& [permissionName, permissionRecord] : record.Permissions) {
             auto action = request->Request.mutable_actions()->add_items();
@@ -501,7 +553,7 @@ private:
             requestForPermissions << " " << permissionName;
         }
         request->Request.set_result_filter(yandex::cloud::priv::accessservice::v2::BulkAuthorizeRequest::ALL_FAILED);
-        BLOG_TRACE("Ticket " << record.GetMaskedTicket() << " asking for AccessServiceBulkAuthorization(" << requestForPermissions << ")");
+        BLOG_TRACE("Ticket " << record.GetMaskedTicket() << " asking for AccessServiceBulkAuthorizationV2(" << requestForPermissions << ")");
         record.ResponsesLeft++;
         Send(AccessServiceValidatorV2, request.Release());
     }
@@ -509,6 +561,9 @@ private:
     template <typename TTokenRecord>
     void NebiusAccessServiceAuthorize(const TString& key, TTokenRecord& record) const {
         auto request = MakeHolder<TEvNebiusAccessServiceAuthorizeRequest>(key);
+        if (!record.PeerName.empty()) {
+            request->Headers["x-user-ip"] = record.PeerName;
+        }
         TStringBuilder requestForPermissions;
         i64 i = 0;
         for (const auto& [permissionName, permissionRecord] : record.Permissions) {
@@ -519,17 +574,17 @@ private:
             requestForPermissions << " " << permissionName;
             ++i;
         }
-        BLOG_TRACE("Ticket " << record.GetMaskedTicket() << " asking for AccessServiceAuthorization(" << requestForPermissions << ")");
+        BLOG_TRACE("Ticket " << record.GetMaskedTicket() << " asking for AccessServiceAuthorizationV1(" << requestForPermissions << ")");
         record.ResponsesLeft++;
         Send(NebiusAccessServiceValidator, request.Release());
     }
 
     template <typename TTokenRecord>
     void RequestAccessServiceAuthorization(const TString& key, TTokenRecord& record) const {
-        if (AppData()->FeatureFlags.GetEnableAccessServiceBulkAuthorization()) {
-            AccessServiceBulkAuthorize(key, record);
-        } else if (NebiusAccessServiceValidator) {
+        if (NebiusAccessServiceValidator) {
             NebiusAccessServiceAuthorize(key, record);
+        } else if (AppData()->FeatureFlags.GetEnableAccessServiceBulkAuthorization()) {
+            AccessServiceBulkAuthorize(key, record);
         } else {
             AccessServiceAuthorize(key, record);
         }
@@ -537,23 +592,37 @@ private:
 
     template <typename TTokenRecord>
     void AccessServiceAuthenticate(const TString& key, TTokenRecord& record) const {
-        auto request = CreateAccessServiceRequest<TEvAccessServiceAuthenticateRequest>(key, record);
-        Send(AccessServiceValidatorV1, request.Release());
+        const bool useV2 = AppData()->FeatureFlags.GetEnableAccessServiceV2Interface();
+        BLOG_TRACE("Ticket " << record.GetMaskedTicket() << " asking for AccessServiceAuthentication" << (useV2 ? "V2" : "V1") << ")");
+
+        if (useV2) {
+            auto request = CreateAccessServiceRequest<TEvAccessServiceAuthenticateRequestV2>(key, record);
+            Send(AccessServiceValidatorV2, request.Release());
+        } else {
+            auto request = CreateAccessServiceRequest<TEvAccessServiceAuthenticateRequest>(key, record);
+            Send(AccessServiceValidatorV1, request.Release());
+        }
     }
 
     template <typename TTokenRecord>
     void NebiusAccessServiceAuthenticate(const TString& key, TTokenRecord& record) const {
         auto request = MakeHolder<TEvNebiusAccessServiceAuthenticateRequest>(key);
         request->Request.set_iam_token(record.Ticket);
+        if (!record.PeerName.empty()) {
+            request->Headers["x-user-ip"] = record.PeerName;
+        }
         Send(NebiusAccessServiceValidator, request.Release());
     }
 
     template <typename TTokenRecord>
     void RequestAccessServiceAuthentication(const TString& key, TTokenRecord& record) const {
-        BLOG_TRACE("Ticket " << record.GetMaskedTicket() << " asking for AccessServiceAuthentication");
+        const bool useNebius = static_cast<bool>(NebiusAccessServiceValidator);
+        const bool useV2 = !useNebius && AppData()->FeatureFlags.GetEnableAccessServiceV2Interface();
+
+        BLOG_TRACE("Ticket " << record.GetMaskedTicket() << " asking for AccessServiceAuthentication" << (useNebius ? "V1(Nebius)" : (useV2 ? "V2" : "V1")) << ")");
         record.ResponsesLeft++;
 
-        if (NebiusAccessServiceValidator) {
+        if (useNebius) {
             NebiusAccessServiceAuthenticate(key, record);
         } else {
             AccessServiceAuthenticate(key, record);
@@ -617,6 +686,10 @@ private:
         return ApplySubjectName(response.subject(), subject, error);
     }
 
+    bool ApplySubjectName(const yandex::cloud::priv::accessservice::v2::AuthenticateResponse& response, TString& subject, TString& error) {
+        return ApplySubjectName(response.subject(), subject, error);
+    }
+
     bool ApplySubjectName(const nebius::iam::v1::AuthenticateResponse& response, TString& subject, TString& error) {
         if (response.resultcode() != nebius::iam::v1::AuthenticateResponse::OK) {
             error = nebius::iam::v1::AuthenticateResponse::ResultCode_Name(response.resultcode());
@@ -641,6 +714,11 @@ private:
 
     template <>
     typename TPermissionRecord::TTypeCase ConvertSubjectType<yandex::cloud::priv::servicecontrol::v1::AuthenticateResponse>(const yandex::cloud::priv::servicecontrol::v1::AuthenticateResponse& response) {
+        return ConvertSubjectType(response.subject().type_case());
+    }
+
+    template <>
+    typename TPermissionRecord::TTypeCase ConvertSubjectType<yandex::cloud::priv::accessservice::v2::AuthenticateResponse>(const yandex::cloud::priv::accessservice::v2::AuthenticateResponse& response) {
         return ConvertSubjectType(response.subject().type_case());
     }
 
@@ -756,9 +834,67 @@ private:
     }
 
     template <typename TTokenRecord>
+    bool CanInitTokenFromExternalIdp(const TString& key, TTokenRecord& record) {
+        if (record.TokenType != TDerived::ETokenType::ExternalIdp) {
+            return false;
+        }
+        if (!ExternalIdpProvider) {
+            SetError(key, record, {.Message = "ExternalIdpProvider is not initialized", .Retryable = false});
+            return false;
+        }
+
+        CounterTicketsExternalIdp->Inc();
+
+        BLOG_TRACE("CanInitTokenFromExternalIdp, ticket " << MaskTicket(record.Ticket) << " forwarded to ExternalIdpProvider");
+        ++record.ResponsesLeft;
+        Send(ExternalIdpProvider, new TEvExternalIdpProvider::TEvAuthenticateRequest(key, record.Ticket));
+        return true;
+    }
+
+    template <typename TTokenRecord>
+    const TVector<TString> GetLookupDatabases(const TTokenRecord& record) {
+        TVector<TString> result;
+        result.push_back(DomainName);
+        if (!Config.GetDomainLoginOnly() && !record.Database.empty() && record.Database != DomainName) {
+            result.push_back(record.Database);
+        }
+        std::reverse(result.begin(), result.end());
+        return result;
+    }
+
+    template <typename TTokenRecord>
     bool CanInitLoginToken(const TString& key, TTokenRecord& record) {
         if (UseLoginProvider && (record.TokenType == TDerived::ETokenType::Unknown || record.TokenType == TDerived::ETokenType::Login)) {
-            TString database = Config.GetDomainLoginOnly() ? DomainName : record.Database;
+            if (record.TokenType == TDerived::ETokenType::Unknown) {
+                if (NLogin::TLoginProvider::CanDecodeToken(record.Ticket)) {
+                    record.TokenType = TDerived::ETokenType::Login;
+                } else {
+                    return false;
+                }
+            }
+            // Lookup the token in the login provider for the target database, with the possible fallback to the root (domain) database.
+            //
+            // Target database could be unspecified (some anonymous or backward-compatible mode).
+            // Target database may be the same as the root database.
+            //
+            // In a special case, when DomainLoginOnly = false and a user from the root database attempts to
+            // access a tenant database, target database must be selected between the two candidates: tenant and the root,
+            // based on the database (or audience) embedded in the token itself.
+            auto database = NLogin::TLoginProvider::GetTokenAudience(record.Ticket);
+            BLOG_TRACE("CanInitLoginToken, domain db " << DomainName << ", request db " << record.Database
+                << ", token db " << database << ", DomainLoginOnly " << Config.GetDomainLoginOnly()
+            );
+            if (database.empty()) {
+                database = DomainName;
+            }
+            const auto& lookupDatabases = GetLookupDatabases(record);
+            BLOG_TRACE("CanInitLoginToken, target database candidates(" << lookupDatabases.size() << "): " << JoinSeq(", ", lookupDatabases));
+            if (std::find(lookupDatabases.begin(), lookupDatabases.end(), database) == lookupDatabases.end()) {
+                SetError(key, record, {.Message = "Wrong audience"});
+                CounterTicketsLogin->Inc();
+                BLOG_TRACE("CanInitLoginToken, A1 error Wrong audience");
+                return true;
+            }
             auto itLoginProvider = LoginProviders.find(database);
             if (itLoginProvider != LoginProviders.end()) {
                 NLogin::TLoginProvider& loginProvider(itLoginProvider->second);
@@ -768,8 +904,10 @@ private:
                         record.TokenType = TDerived::ETokenType::Login;
                         SetError(key, record, {.Message = response.Error, .Retryable = response.ErrorRetryable});
                         CounterTicketsLogin->Inc();
+                        BLOG_TRACE("CanInitLoginToken, database " << database << ", A2 error " << response.Error);
                         return true;
                     }
+                    BLOG_TRACE("CanInitLoginToken, database " << database << ", A3 error");
                 } else {
                     record.TokenType = TDerived::ETokenType::Login;
                     record.ExpireTime = ToInstant(response.ExpiresAt);
@@ -793,14 +931,31 @@ private:
                         .GroupSIDs = groups,
                         .AuthType = record.GetAuthType()
                     }));
+                    BLOG_TRACE("CanInitLoginToken, database " << database << ", A4 success");
                     return true;
                 }
             } else {
                 if (record.TokenType == TDerived::ETokenType::Login) {
-                    SetError(key, record, {.Message = "Login state is not available yet", .Retryable = false});
-                    CounterTicketsLogin->Inc();
+                    auto it = DeferredLoginTokens.find(database);
+                    if (it != DeferredLoginTokens.end()) {
+                        auto& tokenKeys = it->second.second;
+                        static constexpr ui64 MAX_NUMBER_DEFERRED_TOKENS = 100'000;
+                        if (tokenKeys.size() < MAX_NUMBER_DEFERRED_TOKENS) {
+                            tokenKeys.insert(key);
+                        } else {
+                            SetError(key, record, {.Message = "Login state is not available yet", .Retryable = false});
+                            CounterTicketsLogin->Inc();
+                            BLOG_TRACE("CanInitLoginToken, database " << database << ", login state is not available yet, cannot deffer token (" << MaskTicket(record.Ticket) << ")");
+                            return true;
+                        }
+                    } else {
+                        static const ui64 NUM_SECONDS_TO_WAIT_FOR_SECURITY_STATE_UPDATE = std::max(RefreshPeriod.Seconds(), static_cast<TDuration::TValue>(2));
+                        DeferredLoginTokens.insert(std::make_pair(database, std::make_pair(TlsActivationContext->Now() + TDuration::Seconds(NUM_SECONDS_TO_WAIT_FOR_SECURITY_STATE_UPDATE), std::unordered_set<TString>({key}))));
+                    }
+                    BLOG_TRACE("CanInitLoginToken, database " << database << ", login state is not available yet, deffer token (" << MaskTicket(record.Ticket) << ")");
                     return true;
                 }
+                BLOG_TRACE("CanInitLoginToken, database " << database << ", A6 error");
             }
         }
         return false;
@@ -818,6 +973,7 @@ private:
     template <typename TTokenRecord>
     void SendRequestToLdap(const TString& key, TTokenRecord& record, const TString& user) {
         if (Config.HasLdapAuthentication()) {
+            ++record.ResponsesLeft;
             Send(MakeLdapAuthProviderID(), new TEvLdapAuthProvider::TEvEnrichGroupsRequest(key, user));
         } else {
             SetError(key, record, {.Message = "LdapAuthProvider is not initialized", .Retryable = false});
@@ -834,6 +990,7 @@ private:
         } else {
             const auto& key = it->first;
             auto& record = it->second;
+            record.ResponsesLeft--;
             if (response->Status == TEvLdapAuthProvider::EStatus::SUCCESS) {
                 const TString domain {"@" + Config.GetLdapAuthenticationDomain()};
                 TVector<NACLib::TSID> groups(response->Groups.cbegin(), response->Groups.cend());
@@ -849,7 +1006,9 @@ private:
             } else {
                 SetError(key, record, response->Error);
             }
-            Respond(record);
+            if (record.ResponsesLeft == 0) {
+                Respond(record);
+            }
         }
     }
 
@@ -879,6 +1038,21 @@ private:
     }
 
     void Handle(TEvTicketParser::TEvAuthorizeTicket::TPtr& ev) {
+        if (!NSecurity::IsGoodPeernameFormat(ev->Get()->PeerName)) {
+            CounterWrongPeernameFormat->Inc();
+            BLOG_W("Ticket " << MaskTicket(ev->Get()->Ticket) <<
+                   ": invalid peer name format: " << ev->Get()->PeerName.Quote() <<
+                   " for DB: " << ev->Get()->Database.Quote());
+
+            if (AppData()->FeatureFlags.GetEnableTicketParserErrorBasedOnPeernameFormat()) {
+                TEvTicketParser::TError error;
+                error.Message = "Unacceptable peername format";
+                error.Retryable = false;
+                Send(ev->Sender, new TEvTicketParser::TEvAuthorizeTicketResult(ev->Get()->Ticket, error), 0, ev->Cookie);
+                return;
+            }
+        }
+
         TStringBuf ticket;
         TStringBuf ticketType;
         if (IsTicketCertificate(ev->Get()->Ticket)) {
@@ -973,6 +1147,14 @@ private:
         return request->Request.has_api_key() ? TDerived::ETokenType::ApiKey : TDerived::ETokenType::AccessService;
     }
 
+    static auto GetTokenType(TEvAccessServiceAuthenticateRequestV2* request) {
+        return request->Request.has_api_key() ? TDerived::ETokenType::ApiKey : TDerived::ETokenType::AccessService;
+    }
+
+    static auto GetTokenType(TEvAccessServiceAuthorizeRequestV2* request) {
+        return request->Request.has_api_key() ? TDerived::ETokenType::ApiKey : TDerived::ETokenType::AccessService;
+    }
+
     static auto GetTokenType(TEvNebiusAccessServiceAuthenticateRequest*) {
         return TDerived::ETokenType::NebiusAccessService; // the only supported
     }
@@ -1046,7 +1228,7 @@ private:
             } else {
                 if (record.ResponsesLeft == 0 && (record.TokenType == TDerived::ETokenType::Unknown || record.TokenType == TDerived::ETokenType::AccessService || record.TokenType == TDerived::ETokenType::NebiusAccessService || record.TokenType == TDerived::ETokenType::ApiKey)) {
                     bool retryable = IsRetryableGrpcError(response->Status);
-                    SetError(key, record, {.Message = response->Status.Msg, .Retryable = retryable});
+                    SetError(key, record, {.Message = TString{response->Status.Msg}, .Retryable = retryable});
                 }
             }
             if (record.ResponsesLeft == 0) {
@@ -1063,6 +1245,52 @@ private:
         HandleIamAuthenticateResponse<TEvAccessServiceAuthenticateRequest, NCloud::TEvAccessService::TEvAuthenticateResponse>(ev);
     }
 
+    void Handle(NCloud::TEvAccessService::TEvAuthenticateResponseV2::TPtr& ev) {
+        HandleIamAuthenticateResponse<TEvAccessServiceAuthenticateRequestV2, NCloud::TEvAccessService::TEvAuthenticateResponseV2>(ev);
+    }
+
+    void Handle(TEvExternalIdpProvider::TEvAuthenticateResponse::TPtr& ev) {
+        TEvExternalIdpProvider::TEvAuthenticateResponse* response = ev->Get();
+        BLOG_D("Received TEvAuthenticateResponse from ExternalIdp for ticket "
+            << MaskTicket(response->Key) << " with status " << response->Status);
+        auto& userTokens = GetDerived()->GetUserTokens();
+        auto it = userTokens.find(response->Key);
+        if (it == userTokens.end()) {
+            BLOG_ERROR("Ticket " << MaskTicket(response->Key) << " has expired during build");
+            return;
+        }
+
+        const auto& key = it->first;
+        auto& record = it->second;
+        --record.ResponsesLeft;
+        if (response->Status == TEvExternalIdpProvider::EStatus::SUCCESS) {
+            const TString domain {"@" + Config.GetExternalIdpAuthenticationDomain()};
+            TVector<NACLib::TSID> groups(::NDetail::TReserveTag(response->Groups.size()));
+            for (const auto& group : response->Groups) {
+                groups.emplace_back(group + domain);
+            }
+            record.ExpireTime = response->ExpiresAt;
+            BLOG_D("Ticket " << record.GetMaskedTicket() << " authenticated by ExternalIdp"
+                << " as " << response->User << domain
+                << " with " << groups.size() << " group(s)");
+            SetToken(key, record, new NACLib::TUserToken({
+                .OriginalUserToken = record.Ticket,
+                .UserSID = response->User + domain,
+                .GroupSIDs = groups,
+                .AuthType = record.GetAuthType()
+            }));
+        } else {
+            BLOG_ERROR("Ticket " << record.GetMaskedTicket() << " failed ExternalIdp authentication"
+                << " with status " << response->Status
+                << " retryable=" << response->Error.Retryable
+                << " message '" << response->Error.Message << "'");
+            SetError(key, record, response->Error);
+        }
+        if (record.ResponsesLeft == 0) {
+            Respond(record);
+        }
+    }
+
     void Handle(NCloud::TEvUserAccountService::TEvGetUserAccountResponse::TPtr& ev) {
         TEvAccessServiceGetUserAccountRequest* request = ev->Get()->Request->Get<TEvAccessServiceGetUserAccountRequest>();
         auto& userTokens = GetDerived()->GetUserTokens();
@@ -1075,7 +1303,7 @@ private:
             auto& record = it->second;
             record.ResponsesLeft--;
             if (!ev->Get()->Status.Ok()) {
-                SetError(key, record, {.Message = ev->Get()->Status.Msg});
+                SetError(key, record, {.Message = TString{ev->Get()->Status.Msg}});
             } else {
                 GetDerived()->SetToken(key, record, ev);
             }
@@ -1097,7 +1325,7 @@ private:
             auto& record = it->second;
             record.ResponsesLeft--;
             if (!ev->Get()->Status.Ok()) {
-                SetError(key, record, {.Message = ev->Get()->Status.Msg});
+                SetError(key, record, {.Message = TString{ev->Get()->Status.Msg}});
             } else {
                 SetToken(key, record, new NACLib::TUserToken(record.Ticket, ev->Get()->Response.name() + "@" + ServiceDomain, {}));
             }
@@ -1133,6 +1361,8 @@ private:
         }
         SetError(key, record, {.Message = errorMessage, .Retryable = isRetryableError});
     }
+
+    static bool IsRetryableBulkAuthorizeError(const NYdbGrpc::TGrpcStatus& status);
 
     static TString ConcatenateErrorMessages(const std::vector<typename THashMap<TString, TPermissionRecord>::iterator>& requiredPermissions) {
         TStringBuilder errorMessage;
@@ -1265,7 +1495,7 @@ private:
                     }
                 }
             } else {
-                SetAccessServiceBulkAuthorizeError(key, record, response->Status.Msg, IsRetryableGrpcError(response->Status));
+                SetAccessServiceBulkAuthorizeError(key, record, TString{response->Status.Msg}, IsRetryableGrpcError(response->Status));
             }
             if (record.ResponsesLeft == 0) {
                 Respond(record);
@@ -1273,9 +1503,9 @@ private:
         }
     }
 
-    void Handle(NCloud::TEvAccessService::TEvBulkAuthorizeResponse::TPtr& ev) {
-        NCloud::TEvAccessService::TEvBulkAuthorizeResponse* response = ev->Get();
-        TEvAccessServiceBulkAuthorizeRequest* request = response->Request->Get<TEvAccessServiceBulkAuthorizeRequest>();
+    void Handle(NCloud::TEvAccessService::TEvBulkAuthorizeResponseV2::TPtr& ev) {
+        NCloud::TEvAccessService::TEvBulkAuthorizeResponseV2* response = ev->Get();
+        TEvAccessServiceBulkAuthorizeRequestV2* request = response->Request->Get<TEvAccessServiceBulkAuthorizeRequestV2>();
         const TString& key(request->Key);
         auto& userTokens = GetDerived()->GetUserTokens();
         auto itToken = userTokens.find(key);
@@ -1346,15 +1576,16 @@ private:
                     }
                 }
             } else {
-                SetAccessServiceBulkAuthorizeError(key, record, response->Status.Msg, IsRetryableGrpcError(response->Status));
+                SetAccessServiceBulkAuthorizeError(key, record, TString{response->Status.Msg}, IsRetryableBulkAuthorizeError(response->Status));
             }
             Respond(record);
         }
     }
 
-    void Handle(NCloud::TEvAccessService::TEvAuthorizeResponse::TPtr& ev) {
-        NCloud::TEvAccessService::TEvAuthorizeResponse* response = ev->Get();
-        TEvAccessServiceAuthorizeRequest* request = response->Request->Get<TEvAccessServiceAuthorizeRequest>();
+    template <typename TEvRequest, typename TEvResponse>
+    void HandleAuthorizeResponse(typename TEvResponse::TPtr& ev) {
+        TEvResponse* response = ev->Get();
+        TEvRequest* request = response->Request->template Get<TEvRequest>();
         const TString& key(request->Key);
         auto& userTokens = GetDerived()->GetUserTokens();
         auto itToken = userTokens.find(key);
@@ -1386,7 +1617,7 @@ private:
                     }
                 } else {
                     bool retryable = IsRetryableGrpcError(response->Status);
-                    itPermission->second.Error = {.Message = response->Status.Msg, .Retryable = retryable};
+                    itPermission->second.Error = {.Message = TString{response->Status.Msg}, .Retryable = retryable};
                     if (itPermission->second.Subject.empty() || !retryable) {
                         itPermission->second.Subject.clear();
                         BLOG_TRACE("Ticket "
@@ -1458,6 +1689,14 @@ private:
         }
     }
 
+    void Handle(NCloud::TEvAccessService::TEvAuthorizeResponse::TPtr& ev) {
+        HandleAuthorizeResponse<TEvAccessServiceAuthorizeRequest, NCloud::TEvAccessService::TEvAuthorizeResponse>(ev);
+    }
+
+    void Handle(NCloud::TEvAccessService::TEvAuthorizeResponseV2::TPtr& ev) {
+        HandleAuthorizeResponse<TEvAccessServiceAuthorizeRequestV2, NCloud::TEvAccessService::TEvAuthorizeResponseV2>(ev);
+    }
+
     void Handle(TEvTicketParser::TEvRefreshTicket::TPtr& ev) {
         const TString& ticket(ev->Get()->Ticket);
         auto& userTokens = GetDerived()->GetUserTokens();
@@ -1471,12 +1710,34 @@ private:
         auto& loginProvider = LoginProviders[ev->Get()->SecurityState.GetAudience()];
         loginProvider.UpdateSecurityState(ev->Get()->SecurityState);
         BLOG_D("Updated state for " << loginProvider.Audience << " keys " << GetLoginProviderKeys(loginProvider));
+
+        auto it = DeferredLoginTokens.find(loginProvider.Audience);
+        if (it != DeferredLoginTokens.end()) {
+            BLOG_TRACE("Handle deferred tokens for database: " << loginProvider.Audience);
+            for (const TString& key : it->second.second) {
+                auto& userTokens = GetDerived()->GetUserTokens();
+                auto tokenIt = userTokens.find(key);
+                if (tokenIt == userTokens.end()) {
+                    continue;
+                }
+                auto& record = tokenIt->second;
+                CanInitLoginToken(key, record);
+                if (record.ResponsesLeft == 0) {
+                    Respond(record);
+                }
+            }
+            DeferredLoginTokens.erase(it);
+        }
     }
+
+    void Handle(TEvTokenManager::TEvUpdateToken::TPtr& ev);
 
     void Handle(TEvTicketParser::TEvDiscardTicket::TPtr& ev) {
         auto& userTokens = GetDerived()->GetUserTokens();
         userTokens.erase(ev->Get()->Ticket);
     }
+
+    void RefreshDeferredLoginTokens(const TInstant& now);
 
     void HandleRefresh() {
         TInstant now = TlsActivationContext->Now();
@@ -1503,6 +1764,7 @@ private:
                 userTokens.erase(it);
             }
         }
+        RefreshDeferredLoginTokens(now);
         Schedule(RefreshPeriod, new NActors::TEvents::TEvWakeup());
     }
 
@@ -1521,7 +1783,7 @@ private:
                     html << "<div>";
                     html << "<table class='ticket-parser-proplist'>";
                     html << "<tr><td>Ticket</td><td>" << record.GetMaskedTicket() << "</td></tr>";
-                    if (record.TokenType == TDerived::ETokenType::Login) {
+                    if (record.TokenType == TDerived::ETokenType::Login || record.TokenType == TDerived::ETokenType::ExternalIdp) {
                         TVector<TString> tokenData;
                         Split(record.Ticket, ".", tokenData);
                         if (tokenData.size() > 1) {
@@ -1539,8 +1801,8 @@ private:
                             catch (const std::exception&) {
                                 payload = tokenData[1];
                             }
-                            html << "<tr><td>Header</td><td>" << header << "</td></tr>";
-                            html << "<tr><td>Payload</td><td>" << payload << "</td></tr>";
+                            html << "<tr><td>Header</td><td>" << EncodeHtmlPcdata(header) << "</td></tr>";
+                            html << "<tr><td>Payload</td><td>" << EncodeHtmlPcdata(payload) << "</td></tr>";
                         }
                     }
                     TDerived::WriteTokenRecordInfo(html, record);
@@ -1635,6 +1897,11 @@ protected:
         if (tokenType == "Bearer" || tokenType == "IAM") {
             if (AccessServiceEnabled()) {
                 return NebiusAccessServiceValidator ? TDerived::ETokenType::NebiusAccessService : TDerived::ETokenType::AccessService;
+            } else if (tokenType == "Bearer" && ExternalIdpEnabled()) {
+                // Access Service has a higher priority and will intercept all requests with the Bearer token.
+                // Simultaneous use of access service and external idp does not make sense
+                // and should not happen in practice.
+                return TDerived::ETokenType::ExternalIdp;
             } else {
                 return TDerived::ETokenType::Unsupported;
             }
@@ -1647,6 +1914,13 @@ protected:
         }
         if (tokenType == "Certificate") {
             return TDerived::ETokenType::Certificate;
+        }
+        if (tokenType == "Builtin") {
+            if (Config.GetUseBuiltinDomain()) {
+                return TDerived::ETokenType::Builtin;
+            } else {
+                return TDerived::ETokenType::Unsupported;
+            }
         }
         return TDerived::ETokenType::Unknown;
     }
@@ -1733,7 +2007,7 @@ protected:
         TInstant now = TlsActivationContext->Now();
         record.InitTime = now;
         record.AccessTime = now;
-        record.ExpireTime = GetExpireTime(record, now);
+        record.ExpireTime = GetDerived()->GetExpireTime(record, now);
         record.RefreshTime = GetRefreshTime(now);
 
         if (record.Error) {
@@ -1742,7 +2016,8 @@ protected:
 
         if (CanInitBuiltinToken(key, record) ||
             CanInitLoginToken(key, record) ||
-            CanInitTokenFromCertificate(key, record)) {
+            CanInitTokenFromCertificate(key, record) ||
+            CanInitTokenFromExternalIdp(key, record)) {
             return;
         }
 
@@ -1759,7 +2034,7 @@ protected:
         if (!token->GetUserSID().empty()) {
             record.Subject = token->GetUserSID();
         }
-        record.ExpireTime = GetExpireTime(record, now);
+        record.ExpireTime = GetDerived()->GetExpireTime(record, now);
         if (record.NeedsRefresh()) {
             record.SetOkRefreshTime(this, now);
         } else {
@@ -1767,10 +2042,15 @@ protected:
         }
         record.RefreshRetryableErrorImmediately = true;
         CounterTicketsSuccess->Inc();
-        CounterTicketsBuildTime->Collect((now - record.InitTime).MilliSeconds());
+        TDuration::TValue ticketBuildTime = (now - record.InitTime).MilliSeconds();
+        if (record.IsLowRequestPriority) {
+            CounterTicketsLowPriorityBuildTime->Collect(ticketBuildTime);
+        } else {
+            CounterTicketsHighPriorityBuildTime->Collect(ticketBuildTime);
+        }
         BLOG_D("Ticket " << record.GetMaskedTicket() << " ("
                     << record.PeerName << ") has now valid token of " << record.Subject);
-        record.IsLowAccessServiceRequestPriority = true;
+        record.IsLowRequestPriority = true;
         RefreshQueue.push({.Key = key, .RefreshTime = record.RefreshTime});
     }
 
@@ -1778,12 +2058,16 @@ protected:
     void SetError(const TString& key, TTokenRecord& record, const TEvTicketParser::TError& error) {
         record.Error = error;
         TInstant now = TlsActivationContext->Now();
+        TStringBuilder errorLogMessage;
+        if (error.HasLogMessage()) {
+            errorLogMessage << " (" << error.LogMessage << ")";
+        }
         if (record.Error.Retryable) {
-            record.ExpireTime = GetExpireTime(record, now);
+            record.ExpireTime = GetDerived()->GetExpireTime(record, now);
             record.SetErrorRefreshTime(this, now);
             CounterTicketsErrorsRetryable->Inc();
             BLOG_D("Ticket " << record.GetMaskedTicket() << " ("
-                        << record.PeerName << ") has now retryable error message '" << error.Message << "'");
+                        << record.PeerName << ") has now retryable error message '" << error.Message << errorLogMessage << "'");
             if (record.RefreshRetryableErrorImmediately) {
                 record.RefreshRetryableErrorImmediately = false;
                 GetDerived()->CanRefreshTicket(key, record);
@@ -1796,10 +2080,10 @@ protected:
             record.SetOkRefreshTime(this, now);
             CounterTicketsErrorsPermanent->Inc();
             BLOG_D("Ticket " << record.GetMaskedTicket() << " ("
-                        << record.PeerName << ") has now permanent error message '" << error.Message << "'");
+                        << record.PeerName << ") has now permanent error message '" << error.Message << errorLogMessage << "'");
         }
         CounterTicketsErrors->Inc();
-        record.IsLowAccessServiceRequestPriority = true;
+        record.IsLowRequestPriority = true;
         RefreshQueue.push({.Key = key, .RefreshTime = record.RefreshTime});
     }
 
@@ -1878,7 +2162,20 @@ protected:
 
     template <typename TTokenRecord>
     bool CanRefreshLoginTicket(const TTokenRecord& record) {
-        return record.TokenType == TDerived::ETokenType::Login && record.Error.empty();
+        return record.TokenType == TDerived::ETokenType::Login && record.Error.Retryable;
+    }
+
+    template <typename TTokenRecord>
+    bool CanRefreshExternalIdpTicket(const TTokenRecord& record) {
+        return record.TokenType == TDerived::ETokenType::ExternalIdp && record.Error.Retryable;
+    }
+
+    template <typename TTokenRecord>
+    bool RefreshExternalIdpTicket(const TString& key, TTokenRecord& record) {
+        GetDerived()->ResetTokenRecord(record);
+        ++record.ResponsesLeft;
+        Send(ExternalIdpProvider, new TEvExternalIdpProvider::TEvAuthenticateRequest(key, record.Ticket));
+        return true;
     }
 
     template <typename TTokenRecord>
@@ -1899,36 +2196,50 @@ protected:
 
     template <typename TTokenRecord>
     bool RefreshLoginTicket(const TString& key, TTokenRecord& record) {
+        if (record.Error.empty()) {
+            GetDerived()->ResetTokenRecord(record);
+            const TString userSID = record.GetToken()->GetUserSID();
+            if (record.IsExternalAuthEnabled()) {
+                return RefreshTicketViaExternalAuthProvider(key, record);
+            }
+            auto database = NLogin::TLoginProvider::GetTokenAudience(record.Ticket);
+            if (database.empty()) {
+                database = DomainName;
+            }
+            const auto& lookupDatabases = GetLookupDatabases(record);
+            if (std::find(lookupDatabases.begin(), lookupDatabases.end(), database) == lookupDatabases.end()) {
+                return false;
+            }
+            auto itLoginProvider = LoginProviders.find(database);
+            if (itLoginProvider == LoginProviders.end()) {
+                return false;
+            }
+            NLogin::TLoginProvider& loginProvider(itLoginProvider->second);
+            if (loginProvider.CheckUserExists(userSID)) {
+                const std::vector<TString> providerGroups = loginProvider.GetGroupsMembership(userSID);
+                const TVector<NACLib::TSID> groups(providerGroups.begin(), providerGroups.end());
+                SetToken(key, record, new NACLib::TUserToken({
+                                        .OriginalUserToken = record.Ticket,
+                                        .UserSID = userSID,
+                                        .GroupSIDs = groups,
+                                        .AuthType = record.GetAuthType()
+                                    }));
+            } else {
+                SetError(key, record, {.Message = "User not found", .Retryable = false});
+            }
+            return true;
+        }
         GetDerived()->ResetTokenRecord(record);
-        const TString userSID = record.GetToken()->GetUserSID();
-        if (record.IsExternalAuthEnabled()) {
-            return RefreshTicketViaExternalAuthProvider(key, record);
-        }
-        const TString& database = Config.GetDomainLoginOnly() ? DomainName : record.Database;
-        auto itLoginProvider = LoginProviders.find(database);
-        if (itLoginProvider == LoginProviders.end()) {
-            return false;
-        }
-        NLogin::TLoginProvider& loginProvider(itLoginProvider->second);
-        if (loginProvider.CheckUserExists(userSID)) {
-            const std::vector<TString> providerGroups = loginProvider.GetGroupsMembership(userSID);
-            const TVector<NACLib::TSID> groups(providerGroups.begin(), providerGroups.end());
-            SetToken(key, record, new NACLib::TUserToken({
-                                    .OriginalUserToken = record.Ticket,
-                                    .UserSID = userSID,
-                                    .GroupSIDs = groups,
-                                    .AuthType = record.GetAuthType()
-                                }));
-        } else {
-            SetError(key, record, {.Message = "User not found", .Retryable = false});
-        }
-        return true;
+        return CanInitLoginToken(key, record);
     }
 
     template <typename TTokenRecord>
     bool CanRefreshTicket(const TString& key, TTokenRecord& record) {
         if (CanRefreshLoginTicket(record)) {
             return RefreshLoginTicket(key, record);
+        }
+        if (CanRefreshExternalIdpTicket(record)) {
+            return RefreshExternalIdpTicket(key, record);
         }
         if (CanRefreshAccessServiceTicket(record)) {
             GetDerived()->ResetTokenRecord(record);
@@ -1990,6 +2301,11 @@ protected:
         html << "<tr><td>User Account Service</td><td>" << HtmlBool((bool)UserAccountService) << "</td></tr>";
         html << "<tr><td>Service Account Service</td><td>" << HtmlBool((bool)ServiceAccountService) << "</td></tr>";
         html << "<tr><td>Nebius Access Service</td><td>" << HtmlBool((bool)NebiusAccessServiceValidator) << "</td></tr>";
+        if (ExternalIdpProvider) {
+            html << "<tr><td><a href='external_idp_provider'>External IdP</a></td><td>" << HtmlBool(true) << "</td></tr>";
+        } else {
+            html << "<tr><td>External IdP</td><td>" << HtmlBool(false) << "</td></tr>";
+        }
     }
 
     template <typename TTokenRecord>
@@ -2019,16 +2335,21 @@ protected:
         CounterTicketsCertificate = counters->GetCounter("TicketsCertificate", true);
         CounterTicketsLogin = counters->GetCounter("TicketsLogin", true);
         CounterTicketsAS = counters->GetCounter("TicketsAS", true);
+        CounterTicketsExternalIdp = counters->GetCounter("TicketsExternalIdp", true);
         CounterTicketsCacheHit = counters->GetCounter("TicketsCacheHit", true);
         CounterTicketsCacheMiss = counters->GetCounter("TicketsCacheMiss", true);
-        CounterTicketsBuildTime = counters->GetHistogram("TicketsBuildTimeMs",
-                                                         NMonitoring::ExplicitHistogram({0, 1, 5, 10, 50, 100, 500, 1000, 2000, 5000, 10000, 30000, 60000}));
+        CounterWrongPeernameFormat = counters->GetCounter("WrongPeernameFormat", true);
+        CounterTicketsHighPriorityBuildTime = counters->GetSubgroup("TicketsBuildTimeMs", "HighPriority")->GetHistogram("TicketsBuildTimeMs",
+            NMonitoring::ExplicitHistogram({0, 1, 5, 10, 50, 100, 500, 1000, 2000, 5000, 10000, 30000, 60000}));
+        CounterTicketsLowPriorityBuildTime = counters->GetSubgroup("TicketsBuildTimeMs", "LowPriority")->GetHistogram("TicketsBuildTimeMs",
+            NMonitoring::ExplicitHistogram({0, 1, 5, 10, 50, 100, 500, 1000, 2000, 5000, 10000, 30000, 60000}));
     }
 
     void FillAccessServiceSettings(NGrpcActorClient::TGrpcClientSettings& settings) {
         settings.Endpoint = Config.GetAccessServiceEndpoint();
         if (Config.GetUseAccessServiceTLS()) {
             settings.CertificateRootCA = TUnbufferedFileInput(Config.GetPathToRootCA()).ReadAll();
+            settings.SslTargetNameOverride = Config.GetAccessServiceSslTargetNameOverride();
         }
         settings.GrpcKeepAliveTimeMs = Config.GetAccessServiceGrpcKeepAliveTimeMs();
         settings.GrpcKeepAliveTimeoutMs = Config.GetAccessServiceGrpcKeepAliveTimeoutMs();
@@ -2061,6 +2382,20 @@ protected:
                 }
 
                 AccessServiceValidatorV2 = Register(NCloud::CreateAccessServiceV2(settings), TMailboxType::HTSwap, AppData()->UserPoolId);
+                if (Config.GetCacheAccessServiceAuthentication()) {
+                    AccessServiceValidatorV2 = Register(NGrpcActorClient::CreateGrpcServiceCache<NCloud::TEvAccessService::TEvAuthenticateRequestV2, NCloud::TEvAccessService::TEvAuthenticateResponseV2>(
+                                                            AccessServiceValidatorV2,
+                                                            Config.GetGrpcCacheSize(),
+                                                            TDuration::MilliSeconds(Config.GetGrpcSuccessLifeTime()),
+                                                            TDuration::MilliSeconds(Config.GetGrpcErrorLifeTime())), TMailboxType::HTSwap, AppData()->UserPoolId);
+                }
+                if (Config.GetCacheAccessServiceAuthorization()) {
+                    AccessServiceValidatorV2 = Register(NGrpcActorClient::CreateGrpcServiceCache<NCloud::TEvAccessService::TEvAuthorizeRequestV2, NCloud::TEvAccessService::TEvAuthorizeResponseV2>(
+                                                            AccessServiceValidatorV2,
+                                                            Config.GetGrpcCacheSize(),
+                                                            TDuration::MilliSeconds(Config.GetGrpcSuccessLifeTime()),
+                                                            TDuration::MilliSeconds(Config.GetGrpcErrorLifeTime())), TMailboxType::HTSwap, AppData()->UserPoolId);
+                }
             } else if (Config.GetAccessServiceType() == "Nebius_v1") {
                 NNebiusCloud::TAccessServiceSettings settings;
                 FillAccessServiceSettings(settings);
@@ -2075,6 +2410,7 @@ protected:
             settings.Endpoint = Config.GetUserAccountServiceEndpoint();
             if (Config.GetUseUserAccountServiceTLS()) {
                 settings.CertificateRootCA = TUnbufferedFileInput(Config.GetPathToRootCA()).ReadAll();
+                settings.SslTargetNameOverride = Config.GetUserAccountServiceSslTargetNameOverride();
             }
             UserAccountService = Register(CreateUserAccountService(settings), TMailboxType::HTSwap, AppData()->UserPoolId);
             if (Config.GetCacheUserAccountService()) {
@@ -2091,6 +2427,7 @@ protected:
             settings.Endpoint = Config.GetServiceAccountServiceEndpoint();
             if (Config.GetUseServiceAccountServiceTLS()) {
                 settings.CertificateRootCA = TUnbufferedFileInput(Config.GetPathToRootCA()).ReadAll();
+                settings.SslTargetNameOverride = Config.GetServiceAccountServiceSslTargetNameOverride();
             }
             ServiceAccountService = Register(NCloud::CreateServiceAccountService(settings), TMailboxType::HTSwap, AppData()->UserPoolId);
             if (Config.GetCacheServiceAccountService()) {
@@ -2104,6 +2441,13 @@ protected:
 
         if (Config.GetUseLoginProvider()) {
             UseLoginProvider = true;
+        }
+
+        if (Config.HasExternalIdpConfig()) {
+            BLOG_D("External IdP authentication is enabled");
+            ExternalIdpProvider = Register(
+                CreateExternalIdpProvider(Config.GetExternalIdpConfig(), {}),
+                TMailboxType::HTSwap, AppData()->UserPoolId);
         }
     }
 
@@ -2133,17 +2477,22 @@ protected:
         if (NebiusAccessServiceValidator) {
             Send(NebiusAccessServiceValidator, new TEvents::TEvPoisonPill);
         }
+        if (ExternalIdpProvider) {
+            Send(ExternalIdpProvider, new TEvents::TEvPoisonPill);
+        }
         TBase::PassAway();
     }
+
+    void CreateServiceTokens() const;
 
 public:
     static constexpr NKikimrServices::TActivity::EType ActorActivityType() { return NKikimrServices::TActivity::TICKET_PARSER_ACTOR; }
 
     void Bootstrap() {
-        TIntrusivePtr<NMonitoring::TDynamicCounters> rootCounters = AppData()->Counters;
-        TIntrusivePtr<NMonitoring::TDynamicCounters> authCounters = GetServiceCounters(rootCounters, "auth");
-        NMonitoring::TDynamicCounterPtr counters = authCounters->GetSubgroup("subsystem", "TicketParser");
-        GetDerived()->InitCounters(counters);
+        TIntrusivePtr<NMonitoring::TDynamicCounters> ticketParserCounters = NSecurity::GetCountersForTicketParser(AppData()->Counters);
+        GetDerived()->InitCounters(ticketParserCounters);
+
+        CreateServiceTokens();
 
         GetDerived()->InitAuthProvider();
         if (AppData() && AppData()->DomainsInfo && AppData()->DomainsInfo->Domain) {
@@ -2168,10 +2517,14 @@ public:
             hFunc(TEvTicketParser::TEvRefreshTicket, Handle);
             hFunc(TEvTicketParser::TEvDiscardTicket, Handle);
             hFunc(TEvTicketParser::TEvUpdateLoginSecurityState, Handle);
+            hFunc(TEvTokenManager::TEvUpdateToken, Handle);
             hFunc(TEvLdapAuthProvider::TEvEnrichGroupsResponse, Handle);
+            hFunc(TEvExternalIdpProvider::TEvAuthenticateResponse, Handle);
             hFunc(NCloud::TEvAccessService::TEvAuthenticateResponse, Handle);
             hFunc(NCloud::TEvAccessService::TEvAuthorizeResponse, Handle);
-            hFunc(NCloud::TEvAccessService::TEvBulkAuthorizeResponse, Handle);
+            hFunc(NCloud::TEvAccessService::TEvAuthenticateResponseV2, Handle);
+            hFunc(NCloud::TEvAccessService::TEvAuthorizeResponseV2, Handle);
+            hFunc(NCloud::TEvAccessService::TEvBulkAuthorizeResponseV2, Handle);
             hFunc(NCloud::TEvUserAccountService::TEvGetUserAccountResponse, Handle);
             hFunc(NCloud::TEvServiceAccountService::TEvGetServiceAccountResponse, Handle);
             hFunc(NNebiusCloud::TEvAccessService::TEvAuthenticateResponse, Handle);
@@ -2192,5 +2545,77 @@ public:
         , CertificateChecker(settings.CertificateAuthValues)
     {}
 };
+
+template <typename TDerived>
+void TTicketParserImpl<TDerived>::RefreshDeferredLoginTokens(const TInstant& now) {
+    static constexpr ui32 FINISH_WAITING_FOR_LOGIN_PROVIDERS_NUM = 10;
+    TVector<TString> finishWaitingForLoginProviders;
+    finishWaitingForLoginProviders.reserve(FINISH_WAITING_FOR_LOGIN_PROVIDERS_NUM);
+    for (const auto& [database, deferredTokens] : DeferredLoginTokens) {
+        const auto& expiredTimeWaitingForLoginProvider = deferredTokens.first;
+        if (expiredTimeWaitingForLoginProvider <= now) {
+            finishWaitingForLoginProviders.push_back(database);
+            for (const TString& key : deferredTokens.second) {
+                auto& userTokens = GetDerived()->GetUserTokens();
+                auto it = userTokens.find(key);
+                if (it == userTokens.end()) {
+                    continue;
+                }
+                auto& record = it->second;
+                SetError(key, record, {.Message = "Login state is not available", .Retryable = false});
+                CounterTicketsLogin->Inc();
+                Respond(record);
+            }
+        }
+    }
+    TStringBuilder deferredLoginTokensMessage;
+    deferredLoginTokensMessage << "Finish waiting for login providers for " << finishWaitingForLoginProviders.size() << " databases: ";
+    for (size_t i = 0; i < finishWaitingForLoginProviders.size() && i < FINISH_WAITING_FOR_LOGIN_PROVIDERS_NUM; ++i) {
+        const TString& key = finishWaitingForLoginProviders[i];
+        deferredLoginTokensMessage << key << ", ";
+        DeferredLoginTokens.erase(key);
+    }
+    if (!finishWaitingForLoginProviders.empty()) {
+        BLOG_TRACE(deferredLoginTokensMessage);
+    }
+}
+
+template <typename TDerived>
+void TTicketParserImpl<TDerived>::CreateServiceTokens() const {
+    if (Config.HasAccessServiceTokenName() && Config.GetTokenManager().GetEnable()) {
+        BLOG_TRACE("Send EvSubscribeUpdateToken to service token manager");
+        Send(MakeTokenManagerID(), new TEvTokenManager::TEvSubscribeUpdateToken(Config.GetAccessServiceTokenName()));
+    }
+}
+
+template <typename TDerived>
+void TTicketParserImpl<TDerived>::Handle(TEvTokenManager::TEvUpdateToken::TPtr& ev) {
+    constexpr auto convertStatusCode = [] (const TEvTokenManager::TStatus::ECode& code) {
+        switch (code) {
+        case TEvTokenManager::TStatus::ECode::SUCCESS: return "Success";
+        case TEvTokenManager::TStatus::ECode::NOT_READY: return "Not ready";
+        case TEvTokenManager::TStatus::ECode::ERROR: return "Error";
+        }
+    };
+
+    BLOG_TRACE("Handle TEvTokenManager::TEvUpdateToken: id# " << ev->Get()->Id
+        << ", Status.code# " << convertStatusCode(ev->Get()->Status.Code)
+        << ", Status.Msg# " << ev->Get()->Status.Message
+        << ", Token# " << MaskTicket(ev->Get()->Token));
+    if (ev->Get()->Status.Code == TEvTokenManager::TStatus::ECode::SUCCESS) {
+        ServiceTokens[ev->Get()->Id] = ev->Get()->Token;
+    }
+}
+
+template <typename TDerived>
+bool TTicketParserImpl<TDerived>::IsRetryableBulkAuthorizeError(const NYdbGrpc::TGrpcStatus& status) {
+    switch (status.GRpcStatusCode) {
+    case grpc::StatusCode::PERMISSION_DENIED:
+    case grpc::StatusCode::INVALID_ARGUMENT:
+    case grpc::StatusCode::NOT_FOUND:
+        return false;
+    }
+    return true;
+}
 
 }

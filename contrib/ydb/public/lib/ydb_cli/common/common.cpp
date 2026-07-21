@@ -12,8 +12,7 @@
 #include <windows.h>
 #endif
 
-namespace NYdb {
-namespace NConsoleClient {
+namespace NYdb::NConsoleClient {
 
 TProfileConfig::TProfileConfig(const TString& profileName)
     : ProfileName(profileName)
@@ -59,7 +58,7 @@ void TProfileConfig::ReadFromFile() {
     InMemory = true;
 }
 
-bool ReadFromFileIfExists(TString& filePath, const TString& fileName, TString& output, bool allowEmpty) {
+TFsPath GetFsPath(TString& filePath) {
     if (filePath.StartsWith("~")) {
         filePath = HomeDir + filePath.substr(1);
     }
@@ -68,6 +67,11 @@ bool ReadFromFileIfExists(TString& filePath, const TString& fileName, TString& o
         correctpath(filePath);
         fsPath = TFsPath(filePath);
     }
+    return fsPath;
+}
+
+bool ReadFromFileIfExists(TString& filePath, const TString& fileName, TString& output, bool allowEmpty) {
+    TFsPath fsPath = GetFsPath(filePath);
     TString content;
     if (fsPath.Exists()) {
         content = Strip(TUnbufferedFileInput(fsPath).ReadAll());
@@ -98,6 +102,14 @@ TString ReadFromFile(TString& filePath, const TString& fileName, bool allowEmpty
 TString ReadFromFile(const TString& filePath, const TString& fileName, bool allowEmpty) {
     TString fpCopy = filePath;
     return ReadFromFile(fpCopy, fileName, allowEmpty);
+}
+
+TFsPath GetExistingFsPath(TString& filePath, const TString& fileName) {
+    TFsPath fsPath = GetFsPath(filePath);
+    if (fsPath.Exists()) {
+        return fsPath;
+    }
+    throw yexception() << "Can't find " << fileName << " file \"" << filePath << "\".";
 }
 
 TString InputPassword() {
@@ -148,7 +160,7 @@ TString InputPassword() {
 #elif defined(_win_)
             SetConsoleMode(hStdin, mode);
 #endif
-            exit(EXIT_FAILURE);
+            throw yexception() << "Input interrupted";
         } else {
             Cerr << '*';
             password.push_back(c);
@@ -165,5 +177,16 @@ TString InputPassword() {
     return password;
 }
 
+bool ThrowOnErrorAndCheckEOS(NYdb::TStreamPartStatus status) {
+    if (!status.IsSuccess()) {
+        if (status.EOS()) {
+            return true;
+        }
+        throw NStatusHelpers::TYdbErrorException(status) << static_cast<NYdb::Dev::TStatus>(status);
+    } else if (status.GetIssues()) {
+        Cerr << static_cast<NYdb::Dev::TStatus>(status);
+    }
+    return false;
 }
-}
+
+} // namespace NYdb::NConsoleClient

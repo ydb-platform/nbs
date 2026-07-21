@@ -11,6 +11,7 @@ PEERDIR(
     contrib/ydb/library/yql/minikql/codegen/no_llvm
     contrib/ydb/library/yql/parser/pg_wrapper
     contrib/ydb/library/yql/parser/pg_wrapper/interface
+    contrib/ydb/library/yql/sql/pg
 )
 
 END()

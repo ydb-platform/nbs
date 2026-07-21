@@ -1,18 +1,41 @@
 #include "global.h"
 
 #include <contrib/ydb/core/formats/arrow/size_calcer.h>
+#include <contrib/ydb/core/kqp/query_data/kqp_predictor.h>
 #include <contrib/ydb/core/tx/columnshard/columnshard.h>
 #include <contrib/ydb/core/tx/data_events/shard_writer.h>
 #include <contrib/ydb/core/tx/long_tx_service/public/events.h>
 #include <contrib/ydb/core/tx/schemeshard/schemeshard.h>
+#include <contrib/ydb/core/protos/config.pb.h>
 
+#include <contrib/ydb/library/aclib/user_context.h>
 #include <contrib/ydb/library/actors/prof/tag.h>
 #include <contrib/ydb/library/actors/wilson/wilson_profile_span.h>
+#include <contrib/ydb/library/signals/object_counter.h>
 #include <contrib/ydb/services/ext_index/common/service.h>
 
 #include <contrib/libs/apache/arrow/cpp/src/arrow/compute/api.h>
 
 namespace NKikimr {
+
+namespace {
+
+ui64 GetMemoryInFlightLimit() {
+    static std::atomic_uint64_t DEFAULT_MEMORY_IN_FLIGHT_LIMIT{0};
+
+    if (HasAppData() && AppDataVerified().ColumnShardConfig.GetProxyMemoryInFlightLimit()) {
+        return AppDataVerified().ColumnShardConfig.GetProxyMemoryInFlightLimit();
+    }
+
+    if (DEFAULT_MEMORY_IN_FLIGHT_LIMIT.load() == 0) {
+        uint64_t oldValue = 0;
+        const uint64_t newValue = NKqp::TStagePredictor::GetPossibleMaxLimitThreads() * 10_MB;
+        DEFAULT_MEMORY_IN_FLIGHT_LIMIT.compare_exchange_strong(oldValue, newValue);
+    }
+    return DEFAULT_MEMORY_IN_FLIGHT_LIMIT.load();
+}
+
+}
 
 namespace NTxProxy {
 using namespace NActors;
@@ -21,24 +44,29 @@ using namespace NLongTxService;
 // Common logic of LongTx Write that takes care of splitting the data according to the sharding scheme,
 // sending it to shards and collecting their responses
 template <class TLongTxWriteImpl>
-class TLongTxWriteBase: public TActorBootstrapped<TLongTxWriteImpl> {
+class TLongTxWriteBase: public TActorBootstrapped<TLongTxWriteImpl>,
+                        NColumnShard::TMonitoringObjectsCounter<TLongTxWriteBase<TLongTxWriteImpl>> {
     using TBase = TActorBootstrapped<TLongTxWriteImpl>;
     static inline TAtomicCounter MemoryInFlight = 0;
 
 protected:
     using TThis = typename TBase::TThis;
-    const bool NoTxWrite = false;
 
 public:
-    TLongTxWriteBase(const TString& databaseName, const TString& path, const TString& token, const TLongTxId& longTxId, const TString& dedupId,
-        const bool noTxWrite)
-        : NoTxWrite(noTxWrite)
-        , DatabaseName(databaseName)
+    TLongTxWriteBase(
+        const TString& databaseName,
+        const TString& path,
+        const TString& token,
+        const TLongTxId& longTxId,
+        const TString& dedupId,
+        TIntrusivePtr<NACLib::TUserContext> userCtx)
+        : DatabaseName(databaseName)
         , Path(path)
         , DedupId(dedupId)
         , LongTxId(longTxId)
         , ActorSpan(0, NWilson::TTraceId::NewTraceId(0, Max<ui32>()), "TLongTxWriteBase")
-    {
+        , UserCtx(userCtx)
+        , Counters(std::make_shared<NEvWrite::TCSUploadCounters>())  {
         if (token) {
             UserToken.emplace(token);
         }
@@ -46,6 +74,7 @@ public:
 
     virtual ~TLongTxWriteBase() {
         AFL_VERIFY(MemoryInFlight.Sub(InFlightSize) >= 0);
+        Counters->OnMemoryInflight(MemoryInFlight.Val(), GetMemoryInFlightLimit());
     }
 
 protected:
@@ -72,12 +101,14 @@ protected:
         AFL_VERIFY(!InFlightSize);
         InFlightSize = accessor->GetSize();
         const i64 sizeInFlight = MemoryInFlight.Add(InFlightSize);
-        if (TLimits::MemoryInFlightWriting < (ui64)sizeInFlight && sizeInFlight != InFlightSize) {
+
+        Counters->OnMemoryInflight(sizeInFlight, GetMemoryInFlightLimit());
+        if (GetMemoryInFlightLimit() < (ui64)sizeInFlight && sizeInFlight != InFlightSize) {
             return ReplyError(Ydb::StatusIds::OVERLOADED, "a lot of memory in flight");
         }
         if (NCSIndex::TServiceOperator::IsEnabled()) {
             TBase::Send(
-                NCSIndex::MakeServiceId(TBase::SelfId().NodeId()), new NCSIndex::TEvAddData(accessor->GetDeserializedBatch(), Path,
+                NCSIndex::MakeServiceId(TBase::SelfId().NodeId()), new NCSIndex::TEvAddData(accessor->GetDeserializedBatch(), DatabaseName, Path,
                                                                        std::make_shared<NCSIndex::TNaiveDataUpsertController>(TBase::SelfId())));
         } else {
             IndexReady = true;
@@ -95,18 +126,20 @@ protected:
         accessor.reset();
 
         const auto& splittedData = shardsSplitter->GetSplitData();
-        InternalController = std::make_shared<NEvWrite::TWritersController>(splittedData.GetShardRequestsCount(), this->SelfId(), LongTxId, NoTxWrite);
+        const auto& shardsInRequest = splittedData.GetShardRequestsCount();
+        InternalController = std::make_shared<NEvWrite::TWritersController>(shardsInRequest, this->SelfId(), LongTxId, Counters);
+
+        Counters->OnSplitByShards(shardsInRequest);
         ui32 sumBytes = 0;
         ui32 rowsCount = 0;
         ui32 writeIdx = 0;
         for (auto& [shard, infos] : splittedData.GetShardsInfo()) {
             for (auto&& shardInfo : infos) {
-                InternalController->GetCounters()->OnRequest(shardInfo->GetRowsCount(), shardInfo->GetBytes());
+                Counters->OnRequest(shardInfo->GetRowsCount(), shardInfo->GetBytes());
                 sumBytes += shardInfo->GetBytes();
                 rowsCount += shardInfo->GetRowsCount();
-                this->Register(new NEvWrite::TShardWriter(shard, shardsSplitter->GetTableId(), shardsSplitter->GetSchemaVersion(), DedupId, shardInfo,
-                    ActorSpan, InternalController,
-                    ++writeIdx, NEvWrite::EModificationType::Replace, NoTxWrite));
+                this->Register(new NEvWrite::TShardWriter(shard, shardsSplitter->GetTableId(), shardsSplitter->GetSchemaVersion(), DedupId,
+                    shardInfo, ActorSpan, InternalController, ++writeIdx, TDuration::Seconds(20), UserCtx));
             }
         }
         pSpan.Attribute("affected_shards_count", (long)splittedData.GetShardsInfo().size());
@@ -198,6 +231,8 @@ private:
     NEvWrite::TWritersController::TPtr InternalController;
     bool ColumnShardReady = false;
     bool IndexReady = false;
+    TIntrusivePtr<NACLib::TUserContext> UserCtx;
+    std::shared_ptr<NEvWrite::TCSUploadCounters> Counters;
 };
 
 // LongTx Write implementation called from the inside of YDB (e.g. as a part of BulkUpsert call)
@@ -230,13 +265,12 @@ class TLongTxWriteInternal: public TLongTxWriteBase<TLongTxWriteInternal> {
 public:
     explicit TLongTxWriteInternal(const TActorId& replyTo, const TLongTxId& longTxId, const TString& dedupId, const TString& databaseName,
         const TString& path, std::shared_ptr<const NSchemeCache::TSchemeCacheNavigate> navigateResult, std::shared_ptr<arrow::RecordBatch> batch,
-        std::shared_ptr<NYql::TIssues> issues, const bool noTxWrite)
-        : TBase(databaseName, path, TString(), longTxId, dedupId, noTxWrite)
+        std::shared_ptr<NYql::TIssues> issues, TIntrusivePtr<NACLib::TUserContext> userCtx)
+        : TBase(databaseName, path, TString(), longTxId, dedupId, userCtx)
         , ReplyTo(replyTo)
         , NavigateResult(navigateResult)
         , Batch(batch)
-        , Issues(issues)
-    {
+        , Issues(issues) {
         Y_ABORT_UNLESS(Issues);
         DataAccessor = std::make_unique<TParsedBatchData>(Batch);
     }
@@ -279,9 +313,9 @@ private:
 TActorId DoLongTxWriteSameMailbox(const TActorContext& ctx, const TActorId& replyTo, const NLongTxService::TLongTxId& longTxId,
     const TString& dedupId, const TString& databaseName, const TString& path,
     std::shared_ptr<const NSchemeCache::TSchemeCacheNavigate> navigateResult, std::shared_ptr<arrow::RecordBatch> batch,
-    std::shared_ptr<NYql::TIssues> issues, const bool noTxWrite) {
-    return ctx.RegisterWithSameMailbox(
-        new TLongTxWriteInternal(replyTo, longTxId, dedupId, databaseName, path, navigateResult, batch, issues, noTxWrite));
+    std::shared_ptr<NYql::TIssues> issues,
+    TIntrusivePtr<NACLib::TUserContext> userCtx) {
+    return ctx.RegisterWithSameMailbox(new TLongTxWriteInternal(replyTo, longTxId, dedupId, databaseName, path, navigateResult, batch, issues, userCtx));
 }
 
 //

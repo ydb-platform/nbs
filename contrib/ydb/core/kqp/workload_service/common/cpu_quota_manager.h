@@ -4,7 +4,7 @@
 
 #include <contrib/ydb/library/yql/public/issue/yql_issue.h>
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_types/status_codes.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/types/status_codes.h>
 
 
 namespace NKikimr::NKqp::NWorkload {

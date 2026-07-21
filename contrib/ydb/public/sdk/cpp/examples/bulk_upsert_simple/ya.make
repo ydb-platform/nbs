@@ -6,7 +6,7 @@ SRCS(
 
 PEERDIR(
     library/cpp/getopt
-    contrib/ydb/public/sdk/cpp/client/ydb_table
+    contrib/ydb/public/sdk/cpp/src/client/table
 )
 
 END()

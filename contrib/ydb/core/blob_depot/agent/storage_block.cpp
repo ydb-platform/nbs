@@ -4,7 +4,8 @@
 namespace NKikimr::NBlobDepot {
 
     template<>
-    TBlobDepotAgent::TQuery *TBlobDepotAgent::CreateQuery<TEvBlobStorage::EvBlock>(std::unique_ptr<IEventHandle> ev) {
+    TBlobDepotAgent::TQuery *TBlobDepotAgent::CreateQuery<TEvBlobStorage::EvBlock>(std::unique_ptr<IEventHandle> ev,
+            TMonotonic received) {
         class TBlockQuery : public TBlobStorageQuery<TEvBlobStorage::TEvBlock> {
             struct TBlockContext : TRequestContext {
                 TMonotonic Timestamp;
@@ -32,6 +33,11 @@ namespace NKikimr::NBlobDepot {
                 block.SetBlockedGeneration(Request.Generation);
                 block.SetIssuerGuid(Request.IssuerGuid);
                 Agent.Issue(std::move(block), this, std::make_shared<TBlockContext>(TActivationContext::Monotonic()));
+
+                if (Agent.Recommissioning) {
+                    Agent.SendToProxy(Agent.DecommitGroupId.value(), std::make_unique<TEvBlobStorage::TEvBlock>(
+                        Request.TabletId, Request.Generation, Request.Deadline, Request.IssuerGuid), this, nullptr);
+                }
             }
 
             void ProcessResponse(ui64 /*id*/, TRequestContext::TPtr context, TResponse response) override {
@@ -63,7 +69,7 @@ namespace NKikimr::NBlobDepot {
             }
         };
 
-        return new TBlockQuery(*this, std::move(ev));
+        return new TBlockQuery(*this, std::move(ev), received);
     }
 
 } // NKikimr::NBlobDepot

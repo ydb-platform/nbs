@@ -2,7 +2,6 @@
 
 #include "common.h"
 
-#include <contrib/ydb/core/protos/kqp.pb.h>
 
 namespace NKqpRun {
 
@@ -10,21 +9,25 @@ class TKqpRunner {
 public:
     explicit TKqpRunner(const TRunnerOptions& options);
 
-    bool ExecuteSchemeQuery(const TString& query, const TString& traceId) const;
+    bool ExecuteSchemeQuery(const TRequestOptions& query) const;
 
-    bool ExecuteScript(const TString& script, NKikimrKqp::EQueryAction action, const TString& traceId) const;
+    bool ExecuteScript(const TRequestOptions& script, TDuration& duration) const;
 
-    bool ExecuteQuery(const TString& query, NKikimrKqp::EQueryAction action, const TString& traceId) const;
+    bool ExecuteQuery(const TRequestOptions& query, TDuration& duration) const;
 
-    bool ExecuteYqlScript(const TString& query, NKikimrKqp::EQueryAction action, const TString& traceId) const;
+    bool ExecuteYqlScript(const TRequestOptions& query, TDuration& duration) const;
 
-    void ExecuteQueryAsync(const TString& query, NKikimrKqp::EQueryAction action, const TString& traceId) const;
+    void ExecuteQueryAsync(const TRequestOptions& query) const;
 
-    void WaitAsyncQueries() const;
+    bool ExecuteStreaming(const TRequestOptions& query, const TString& queryName, TDuration& duration) const;
 
-    bool FetchScriptResults();
+    void FinalizeRunner() const;
 
-    bool ForgetExecutionOperation();
+    bool FetchScriptResults(const TString& userSID);
+
+    bool ForgetExecutionOperation(const TString& userSID);
+
+    bool ForgetStreamingQuery(const TString& userSID);
 
     void PrintScriptResults() const;
 

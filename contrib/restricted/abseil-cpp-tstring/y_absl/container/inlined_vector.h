@@ -46,6 +46,7 @@
 #include <utility>
 
 #include "y_absl/algorithm/algorithm.h"
+#include "y_absl/base/attributes.h"
 #include "y_absl/base/internal/throw_delegate.h"
 #include "y_absl/base/macros.h"
 #include "y_absl/base/optimization.h"
@@ -67,7 +68,7 @@ Y_ABSL_NAMESPACE_BEGIN
 // as a `std::vector`. The API of the `y_absl::InlinedVector` within this file is
 // designed to cover the same API footprint as covered by `std::vector`.
 template <typename T, size_t N, typename A = std::allocator<T>>
-class InlinedVector {
+class Y_ABSL_ATTRIBUTE_WARN_UNUSED InlinedVector {
   static_assert(N > 0, "`y_absl::InlinedVector` requires an inlined capacity.");
 
   using Storage = inlined_vector_internal::Storage<T, N, A>;
@@ -775,7 +776,20 @@ class InlinedVector {
     Y_ABSL_HARDENING_ASSERT(pos >= begin());
     Y_ABSL_HARDENING_ASSERT(pos < end());
 
+    // https://gcc.gnu.org/bugzilla/show_bug.cgi?id=102329#c2
+    // It appears that GCC thinks that since `pos` is a const pointer and may
+    // point to uninitialized memory at this point, a warning should be
+    // issued. But `pos` is actually only used to compute an array index to
+    // write to.
+#if !defined(__clang__) && defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#pragma GCC diagnostic ignored "-Wuninitialized"
+#endif
     return storage_.Erase(pos, pos + 1);
+#if !defined(__clang__) && defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
   }
 
   // Overload of `InlinedVector::erase(...)` that erases every element in the

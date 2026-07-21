@@ -1,5 +1,7 @@
 #include "blob.h"
+
 #include <contrib/ydb/core/tx/columnshard/common/protos/blob_range.pb.h>
+
 #include <contrib/ydb/library/actors/core/log.h>
 
 #include <charconv>
@@ -8,24 +10,24 @@ namespace NKikimr::NOlap {
 
 namespace {
 
-#define PARSE_INT_COMPONENT(fieldType, fieldName, endChar) \
-    if (pos >= endPos) { \
-        error = "Failed to parse " #fieldName " component"; \
-        return TUnifiedBlobId(); \
-    } \
-    fieldType fieldName = -1; \
-    { \
-        auto [ptr, ec] { std::from_chars(str + pos, str + endPos, fieldName) }; \
-        if (ec != std::errc()) { \
-            error = "Failed to parse " #fieldName " component"; \
-            return TUnifiedBlobId(); \
-        } else { \
-            pos = ptr - str; \
-        } \
-        if (str[pos++] != endChar) { \
-            error = #endChar " not found after " #fieldName; \
-            return TUnifiedBlobId(); \
-        } \
+#define PARSE_INT_COMPONENT(fieldType, fieldName, endChar)                     \
+    if (pos >= endPos) {                                                       \
+        error = "Failed to parse " #fieldName " component";                    \
+        return TUnifiedBlobId();                                               \
+    }                                                                          \
+    fieldType fieldName = -1;                                                  \
+    {                                                                          \
+        auto [ptr, ec]{ std::from_chars(str + pos, str + endPos, fieldName) }; \
+        if (ec != std::errc()) {                                               \
+            error = "Failed to parse " #fieldName " component";                \
+            return TUnifiedBlobId();                                           \
+        } else {                                                               \
+            pos = ptr - str;                                                   \
+        }                                                                      \
+        if (str[pos++] != endChar) {                                           \
+            error = #endChar " not found after " #fieldName;                   \
+            return TUnifiedBlobId();                                           \
+        }                                                                      \
     }
 
 // Format: "DS:group:logoBlobId"
@@ -51,10 +53,9 @@ TUnifiedBlobId ParseExtendedDsBlobId(const TString& s, TString& error) {
     return TUnifiedBlobId(dsGroup, logoBlobId);
 }
 
-}
+}   // namespace
 
-TUnifiedBlobId TUnifiedBlobId::ParseFromString(const TString& str,
-    const IBlobGroupSelector* dsGroupSelector, TString& error) {
+TUnifiedBlobId TUnifiedBlobId::ParseFromString(const TString& str, const IBlobGroupSelector* dsGroupSelector, TString& error) {
     if (str.size() <= 2) {
         error = TStringBuilder() << "Wrong blob id: '" << str << "'";
         return TUnifiedBlobId();
@@ -136,6 +137,27 @@ NKikimrColumnShardProto::TBlobRange TBlobRange::SerializeToProto() const {
     return result;
 }
 
+TString TBlobRange::GetData(const TString& blobData) const {
+    AFL_VERIFY(Offset + Size <= blobData.size())("offset", Offset)("size", Size)("blobDataSize", blobData.size());
+    return blobData.substr(Offset, Size);
+}
+
+TBlobRange::TBlobRange(const TUnifiedBlobId& blobId /*= TUnifiedBlobId()*/, ui32 offset /*= 0*/, ui32 size /*= 0*/)
+    : BlobId(blobId)
+    , Offset(offset)
+    , Size(size)
+{
+    if (Size > 0) {
+        AFL_VERIFY(Offset < BlobId.BlobSize())("offset", Offset)("size", Size)("blob", BlobId.ToStringNew());
+        AFL_VERIFY(Offset + Size <= BlobId.BlobSize())("offset", Offset)("size", Size)("blob", BlobId.ToStringNew());
+    }
+}
+
+TBlobRange TBlobRange::BuildSubset(const ui32 offset, const ui32 size) const {
+    AFL_VERIFY(offset + size <= Size)("offset", offset)("req_size", size)("own_size", Size);
+    return TBlobRange(BlobId, Offset + offset, size);
+}
+
 NKikimr::TConclusionStatus TBlobRangeLink16::DeserializeFromProto(const NKikimrColumnShardProto::TBlobRangeLink16& proto) {
     BlobIdx = proto.GetBlobIdx();
     Offset = proto.GetOffset();
@@ -166,8 +188,18 @@ ui16 TBlobRangeLink16::GetBlobIdxVerified() const {
     return *BlobIdx;
 }
 
-NKikimr::NOlap::TBlobRange TBlobRangeLink16::RestoreRange(const TUnifiedBlobId& blobId) const {
+TBlobRange TBlobRangeLink16::RestoreRange(const TUnifiedBlobId& blobId) const {
     return TBlobRange(blobId, Offset, Size);
 }
 
+bool TBlobRangeLink16::CheckBlob(const TUnifiedBlobId& blobId) const {
+    return Offset + Size <= blobId.BlobSize();
 }
+
+TString TBlobRangeLink16::GetBlobData(const TString& blob) const {
+    AFL_VERIFY(Offset < blob.size());
+    AFL_VERIFY(Offset + Size <= blob.size());
+    return blob.substr(Offset, Size);
+}
+
+}   // namespace NKikimr::NOlap

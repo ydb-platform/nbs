@@ -1,5 +1,5 @@
 #include "queues_list_reader.h"
-#include "cfg.h"
+#include <contrib/ydb/core/ymq/actor/cfg/cfg.h>
 #include "executor.h"
 #include "events.h"
 
@@ -133,6 +133,7 @@ void TQueuesListReader::OnQueuesList(const TSqsEvents::TEvExecuted::TRecord& rec
             rec.DlqName = row["DlqName"];
             rec.CreatedTimestamp = TInstant::MilliSeconds(ui64(row["CreatedTimestamp"]));
             rec.IsFifo = row["FifoQueue"];
+            rec.TopicCreated = row["TopicCreated"];
         }
 
         const bool truncated = val["truncated"];

@@ -1,6 +1,6 @@
 #include "execution_planner.h"
 
-#include <contrib/ydb/library/yql/dq/integration/yql_dq_integration.h>
+#include <contrib/ydb/library/yql/core/dq_integration/yql_dq_integration.h>
 #include <contrib/ydb/library/yql/providers/dq/expr_nodes/dqs_expr_nodes.h>
 #include <contrib/ydb/library/yql/providers/dq/opt/dqs_opt.h>
 #include <contrib/ydb/library/yql/providers/dq/opt/logical_optimize.h>
@@ -26,6 +26,7 @@
 #include <contrib/ydb/library/yql/core/services/yql_transform_pipeline.h>
 #include <contrib/ydb/library/yql/minikql/aligned_page_pool.h>
 #include <contrib/ydb/library/yql/minikql/mkql_node_serialization.h>
+#include <contrib/ydb/library/yql/minikql/runtime_settings/runtime_settings_serialization.h>
 #include <contrib/ydb/library/actors/core/event_pb.h>
 
 #include <stack>
@@ -149,7 +150,7 @@ namespace NYql::NDqs {
         auto value = expr.Maybe<TDqPhyPrecompute>();
         const auto maxTasksPerOperation = Settings->MaxTasksPerOperation.Get().GetOrElse(TDqSettings::TDefault::MaxTasksPerOperation);
 
-        YQL_CLOG(DEBUG, ProviderDq) << "Execution Plan " << NCommon::ExprToPrettyString(ExprContext, *DqExprRoot);
+        YQL_CLOG(TRACE, ProviderDq) << "Execution Plan " << NCommon::ExprToPrettyString(ExprContext, *DqExprRoot);
 
         auto stages = GetStages(DqExprRoot);
         YQL_ENSURE(!stages.empty());
@@ -266,122 +267,11 @@ namespace NYql::NDqs {
             SourceTaskID = resultTask.Id;
         }
 
-        BuildCheckpointingAndWatermarksMode(true, Settings->WatermarksMode.Get().GetOrElse("") == "default");
+        TasksGraph.BuildCheckpointingAndWatermarksMode(true, Settings->WatermarksMode.Get().GetOrElse("disable") != "disable");
 
         return TasksGraph.GetTasks().size() <= maxTasksPerOperation;
     }
 
-    bool TDqsExecutionPlanner::IsEgressTask(const TDqsTasksGraph::TTaskType& task) const {
-        for (const auto& output : task.Outputs) {
-            for (ui64 channelId : output.Channels) {
-                if (TasksGraph.GetChannel(channelId).DstTask) {
-                    return false;
-                }
-            }
-        }
-        return true;
-    }
-
-    static bool IsInfiniteSourceType(const TString& sourceType) {
-        return sourceType == "PqSource"; // Now it is the only infinite source type. Others are finite.
-    }
-
-    void TDqsExecutionPlanner::BuildCheckpointingAndWatermarksMode(bool enableCheckpoints, bool enableWatermarks) {
-        std::stack<TDqsTasksGraph::TTaskType*> tasksStack;
-        std::vector<bool> processedTasks(TasksGraph.GetTasks().size());
-        for (TDqsTasksGraph::TTaskType& task : TasksGraph.GetTasks()) {
-            if (IsEgressTask(task)) {
-                tasksStack.push(&task);
-            }
-        }
-
-        while (!tasksStack.empty()) {
-            TDqsTasksGraph::TTaskType& task = *tasksStack.top();
-            Y_ABORT_UNLESS(task.Id && task.Id <= processedTasks.size());
-            if (processedTasks[task.Id - 1]) {
-                tasksStack.pop();
-                continue;
-            }
-
-            // Make sure that all input tasks are processed
-            bool allInputsAreReady = true;
-            for (const auto& input : task.Inputs) {
-                for (ui64 channelId : input.Channels) {
-                    const NDq::TChannel& channel = TasksGraph.GetChannel(channelId);
-                    Y_ABORT_UNLESS(channel.SrcTask && channel.SrcTask <= processedTasks.size());
-                    if (!processedTasks[channel.SrcTask - 1]) {
-                        allInputsAreReady = false;
-                        tasksStack.push(&TasksGraph.GetTask(channel.SrcTask));
-                    }
-                }
-            }
-            if (!allInputsAreReady) {
-                continue;
-            }
-
-            // Current task has all inputs processed, so determine its checkpointing and watermarks mode now.
-            NDqProto::ECheckpointingMode checkpointingMode = NDqProto::CHECKPOINTING_MODE_DISABLED;
-            if (enableCheckpoints) {
-                for (const auto& input : task.Inputs) {
-                    if (input.SourceType) {
-                        if (IsInfiniteSourceType(input.SourceType)) {
-                            checkpointingMode = NDqProto::CHECKPOINTING_MODE_DEFAULT;
-                            break;
-                        }
-                    } else {
-                        for (ui64 channelId : input.Channels) {
-                            const NDq::TChannel& channel = TasksGraph.GetChannel(channelId);
-                            if (channel.CheckpointingMode != NDqProto::CHECKPOINTING_MODE_DISABLED) {
-                                checkpointingMode = NDqProto::CHECKPOINTING_MODE_DEFAULT;
-                                break;
-                            }
-                        }
-                        if (checkpointingMode == NDqProto::CHECKPOINTING_MODE_DEFAULT) {
-                            break;
-                        }
-                    }
-                }
-            }
-
-            NDqProto::EWatermarksMode watermarksMode = NDqProto::WATERMARKS_MODE_DISABLED;
-            if (enableWatermarks) {
-                for (auto& input : task.Inputs) {
-                    if (input.SourceType) {
-                        if (IsInfiniteSourceType(input.SourceType)) {
-                            watermarksMode = NDqProto::WATERMARKS_MODE_DEFAULT;
-                            input.WatermarksMode = NDqProto::WATERMARKS_MODE_DEFAULT;
-                            break;
-                        }
-                    } else {
-                        for (ui64 channelId : input.Channels) {
-                            const NDq::TChannel& channel = TasksGraph.GetChannel(channelId);
-                            if (channel.WatermarksMode != NDqProto::WATERMARKS_MODE_DEFAULT) {
-                                watermarksMode = NDqProto::WATERMARKS_MODE_DEFAULT;
-                                break;
-                            }
-                        }
-                        if (watermarksMode == NDqProto::WATERMARKS_MODE_DEFAULT) {
-                            break;
-                        }
-                    }
-                }
-            }
-
-            // Apply mode to task and its outputs.
-            task.CheckpointingMode = checkpointingMode;
-            task.WatermarksMode = watermarksMode;
-            for (const auto& output : task.Outputs) {
-                for (ui64 channelId : output.Channels) {
-                    auto& channel = TasksGraph.GetChannel(channelId);
-                    channel.CheckpointingMode = checkpointingMode;
-                    channel.WatermarksMode = watermarksMode;
-                }
-            }
-
-            processedTasks[task.Id - 1] = true;
-            tasksStack.pop();
-        }
-    }
 
     // TODO: Split Build and Get stages
     TVector<TDqTask>& TDqsExecutionPlanner::GetTasks() {
@@ -435,6 +325,9 @@ namespace NYql::NDqs {
                     *sourceProto->MutableSettings() = *input.SourceSettings;
                     sourceProto->SetType(input.SourceType);
                     sourceProto->SetWatermarksMode(input.WatermarksMode);
+                    if (input.WatermarksIdleTimeoutUs) {
+                        sourceProto->SetWatermarksIdleTimeoutUs(*input.WatermarksIdleTimeoutUs);
+                    }
                 } else {
                     FillInputDesc(inputDesc, input);
                 }
@@ -454,10 +347,13 @@ namespace NYql::NDqs {
             ui64 stageId, publicId;
             std::tie(programStr, stageId, publicId) = StagePrograms[task.StageId];
             program.SetRaw(programStr);
+            program.SetLangVer(TypeContext->LangVer);
+            *program.MutableRuntimeSettings() = NYql::SerializeRuntimeSettingsToProto(*TypeContext->RuntimeSettings);
             taskMeta.SetStageId(publicId);
             taskDesc.MutableMeta()->PackFrom(taskMeta);
             taskDesc.SetStageId(stageId);
             taskDesc.SetEnableSpilling(Settings->GetEnabledSpillingNodes());
+            taskDesc.SetValuePackerVersion(Settings->GetValuePackerVersion());
 
             if (Settings->DisableLLVMForBlockStages.Get().GetOrElse(true)) {
                 auto& stage = TasksGraph.GetStageInfo(task.StageId).Meta.Stage;
@@ -544,12 +440,20 @@ namespace NYql::NDqs {
         TVector<TString> parts;
         if (auto dqIntegration = (*datasource)->GetDqIntegration()) {
             TString clusterName;
-            _MaxDataSizePerJob = Max(_MaxDataSizePerJob, dqIntegration->Partition(*Settings, maxPartitions, *read, parts, &clusterName, ExprContext, canFallback));
+            IDqIntegration::TPartitionSettings settings {
+                .DataSizePerJob = Settings->DataSizePerJob.Get().GetOrElse(TDqSettings::TDefault::DataSizePerJob),
+                .MaxPartitions = maxPartitions,
+                .EnableComputeActor = Settings->EnableComputeActor.Get(),
+                .CanFallback = canFallback
+            };
+            _MaxDataSizePerJob = Max(_MaxDataSizePerJob, dqIntegration->Partition(*read, parts, &clusterName, ExprContext, settings));
             TMaybe<::google::protobuf::Any> sourceSettings;
             TString sourceType;
+            TMaybe<IDqIntegration::TSourceWatermarksSettings> sourceWatermarksSettings;
             if (dqSource) {
                 sourceSettings.ConstructInPlace();
-                dqIntegration->FillSourceSettings(*read, *sourceSettings, sourceType, maxPartitions);
+                dqIntegration->FillSourceSettings(*read, *sourceSettings, sourceType, maxPartitions, ExprContext);
+                sourceWatermarksSettings = dqIntegration->ExtractSourceWatermarksSettings(*read, *sourceSettings, sourceType);
                 YQL_ENSURE(!sourceSettings->type_url().empty(), "Data source provider \"" << dataSourceName << "\" did't fill dq source settings for its dq source node");
                 YQL_ENSURE(sourceType, "Data source provider \"" << dataSourceName << "\" did't fill dq source settings type for its dq source node");
             }
@@ -560,6 +464,10 @@ namespace NYql::NDqs {
                 if (dqSource) {
                     task.Inputs[dqSourceInputIndex].SourceSettings = sourceSettings;
                     task.Inputs[dqSourceInputIndex].SourceType = sourceType;
+                    if (sourceWatermarksSettings) {
+                        task.Inputs[dqSourceInputIndex].WatermarksMode = NYql::NDqProto::EWatermarksMode::WATERMARKS_MODE_DEFAULT;
+                        task.Inputs[dqSourceInputIndex].WatermarksIdleTimeoutUs = sourceWatermarksSettings->IdleTimeoutUs;
+                    }
                 }
             }
         }
@@ -585,7 +493,7 @@ namespace NYql::NDqs {
         YQL_ENSURE(dataSource);
         auto dqIntegration = (*dataSource)->GetDqIntegration();
         YQL_ENSURE(dqIntegration);
-        
+
         google::protobuf::Any providerSpecificLookupSourceSettings;
         TString sourceType;
         dqIntegration->FillLookupSourceSettings(*rightInput.Raw(), providerSpecificLookupSourceSettings, sourceType);
@@ -602,7 +510,7 @@ namespace NYql::NDqs {
         settings.SetRightLabel(streamLookup.RightLabel().StringValue());
         settings.SetJoinType(streamLookup.JoinType().StringValue());
         for (const auto& k: streamLookup.LeftJoinKeyNames()) {
-            *settings.AddLeftJoinKeyNames() = RemoveAliases(k.StringValue());
+            *settings.AddLeftJoinKeyNames() = streamLookup.LeftLabel().StringValue().empty() ? k.StringValue() : RemoveAliases(k.StringValue());
         }
         for (const auto& k: streamLookup.RightJoinKeyNames()) {
             *settings.AddRightJoinKeyNames() = RemoveAliases(k.StringValue());
@@ -613,6 +521,19 @@ namespace NYql::NDqs {
         const auto narrowOutputRowType = GetSeqItemType(streamLookup.Ptr()->GetTypeAnn());
         Y_ABORT_UNLESS(narrowOutputRowType->GetKind() == ETypeAnnotationKind::Struct);
         settings.SetNarrowOutputRowType(NYql::NCommon::GetSerializedTypeAnnotation(narrowOutputRowType));
+        settings.SetCacheLimit(FromString<ui64>(streamLookup.MaxCachedRows().StringValue()));
+        settings.SetCacheTtlSeconds(FromString<ui64>(streamLookup.TTL().StringValue()));
+        settings.SetMaxDelayedRows(FromString<ui64>(streamLookup.MaxDelayedRows().StringValue()));
+        if (auto maybeMultiget = streamLookup.IsMultiget()) {
+            settings.SetIsMultiget(FromString<bool>(maybeMultiget.Cast().StringValue()));
+        }
+
+        if (auto maybeIsMultiMatches = streamLookup.IsMultiMatches()) {
+            settings.SetIsMultiMatches(FromString<bool>(maybeIsMultiMatches.Cast().StringValue()));
+        }
+        if (auto maybeFullscanLimit = streamLookup.FullscanLimit().Maybe<TCoAtom>()) {
+            settings.SetFullscanLimit(FromString<ui64>(maybeFullscanLimit.Cast().StringValue()));
+        }
 
         const auto inputRowType = GetSeqItemType(streamLookup.Output().Stage().Program().Ref().GetTypeAnn());
         const auto outputRowType = GetSeqItemType(stage.Program().Args().Arg(inputIndex).Ref().GetTypeAnn());
@@ -702,6 +623,10 @@ namespace NYql::NDqs {
         channelDesc.SetDstTaskId(channel.DstTask);
         channelDesc.SetCheckpointingMode(channel.CheckpointingMode);
         channelDesc.SetTransportVersion(Settings->GetDataTransportVersion());
+        channelDesc.SetWatermarksMode(channel.WatermarksMode);
+        if (channel.WatermarksIdleTimeoutUs) {
+            channelDesc.SetWatermarksIdleTimeoutUs(*channel.WatermarksIdleTimeoutUs);
+        }
         channelDesc.SetEnableSpilling(enableSpilling);
 
         if (channel.SrcTask) {
@@ -814,11 +739,15 @@ namespace NYql::NDqs {
         const TString& program,
         NActors::TActorId executerID,
         NActors::TActorId resultID,
-        const TTypeAnnotationNode* typeAnn)
+        const TTypeAnnotationNode* typeAnn,
+        TLangVersion langver,
+        TRuntimeSettings::TConstPtr runtimeSettings)
         : Program(program)
         , ExecuterID(executerID)
         , ResultID(resultID)
         , TypeAnn(typeAnn)
+        , LangVer(langver)
+        , RuntimeSettings(std::move(runtimeSettings))
     { }
 
     TVector<TDqTask>& TDqsSingleExecutionPlanner::GetTasks()
@@ -846,6 +775,8 @@ namespace NYql::NDqs {
         auto& program = *task.MutableProgram();
         program.SetRuntimeVersion(NYql::NDqProto::ERuntimeVersion::RUNTIME_VERSION_YQL_1_0);
         program.SetRaw(Program);
+        program.SetLangVer(LangVer);
+        *program.MutableRuntimeSettings() = NYql::SerializeRuntimeSettingsToProto(*RuntimeSettings);
 
         auto outputDesc = task.AddOutputs();
         outputDesc->MutableMap();

@@ -7,6 +7,11 @@
         ],
         "ColumnsAdded": [
             {
+                "ColumnId": 29,
+                "ColumnName": "EnableConfigV2",
+                "ColumnType": "Bool"
+            },
+            {
                 "ColumnId": 1,
                 "ColumnName": "FixedKey",
                 "ColumnType": "Bool"
@@ -115,12 +120,33 @@
                 "ColumnId": 23,
                 "ColumnName": "TryToRelocateBrokenDisksLocallyFirst",
                 "ColumnType": "Bool"
+            },
+            {
+                "ColumnId": 24,
+                "ColumnName": "YamlConfig",
+                "ColumnType": "String"
+            },
+            {
+                "ColumnId": 26,
+                "ColumnName": "ShredState",
+                "ColumnType": "String"
+            },
+            {
+                "ColumnId": 27,
+                "ColumnName": "StorageYamlConfig",
+                "ColumnType": "String"
+            },
+            {
+                "ColumnId": 28,
+                "ColumnName": "ExpectedStorageYamlConfigVersion",
+                "ColumnType": "Uint64"
             }
         ],
         "ColumnsDropped": [],
         "ColumnFamilies": {
             "0": {
                 "Columns": [
+                    29,
                     1,
                     2,
                     4,
@@ -142,7 +168,11 @@
                     20,
                     21,
                     22,
-                    23
+                    23,
+                    24,
+                    26,
+                    27,
+                    28
                 ],
                 "RoomID": 0,
                 "Codec": 0,
@@ -228,21 +258,6 @@
         ],
         "ColumnsAdded": [
             {
-                "ColumnId": 17,
-                "ColumnName": "DecommitStatus",
-                "ColumnType": "Uint32"
-            },
-            {
-                "ColumnId": 18,
-                "ColumnName": "Mood",
-                "ColumnType": "Byte"
-            },
-            {
-                "ColumnId": 20,
-                "ColumnName": "MaintenanceStatus",
-                "ColumnType": "Byte"
-            },
-            {
                 "ColumnId": 1,
                 "ColumnName": "NodeID",
                 "ColumnType": "Uint32"
@@ -311,15 +326,37 @@
                 "ColumnId": 16,
                 "ColumnName": "LastSeenPath",
                 "ColumnType": "String"
+            },
+            {
+                "ColumnId": 17,
+                "ColumnName": "DecommitStatus",
+                "ColumnType": "Uint32"
+            },
+            {
+                "ColumnId": 18,
+                "ColumnName": "Mood",
+                "ColumnType": "Byte"
+            },
+            {
+                "ColumnId": 19,
+                "ColumnName": "ShredComplete",
+                "ColumnType": "Bool"
+            },
+            {
+                "ColumnId": 20,
+                "ColumnName": "MaintenanceStatus",
+                "ColumnType": "Byte"
+            },
+            {
+                "ColumnId": 23,
+                "ColumnName": "DiskScope",
+                "ColumnType": "Utf8"
             }
         ],
         "ColumnsDropped": [],
         "ColumnFamilies": {
             "0": {
                 "Columns": [
-                    17,
-                    18,
-                    20,
                     1,
                     2,
                     3,
@@ -333,7 +370,12 @@
                     13,
                     14,
                     15,
-                    16
+                    16,
+                    17,
+                    18,
+                    19,
+                    20,
+                    23
                 ],
                 "RoomID": 0,
                 "Codec": 0,
@@ -387,9 +429,19 @@
                 "ColumnType": "Uint64"
             },
             {
+                "ColumnId": 121,
+                "ColumnName": "BridgeGroupInfo",
+                "ColumnType": "String"
+            },
+            {
                 "ColumnId": 5,
                 "ColumnName": "DesiredPDiskCategory",
                 "ColumnType": "Uint64"
+            },
+            {
+                "ColumnId": 122,
+                "ColumnName": "AppliedGroupGeneration",
+                "ColumnType": "Uint32"
             },
             {
                 "ColumnId": 6,
@@ -437,13 +489,23 @@
                 "ColumnType": "Bool"
             },
             {
+                "ColumnId": 102,
+                "ColumnName": "VirtualGroupState",
+                "ColumnType": "Uint32"
+            },
+            {
                 "ColumnId": 15,
                 "ColumnName": "DecommitStatus",
                 "ColumnType": "Uint32"
             },
             {
-                "ColumnId": 102,
-                "ColumnName": "VirtualGroupState",
+                "ColumnId": 16,
+                "ColumnName": "GroupSizeInUnits",
+                "ColumnType": "Uint32"
+            },
+            {
+                "ColumnId": 17,
+                "ColumnName": "BridgePileId",
                 "ColumnType": "Uint32"
             },
             {
@@ -491,7 +553,9 @@
                     3,
                     120,
                     4,
+                    121,
                     5,
+                    122,
                     6,
                     7,
                     8,
@@ -501,8 +565,10 @@
                     12,
                     13,
                     14,
-                    15,
                     102,
+                    15,
+                    16,
+                    17,
                     106,
                     109,
                     110,
@@ -662,6 +728,21 @@
                 "ColumnId": 25,
                 "ColumnName": "RandomizeGroupMapping",
                 "ColumnType": "Bool"
+            },
+            {
+                "ColumnId": 26,
+                "ColumnName": "DefaultGroupSizeInUnits",
+                "ColumnType": "Uint32"
+            },
+            {
+                "ColumnId": 27,
+                "ColumnName": "BridgeMode",
+                "ColumnType": "Bool"
+            },
+            {
+                "ColumnId": 28,
+                "ColumnName": "DDisk",
+                "ColumnType": "Bool"
             }
         ],
         "ColumnsDropped": [],
@@ -692,7 +773,10 @@
                     22,
                     23,
                     24,
-                    25
+                    25,
+                    26,
+                    27,
+                    28
                 ],
                 "RoomID": 0,
                 "Codec": 0,
@@ -791,6 +875,16 @@
                 "ColumnId": 14,
                 "ColumnName": "ReplicationTime",
                 "ColumnType": "Uint64"
+            },
+            {
+                "ColumnId": 15,
+                "ColumnName": "DDiskNumVChunksClaimed",
+                "ColumnType": "Uint32"
+            },
+            {
+                "ColumnId": 16,
+                "ColumnName": "PersistentBufferRefs",
+                "ColumnType": "Uint32"
             }
         ],
         "ColumnsDropped": [],
@@ -810,7 +904,9 @@
                     11,
                     12,
                     13,
-                    14
+                    14,
+                    15,
+                    16
                 ],
                 "RoomID": 0,
                 "Codec": 0,
@@ -1754,6 +1850,74 @@
         }
     },
     {
+        "TableId": 132,
+        "TableName": "BridgeSyncState",
+        "TableKey": [
+            1
+        ],
+        "ColumnsAdded": [
+            {
+                "ColumnId": 1,
+                "ColumnName": "TargetGroupId",
+                "ColumnType": "Uint32"
+            },
+            {
+                "ColumnId": 2,
+                "ColumnName": "Stage",
+                "ColumnType": "Uint32"
+            },
+            {
+                "ColumnId": 3,
+                "ColumnName": "LastError",
+                "ColumnType": "Utf8"
+            },
+            {
+                "ColumnId": 4,
+                "ColumnName": "LastErrorTimestamp",
+                "ColumnType": "Uint64"
+            },
+            {
+                "ColumnId": 5,
+                "ColumnName": "FirstErrorTimestamp",
+                "ColumnType": "Uint64"
+            },
+            {
+                "ColumnId": 6,
+                "ColumnName": "ErrorCount",
+                "ColumnType": "Uint32"
+            }
+        ],
+        "ColumnsDropped": [],
+        "ColumnFamilies": {
+            "0": {
+                "Columns": [
+                    1,
+                    2,
+                    3,
+                    4,
+                    5,
+                    6
+                ],
+                "RoomID": 0,
+                "Codec": 0,
+                "InMemory": false,
+                "Cache": 0,
+                "Small": 4294967295,
+                "Large": 4294967295
+            }
+        },
+        "Rooms": {
+            "0": {
+                "Main": 1,
+                "Outer": 1,
+                "Blobs": 1,
+                "ExternalBlobs": [
+                    1
+                ]
+            }
+        }
+    },
+    {
         "TableId": 103,
         "TableName": "HostConfigDrive",
         "TableKey": [
@@ -1761,11 +1925,6 @@
             2
         ],
         "ColumnsAdded": [
-            {
-                "ColumnId": 7,
-                "ColumnName": "PDiskConfig",
-                "ColumnType": "String"
-            },
             {
                 "ColumnId": 1,
                 "ColumnName": "HostConfigId",
@@ -1795,19 +1954,87 @@
                 "ColumnId": 6,
                 "ColumnName": "Kind",
                 "ColumnType": "Uint64"
+            },
+            {
+                "ColumnId": 7,
+                "ColumnName": "PDiskConfig",
+                "ColumnType": "String"
+            },
+            {
+                "ColumnId": 10,
+                "ColumnName": "DiskScope",
+                "ColumnType": "Utf8"
             }
         ],
         "ColumnsDropped": [],
         "ColumnFamilies": {
             "0": {
                 "Columns": [
-                    7,
                     1,
                     2,
                     3,
                     4,
                     5,
-                    6
+                    6,
+                    7,
+                    10
+                ],
+                "RoomID": 0,
+                "Codec": 0,
+                "InMemory": false,
+                "Cache": 0,
+                "Small": 4294967295,
+                "Large": 4294967295
+            }
+        },
+        "Rooms": {
+            "0": {
+                "Main": 1,
+                "Outer": 1,
+                "Blobs": 1,
+                "ExternalBlobs": [
+                    1
+                ]
+            }
+        }
+    },
+    {
+        "TableId": 134,
+        "TableName": "DirectBlockGroupClaims",
+        "TableKey": [
+            1,
+            2
+        ],
+        "ColumnsAdded": [
+            {
+                "ColumnId": 1,
+                "ColumnName": "TabletId",
+                "ColumnType": "Uint64"
+            },
+            {
+                "ColumnId": 2,
+                "ColumnName": "DirectBlockGroupId",
+                "ColumnType": "Uint64"
+            },
+            {
+                "ColumnId": 3,
+                "ColumnName": "NumVChunksClaimed",
+                "ColumnType": "Uint32"
+            },
+            {
+                "ColumnId": 4,
+                "ColumnName": "Allocation",
+                "ColumnType": "String"
+            }
+        ],
+        "ColumnsDropped": [],
+        "ColumnFamilies": {
+            "0": {
+                "Columns": [
+                    1,
+                    2,
+                    3,
+                    4
                 ],
                 "RoomID": 0,
                 "Codec": 0,

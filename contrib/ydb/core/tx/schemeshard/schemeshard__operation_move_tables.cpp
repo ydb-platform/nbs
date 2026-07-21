@@ -1,12 +1,12 @@
-#include "schemeshard__operation_part.h"
 #include "schemeshard__operation_common.h"
-#include "schemeshard_path_element.h"
-
+#include "schemeshard__operation_part.h"
 #include "schemeshard_impl.h"
+#include "schemeshard_path_element.h"
+#include "schemeshard_info_types.h"
 
 #include <contrib/ydb/core/base/path.h>
-#include <contrib/ydb/core/protos/flat_tx_scheme.pb.h>
 #include <contrib/ydb/core/protos/flat_scheme_op.pb.h>
+#include <contrib/ydb/core/protos/flat_tx_scheme.pb.h>
 
 namespace NKikimr {
 namespace NSchemeShard {
@@ -32,12 +32,19 @@ TVector<ISubOperation::TPtr> CreateConsistentMoveTable(TOperationId nextId, cons
         TPath::TChecker checks = srcPath.Check();
         checks.IsResolved()
               .NotDeleted()
-              .IsTable()
               .NotAsyncReplicaTable()
+              .NotReadOnlyColumnTable()
               .IsCommonSensePath();
 
         if (!checks) {
             return {CreateReject(nextId, checks.GetStatus(), checks.GetError())};
+        }
+
+        if (!srcPath.Base()->IsTable() && !srcPath.Base()->IsColumnTable()) {
+            return {CreateReject(nextId, NKikimrScheme::StatusPreconditionFailed, "Cannot move non-tables")};
+        }
+        if (srcPath.Base()->IsColumnTable() && !AppData()->FeatureFlags.GetEnableMoveColumnTable()) {
+            return {CreateReject(nextId, NKikimrScheme::StatusPreconditionFailed, "RENAME is prohibited for column tables")};
         }
     }
 
@@ -48,6 +55,8 @@ TVector<ISubOperation::TPtr> CreateConsistentMoveTable(TOperationId nextId, cons
             return {CreateReject(nextId, NKikimrScheme::StatusMultipleModifications, explain)};
         }
     }
+
+    THashSet<TString> sequences = GetLocalSequences(context, srcPath);
 
     TPath dstPath = TPath::Resolve(dstStr, context.SS);
 
@@ -66,30 +75,59 @@ TVector<ISubOperation::TPtr> CreateConsistentMoveTable(TOperationId nextId, cons
         }
 
         if (srcChildPath.IsSequence()) {
-            return {CreateReject(nextId, NKikimrScheme::StatusPreconditionFailed, "Cannot move table with sequences")};
+            continue;
         }
 
         TPath dstIndexPath = dstPath.Child(name);
 
         Y_ABORT_UNLESS(srcChildPath.Base()->PathId == child.second);
-        Y_VERIFY_S(srcChildPath.Base()->GetChildren().size() == 1,
-                   srcChildPath.PathString() << " has children " << srcChildPath.Base()->GetChildren().size());
 
-        result.push_back(CreateMoveTableIndex(NextPartId(nextId, result), MoveTableIndexTask(srcChildPath, dstIndexPath)));
-
-        TString srcImplTableName = srcChildPath.Base()->GetChildren().begin()->first;
-        TPath srcImplTable = srcChildPath.Child(srcImplTableName);
-        if (srcImplTable.IsDeleted()) {
+        const bool isLocalIndex = context.SS->Indexes.contains(srcChildPath.Base()->PathId) &&
+            TTableIndexInfo::IsLocalIndex(context.SS->Indexes.at(srcChildPath.Base()->PathId)->Type);
+        if (isLocalIndex) {
+            if (srcPath.Base()->IsColumnTable()) {
+                const TString srcIndexPath = srcPath.PathString() + "/" + name;
+                result.push_back(CreateMoveColumnTableLocalIndex(NextPartId(nextId, result), MoveLocalIndexTask(dstPath.PathString(), srcIndexPath, name)));
+            } else {
+                result.push_back(CreateMoveTableIndex(NextPartId(nextId, result), MoveTableIndexTask(srcChildPath, dstIndexPath)));
+            }
             continue;
+        } else {
+            result.push_back(CreateMoveTableIndex(NextPartId(nextId, result), MoveTableIndexTask(srcChildPath, dstIndexPath)));
         }
-        Y_ABORT_UNLESS(srcImplTable.Base()->PathId == srcChildPath.Base()->GetChildren().begin()->second);
 
-        TPath dstImplTable = dstIndexPath.Child(srcImplTableName);
+        for (const auto& [implTableName, implTablePathId]: srcChildPath.Base()->GetChildren()) {
+            TPath srcImplTable = srcChildPath.Child(implTableName);
+            if (srcImplTable.IsDeleted()) {
+                continue;
+            }
+            Y_ABORT_UNLESS(srcImplTable.Base()->PathId == implTablePathId);
 
-        result.push_back(CreateMoveTable(NextPartId(nextId, result), MoveTableTask(srcImplTable, dstImplTable)));
+            TPath dstImplTable = dstIndexPath.Child(implTableName);
+
+            result.push_back(CreateMoveTable(NextPartId(nextId, result), MoveTableTask(srcImplTable, dstImplTable)));
+            AddMoveSequences(nextId, result, srcImplTable, dstImplTable.PathString(), GetLocalSequences(context, srcImplTable));
+        }
     }
 
+    AddMoveSequences(nextId, result, srcPath, dstPath.PathString(), sequences);
+
     return result;
+}
+
+void AddMoveSequences(TOperationId nextId, TVector<ISubOperation::TPtr>& result, const TPath& srcTable,
+    const TString& dstPath, const THashSet<TString>& sequences)
+{
+    for (const auto& sequence : sequences) {
+        auto scheme = TransactionTemplate(dstPath, NKikimrSchemeOp::EOperationType::ESchemeOpMoveSequence);
+        scheme.SetFailOnExist(true);
+
+        auto* moveSequence = scheme.MutableMoveSequence();
+        moveSequence->SetSrcPath(srcTable.PathString() + "/" + sequence);
+        moveSequence->SetDstPath(dstPath + "/" + sequence);
+
+        result.push_back(CreateMoveSequence(NextPartId(nextId, result), scheme));
+    }
 }
 
 }

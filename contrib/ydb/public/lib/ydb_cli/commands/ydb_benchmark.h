@@ -1,6 +1,14 @@
+#pragma once
+
+#include "tx_mode.h"
 #include "ydb_workload.h"
 
 namespace NYdb::NConsoleClient {
+
+namespace BenchmarkUtils {
+    class TQueryBenchmarkResult;
+    struct TQueryBenchmarkSettings;
+}
 
 class TWorkloadCommandBenchmark final: public TWorkloadCommandBase {
 public:
@@ -12,23 +20,32 @@ protected:
 
 private:
     TString PatchQuery(const TStringBuf& original) const;
-    bool NeedRun(const ui32 queryIdx) const;
+    bool NeedRun(const TString& queryName) const;
 
-    template <typename TClient>
-    bool RunBench(TClient& client, NYdbWorkload::IWorkloadQueryGenerator& workloadGen);
+    int RunBench(NYdbWorkload::IWorkloadQueryGenerator& workloadGen);
+    void SavePlans(const BenchmarkUtils::TQueryBenchmarkResult& res, TStringBuf queryName, const TStringBuf name) const;
+    void PrintResult(const BenchmarkUtils::TQueryBenchmarkResult& res, IOutputStream& out) const;
+    BenchmarkUtils::TQueryBenchmarkSettings GetBenchmarkSettings(bool withProgress) const;
 
 private:
-    TString QueryExecuterType;
+    class TIterationExecution;
     TString OutFilePath;
+    ETxMode TxMode = ETxMode::SerializableRW;
+    NQuery::EStatsMode StatsMode = NQuery::EStatsMode::Full;
     ui32 IterationsCount;
     TString JsonReportFileName;
     TString CsvReportFileName;
     TString MiniStatFileName;
     TString PlanFileName;
-    TSet<ui32> QueriesToRun;
-    TSet<ui32> QueriesToSkip;
+    TSet<TString> QueriesToRun;
+    TSet<TString> QueriesToSkip;
     TVector<TString> QuerySettings;
     ui32 VerboseLevel = 0;
+    TDuration GlobalTimeout = TDuration::Zero();
+    TDuration RequestTimeout = TDuration::Zero();
+    TInstant GlobalDeadline = TInstant::Max();
+    NYdb::NRetry::TRetryOperationSettings RetrySettings;
+    ui32 Threads = 0;
 };
 
 }

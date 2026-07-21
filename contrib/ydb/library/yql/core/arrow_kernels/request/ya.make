@@ -10,6 +10,7 @@ PEERDIR(
     contrib/ydb/library/yql/providers/common/mkql
     contrib/ydb/library/yql/core
     contrib/ydb/library/yql/sql
+    contrib/ydb/library/yql/public/langver
 )
 
 YQL_LAST_ABI_VERSION()

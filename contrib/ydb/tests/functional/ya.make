@@ -1,21 +1,26 @@
 RECURSE(
     api
     audit
+    topic
     autoconfig
     backup
+    backup_collection
+    benchmarks_init
     blobstorage
+    bridge
     canonical
     clickbench
     cms
-    dynumber
+    config
+    dstool
     encryption
     hive
     kqp
-    kv_workload
     large_serializable
     limits
-    open_source
-    postgresql
+    minidumps
+    mvp
+    nbs
     query_cache
     rename
     restarts
@@ -24,11 +29,19 @@ RECURSE(
     scheme_tests
     script_execution
     sdk/cpp/sdk_credprovider
+    secrets
+    security
     serializable
     serverless
+    split_merge
     sqs
+    sqs_topic
+    statistics
     suite_tests
+    tpc
+    tpcc
     tenants
     ttl
+    wardens
     ydb_cli
 )

@@ -1,7 +1,9 @@
-#include <contrib/libs/jwt-cpp/include/jwt-cpp/jwt.h>
-#include <contrib/ydb/library/actors/http/http_proxy.h>
-#include <contrib/ydb/public/api/grpc/ydb_auth_v1.grpc.pb.h>
 #include "mvp_tokens.h"
+#include "mvp_token_exchange.h"
+
+#include <contrib/ydb/public/api/grpc/ydb_auth_v1.grpc.pb.h>
+
+#include <util/string/builder.h>
 
 namespace NMVP {
 
@@ -25,24 +27,25 @@ TMvpTokenator::TMvpTokenator(NMvp::TTokensConfig tokensConfig, const NActors::TA
     : HttpProxy(httpProxy)
 {
     if (tokensConfig.HasStaffApiUserTokenInfo()) {
-        UpdateStaffApiUserToken(&tokensConfig.staffapiusertokeninfo());
+        UpdateStaffApiUserToken(&tokensConfig.GetStaffApiUserTokenInfo());
     }
-    for (const NMvp::TJwtInfo& jwtInfo : tokensConfig.jwtinfo()) {
-        TokenConfigs.JwtTokenConfigs[jwtInfo.name()] = jwtInfo;
+    TokenConfigs.AccessServiceType = tokensConfig.GetAccessServiceType();
+    for (const NMvp::TOAuth2Exchange& tokenExchangeInfo : tokensConfig.GetOAuth2Exchange()) {
+        TokenConfigs.OAuth2ExchangeConfigs[tokenExchangeInfo.GetName()] = tokenExchangeInfo;
     }
-    for (const NMvp::TOAuthInfo& oauthInfo : tokensConfig.oauthinfo()) {
-        TokenConfigs.OauthTokenConfigs[oauthInfo.name()] = oauthInfo;
+    for (const NMvp::TOAuthInfo& oauthInfo : tokensConfig.GetOAuthInfo()) {
+        TokenConfigs.OauthTokenConfigs[oauthInfo.GetName()] = oauthInfo;
     }
-    for (const NMvp::TMetadataTokenInfo& metadataTokenInfo : tokensConfig.metadatatokeninfo()) {
-        TokenConfigs.MetadataTokenConfigs[metadataTokenInfo.name()] = metadataTokenInfo;
+    for (const NMvp::TMetadataTokenInfo& metadataTokenInfo : tokensConfig.GetMetadataTokenInfo()) {
+        TokenConfigs.MetadataTokenConfigs[metadataTokenInfo.GetName()] = metadataTokenInfo;
     }
-    for (const NMvp::TStaticCredentialsInfo& staticCredentialsInfo : tokensConfig.staticcredentialsinfo()) {
-        TokenConfigs.StaticCredentialsConfigs[staticCredentialsInfo.name()] = staticCredentialsInfo;
+    for (const NMvp::TStaticCredentialsInfo& staticCredentialsInfo : tokensConfig.GetStaticCredentialsInfo()) {
+        TokenConfigs.StaticCredentialsConfigs[staticCredentialsInfo.GetName()] = staticCredentialsInfo;
     }
 }
 
 void TMvpTokenator::Bootstrap() {
-    for (const auto& [name, config] : TokenConfigs.JwtTokenConfigs) {
+    for (const auto& [name, config] : TokenConfigs.OAuth2ExchangeConfigs) {
         Send(SelfId(), new TEvPrivate::TEvRefreshToken(name));
     }
     for (const auto& [name, config] : TokenConfigs.OauthTokenConfigs) {
@@ -70,9 +73,9 @@ void TMvpTokenator::HandlePeriodic() {
 void TMvpTokenator::Handle(TEvPrivate::TEvRefreshToken::TPtr event) {
     TString name = event->Get()->Name;
     BLOG_D("Refreshing token " << name);
-    const NMvp::TJwtInfo* jwtInfo = TokenConfigs.GetJwtTokenConfig(name);
-    if (jwtInfo != nullptr) {
-        UpdateJwtToken(jwtInfo);
+    const NMvp::TOAuth2Exchange* tokenExchangeInfo = TokenConfigs.GetOAuth2ExchangeConfig(name);
+    if (tokenExchangeInfo != nullptr) {
+        UpdateOAuth2ExchangeToken(tokenExchangeInfo);
         return;
     }
     const NMvp::TOAuthInfo* oauthInfo = TokenConfigs.GetOAuthTokenConfig(name);
@@ -93,13 +96,32 @@ void TMvpTokenator::Handle(TEvPrivate::TEvRefreshToken::TPtr event) {
     BLOG_ERROR("Token " << name << " not found");
 }
 
-void TMvpTokenator::Handle(TEvPrivate::TEvUpdateIamToken::TPtr event) {
+void TMvpTokenator::Handle(TEvPrivate::TEvUpdateIamTokenYandex::TPtr event) {
     TDuration refreshPeriod = SUCCESS_REFRESH_PERIOD;
     if (event->Get()->Status.Ok()) {
         BLOG_D("Updating token " << event->Get()->Name << " to " << event->Get()->Response.subject());
         {
             auto guard = Guard(TokensLock);
             Tokens[event->Get()->Name] = "Bearer " + std::move(event->Get()->Response.iam_token());
+        }
+    } else {
+        BLOG_ERROR("Error refreshing token " << event->Get()->Name << ", status: " << event->Get()->Status.GRpcStatusCode << ", error: " << event->Get()->Status.Msg);
+        refreshPeriod = ERROR_REFRESH_PERIOD;
+    }
+    RefreshQueue.push({TInstant::Now() + refreshPeriod, event->Get()->Name});
+}
+
+void TMvpTokenator::Handle(TEvPrivate::TEvUpdateIamTokenNebius::TPtr event) {
+    TDuration refreshPeriod = SUCCESS_REFRESH_PERIOD;
+    if (event->Get()->Status.Ok()) {
+        const i64 responseRefresh = event->Get()->Response.expires_in() / 2;
+        if (responseRefresh > 0) {
+            refreshPeriod = TDuration::Seconds(responseRefresh);
+        }
+        BLOG_D("Updating token " << event->Get()->Name);
+        {
+            auto guard = Guard(TokensLock);
+            Tokens[event->Get()->Name] = "Bearer " + std::move(event->Get()->Response.access_token());
         }
     } else {
         BLOG_ERROR("Error refreshing token " << event->Get()->Name << ", status: " << event->Get()->Status.GRpcStatusCode << ", error: " << event->Get()->Status.Msg);
@@ -133,8 +155,8 @@ void TMvpTokenator::Handle(TEvPrivate::TEvUpdateStaticCredentialsToken::TPtr eve
     RefreshQueue.push({TInstant::Now() + refreshPeriod, event->Get()->Name});
 }
 
-const NMvp::TJwtInfo* TMvpTokenator::TTokenConfigs::GetJwtTokenConfig(const TString& name) {
-    return GetTokenConfig(JwtTokenConfigs, name);
+const NMvp::TOAuth2Exchange* TMvpTokenator::TTokenConfigs::GetOAuth2ExchangeConfig(const TString& name) {
+    return GetTokenConfig(OAuth2ExchangeConfigs, name);
 }
 
 const NMvp::TOAuthInfo* TMvpTokenator::TTokenConfigs::GetOAuthTokenConfig(const TString& name) {
@@ -150,25 +172,25 @@ const NMvp::TStaticCredentialsInfo* TMvpTokenator::TTokenConfigs::GetStaticCrede
 }
 
 void TMvpTokenator::UpdateStaffApiUserToken(const NMvp::TStaffApiUserTokenInfo* staffApiUserTokenInfo) {
-    Tokens[staffApiUserTokenInfo->name()] = "OAuth " + staffApiUserTokenInfo->token();
+    Tokens[staffApiUserTokenInfo->GetName()] = "OAuth " + staffApiUserTokenInfo->GetToken();
 }
 
 void TMvpTokenator::UpdateStaticCredentialsToken(const NMvp::TStaticCredentialsInfo* staticCredentialsInfo) {
     Ydb::Auth::LoginRequest request;
-    request.set_user(staticCredentialsInfo->login());
-    request.set_password(staticCredentialsInfo->password());
+    request.set_user(staticCredentialsInfo->GetLogin());
+    request.set_password(staticCredentialsInfo->GetPassword());
 
     RequestCreateToken<Ydb::Auth::V1::AuthService,
                        Ydb::Auth::LoginRequest,
                        Ydb::Auth::LoginResponse,
-                       TEvPrivate::TEvUpdateStaticCredentialsToken>(staticCredentialsInfo->name(), staticCredentialsInfo->endpoint(), request, &Ydb::Auth::V1::AuthService::Stub::AsyncLogin);
+                       TEvPrivate::TEvUpdateStaticCredentialsToken>(staticCredentialsInfo->GetName(), staticCredentialsInfo->GetEndpoint(), request, &Ydb::Auth::V1::AuthService::Stub::AsyncLogin);
 }
 
 void TMvpTokenator::UpdateMetadataToken(const NMvp::TMetadataTokenInfo* metadataTokenInfo) {
-    const TStringBuf& url = metadataTokenInfo->endpoint();
+    const TStringBuf& url = metadataTokenInfo->GetEndpoint();
     NHttp::THttpOutgoingRequestPtr httpRequest = NHttp::THttpOutgoingRequest::CreateRequestGet(url);
     httpRequest->Set("Metadata-Flavor", "Google");
-    HttpRequestNames.emplace(httpRequest.Get(), metadataTokenInfo->name());
+    HttpRequestNames.emplace(httpRequest.Get(), metadataTokenInfo->GetName());
     Send(HttpProxy, new NHttp::TEvHttpProxy::TEvHttpOutgoingRequest(httpRequest));
 }
 
@@ -219,38 +241,87 @@ void TMvpTokenator::Handle(NHttp::TEvHttpProxy::TEvHttpIncomingResponse::TPtr ev
     HttpRequestNames.erase(httpRequstsIt);
 }
 
-void TMvpTokenator::UpdateJwtToken(const NMvp::TJwtInfo* jwtInfo) {
-    auto now = std::chrono::system_clock::now();
-    auto expires_at = now + std::chrono::hours(1);
-    auto serviceAccountId = jwtInfo->accountid();
-    auto keyId = jwtInfo->keyid();
-    std::set<std::string> audience;
-    audience.insert(jwtInfo->audience());
-    auto algorithm = jwt::algorithm::ps256(jwtInfo->publickey(), jwtInfo->privatekey());
+void TMvpTokenator::UpdateOAuth2ExchangeToken(const NMvp::TOAuth2Exchange* tokenExchangeInfo) {
+    TString endpoint = tokenExchangeInfo->GetTokenEndpoint();
+    if (endpoint.empty()) {
+        BLOG_ERROR("Token endpoint is empty for token " << tokenExchangeInfo->GetName());
+        RefreshQueue.push({TInstant::Now() + ERROR_REFRESH_PERIOD, tokenExchangeInfo->GetName()});
+        return;
+    }
 
-    auto encoded_token = jwt::create()
-            .set_key_id(keyId)
-            .set_issuer(serviceAccountId)
-            .set_audience(audience)
-            .set_issued_at(now)
-            .set_expires_at(expires_at)
-            .sign(algorithm);
+    TOAuth2ExchangeData prepared;
+    TString error;
+    if (!TryBuildOAuth2ExchangeData(tokenExchangeInfo, prepared, error)) {
+        BLOG_ERROR(error);
+        RefreshQueue.push({TInstant::Now() + ERROR_REFRESH_PERIOD, tokenExchangeInfo->GetName()});
+        return;
+    }
 
-    yandex::cloud::priv::iam::v1::CreateIamTokenRequest request;
-    request.set_jwt(TString(encoded_token));
-    RequestCreateToken<yandex::cloud::priv::iam::v1::IamTokenService,
-                       yandex::cloud::priv::iam::v1::CreateIamTokenRequest,
-                       yandex::cloud::priv::iam::v1::CreateIamTokenResponse,
-                       TEvPrivate::TEvUpdateIamToken>(jwtInfo->name(), jwtInfo->endpoint(), request, &yandex::cloud::priv::iam::v1::IamTokenService::Stub::AsyncCreate);
+    if (TokenConfigs.AccessServiceType == NMvp::yandex_v2) {
+        if (prepared.SubjectToken.empty()) {
+            BLOG_ERROR("Failed to build JWT for yandex_v2 oauth2_token_exchange token " << tokenExchangeInfo->GetName());
+            RefreshQueue.push({TInstant::Now() + ERROR_REFRESH_PERIOD, tokenExchangeInfo->GetName()});
+            return;
+        }
+
+        yandex::cloud::priv::iam::v1::CreateIamTokenRequest request;
+        request.set_jwt(prepared.SubjectToken);
+        RequestCreateToken<yandex::cloud::priv::iam::v1::IamTokenService,
+                           yandex::cloud::priv::iam::v1::CreateIamTokenRequest,
+                           yandex::cloud::priv::iam::v1::CreateIamTokenResponse,
+                           TEvPrivate::TEvUpdateIamTokenYandex>(
+                               tokenExchangeInfo->GetName(),
+                               endpoint,
+                               request,
+                               &yandex::cloud::priv::iam::v1::IamTokenService::Stub::AsyncCreate);
+        return;
+    }
+
+    if (TokenConfigs.AccessServiceType == NMvp::nebius_v1) {
+        nebius::iam::v1::ExchangeTokenRequest exchangeRequest;
+        exchangeRequest.set_grant_type(prepared.GrantType);
+        exchangeRequest.set_requested_token_type(prepared.RequestedTokenType);
+        if (!prepared.Audience.empty()) {
+            exchangeRequest.set_audience(prepared.Audience);
+        }
+        for (const auto& scope : prepared.Scopes) {
+            exchangeRequest.add_scopes(scope);
+        }
+        for (const auto& res : prepared.Resources) {
+            exchangeRequest.add_resource(res);
+        }
+        exchangeRequest.set_subject_token(prepared.SubjectToken);
+        if (!prepared.SubjectTokenType.empty()) {
+            exchangeRequest.set_subject_token_type(prepared.SubjectTokenType);
+        }
+        if (!prepared.ActorToken.empty()) {
+            exchangeRequest.set_actor_token(prepared.ActorToken);
+        }
+        if (!prepared.ActorTokenType.empty()) {
+            exchangeRequest.set_actor_token_type(prepared.ActorTokenType);
+        }
+        RequestCreateToken<nebius::iam::v1::TokenExchangeService,
+                            nebius::iam::v1::ExchangeTokenRequest,
+                            nebius::iam::v1::CreateTokenResponse,
+                            TEvPrivate::TEvUpdateIamTokenNebius>(
+                                tokenExchangeInfo->GetName(),
+                                endpoint,
+                                exchangeRequest,
+                                &nebius::iam::v1::TokenExchangeService::Stub::AsyncExchange);
+        return;
+    }
+
+    BLOG_ERROR("Unsupported access service type for oauth2_token_exchange token " << tokenExchangeInfo->GetName());
+    RefreshQueue.push({TInstant::Now() + ERROR_REFRESH_PERIOD, tokenExchangeInfo->GetName()});
 }
 
 void TMvpTokenator::UpdateOAuthToken(const NMvp::TOAuthInfo* oauthInfo) {
     yandex::cloud::priv::iam::v1::CreateIamTokenRequest request;
-    request.set_yandex_passport_oauth_token(oauthInfo->token());
+    request.set_yandex_passport_oauth_token(oauthInfo->GetToken());
     RequestCreateToken<yandex::cloud::priv::iam::v1::IamTokenService,
                        yandex::cloud::priv::iam::v1::CreateIamTokenRequest,
                        yandex::cloud::priv::iam::v1::CreateIamTokenResponse,
-                       TEvPrivate::TEvUpdateIamToken>(oauthInfo->name(), oauthInfo->endpoint(), request, &yandex::cloud::priv::iam::v1::IamTokenService::Stub::AsyncCreate);
+                       TEvPrivate::TEvUpdateIamTokenYandex>(oauthInfo->GetName(), oauthInfo->GetEndpoint(), request, &yandex::cloud::priv::iam::v1::IamTokenService::Stub::AsyncCreate);
 }
 
 }

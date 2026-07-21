@@ -14,9 +14,9 @@ namespace NMiniKQL {
 
 namespace {
 
-class TBlockIfScalarWrapper : public TMutableComputationNode<TBlockIfScalarWrapper> {
+class TBlockIfScalarWrapper: public TMutableComputationNode<TBlockIfScalarWrapper> {
 public:
-    class TArrowNode : public IArrowKernelComputationNode {
+    class TArrowNode: public IArrowKernelComputationNode {
     public:
         TArrowNode(const TBlockIfScalarWrapper* parent)
             : Parent_(parent)
@@ -44,14 +44,14 @@ public:
 
         const IComputationNode* GetArgument(ui32 index) const {
             switch (index) {
-            case 0:
-                return Parent_->Pred;
-            case 1:
-                return Parent_->Then;
-            case 2:
-                return Parent_->Else;
-            default:
-                throw yexception() << "Bad argument index";
+                case 0:
+                    return Parent_->Pred;
+                case 1:
+                    return Parent_->Then;
+                case 2:
+                    return Parent_->Else;
+                default:
+                    throw yexception() << "Bad argument index";
             }
         }
 
@@ -81,7 +81,7 @@ public:
     }
 
     arrow::Datum CalculateImpl(const TDatumProvider& predProv, const TDatumProvider& thenProv, const TDatumProvider& elseProv,
-        arrow::MemoryPool& memoryPool) const {
+                               arrow::MemoryPool& memoryPool) const {
         auto predValue = predProv();
 
         const bool predScalarValue = GetPrimitiveScalarValue<bool>(*predValue.scalar());
@@ -109,7 +109,7 @@ public:
     }
 
     NUdf::TUnboxedValuePod DoCalculate(TComputationContext& ctx) const {
-        return ctx.HolderFactory.CreateArrowBlock(CalculateImpl(MakeDatumProvider(Pred, ctx), MakeDatumProvider(Then, ctx), MakeDatumProvider(Else, ctx), ctx.ArrowMemoryPool));
+        return ctx.HolderFactory.CreateArrowBlock(CalculateImpl(MakeDatumProvider(Pred, ctx), MakeDatumProvider(Then, ctx), MakeDatumProvider(Else, ctx), ctx.ArrowMemoryPool), ctx.RuntimeSettings.DatumValidation.Get());
     }
 
 private:
@@ -128,11 +128,31 @@ private:
     const TVector<TType*> ArgsTypes;
 };
 
-template<bool ThenIsScalar, bool ElseIsScalar>
+template <bool ThenIsScalar, bool ElseIsScalar>
 class TIfBlockExec {
 public:
+    class TIfKernelState: public arrow::compute::KernelState {
+    public:
+        explicit TIfKernelState(TType* type)
+            : ThenReader_(MakeBlockReader(TTypeInfoHelper(), type))
+            , ElseReader_(MakeBlockReader(TTypeInfoHelper(), type))
+        {
+        }
+
+        IBlockReader& GetThenReader() {
+            return *ThenReader_;
+        }
+        IBlockReader& GetElseReader() {
+            return *ElseReader_;
+        }
+
+    private:
+        std::unique_ptr<IBlockReader> ThenReader_;
+        std::unique_ptr<IBlockReader> ElseReader_;
+    };
+
     explicit TIfBlockExec(TType* type)
-        : ThenReader(MakeBlockReader(TTypeInfoHelper(), type)), ElseReader(MakeBlockReader(TTypeInfoHelper(), type)), Type(type)
+        : Type(type)
     {
     }
 
@@ -141,10 +161,14 @@ public:
         arrow::Datum thenDatum = batch.values[1];
         arrow::Datum elseDatum = batch.values[2];
 
+        auto& state = static_cast<TIfKernelState&>(*ctx->state());
+        auto& thenReader = state.GetThenReader();
+        auto& elseReader = state.GetElseReader();
+
         TBlockItem thenItem;
         const arrow::ArrayData* thenArray = nullptr;
-        if constexpr(ThenIsScalar) {
-            thenItem = ThenReader->GetScalarItem(*thenDatum.scalar());
+        if constexpr (ThenIsScalar) {
+            thenItem = thenReader.GetScalarItem(*thenDatum.scalar());
         } else {
             MKQL_ENSURE(thenDatum.is_array(), "Expecting array");
             thenArray = thenDatum.array().get();
@@ -152,8 +176,8 @@ public:
 
         TBlockItem elseItem;
         const arrow::ArrayData* elseArray = nullptr;
-        if constexpr(ElseIsScalar) {
-            elseItem = ElseReader->GetScalarItem(*elseDatum.scalar());
+        if constexpr (ElseIsScalar) {
+            elseItem = elseReader.GetScalarItem(*elseDatum.scalar());
         } else {
             MKQL_ENSURE(elseDatum.is_array(), "Expecting array");
             elseArray = elseDatum.array().get();
@@ -167,10 +191,10 @@ public:
         const ui8* predValues = pred->GetValues<uint8_t>(1);
         for (size_t i = 0; i < len; ++i) {
             if constexpr (!ThenIsScalar) {
-                thenItem = ThenReader->GetItem(*thenArray, i);
+                thenItem = thenReader.GetItem(*thenArray, i);
             }
             if constexpr (!ElseIsScalar) {
-                elseItem = ElseReader->GetItem(*elseArray, i);
+                elseItem = elseReader.GetItem(*elseArray, i);
             }
 
             ui64 mask = -ui64(predValues[i]);
@@ -183,23 +207,24 @@ public:
     }
 
 private:
-    const std::unique_ptr<IBlockReader> ThenReader;
-    const std::unique_ptr<IBlockReader> ElseReader;
     TType* const Type;
 };
 
-
-template<bool ThenIsScalar, bool ElseIsScalar>
+template <bool ThenIsScalar, bool ElseIsScalar>
 std::shared_ptr<arrow::compute::ScalarKernel> MakeBlockIfKernel(const TVector<TType*>& argTypes, TType* resultType) {
     using TExec = TIfBlockExec<ThenIsScalar, ElseIsScalar>;
 
     auto exec = std::make_shared<TExec>(AS_TYPE(TBlockType, resultType)->GetItemType());
     auto kernel = std::make_shared<arrow::compute::ScalarKernel>(ConvertToInputTypes(argTypes), ConvertToOutputType(resultType),
-        [exec](arrow::compute::KernelContext* ctx, const arrow::compute::ExecBatch& batch, arrow::Datum* res) {
-            return exec->Exec(ctx, batch, res);
-    });
+                                                                 [exec](arrow::compute::KernelContext* ctx, const arrow::compute::ExecBatch& batch, arrow::Datum* res) {
+                                                                     return exec->Exec(ctx, batch, res);
+                                                                 });
 
     kernel->null_handling = arrow::compute::NullHandling::COMPUTED_NO_PREALLOCATE;
+    auto itemType = AS_TYPE(TBlockType, resultType)->GetItemType();
+    kernel->init = [itemType](arrow::compute::KernelContext*, const arrow::compute::KernelInitArgs&) {
+        return arrow::Result(std::make_unique<typename TExec::TIfKernelState>(itemType));
+    };
     return kernel;
 }
 
@@ -227,15 +252,14 @@ IComputationNode* WrapBlockIf(TCallable& callable, const TComputationNodeFactory
     bool predIsScalar = predType->GetShape() == TBlockType::EShape::Scalar;
     bool thenIsScalar = thenType->GetShape() == TBlockType::EShape::Scalar;
     bool elseIsScalar = elseType->GetShape() == TBlockType::EShape::Scalar;
-    TVector<TType*> argsTypes = { predType, thenType, elseType };
-
+    TVector<TType*> argsTypes = {predType, thenType, elseType};
 
     if (predIsScalar) {
         return new TBlockIfScalarWrapper(ctx.Mutables, predCompute, thenCompute, elseCompute, thenType,
                                          thenIsScalar, elseIsScalar, argsTypes);
     }
 
-    TComputationNodePtrVector argsNodes = { predCompute, thenCompute, elseCompute };
+    TComputationNodePtrVector argsNodes = {predCompute, thenCompute, elseCompute};
 
     std::shared_ptr<arrow::compute::ScalarKernel> kernel;
     if (thenIsScalar && elseIsScalar) {
@@ -248,8 +272,8 @@ IComputationNode* WrapBlockIf(TCallable& callable, const TComputationNodeFactory
         kernel = MakeBlockIfKernel<false, false>(argsTypes, thenType);
     }
 
-    return new TBlockFuncNode(ctx.Mutables, callable.GetType()->GetName(), std::move(argsNodes), argsTypes, *kernel, kernel);
+    return new TBlockFuncNode(ctx.Mutables, ctx.RuntimeSettings->DatumValidation.Get(), callable.GetType()->GetName(), std::move(argsNodes), argsTypes, callable.GetType()->GetReturnType(), *kernel, kernel);
 }
 
-}
-}
+} // namespace NMiniKQL
+} // namespace NKikimr

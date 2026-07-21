@@ -2,8 +2,6 @@ IF (NOT OS_WINDOWS)
 
 UNITTEST_FOR(contrib/ydb/library/yql/providers/s3/path_generator)
 
-TAG(ya:manual)
-
 SRCS(
     yql_generate_partitioning_rules_ut.cpp
     yql_parse_partitioning_rules_ut.cpp

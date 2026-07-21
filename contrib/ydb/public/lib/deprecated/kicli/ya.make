@@ -20,6 +20,7 @@ PEERDIR(
     library/cpp/threading/future
     contrib/ydb/core/protos
     contrib/ydb/library/aclib
+    contrib/ydb/library/yql/public/ydb_issue
     contrib/ydb/public/api/grpc
     contrib/ydb/public/api/grpc/draft
     contrib/ydb/public/api/protos
@@ -32,7 +33,3 @@ PEERDIR(
 )
 
 END()
-
-RECURSE_FOR_TESTS(
-    ut
-)

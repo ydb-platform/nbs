@@ -63,7 +63,6 @@ public:
                                                 description: |
                                                     syntax:
                                                       * `SYNTAX_YQL_V1`
-                                                      * `SYNTAX_PG`
                                                 required: false
                                     exec_mode:
                                         type: string
@@ -74,6 +73,16 @@ public:
                                               * `EXEC_MODE_EXPLAIN`
                                               * `EXEC_MODE_EXECUTE`
                                             required: true
+                                    stats_mode:
+                                        type: string
+                                        description: |
+                                            stats_mode:
+                                              * `STATS_MODE_UNSPECIFIED`
+                                              * `STATS_MODE_NONE`
+                                              * `STATS_MODE_BASIC`
+                                              * `STATS_MODE_FULL`
+                                              * `STATS_MODE_PROFILE`
+                                            required: false
                 responses:
                     200:
                         description: OK

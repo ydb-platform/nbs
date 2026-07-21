@@ -24,7 +24,7 @@ IGraphTransformer::TStatus MultiUsageFlatMapOverJoin(const TExprNode::TPtr& node
     for (auto parent : it->second) {
         if (auto maybeFlatMap = TMaybeNode<TCoFlatMapBase>(parent)) {
             auto flatMap = maybeFlatMap.Cast();
-            auto newParent = FlatMapOverEquiJoin(flatMap, ctx, *optCtx.ParentsMap, true, optCtx.Types);
+            auto newParent = FlatMapOverEquiJoin(flatMap, ctx, *optCtx.ParentsMap, /*multiUsage=*/true, optCtx.Types);
             if (!newParent.Raw()) {
                 return IGraphTransformer::TStatus::Error;
             }
@@ -49,8 +49,8 @@ IGraphTransformer::TStatus MultiUsageFlatMapOverJoin(const TExprNode::TPtr& node
 
 bool IsFilterMultiusageEnabled(const TOptimizeContext& optCtx) {
     YQL_ENSURE(optCtx.Types);
-    static const TString multiUsageFlags = to_lower(TString("FilterPushdownEnableMultiusage"));
-    return optCtx.Types->OptimizerFlags.contains(multiUsageFlags);
+    static const char OptName[] = "FilterPushdownEnableMultiusage";
+    return IsOptimizerEnabled<OptName>(*optCtx.Types) && !IsOptimizerDisabled<OptName>(*optCtx.Types);
 }
 
 void FilterPushdownWithMultiusage(const TExprNode::TPtr& node, TNodeOnNodeOwnedMap& toOptimize, TExprContext& ctx, TOptimizeContext& optCtx) {
@@ -64,7 +64,7 @@ void FilterPushdownWithMultiusage(const TExprNode::TPtr& node, TNodeOnNodeOwnedM
         return;
     }
 
-    static const THashSet<TStringBuf> skipNodes = {"ExtractMembers", "Unordered", "AssumeColumnOrder"};
+    static const THashSet<TStringBuf> SkipNodes = {"ExtractMembers", "Unordered", "AssumeColumnOrder"};
 
     TVector<const TExprNode*> immediateParents;
     YQL_ENSURE(optCtx.ParentsMap);
@@ -75,12 +75,23 @@ void FilterPushdownWithMultiusage(const TExprNode::TPtr& node, TNodeOnNodeOwnedM
         Sort(immediateParents, [](const TExprNode* left, const TExprNode* right) { return CompareNodes(*left, *right) < 0; });
     }
 
-    TVector<const TExprNode*> parentFilters;
-    TExprNodeList parentFilterLambdas;
-    TExprNodeList parentValueLambdas;
-    size_t likelyCount = 0;
-    for (auto parent : immediateParents) {
-        while (skipNodes.contains(parent->Content())) {
+    struct TConsumerInfo {
+        const TExprNode* OriginalFlatMap = nullptr;
+        const TTypeAnnotationNode* OriginalRowType = nullptr;
+        TExprNode::TPtr FilterLambda;
+        TExprNode::TPtr ValueLambda;
+        TExprNode::TPtr PushdownLambda;
+        TString ColumnName;
+    };
+
+    TVector<TConsumerInfo> consumers;
+    bool hasOrdered = false;
+    size_t pushdownCount = 0;
+    const auto inputStructType = node->GetTypeAnn()->Cast<TListExprType>()->GetItemType()->Cast<TStructExprType>();
+    const auto genColumnNames = GenNoClashColumns(*inputStructType, "_yql_filter_pushdown", immediateParents.size());
+    for (size_t i = 0; i < immediateParents.size(); ++i) {
+        const TExprNode* parent = immediateParents[i];
+        while (SkipNodes.contains(parent->Content())) {
             auto newParent = optCtx.GetParentIfSingle(*parent);
             if (newParent) {
                 parent = newParent;
@@ -92,57 +103,111 @@ void FilterPushdownWithMultiusage(const TExprNode::TPtr& node, TNodeOnNodeOwnedM
             return;
         }
 
+        if (TCoOrderedFlatMap::Match(parent)) {
+            hasOrdered = true;
+        }
+
         TCoFlatMapBase parentFlatMap(parent);
         if (auto cond = parentFlatMap.Lambda().Body().Maybe<TCoConditionalValueBase>()) {
-            likelyCount += bool(cond.Cast().Predicate().Maybe<TCoLikely>());
-            auto pos = cond.Cast().Predicate().Pos();
-            parentFilterLambdas.push_back(ctx.NewLambda(pos,
-                ctx.NewArguments(pos, { parentFlatMap.Lambda().Args().Arg(0).Ptr() }),
-                cond.Cast().Predicate().Ptr()));
-            parentValueLambdas.push_back(ctx.NewLambda(pos,
-                ctx.NewArguments(pos, { parentFlatMap.Lambda().Args().Arg(0).Ptr() }),
-                cond.Cast().Value().Ptr()));
-            parentFilters.push_back(parent);
+            const TCoArgument lambdaArg = parentFlatMap.Lambda().Args().Arg(0);
+            auto pred = cond.Cast().Predicate();
+            if (pred.Maybe<TCoNoPushBase>() ||
+                (pred.Maybe<TCoAnd>() && AnyOf(pred.Ref().ChildrenList(), [](const auto& p) { return IsNoPush(*p); })) ||
+                !IsStrict(pred.Ptr()) ||
+                HasDependsOn(pred.Ptr(), lambdaArg.Ptr()) ||
+                IsDepended(parentFlatMap.Lambda().Ref(), *node))
+            {
+                return;
+            }
+
+            TExprNodeList andPredicates;
+            if (pred.Maybe<TCoAnd>()) {
+                andPredicates = pred.Ref().ChildrenList();
+            } else {
+                andPredicates.push_back(pred.Ptr());
+            }
+
+            TExprNodeList pushdownPreds;
+            TExprNodeList restPreds;
+            for (auto& p : andPredicates) {
+                if (TCoMember::Match(p.Get()) && p->Child(0) == lambdaArg.Raw()) {
+                    restPreds.push_back(p);
+                } else {
+                    pushdownPreds.push_back(p);
+                }
+            }
+
+            const TPositionHandle pos = pred.Pos();
+            consumers.emplace_back();
+            TConsumerInfo& consumer = consumers.back();
+            consumer.OriginalFlatMap = parent;
+            consumer.OriginalRowType = lambdaArg.Ref().GetTypeAnn();
+            consumer.ColumnName = genColumnNames[i];
+            if (!pushdownPreds.empty()) {
+                ++pushdownCount;
+                restPreds.push_back(
+                    ctx.Builder(pos)
+                        .Callable("Member")
+                            .Add(0, lambdaArg.Ptr())
+                            .Atom(1, consumer.ColumnName)
+                        .Seal()
+                        .Build());
+                auto restPred = ctx.NewCallable(pos, "And", std::move(restPreds));
+                auto pushdownPred = ctx.NewCallable(pos, "And", std::move(pushdownPreds));
+
+                consumer.FilterLambda = ctx.NewLambda(pos, ctx.NewArguments(pos, { lambdaArg.Ptr() }), std::move(restPred));
+                consumer.PushdownLambda = ctx.NewLambda(pos, ctx.NewArguments(pos, { lambdaArg.Ptr() }), std::move(pushdownPred));
+            } else {
+                consumer.FilterLambda = ctx.NewLambda(pos, ctx.NewArguments(pos, { lambdaArg.Ptr() }), pred.Ptr());
+            }
+            consumer.ValueLambda = ctx.NewLambda(pos, ctx.NewArguments(pos, { lambdaArg.Ptr() }), cond.Cast().Value().Ptr());
         } else {
             return;
         }
     }
-    YQL_ENSURE(parentFilterLambdas.size() > 1);
-    if (likelyCount == parentFilters.size()) {
+
+    if (!pushdownCount) {
         return;
     }
 
-    YQL_CLOG(DEBUG, Core) << "Pushdown " << parentFilters.size() << " filters to common parent " << node->Content();
+    YQL_CLOG(DEBUG, Core) << "Pushdown predicate from " << pushdownCount << " filters (out of total " << consumers.size() << ") to common parent " << node->Content();
 
-    const auto inputStructType = node->GetTypeAnn()->Cast<TListExprType>()->GetItemType()->Cast<TStructExprType>();
-    const auto genColumnNames = GenNoClashColumns(*inputStructType, "_yql_filter_pushdown", parentFilterLambdas.size());
+    YQL_ENSURE(consumers.size() > 1);
+    YQL_ENSURE(consumers.size() == immediateParents.size());
 
     TExprNode::TPtr mapArg = ctx.NewArgument(node->Pos(), "row");
     TExprNode::TPtr mapBody = mapArg;
     TExprNode::TPtr filterArg = ctx.NewArgument(node->Pos(), "row");
     TExprNodeList filterPreds;
-    for (size_t i = 0; i < parentFilterLambdas.size(); ++i) {
-        TString memberName = genColumnNames[i];
-        mapBody = ctx.Builder(mapBody->Pos())
-            .Callable("AddMember")
-                .Add(0, mapBody)
-                .Atom(1, memberName)
-                .Apply(2, parentFilterLambdas[i])
-                    .With(0, mapArg)
+    for (const auto& consumer : consumers) {
+        if (consumer.PushdownLambda) {
+            mapBody = ctx.Builder(mapBody->Pos())
+                .Callable("AddMember")
+                    .Add(0, mapBody)
+                    .Atom(1, consumer.ColumnName)
+                    .Apply(2, consumer.PushdownLambda)
+                        .With(0)
+                            .Callable("CastStruct")
+                                .Add(0, mapArg)
+                                .Add(1, ExpandType(mapArg->Pos(), *consumer.OriginalRowType, ctx))
+                            .Seal()
+                        .Done()
+                    .Seal()
                 .Seal()
-            .Seal()
-            .Build();
+                .Build();
+        }
+
         filterPreds.push_back(ctx.Builder(node->Pos())
-            .Callable("Member")
-                .Add(0, filterArg)
-                .Atom(1, memberName)
+            .Apply(consumer.FilterLambda)
+                // CastStruct is not needed here, since FilterLambda is AND over column references
+                .With(0, filterArg)
             .Seal()
             .Build());
     }
 
     auto newNode = ctx.Builder(node->Pos())
-        .Callable("OrderedFilter")
-            .Callable(0, "OrderedMap")
+        .Callable(hasOrdered ? "OrderedFilter" : "Filter")
+            .Callable(0, hasOrdered ? "OrderedMap" : "Map")
                 .Add(0, node)
                 .Add(1, ctx.NewLambda(node->Pos(), ctx.NewArguments(node->Pos(), { mapArg }), std::move(mapBody)))
             .Seal()
@@ -153,12 +218,15 @@ void FilterPushdownWithMultiusage(const TExprNode::TPtr& node, TNodeOnNodeOwnedM
     for (size_t i = 0; i < immediateParents.size(); ++i) {
         const TExprNode* curr = immediateParents[i];
         TExprNode::TPtr resultNode = newNode;
-        while (curr != parentFilters[i]) {
+        const TConsumerInfo& consumer = consumers[i];
+        while (curr != consumer.OriginalFlatMap) {
             if (curr->IsCallable("AssumeColumnOrder")) {
                 resultNode = ctx.ChangeChild(*ctx.RenameNode(*curr, "AssumeColumnOrderPartial"), 0, std::move(resultNode));
             } else if (curr->IsCallable("ExtractMembers")) {
                 TExprNodeList columns = curr->Child(1)->ChildrenList();
-                columns.push_back(ctx.NewAtom(curr->Child(1)->Pos(), genColumnNames[i]));
+                if (consumer.PushdownLambda) {
+                    columns.push_back(ctx.NewAtom(curr->Child(1)->Pos(), consumer.ColumnName));
+                }
                 resultNode = ctx.ChangeChildren(*curr, { resultNode, ctx.NewList(curr->Child(1)->Pos(), std::move(columns)) });
             } else {
                 resultNode = ctx.ChangeChild(*curr, 0, std::move(resultNode));
@@ -170,24 +238,20 @@ void FilterPushdownWithMultiusage(const TExprNode::TPtr& node, TNodeOnNodeOwnedM
         TCoFlatMapBase flatMap(curr);
         TCoConditionalValueBase cond = flatMap.Lambda().Body().Cast<TCoConditionalValueBase>();
         TExprNode::TPtr input = flatMap.Input().Ptr();
-        const TTypeAnnotationNode* originalType = input->GetTypeAnn()->Cast<TListExprType>()->GetItemType();
-        toOptimize[parentFilters[i]] = ctx.Builder(curr->Pos())
+        toOptimize[consumer.OriginalFlatMap] = ctx.Builder(curr->Pos())
             .Callable(flatMap.CallableName())
                 .Add(0, resultNode)
                 .Lambda(1)
                     .Param("row")
                     .Callable(cond.CallableName())
-                        .Callable(0, "Likely")
-                            .Callable(0, "Member")
-                                .Arg(0, "row")
-                                .Atom(1, genColumnNames[i])
-                            .Seal()
+                        .Apply(0, consumer.FilterLambda)
+                            .With(0, "row")
                         .Seal()
-                        .Apply(1, parentValueLambdas[i])
+                        .Apply(1, consumer.ValueLambda)
                             .With(0)
                                 .Callable("CastStruct")
                                     .Arg(0, "row")
-                                    .Add(1, ExpandType(curr->Pos(), *originalType, ctx))
+                                    .Add(1, ExpandType(curr->Pos(), *consumer.OriginalRowType, ctx))
                                 .Seal()
                             .Done()
                         .Seal()
@@ -198,7 +262,208 @@ void FilterPushdownWithMultiusage(const TExprNode::TPtr& node, TNodeOnNodeOwnedM
     }
 }
 
+bool AllConsumersAreUnordered(const TExprNode::TPtr& node, const TParentsMap& parents, TNodeSet& unorderedConsumers) {
+    static const THashSet<TStringBuf> TraverseCallables = {
+        TCoExtractMembers::CallableName(),
+        TCoAssumeDistinct::CallableName(),
+        TCoAssumeUnique::CallableName(),
+        TCoAssumeColumnOrder::CallableName(),
+    };
+    TNodeSet current{node.Get()};
+    while (!current.empty()) {
+        TNodeSet next;
+        for (auto curr : current) {
+            auto it = parents.find(curr);
+            if (it == parents.cend() || it->second.empty()) {
+                return false;
+            }
+            for (auto parent : it->second) {
+                if (TCoUnordered::Match(parent)) {
+                    // TODO: should probably add more callables here
+                    unorderedConsumers.insert(parent);
+                    continue;
+                }
+                if (!parent->IsCallable(TraverseCallables)) {
+                    return false;
+                }
+                YQL_ENSURE(&parent->Head() == curr);
+                next.insert(parent);
+            }
+        }
+        current = std::move(next);
+    }
+    return true;
 }
+
+bool AllConsumersAreMembers(const TExprNode::TPtr& node, const TParentsMap& parents, TNodeSet& memberConsumers) {
+    auto it = parents.find(node.Get());
+    if (it == parents.cend() || it->second.empty()) {
+        return false;
+    }
+
+    for (auto parent : it->second) {
+        if (!TCoMember::Match(parent)) {
+            return false;
+        }
+        memberConsumers.insert(parent);
+    }
+
+    return true;
+}
+
+bool OptimizeForUnorderedConsumers(const TExprNode::TPtr& node, TNodeOnNodeOwnedMap& toOptimize, TExprContext& ctx, TOptimizeContext& optCtx) {
+    if (!node->IsCallable({"Sort", "AssumeSorted", "TopSort"})) {
+        return false;
+    }
+
+    YQL_ENSURE(optCtx.ParentsMap);
+    const auto& parentsMap = *optCtx.ParentsMap;
+    TNodeSet unorderedConsumers;
+    if (!AllConsumersAreUnordered(node, parentsMap, unorderedConsumers)) {
+        return false;
+    }
+
+    YQL_ENSURE(!unorderedConsumers.empty());
+    const TExprNode::TPtr newNode = node->IsCallable("TopSort") ? ctx.RenameNode(*node, "Top") : node->HeadPtr();
+    for (auto consumer : unorderedConsumers) {
+        toOptimize[consumer] = ctx.ReplaceNode(ctx.ShallowCopy(*consumer), *node, newNode);
+    }
+
+    YQL_CLOG(DEBUG, Core) << "Droping sort due to unordered consumers for " << node->Content();
+    return true;
+}
+
+void OptimizeForMemberConsumers(const TCoFlatMapBase& self, TNodeOnNodeOwnedMap& toOptimize, TExprContext& ctx, TOptimizeContext& optCtx) {
+    auto maybeAsStruct = self.Lambda().Body().Maybe<TCoJust>().Input().Maybe<TCoAsStruct>();
+    if (!maybeAsStruct) {
+        return;
+    }
+
+    YQL_ENSURE(optCtx.ParentsMap);
+    const auto& parentsMap = *optCtx.ParentsMap;
+    TNodeSet memberConsumers;
+    if (!AllConsumersAreMembers(self.Ptr(), parentsMap, memberConsumers)) {
+        return;
+    }
+
+    TMap<TStringBuf, TExprNode::TPtr> structItems;
+    for (auto item : maybeAsStruct.Cast().Ref().ChildrenList()) {
+        TCoNameValueTuple tuple(item);
+        structItems[tuple.Name().Value()] = tuple.Value().Cast().Ptr();
+    }
+
+    TNodeSet restMembers;
+    size_t separableMembersCount = 0;
+    for (auto memberNode : memberConsumers) {
+        TCoMember member(memberNode);
+        auto name = member.Name().Value();
+        auto it = structItems.find(name);
+        YQL_ENSURE(it != structItems.end());
+
+        TExprNode::TPtr entry = it->second;
+        if (IsDepended(*entry, self.Lambda().Args().Arg(0).Ref())) {
+            restMembers.insert(memberNode);
+        } else {
+            ++separableMembersCount;
+            toOptimize[memberNode] = ctx.Builder(memberNode->Pos())
+                .Callable(self.CallableName())
+                    .Add(0, self.Input().Ptr())
+                    .Lambda(1)
+                        .Param("unused")
+                        .Add(0, ctx.WrapByCallableIf(!entry->GetTypeAnn()->IsOptionalOrNull(), "Just", std::move(entry)))
+                    .Seal()
+                .Seal()
+                .Build();
+            structItems.erase(it);
+        }
+    }
+
+    if (separableMembersCount && !restMembers.empty()) {
+        auto restBody = ctx.Builder(self.Lambda().Body().Pos())
+            .Callable("Just")
+                .Callable(0, "AsStruct")
+                    .Do([&](TExprNodeBuilder& parent) -> TExprNodeBuilder& {
+                        ui32 i = 0U;
+                        for (const auto& [name, value] : structItems) {
+                            parent.List(i)
+                                .Atom(0, name)
+                                .Add(1, value)
+                            .Seal();
+                            ++i;
+                        }
+                        return parent;
+                    })
+                .Seal()
+            .Seal()
+            .Build();
+        auto restFlatMap = ctx.ChangeChild(self.Ref(), TCoFlatMapBase::idx_Lambda,
+            ctx.DeepCopyLambda(*ctx.ChangeChild(self.Lambda().Ref(), TCoLambda::idx_Body, std::move(restBody))));
+        for (auto restMember : restMembers) {
+            toOptimize[restMember] = ctx.ChangeChild(*restMember, TCoMember::idx_Struct, TExprNode::TPtr(restFlatMap));
+        }
+    }
+
+    if (separableMembersCount) {
+        YQL_CLOG(DEBUG, Core) << separableMembersCount << " separable Members and " << restMembers.size() << " non separable over " << self.CallableName();
+    }
+}
+
+TExprNode::TPtr FuseFilterWithCalcOverWindow(const TCoFlatMapBase& node, TExprContext& ctx, TOptimizeContext& optCtx) {
+    if (!TCoConditionalValueBase::Match(node.Lambda().Body().Raw())) {
+        return node.Ptr();
+    }
+
+    if (!node.Input().Maybe<TCoCalcOverWindowBase>() && !node.Input().Maybe<TCoCalcOverWindowGroup>()) {
+        return node.Ptr();
+    }
+
+    if (!optCtx.IsSingleUsage(node.Input().Ref())) {
+        return node.Ptr();
+    }
+
+    auto calcs = ExtractCalcsOverWindow(node.Input().Ptr(), ctx);
+    YQL_ENSURE(!calcs.empty(), "Empty CalcOverWindow should be processed earlier");
+
+    TExprNode::TPtr calcInput = node.Input().Cast<TCoInputBase>().Input().Ptr();
+    const TCoConditionalValueBase body = node.Lambda().Body().Cast<TCoConditionalValueBase>();
+
+    auto filterLambda = ctx.ChangeChild(node.Lambda().Ref(), TCoLambda::idx_Body, body.Predicate().Ptr());
+
+    TCoCalcOverWindowTuple calc(calcs.back());
+    auto frames = calc.Frames().Ref().ChildrenList();
+
+    frames.push_back(ctx.Builder(filterLambda->Pos())
+        .Callable("WinFilter")
+            .Add(0, MakeRowsUPCRFrameSpec(filterLambda->Pos(), ctx.NewCallable(filterLambda->Pos(), "Void", {}), ctx, *optCtx.Types))
+            .Add(1, ExpandType(node.Input().Pos(), *node.Input().Ref().GetTypeAnn()->Cast<TListExprType>()->GetItemType(), ctx))
+            .Lambda(2)
+                .Param("row")
+                .Apply(filterLambda)
+                    .With(0, "row")
+                .Seal()
+            .Seal()
+        .Seal()
+        .Build());
+
+    calcs.back() = Build<TCoCalcOverWindowTuple>(ctx, calc.Pos())
+        .InitFrom(calc)
+        .Frames(ctx.NewList(calc.Frames().Pos(), std::move(frames)))
+        .Done().Ptr();
+
+    auto newCalc = BuildCalcOverWindowGroup(node.Input().Pos(), calcInput, calcs, ctx);
+
+    auto flatmapBody = ctx.ChangeChild(body.Ref(), TCoConditionalValueBase::idx_Predicate, MakeBool<true>(body.Predicate().Pos(), ctx));
+    auto flatmapLambda = ctx.ChangeChild(node.Lambda().Ref(), TCoLambda::idx_Body, std::move(flatmapBody));
+
+    YQL_CLOG(DEBUG, Core) << "Fuse Filter with " << node.Input().Ref().Content();
+    return Build<TCoFlatMapBase>(ctx, node.Pos())
+        .InitFrom(node)
+        .Input(newCalc)
+        .Lambda(ctx.DeepCopyLambda(*flatmapLambda))
+        .Done().Ptr();
+}
+
+} // namespace
 
 void RegisterCoFinalizers(TFinalizingOptimizerMap& map) {
     map[TCoExtend::CallableName()] = map[TCoOrderedExtend::CallableName()] = map[TCoMerge::CallableName()] = [](const TExprNode::TPtr& node, TNodeOnNodeOwnedMap& toOptimize, TExprContext& ctx, TOptimizeContext& optCtx) {
@@ -231,10 +496,12 @@ void RegisterCoFinalizers(TFinalizingOptimizerMap& map) {
         return true;
     };
 
-    map[TCoSkipNullMembers::CallableName()] = [](const TExprNode::TPtr& node, TNodeOnNodeOwnedMap& toOptimize, TExprContext& ctx, TOptimizeContext& optCtx) {
+    map[TCoFilterNullMembers::CallableName()] =
+    map[TCoSkipNullMembers::CallableName()] =
+    [](const TExprNode::TPtr& node, TNodeOnNodeOwnedMap& toOptimize, TExprContext& ctx, TOptimizeContext& optCtx) {
         OptimizeSubsetFieldsForNodeWithMultiUsage(node, *optCtx.ParentsMap, toOptimize, ctx,
-            [] (const TExprNode::TPtr& input, const TExprNode::TPtr& members, const TParentsMap&, TExprContext& ctx) {
-                return ApplyExtractMembersToSkipNullMembers(input, members, ctx, " with multi-usage");
+            [&] (const TExprNode::TPtr& input, const TExprNode::TPtr& members, const TParentsMap&, TExprContext& ctx) {
+                return ApplyExtractMembersToFilterSkipNullMembers(input, members, ctx, " with multi-usage");
             }
         );
 
@@ -248,13 +515,30 @@ void RegisterCoFinalizers(TFinalizingOptimizerMap& map) {
             }
         );
 
+        if (toOptimize.empty() && TCoFlatMapBase::Match(node.Get())) {
+            OptimizeForMemberConsumers(TCoFlatMapBase(node), toOptimize, ctx, optCtx);
+        }
+
         return true;
     };
 
     map[TCoSort::CallableName()] = map[TCoAssumeSorted::CallableName()] = [](const TExprNode::TPtr& node, TNodeOnNodeOwnedMap& toOptimize, TExprContext& ctx, TOptimizeContext& optCtx) {
+        if (OptimizeForUnorderedConsumers(node, toOptimize, ctx, optCtx)) {
+            return true;
+        }
         OptimizeSubsetFieldsForNodeWithMultiUsage(node, *optCtx.ParentsMap, toOptimize, ctx,
             [] (const TExprNode::TPtr& input, const TExprNode::TPtr& members, const TParentsMap& parentsMap, TExprContext& ctx) {
-                return ApplyExtractMembersToSort(input, members, parentsMap, ctx, " with multi-usage");
+                return ApplyExtractMembersToSortOrPruneKeys(input, members, parentsMap, ctx, " with multi-usage");
+            }
+        );
+
+        return true;
+    };
+
+    map[TCoPruneKeys::CallableName()] = map[TCoPruneAdjacentKeys::CallableName()] = [](const TExprNode::TPtr& node, TNodeOnNodeOwnedMap& toOptimize, TExprContext& ctx, TOptimizeContext& optCtx) {
+        OptimizeSubsetFieldsForNodeWithMultiUsage(node, *optCtx.ParentsMap, toOptimize, ctx,
+            [] (const TExprNode::TPtr& input, const TExprNode::TPtr& members, const TParentsMap& parentsMap, TExprContext& ctx) {
+                return ApplyExtractMembersToSortOrPruneKeys(input, members, parentsMap, ctx, " with multi-usage");
             }
         );
 
@@ -272,6 +556,9 @@ void RegisterCoFinalizers(TFinalizingOptimizerMap& map) {
     };
 
     map[TCoTop::CallableName()] = map[TCoTopSort::CallableName()] = [](const TExprNode::TPtr& node, TNodeOnNodeOwnedMap& toOptimize, TExprContext& ctx, TOptimizeContext& optCtx) {
+        if (OptimizeForUnorderedConsumers(node, toOptimize, ctx, optCtx)) {
+            return true;
+        }
         OptimizeSubsetFieldsForNodeWithMultiUsage(node, *optCtx.ParentsMap, toOptimize, ctx,
             [] (const TExprNode::TPtr& input, const TExprNode::TPtr& members, const TParentsMap& parentsMap, TExprContext& ctx) {
                 return ApplyExtractMembersToTop(input, members, parentsMap, ctx, " with multi-usage");
@@ -303,7 +590,9 @@ void RegisterCoFinalizers(TFinalizingOptimizerMap& map) {
         return true;
     };
 
-    map[TCoPartitionByKey::CallableName()] = [](const TExprNode::TPtr& node, TNodeOnNodeOwnedMap& toOptimize, TExprContext& ctx, TOptimizeContext& optCtx) {
+    map[TCoPartitionByKey::CallableName()] = map[TCoPartitionsByKeys::CallableName()] =
+        [](const TExprNode::TPtr& node, TNodeOnNodeOwnedMap& toOptimize, TExprContext& ctx, TOptimizeContext& optCtx)
+    {
         OptimizeSubsetFieldsForNodeWithMultiUsage(node, *optCtx.ParentsMap, toOptimize, ctx,
             [] (const TExprNode::TPtr& input, const TExprNode::TPtr& members, const TParentsMap&, TExprContext& ctx) {
                 return ApplyExtractMembersToPartitionByKey(input, members, ctx, " with multi-usage");
@@ -398,6 +687,14 @@ void RegisterCoFinalizers(TFinalizingOptimizerMap& map) {
 
     map[""] = [](const TExprNode::TPtr& node, TNodeOnNodeOwnedMap& toOptimize, TExprContext& ctx, TOptimizeContext& optCtx) {
         FilterPushdownWithMultiusage(node, toOptimize, ctx, optCtx);
+        if (toOptimize.empty() && TCoFlatMapBase::Match(node.Get()) && CanPushdownFiltersOverWindow(optCtx.Types)) {
+            // we want to fuse filter with CalcOverWindow after FilterPushdownWithMultiusage
+            auto opt = FuseFilterWithCalcOverWindow(TCoFlatMapBase(node), ctx, optCtx);
+            if (opt != node) {
+                toOptimize[node.Get()] = opt;
+            }
+        }
+
         return true;
     };
 }

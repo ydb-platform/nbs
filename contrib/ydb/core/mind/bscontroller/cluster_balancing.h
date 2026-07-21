@@ -14,12 +14,13 @@ struct TClusterBalancingSettings {
     bool Enable = false;
     ui32 MaxReplicatingPDisks = 5;
     ui32 MaxReplicatingVDisks = 40;
-    ui32 IterationIntervalMs = 5000;
+    ui64 IterationIntervalMs = 5000;
+    ui32 MaxReassignAttemptsPerBucketPerIteration = 5;
     bool PreferLessOccupiedRack = false;
     bool WithAttentionToReplication = false;
 };
 
-TClusterBalancingSettings ParseClusterBalancingSettings(const NKikimrBlobStorage::TStorageConfig& storageConfig);
+TClusterBalancingSettings ParseClusterBalancingSettings(const std::shared_ptr<const NKikimrBlobStorage::TStorageConfig> storageConfig);
 
 IActor* CreateClusterBalancingActor(const TActorId& controllerId, const TClusterBalancingSettings& settings);
 

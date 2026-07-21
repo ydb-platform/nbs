@@ -5,13 +5,22 @@
 #include <contrib/ydb/core/kqp/common/kqp.h>
 #include <contrib/ydb/core/kqp/common/events/workload_service.h>
 #include <contrib/ydb/core/kqp/counters/kqp_counters.h>
+#include <contrib/ydb/core/kqp/workload_service/kqp_query_classifier.h>
+#include <contrib/ydb/core/kqp/proxy_service/kqp_session_state.h>
 #include <contrib/ydb/core/kqp/gateway/behaviour/resource_pool_classifier/fetcher.h>
 #include <contrib/ydb/core/kqp/rm_service/kqp_rm_service.h>
+#include <contrib/ydb/core/kqp/runtime/scheduler/kqp_compute_scheduler_service.h>
+#include <contrib/ydb/core/kqp/workload_service/kqp_workload_service.h>
+#include <contrib/ydb/core/protos/feature_flags.pb.h>
 #include <contrib/ydb/core/protos/kqp.pb.h>
+#include <contrib/ydb/core/protos/workload_manager_config.pb.h>
 
 #include <contrib/ydb/library/actors/core/actorid.h>
 
 #include <util/datetime/base.h>
+#include <limits>
+
+#include <util/generic/overloaded.h>
 
 namespace NKikimr::NKqp {
 
@@ -70,6 +79,63 @@ public:
     }
 };
 
+class TWmSessionUpdater final : public NWorkload::ISessionUpdater {
+public:
+    using EState = NWorkload::ISessionUpdater::EState;
+
+    void SetRequestState(EState state, TInstant timestamp) override {
+        const ui64 ts = timestamp.MicroSeconds();
+
+        if (state == EState::PENDING || state == EState::DELAYED) {
+            EnterTimeUs.store(ts, std::memory_order_release);
+        } else if (state == EState::EXITED) {
+            ExitTimeUs.store(ts, std::memory_order_release);
+        }
+
+        State.store(state, std::memory_order_release);
+    }
+
+    void SetPoolId(TString poolId) override {
+        TGuard<TAdaptiveLock> guard(PoolIdLock);
+        PoolId = std::move(poolId);
+    }
+    
+    EState GetState() const {
+        return State.load(std::memory_order_acquire);
+    }
+
+    TInstant GetEnterTime() const {
+        return TInstant::MicroSeconds(EnterTimeUs.load(std::memory_order_acquire));
+    }
+
+    TInstant GetExitTime() const {
+        return TInstant::MicroSeconds(ExitTimeUs.load(std::memory_order_acquire));
+    }
+
+    TString GetPoolId() const {
+        TGuard<TAdaptiveLock> guard(PoolIdLock);
+        return PoolId;
+    }
+
+    void Clean() {
+        EnterTimeUs.store(0, std::memory_order_release);
+        ExitTimeUs.store(0, std::memory_order_release);
+        {
+            TGuard<TAdaptiveLock> guard(PoolIdLock);
+            PoolId.clear();
+        }
+        State.store(EState::NONE, std::memory_order_release);
+    }
+
+private:
+    std::atomic<EState> State{EState::NONE};
+    std::atomic<ui64> EnterTimeUs{0};
+    std::atomic<ui64> ExitTimeUs{0};
+
+    mutable TAdaptiveLock PoolIdLock;
+    TString PoolId;
+};
+
 template<typename TValue>
 struct TProcessResult {
     Ydb::StatusIds::StatusCode YdbStatus;
@@ -95,9 +161,8 @@ struct TKqpSessionInfo {
     std::list<TKqpSessionInfo*>::iterator IdlePos;
     TNodeId AttachedNodeId;
     TActorId AttachedRpcId;
-    bool PgWire;
     TString QueryText;
-    bool Ready = true;
+    TString TraceId;
     TString ClientApplicationName;
     TString ClientSID;
     TString ClientHost;
@@ -108,8 +173,10 @@ struct TKqpSessionInfo {
     TInstant SessionStartedAt;
     TInstant StateChangeAt;
     TInstant QueryStartAt;
+    std::shared_ptr<TWmSessionUpdater> WmState;
 
     ESessionState State = ESessionState::IDLE;
+    bool Closing = false;
 
     struct TFieldsMap {
         ui64 bitmap = 0;
@@ -129,7 +196,7 @@ struct TKqpSessionInfo {
 
     TKqpSessionInfo(const TString& sessionId, const TActorId& workerId,
         const TString& database, TKqpDbCountersPtr dbCounters, std::vector<i32>&& pos,
-        NActors::TMonotonic idleTimeout, std::list<TKqpSessionInfo*>::iterator idlePos, bool pgWire,
+        NActors::TMonotonic idleTimeout, std::list<TKqpSessionInfo*>::iterator idlePos,
         TInstant sessionStartedAt)
         : SessionId(sessionId)
         , WorkerId(workerId)
@@ -140,8 +207,8 @@ struct TKqpSessionInfo {
         , IdleTimeout(std::move(idleTimeout))
         , IdlePos(idlePos)
         , AttachedNodeId(0)
-        , PgWire(pgWire)
         , SessionStartedAt(std::move(sessionStartedAt))
+        , WmState(std::make_shared<TWmSessionUpdater>())
     {
     }
 
@@ -173,17 +240,20 @@ public:
         return actors.insert(sessionInfo).second;
     }
 
-    void AttachQueryText(const TKqpSessionInfo* sessionInfo, const TString& queryText) {
+    void AttachQueryText(const TKqpSessionInfo* sessionInfo, const TString& queryText, const TString& traceId) {
         const_cast<TKqpSessionInfo*>(sessionInfo)->QueryText = queryText;
+        const_cast<TKqpSessionInfo*>(sessionInfo)->TraceId = traceId;
         const_cast<TKqpSessionInfo*>(sessionInfo)->QueryCount++;
         const_cast<TKqpSessionInfo*>(sessionInfo)->State = TKqpSessionInfo::EXECUTING;
         auto curNow = TInstant::Now();
         const_cast<TKqpSessionInfo*>(sessionInfo)->QueryStartAt = curNow;
         const_cast<TKqpSessionInfo*>(sessionInfo)->StateChangeAt = curNow;
+        const_cast<TKqpSessionInfo*>(sessionInfo)->WmState->Clean();
     }
 
     void DetachQueryText(const TKqpSessionInfo* sessionInfo) {
         const_cast<TKqpSessionInfo*>(sessionInfo)->QueryText = TString();
+        const_cast<TKqpSessionInfo*>(sessionInfo)->TraceId = TString();
         const_cast<TKqpSessionInfo*>(sessionInfo)->State = TKqpSessionInfo::IDLE;
         auto curNow = TInstant::Now();
         const_cast<TKqpSessionInfo*>(sessionInfo)->QueryStartAt = TInstant::Zero();
@@ -192,7 +262,7 @@ public:
 
     TKqpSessionInfo* Create(const TString& sessionId, const TActorId& workerId,
         const TString& database, TKqpDbCountersPtr dbCounters, bool supportsBalancing,
-        TDuration idleDuration, bool pgWire = false)
+        TDuration idleDuration)
     {
         std::vector<i32> pos(2, -1);
         pos[0] = ReadySessions[0].size();
@@ -207,7 +277,7 @@ public:
         auto startedAt = TInstant::Now();
         auto result = LocalSessions.emplace(sessionId,
             TKqpSessionInfo(sessionId, workerId, database, dbCounters, std::move(pos),
-                sessionStartedAt + idleDuration, IdleSessions.end(), pgWire, startedAt));
+                sessionStartedAt + idleDuration, IdleSessions.end(), startedAt));
         OrderedSessions.emplace(std::make_pair(database, sessionId), &result.first->second);
         SessionsCountPerDatabase[database]++;
         Y_ABORT_UNLESS(result.second, "Duplicate session id!");
@@ -245,12 +315,13 @@ public:
         return candidate;
     }
 
+    void SetSessionClosing(const TKqpSessionInfo* sessionInfo) {
+        TKqpSessionInfo* info = const_cast<TKqpSessionInfo*>(sessionInfo);
+        info->Closing = true;
+    }
+
     void StartIdleCheck(const TKqpSessionInfo* sessionInfo, const TDuration idleDuration) {
         if (!sessionInfo) {
-            return;
-        }
-
-        if (sessionInfo->PgWire) {
             return;
         }
 
@@ -266,10 +337,6 @@ public:
 
     void StopIdleCheck(const TKqpSessionInfo* sessionInfo) {
         if (!sessionInfo) {
-            return;
-        }
-
-        if (sessionInfo->PgWire) {
             return;
         }
 
@@ -419,22 +486,7 @@ private:
 };
 
 class TResourcePoolsCache {
-    struct TClassifierInfo {
-        const TString MemberName;
-        const TString PoolId;
-        const i64 Rank;
-
-        TClassifierInfo(const NResourcePool::TClassifierSettings& classifierSettings)
-            : MemberName(classifierSettings.MemberName)
-            , PoolId(classifierSettings.ResourcePool)
-            , Rank(classifierSettings.Rank)
-        {}
-    };
-
     struct TDatabaseInfo {
-        std::unordered_map<TString, TResourcePoolClassifierConfig> ResourcePoolsClassifiers = {};  // Classifier name to config
-        std::map<i64, TClassifierInfo> RankToClassifierInfo = {};  // Classifier rank to config
-        std::unordered_map<TString, std::pair<TString, i64>> UserToResourcePool = {};  // UserSID to (resource pool, classifier rank)
         bool Serverless = false;
     };
 
@@ -458,36 +510,21 @@ public:
         return !databaseInfo || !databaseInfo->Serverless;
     }
 
-    TString GetPoolId(const TString& databaseId, const TIntrusiveConstPtr<NACLib::TUserToken>& userToken, TActorContext actorContext) {
-        if (!userToken || userToken->GetUserSID().empty()) {
-            return NResourcePool::DEFAULT_POOL_ID;
-        }
-
-        TDatabaseInfo& databaseInfo = *GetOrCreateDatabaseInfo(databaseId);
-        auto [resultPoolId, resultRank] = GetPoolIdFromClassifiers(databaseId, userToken->GetUserSID(), databaseInfo, userToken, actorContext);
-        for (const auto& userSID : userToken->GetGroupSIDs()) {
-            const auto& [poolId, rank] = GetPoolIdFromClassifiers(databaseId, userSID, databaseInfo, userToken, actorContext);
-            if (poolId && (!resultPoolId || resultRank > rank)) {
-                resultPoolId = poolId;
-                resultRank = rank;
-            }
-        }
-
-        return resultPoolId ? resultPoolId : NResourcePool::DEFAULT_POOL_ID;
-    }
-
     std::optional<TPoolInfo> GetPoolInfo(const TString& databaseId, const TString& poolId, TActorContext actorContext) const {
         auto it = PoolsCache.find(GetPoolKey(databaseId, poolId));
         if (it == PoolsCache.end()) {
+            Y_ASSERT(!poolId.empty());
+
+            actorContext.Send(MakeKqpSchedulerServiceId(actorContext.SelfID.NodeId()), new NScheduler::TEvAddPool(databaseId, poolId));
             actorContext.Send(MakeKqpWorkloadServiceId(actorContext.SelfID.NodeId()), new NWorkload::TEvSubscribeOnPoolChanges(databaseId, poolId));
             return std::nullopt;
         }
         return it->second;
     }
 
-    void UpdateFeatureFlags(const NKikimrConfig::TFeatureFlags& featureFlags, TActorContext actorContext) {
-        EnableResourcePools = featureFlags.GetEnableResourcePools();
-        EnableResourcePoolsOnServerless = featureFlags.GetEnableResourcePoolsOnServerless();
+    void UpdateConfig(const NKikimrConfig::TFeatureFlags& featureFlags, const NKikimrConfig::TWorkloadManagerConfig& workloadManagerConfig, TActorContext actorContext) {
+        EnableResourcePools = featureFlags.GetEnableResourcePools() || workloadManagerConfig.GetEnabled();
+        EnableResourcePoolsOnServerless = featureFlags.GetEnableResourcePoolsOnServerless() || workloadManagerConfig.GetEnabled();
         UpdateResourcePoolClassifiersSubscription(actorContext);
     }
 
@@ -496,8 +533,6 @@ public:
     }
 
     void UpdatePoolInfo(const TString& databaseId, const TString& poolId, const std::optional<NResourcePool::TPoolSettings>& config, const std::optional<NACLib::TSecurityObject>& securityObject, TActorContext actorContext) {
-        bool clearClassifierCache = false;
-
         const TString& poolKey = GetPoolKey(databaseId, poolId);
         if (!config) {
             auto it = PoolsCache.find(poolKey);
@@ -506,7 +541,6 @@ public:
             }
             if (it->second.Expired) {
                 // Pool was dropped
-                clearClassifierCache = true;
                 PoolsCache.erase(it);
             } else {
                 // Refresh pool subscription
@@ -515,32 +549,20 @@ public:
             }
         } else {
             auto& poolInfo = PoolsCache[poolKey];
-            clearClassifierCache = poolInfo.SecurityObject != securityObject;
             poolInfo.Config = *config;
             poolInfo.SecurityObject = securityObject;
             poolInfo.Expired = false;
         }
 
-        if (clearClassifierCache) {
-            GetOrCreateDatabaseInfo(databaseId)->UserToResourcePool.clear();
-        }
+        BuildResourcePoolMapSnapshot();
     }
 
-    void UpdateResourcePoolClassifiersInfo(const TResourcePoolClassifierSnapshot* snapsot, TActorContext actorContext) {
-        auto resourcePoolClassifierConfigs = snapsot->GetResourcePoolClassifierConfigs();
-        for (auto& [databaseId, databaseInfo] : DatabasesCache) {
-            auto it = resourcePoolClassifierConfigs.find(databaseId);
-            if (it != resourcePoolClassifierConfigs.end()) {
-                UpdateDatabaseResourcePoolClassifiers(databaseId, databaseInfo, std::move(it->second), actorContext);
-                resourcePoolClassifierConfigs.erase(it);
-            } else if (!databaseInfo.ResourcePoolsClassifiers.empty()) {
-                databaseInfo.ResourcePoolsClassifiers.clear();
-                databaseInfo.RankToClassifierInfo.clear();
-                databaseInfo.UserToResourcePool.clear();
+    void UpdateResourcePoolClassifiersInfo(std::shared_ptr<TResourcePoolClassifierSnapshot> snapshot, TActorContext actorContext) {
+        LastClassifierSnapshot = snapshot;
+        for (const auto& [databaseId, info] : snapshot->GetResourcePoolClassifierConfigs()) {
+            for (const auto& [_, classifier] : info.ByName) {
+                (void)GetPoolInfo(databaseId, classifier.GetClassifierSettings().ResourcePool, actorContext);
             }
-        }
-        for (auto& [databaseId, configsMap] : resourcePoolClassifierConfigs) {
-            UpdateDatabaseResourcePoolClassifiers(databaseId, *GetOrCreateDatabaseInfo(databaseId), std::move(configsMap), actorContext);
         }
     }
 
@@ -551,7 +573,25 @@ public:
         }
     }
 
+    TClassifierConfigsView GetClassifierViewFor(const TString& databaseId) const {
+        return TClassifierConfigsView(LastClassifierSnapshot, databaseId);
+    }
+
+
 private:
+    void BuildResourcePoolMapSnapshot() {
+        auto pools = std::make_shared<TResourcePoolMap>();
+
+        pools->reserve(PoolsCache.size());
+        for (const auto& [key, info] : PoolsCache) {
+            if (!info.Expired) {
+                pools->emplace(key, TResourcePoolEntry{info.Config, info.SecurityObject});
+            }
+        }
+        
+        LastResourcePoolMapSnapshot = std::move(pools);
+    }
+
     void UpdateResourcePoolClassifiersSubscription(TActorContext actorContext) {
         if (EnableResourcePools) {
             SubscribeOnResourcePoolClassifiers(actorContext);
@@ -567,55 +607,6 @@ private:
         }
     }
 
-    void UpdateDatabaseResourcePoolClassifiers(const TString& databaseId, TDatabaseInfo& databaseInfo, std::unordered_map<TString, TResourcePoolClassifierConfig>&& configsMap, TActorContext actorContext) {
-        if (databaseInfo.ResourcePoolsClassifiers == configsMap) {
-            return;
-        }
-
-        databaseInfo.ResourcePoolsClassifiers.swap(configsMap);
-        databaseInfo.UserToResourcePool.clear();
-        databaseInfo.RankToClassifierInfo.clear();
-        for (const auto& [_, classifier] : databaseInfo.ResourcePoolsClassifiers) {
-            const auto& classifierSettings = classifier.GetClassifierSettings();
-            databaseInfo.RankToClassifierInfo.insert({classifier.GetRank(), TClassifierInfo(classifierSettings)});
-            if (!PoolsCache.contains(classifierSettings.ResourcePool)) {
-                actorContext.Send(MakeKqpWorkloadServiceId(actorContext.SelfID.NodeId()), new NWorkload::TEvSubscribeOnPoolChanges(databaseId, classifierSettings.ResourcePool));
-            }
-        }
-    }
-
-    std::pair<TString, i64> GetPoolIdFromClassifiers(const TString& databaseId, const TString& userSID, TDatabaseInfo& databaseInfo, const TIntrusiveConstPtr<NACLib::TUserToken>& userToken, TActorContext actorContext) const {
-        auto& usersMap = databaseInfo.UserToResourcePool;
-        if (const auto it = usersMap.find(userSID); it != usersMap.end()) {
-            return it->second;
-        }
-
-        TString poolId = "";
-        i64 rank = -1;
-        for (const auto& [_, classifier] : databaseInfo.RankToClassifierInfo) {
-            if (classifier.MemberName != userSID) {
-                continue;
-            }
-
-            auto it = PoolsCache.find(GetPoolKey(databaseId, classifier.PoolId));
-            if (it == PoolsCache.end()) {
-                actorContext.Send(MakeKqpWorkloadServiceId(actorContext.SelfID.NodeId()), new NWorkload::TEvSubscribeOnPoolChanges(databaseId, classifier.PoolId));
-                continue;
-            }
-
-            if (userToken && !userToken->GetSerializedToken().empty() && !it->second.SecurityObject->CheckAccess(NACLib::DescribeSchema | NACLib::SelectRow, *userToken)) {
-                continue;
-            }
-
-            poolId = classifier.PoolId;
-            rank = classifier.Rank;
-            break;
-        }
-
-        usersMap[userSID] = {poolId, rank};
-        return {poolId, rank};
-    }
-
     TDatabaseInfo* GetOrCreateDatabaseInfo(const TString& databaseId) {
         if (const auto it = DatabasesCache.find(databaseId); it != DatabasesCache.end()) {
             return &it->second;
@@ -628,11 +619,19 @@ private:
         return it != DatabasesCache.end() ? &it->second : nullptr;
     }
 
-    static TString GetPoolKey(const TString& databaseId, const TString& poolId) {
-        return TStringBuilder() << databaseId << "/" << poolId;
+public:
+    const std::shared_ptr<const TResourcePoolClassifierSnapshot>& GetLastClassifierSnapshot() const {
+        return LastClassifierSnapshot;
+    }
+
+    const std::shared_ptr<const TResourcePoolMap>& GetLastResourcePoolMapSnapshot() const {
+        return LastResourcePoolMapSnapshot;
     }
 
 private:
+    std::shared_ptr<const TResourcePoolClassifierSnapshot> LastClassifierSnapshot;
+    std::shared_ptr<const TResourcePoolMap> LastResourcePoolMapSnapshot;
+
     std::unordered_map<TString, TPoolInfo> PoolsCache;
     std::unordered_map<TString, TDatabaseInfo> DatabasesCache;
 

@@ -1,4 +1,4 @@
-LIBRARY()
+LIBRARY(library-formats-arrow-splitter)
 
 SRCS(
     stats.cpp
@@ -10,5 +10,7 @@ PEERDIR(
     contrib/ydb/library/actors/core
     contrib/ydb/library/conclusion
 )
+
+GENERATE_ENUM_SERIALIZATION(stats.h)
 
 END()

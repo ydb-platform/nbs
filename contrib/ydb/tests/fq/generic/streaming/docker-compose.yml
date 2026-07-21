@@ -1,0 +1,21 @@
+services:
+  fq-connector-go:
+    build: ./connector
+    container_name: tests-fq-generic-streaming-fq-connector-go
+    ports:
+      - 2130
+    depends_on:
+      ydb:
+        condition: service_healthy
+
+  ydb:
+    build: ./ydb
+    container_name: tests-fq-generic-streaming-ydb
+    environment:
+      DB_USE_IN_MEMORY_PDISKS: "true"
+      POSTGRES_PASSWORD: password
+      POSTGRES_USER: user
+      YDB_DEFAULT_LOG_LEVEL: DEBUG
+    hostname: tests-fq-generic-streaming-ydb
+
+version: "2.4"

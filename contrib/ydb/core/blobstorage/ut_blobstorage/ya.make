@@ -1,21 +1,27 @@
 UNITTEST()
 
 FORK_SUBTESTS()
+SPLIT_FACTOR(300)
 
-IF (SANITIZER_TYPE OR WITH_VALGRIND)
-    TIMEOUT(3600)
+REQUIREMENTS(ram:32 cpu:4)
+
+IF (SANITIZER_TYPE)
     SIZE(LARGE)
-    TAG(ya:fat)
+    INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/large.inc)
 ELSE()
-    TIMEOUT(600)
     SIZE(MEDIUM)
 ENDIF()
 
 SRCS(
     acceleration.cpp
     assimilation.cpp
+    backpressure.cpp
     block_race.cpp
+    bsc_cache.cpp
+    cancellation.cpp
     counting_events.cpp
+    corrupted_reads.cpp
+    deadlines.cpp
     decommit_3dc.cpp
     defrag.cpp
     discover.cpp
@@ -25,7 +31,8 @@ SRCS(
     gc.cpp
     gc_quorum_3dc.cpp
     get.cpp
-    group_reconfiguration.cpp
+    get_block.cpp
+    group_mapping.cpp
     incorrect_queries.cpp
     index_restore_get.cpp
     main.cpp
@@ -33,15 +40,21 @@ SRCS(
     mirror3of4.cpp
     monitoring.cpp
     multiget.cpp
+    node_warden_cache.cpp
     patch.cpp
     recovery.cpp
     sanitize_groups.cpp
     scrub_fast.cpp
+    select_groups.cpp
     self_heal.cpp
+    shred.cpp
     snapshots.cpp
     space_check.cpp
     sync.cpp
-    ut_helpers.cpp
+    validation.cpp
+    vdisk_malfunction.cpp
+    group_size_in_units.cpp
+    pdisk_status_flags.cpp
 )
 
 PEERDIR(
@@ -51,9 +64,8 @@ PEERDIR(
     contrib/ydb/core/blobstorage/ut_blobstorage/lib
     contrib/ydb/core/blobstorage/vdisk/common
     contrib/ydb/core/blobstorage/vdisk/scrub
+    contrib/ydb/core/blobstorage/vdisk/synclog
 )
-
-REQUIREMENTS(ram:32)
 
 END()
 
@@ -61,17 +73,27 @@ RECURSE_FOR_TESTS(
     ut_balancing
     ut_blob_depot
     ut_blob_depot_fat
+    ut_bridge
+    ut_check_integrity
     ut_comp_defrag
+    ut_ddisk
     ut_donor
+    ut_group_mapping
     ut_huge
-    ut_group_reconfiguration
+    ut_startup_brokers
     ut_read_only_vdisk
     ut_osiris
+    ut_phantom_blobs
     ut_replication
     ut_scrub
+    ut_statestorage
     ut_vdisk_restart
+    ut_race
     ut_restart_pdisk
     ut_read_only_pdisk
     ut_stop_pdisk
     ut_cluster_balancing
+    ut_move_pdisk
+    ut_vdisk_internals
+    ut_oos
 )

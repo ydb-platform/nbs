@@ -11,9 +11,10 @@
 #include <contrib/ydb/core/scheme/scheme_borders.h>
 #include <contrib/ydb/core/scheme/scheme_types_proto.h>
 #include <contrib/ydb/core/engine/mkql_proto.h>
+#include <contrib/ydb/core/ydb_convert/ydb_convert.h>
 
 #include <contrib/ydb/library/yql/core/issue/yql_issue.h>
-#include <contrib/ydb/library/yql/core/issue/protos/issue_id.pb.h>
+#include <contrib/ydb/library/yql/public/issue/protos/issue_id.pb.h>
 #include <contrib/ydb/library/yql/public/issue/yql_issue_message.h>
 #include <contrib/ydb/library/yql/public/issue/yql_issue_manager.h>
 
@@ -91,25 +92,24 @@ namespace {
     };
 
     bool ParseRangeKey(
-            const NKikimrMiniKQL::TParams& proto,
-            TConstArrayRef<NScheme::TTypeInfo> keyTypes,
-            const TVector<bool>& notNullTypes,
+            const Ydb::TypedValue* proto,
+            TConstArrayRef<TConversionTypeInfo> keyTypes,
             TSerializedCellVec& buf,
             EParseRangeKeyExp exp,
             TVector<TString>& unresolvedKeys)
     {
         TVector<TCell> key;
-        TVector<TString> memoryOwner;
-        if (proto.HasValue()) {
-            if (!proto.HasType()) {
+        TMemoryPool pool(256);
+        if (proto) {
+            if (!proto->Hastype()) {
                 unresolvedKeys.push_back("No type was specified in the range key tuple");
                 return false;
             }
 
-            auto& value = proto.GetValue();
-            auto& type = proto.GetType();
+            auto& value = proto->Getvalue();
+            auto& type = proto->Gettype();
             TString errStr;
-            bool res = NMiniKQL::CellsFromTuple(&type, value, keyTypes, notNullTypes, true, key, errStr, memoryOwner);
+            bool res = NKikimr::CellsFromTuple(&type, value, keyTypes, true, true, key, errStr, pool);
             if (!res) {
                 unresolvedKeys.push_back("Failed to parse range key tuple: " + errStr);
                 return false;
@@ -487,6 +487,77 @@ private:
         Become(&TThis::StateWaitNavigate);
     }
 
+    TMaybe<TTableRange> BuildTableRange(TConstArrayRef<TConversionTypeInfo> keyTypeInfos) {
+        bool fromInclusive;
+        EParseRangeKeyExp fromExpand;
+        const Ydb::TypedValue* fromBound;
+        switch (Settings.KeyRange.from_bound_case()) {
+            case Ydb::Table::KeyRange::kGreaterOrEqual: {
+                fromInclusive = true;
+                fromExpand = EParseRangeKeyExp::TO_NULL;
+                fromBound = &Settings.KeyRange.Getgreater_or_equal();
+                break;
+            }
+            case Ydb::Table::KeyRange::kGreater: {
+                fromInclusive = false;
+                fromExpand = EParseRangeKeyExp::NONE;
+                fromBound = &Settings.KeyRange.Getgreater();
+                break;
+            }
+            default: {
+                fromInclusive = true;
+                fromExpand = EParseRangeKeyExp::TO_NULL;
+                fromBound = nullptr;
+                break;
+            }
+        }
+
+        bool toInclusive;
+        EParseRangeKeyExp toExpand;
+        const Ydb::TypedValue* toBound;
+        switch (Settings.KeyRange.to_bound_case()) {
+            case Ydb::Table::KeyRange::kLessOrEqual: {
+                toInclusive = true;
+                toExpand = EParseRangeKeyExp::NONE;
+                toBound = &Settings.KeyRange.Getless_or_equal();
+                break;
+            }
+            case Ydb::Table::KeyRange::kLess: {
+                toInclusive = false;
+                toExpand = EParseRangeKeyExp::TO_NULL;
+                toBound = &Settings.KeyRange.Getless();
+                break;
+            }
+            default: {
+                toInclusive = false;
+                toExpand = EParseRangeKeyExp::NONE;
+                toBound = nullptr;
+                break;
+            }
+        }
+
+        if (!ParseRangeKey(fromBound, keyTypeInfos, KeyFromValues, fromExpand, UnresolvedKeys) ||
+            !ParseRangeKey(toBound, keyTypeInfos,  KeyToValues, toExpand, UnresolvedKeys))
+        {
+            return Nothing();
+        }
+
+        if (KeyFromValues.GetCells().size() < keyTypeInfos.size() && !Settings.KeyRange.has_greater_or_equal()) {
+            // Default: non-inclusive for incomplete From, except when From is empty
+            fromInclusive = KeyFromValues.GetCells().size() == 0;
+        }
+
+        if (KeyToValues.GetCells().size() < keyTypeInfos.size() && !Settings.KeyRange.has_less_or_equal()) {
+            // Default: inclusive for incomplete To
+            toInclusive = true;
+        }
+
+        return {{
+            KeyFromValues.GetCells(), fromInclusive,
+            KeyToValues.GetCells(), toInclusive
+        }};
+    }
+
     void HandleNavigate(TEvTxProxySchemeCache::TEvNavigateKeySetResult::TPtr& ev, const TActorContext& ctx) {
         NSchemeCache::TSchemeCacheNavigate* resp = ev->Get()->Request.Get();
 
@@ -522,7 +593,7 @@ private:
         DomainInfo = res.DomainInfo;
         Y_ABORT_UNLESS(DomainInfo, "Missing DomainInfo in TEvNavigateKeySetResult");
 
-        if (TableId.IsSystemView() ||
+        if ((TableId.IsSystemView() || res.Kind == NSchemeCache::TSchemeCacheNavigate::KindSysView) ||
             TSysTables::IsSystemTable(TableId))
         {
             TString error = TStringBuilder()
@@ -535,8 +606,8 @@ private:
         }
 
         TVector<NScheme::TTypeInfo> keyTypes(res.Columns.size());
-        TVector<bool> notNullKeys(res.Columns.size());
         TVector<TKeyDesc::TColumnOp> columns(res.Columns.size());
+        TVector<TConversionTypeInfo> keyConversionTypesInfos(res.Columns.size());
         {
             size_t no = 0;
             size_t keys = 0;
@@ -546,7 +617,7 @@ private:
 
                 if (col.KeyOrder != -1) {
                     keyTypes[col.KeyOrder] = col.PType;
-                    notNullKeys[col.KeyOrder] = col.IsNotNullColumn;
+                    keyConversionTypesInfos[col.KeyOrder] = {col.PType, col.PTypeMod, col.IsNotNullColumn};
                     ++keys;
                 }
 
@@ -567,7 +638,7 @@ private:
             }
 
             keyTypes.resize(keys);
-            notNullKeys.resize(keys);
+            keyConversionTypesInfos.resize(keys);
         }
 
         if (!colNameToPos.empty()) {
@@ -588,42 +659,15 @@ private:
             return ReplyAndDie(TEvTxUserProxy::TEvProposeTransactionStatus::EStatus::ResolveError, NKikimrIssues::TStatusIds::SCHEME_ERROR, ctx);
         }
 
-        bool fromInclusive = Settings.KeyRange.GetFromInclusive();
-        bool toInclusive = Settings.KeyRange.GetToInclusive();
-        const EParseRangeKeyExp fromExpand = (
-            Settings.KeyRange.HasFrom()
-                ? (fromInclusive ? EParseRangeKeyExp::TO_NULL : EParseRangeKeyExp::NONE)
-                : EParseRangeKeyExp::TO_NULL);
-        const EParseRangeKeyExp toExpand = (
-            Settings.KeyRange.HasTo()
-                ? (toInclusive ? EParseRangeKeyExp::NONE : EParseRangeKeyExp::TO_NULL)
-                : EParseRangeKeyExp::NONE);
-
-        if (!ParseRangeKey(Settings.KeyRange.GetFrom(), keyTypes, notNullKeys,
-                        KeyFromValues, fromExpand, UnresolvedKeys) ||
-            !ParseRangeKey(Settings.KeyRange.GetTo(), keyTypes, notNullKeys,
-                        KeyToValues, toExpand, UnresolvedKeys))
-        {
+        const auto& maybeRange = BuildTableRange(keyConversionTypesInfos);
+        if (!maybeRange) {
             TxProxyMon->ResolveKeySetWrongRequest->Inc();
 
             IssueManager.RaiseIssue(MakeIssue(NKikimrIssues::TIssuesIds::KEY_PARSE_ERROR, "Failed to parse key ranges"));
 
             return ReplyAndDie(TEvTxUserProxy::TEvProposeTransactionStatus::EStatus::ResolveError, NKikimrIssues::TStatusIds::QUERY_ERROR, ctx);
         }
-
-        if (KeyFromValues.GetCells().size() < keyTypes.size() && !Settings.KeyRange.HasFromInclusive()) {
-            // Default: non-inclusive for incomplete From, except when From is empty
-            fromInclusive = KeyFromValues.GetCells().size() == 0;
-        }
-
-        if (KeyToValues.GetCells().size() < keyTypes.size() && !Settings.KeyRange.HasToInclusive()) {
-            // Default: inclusive for incomplete To
-            toInclusive = true;
-        }
-
-        TTableRange range(
-                KeyFromValues.GetCells(), fromInclusive,
-                KeyToValues.GetCells(), toInclusive);
+        const auto& range = *maybeRange;
 
         if (range.IsEmptyRange({keyTypes.begin(), keyTypes.end()})) {
             TxProxyMon->ResolveKeySetWrongRequest->Inc();
@@ -653,6 +697,7 @@ private:
         Y_ABORT_UNLESS(!ResolveInProgress, "Only one resolve request may be active at a time");
 
         auto request = MakeHolder<NSchemeCache::TSchemeCacheRequest>();
+        request->DatabaseName = Settings.DatabaseName;
         request->DomainOwnerId = DomainInfo->ExtractSchemeShard();
         request->ResultSet.emplace_back(std::move(KeyDesc));
 
@@ -1982,12 +2027,28 @@ private:
                 code = NKikimrIssues::TStatusIds::ERROR;
                 break;
 
-            case NKikimrTxDataShard::TEvProposeTransactionResult::BAD_REQUEST:
+            case NKikimrTxDataShard::TEvProposeTransactionResult::BAD_REQUEST: {
                 TxProxyMon->TxResultCancelled->Inc();
-                status = TEvTxUserProxy::TEvProposeTransactionStatus::EStatus::WrongRequest;
-                code = NKikimrIssues::TStatusIds::BAD_REQUEST;
-                break;
+                const auto& errors = msg->Record.GetError();
+                if (!errors.empty()
+                    && std::all_of(errors.begin(), errors.end(), [](const auto& err) {
+                        return err.GetKind() == NKikimrTxDataShard::TError_EKind_SNAPSHOT_NOT_EXIST;
+                    })) {
+                    // The shard replied that the snapshot that we need is not available there.
+                    // This can happen after two shards are merged, one with the snapshot, another
+                    // without (the snapshot won't be available on the merged shard).
+                    // In this case there isn't much we can do, except signal to the client that
+                    // there is nothing wrong with the request and that it can be retried
+                    // (ProxyShardTryLater maps to UNAVAILABLE grpc response status).
+                    status = TEvTxUserProxy::TEvProposeTransactionStatus::EStatus::ProxyShardTryLater;
+                    code = NKikimrIssues::TStatusIds::REJECTED;
+                } else {
+                    status = TEvTxUserProxy::TEvProposeTransactionStatus::EStatus::WrongRequest;
+                    code = NKikimrIssues::TStatusIds::BAD_REQUEST;
+                }
 
+                break;
+            }
             default:
                 TxProxyMon->TxResultFatal->Inc();
                 status = TEvTxUserProxy::TEvProposeTransactionStatus::EStatus::ProxyShardUnknown;
@@ -2625,7 +2686,7 @@ private:
                     shardRange.To.GetCells(), shardRange.ToInclusive,
                     oldShard->Ranges.front().From.GetCells(), oldShard->Ranges.front().FromInclusive))
             {
-                TXLOG_T("Ignoring new shard ShardId# " << oldShard->ShardId << " (nothing to read)");
+                TXLOG_T("Ignoring new shard ShardId# " << (oldShard ? oldShard->ShardId : 0) << " (nothing to read)");
 
                 // We don't want to read anything from current shard
                 state.ShardPosition = ShardList.end();

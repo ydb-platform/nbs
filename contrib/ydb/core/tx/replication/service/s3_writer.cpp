@@ -4,6 +4,7 @@
 #include "worker.h"
 
 #include <contrib/ydb/core/base/appdata.h>
+#include <contrib/ydb/core/tx/replication/ydb_proxy/topic_message.h>
 #include <contrib/ydb/core/wrappers/s3_storage_config.h>
 #include <contrib/ydb/core/wrappers/s3_wrapper.h>
 #include <contrib/ydb/library/actors/core/actor.h>
@@ -129,7 +130,7 @@ class TS3Writer
         CB_LOG_D("Handshake"
             << ": worker# " << Worker);
 
-        S3Client = RegisterWithSameMailbox(NWrappers::CreateS3Wrapper(ExternalStorageConfig->ConstructStorageOperator()));
+        S3Client = RegisterWithSameMailbox(NWrappers::CreateStorageWrapper(ExternalStorageConfig->ConstructStorageOperator()));
 
         WriteIdentity();
     }
@@ -166,7 +167,7 @@ class TS3Writer
             return;
         }
 
-        const TString key = GetPartKey(ev->Get()->Records[0].Offset, WriterName);
+        const TString key = GetPartKey(ev->Get()->Records[0].GetOffset(), WriterName);
 
         auto request = Aws::S3::Model::PutObjectRequest()
             .WithKey(key);
@@ -174,7 +175,7 @@ class TS3Writer
         TStringBuilder buffer;
 
         for (auto& rec : ev->Get()->Records) {
-            buffer << rec.Data << '\n';
+            buffer << rec.GetData() << '\n';
         }
 
         RequestInFlight = std::make_unique<TS3Request>(std::move(request), std::move(buffer));

@@ -3,7 +3,7 @@
  * encnames.c
  *	  Encoding names and routines for working with them.
  *
- * Portions Copyright (c) 2001-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2001-2023, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/common/encnames.c
@@ -61,8 +61,9 @@ static const pg_encname pg_encname_tbl[] =
 								 * Japanese, standard OSF */
 	{
 		"euckr", PG_EUC_KR
-	},							/* EUC-KR; Extended Unix Code for Korean , KS
-								 * X 1001 standard */
+	},							/* EUC-KR; Extended Unix Code for Korean
+								 * precomposed (Wansung) encoding, standard KS
+								 * X 1001 */
 	{
 		"euctw", PG_EUC_TW
 	},							/* EUC-TW; Extended Unix Code for
@@ -119,8 +120,8 @@ static const pg_encname pg_encname_tbl[] =
 	},							/* ISO-8859-9; RFC1345,KXS2 */
 	{
 		"johab", PG_JOHAB
-	},							/* JOHAB; Extended Unix Code for simplified
-								 * Chinese */
+	},							/* JOHAB; Korean combining (Johab) encoding,
+								 * standard KS X 1001 annex 3 */
 	{
 		"koi8", PG_KOI8R
 	},							/* _dirty_ alias for KOI8-R (backward
@@ -189,7 +190,9 @@ static const pg_encname pg_encname_tbl[] =
 	},							/* alias for WIN1258 */
 	{
 		"uhc", PG_UHC
-	},							/* UHC; Korean Windows CodePage 949 */
+	},							/* UHC; Unified Hangul Code, Microsoft Windows
+								 * CodePage 949; superset of EUC-KR covering
+								 * all 11,172 precomposed Hangul syllables */
 	{
 		"unicode", PG_UTF8
 	},							/* alias for UTF8 */
@@ -451,6 +454,9 @@ static const char *const pg_enc2icu_tbl[] =
 	"KOI8-U",					/* PG_KOI8U */
 };
 
+StaticAssertDecl(lengthof(pg_enc2icu_tbl) == PG_ENCODING_BE_LAST + 1,
+				 "pg_enc2icu_tbl incomplete");
+
 
 /*
  * Is this encoding supported by ICU?
@@ -469,9 +475,6 @@ is_encoding_supported_by_icu(int encoding)
 const char *
 get_encoding_name_for_icu(int encoding)
 {
-	StaticAssertStmt(lengthof(pg_enc2icu_tbl) == PG_ENCODING_BE_LAST + 1,
-					 "pg_enc2icu_tbl incomplete");
-
 	if (!PG_VALID_BE_ENCODING(encoding))
 		return NULL;
 	return pg_enc2icu_tbl[encoding];

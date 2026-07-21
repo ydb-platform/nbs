@@ -1,9 +1,9 @@
 #pragma once
 
 #include "contrib/ydb/public/lib/ydb_cli/commands/ydb_command.h"
-#include <contrib/ydb/public/sdk/cpp/client/ydb_topic/topic.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/topic/client.h>
 #include <contrib/ydb/public/lib/ydb_cli/common/format.h>
-#include <contrib/ydb/public/lib/ydb_cli/common/interruptible.h>
+#include <contrib/ydb/public/lib/ydb_cli/common/interruptable.h>
 #include <contrib/ydb/public/lib/ydb_cli/topic/topic_metadata_fields.h>
 
 namespace NYdb::NConsoleClient {
@@ -18,7 +18,8 @@ namespace NYdb::NConsoleClient {
         TTopicWriterParams(EMessagingFormat inputFormat, TMaybe<TString> delimiter,
                            ui64 messageSizeLimit, TMaybe<TDuration> batchDuration,
                            TMaybe<ui64> batchSize, TMaybe<ui64> batchMessagesCount,
-                           ETransformBody transform);
+                           ETransformBody transform,
+                           TMaybe<TDuration> messagesWaitTimeout);
         TTopicWriterParams(const TTopicWriterParams&) = default;
         TTopicWriterParams(TTopicWriterParams&&) = default;
 
@@ -30,6 +31,7 @@ namespace NYdb::NConsoleClient {
         GETTER(EMessagingFormat, MessagingFormat);
         GETTER(NTopic::ECodec, Codec);
         GETTER(ETransformBody, Transform);
+        GETTER(TMaybe<TDuration>, MessagesWaitTimeout);
 
     private:
         TMaybe<TString> File_;
@@ -42,6 +44,7 @@ namespace NYdb::NConsoleClient {
         TMaybe<ui64> BatchMessagesCount_;
         NTopic::ECodec Codec_ = NTopic::ECodec::RAW;
         ETransformBody Transform_ = ETransformBody::None;
+        TMaybe<TDuration> MessagesWaitTimeout_;
 
         ui64 MessageSizeLimit_ = 0;
     };

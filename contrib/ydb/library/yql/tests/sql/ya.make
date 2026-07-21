@@ -1,8 +1,7 @@
-RECURSE(
-    dq_file
-    hybrid_file
-    solomon
+SUBSCRIBER(g:yql)
+
+RECURSE_FOR_TESTS(
+    minirun
     sql2yql
-    yt_native_file
 )
 

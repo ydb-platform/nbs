@@ -1,4 +1,3 @@
-#include <contrib/ydb/core/fq/libs/actors/logging/log.h>
 #include <contrib/ydb/core/fq/libs/control_plane_config/control_plane_config.h>
 #include <contrib/ydb/core/fq/libs/control_plane_proxy/control_plane_proxy.h>
 #include <contrib/ydb/core/fq/libs/control_plane_storage/control_plane_storage.h>
@@ -16,6 +15,7 @@
 #include <contrib/ydb/core/fq/libs/control_plane_proxy/events/events.h>
 
 #include <contrib/ydb/library/actors/core/executor_pool_basic.h>
+#include <contrib/ydb/library/actors/core/log.h>
 #include <contrib/ydb/library/actors/core/scheduler_basic.h>
 #include <library/cpp/testing/unittest/registar.h>
 

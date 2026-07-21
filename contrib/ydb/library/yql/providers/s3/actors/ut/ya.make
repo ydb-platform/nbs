@@ -2,8 +2,6 @@ IF (NOT OS_WINDOWS)
 
 UNITTEST_FOR(contrib/ydb/library/yql/providers/s3/actors)
 
-TAG(ya:manual)
-
 SRCS(
     yql_arrow_push_down_ut.cpp
 )

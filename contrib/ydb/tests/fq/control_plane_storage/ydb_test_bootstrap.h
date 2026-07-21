@@ -1,5 +1,6 @@
 #pragma once
 
+#include <contrib/ydb/core/base/backtrace.h>
 #include <contrib/ydb/core/fq/libs/control_plane_storage/control_plane_storage.h>
 #include <contrib/ydb/core/fq/libs/control_plane_storage/message_builders.h>
 #include <contrib/ydb/core/fq/libs/control_plane_storage/schema.h>
@@ -12,8 +13,9 @@
 #include <contrib/ydb/core/testlib/basics/runtime.h>
 #include <contrib/ydb/core/fq/libs/config/protos/issue_id.pb.h>
 #include <contrib/ydb/core/fq/libs/init/init.h>
+#include <contrib/ydb/library/testlib/common/test_utils.h>
 #include <contrib/ydb/library/security/ydb_credentials_provider_factory.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_result/result.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/result/result.h>
 
 #include <contrib/ydb/core/testlib/basics/runtime.h>
 #include <contrib/ydb/core/testlib/tablet_helpers.h>
@@ -31,6 +33,9 @@
 #include <contrib/ydb/library/actors/core/executor_pool_basic.h>
 #include <contrib/ydb/library/actors/core/log_iface.h>
 #include <contrib/ydb/library/actors/core/scheduler_basic.h>
+
+#include <contrib/ydb/tests/tools/kqprun/runlib/utils.h>
+
 #include <library/cpp/retry/retry.h>
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -41,6 +46,7 @@ namespace NFq {
 
 using namespace NActors;
 using namespace NKikimr;
+using namespace NKikimrRun;
 
 //////////////////////////////////////////////////////
 
@@ -96,6 +102,8 @@ struct TTestBootstrap {
     TTestBootstrap(std::string tablePrefix, const NConfig::TControlPlaneStorageConfig& config = {})
         : Config(config)
     {
+        NTestUtils::SetupSignalHandlers();
+
         Cerr << "Netstat: " << Exec("netstat --all --program") << Endl;
         Cerr << "Process stat: " << Exec("ps aux") << Endl;
         Cerr << "YDB receipt endpoint: " << GetEnv("YDB_ENDPOINT") << ", database: " << GetEnv("YDB_DATABASE") << Endl;

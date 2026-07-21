@@ -1,5 +1,6 @@
 #pragma once
 #include <contrib/ydb/core/tx/columnshard/engines/changes/abstract/abstract.h>
+
 #include <contrib/ydb/library/accessor/accessor.h>
 
 namespace NKikimr::NOlap::NActualizer {
@@ -11,10 +12,20 @@ private:
 
 public:
     void StartActualization(const NActualizer::TRWAddress& address) {
+        YDB_LOG_DEBUG_COMP(NKikimrServices::TX_COLUMNSHARD_ACTUALIZATION, "",
+            {"event", "actualization_start"},
+            {"count", ActualizationsInProgress[address]},
+            {"limit", GetLimitForAddress(address)},
+            {"rw", address.DebugString()});
         AFL_VERIFY(++ActualizationsInProgress[address] <= (i32)GetLimitForAddress(address));
     }
 
     void FinishActualization(const NActualizer::TRWAddress& address) {
+        YDB_LOG_DEBUG_COMP(NKikimrServices::TX_COLUMNSHARD_ACTUALIZATION, "",
+            {"event", "actualization_finished"},
+            {"count", ActualizationsInProgress[address]},
+            {"limit", GetLimitForAddress(address)},
+            {"rw", address.DebugString()});
         AFL_VERIFY(--ActualizationsInProgress[address] >= 0);
     }
 
@@ -28,4 +39,4 @@ public:
     }
 };
 
-}
+}   // namespace NKikimr::NOlap::NActualizer

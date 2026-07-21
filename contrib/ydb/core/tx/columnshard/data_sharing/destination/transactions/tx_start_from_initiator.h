@@ -1,35 +1,43 @@
 #pragma once
 #include <contrib/ydb/core/tx/columnshard/columnshard_impl.h>
-#include <contrib/ydb/core/tx/columnshard/data_sharing/common/transactions/tx_extension.h>
 #include <contrib/ydb/core/tx/columnshard/data_sharing/destination/session/destination.h>
+#include <contrib/ydb/core/tx/columnshard/tablet/ext_tx_base.h>
 
 namespace NKikimr::NOlap::NDataSharing {
 
-class TTxProposeFromInitiator: public TExtendedTransactionBase<NColumnShard::TColumnShard> {
+class TTxProposeFromInitiator: public NColumnShard::TExtendedTransactionBase {
 private:
-    using TBase = TExtendedTransactionBase<NColumnShard::TColumnShard>;
+    using TBase = NColumnShard::TExtendedTransactionBase;
     std::shared_ptr<TDestinationSession> Session;
     THashMap<TString, std::shared_ptr<TDestinationSession>>* Sessions;
+
 protected:
     virtual bool DoExecute(NTabletFlatExecutor::TTransactionContext& txc, const TActorContext& ctx) override;
     virtual void DoComplete(const TActorContext& ctx) override;
+
 public:
-    TTxProposeFromInitiator(NColumnShard::TColumnShard* self, const std::shared_ptr<TDestinationSession>& session, THashMap<TString, std::shared_ptr<TDestinationSession>>& sessions, const TString& info)
+    TTxProposeFromInitiator(NColumnShard::TColumnShard* self, const std::shared_ptr<TDestinationSession>& session,
+        THashMap<TString, std::shared_ptr<TDestinationSession>>& sessions, const TString& info)
         : TBase(self, info)
         , Session(session)
-        , Sessions(&sessions) {
+        , Sessions(&sessions)
+    {
     }
 
-    TTxType GetTxType() const override { return NColumnShard::TXTYPE_DATA_SHARING_PROPOSE_FROM_INITIATOR; }
+    TTxType GetTxType() const override {
+        return NColumnShard::TXTYPE_DATA_SHARING_PROPOSE_FROM_INITIATOR;
+    }
 };
 
-class TTxConfirmFromInitiator: public TExtendedTransactionBase<NColumnShard::TColumnShard> {
+class TTxConfirmFromInitiator: public NColumnShard::TExtendedTransactionBase {
 private:
-    using TBase = TExtendedTransactionBase<NColumnShard::TColumnShard>;
+    using TBase = NColumnShard::TExtendedTransactionBase;
     std::shared_ptr<TDestinationSession> Session;
+
 protected:
     virtual bool DoExecute(NTabletFlatExecutor::TTransactionContext& txc, const TActorContext& ctx) override;
     virtual void DoComplete(const TActorContext& ctx) override;
+
 public:
     TTxConfirmFromInitiator(NColumnShard::TColumnShard* self, const std::shared_ptr<TDestinationSession>& session, const TString& info)
         : TBase(self, info)
@@ -37,8 +45,9 @@ public:
     {
     }
 
-    TTxType GetTxType() const override { return NColumnShard::TXTYPE_DATA_SHARING_CONFIRM_FROM_INITIATOR; }
+    TTxType GetTxType() const override {
+        return NColumnShard::TXTYPE_DATA_SHARING_CONFIRM_FROM_INITIATOR;
+    }
 };
 
-
-}
+}   // namespace NKikimr::NOlap::NDataSharing

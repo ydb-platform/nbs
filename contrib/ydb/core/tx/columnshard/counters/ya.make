@@ -8,21 +8,28 @@ SRCS(
     columnshard.cpp
     common_data.cpp
     engine_logs.cpp
+    histogram_borders.cpp
     indexation.cpp
-    insert_table.cpp
     req_tracer.cpp
     scan.cpp
     splitter.cpp
+    portions.cpp
+    writes_monitor.cpp
+    portion_index.cpp
+    duplicate_filtering.cpp
+    error_collector.cpp
 )
 
 PEERDIR(
     library/cpp/monlib/dynamic_counters
     contrib/ydb/core/tx/columnshard/counters/aggregation
-    contrib/ydb/core/tx/columnshard/counters/common
+    contrib/ydb/library/signals
     contrib/ydb/core/base
+    contrib/ydb/library/actors/core
+    contrib/ydb/core/kqp/compute_actor
 )
 
-GENERATE_ENUM_SERIALIZATION(columnshard.h)
+GENERATE_ENUM_SERIALIZATION_WITH_HEADER(columnshard.h)
 GENERATE_ENUM_SERIALIZATION(scan.h)
 
 END()

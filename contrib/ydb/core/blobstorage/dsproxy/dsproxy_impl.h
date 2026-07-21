@@ -2,6 +2,7 @@
 
 #include "defs.h"
 #include "dsproxy.h"
+#include "dsproxy_test_helpers.h"
 
 #include <contrib/ydb/core/blobstorage/base/utility.h>
 
@@ -38,16 +39,20 @@ class TBlobStorageGroupProxy : public TActorBootstrapped<TBlobStorageGroupProxy>
     struct TBatchedQueue {
         TBatchedVec<TEventPtr> Queue;
         ui64 Bytes = 0;
-        ui64 RequestCount = 0;
     };
+
+    using TBatchedPutQueue = TBatchedQueue<TEvBlobStorage::TEvPut::TPtr>;
 
     struct TPutBatchedBucket {
         NKikimrBlobStorage::EPutHandleClass HandleClass;
         TEvBlobStorage::TEvPut::ETactic Tactic;
+        bool ReduceInterpileTraffic;
 
-        TPutBatchedBucket(NKikimrBlobStorage::EPutHandleClass handleClass, TEvBlobStorage::TEvPut::ETactic tactic)
+        TPutBatchedBucket(NKikimrBlobStorage::EPutHandleClass handleClass, TEvBlobStorage::TEvPut::ETactic tactic,
+                bool reduceInterpileTraffic)
             : HandleClass(handleClass)
             , Tactic(tactic)
+            , ReduceInterpileTraffic(reduceInterpileTraffic)
         {
             Y_ABORT_UNLESS(NKikimrBlobStorage::EPutHandleClass_MIN <= handleClass &&
                     NKikimrBlobStorage::EPutHandleClass_MAX >= handleClass, "incorrect PutHandleClass");
@@ -71,7 +76,7 @@ class TBlobStorageGroupProxy : public TActorBootstrapped<TBlobStorageGroupProxy>
     bool UseActorSystemTimeInBSQueue;
     bool IsLimitedKeyless = false;
     bool IsFullMonitoring = false; // current state of monitoring
-    ui32 MinREALHugeBlobInBytes = 0;
+    ui32 MinHugeBlobInBytes = 0;
 
     TActorId MonActor;
     TIntrusivePtr<TBlobStorageGroupProxyMon> Mon;
@@ -95,9 +100,10 @@ class TBlobStorageGroupProxy : public TActorBootstrapped<TBlobStorageGroupProxy>
     static constexpr ui64 PutTacticCount = TEvBlobStorage::TEvPut::TacticCount;
     static_assert(PutTacticCount <= 10);
 
-    TBatchedQueue<TEvBlobStorage::TEvPut::TPtr> BatchedPuts[PutHandleClassCount][PutTacticCount];
-    static constexpr ui64 PutBatchecBucketCount = PutHandleClassCount * PutTacticCount;
-    TStackVec<TPutBatchedBucket, PutBatchecBucketCount> PutBatchedBucketQueue;
+    TBatchedPutQueue BatchedPuts[PutHandleClassCount][PutTacticCount][2];
+    static constexpr ui64 PutBatchedBucketCount = PutHandleClassCount * PutTacticCount * 2;
+    TStackVec<TPutBatchedBucket, PutBatchedBucketCount> PutBatchedBucketQueue;
+    THashSet<TLogoBlobID> BatchedPutIds;
 
     TEvStopBatchingGetRequests::TPtr StopGetBatchingEvent;
     ui64 BatchedGetRequestCount = 0;
@@ -139,6 +145,8 @@ class TBlobStorageGroupProxy : public TActorBootstrapped<TBlobStorageGroupProxy>
             Mon->EventGet->Inc();
         } else if constexpr (std::is_same_v<TEvent, TEvBlobStorage::TEvBlock>) {
             Mon->EventBlock->Inc();
+        } else if constexpr (std::is_same_v<TEvent, TEvBlobStorage::TEvGetBlock>) {
+            Mon->EventGetBlock->Inc();
         } else if constexpr (std::is_same_v<TEvent, TEvBlobStorage::TEvDiscover>) {
             Mon->EventDiscover->Inc();
         } else if constexpr (std::is_same_v<TEvent, TEvBlobStorage::TEvRange>) {
@@ -151,6 +159,8 @@ class TBlobStorageGroupProxy : public TActorBootstrapped<TBlobStorageGroupProxy>
             Mon->EventPatch->Inc();
         } else if constexpr (std::is_same_v<TEvent, TEvBlobStorage::TEvAssimilate>) {
             Mon->EventAssimilate->Inc();
+        } else if constexpr (std::is_same_v<TEvent, TEvBlobStorage::TEvCheckIntegrity>) {
+            Mon->EventCheckIntegrity->Inc();
         }
     }
 
@@ -178,9 +188,19 @@ class TBlobStorageGroupProxy : public TActorBootstrapped<TBlobStorageGroupProxy>
     std::optional<TCypherKey> CypherKey;
 
     void Handle(TEvBlobStorage::TEvConfigureProxy::TPtr ev);
-    void ApplyGroupInfo(TIntrusivePtr<TBlobStorageGroupInfo>&& info, TIntrusivePtr<TStoragePoolCounters>&& counters);
+    void ApplyGroupInfo(TIntrusivePtr<TBlobStorageGroupInfo>&& info, TNodeLayoutInfoPtr nodeLayoutInfo,
+        TIntrusivePtr<TStoragePoolCounters>&& counters);
 
     void WakeupUnconfigured(TEvConfigureQueryTimeout::TPtr ev);
+
+    enum class EUnconfiguredStateReason : ui8 {
+        UnknownGroup = 0,
+        GenerationChanged,
+    };
+    static TString UnconfiguredStateReasonStr(EUnconfiguredStateReason reason);
+
+    EUnconfiguredStateReason UnconfiguredStateReason;
+    TMonotonic UnconfiguredStateTs = TMonotonic::Zero();
 
    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Establishing Sessions state
@@ -191,13 +211,17 @@ class TBlobStorageGroupProxy : public TActorBootstrapped<TBlobStorageGroupProxy>
     void WakeupEstablishingSessions(TEvEstablishingSessionTimeout::TPtr ev);
     void Handle(TEvProxyQueueState::TPtr& ev);
 
+    TMonotonic EstablishingSessionsStateTs = TMonotonic::Zero();
+
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Put to init queue
 
     template<typename TEvent>
     void HandleEnqueue(TAutoPtr<TEventHandle<TEvent>> ev) {
-        LOG_DEBUG_S(*TlsActivationContext, NKikimrServices::BS_PROXY, "Group# " << GroupId
-                << " HandleEnqueue# " << ev->Get()->Print(false) << " Marker# DSP17");
+        YDB_LOG_DEBUG_COMP(NKikimrServices::BS_PROXY, "Dump group, handleEnqueue, marker",
+            {"group", GroupId},
+            {"handleEnqueue", ev->Get()->Print(false)},
+            {"marker", "DSP17"});
         if constexpr (std::is_same_v<TEvent, TEvBlobStorage::TEvGet>) {
             LWTRACK(DSProxyGetEnqueue, ev->Get()->Orbit);
         } else if constexpr (std::is_same_v<TEvent, TEvBlobStorage::TEvPut>) {
@@ -206,14 +230,22 @@ class TBlobStorageGroupProxy : public TActorBootstrapped<TBlobStorageGroupProxy>
         UnconfiguredBufferSize += ev->Get()->CalculateSize();
         InitQueue.emplace_back(ev.Release());
         if (UnconfiguredBufferSize > UnconfiguredBufferSizeLimit && InitQueue.size() > 1) {
-            LOG_ERROR_S(*TlsActivationContext, NKikimrServices::BS_PROXY, "Group# " << GroupId
-                << " UnconfiguredBufferSize# " << UnconfiguredBufferSize << " > " << UnconfiguredBufferSizeLimit
-                << ", dropping the queue (" << (ui64)InitQueue.size() << ")" << " Marker# DSP08");
+            YDB_LOG_ERROR_COMP(NKikimrServices::BS_PROXY, ">, dropping the queue",
+                {"group", GroupId},
+                {"unconfiguredBufferSize", UnconfiguredBufferSize},
+                {"unconfiguredBufferSizeLimit", UnconfiguredBufferSizeLimit},
+                {"size", (ui64)InitQueue.size()},
+                {"marker", "DSP08"});
             if (CurrentStateFunc() == &TThis::StateUnconfigured) {
-                ErrorDescription = "Too many requests while waiting for configuration (DSPE2).";
+                ErrorDescription = TStringBuilder() << "Too many requests while waiting for configuration (DSPE2)."
+                        << " GroupId# " << GroupId
+                        << " UnconfiguredStateTs# " << UnconfiguredStateTs
+                        << " UnconfiguredStateReason " << UnconfiguredStateReasonStr(UnconfiguredStateReason);
                 SetStateUnconfiguredTimeout();
             } else if (CurrentStateFunc() == &TThis::StateEstablishingSessions) {
-                ErrorDescription = "Too many requests while establishing sessions (DSPE5).";
+                ErrorDescription = TStringBuilder() << "Too many requests while establishing sessions (DSPE5)."
+                        << " GroupId# " << GroupId
+                        << " EstablishingSessionsStateTs# " << EstablishingSessionsStateTs;
                 SetStateEstablishingSessionsTimeout();
             }
         }
@@ -249,8 +281,8 @@ class TBlobStorageGroupProxy : public TActorBootstrapped<TBlobStorageGroupProxy>
         }
     }
 
-    void ProcessBatchedPutRequests(TBatchedQueue<TEvBlobStorage::TEvPut::TPtr> &batchedPuts,
-            NKikimrBlobStorage::EPutHandleClass handleClass, TEvBlobStorage::TEvPut::ETactic tactic);
+    void ProcessBatchedPutRequests(TBatchedPutQueue &batchedPuts, NKikimrBlobStorage::EPutHandleClass handleClass,
+        TEvBlobStorage::TEvPut::ETactic tactic, bool reduceInterpileTraffic);
     void Handle(TEvStopBatchingPutRequests::TPtr& ev);
     void Handle(TEvStopBatchingGetRequests::TPtr& ev);
 
@@ -258,6 +290,7 @@ class TBlobStorageGroupProxy : public TActorBootstrapped<TBlobStorageGroupProxy>
     void PushRequest(IActor *actor, TInstant deadline);
     void CheckDeadlines();
     void HandleNormal(TEvBlobStorage::TEvGet::TPtr &ev);
+    void HandleNormal(TEvBlobStorage::TEvGetBlock::TPtr &ev);
     void HandleNormal(TEvBlobStorage::TEvPut::TPtr &ev);
     void HandleNormal(TEvBlobStorage::TEvBlock::TPtr &ev);
     void HandleNormal(TEvBlobStorage::TEvPatch::TPtr &ev);
@@ -266,9 +299,11 @@ class TBlobStorageGroupProxy : public TActorBootstrapped<TBlobStorageGroupProxy>
     void HandleNormal(TEvBlobStorage::TEvCollectGarbage::TPtr &ev);
     void HandleNormal(TEvBlobStorage::TEvStatus::TPtr &ev);
     void HandleNormal(TEvBlobStorage::TEvAssimilate::TPtr &ev);
+    void HandleNormal(TEvBlobStorage::TEvCheckIntegrity::TPtr &ev);
     void Handle(TEvBlobStorage::TEvBunchOfEvents::TPtr ev);
     void Handle(TEvDeathNote::TPtr ev);
     void Handle(TEvGetQueuesInfo::TPtr ev);
+    void Handle(TEvExplicitMultiPut::TPtr ev);
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Error state
@@ -296,10 +331,12 @@ class TBlobStorageGroupProxy : public TActorBootstrapped<TBlobStorageGroupProxy>
         auto response = ev->Get()->MakeErrorResponse(status, ErrorDescription, GroupId);
         SetExecutionRelay(*response, std::move(ev->Get()->ExecutionRelay));
         NActors::NLog::EPriority priority = CheckPriorityForErrorState();
-        LOG_LOG_S(*TlsActivationContext, priority, NKikimrServices::BS_PROXY, ExtraLogInfo << "Group# " << GroupId
-                << " HandleError ev# " << ev->Get()->Print(false)
-                << " Response# " << response->Print(false)
-                << " Marker# DSP31");
+        YDB_LOG_COMP(priority, NKikimrServices::BS_PROXY, "HandleError",
+            {"extraLogInfo", ExtraLogInfo},
+            {"group", GroupId},
+            {"ev", ev->Get()->Print(false)},
+            {"response", response->Print(false)},
+            {"marker", "DSP31"});
         Send(ev->Sender, response.release(), 0, ev->Cookie);
     }
 
@@ -316,16 +353,14 @@ public:
         return NKikimrServices::TActivity::BS_PROXY_ACTOR;
     }
 
-    TBlobStorageGroupProxy(TIntrusivePtr<TBlobStorageGroupInfo>&& info, bool forceWaitAllDrives,
-            TIntrusivePtr<TDsProxyNodeMon> &nodeMon, TIntrusivePtr<TStoragePoolCounters>&& storagePoolCounters,
-            const TBlobStorageProxyParameters& params);
+    TBlobStorageGroupProxy(TIntrusivePtr<TBlobStorageGroupInfo>&& info, TNodeLayoutInfoPtr nodeLayoutInfo,
+        bool forceWaitAllDrives, TIntrusivePtr<TDsProxyNodeMon> &nodeMon,
+        TIntrusivePtr<TStoragePoolCounters>&& storagePoolCounters, const TBlobStorageProxyParameters& params);
 
     TBlobStorageGroupProxy(ui32 groupId, bool isEjected, TIntrusivePtr<TDsProxyNodeMon> &nodeMon,
-            const TBlobStorageProxyParameters& params);
+        const TBlobStorageProxyParameters& params);
 
     void Bootstrap();
-
-    void Handle(TEvInterconnect::TEvNodesInfo::TPtr& ev);
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Configuration process
@@ -355,7 +390,6 @@ public:
         hFunc(TEvBlobStorage::TEvBunchOfEvents, Handle);
         hFunc(TEvTimeStats, Handle);
         cFunc(TEvents::TSystem::Poison, PassAway);
-        hFunc(TEvInterconnect::TEvNodesInfo, Handle);
         hFunc(TEvBlobStorage::TEvConfigureProxy, Handle);
         hFunc(TEvProxyQueueState, Handle);
         cFunc(EvUpdateResponsiveness, HandleUpdateResponsiveness);
@@ -366,11 +400,13 @@ public:
         fFunc(Ev5min, Handle5min);
         cFunc(EvCheckDeadlines, CheckDeadlines);
         hFunc(TEvGetQueuesInfo, Handle);
+        hFunc(TEvExplicitMultiPut, Handle);
     )
 
 #define HANDLE_EVENTS(HANDLER) \
     hFunc(TEvBlobStorage::TEvPut, HANDLER); \
     hFunc(TEvBlobStorage::TEvGet, HANDLER); \
+    hFunc(TEvBlobStorage::TEvGetBlock, HANDLER); \
     hFunc(TEvBlobStorage::TEvBlock, HANDLER); \
     hFunc(TEvBlobStorage::TEvDiscover, HANDLER); \
     hFunc(TEvBlobStorage::TEvRange, HANDLER); \
@@ -378,6 +414,7 @@ public:
     hFunc(TEvBlobStorage::TEvStatus, HANDLER); \
     hFunc(TEvBlobStorage::TEvPatch, HANDLER); \
     hFunc(TEvBlobStorage::TEvAssimilate, HANDLER); \
+    hFunc(TEvBlobStorage::TEvCheckIntegrity, HANDLER); \
     /**/
 
     STFUNC(StateUnconfigured) {
@@ -421,6 +458,30 @@ public:
         switch (ev->GetTypeRewrite()) {
             HANDLE_EVENTS(HandleError);
             default: return StateCommon(ev);
+        }
+    }
+
+    TActorId BridgeProxyId;
+
+    STFUNC(StateForward) {
+        switch (ev->GetTypeRewrite()) {
+            case TEvents::TSystem::Poison:
+                PassAway();
+                [[fallthrough]];
+            case TEvBlobStorage::EvConfigureProxy:
+            case TEvBlobStorage::EvPut:
+            case TEvBlobStorage::EvGet:
+            case TEvBlobStorage::EvGetBlock:
+            case TEvBlobStorage::EvBlock:
+            case TEvBlobStorage::EvDiscover:
+            case TEvBlobStorage::EvRange:
+            case TEvBlobStorage::EvCollectGarbage:
+            case TEvBlobStorage::EvStatus:
+            case TEvBlobStorage::EvPatch:
+            case TEvBlobStorage::EvAssimilate:
+            case TEvBlobStorage::EvCheckIntegrity:
+                TActivationContext::Send(IEventHandle::Forward(ev, BridgeProxyId));
+                break;
         }
     }
 };

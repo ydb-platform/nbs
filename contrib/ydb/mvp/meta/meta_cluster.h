@@ -1,4 +1,8 @@
 #pragma once
+#include <contrib/ydb/mvp/core/core_ydb.h>
+#include <contrib/ydb/mvp/core/core_ydb_impl.h>
+#include <contrib/ydb/mvp/core/merger.h>
+
 #include <util/generic/hash_set.h>
 #include <contrib/ydb/library/actors/core/actorsystem.h>
 #include <contrib/ydb/library/actors/core/actor.h>
@@ -8,16 +12,12 @@
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/http/http.h>
 #include <contrib/ydb/public/lib/deprecated/client/grpc_client.h>
-#include <contrib/ydb/library/grpc/client/grpc_client_low.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_table/table.h>
+#include <contrib/ydb/public/sdk/cpp/src/library/grpc/client/grpc_client_low.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/table/table.h>
 #include <contrib/ydb/public/api/grpc/ydb_scripting_v1.grpc.pb.h>
 #include <contrib/ydb/public/api/protos/ydb_discovery.pb.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_result/result.h>
-#include <contrib/ydb/core/kqp/provider/yql_kikimr_results.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/result/result.h>
 #include <contrib/ydb/core/ydb_convert/ydb_convert.h>
-#include <contrib/ydb/mvp/core/core_ydb.h>
-#include <contrib/ydb/mvp/core/core_ydb_impl.h>
-#include <contrib/ydb/mvp/core/merger.h>
 
 namespace NMVP {
 
@@ -44,11 +44,11 @@ public:
     {}
 
     void Bootstrap(const NActors::TActorContext& ctx) {
-        NActors::TActorSystem* actorSystem = ctx.ExecutorThread.ActorSystem;
+        NActors::TActorSystem* actorSystem = ctx.ActorSystem();
         NActors::TActorId actorId = ctx.SelfID;
 
         {
-            Location.GetTableClient(Request, NYdb::NTable::TClientSettings().Database(Location.RootDomain))
+            Location.GetTableClient(TMVP::GetMetaDatabaseClientSettings(Request, Location))
                 .CreateSession().Subscribe([actorId, actorSystem](const NYdb::NTable::TAsyncCreateSessionResult& result) {
                 NYdb::NTable::TAsyncCreateSessionResult res(result);
                 actorSystem->Send(actorId, new TEvPrivate::TEvCreateSessionResult(res.ExtractValue()));
@@ -63,7 +63,7 @@ public:
         if (result.IsSuccess()) {
             Session = result.GetSession();
             TString query = TStringBuilder() << "DECLARE $name AS Utf8; SELECT * FROM `" + Location.RootDomain + "/ydb/MasterClusterExt.db` WHERE name=$name";
-            NActors::TActorSystem* actorSystem = ctx.ExecutorThread.ActorSystem;
+            NActors::TActorSystem* actorSystem = ctx.ActorSystem();
             NActors::TActorId actorId = ctx.SelfID;
             TString name(Request.Parameters["name"]);
             if (name.empty()) {

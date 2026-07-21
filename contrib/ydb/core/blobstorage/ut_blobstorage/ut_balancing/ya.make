@@ -1,10 +1,9 @@
 UNITTEST_FOR(contrib/ydb/core/blobstorage/ut_blobstorage)
 
     SIZE(MEDIUM)
+    REQUIREMENTS(cpu:2)
 
     FORK_SUBTESTS()
-
-    TIMEOUT(600)
 
     SRCS(
         balancing.cpp

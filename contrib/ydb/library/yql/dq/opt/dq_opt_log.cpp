@@ -4,13 +4,14 @@
 
 #include <contrib/ydb/library/yql/core/expr_nodes/yql_expr_nodes.h>
 #include <contrib/ydb/library/yql/core/yql_aggregate_expander.h>
+#include <contrib/ydb/library/yql/core/yql_join.h>
 #include <contrib/ydb/library/yql/core/yql_expr_optimize.h>
 #include <contrib/ydb/library/yql/core/yql_opt_window.h>
 #include <contrib/ydb/library/yql/core/yql_opt_match_recognize.h>
 #include <contrib/ydb/library/yql/core/yql_opt_utils.h>
 #include <contrib/ydb/library/yql/core/yql_type_annotation.h>
-#include <contrib/ydb/library/yql/dq/integration/yql_dq_integration.h>
-#include <contrib/ydb/library/yql/dq/integration/yql_dq_optimization.h>
+#include <contrib/ydb/library/yql/core/dq_integration/yql_dq_integration.h>
+#include <contrib/ydb/library/yql/core/dq_integration/yql_dq_optimization.h>
 
 using namespace NYql::NNodes;
 
@@ -23,7 +24,8 @@ TExprBase DqRewriteAggregate(TExprBase node, TExprContext& ctx, TTypeAnnotationC
         return node;
     }
     TAggregateExpander aggExpander(!typesCtx.IsBlockEngineEnabled() && !useFinalizeByKey,
-        useFinalizeByKey, node.Ptr(), ctx, typesCtx, false, compactForDistinct, usePhases, allowSpilling);
+        useFinalizeByKey, node.Ptr(), ctx, typesCtx, false, compactForDistinct, usePhases,
+        typesCtx.IsBlockEngineEnabled() && !allowSpilling);
     auto result = aggExpander.ExpandAggregate();
     YQL_ENSURE(result);
 
@@ -183,32 +185,18 @@ static void CollectSinkStages(const NNodes::TDqQuery& dqQuery, THashSet<TExprNod
 }
 
 NNodes::TExprBase DqMergeQueriesWithSinks(NNodes::TExprBase dqQueryNode, TExprContext& ctx) {
-    NNodes::TDqQuery dqQuery = dqQueryNode.Cast<NNodes::TDqQuery>();
+    auto maybeDqQuery = dqQueryNode.Maybe<NNodes::TDqQuery>();
+    YQL_ENSURE(maybeDqQuery, "Expected DqQuery!");
+    auto dqQuery = maybeDqQuery.Cast();
 
-    THashSet<TExprNode::TPtr, TExprNode::TPtrHash> sinkStages;
-    CollectSinkStages(dqQuery, sinkStages);
-    TOptimizeExprSettings settings{nullptr};
-    settings.VisitLambdas = false;
-    bool deletedDqQueryChild = false;
-    TExprNode::TPtr newDqQueryNode;
-    auto status = OptimizeExpr(dqQueryNode.Ptr(), newDqQueryNode, [&sinkStages, &deletedDqQueryChild](const TExprNode::TPtr& node, TExprContext& ctx) -> TExprNode::TPtr {
-        for (ui32 childIndex = 0; childIndex < node->ChildrenSize(); ++childIndex) {
-            TExprNode* child = node->Child(childIndex);
-            if (child->IsCallable(NNodes::TDqQuery::CallableName())) {
-                NNodes::TDqQuery dqQueryChild(child);
-                CollectSinkStages(dqQueryChild, sinkStages);
-                deletedDqQueryChild = true;
-                return ctx.ChangeChild(*node, childIndex, dqQueryChild.World().Ptr());
-            }
-        }
-        return node;
-    }, ctx, settings);
-    YQL_ENSURE(status != IGraphTransformer::TStatus::Error, "Failed to merge DqQuery nodes: " << status);
+    if (auto maybeDqQueryChild = dqQuery.World().Maybe<NNodes::TDqQuery>()) {
+        auto dqQueryChild = maybeDqQueryChild.Cast();
+        auto dqQueryBuilder = Build<TDqQuery>(ctx, dqQuery.Pos())
+            .World(dqQueryChild.World());
 
-    if (deletedDqQueryChild) {
-        auto dqQueryBuilder = Build<TDqQuery>(ctx, dqQuery.Pos());
-        dqQueryBuilder.World(newDqQueryNode->ChildPtr(TDqQuery::idx_World));
-
+        THashSet<TExprNode::TPtr, TExprNode::TPtrHash> sinkStages;
+        CollectSinkStages(dqQuery, sinkStages);
+        CollectSinkStages(maybeDqQueryChild.Cast(), sinkStages);
         auto sinkStagesBuilder = dqQueryBuilder.SinkStages();
         for (const TExprNode::TPtr& stage : sinkStages) {
             sinkStagesBuilder.Add(stage);
@@ -306,7 +294,7 @@ NNodes::TExprBase DqReplicateFieldSubset(NNodes::TExprBase node, TExprContext& c
                     usedFields.insert(member.Value());
                 }
             }
-            else if (!TCoDependsOn::Match(parent)) {
+            else if (!IsDependsOnUsage(*parent, parentsMap)) {
                 return node;
             }
 
@@ -349,7 +337,7 @@ NNodes::TExprBase DqReplicateFieldSubset(NNodes::TExprBase node, TExprContext& c
     return node;
 }
 
-IGraphTransformer::TStatus DqWrapRead(const TExprNode::TPtr& input, TExprNode::TPtr& output, TExprContext& ctx, TTypeAnnotationContext& typesCtx, const TDqSettings& config) {
+IGraphTransformer::TStatus DqWrapIO(const TExprNode::TPtr& input, TExprNode::TPtr& output, TExprContext& ctx, TTypeAnnotationContext& typesCtx, const IDqIntegration::TWrapReadSettings& wrSettings) {
     TOptimizeExprSettings settings{&typesCtx};
     auto status = OptimizeExpr(input, output, [&](const TExprNode::TPtr& node, TExprContext& ctx) {
         if (auto maybeRead = TMaybeNode<TCoRight>(node).Input()) {
@@ -358,11 +346,21 @@ IGraphTransformer::TStatus DqWrapRead(const TExprNode::TPtr& input, TExprNode::T
                 auto dataSource = typesCtx.DataSourceMap.FindPtr(dataSourceName);
                 YQL_ENSURE(dataSource);
                 if (auto dqIntegration = (*dataSource)->GetDqIntegration()) {
-                    auto newRead = dqIntegration->WrapRead(config, maybeRead.Cast().Ptr(), ctx);
+                    auto newRead = dqIntegration->WrapRead(maybeRead.Cast().Ptr(), ctx, wrSettings);
                     if (newRead.Get() != maybeRead.Raw()) {
                         return newRead;
                     }
                 }
+            }
+        } else if (node->GetTypeAnn()->GetKind() == ETypeAnnotationKind::World
+            && !TCoCommit::Match(node.Get())
+            && node->ChildrenSize() > 1
+            && TCoDataSink::Match(node->Child(1))) {
+            auto dataSinkName = node->Child(1)->Child(0)->Content();
+            auto dataSink = typesCtx.DataSinkMap.FindPtr(dataSinkName);
+            YQL_ENSURE(dataSink);
+            if (auto dqIntegration = (*dataSink)->GetDqIntegration()) {
+                return dqIntegration->RecaptureWrite(node, ctx);
             }
         }
 
@@ -374,16 +372,6 @@ IGraphTransformer::TStatus DqWrapRead(const TExprNode::TPtr& input, TExprNode::T
 TExprBase DqExpandMatchRecognize(TExprBase node, TExprContext& ctx, TTypeAnnotationContext& typeAnnCtx) {
     YQL_ENSURE(node.Maybe<TCoMatchRecognize>(), "Expected MatchRecognize");
     return TExprBase(ExpandMatchRecognize(node.Ptr(), ctx, typeAnnCtx));
-}
-
-IDqOptimization* GetDqOptCallback(const TExprBase& providerRead, TTypeAnnotationContext& typeAnnCtx) {
-    if (providerRead.Ref().ChildrenSize() > 1 && TCoDataSource::Match(providerRead.Ref().Child(1))) {
-        auto dataSourceName = providerRead.Ref().Child(1)->Child(0)->Content();
-        auto datasource = typeAnnCtx.DataSourceMap.FindPtr(dataSourceName);
-        YQL_ENSURE(datasource);
-        return (*datasource)->GetDqOptimization();
-    }
-    return nullptr;
 }
 
 TMaybeNode<TExprBase> UnorderedOverDqReadWrap(TExprBase node, TExprContext& ctx, const std::function<const TParentsMap*()>& getParents, bool enableDqReplicate, TTypeAnnotationContext& typeAnnCtx) {
@@ -693,4 +681,119 @@ TMaybeNode<TExprBase> UnorderedOverDqReadWrapMultiUsage(TExprBase node, TExprCon
     return node;
 }
 
+TMaybeNode<TExprBase> DqPushExtractMembersToDqJoin(TExprBase node, TExprContext& ctx) {
+    auto extract = node.Cast<TCoExtractMembers>();
+    auto maybeJoin = extract.Input().Maybe<TDqJoin>();
+    if (!maybeJoin) {
+        return node;
+    }
+
+    auto join = maybeJoin.Cast();
+
+    THashSet<TStringBuf> neededOutputColumns;
+    for (const auto& member : extract.Members()) {
+        neededOutputColumns.insert(member.Value());
+    }
+
+    const auto joinType = join.JoinType().Value();
+    const bool withLeftSide = joinType != "RightOnly" && joinType != "RightSemi";
+    const bool withRightSide = joinType != "LeftOnly" && joinType != "LeftSemi";
+
+    const auto* leftItemType = GetSeqItemType(join.LeftInput().Ref().GetTypeAnn());
+    const auto* rightItemType = GetSeqItemType(join.RightInput().Ref().GetTypeAnn());
+    if (!leftItemType || !rightItemType ||
+        leftItemType->GetKind() != ETypeAnnotationKind::Struct ||
+        rightItemType->GetKind() != ETypeAnnotationKind::Struct) {
+        return node;
+    }
+
+    const auto* leftStructType = leftItemType->Cast<TStructExprType>();
+    const auto* rightStructType = rightItemType->Cast<TStructExprType>();
+
+    const bool leftIsSingleLabel = join.LeftLabel().Ref().IsAtom();
+    const bool rightIsSingleLabel = join.RightLabel().Ref().IsAtom();
+
+    TStringBuf leftLabel = leftIsSingleLabel ? join.LeftLabel().Cast<TCoAtom>().Value() : TStringBuf();
+    TStringBuf rightLabel = rightIsSingleLabel ? join.RightLabel().Cast<TCoAtom>().Value() : TStringBuf();
+
+    THashSet<TString> neededLeftInputColumns;
+    THashSet<TString> neededRightInputColumns;
+
+    for (const auto& keyTuple : join.JoinKeys()) {
+        auto leftCol = keyTuple.LeftColumn().Value();
+        auto leftLbl = keyTuple.LeftLabel().Value();
+        if (leftStructType->FindItem(leftCol)) {
+            neededLeftInputColumns.insert(TString(leftCol));
+        }
+        if (auto prefixed = FullColumnName(leftLbl, leftCol); leftStructType->FindItem(prefixed)) {
+            neededLeftInputColumns.insert(std::move(prefixed));
+        }
+
+        auto rightCol = keyTuple.RightColumn().Value();
+        auto rightLbl = keyTuple.RightLabel().Value();
+        if (rightStructType->FindItem(rightCol)) {
+            neededRightInputColumns.insert(TString(rightCol));
+        }
+        if (auto prefixed = FullColumnName(rightLbl, rightCol); rightStructType->FindItem(prefixed)) {
+            neededRightInputColumns.insert(std::move(prefixed));
+        }
+    }
+
+    if (withLeftSide) {
+        for (const auto& item : leftStructType->GetItems()) {
+            TString outputName = (leftIsSingleLabel && !leftLabel.empty())
+                ? FullColumnName(leftLabel, item->GetName())
+                : TString(item->GetName());
+            if (neededOutputColumns.contains(outputName)) {
+                neededLeftInputColumns.insert(TString(item->GetName()));
+            }
+        }
+    }
+
+    if (withRightSide) {
+        for (const auto& item : rightStructType->GetItems()) {
+            TString outputName = (rightIsSingleLabel && !rightLabel.empty())
+                ? FullColumnName(rightLabel, item->GetName())
+                : TString(item->GetName());
+            if (neededOutputColumns.contains(outputName)) {
+                neededRightInputColumns.insert(TString(item->GetName()));
+            }
+        }
+    }
+
+    if (neededLeftInputColumns.size() >= leftStructType->GetSize() &&
+        neededRightInputColumns.size() >= rightStructType->GetSize()) {
+        return node;
+    }
+
+    auto narrowInput = [&ctx, &join](TExprBase input, const TStructExprType* inputType,
+                                     const THashSet<TString>& neededColumns) -> TExprBase {
+        if (neededColumns.size() >= inputType->GetSize()) {
+            return input;
+        }
+        TExprNode::TListType memberAtoms;
+        for (const auto& item : inputType->GetItems()) {
+            if (neededColumns.contains(item->GetName())) {
+                memberAtoms.push_back(ctx.NewAtom(join.Pos(), item->GetName()));
+            }
+        }
+        return Build<TCoExtractMembers>(ctx, join.Pos())
+            .Input(input)
+            .Members(ctx.NewList(join.Pos(), std::move(memberAtoms)))
+            .Done();
+    };
+
+    auto newLeftInput = narrowInput(join.LeftInput(), leftStructType, neededLeftInputColumns);
+    auto newRightInput = narrowInput(join.RightInput(), rightStructType, neededRightInputColumns);
+
+    return Build<TCoExtractMembers>(ctx, join.Pos())
+        .Input<TDqJoin>()
+            .InitFrom(join)
+            .LeftInput(newLeftInput)
+            .RightInput(newRightInput)
+            .Build()
+        .Members(extract.Members())
+        .Done();
 }
+
+} // namespace NYql::NDq

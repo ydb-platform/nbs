@@ -1,6 +1,7 @@
-IF (NOT SANITIZER_TYPE AND NOT WITH_VALGRIND)
+IF (NOT SANITIZER_TYPE)
     PY3TEST()
-    ENV(YDB_DRIVER_BINARY="contrib/ydb/apps/ydbd/ydbd")
+    INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/harness_dep.inc)
+    ENV(YDB_ENABLE_COLUMN_TABLES="true")
     ENV(USE_IN_MEMORY_PDISKS=true)
     TEST_SRCS(
         test_base.py
@@ -9,12 +10,11 @@ IF (NOT SANITIZER_TYPE AND NOT WITH_VALGRIND)
         test_stream_query.py
     )
 
-    TIMEOUT(600)
     SIZE(MEDIUM)
+    REQUIREMENTS(cpu:4)
 
     DEPENDS(
-        contrib/ydb/apps/ydbd
-    )
+        )
 
     DATA (
         arcadia/contrib/ydb/tests/functional/suite_tests/postgres
@@ -29,8 +29,6 @@ IF (NOT SANITIZER_TYPE AND NOT WITH_VALGRIND)
 
     FORK_SUBTESTS()
     FORK_TEST_FILES()
-
-    REQUIREMENTS(ram:12)
 
     END()
 ENDIF()

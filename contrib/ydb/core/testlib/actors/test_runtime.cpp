@@ -3,20 +3,27 @@
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/core/base/counters.h>
-#include <contrib/ydb/core/mon/sync_http_mon.h>
-#include <contrib/ydb/core/mon/async_http_mon.h>
+#include <contrib/ydb/core/base/pool_stats_collector.h>
+#include <contrib/ydb/core/mon/mon.h>
 #include <contrib/ydb/core/mon_alloc/profiler.h>
+#include <contrib/ydb/core/grpc_services/grpc_helper.h>
 #include <contrib/ydb/core/tablet/tablet_impl.h>
+#include <contrib/ydb/core/testlib/mock_transfer_writer_factory.h>
 
 #include <contrib/ydb/library/actors/core/executor_pool_basic.h>
 #include <contrib/ydb/library/actors/core/executor_pool_io.h>
+#include <contrib/ydb/library/actors/core/scheduler_basic.h>
 #include <contrib/ydb/library/actors/interconnect/interconnect_impl.h>
 
+#include <contrib/ydb/core/base/wilson_tracing_control.h>
 #include <contrib/ydb/core/protos/datashard_config.pb.h>
+#include <contrib/ydb/core/protos/feature_flags.pb.h>
 #include <contrib/ydb/core/protos/key.pb.h>
 #include <contrib/ydb/core/protos/netclassifier.pb.h>
 #include <contrib/ydb/core/protos/pqconfig.pb.h>
+#include <contrib/ydb/core/protos/schemeshard_config.pb.h>
 #include <contrib/ydb/core/protos/stream.pb.h>
+#include <contrib/ydb/core/protos/workload_manager_config.pb.h>
 
 /**** ACHTUNG: Do not make here any new dependecies on kikimr ****/
 
@@ -25,7 +32,6 @@ namespace NActors {
     void TTestActorRuntime::TNodeData::Stop() {
         if (Mon) {
             Mon->Stop();
-            GetAppData<NKikimr::TAppData>()->Mon = nullptr;
         }
         TNodeDataBase::Stop();
     }
@@ -44,6 +50,15 @@ namespace NActors {
         InitNodes();
     }
 
+    void TTestActorRuntime::SetupStatsCollectors() {
+        NeedStatsCollectors = true;
+    }
+
+    void TTestActorRuntime::SetupActorSystemConfig(const TActorSystemSetupConfig& config, const TActorSystemPools& pools) {
+        ActorSystemSetupConfig = config;
+        ActorSystemPools = pools;
+    }
+
     TTestActorRuntime::TTestActorRuntime(THeSingleSystemEnv d)
         : TPortManager(false)
         , TTestActorRuntimeBase{d}
@@ -55,9 +70,17 @@ namespace NActors {
         Initialize();
     }
 
-    TTestActorRuntime::TTestActorRuntime(ui32 nodeCount, ui32 dataCenterCount, bool useRealThreads)
+    TTestActorRuntime::TTestActorRuntime(ui32 nodeCount, ui32 dataCenterCount, bool useRealThreads, bool useRdmaAllocator)
+        : TPortManager(false)
+        , TTestActorRuntimeBase{nodeCount, dataCenterCount, useRealThreads, useRdmaAllocator}
+    {
+        Initialize();
+    }
+
+    TTestActorRuntime::TTestActorRuntime(ui32 nodeCount, ui32 dataCenterCount, bool useRealThreads, NKikimr::NAudit::TAuditLogBackends&& auditLogBackends)
         : TPortManager(false)
         , TTestActorRuntimeBase{nodeCount, dataCenterCount, useRealThreads}
+        , AuditLogBackends(std::move(auditLogBackends))
     {
         Initialize();
     }
@@ -77,11 +100,6 @@ namespace NActors {
     }
 
     TTestActorRuntime::~TTestActorRuntime() {
-        if (!UseRealThreads) {
-            NKikimr::TAppData::RandomProvider = CreateDefaultRandomProvider();
-            NKikimr::TAppData::TimeProvider = CreateDefaultTimeProvider();
-        }
-
         SetObserverFunc(&TTestActorRuntimeBase::DefaultObserverFunc);
         SetScheduledEventsSelectorFunc(&CollapsedTimeScheduledEventsSelector);
         SetEventFilter(&TTestActorRuntimeBase::DefaultFilterFunc);
@@ -89,6 +107,17 @@ namespace NActors {
         SetRegistrationObserverFunc(&TTestActorRuntimeBase::DefaultRegistrationObserver);
 
         CleanupNodes();
+
+        // Reset global providers only after actor system threads are fully stopped
+        // (CleanupNodes stops the actor system), to avoid a data race where actor
+        // threads still read AppData()->RandomProvider while the main thread resets it.
+        if (!UseRealThreads) {
+            NKikimr::TAppData::RandomProvider = CreateDefaultRandomProvider();
+            NKikimr::TAppData::TimeProvider = CreateDefaultTimeProvider();
+        }
+
+        App0 = nullptr;
+        NKikimr::NJaegerTracing::ClearTracingControl();
     }
 
     void TTestActorRuntime::AddAppDataInit(std::function<void(ui32, NKikimr::TAppData&)> callback) {
@@ -96,7 +125,25 @@ namespace NActors {
         AppDataInit_.push_back(std::move(callback));
     }
 
+    void TTestActorRuntime::AddAuditLogStuff() {
+        for (ui32 nodeIndex = 0; nodeIndex < GetNodeCount(); ++nodeIndex) {
+            AddLocalService(
+                NKikimr::NAudit::MakeAuditServiceID(),
+                TActorSetupCmd(
+                    NKikimr::NAudit::CreateAuditWriter(std::move(AuditLogBackends)),
+                    TMailboxType::HTSwap,
+                    0
+                ),
+                nodeIndex
+            );
+        }
+    }
+
     void TTestActorRuntime::Initialize(TEgg egg) {
+        if (AuditLogBackends) {
+            AddAuditLogStuff();
+        }
+
         IsInitialized = true;
 
         Opaque = std::move(egg.Opaque);
@@ -106,6 +153,11 @@ namespace NActors {
         if (!UseRealThreads) {
             NKikimr::TAppData::RandomProvider = RandomProvider;
             NKikimr::TAppData::TimeProvider = TimeProvider;
+        }
+
+        // We want tests to fail on unhandled exceptions by default
+        if (!App0->FeatureFlags.HasEnableTabletRestartOnUnhandledExceptions()) {
+            App0->FeatureFlags.SetEnableTabletRestartOnUnhandledExceptions(false);
         }
 
         MonPorts.clear();
@@ -124,9 +176,9 @@ namespace NActors {
                 node->SchedulerPool.Reset(CreateExecutorPoolStub(this, nodeIndex, node, 0));
                 node->MailboxTable.Reset(new TMailboxTable());
                 node->ActorSystem = MakeActorSystem(nodeIndex, node);
-                node->ExecutorThread.Reset(new TExecutorThread(0, 0, node->ActorSystem.Get(), node->SchedulerPool.Get(), node->MailboxTable.Get(), "TestExecutor"));
+                node->ExecutorThread.Reset(new TExecutorThread(0, node->ActorSystem.Get(), node->SchedulerPool.Get(), "TestExecutor"));
             } else {
-                node->AppData0.reset(new NKikimr::TAppData(0, 1, 2, 3, { }, app0->TypeRegistry, app0->FunctionRegistry, app0->FormatFactory, nullptr));
+                node->AppData0.reset(new NKikimr::TAppData(ActorSystemPools.SystemPoolId, ActorSystemPools.UserPoolId, ActorSystemPools.IOPoolId, ActorSystemPools.BatchPoolId, ActorSystemPools.ServicePools, app0->TypeRegistry, app0->FunctionRegistry, app0->FormatFactory, nullptr));
                 node->ActorSystem = MakeActorSystem(nodeIndex, node);
             }
             node->LogSettings->MessagePrefix = " node " + ToString(nodeId);
@@ -144,7 +196,7 @@ namespace NActors {
             nodeAppData->PQConfig = app0->PQConfig;
             nodeAppData->NetClassifierConfig.CopyFrom(app0->NetClassifierConfig);
             nodeAppData->EnableKqpSpilling = app0->EnableKqpSpilling;
-            nodeAppData->FeatureFlags = app0->FeatureFlags;
+            nodeAppData->InitFeatureFlags(app0->FeatureFlags);
             nodeAppData->CompactionConfig = app0->CompactionConfig;
             nodeAppData->HiveConfig.SetWarmUpBootWaitingPeriod(10);
             nodeAppData->HiveConfig.SetMaxNodeUsageToKick(100);
@@ -155,15 +207,23 @@ namespace NActors {
             nodeAppData->SchemeShardConfig = app0->SchemeShardConfig;
             nodeAppData->DataShardConfig = app0->DataShardConfig;
             nodeAppData->ColumnShardConfig = app0->ColumnShardConfig;
+            nodeAppData->SmallBlobsQuotaConfig = app0->SmallBlobsQuotaConfig;
             nodeAppData->MeteringConfig = app0->MeteringConfig;
             nodeAppData->AwsCompatibilityConfig = app0->AwsCompatibilityConfig;
             nodeAppData->S3ProxyResolverConfig = app0->S3ProxyResolverConfig;
             nodeAppData->GraphConfig = app0->GraphConfig;
             nodeAppData->EnableMvccSnapshotWithLegacyDomainRoot = app0->EnableMvccSnapshotWithLegacyDomainRoot;
             nodeAppData->IoContextFactory = app0->IoContextFactory;
+            nodeAppData->SchemeOperationFactory = app0->SchemeOperationFactory;
+            nodeAppData->WorkloadManagerConfig = app0->WorkloadManagerConfig;
+            nodeAppData->QueryServiceConfig = app0->QueryServiceConfig;
+            nodeAppData->TransferWriterFactory = std::make_shared<NKikimr::Tests::MockTransferWriterFactory>();
             if (nodeIndex < egg.Icb.size()) {
                 nodeAppData->Icb = std::move(egg.Icb[nodeIndex]);
-                nodeAppData->InFlightLimiterRegistry.Reset(new NKikimr::NGRpcService::TInFlightLimiterRegistry(nodeAppData->Icb));
+                nodeAppData->InFlightLimiterRegistry.Reset(new NKikimr::NGRpcService::TInFlightLimiterRegistry());
+            }
+            if (nodeIndex < egg.Dcb.size()) {
+                nodeAppData->Dcb = std::move(egg.Dcb[nodeIndex]);
             }
             if (KeyConfigGenerator) {
                 nodeAppData->KeyConfig = KeyConfigGenerator(nodeIndex);
@@ -177,19 +237,11 @@ namespace NActors {
 
             if (NeedMonitoring && !SingleSysEnv) {
                 ui16 port = MonitoringPortOffset ? MonitoringPortOffset + nodeIndex : GetPortManager().GetPort();
-                if (MonitoringTypeAsync) {
-                    node->Mon.Reset(new NActors::TAsyncHttpMon({
-                        .Port = port,
-                        .Threads = 10,
-                        .Title = "KIKIMR monitoring"
-                    }));
-                } else {
-                    node->Mon.Reset(new NActors::TSyncHttpMon({
-                        .Port = port,
-                        .Threads = 10,
-                        .Title = "KIKIMR monitoring"
-                    }));
-                }
+                node->Mon.Reset(new NActors::TMon({
+                    .Port = port,
+                    .Threads = 10,
+                    .Title = "KIKIMR monitoring"
+                }));
                 nodeAppData->Mon = node->Mon.Get();
                 node->Mon->RegisterCountersPage("counters", "Counters", node->DynamicCounters);
                 auto actorsMonPage = node->Mon->RegisterIndexPage("actors", "Actors");
@@ -199,7 +251,8 @@ namespace NActors {
                 MonPorts.push_back(port);
             }
 
-            node->ActorSystem->Start();
+            StartActorSystem(nodeIndex, node);
+
             if (nodeAppData->Mon) {
                 nodeAppData->Mon->Start(node->ActorSystem.Get());
             }
@@ -213,7 +266,26 @@ namespace NActors {
         return MonPorts[nodeIndex];
     }
 
-    void TTestActorRuntime::InitActorSystemSetup(TActorSystemSetup& /*setup*/) {
+    void TTestActorRuntime::InitActorSystemSetup(TActorSystemSetup& setup, TNodeDataBase* node) {
+        if (ActorSystemSetupConfig) {
+            setup.Executors.Reset();
+            setup.ExecutorsCount = 0;
+
+            setup.CpuManager = ActorSystemSetupConfig->CpuManagerConfig;
+            setup.MonitorStuckActors = ActorSystemSetupConfig->MonitorStuckActors;
+
+            auto schedulerConfig = ActorSystemSetupConfig->SchedulerConfig;
+            schedulerConfig.MonCounters = NKikimr::GetServiceCounters(node->DynamicCounters, "utils");
+            setup.Scheduler.Reset(CreateSchedulerThread(schedulerConfig));
+        }
+
+        if (NeedMonitoring && NeedStatsCollectors) {
+            NActors::IActor* statsCollector = NKikimr::CreateStatsCollector(1, setup, node->DynamicCounters);
+            setup.LocalServices.push_back({
+                TActorId(),
+                NActors::TActorSetupCmd(statsCollector, NActors::TMailboxType::HTSwap, node->GetAppData<NKikimr::TAppData>()->SystemPoolId)
+            });
+        }
     }
 
     NKikimr::TAppData& TTestActorRuntime::GetAppData(ui32 nodeIndex) {
@@ -254,14 +326,6 @@ namespace NActors {
         }
 
         return true;
-    }
-
-    void TTestActorRuntime::SimulateSleep(TDuration duration) {
-        if (!SleepEdgeActor) {
-            SleepEdgeActor = AllocateEdgeActor();
-        }
-        Schedule(new IEventHandle(SleepEdgeActor, SleepEdgeActor, new TEvents::TEvWakeup()), duration);
-        GrabEdgeEventRethrow<TEvents::TEvWakeup>(SleepEdgeActor);
     }
 
     void TTestActorRuntime::SendToPipe(ui64 tabletId, const TActorId& sender, IEventBase* payload, ui32 nodeIndex, const NKikimr::NTabletPipe::TClientConfig& pipeConfig, TActorId clientId, ui64 cookie, NWilson::TTraceId traceId) {

@@ -10,6 +10,7 @@ using namespace NYql::NPureCalc;
 
 TProgramFactory::TProgramFactory(const TProgramFactoryOptions& options)
     : Options_(options)
+    , ExprOutputStream_(Options_.ExprOutputStream)
     , CountersProvider_(nullptr)
 {
     EnsureLoggingInitialized();
@@ -21,30 +22,32 @@ TProgramFactory::TProgramFactory(const TProgramFactoryOptions& options)
                                      << Options_.BlockEngineSettings;
     }
 
-    NUserData::TUserData::UserDataToLibraries(Options_.UserData_, Modules_);
+    NUserData::TUserData::UserDataToLibraries(Options_.UserData, Modules_);
 
-    UserData_ = GetYqlModuleResolver(ExprContext_, ModuleResolver_, Options_.UserData_, {}, {});
+    UserData_ = GetYqlModuleResolver(ExprContext_, ModuleResolver_, Options_.UserData, {}, {});
 
     if (!ModuleResolver_) {
-        ythrow TCompileError("", ExprContext_.IssueManager.GetIssues().ToString()) << "failed to compile modules";
+        auto issues = ExprContext_.IssueManager.GetIssues();
+        CheckFatalIssues(issues, options.IssueReportTarget);
+        ythrow TCompileError("", issues.ToString()) << "failed to compile modules";
     }
 
     TVector<TString> UDFsPaths;
-    for (const auto& item: Options_.UserData_) {
+    for (const auto& item : Options_.UserData) {
         if (
-            item.Type_ == NUserData::EType::UDF &&
-            item.Disposition_ == NUserData::EDisposition::FILESYSTEM
-        ) {
-            UDFsPaths.push_back(item.Content_);
+            item.Type == NUserData::EType::UDF &&
+            item.Disposition == NUserData::EDisposition::FILESYSTEM) {
+            UDFsPaths.push_back(item.Content);
         }
     }
 
-    if (!Options_.UdfsDir_.empty()) {
-        NKikimr::NMiniKQL::FindUdfsInDir(Options_.UdfsDir_, &UDFsPaths);
+    if (!Options_.UdfsDir.empty()) {
+        NKikimr::NMiniKQL::FindUdfsInDir(Options_.UdfsDir, &UDFsPaths);
     }
 
     FuncRegistry_ = NKikimr::NMiniKQL::CreateFunctionRegistry(
-        &NYql::NBacktrace::KikimrBackTrace, NKikimr::NMiniKQL::CreateBuiltinRegistry(), false, UDFsPaths)->Clone();
+                        &NYql::NBacktrace::KikimrBackTrace, NKikimr::NMiniKQL::CreateBuiltinRegistry(), /*allowUdfPatch=*/false, UDFsPaths)
+                        ->Clone();
 
     NKikimr::NMiniKQL::FillStaticModules(*FuncRegistry_);
 }
@@ -54,11 +57,9 @@ TProgramFactory::~TProgramFactory() {
 
 void TProgramFactory::AddUdfModule(
     const TStringBuf& moduleName,
-    NKikimr::NUdf::TUniquePtr<NKikimr::NUdf::IUdfModule>&& module
-) {
+    NKikimr::NUdf::TUniquePtr<NKikimr::NUdf::IUdfModule>&& module) {
     FuncRegistry_->AddModule(
-        TString::Join(PurecalcUdfModulePrefix, moduleName), moduleName, std::move(module)
-    );
+        TString::Join(PurecalcUdfModulePrefix, moduleName), moduleName, std::move(module));
 }
 
 void TProgramFactory::SetCountersProvider(NKikimr::NUdf::ICountersProvider* provider) {
@@ -70,8 +71,7 @@ IPullStreamWorkerFactoryPtr TProgramFactory::MakePullStreamWorkerFactory(
     const TOutputSpecBase& outputSpec,
     TString query,
     ETranslationMode mode,
-    ui16 syntaxVersion
-) {
+    ui16 syntaxVersion) {
     return std::make_shared<TPullStreamWorkerFactory>(TWorkerFactoryOptions(
         TIntrusivePtr<TProgramFactory>(this),
         inputSpec,
@@ -83,14 +83,18 @@ IPullStreamWorkerFactoryPtr TProgramFactory::MakePullStreamWorkerFactory(
         Modules_,
         Options_.LLVMSettings,
         BlockEngineMode_,
+        ExprOutputStream_,
         CountersProvider_,
         mode,
         syntaxVersion,
+        Options_.LangVer,
         Options_.NativeYtTypeFlags,
         Options_.DeterministicTimeProviderSeed,
         Options_.UseSystemColumns,
-        Options_.UseWorkerPool
-    ));
+        Options_.UseWorkerPool,
+        Options_.InternalSettings,
+        Options_.IssueReportTarget,
+        Options_.RemoveUnsupportedPragmas));
 }
 
 IPullListWorkerFactoryPtr TProgramFactory::MakePullListWorkerFactory(
@@ -98,8 +102,7 @@ IPullListWorkerFactoryPtr TProgramFactory::MakePullListWorkerFactory(
     const TOutputSpecBase& outputSpec,
     TString query,
     ETranslationMode mode,
-    ui16 syntaxVersion
-) {
+    ui16 syntaxVersion) {
     return std::make_shared<TPullListWorkerFactory>(TWorkerFactoryOptions(
         TIntrusivePtr<TProgramFactory>(this),
         inputSpec,
@@ -111,14 +114,18 @@ IPullListWorkerFactoryPtr TProgramFactory::MakePullListWorkerFactory(
         Modules_,
         Options_.LLVMSettings,
         BlockEngineMode_,
+        ExprOutputStream_,
         CountersProvider_,
         mode,
         syntaxVersion,
+        Options_.LangVer,
         Options_.NativeYtTypeFlags,
         Options_.DeterministicTimeProviderSeed,
         Options_.UseSystemColumns,
-        Options_.UseWorkerPool
-    ));
+        Options_.UseWorkerPool,
+        Options_.InternalSettings,
+        Options_.IssueReportTarget,
+        Options_.RemoveUnsupportedPragmas));
 }
 
 IPushStreamWorkerFactoryPtr TProgramFactory::MakePushStreamWorkerFactory(
@@ -126,8 +133,7 @@ IPushStreamWorkerFactoryPtr TProgramFactory::MakePushStreamWorkerFactory(
     const TOutputSpecBase& outputSpec,
     TString query,
     ETranslationMode mode,
-    ui16 syntaxVersion
-) {
+    ui16 syntaxVersion) {
     if (inputSpec.GetSchemas().size() > 1) {
         ythrow yexception() << "push stream mode doesn't support several inputs";
     }
@@ -143,12 +149,16 @@ IPushStreamWorkerFactoryPtr TProgramFactory::MakePushStreamWorkerFactory(
         Modules_,
         Options_.LLVMSettings,
         BlockEngineMode_,
+        ExprOutputStream_,
         CountersProvider_,
         mode,
         syntaxVersion,
+        Options_.LangVer,
         Options_.NativeYtTypeFlags,
         Options_.DeterministicTimeProviderSeed,
         Options_.UseSystemColumns,
-        Options_.UseWorkerPool
-    ));
+        Options_.UseWorkerPool,
+        Options_.InternalSettings,
+        Options_.IssueReportTarget,
+        Options_.RemoveUnsupportedPragmas));
 }

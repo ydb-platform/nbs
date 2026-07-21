@@ -5,6 +5,7 @@ SRCS(
 )
 
 PEERDIR(
+    contrib/ydb/library/yql/core/credentials
     contrib/ydb/library/yql/providers/common/proto
     library/cpp/svnversion
 )

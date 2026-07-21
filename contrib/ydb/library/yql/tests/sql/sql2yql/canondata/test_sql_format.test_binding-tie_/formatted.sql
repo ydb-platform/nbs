@@ -1,0 +1,7 @@
+$a, $b, $c = AsTuple(1, 5u, 'test');
+
+SELECT
+    $a,
+    $b,
+    $c
+;

@@ -7,10 +7,13 @@
 
 namespace std {
 
+Y_PRAGMA_DIAGNOSTIC_PUSH
+Y_PRAGMA("GCC diagnostic ignored \"-Winvalid-specialization\"")
 template <>
 struct make_signed<double> {
     using type = double;
 };
+Y_PRAGMA_DIAGNOSTIC_POP
 
 }
 
@@ -314,22 +317,25 @@ public:
         , AccumulatorCount()
     {}
 
-    void Push(ValueType value) {
+    bool Push(ValueType value) {
         if (IsValueReady()) {
             ValueType currentValue = GetValue();
             if (value > currentValue) {
                 ValueType newValue = (currentValue + value) / 2;
                 AccumulatorCount++;
                 AccumulatorValue = newValue * AccumulatorCount;
-                return;
+                return false;
             }
         }
+        bool shrink = false;
         if (AccumulatorCount >= MaxCount) {
             AccumulatorValue = AccumulatorValue / 2;
             AccumulatorCount /= 2;
+            shrink = true;
         }
         AccumulatorValue += value;
         AccumulatorCount++;
+        return shrink;
     }
 
     ValueType GetValue() const {

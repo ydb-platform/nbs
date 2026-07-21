@@ -6,3 +6,5 @@
 {% endif %}
 * [Ошибки](../errors.md)
 * [YQL](../yql.md)
+* [Аналитика](../analytics.md)
+* [Известные проблемы](../known-issues.md)

@@ -10,11 +10,17 @@ PEERDIR(
     contrib/libs/fmt
     library/cpp/iterator
     contrib/ydb/core/fq/libs/common
+    contrib/ydb/core/fq/libs/config
+    contrib/ydb/core/fq/libs/config/protos
+    contrib/ydb/core/fq/libs/control_plane_config
     contrib/ydb/core/fq/libs/control_plane_proxy/events
+    contrib/ydb/core/fq/libs/control_plane_proxy/utils
     contrib/ydb/core/fq/libs/control_plane_storage/events
+    contrib/ydb/core/fq/libs/rate_limiter/events
     contrib/ydb/core/fq/libs/result_formatter
     contrib/ydb/core/kqp/provider
     contrib/ydb/library/db_pool/protos
+    contrib/ydb/public/sdk/cpp/adapters/issue
 )
 
 GENERATE_ENUM_SERIALIZATION(ydb_schema_query_actor.h)

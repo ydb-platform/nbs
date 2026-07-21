@@ -1,7 +1,5 @@
 UNITTEST_FOR(contrib/ydb/library/yql/providers/dq/actors)
 
-TAG(ya:manual)
-
 PEERDIR(
     library/cpp/testing/unittest
     library/cpp/time_provider

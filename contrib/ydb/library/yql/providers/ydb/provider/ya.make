@@ -30,7 +30,7 @@ PEERDIR(
     contrib/ydb/library/yql/core
     contrib/ydb/library/yql/core/type_ann
     contrib/ydb/library/yql/dq/expr_nodes
-    contrib/ydb/library/yql/dq/integration
+    contrib/ydb/library/yql/core/dq_integration
     contrib/ydb/library/yql/providers/common/config
     contrib/ydb/library/yql/providers/common/db_id_async_resolver
     contrib/ydb/library/yql/providers/common/dq
@@ -45,8 +45,9 @@ PEERDIR(
     contrib/ydb/library/yql/providers/ydb/expr_nodes
     contrib/ydb/library/yql/providers/ydb/proto
     contrib/ydb/public/lib/experimental
-    contrib/ydb/public/sdk/cpp/client/ydb_driver
-    contrib/ydb/public/sdk/cpp/client/ydb_table
+    contrib/ydb/public/sdk/cpp/adapters/issue
+    contrib/ydb/public/sdk/cpp/src/client/driver
+    contrib/ydb/public/sdk/cpp/src/client/table
 )
 
 YQL_LAST_ABI_VERSION()

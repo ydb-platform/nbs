@@ -1,13 +1,12 @@
 #pragma once
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_scheme/scheme.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/scheme/scheme.h>
 
-namespace NYdb {
-namespace NConsoleClient {
+namespace NYdb::NConsoleClient {
 
 class TAdaptiveTabbedTable {
 public:
-    TAdaptiveTabbedTable(const TVector<NScheme::TSchemeEntry>& entries);
+    TAdaptiveTabbedTable(const std::vector<NScheme::TSchemeEntry>& entries);
     void Print(IOutputStream& o) const;
 
 private:
@@ -21,13 +20,12 @@ private:
     void InitializeColumnInfo(size_t maxCols, size_t minColumnWidth);
     void CalculateColumns();
 
-    const TVector<NScheme::TSchemeEntry>& Entries;
+    const std::vector<NScheme::TSchemeEntry>& Entries;
     TVector<TColumnInfo> ColumnInfo;
-    size_t ColumnCount;
+    size_t ColumnCount = 0;
 };
 
-}
-}
+} // namespace NYdb::NConsoleClient
 
 template <>
 inline void Out<NYdb::NConsoleClient::TAdaptiveTabbedTable>(

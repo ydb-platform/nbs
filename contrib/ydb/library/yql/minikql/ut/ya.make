@@ -1,7 +1,5 @@
 UNITTEST_FOR(contrib/ydb/library/yql/minikql)
 
-TAG(ya:manual)
-
 FORK_SUBTESTS()
 
 IF (SANITIZER_TYPE == "thread" OR WITH_VALGRIND)
@@ -22,11 +20,16 @@ SRCS(
     mkql_node_printer_ut.cpp
     mkql_node_ut.cpp
     mkql_opt_literal_ut.cpp
+    mkql_saturated_math_ut.cpp
     mkql_stats_registry_ut.cpp
     mkql_string_util_ut.cpp
     mkql_type_builder_ut.cpp
     mkql_type_ops_ut.cpp
     mkql_unboxed_value_stream_ut.cpp
+    mkql_core_win_frames_collector_ut_part1.cpp
+    mkql_core_win_frames_collector_ut_part2.cpp
+    mkql_core_win_frames_collector_ut_part3.cpp
+    mkql_core_win_frames_collector_ut_part4.cpp
     pack_num_ut.cpp
     watermark_tracker_ut.cpp
 )
@@ -37,7 +40,7 @@ ADDINCL(
 
 PEERDIR(
     contrib/libs/apache/arrow
-    contrib/ydb/library/yql/minikql/invoke_builtins/llvm14
+    contrib/ydb/library/yql/minikql/invoke_builtins/llvm16
     contrib/ydb/library/yql/parser/pg_wrapper
     contrib/ydb/library/yql/public/udf/service/exception_policy
 )

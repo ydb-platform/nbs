@@ -1,6 +1,6 @@
-IF (NOT SANITIZER_TYPE AND NOT WITH_VALGRIND)
+IF (NOT SANITIZER_TYPE)
 PY3TEST()
-ENV(YDB_DRIVER_BINARY="contrib/ydb/apps/ydbd/ydbd")
+INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/harness_dep.inc)
 ENV(YDB_ERASURE=mirror_3_dc)
 ENV(YDB_USE_IN_MEMORY_PDISKS=true)
 
@@ -9,22 +9,19 @@ TEST_SRCS(
 )
 
 REQUIREMENTS(
-    cpu:4
     ram:32
 )
 
-TIMEOUT(600)
-SIZE(MEDIUM)
+SIZE(LARGE)
+INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/large.inc)
 
 DEPENDS(
     contrib/ydb/tests/tools/ydb_serializable
-    contrib/ydb/apps/ydbd
 )
 
 PEERDIR(
     contrib/ydb/tests/library
 )
-
 
 END()
 

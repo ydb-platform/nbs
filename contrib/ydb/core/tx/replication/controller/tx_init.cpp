@@ -1,4 +1,6 @@
 #include "controller_impl.h"
+#include "target_table.h"
+#include "target_transfer.h"
 
 namespace NKikimr::NReplication::NController {
 
@@ -52,10 +54,17 @@ class TController::TTxInit: public TTxBase {
             const auto state = rowset.GetValue<Schema::Replications::State>();
             const auto issue = rowset.GetValue<Schema::Replications::Issue>();
             const auto nextTid = rowset.GetValue<Schema::Replications::NextTargetId>();
+            const auto desiredState = rowset.GetValue<Schema::Replications::DesiredState>();
+            const auto database = rowset.GetValue<Schema::Replications::Database>();
 
-            auto replication = Self->Add(rid, pathId, config);
+            auto replication = Self->Add(rid, pathId, config, database);
             replication->SetState(state, issue);
             replication->SetNextTargetId(nextTid);
+            replication->SetDesiredState(desiredState);
+
+            if (!database) {
+                Self->UnresolvedDatabaseReplications.emplace(replication->GetId(), ResolveDatabaseAttemptsLimit);
+            }
 
             if (!rowset.Next()) {
                 return false;
@@ -87,7 +96,20 @@ class TController::TTxInit: public TTxBase {
             auto replication = Self->Find(rid);
             Y_VERIFY_S(replication, "Unknown replication: " << rid);
 
-            auto* target = replication->AddTarget(tid, kind, srcPath, dstPath);
+            TReplication::ITarget::IConfig::TPtr config;
+            switch (kind) {
+            case TReplication::ETargetKind::Table:
+                config = std::make_shared<TTargetTable::TTableConfig>(srcPath, dstPath);
+                break;
+            case TReplication::ETargetKind::IndexTable:
+                config = std::make_shared<TTargetIndexTable::TIndexTableConfig>(srcPath, dstPath);
+                break;
+            case TReplication::ETargetKind::Transfer:
+                config = std::make_shared<TTargetTransfer::TTransferConfig>(srcPath, dstPath, replication->GetConfig());
+                break;
+            }
+
+            auto* target = replication->AddTarget(tid, kind, config);
             Y_ABORT_UNLESS(target);
 
             target->SetDstState(dstState);
@@ -113,6 +135,7 @@ class TController::TTxInit: public TTxBase {
             const auto tid = rowset.GetValue<Schema::SrcStreams::TargetId>();
             const auto name = rowset.GetValue<Schema::SrcStreams::Name>();
             const auto state = rowset.GetValue<Schema::SrcStreams::State>();
+            const auto consumerName = rowset.GetValueOrDefault<Schema::SrcStreams::ConsumerName>(ReplicationConsumerName);
 
             auto replication = Self->Find(rid);
             Y_VERIFY_S(replication, "Unknown replication: " << rid);
@@ -124,6 +147,61 @@ class TController::TTxInit: public TTxBase {
 
             target->SetStreamName(name);
             target->SetStreamState(state);
+            target->SetStreamConsumerName(consumerName);
+
+            if (!rowset.Next()) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    bool LoadTxIds(NIceDb::TNiceDb& db) {
+        auto rowset = db.Table<Schema::TxIds>().Select();
+        if (!rowset.IsReady()) {
+            return false;
+        }
+
+        while (!rowset.EndOfSet()) {
+            const auto txId = rowset.GetValue<Schema::TxIds::WriteTxId>();
+            const auto version = TRowVersion(
+                rowset.GetValue<Schema::TxIds::VersionStep>(),
+                rowset.GetValue<Schema::TxIds::VersionTxId>()
+            );
+
+            auto res = Self->AssignedTxIds.emplace(version, txId);
+            Y_VERIFY_S(res.second, "Duplicate version: " << version);
+
+            if (!rowset.Next()) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    bool LoadWorkers(NIceDb::TNiceDb& db) {
+        auto rowset = db.Table<Schema::Workers>().Select();
+        if (!rowset.IsReady()) {
+            return false;
+        }
+
+        while (!rowset.EndOfSet()) {
+            const auto id = TWorkerId(
+                rowset.GetValue<Schema::Workers::ReplicationId>(),
+                rowset.GetValue<Schema::Workers::TargetId>(),
+                rowset.GetValue<Schema::Workers::WorkerId>()
+            );
+            const auto version = TRowVersion(
+                rowset.GetValue<Schema::Workers::HeartbeatVersionStep>(),
+                rowset.GetValue<Schema::Workers::HeartbeatVersionTxId>()
+            );
+
+            auto* worker = Self->GetOrCreateWorker(id);
+            worker->SetHeartbeat(version);
+            Self->WorkersWithHeartbeat.insert(id);
+            Self->WorkersByHeartbeat[version].insert(id);
 
             if (!rowset.Next()) {
                 return false;
@@ -138,7 +216,9 @@ class TController::TTxInit: public TTxBase {
         return LoadSysParams(db)
             && LoadReplications(db)
             && LoadTargets(db)
-            && LoadSrcStreams(db);
+            && LoadSrcStreams(db)
+            && LoadTxIds(db)
+            && LoadWorkers(db);
     }
 
     inline bool Load(NTable::TDatabase& toughDb) {
@@ -163,7 +243,18 @@ public:
 
     void Complete(const TActorContext& ctx) override {
         CLOG_D(ctx, "Complete");
-        Self->SwitchToWork(ctx);
+
+        if (Self->UnresolvedDatabaseReplications.empty()) {
+            Self->SwitchToWork(ctx);
+        } else {
+            for (auto& [rid, resolveAttempts] : Self->UnresolvedDatabaseReplications) {
+                auto replication = Self->Find(rid);
+                replication->ResolveDatabase(ctx);
+                --resolveAttempts;
+            }
+
+            Self->SwitchToDatabaseResolve(ctx);
+        }
     }
 
 }; // TTxInit

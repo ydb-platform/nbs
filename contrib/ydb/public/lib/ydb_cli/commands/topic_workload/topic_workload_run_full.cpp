@@ -3,6 +3,8 @@
 #include "topic_workload_params.h"
 
 #include <contrib/ydb/public/lib/ydb_cli/commands/ydb_service_topic.h>
+#include <contrib/ydb/library/backup/util.h>
+#include <util/stream/format.h>
 
 using namespace NYdb::NConsoleClient;
 
@@ -39,9 +41,20 @@ void TCommandWorkloadTopicRunFull::Config(TConfig& config)
         .StoreResult(&Scenario.TopicName);
 
     // Specific params
-    config.Opts->AddLongOption('p', "producer-threads", "Number of producer threads.")
+    config.Opts->AddLongOption('p', "producer-threads", "Number of writer threads. Every writer thread will produce messages to all topic partitions in round robin manner.")
         .DefaultValue(1)
         .StoreResult(&Scenario.ProducerThreadCount);
+    config.Opts->AddLongOption("use-cpu-timestamp", "If specified, worload will use cpu current timestamp as message create ts to measure latency."
+                                                        " If not specified, will be used expected creation timestamp: e.g. "
+                                                        "if we have 100 messages per second rate, then first message is expected at 0ms of first second, second after 10ms elapsed,"
+                                                        " third after 20ms elapsed, 10th after 100ms elapsed and so on. "
+                                                        "This way 101 message is expected to be generated not earlier"
+                                                        " then 1 second and 10 ms after test start has passed."
+                                                        )
+        .DefaultValue(false)
+        .Optional()
+        .Hidden()
+        .StoreTrue(&Scenario.UseCpuTimestamp);
     config.Opts->AddLongOption('t', "consumer-threads", "Number of consumer threads.")
         .DefaultValue(1)
         .StoreResult(&Scenario.ConsumerThreadCount);
@@ -53,22 +66,86 @@ void TCommandWorkloadTopicRunFull::Config(TConfig& config)
         .StoreResult(&Scenario.ConsumerCount);
     config.Opts->AddLongOption('m', "message-size", "Message size.")
         .DefaultValue(10_KB)
-        .StoreMappedResultT<TString>(&Scenario.MessageSize, &TCommandWorkloadTopicParams::StrToBytes);
+        .StoreMappedResult(&Scenario.MessageSizeBytes, &TCommandWorkloadTopicParams::StrToBytes);
     config.Opts->AddLongOption("message-rate", "Total message rate for all producer threads (messages per second). Exclusive with --byte-rate.")
         .DefaultValue(0)
-        .StoreResult(&Scenario.MessageRate);
+        .StoreResult(&Scenario.MessagesPerSec);
     config.Opts->AddLongOption("byte-rate", "Total message rate for all producer threads (bytes per second). Exclusive with --message-rate.")
         .DefaultValue(0)
-        .StoreMappedResultT<TString>(&Scenario.ByteRate, &TCommandWorkloadTopicParams::StrToBytes);
-    config.Opts->AddLongOption("codec", PrepareAllowedCodecsDescription("Client-side compression algorithm. When read, data will be uncompressed transparently with a codec used on write", InitAllowedCodecs()))
+        .StoreMappedResult(&Scenario.BytesPerSec, &TCommandWorkloadTopicParams::StrToBytes);
+    config.Opts->AddLongOption("codec", PrepareAllowedCodecsDescription("Client-side compression algorithm. When read, data will be uncompressed transparently with a codec used on write", TCommandWorkloadTopicParams::GetWriteAllowedCodecs()))
         .Optional()
         .DefaultValue((TStringBuilder() << NTopic::ECodec::RAW))
-        .StoreMappedResultT<TString>(&Scenario.Codec, &TCommandWorkloadTopicParams::StrToCodec);
+        .StoreMappedResult(&Scenario.Codec, &TCommandWorkloadTopicParams::StrToCodec);
+    config.Opts->AddLongOption("batch-inner-codec", PrepareAllowedCodecsDescription("Inner compression for Kafka record batch payload. Can be set only when --codec is kafka-batch", TCommandWorkloadTopicParams::GetBatchInnerAllowedCodecs()))
+        .Optional()
+        .Hidden()
+        .StoreResult(&Scenario.BatchInnerCodecStr);
     config.Opts->AddLongOption("direct", "Direct write to a partition node.")
         .Hidden()
         .StoreTrue(&Scenario.Direct);
+    config.Opts->AddLongOption("no-consumer", "Read without consumer")
+        .Hidden()
+        .StoreTrue(&Scenario.ReadWithoutConsumer);
+    config.Opts->AddLongOption("key-prefix", "Generate keys with this prefix. Put pair '__key':'{key-prefix}.{key-index}' in the message metadata.")
+        .Optional()
+        .Hidden()
+        .StoreResult(&Scenario.KeyPrefix);
+    config.Opts->AddLongOption("key-count", "The number of different keys to generate. The --key-prefix parameter must be set.")
+        .Optional()
+        .Hidden()
+        .DefaultValue(1)
+        .StoreResult(&Scenario.KeyCount);
 
     config.Opts->MutuallyExclusive("message-rate", "byte-rate");
+
+    config.Opts->AddLongOption("use-tx", "Use transactions.")
+        .Optional()
+        .DefaultValue(false)
+        .StoreTrue(&Scenario.UseTransactions);
+    config.Opts->AddLongOption("no-producer-id-track", "Disable ProducerId tracking in tx (only applies with --use-tx).")
+        .Optional()
+        .Hidden()
+        .StoreTrue(&Scenario.NoTrackProducerIdInTx);
+    config.Opts->AddLongOption("tx-commit-interval", "Interval of transaction commit in milliseconds."
+                                                            " Both tx-commit-messages and tx-commit-interval can trigger transaction commit.")
+        .DefaultValue(1000)
+        .StoreResult(&Scenario.TxCommitIntervalMs);
+    config.Opts->AddLongOption("tx-commit-messages", "Number of messages to commit transaction. "
+                                                            " Both tx-commit-messages and tx-commit-interval can trigger transaction commit.")
+        .DefaultValue(1'000'000)
+        .StoreResult(&Scenario.CommitMessages);
+    config.Opts->AddLongOption("only-topic-in-tx", "Put only topic (without table) in transaction")
+        .Hidden()
+        .StoreTrue(&Scenario.OnlyTopicInTx)
+        .DefaultValue(true);
+    config.Opts->AddLongOption("tx-use-table-select", "Select rows from table in transaction")
+        .DefaultValue(false)
+        .Hidden()
+        .StoreTrue(&Scenario.UseTableSelect);
+    config.Opts->AddLongOption("max-memory-usage-per-consumer", "Max memory usage per consumer in bytes. Should be more than '1MiB'.")
+        .DefaultValue(HumanReadableSize(15_MB, SF_BYTES))
+        .StoreMappedResult(&Scenario.ConsumerMaxMemoryUsageBytes, NYdb::SizeFromString);
+    config.Opts->AddLongOption("partition-max-inflight-bytes", "Max inflight bytes per partition.")
+        .DefaultValue(0)
+        .StoreResult(&Scenario.PartitionMaxInflightBytes);
+    config.Opts->AddLongOption("max-memory-usage-per-producer", "Max memory usage per producer in bytes.")
+        .DefaultValue(HumanReadableSize(15_MB, SF_BYTES))
+        .StoreMappedResult(&Scenario.ProducerMaxMemoryUsageBytes, NYdb::SizeFromString);
+    config.Opts->AddLongOption("batch-flush-interval", "Max time to accumulate messages before flushing one write batch. Zero disables this limit (ex. '0s', '10ms', '1s').")
+        .DefaultValue("1s")
+        .Hidden()
+        .StoreMappedResult(&Scenario.BatchFlushInterval, TDuration::Parse);
+    config.Opts->AddLongOption("batch-flush-size", "Max accumulated payload size in bytes before flushing one write batch. Not set means no size limit.")
+        .Optional()
+        .Hidden()
+        .StoreMappedResult(&Scenario.BatchFlushSizeBytes, &TCommandWorkloadTopicParams::StrToBytes);
+    config.Opts->AddLongOption("batch-flush-message-count", "Max number of logical messages packed into a single write block.")
+        .DefaultValue(1)
+        .Hidden()
+        .StoreResult(&Scenario.BatchFlushMessageCount);
+
+    Scenario.ConfigMetadataMonitoringOptions(config);
 
     config.IsNetworkIntensive = true;
 }
@@ -79,11 +156,11 @@ void TCommandWorkloadTopicRunFull::Parse(TConfig& config)
 
     Scenario.EnsurePercentileIsValid();
     Scenario.EnsureWarmupSecIsValid();
+    Scenario.EnsureRatesIsValid();
+    Scenario.EnsureCodecOptionsAreValid();
 }
 
 int TCommandWorkloadTopicRunFull::Run(TConfig& config)
 {
-    Scenario.UseTransactions = false;
-
     return Scenario.Run(config);
 }

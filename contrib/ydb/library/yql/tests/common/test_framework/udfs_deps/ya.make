@@ -6,11 +6,13 @@ SET(
     contrib/ydb/library/yql/udfs/common/hyperloglog
     contrib/ydb/library/yql/udfs/common/pire
     contrib/ydb/library/yql/udfs/common/protobuf
+    contrib/ydb/library/yql/udfs/common/python/python3_small
     contrib/ydb/library/yql/udfs/common/re2
     contrib/ydb/library/yql/udfs/common/set
     contrib/ydb/library/yql/udfs/common/stat
     contrib/ydb/library/yql/udfs/common/topfreq
     contrib/ydb/library/yql/udfs/common/top
+    contrib/ydb/library/yql/udfs/common/reservoir_sampling
     contrib/ydb/library/yql/udfs/common/string
     contrib/ydb/library/yql/udfs/common/histogram
     contrib/ydb/library/yql/udfs/common/json2
@@ -19,6 +21,7 @@ SET(
     contrib/ydb/library/yql/udfs/common/url_base
     contrib/ydb/library/yql/udfs/common/unicode_base
     contrib/ydb/library/yql/udfs/common/streaming
+    contrib/ydb/library/yql/udfs/common/vector
     contrib/ydb/library/yql/udfs/examples/callables
     contrib/ydb/library/yql/udfs/examples/dicts
     contrib/ydb/library/yql/udfs/examples/dummylog

@@ -4,7 +4,7 @@
  *	  POSTGRES cache invalidation dispatcher definitions.
  *
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/inval.h
@@ -15,7 +15,7 @@
 #define INVAL_H
 
 #include "access/htup.h"
-#include "storage/relfilenode.h"
+#include "storage/relfilelocator.h"
 #include "utils/relcache.h"
 
 extern __thread PGDLLIMPORT int debug_discard_caches;
@@ -28,6 +28,10 @@ extern void AcceptInvalidationMessages(void);
 
 extern void AtEOXact_Inval(bool isCommit);
 
+extern void PreInplace_Inval(void);
+extern void AtInplace_Inval(void);
+extern void ForgetInplace_Inval(void);
+
 extern void AtEOSubXact_Inval(bool isCommit);
 
 extern void PostPrepare_Inval(void);
@@ -37,6 +41,8 @@ extern void CommandEndInvalidationMessages(void);
 extern void CacheInvalidateHeapTuple(Relation relation,
 									 HeapTuple tuple,
 									 HeapTuple newtuple);
+extern void CacheInvalidateHeapTupleInplace(Relation relation,
+											HeapTuple key_equivalent_tuple);
 
 extern void CacheInvalidateCatalog(Oid catalogId);
 
@@ -48,7 +54,7 @@ extern void CacheInvalidateRelcacheByTuple(HeapTuple classTuple);
 
 extern void CacheInvalidateRelcacheByRelid(Oid relid);
 
-extern void CacheInvalidateSmgr(RelFileNodeBackend rnode);
+extern void CacheInvalidateSmgr(RelFileLocatorBackend rlocator);
 
 extern void CacheInvalidateRelmap(Oid databaseId);
 

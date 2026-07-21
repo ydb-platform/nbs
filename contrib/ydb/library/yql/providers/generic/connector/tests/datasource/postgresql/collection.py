@@ -1,14 +1,14 @@
 from typing import Sequence, Mapping
 
-from contrib.ydb.library.yql.providers.generic.connector.api.common.data_source_pb2 import EDataSourceKind
-import contrib.ydb.library.yql.providers.generic.connector.tests.common_test_cases.select_missing_database as select_missing_database
-import contrib.ydb.library.yql.providers.generic.connector.tests.common_test_cases.select_missing_table as select_missing_table
-import contrib.ydb.library.yql.providers.generic.connector.tests.common_test_cases.select_positive_common as select_positive_common
+from contrib.ydb.library.contrib.ydb.library.yql.providers.common.proto.gateways_config_pb2 import EGenericDataSourceKind
+import contrib.ydb.library.contrib.ydb.library.yql.providers.generic.connector.tests.common_test_cases.select_missing_database as select_missing_database
+import contrib.ydb.library.contrib.ydb.library.yql.providers.generic.connector.tests.common_test_cases.select_missing_table as select_missing_table
+import contrib.ydb.library.contrib.ydb.library.yql.providers.generic.connector.tests.common_test_cases.select_positive_common as select_positive_common
 import select_datetime
 import select_positive
 import select_positive_with_schema
 
-from contrib.ydb.library.yql.providers.generic.connector.tests.utils.settings import Settings
+from contrib.ydb.library.contrib.ydb.library.yql.providers.generic.connector.tests.utils.settings import Settings
 
 
 class Collection(object):
@@ -16,10 +16,12 @@ class Collection(object):
 
     def __init__(self, ss: Settings):
         self._test_cases = {
-            'select_missing_database': select_missing_database.Factory().make_test_cases(EDataSourceKind.POSTGRESQL),
-            'select_missing_table': select_missing_table.Factory().make_test_cases(EDataSourceKind.POSTGRESQL),
+            'select_missing_database': select_missing_database.Factory(ss).make_test_cases(
+                EGenericDataSourceKind.POSTGRESQL
+            ),
+            'select_missing_table': select_missing_table.Factory(ss).make_test_cases(EGenericDataSourceKind.POSTGRESQL),
             'select_positive': select_positive.Factory().make_test_cases()
-            + select_positive_common.Factory(ss).make_test_cases(EDataSourceKind.POSTGRESQL),
+            + select_positive_common.Factory(ss).make_test_cases(EGenericDataSourceKind.POSTGRESQL),
             'select_positive_with_schema': select_positive_with_schema.Factory().make_test_cases(),
             'select_datetime': select_datetime.Factory().make_test_cases(),
         }

@@ -7,9 +7,11 @@ SRCS(
 )
 
 PEERDIR(
-    contrib/ydb/core/client/minikql_result_lib
     contrib/ydb/core/kqp/ut/common
+    contrib/ydb/core/resource_pools
+    contrib/ydb/library/yql/ast
     contrib/ydb/library/yql/sql/pg_dummy
+    contrib/ydb/library/yql/sql/v1
     library/cpp/testing/gmock_in_unittest
 )
 
@@ -17,13 +19,12 @@ YQL_LAST_ABI_VERSION()
 
 FORK_SUBTESTS()
 
-IF (SANITIZER_TYPE == "thread" OR WITH_VALGRIND)
-    TIMEOUT(1800)
-    SIZE(LARGE)
-    TAG(ya:fat)
-ELSE()
-    TIMEOUT(600)
+IF (SANITIZER_TYPE)
     SIZE(MEDIUM)
+    REQUIREMENTS(cpu:2)
+ELSE()
+    SIZE(MEDIUM)
+    REQUIREMENTS(cpu:2)
 ENDIF()
 
 END()

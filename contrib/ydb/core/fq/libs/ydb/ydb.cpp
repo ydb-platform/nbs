@@ -1,6 +1,8 @@
 #include "ydb.h"
-
 #include "util.h"
+
+#include <contrib/ydb/core/protos/config.pb.h>
+#include <contrib/ydb/public/sdk/cpp/adapters/issue/issue.h>
 
 #include <util/stream/str.h>
 #include <util/string/printf.h>
@@ -10,6 +12,7 @@ namespace NFq {
 using namespace NThreading;
 using namespace NYdb;
 using namespace NYdb::NTable;
+using TTxControl = NFq::ISession::TTxControl;
 
 using NYql::TIssues;
 
@@ -23,23 +26,29 @@ TFuture<TDataQueryResult> SelectGeneration(const TGenerationContextPtr& context)
     auto query = Sprintf(R"(
         --!syntax_v1
         PRAGMA TablePathPrefix("%s");
+        DECLARE $pk AS String;
 
         SELECT %s, %s
         FROM %s
-        WHERE %s = "%s";
+        WHERE %s = $pk;
     )", context->TablePathPrefix.c_str(),
         context->PrimaryKeyColumn.c_str(),
         context->GenerationColumn.c_str(),
         context->Table.c_str(),
-        context->PrimaryKeyColumn.c_str(),
-        context->PrimaryKey.c_str());
+        context->PrimaryKeyColumn.c_str());
 
-    auto ttxControl = TTxControl::BeginTx(TTxSettings::SerializableRW());
+    auto params = std::make_unique<NYdb::TParamsBuilder>();
+    params->
+         AddParam("$pk")
+        .String(context->PrimaryKey)
+        .Build();
+
+    auto ttxControl = TTxControl::BeginTx();
     if (context->OperationType == TGenerationContext::Check && context->CommitTx) {
         ttxControl.CommitTx();
     }
 
-    return context->Session.ExecuteDataQuery(query, ttxControl);
+    return context->Session->ExecuteDataQuery(query, ttxControl, std::move(params));
 }
 
 TFuture<TStatus> CheckGeneration(
@@ -50,10 +59,9 @@ TFuture<TStatus> CheckGeneration(
         return MakeFuture<TStatus>(selectResult);
     }
 
-
     TResultSetParser parser(selectResult.GetResultSet(0));
     if (parser.TryNextRow()) {
-        context->GenerationRead = parser.ColumnParser(context->GenerationColumn).GetOptionalUint64().GetOrElse(0);
+        context->GenerationRead = parser.ColumnParser(context->GenerationColumn).GetOptionalUint64().value_or(0);
     }
 
     bool isOk = false;
@@ -81,7 +89,8 @@ TFuture<TStatus> CheckGeneration(
     }
     }
 
-    context->Transaction = selectResult.GetTransaction();
+    context->Session->UpdateTransaction(selectResult.GetTransaction());
+    selectResult.GetTransaction().reset();
 
     if (!isOk) {
         RollbackTransaction(context); // don't care about result
@@ -96,7 +105,7 @@ TFuture<TStatus> CheckGeneration(
         return MakeFuture(MakeErrorStatus(EStatus::ALREADY_EXISTS, ss.Str()));
     }
 
-    if (requiresTransaction && !context->Transaction) {
+    if (requiresTransaction && !context->Session->HasActiveTransaction()) {
         // just sanity check, normally should not happen.
         // note that we use retriable error
         TStringStream ss;
@@ -124,23 +133,36 @@ TFuture<TStatus> UpsertGeneration(const TGenerationContextPtr& context) {
     auto query = Sprintf(R"(
         --!syntax_v1
         PRAGMA TablePathPrefix("%s");
+        DECLARE $pk AS String;
+        DECLARE $generation AS Uint64;
 
         UPSERT INTO %s (%s, %s) VALUES
-            ("%s", %lu);
+            ($pk, $generation);
     )", context->TablePathPrefix.c_str(),
         context->Table.c_str(),
         context->PrimaryKeyColumn.c_str(),
-        context->GenerationColumn.c_str(),
-        context->PrimaryKey.c_str(),
-        context->Generation);
+        context->GenerationColumn.c_str());
 
-    auto ttxControl = TTxControl::Tx(*context->Transaction);
+    auto params = std::make_unique<NYdb::TParamsBuilder>();
+    params->
+         AddParam("$pk")
+        .String(context->PrimaryKey)
+        .Build()
+        .AddParam("$generation")
+        .Uint64(context->Generation)
+        .Build();
+
+    auto ttxControl = TTxControl::ContinueTx();
     if (context->CommitTx) {
-        ttxControl.CommitTx();
-        context->Transaction.Clear();
+        ttxControl = TTxControl::ContinueAndCommitTx();
     }
 
-    return context->Session.ExecuteDataQuery(query, ttxControl).Apply(
+    auto f = context->Session->ExecuteDataQuery(query, ttxControl, std::move(params), context->ExecDataQuerySettings);
+    if (context->CommitTx) {
+        context->Session->UpdateTransaction(std::nullopt);
+    }
+
+    return f.Apply(
         [] (const TFuture<TDataQueryResult>& future) {
             TStatus status = future.GetValue();
             return status;
@@ -161,11 +183,54 @@ TFuture<TStatus> RegisterGenerationWrapper(
         });
 }
 
-} // namespace
+} // anonymous namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TYdbConnection::TYdbConnection(const NConfig::TYdbStorageConfig& config,
+TExternalStorageSettings::TExternalStorageSettings(const NConfig::TYdbStorageConfig& config)
+    : Endpoint(config.GetEndpoint())
+    , Database(config.GetDatabase())
+    , PathPrefix(config.GetTablePrefix())
+    , Token(config.GetToken())
+    , TokenFile(config.GetOAuthFile())
+    , SaKeyFile(config.GetSaKeyFile())
+    , CaCertFile(config.GetCertificateFile())
+    , UseSsl(config.GetUseSsl())
+    , UseLocalMetadataService(config.GetUseLocalMetadataService())
+    , IamEndpoint(config.GetIamEndpoint())
+    , OperationTimeout(TDuration::Seconds(config.GetOperationTimeoutSec()))
+    , CancelAfter(TDuration::Seconds(config.GetCancelAfterSec()))
+{
+    if (config.GetTableClientMaxActiveSessions()) {
+        MaxActiveQuerySessions = config.GetTableClientMaxActiveSessions();
+    }
+    if (config.GetClientTimeoutSec()) {
+        ClientTimeout = TDuration::Seconds(config.GetClientTimeoutSec());
+    }
+}
+
+TExternalStorageSettings::TExternalStorageSettings(const NKikimrConfig::TStreamingQueriesConfig::TExternalStorageConfig& config)
+    : Endpoint(config.GetDatabaseConnection().GetEndpoint())
+    , Database(config.GetDatabaseConnection().GetDatabase())
+    , PathPrefix(config.GetPathPrefix())
+    , TokenFile(config.GetDatabaseConnection().GetTokenFile())
+    , SaKeyFile(config.GetDatabaseConnection().GetSaKeyFile())
+    , CaCertFile(config.GetDatabaseConnection().GetCaCertFile())
+    , UseSsl(config.GetDatabaseConnection().GetUseSsl())
+    , UseLocalMetadataService(config.GetDatabaseConnection().GetUseLocalMetadataService())
+    , IamEndpoint(config.GetDatabaseConnection().GetIamEndpoint())
+    , OperationTimeout(TDuration::Seconds(config.GetQueryTimeoutSec()))
+    , CancelAfter(TDuration::Seconds(config.GetQueryTimeoutSec()))
+{
+    if (config.GetMaxActiveQuerySessions()) {
+        MaxActiveQuerySessions = config.GetMaxActiveQuerySessions();
+    }
+    if (config.GetQueryTimeoutSec()) {
+        ClientTimeout = TDuration::Seconds(config.GetQueryTimeoutSec());
+    }
+}
+
+TYdbConnection::TYdbConnection(const TExternalStorageSettings& config,
                                const NKikimr::TYdbCredentialsProviderFactory& credProviderFactory,
                                const NYdb::TDriver& driver)
     : Driver(driver)
@@ -174,13 +239,12 @@ TYdbConnection::TYdbConnection(const NConfig::TYdbStorageConfig& config,
     , CoordinationClient(Driver, GetClientSettings<NYdb::TCommonClientSettings>(config, credProviderFactory))
     , RateLimiterClient(Driver, GetClientSettings<NYdb::TCommonClientSettings>(config, credProviderFactory))
     , DB(config.GetDatabase())
-    , TablePathPrefix(JoinPath(DB, config.GetTablePrefix()))
-{
-}
+    , TablePathPrefix(JoinPath(DB, config.GetPathPrefix()))
+{}
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TYdbConnectionPtr NewYdbConnection(const NConfig::TYdbStorageConfig& config,
+TYdbConnectionPtr NewYdbConnection(const TExternalStorageSettings& config,
                                    const NKikimr::TYdbCredentialsProviderFactory& credProviderFactory,
                                    const NYdb::TDriver& driver) {
     return MakeIntrusive<TYdbConnection>(config, credProviderFactory, driver);
@@ -196,13 +260,18 @@ TStatus MakeErrorStatus(
     auto& issue = issues.back();
     issue.SetCode((ui32)code, severity);
 
-    return TStatus(code, std::move(issues));
+    return TStatus(code, NYdb::NAdapters::ToSdkIssues(std::move(issues)));
 }
 
 NYql::TIssues StatusToIssues(const NYdb::TStatus& status) {
     TIssues issues;
     if (!status.IsSuccess()) {
-        issues = status.GetIssues();
+        issues = NYdb::NAdapters::ToYqlIssues(status.GetIssues());
+        if (!issues) {
+            TStringStream str;
+            str << "Internal error: empty issues with failed status (" << status.GetStatus() << ")";
+            issues.AddIssue(str.Str());
+        }
     }
     return issues;
 }
@@ -230,6 +299,19 @@ TFuture<TStatus> CreateTable(
     return ydbConnection->TableClient.RetryOperation(
         [tablePath = std::move(tablePath), description = std::move(description)] (TSession session) mutable {
             return session.CreateTable(tablePath, TTableDescription(description));
+        });
+}
+
+TFuture<TStatus> CreateTable(
+    const IYdbConnection::TPtr& ydbConnection,
+    const TString& name,
+    TTableDescription&& description,
+    const NACLib::TDiffACL& acl)
+{
+    auto tablePath = JoinPath(ydbConnection->GetTablePathPrefixWithoutDb(), name.c_str());
+    return ydbConnection->GetTableClient()->RetryOperation(
+        [db = ydbConnection->GetDb(), tablePath = std::move(tablePath), description = std::move(description), acl = acl] (ISession::TPtr session) mutable {
+            return session->CreateTable(db, tablePath, TTableDescription(description), acl);
         });
 }
 
@@ -292,22 +374,22 @@ TFuture<TStatus> CheckGeneration(const TGenerationContextPtr& context) {
 }
 
 TFuture<TStatus> RollbackTransaction(const TGenerationContextPtr& context) {
-    if (!context->Transaction || !context->Transaction->IsActive()) {
+
+    if (!context->Session->HasActiveTransaction()) {
         auto status = MakeErrorStatus(EStatus::INTERNAL_ERROR, "trying to rollback non-active transaction");
         return MakeFuture(status);
     }
 
-    auto future = context->Transaction->Rollback();
-    context->Transaction.Clear();
+    auto future = context->Session->Rollback();
     return future;
 }
 
-NKikimr::TYdbCredentialsSettings GetYdbCredentialSettings(const NConfig::TYdbStorageConfig& config) {
+NKikimr::TYdbCredentialsSettings GetYdbCredentialSettings(const TExternalStorageSettings& config) {
     TString oauth;
     if (config.GetToken()) {
         oauth = config.GetToken();
-    } else if (config.GetOAuthFile()) {
-        oauth = StripString(TFileInput(config.GetOAuthFile()).ReadAll());
+    } else if (config.GetTokenFile()) {
+        oauth = StripString(TFileInput(config.GetTokenFile()).ReadAll());
     } else {
         oauth = GetEnv("YDB_TOKEN");
     }

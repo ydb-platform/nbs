@@ -1,0 +1,54 @@
+PY3TEST()
+ENV(YDB_HARD_MEMORY_LIMIT_BYTES="107374182400")
+
+TEST_SRCS(
+    test_clean.py
+    test_clickbench.py
+    #test_workload_simple_queue.py
+    #test_workload_oltp.py
+    test_external.py
+    test_diff_processing.py
+    test_upload.py
+    test_import_csv.py
+    test_default_path.py
+    test_workload_manager.py
+    test_tpcc.py
+)
+
+FORK_TESTS()
+FORK_TEST_FILES()
+FORK_SUBTESTS()
+
+REQUIREMENTS(ram:16 cpu:4)
+
+IF (SANITIZER_TYPE)
+    SIZE(LARGE)
+    INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/large.inc)
+ELSE()
+    SIZE(MEDIUM)
+ENDIF()
+
+ENV(YDB_ENABLE_COLUMN_TABLES="true")
+INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/harness_dep.inc)
+ENV(YDB_CLI_BINARY="contrib/ydb/apps/ydb/ydb")
+ENV(NO_KUBER_LOGS="yes")
+ENV(WAIT_CLUSTER_ALIVE_TIMEOUT="60")
+ENV(ARCADIA_EXTERNAL_DATA=contrib/ydb/tests/functional/tpc/data)
+ENV(SIMPLE_QUEUE_BINARY="contrib/ydb/tests/stress/simple_queue/simple_queue")
+ENV(OLTP_WORKLOAD_BINARY="contrib/ydb/tests/stress/oltp_workload/oltp_workload")
+
+PEERDIR(
+    contrib/ydb/tests/functional/tpc/lib
+)
+
+DEPENDS(
+    contrib/ydb/apps/ydb
+    contrib/ydb/tests/stress/simple_queue
+    contrib/ydb/tests/stress/oltp_workload
+)
+
+DATA(
+    arcadia/contrib/ydb/tests/functional/clickbench/data/hits.csv
+    arcadia/contrib/ydb/tests/functional/tpc/data
+)
+END()

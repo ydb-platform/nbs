@@ -3,56 +3,85 @@
 #include <contrib/ydb/library/yql/utils/yql_panic.h>
 
 #include <contrib/ydb/library/yql/parser/proto_ast/collect_issues/collect_issues.h>
-#include <contrib/ydb/library/yql/parser/proto_ast/gen/v1/SQLv1Lexer.h>
-#include <contrib/ydb/library/yql/parser/proto_ast/gen/v1/SQLv1Parser.h>
-#include <contrib/ydb/library/yql/parser/proto_ast/gen/v1_ansi/SQLv1Lexer.h>
-#include <contrib/ydb/library/yql/parser/proto_ast/gen/v1_ansi/SQLv1Parser.h>
 
-#include <contrib/ydb/library/yql/parser/proto_ast/gen/v1_proto_split/SQLv1Parser.pb.main.h>
+#include <contrib/ydb/library/yql/sql/v1/proto_parser/antlr4/proto_parser.h>
+#include <contrib/ydb/library/yql/sql/v1/proto_parser/antlr4_ansi/proto_parser.h>
+
+#include <util/generic/algorithm.h>
 
 #if defined(_tsan_enabled_)
-#include <util/system/mutex.h>
+    #include <util/system/mutex.h>
 #endif
 
 using namespace NYql;
 
 namespace NSQLTranslationV1 {
 
-using NALPDefault::SQLv1LexerTokens;
-
 #if defined(_tsan_enabled_)
-    TMutex SanitizerSQLTranslationMutex;
+TMutex SanitizerSQLTranslationMutex;
 #endif
 
-using namespace NSQLv1Generated;
+namespace {
 
-google::protobuf::Message* SqlAST(const TString& query, const TString& queryName, TIssues& err, size_t maxErrors, bool ansiLexer, google::protobuf::Arena* arena) {
+void ReportError(NAST::IErrorCollector& err, const TString& name) {
+    err.Error(0, 0, TStringBuilder() << "Parser " << name << " is not supported");
+}
+
+} // namespace
+
+google::protobuf::Message* SqlAST(const TParsers& parsers, const TString& query, const TString& queryName, TIssues& err,
+                                  size_t maxErrors, bool ansiLexer, google::protobuf::Arena* arena) {
+    NSQLTranslation::TErrorCollectorOverIssues collector(err, maxErrors, queryName);
+    return SqlAST(parsers, query, queryName, collector, ansiLexer, arena);
+}
+
+google::protobuf::Message* SqlAST(const TParsers& parsers, const TString& query, const TString& queryName, NAST::IErrorCollector& err,
+                                  bool ansiLexer, google::protobuf::Arena* arena) {
     YQL_ENSURE(arena);
 #if defined(_tsan_enabled_)
     TGuard<TMutex> grd(SanitizerSQLTranslationMutex);
 #endif
-    NSQLTranslation::TErrorCollectorOverIssues collector(err, maxErrors, "");
     if (ansiLexer) {
-        NProtoAST::TProtoASTBuilder<NALPAnsi::SQLv1Parser, NALPAnsi::SQLv1Lexer> builder(query, queryName, arena);
-        return builder.BuildAST(collector);
+        google::protobuf::Message* res = nullptr;
+        if (parsers.Antlr4Ansi) {
+            res = parsers.Antlr4Ansi->MakeParser()->Parse(query, queryName, err, arena);
+            if (!res) {
+                return res;
+            }
+        } else {
+            ReportError(err, "antlr4_ansi");
+            return nullptr;
+        }
+
+        return res;
     } else {
-        NProtoAST::TProtoASTBuilder<NALPDefault::SQLv1Parser, NALPDefault::SQLv1Lexer> builder(query, queryName, arena);
-        return builder.BuildAST(collector);
+        google::protobuf::Message* res = nullptr;
+        if (parsers.Antlr4) {
+            res = parsers.Antlr4->MakeParser()->Parse(query, queryName, err, arena);
+            if (!res) {
+                return res;
+            }
+        } else {
+            ReportError(err, "antlr4");
+            return nullptr;
+        }
+
+        return res;
     }
 }
 
-google::protobuf::Message* SqlAST(const TString& query, const TString& queryName, NProtoAST::IErrorCollector& err, bool ansiLexer, google::protobuf::Arena* arena) {
-    YQL_ENSURE(arena);
-#if defined(_tsan_enabled_)
-    TGuard<TMutex> grd(SanitizerSQLTranslationMutex);
-#endif
-    if (ansiLexer) {
-        NProtoAST::TProtoASTBuilder<NALPAnsi::SQLv1Parser, NALPAnsi::SQLv1Lexer> builder(query, queryName, arena);
-        return builder.BuildAST(err);
-    } else {
-        NProtoAST::TProtoASTBuilder<NALPDefault::SQLv1Parser, NALPDefault::SQLv1Lexer> builder(query, queryName, arena);
-        return builder.BuildAST(err);
-    }
+google::protobuf::Message* SqlAST(const TParsers& parsers, const TString& query, const TString& queryName,
+                                  NYql::TIssues& err, size_t maxErrors, bool ansiLexer, bool antlr4, google::protobuf::Arena* arena)
+{
+    YQL_ENSURE(antlr4);
+    return SqlAST(parsers, query, queryName, err, maxErrors, ansiLexer, arena);
+}
+
+google::protobuf::Message* SqlAST(const TParsers& parsers, const TString& query, const TString& queryName,
+                                  NAST::IErrorCollector& err, bool ansiLexer, bool antlr4, google::protobuf::Arena* arena)
+{
+    YQL_ENSURE(antlr4);
+    return SqlAST(parsers, query, queryName, err, ansiLexer, arena);
 }
 
 } // namespace NSQLTranslationV1

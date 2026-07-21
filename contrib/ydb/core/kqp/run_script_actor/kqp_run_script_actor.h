@@ -1,21 +1,50 @@
 #pragma once
 
-#include <contrib/ydb/core/kqp/counters/kqp_counters.h>
-
 #include <contrib/ydb/core/protos/kqp.pb.h>
-#include <contrib/ydb/core/base/appdata.h>
+#include <contrib/ydb/library/actors/core/actorsystem_fwd.h>
 
-#include <contrib/ydb/library/actors/core/actor.h>
+#include <util/datetime/base.h>
+#include <util/generic/ptr.h>
+#include <util/generic/string.h>
+#include <util/system/types.h>
+
+#include <memory>
+#include <optional>
 
 namespace NKikimrConfig {
-    class TQueryServiceConfig;
-}
+
+class TQueryServiceConfig;
+
+} // namespace NKikimrConfig
+
+namespace NYql::NPq::NProto {
+
+class StreamingDisposition;
+
+} // namespace NYql::NPq::NProto
 
 namespace NKikimr::NKqp {
 
-struct TEvKqpRunScriptActor {
+class TKqpCounters;
+
+struct TKqpRunScriptActorSettings {
+    TString Database;
+    TString ExecutionId;
+    i64 LeaseGeneration = 0;
+    TDuration LeaseDuration;
+    TDuration ResultsTtl;
+    TDuration ProgressStatsPeriod;
+    TIntrusivePtr<TKqpCounters> Counters;
+    bool SaveQueryPhysicalGraph = false;
+    std::optional<NKikimrKqp::TQueryPhysicalGraph> PhysicalGraph;
+    bool DisableDefaultTimeout = false;
+    TString CheckpointId;
+    TString StreamingQueryPath;
+    TString CustomerSuppliedId;
+    TString WatermarkLateEventsPolicy;
+    std::shared_ptr<NYql::NPq::NProto::StreamingDisposition> StreamingDisposition;
 };
 
-NActors::IActor* CreateRunScriptActor(const TString& executionId, const NKikimrKqp::TEvQueryRequest& request, const TString& database, ui64 leaseGeneration, TDuration leaseDuration, TDuration resultsTtl, NKikimrConfig::TQueryServiceConfig queryServiceConfig, TIntrusivePtr<TKqpCounters> counters);
+NActors::IActor* CreateRunScriptActor(const NKikimrKqp::TEvQueryRequest& request, TKqpRunScriptActorSettings&& settings, NKikimrConfig::TQueryServiceConfig queryServiceConfig);
 
 } // namespace NKikimr::NKqp

@@ -4,15 +4,20 @@ PEERDIR(
     contrib/ydb/core/base
     contrib/ydb/core/discovery
     contrib/ydb/core/engine/minikql
+    contrib/ydb/core/kqp/common/events
+    contrib/ydb/services/scheme_secret
     contrib/ydb/core/protos
     contrib/ydb/core/tablet
     contrib/ydb/core/tablet_flat
     contrib/ydb/core/tx/replication/common
     contrib/ydb/core/tx/replication/ydb_proxy
+    contrib/ydb/core/tx/replication/ydb_proxy/local_proxy
     contrib/ydb/core/tx/scheme_board
+    contrib/ydb/core/tx/tx_allocator_client
     contrib/ydb/core/util
     contrib/ydb/core/ydb_convert
     contrib/ydb/services/metadata
+    contrib/ydb/library/yql/public/issue
     library/cpp/json
 )
 
@@ -21,21 +26,26 @@ SRCS(
     dst_alterer.cpp
     dst_creator.cpp
     dst_remover.cpp
+    event_util.cpp
     lag_provider.cpp
     logging.cpp
     nodes_manager.cpp
     private_events.cpp
     replication.cpp
+    resource_id_resolver.cpp
     secret_resolver.cpp
     session_info.cpp
+    stream_consumer_remover.cpp
     stream_creator.cpp
     stream_remover.cpp
     sys_params.cpp
     target_base.cpp
     target_discoverer.cpp
     target_table.cpp
+    target_transfer.cpp
     target_with_stream.cpp
     tenant_resolver.cpp
+    tx_assign_tx_id.cpp
     tx_alter_dst_result.cpp
     tx_alter_replication.cpp
     tx_assign_stream_name.cpp
@@ -47,8 +57,11 @@ SRCS(
     tx_drop_dst_result.cpp
     tx_drop_replication.cpp
     tx_drop_stream_result.cpp
+    tx_heartbeat.cpp
     tx_init.cpp
     tx_init_schema.cpp
+    tx_resolve_database_result.cpp
+    tx_resolve_resource_id_result.cpp
     tx_resolve_secret_result.cpp
     tx_worker_error.cpp
 )
@@ -60,6 +73,9 @@ YQL_LAST_ABI_VERSION()
 END()
 
 RECURSE_FOR_TESTS(
+    ut_assign_tx_id
     ut_dst_creator
+    ut_replication
+    ut_stream_creator
     ut_target_discoverer
 )

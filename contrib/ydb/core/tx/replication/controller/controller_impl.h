@@ -11,16 +11,20 @@
 
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/core/base/defs.h>
+#include <contrib/ydb/core/base/row_version.h>
 #include <contrib/ydb/core/protos/counters_replication.pb.h>
 #include <contrib/ydb/core/tablet/tablet_counters.h>
 #include <contrib/ydb/core/tablet_flat/tablet_flat_executed.h>
 #include <contrib/ydb/core/tx/replication/service/service.h>
+#include <contrib/ydb/core/tx/tx_allocator_client/actor_client.h>
+#include <contrib/ydb/core/tx/tx_proxy/proxy.h>
 #include <contrib/ydb/library/actors/core/interconnect.h>
 #include <contrib/ydb/library/yverify_stream/yverify_stream.h>
 
 #include <util/generic/deque.h>
 #include <util/generic/hash.h>
 #include <util/generic/hash_set.h>
+#include <util/generic/map.h>
 
 namespace NKikimr::NReplication::NController {
 
@@ -60,9 +64,11 @@ private:
 
     // state functions
     STFUNC(StateInit);
+    STFUNC(StateDatabaseResolve);
     STFUNC(StateWork);
 
     void Cleanup(const TActorContext& ctx);
+    void SwitchToDatabaseResolve(const TActorContext& ctx);
     void SwitchToWork(const TActorContext& ctx);
     void Reset();
 
@@ -80,6 +86,8 @@ private:
     void Handle(TEvPrivate::TEvAlterDstResult::TPtr& ev, const TActorContext& ctx);
     void Handle(TEvPrivate::TEvDropDstResult::TPtr& ev, const TActorContext& ctx);
     void Handle(TEvPrivate::TEvResolveSecretResult::TPtr& ev, const TActorContext& ctx);
+    void Handle(TEvPrivate::TEvResolveResourceIdResult::TPtr& ev, const TActorContext& ctx);
+    void HandleDatabaseResolve(TEvPrivate::TEvResolveTenantResult::TPtr& ev, const TActorContext& ctx);
     void Handle(TEvPrivate::TEvResolveTenantResult::TPtr& ev, const TActorContext& ctx);
     void Handle(TEvPrivate::TEvUpdateTenantNodes::TPtr& ev, const TActorContext& ctx);
     void Handle(TEvPrivate::TEvProcessQueues::TPtr& ev, const TActorContext& ctx);
@@ -92,6 +100,11 @@ private:
     void Handle(TEvService::TEvStatus::TPtr& ev, const TActorContext& ctx);
     void Handle(TEvService::TEvWorkerStatus::TPtr& ev, const TActorContext& ctx);
     void Handle(TEvService::TEvRunWorker::TPtr& ev, const TActorContext& ctx);
+    void Handle(TEvService::TEvWorkerDataEnd::TPtr& ev, const TActorContext& ctx);
+    void Handle(TEvService::TEvGetTxId::TPtr& ev, const TActorContext& ctx);
+    void Handle(TEvService::TEvHeartbeat::TPtr& ev, const TActorContext& ctx);
+    void Handle(TEvTxAllocatorClient::TEvAllocateResult::TPtr& ev, const TActorContext& ctx);
+    void Handle(TEvTxUserProxy::TEvProposeTransactionStatus::TPtr& ev, const TActorContext& ctx);
     void Handle(TEvInterconnect::TEvNodeDisconnected::TPtr& ev, const TActorContext& ctx);
 
     void CreateSession(ui32 nodeId, const TActorContext& ctx);
@@ -106,7 +119,10 @@ private:
     void StopWorker(ui32 nodeId, const TWorkerId& id);
     void RemoveWorker(const TWorkerId& id, const TActorContext& ctx);
     bool MaybeRemoveWorker(const TWorkerId& id, const TActorContext& ctx);
+    TReplication::ITarget* FindTarget(const TWorkerId& id) const;
     void UpdateLag(const TWorkerId& id, TDuration lag);
+    void UpdateStats(const TWorkerId& id, const NKikimrReplication::TWorkerStats& stats);
+    void UpdateStats(const TWorkerId& id, NKikimrReplication::TEvWorkerStatus::EStatus status);
     void ProcessCreateStreamQueue(const TActorContext& ctx);
     void ProcessDropStreamQueue(const TActorContext& ctx);
 
@@ -124,8 +140,13 @@ private:
     class TTxCreateDstResult;
     class TTxAlterDstResult;
     class TTxDropDstResult;
+    class TTxResolveDatabaseResult;
     class TTxResolveSecretResult;
+    class TTxResolveResourceIdResult;
     class TTxWorkerError;
+    class TTxAssignTxId;
+    class TTxHeartbeat;
+    class TTxCommitChanges;
 
     // tx runners
     void RunTxInitSchema(const TActorContext& ctx);
@@ -143,13 +164,17 @@ private:
     void RunTxCreateDstResult(TEvPrivate::TEvCreateDstResult::TPtr& ev, const TActorContext& ctx);
     void RunTxAlterDstResult(TEvPrivate::TEvAlterDstResult::TPtr& ev, const TActorContext& ctx);
     void RunTxDropDstResult(TEvPrivate::TEvDropDstResult::TPtr& ev, const TActorContext& ctx);
+    void RunTxResolveDatabaseResult(TEvPrivate::TEvResolveTenantResult::TPtr& ev, const TActorContext& ctx);
     void RunTxResolveSecretResult(TEvPrivate::TEvResolveSecretResult::TPtr& ev, const TActorContext& ctx);
+    void RunTxResolveResourceIdResult(TEvPrivate::TEvResolveResourceIdResult::TPtr& ev, const TActorContext& ctx);
     void RunTxWorkerError(const TWorkerId& id, const TString& error, const TActorContext& ctx);
+    void RunTxAssignTxId(const TActorContext& ctx);
+    void RunTxHeartbeat(const TActorContext& ctx);
 
     // other
     template <typename T>
-    TReplication::TPtr Add(ui64 id, const TPathId& pathId, T&& config) {
-        auto replication = MakeIntrusive<TReplication>(id, pathId, std::forward<T>(config));
+    TReplication::TPtr Add(ui64 id, const TPathId& pathId, T&& config, const TString& database) {
+        auto replication = MakeIntrusive<TReplication>(id, pathId, std::forward<T>(config), database);
         {
             const auto res = Replications.emplace(id, replication);
             Y_VERIFY_S(res.second, "Duplication replication: " << id);
@@ -164,6 +189,7 @@ private:
 
     TReplication::TPtr Find(ui64 id) const;
     TReplication::TPtr Find(const TPathId& pathId) const;
+    TReplication::TPtr GetSingle() const;
     void Remove(ui64 id);
 
 private:
@@ -174,6 +200,8 @@ private:
     TSysParams SysParams;
     THashMap<ui64, TReplication::TPtr> Replications;
     THashMap<TPathId, TReplication::TPtr> ReplicationsByPathId;
+    THashMap<ui64, ui8> UnresolvedDatabaseReplications;
+    static constexpr ui8 ResolveDatabaseAttemptsLimit = 5;
 
     TActorId DiscoveryCache;
     TNodesManager NodesManager;
@@ -192,6 +220,19 @@ private:
     // drop stream limiter
     TDeque<TActorId> RequestedDropStream;
     THashSet<TActorId> InflightDropStream;
+
+    TActorId TxAllocatorClient;
+    TDeque<ui64> AllocatedTxIds; // got from tx allocator
+    bool AllocateTxIdInFlight = false;
+    TMap<TRowVersion, ui64> AssignedTxIds; // tx ids assigned to version
+    TMap<TRowVersion, THashSet<ui32>> PendingTxId;
+    bool AssignTxIdInFlight = false;
+
+    THashSet<TWorkerId> WorkersWithHeartbeat;
+    TMap<TRowVersion, THashSet<TWorkerId>> WorkersByHeartbeat;
+    THashMap<TWorkerId, TRowVersion> PendingHeartbeats;
+    bool ProcessHeartbeatsInFlight = false;
+    ui64 CommittingTxId = 0;
 
 }; // TController
 

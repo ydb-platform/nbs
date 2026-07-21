@@ -60,7 +60,7 @@ struct TDqAsyncStats {
     ui64 Chunks = 0;
     ui64 Splits = 0;
 
-    // full stats 
+    // full stats
     TInstant FirstMessageTs;
     TInstant PauseMessageTs;
     TInstant ResumeMessageTs;
@@ -68,12 +68,21 @@ struct TDqAsyncStats {
     TDuration WaitTime;
     ui64 WaitPeriods = 0;
 
+    ui64 FilteredBytes = 0;
+    ui64 FilteredRows = 0;
+    ui64 QueuedBytes = 0;
+    ui64 QueuedRows = 0;
+
     void MergeData(const TDqAsyncStats& other) {
         Bytes += other.Bytes;
         DecompressedBytes += other.DecompressedBytes;
         Rows += other.Rows;
         Chunks += other.Chunks;
         Splits += other.Splits;
+        FilteredBytes += other.FilteredBytes;
+        FilteredRows += other.FilteredRows;
+        QueuedBytes += other.QueuedBytes;
+        QueuedRows += other.QueuedRows;
     }
 
     void MergeTime(const TDqAsyncStats& other) {
@@ -169,6 +178,72 @@ struct TDqAsyncStats {
 
     inline bool CollectProfile() const {
         return StatsLevelCollectProfile(Level);
+    }
+};
+
+struct TDqThreadSafeStats {
+    std::atomic<ui64> Bytes = 0;
+    std::atomic<ui64> Rows = 0;
+    std::atomic<ui64> Chunks = 0;
+    std::atomic<ui64> Splits = 0;
+    std::atomic<TInstant> CurrentPauseTs = TInstant::Zero();
+    std::atomic<TInstant> FirstMessageTs = TInstant::Zero();
+    std::atomic<TInstant> LastMessageTs = TInstant::Zero();
+    std::atomic<ui64> WaitTimeUs = 0;
+
+    TCollectStatsLevel Level = TCollectStatsLevel::None;
+    constexpr static TDuration MinWaitDuration = TDuration::MicroSeconds(100);
+
+    inline bool CollectBasic() const {
+        return StatsLevelCollectBasic(Level);
+    }
+
+    inline bool CollectFull() const {
+        return StatsLevelCollectFull(Level);
+    }
+
+    inline void TryPause() {
+        if (CollectFull()) {
+            auto now = TInstant::Now();
+            auto currentPauseTs = CurrentPauseTs.load();
+            if (!currentPauseTs) {
+                CurrentPauseTs.store(now);
+            } else {
+                if (now - currentPauseTs >= MinWaitDuration * 2) {
+                    currentPauseTs = CurrentPauseTs.exchange(now);
+                    if (currentPauseTs) {
+                        WaitTimeUs += (now - currentPauseTs).MicroSeconds();
+                    }
+                }
+            }
+        }
+    }
+
+    inline void Resume() {
+        if (CollectFull()) {
+            auto now = TInstant::Now();
+            if (!FirstMessageTs.load()) {
+                FirstMessageTs.store(now);
+            }
+            LastMessageTs.store(now);
+            auto currentPauseTs = CurrentPauseTs.exchange(TInstant::Zero());
+            if (currentPauseTs) {
+                WaitTimeUs += (now - currentPauseTs).MicroSeconds();
+            }
+        }
+    }
+
+    inline void Export(TDqAsyncStats& stats) {
+        stats.Bytes = Bytes.load();
+        stats.Rows = Rows.load();
+        stats.Chunks = Chunks.load();
+        stats.Splits = Splits.load();
+        if (CollectFull()) {
+            stats.CurrentPauseTs = CurrentPauseTs.load();
+            stats.FirstMessageTs = FirstMessageTs.load();
+            stats.LastMessageTs = LastMessageTs.load();
+            stats.WaitTime = TDuration::MicroSeconds(WaitTimeUs.load());
+        }
     }
 };
 

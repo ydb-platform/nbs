@@ -3,12 +3,16 @@
 
 #include <library/cpp/json/json_reader.h>
 #include <library/cpp/string_utils/base64/base64.h>
+#include <util/string/join.h>
 
 #include <sstream>
+#include <utility>
 
 using namespace NYql;
 
-static TString ConvertToStatisticsTypeString(EStatisticsType type) {
+namespace {
+
+TString ConvertToStatisticsTypeString(EStatisticsType type) {
     switch (type) {
         case EStatisticsType::BaseTable:
             return "BaseTable";
@@ -16,13 +20,10 @@ static TString ConvertToStatisticsTypeString(EStatisticsType type) {
             return "FilteredFactTable";
         case EStatisticsType::ManyManyJoin:
             return "ManyManyJoin";
-        default:
-            Y_ENSURE(false,"Unknown EStatisticsType");
     }
-    return "";
 }
 
-static TString ConvertToStatisticsTypeString(EStorageType storageType) {
+TString ConvertToStatisticsTypeString(EStorageType storageType) {
     switch (storageType) {
         case EStorageType::NA:
             return "NA";
@@ -30,11 +31,10 @@ static TString ConvertToStatisticsTypeString(EStorageType storageType) {
             return "RowStorage";
         case EStorageType::ColumnStorage:
             return "ColumnStorage";
-        default:
-            Y_ENSURE(false,"Unknown Storage type");
     }
-    return "";
 }
+
+} // namespace
 
 TString TOptimizerStatistics::ToString() const {
     std::stringstream ss;
@@ -42,16 +42,117 @@ TString TOptimizerStatistics::ToString() const {
     return ss.str();
 }
 
+TString TShufflingOrderingsByJoinLabels::ToString() const
+{
+        if (ShufflingOrderingsByJoinLabels_.empty()) {
+            return "TShufflingOrderingsByJoinLabels{empty}";
+        }
+
+        TStringBuilder result;
+        result << "TShufflingOrderingsByJoinLabels{" << ShufflingOrderingsByJoinLabels_.size() << " entries: ";
+
+        for (size_t i = 0; i < ShufflingOrderingsByJoinLabels_.size(); ++i) {
+            if (i > 0) result << "; ";
+
+            const auto& [joinLabels, shufflings] = ShufflingOrderingsByJoinLabels_[i];
+            result << "{" << JoinSeq(", ", joinLabels) << ":" << shufflings.GetState() << "}";
+        }
+
+        result << "}";
+        return result;
+}
+
 std::ostream& NYql::operator<<(std::ostream& os, const TOptimizerStatistics& s) {
     os << "Type: " << ConvertToStatisticsTypeString(s.Type) << ", Nrows: " << s.Nrows
         << ", Ncols: " << s.Ncols << ", ByteSize: " << s.ByteSize << ", Cost: " << s.Cost;
-    if (s.KeyColumns) {
-        for (const auto& c : s.KeyColumns->Data) {
-            os << ", " << c;
+
+        os << ", Upper aliases: " << "[";
+    if (s.Aliases) {
+
+        std::string tmp;
+        for (const auto& c: *s.Aliases) {
+            tmp.append(c).append(", ");
         }
+
+        if (!tmp.empty()) {
+            tmp.pop_back();
+            tmp.pop_back();
+        }
+        os << tmp;
     }
+    os << "]";
+
+
+    if (s.KeyColumns) {
+        os << ", keys: ";
+
+        std::string tmp;
+        for (const auto& c: s.KeyColumns->Data) {
+            tmp.append(c).append(", ");
+        }
+
+        if (!tmp.empty()) {
+            tmp.pop_back();
+            tmp.pop_back();
+        }
+        os << "[" << tmp << "]";
+    }
+
+    if (s.ShuffledByColumns) {
+        os << ", shuffled by: ";
+
+        std::string tmp;
+        for (const auto& c: s.ShuffledByColumns->Data) {
+            tmp.append(c.RelName).append(".").append(c.AttributeName).append(", ");
+        }
+
+        if (!tmp.empty()) {
+            tmp.pop_back();
+            tmp.pop_back();
+        }
+        os << "[" << tmp << "]";
+    }
+    os << ", LogicalOrderings (Shufflings) state: " << s.LogicalOrderings.GetState();
+    os << ", Init Shuffling: " << s.LogicalOrderings.GetInitOrderingIdx();
+    os << ", SortingOrderings (Sortings) state: "   << s.SortingOrderings.GetState();
+    os << ", Init Sorting: " << s.SortingOrderings.GetInitOrderingIdx();
+
+    if (s.ReversedSortingOrderings.HasState()) {
+        os << ", ReversedSortingOrderings (Sortings) state: "   << s.ReversedSortingOrderings.GetState();
+    }
+
+    if (s.SortingOrderingIdx >= 0) {
+        os << ", SortingOrderingIdx: " << s.SortingOrderingIdx;
+    }
+
+    if (s.ShufflingOrderingIdx >= 0) {
+        os << ", ShufflingOrderingIdx: " << s.ShufflingOrderingIdx;
+    }
+
     os << ", Sel: " << s.Selectivity;
     os << ", Storage: " << ConvertToStatisticsTypeString(s.StorageType);
+    if (s.SortColumns) {
+        os << ", sorted: ";
+
+        std::string tmp;
+        for (size_t i = 0; i < s.SortColumns->Columns.size() && i < s.SortColumns->Aliases.size(); i++) {
+            auto c = s.SortColumns->Columns[i];
+            auto a = s.SortColumns->Aliases[i];
+            if (!a.empty()) {
+                tmp.append(a).append(".");
+            }
+
+            tmp.append(c).append(", ");
+        }
+
+        if (!tmp.empty()) {
+            tmp.pop_back();
+            tmp.pop_back();
+        }
+
+        os << tmp;
+    }
+
     return os;
 }
 
@@ -68,16 +169,21 @@ TOptimizerStatistics::TOptimizerStatistics(
     TIntrusivePtr<TKeyColumns> keyColumns,
     TIntrusivePtr<TColumnStatMap> columnMap,
     EStorageType storageType,
-    std::unique_ptr<IProviderStatistics> specific)
+    std::shared_ptr<IProviderStatistics> specific)
     : Type(type)
     , Nrows(nrows)
     , Ncols(ncols)
     , ByteSize(byteSize)
     , Cost(cost)
-    , KeyColumns(keyColumns)
-    , ColumnStatistics(columnMap)
+    , Selectivity(1.0)
+    , KeyColumns(std::move(keyColumns))
+    , ColumnStatistics(std::move(columnMap))
+    , ShuffledByColumns(nullptr)
+    , SortColumns(nullptr)
     , StorageType(storageType)
     , Specific(std::move(specific))
+    , Labels(nullptr)
+    , LogicalOrderings()
 {
 }
 
@@ -90,7 +196,8 @@ TOptimizerStatistics& TOptimizerStatistics::operator+=(const TOptimizerStatistic
 }
 
 std::shared_ptr<TOptimizerStatistics> NYql::OverrideStatistics(const NYql::TOptimizerStatistics& s, const TStringBuf& tablePath, const std::shared_ptr<NJson::TJsonValue>& stats) {
-    auto res = std::make_shared<TOptimizerStatistics>(s.Type, s.Nrows, s.Ncols, s.ByteSize, s.Cost, s.KeyColumns, s.ColumnStatistics);
+    auto res = std::make_shared<TOptimizerStatistics>(s.Type, s.Nrows, s.Ncols, s.ByteSize, s.Cost, s.KeyColumns, s.ColumnStatistics, s.StorageType, s.Specific);
+    res->SortColumns = s.SortColumns;
 
     auto dbStats = stats->GetMapSafe();
 
@@ -141,8 +248,17 @@ std::shared_ptr<TOptimizerStatistics> NYql::OverrideStatistics(const NYql::TOpti
 
                 TString countMinRaw{};
                 Base64StrictDecode(countMinBase64, countMinRaw);
-                
-                cStat.CountMinSketch.reset(NKikimr::TCountMinSketch::FromString(countMinRaw.Data(), countMinRaw.Size()));
+                cStat.CountMinSketch.reset(NKikimr::TCountMinSketch::FromString(countMinRaw.data(), countMinRaw.size()));
+            }
+            if (auto eqWidthHistogram = colMap.find("histogram"); eqWidthHistogram != colMap.end()) {
+              TString histogramBase64 = eqWidthHistogram->second.GetStringSafe();
+
+              TString histogramBinary{};
+              Base64StrictDecode(histogramBase64, histogramBinary);
+              auto histogram = std::make_shared<NKikimr::TEqWidthHistogram>(
+                  histogramBinary.data(), histogramBinary.size());
+              cStat.EqWidthHistogramEstimator =
+                  std::make_shared<NKikimr::TEqWidthHistogramEstimator>(histogram);
             }
 
             res->ColumnStatistics->Data[columnName] = cStat;

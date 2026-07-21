@@ -5,12 +5,14 @@ SRCS(
 )
 
 PEERDIR(
-    library/cpp/charset
+    library/cpp/charset/lite
     library/cpp/http/io
     library/cpp/http/misc
     library/cpp/openssl/io
     library/cpp/uri
+    library/cpp/retry
     contrib/ydb/library/yql/utils/log
+    contrib/ydb/library/yql/utils/fetch/proto
 )
 
 END()

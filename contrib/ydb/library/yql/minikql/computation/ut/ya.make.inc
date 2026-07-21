@@ -9,11 +9,10 @@ ELSE()
     SIZE(MEDIUM)
 ENDIF()
 
-OWNER(g:yql)
-
 SRCDIR(contrib/ydb/library/yql/minikql/computation)
 
 SRCS(
+    mkql_block_trimmer_ut.cpp
     mkql_computation_node_holders_ut.cpp
     mkql_computation_node_pack_ut.cpp
     mkql_computation_node_list_ut.cpp
@@ -25,6 +24,8 @@ SRCS(
     mkql_value_builder_ut.cpp
     presort_ut.cpp
     mkql_vector_spiller_adapter_ut.cpp
+    mkql_method_address_helper_ut.cpp
+    mkql_spiller_adapter_ut.cpp
 )
 
 PEERDIR(
@@ -32,7 +33,6 @@ PEERDIR(
     library/cpp/threading/local_executor
     contrib/ydb/library/yql/parser/pg_wrapper
     contrib/ydb/library/yql/public/udf/service/exception_policy
-    contrib/ydb/library/yql/dq/proto
 )
 
 YQL_LAST_ABI_VERSION()

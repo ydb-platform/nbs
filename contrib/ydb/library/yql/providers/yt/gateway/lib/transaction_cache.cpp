@@ -18,7 +18,7 @@ using namespace NYT;
 
 void TTransactionCache::TEntry::DeleteAtFinalizeUnlocked(const TString& table, bool isInternal)
 {
-    auto inserted = TablesToDeleteAtFinalize.insert(table);
+    auto inserted = TablesToDeleteAtFinalize.emplace(table, false);
     if (!isInternal && inserted.second) {
         if (++ExternalTempTablesCount > InflightTempTablesLimit) {
             YQL_LOG_CTX_THROW yexception() << "Too many temporary tables registered - limit is " << InflightTempTablesLimit;
@@ -28,14 +28,28 @@ void TTransactionCache::TEntry::DeleteAtFinalizeUnlocked(const TString& table, b
 
 bool TTransactionCache::TEntry::CancelDeleteAtFinalizeUnlocked(const TString& table, bool isInternal)
 {
-    auto erased = TablesToDeleteAtFinalize.erase(table);
-    if (!isInternal) {
-        YQL_ENSURE(erased <= ExternalTempTablesCount);
-        ExternalTempTablesCount -= erased;
+    auto it = TablesToDeleteAtFinalize.find(table);
+    bool present = it != TablesToDeleteAtFinalize.end();
+    if (present) {
+        if (!isInternal && !it->second) {
+            YQL_ENSURE(ExternalTempTablesCount > 0);
+            ExternalTempTablesCount--;
+        }
+        TablesToDeleteAtFinalize.erase(it);
     }
-    return erased != 0;
+    return present;
 }
 
+bool TTransactionCache::TEntry::AssumeAsDeletedAtFinalizeUnlocked(const TString& table) {
+    auto it = TablesToDeleteAtFinalize.find(table);
+    bool present = it != TablesToDeleteAtFinalize.end();
+    if (present && !it->second) {
+        YQL_ENSURE(ExternalTempTablesCount > 0);
+        ExternalTempTablesCount--;
+        it->second = true;
+    }
+    return present;
+}
 
 void TTransactionCache::TEntry::RemoveInternal(const TString& table) {
     bool existed;
@@ -54,12 +68,13 @@ void TTransactionCache::TEntry::DoRemove(const TString& table) {
     }
 }
 
-void TTransactionCache::TEntry::Finalize(const TString& clusterName) {
+void TTransactionCache::TEntry::Finalize(const TString& clusterName, bool commitDumpTx) {
     NYT::ITransactionPtr binarySnapshotTx;
     decltype(SnapshotTxs) snapshotTxs;
-    THashSet<TString> toDelete;
+    THashMap<TString, bool> toDelete;
     decltype(CheckpointTxs) checkpointTxs;
     decltype(WriteTxs) writeTxs;
+    NYT::ITransactionPtr layersTx;
     with_lock(Lock_) {
         binarySnapshotTx.Swap(BinarySnapshotTx);
         snapshotTxs.swap(SnapshotTxs);
@@ -68,6 +83,11 @@ void TTransactionCache::TEntry::Finalize(const TString& clusterName) {
         ExternalTempTablesCount = 0;
         checkpointTxs.swap(CheckpointTxs);
         writeTxs.swap(WriteTxs);
+        layersTx.Swap(LayersSnapshotTx);
+    }
+
+    if (layersTx) {
+        layersTx->Abort();
     }
 
     for (auto& item: writeTxs) {
@@ -86,12 +106,25 @@ void TTransactionCache::TEntry::Finalize(const TString& clusterName) {
         item.second->Abort();
     }
 
-    for (auto i : toDelete) {
+    for (auto& [i, _] : toDelete) {
         DoRemove(i);
     }
 
     YQL_CLOG(INFO, ProviderYt) << "Committing tx " << GetGuidAsString(Tx->GetId())  << " on " << clusterName;
     Tx->Commit();
+
+    if (DumpTx) {
+        YQL_CLOG(INFO, ProviderYt) << (commitDumpTx ? "Commiting" : "Aborting") << " dump tx " << GetGuidAsString(DumpTx->GetId())  << " on " << clusterName;
+        try {
+            if (commitDumpTx) {
+                DumpTx->Commit();
+            } else {
+                DumpTx->Abort();
+            }
+        } catch (...) {
+            YQL_CLOG(WARN, ProviderYt) << CurrentExceptionMessage();
+        }
+    }
 }
 
 TMaybe<ui64> TTransactionCache::TEntry::GetColumnarStat(NYT::TRichYPath ytPath) const {
@@ -101,9 +134,9 @@ TMaybe<ui64> TTransactionCache::TEntry::GetColumnarStat(NYT::TRichYPath ytPath) 
 
     auto guard = Guard(Lock_);
     if (auto p = StatisticsCache.FindPtr(NYT::NodeToCanonicalYsonString(NYT::PathToNode(ytPath), NYT::NYson::EYsonFormat::Text))) {
-        ui64 sum = p->LegacyChunksDataWeight;
+        ui64 sum = p->ColumnarStat.LegacyChunksDataWeight;
         for (auto& column: columns) {
-            if (auto c = p->ColumnDataWeight.FindPtr(column)) {
+            if (auto c = p->ColumnarStat.ColumnDataWeight.FindPtr(column)) {
                 sum += *c;
             } else {
                 return Nothing();
@@ -114,30 +147,71 @@ TMaybe<ui64> TTransactionCache::TEntry::GetColumnarStat(NYT::TRichYPath ytPath) 
     return Nothing();
 }
 
-void TTransactionCache::TEntry::UpdateColumnarStat(NYT::TRichYPath ytPath, ui64 size) {
+TMaybe<NYT::TTableColumnarStatistics> TTransactionCache::TEntry::GetExtendedColumnarStat(NYT::TRichYPath ytPath) const {
+    TVector<TString> columns(std::move(ytPath.Columns_->Parts_));
+    ytPath.Columns_.Clear();
+    auto cacheKey = NYT::NodeToCanonicalYsonString(NYT::PathToNode(ytPath), NYT::NYson::EYsonFormat::Text);
+
+    auto guard = Guard(Lock_);
+    auto p = StatisticsCache.FindPtr(cacheKey);
+    if (!p) {
+        return Nothing();
+    }
+
+    NYT::TTableColumnarStatistics res;
+    res.LegacyChunksDataWeight = p->ColumnarStat.LegacyChunksDataWeight;
+    for (auto& column: columns) {
+        if (p->ExtendedStatColumns.count(column) == 0) {
+            return Nothing();
+        }
+        if (auto c = p->ColumnarStat.ColumnDataWeight.FindPtr(column)) {
+            res.ColumnDataWeight[column] = *c;
+        }
+        if (auto c = p->ColumnarStat.ColumnEstimatedUniqueCounts.FindPtr(column)) {
+            res.ColumnEstimatedUniqueCounts[column] = *c;
+        }
+    }
+    return res;
+}
+
+void TTransactionCache::TEntry::UpdateColumnarStat(NYT::TRichYPath ytPath, ui64 size, bool extended) {
     YQL_ENSURE(ytPath.Columns_.Defined());
     TVector<TString> columns(std::move(ytPath.Columns_->Parts_));
     ytPath.Columns_.Clear();
+    auto cacheKey = NYT::NodeToCanonicalYsonString(NYT::PathToNode(ytPath), NYT::NYson::EYsonFormat::Text);
 
     auto guard = Guard(Lock_);
-    NYT::TTableColumnarStatistics& cacheColumnStat = StatisticsCache[NYT::NodeToCanonicalYsonString(NYT::PathToNode(ytPath), NYT::NYson::EYsonFormat::Text)];
-    cacheColumnStat.LegacyChunksDataWeight = size;
-    for (auto& c: cacheColumnStat.ColumnDataWeight) {
+    auto& cacheEntry = StatisticsCache[cacheKey];
+    if (extended) {
+        cacheEntry.ExtendedStatColumns.clear();
+        std::copy(columns.begin(), columns.end(), std::inserter(cacheEntry.ExtendedStatColumns, cacheEntry.ExtendedStatColumns.end()));
+    }
+    cacheEntry.ColumnarStat.LegacyChunksDataWeight = size;
+    for (auto& c: cacheEntry.ColumnarStat.ColumnDataWeight) {
         c.second = 0;
     }
     for (auto& c: columns) {
-        cacheColumnStat.ColumnDataWeight[c] = 0;
+        cacheEntry.ColumnarStat.ColumnDataWeight[c] = 0;
     }
 }
 
-void TTransactionCache::TEntry::UpdateColumnarStat(NYT::TRichYPath ytPath, const NYT::TTableColumnarStatistics& columnStat) {
+void TTransactionCache::TEntry::UpdateColumnarStat(NYT::TRichYPath ytPath, const NYT::TTableColumnarStatistics& columnStat, bool extended) {
+    TVector<TString> columns(std::move(ytPath.Columns_->Parts_));
     ytPath.Columns_.Clear();
     auto guard = Guard(Lock_);
-    NYT::TTableColumnarStatistics& cacheColumnStat = StatisticsCache[NYT::NodeToCanonicalYsonString(NYT::PathToNode(ytPath), NYT::NYson::EYsonFormat::Text)];
-    cacheColumnStat.LegacyChunksDataWeight = columnStat.LegacyChunksDataWeight;
-    cacheColumnStat.TimestampTotalWeight = columnStat.TimestampTotalWeight;
+    auto& cacheEntry = StatisticsCache[NYT::NodeToCanonicalYsonString(NYT::PathToNode(ytPath), NYT::NYson::EYsonFormat::Text)];
+    if (extended) {
+        std::copy(columns.begin(), columns.end(), std::inserter(cacheEntry.ExtendedStatColumns, cacheEntry.ExtendedStatColumns.end()));
+    }
+    cacheEntry.ColumnarStat.LegacyChunksDataWeight = columnStat.LegacyChunksDataWeight;
+    cacheEntry.ColumnarStat.TimestampTotalWeight = columnStat.TimestampTotalWeight;
     for (auto& c: columnStat.ColumnDataWeight) {
-        cacheColumnStat.ColumnDataWeight[c.first] = c.second;
+        cacheEntry.ColumnarStat.ColumnDataWeight[c.first] = c.second;
+    }
+    if (extended) {
+        for (auto& c : columnStat.ColumnEstimatedUniqueCounts) {
+            cacheEntry.ColumnarStat.ColumnEstimatedUniqueCounts[c.first] = c.second;
+        }
     }
 }
 
@@ -223,72 +297,119 @@ std::pair<TString, NYT::TTransactionId> TTransactionCache::TEntry::GetBinarySnap
     }
     CreateParents({remotePath}, Client);
 
-    NYT::ILockPtr fileLock;
-    ITransactionPtr lockTx;
-    NYT::ILockPtr waitLock;
+    TString binarySnapshot = UploadBinarySnapshotToYt(remotePath, Client, snapshotTx, localPath, expirationInterval, TransactionSpec);
 
-    for (bool uploaded = false; ;) {
-        try {
-            YQL_CLOG(INFO, ProviderYt) << "Taking snapshot of " << remotePath;
-            fileLock = snapshotTx->Lock(remotePath, NYT::ELockMode::LM_SNAPSHOT);
-            break;
-        } catch (const TErrorResponse& e) {
-            // Yt returns NoSuchTransaction as inner issue for ResolveError
-            if (!e.IsResolveError() || e.IsNoSuchTransaction()) {
-                throw;
-            }
-        }
-        YQL_ENSURE(!uploaded, "Fail to take snapshot");
-        if (!lockTx) {
-            auto pos = remotePath.rfind("/");
-            auto dir = remotePath.substr(0, pos);
-            auto childKey = remotePath.substr(pos + 1) + ".lock";
-
-            lockTx = Client->StartTransaction(TStartTransactionOptions().Attributes(TransactionSpec));
-            YQL_CLOG(INFO, ProviderYt) << "Waiting for " << dir << '/' << childKey;
-            waitLock = lockTx->Lock(dir, NYT::ELockMode::LM_SHARED, TLockOptions().Waitable(true).ChildKey(childKey));
-            waitLock->GetAcquiredFuture().GetValueSync();
-            // Try to take snapshot again after waiting lock. Someone else may complete uploading the file at the moment
-            continue;
-        }
-        // Lock is already taken and file still doesn't exist
-        YQL_CLOG(INFO, ProviderYt) << "Start uploading " << localPath << " to " << remotePath;
-        Y_SCOPE_EXIT(localPath, remotePath) {
-            YQL_CLOG(INFO, ProviderYt) << "Complete uploading " << localPath << " to " << remotePath;
-        };
-        auto uploadTx = Client->StartTransaction(TStartTransactionOptions().Attributes(TransactionSpec));
-        try {
-            auto out = uploadTx->CreateFileWriter(TRichYPath(remotePath).Executable(true), TFileWriterOptions().CreateTransaction(false));
-            TIFStream in(localPath);
-            TransferData(&in, out.Get());
-            out->Finish();
-            uploadTx->Commit();
-        } catch (...) {
-            uploadTx->Abort();
-            throw;
-        }
-        // Continue with taking snapshot lock after uploading
-        uploaded = true;
-    }
-
-    TString snapshotPath = TStringBuilder() << '#' << GetGuidAsString(fileLock->GetLockedNodeId());
+    TString snapshotPath = TStringBuilder() << '#' << binarySnapshot;
     YQL_CLOG(INFO, ProviderYt) << "Snapshot of " << remotePath << ": " << snapshotPath;
     with_lock(Lock_) {
         BinarySnapshots[remotePath] = snapshotPath;
     }
 
-    if (expirationInterval) {
-        TString expirationTime = (Now() + expirationInterval).ToStringUpToSeconds();
-        try {
-            YQL_CLOG(INFO, ProviderYt) << "Prolonging expiration time for " << remotePath << " up to " << expirationTime;
-            Client->Set(remotePath + "/@expiration_time", expirationTime);
-        } catch (...) {
-            // log and ignore the error
-            YQL_CLOG(ERROR, ProviderYt) << "Error setting expiration time for " << remotePath << ": " << CurrentExceptionMessage();
+    return std::make_pair(snapshotPath, snapshotTx->GetId());
+}
+
+void TTransactionCache::TEntry::UpdateCacheMetrics(const TString& fileName, ECacheStatus status) {
+    static const TString cacheHitMrjob   = "CacheHitMrjob";
+    static const TString cacheMissMrjob  = "CacheMissMrjob";
+    static const TString cacheOtherMrjob = "CacheOtherMrjob";
+    static const TString cacheHitUdf     = "CacheHitUdf";
+    static const TString cacheMissUdf    = "CacheMissUdf";
+    static const TString cacheOtherUdf   = "CacheOtherUdf";
+
+    if (Metrics) {
+        bool isMrJob = fileName == "mrjob";
+        switch(status) {
+            case ECacheStatus::Hit:
+                isMrJob ? Metrics->IncCounter(cacheHitMrjob, Server) : Metrics->IncCounter(cacheHitUdf, Server);
+                break;
+            case ECacheStatus::Miss:
+                isMrJob ? Metrics->IncCounter(cacheMissMrjob, Server) : Metrics->IncCounter(cacheMissUdf, Server);
+                break;
+            default:
+                isMrJob ? Metrics->IncCounter(cacheOtherMrjob, Server) : Metrics->IncCounter(cacheOtherUdf, Server);
         }
     }
+};
+
+TMaybe<std::pair<TString, NYT::TTransactionId>> TTransactionCache::TEntry::GetBinarySnapshotFromCache(TString binaryCacheFolder, const TString& md5, const TString& fileName) {
+    if (binaryCacheFolder.StartsWith(NYT::TConfig::Get()->Prefix)) {
+        binaryCacheFolder = binaryCacheFolder.substr(NYT::TConfig::Get()->Prefix.size());
+    }
+    YQL_ENSURE(md5.size() > 4);
+    TString remotePath = TFsPath(binaryCacheFolder) / md5.substr(0, 2) / md5.substr(2, 2) / md5;
+
+    ITransactionPtr snapshotTx;
+    with_lock(Lock_) {
+        if (!BinarySnapshotTx) {
+            BinarySnapshotTx = Client->StartTransaction(TStartTransactionOptions().Attributes(TransactionSpec));
+        }
+        snapshotTx = BinarySnapshotTx;
+        if (auto p = BinarySnapshots.FindPtr(remotePath)) {
+            UpdateCacheMetrics(fileName, ECacheStatus::Hit);
+            return std::make_pair(*p, snapshotTx->GetId());
+        }
+    }
+    TString snapshotPath;
+    try {
+        NYT::ILockPtr fileLock = snapshotTx->Lock(remotePath, NYT::ELockMode::LM_SNAPSHOT);
+        snapshotPath = TStringBuilder() << '#' << GetGuidAsString(fileLock->GetLockedNodeId());
+    } catch (const TErrorResponse& e) {
+        YQL_CLOG(WARN, ProviderYt) << "Can't load binary for \"" << fileName << "\" from BinaryCacheFolder: " << e.what();
+        if (e.IsResolveError()) {
+            UpdateCacheMetrics(fileName, ECacheStatus::Miss);
+        } else {
+            UpdateCacheMetrics(fileName, ECacheStatus::Other);
+        }
+        return Nothing();
+    }
+    with_lock(Lock_) {
+        BinarySnapshots[remotePath] = snapshotPath;
+    }
+    YQL_CLOG(DEBUG, ProviderYt) << "Snapshot \""
+                                << fileName << "\" -> \"" << remotePath << "\" -> "
+                                << snapshotPath << ", tx=" << GetGuidAsString(snapshotTx->GetId());
+    UpdateCacheMetrics(fileName, ECacheStatus::Hit);
 
     return std::make_pair(snapshotPath, snapshotTx->GetId());
+}
+
+TVector<std::pair<TString, ui64>> TTransactionCache::TEntry::GetLayersSnapshot(const TVector<TString>& needSnapshots) {
+    ITransactionPtr snapshotTx;
+    with_lock(Lock_) {
+        if (!LayersSnapshotTx) {
+            LayersSnapshotTx = Tx->StartTransaction(TStartTransactionOptions().Attributes(TransactionSpec));
+        }
+        snapshotTx = LayersSnapshotTx;
+    }
+
+    auto batchLock = snapshotTx->CreateBatchRequest();
+    TVector<NThreading::TFuture<TString>> batchNodeIdRes(Reserve(needSnapshots.size()));
+    for (const auto& path: needSnapshots) {
+        YQL_CLOG(DEBUG, ProviderYt) << "Trying take snapshot of layer at " << path.Quote();
+        batchNodeIdRes.emplace_back(batchLock->Lock(path, ELockMode::LM_SNAPSHOT).Apply([] (const NThreading::TFuture<ILockPtr>& res) {
+            return TString(TStringBuilder() << '#' << GetGuidAsString(res.GetValue()->GetLockedNodeId()));
+        }));
+    }
+    batchLock->ExecuteBatch();
+
+    auto batchGetRevision = snapshotTx->CreateBatchRequest();
+    TVector<NThreading::TFuture<ui64>> batchGetRevisionRes(Reserve(needSnapshots.size()));
+    for (const auto& nodeRes: batchNodeIdRes) {
+        auto nodeId = nodeRes.GetValue();
+        YQL_CLOG(DEBUG, ProviderYt) << "Trying take revision for nodeId=" << nodeId;
+        batchGetRevisionRes.emplace_back(batchGetRevision->Get(nodeId + "/@revision").Apply([] (const NThreading::TFuture<NYT::TNode>& res) {
+            return res.GetValue().AsUint64();
+        }));
+    }
+
+    batchGetRevision->ExecuteBatch();
+    TVector<std::pair<TString, ui64>> snapshots;
+    for (size_t i = 0; i < needSnapshots.size(); ++i) {
+        with_lock(Lock_) {
+            snapshots.emplace_back(batchNodeIdRes[i].GetValue(), batchGetRevisionRes[i].GetValue());
+        }
+    }
+    return snapshots;
 }
 
 void TTransactionCache::TEntry::CreateDefaultTmpFolder() {
@@ -318,35 +439,42 @@ TTransactionCache::TEntry::TPtr TTransactionCache::TryGetEntry(const TString& se
     return {};
 }
 
-TTransactionCache::TEntry::TPtr TTransactionCache::GetOrCreateEntry(const TString& server, const TString& token,
-    const TMaybe<TString>& impersonationUser, const TSpecProvider& specProvider, const TYtSettings::TConstPtr& config)
+TTransactionCache::TEntry::TPtr TTransactionCache::GetOrCreateEntry(const TString& cluster, const TString& server, const TString& token,
+    const TMaybe<TString>& impersonationUser, const TSpecProvider& specProvider, const TYtSettings::TConstPtr& config, IMetricsRegistryPtr metrics,
+    bool createDumpTx)
 {
     TEntry::TPtr createdEntry = nullptr;
-    NYT::TTransactionId externalTx = config->ExternalTx.Get().GetOrElse(TGUID());
+    NYT::TTransactionId externalTx = config->ExternalTx.Get(cluster).GetOrElse(TGUID());
     with_lock(Lock_) {
         auto it = TxMap_.find(server);
         if (it != TxMap_.end()) {
             return it->second;
         }
 
-        TString tmpFolder = GetTablesTmpFolder(*config);
-
         createdEntry = MakeIntrusive<TEntry>();
+        createdEntry->Cluster = cluster;
         createdEntry->Server = server;
         auto createClientOptions = TCreateClientOptions().Token(token);
         if (impersonationUser) {
             createClientOptions = createClientOptions.ImpersonationUser(*impersonationUser);
         }
         createdEntry->Client = CreateClient(server, createClientOptions);
+        createdEntry->EffectiveUser = createdEntry->Client->WhoAmI().Login;
         createdEntry->TransactionSpec = specProvider();
         if (externalTx) {
-            createdEntry->ExternalTx = createdEntry->Client->AttachTransaction(externalTx);
+            try {
+                createdEntry->ExternalTx = createdEntry->Client->AttachTransaction(externalTx);
+            } catch (const yexception& e) {
+                throw TErrorException(0) << e.what();
+            }
+
             createdEntry->Tx = createdEntry->ExternalTx->StartTransaction(TStartTransactionOptions().Attributes(createdEntry->TransactionSpec));
         } else {
             createdEntry->Tx = createdEntry->Client->StartTransaction(TStartTransactionOptions().Attributes(createdEntry->TransactionSpec));
         }
         createdEntry->CacheTx = createdEntry->Client;
         createdEntry->CacheTtl = config->QueryCacheTtl.Get().GetOrElse(TDuration::Days(7));
+        const TString tmpFolder = GetUserTablesTmpFolder(*config, cluster);
         if (!tmpFolder.empty()) {
             auto fullTmpFolder = AddPathPrefix(tmpFolder, NYT::TConfig::Get()->Prefix);
             bool existsGlobally = createdEntry->Client->Exists(fullTmpFolder);
@@ -354,19 +482,28 @@ TTransactionCache::TEntry::TPtr TTransactionCache::GetOrCreateEntry(const TStrin
             if (!existsGlobally && existsInTx) {
                 createdEntry->CacheTx = createdEntry->ExternalTx;
                 createdEntry->CacheTxId = createdEntry->ExternalTx->GetId();
+                createDumpTx = false;
+                YQL_CLOG(WARN, ProviderYt) << "Dump tx was not created because of ExternalTx-restricted TmpFolder";
             }
         } else {
             createdEntry->DefaultTmpFolder = NYT::AddPathPrefix("tmp/yql/" + UserName_, NYT::TConfig::Get()->Prefix);
         }
+        if (createDumpTx) {
+            createdEntry->DumpTx = createdEntry->Client->StartTransaction(TStartTransactionOptions().Attributes(createdEntry->TransactionSpec));
+        }
         createdEntry->InflightTempTablesLimit = config->InflightTempTablesLimit.Get().GetOrElse(Max<ui32>());
         createdEntry->KeepTables = GetReleaseTempDataMode(*config) == EReleaseTempDataMode::Never;
+        createdEntry->Metrics = metrics;
 
         TxMap_.emplace(server, createdEntry);
     }
     if (externalTx) {
-        YQL_CLOG(INFO, ProviderYt) << "Attached to external tx " << GetGuidAsString(externalTx);
+        YQL_CLOG(INFO, ProviderYt) << "Attached to external tx " << GetGuidAsString(externalTx) << " on cluster " << cluster;
     }
-    YQL_CLOG(INFO, ProviderYt) << "Created tx " << GetGuidAsString(createdEntry->Tx->GetId()) << " on " << server;
+    YQL_CLOG(INFO, ProviderYt) << "Created tx " << GetGuidAsString(createdEntry->Tx->GetId()) << " on " << server << " cluster " << cluster;
+    if (createdEntry->DumpTx) {
+        YQL_CLOG(INFO, ProviderYt) << "Created dump tx " << GetGuidAsString(createdEntry->DumpTx->GetId()) << " on " << server << " cluster " << cluster;
+    }
     return createdEntry;
 }
 
@@ -391,13 +528,13 @@ void TTransactionCache::Commit(const TString& server) {
     }
 }
 
-void TTransactionCache::Finalize() {
+void TTransactionCache::Finalize(bool commitDumpTxs) {
     THashMap<TString, TEntry::TPtr> txMap;
     with_lock(Lock_) {
         txMap.swap(TxMap_);
     }
     for (auto& item: txMap) {
-        item.second->Finalize(item.first);
+        item.second->Finalize(item.first, commitDumpTxs);
     }
 }
 
@@ -440,9 +577,18 @@ void TTransactionCache::AbortAll() {
             YQL_CLOG(INFO, ProviderYt) << "AbortAll(): Aborting BinarySnapshot tx " << GetGuidAsString(entry->BinarySnapshotTx->GetId());
             abortTx(entry->BinarySnapshotTx);
         }
+        if (entry->DumpTx) {
+            YQL_CLOG(INFO, ProviderYt) << "AbortAll(): Aborting dump tx " << GetGuidAsString(entry->DumpTx->GetId())  << " on " << item.first;
+            abortTx(entry->DumpTx);
+        }
         if (entry->Tx) {
             YQL_CLOG(INFO, ProviderYt) << "Aborting tx " << GetGuidAsString(entry->Tx->GetId())  << " on " << item.first;
             abortTx(entry->Tx);
+        }
+
+        if (entry->LayersSnapshotTx) {
+            YQL_CLOG(INFO, ProviderYt) << "Aborting LayersSnapshotTx " << GetGuidAsString(entry->LayersSnapshotTx->GetId())  << " on " << item.first;
+            abortTx(entry->LayersSnapshotTx);
         }
 
         if (entry->Client) {

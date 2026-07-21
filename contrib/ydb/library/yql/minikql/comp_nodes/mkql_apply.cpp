@@ -1,7 +1,7 @@
 #include "mkql_apply.h"
 
 #include <contrib/ydb/library/yql/minikql/computation/mkql_block_impl.h>
-#include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node_codegen.h>  // Y_IGNORE
+#include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node_codegen.h> // Y_IGNORE
 #include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node_holders.h>
 #include <contrib/ydb/library/yql/minikql/mkql_node_cast.h>
 #include <library/cpp/containers/stack_array/stack_array.h>
@@ -15,8 +15,9 @@ namespace {
 
 class TApplyWrapper: public TMutableCodegeneratorPtrNode<TApplyWrapper> {
     typedef TMutableCodegeneratorPtrNode<TApplyWrapper> TBaseComputation;
+
 public:
-    struct TKernelState : public arrow::compute::KernelState {
+    struct TKernelState: public arrow::compute::KernelState {
         TKernelState(ui32 argsCount)
             : Alloc(__LOCATION__)
             , MemInfo("Apply")
@@ -24,6 +25,7 @@ public:
             , ValueBuilder(HolderFactory, NUdf::EValidatePolicy::Exception)
             , Args(argsCount)
         {
+            Alloc.Ref().EnableArrowTracking = false;
             Alloc.Release();
         }
 
@@ -39,7 +41,7 @@ public:
         TVector<NUdf::TUnboxedValue> Args;
     };
 
-    class TArrowNode : public IArrowKernelComputationNode {
+    class TArrowNode: public IArrowKernelComputationNode {
     public:
         TArrowNode(const TApplyWrapper* parent, const NUdf::TUnboxedValue& callable, TType* returnType, const TVector<TType*>& argsTypes)
             : Parent_(parent)
@@ -50,10 +52,10 @@ public:
                 auto guard = Guard(state.Alloc);
                 Y_ENSURE(batch.values.size() == state.Args.size());
                 for (ui32 i = 0; i < batch.values.size(); ++i) {
-                    state.Args[i] = state.HolderFactory.CreateArrowBlock(arrow::Datum(batch.values[i]));
+                    state.Args[i] = state.HolderFactory.CreateArrowBlock(arrow::Datum(batch.values[i]), NYql::EDatumValidationMode::None);
                 }
 
-                const auto ret = Callable_.Run(&state.ValueBuilder, state.Args.data());
+                const auto& ret = Callable_.Run(&state.ValueBuilder, state.Args.data());
                 *res = TArrowBlock::From(ret).GetDatum();
                 return arrow::Status::OK();
             })
@@ -91,7 +93,7 @@ public:
     friend class TArrowNode;
 
     TApplyWrapper(TComputationMutables& mutables, EValueRepresentation kind, IComputationNode* callableNode,
-        TComputationNodePtrVector&& argNodes, ui32 usedArgs, const NUdf::TSourcePosition& pos, TCallableType* callableType)
+                  TComputationNodePtrVector&& argNodes, ui32 usedArgs, const NUdf::TSourcePosition& pos, TCallableType* callableType)
         : TBaseComputation(mutables, kind)
         , CallableNode(callableNode)
         , ArgNodes(std::move(argNodes))
@@ -99,7 +101,7 @@ public:
         , Position(pos)
         , CallableType(callableType)
     {
-        Stateless = false;
+        Stateless_ = false;
     }
 
     std::unique_ptr<IArrowKernelComputationNode> PrepareArrowKernelComputationNode(TComputationContext& ctx) const final {
@@ -149,9 +151,7 @@ public:
         const auto idxType = Type::getInt32Ty(context);
         const auto valType = Type::getInt128Ty(context);
         const auto arrayType = ArrayType::get(valType, ArgNodes.size());
-        const auto args = *Stateless || ctx.AlwaysInline ?
-            new AllocaInst(arrayType, 0U, "args", &ctx.Func->getEntryBlock().back()):
-            new AllocaInst(arrayType, 0U, "args", block);
+        const auto args = *Stateless_ || ctx.AlwaysInline ? new AllocaInst(arrayType, 0U, "args", &ctx.Func->getEntryBlock().back()) : new AllocaInst(arrayType, 0U, "args", block);
 
         ui32 i = 0;
         std::vector<std::pair<Value*, EValueRepresentation>> argsv;
@@ -170,15 +170,21 @@ public:
             codegen->CreateRun(ctx, block, pointer, args);
         } else {
             const auto callable = GetNodeValue(CallableNode, ctx, block);
+            // XXX: Since <GetNodeValue> method releases the
+            // UnboxedValue, obtained via <GetValue>, the only
+            // reference to this UnboxedValue remains in mutables.
+            // However, it might be invalidated within its <Run>
+            // method, so anchor the callable value to prevent its
+            // destruction while running its <Run> method.
+            ValueAddRef(CallableNode->GetRepresentation(), callable, ctx, block);
             const auto calleePtr = GetElementPtrInst::CreateInBounds(GetCompContextType(context), ctx.Ctx, {ConstantInt::get(idxType, 0), ConstantInt::get(idxType, 6)}, "callee_ptr", block);
-            const auto previous = new LoadInst(calleePtr->getType()->getPointerElementType(), calleePtr, "previous", block);
+            const auto previous = new LoadInst(PointerType::getUnqual(GetSourcePosType(context)), calleePtr, "previous", block);
             const auto callee = CastInst::Create(Instruction::IntToPtr, ConstantInt::get(Type::getInt64Ty(context), ui64(&Position)), previous->getType(), "callee", block);
             new StoreInst(callee, calleePtr, block);
             CallBoxedValueVirtualMethod<NUdf::TBoxedValueAccessor::EMethod::Run>(pointer, callable, ctx.Codegen, block, ctx.GetBuilder(), args);
             new StoreInst(previous, calleePtr, block);
-            if (CallableNode->IsTemporaryValue()) {
-                CleanupBoxed(callable, ctx, block);
-            }
+            // XXX: Release the anchor to the callable, taken above.
+            ValueUnRef(CallableNode->GetRepresentation(), callable, ctx, block);
         }
         for (const auto& arg : argsv) {
             ValueUnRef(arg.second, arg.first, ctx, block);
@@ -195,19 +201,18 @@ private:
         }
     }
 
-    IComputationNode *const CallableNode;
+    IComputationNode* const CallableNode;
     const TComputationNodePtrVector ArgNodes;
     const ui32 UsedArgs;
     const NUdf::TSourcePosition Position;
     TCallableType* CallableType;
 };
 
-}
+} // namespace
 
 IComputationNode* WrapApply(TCallable& callable, const TComputationNodeFactoryContext& ctx) {
-    const bool withPos = callable.GetType()->GetName() == "Apply2";
-    const ui32 deltaArgs = withPos ? 3 : 0;
-    MKQL_ENSURE(callable.GetInputsCount() >= 2 + deltaArgs, "Expected at least " << (2 + deltaArgs) << " arguments");
+    MKQL_ENSURE(callable.GetInputsCount() >= 5, "Expected at least 5 arguments");
+    constexpr size_t posArgs = 3;
 
     const auto function = callable.GetInput(0);
     MKQL_ENSURE(!function.IsImmediate() && function.GetNode()->GetType()->IsCallable(),
@@ -217,11 +222,11 @@ IComputationNode* WrapApply(TCallable& callable, const TComputationNodeFactoryCo
     const auto returnType = functionCallable->GetType()->GetReturnType();
     MKQL_ENSURE(returnType->IsCallable(), "Expected callable as return type");
 
-    const TStringBuf file = withPos ? AS_VALUE(TDataLiteral, callable.GetInput(2))->AsValue().AsStringRef() : NUdf::TStringRef();
-    const ui32 row = withPos ? AS_VALUE(TDataLiteral, callable.GetInput(3))->AsValue().Get<ui32>() : 0;
-    const ui32 column = withPos ? AS_VALUE(TDataLiteral, callable.GetInput(4))->AsValue().Get<ui32>() : 0;
+    const TStringBuf file = AS_VALUE(TDataLiteral, callable.GetInput(2))->AsValue().AsStringRef();
+    const ui32 row = AS_VALUE(TDataLiteral, callable.GetInput(3))->AsValue().Get<ui32>();
+    const ui32 column = AS_VALUE(TDataLiteral, callable.GetInput(4))->AsValue().Get<ui32>();
 
-    const ui32 inputsCount = callable.GetInputsCount() - deltaArgs;
+    const ui32 inputsCount = callable.GetInputsCount() - posArgs;
     const ui32 argsCount = inputsCount - 2;
 
     const ui32 dependentCount = AS_VALUE(TDataLiteral, callable.GetInput(1))->AsValue().Get<ui32>();
@@ -234,17 +239,17 @@ IComputationNode* WrapApply(TCallable& callable, const TComputationNodeFactoryCo
 
     TComputationNodePtrVector argNodes(callableType->GetArgumentsCount() + dependentCount);
     for (ui32 i = 2; i < 2 + usedArgs; ++i) {
-        argNodes[i - 2] = LocateNode(ctx.NodeLocator, callable, i + deltaArgs);
+        argNodes[i - 2] = LocateNode(ctx.NodeLocator, callable, i + posArgs);
     }
 
     for (ui32 i = 2 + usedArgs; i < inputsCount; ++i) {
-        argNodes[callableType->GetArgumentsCount() + i - 2 - usedArgs] = LocateNode(ctx.NodeLocator, callable, i + deltaArgs);
+        argNodes[callableType->GetArgumentsCount() + i - 2 - usedArgs] = LocateNode(ctx.NodeLocator, callable, i + posArgs);
     }
 
     auto functionNode = LocateNode(ctx.NodeLocator, callable, 0);
     return new TApplyWrapper(ctx.Mutables, GetValueRepresentation(callable.GetType()->GetReturnType()), functionNode, std::move(argNodes),
-        callableType->GetArgumentsCount(), NUdf::TSourcePosition(row, column, file), callableType);
+                             callableType->GetArgumentsCount(), NUdf::TSourcePosition(row, column, file), callableType);
 }
 
-}
-}
+} // namespace NMiniKQL
+} // namespace NKikimr

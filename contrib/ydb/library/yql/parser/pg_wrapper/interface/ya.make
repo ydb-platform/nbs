@@ -9,6 +9,8 @@ SRCS(
     interface.cpp
     pack.h
     parser.h
+    in_range.h
+    sign.h
     type_desc.h
     utils.h
 )
@@ -20,6 +22,7 @@ PEERDIR(
     contrib/ydb/library/yql/public/udf/arrow
     contrib/ydb/library/yql/core/cbo
     library/cpp/disjoint_sets
+    contrib/ydb/library/yql/providers/common/codec/yt_arrow_converter_interface
 )
 
 YQL_LAST_ABI_VERSION()

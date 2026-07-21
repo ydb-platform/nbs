@@ -1,5 +1,7 @@
 LIBRARY()
 
+ENABLE(SKIP_YQL_STYLE_CPP)
+
 PROVIDES(
     yql_pg_runtime
 )
@@ -8,20 +10,9 @@ CXXFLAGS(-DMKQL_DISABLE_CODEGEN)
 
 YQL_LAST_ABI_VERSION()
 
-ADDINCL(
-    contrib/libs/lz4
-    contrib/ydb/library/yql/parser/pg_wrapper/postgresql/src/backend/bootstrap
-    contrib/ydb/library/yql/parser/pg_wrapper/postgresql/src/backend/parser
-    contrib/ydb/library/yql/parser/pg_wrapper/postgresql/src/backend/replication
-    contrib/ydb/library/yql/parser/pg_wrapper/postgresql/src/backend/replication/logical
-    contrib/ydb/library/yql/parser/pg_wrapper/postgresql/src/backend/utils/adt
-    contrib/ydb/library/yql/parser/pg_wrapper/postgresql/src/backend/utils/misc
-    contrib/ydb/library/yql/parser/pg_wrapper/postgresql/src/backend/utils/sort
-    contrib/ydb/library/yql/parser/pg_wrapper/postgresql/src/common
-    contrib/ydb/library/yql/parser/pg_wrapper/postgresql/src/include
-    contrib/ydb/library/yql/parser/pg_wrapper/postgresql/src/port
-)
+INCLUDE(pg_include_dirs.inc)
 
+IF (NOT BUILD_POSTGRES_ONLY)
 SRCS(
     arena_ctx.cpp
     arrow.cpp
@@ -30,17 +21,24 @@ SRCS(
     parser.cpp
     thread_inits.c
     comp_factory.cpp
+    comp_factory_utils.cpp
+    compare.cpp
     type_cache.cpp
     pg_aggs.cpp
+    read_table.cpp
     recovery.cpp
     superuser.cpp
     config.cpp
     cost_mocks.cpp
     syscache.cpp
+    in_range.cpp
     pg_utils_wrappers.cpp
+    pg_ops.cpp
+    sign.cpp
     utils.cpp
     ctors.cpp
 )
+ENDIF()
 
 IF (ARCH_X86_64)
     CFLAGS(
@@ -55,11 +53,17 @@ ENDIF()
 
 INCLUDE(pg_sources.inc)
 
+IF (NOT BUILD_POSTGRES_ONLY)
 INCLUDE(pg_kernel_sources.inc)
+ENDIF()
 
 IF (NOT OS_WINDOWS AND NOT SANITIZER_TYPE AND NOT BUILD_TYPE == "DEBUG")
-USE_LLVM_BC14()
+IF (NOT BUILD_POSTGRES_ONLY)
+IF (YQL_USE_PG_BC)
+USE_LLVM_BC16()
 INCLUDE(pg_bc.all.inc)
+ENDIF()
+ENDIF()
 ELSE()
 CFLAGS(-DUSE_SLOW_PG_KERNELS)
 ENDIF()
@@ -71,6 +75,7 @@ ENDIF()
 PEERDIR(
     library/cpp/resource
     library/cpp/yson
+    library/cpp/string_utils/base64
     contrib/ydb/library/yql/core
     contrib/ydb/library/yql/minikql/arrow
     contrib/ydb/library/yql/minikql/computation
@@ -81,9 +86,10 @@ PEERDIR(
     contrib/ydb/library/yql/public/udf
     contrib/ydb/library/yql/utils
     contrib/ydb/library/yql/public/decimal
-    contrib/ydb/library/binary_json
-    contrib/ydb/library/dynumber
-    contrib/ydb/library/uuid
+    contrib/ydb/library/yql/public/result_format
+    contrib/ydb/library/yql/types/binary_json
+    contrib/ydb/library/yql/types/dynumber
+    contrib/ydb/library/yql/types/uuid
 
     contrib/libs/icu
     contrib/libs/libc_compat
@@ -94,17 +100,19 @@ PEERDIR(
 
 INCLUDE(cflags.inc)
 
+IF (OS_LINUX)
+    SRCS(
+        postgresql/src/port/strlcat.c
+        postgresql/src/port/strlcpy.c
+    )
+ENDIF()
+
 IF (OS_LINUX OR OS_DARWIN)
     SRCS(
         postgresql/src/backend/port/posix_sema.c
         postgresql/src/backend/port/sysv_shmem.c
     )
 ELSEIF (OS_WINDOWS)
-    ADDINCL(
-        contrib/ydb/library/yql/parser/pg_wrapper/postgresql/src/include
-        contrib/ydb/library/yql/parser/pg_wrapper/postgresql/src/include/port/win32
-        contrib/ydb/library/yql/parser/pg_wrapper/postgresql/src/include/port/win32_msvc
-    )
     SRCS(
         postgresql/src/backend/port/win32/crashdump.c
         postgresql/src/backend/port/win32/signal.c
@@ -113,23 +121,23 @@ ELSEIF (OS_WINDOWS)
         postgresql/src/backend/port/win32_sema.c
         postgresql/src/backend/port/win32_shmem.c
         postgresql/src/port/dirmod.c
-        postgresql/src/port/dlopen.c
-        postgresql/src/port/getaddrinfo.c
         postgresql/src/port/getopt.c
-        postgresql/src/port/getrusage.c
-        postgresql/src/port/gettimeofday.c
         postgresql/src/port/inet_aton.c
         postgresql/src/port/kill.c
         postgresql/src/port/open.c
-        postgresql/src/port/pread.c
-        postgresql/src/port/pwrite.c
         postgresql/src/port/pwritev.c
         postgresql/src/port/system.c
         postgresql/src/port/win32common.c
+        postgresql/src/port/win32dlopen.c
         postgresql/src/port/win32env.c
         postgresql/src/port/win32error.c
         postgresql/src/port/win32fseek.c
+        postgresql/src/port/win32gai_strerror.c
+        postgresql/src/port/win32gettimeofday.c
+        postgresql/src/port/win32getrusage.c
         postgresql/src/port/win32ntdll.c
+        postgresql/src/port/win32pread.c
+        postgresql/src/port/win32pwrite.c
         postgresql/src/port/win32security.c
         postgresql/src/port/win32setlocale.c
         postgresql/src/port/win32stat.c
@@ -141,9 +149,13 @@ FILES(
     copy_src.py
     copy_src.sh
     generate_kernels.py
-    generate_patch.sh
+    source.patch
     vars.txt
     verify.sh
+)
+
+SUPPRESSIONS(
+    ubsan.supp
 )
 
 END()

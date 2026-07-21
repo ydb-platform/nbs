@@ -1,6 +1,7 @@
 #pragma once
 
-#include <contrib/ydb/library/actors/core/actorsystem.h>
+#include <contrib/ydb/library/actors/core/actorsystem_fwd.h>
+#include <contrib/ydb/library/actors/core/actorid.h>
 #include <contrib/ydb/library/grpc/server/grpc_server.h>
 #include <contrib/ydb/public/api/grpc/ydb_rate_limiter_v1.grpc.pb.h>
 
@@ -14,21 +15,16 @@ public:
     ~TRateLimiterGRpcService();
 
     void InitService(grpc::ServerCompletionQueue* cq, NYdbGrpc::TLoggerPtr logger) override;
-    void SetGlobalLimiterHandle(NYdbGrpc::TGlobalLimiter* limiter) override;
-
-    bool IncRequest();
-    void DecRequest();
 
 private:
     void SetupIncomingRequests(NYdbGrpc::TLoggerPtr logger);
 
 private:
-    NActors::TActorSystem* ActorSystem = nullptr;
-    TIntrusivePtr<::NMonitoring::TDynamicCounters> Counters;
-    NActors::TActorId GRpcRequestProxyId;
+    NActors::TActorSystem* ActorSystem_ = nullptr;
+    TIntrusivePtr<::NMonitoring::TDynamicCounters> Counters_;
+    NActors::TActorId GRpcRequestProxyId_;
 
-    grpc::ServerCompletionQueue* CQ = nullptr;
-    NYdbGrpc::TGlobalLimiter* Limiter = nullptr;
+    grpc::ServerCompletionQueue* CQ_ = nullptr;
 };
 
 } // namespace NKikimr::NQuoter

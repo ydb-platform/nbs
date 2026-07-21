@@ -1,32 +1,39 @@
 UNITTEST()
 
+REQUIREMENTS(cpu:4)
 IF (SANITIZER_TYPE == "thread")
-    TIMEOUT(1200)
     SIZE(LARGE)
-    TAG(ya:fat)
+    INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/large.inc)
 ELSE()
-    TIMEOUT(600)
     SIZE(MEDIUM)
 ENDIF()
 
 SRCS(
     channel_scheduler_ut.cpp
+    connection_checker_ut.cpp
     event_holder_pool_ut.cpp
+    event_output_channel_ut.cpp
     interconnect_ut.cpp
     large.cpp
     outgoing_stream_ut.cpp
     poller_actor_ut.cpp
     dynamic_proxy_ut.cpp
     sticking_ut.cpp
+    #uring_ut.cpp
+    xdc_shuffle_ut.cpp
+    v2_event_serializer_ut.cpp
 )
 
 PEERDIR(
     contrib/ydb/library/actors/core
     contrib/ydb/library/actors/interconnect
     contrib/ydb/library/actors/interconnect/ut/lib
+    contrib/ydb/library/actors/interconnect/ut/lib/port_manager
+    contrib/ydb/library/actors/interconnect/rdma/ut/utils
     contrib/ydb/library/actors/interconnect/ut/protos
     contrib/ydb/library/actors/testlib
     library/cpp/digest/md5
+    library/cpp/logger
     library/cpp/testing/unittest
 )
 

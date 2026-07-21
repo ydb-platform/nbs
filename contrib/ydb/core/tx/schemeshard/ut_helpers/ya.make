@@ -21,21 +21,32 @@ PEERDIR(
     contrib/ydb/core/tx/tx_proxy
     contrib/ydb/public/lib/scheme_types
     contrib/ydb/library/yql/public/issue
-    contrib/ydb/public/sdk/cpp/client/ydb_driver
-    contrib/ydb/public/sdk/cpp/client/ydb_table
+    contrib/ydb/public/lib/deprecated/kicli
+    contrib/ydb/public/sdk/cpp/src/client/driver
+    contrib/ydb/public/sdk/cpp/src/client/table
+    contrib/ydb/library/actors/core
+    contrib/ydb/library/actors/http
+    library/cpp/http/fetch
 )
 
 SRCS(
-    auditlog_helpers.cpp
-    auditlog_helpers.h
     export_reboots_common.cpp
     failing_mtpq.cpp
     helpers.cpp
     helpers.h
+    helpers_flags_n.h
     ls_checks.cpp
     ls_checks.h
+    mon_helpers.cpp
+    mon_helpers.h
+    olap_helpers.cpp
+    olap_helpers.h
+    schemeshard_counters.cpp
+    schemeshard_counters.h
+    shred_helpers.cpp
     test_env.cpp
     test_env.h
+    test_incremental_restore.h
     test_with_reboots.h
 )
 

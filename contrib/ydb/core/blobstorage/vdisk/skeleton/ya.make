@@ -5,6 +5,7 @@ PEERDIR(
     contrib/ydb/core/blobstorage/vdisk/balance
     contrib/ydb/core/blobstorage/vdisk/hulldb/base
     contrib/ydb/core/blobstorage/vdisk/hulldb/bulksst_add
+    contrib/ydb/core/blobstorage/vdisk/metadata
     contrib/ydb/core/blobstorage/vdisk/synclog
     contrib/ydb/core/protos
 )
@@ -42,6 +43,8 @@ SRCS(
     skeleton_oos_tracker.h
     skeleton_overload_handler.cpp
     skeleton_overload_handler.h
+    skeleton_shred.cpp
+    skeleton_shred.h
     skeleton_vmultiput_actor.cpp
     skeleton_vmultiput_actor.h
     skeleton_vmovedpatch_actor.cpp

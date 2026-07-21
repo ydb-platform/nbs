@@ -6,19 +6,24 @@
 #include <contrib/ydb/core/tx/locks/sys_tables.h>
 #include <contrib/ydb/library/accessor/accessor.h>
 #include <contrib/ydb/library/aclib/aclib.h>
-#include <contrib/ydb/library/conclusion/status.h>
+#include <contrib/ydb/library/actors/core/actorsystem_fwd.h>
 #include <contrib/ydb/library/conclusion/result.h>
-
+#include <contrib/ydb/library/conclusion/status.h>
 #include <contrib/ydb/services/metadata/abstract/kqp_common.h>
 #include <contrib/ydb/services/metadata/abstract/parsing.h>
+#include <contrib/ydb/services/metadata/manager/modification.h>
+
+#include <contrib/ydb/library/yql/sql/settings/translation_settings.h>
 
 #include <library/cpp/threading/future/core/future.h>
-#include <contrib/ydb/library/actors/core/actorsystem.h>
-#include <contrib/ydb/library/yql/sql/settings/translation_settings.h>
+
+#include <util/system/rwlock.h>
 
 namespace NKikimr::NMetadata::NModifications {
 
 using TOperationParsingResult = TConclusion<NInternal::TTableRecord>;
+
+const TString& GetOldSecretCreationDisabledMessage();
 
 class TAlterOperationContext {
 private:
@@ -93,8 +98,11 @@ public:
 
         }
     };
+
 private:
-    YDB_ACCESSOR_DEF(std::optional<TTableSchema>, ActualSchema);
+    std::optional<TTableSchema> ActualSchema;
+    TRWMutex Mutex;
+
 protected:
     virtual NThreading::TFuture<TYqlConclusionStatus> DoModify(const NYql::TObjectSettingsImpl& settings, const ui32 nodeId,
         const IClassBehaviour::TPtr& manager, TInternalModificationContext& context) const = 0;
@@ -135,10 +143,9 @@ public:
     virtual NThreading::TFuture<TYqlConclusionStatus> ExecutePrepared(const NKqpProto::TKqpSchemeOperation& schemeOperation,
         const ui32 nodeId, const IClassBehaviour::TPtr& manager, const TExternalModificationContext& context) const = 0;
 
-    const TTableSchema& GetSchema() const {
-        Y_ABORT_UNLESS(!!ActualSchema);
-        return *ActualSchema;
-    }
+    TTableSchema GetSchema() const;
+
+    void SetActualSchema(std::optional<TTableSchema>&& schema);
 };
 
 template <class TObject>
@@ -167,6 +174,11 @@ public:
         typename NModifications::IAlterPreparationController<TObject>::TPtr controller,
         const TInternalModificationContext& context, const TAlterOperationContext& alterContext) const {
         return DoPrepareObjectsBeforeModification(std::move(patchedObjects), controller, context, alterContext);
+    }
+
+    virtual std::vector<TModificationStage::TPtr> GetPreconditions(
+        const std::vector<TObject>& /*objects*/, const IOperationsManager::TInternalModificationContext& /*context*/) const {
+        return {};
     }
 };
 
@@ -229,4 +241,4 @@ public:
     }
 };
 
-}
+} // namespace NKikimr::NMetadata::NModifications

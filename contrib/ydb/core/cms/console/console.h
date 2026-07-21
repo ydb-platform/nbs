@@ -1,9 +1,7 @@
 #pragma once
 #include "defs.h"
 
-#include <contrib/ydb/library/yaml_config/yaml_config.h>
-
-#include <contrib/ydb/core/base/blobstorage.h>
+#include <contrib/ydb/core/protos/config.pb.h>
 #include <contrib/ydb/core/protos/console.pb.h>
 #include <contrib/ydb/core/protos/console_base.pb.h>
 #include <contrib/ydb/core/protos/console_config.pb.h>
@@ -11,9 +9,26 @@
 #include <contrib/ydb/public/api/protos/ydb_cms.pb.h>
 #include <contrib/ydb/public/api/protos/draft/ydb_dynamic_config.pb.h>
 
+#include <util/generic/strbuf.h>
+#include <util/generic/hash.h>
+
+#include <memory>
+
+namespace NKikimr {
+// Only used below as a pointer in a factory-function declaration; forward
+// declaration avoids pulling ydb/core/base/blobstorage.h into this header.
+class TTabletStorageInfo;
+}
+
 namespace NKikimr::NConsole {
 
-struct TEvConsole {
+// Tenant UserAttribute that enables the usage of database YAML config selectors.
+// Values: (according to TryFromString<bool>() function logic - IsTrue()/IsFalse())
+//  - "true", "yes", "on", "1"            - enabled
+//  - "false", "no", "off", "0", (absent) - disabled
+constexpr TStringBuf TENANT_ATTR_ALLOW_DATABASE_CONFIG_SELECTORS = "allow_database_config_selectors";
+
+namespace TEvConsole {
     enum EEv {
         // requests
         EvCreateTenantRequest = EventSpaceBegin(TKikimrEvents::ES_CONSOLE),
@@ -57,7 +72,9 @@ struct TEvConsole {
         EvGetAllMetadataRequest,
         EvGetNodeLabelsRequest,
         EvIsYamlReadOnlyRequest,
-
+        EvFetchStartupConfigRequest,
+        EvGetConfigurationVersionRequest,
+        EvGetNodeConfigurationVersionRequest,
         // responses
         EvCreateTenantResponse = EvCreateTenantRequest + 1024,
         EvAlterTenantResponse,
@@ -103,6 +120,9 @@ struct TEvConsole {
         EvGenericError,
 
         EvIsYamlReadOnlyResponse,
+        EvFetchStartupConfigResponse,
+        EvGetConfigurationVersionResponse,
+        EvGetNodeConfigurationVersionResponse,
 
         EvEnd
     };
@@ -226,6 +246,18 @@ struct TEvConsole {
 
     struct TEvResolveAllConfigResponse : public TEventShortDebugPB<TEvResolveAllConfigResponse, NKikimrConsole::TResolveAllConfigResponse, EvResolveAllConfigResponse> {};
 
+    struct TEvFetchStartupConfigRequest : public TEventShortDebugPB<TEvFetchStartupConfigRequest, NKikimrConsole::TFetchStartupConfigRequest, EvFetchStartupConfigRequest> {};
+
+    struct TEvFetchStartupConfigResponse : public TEventShortDebugPB<TEvFetchStartupConfigResponse, NKikimrConsole::TFetchStartupConfigResponse, EvFetchStartupConfigResponse> {};
+
+    struct TEvGetConfigurationVersionRequest : public TEventShortDebugPB<TEvGetConfigurationVersionRequest, NKikimrConsole::TGetConfigurationVersionRequest, EvGetConfigurationVersionRequest> {};
+
+    struct TEvGetConfigurationVersionResponse : public TEventShortDebugPB<TEvGetConfigurationVersionResponse, NKikimrConsole::TGetConfigurationVersionResponse, EvGetConfigurationVersionResponse> {};
+
+    struct TEvGetNodeConfigurationVersionRequest : public TEventShortDebugPB<TEvGetNodeConfigurationVersionRequest, NKikimrConsole::TGetNodeConfigurationVersionRequest, EvGetNodeConfigurationVersionRequest> {};
+
+    struct TEvGetNodeConfigurationVersionResponse : public TEventShortDebugPB<TEvGetNodeConfigurationVersionResponse, NKikimrConsole::TGetNodeConfigurationVersionResponse, EvGetNodeConfigurationVersionResponse> {};
+
     struct TEvUnauthorized : public TEventShortDebugPB<TEvUnauthorized, NKikimrConsole::TUnauthorized, EvUnauthorized> {};
 
     struct TEvDisabled : public TEventShortDebugPB<TEvDisabled, NKikimrConsole::TDisabled, EvDisabled> {};
@@ -284,6 +316,11 @@ struct TEvConsole {
 
     struct TEvConfigNotificationRequest : public TEventShortDebugPB<TEvConfigNotificationRequest, NKikimrConsole::TConfigNotificationRequest, EvConfigNotificationRequest> {
         const NKikimrConfig::TAppConfig& GetConfig() const { return Record.GetConfig(); }
+
+        // Node-local only: parsed forms of opaque config sections (kind -> message),
+        // produced by the configs dispatcher via an injected OpaqueConfigParser.
+        // .second != nullptr - config either not empty and present or not added into map
+        THashMap<ui32, std::shared_ptr<const ::google::protobuf::Message>> OpaqueConfigs;
     };
 
     struct TEvConfigNotificationResponse : public TEventShortDebugPB<TEvConfigNotificationResponse, NKikimrConsole::TConfigNotificationResponse, EvConfigNotificationResponse> {
@@ -344,7 +381,7 @@ struct TEvConsole {
                 Record.AddAffectedKinds(kind);
 
             if (!yamlConfig.empty()) {
-                Record.SetYamlConfig(yamlConfig);
+                Record.SetMainYamlConfig(yamlConfig);
                 for (auto &[id, config] : volatileYamlConfigs) {
                     auto *volatileConfig = Record.AddVolatileConfigs();
                     volatileConfig->SetId(id);
@@ -368,7 +405,7 @@ struct TEvConsole {
                 Record.AddAffectedKinds(kind);
 
             if (!yamlConfig.empty()) {
-                Record.SetYamlConfig(yamlConfig);
+                Record.SetMainYamlConfig(yamlConfig);
                 for (auto &[id, config] : volatileYamlConfigs) {
                     auto *volatileConfig = Record.AddVolatileConfigs();
                     volatileConfig->SetId(id);
@@ -376,6 +413,35 @@ struct TEvConsole {
                 }
             }
         }
+
+        TEvConfigSubscriptionNotification(
+            ui64 generation,
+            const NKikimrConfig::TAppConfig &config,
+            const THashSet<ui32> &affectedKinds,
+            const TString &yamlConfig,
+            const TMap<ui64, TString> &volatileYamlConfigs,
+            const NKikimrConfig::TAppConfig &rawConfig,
+            const TMaybe<TString> databaseYamlConfig)
+        {
+            Record.SetGeneration(generation);
+            Record.MutableConfig()->CopyFrom(config);
+            Record.MutableRawConsoleConfig()->CopyFrom(rawConfig);
+            for (ui32 kind : affectedKinds)
+                Record.AddAffectedKinds(kind);
+
+            if (!yamlConfig.empty()) {
+                Record.SetMainYamlConfig(yamlConfig);
+                for (auto &[id, config] : volatileYamlConfigs) {
+                    auto *volatileConfig = Record.AddVolatileConfigs();
+                    volatileConfig->SetId(id);
+                    volatileConfig->SetConfig(config);
+                }
+            }
+            if (databaseYamlConfig) {
+                Record.SetDatabaseYamlConfig(*databaseYamlConfig);
+            }
+        }
+
     };
 
     /**

@@ -14,13 +14,11 @@
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/log.h>
 
+#include <contrib/ydb/public/sdk/cpp/adapters/issue/issue.h>
+
+
 #include <deque>
 #include <variant>
-
-#define LOG_D(stream) LOG_DEBUG_S(::NActors::TActivationContext::AsActorContext(), NKikimrServices::YQ_RATE_LIMITER, stream)
-#define LOG_I(stream) LOG_INFO_S(::NActors::TActivationContext::AsActorContext(), NKikimrServices::YQ_RATE_LIMITER, stream)
-#define LOG_W(stream) LOG_WARN_S(::NActors::TActivationContext::AsActorContext(), NKikimrServices::YQ_RATE_LIMITER, stream)
-#define LOG_E(stream) LOG_ERROR_S(::NActors::TActivationContext::AsActorContext(), NKikimrServices::YQ_RATE_LIMITER, stream)
 
 namespace NFq {
 
@@ -185,7 +183,7 @@ private:
                 originalRequest->Sender,
                 new TEvRateLimiter::TEvCreateResourceResponse(
                     RateLimiterPath,
-                    ev->Get()->Result.GetIssues()
+                    NYdb::NAdapters::ToYqlIssues(ev->Get()->Result.GetIssues())
                 ),
                 0, // flags
                 originalRequest->Cookie
@@ -194,7 +192,7 @@ private:
             NActors::TActivationContext::AsActorContext().Send(
                 originalRequest->Sender,
                 new TEvRateLimiter::TEvCreateResourceResponse(
-                    ev->Get()->Result.GetIssues()
+                    NYdb::NAdapters::ToYqlIssues(ev->Get()->Result.GetIssues())
                 ),
                 0, // flags
                 originalRequest->Cookie
@@ -208,7 +206,7 @@ private:
             originalRequest->Sender,
             new TEvRateLimiter::TEvDeleteResourceResponse(
                 ev->Get()->Result.IsSuccess(),
-                ev->Get()->Result.GetIssues()
+                NYdb::NAdapters::ToYqlIssues(ev->Get()->Result.GetIssues())
             ),
             0, // flags
             originalRequest->Cookie
@@ -238,7 +236,7 @@ private:
         }
         // Special case: when resource os already created, but have its quota altered manually
         if (ev->Get()->Result.GetStatus() == NYdb::EStatus::BAD_REQUEST) {
-            for (const NYql::TIssue& i : ev->Get()->Result.GetIssues()) {
+            for (const auto& i : ev->Get()->Result.GetIssues()) {
                 if (i.GetMessage().find("Resource already exists") != TString::npos) {
                     return true;
                 }

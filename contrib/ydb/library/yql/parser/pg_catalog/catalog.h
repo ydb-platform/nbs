@@ -3,9 +3,17 @@
 #include <util/generic/maybe.h>
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
+#include <util/generic/set.h>
 #include <util/stream/output.h>
 #include <variant>
 #include <functional>
+
+struct Node;
+
+namespace NYql {
+class TExprNode;
+struct TExprContext;
+} // namespace NYql
 
 namespace NYql::NPg {
 
@@ -19,8 +27,7 @@ constexpr ui32 VarcharOid = 1043;
 constexpr ui32 TextOid = 25;
 
 // copied from pg_class.h
-enum class ERelPersistence : char
-{
+enum class ERelPersistence: char {
     Permanent = 'p',
     Unlogged = 'u',
     Temp = 't',
@@ -43,9 +50,10 @@ struct TOperDesc {
     ui32 ProcId = 0;
     ui32 ComId = 0;
     ui32 NegateId = 0;
+    ui32 ExtensionIndex = 0;
 };
 
-enum class EProcKind : char {
+enum class EProcKind: char {
     Function = 'f',
     Aggregate = 'a',
     Window = 'w'
@@ -72,6 +80,9 @@ struct TProcDesc {
     ui32 VariadicType = 0;
     ui32 VariadicArgType = 0;
     TString VariadicArgName;
+    TVector<TMaybe<TString>> DefaultArgs;
+    TExprNode* ExprNode = nullptr;
+    ui32 ExtensionIndex = 0;
 };
 
 // Copied from pg_collation_d.h
@@ -81,7 +92,7 @@ constexpr ui32 C_CollationOid = 950;
 constexpr ui32 PosixCollationOid = 951;
 
 // Copied from pg_type_d.h, TYPTYPE_* constants
-enum class ETypType : char {
+enum class ETypType: char {
     Base = 'b',
     Composite = 'c',
     Domain = 'd',
@@ -128,6 +139,8 @@ struct TTypeDesc {
 
     // If TypType is 'c', typrelid is the OID of the class' entry in pg_class.
     ETypType TypType = ETypType::Base;
+
+    ui32 ExtensionIndex = 0;
 };
 
 enum class ECastMethod {
@@ -136,11 +149,11 @@ enum class ECastMethod {
     Binary
 };
 
-enum class ECoercionCode : char {
-    Unknown = '?',      // not specified
-    Implicit = 'i',     // coercion in context of expression
-    Assignment = 'a',   // coercion in context of assignment
-    Explicit = 'e',     // explicit cast operation
+enum class ECoercionCode: char {
+    Unknown = '?',    // not specified
+    Implicit = 'i',   // coercion in context of expression
+    Assignment = 'a', // coercion in context of assignment
+    Explicit = 'e',   // explicit cast operation
 };
 
 struct TCastDesc {
@@ -149,9 +162,10 @@ struct TCastDesc {
     ECastMethod Method = ECastMethod::Function;
     ui32 FunctionId = 0;
     ECoercionCode CoercionCode = ECoercionCode::Unknown;
+    ui32 ExtensionIndex = 0;
 };
 
-enum class EAggKind : char {
+enum class EAggKind: char {
     Normal = 'n',
     OrderedSet = 'o',
     Hypothetical = 'h'
@@ -170,6 +184,8 @@ struct TAggregateDesc {
     ui32 DeserializeFuncId = 0;
     TString InitValue;
     bool FinalExtra = false;
+    ui32 NumDirectArgs = 0;
+    ui32 ExtensionIndex = 0;
 };
 
 enum class EAmType {
@@ -195,12 +211,19 @@ enum class EOpClassMethod {
     Hash
 };
 
+struct TOpFamilyDesc {
+    TString Name;
+    ui32 FamilyId = 0;
+    ui32 ExtensionIndex = 0;
+};
+
 struct TOpClassDesc {
     EOpClassMethod Method = EOpClassMethod::Btree;
     ui32 TypeId = 0;
     TString Name;
     TString Family;
     ui32 FamilyId = 0;
+    ui32 ExtensionIndex = 0;
 };
 
 struct TAmOpDesc {
@@ -210,6 +233,7 @@ struct TAmOpDesc {
     ui32 LeftType = 0;
     ui32 RightType = 0;
     ui32 OperId = 0;
+    ui32 ExtensionIndex = 0;
 };
 
 enum class EBtreeAmStrategy {
@@ -227,6 +251,7 @@ struct TAmProcDesc {
     ui32 LeftType = 0;
     ui32 RightType = 0;
     ui32 ProcId = 0;
+    ui32 ExtensionIndex = 0;
 };
 
 enum class EBtreeAmProcNum {
@@ -257,6 +282,7 @@ const TProcDesc& LookupProc(ui32 procId);
 std::variant<const TProcDesc*, const TTypeDesc*> LookupProcWithCasts(const TString& name, const TVector<ui32>& argTypeIds);
 bool HasReturnSetProc(const TString& name);
 void EnumProc(std::function<void(ui32, const TProcDesc&)> f);
+bool HasProc(const TString& name, EProcKind kind);
 
 bool HasType(const TString& name);
 bool HasType(ui32 typeId);
@@ -310,7 +336,7 @@ inline bool IsArrayType(const TTypeDesc& typeDesc) noexcept {
     return typeDesc.ArrayTypeId == typeDesc.TypeId;
 }
 
-enum class ERelKind : char {
+enum class ERelKind: char {
     Relation = 'r',
     View = 'v'
 };
@@ -320,6 +346,10 @@ struct TTableInfoKey {
 
     bool operator==(const TTableInfoKey& other) const {
         return Schema == other.Schema && Name == other.Name;
+    }
+
+    bool operator<(const TTableInfoKey& other) const {
+        return std::tie(Schema, Name) < std::tie(other.Schema, other.Name);
     }
 
     size_t Hash() const {
@@ -340,9 +370,10 @@ constexpr ui32 NamespaceRelationOid = 2615;
 constexpr ui32 AuthMemRelationOid = 1261;
 constexpr ui32 RelationRelationOid = 1259;
 
-struct TTableInfo : public TTableInfoKey {
+struct TTableInfo: public TTableInfoKey {
     ERelKind Kind;
     ui32 Oid;
+    ui32 ExtensionIndex = 0;
 };
 
 struct TColumnInfo {
@@ -350,26 +381,124 @@ struct TColumnInfo {
     TString TableName;
     TString Name;
     TString UdtType;
+    ui32 ExtensionIndex = 0;
 };
 
 const TVector<TTableInfo>& GetStaticTables();
 const TTableInfo& LookupStaticTable(const TTableInfoKey& tableKey);
 const THashMap<TTableInfoKey, TVector<TColumnInfo>>& GetStaticColumns();
+const TVector<TMaybe<TString>>* ReadTable(
+    const TTableInfoKey& tableKey,
+    const TVector<TString>& columnNames,
+    size_t* columnsRemap, // should have the same length as columnNames
+    size_t& rowStep);
+
+bool AreAllFunctionsAllowed();
+void AllowFunction(const TString& name);
+
+struct TExtensionDesc {
+    TString Name;              // postgis
+    TString InstallName;       // $libdir/postgis-3
+    TVector<TString> SqlPaths; // paths to SQL files with DDL (CREATE TYPE/CREATE FUNCTION/etc), DML (INSERT/VALUES)
+    TString LibraryPath;       // file path
+    bool TypesOnly = false;    // Can't be loaded if true
+    TString LibraryMD5;        // optional
+    TString Version;           // version of extension
+};
+
+class IExtensionSqlBuilder {
+public:
+    virtual ~IExtensionSqlBuilder() = default;
+
+    virtual void CreateProc(const TProcDesc& desc) = 0;
+
+    virtual void PrepareType(ui32 extensionIndex, const TString& name) = 0;
+
+    virtual void UpdateType(const TTypeDesc& desc) = 0;
+
+    virtual void CreateTable(const TTableInfo& table, const TVector<TColumnInfo>& columns) = 0;
+
+    virtual void InsertValues(const TTableInfoKey& table, const TVector<TString>& columns,
+                              const TVector<TMaybe<TString>>& data) = 0; // row based layout
+
+    virtual void CreateCast(const TCastDesc& desc) = 0;
+
+    virtual void PrepareOper(ui32 extensionIndex, const TString& name, const TVector<ui32>& args) = 0;
+
+    virtual void UpdateOper(const TOperDesc& desc) = 0;
+
+    virtual void CreateAggregate(const TAggregateDesc& desc) = 0;
+
+    virtual void CreateOpClass(const TOpClassDesc& opclass, const TVector<TAmOpDesc>& ops, const TVector<TAmProcDesc>& procs) = 0;
+};
+
+class IExtensionSqlParser {
+public:
+    virtual ~IExtensionSqlParser() = default;
+    virtual void Parse(ui32 extensionIndex, const TVector<TString>& sqls, IExtensionSqlBuilder& builder) = 0;
+};
+
+class IExtensionLoader {
+public:
+    virtual ~IExtensionLoader() = default;
+    virtual void Load(ui32 extensionIndex, const TString& name, const TString& path) = 0;
+};
+
+class ISystemFunctionsParser {
+public:
+    virtual ~ISystemFunctionsParser() = default;
+    virtual void Parse(const TString& sql, TVector<TProcDesc>& procs) const = 0;
+};
+
+class ISqlLanguageParser {
+public:
+    virtual ~ISqlLanguageParser() = default;
+    virtual void Parse(const TString& sql, TProcDesc& proc) = 0;
+    virtual void ParseNode(const Node* stmt, TProcDesc& proc) = 0;
+    virtual void Freeze() = 0;
+    virtual TExprContext& GetContext() = 0;
+};
+
+void SetSqlLanguageParser(std::unique_ptr<ISqlLanguageParser> parser);
+ISqlLanguageParser* GetSqlLanguageParser();
+
+void LoadSystemFunctions(ISystemFunctionsParser& parser);
+
+// either RegisterExtensions or ImportExtensions should be called at most once, see ClearExtensions as well
+void RegisterExtensions(const TVector<TExtensionDesc>& extensions, bool typesOnly,
+                        IExtensionSqlParser& parser, IExtensionLoader* loader);
+// converts all library paths to basenames
+TString ExportExtensions(const TMaybe<TSet<ui32>>& filter = Nothing());
+void ImportExtensions(const TString& exported, bool typesOnly, IExtensionLoader* loader);
+void ClearExtensions();
+
+void EnumExtensions(std::function<void(ui32 extensionIndex, const TExtensionDesc&)> f);
+const TExtensionDesc& LookupExtension(ui32 extensionIndex);
+ui32 LookupExtensionByName(const TString& name);
+ui32 LookupExtensionByInstallName(const TString& installName);
+
+class TOperatorNotFoundException : public yexception {};
+class TOperatorAmbiguityException : public yexception {};
+class TProcNotFoundException : public yexception {};
+class TProcAmbiguityException : public yexception {};
+class TAggregateNotFoundException : public yexception {};
+class TAggregateAmbiguityException : public yexception {};
+
+} // namespace NYql::NPg
+
+template <>
+inline void Out<NYql::NPg::ETypType>(IOutputStream& out, NYql::NPg::ETypType value) {
+    out.Write(static_cast<std::underlying_type<NYql::NPg::ETypType>::type>(value));
 }
 
 template <>
-inline void Out<NYql::NPg::ETypType>(IOutputStream& o, NYql::NPg::ETypType typType) {
-    o.Write(static_cast<std::underlying_type<NYql::NPg::ETypType>::type>(typType));
-}
-
-template <>
-inline void Out<NYql::NPg::ECoercionCode>(IOutputStream& o, NYql::NPg::ECoercionCode coercionCode) {
-    o.Write(static_cast<std::underlying_type<NYql::NPg::ECoercionCode>::type>(coercionCode));
+inline void Out<NYql::NPg::ECoercionCode>(IOutputStream& out, NYql::NPg::ECoercionCode value) {
+    out.Write(static_cast<std::underlying_type<NYql::NPg::ECoercionCode>::type>(value));
 }
 
 template <>
 struct THash<NYql::NPg::TTableInfoKey> {
-    size_t operator ()(const NYql::NPg::TTableInfoKey& val) const {
+    size_t operator()(const NYql::NPg::TTableInfoKey& val) const {
         return val.Hash();
     }
 };

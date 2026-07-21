@@ -2,13 +2,30 @@ LIBRARY(common)
 
 SRCS(
     aws.cpp
+    build_info.cpp
+    cert_format_converter.cpp
+    client_command_options.cpp
+    colors.cpp
     command.cpp
+    command_utils.cpp
     common.cpp
+    completion_generator.cpp
+    completion_graph_json.cpp
+    completion.cpp
+    config.cpp
+    log.cpp
     csv_parser.cpp
+    describe.cpp
+    download_manager.cpp
+    duration.cpp
     examples.cpp
     format.cpp
+    ftxui.cpp
     interactive.cpp
-    interruptible.cpp
+    interruptable.cpp
+    lazy_driver.cpp
+    local_paths.cpp
+    markdown.cpp
     normalize_path.cpp
     parameter_stream.cpp
     parameters.cpp
@@ -18,44 +35,72 @@ SRCS(
     print_utils.cpp
     profile_manager.cpp
     progress_bar.cpp
+    progress_indication.cpp
     query_stats.cpp
+    query_utils.cpp
+    scheme_query_utils.cpp
+    tx_mode_utils.cpp
     recursive_list.cpp
     recursive_remove.cpp
     retry_func.cpp
     root.cpp
+    scoped_driver.cpp
+    scheme_path_completer.cpp
     scheme_printers.cpp
     sys.cpp
     tabbed_table.cpp
+    utf8_utils.cpp
     waiting_bar.cpp
+    ydb_path.cpp
     ydb_updater.cpp
     yt.cpp
 )
 
 PEERDIR(
     contrib/libs/aws-sdk-cpp/aws-cpp-sdk-s3
-    library/cpp/config
+    contrib/libs/ftxui
+    contrib/libs/openssl
+    contrib/libs/yaml-cpp
+    contrib/restricted/patched/replxx
     library/cpp/getopt
+    library/cpp/http/simple
     library/cpp/json/writer
-    library/cpp/yaml/as
+    library/cpp/logger
+    library/cpp/regex/pcre
     library/cpp/string_utils/csv
+    library/cpp/string_utils/url
+    library/cpp/yaml/as
     contrib/ydb/public/lib/json_value
-    contrib/ydb/public/lib/operation_id
+    contrib/ydb/public/sdk/cpp/src/library/operation_id
     contrib/ydb/public/lib/yson_value
-    contrib/ydb/public/sdk/cpp/client/draft
-    contrib/ydb/public/sdk/cpp/client/ydb_result
-    contrib/ydb/public/sdk/cpp/client/ydb_scheme
-    contrib/ydb/public/sdk/cpp/client/ydb_table
-    contrib/ydb/public/sdk/cpp/client/ydb_topic
-    contrib/ydb/public/sdk/cpp/client/ydb_types
-    contrib/ydb/public/sdk/cpp/client/ydb_types/credentials
-    contrib/ydb/public/sdk/cpp/client/ydb_types/credentials/oauth2_token_exchange
+    contrib/ydb/public/sdk/cpp/src/client/coordination
+    contrib/ydb/public/sdk/cpp/src/client/draft
+    contrib/ydb/public/sdk/cpp/src/client/query
+    contrib/ydb/public/sdk/cpp/src/client/result
+    contrib/ydb/public/sdk/cpp/src/client/scheme
+    contrib/ydb/public/sdk/cpp/src/client/secret
+    contrib/ydb/public/sdk/cpp/src/client/table
+    contrib/ydb/public/sdk/cpp/src/client/topic
+    contrib/ydb/public/sdk/cpp/src/client/types
+    contrib/ydb/public/sdk/cpp/src/client/types/credentials
+    contrib/ydb/public/sdk/cpp/src/client/types/credentials/oauth2_token_exchange
+    contrib/ydb/public/sdk/cpp/src/client/types/status
     contrib/ydb/library/arrow_parquet
+    contrib/ydb/library/plan2svg
+    contrib/ydb/library/yverify_stream
+    contrib/ydb/public/lib/ydb_cli/common/ini_config
+    contrib/ydb/public/lib/ydb_cli/common/yql_parser
 )
 
 GENERATE_ENUM_SERIALIZATION(formats.h)
 GENERATE_ENUM_SERIALIZATION(parameters.h)
 
 END()
+
+RECURSE(
+    ini_config
+    yql_parser
+)
 
 RECURSE_FOR_TESTS(
     ut

@@ -37,6 +37,11 @@ ids {
   format: "Type annotation"
 }
 ids {
+  code: CORE_PARTIAL_TYPE_ANN
+  severity: S_INFO
+  format: "Partial type annotation"
+}
+ids {
   code: CORE_POST_TYPE_ANN
   severity: S_INFO
   format: "Post type annotation"
@@ -125,6 +130,10 @@ ids {
 }
 ids {
   code: CORE_GC_STRINGS_LIMIT_EXCEEDED
+  severity: S_ERROR
+}
+ids {
+  code: CORE_RUNTIME_ERROR
   severity: S_ERROR
 }
 ids {
@@ -289,6 +298,22 @@ ids {
 }
 ids {
   code: KIKIMR_NO_COLUMN_DEFAULT_VALUE
+  severity: S_ERROR
+}
+ids {
+  code: KIKIMR_DATABASE_DISK_SPACE_QUOTA_EXCEEDED
+  severity: S_ERROR
+}
+ids {
+  code: KIKIMR_SCHEMA_CHANGED
+  severity: S_ERROR
+}
+ids {
+  code: KIKIMR_INTERNAL_ERROR
+  severity: S_ERROR
+}
+ids {
+  code: KIKIMR_DISK_GROUP_OUT_OF_SPACE
   severity: S_ERROR
 }
 ids {
@@ -628,6 +653,10 @@ ids {
   severity: S_ERROR
 }
 ids {
+  code: YT_OP_SPEC_CONTAINS_SECRETS
+  severity: S_ERROR
+}
+ids {
   code: YQL_OFFSET_WITHOUT_SORT
   severity: S_WARNING
 }
@@ -656,10 +685,70 @@ ids {
     severity: S_WARNING
 }
 ids {
+    code: YQL_DISCARD_IN_INVALID_PLACE
+    severity: S_WARNING
+}
+ids {
+  code: YQL_SYNTAX_AMBIGUITY
+  severity: S_WARNING
+}
+ids {
+  code: YQL_NO_STATEMENTS
+  severity: S_ERROR
+}
+ids {
   code: CORE_LINEAGE_INTERNAL_ERROR
+  severity: S_WARNING
+}
+ids {
+  code: CORE_DEPRECATED_LANG_VER
+  severity: S_WARNING
+}
+ids {
+  code: CORE_UNSUPPORTED_LANG_VER
+  severity: S_WARNING
+}
+ids {
+  code: CORE_SINGULAR_TYPE_ENSURE
+  severity: S_WARNING
+}
+ids {
+  code: CORE_SIMPLE_PG
   severity: S_WARNING
 }
 ids {
   code: YT_SECURE_DATA_IN_COMMON_TMP
   severity: S_WARNING
+}
+ids {
+  code: CORE_TOP_UNSUPPORTED_BLOCK_TYPES
+  severity: S_INFO
+}
+ids {
+  code: CORE_TOP_UNSUPPORTED_BLOCK_CALLABLES
+  severity: S_INFO
+}
+ids {
+  code: CORE_UDF_RESOLVER
+  severity: S_INFO
+}
+ids {
+  code: CBO_ENUM_LIMIT_REACHED
+  severity: S_WARNING
+}
+ids {
+  code: CBO_MISSING_TABLE_STATS
+  severity: S_WARNING
+}
+ids {
+  code: FMR_UNKNOWN_ERROR
+  severity: S_ERROR
+}
+ids {
+  code: FMR_NEED_FALLBACK
+  severity: S_ERROR
+}
+ids {
+  code: FMR_UDF_TERMINATE
+  severity: S_ERROR
 }

@@ -12,7 +12,11 @@
 #include <contrib/ydb/core/kqp/workload_service/common/helpers.h>
 #include <contrib/ydb/core/kqp/workload_service/tables/table_queries.h>
 
+#include <contrib/ydb/core/mind/tenant_node_enumeration.h>
+
 #include <contrib/ydb/core/protos/console_config.pb.h>
+#include <contrib/ydb/core/protos/feature_flags.pb.h>
+#include <contrib/ydb/core/protos/workload_manager_config.pb.h>
 
 #include <contrib/ydb/library/actors/interconnect/interconnect.h>
 
@@ -65,15 +69,16 @@ public:
     void Bootstrap() {
         Become(&TKqpWorkloadService::MainState);
 
-        // Subscribe for FeatureFlags
+        // Subscribe for FeatureFlags and WorkloadManagerConfig
         Send(NConsole::MakeConfigsDispatcherID(SelfId().NodeId()), new NConsole::TEvConfigsDispatcher::TEvSetConfigSubscriptionRequest({
-            (ui32)NKikimrConsole::TConfigItem::FeatureFlagsItem
+            (ui32)NKikimrConsole::TConfigItem::FeatureFlagsItem, (ui32)NKikimrConsole::TConfigItem::WorkloadManagerConfigItem
         }), IEventHandle::FlagTrackDelivery);
 
-        CpuQuotaManager = std::make_unique<TCpuQuotaManagerState>(ActorContext(), Counters.Counters->GetSubgroup("subcomponent", "CpuQuotaManager"));
+        CpuQuotaManager = std::make_unique<TCpuQuotaManagerState>(Counters.Counters->GetSubgroup("subcomponent", "CpuQuotaManager"));
 
-        EnabledResourcePools = AppData()->FeatureFlags.GetEnableResourcePools();
-        EnabledResourcePoolsOnServerless = AppData()->FeatureFlags.GetEnableResourcePoolsOnServerless();
+        WorkloadManagerConfig = AppData()->WorkloadManagerConfig;
+        EnabledResourcePools = AppData()->FeatureFlags.GetEnableResourcePools() || WorkloadManagerConfig.GetEnabled();
+        EnabledResourcePoolsOnServerless = AppData()->FeatureFlags.GetEnableResourcePoolsOnServerless() || WorkloadManagerConfig.GetEnabled();
         EnableResourcePoolsCounters = AppData()->FeatureFlags.GetEnableResourcePoolsCounters();
         if (EnabledResourcePools) {
             InitializeWorkloadService();
@@ -82,6 +87,13 @@ public:
 
     void HandlePoison() {
         LOG_W("Got poison, stop workload service");
+
+        // Unsubscribe from all scheme cache watches
+        for (const auto& [_, databaseState] : DatabaseToState) {
+            if (databaseState.WatchKey) {
+                Send(MakeSchemeCacheID(), new TEvTxProxySchemeCache::TEvWatchRemove(databaseState.WatchKey));
+            }
+        }
 
         for (const auto& [_, poolState] : PoolIdToState) {
             Send(poolState.PoolHandler, new TEvents::TEvPoison());
@@ -100,11 +112,12 @@ public:
     void Handle(NConsole::TEvConsole::TEvConfigNotificationRequest::TPtr& ev) {
         const auto& event = ev->Get()->Record;
 
-        EnabledResourcePools = event.GetConfig().GetFeatureFlags().GetEnableResourcePools();
-        EnabledResourcePoolsOnServerless = event.GetConfig().GetFeatureFlags().GetEnableResourcePoolsOnServerless();
+        WorkloadManagerConfig = event.GetConfig().GetWorkloadManagerConfig();
+        EnabledResourcePools = event.GetConfig().GetFeatureFlags().GetEnableResourcePools() || WorkloadManagerConfig.GetEnabled();
+        EnabledResourcePoolsOnServerless = event.GetConfig().GetFeatureFlags().GetEnableResourcePoolsOnServerless() || WorkloadManagerConfig.GetEnabled();
         EnableResourcePoolsCounters = event.GetConfig().GetFeatureFlags().GetEnableResourcePoolsCounters();
         if (EnabledResourcePools) {
-            LOG_I("Resource pools was enanbled");
+            LOG_I("Resource pools was enabled");
             InitializeWorkloadService();
         } else {
             LOG_I("Resource pools was disabled");
@@ -114,11 +127,16 @@ public:
         Send(ev->Sender, responseEvent.release(), IEventHandle::FlagTrackDelivery, ev->Cookie);
     }
 
-    void Handle(TEvInterconnect::TEvNodesInfo::TPtr& ev) {
-        NodeCount = ev->Get()->Nodes.size();
+    void Handle(TEvTenantNodeEnumerator::TEvLookupResult::TPtr& ev) {
+        if (!ev->Get()->Success) {
+            LOG_W("Failed to discover tenant nodes");
+            return;
+        }
+
+        NodeCount = ev->Get()->AssignedNodes.size();
         ScheduleNodeInfoRequest();
 
-        LOG_T("Updated node info, noode count: " << NodeCount);
+        LOG_T("Updated node info, node count: " << NodeCount);
     }
 
     void Handle(TEvents::TEvUndelivered::TPtr& ev) const {
@@ -150,7 +168,7 @@ public:
             return;
         }
 
-        LOG_D("Recieved subscription request, DatabaseId: " << databaseId << ", PoolId: " << poolId);
+        LOG_D("Received subscription request, DatabaseId: " << databaseId << ", PoolId: " << poolId);
         GetOrCreateDatabaseState(databaseId)->DoSubscribeRequest(std::move(ev));
     }
 
@@ -162,7 +180,7 @@ public:
         }
 
         const TString& databaseId = ev->Get()->DatabaseId;
-        LOG_D("Recieved new request from " << workerActorId << ", DatabaseId: " << databaseId << ", PoolId: " << ev->Get()->PoolId << ", SessionId: " << ev->Get()->SessionId);
+        LOG_D("Received new request from " << workerActorId << ", DatabaseId: " << databaseId << ", PoolId: " << ev->Get()->PoolId << ", SessionId: " << ev->Get()->SessionId);
         GetOrCreateDatabaseState(databaseId)->DoPlaceRequest(std::move(ev));
     }
 
@@ -206,7 +224,7 @@ public:
         sFunc(TEvents::TEvPoison, HandlePoison);
         sFunc(NConsole::TEvConfigsDispatcher::TEvSetConfigSubscriptionResponse, HandleSetConfigSubscriptionResponse);
         hFunc(NConsole::TEvConsole::TEvConfigNotificationRequest, Handle);
-        hFunc(TEvInterconnect::TEvNodesInfo, Handle);
+        hFunc(TEvTenantNodeEnumerator::TEvLookupResult, Handle);
         hFunc(TEvents::TEvUndelivered, Handle);
 
         hFunc(TEvSubscribeOnPoolChanges, Handle);
@@ -228,16 +246,99 @@ public:
         hFunc(TEvPrivate::TEvCpuLoadResponse, Handle);
         hFunc(TEvPrivate::TEvResignPoolHandler, Handle);
         hFunc(TEvPrivate::TEvStopPoolHandlerResponse, Handle);
+        hFunc(TEvTxProxySchemeCache::TEvWatchNotifyDeleted, Handle);
+        IgnoreFunc(TEvTxProxySchemeCache::TEvWatchNotifyUpdated);
+        IgnoreFunc(TEvTxProxySchemeCache::TEvWatchNotifyUnavailable);
     )
 
 private:
+    ///
+    /// Fetches database metadata and subscribes to Scheme Cache Watch via db's PathId.
+    ///
     void Handle(TEvFetchDatabaseResponse::TPtr& ev) {
+        const TString& databaseId = ev->Get()->DatabaseId;
+
         if (ev->Get()->Status == Ydb::StatusIds::SUCCESS) {
-            LOG_D("Successfully fetched database info, DatabaseId: " << ev->Get()->DatabaseId << ", Serverless: " << ev->Get()->Serverless);
+            LOG_D("Successfully fetched database info, DatabaseId: " << databaseId
+                << ", Serverless: " << ev->Get()->Serverless
+                << ", PathId: " << ev->Get()->PathId
+            );
+
+            // Subscribe to scheme cache watch for this PathId
+            auto databaseState = GetOrCreateDatabaseState(databaseId);
+
+            if (!databaseState->WatchKey) {
+                databaseState->WatchKey = ++FreeWatchKey;
+                auto subscribeEvent = new TEvTxProxySchemeCache::TEvWatchPathId(
+                    ev->Get()->PathId, databaseState->WatchKey);
+
+                Send(MakeSchemeCacheID(), subscribeEvent);
+
+                LOG_D("Subscribed to scheme cache watch for database: " << databaseId
+                    << ", PathId: " << ev->Get()->PathId
+                    << ", WatchKey: " << databaseState->WatchKey
+                );
+            }
         } else {
-            LOG_D("Failed to fetch database info, DatabaseId: " << ev->Get()->DatabaseId << ", Status: " << ev->Get()->Status << ", Issues: " << ev->Get()->Issues.ToOneLineString());
+            LOG_D("Failed to fetch database info, DatabaseId: " << databaseId
+                << ", Status: " << ev->Get()->Status
+                << ", Issues: " << ev->Get()->Issues.ToOneLineString());
         }
-        GetOrCreateDatabaseState(ev->Get()->DatabaseId)->UpdateDatabaseInfo(ev);
+
+        GetOrCreateDatabaseState(databaseId)->UpdateDatabaseInfo(ev);
+    }
+
+    ///
+    /// Handles database deletion to prevent stale PathId mismatch on recreation.
+    ///
+    void Handle(TEvTxProxySchemeCache::TEvWatchNotifyDeleted::TPtr& ev) {
+        const TString& databasePath = ev->Get()->Path;
+        LOG_W("Database deleted: " << databasePath << ". Cleaning all related states.");
+
+        // Find all database states for this path
+        std::vector<TString> databaseIdsToRemove;
+        for (const auto& [databaseId, databaseState] : DatabaseToState) {
+            if (DatabaseIdToDatabase(databaseId) == databasePath) {
+                databaseIdsToRemove.push_back(databaseId);
+            }
+        }
+
+        // Cleaning all pools and database state for each matching database ID
+        for (const TString& databaseId : databaseIdsToRemove) {
+            LOG_I("Removing database state for: " << databaseId);
+            CleanupDatabasePools(databaseId);
+            DatabaseToState.erase(databaseId);
+        }
+    }
+
+    ///
+    /// Stops all active pool handlers and clears database state.
+    ///
+    void CleanupDatabasePools(const TString& databaseId) {
+        std::vector<TString> poolsToRemove;
+        const TString prefix = CanonizePath(databaseId) + "/";
+
+        for (const auto& [poolKey, poolState] : PoolIdToState) {
+            if (poolKey.StartsWith(prefix)) {
+                LOG_I("Cleaning pool handler for: " << poolKey);
+                Send(poolState.PoolHandler, new TEvPrivate::TEvStopPoolHandler(true));
+
+                if (poolState.NewPoolHandler) {
+                    Send(*poolState.NewPoolHandler, new TEvPrivate::TEvStopPoolHandler(true));
+                }
+
+                for (const auto& previousHandler : poolState.PreviousPoolHandlers) {
+                    Send(previousHandler, new TEvPrivate::TEvStopPoolHandler(true));
+                }
+
+                poolsToRemove.push_back(poolKey);
+            }
+        }
+
+        for (const auto& poolKey : poolsToRemove) {
+            Counters.ActivePools->Dec();
+            PoolIdToState.erase(poolKey);
+        }
     }
 
     void Handle(TEvPrivate::TEvFetchPoolResponse::TPtr& ev) {
@@ -246,10 +347,13 @@ private:
 
         TActorId poolHandler;
         if (ev->Get()->Status == Ydb::StatusIds::SUCCESS) {
-            LOG_D("Successfully fetched pool " << poolId << ", DatabaseId: " << databaseId);
+            LOG_D("Successfully fetched pool: " << poolId << ", DatabaseId: " << databaseId);
             poolHandler = GetOrCreatePoolState(databaseId, poolId, ev->Get()->PoolConfig)->PoolHandler;
         } else {
-            LOG_W("Failed to fetch pool " << poolId << ", DatabaseId: " << databaseId << ", status: " << ev->Get()->Status << ", issues: " << ev->Get()->Issues.ToOneLineString());
+            LOG_W("Failed to fetch pool: " << poolId
+                << ", database id: " << databaseId
+                << ", status: " << ev->Get()->Status
+                << ", issues: " << ev->Get()->Issues.ToOneLineString());
         }
 
         GetOrCreateDatabaseState(databaseId)->UpdatePoolInfo(ev, poolHandler);
@@ -362,7 +466,7 @@ private:
         if (ev->Get()->Success) {
             LOG_D("Cleanup completed, tables exists: " << ev->Get()->TablesExists);
         } else {
-            LOG_C("Failed to cleanup tables, issues: " << ev->Get()->Issues.ToOneLineString());
+            LOG_D("Failed to cleanup tables, issues: " << ev->Get()->Issues.ToOneLineString());
         }
 
         TablesCreationStatus = ETablesCreationStatus::NotStarted;
@@ -527,7 +631,7 @@ private:
     }
 
     void RunNodeInfoRequest() const {
-        Send(GetNameserviceActorId(), new TEvInterconnect::TEvListNodes(), IEventHandle::FlagTrackDelivery);
+        Register(CreateTenantNodeEnumerationLookup(SelfId(), AppData()->TenantName));
     }
 
 private:
@@ -551,11 +655,13 @@ private:
 
     TDatabaseState* GetOrCreateDatabaseState(TString databaseId) {
         auto databaseIt = DatabaseToState.find(databaseId);
+
         if (databaseIt != DatabaseToState.end()) {
             return &databaseIt->second;
         }
+
         LOG_I("Creating new database state for id " << databaseId);
-        return &DatabaseToState.insert({databaseId, TDatabaseState{.ActorContext = ActorContext(), .EnabledResourcePoolsOnServerless = EnabledResourcePoolsOnServerless}}).first->second;
+        return &DatabaseToState.insert({databaseId, TDatabaseState{.SelfId = SelfId(), .EnabledResourcePoolsOnServerless = EnabledResourcePoolsOnServerless, .WorkloadManagerConfig = WorkloadManagerConfig}}).first->second;
     }
 
     TPoolState* GetOrCreatePoolState(const TString& databaseId, const TString& poolId, const NResourcePool::TPoolSettings& poolConfig) {
@@ -567,7 +673,7 @@ private:
         LOG_I("Creating new handler for pool " << poolKey);
 
         const auto poolHandler = Register(CreatePoolHandlerActor(databaseId, poolId, poolConfig, EnableResourcePoolsCounters ? Counters.Counters : MakeIntrusive<NMonitoring::TDynamicCounters>()));
-        const auto poolState = &PoolIdToState.insert({poolKey, TPoolState{.PoolHandler = poolHandler, .ActorContext = ActorContext()}}).first->second;
+        const auto poolState = &PoolIdToState.insert({poolKey, TPoolState{.PoolHandler = poolHandler}}).first->second;
 
         Counters.ActivePools->Inc();
         ScheduleIdleCheck();
@@ -603,8 +709,10 @@ private:
     bool EnableResourcePoolsCounters = false;
     bool ServiceInitialized = false;
     bool IdleChecksStarted = false;
+    NKikimrConfig::TWorkloadManagerConfig WorkloadManagerConfig;
     ETablesCreationStatus TablesCreationStatus = ETablesCreationStatus::Cleanup;
     std::unordered_set<TString> PendingHandlers;  // DatabaseID/PoolID
+    ui32 FreeWatchKey = 0;
 
     std::unordered_map<TString, TDatabaseState> DatabaseToState;  // DatabaseID to state
     std::unordered_map<TString, TPoolState> PoolIdToState;  // DatabaseID/PoolID to state
@@ -613,10 +721,6 @@ private:
 };
 
 }  // anonymous namespace
-
-bool IsWorkloadServiceRequired(const NResourcePool::TPoolSettings& config) {
-    return config.ConcurrentQueryLimit != -1 || config.DatabaseLoadCpuThreshold >= 0.0 || config.QueryCancelAfter;
-}
 
 }  // namespace NWorkload
 

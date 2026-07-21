@@ -13,6 +13,8 @@
 #include <library/cpp/json/json_reader.h>
 #include <library/cpp/json/json_writer.h>
 
+#define YDB_LOG_THIS_FILE_COMPONENT NKikimrServices::CMS
+
 namespace NKikimr::NCms {
 
 using namespace NKikimrCms;
@@ -80,10 +82,6 @@ private:
         auto &hosts = map["hosts"].GetArray();
         for (auto &host : hosts)
             *request->Record.AddHosts() = host.GetString();
-        
-        auto &devices = map["devices"].GetArray();
-        for (auto &device : devices)
-            *request->Record.AddDevices() = device.GetString();
 
         const auto &params = http.GetParams();
         if (params.contains("dry_run"))
@@ -100,8 +98,9 @@ private:
             HFunc(TEvTabletPipe::TEvClientDestroyed, Handle);
             CFunc(TEvents::TSystem::Wakeup, Timeout);
         default:
-            LOG_DEBUG(*TlsActivationContext, NKikimrServices::CMS, "TWalleApiHandler::StateCreateTask ignored event type: %" PRIx32 " event: %s",
-                      ev->GetTypeRewrite(), ev->ToString().data());
+            YDB_LOG_DEBUG_CTX(*TlsActivationContext, "TWalleApiHandler::StateCreateTask ignored event",
+                {"type", ev->GetTypeRewrite()},
+                {"ev", ev->ToString()});
         }
     }
 
@@ -113,15 +112,9 @@ private:
         NJson::TJsonValue hosts(NJson::JSON_ARRAY);
         for (auto &host : resp.GetHosts())
             hosts.AppendValue(host);
-
-        NJson::TJsonValue devices(NJson::JSON_ARRAY);
-        for (auto &device : resp.GetDevices())
-            devices.AppendValue(device);
-
         NJson::TJsonValue map;
         map.InsertValue("id", resp.GetTaskId());
         map.InsertValue("hosts", hosts);
-        map.InsertValue("devices", devices);
         map.InsertValue("status", status);
         map.InsertValue("message", resp.GetStatus().GetReason());
 
@@ -149,27 +142,21 @@ private:
             HFunc(TEvTabletPipe::TEvClientDestroyed, Handle);
             CFunc(TEvents::TSystem::Wakeup, Timeout);
         default:
-            LOG_DEBUG(*TlsActivationContext, NKikimrServices::CMS, "TWalleApiHandler::StateListTasks ignored event type: %" PRIx32 " event: %s",
-                      ev->GetTypeRewrite(), ev->ToString().data());
+            YDB_LOG_DEBUG_CTX(*TlsActivationContext, "TWalleApiHandler::StateListTasks ignored event",
+                {"type", ev->GetTypeRewrite()},
+                {"ev", ev->ToString()});
         }
     }
 
     void Reply(const TWalleListTasksResponse &resp, const TActorContext &ctx) {
         NJson::TJsonValue tasks(NJson::JSON_ARRAY);
         for (auto &task : resp.GetTasks()) {
-
             NJson::TJsonValue hosts(NJson::JSON_ARRAY);
             for (auto &host : task.GetHosts())
                 hosts.AppendValue(host);
-
-            NJson::TJsonValue devices(NJson::JSON_ARRAY);
-            for (auto &device : task.GetDevices())
-                devices.AppendValue(device);
-
             NJson::TJsonValue map;
             map.InsertValue("id", task.GetTaskId());
             map.InsertValue("hosts", hosts);
-            map.InsertValue("devices", devices);
             map.InsertValue("status", task.GetStatus());
 
             tasks.AppendValue(map);
@@ -203,8 +190,9 @@ private:
             HFunc(TEvTabletPipe::TEvClientDestroyed, Handle);
             CFunc(TEvents::TSystem::Wakeup, Timeout);
         default:
-            LOG_DEBUG(*TlsActivationContext, NKikimrServices::CMS, "TWalleApiHandler::StateCheckTask ignored event type: %" PRIx32 " event: %s",
-                      ev->GetTypeRewrite(), ev->ToString().data());
+            YDB_LOG_DEBUG_CTX(*TlsActivationContext, "TWalleApiHandler::StateCheckTask ignored event",
+                {"type", ev->GetTypeRewrite()},
+                {"ev", ev->ToString()});
         }
     }
 
@@ -216,15 +204,9 @@ private:
         NJson::TJsonValue hosts(NJson::JSON_ARRAY);
         for (auto &host : resp.GetTask().GetHosts())
             hosts.AppendValue(host);
-
-        NJson::TJsonValue devices(NJson::JSON_ARRAY);
-        for (auto &device : resp.GetTask().GetDevices())
-            devices.AppendValue(device);
-
         NJson::TJsonValue map;
         map.InsertValue("id", resp.GetTask().GetTaskId());
         map.InsertValue("hosts", hosts);
-        map.InsertValue("devices", devices);
         map.InsertValue("status", status);
         map.InsertValue("message", resp.GetStatus().GetReason());
 
@@ -253,8 +235,9 @@ private:
             HFunc(TEvTabletPipe::TEvClientDestroyed, Handle);
             CFunc(TEvents::TSystem::Wakeup, Timeout);
         default:
-            LOG_DEBUG(*TlsActivationContext, NKikimrServices::CMS, "TWalleApiHandler::StateRemoveTask ignored event type: %" PRIx32 " event: %s",
-                      ev->GetTypeRewrite(), ev->ToString().data());
+            YDB_LOG_DEBUG_CTX(*TlsActivationContext, "TWalleApiHandler::StateRemoveTask ignored event",
+                {"type", ev->GetTypeRewrite()},
+                {"ev", ev->ToString()});
         }
     }
 
@@ -296,6 +279,12 @@ private:
                 err = NMonitoring::HTTPNOTFOUND;
             else
                 err = Sprintf("HTTP/1.1 400 Bad Request\r\n\r\n%s", status.GetReason().data());
+            ReplyWithError(err, ctx);
+            return false;
+        }
+
+        if (status.GetCode() == TStatus::ERROR_TEMP) {
+            auto err = Sprintf("HTTP/1.1 503 Service Unavailable\r\n\r\n%s", status.GetReason().data());
             ReplyWithError(err, ctx);
             return false;
         }
@@ -362,7 +351,7 @@ private:
     }
 
     void HandlePipeDestroyed(const TActorContext &ctx) {
-        LOG_WARN(ctx, NKikimrServices::CMS, "TWalleApiHandler::HandlePipeDestroyed");
+        YDB_LOG_WARN_CTX(ctx, "TWalleApiHandler::HandlePipeDestroyed");
 
         NTabletPipe::CloseAndForgetClient(SelfId(), CmsPipe);
         Bootstrap(ctx);

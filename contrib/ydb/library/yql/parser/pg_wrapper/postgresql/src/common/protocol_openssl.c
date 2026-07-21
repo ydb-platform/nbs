@@ -5,7 +5,7 @@
  *
  * This should only be used if code is compiled with OpenSSL support.
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -81,7 +81,7 @@ SSL_CTX_set_max_proto_version(SSL_CTX *ctx, int version)
 {
 	int			ssl_options = 0;
 
-	AssertArg(version != 0);
+	Assert(version != 0);
 
 	/*
 	 * Some OpenSSL versions define TLS*_VERSION macros but not the
@@ -114,4 +114,10 @@ SSL_CTX_set_max_proto_version(SSL_CTX *ctx, int version)
 	return 1;					/* success */
 }
 
-#endif							/* !SSL_CTX_set_min_proto_version */
+#else							/* !SSL_CTX_set_min_proto_version */
+
+/* prevent linker complaints about empty module */
+extern __thread int	protocol_openssl_dummy_variable;
+__thread int			protocol_openssl_dummy_variable = 0;
+
+#endif							/* SSL_CTX_set_min_proto_version */

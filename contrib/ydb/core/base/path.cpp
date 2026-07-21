@@ -157,6 +157,16 @@ TString CanonizePath(const TVector<TString>& path) {
     return TString("/") + JoinPath(path);
 }
 
+TString NormalizePath(const TString& database, const TString& path) {
+    if (database == path) {
+        return path;
+    }
+    if (path.size() > database.size() && path.at(database.size()) == '/' && path.StartsWith(database)) {
+        return path;
+    }
+    return NKikimr::CanonizePath(database + "/" + path);
+}
+
 ui32 CanonizedPathLen(const TVector<TString>& path) {
     ui32 ret = path.size();
     for (auto &x : path)
@@ -221,7 +231,7 @@ TString::const_iterator PathPartBrokenAt(const TString &part, const TStringBuf e
 bool CheckDbPath(const TString &path, const TString &domain, TString &error) {
     auto parts = SplitPath(path);
 
-    if (parts.empty()) {
+    if (parts.size() < 2) {
         error = "Database path cannot be empty or root";
         return false;
     }

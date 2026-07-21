@@ -6,11 +6,14 @@ SRCS(
 
 PEERDIR(
     library/cpp/retry
-    contrib/ydb/core/testlib/basics
+    library/cpp/testing/unittest
+    contrib/ydb/library/actors/testlib
+    contrib/ydb/library/services
+    contrib/ydb/library/yql/dq/actors/compute
+    contrib/ydb/library/yql/dq/actors/protos
+    contrib/ydb/library/yql/minikql
     contrib/ydb/library/yql/minikql/computation
-    contrib/ydb/library/yql/public/udf/service/exception_policy
-    contrib/ydb/library/yql/sql
-    contrib/ydb/library/yql/providers/common/comp_nodes
+    contrib/ydb/library/yql/minikql/invoke_builtins
 )
 
 YQL_LAST_ABI_VERSION()

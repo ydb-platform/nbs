@@ -8,6 +8,7 @@ class TTxDeleteTabletResult : public TTransactionBase<THive> {
     TEvTabletBase::TEvDeleteTabletResult::TPtr Result;
     TTabletId TabletId;
     TSideEffects SideEffects;
+    bool Success;
 
 public:
     TTxDeleteTabletResult(TEvTabletBase::TEvDeleteTabletResult::TPtr& ev, THive* hive)
@@ -20,6 +21,7 @@ public:
 
     bool Execute(TTransactionContext& txc, const TActorContext&) override {
         SideEffects.Reset(Self->SelfId());
+        Success = true;
         TEvTabletBase::TEvDeleteTabletResult* msg = Result->Get();
         BLOG_D("THive::TTxDeleteTabletResult::Execute(" << TabletId << " " << NKikimrProto::EReplyStatus_Name(msg->Status) << ")");
         TLeaderTabletInfo* tablet = Self->FindTabletEvenInDeleting(TabletId);
@@ -28,7 +30,11 @@ public:
                 NIceDb::TNiceDb db(txc.DB);
                 db.Table<Schema::Metrics>().Key(tablet->Id, 0).Delete();
                 for (const TTabletChannelInfo& channelInfo : tablet->TabletStorageInfo->Channels) {
+                    auto& pool = Self->GetStoragePool(channelInfo.StoragePool);
                     for (const TTabletChannelInfo::THistoryEntry& historyInfo : channelInfo.History) {
+                        if (pool.RemainingHistory.erase({TabletId, channelInfo.Channel, historyInfo.FromGeneration})) {
+                            Self->CheckRemainingHistory(pool);
+                        }
                         db.Table<Schema::TabletChannelGen>().Key(tablet->Id, channelInfo.Channel, historyInfo.FromGeneration).Delete();
                     }
                     db.Table<Schema::TabletChannel>().Key(tablet->Id, channelInfo.Channel).Delete();
@@ -57,6 +63,7 @@ public:
                 Self->PendingCreateTablets.erase({tablet->Owner.first, tablet->Owner.second});
                 Self->DeleteTablet(tablet->Id);
             } else {
+                Success = false;
                 BLOG_W("THive::TTxDeleteTabletResult retrying for " << TabletId << " because of " << NKikimrProto::EReplyStatus_Name(msg->Status));
                 Y_ENSURE_LOG(tablet->IsDeleting(), " tablet " << tablet->Id);
                 SideEffects.Schedule(TDuration::MilliSeconds(1000), new TEvHive::TEvInitiateDeleteStorage(tablet->Id));
@@ -67,8 +74,16 @@ public:
 
     void Complete(const TActorContext& ctx) override {
         BLOG_D("THive::TTxDeleteTabletResult(" << TabletId << ")::Complete SideEffects " << SideEffects);
+        if (Success) {
+            --Self->DeleteTabletInProgress;
+            while (!Self->DeleteTabletQueue.empty() && Self->DeleteTabletInProgress < Self->GetMaxDeleteTabletInProgress()) {
+                Self->BlockStorageForDelete(Self->DeleteTabletQueue.front(), SideEffects);
+                Self->DeleteTabletQueue.pop();
+            }
+            Self->UpdateCounterDeleteTabletQueueSize();
+            Self->UpdateCounterTabletsDeleting();
+        }
         SideEffects.Complete(ctx);
-
     }
 };
 

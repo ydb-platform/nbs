@@ -8,7 +8,10 @@ SRCS(
 
 PEERDIR(
     library/cpp/getopt
-    contrib/ydb/public/sdk/cpp/client/ydb_table
+    contrib/ydb/public/sdk/cpp/src/client/query
+    contrib/ydb/public/sdk/cpp/src/client/params
+    contrib/ydb/public/sdk/cpp/src/client/driver
+    contrib/ydb/public/sdk/cpp/src/client/row_ranges
 )
 
 END()

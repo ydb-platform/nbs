@@ -1,10 +1,3 @@
-IF (YQL_PACKAGED)
-    PACKAGE()
-        FROM_SANDBOX(FILE {FILE_RESOURCE_ID} OUT_NOAUTO
-            libstat_udf.so
-        )
-    END()
-ELSE ()
 YQL_UDF_CONTRIB(stat_udf)
     
     YQL_ABI_VERSION(
@@ -12,7 +5,7 @@ YQL_UDF_CONTRIB(stat_udf)
         28
         0
     )
-    
+
     SRCS(
         stat_udf.cpp
     )
@@ -22,10 +15,10 @@ YQL_UDF_CONTRIB(stat_udf)
     )
     
     END()
-ENDIF ()
 
-
-RECURSE_FOR_TESTS(
-    ut
-)
-
+IF (NOT EXPORT_CMAKE)
+    RECURSE_FOR_TESTS(
+        test
+        ut
+    )
+ENDIF()

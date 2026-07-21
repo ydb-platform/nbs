@@ -7,6 +7,8 @@
 #include "activation.h"
 #include "deleting.h"
 
+#define YDB_LOG_THIS_FILE_COMPONENT NKikimrServices::EXT_INDEX
+
 namespace NKikimr::NCSIndex {
 
 void TExecutor::Handle(TEvAddData::TPtr& ev) {
@@ -15,7 +17,7 @@ void TExecutor::Handle(TEvAddData::TPtr& ev) {
         if (indexes.empty()) {
             ev->Get()->GetExternalController()->OnAllIndexesUpserted();
         } else {
-            std::shared_ptr<TDataUpserter> upserter = std::make_shared<TDataUpserter>(std::move(indexes), ev->Get()->GetExternalController(), ev->Get()->GetData());
+            auto upserter = std::make_shared<TDataUpserter>(ev->Get()->GetDatabaseName(), std::move(indexes), ev->Get()->GetExternalController(), ev->Get()->GetData());
             upserter->Start(upserter);
         }
     } else {
@@ -28,16 +30,22 @@ void TExecutor::Handle(TEvAddData::TPtr& ev) {
 class TIndexesController: public IActivationExternalController, public IDeletingExternalController {
 public:
     virtual void OnActivationFailed(Ydb::StatusIds::StatusCode /*status*/, const TString& errorMessage, const TString& requestId) override {
-        ALS_ERROR(NKikimrServices::EXT_INDEX) << "cannot activate index for " << requestId << ": " << errorMessage;
+        YDB_LOG_ERROR("Cannot activate index",
+            {"requestId", requestId},
+            {"errorMessage", errorMessage});
     }
     virtual void OnActivationSuccess(const TString& requestId) override {
-        ALS_NOTICE(NKikimrServices::EXT_INDEX) << "index activated " << requestId;
+        YDB_LOG_NOTICE("Index activated",
+            {"requestId", requestId});
     }
     virtual void OnDeletingFailed(Ydb::StatusIds::StatusCode /*status*/, const TString& errorMessage, const TString& requestId) override {
-        ALS_ERROR(NKikimrServices::EXT_INDEX) << "cannot remove index for " << requestId << ": " << errorMessage;
+        YDB_LOG_ERROR("Cannot remove index",
+            {"requestId", requestId},
+            {"errorMessage", errorMessage});
     }
     virtual void OnDeletingSuccess(const TString& requestId) override {
-        ALS_NOTICE(NKikimrServices::EXT_INDEX) << "index deleted " << requestId;
+        YDB_LOG_NOTICE("Index deleted",
+            {"requestId", requestId});
     }
 
 };

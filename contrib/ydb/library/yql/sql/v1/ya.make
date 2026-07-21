@@ -1,26 +1,25 @@
 LIBRARY()
 
 PEERDIR(
-    library/cpp/charset
+    library/cpp/charset/lite
     library/cpp/enumbitset
-    library/cpp/yson/node
     library/cpp/json
+    library/cpp/yson/node
     contrib/ydb/library/yql/minikql
     contrib/ydb/library/yql/public/udf
     contrib/ydb/library/yql/sql/settings
-    contrib/ydb/library/yql/core
     contrib/ydb/library/yql/core/issue
-    contrib/ydb/library/yql/core/issue/protos
+    contrib/ydb/library/yql/core/langver
+    contrib/ydb/library/yql/public/issue/protos
     contrib/ydb/library/yql/core/sql_types
     contrib/ydb/library/yql/parser/lexer_common
-    contrib/ydb/library/yql/parser/proto_ast
     contrib/ydb/library/yql/parser/proto_ast/collect_issues
-    contrib/ydb/library/yql/parser/proto_ast/gen/v1
-    contrib/ydb/library/yql/parser/proto_ast/gen/v1_ansi
-    contrib/ydb/library/yql/parser/proto_ast/gen/v1_proto_split
+    contrib/ydb/library/yql/parser/proto_ast/gen/v1_proto_split_antlr4
     contrib/ydb/library/yql/parser/pg_catalog
     contrib/ydb/library/yql/sql/v1/lexer
     contrib/ydb/library/yql/sql/v1/proto_parser
+    # for lexer tokens
+    contrib/ydb/library/yql/parser/proto_ast/gen/v1_antlr4
 )
 
 SRCS(
@@ -31,7 +30,13 @@ SRCS(
     insert.cpp
     list_builtin.cpp
     match_recognize.cpp
+    namespace.cpp
     node.cpp
+    result.cpp
+    secret_settings.cpp
+    select_yql.cpp
+    select_yql_aggregation.cpp
+    select_yql_window.cpp
     select.cpp
     source.cpp
     sql.cpp
@@ -41,6 +46,8 @@ SRCS(
     sql_match_recognize.cpp
     sql_into_tables.cpp
     sql_query.cpp
+    sql_select_window.cpp
+    sql_select_yql.cpp
     sql_select.cpp
     sql_translation.cpp
     sql_values.cpp
@@ -58,11 +65,14 @@ END()
 
 RECURSE(
     format
+    highlight
+    ide
     lexer
     perf
     proto_parser
+    reflect
 )
 
 RECURSE_FOR_TESTS(
-    ut
+    ut_antlr4
 )

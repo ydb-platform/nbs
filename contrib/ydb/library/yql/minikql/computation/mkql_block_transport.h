@@ -2,7 +2,7 @@
 
 #include <contrib/ydb/library/yql/minikql/mkql_node.h>
 
-#include <contrib/ydb/library/actors/util/rope.h>
+#include <contrib/ydb/library/yql/utils/chunked_buffer.h>
 
 #include <arrow/datum.h>
 
@@ -10,6 +10,33 @@
 #include <memory>
 
 namespace NKikimr::NMiniKQL {
+
+class TBlockSerializerParams {
+public:
+    TBlockSerializerParams(arrow::MemoryPool* pool, TMaybe<ui8> minFillPercentage, bool shouldSerializeOffset)
+        : Pool_(pool)
+        , MinFillPercentage_(minFillPercentage)
+        , ShouldSerializeOffset_(shouldSerializeOffset)
+    {
+    }
+
+    arrow::MemoryPool* Pool() const {
+        return Pool_;
+    }
+
+    TMaybe<ui8> MinFillPercentage() const {
+        return MinFillPercentage_;
+    }
+
+    bool ShouldSerializeOffset() const {
+        return ShouldSerializeOffset_;
+    }
+
+private:
+    arrow::MemoryPool* Pool_;
+    TMaybe<ui8> MinFillPercentage_;
+    bool ShouldSerializeOffset_;
+};
 
 class IBlockSerializer {
 public:
@@ -19,7 +46,7 @@ public:
 
     using TMetadataSink = std::function<void(ui64 meta)>;
     virtual void StoreMetadata(const arrow::ArrayData& data, const TMetadataSink& metaSink) const = 0;
-    virtual void StoreArray(const arrow::ArrayData& data, TRope& dst) const = 0;
+    virtual void StoreArray(const arrow::ArrayData& data, NYql::TChunkedBuffer& dst) const = 0;
 };
 
 class IBlockDeserializer {
@@ -28,11 +55,17 @@ public:
 
     using TMetadataSource = std::function<ui64()>;
     virtual void LoadMetadata(const TMetadataSource& metaSource) = 0;
-    virtual std::shared_ptr<arrow::ArrayData> LoadArray(TRope& src, ui64 blockLen, ui64 offset) = 0;
+
+    virtual std::shared_ptr<arrow::ArrayData> LoadArray(NYql::TChunkedBuffer& src, ui64 blockLen, TMaybe<size_t> offset) = 0;
 };
 
+std::unique_ptr<IBlockSerializer> MakeBlockSerializer(
+    const NYql::NUdf::ITypeInfoHelper& typeInfoHelper,
+    const NYql::NUdf::TType* type,
+    const TBlockSerializerParams& params);
+std::unique_ptr<IBlockDeserializer> MakeBlockDeserializer(
+    const NYql::NUdf::ITypeInfoHelper& typeInfoHelper,
+    const NYql::NUdf::TType* type,
+    const TBlockSerializerParams& params);
 
-std::unique_ptr<IBlockSerializer> MakeBlockSerializer(const NYql::NUdf::ITypeInfoHelper& typeInfoHelper, const NYql::NUdf::TType* type);
-std::unique_ptr<IBlockDeserializer> MakeBlockDeserializer(const NYql::NUdf::ITypeInfoHelper& typeInfoHelper, const NYql::NUdf::TType* type);
-
-}
+} // namespace NKikimr::NMiniKQL

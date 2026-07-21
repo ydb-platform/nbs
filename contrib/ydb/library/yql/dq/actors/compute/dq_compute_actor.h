@@ -6,6 +6,7 @@
 #include <contrib/ydb/library/yql/dq/common/dq_common.h>
 #include <contrib/ydb/library/yql/dq/actors/compute/dq_checkpoints_states.h>
 #include <contrib/ydb/library/yql/dq/runtime/dq_async_stats.h>
+#include <contrib/ydb/library/yql/dq/runtime/dq_channel_service.h>
 #include <contrib/ydb/library/yql/dq/runtime/dq_tasks_runner.h>
 #include <contrib/ydb/library/yql/dq/runtime/dq_transport.h>
 #include <contrib/ydb/library/yql/public/issue/yql_issue.h>
@@ -18,19 +19,10 @@
 namespace NYql {
 namespace NDq {
 
-struct TEvDqCompute {
+namespace TEvDqCompute {
     struct TEvState : public NActors::TEventPB<TEvState, NDqProto::TEvComputeActorState, TDqComputeEvents::EvState> {};
+    struct TEvNodeState : public NActors::TEventPB<TEvNodeState, NDqProto::TEvNodeState, TDqComputeEvents::EvNodeState> {};
     struct TEvStateRequest : public NActors::TEventPB<TEvStateRequest, NDqProto::TEvComputeStateRequest, TDqComputeEvents::EvStateRequest> {};
-
-    struct TEvResumeExecution : public NActors::TEventLocal<TEvResumeExecution, TDqComputeEvents::EvResumeExecution> {
-        TEvResumeExecution(EResumeSource source)
-            : Source(source)
-        { }
-
-        TEvResumeExecution() = default;
-
-        EResumeSource Source = EResumeSource::Default;
-    };
 
     struct TEvChannelsInfo : public NActors::TEventPB<TEvChannelsInfo, NDqProto::TEvChannelsInfo,
         TDqComputeEvents::EvChannelsInfo> {};
@@ -202,6 +194,18 @@ struct TEvDqCompute {
         const TIssues Issues;
         const ui64 Generation;
     };
+
+    struct TEvChannelDiscoveryV2 : public NActors::TEventPB<TEvChannelDiscoveryV2, NDqProto::TEvChannelDiscoveryV2,
+        TDqComputeEvents::EvChannelDiscoveryV2> {};
+
+    struct TEvChannelDataV2 : public NActors::TEventPB<TEvChannelDataV2, NDqProto::TEvChannelDataV2,
+        TDqComputeEvents::EvChannelDataV2> {};
+
+    struct TEvChannelAckV2 : public NActors::TEventPB<TEvChannelAckV2, NDqProto::TEvChannelAckV2,
+        TDqComputeEvents::EvChannelAckV2> {};
+
+    struct TEvChannelUpdateV2 : public NActors::TEventPB<TEvChannelUpdateV2, NDqProto::TEvChannelUpdateV2,
+        TDqComputeEvents::EvChannelUpdateV2> {};
 };
 
 struct TDqExecutionSettings {
@@ -242,12 +246,6 @@ struct TComputeRuntimeSettings {
     NDqProto::EDqStatsMode StatsMode = NDqProto::DQ_STATS_MODE_NONE;
     TMaybe<TReportStatsSettings> ReportStatsSettings;
 
-    // see kqp_rm.h
-    // 0 - disable extra memory allocation
-    // 1 - allocate via memory pool ScanQuery
-    // 2 - allocate via memory pool DataQuery
-    ui32 ExtraMemoryAllocationPool = 0;
-
     bool FailOnUndelivery = true;
     bool UseSpilling = false;
 
@@ -255,6 +253,8 @@ struct TComputeRuntimeSettings {
     TMaybe<NDqProto::TRlPath> RlPath;
 
     i64 AsyncInputPushLimit = std::numeric_limits<i64>::max();
+
+    bool WithProgressStats = false;
 
     inline bool CollectNone() const {
         return StatsMode <= NDqProto::DQ_STATS_MODE_NONE;
@@ -275,6 +275,8 @@ struct TComputeRuntimeSettings {
     inline TCollectStatsLevel GetCollectStatsLevel() const {
         return StatsModeToCollectStatsLevel(StatsMode);
     }
+
+    std::shared_ptr<NYql::NDq::IDqChannelService> ChannelService;
 };
 
 struct TGuaranteeQuotaManager : public IMemoryQuotaManager {
@@ -376,8 +378,12 @@ struct TComputeMemoryLimits {
     ui64 MinMemAllocSize = 30_MB;
     ui64 MinMemFreeSize = 30_MB;
     ui64 OutputChunkMaxSize = GetDqExecutionSettings().FlowControl.MaxOutputChunkSize;
+    ui64 ChunkSizeLimit = 48_MB;
+    TMaybe<ui8> ArrayBufferMinFillPercentage; // Used by DqOutputHashPartitionConsumer and DqOutputChannel
+    TMaybe<size_t> BufferPageAllocSize;
 
     IMemoryQuotaManager::TPtr MemoryQuotaManager;
+    IMemoryQuotaManager::TPtr ChannelQuotaManager;
 };
 
 using TTaskRunnerFactory = std::function<
@@ -386,7 +392,7 @@ using TTaskRunnerFactory = std::function<
 
 void FillAsyncStats(NDqProto::TDqAsyncBufferStats& proto, TDqAsyncStats stats);
 
-void FillTaskRunnerStats(ui64 taskId, ui32 stageId, const TTaskRunnerStatsBase& taskStats,
+void FillTaskRunnerStats(ui64 taskId, ui32 stageId, const TDqTaskRunnerStats& taskStats,
     NDqProto::TDqTaskStats* protoTask, TCollectStatsLevel level);
 
 NActors::IActor* CreateDqComputeActor(const NActors::TActorId& executerId, const TTxId& txId, NDqProto::TDqTask* task,

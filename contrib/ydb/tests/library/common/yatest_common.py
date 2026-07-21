@@ -1,15 +1,16 @@
 # -*- coding: utf-8 -*-
+# TODO (2024): remove this file, it is not needed. See KIKIMR-16114 for details
 import os
 
 import yatest.common as ya_common
-import yatest.common.network as ya_common_network
+import library.python.port_manager
 import contrib.ydb.tests.oss.canonical as oss_canonical
 """
 For yatest.common package see file
 library/python/testing/yatest_common/yatest/common/__init__.py
 """
 
-PortManager = ya_common_network.PortManager
+PortManager = library.python.port_manager.PortManager
 
 
 def wrap(func, alternative):

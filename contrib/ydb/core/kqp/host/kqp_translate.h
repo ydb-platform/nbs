@@ -8,12 +8,89 @@
 namespace NKikimr {
 namespace NKqp {
 
+class TKqpAutoParamBuilder : public NYql::IAutoParamBuilder {
+public:
+    TKqpAutoParamBuilder();
+    THashMap<TString, Ydb::TypedValue> Values;
+
+    ui32 Size() const final;
+
+    bool Contains(const TString& name) const final;
+
+    NYql::IAutoParamTypeBuilder& Add(const TString& name) final;
+
+private:
+    class TTypeProxy : public NYql::IAutoParamTypeBuilder {
+    public:
+        TTypeProxy(TKqpAutoParamBuilder& owner);
+
+        void Pg(const TString& name) final;
+
+        void BeginList() final;
+
+        void EndList() final;
+
+        void BeginTuple() final;
+
+        void EndTuple() final;
+
+        void BeforeItem() final;
+
+        void AfterItem() final;
+
+        NYql::IAutoParamDataBuilder& FinishType() final;
+
+        void Push();
+        void Pop();
+
+        TKqpAutoParamBuilder& Owner;
+        Ydb::Type* CurrentType = nullptr;
+        TVector<Ydb::Type*> Stack;
+    };
+
+    class TDataProxy : public NYql::IAutoParamDataBuilder {
+    public:
+        TDataProxy(TKqpAutoParamBuilder& owner);
+
+        void Pg(const TMaybe<TString>& value) final;
+
+        void BeginList() final;
+
+        void EndList() final;
+
+        void BeginTuple() final;
+
+        void EndTuple() final;
+
+        void BeforeItem() final;
+
+        void AfterItem() final;
+
+        NYql::IAutoParamBuilder& FinishData() final;
+
+        void Push();
+        void Pop();
+
+        TKqpAutoParamBuilder& Owner;
+        Ydb::Value* CurrentValue = nullptr;
+        TVector<Ydb::Value*> Stack;
+    };
+
+    Ydb::TypedValue* CurrentParam = nullptr;
+    TTypeProxy TypeProxy;
+    TDataProxy DataProxy;
+};
+
+class TKqpAutoParamBuilderFactory : public NYql::IAutoParamBuilderFactory {
+public:
+    NYql::IAutoParamBuilderPtr MakeBuilder() final;
+};
+
 class TKqpTranslationSettingsBuilder {
 public:
-    TKqpTranslationSettingsBuilder(NYql::EKikimrQueryType queryType, ui16 kqpYqlSyntaxVersion, const TString& cluster,
+    TKqpTranslationSettingsBuilder(NYql::EKikimrQueryType queryType, const TString& cluster,
             const TString& queryText, const NSQLTranslation::EBindingsMode& bindingsMode, const TGUCSettings::TPtr& gUCSettings)
         : QueryType(queryType)
-        , KqpYqlSyntaxVersion(kqpYqlSyntaxVersion)
         , Cluster(cluster)
         , QueryText(queryText)
         , BindingsMode(bindingsMode)
@@ -21,11 +98,7 @@ public:
     {}
 
     NSQLTranslation::TTranslationSettings Build(NYql::TExprContext& ctx);
-
-    TKqpTranslationSettingsBuilder& SetUsePgParser(const TMaybe<bool> value) {
-        UsePgParser = value;
-        return *this;
-    }
+    TKqpTranslationSettingsBuilder& SetFromConfig(const NYql::TKikimrConfiguration& config);
 
     TKqpTranslationSettingsBuilder& SetKqpTablePathPrefix(const TString& value) {
         KqpTablePathPrefix = value;
@@ -34,11 +107,6 @@ public:
 
     TKqpTranslationSettingsBuilder& SetIsEnableExternalDataSources(bool value) {
         IsEnableExternalDataSources = value;
-        return *this;
-    }
-
-    TKqpTranslationSettingsBuilder& SetIsEnablePgConstsToParams(bool value) {
-        IsEnablePgConstsToParams = value;
         return *this;
     }
 
@@ -62,31 +130,55 @@ public:
         return *this;
     }
 
-    TKqpTranslationSettingsBuilder& SetIsEnablePgSyntax(bool value) {
-        IsEnablePgSyntax = value;
+    TKqpTranslationSettingsBuilder& SetLangVer(ui32 langVer) {
+        LangVer = langVer;
+        return *this;
+    }
+
+    TKqpTranslationSettingsBuilder& SetBackportMode(NYql::EBackportCompatibleFeaturesMode backportMode) {
+        BackportMode = backportMode;
+        return *this;
+    }
+
+    TKqpTranslationSettingsBuilder& SetIsAmbiguityError(bool isAmbiguityError) {
+        IsAmbiguityError = isAmbiguityError;
+        return *this;
+    }
+
+    bool GetIsAmbiguityError() const {
+        return IsAmbiguityError;
+    }
+
+    TKqpTranslationSettingsBuilder& SetYqlSelect(TMaybe<NSQLTranslation::EYqlSelect> yqlSelect) {
+        YqlSelect = yqlSelect;
+        return *this;
+    }
+
+    TKqpTranslationSettingsBuilder& SetValidateViewStatement(bool value) {
+        ValidateViewStatement = value;
         return *this;
     }
 
 private:
     const NYql::EKikimrQueryType QueryType;
-    const ui16 KqpYqlSyntaxVersion;
+    ui16 KqpYqlSyntaxVersion = 1;
     const TString Cluster;
     const TString QueryText;
     const NSQLTranslation::EBindingsMode BindingsMode;
 
-    TMaybe<bool> UsePgParser = {};
     TString KqpTablePathPrefix = {};
     bool IsEnableExternalDataSources = false;
-    bool IsEnablePgConstsToParams = false;
-    bool IsEnablePgSyntax = false;
     TMaybe<bool> SqlAutoCommit = {};
     TGUCSettings::TPtr GUCSettings;
     TMaybe<TString> ApplicationName = {};
     std::shared_ptr<std::map<TString, Ydb::Type>> QueryParameters = {};
     TMaybe<ui16> SqlVersion = {};
+    NYql::TLangVersion LangVer = NYql::MinLangVersion;
+    NYql::EBackportCompatibleFeaturesMode BackportMode = NYql::EBackportCompatibleFeaturesMode::Released;
+    bool IsAmbiguityError = false;
+    TMaybe<NSQLTranslation::EYqlSelect> YqlSelect = {};
+    bool ValidateViewStatement = true;
 };
-
-NSQLTranslation::EBindingsMode RemapBindingsMode(NKikimrConfig::TTableServiceConfig::EBindingsMode mode);
 
 NYql::EKikimrQueryType ConvertType(NKikimrKqp::EQueryType type);
 

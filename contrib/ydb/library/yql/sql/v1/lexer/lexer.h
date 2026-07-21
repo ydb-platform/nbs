@@ -4,6 +4,36 @@
 
 namespace NSQLTranslationV1 {
 
-NSQLTranslation::ILexer::TPtr MakeLexer(bool ansi);
+struct TLexers {
+    NSQLTranslation::TLexerFactoryPtr Antlr4;
+    NSQLTranslation::TLexerFactoryPtr Antlr4Ansi;
+    NSQLTranslation::TLexerFactoryPtr Antlr4Pure;
+    NSQLTranslation::TLexerFactoryPtr Antlr4PureAnsi;
+    NSQLTranslation::TLexerFactoryPtr Regex;
+    NSQLTranslation::TLexerFactoryPtr RegexAnsi;
+};
 
-}
+enum class ELexerFlavor {
+    Default,
+    Pure,
+    Regex,
+};
+
+NSQLTranslation::ILexer::TPtr MakeLexer(
+    const TLexers& lexers, bool ansi, ELexerFlavor flavor = ELexerFlavor::Default);
+
+// TODO(YQL-19017): remove.
+NSQLTranslation::ILexer::TPtr MakeLexer(
+    const TLexers& lexers, bool ansi, bool antlr4, ELexerFlavor flavor = ELexerFlavor::Default);
+
+// "Probably" because YQL keyword can be an identifier
+// depending on a query context. For example
+// in SELECT * FROM group - group is an identifier, but
+// in SELECT * FROM ... GROUP BY ... - group is a keyword.
+bool IsProbablyKeyword(const NSQLTranslation::TParsedToken& token);
+
+bool SplitQueryToStatements(
+    const TString& query, NSQLTranslation::ILexer::TPtr& lexer,
+    TVector<TString>& statements, NYql::TIssues& issues, const TString& file = "",
+    bool areBlankSkipped = true);
+} // namespace NSQLTranslationV1

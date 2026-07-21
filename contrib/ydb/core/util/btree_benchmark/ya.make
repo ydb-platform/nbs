@@ -1,8 +1,7 @@
 Y_BENCHMARK()
-
-TAG(ya:fat)
+INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/large.inc)
 SIZE(LARGE)
-TIMEOUT(600)
+INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/large.inc)
 
 ALLOCATOR(LF)
 

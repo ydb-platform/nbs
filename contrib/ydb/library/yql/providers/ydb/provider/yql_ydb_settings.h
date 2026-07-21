@@ -1,5 +1,6 @@
 #pragma once
 
+#include <contrib/ydb/library/yql/core/yql_expr_type_annotation.h>
 #include <contrib/ydb/library/yql/providers/common/config/yql_dispatch.h>
 #include <contrib/ydb/library/yql/providers/common/config/yql_setting.h>
 

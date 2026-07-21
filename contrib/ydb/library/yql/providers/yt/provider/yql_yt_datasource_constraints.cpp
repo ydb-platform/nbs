@@ -22,11 +22,13 @@ public:
         : TVisitorTransformerBase(true)
         , State_(state)
     {
+        AddHandler({TStringBuf("Result"), TStringBuf("Pull")}, Hndl(&TYtDataSourceConstraintTransformer::HandleDefault));
         AddHandler({TYtTable::CallableName()}, Hndl(&TYtDataSourceConstraintTransformer::HandleTable));
         AddHandler({TYtPath::CallableName()}, Hndl(&TYtDataSourceConstraintTransformer::HandlePath));
         AddHandler({TYtSection::CallableName()}, Hndl(&TYtDataSourceConstraintTransformer::HandleSection));
         AddHandler({TYtReadTable::CallableName()}, Hndl(&TYtDataSourceConstraintTransformer::HandleReadTable));
         AddHandler({TYtTableContent::CallableName()}, Hndl(&TYtDataSourceConstraintTransformer::HandleTableContent));
+        AddHandler({TYtBlockTableContent::CallableName()}, Hndl(&TYtDataSourceConstraintTransformer::HandleBlockTableContent));
 
         AddHandler({TYtIsKeySwitch::CallableName()}, Hndl(&TYtDataSourceConstraintTransformer::HandleDefault));
         AddHandler({TYqlRowSpec::CallableName()}, Hndl(&TYtDataSourceConstraintTransformer::HandleDefault));
@@ -99,19 +101,19 @@ public:
 
         if (const auto sort = path.Table().Ref().GetConstraint<TSortedConstraintNode>()) {
             if (const auto filtered = sort->FilterFields(ctx, filter)) {
-                path.Ptr()->AddConstraint(filtered);
+                path.Ptr()->AddConstraint(filtered->GetSimplifiedForType(*path.Ref().GetTypeAnn(), ctx));
             }
         }
 
         if (const auto uniq = path.Table().Ref().GetConstraint<TUniqueConstraintNode>()) {
             if (const auto filtered = uniq->FilterFields(ctx, filter)) {
-                path.Ptr()->AddConstraint(filtered);
+                path.Ptr()->AddConstraint(filtered->GetSimplifiedForType(*path.Ref().GetTypeAnn(), ctx));
             }
         }
 
         if (const auto dist = path.Table().Ref().GetConstraint<TDistinctConstraintNode>()) {
             if (const auto filtered = dist->FilterFields(ctx, filter)) {
-                path.Ptr()->AddConstraint(filtered);
+                path.Ptr()->AddConstraint(filtered->GetSimplifiedForType(*path.Ref().GetTypeAnn(), ctx));
             }
         }
 
@@ -165,19 +167,31 @@ public:
             input.Ptr()->CopyConstraints(section.Ref());
         } else {
             TMultiConstraintNode::TMapType multiItems;
+            bool allEmpty = true;
             for (ui32 index = 0; index < read.Input().Size(); ++index) {
                 auto section = read.Input().Item(index);
                 if (!section.Ref().GetConstraint<TEmptyConstraintNode>()) {
                     multiItems.push_back(std::make_pair(index, section.Ref().GetConstraintSet()));
+                    allEmpty = false;
                 }
             }
-            input.Ptr()->AddConstraint(ctx.MakeConstraint<TMultiConstraintNode>(std::move(multiItems)));
+            if (!multiItems.empty()) {
+                input.Ptr()->AddConstraint(ctx.MakeConstraint<TMultiConstraintNode>(std::move(multiItems)));
+            } else if (allEmpty) {
+                input.Ptr()->AddConstraint(ctx.MakeConstraint<TEmptyConstraintNode>());
+            }
         }
         return TStatus::Ok;
     }
 
     TStatus HandleTableContent(TExprBase input, TExprContext& /*ctx*/) {
         TYtTableContent tableContent = input.Cast<TYtTableContent>();
+        input.Ptr()->CopyConstraints(tableContent.Input().Ref());
+        return TStatus::Ok;
+    }
+
+    TStatus HandleBlockTableContent(TExprBase input, TExprContext& /*ctx*/) {
+        TYtBlockTableContent tableContent = input.Cast<TYtBlockTableContent>();
         input.Ptr()->CopyConstraints(tableContent.Input().Ref());
         return TStatus::Ok;
     }

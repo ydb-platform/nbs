@@ -14,7 +14,7 @@ public:
         , DB(txc.DB)
     { }
 
-    bool HasChanges() const {
+    bool HasChanges() const override {
         return HasChanges_;
     }
 
@@ -196,6 +196,11 @@ public:
         NIceDb::TNiceDb db(DB);
         db.Table<typename Schema::LockVolatileDependencies>().Key(lockId, txId).Delete();
         HasChanges_ = true;
+    }
+
+    // Schedules callback when changes are confirmed to be persistent
+    void OnPersistent(std::function<void()> callback) override {
+        DB.OnPersistent(std::move(callback));
     }
 
 protected:

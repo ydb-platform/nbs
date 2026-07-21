@@ -1,11 +1,11 @@
 import "contrib/ydb/core/protos/pqconfig.proto";
+import "contrib/ydb/core/protos/pqdata_transaction.proto";
 import "contrib/ydb/public/api/protos/annotations/sensitive.proto";
 import "contrib/ydb/public/api/protos/draft/persqueue_error_codes.proto";
 import "contrib/ydb/library/actors/protos/actors.proto";
 
 package NKikimrClient;
 option java_package = "ru.yandex.kikimr.proto";
-
 
 message TReadSessionKey {
     optional string SessionId = 1;
@@ -37,6 +37,14 @@ message TPersQueuePartitionRequest {
         optional uint64 PartitionSessionId = 16;
         optional int64 LastOffset = 17;
 
+        optional uint64 SizeEstimate = 18;
+        optional bool ReadToBlobEnd = 19 [default = false];
+        optional bool CanReadBatches = 20 [default = false];
+    }
+
+    message TCmdUpdateReadMetrics {
+        optional string ClientId = 1; // mandatory
+        optional uint64 InFlightLimitReachedDurationMs = 2; // if not set, then treat as 0
     }
 
     message TCmdPublishDirectRead {
@@ -55,6 +63,7 @@ message TPersQueuePartitionRequest {
         optional uint64 Generation = 3;
         optional uint64 Step = 4;
         optional uint64 PartitionSessionId = 5;
+        optional bool RestoreSession = 6;
     }
 
     message TCmdDeleteSession {
@@ -66,13 +75,18 @@ message TPersQueuePartitionRequest {
         optional string ClientId = 1; // mandatory
         optional int64 Offset = 2; // mandatory
         optional string SessionId = 4; // if not set, then no checks
-
         optional bool MirrorerRequest = 10 [default = false];
         optional bool Strict = 11 [default = false];
+        optional string CommittedMetadata = 12; // optional
     }
 
     message TCmdGetClientOffset {
         optional string ClientId = 1; // mandatory
+    }
+
+    message TBatchMessagePartitionKey {
+        optional string Key = 1;
+        optional int64 Size = 2;
     }
 
     message TCmdWrite {
@@ -98,6 +112,17 @@ message TPersQueuePartitionRequest {
         optional bool IgnoreQuotaDeadline = 16 [ default = false ];
 
         optional NKikimrPQ.THeartbeat Heartbeat = 17; // mutually exclusive with Data & related fields
+
+        optional bool EnableKafkaDeduplication = 18 [ default = false ];
+        optional int32 ProducerEpoch = 19;  // For idempotent producer in Kafka protocol
+
+        optional bytes ChoosePartitionKey = 20; // Bytes that are used to choose partition for the message
+        optional string MessageDeduplicationId = 21; // Deduplication id for the message
+
+        optional int64 MaxSeqNo = 22;
+        optional int64 LogicalMessageCount = 23 [default = 1];
+        repeated TBatchMessagePartitionKey PartitionKeys = 24;
+        optional bool IsBatch = 25;
     }
 
     message TCmdUpdateWriteTimestamp {
@@ -140,6 +165,10 @@ message TPersQueuePartitionRequest {
         repeated TCmdRegisterMessageGroup RegisterGroups = 2;
     }
 
+    // Internal: discard orphan deferred-publication supportive (writer rollback).
+    message TCmdAbortDeferredStaging {
+    }
+
     optional string Topic = 1; //mandatory for request for partitions
     optional int32 Partition = 2; //mandatory for request for partitions
     optional string OwnerCookie = 3; //mandatory for write
@@ -162,6 +191,8 @@ message TPersQueuePartitionRequest {
     optional TCmdRegisterMessageGroup CmdRegisterMessageGroup = 20;
     optional TCmdDeregisterMessageGroup CmdDeregisterMessageGroup = 21;
     optional TCmdSplitMessageGroup CmdSplitMessageGroup = 22;
+    optional TCmdUpdateReadMetrics CmdUpdateReadMetrics = 29;
+    optional TCmdAbortDeferredStaging CmdAbortDeferredStaging = 30;
 
     optional NActorsProto.TActorId PipeClient = 15;
 
@@ -256,7 +287,7 @@ message TPersQueueRequest {
 
     //only one from data, meta or fetch request must be set.
     optional string SecurityToken = 5 [(Ydb.sensitive) = true];
-    optional string Ticket = 6; //if set, check for acl
+    optional string Ticket = 6 [(Ydb.sensitive) = true]; // if set, check for acl
 
     optional string RequestId = 100; //for logging
 }
@@ -403,6 +434,8 @@ message TCmdReadResult {
 
         optional string PartitionKey = 11;
         optional bytes ExplicitHash = 12;
+        optional uint64 LogicalMessageCount = 13 [default = 1];
+        optional bool IsBatch = 14;
     }
     optional uint64 MaxOffset = 2;
     repeated TResult Result = 3;
@@ -417,7 +450,12 @@ message TCmdReadResult {
     optional uint64 ReadFromTimestampMs = 12;
     optional uint64 SizeEstimate = 13;
     optional int64 LastOffset = 14;
+    optional uint64 StartOffset = 17;
     optional uint64 EndOffset = 15;
+    optional bool ReadingFinished = 16;
+    optional bool CommittedToEnd = 18;
+    repeated uint32 AdjacentPartitionIds = 19;
+    repeated uint32 ChildPartitionIds = 20;
 }
 
 
@@ -429,6 +467,7 @@ message TPersQueueFetchResponse {
     }
 
     repeated TPartResult PartResult = 1;
+    optional string TimestampType = 2;
 }
 
 
@@ -447,6 +486,8 @@ message TPersQueuePartitionResponse {
         optional uint32 TopicQuotedTimeMs = 11;
         optional uint32 TotalTimeInPartitionQueueMs = 9;
         optional uint32 WriteTimeMs = 10;
+
+        optional bool WrittenInTx = 12;
     }
 
     message TCmdGetMaxSeqNoResult {
@@ -459,6 +500,7 @@ message TPersQueuePartitionResponse {
             optional NKikimrPQ.TMessageGroupInfo.EState State = 6;
         }
         repeated TSourceIdInfo SourceIdInfo = 2;
+        optional bool IsPartitionActive = 3;
     }
 
     message TCmdGetClientOffsetResult {
@@ -468,7 +510,8 @@ message TPersQueuePartitionResponse {
         optional uint64 CreateTimestampMS = 6; //create Timestamp of record on Offset (next to be readed record); is not set if no such record exists (no lag)
         optional uint64 SizeLag = 7;
         optional uint64 WriteTimestampEstimateMS = 8;
-
+        optional bool ClientHasAnyCommits = 9;
+        optional string CommittedMetadata = 10;
     }
 
     message TCmdGetOwnershipResult {
@@ -493,8 +536,14 @@ message TPersQueuePartitionResponse {
     }
 
     message TCmdPublishDirectReadResult {
+        optional uint64 DirectReadId = 1;
     }
 
+    message TCmdRestoreDirectReadSessionResult {
+    }
+
+    message TCmdAbortDeferredStagingResult {
+    }
 
     repeated TCmdWriteResult CmdWriteResult = 1;
     optional TCmdGetMaxSeqNoResult CmdGetMaxSeqNoResult = 2;
@@ -504,6 +553,8 @@ message TPersQueuePartitionResponse {
     optional TCmdPrepareDirectReadResult CmdPrepareReadResult = 7;
     optional TCmdPublishDirectReadResult CmdPublishReadResult = 8;
     optional TCmdPublishDirectReadResult CmdForgetReadResult = 9;
+    optional TCmdRestoreDirectReadSessionResult CmdRestoreDirectReadResult = 10;
+    optional TCmdAbortDeferredStagingResult CmdAbortDeferredStagingResult = 11;
 
     optional uint64 Cookie = 6;
 }

@@ -1,19 +1,20 @@
 #include "yql_s3_provider_impl.h"
 
+#include <contrib/ydb/library/yql/providers/common/pushdown/collection.h>
+#include <contrib/ydb/library/yql/providers/common/pushdown/predicate_node.h>
+#include <contrib/ydb/library/yql/providers/dq/expr_nodes/dqs_expr_nodes.h>
+#include <contrib/ydb/library/yql/providers/generic/provider/yql_generic_predicate_pushdown.h>
+#include <contrib/ydb/library/yql/providers/s3/expr_nodes/yql_s3_expr_nodes.h>
+#include <contrib/ydb/library/yql/providers/s3/provider/yql_s3_settings.h>
+#include <contrib/ydb/library/yql/providers/s3/range_helpers/path_list_reader.h>
+
 #include <contrib/ydb/library/yql/core/expr_nodes/yql_expr_nodes.h>
 #include <contrib/ydb/library/yql/core/yql_expr_optimize.h>
 #include <contrib/ydb/library/yql/core/yql_opt_utils.h>
 #include <contrib/ydb/library/yql/providers/common/provider/yql_data_provider_impl.h>
 #include <contrib/ydb/library/yql/providers/common/provider/yql_provider.h>
 #include <contrib/ydb/library/yql/providers/common/provider/yql_provider_names.h>
-#include <contrib/ydb/library/yql/providers/common/pushdown/collection.h>
-#include <contrib/ydb/library/yql/providers/common/pushdown/predicate_node.h>
 #include <contrib/ydb/library/yql/providers/common/transform/yql_optimize.h>
-#include <contrib/ydb/library/yql/providers/dq/expr_nodes/dqs_expr_nodes.h>
-#include <contrib/ydb/library/yql/providers/generic/provider/yql_generic_predicate_pushdown.h>
-#include <contrib/ydb/library/yql/providers/s3/expr_nodes/yql_s3_expr_nodes.h>
-#include <contrib/ydb/library/yql/providers/s3/provider/yql_s3_settings.h>
-#include <contrib/ydb/library/yql/providers/s3/range_helpers/path_list_reader.h>
 #include <contrib/ydb/library/yql/utils/log/log.h>
 
 #include <util/generic/size_literals.h>
@@ -191,7 +192,7 @@ public:
     }
 
     TMaybeNode<TExprBase> PushFilterToS3ReadObject(TExprBase node, TExprContext& ctx) const {
-        if (!State_->Configuration->UsePredicatePushdown.Get().GetOrElse(false)) {
+        if (!State_->Configuration->UsePredicatePushdown.GetOrDefault()) {
             return node;
         }
 
@@ -229,7 +230,7 @@ public:
     }
 
     TMaybeNode<TExprBase> PushFilterToDqSourceWrap(TExprBase node, TExprContext& ctx) const {
-        if (!State_->Configuration->UsePredicatePushdown.Get().GetOrElse(false)) {
+        if (!State_->Configuration->UsePredicatePushdown.GetOrDefault()) {
             return node;
         }
 
@@ -286,7 +287,7 @@ public:
             }
         }
         NPushdown::TPredicateNode predicateToPush;
-        predicateToPush.SetPredicates(pushable, ctx, pos);
+        predicateToPush.SetPredicates(pushable, ctx, pos, predicateTree.Op);
         return predicateToPush;
     }
 
@@ -302,7 +303,7 @@ public:
 
         TCoOptionalIf optionalIf = maybeOptionalIf.Cast();
         NPushdown::TPredicateNode predicateTree(optionalIf.Predicate());
-        NPushdown::CollectPredicates(optionalIf.Predicate(), predicateTree, lambdaArg.Get(), TExprBase(lambdaArg), TPushdownSettings());
+        NPushdown::CollectPredicates(ctx, optionalIf.Predicate(), predicateTree, TExprBase(lambdaArg), TExprBase(lambdaArg), TPushdownSettings());
         YQL_ENSURE(predicateTree.IsValid(), "Collected filter predicates are invalid");
 
         NPushdown::TPredicateNode predicateToPush = SplitForPartialPushdown(predicateTree, ctx, pos);
@@ -426,12 +427,6 @@ public:
             State_->Configuration->MaxDirectoriesAndFilesPerQuery);
         if (count > maxFiles) {
             ctx.AddError(TIssue(ctx.GetPosition(input->Pos()), TStringBuilder() << "Too many objects to read: " << count << ", but limit is " << maxFiles));
-            return TStatus::Error;
-        }
-
-        const auto maxSize = State_->Configuration->MaxReadSizePerQuery;
-        if (totalSize > maxSize) {
-            ctx.AddError(TIssue(ctx.GetPosition(input->Pos()), TStringBuilder() << "Too large objects to read: " << totalSize << ", but limit is " << maxSize));
             return TStatus::Error;
         }
 
@@ -871,7 +866,7 @@ private:
     const TS3State::TPtr State_;
 };
 
-}
+} // anonymous namespace
 
 THolder<IGraphTransformer> CreateS3LogicalOptProposalTransformer(TS3State::TPtr state) {
     return MakeHolder<TS3LogicalOptProposalTransformer>(state);

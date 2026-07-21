@@ -1,6 +1,6 @@
 #pragma once
 
-#include <contrib/ydb/library/actors/core/actorsystem.h>
+#include <contrib/ydb/library/actors/core/actorsystem_fwd.h>
 
 #include <contrib/ydb/public/api/grpc/ydb_discovery_v1.grpc.pb.h>
 

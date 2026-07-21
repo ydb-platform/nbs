@@ -14,4 +14,6 @@ PEERDIR(
     contrib/ydb/library/yql/core/expr_nodes
 )
 
+YQL_LAST_ABI_VERSION()
+
 END()

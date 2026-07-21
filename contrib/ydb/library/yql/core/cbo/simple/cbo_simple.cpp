@@ -1,0 +1,31 @@
+#include "cbo_simple.h"
+
+#include <contrib/ydb/library/yql/utils/yql_panic.h>
+#include <contrib/ydb/library/yql/parser/pg_wrapper/interface/optimizer.h>
+
+namespace NYql {
+
+namespace {
+
+class TSimpleOptimizerFactory: public IOptimizerFactory {
+public:
+    IOptimizerNew::TPtr MakeJoinCostBasedOptimizerNative(IProviderContext& pctx, TExprContext& ctx, const TCBOSettings& settings) const override {
+        Y_UNUSED(pctx);
+        Y_UNUSED(ctx);
+        Y_UNUSED(settings);
+        YQL_ENSURE(false, "Native CBO is not supported here");
+        YQL_ENSURE(false, "Unreachable");
+    }
+
+    IOptimizerNew::TPtr MakeJoinCostBasedOptimizerPG(IProviderContext& pctx, TExprContext& ctx, const TPGSettings& settings) const override {
+        return IOptimizerNew::TPtr(MakePgOptimizerNew(pctx, ctx, settings.Logger));
+    }
+};
+
+} // namespace
+
+IOptimizerFactory::TPtr MakeSimpleCBOOptimizerFactory() {
+    return std::make_shared<TSimpleOptimizerFactory>();
+}
+
+} // namespace NYql

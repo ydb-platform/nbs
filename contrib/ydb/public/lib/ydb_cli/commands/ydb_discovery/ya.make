@@ -7,7 +7,7 @@ SRCS(
 PEERDIR(
     contrib/ydb/public/lib/ydb_cli/commands/command_base
     contrib/ydb/public/lib/ydb_cli/common
-    contrib/ydb/public/sdk/cpp/client/ydb_discovery
+    contrib/ydb/public/sdk/cpp/src/client/discovery
 )
 
 END()

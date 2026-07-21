@@ -2,6 +2,7 @@
 
 #include <contrib/ydb/core/tx/tx_proxy/proxy.h>
 #include <contrib/ydb/core/tx/long_tx_service/public/events.h>
+#include <contrib/ydb/core/scheme/scheme_tabledefs.h>
 #include <contrib/ydb/core/actorlib_impl/long_timer.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -27,6 +28,8 @@ public:
     TSnapshotManagerActor(const TString& database, TDuration queryTimeout)
         : Database(database)
         , RequestTimeout(queryTimeout)
+        , SnapshotTimeout(MultiplyWithSaturation(RequestTimeout, SnapshotToRequestTimeoutRatio))
+        , RefreshInterval(Min(MultiplyWithSaturation(RequestTimeout, RefreshToRequestTimeoutRatio), MaxRefreshDuration))
     {}
 
     void Bootstrap() {
@@ -58,11 +61,13 @@ private:
         LOG_D("KqpSnapshotManager: got snapshot request from " << ClientActorId);
 
         if (MvccSnapshot) {
+            AFL_ENSURE(ev->Get()->Tables.empty());
             auto longTxService = NLongTxService::MakeLongTxServiceID(SelfId().NodeId());
-            Send(longTxService, new NLongTxService::TEvLongTxService::TEvAcquireReadSnapshot(Database, std::move(Orbit)));
+            Send(longTxService, new NLongTxService::TEvLongTxService::TEvAcquireReadSnapshot(Database, std::move(ev->Get()->TableIds), std::move(Orbit)));
 
             Become(&TThis::StateAwaitAcquireResult);
         } else {
+            AFL_ENSURE(ev->Get()->TableIds.empty());
             auto req = MakeHolder<TEvTxUserProxy::TEvProposeTransaction>();
             req->Record.SetExecTimeoutPeriod(RequestTimeout.MilliSeconds());
             req->Record.SetDatabaseName(Database);
@@ -111,23 +116,21 @@ private:
         Y_ABORT_UNLESS(Tables.empty());
         Orbit = std::move(ev->Get()->Orbit);
 
-        const auto& record = ev->Get()->Record;
-        if (record.GetStatus() == Ydb::StatusIds::SUCCESS) {
-            Snapshot = IKqpGateway::TKqpSnapshot(record.GetSnapshotStep(), record.GetSnapshotTxId());
+        const auto* msg = ev->Get();
+        if (msg->Status == Ydb::StatusIds::SUCCESS) {
+            Snapshot = IKqpGateway::TKqpSnapshot(msg->Snapshot.Step, msg->Snapshot.TxId);
 
             LOG_D("KqpSnapshotManager: snapshot: " << Snapshot << " acquired");
 
-            bool sent = Send(ClientActorId, new TEvKqpSnapshot::TEvCreateSnapshotResponse(
-                    Snapshot, NKikimrIssues::TStatusIds::SUCCESS, /* issues */ {}, std::move(Orbit)),
+            Send(ClientActorId, new TEvKqpSnapshot::TEvCreateSnapshotResponse(
+                    Snapshot, std::move(ev->Get()->SnapshotHandle), NKikimrIssues::TStatusIds::SUCCESS, /* issues */ {}, std::move(Orbit)),
                     0, Cookie);
-            Y_DEBUG_ABORT_UNLESS(sent);
 
             PassAway();
         } else {
-            NYql::TIssues issues;
-            NYql::IssuesFromMessage(record.GetIssues(), issues);
+            NYql::TIssues issues = msg->Issues;
             LOG_E("KqpSnapshotManager: CreateSnapshot got unexpected status="
-                      << record.GetStatus() << ", issues:" << issues.ToString());
+                      << msg->Status << ", issues:" << issues.ToString());
             ReplyErrorAndDie(NKikimrIssues::TStatusIds::ERROR, std::move(issues));
         }
     }
@@ -153,7 +156,7 @@ private:
         issues.AddIssue("stale propose TEvProposeTransactionStatus in cleanup state");
 
         Send(ClientActorId, new TEvKqpSnapshot::TEvCreateSnapshotResponse(
-            IKqpGateway::TKqpSnapshot::InvalidSnapshot, NKikimrIssues::TStatusIds::TIMEOUT, std::move(issues), std::move(Orbit)),
+            IKqpGateway::TKqpSnapshot::InvalidSnapshot, TSnapshotHandle(), NKikimrIssues::TStatusIds::TIMEOUT, std::move(issues), std::move(Orbit)),
             0, Cookie);
 
         PassAway();
@@ -172,10 +175,9 @@ private:
 
             LOG_D("KqpSnapshotManager: snapshot " << Snapshot.Step << ":" << Snapshot.TxId << " created");
 
-            bool sent = Send(ClientActorId, new TEvKqpSnapshot::TEvCreateSnapshotResponse(
-                Snapshot, NKikimrIssues::TStatusIds::SUCCESS, /* issues */ {}, std::move(Orbit)),
+            Send(ClientActorId, new TEvKqpSnapshot::TEvCreateSnapshotResponse(
+                Snapshot, TSnapshotHandle(), NKikimrIssues::TStatusIds::SUCCESS, /* issues */ {}, std::move(Orbit)),
                 0, Cookie);
-            Y_DEBUG_ABORT_UNLESS(sent);
 
             Become(&TThis::StateRefreshing);
             ScheduleRefresh();
@@ -202,6 +204,7 @@ private:
     void HandleRefreshTimeout(TEvents::TEvWakeup::TPtr&) {
         auto req = MakeHolder<TEvTxUserProxy::TEvProposeTransaction>();
         req->Record.SetExecTimeoutPeriod(RequestTimeout.MilliSeconds());
+        req->Record.SetDatabaseName(Database);
         auto* refreshSnapshot = req->Record.MutableTransaction()->MutableRefreshVolatileSnapshot();
         for (const TString& tablePath : Tables) {
             refreshSnapshot->AddTables()->SetTablePath(tablePath);
@@ -251,6 +254,7 @@ private:
     void SendDiscard() {
         auto req = MakeHolder<TEvTxUserProxy::TEvProposeTransaction>();
         req->Record.SetExecTimeoutPeriod(RequestTimeout.MilliSeconds());
+        req->Record.SetDatabaseName(Database);
         auto* discardSnapshot = req->Record.MutableTransaction()->MutableDiscardVolatileSnapshot();
         for (const TString& tablePath : Tables) {
             discardSnapshot->AddTables()->SetTablePath(tablePath);
@@ -275,12 +279,16 @@ private:
     void ReplyErrorAndDie(NKikimrIssues::TStatusIds::EStatusCode status, NYql::TIssues&& issues) {
         if (CurrentStateFunc() == &TThis::StateAwaitCreation || CurrentStateFunc() == &TThis::StateAwaitAcquireResult) {
             Send(ClientActorId, new TEvKqpSnapshot::TEvCreateSnapshotResponse(
-                IKqpGateway::TKqpSnapshot::InvalidSnapshot, status, std::move(issues), std::move(Orbit)),
+                IKqpGateway::TKqpSnapshot::InvalidSnapshot, TSnapshotHandle(), status, std::move(issues), std::move(Orbit)),
                 0, Cookie);
         } else {
             SendDiscard();
         }
         PassAway();
+    }
+
+    static TDuration MultiplyWithSaturation(TDuration duration, double value) {
+        return TDuration::FromValue(Min(duration.GetValue() * value, MaxFloor<TDuration::TValue>()));
     }
 
 private:
@@ -298,10 +306,9 @@ private:
     const double SnapshotToRequestTimeoutRatio = 1.5;
     const double RefreshToRequestTimeoutRatio = 0.5;
     const TDuration MaxRefreshDuration = TDuration::Seconds(10);
-
-    TDuration RequestTimeout;
-    TDuration SnapshotTimeout = RequestTimeout * SnapshotToRequestTimeoutRatio;
-    TDuration RefreshInterval = Min(RequestTimeout * RefreshToRequestTimeoutRatio, MaxRefreshDuration);
+    const TDuration RequestTimeout;
+    const TDuration SnapshotTimeout;
+    const TDuration RefreshInterval;
 };
 
 } // anonymous namespace

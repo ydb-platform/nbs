@@ -1,5 +1,8 @@
 LIBRARY()
 
+# need to avoid generated files
+ENABLE(SKIP_YQL_STYLE_CPP)
+
 RESOURCE(../pg_wrapper/postgresql/src/include/catalog/pg_operator.dat pg_operator.dat)
 RESOURCE(../pg_wrapper/postgresql/src/include/catalog/pg_proc.dat pg_proc.dat)
 RESOURCE(../pg_wrapper/postgresql/src/include/catalog/pg_type.dat pg_type.dat)
@@ -12,6 +15,7 @@ RESOURCE(../pg_wrapper/postgresql/src/include/catalog/pg_amop.dat pg_amop.dat)
 RESOURCE(../pg_wrapper/postgresql/src/include/catalog/pg_am.dat pg_am.dat)
 RESOURCE(../pg_wrapper/postgresql/src/include/catalog/pg_conversion.dat pg_conversion.dat)
 RESOURCE(../pg_wrapper/postgresql/src/include/catalog/pg_language.dat pg_language.dat)
+RESOURCE(../pg_wrapper/postgresql/src/backend/catalog/system_functions.sql system_functions.sql)
 
 SRCS(
     catalog.cpp
@@ -20,10 +24,14 @@ SRCS(
 PEERDIR(
     library/cpp/resource
     contrib/ydb/library/yql/public/issue
+    library/cpp/digest/md5
+    contrib/ydb/library/yql/parser/pg_catalog/proto
+    contrib/ydb/library/yql/utils/log
 )
 
 END()
 
 RECURSE_FOR_TESTS(
-    ut
+   ut
 )
+

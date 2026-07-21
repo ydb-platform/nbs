@@ -1,5 +1,5 @@
 PY3TEST()
-ENV(YDB_DRIVER_BINARY="contrib/ydb/apps/ydbd/ydbd")
+INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/harness_dep.inc)
 
 TEST_SRCS(
     test_copy_ops.py
@@ -7,11 +7,12 @@ TEST_SRCS(
     test_scheme_shard_operations.py
 )
 
-TIMEOUT(600)
 SIZE(MEDIUM)
+IF (SANITIZER_TYPE)
+    REQUIREMENTS(cpu:2)
+ENDIF()
 
 DEPENDS(
-    contrib/ydb/apps/ydbd
 )
 
 PEERDIR(

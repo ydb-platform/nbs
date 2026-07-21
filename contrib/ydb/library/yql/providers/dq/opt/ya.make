@@ -8,7 +8,7 @@ PEERDIR(
     contrib/ydb/library/yql/utils/log
     contrib/ydb/library/yql/dq/opt
     contrib/ydb/library/yql/dq/type_ann
-    contrib/ydb/library/yql/dq/integration
+    contrib/ydb/library/yql/core/dq_integration
     contrib/ydb/library/yql/core
     contrib/ydb/library/yql/core/peephole_opt
     contrib/ydb/library/yql/core/type_ann

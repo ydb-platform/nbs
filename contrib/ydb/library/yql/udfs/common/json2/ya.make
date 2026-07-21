@@ -1,10 +1,3 @@
-IF (YQL_PACKAGED)
-    PACKAGE()
-        FROM_SANDBOX(FILE {FILE_RESOURCE_ID} OUT_NOAUTO
-            libjson2_udf.so
-        )
-    END()
-ELSE ()
 YQL_UDF_CONTRIB(json2_udf)
     
     YQL_ABI_VERSION(
@@ -12,20 +5,19 @@ YQL_UDF_CONTRIB(json2_udf)
         28
         0
     )
-    
+
     SRCS(
         json2_udf.cpp
     )
     
     PEERDIR(
-        contrib/ydb/library/binary_json
+        contrib/ydb/library/yql/core/sql_types
+        contrib/ydb/library/yql/types/binary_json
         contrib/ydb/library/yql/minikql/dom
         contrib/ydb/library/yql/minikql/jsonpath
     )
     
     END()
-ENDIF ()
-
 
 RECURSE_FOR_TESTS(
     test

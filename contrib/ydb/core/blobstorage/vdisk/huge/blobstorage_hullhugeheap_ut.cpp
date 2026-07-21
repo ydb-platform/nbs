@@ -5,38 +5,11 @@
 
 
 // change to Cerr if you want logging
-#define STR Cerr
+#define STR Cnull
 
 namespace NKikimr {
 
     using namespace NHuge;
-
-    Y_UNIT_TEST_SUITE(TBlobStorageHullHugeDefs) {
-
-        Y_UNIT_TEST(FreeRes1) {
-            TMask mask;
-            mask.Set(0, 8);
-            mask.Reset(1);
-            TFreeRes res = {15, mask, 8};
-
-            STR << "TFreeRes# " << res.ToString() << "\n";
-            UNIT_ASSERT_EQUAL(res.ToString(), "{ChunkIdx: 15 Mask# 10111111}");
-
-            TMask constMask = TChain::BuildConstMask("", 8);
-            TFreeRes constRes = {0, constMask, 8};
-            STR << "constMask# " << constRes.ToString() << "\n";
-            UNIT_ASSERT_EQUAL(constRes.ToString(), "{ChunkIdx: 0 Mask# 11111111}");
-
-            res.Mask.Reset(0);
-            STR << "first non zero bit: " << res.Mask.FirstNonZeroBit() << "\n";
-            UNIT_ASSERT_EQUAL(res.Mask.FirstNonZeroBit(), 2);
-
-            res.Mask.Set(1);
-            res.Mask.Set(0);
-            UNIT_ASSERT_EQUAL(res.Mask, constRes.Mask);
-        }
-    }
-
 
     Y_UNIT_TEST_SUITE(TBlobStorageHullHugeChain) {
 
@@ -79,7 +52,7 @@ namespace NKikimr {
         }
 
         void AllocFreeOneChunk(ui32 slotsInChunk) {
-            TChain chain("vdisk", slotsInChunk, false);
+            TChain chain("vdisk", slotsInChunk, 1, false);
             TVector<NPrivate::TChunkSlot> arr;
             AllocateScenaryOneChunk(chain, arr, slotsInChunk);
             FreeScenaryOneChunk(chain, arr, slotsInChunk);
@@ -156,7 +129,7 @@ namespace NKikimr {
         }
 
         void AllocFreeAlloc(ui32 slotsInChunk) {
-            TChain chain("vdisk", slotsInChunk, false);
+            TChain chain("vdisk", slotsInChunk, 1, false);
             TVector<NPrivate::TChunkSlot> arr;
             TVector<ui32> chunks;
 
@@ -171,17 +144,13 @@ namespace NKikimr {
 
             TStringStream serialized;
 
-            {
-                TChain chain("vdisk", slotsInChunk, false);
-                PreliminaryAllocate(24, chain, arr);
-                FreeChunksScenary(chain, arr, chunks);
-                chain.Save(&serialized);
-            }
-            {
-                TChain chain("vdisk", slotsInChunk, false);
-                TStringInput str(serialized.Str());
-                chain.Load(&str);
-            }
+            TChain chain("vdisk", slotsInChunk, 1, false);
+            PreliminaryAllocate(24, chain, arr);
+            FreeChunksScenary(chain, arr, chunks);
+            chain.Save(&serialized);
+
+            TStringInput str(serialized.Str());
+            TChain chain2 = TChain::Load(&str, "vdisk", 1 /*appendBlockSize*/, slotsInChunk, false);
         }
 
         Y_UNIT_TEST(AllocFreeAllocTest) {
@@ -200,19 +169,22 @@ namespace NKikimr {
             const ui32 overhead = 8;
             const ui32 milestone = 512 << 10;
             const ui32 right = 10 << 20;
-            const ui32 AppendBlockSize = 4064;
-            const ui32 left = AppendBlockSize;
+            const ui32 appendBlockSize = 4064;
+            const ui32 left = appendBlockSize;
 
-            const ui32 leftBlocks = left / AppendBlockSize;
-            const ui32 milestoneBlocks = milestone / AppendBlockSize;
-            const ui32 rightBlocks = right / AppendBlockSize + !!(right % AppendBlockSize);
+            const ui32 leftBlocks = left / appendBlockSize;
+            const ui32 milestoneBlocks = milestone / appendBlockSize;
+            const ui32 rightBlocks = right / appendBlockSize + !!(right % appendBlockSize);
             STR << "leftBlocks# " << leftBlocks
                 << " milestoneBlocks# " << milestoneBlocks
                 << " rightBlocks# " << rightBlocks << "\n";
-            NPrivate::TChainLayoutBuilder builder(leftBlocks, milestoneBlocks, rightBlocks, overhead);
-            TString tableStr = builder.ToString(AppendBlockSize);
+
+            NPrivate::TChainLayoutBuilder builder("", leftBlocks, milestoneBlocks, rightBlocks, overhead);
+
+            TString tableStr = builder.ToString(appendBlockSize);
             STR << tableStr << "\n";
-            TVector<NPrivate::TChainLayoutBuilder::TSeg> canonical = {
+
+            NPrivate::TLayout canonical = {
                 {1, 2}, {2, 3}, {3, 4}, {4, 5}, {5, 6}, {6, 7}, {7, 8}, {8, 10}, {10, 12}, {12, 14}, {14, 16},
                 {16, 18}, {18, 21}, {21, 24}, {24, 28}, {28, 32}, {32, 37}, {37, 42}, {42, 48}, {48, 55},
                 {55, 62}, {62, 70}, {70, 79}, {79, 89}, {89, 101}, {101, 114}, {114, 129}, {129, 145},
@@ -221,6 +193,35 @@ namespace NKikimr {
                 {931, 1047}, {1047, 1177}, {1177, 1324}, {1324, 1489}, {1489, 1675}, {1675, 1884}, {1884, 2119},
                 {2119, 2383}, {2383, 2680}
             };
+            UNIT_ASSERT_EQUAL(builder.GetLayout(), canonical);
+        }
+
+        Y_UNIT_TEST(TestBucketsV2) {
+            const ui32 appendBlockSize = 4064;
+            const ui32 fullBlockSize = 4096;
+            const ui32 chunkSize = (ui64)(130 << 20) * appendBlockSize / fullBlockSize;
+            const ui32 blocksInChunk = chunkSize / appendBlockSize;
+
+            const ui32 right = 10 << 20;
+            const ui32 stepsBetweenPowersOf2 = 6;
+
+            const ui32 leftBlocks = 1;
+            const ui32 rightBlocks = (right + appendBlockSize - 1)/ appendBlockSize;
+
+            NPrivate::TChainLayoutBuilderV2 builder("", appendBlockSize, blocksInChunk,
+                leftBlocks, rightBlocks, stepsBetweenPowersOf2);
+
+            NPrivate::TLayout canonical = {
+               {1, 2}, {2, 3}, {3, 4}, {4, 5}, {5, 6}, {6, 7}, {7, 8}, {8, 9}, {9, 10}, {10, 11},
+               {11, 12}, {12, 13}, {13, 15}, {15, 17}, {17, 19}, {19, 21}, {21, 23}, {23, 26}, {26, 29},
+               {29, 33}, {33, 37}, {37, 41}, {41, 46}, {46, 52}, {52, 58}, {58, 65}, {65, 73}, {73, 82},
+               {82, 92}, {92, 103}, {103, 115}, {115, 130}, {130, 145}, {145, 163}, {163, 183}, {183, 205},
+               {205, 231}, {231, 260}, {260, 291}, {291, 326}, {326, 365}, {365, 410}, {410, 462},
+               {462, 520}, {520, 583}, {583, 652}, {652, 739}, {739, 832}, {832, 924}, {924, 1040},
+               {1040, 1188}, {1188, 1331}, {1331, 1512}, {1512, 1664}, {1664, 1848}, {1848, 2080},
+               {2080, 2377}, {2377, 2773}
+            };
+
             UNIT_ASSERT_EQUAL(builder.GetLayout(), canonical);
         }
 
@@ -242,81 +243,55 @@ namespace NKikimr {
                 << " newLeftBlocks# " << newLeftBlocks
                 << " milestoneBlocks# " << milestoneBlocks
                 << " rightBlocks# " << rightBlocks << "\n";
-            NPrivate::TChainLayoutBuilder oldBuilder(oldLeftBlocks, milestoneBlocks, rightBlocks, overhead);
-            NPrivate::TChainLayoutBuilder newBuilder(newLeftBlocks, milestoneBlocks, rightBlocks, overhead);
+            NPrivate::TChainLayoutBuilder oldBuilder("", oldLeftBlocks, milestoneBlocks, rightBlocks, overhead);
+            NPrivate::TChainLayoutBuilder newBuilder("", newLeftBlocks, milestoneBlocks, rightBlocks, overhead);
             UNIT_ASSERT_EQUAL(oldBuilder.GetLayout()[0], newBuilder.GetMilestoneSegment());
         }
     }
 
-    Y_UNIT_TEST_SUITE(TBlobStorageHullHugeLayout) {
-
-        Y_UNIT_TEST(TestOldAppendBlockSize) {
-            TAllChains all("vdisk", 134274560, 56896, 512 << 10, 512 << 10, 512 << 10, 10 << 20, 8, false);
-            all.PrintOutChains(STR);
-            all.PrintOutSearchTable(STR);
-            std::pair<ui32, ui32> p = all.GetTablesSize();
-            TVector<NPrivate::TChainLayoutBuilder::TSeg> canonical = {
-                {9, 10}, {10, 11}, {11, 12}, {12, 13}, {13, 14}, {14, 15}, {15, 16}, {16, 18}, {18, 20},
-                {20, 22}, {22, 24}, {24, 27}, {27, 30}, {30, 33}, {33, 37}, {37, 41}, {41, 46}, {46, 51},
-                {51, 57}, {57, 64}, {64, 72}, {72, 81}, {81, 91}, {91, 102}, {102, 114}, {114, 128},
-                {128, 144}, {144, 162}, {162, 182}, {182, 204}
-            };
-            UNIT_ASSERT_EQUAL(all.GetLayout(), canonical);
-            UNIT_ASSERT_EQUAL(p, (std::pair<ui32, ui32>(30, 186)));
-        }
-
-        Y_UNIT_TEST(TestNewAppendBlockSize) {
-            TAllChains all("vdisk", 134274560, 4064, 512 << 10, 512 << 10, 512 << 10, 10 << 20, 8, false);
-            all.PrintOutChains(STR);
-            all.PrintOutSearchTable(STR);
-            TVector<NPrivate::TChainLayoutBuilder::TSeg> canonical = {
-                {129, 145}, {145, 163}, {163, 183}, {183, 205}, {205, 230}, {230, 258}, {258, 290},
-                {290, 326}, {326, 366}, {366, 411}, {411, 462}, {462, 519}, {519, 583}, {583, 655},
-                {655, 736}, {736, 828}, {828, 931}, {931, 1047}, {1047, 1177}, {1177, 1324},
-                {1324, 1489}, {1489, 1675}, {1675, 1884}, {1884, 2119}, {2119, 2383}, {2383, 2680}
-            };
-            UNIT_ASSERT_EQUAL(all.GetLayout(), canonical);
-        }
-    }
-
-
     Y_UNIT_TEST_SUITE(TBlobStorageHullHugeHeap) {
 
         Y_UNIT_TEST(AllocateAllFromOneChunk) {
-            ui32 chunkSize = 134274560u;
-            ui32 appendBlockSize = 56896u;
-            ui32 minHugeBlobInBytes = 58 << 10u;
-            ui32 mileStoneBlobInBytes = 512u << 10u;
-            ui32 maxBlobInBytes = 10u << 20u;
-            ui32 overhead = 8;
-            ui32 freeChunksReservation = 0;
-            THeap heap("vdisk", chunkSize, appendBlockSize, appendBlockSize, minHugeBlobInBytes, mileStoneBlobInBytes,
-                    maxBlobInBytes, overhead, freeChunksReservation, false);
-            ui32 hugeBlobSize = 6u << 20u;
+            for (bool useBucketsV2 : {false, true}) {
+                ui32 chunkSize = 134274560u;
+                ui32 appendBlockSize = 56896u;
+                ui32 minHugeBlobInBytes = 58 << 10u;
+                ui32 mileStoneBlobInBytes = 512u << 10u;
+                ui32 maxBlobInBytes = 10u << 20u;
+                ui32 overhead = 8;
+                ui32 stepsBetweenPowersOf2 = 6;
+                ui32 freeChunksReservation = 0;
 
-            heap.AddChunk(5);
-            heap.AddChunk(3);
+                THeap heap("vdisk", chunkSize, appendBlockSize, minHugeBlobInBytes, mileStoneBlobInBytes,
+                        maxBlobInBytes, overhead, stepsBetweenPowersOf2, useBucketsV2, freeChunksReservation, false);
+                heap.FinishRecovery();
+                ui32 hugeBlobSize = 6u << 20u;
 
-            THugeSlot slot;
-            ui32 slotSize;
-            bool res = false;
-            for (ui32 i = 0; i < heap.SlotNumberOfThisSize(hugeBlobSize); i++) {
+                heap.AddChunk(5);
+                heap.AddChunk(3);
+
+                THugeSlot slot;
+                ui32 slotSize;
+                bool res = false;
+                for (ui32 i = 0; i < heap.SlotNumberOfThisSize(hugeBlobSize); i++) {
+                    res = heap.Allocate(hugeBlobSize, &slot, &slotSize);
+
+                    UNIT_ASSERT_EQUAL(res, true);
+                    STR << "Allocated: " << slot.ToString() << "\n";
+                    UNIT_ASSERT(slot.GetChunkId() == 3);
+                }
                 res = heap.Allocate(hugeBlobSize, &slot, &slotSize);
-
                 UNIT_ASSERT_EQUAL(res, true);
+                UNIT_ASSERT(slot.GetChunkId() == 5);
                 STR << "Allocated: " << slot.ToString() << "\n";
-                UNIT_ASSERT(slot.GetChunkId() == 3);
-            }
-            res = heap.Allocate(hugeBlobSize, &slot, &slotSize);
-            UNIT_ASSERT_EQUAL(res, true);
-            UNIT_ASSERT(slot.GetChunkId() == 5);
-            STR << "Allocated: " << slot.ToString() << "\n";
 
-            // just serialize/deserialize
-            TString serialized = heap.Serialize();
-            THeap newHeap("vdisk", chunkSize, appendBlockSize, minHugeBlobInBytes, minHugeBlobInBytes, mileStoneBlobInBytes,
-                    maxBlobInBytes, overhead, freeChunksReservation, false);
-            newHeap.ParseFromString(serialized);
+                // just serialize/deserialize
+                TString serialized = heap.Serialize();
+                THeap newHeap("vdisk", chunkSize, appendBlockSize, minHugeBlobInBytes, mileStoneBlobInBytes,
+                        maxBlobInBytes, overhead, stepsBetweenPowersOf2, useBucketsV2, freeChunksReservation, false);
+                newHeap.ParseFromString(serialized);
+                newHeap.FinishRecovery();
+            }
         }
 
         void AllocateScenary(THeap &heap, ui32 hugeBlobSize, TVector<THugeSlot> &arr) {
@@ -351,262 +326,174 @@ namespace NKikimr {
         }
 
         Y_UNIT_TEST(AllocateAllReleaseAll) {
-            ui32 chunkSize = 134274560u;
-            ui32 appendBlockSize = 56896u;
-            ui32 minHugeBlobInBytes = 56u << 10u;
-            ui32 maxBlobInBytes = 10u << 20u;
-            ui32 overhead = 8;
-            ui32 freeChunksReservation = 0;
-            THeap heap("vdisk", chunkSize, appendBlockSize, minHugeBlobInBytes, minHugeBlobInBytes, minHugeBlobInBytes,
-                    maxBlobInBytes, overhead, freeChunksReservation, false);
-            TVector<THugeSlot> arr;
+            for (bool useBucketsV2 : {false, true}) {
+                ui32 chunkSize = 134274560u;
+                ui32 appendBlockSize = 56896u;
+                ui32 minHugeBlobInBytes = 56u << 10u;
+                ui32 maxBlobInBytes = 10u << 20u;
+                ui32 overhead = 8;
+                ui32 stepsBetweenPowersOf2 = 6;
+                ui32 freeChunksReservation = 0;
 
-            AllocateScenary(heap, 6u << 20u, arr);
-            FreeScenary(heap, arr);
+                THeap heap("vdisk", chunkSize, appendBlockSize, minHugeBlobInBytes, minHugeBlobInBytes,
+                        maxBlobInBytes, overhead, stepsBetweenPowersOf2, useBucketsV2, freeChunksReservation, false);
+                heap.FinishRecovery();
+                TVector<THugeSlot> arr;
+
+                AllocateScenary(heap, 6u << 20u, arr);
+                FreeScenary(heap, arr);
+            }
         }
 
         Y_UNIT_TEST(AllocateAllSerializeDeserializeReleaseAll) {
-            ui32 chunkSize = 134274560u;
-            ui32 appendBlockSize = 56896u;
-            ui32 minHugeBlobInBytes = 56u << 10u;
-            ui32 maxBlobInBytes = 10u << 20u;
-            ui32 overhead = 8;
-            ui32 freeChunksReservation = 0;
-            THeap heap("vdisk", chunkSize, appendBlockSize, minHugeBlobInBytes, minHugeBlobInBytes, minHugeBlobInBytes,
-                    maxBlobInBytes, overhead, freeChunksReservation, false);
-            TVector<THugeSlot> arr;
+            for (bool useBucketsV2 : {false, true})
+            for (bool serializeToProto : {false, true}) {
+                ui32 chunkSize = 134274560u;
+                ui32 appendBlockSize = 56896u;
+                ui32 minHugeBlobInBytes = 56u << 10u;
+                ui32 maxBlobInBytes = 10u << 20u;
+                ui32 overhead = 8;
+                ui32 stepsBetweenPowersOf2 = 6;
+                ui32 freeChunksReservation = 0;
 
-            AllocateScenary(heap, 6u << 20u, arr);
-            TString serialized = heap.Serialize();
-            UNIT_ASSERT(THeap::CheckEntryPoint(serialized));
-            THeap newHeap("vdisk", chunkSize, appendBlockSize, minHugeBlobInBytes, minHugeBlobInBytes, minHugeBlobInBytes,
-                    maxBlobInBytes, overhead, freeChunksReservation, false);
-            newHeap.ParseFromString(serialized);
-            FreeScenary(newHeap, arr);
+                THeap heap("vdisk", chunkSize, appendBlockSize, minHugeBlobInBytes, minHugeBlobInBytes,
+                        maxBlobInBytes, overhead, stepsBetweenPowersOf2, useBucketsV2, freeChunksReservation, false);
+                heap.FinishRecovery();
+                TVector<THugeSlot> arr;
+
+                AllocateScenary(heap, 6u << 20u, arr);
+                TString heap1 = heap.ToString();
+
+                if (serializeToProto) {
+                    NKikimrVDiskData::THugeKeeperHeap protoHeap;
+                    heap.SaveToProto(protoHeap);
+
+                    THeap newHeap("vdisk", protoHeap, false);
+                    newHeap.FinishRecovery();
+
+                    TString heap2 = newHeap.ToString();
+                    UNIT_ASSERT_VALUES_EQUAL(heap1, heap2);
+                    FreeScenary(newHeap, arr);
+                } else {
+                    TString serialized = heap.Serialize();
+                    UNIT_ASSERT(THeap::CheckEntryPoint(serialized));
+
+                    THeap newHeap("vdisk", chunkSize, appendBlockSize, minHugeBlobInBytes, minHugeBlobInBytes,
+                            maxBlobInBytes, overhead, stepsBetweenPowersOf2, useBucketsV2, freeChunksReservation, false);
+                    newHeap.ParseFromString(serialized);
+                    newHeap.FinishRecovery();
+
+                    TString heap2 = newHeap.ToString();
+                    UNIT_ASSERT_VALUES_EQUAL(heap1, heap2);
+                    FreeScenary(newHeap, arr);
+                }
+            }
         }
 
         Y_UNIT_TEST(RecoveryMode) {
-            ui32 chunkSize = 134274560u;
-            ui32 appendBlockSize = 56896u;
-            ui32 minHugeBlobInBytes = 56u << 10u;
-            ui32 maxBlobInBytes = 10u << 20u;
-            ui32 overhead = 8;
-            ui32 freeChunksReservation = 0;
-            THeap heap("vdisk", chunkSize, appendBlockSize, minHugeBlobInBytes, minHugeBlobInBytes, minHugeBlobInBytes,
-                    maxBlobInBytes, overhead, freeChunksReservation, false);
+            for (bool useBucketsV2 : {false, true}) {
+                ui32 chunkSize = 134274560u;
+                ui32 appendBlockSize = 56896u;
+                ui32 minHugeBlobInBytes = 56u << 10u;
+                ui32 maxBlobInBytes = 10u << 20u;
+                ui32 overhead = 8;
+                ui32 stepsBetweenPowersOf2 = 6;
+                ui32 freeChunksReservation = 0;
 
-            heap.RecoveryModeAddChunk(2);
-            heap.RecoveryModeAddChunk(34);
-            TVector<ui32> rmChunks;
-            rmChunks.push_back(2);
-            rmChunks.push_back(34);
-            heap.RecoveryModeRemoveChunks(rmChunks);
-            heap.RecoveryModeAddChunk(20);
-            heap.RecoveryModeAddChunk(34);
-            heap.RecoveryModeAddChunk(5);
-            heap.RecoveryModeAddChunk(2);
+                THeap heap("vdisk", chunkSize, appendBlockSize, minHugeBlobInBytes, minHugeBlobInBytes,
+                        maxBlobInBytes, overhead, stepsBetweenPowersOf2, useBucketsV2, freeChunksReservation, false);
+                heap.FinishRecovery();
 
-            const ui32 hugeBlobSize = 6u << 20u;
-            const ui32 slotSize = heap.SlotSizeOfThisSize(hugeBlobSize);
+                heap.RecoveryModeAddChunk(2);
+                heap.RecoveryModeAddChunk(34);
+                TVector<ui32> rmChunks;
+                rmChunks.push_back(2);
+                rmChunks.push_back(34);
+                heap.RecoveryModeRemoveChunks(rmChunks);
+                heap.RecoveryModeAddChunk(20);
+                heap.RecoveryModeAddChunk(34);
+                heap.RecoveryModeAddChunk(5);
+                heap.RecoveryModeAddChunk(2);
 
-            heap.RecoveryModeAllocate(TDiskPart(2, slotSize * 2, 6u << 20u));
-            heap.RecoveryModeAllocate(TDiskPart(2, slotSize * 5, 6u << 20u));
-            heap.RecoveryModeAllocate(TDiskPart(34, 0, 6u << 20u));
+                const ui32 hugeBlobSize = 6u << 20u;
+                const ui32 slotSize = heap.SlotSizeOfThisSize(hugeBlobSize);
+
+                heap.RecoveryModeAllocate(TDiskPart(2, slotSize * 2, 6u << 20u));
+                heap.RecoveryModeAllocate(TDiskPart(2, slotSize * 5, 6u << 20u));
+                heap.RecoveryModeAllocate(TDiskPart(34, 0, 6u << 20u));
+            }
         }
 
         Y_UNIT_TEST(BorderValues) {
-            ui32 chunkSize = 134274560u;
-            ui32 appendBlockSize = 56896u;
-            ui32 minHugeBlobInBytes = appendBlockSize;
-            ui32 minREALHugeBlobInBytes = minHugeBlobInBytes / appendBlockSize * appendBlockSize + 1;
-            ui32 maxBlobInBytes = MaxVDiskBlobSize;
-            ui32 overhead = 8u;
-            ui32 freeChunksReservation = 1;
-            THeap heap("vdisk", chunkSize, appendBlockSize, minHugeBlobInBytes, minHugeBlobInBytes, minHugeBlobInBytes,
-                    maxBlobInBytes, overhead, freeChunksReservation, false);
+            for (bool useBucketsV2 : {false, true}) {
+                ui32 chunkSize = 134274560u;
+                ui32 appendBlockSize = 56896u;
+                ui32 minHugeBlobInBytes = appendBlockSize + 1;
+                ui32 maxBlobInBytes = MaxVDiskBlobSize;
+                ui32 overhead = 8u;
+                ui32 stepsBetweenPowersOf2 = 6;
+                ui32 freeChunksReservation = 1;
 
-            THugeSlot hugeSlot;
-            ui32 slotSize;
-            bool res = false;
-            res = heap.Allocate(minREALHugeBlobInBytes, &hugeSlot, &slotSize);
-            UNIT_ASSERT_EQUAL(res, false); // no chunks
-            res = heap.Allocate(maxBlobInBytes, &hugeSlot, &slotSize);
-            UNIT_ASSERT_EQUAL(res, false); // no chunks
-        }
+                THeap heap("vdisk", chunkSize, appendBlockSize, minHugeBlobInBytes, minHugeBlobInBytes,
+                        maxBlobInBytes, overhead, stepsBetweenPowersOf2, useBucketsV2, freeChunksReservation, false);
+                heap.FinishRecovery();
 
-        enum class EWrite_SaveEntryPoint_Restart {
-            MigrateFrom_Old_To_New,
-            RollbackFrom_New_To_Old,
-        };
-
-        void Write_SaveEntryPoint_Restart(EWrite_SaveEntryPoint_Restart mode) {
-            ui32 chunkSize = 134274560u;
-            ui32 appendBlockSize = 4064u;
-            ui32 minHugeBlobInBytes = appendBlockSize;
-            ui32 oldMinHugeBlobInBytes = 64u << 10u;
-            ui32 mileStoneBlobInBytes = 512u << 10u;
-            ui32 maxBlobInBytes = 10u << 20u;
-            ui32 overhead = 8;
-            ui32 freeChunksReservation = 0;
-
-            ui32 fromMin = 0;
-            ui32 toMin = 0;
-            switch (mode) {
-                case EWrite_SaveEntryPoint_Restart::MigrateFrom_Old_To_New:
-                        fromMin = oldMinHugeBlobInBytes;
-                        toMin = minHugeBlobInBytes;
-                        break;
-                case EWrite_SaveEntryPoint_Restart::RollbackFrom_New_To_Old:
-                        fromMin = minHugeBlobInBytes;
-                        toMin = oldMinHugeBlobInBytes;
-                        break;
-            }
-            THeap oldHeap("vdisk", chunkSize, appendBlockSize, oldMinHugeBlobInBytes, oldMinHugeBlobInBytes, mileStoneBlobInBytes,
-                    maxBlobInBytes, overhead, freeChunksReservation, false);
-
-            THeap fromHeap("vdisk", chunkSize, appendBlockSize, fromMin, oldMinHugeBlobInBytes, mileStoneBlobInBytes,
-                    maxBlobInBytes, overhead, freeChunksReservation, false);
-            fromHeap.ParseFromString(oldHeap.Serialize());
-            TVector<THugeSlot> arr;
-
-            AllocateScenary(fromHeap, 6u << 20u, arr);
-            TString serialized = fromHeap.Serialize();
-            UNIT_ASSERT(THeap::CheckEntryPoint(serialized));
-            THeap toHeap("vdisk", chunkSize, appendBlockSize, toMin, oldMinHugeBlobInBytes, mileStoneBlobInBytes,
-                    maxBlobInBytes, overhead, freeChunksReservation, false);
-            toHeap.ParseFromString(serialized);
-            FreeScenary(toHeap, arr);
-        }
-
-        Y_UNIT_TEST(MigrateFrom_Old_To_New) {
-            Write_SaveEntryPoint_Restart(EWrite_SaveEntryPoint_Restart::MigrateFrom_Old_To_New);
-        }
-
-        Y_UNIT_TEST(RollbackFrom_New_To_Old) {
-            Write_SaveEntryPoint_Restart(EWrite_SaveEntryPoint_Restart::RollbackFrom_New_To_Old);
-        }
-
-        NPrivate::TChainLayoutBuilder GetChainLayoutBuilder(ui32 minHugeBlobInBytes) {
-            ui32 appendBlockSize = 4064;
-            ui32 milestoneBlobInBytes = 524288;
-            ui32 maxBlobInBytes = 10485760;
-            ui32 overhead = 8u;
-
-            const ui32 startBlocks = minHugeBlobInBytes / appendBlockSize;
-            const ui32 mileStoneBlocks = milestoneBlobInBytes / appendBlockSize;
-
-            ui32 endBlocks = maxBlobInBytes / appendBlockSize;
-            endBlocks += !(endBlocks * appendBlockSize == maxBlobInBytes);
-
-            STR << "startBlocks# " << startBlocks
-                << " mileStoneBlocks# " << mileStoneBlocks
-                << " endBlocks# " << endBlocks << "\n";
-
-            return NPrivate::TChainLayoutBuilder(startBlocks, mileStoneBlocks, endBlocks, overhead);
-        }
-
-        Y_UNIT_TEST(ChainLength_4064) {
-            auto builder = GetChainLayoutBuilder(4064);
-            UNIT_ASSERT_VALUES_EQUAL(builder.GetLayout().size(), 53);
-        }
-
-        Y_UNIT_TEST(ChainLength_97537) {
-            auto builder = GetChainLayoutBuilder(97537);
-            UNIT_ASSERT_VALUES_EQUAL(builder.GetLayout().size(), 39);
-        }
-
-        Y_UNIT_TEST(ChainLength_524257) {
-            auto builder = GetChainLayoutBuilder(524257);
-            UNIT_ASSERT_VALUES_EQUAL(builder.GetLayout().size(), 26);
-        }
-
-        Y_UNIT_TEST(FailingRecovery) {
-            ui32 chunkSize = 135249920;
-            ui32 appendBlockSize = 4064;
-            ui32 milestoneBlobInBytes = 524288;
-            ui32 maxBlobInBytes = 10485760;
-            ui32 overhead = 8u;
-
-            TString serialized;
-
-            {
-                ui32 oldMinHugeBlobSizeInBytes = 524288;
-                ui32 minHugeBlobInBytes = 524288; // 24.2
-                THeap heap("vdisk", chunkSize, appendBlockSize, minHugeBlobInBytes, oldMinHugeBlobSizeInBytes, milestoneBlobInBytes,
-                    maxBlobInBytes, overhead, 0, false);
-                
-                serialized = heap.Serialize();
-            }
-
-            {
-                ui32 oldMinHugeBlobSizeInBytes = 524288;
-                ui32 minHugeBlobInBytes = appendBlockSize; // update 24.2 -> 24.3
-                THeap heap("vdisk", chunkSize, appendBlockSize, minHugeBlobInBytes, oldMinHugeBlobSizeInBytes, milestoneBlobInBytes,
-                    maxBlobInBytes, overhead, 0, false);
-
-                {
-                    // emulate old behavior
-                    TVector<TChainDelegator> delegators;
-                    for (auto& d: heap.Chains.ChainDelegators) {
-                        if (d.SlotSize >= 524288) {
-                            delegators.emplace_back(std::move(d));
-                        }
-                    }
-                    heap.Chains.ChainDelegators = std::move(delegators);
-                }
-
-                heap.ParseFromString(serialized);
-
-                serialized = heap.Serialize();
-            }
-
-            {
-                ui32 oldMinHugeBlobSizeInBytes = 524288;
-                ui32 minHugeBlobInBytes = appendBlockSize; // 24.3
-                THeap heap("vdisk", chunkSize, appendBlockSize, minHugeBlobInBytes, oldMinHugeBlobSizeInBytes, milestoneBlobInBytes,
-                    maxBlobInBytes, overhead, 0, false);
-                heap.ParseFromString(serialized);
-
-                heap.AddChunk(1);
-                heap.AddChunk(2);
-                heap.AddChunk(3);
-                THugeSlot slot;
+                THugeSlot hugeSlot;
                 ui32 slotSize;
-                UNIT_ASSERT(heap.Allocate(97536 - 1, &slot, &slotSize));
-                UNIT_ASSERT(heap.Allocate(113792 - 1, &slot, &slotSize));
-                UNIT_ASSERT(heap.Allocate(170688 - 1, &slot, &slotSize));
-
-                {
-                    // emulate old behavior
-                    TVector<TChainDelegator> delegators;
-                    for (auto& d: heap.Chains.ChainDelegators) {
-                        if (d.SlotSize >= 524288 || d.SlotSize == 97536 || d.SlotSize == 113792 || d.SlotSize == 170688) {
-                            delegators.emplace_back(std::move(d));
-                        }
-                    }
-                    heap.Chains.ChainDelegators = std::move(delegators);
-                }
-
-                serialized = heap.Serialize();
+                bool res = false;
+                res = heap.Allocate(minHugeBlobInBytes, &hugeSlot, &slotSize);
+                UNIT_ASSERT_EQUAL(res, false); // no chunks
+                res = heap.Allocate(maxBlobInBytes, &hugeSlot, &slotSize);
+                UNIT_ASSERT_EQUAL(res, false); // no chunks
             }
+        }
 
-            {
-                ui32 oldMinHugeBlobSizeInBytes = 524288;
-                ui32 minHugeBlobInBytes = appendBlockSize; // 24.3
-                THeap heap("vdisk", chunkSize, appendBlockSize, minHugeBlobInBytes, oldMinHugeBlobSizeInBytes, milestoneBlobInBytes,
-                    maxBlobInBytes, overhead, 0, false);
-                heap.ParseFromString(serialized);
+        Y_UNIT_TEST(WriteRestore) {
+            for (bool useBucketsV2 : {false, true})
+            for (bool serializeToProto : {false, true}) {
+                ui32 chunkSize = 134274560u;
+                ui32 appendBlockSize = 4064u;
+                ui32 minHugeBlobInBytes = appendBlockSize;
+                ui32 mileStoneBlobInBytes = 512u << 10u;
+                ui32 maxBlobInBytes = 10u << 20u;
+                ui32 overhead = 8;
+                ui32 stepsBetweenPowersOf2 = 6;
+                ui32 freeChunksReservation = 0;
 
-                THugeSlot slot;
-                ui32 slotSize;
-                UNIT_ASSERT(heap.Allocate(97537 - 1, &slot, &slotSize));
-                Cerr << slot.GetChunkId() << Endl;
-                UNIT_ASSERT(heap.Allocate(113792 - 1, &slot, &slotSize));
-                Cerr << slot.GetChunkId() << Endl;
-                UNIT_ASSERT(heap.Allocate(170688 - 1, &slot, &slotSize));
-                Cerr << slot.GetChunkId() << Endl;
+                THeap oldHeap("vdisk", chunkSize, appendBlockSize, minHugeBlobInBytes, mileStoneBlobInBytes,
+                        maxBlobInBytes, overhead, stepsBetweenPowersOf2, useBucketsV2, freeChunksReservation, false);
+                oldHeap.FinishRecovery();
+                TVector<THugeSlot> arr;
 
-                serialized = heap.Serialize();
+                if (serializeToProto) {
+                    NKikimrVDiskData::THugeKeeperHeap oldProtoHeap;
+                    oldHeap.SaveToProto(oldProtoHeap);
+                    THeap fromHeap("vdisk", oldProtoHeap, false);
+                    fromHeap.FinishRecovery();
+
+                    AllocateScenary(fromHeap, 6u << 20u, arr);
+                    NKikimrVDiskData::THugeKeeperHeap fromProtoHeap;
+                    fromHeap.SaveToProto(fromProtoHeap);
+
+                    THeap toHeap("vdisk", fromProtoHeap, false);
+                    toHeap.FinishRecovery();
+                    FreeScenary(toHeap, arr);
+                } else {
+                    THeap fromHeap("vdisk", chunkSize, appendBlockSize, minHugeBlobInBytes, mileStoneBlobInBytes,
+                            maxBlobInBytes, overhead, stepsBetweenPowersOf2, useBucketsV2, freeChunksReservation, false);
+                    fromHeap.ParseFromString(oldHeap.Serialize());
+                    fromHeap.FinishRecovery();
+
+                    AllocateScenary(fromHeap, 6u << 20u, arr);
+                    TString serialized = fromHeap.Serialize();
+                    UNIT_ASSERT(THeap::CheckEntryPoint(serialized));
+
+                    THeap toHeap("vdisk", chunkSize, appendBlockSize, minHugeBlobInBytes, mileStoneBlobInBytes,
+                            maxBlobInBytes, overhead, stepsBetweenPowersOf2, useBucketsV2, freeChunksReservation, false);
+                    toHeap.ParseFromString(serialized);
+                    toHeap.FinishRecovery();
+                    FreeScenary(toHeap, arr);
+                }
             }
         }
 
@@ -614,7 +501,6 @@ namespace NKikimr {
             ui32 chunkSize = 134274560u;
             ui32 appendBlockSize = 56896u;
             ui32 minHugeBlobInBytes = 56u << 10u;
-            ui32 oldMinHugeBlobSizeInBytes = 56u << 10u;
             ui32 milestoneBlobInBytes = 512u << 10u;
             ui32 maxBlobInBytes = 10u << 20u;
             ui32 overhead = 8;
@@ -622,9 +508,9 @@ namespace NKikimr {
             ui32 hugeBlobSize = 6u << 20u;
 
             for (bool chunksSoftLocking: {false, true}) {
-                THeap heap("vdisk", chunkSize, appendBlockSize, minHugeBlobInBytes, oldMinHugeBlobSizeInBytes, milestoneBlobInBytes,
-                    maxBlobInBytes, overhead, freeChunksReservation, chunksSoftLocking);
-                // heap.FinishRecovery();
+                THeap heap("vdisk", chunkSize, appendBlockSize, minHugeBlobInBytes, milestoneBlobInBytes,
+                    maxBlobInBytes, overhead, 0, false, freeChunksReservation, chunksSoftLocking);
+                heap.FinishRecovery();
                 heap.AddChunk(5);
                 heap.AddChunk(3);
 

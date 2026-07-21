@@ -8,6 +8,7 @@
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/helpers/pool_stats_collector.h>
+#include <contrib/ydb/library/actors/helpers/collector_counters.h>
 
 #include <contrib/ydb/core/graph/api/service.h>
 #include <contrib/ydb/core/graph/api/events.h>
@@ -23,7 +24,7 @@ public:
         ::NMonitoring::TDynamicCounterPtr counters)
         : NActors::TStatsCollectingActor(intervalSec, setup, GetServiceCounters(counters, "utils"))
     {
-        MiniKQLPoolStats.Init(Counters.Get());
+        MiniKQLPoolStats.Init(GetActorSystemCounters().Group.Get());
     }
 
 private:
@@ -32,15 +33,23 @@ private:
         void Init(::NMonitoring::TDynamicCounters* group) {
             CounterGroup = group->GetSubgroup("subsystem", "mkqlalloc");
             TotalBytes = CounterGroup->GetCounter("GlobalPoolTotalBytes", false);
+            TotalMmapped = CounterGroup->GetCounter("TotalMmappedBytes", false);
+            TotalFreeList = CounterGroup->GetCounter("TotalFreeListBytes", false);
         }
 
         void Update() {
+            TAlignedPagePool::DoCleanupGlobalFreeList(1 << 30); // keep 1Gb of cached pages
+
             *TotalBytes = TAlignedPagePool::GetGlobalPagePoolSize();
+            *TotalMmapped = ::NKikimr::GetTotalMmapedBytes();
+            *TotalFreeList = ::NKikimr::GetTotalFreeListBytes();
         }
 
     private:
         TIntrusivePtr<::NMonitoring::TDynamicCounters> CounterGroup;
         ::NMonitoring::TDynamicCounters::TCounterPtr TotalBytes;
+        ::NMonitoring::TDynamicCounters::TCounterPtr TotalMmapped;
+        ::NMonitoring::TDynamicCounters::TCounterPtr TotalFreeList;
     };
 
     void OnWakeup(const TActorContext &ctx) override {
@@ -49,7 +58,7 @@ private:
         auto systemUpdate = std::make_unique<NNodeWhiteboard::TEvWhiteboard::TEvSystemStateUpdate>();
         ui32 coresTotal = 0;
         double coresUsed = 0;
-        for (const auto& pool : PoolCounters) {
+        for (const auto& pool : GetPoolCounters()) {
             auto& pb = *systemUpdate->Record.AddPoolStats();
             pb.SetName(pool.Name);
             pb.SetUsage(pool.Usage);

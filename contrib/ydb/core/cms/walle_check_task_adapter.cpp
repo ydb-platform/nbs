@@ -3,6 +3,8 @@
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 
+#define YDB_LOG_THIS_FILE_COMPONENT NKikimrServices::CMS
+
 namespace NKikimr::NCms {
 
 using namespace NKikimrCms;
@@ -25,8 +27,8 @@ public:
     void Bootstrap(const TActorContext &ctx) {
         TString id = RequestEvent->Get()->Record.GetTaskId();
 
-        LOG_INFO(ctx, NKikimrServices::CMS, "Processing Wall-E request: %s",
-                  RequestEvent->Get()->Record.ShortDebugString().data());
+        YDB_LOG_INFO_CTX(ctx, "Processing Wall-E request",
+            {"ev", RequestEvent->Get()->Record.ShortDebugString()});
 
         if (!State->WalleTasks.contains(id)) {
             ReplyWithErrorAndDie(TStatus::WRONG_REQUEST, "Unknown task", ctx);
@@ -41,11 +43,8 @@ public:
         if (State->ScheduledRequests.contains(task.RequestId)) {
             auto &req = State->ScheduledRequests.find(task.RequestId)->second;
 
-            for (auto &action : req.Request.GetActions()) {
+            for (auto &action : req.Request.GetActions())
                 *info.AddHosts() = action.GetHost();
-                for (auto &device : action.GetDevices())
-                    *info.AddDevices() = device;
-            }
 
             TAutoPtr<TEvCms::TEvCheckRequest> event = new TEvCms::TEvCheckRequest;
             event->Record.SetUser(WALLE_CMS_USER);
@@ -56,13 +55,8 @@ public:
             Become(&TThis::StateWork, ctx, TDuration::Seconds(10), new TEvents::TEvWakeup());
         } else {
             for (auto &id : task.Permissions) {
-                if (State->Permissions.contains(id)) {
-                    const auto &action = State->Permissions.find(id)->second.Action;
-                    *info.AddHosts() = action.GetHost();
-
-                    for (auto &device : action.GetDevices())
-                        *info.AddDevices() = device;
-                }
+                if (State->Permissions.contains(id))
+                    *info.AddHosts() = State->Permissions.find(id)->second.Action.GetHost();
             }
 
             if (!info.HostsSize()) {
@@ -82,9 +76,9 @@ private:
             HFunc(TEvCms::TEvPermissionResponse, Handle);
             CFunc(TEvents::TSystem::Wakeup, Timeout);
         default:
-            LOG_DEBUG(*TlsActivationContext, NKikimrServices::CMS,
-                      "TWalleRemoveTaskAdapter::StateWork ignored event type: %" PRIx32 " event: %s",
-                      ev->GetTypeRewrite(), ev->ToString().data());
+            YDB_LOG_DEBUG_CTX(*TlsActivationContext, "TWalleRemoveTaskAdapter::StateWork ignored event",
+                {"type", ev->GetTypeRewrite()},
+                {"ev", ev->ToString()});
         }
     }
 

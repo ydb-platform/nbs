@@ -1,7 +1,13 @@
 UNITTEST()
 
-TIMEOUT(600)
-SIZE(MEDIUM)
+REQUIREMENTS(ram:32)
+
+IF (SANITIZER_TYPE)
+    SIZE(LARGE)
+    INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/large.inc)
+ELSE()
+    SIZE(MEDIUM)
+ENDIF()
 
 DEPENDS(
     contrib/ydb/apps/ydb
@@ -11,18 +17,31 @@ ENV(YDB_CLI_BINARY="contrib/ydb/apps/ydb/ydb")
 ENV(YDB_FEATURE_FLAGS="enable_topic_service_tx")
 
 SRCS(
-    workload-topic.cpp
-    workload-transfer-topic-to-table.cpp
+    export.cpp
+    import.cpp
+    mock_env.cpp
+    parse_command_line.cpp
     run_ydb.cpp
+    sql_resource_pool.cpp
     supported_codecs.cpp
     supported_codecs_fixture.cpp
+    workload-topic.cpp
+    workload-transfer-topic-to-table.cpp
     ydb-dump.cpp
-    ydb-mkql.cpp
 )
 
 PEERDIR(
-    contrib/ydb/public/sdk/cpp/client/ydb_topic
-    contrib/ydb/public/sdk/cpp/client/ydb_table
+    contrib/libs/grpc
+    contrib/libs/fmt
+    contrib/libs/jwt-cpp
+    library/cpp/json/writer
+    contrib/ydb/core/security/certificate_check/test_utils
+    contrib/ydb/core/wrappers/ut_helpers
+    contrib/ydb/public/api/client/yc_public/iam
+    contrib/ydb/public/sdk/cpp/src/client/topic
+    contrib/ydb/public/sdk/cpp/src/client/table
+    contrib/ydb/public/sdk/cpp/tests/unit/client/oauth2_token_exchange/helpers
+    contrib/ydb/public/lib/ydb_cli/commands/topic_workload
 )
 
 INCLUDE(${ARCADIA_ROOT}/contrib/ydb/public/tools/ydb_recipe/recipe.inc)

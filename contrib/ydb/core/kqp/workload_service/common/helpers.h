@@ -2,8 +2,8 @@
 
 #include <library/cpp/retry/retry_policy.h>
 
+#include <contrib/ydb/core/protos/workload_manager_config.pb.h>
 #include <contrib/ydb/core/resource_pools/resource_pool_settings.h>
-
 #include <contrib/ydb/core/tx/scheme_cache/scheme_cache.h>
 
 #include <contrib/ydb/library/actors/core/log.h>
@@ -23,7 +23,6 @@ namespace NKikimr::NKqp::NWorkload {
 #define LOG_W(stream) LOG_WARN_S(*TlsActivationContext, NKikimrServices::KQP_WORKLOAD_SERVICE, "[WorkloadService] " << LogPrefix() << stream)
 #define LOG_E(stream) LOG_ERROR_S(*TlsActivationContext, NKikimrServices::KQP_WORKLOAD_SERVICE, "[WorkloadService] " << LogPrefix() << stream)
 #define LOG_C(stream) LOG_CRIT_S(*TlsActivationContext, NKikimrServices::KQP_WORKLOAD_SERVICE, "[WorkloadService] " << LogPrefix() << stream)
-
 
 template <typename TDerived>
 class TSchemeActorBase : public NActors::TActorBootstrapped<TDerived> {
@@ -83,11 +82,13 @@ protected:
 
 private:
     static TRetryPolicy::IRetryState::TPtr CreateRetryState() {
-        return TRetryPolicy::GetFixedIntervalPolicy(
+        return TRetryPolicy::GetExponentialBackoffPolicy(
                   [](bool longDelay){return longDelay ? ERetryErrorClass::LongRetry : ERetryErrorClass::ShortRetry;}
                 , TDuration::MilliSeconds(100)
                 , TDuration::MilliSeconds(500)
-                , 100
+                , TDuration::Seconds(1)
+                , std::numeric_limits<size_t>::max()
+                , TDuration::Seconds(10)
             )->CreateRetryState();
     }
 
@@ -107,5 +108,7 @@ NYql::TIssues GroupIssues(const NYql::TIssues& issues, const TString& message);
 void ParsePoolSettings(const NKikimrSchemeOp::TResourcePoolDescription& description, NResourcePool::TPoolSettings& poolConfig);
 
 ui64 SaturationSub(ui64 x, ui64 y);
+
+NResourcePool::TPoolSettings PoolSettingsFromConfig(const NKikimrConfig::TWorkloadManagerConfig& workloadManagerConfig);
 
 }  // NKikimr::NKqp::NWorkload

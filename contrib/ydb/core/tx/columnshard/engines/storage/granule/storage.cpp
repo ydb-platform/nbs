@@ -1,51 +1,40 @@
 #include "storage.h"
+
 #include <contrib/ydb/core/tx/columnshard/data_locks/manager/manager.h>
 
 namespace NKikimr::NOlap {
 
-std::shared_ptr<NKikimr::NOlap::TGranuleMeta> TGranulesStorage::GetGranuleForCompaction(const std::shared_ptr<NDataLocks::TManager>& dataLocksManager) const {
+std::vector<TGranuleOrdered> TGranulesStorage::GetGranulesForCompaction(
+    const std::set<TInternalPathId>& pathIds, const std::optional<ui64> waitingPriority) const {
     const TInstant now = HasAppData() ? AppDataVerified().TimeProvider->Now() : TInstant::Now();
-    std::map<NStorageOptimizer::TOptimizationPriority, std::shared_ptr<TGranuleMeta>> granulesSorted;
-    ui32 countChecker = 0;
-    std::optional<NStorageOptimizer::TOptimizationPriority> priorityChecker;
+    std::vector<TGranuleOrdered> granulesSorted;
     const TDuration actualizationLag = NYDBTest::TControllers::GetColumnShardController()->GetCompactionActualizationLag();
-    for (auto&& i : Tables) {
-        NActors::TLogContextGuard lGuard = NActors::TLogContextBuilder::Build()("path_id", i.first);
-        i.second->ActualizeOptimizer(now, actualizationLag);
-        auto gPriority = i.second->GetCompactionPriority();
-        if (gPriority.IsZero() || (priorityChecker && gPriority < *priorityChecker)) {
-            continue;
+    const auto actor = [&](const TInternalPathId /*pathId*/, const std::shared_ptr<TGranuleMeta>& granule) {
+        if (pathIds.empty()) {
+            granule->ActualizeOptimizer(now, actualizationLag);
         }
-        granulesSorted.emplace(gPriority, i.second);
-        if (++countChecker % 100 == 0) {
-            for (auto&& it = granulesSorted.rbegin(); it != granulesSorted.rend(); ++it) {
-                if (!it->second->IsLockedOptimizer(dataLocksManager)) {
-                    priorityChecker = it->first;
-                    break;
-                }
-            }
+        auto gPriority = granule->GetCompactionPriority();
+        if (gPriority.IsZero() || (waitingPriority && gPriority.GetGeneralPriority() < *waitingPriority)) {
+            return;
         }
-    }
-    if (granulesSorted.empty()) {
-        AFL_DEBUG(NKikimrServices::TX_COLUMNSHARD)("event", "no_granules");
-        return nullptr;
-    }
-    for (auto&& it = granulesSorted.rbegin(); it != granulesSorted.rend(); ++it) {
-        if (priorityChecker && it->first < *priorityChecker) {
-            continue;
+        granulesSorted.emplace_back(gPriority, granule);
+    };
+    if (pathIds.size()) {
+        for (auto&& pathId : pathIds) {
+            auto it = Tables.find(pathId);
+            AFL_VERIFY(it != Tables.end());
+            actor(it->first, it->second);
         }
-        NActors::TLogContextGuard lGuard = NActors::TLogContextBuilder::Build()("path_id", it->second->GetPathId());
-        if (it->second->IsLockedOptimizer(dataLocksManager)) {
-            Counters.OnGranuleOptimizerLocked();
-            AFL_WARN(NKikimrServices::TX_COLUMNSHARD)("event", "skip_optimizer_throught_lock")("priority", it->first.DebugString());
-        } else {
-            AFL_INFO(NKikimrServices::TX_COLUMNSHARD)("event", "granule_compaction_weight")("priority", it->first.DebugString());
-            return it->second;
+    } else {
+        for (auto&& i : Tables) {
+            actor(i.first, i.second);
         }
     }
-
-    AFL_DEBUG(NKikimrServices::TX_COLUMNSHARD)("event", "all_significant_granules_locked")("count", granulesSorted.size());
-    return nullptr;
+    // descending order
+    std::sort(granulesSorted.begin(), granulesSorted.end(), [](const TGranuleOrdered& a, const TGranuleOrdered& b) {
+        return b < a;
+    });
+    return granulesSorted;
 }
 
-} // namespace NKikimr::NOlap
+}   // namespace NKikimr::NOlap

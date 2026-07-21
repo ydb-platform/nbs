@@ -1,23 +1,28 @@
 #include "defs.h"
 #include "mkql_terminator.h"
 
+#include <contrib/ydb/library/yql/core/issue/yql_issue.h>
+
 #include <util/string/builder.h>
 
-namespace NKikimr {
+namespace NKikimr::NMiniKQL {
 
-namespace NMiniKQL {
+TTerminateException::TTerminateException()
+    : TErrorException(NYql::EYqlIssueCode::TIssuesIds_EIssueCode_CORE_RUNTIME_ERROR)
+{
+}
 
 thread_local ITerminator* TBindTerminator::Terminator = nullptr;
 
 TBindTerminator::TBindTerminator(ITerminator* terminator)
-    : PreviousTerminator(Terminator)
+    : PreviousTerminator_(Terminator)
 {
     Terminator = terminator;
 }
 
 TBindTerminator::~TBindTerminator()
 {
-    Terminator = PreviousTerminator;
+    Terminator = PreviousTerminator_;
 }
 
 TThrowingBindTerminator::TThrowingBindTerminator()
@@ -27,20 +32,28 @@ TThrowingBindTerminator::TThrowingBindTerminator()
 
 void TThrowingBindTerminator::Terminate(const char* message) const {
     TStringBuf reason = (message ? TStringBuf(message) : TStringBuf("(unknown)"));
-    TString fullMessage = TStringBuilder() <<
-        "Terminate was called, reason(" << reason.size() << "): " << reason << Endl;
-    ythrow yexception() << fullMessage;
+    TString fullMessage = TStringBuilder() << "Terminate was called, reason(" << reason.size() << "): " << reason << Endl;
+    ythrow TTerminateException() << fullMessage;
+}
+
+TOnlyThrowingBindTerminator::TOnlyThrowingBindTerminator()
+    : TBindTerminator(this)
+{
+}
+
+void TOnlyThrowingBindTerminator::Terminate(const char* message) const {
+    ythrow TTerminateException() << message;
 }
 
 [[noreturn]] void MKQLTerminate(const char* message) {
-    if (const auto t = TBindTerminator::Terminator)
+    if (const auto t = TBindTerminator::Terminator) {
         t->Terminate(message);
+    }
 
-    if (message)
+    if (message) {
         Cerr << message << Endl;
+    }
     ::abort();
 }
 
-}
-
-}
+} // namespace NKikimr::NMiniKQL

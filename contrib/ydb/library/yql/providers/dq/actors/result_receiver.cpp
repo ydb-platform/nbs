@@ -1,6 +1,7 @@
 #include "result_receiver.h"
 #include "proto_builder.h"
 
+#include <contrib/ydb/library/yql/dq/common/rope_over_buffer.h>
 #include <contrib/ydb/library/yql/providers/dq/actors/execution_helpers.h>
 #include <contrib/ydb/library/yql/providers/dq/actors/events.h>
 #include <contrib/ydb/library/yql/providers/dq/actors/result_actor_base.h>
@@ -46,7 +47,7 @@ public:
 
 public:
     STFUNC(Handler) {
-        switch (const ui32 etype = ev->GetTypeRewrite()) {
+        switch (ev->GetTypeRewrite()) {
             HFunc(NDq::TEvDqCompute::TEvChannelData, OnChannelData);
             HFunc(TEvReadyState, OnReadyState);
             hFunc(TEvMessageProcessed, OnMessageProcessed);
@@ -56,7 +57,7 @@ public:
     }
 
     STFUNC(ShutdownHandler) {
-        switch (const ui32 etype = ev->GetTypeRewrite()) {
+        switch (ev->GetTypeRewrite()) {
             hFunc(TEvMessageProcessed, OnMessageProcessed);
             default:
                 TBase::ShutdownHandlerBase(ev);
@@ -75,7 +76,7 @@ private:
             NDq::TDqSerializedBatch batch;
             batch.Proto = std::move(*ev->Get()->Record.MutableChannelData()->MutableData());
             if (batch.Proto.HasPayloadId()) {
-                batch.Payload = ev->Get()->GetPayload(batch.Proto.GetPayloadId());
+                batch.Payload = MakeChunkedBuffer(ev->Get()->GetPayload(batch.Proto.GetPayloadId()));
             }
             OnReceiveData(std::move(batch), messageId, !hasData);
             const auto [it, inserted] = PendingMessages.insert({messageId, std::move(ev)});

@@ -10,6 +10,7 @@ SRCS(
 PEERDIR(
     contrib/ydb/core/base
     contrib/ydb/core/protos
+    contrib/ydb/core/mon
 )
 
 END()

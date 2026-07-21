@@ -1,17 +1,22 @@
-#include "mkql_builtins_impl.h"  // Y_IGNORE  // Y_IGNORE
+#include "mkql_builtins_impl.h" // Y_IGNORE  // Y_IGNORE
 
-#include <library/cpp/pop_count/popcount.h>
+#include <bit>
+#include <type_traits>
 
 namespace NKikimr {
 namespace NMiniKQL {
 
 namespace {
 
-template<typename TInput, typename TOutput>
-struct TCountBits : public TSimpleArithmeticUnary<TInput, TOutput, TCountBits<TInput, TOutput>> {
+template <typename TInput, typename TOutput>
+struct TCountBits: public TSimpleArithmeticUnary<TInput, TOutput, TCountBits<TInput, TOutput>> {
     static TOutput Do(TInput val)
     {
-        return PopCount(val);
+        if constexpr (std::is_signed_v<TInput>) {
+            return std::popcount(static_cast<std::make_unsigned_t<TInput>>(val));
+        } else {
+            return std::popcount(val);
+        }
     }
 
 #ifndef MKQL_DISABLE_CODEGEN
@@ -28,7 +33,7 @@ struct TCountBits : public TSimpleArithmeticUnary<TInput, TOutput, TCountBits<TI
 #endif
 };
 
-}
+} // namespace
 
 void RegisterCountBits(IBuiltinFunctionRegistry& registry) {
     RegisterUnaryIntegralFunctionOpt<TCountBits, TUnaryArgsOpt>(registry, "CountBits");

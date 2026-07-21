@@ -1,7 +1,6 @@
 LIBRARY()
 
 SRCS(
-    common.h
     events.h
 )
 
@@ -9,7 +8,7 @@ PEERDIR(
     util
     contrib/ydb/library/actors/core
     contrib/ydb/library/query_actor
-    contrib/ydb/library/minsketch
+    contrib/ydb/library/yql/core/minsketch
     contrib/ydb/core/protos
     contrib/ydb/core/scheme
 )
@@ -18,6 +17,7 @@ END()
 
 RECURSE(
     aggregator
+    common
     database
     service
     ut_common

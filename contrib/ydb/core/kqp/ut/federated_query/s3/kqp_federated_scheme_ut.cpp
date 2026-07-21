@@ -3,7 +3,7 @@
 #include <contrib/ydb/core/kqp/ut/common/kqp_ut_common.h>
 #include <contrib/ydb/core/kqp/federated_query/kqp_federated_query_helpers.h>
 #include <contrib/ydb/library/yql/utils/log/log.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_table/table.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/table/table.h>
 
 #include <fmt/format.h>
 
@@ -152,13 +152,13 @@ Y_UNIT_TEST_SUITE(KqpFederatedSchemeTest) {
         // Create external table
         {
             const TString sql = TStringBuilder() << R"(
-                UPSERT OBJECT mysasignature (TYPE SECRET) WITH (value = "mysasignaturevalue");
+                CREATE SECRET mysasignature WITH (value = "mysasignaturevalue");
                 CREATE EXTERNAL DATA SOURCE `)" << externalDataSourceName << R"(` WITH (
                     SOURCE_TYPE="ObjectStorage",
                     LOCATION="my-bucket",
                     AUTH_METHOD="SERVICE_ACCOUNT",
                     SERVICE_ACCOUNT_ID="mysa",
-                    SERVICE_ACCOUNT_SECRET_NAME="mysasignature"
+                    SERVICE_ACCOUNT_SECRET_PATH="mysasignature"
                 );
                 CREATE EXTERNAL TABLE `)" << externalTableName << R"(` (
                     Key Uint64
@@ -173,7 +173,7 @@ Y_UNIT_TEST_SUITE(KqpFederatedSchemeTest) {
 
         // Drop secret object
         {
-            const TString sql = "DROP OBJECT mysasignature (TYPE SECRET)";
+            const TString sql = "DROP SECRET mysasignature";
             const auto& [success, issues] = queryExecuter(sql);
             UNIT_ASSERT_C(success, issues);
         }
@@ -214,6 +214,28 @@ Y_UNIT_TEST_SUITE(KqpFederatedSchemeTest) {
             return std::make_pair(result.IsSuccess(), result.GetIssues().ToString());
         };
         TestInvalidDropForExternalTableWithAuth(queryClientExecutor, "generic_query");
+    }
+
+    Y_UNIT_TEST(ExternalTableDdlLocationValidation) {
+        auto kikimr = NTestUtils::MakeKikimrRunner();
+        auto db = kikimr->GetTableClient();
+        auto session = db.CreateSession().GetValueSync().GetSession();
+        auto query = TStringBuilder() << R"(
+            CREATE EXTERNAL DATA SOURCE `/Root/ExternalDataSource` WITH (
+                SOURCE_TYPE="ObjectStorage",
+                LOCATION="my-bucket",
+                AUTH_METHOD="NONE"
+            );
+            CREATE EXTERNAL TABLE `/Root/ExternalTable` (
+                Key Uint64,
+                Value String
+            ) WITH (
+                DATA_SOURCE="/Root/ExternalDataSource",
+                LOCATION="{"
+            );)";
+        auto result = session.ExecuteSchemeQuery(query).GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL(result.GetStatus(), EStatus::SCHEME_ERROR);
+        UNIT_ASSERT_STRING_CONTAINS(result.GetIssues().ToString(), "Location '{' contains invalid wildcard:");
     }
 }
 

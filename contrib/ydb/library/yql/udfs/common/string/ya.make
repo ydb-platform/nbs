@@ -1,25 +1,18 @@
-IF (YQL_PACKAGED)
-    PACKAGE()
-        FROM_SANDBOX(FILE {FILE_RESOURCE_ID} OUT_NOAUTO
-            libstring_udf.so
-        )
-    END()
-ELSE ()
 YQL_UDF_CONTRIB(string_udf)
     
     YQL_ABI_VERSION(
         2
-        37
+        43
         0
     )
-    
+
     SRCS(
         string_udf.cpp
     )
     
     PEERDIR(
+        contrib/ydb/library/yql/public/langver
         contrib/ydb/library/yql/public/udf/arrow
-        library/cpp/charset
         library/cpp/deprecated/split
         library/cpp/html/pcdata
         library/cpp/string_utils/base32
@@ -29,8 +22,6 @@ YQL_UDF_CONTRIB(string_udf)
     )
     
     END()
-ENDIF ()
-
 
 RECURSE_FOR_TESTS(
     test

@@ -1,9 +1,8 @@
 UNITTEST_FOR(contrib/ydb/library/yql/parser/lexer_common)
 
-TAG(ya:manual)
-
 PEERDIR(
     contrib/ydb/library/yql/sql/v1/lexer
+    contrib/ydb/library/yql/sql/v1/lexer/antlr4
 )
 
 

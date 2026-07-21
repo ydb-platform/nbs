@@ -1,5 +1,6 @@
 #include "controller.h"
 #include "controller_impl.h"
+#include "event_util.h"
 
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/discovery/discovery.h>
@@ -50,6 +51,14 @@ STFUNC(TController::StateInit) {
     StateInitImpl(ev, SelfId());
 }
 
+STFUNC(TController::StateDatabaseResolve) {
+    switch (ev->GetTypeRewrite()) {
+        HFunc(TEvPrivate::TEvResolveTenantResult, HandleDatabaseResolve);
+    default:
+        HandleDefaultEvents(ev, SelfId());
+    }
+}
+
 STFUNC(TController::StateWork) {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvController::TEvCreateReplication, Handle);
@@ -65,6 +74,7 @@ STFUNC(TController::StateWork) {
         HFunc(TEvPrivate::TEvAlterDstResult, Handle);
         HFunc(TEvPrivate::TEvDropDstResult, Handle);
         HFunc(TEvPrivate::TEvResolveSecretResult, Handle);
+        HFunc(TEvPrivate::TEvResolveResourceIdResult, Handle);
         HFunc(TEvPrivate::TEvResolveTenantResult, Handle);
         HFunc(TEvPrivate::TEvUpdateTenantNodes, Handle);
         HFunc(TEvPrivate::TEvProcessQueues, Handle);
@@ -77,6 +87,11 @@ STFUNC(TController::StateWork) {
         HFunc(TEvService::TEvStatus, Handle);
         HFunc(TEvService::TEvWorkerStatus, Handle);
         HFunc(TEvService::TEvRunWorker, Handle);
+        HFunc(TEvService::TEvWorkerDataEnd, Handle);
+        HFunc(TEvService::TEvGetTxId, Handle);
+        HFunc(TEvService::TEvHeartbeat, Handle);
+        HFunc(TEvTxAllocatorClient::TEvAllocateResult, Handle);
+        HFunc(TEvTxUserProxy::TEvProposeTransactionStatus, Handle);
         HFunc(TEvInterconnect::TEvNodeDisconnected, Handle);
     default:
         HandleDefaultEvents(ev, SelfId());
@@ -96,7 +111,17 @@ void TController::Cleanup(const TActorContext& ctx) {
         CloseSession(nodeId, ctx);
     }
 
+    if (auto actorId = std::exchange(TxAllocatorClient, {})) {
+        Send(actorId, new TEvents::TEvPoison());
+    }
+
     NodesManager.Shutdown(ctx);
+}
+
+void TController::SwitchToDatabaseResolve(const TActorContext& ctx) {
+    CLOG_T(ctx, "SwitchToDatabaseResolve");
+
+    Become(&TThis::StateDatabaseResolve);
 }
 
 void TController::SwitchToWork(const TActorContext& ctx) {
@@ -109,15 +134,37 @@ void TController::SwitchToWork(const TActorContext& ctx) {
         DiscoveryCache = ctx.Register(CreateDiscoveryCache());
     }
 
+    if (!TxAllocatorClient) {
+        TxAllocatorClient = ctx.RegisterWithSameMailbox(CreateTxAllocatorClient(AppData(ctx)));
+    }
+
+    uint64_t unresolvedDatabaseReplications = 0;
     for (auto& [_, replication] : Replications) {
+        const auto& tenant = replication->GetDatabase();
+        if (tenant) {
+            if (!NodesManager.HasTenant(tenant)) {
+                CLOG_I(ctx, "Discover tenant nodes: tenant# " << tenant);
+                NodesManager.DiscoverNodes(tenant, DiscoveryCache, ctx);
+            }
+        } else {
+            ++unresolvedDatabaseReplications;
+        }
+
         replication->Progress(ctx);
     }
+
+    TabletCounters->Simple()[COUNTER_UNRESOLVED_DATABASE_REPLICATIONS] = unresolvedDatabaseReplications;
 }
 
 void TController::Reset() {
     SysParams.Reset();
     Replications.clear();
     ReplicationsByPathId.clear();
+    UnresolvedDatabaseReplications.clear();
+    AssignedTxIds.clear();
+    Workers.clear();
+    WorkersWithHeartbeat.clear();
+    WorkersByHeartbeat.clear();
 }
 
 void TController::Handle(TEvController::TEvCreateReplication::TPtr& ev, const TActorContext& ctx) {
@@ -171,13 +218,13 @@ void ProcessLimiterQueue(TDeque<TActorId>& requested, THashSet<TActorId>& inflig
 }
 
 void TController::ProcessCreateStreamQueue(const TActorContext& ctx) {
-    const auto& limits = AppData()->ReplicationConfig.GetSchemeOperationLimits();
-    ProcessLimiterQueue<TEvPrivate::TEvAllowCreateStream>(RequestedCreateStream, InflightCreateStream, limits.GetInflightCreateStreamLimit(), ctx);
+    const auto limit = AppData()->ReplicationConfig.GetSchemeOperationLimits().GetInflightCreateStreamLimit();
+    ProcessLimiterQueue<TEvPrivate::TEvAllowCreateStream>(RequestedCreateStream, InflightCreateStream, limit, ctx);
 }
 
 void TController::ProcessDropStreamQueue(const TActorContext& ctx) {
-    const auto& limits = AppData()->ReplicationConfig.GetSchemeOperationLimits();
-    ProcessLimiterQueue<TEvPrivate::TEvAllowDropStream>(RequestedDropStream, InflightDropStream, limits.GetInflightDropStreamLimit(), ctx);
+    const auto limit = AppData()->ReplicationConfig.GetSchemeOperationLimits().GetInflightDropStreamLimit();
+    ProcessLimiterQueue<TEvPrivate::TEvAllowDropStream>(RequestedDropStream, InflightDropStream, limit, ctx);
 }
 
 void TController::Handle(TEvPrivate::TEvRequestCreateStream::TPtr& ev, const TActorContext& ctx) {
@@ -230,6 +277,16 @@ void TController::Handle(TEvPrivate::TEvResolveSecretResult::TPtr& ev, const TAc
     RunTxResolveSecretResult(ev, ctx);
 }
 
+void TController::Handle(TEvPrivate::TEvResolveResourceIdResult::TPtr& ev, const TActorContext& ctx) {
+    CLOG_T(ctx, "Handle " << ev->Get()->ToString());
+    RunTxResolveResourceIdResult(ev, ctx);
+}
+
+void TController::HandleDatabaseResolve(TEvPrivate::TEvResolveTenantResult::TPtr& ev, const TActorContext& ctx) {
+    CLOG_T(ctx, "Handle " << ev->Get()->ToString());
+    RunTxResolveDatabaseResult(ev, ctx);
+}
+
 void TController::Handle(TEvPrivate::TEvResolveTenantResult::TPtr& ev, const TActorContext& ctx) {
     CLOG_T(ctx, "Handle " << ev->Get()->ToString());
 
@@ -244,9 +301,9 @@ void TController::Handle(TEvPrivate::TEvResolveTenantResult::TPtr& ev, const TAc
     }
 
     if (ev->Get()->IsSuccess()) {
-        CLOG_N(ctx, "Tenant resolved"
+        CLOG_N(ctx, "Database resolved"
             << ": rid# " << rid
-            << ", tenant# " << tenant);
+            << ", database# " << tenant);
 
         if (!NodesManager.HasTenant(tenant)) {
             CLOG_I(ctx, "Discover tenant nodes"
@@ -254,12 +311,12 @@ void TController::Handle(TEvPrivate::TEvResolveTenantResult::TPtr& ev, const TAc
             NodesManager.DiscoverNodes(tenant, DiscoveryCache, ctx);
         }
     } else {
-        CLOG_E(ctx, "Resolve tenant error"
+        CLOG_E(ctx, "Resolve database error"
             << ": rid# " << rid);
         Y_ABORT_UNLESS(!tenant);
     }
 
-    replication->SetTenant(tenant);
+    replication->SetDatabase(tenant);
     replication->Progress(ctx);
 }
 
@@ -275,7 +332,6 @@ void TController::Handle(TEvPrivate::TEvUpdateTenantNodes::TPtr& ev, const TActo
 }
 
 void TController::Handle(TEvDiscovery::TEvDiscoveryData::TPtr& ev, const TActorContext& ctx) {
-    Y_ABORT_UNLESS(ev->Get()->CachedMessageData);
     CLOG_T(ctx, "Handle " << ev->Get()->ToString());
 
     auto result = NodesManager.ProcessResponse(ev, ctx);
@@ -406,9 +462,14 @@ void TController::Handle(TEvService::TEvWorkerStatus::TPtr& ev, const TActorCont
             StopQueue.emplace(id, nodeId);
         } else if (record.GetReason() == NKikimrReplication::TEvWorkerStatus::REASON_INFO) {
             UpdateLag(id, TDuration::MilliSeconds(record.GetLagMilliSeconds()));
+        } else if (record.GetReason() == NKikimrReplication::TEvWorkerStatus::REASON_STATS) {
+            UpdateStats(id, record.GetStats());
+        } else if (record.GetReason() == NKikimrReplication::TEvWorkerStatus::REASON_ACK) {
+            UpdateStats(id, record.GetStatus());
         }
         break;
     case NKikimrReplication::TEvWorkerStatus::STATUS_STOPPED:
+        UpdateStats(id, record.GetStatus());
         if (!MaybeRemoveWorker(id, ctx)) {
             if (record.GetReason() == NKikimrReplication::TEvWorkerStatus::REASON_ERROR) {
                 RunTxWorkerError(id, record.GetErrorDescription(), ctx);
@@ -433,6 +494,15 @@ void TController::Handle(TEvService::TEvWorkerStatus::TPtr& ev, const TActorCont
     ScheduleProcessQueues();
 }
 
+TReplication::ITarget* TController::FindTarget(const TWorkerId& id) const {
+    auto replication = Find(id.ReplicationId());
+    if (!replication) {
+        return nullptr;
+    }
+
+    return replication->FindTarget(id.TargetId());
+}
+
 void TController::UpdateLag(const TWorkerId& id, TDuration lag) {
     auto replication = Find(id.ReplicationId());
     if (!replication) {
@@ -448,6 +518,24 @@ void TController::UpdateLag(const TWorkerId& id, TDuration lag) {
     if (const auto lag = replication->GetLag()) {
         TabletCounters->Simple()[COUNTER_DATA_LAG] = lag->MilliSeconds();
     }
+}
+
+void TController::UpdateStats(const TWorkerId& id, const NKikimrReplication::TWorkerStats& stats) {
+    auto* target = FindTarget(id);
+    if (!target) {
+        return;
+    }
+
+    target->UpdateStats(id.WorkerId(), stats);
+}
+
+void TController::UpdateStats(const TWorkerId& id, NKikimrReplication::TEvWorkerStatus::EStatus status) {
+    auto* target = FindTarget(id);
+    if (!target) {
+        return;
+    }
+
+    target->WorkerStatusChanged(id.WorkerId(), status);
 }
 
 void TController::Handle(TEvService::TEvRunWorker::TPtr& ev, const TActorContext& ctx) {
@@ -471,6 +559,43 @@ void TController::Handle(TEvService::TEvRunWorker::TPtr& ev, const TActorContext
     }
 
     ScheduleProcessQueues();
+}
+
+void TController::Handle(TEvService::TEvWorkerDataEnd::TPtr& ev, const TActorContext& ctx) {
+    CLOG_T(ctx, "Handle " << ev->Get()->ToString());
+
+    const auto nodeId = ev->Sender.NodeId();
+    if (!Sessions.contains(nodeId)) {
+        return;
+    }
+
+    const auto& record = ev->Get()->Record;
+    const auto id = TWorkerId::Parse(record.GetWorker());
+    auto* worker = GetOrCreateWorker(id);
+    worker->SetDataEnded(true);
+
+    auto allParentsEnded = AllOf(record.GetAdjacentPartitionsIds(), [&](auto partitionId) {
+        auto it = Workers.find(TWorkerId{id.ReplicationId(), id.TargetId(), partitionId});
+        if (it == Workers.end()) {
+            return false;
+        }
+        return it->second.IsDataEnded();
+    });
+
+    if (allParentsEnded) {
+        auto replication = Replications.at(id.ReplicationId());
+        const auto* target = replication->FindTarget(id.TargetId());
+
+        if (!target) {
+            Y_VERIFY_DEBUG(target);
+            CLOG_E(ctx, "Resolve target error " << id.TargetId() << ": " << ev->Get()->ToString());
+            return;
+        }
+        for (auto partitionId : record.GetChildPartitionsIds()) {
+            auto ev = MakeRunWorkerEv(replication, *target, partitionId);
+            Send(SelfId(), std::move(ev));
+        }
+    }
 }
 
 bool TController::IsValidWorker(const TWorkerId& id) const {
@@ -564,7 +689,7 @@ void TController::ProcessBootQueue(const TActorContext&) {
         auto replication = Find(id.ReplicationId());
         Y_ABORT_UNLESS(replication);
 
-        const auto& tenant = replication->GetTenant();
+        const auto& tenant = replication->GetDatabase();
         if (!tenant || !NodesManager.HasTenant(tenant) || !NodesManager.HasNodes(tenant)) {
             ++iter;
             continue;
@@ -698,6 +823,57 @@ bool TController::MaybeRemoveWorker(const TWorkerId& id, const TActorContext& ct
     return true;
 }
 
+void TController::Handle(TEvService::TEvGetTxId::TPtr& ev, const TActorContext& ctx) {
+    CLOG_T(ctx, "Handle " << ev->Get()->ToString());
+
+    const auto nodeId = ev->Sender.NodeId();
+    if (!Sessions.contains(nodeId)) {
+        return;
+    }
+
+    auto replication = GetSingle();
+    if (!replication) {
+        CLOG_E(ctx, "Cannot assign tx id: ambiguous replication instance");
+        return;
+    }
+
+    const auto& config = replication->GetConfig().GetConsistencySettings();
+    switch (config.GetLevelCase()) {
+    case NKikimrReplication::TConsistencySettings::kGlobal:
+        break;
+    default:
+        CLOG_E(ctx, "Cannot assign tx id: consistency level is not global");
+        return;
+    }
+
+    const auto intervalMs = config.GetGlobal().GetCommitIntervalMilliSeconds();
+    for (const auto& version : ev->Get()->Record.GetVersions()) {
+        const ui64 intervalNo = version.GetStep() / intervalMs;
+        const auto adjustedVersion = TRowVersion(intervalMs * (intervalNo + 1), 0);
+        PendingTxId[adjustedVersion].insert(nodeId);
+    }
+
+    TabletCounters->Simple()[COUNTER_PENDING_VERSIONS] = PendingTxId.size();
+    RunTxAssignTxId(ctx);
+}
+
+void TController::Handle(TEvService::TEvHeartbeat::TPtr& ev, const TActorContext& ctx) {
+    CLOG_T(ctx, "Handle " << ev->Get()->ToString());
+
+    const auto nodeId = ev->Sender.NodeId();
+    if (!Sessions.contains(nodeId)) {
+        return;
+    }
+
+    const auto& record = ev->Get()->Record;
+    const auto id = TWorkerId::Parse(record.GetWorker());
+    const auto version = TRowVersion::FromProto(record.GetVersion());
+    PendingHeartbeats[id] = version;
+
+    TabletCounters->Simple()[COUNTER_WORKERS_PENDING_HEARTBEAT] = PendingHeartbeats.size();
+    RunTxHeartbeat(ctx);
+}
+
 void TController::Handle(TEvInterconnect::TEvNodeDisconnected::TPtr& ev, const TActorContext& ctx) {
     const ui32 nodeId = ev->Get()->NodeId;
 
@@ -725,6 +901,14 @@ TReplication::TPtr TController::Find(const TPathId& pathId) const {
     }
 
     return it->second;
+}
+
+TReplication::TPtr TController::GetSingle() const {
+    if (Replications.size() != 1) {
+        return nullptr;
+    }
+
+    return Replications.begin()->second;
 }
 
 void TController::Remove(ui64 id) {

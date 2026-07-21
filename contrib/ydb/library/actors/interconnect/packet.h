@@ -4,6 +4,7 @@
 #include <contrib/ydb/library/actors/core/event_load.h>
 #include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/interconnect/retro_tracing/spans.h>
 #include <library/cpp/containers/stack_vector/stack_vec.h>
 #include <contrib/ydb/library/actors/util/rope.h>
 #include <contrib/ydb/library/actors/prof/tag.h>
@@ -98,10 +99,12 @@ struct TEventHolder : TNonCopyable {
     ui32 EventSerializedSize;
     ui32 EventActuallySerialized;
     mutable NLWTrace::TOrbit Orbit;
-    NWilson::TSpan Span;
+    NActors::TPacketSpan::TUniversal Span;
     ui32 ZcTransferId; //id of zero copy transfer. In case of RDMA it is a place where some internal handle can be stored to identify events
+    TInstant EnqueueTime;
 
     ui32 Fill(IEventHandle& ev);
+    ui32 Fill(IEventHandle& ev, TInstant now);
 
     void InitChecksum() {
         Descr.Checksum = 0;
@@ -118,7 +121,11 @@ struct TEventHolder : TNonCopyable {
         const TActorId& r = d.Recipient;
         const TActorId& s = d.Sender;
         const TActorId *f = ForwardRecipient ? &ForwardRecipient : nullptr;
-        Span.EndError("nondelivery");
+        if (NWilson::TSpan* wilsonSpan = Span.GetWilsonSpanPtr()) {
+            wilsonSpan->EndError("nondelivery");
+        } else if (NActors::TPacketSpan* retroSpan = Span.GetRetroSpanPtr()) {
+            retroSpan->EndError();
+        }
         auto ev = Event
             ? std::make_unique<IEventHandle>(r, s, Event.Release(), d.Flags, d.Cookie, f, Span.GetTraceId())
             : std::make_unique<IEventHandle>(d.Type, d.Flags, r, s, std::move(Buffer), d.Cookie, f, Span.GetTraceId());
@@ -142,6 +149,7 @@ struct TTcpPacketOutTask : TNonCopyable {
     NInterconnect::TOutgoingStream& OutgoingStream;
     NInterconnect::TOutgoingStream& XdcStream;
     NInterconnect::TOutgoingStream::TBookmark HeaderBookmark;
+
     ui32 InternalSize = 0;
     ui32 ExternalSize = 0;
 
@@ -152,13 +160,10 @@ struct TTcpPacketOutTask : TNonCopyable {
 
     ui32 ExternalChecksum = 0;
 
+    ui32 RdmaPayloadSize = 0;
+
     TTcpPacketOutTask(const TSessionParams& params, NInterconnect::TOutgoingStream& outgoingStream,
-            NInterconnect::TOutgoingStream& xdcStream)
-        : Params(params)
-        , OutgoingStream(outgoingStream)
-        , XdcStream(xdcStream)
-        , HeaderBookmark(OutgoingStream.Bookmark(sizeof(TTcpPacketHeader_v2)))
-    {}
+        NInterconnect::TOutgoingStream& xdcStream);
 
     // Preallocate some space to fill it later.
     NInterconnect::TOutgoingStream::TBookmark Bookmark(size_t len) {
@@ -196,11 +201,13 @@ struct TTcpPacketOutTask : TNonCopyable {
 
     // Append reference to some data (acquired previously or external pointer).
     template<bool External>
-    void Append(const void *buffer, size_t len, ui32* const zcHandle) {
+    void Append(const void *buffer, size_t len, ui32* const zcHandle, bool disableChecksum) {
         Y_DEBUG_ABORT_UNLESS(len <= (External ? GetExternalFreeAmount() : GetInternalFreeAmount()));
         (External ? ExternalSize : InternalSize) += len;
         (External ? XdcStream : OutgoingStream).Append({static_cast<const char*>(buffer), len}, zcHandle);
-        ProcessChecksum<External>(buffer, len);
+        if (! disableChecksum) {
+            ProcessChecksum<External>(buffer, len);
+        }
     }
 
     // Write some data with copying.
@@ -222,6 +229,10 @@ struct TTcpPacketOutTask : TNonCopyable {
                 InternalChecksumLen += len;
             }
         }
+    }
+
+    void AttachRdmaPayloadSize(ui32 sz) {
+        RdmaPayloadSize = sz;
     }
 
     void Finish(ui64 serial, ui64 confirm) {
@@ -270,6 +281,7 @@ struct TTcpPacketOutTask : TNonCopyable {
     ui32 GetInternalFreeAmount() const { return TTcpPacketBuf::PacketDataLen - InternalSize; }
     ui32 GetExternalFreeAmount() const { return 16384 - ExternalSize; }
     ui32 GetExternalSize() const { return ExternalSize; }
+    ui32 GetRdmaPayloadSize() const { return RdmaPayloadSize; }
 };
 
 namespace NInterconnect::NDetail {

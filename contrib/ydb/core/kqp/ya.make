@@ -43,7 +43,7 @@ PEERDIR(
     contrib/ydb/library/yql/utils/log
     contrib/ydb/public/api/protos
     contrib/ydb/public/lib/base
-    contrib/ydb/public/lib/operation_id
+    contrib/ydb/public/sdk/cpp/src/library/operation_id
 )
 
 YQL_LAST_ABI_VERSION()
@@ -73,9 +73,18 @@ RECURSE(
     run_script_actor
     runtime
     session_actor
+    tests
     workload_service
 )
 
 RECURSE_FOR_TESTS(
     ut
+    common/result_set_format/ut
+    tools/hash_test
 )
+
+IF (NOT OS_WINDOWS)
+    RECURSE_FOR_TESTS(
+        tools/combiner_perf/bin
+    )
+ENDIF()

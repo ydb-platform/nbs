@@ -1,6 +1,6 @@
 #include "yql_opt_json_peephole_physical.h"
 
-#include <contrib/ydb/library/yql/core/yql_atom_enums.h>
+#include <contrib/ydb/library/yql/core/sql_types/yql_atom_enums.h>
 #include <contrib/ydb/library/yql/core/yql_expr_type_annotation.h>
 
 namespace NYql {

@@ -8,10 +8,10 @@
 #include <contrib/ydb/core/tx/tx_proxy/proxy.h>
 #include <contrib/ydb/core/ydb_convert/ydb_convert.h>
 
-#include <contrib/ydb/public/lib/operation_id/operation_id.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_params/params.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_params/params.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_proto/accessor.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/library/operation_id/operation_id.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/params/params.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/params/params.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/proto/accessor.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
 
@@ -201,7 +201,7 @@ private:
 
     void HandlePoison(const TActorContext& ctx) {
         LOG_DEBUG_S(ctx, NKikimrServices::DS_LOAD_TEST, "TKqpSelectActor# " << Id
-            << " tablet recieved PoisonPill, going to die");
+            << " tablet received PoisonPill, going to die");
         CloseSession(ctx);
         Die(ctx);
     }
@@ -223,7 +223,7 @@ private:
         LOG_TRACE_S(ctx, NKikimrServices::DS_LOAD_TEST, "TKqpSelectActor# " << Id
             << " received from " << ev->Sender << ": " << ev->Get()->Record.DebugString());
 
-        auto& response = ev->Get()->Record.GetRef();
+        auto& response = ev->Get()->Record;
         if (response.GetYdbStatus() != Ydb::StatusIds_StatusCode_SUCCESS) {
             ++Errors;
         }
@@ -329,6 +329,7 @@ private:
     void DescribePath(const TActorContext& ctx) {
         TString path = Target.GetWorkingDir() + "/" + Target.GetTableName();
         auto request = std::make_unique<TEvTxUserProxy::TEvNavigate>();
+        request->Record.SetDatabaseName(Target.GetWorkingDir());
         request->Record.MutableDescribePath()->SetPath(path);
         ctx.Send(MakeTxProxyID(), request.release());
     }
@@ -493,7 +494,7 @@ private:
 
     void HandlePoison(const TActorContext& ctx) {
         LOG_DEBUG_S(ctx, NKikimrServices::DS_LOAD_TEST, "TKqpSelectActorMultiSession# " << Id
-            << " tablet recieved PoisonPill, going to die");
+            << " tablet received PoisonPill, going to die");
         Stop(ctx);
     }
 

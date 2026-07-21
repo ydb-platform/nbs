@@ -18,8 +18,8 @@ PEERDIR(
     contrib/ydb/core/client/server
     contrib/ydb/core/grpc_services
     contrib/ydb/core/mind/address_classification
-    contrib/ydb/core/persqueue
     contrib/ydb/core/persqueue/events
+    contrib/ydb/core/persqueue/public/counters
     contrib/ydb/core/persqueue/writer
     contrib/ydb/core/protos
     contrib/ydb/library/aclib

@@ -3,7 +3,9 @@
 
 #include <contrib/ydb/core/tablet/tablet_exception.h>
 #include <contrib/ydb/core/tablet_flat/flat_cxx_database.h>
+
 #include <contrib/ydb/library/aclib/aclib.h>
+#include <contrib/ydb/library/security/util.h>
 
 namespace NKikimr {
 namespace NSchemeShard {
@@ -51,11 +53,14 @@ struct TSchemeShard::TTxInitRoot : public TSchemeShard::TRwTxBase {
                 LOG_ERROR_S(ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
                      "TTxInitRoot DoExecute"
                          << ", path: " << rootName
-                         << ", error creating user: " << defaultUser.GetName()
+                         << ", error creating user: '" << defaultUser.GetName() << "'"
                          << ", error: " << response.Error);
             } else {
                 auto& sid = Self->LoginProvider.Sids[defaultUser.GetName()];
-                db.Table<Schema::LoginSids>().Key(sid.Name).Update<Schema::LoginSids::SidType, Schema::LoginSids::SidHash>(sid.Type, sid.Hash);
+                db.Table<Schema::LoginSids>().Key(sid.Name).Update<Schema::LoginSids::SidType,
+                                                                   Schema::LoginSids::PasswordHashes,
+                                                                   Schema::LoginSids::CreatedAt>(
+                                                                    sid.Type, sid.PasswordHashes, ToMicroSeconds(sid.CreatedAt));
                 if (owner.empty()) {
                     owner = defaultUser.GetName();
                 }
@@ -66,7 +71,7 @@ struct TSchemeShard::TTxInitRoot : public TSchemeShard::TRwTxBase {
             auto response = Self->LoginProvider.CreateGroup({
                 .Group = defaultGroup.GetName(),
                 .Options = {
-                    .CheckName = false
+                    .StrongCheckName = false
                 }
             });
             if (response.Error) {
@@ -77,7 +82,8 @@ struct TSchemeShard::TTxInitRoot : public TSchemeShard::TRwTxBase {
                          << ", error: " << response.Error);
             } else {
                 auto& sid = Self->LoginProvider.Sids[defaultGroup.GetName()];
-                db.Table<Schema::LoginSids>().Key(sid.Name).Update<Schema::LoginSids::SidType>(sid.Type);
+                db.Table<Schema::LoginSids>().Key(sid.Name).Update<Schema::LoginSids::SidType,
+                                                                   Schema::LoginSids::CreatedAt>(sid.Type, ToMicroSeconds(sid.CreatedAt));
                 for (const auto& member : defaultGroup.GetMembers()) {
                     auto response = Self->LoginProvider.AddGroupMembership({
                         .Group = defaultGroup.GetName(),
@@ -87,7 +93,7 @@ struct TSchemeShard::TTxInitRoot : public TSchemeShard::TRwTxBase {
                         LOG_ERROR_S(ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
                             "TTxInitRoot DoExecute"
                                 << ", path: " << rootName
-                                << ", error modifying group: " << defaultGroup.GetName()
+                                << ", error modifying group: '" << defaultGroup.GetName() << "'"
                                 << ", with member: " << member
                                 << ", error: " << response.Error);
                     } else {
@@ -119,9 +125,17 @@ struct TSchemeShard::TTxInitRoot : public TSchemeShard::TRwTxBase {
 
         NACLib::TDiffACL diffAcl;
         for (const auto& defaultAccess : securityConfig.GetDefaultAccess()) {
-            NACLibProto::TACE ace;
-            NACLib::TACL::FromString(ace, defaultAccess);
-            diffAcl.AddAccess(ace);
+            try {
+                NACLibProto::TACE ace;
+                NACLib::TACL::FromString(ace, defaultAccess);
+                diffAcl.AddAccess(ace);
+            } catch (const yexception& e) {
+                LOG_ERROR_S(ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
+                            "TTxInitRoot DoExecute"
+                                << ", path: " << rootName
+                                << ", error setting access right: '" << defaultAccess << "'"
+                                << ", error: " << e.what());
+            }
         }
         newPath->ApplyACL(diffAcl.SerializeAsString());
         newPath->CachedEffectiveACL.Init(newPath->ACL);
@@ -132,7 +146,7 @@ struct TSchemeShard::TTxInitRoot : public TSchemeShard::TRwTxBase {
         Self->PersistUpdateNextPathId(db);
         Self->PersistUpdateNextShardIdx(db);
         Self->PersistStoragePools(db, Self->RootPathId(), *newDomain);
-        Self->PersistSchemeLimit(db, Self->RootPathId(), *newDomain);
+        Self->PersistSchemeLimits(db, Self->RootPathId(), *newDomain);
         Self->PersistACL(db, newPath);
 
         Self->InitState = TTenantInitState::Done;
@@ -362,7 +376,8 @@ struct TSchemeShard::TTxInitTenantSchemeShard : public TSchemeShard::TRwTxBase {
         Self->ParentDomainEffectiveACLVersion = effectiveACLVersion;
         Self->ParentDomainCachedEffectiveACL.Init(Self->ParentDomainEffectiveACL);
 
-        newPath->CachedEffectiveACL.Update(Self->ParentDomainCachedEffectiveACL, newPath->ACL, newPath->IsContainer());
+        newPath->CachedEffectiveACL.Update(Self->ParentDomainCachedEffectiveACL, newPath->ACL,
+            newPath->IsContainer(), /*isTenantRoot*/ true);
 
         TPathId resourcesDomainId = Self->ParentDomainId;
         if (record.HasResourcesDomainOwnerId() && record.HasResourcesDomainPathId()) {
@@ -428,7 +443,7 @@ struct TSchemeShard::TTxInitTenantSchemeShard : public TSchemeShard::TRwTxBase {
         Self->ApplyAndPersistUserAttrs(db, newPath->PathId);
 
         Self->PersistSubDomain(db, Self->RootPathId(), *subdomain);
-        Self->PersistSchemeLimit(db, Self->RootPathId(), *subdomain);
+        Self->PersistSchemeLimits(db, Self->RootPathId(), *subdomain);
         Self->PersistSubDomainSchemeQuotas(db, Self->RootPathId(), *subdomain);
 
         Self->PersistUpdateNextPathId(db);
@@ -710,7 +725,8 @@ struct TSchemeShard::TTxMigrate : public TSchemeShard::TRwTxBase {
                     NIceDb::TUpdate<Schema::MigratedColumns::DefaultKind>(ETableColumnDefaultKind(colDescr.GetDefaultKind())),
                     NIceDb::TUpdate<Schema::MigratedColumns::DefaultValue>(colDescr.GetDefaultValue()),
                     NIceDb::TUpdate<Schema::MigratedColumns::NotNull>(colDescr.GetNotNull()),
-                    NIceDb::TUpdate<Schema::MigratedColumns::IsBuildInProgress>(colDescr.GetIsBuildInProgress()));
+                    NIceDb::TUpdate<Schema::MigratedColumns::IsBuildInProgress>(colDescr.GetIsBuildInProgress()),
+                    NIceDb::TUpdate<Schema::MigratedColumns::SetNotNullInProgress>(colDescr.GetSetNotNullInProgress()));
             }
 
             for (const NKikimrScheme::TMigratePartition& partDescr: tableDescr.GetPartitions()) {

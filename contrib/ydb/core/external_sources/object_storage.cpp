@@ -3,24 +3,37 @@
 #include "validation_functions.h"
 #include "object_storage/s3_fetcher.h"
 
+#include <util/string/join.h>
 #include <contrib/ydb/core/external_sources/object_storage/inference/arrow_fetcher.h>
 #include <contrib/ydb/core/external_sources/object_storage/inference/arrow_inferencinator.h>
+#include <contrib/ydb/core/external_sources/object_storage/inference/infer_config.h>
 #include <contrib/ydb/core/kqp/gateway/actors/kqp_ic_gateway_actors.h>
 #include <contrib/ydb/core/protos/external_sources.pb.h>
-#include <contrib/ydb/core/protos/flat_scheme_op.pb.h>
 #include <contrib/ydb/library/yql/providers/common/http_gateway/yql_http_gateway.h>
 #include <contrib/ydb/library/yql/providers/common/provider/yql_provider_names.h>
+#include <contrib/ydb/library/yql/providers/common/structured_token/yql_token_builder.h>
 #include <contrib/ydb/library/yql/providers/s3/credentials/credentials.h>
 #include <contrib/ydb/library/yql/providers/s3/object_listers/yql_s3_list.h>
+#include <contrib/ydb/library/yql/providers/s3/object_listers/yql_s3_path.h>
 #include <contrib/ydb/library/yql/providers/s3/path_generator/yql_s3_path_generator.h>
+#include <contrib/ydb/library/yql/providers/s3/proto/credentials.pb.h>
+#include <contrib/ydb/library/yql/utils/yql_panic.h>
 #include <contrib/ydb/public/api/protos/ydb_status_codes.pb.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_value/value.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/value/value.h>
+#include <contrib/ydb/public/sdk/cpp/adapters/issue/issue.h>
 
 #include <library/cpp/scheme/scheme.h>
+#include <library/cpp/json/json_reader.h>
+#include <arrow/buffer_builder.h>
+#include <arrow/buffer.h>
+#include <arrow/io/memory.h>
 
 #include <util/string/builder.h>
+#include <util/string/strip.h>
 
 #include <array>
+
+#define YDB_LOG_THIS_FILE_COMPONENT NKikimrServices::KQP_GATEWAY
 
 namespace NKikimr::NExternalSource {
 
@@ -31,12 +44,14 @@ struct TObjectStorageExternalSource : public IExternalSource {
                                           NActors::TActorSystem* actorSystem,
                                           size_t pathsLimit,
                                           std::shared_ptr<NYql::ISecuredServiceAccountCredentialsFactory> credentialsFactory,
-                                          bool enableInfer)
+                                          bool enableInfer,
+                                          bool allowLocalFiles)
         : HostnamePatterns(hostnamePatterns)
         , PathsLimit(pathsLimit)
         , ActorSystem(actorSystem)
         , CredentialsFactory(std::move(credentialsFactory))
         , EnableInfer(enableInfer)
+        , AllowLocalFiles(allowLocalFiles)
     {}
 
     virtual TString Pack(const NKikimrExternalSources::TSchema& schema,
@@ -51,19 +66,29 @@ struct TObjectStorageExternalSource : public IExternalSource {
             } else if (key.StartsWith("projection.") || key == "storage.location.template") {
                 objectStorage.mutable_projection()->insert({key, value});
             } else if (lowerKey == "partitioned_by") {
-                auto json = NSc::TValue::FromJsonThrow(value);
-                for (const auto& column: json.GetArray()) {
-                    *objectStorage.add_partitioned_by() = column;
+                try {
+                    const auto json = NSc::TValue::FromJsonThrow(value);
+                    if (!json.IsArray()) {
+                        throw TExternalSourceException() << "partitioned_by must be an array of column names";
+                    }
+                    for (const auto& column: json.GetArray()) {
+                        if (!column.IsString()) {
+                            throw TExternalSourceException() << "partitioned_by must be an array of strings";
+                        }
+                        *objectStorage.add_partitioned_by() = column;
+                    }
+                } catch (const std::exception& e) {
+                    throw TExternalSourceException() << "Failed to parse partitioned_by: " << e.what();
                 }
-            } else if (IsIn({"file_pattern"sv, "data.interval.unit"sv, "data.datetime.format_name"sv, "data.datetime.format"sv, "data.timestamp.format_name"sv, "data.timestamp.format"sv, "csv_delimiter"sv}, lowerKey)) {
+            } else if (IsIn({"file_pattern"sv, "data.interval.unit"sv, "data.datetime.format_name"sv, "data.datetime.format"sv, "data.timestamp.format_name"sv, "data.timestamp.format"sv, "data.date.format"sv, "csv_delimiter"sv}, lowerKey)) {
                 objectStorage.mutable_format_setting()->insert({lowerKey, value});
             } else {
-                ythrow TExternalSourceException() << "Unknown attribute " << key;
+                throw TExternalSourceException() << "Unknown attribute " << key;
             }
         }
 
-        if (auto issues = Validate(schema, objectStorage, PathsLimit)) {
-            ythrow TExternalSourceException() << issues.ToString();
+        if (auto issues = Validate(schema, objectStorage, PathsLimit, general.location())) {
+            throw TExternalSourceException() << issues.ToString();
         }
 
         return objectStorage.SerializeAsString();
@@ -124,18 +149,32 @@ struct TObjectStorageExternalSource : public IExternalSource {
         }
 
         if (!proto.GetProperties().GetProperties().empty()) {
-            ythrow TExternalSourceException() << "ObjectStorage source doesn't support any properties";
+            throw TExternalSourceException() << "ObjectStorage source doesn't support any properties";
+        }
+
+        if (StripString(proto.GetLocation()).empty()) {
+            throw TExternalSourceException() << "ObjectStorage source must specify a non-empty location pointing to a bucket";
         }
 
         ValidateHostname(HostnamePatterns, proto.GetLocation());
     }
 
     template<typename TScheme, typename TObjectStorage>
-    static NYql::TIssues Validate(const TScheme& schema, const TObjectStorage& objectStorage, size_t pathsLimit) {
+    static NYql::TIssues Validate(const TScheme& schema, const TObjectStorage& objectStorage, size_t pathsLimit, const TString& location) {
         NYql::TIssues issues;
-        issues.AddIssues(ValidateFormatSetting(objectStorage.format(), objectStorage.format_setting()));
+        if (TString errorString = NYql::NS3::ValidateWildcards(location)) {
+            issues.AddIssue(MakeErrorIssue(Ydb::StatusIds::BAD_REQUEST, TStringBuilder() << "Location '" << location << "' contains invalid wildcard: " << errorString));
+        }
+        const bool hasPartitioning = objectStorage.projection_size() || objectStorage.partitioned_by_size();
+        issues.AddIssues(ValidateFormatSetting(objectStorage.format(), objectStorage.format_setting(), location, hasPartitioning));
+        issues.AddIssues(ValidateCompressionForFormat(objectStorage.format(), objectStorage.compression()));
+        issues.AddIssues(ValidateSchema(schema));
+        issues.AddIssues(ValidateJsonListFormat(objectStorage.format(), schema, objectStorage.partitioned_by()));
         issues.AddIssues(ValidateRawFormat(objectStorage.format(), schema, objectStorage.partitioned_by()));
-        if (objectStorage.projection_size() || objectStorage.partitioned_by_size()) {
+        if (hasPartitioning) {
+            if (NYql::NS3::HasWildcards(location)) {
+                issues.AddIssue(MakeErrorIssue(Ydb::StatusIds::BAD_REQUEST, TStringBuilder() << "Location '" << location << "' contains wildcards"));
+            }
             try {
                 TVector<TString> partitionedBy{objectStorage.partitioned_by().begin(), objectStorage.partitioned_by().end()};
                 issues.AddIssues(ValidateProjectionColumns(schema, partitionedBy));
@@ -155,11 +194,17 @@ struct TObjectStorageExternalSource : public IExternalSource {
         return issues;
     }
 
-    static NYql::TIssues ValidateFormatSetting(const TString& format, const google::protobuf::Map<TString, TString>& formatSetting) {
+    static NYql::TIssues ValidateFormatSetting(const TString& format, const google::protobuf::Map<TString, TString>& formatSetting, const TString& location, bool hasPartitioning) {
         NYql::TIssues issues;
         issues.AddIssues(ValidateDateFormatSetting(formatSetting));
         for (const auto& [key, value]: formatSetting) {
             if (key == "file_pattern"sv) {
+                if (TString errorString = NYql::NS3::ValidateWildcards(value)) {
+                    issues.AddIssue(MakeErrorIssue(Ydb::StatusIds::BAD_REQUEST, TStringBuilder() << "File pattern '" << value << "' contains invalid wildcard: " << errorString));
+                }
+                if (value && !hasPartitioning && !location.EndsWith("/")) {
+                    issues.AddIssue(MakeErrorIssue(Ydb::StatusIds::BAD_REQUEST, "Path pattern cannot be used with file_pattern"));
+                }
                 continue;
             }
 
@@ -170,21 +215,31 @@ struct TObjectStorageExternalSource : public IExternalSource {
                 continue;
             }
 
-            if (IsIn({ "data.datetime.format_name"sv, "data.datetime.format"sv, "data.timestamp.format_name"sv, "data.timestamp.format"sv}, key)) {
+            if (IsIn({ "data.datetime.format_name"sv, "data.datetime.format"sv, "data.timestamp.format_name"sv, "data.timestamp.format"sv, "data.date.format"sv}, key)) {
                 continue;
             }
 
             if (key == "csv_delimiter"sv) {
-                if (format != "csv_with_names"sv) {
-                    issues.AddIssue(MakeErrorIssue(Ydb::StatusIds::BAD_REQUEST, "csv_delimiter should be used only with format csv_with_names"));
+                if (format != "csv_with_names"sv && format != "csv"sv) {
+                    issues.AddIssue(MakeErrorIssue(Ydb::StatusIds::BAD_REQUEST, "csv_delimiter can only be used with csv_with_names or csv format"));
                 }
                 if (value.size() != 1) {
-                    issues.AddIssue(MakeErrorIssue(Ydb::StatusIds::BAD_REQUEST, "csv_delimiter should contain only one character"));
+                    issues.AddIssue(MakeErrorIssue(Ydb::StatusIds::BAD_REQUEST, "csv_delimiter must be single character"));
                 }
                 continue;
             }
 
             issues.AddIssue(MakeErrorIssue(Ydb::StatusIds::BAD_REQUEST, "unknown format setting " + key));
+        }
+        return issues;
+    }
+
+    static NYql::TIssues ValidateCompressionForFormat(const TString& format, const TString& compression) {
+        NYql::TIssues issues;
+        if (compression == "lz4"sv && (format == "raw"sv || format == "json_list"sv)) {
+            issues.AddIssue(MakeErrorIssue(Ydb::StatusIds::BAD_REQUEST,
+                TStringBuilder() << "Compression '" << compression << "' is not supported for format '" << format
+                                 << "'. Use one of: gzip, zstd, brotli, bzip2, xz"));
         }
         return issues;
     }
@@ -231,10 +286,58 @@ struct TObjectStorageExternalSource : public IExternalSource {
                 continue;
             }
 
+            if (key == "data.date.format"sv) {
+                continue;
+            }
+
+            if (key == "skip.json.errors"sv) {
+                continue;
+            }
+
             if (matchAllSettings) {
                 issues.AddIssue(MakeErrorIssue(Ydb::StatusIds::BAD_REQUEST, "unknown format setting " + key));
             }
         }
+        return issues;
+    }
+
+    template<typename TScheme>
+    static NYql::TIssues ValidateSchema(const TScheme& schema) {
+        NYql::TIssues issues;
+        for (const auto& column: schema.column()) {
+            const auto type = column.type();
+            if (type.has_optional_type() && type.optional_type().item().has_optional_type()) {
+                issues.AddIssue(MakeErrorIssue(
+                    Ydb::StatusIds::BAD_REQUEST,
+                    TStringBuilder{} << "Double optional types are not supported (you have '"
+                        << column.name() << " " << NYdb::TType(column.type()).ToString() << "' field)"));
+            }
+        }
+
+        return issues;
+    }
+
+    template<typename TScheme>
+    static NYql::TIssues ValidateJsonListFormat(const TString& format, const TScheme& schema, const google::protobuf::RepeatedPtrField<TString>& partitionedBy) {
+        NYql::TIssues issues;
+        if (format != "json_list"sv) {
+            return issues;
+        }
+
+        TSet<TString> partitionedBySet{partitionedBy.begin(), partitionedBy.end()};
+
+        for (const auto& column: schema.column()) {
+            if (partitionedBySet.contains(column.name())) {
+                continue;
+            }
+            if (ValidateDateOrTimeType(column.type())) {
+                issues.AddIssue(MakeErrorIssue(
+                    Ydb::StatusIds::BAD_REQUEST,
+                    TStringBuilder{} << "Date, Timestamp and Interval types are not allowed in json_list format (you have '"
+                        << column.name() << " " << NYdb::TType(column.type()).ToString() << "' field)"));
+            }
+        }
+
         return issues;
     }
 
@@ -256,14 +359,14 @@ struct TObjectStorageExternalSource : public IExternalSource {
             if (!ValidateStringType(column.type())) {
                 issues.AddIssue(MakeErrorIssue(
                     Ydb::StatusIds::BAD_REQUEST,
-                    TStringBuilder{} << TStringBuilder() << "Only string type column in schema supported in raw format (you have '" 
+                    TStringBuilder{} << TStringBuilder() << "Only string type column in schema supported in raw format (you have '"
                         << column.name() << " " << NYdb::TType(column.type()).ToString() << "' field)"));
             }
             ++realSchemaColumnsCount;
         }
 
         if (realSchemaColumnsCount != 1) {
-            issues.AddIssue(MakeErrorIssue(Ydb::StatusIds::BAD_REQUEST, TStringBuilder{} << TStringBuilder() << "Only one column in schema supported in raw format (you have " 
+            issues.AddIssue(MakeErrorIssue(Ydb::StatusIds::BAD_REQUEST, TStringBuilder{} << TStringBuilder() << "Only one column in schema supported in raw format (you have "
                 << realSchemaColumnsCount << " fields)"));
         }
         return issues;
@@ -273,102 +376,110 @@ struct TObjectStorageExternalSource : public IExternalSource {
         std::shared_ptr<TMetadata> Metadata;
     };
 
-    virtual NThreading::TFuture<std::shared_ptr<TMetadata>> LoadDynamicMetadata(std::shared_ptr<TMetadata> meta) override {
-        Y_UNUSED(ActorSystem);
+    // High-level orchestration of dynamic schema inference for an external table.
+    //
+    // Pipeline (each stage may run asynchronously):
+    //   1. Build credentials / structured token            -> BuildStructuredToken
+    //   2. Plan S3 listing requests                        -> BuildListingPlan
+    //   3. List S3 objects, pick a first non-empty file    -> SelectFirstNonEmptyFile
+    //   4. Infer schema from that file                     -> arrow inferencinator actor
+    //   5. Append static partition columns to schema       -> AppendPartitionColumns
+    //   6. (Optional) Re-infer types of partition columns  -> InferPartitionedColumnsTypes
+    virtual NThreading::TFuture<std::shared_ptr<TMetadata>> LoadDynamicMetadata(std::shared_ptr<TMetadata> meta) override try {
         auto format = meta->Attributes.FindPtr("format");
         if (!format || !meta->Attributes.contains("withinfer")) {
             return NThreading::MakeFuture(std::move(meta));
         }
-
         if (!NObjectStorage::NInference::IsArrowInferredFormat(*format)) {
             return NThreading::MakeFuture(std::move(meta));
         }
 
-        NYql::TS3Credentials::TAuthInfo authInfo{};
-        if (std::holds_alternative<NAuth::TAws>(meta->Auth)) {
-            auto& awsAuth = std::get<NAuth::TAws>(meta->Auth);
-            authInfo.AwsAccessKey = awsAuth.AccessKey;
-            authInfo.AwsAccessSecret = awsAuth.SecretAccessKey;
-            authInfo.AwsRegion = awsAuth.Region;
-        } else if (std::holds_alternative<NAuth::TServiceAccount>(meta->Auth)) {
-            if (!CredentialsFactory) {
-                try {
-                    throw yexception{} << "trying to authenticate with service account credentials, internal error";
-                } catch (const yexception& error) {
-                    return NThreading::MakeErrorFuture<std::shared_ptr<TMetadata>>(std::current_exception());
-                }
-            }
-            auto& saAuth = std::get<NAuth::TServiceAccount>(meta->Auth);
-            NYql::GetAuthInfo(CredentialsFactory, "");
-            authInfo.Token = CredentialsFactory->Create(saAuth.ServiceAccountId, saAuth.ServiceAccountIdSignature)->CreateProvider()->GetAuthInfo();
+        // Stage 1: credentials.
+        const NYql::TS3Credentials credentials(CredentialsFactory, BuildStructuredToken(*meta, CredentialsFactory));
+
+        const TString path = meta->TableLocation;
+        const TString filePattern = meta->Attributes.Value("filepattern", TString{});
+        const TString projection = meta->Attributes.Value("projection", TString{});
+        const TVector<TString> partitionedBy = GetPartitionedByConfig(meta);
+
+        const bool shouldInferPartitions = !partitionedBy.empty() && projection.empty();
+        const bool ignoreEmptyListings = !projection.empty();
+
+        // Stage 2: listing plan (multiple requests when projection rules expand to several prefixes).
+        auto plan = BuildListingPlan(*meta, path, filePattern, projection, partitionedBy, credentials);
+        const auto pathGenerator = plan.PathGenerator;
+
+        // Accumulator for "<col1>,<col2>\n<glob1_v1>,<glob1_v2>\n..." used by stage 6.
+        auto partByData = std::make_shared<TStringBuilder>();
+        if (shouldInferPartitions) {
+            *partByData << JoinSeq(",", partitionedBy);
         }
 
+        // Stage 3: kick off all listings in parallel.
         auto httpGateway = NYql::IHTTPGateway::Make();
-        auto s3Lister = NYql::NS3Lister::MakeS3Lister(httpGateway, NYql::NS3Lister::TListingRequest{
-            .Url = meta->DataSourceLocation,
-            .AuthInfo = authInfo,
-            .Pattern = meta->TableLocation,
-        }, Nothing(), false);
-        auto afterListing = s3Lister->Next().Apply([path = meta->TableLocation](const NThreading::TFuture<NYql::NS3Lister::TListResult>& listResFut) {
-            auto& listRes = listResFut.GetValue();
-            if (std::holds_alternative<NYql::NS3Lister::TListError>(listRes)) {
-                auto& error = std::get<NYql::NS3Lister::TListError>(listRes);
-                throw yexception() << error.Issues.ToString();
-            }
-            auto& entries = std::get<NYql::NS3Lister::TListEntries>(listRes);
-            if (entries.Objects.empty()) {
-                throw yexception() << "couldn't find files at " << path;
-            }
-            for (const auto& entry : entries.Objects) {
-                if (entry.Size > 0) {
-                    return entry.Path;
-                }
-            }
-            throw yexception() << "couldn't find any files for type inference, please check that the right path is provided";
-        });
+        auto s3HttpRetryPolicy = NYql::GetFqHTTPRetryPolicy();
+        TVector<NThreading::TFuture<NYql::NS3Lister::TListResult>> futures;
+        futures.reserve(plan.Requests.size());
+        for (const auto& req : plan.Requests) {
+            auto s3Lister = NYql::NS3Lister::MakeS3Lister(httpGateway, s3HttpRetryPolicy, req, Nothing(), AllowLocalFiles, ActorSystem);
+            futures.push_back(s3Lister->Next());
+        }
+        auto afterListing = NThreading::WaitExceptionOrAll(futures).Apply(
+            [partByData, shouldInferPartitions, ignoreEmptyListings,
+             futures = std::move(futures), requests = std::move(plan.Requests)]
+            (const NThreading::TFuture<void>& result) {
+                result.GetValue(); // rethrow exception, if any
+                return SelectFirstNonEmptyFile(partByData, shouldInferPartitions, ignoreEmptyListings, futures, requests);
+            });
 
+        // Set up actors that will fetch & infer from the chosen file.
         auto s3FetcherId = ActorSystem->Register(NObjectStorage::CreateS3FetcherActor(
             meta->DataSourceLocation,
             httpGateway,
             NYql::IHTTPGateway::TRetryPolicy::GetNoRetryPolicy(),
-            std::move(authInfo)
-        ));
+            credentials));
 
         meta->Attributes.erase("withinfer");
 
-        auto fileFormat = NObjectStorage::NInference::ConvertFileFormat(*format);
-        auto arrowFetcherId = ActorSystem->Register(NObjectStorage::NInference::CreateArrowFetchingActor(s3FetcherId, fileFormat));
-        auto arrowInferencinatorId = ActorSystem->Register(NObjectStorage::NInference::CreateArrowInferencinator(arrowFetcherId, fileFormat, meta->Attributes));
+        auto arrowFetcherId = ActorSystem->Register(NObjectStorage::NInference::CreateArrowFetchingActor(s3FetcherId, meta->Attributes));
+        auto arrowInferencinatorId = ActorSystem->Register(NObjectStorage::NInference::CreateArrowInferencinator(arrowFetcherId));
 
-        return afterListing.Apply([arrowInferencinatorId, meta, actorSystem = ActorSystem](const NThreading::TFuture<TString>& pathFut) {
-            auto promise = NThreading::NewPromise<TMetadataResult>();
-            auto schemaToMetadata = [meta](NThreading::TPromise<TMetadataResult> metaPromise, NObjectStorage::TEvInferredFileSchema&& response) {
-                meta->Changed = true;
-                meta->Schema.clear_column();
-                for (const auto& column : response.Fields) {
-                    auto& destColumn = *meta->Schema.add_column();
-                    destColumn = column;
+        // Stage 4: file -> schema.
+        auto afterInference = afterListing.Apply(
+            [arrowInferencinatorId, meta, actorSystem = ActorSystem]
+            (const NThreading::TFuture<NYql::NS3Lister::TObjectListEntry>& entryFut) {
+                auto promise = NThreading::NewPromise<TMetadataResult>();
+                auto [path, size, _] = entryFut.GetValue();
+                actorSystem->Register(new NKqp::TActorRequestHandler<NObjectStorage::TEvInferFileSchema, NObjectStorage::TEvInferredFileSchema, TMetadataResult>(
+                    arrowInferencinatorId,
+                    new NObjectStorage::TEvInferFileSchema(std::move(path), size),
+                    promise,
+                    MakeSchemaToMetadataHandler(meta)));
+                return promise.GetFuture();
+            });
+
+        // Stage 5 & 6: append partition columns; optionally infer their types.
+        return afterInference.Apply(
+            [arrowInferencinatorId, partByData, partitionedBy, pathGenerator, this]
+            (const NThreading::TFuture<TMetadataResult>& result) {
+                const auto& value = result.GetValue();
+                if (!value.Success()) {
+                    return result;
                 }
-                TMetadataResult result;
-                result.SetSuccess();
-                result.Metadata = meta;
-                metaPromise.SetValue(std::move(result));
-            };
-            actorSystem->Register(new NKqp::TActorRequestHandler<NObjectStorage::TEvInferFileSchema, NObjectStorage::TEvInferredFileSchema, TMetadataResult>(
-                arrowInferencinatorId,
-                new NObjectStorage::TEvInferFileSchema(TString{pathFut.GetValue()}),
-                promise,
-                std::move(schemaToMetadata)
-            ));
-
-            return promise.GetFuture();
-        }).Apply([](const NThreading::TFuture<TMetadataResult>& result) {
-            auto& value = result.GetValue();
-            if (value.Success()) {
-                return value.Metadata;
-            }
-            ythrow TExternalSourceException{} << value.Issues().ToOneLineString();
-        });
+                AppendPartitionColumns(value.Metadata, partitionedBy, pathGenerator);
+                if (!partitionedBy.empty() && !pathGenerator) {
+                    return InferPartitionedColumnsTypes(arrowInferencinatorId, partByData, result);
+                }
+                return result;
+            }).Apply([](const NThreading::TFuture<TMetadataResult>& result) {
+                const auto& value = result.GetValue();
+                if (value.Success()) {
+                    return value.Metadata;
+                }
+                throw TExternalSourceException{} << value.Issues().ToOneLineString();
+            });
+    } catch (const std::exception&) {
+        return NThreading::MakeErrorFuture<std::shared_ptr<TMetadata>>(std::current_exception());
     }
 
     virtual bool CanLoadDynamicMetadata() const override {
@@ -376,6 +487,254 @@ struct TObjectStorageExternalSource : public IExternalSource {
     }
 
 private:
+    // Format used to (re-)infer types of partition columns from collected glob values.
+    static constexpr std::string_view kPartitionInferenceCsvFormat = "csv_with_names";
+
+    struct TListingPlan {
+        TVector<NYql::NS3Lister::TListingRequest> Requests;
+        NYql::NPathGenerator::TPathGeneratorPtr PathGenerator; // null when there's no projection
+    };
+
+    // Build a structured token JSON for an external source's auth.
+    static TString BuildStructuredToken(
+        const TMetadata& meta,
+        const std::shared_ptr<NYql::ISecuredServiceAccountCredentialsFactory>& credentialsFactory)
+    {
+        NYql::TStructuredTokenBuilder builder;
+        if (std::holds_alternative<NAuth::TAws>(meta.Auth)) {
+            const auto& aws = std::get<NAuth::TAws>(meta.Auth);
+            NYql::NS3::TAwsParams params;
+            params.SetAwsAccessKey(aws.AccessKey);
+            params.SetAwsRegion(aws.Region);
+            builder.SetBasicAuth(params.SerializeAsString(), aws.SecretAccessKey);
+        } else if (std::holds_alternative<NAuth::TServiceAccount>(meta.Auth)) {
+            if (!credentialsFactory) {
+                throw yexception{} << "trying to authenticate with service account credentials, internal error";
+            }
+            const auto& sa = std::get<NAuth::TServiceAccount>(meta.Auth);
+            builder.SetServiceAccountIdAuth(sa.ServiceAccountId, sa.ServiceAccountIdSignature);
+        } else {
+            builder.SetNoAuth();
+        }
+        return builder.ToJson();
+    }
+
+    // Plan one or more S3 listing requests:
+    //  - without `projection`: a single pattern derived from path/filepattern/partitionedBy.
+    //  - with `projection`: one request per path-generator rule (no wildcards in `path` allowed).
+    static TListingPlan BuildListingPlan(
+        const TMetadata& meta,
+        const TString& path,
+        const TString& filePattern,
+        const TString& projection,
+        const TVector<TString>& partitionedBy,
+        const NYql::TS3Credentials& credentials)
+    {
+        TListingPlan plan;
+        NYql::NS3Lister::TListingRequest base{
+            .Url = meta.DataSourceLocation,
+            .Credentials = credentials,
+        };
+
+        if (projection.empty()) {
+            if (auto error = NYql::NS3::BuildS3FilePattern(path, filePattern, partitionedBy, base)) {
+                throw yexception() << *error;
+            }
+            plan.Requests.push_back(std::move(base));
+            return plan;
+        }
+
+        if (NYql::NS3::HasWildcards(path)) {
+            throw yexception() << "Path prefix: '" << path << "' contains wildcards";
+        }
+
+        plan.PathGenerator = NYql::NPathGenerator::CreatePathGenerator(projection, partitionedBy);
+        for (const auto& rule : plan.PathGenerator->GetRules()) {
+            YQL_ENSURE(rule.ColumnValues.size() == partitionedBy.size());
+            auto req = base;
+            req.Pattern = NYql::NS3::NormalizePath(TStringBuilder() << path << "/" << rule.Path << "/*");
+            req.PatternType = NYql::NS3Lister::ES3PatternType::Wildcard;
+            req.Prefix = req.Pattern.substr(0, NYql::NS3::GetFirstWildcardPos(req.Pattern));
+            plan.Requests.push_back(std::move(req));
+        }
+        return plan;
+    }
+
+    // Validate listing results, accumulate partition glob data, and return the first
+    // non-empty file entry across all listings. Throws on errors / empty listings (subject
+    // to ignoreEmptyListings).
+    static NYql::NS3Lister::TObjectListEntry SelectFirstNonEmptyFile(
+        const std::shared_ptr<TStringBuilder>& partByData,
+        bool shouldInferPartitions,
+        bool ignoreEmptyListings,
+        const TVector<NThreading::TFuture<NYql::NS3Lister::TListResult>>& futures,
+        const TVector<NYql::NS3Lister::TListingRequest>& requests)
+    {
+        for (size_t i = 0; i < futures.size(); ++i) {
+            const auto& listRes = futures[i].GetValue();
+            if (std::holds_alternative<NYql::NS3Lister::TListError>(listRes)) {
+                throw yexception() << std::get<NYql::NS3Lister::TListError>(listRes).Issues.ToString();
+            }
+            const auto& entries = std::get<NYql::NS3Lister::TListEntries>(listRes);
+            if (entries.Objects.empty() && !ignoreEmptyListings) {
+                throw yexception() << "couldn't find files at " << requests[i].Pattern;
+            }
+
+            if (shouldInferPartitions) {
+                for (const auto& entry : entries.Objects) {
+                    *partByData << Endl << JoinSeq(",", entry.MatchedGlobs);
+                }
+            }
+            for (const auto& entry : entries.Objects) {
+                if (entry.Size > 0) {
+                    return entry;
+                }
+            }
+            if (!ignoreEmptyListings) {
+                throw yexception() << "couldn't find any files for type inference, please check that the right path is provided";
+            }
+        }
+        throw yexception() << "couldn't find any files for type inference, please check that the right path is provided";
+    }
+
+    // Build a callback that copies an inferred Arrow schema into the metadata.
+    // Returned callback signature matches the TActorRequestHandler convention.
+    static std::function<void(NThreading::TPromise<TMetadataResult>, NObjectStorage::TEvInferredFileSchema&&)>
+    MakeSchemaToMetadataHandler(std::shared_ptr<TMetadata> meta) {
+        return [meta = std::move(meta)](NThreading::TPromise<TMetadataResult> promise,
+                                        NObjectStorage::TEvInferredFileSchema&& response) {
+            if (!response.Status.IsSuccess()) {
+                promise.SetValue(NYql::NCommon::ResultFromError<TMetadataResult>(
+                    NYdb::NAdapters::ToYqlIssues(response.Status.GetIssues())));
+                return;
+            }
+            meta->Changed = true;
+            meta->Schema.clear_column();
+            for (const auto& column : response.Fields) {
+                *meta->Schema.add_column() = column;
+            }
+            TMetadataResult result;
+            result.SetSuccess();
+            result.Metadata = meta;
+            promise.SetValue(std::move(result));
+        };
+    }
+
+    // Append columns for the partition keys to the schema. Type comes from the
+    // path generator if there's a projection, otherwise defaults to UTF8 (and may
+    // be refined later by InferPartitionedColumnsTypes).
+    static void AppendPartitionColumns(
+        std::shared_ptr<TMetadata> meta,
+        const TVector<TString>& partitionedBy,
+        const NYql::NPathGenerator::TPathGeneratorPtr& pathGenerator)
+    {
+        if (pathGenerator) {
+            for (const auto& rule : pathGenerator->GetConfig().Rules) {
+                auto& destColumn = *meta->Schema.add_column();
+                destColumn.mutable_name()->assign(rule.Name);
+                switch (rule.Type) {
+                case NYql::NPathGenerator::IPathGenerator::EType::INTEGER:
+                    destColumn.mutable_type()->set_type_id(Ydb::Type::INT64);
+                    break;
+                case NYql::NPathGenerator::IPathGenerator::EType::DATE:
+                    destColumn.mutable_type()->set_type_id(Ydb::Type::DATE);
+                    break;
+                case NYql::NPathGenerator::IPathGenerator::EType::ENUM:
+                default:
+                    destColumn.mutable_type()->set_type_id(Ydb::Type::STRING);
+                    break;
+                }
+            }
+            return;
+        }
+        for (const auto& partitionName : partitionedBy) {
+            auto& destColumn = *meta->Schema.add_column();
+            destColumn.mutable_name()->assign(partitionName);
+            destColumn.mutable_type()->set_type_id(Ydb::Type::UTF8);
+        }
+    }
+
+    NThreading::TFuture<TMetadataResult> InferPartitionedColumnsTypes(
+        NActors::TActorId arrowInferencinatorId,
+        std::shared_ptr<TStringBuilder> partByData,
+        const NThreading::TFuture<TMetadataResult>& result) const {
+
+        auto& value = result.GetValue();
+        auto meta = value.Metadata;
+
+        arrow::BufferBuilder builder;
+        auto partitionBuffer = std::make_shared<arrow::Buffer>(nullptr, 0);
+        auto buildStatus = builder.Append(partByData->data(), partByData->size());
+        auto finishStatus = builder.Finish(&partitionBuffer);
+
+        if (!buildStatus.ok() || !finishStatus.ok()) {
+            // Couldn't build the in-memory CSV buffer for partition values: fall back
+            // to whatever types AppendPartitionColumns assigned (UTF8 by default).
+            YDB_LOG_WARN_CTX(*ActorSystem, "Couldn't build arrow buffer for partition column type inference",
+                {"build", buildStatus.ToString()},
+                {"finish", finishStatus.ToString()});
+            return result;
+        }
+
+        auto promise = NThreading::NewPromise<TMetadataResult>();
+        auto partitionsToMetadata = [meta](NThreading::TPromise<TMetadataResult> metaPromise, NObjectStorage::TEvInferredFileSchema&& response){
+            if (response.Status.IsSuccess()) {
+                THashMap<TString, Ydb::Type> inferredTypes;
+                for (const auto& column : response.Fields) {
+                    if (ValidateCommonProjectionType(column.type(), column.name()).Empty()) {
+                        inferredTypes[column.name()] = column.type();
+                    }
+                }
+
+                for (auto& destColumn : *meta->Schema.mutable_column()) {
+                    if (auto type = inferredTypes.FindPtr(destColumn.name()); type) {
+                        destColumn.mutable_type()->set_type_id(type->type_id());
+                    }
+                }
+            }
+            TMetadataResult result;
+            result.SetSuccess();
+            result.Metadata = meta;
+            metaPromise.SetValue(std::move(result));
+        };
+
+        auto bufferReader = std::make_shared<arrow::io::BufferReader>(std::move(partitionBuffer));
+        auto file = std::dynamic_pointer_cast<arrow::io::RandomAccessFile>(bufferReader);
+        auto config = NObjectStorage::NInference::MakeFormatConfig({{ "format", TString(kPartitionInferenceCsvFormat) }});
+        config->ShouldMakeOptional = false;
+        ActorSystem->Register(new NKqp::TActorRequestHandler<NObjectStorage::TEvArrowFile, NObjectStorage::TEvInferredFileSchema, TMetadataResult>(
+            arrowInferencinatorId,
+            new NObjectStorage::TEvArrowFile(config, std::move(file), ""),
+            promise,
+            std::move(partitionsToMetadata)
+        ));
+
+        return promise.GetFuture();
+    }
+
+    static TVector<TString> GetPartitionedByConfig(std::shared_ptr<TMetadata> meta) {
+        THashSet<TString> columns;
+        if (auto partitioned = meta->Attributes.FindPtr("partitionedby"); partitioned) {
+            NJson::TJsonValue values;
+            auto successful = NJson::ReadJsonTree(*partitioned, &values);
+            if (!successful) {
+                columns.insert(*partitioned);
+            } else {
+                Y_ENSURE(values.GetType() == NJson::JSON_ARRAY);
+
+                for (const auto& value : values.GetArray()) {
+                    Y_ENSURE(value.GetType() == NJson::JSON_STRING);
+                    if (columns.contains(value.GetString())) {
+                        throw yexception() << "invalid partitioned_by parameter, column " << value.GetString() << "mentioned twice";
+                    }
+                    columns.insert(value.GetString());
+                }
+            }
+        }
+
+        return TVector<TString>{columns.begin(), columns.end()};
+    }
+
     static bool IsValidIntervalUnit(const TString& unit) {
         static constexpr std::array<std::string_view, 7> IntervalUnits = {
             "MICROSECONDS"sv,
@@ -591,12 +950,57 @@ private:
         return FindIf(availableTypes, [&columnType](const auto& availableType) { return NYdb::TypesEqual(availableType, columnType); }) != availableTypes.end();
     }
 
+    static std::vector<NYdb::TType> GetDateOrTimeTypes() {
+        NYdb::TType dateType = NYdb::TTypeBuilder{}.Primitive(NYdb::EPrimitiveType::Date).Build();
+        NYdb::TType datetimeType = NYdb::TTypeBuilder{}.Primitive(NYdb::EPrimitiveType::Datetime).Build();
+        NYdb::TType timestampType = NYdb::TTypeBuilder{}.Primitive(NYdb::EPrimitiveType::Timestamp).Build();
+        NYdb::TType intervalType = NYdb::TTypeBuilder{}.Primitive(NYdb::EPrimitiveType::Interval).Build();
+        NYdb::TType date32Type = NYdb::TTypeBuilder{}.Primitive(NYdb::EPrimitiveType::Date32).Build();
+        NYdb::TType datetime64Type = NYdb::TTypeBuilder{}.Primitive(NYdb::EPrimitiveType::Datetime64).Build();
+        NYdb::TType timestamp64Type = NYdb::TTypeBuilder{}.Primitive(NYdb::EPrimitiveType::Timestamp64).Build();
+        NYdb::TType interval64Type = NYdb::TTypeBuilder{}.Primitive(NYdb::EPrimitiveType::Interval64).Build();
+        NYdb::TType tzdateType = NYdb::TTypeBuilder{}.Primitive(NYdb::EPrimitiveType::TzDate).Build();
+        NYdb::TType tzdatetimeType = NYdb::TTypeBuilder{}.Primitive(NYdb::EPrimitiveType::TzDatetime).Build();
+        NYdb::TType tztimestampType = NYdb::TTypeBuilder{}.Primitive(NYdb::EPrimitiveType::TzTimestamp).Build();
+        const std::vector<NYdb::TType> result {
+            dateType,
+            datetimeType,
+            timestampType,
+            intervalType,
+            date32Type,
+            datetime64Type,
+            timestamp64Type,
+            interval64Type,
+            tzdateType,
+            tzdatetimeType,
+            tztimestampType,
+            NYdb::TTypeBuilder{}.Optional(dateType).Build(),
+            NYdb::TTypeBuilder{}.Optional(datetimeType).Build(),
+            NYdb::TTypeBuilder{}.Optional(timestampType).Build(),
+            NYdb::TTypeBuilder{}.Optional(intervalType).Build(),
+            NYdb::TTypeBuilder{}.Optional(date32Type).Build(),
+            NYdb::TTypeBuilder{}.Optional(datetime64Type).Build(),
+            NYdb::TTypeBuilder{}.Optional(timestamp64Type).Build(),
+            NYdb::TTypeBuilder{}.Optional(interval64Type).Build(),
+            NYdb::TTypeBuilder{}.Optional(tzdateType).Build(),
+            NYdb::TTypeBuilder{}.Optional(tzdatetimeType).Build(),
+            NYdb::TTypeBuilder{}.Optional(tztimestampType).Build()
+        };
+        return result;
+    }
+
+    static bool ValidateDateOrTimeType(const NYdb::TType& columnType) {
+        static const std::vector<NYdb::TType> availableTypes = GetDateOrTimeTypes();
+        return FindIf(availableTypes, [&columnType](const auto& availableType) { return NYdb::TypesEqual(availableType, columnType); }) != availableTypes.end();
+    }
+
 private:
     const std::vector<TRegExMatch> HostnamePatterns;
     const size_t PathsLimit;
     NActors::TActorSystem* ActorSystem = nullptr;
     std::shared_ptr<NYql::ISecuredServiceAccountCredentialsFactory> CredentialsFactory;
     const bool EnableInfer = false;
+    const bool AllowLocalFiles;
 };
 
 }
@@ -606,12 +1010,13 @@ IExternalSource::TPtr CreateObjectStorageExternalSource(const std::vector<TRegEx
                                                         NActors::TActorSystem* actorSystem,
                                                         size_t pathsLimit,
                                                         std::shared_ptr<NYql::ISecuredServiceAccountCredentialsFactory> credentialsFactory,
-                                                        bool enableInfer) {
-    return MakeIntrusive<TObjectStorageExternalSource>(hostnamePatterns, actorSystem, pathsLimit, std::move(credentialsFactory), enableInfer);
+                                                        bool enableInfer,
+                                                        bool allowLocalFiles) {
+    return MakeIntrusive<TObjectStorageExternalSource>(hostnamePatterns, actorSystem, pathsLimit, std::move(credentialsFactory), enableInfer, allowLocalFiles);
 }
 
-NYql::TIssues Validate(const FederatedQuery::Schema& schema, const FederatedQuery::ObjectStorageBinding::Subset& objectStorage, size_t pathsLimit) {
-    return TObjectStorageExternalSource::Validate(schema, objectStorage, pathsLimit);
+NYql::TIssues Validate(const FederatedQuery::Schema& schema, const FederatedQuery::ObjectStorageBinding::Subset& objectStorage, size_t pathsLimit, const TString& location) {
+    return TObjectStorageExternalSource::Validate(schema, objectStorage, pathsLimit, location);
 }
 
 NYql::TIssues ValidateDateFormatSetting(const google::protobuf::Map<TString, TString>& formatSetting, bool matchAllSettings) {

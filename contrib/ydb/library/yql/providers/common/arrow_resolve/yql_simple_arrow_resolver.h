@@ -2,11 +2,9 @@
 
 #include <contrib/ydb/library/yql/core/yql_arrow_resolver.h>
 
-namespace NKikimr {
-namespace NMiniKQL {
-    class IFunctionRegistry;
-}
-}
+namespace NKikimr::NMiniKQL {
+class IFunctionRegistry;
+} // namespace NKikimr::NMiniKQL
 
 namespace NYql {
 

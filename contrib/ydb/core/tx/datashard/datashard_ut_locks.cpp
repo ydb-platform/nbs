@@ -2,6 +2,7 @@
 #include <contrib/ydb/core/tx/locks/locks.h>
 #include <contrib/ydb/core/tx/datashard/ut_common/datashard_ut_common.h>
 
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 #include <contrib/ydb/core/tablet_flat/flat_dbase_apply.h>
 #include <contrib/ydb/core/tablet_flat/flat_exec_commit.h>
 #include <contrib/ydb/core/testlib/test_client.h>
@@ -61,12 +62,12 @@ namespace NTest {
 
             for (ui32 tableId = 0; tableId < NumSysTables(); ++tableId) {
                 delta.AddTable(TString("Table") + ('A'+tableId), tableId);
-                delta.AddColumn(tableId, "key", 0, NScheme::NTypeIds::Uint32, false);
+                delta.AddColumn(tableId, "key", 0, NScheme::NTypeIds::Uint32, false, false);
                 delta.AddColumnToKey(tableId, 0);
             }
 
             delta.AddTable("user____Table", EUserTableId);
-            delta.AddColumn(EUserTableId, "key", 0, NScheme::NTypeIds::Uint32, false);
+            delta.AddColumn(EUserTableId, "key", 0, NScheme::NTypeIds::Uint32, false, false);
             delta.AddColumnToKey(EUserTableId, 0);
 
 
@@ -705,7 +706,7 @@ void CheckLocksCacheUsage(bool waitForLocksStore) {
         auto request = MakeSQLRequest("SELECT * FROM `/Root/table-1`");
         runtime.Send(new IEventHandle(NKqp::MakeKqpProxyID(runtime.GetNodeId()), sender, request.Release()));
         auto reply = runtime.GrabEdgeEventRethrow<NKqp::TEvKqp::TEvQueryResponse>(handle);
-        auto &resp = reply->Record.GetRef().GetResponse();
+        auto &resp = reply->Record.GetResponse();
         UNIT_ASSERT_VALUES_EQUAL(resp.YdbResultsSize(), 1);
 
         if (waitForLocksStore)

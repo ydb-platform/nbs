@@ -6,8 +6,6 @@ FORK_SUBTESTS()
 
 SIZE(MEDIUM)
 
-TIMEOUT(600)
-
 PEERDIR(
     library/cpp/getopt
     library/cpp/svnversion
@@ -15,6 +13,8 @@ PEERDIR(
 )
 
 YQL_LAST_ABI_VERSION()
+
+GENERATE_ENUM_SERIALIZATION(cms_maintenance_api_ut_enums.h)
 
 SRCS(
     cluster_info_ut.cpp
@@ -24,6 +24,7 @@ SRCS(
     cms_ut_common.cpp
     cms_ut_common.h
     downtime_ut.cpp
+    http_dump_ut.cpp
     ut_helpers.cpp
 )
 

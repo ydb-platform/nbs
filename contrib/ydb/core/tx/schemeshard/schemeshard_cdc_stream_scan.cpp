@@ -22,6 +22,8 @@ namespace NKikimr::NSchemeShard {
 using namespace NTabletFlatExecutor;
 
 class TCdcStreamScanFinalizer: public TActorBootstrapped<TCdcStreamScanFinalizer> {
+    static constexpr auto RetryInterval = TDuration::Seconds(1);
+
 public:
     static constexpr NKikimrServices::TActivity::EType ActorActivityType() {
         return NKikimrServices::TActivity::SCHEMESHARD_CDC_STREAM_SCAN_FINALIZER;
@@ -29,7 +31,7 @@ public:
 
     explicit TCdcStreamScanFinalizer(const TActorId& ssActorId, THolder<TEvSchemeShard::TEvModifySchemeTransaction>&& req)
         : SSActorId(ssActorId)
-        , Request(std::move(req)) // template without txId
+        , Request(std::move(req->Record)) // template without txId
     {
     }
 
@@ -41,6 +43,8 @@ public:
     STATEFN(StateWork) {
         switch (ev->GetTypeRewrite()) {
             hFunc(TEvTxUserProxy::TEvAllocateTxIdResult, Handle)
+            hFunc(TEvSchemeShard::TEvModifySchemeTransactionResult, Handle)
+            sFunc(TEvents::TEvWakeup, SendRequest);
             sFunc(TEvents::TEvPoison, PassAway);
         }
     }
@@ -51,13 +55,29 @@ private:
     }
 
     void Handle(TEvTxUserProxy::TEvAllocateTxIdResult::TPtr& ev) {
-        Request->Record.SetTxId(ev->Get()->TxId);
-        Send(SSActorId, Request.Release());
+        Request.SetTxId(ev->Get()->TxId);
+        SendRequest();
+    }
+
+    void SendRequest() {
+        auto ev = MakeHolder<TEvSchemeShard::TEvModifySchemeTransaction>();
+        ev->Record = Request;
+        Send(SSActorId, std::move(ev));
+    }
+
+    void Handle(TEvSchemeShard::TEvModifySchemeTransactionResult::TPtr& ev) {
+        switch (ev->Get()->Record.GetStatus()) {
+        case NKikimrScheme::StatusAccepted:
+        case NKikimrScheme::StatusPathDoesNotExist:
+            return PassAway();
+        default:
+            return Schedule(RetryInterval, new TEvents::TEvWakeup);
+        }
     }
 
 private:
     const TActorId SSActorId;
-    THolder<TEvSchemeShard::TEvModifySchemeTransaction> Request;
+    NKikimrScheme::TEvModifySchemeTransaction Request;
 
 }; // TCdcStreamScanFinalizer
 
@@ -114,7 +134,7 @@ public:
 
     void Complete(const TActorContext& ctx) override {
         for (auto& [streamPathId, tabletId, ev] : ScanRequests) {
-            Self->CdcStreamScanPipes.Create(streamPathId, tabletId, std::move(ev), ctx);
+            Self->CdcStreamScanPipes.Send(streamPathId, tabletId, std::move(ev), ctx);
         }
 
         if (StreamToProgress) {
@@ -126,7 +146,7 @@ public:
         }
 
         if (Finalize) {
-            Self->CdcStreamScanFinalizer = ctx.Register(new TCdcStreamScanFinalizer(ctx.SelfID, std::move(Finalize)));
+            ctx.Register(new TCdcStreamScanFinalizer(ctx.SelfID, std::move(Finalize)));
         }
     }
 
@@ -163,11 +183,11 @@ private:
 
         if (streamInfo->ScanShards.empty()) {
             NIceDb::TNiceDb db(txc.DB);
-            for (const auto& shard : table->GetPartitions()) {
+            for (const auto* shard : table->GetPartitions()) {
                 const auto status = TCdcStreamInfo::TShardStatus(NKikimrTxDataShard::TEvCdcStreamScanResponse::PENDING);
-                streamInfo->ScanShards.emplace(shard.ShardIdx, status);
-                streamInfo->PendingShards.insert(shard.ShardIdx);
-                Self->PersistCdcStreamScanShardStatus(db, streamPathId, shard.ShardIdx, status);
+                streamInfo->ScanShards.emplace(shard->ShardIdx, status);
+                streamInfo->PendingShards.insert(shard->ShardIdx);
+                Self->PersistCdcStreamScanShardStatus(db, streamPathId, shard->ShardIdx, status);
             }
         }
 
@@ -185,9 +205,9 @@ private:
             streamInfo->PendingShards.erase(it);
 
             auto ev = MakeHolder<TEvDataShard::TEvCdcStreamScanRequest>();
-            PathIdFromPathId(tablePathId, ev->Record.MutableTablePathId());
+            tablePathId.ToProto(ev->Record.MutableTablePathId());
             ev->Record.SetTableSchemaVersion(table->AlterVersion);
-            PathIdFromPathId(streamPathId, ev->Record.MutableStreamPathId());
+            streamPathId.ToProto(ev->Record.MutableStreamPathId());
             ev->Record.SetSnapshotStep(ui64(streamPath->StepCreated));
             ev->Record.SetSnapshotTxId(ui64(streamPath->CreateTxId));
             ScanRequests.emplace_back(streamPathId, tabletId, std::move(ev));
@@ -218,7 +238,7 @@ private:
         LOG_D("Response"
             << ": ev# " << record.ShortDebugString());
 
-        const auto streamPathId = PathIdFromPathId(record.GetStreamPathId());
+        const auto streamPathId = TPathId::FromProto(record.GetStreamPathId());
         if (!Self->CdcStreams.contains(streamPathId)) {
             LOG_W("Cannot process response"
                 << ": streamPathId# " << streamPathId

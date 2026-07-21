@@ -1,4 +1,4 @@
-YQL_UDF_CONTRIB(knn)
+YQL_UDF_CONTRIB(knn_udf)
 
 YQL_ABI_VERSION(
     2
@@ -15,7 +15,6 @@ PEERDIR(
     library/cpp/l1_distance
     library/cpp/l2_distance
 )
-
 
 END()
 

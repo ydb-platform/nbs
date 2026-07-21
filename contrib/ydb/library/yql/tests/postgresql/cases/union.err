@@ -1101,7 +1101,7 @@ INSERT INTO t2c VALUES ('vw'), ('cd'), ('mn'), ('ef');
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.t2c
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.t2c
     
 <sql-statement>
 CREATE INDEX t1c_ab_idx on t1c ((a || b));
@@ -1400,7 +1400,7 @@ select * from
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.t3
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.t3
     
 <sql-statement>
 drop table t3;

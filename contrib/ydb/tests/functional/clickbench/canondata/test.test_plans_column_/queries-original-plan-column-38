@@ -52,7 +52,7 @@
                                                                 "ExternalPlanNodeId": 4
                                                             }
                                                         ],
-                                                        "Limit": "SUM(10,1000)",
+                                                        "Limit": "Min(If,SUM(10,1000))",
                                                         "Name": "Limit"
                                                     }
                                                 ],
@@ -64,22 +64,32 @@
                                                         "PlanNodeType": "Connection",
                                                         "Plans": [
                                                             {
-                                                                "Node Type": "TopSort",
+                                                                "Node Type": "TopSort-Aggregate",
                                                                 "Operators": [
+                                                                    {
+                                                                        "Inputs": [
+                                                                            {
+                                                                                "InternalOperatorId": 1
+                                                                            }
+                                                                        ],
+                                                                        "Limit": "SUM(10,1000)",
+                                                                        "Name": "TopSort",
+                                                                        "TopSortBy": "argument.Count0"
+                                                                    },
                                                                     {
                                                                         "Inputs": [
                                                                             {
                                                                                 "ExternalPlanNodeId": 2
                                                                             }
                                                                         ],
-                                                                        "Limit": "SUM(10,1000)",
-                                                                        "Name": "TopSort",
-                                                                        "TopSortBy": "argument.Count0"
+                                                                        "Name": "Aggregate",
+                                                                        "Phase": "Final"
                                                                     }
                                                                 ],
                                                                 "PlanNodeId": 3,
                                                                 "Plans": [
                                                                     {
+                                                                        "HashFunc": "HashV1",
                                                                         "KeyColumns": [
                                                                             "URL"
                                                                         ],
@@ -88,31 +98,43 @@
                                                                         "PlanNodeType": "Connection",
                                                                         "Plans": [
                                                                             {
-                                                                                "Node Type": "Filter-TableRangeScan",
+                                                                                "Node Type": "Aggregate-Filter-TableRangeScan",
                                                                                 "Operators": [
                                                                                     {
+                                                                                        "Aggregation": "{SUM(1)}",
+                                                                                        "GroupBy": "item.URL",
                                                                                         "Inputs": [
                                                                                             {
                                                                                                 "InternalOperatorId": 1
                                                                                             }
                                                                                         ],
+                                                                                        "Name": "Aggregate",
+                                                                                        "Phase": "Intermediate"
+                                                                                    },
+                                                                                    {
+                                                                                        "Blocks": "True",
+                                                                                        "Inputs": [
+                                                                                            {
+                                                                                                "InternalOperatorId": 2
+                                                                                            }
+                                                                                        ],
                                                                                         "Name": "Filter",
-                                                                                        "Predicate": "IsRefresh == 0 And IsLink != 0 And IsDownload == 0"
+                                                                                        "Predicate": "IsRefresh == 0 AND IsLink != 0 AND IsDownload == 0",
+                                                                                        "Pushdown": "True"
                                                                                     },
                                                                                     {
                                                                                         "Inputs": [],
                                                                                         "Name": "TableRangeScan",
+                                                                                        "Path": "/local/clickbench/plans/column/hits",
                                                                                         "ReadColumns": [
+                                                                                            "CounterID [62, 62]",
+                                                                                            "EventDate [15887, 15917]",
                                                                                             "IsDownload",
                                                                                             "IsLink",
                                                                                             "IsRefresh",
                                                                                             "URL"
                                                                                         ],
-                                                                                        "ReadRanges": [
-                                                                                            "CounterID [62, 62]",
-                                                                                            "EventDate [15887, 15917]"
-                                                                                        ],
-                                                                                        "ReadRangesExpectedSize": 1,
+                                                                                        "ReadRangesExpectedSize": "1",
                                                                                         "ReadRangesKeys": [
                                                                                             "CounterID",
                                                                                             "EventDate"
@@ -258,38 +280,15 @@
                                                                                                     }
                                                                                                 },
                                                                                                 {
-                                                                                                    "GroupBy": {
-                                                                                                        "Aggregates": [
-                                                                                                            {
-                                                                                                                "Column": {
-                                                                                                                    "Id": 114
-                                                                                                                },
-                                                                                                                "Function": {
-                                                                                                                    "Id": 2
-                                                                                                                }
-                                                                                                            }
-                                                                                                        ],
-                                                                                                        "KeyColumns": [
-                                                                                                            {
-                                                                                                                "Id": 14
-                                                                                                            }
-                                                                                                        ]
-                                                                                                    }
-                                                                                                },
-                                                                                                {
                                                                                                     "Projection": {
                                                                                                         "Columns": [
                                                                                                             {
                                                                                                                 "Id": 14
-                                                                                                            },
-                                                                                                            {
-                                                                                                                "Id": 114
                                                                                                             }
                                                                                                         ]
                                                                                                     }
                                                                                                 }
-                                                                                            ],
-                                                                                            "Version": 4
+                                                                                            ]
                                                                                         },
                                                                                         "Table": "clickbench/plans/column/hits"
                                                                                     }
@@ -316,7 +315,10 @@
                             }
                         ]
                     }
-                ]
+                ],
+                "Stats": {
+                    "ResourcePoolId": "default"
+                }
             },
             "tables": [
                 {

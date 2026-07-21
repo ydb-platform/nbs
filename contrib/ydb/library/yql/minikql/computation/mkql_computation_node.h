@@ -10,7 +10,8 @@
 #include <contrib/ydb/library/yql/minikql/mkql_alloc.h>
 #include <contrib/ydb/library/yql/minikql/mkql_stats_registry.h>
 #include <contrib/ydb/library/yql/minikql/mkql_terminator.h>
-
+#include <contrib/ydb/library/yql/minikql/runtime_settings/runtime_settings.h>
+#include <contrib/ydb/library/yql/public/langver/yql_langver.h>
 #include <contrib/ydb/library/yql/public/udf/udf_value.h>
 #include <contrib/ydb/library/yql/public/udf/udf_validate.h>
 #include <contrib/ydb/library/yql/public/udf/udf_value_builder.h>
@@ -20,12 +21,12 @@
 #include <library/cpp/time_provider/time_provider.h>
 
 #include <map>
-#include <unordered_set>
+#include <set>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
-namespace NKikimr {
-namespace NMiniKQL {
+namespace NKikimr::NMiniKQL {
 
 inline const TDefaultListRepresentation* GetDefaultListRepresentation(const NUdf::TUnboxedValuePod& value) {
     return reinterpret_cast<const TDefaultListRepresentation*>(NUdf::TBoxedValueAccessor::GetListRepresentation(*value.AsBoxed()));
@@ -37,33 +38,39 @@ enum class EGraphPerProcess {
 };
 
 struct TComputationOpts {
-    TComputationOpts(IStatsRegistry* stats)
+    explicit TComputationOpts(IStatsRegistry* stats)
         : Stats(stats)
-    {}
+    {
+    }
 
-    IStatsRegistry *const Stats;
+    IStatsRegistry* const Stats;
 };
 
 struct TComputationOptsFull: public TComputationOpts {
-    TComputationOptsFull(IStatsRegistry* stats, TAllocState& allocState, const TTypeEnvironment& typeEnv, IRandomProvider& randomProvider,
-            ITimeProvider& timeProvider, NUdf::EValidatePolicy validatePolicy, const NUdf::ISecureParamsProvider* secureParamsProvider, NUdf::ICountersProvider* countersProvider)
-        : TComputationOpts(stats)
-        , AllocState(allocState)
-        , TypeEnv(typeEnv)
-        , RandomProvider(randomProvider)
-        , TimeProvider(timeProvider)
-        , ValidatePolicy(validatePolicy)
-        , SecureParamsProvider(secureParamsProvider)
-        , CountersProvider(countersProvider)
-    {}
+    TComputationOptsFull(IStatsRegistry* stats,
+                         TAllocState& allocState,
+                         const TTypeEnvironment& typeEnv,
+                         IRandomProvider& randomProvider,
+                         ITimeProvider& timeProvider,
+                         NUdf::EValidatePolicy validatePolicy,
+                         const NUdf::ISecureParamsProvider* secureParamsProvider,
+                         NUdf::ICountersProvider* countersProvider,
+                         const NUdf::ILogProvider* logProvider,
+                         NYql::TLangVersion langver,
+                         NYql::TRuntimeSettings::TConstPtr runtimeSettings);
+
+    ~TComputationOptsFull() = default;
 
     TAllocState& AllocState;
     const TTypeEnvironment& TypeEnv;
     IRandomProvider& RandomProvider;
     ITimeProvider& TimeProvider;
     NUdf::EValidatePolicy ValidatePolicy;
-    const NUdf::ISecureParamsProvider *const SecureParamsProvider;
-    NUdf::ICountersProvider *const CountersProvider;
+    const NUdf::ISecureParamsProvider* const SecureParamsProvider;
+    NUdf::ICountersProvider* const CountersProvider;
+    const NUdf::ILogProvider* const LogProvider;
+    const NYql::TLangVersion LangVer;
+    const NYql::TRuntimeSettings::TConstPtr RuntimeSettings;
 };
 
 struct TWideFieldsInitInfo {
@@ -77,6 +84,7 @@ struct TComputationMutables {
     std::vector<ui32> SerializableValues; // Indices of values that need to be saved in IComputationGraph::SaveGraphState() and restored in IComputationGraph::LoadGraphState().
     ui32 CurWideFieldsIndex = 0U;
     std::vector<TWideFieldsInitInfo> WideFieldInitialize;
+    std::vector<ui32> CachedValues; // Indices of values that holds temporary cached data and unreachable by dependencies
 
     void DeferWideFieldsInit(ui32 count, std::set<ui32> used) {
         Y_DEBUG_ABORT_UNLESS(AllOf(used, [count](ui32 i) { return i < count; }));
@@ -97,15 +105,15 @@ class THolderFactory;
 // Do not reorder: used in LLVM!
 struct TComputationContextLLVM {
     const THolderFactory& HolderFactory;
-    IStatsRegistry *const Stats;
-    const std::unique_ptr<NUdf::TUnboxedValue[]> MutableValues;
-    const NUdf::IValueBuilder *const Builder;
-    float UsageAdjustor = 1.f;
+    IStatsRegistry* const Stats;
+    const std::unique_ptr<NUdf::TUnboxedValue[]> MutableValues; // NOLINT(modernize-avoid-c-arrays)
+    const NUdf::IValueBuilder* const Builder;
+    float UsageAdjustor = 1.F;
     ui32 RssCounter = 0U;
     const NUdf::TSourcePosition* CalleePosition = nullptr;
 };
 
-struct TComputationContext : public TComputationContextLLVM {
+struct TComputationContext: public TComputationContextLLVM {
     IRandomProvider& RandomProvider;
     ITimeProvider& TimeProvider;
     bool ExecuteLLVM = false;
@@ -115,54 +123,93 @@ struct TComputationContext : public TComputationContextLLVM {
     const TComputationMutables Mutables;
     std::shared_ptr<ISpillerFactory> SpillerFactory;
     const NUdf::ITypeInfoHelper::TPtr TypeInfoHelper;
-    NUdf::ICountersProvider *const CountersProvider;
-    const NUdf::ISecureParamsProvider *const SecureParamsProvider;
+    NUdf::ICountersProvider* const CountersProvider;
+    const NUdf::ISecureParamsProvider* const SecureParamsProvider;
+    const NUdf::ILogProvider* LogProvider;
+    NYql::TLangVersion LangVer = NYql::UnknownLangVersion;
+    TMaybe<NUdf::TSourcePosition>& NotConsumedLinear;
+    const NYql::TRuntimeSettings& RuntimeSettings;
+
+    // If computation node receives Yield fetch status and
+    // FlushingMode is set, then the node must flush its accumulated buffers
+    bool FlushingMode = false;
 
     TComputationContext(const THolderFactory& holderFactory,
-        const NUdf::IValueBuilder* builder,
-        const TComputationOptsFull& opts,
-        const TComputationMutables& mutables,
-        arrow::MemoryPool& arrowMemoryPool);
+                        const NUdf::IValueBuilder* builder,
+                        const TComputationOptsFull& opts,
+                        const TComputationMutables& mutables,
+                        arrow::MemoryPool& arrowMemoryPool,
+                        TMaybe<NUdf::TSourcePosition>& notConsumedLinear,
+                        NYql::TRuntimeSettings::TConstPtr runtimeSettings);
 
     ~TComputationContext();
 
     // Returns true if current usage delta exceeds the memory limit
     // The function automatically adjusts memory limit taking into account RSS delta between calls
-    template<bool TrackRss>
+    template <bool TrackRss>
     inline bool CheckAdjustedMemLimit(ui64 memLimit, ui64 initMemUsage);
 
     void UpdateUsageAdjustor(ui64 memLimit);
+    NUdf::TLoggerPtr MakeLogger() const;
+    NYql::TRuntimeSettings::TConstPtr GetRuntimeSettingsSharedPtr() const;
+
 private:
-    ui64 InitRss = 0ULL;
-    ui64 LastRss = 0ULL;
+    NUdf::ITypeInfoHelper::TPtr MakeTypeHelper(TMaybe<NUdf::TSourcePosition>& target);
+
+private:
+    NYql::TRuntimeSettings::TConstPtr RuntimeSettingsPtr_;
+    ui64 InitRss_ = 0ULL;
+    ui64 LastRss_ = 0ULL;
+    NUdf::TLoggerPtr RssLogger_;
+    NUdf::TLogComponentId RssLoggerComponent_;
 #ifndef NDEBUG
-    TInstant LastPrintUsage;
+    TInstant LastPrintUsage_;
 #endif
 };
 
 class IArrowKernelComputationNode;
+class IComputationExternalNode;
+class TComputationExternalNodeInvalidator;
+using TComputationExternalNodePtrSet = std::unordered_set<IComputationExternalNode*, std::hash<IComputationExternalNode*>, std::equal_to<IComputationExternalNode*>, TMKQLAllocator<IComputationExternalNode*>>;
 
 class IComputationNode {
 public:
-    typedef TIntrusivePtr<IComputationNode> TPtr;
-    typedef std::map<ui32, EValueRepresentation> TIndexesMap;
+    using TPtr = TIntrusivePtr<IComputationNode>;
+    using TIndexesMap = std::map<ui32, EValueRepresentation>;
 
-    virtual ~IComputationNode() {}
+    virtual ~IComputationNode() {
+    }
 
     virtual void InitNode(TComputationContext&) const = 0;
 
     virtual NUdf::TUnboxedValue GetValue(TComputationContext& compCtx) const = 0;
 
-    virtual IComputationNode* AddDependence(const IComputationNode* node) = 0;
+    // In the context "X depends on Y" this method adds node "X"
+    // (i.e. the argument node) as the *dependent* (the thing
+    // relying on smth) for the node "Y "(i.e. this). It's the
+    // complement for the AddDependency method below.
+    virtual IComputationNode* AddDependent(const IComputationNode* node) = 0;
+    // In the context "X depends on Y" this method adds node "Y"
+    // (i.e. the argument node) as the *dependency* for the node
+    // "X "(i.e. this). It's the complement for the AddDependent
+    // method above.
+    virtual void AddDependency(const IComputationNode* node) const = 0;
+    // In the context "X owns Y" this method adds node "X" (i.e.
+    // this) as the owner of the *external* node "Y" (i.e. the
+    // argument node). It's the complement for the SetOwner method
+    // defined for IComputationExternalNode.
+    virtual void AddOwned(IComputationExternalNode* node) const = 0;
 
     virtual const IComputationNode* GetSource() const = 0;
 
     virtual void RegisterDependencies() const = 0;
 
     virtual ui32 GetIndex() const = 0;
-    virtual void CollectDependentIndexes(const IComputationNode* owner, TIndexesMap& dependencies) const = 0;
-    virtual ui32 GetDependencyWeight() const = 0;
-    virtual ui32 GetDependencesCount() const = 0;
+    virtual void CollectDependentIndexes(const IComputationNode* owner, TIndexesMap& dependents) const = 0;
+    virtual void CollectUpvalues(TComputationExternalNodePtrSet& upvalues) const = 0;
+    virtual TComputationExternalNodePtrSet GetUpvalues() const = 0;
+    virtual ui32 GetDependentWeight() const = 0;
+    virtual ui32 GetDependentsCount() const = 0;
 
     virtual bool IsTemporaryValue() const = 0;
 
@@ -180,7 +227,7 @@ public:
     virtual std::unique_ptr<IArrowKernelComputationNode> PrepareArrowKernelComputationNode(TComputationContext& ctx) const;
 };
 
-class IComputationExternalNode : public IComputationNode {
+class IComputationExternalNode: public IComputationNode {
 public:
     virtual NUdf::TUnboxedValue& RefValue(TComputationContext& compCtx) const = 0;
     virtual void SetValue(TComputationContext& compCtx, NUdf::TUnboxedValue&& newValue) const = 0;
@@ -189,25 +236,62 @@ public:
     using TGetter = std::function<NUdf::TUnboxedValue(TComputationContext&)>;
     virtual void SetGetter(TGetter&& getter) = 0;
     virtual void InvalidateValue(TComputationContext& compCtx) const = 0;
+
+private:
+    friend class TComputationExternalNodeInvalidator;
+    virtual void CollectInvalidationIndexes(std::set<ui32>& out) const = 0;
 };
 
-enum class EFetchResult : i32 {
+enum class EFetchResult: i32 {
     Finish = -1,
     Yield = 0,
     One = 1
 };
 
-class IComputationWideFlowNode : public IComputationNode {
+class IComputationWideFlowNode: public IComputationNode {
 public:
-    virtual EFetchResult FetchValues(TComputationContext& compCtx, NUdf::TUnboxedValue*const* values) const = 0;
+    virtual EFetchResult FetchValues(TComputationContext& compCtx, NUdf::TUnboxedValue* const* values) const = 0;
 };
 
-class IComputationWideFlowProxyNode : public IComputationWideFlowNode {
+class IComputationWideFlowProxyNode: public IComputationWideFlowNode {
 public:
-    using TFetcher = std::function<EFetchResult(TComputationContext&, NUdf::TUnboxedValue*const*)>;
+    using TFetcher = std::function<EFetchResult(TComputationContext&, NUdf::TUnboxedValue* const*)>;
     virtual void SetFetcher(TFetcher&& fetcher) = 0;
     virtual void SetOwner(const IComputationNode* node) = 0;
     virtual void InvalidateValue(TComputationContext& compCtx) const = 0;
+};
+
+using TComputationExternalNodePtrVector = std::vector<IComputationExternalNode*, TMKQLAllocator<IComputationExternalNode*>>;
+
+class TComputationUpvalues {
+    using TUnboxedValueVector = std::vector<NUdf::TUnboxedValue, TMKQLAllocator<NUdf::TUnboxedValue>>;
+
+public:
+    TComputationUpvalues(TComputationContext& ctx, IComputationNode* lambdaNode,
+                         const TComputationExternalNodePtrVector& argNodes);
+
+    inline explicit operator bool() const {
+        return !UpvalueNodes_.empty();
+    }
+    void SetUpvalues(TComputationContext& ctx) const;
+    void RestoreUpvalues(TComputationContext& ctx) const;
+
+private:
+    // Vector with upvalue comp nodes (i.e. set of transitively
+    // non-owned external computation nodes) to be set prior to
+    // the callable invocation and restored later.
+    TComputationExternalNodePtrVector UpvalueNodes_;
+    // Vector with the closed upvalues (i.e. comp node values,
+    // obtained within the context of the callable definition).
+    // These values have to be set as the corresponding upvalue
+    // cоmp nodes before the callable invocation to restore the
+    // valid context.
+    TUnboxedValueVector ClosedUpvalues_;
+    // Mutable vector with the current values of the corresponding
+    // upvalue comp nodes. These values have to be preserved from
+    // these nodes before the callable invocation and restored
+    // back when the invocation finishes.
+    mutable TUnboxedValueVector PreservedUpvalues_;
 };
 
 using TDatumProvider = std::function<arrow::Datum()>;
@@ -237,32 +321,36 @@ struct TArrowKernelsTopology {
 
 using TComputationNodePtrVector = std::vector<IComputationNode*, TMKQLAllocator<IComputationNode*>>;
 using TComputationWideFlowNodePtrVector = std::vector<IComputationWideFlowNode*, TMKQLAllocator<IComputationWideFlowNode*>>;
-using TComputationExternalNodePtrVector = std::vector<IComputationExternalNode*, TMKQLAllocator<IComputationExternalNode*>>;
 using TConstComputationNodePtrVector = std::vector<const IComputationNode*, TMKQLAllocator<const IComputationNode*>>;
 using TComputationNodePtrDeque = std::deque<IComputationNode::TPtr, TMKQLAllocator<IComputationNode::TPtr>>;
-using TComputationNodeOnNodeMap = std::unordered_map<const IComputationNode*, IComputationNode*, std::hash<const IComputationNode*>, std::equal_to<const IComputationNode*>, TMKQLAllocator<std::pair<const IComputationNode *const, IComputationNode*>>>;
+using TComputationNodeOnNodeMap = std::unordered_map<const IComputationNode*, IComputationNode*, std::hash<const IComputationNode*>, std::equal_to<const IComputationNode*>, TMKQLAllocator<std::pair<const IComputationNode* const, IComputationNode*>>>;
 
 class IComputationGraph {
 public:
-    virtual ~IComputationGraph() {}
+    virtual ~IComputationGraph() {
+    }
     virtual void Prepare() = 0;
     virtual NUdf::TUnboxedValue GetValue() = 0;
     virtual TComputationContext& GetContext() = 0;
     virtual IComputationExternalNode* GetEntryPoint(size_t index, bool require) = 0;
     virtual const TArrowKernelsTopology* GetKernelsTopology() = 0;
     virtual const TComputationNodePtrDeque& GetNodes() const = 0;
-    virtual void Invalidate() = 0;
+    virtual void Invalidate() = 0;       // Invalidate all mutable values in graph (may lead to udf recreation)
+    virtual void InvalidateCaches() = 0; // Invalidate only cached values
     virtual TMemoryUsageInfo& GetMemInfo() const = 0;
     virtual const THolderFactory& GetHolderFactory() const = 0;
     virtual ITerminator* GetTerminator() const = 0;
     virtual bool SetExecuteLLVM(bool value) = 0;
     virtual TString SaveGraphState() = 0;
     virtual void LoadGraphState(TStringBuf state) = 0;
+    virtual TMaybe<NUdf::TSourcePosition> GetNotConsumedLinear() = 0;
+    virtual bool GetFlushingMode() const = 0;
+    virtual void SetFlushingMode(bool value) = 0;
 };
 
 class TNodeFactory;
-typedef std::function<IComputationNode* (TNode* node, bool pop)> TNodeLocator;
-typedef std::function<void (IComputationNode*)> TNodePushBack;
+using TNodeLocator = std::function<IComputationNode*(TNode* node, bool pop)>;
+using TNodePushBack = std::function<void(IComputationNode*)>;
 
 struct TComputationNodeFactoryContext {
     TNodeLocator NodeLocator;
@@ -271,61 +359,49 @@ struct TComputationNodeFactoryContext {
     NUdf::ITypeInfoHelper::TPtr TypeInfoHelper;
     NUdf::ICountersProvider* CountersProvider;
     const NUdf::ISecureParamsProvider* SecureParamsProvider;
+    const NUdf::ILogProvider* LogProvider;
+    NYql::TLangVersion LangVer;
     const TNodeFactory& NodeFactory;
     const THolderFactory& HolderFactory;
-    const NUdf::IValueBuilder *const Builder;
+    const NUdf::IValueBuilder* const Builder;
     NUdf::EValidateMode ValidateMode;
     NUdf::EValidatePolicy ValidatePolicy;
     EGraphPerProcess GraphPerProcess;
     TComputationMutables& Mutables;
     TComputationNodeOnNodeMap& ElementsCache;
     const TNodePushBack NodePushBack;
+    const NYql::TRuntimeSettings::TConstPtr RuntimeSettings;
 
     TComputationNodeFactoryContext(
-            const TNodeLocator& nodeLocator,
-            const IFunctionRegistry& functionRegistry,
-            const TTypeEnvironment& env,
-            NUdf::ITypeInfoHelper::TPtr typeInfoHelper,
-            NUdf::ICountersProvider* countersProvider,
-            const NUdf::ISecureParamsProvider* secureParamsProvider,
-            const TNodeFactory& nodeFactory,
-            const THolderFactory& holderFactory,
-            const NUdf::IValueBuilder* builder,
-            NUdf::EValidateMode validateMode,
-            NUdf::EValidatePolicy validatePolicy,
-            EGraphPerProcess graphPerProcess,
-            TComputationMutables& mutables,
-            TComputationNodeOnNodeMap& elementsCache,
-            TNodePushBack&& nodePushBack
-            )
-        : NodeLocator(nodeLocator)
-        , FunctionRegistry(functionRegistry)
-        , Env(env)
-        , TypeInfoHelper(typeInfoHelper)
-        , CountersProvider(countersProvider)
-        , SecureParamsProvider(secureParamsProvider)
-        , NodeFactory(nodeFactory)
-        , HolderFactory(holderFactory)
-        , Builder(builder)
-        , ValidateMode(validateMode)
-        , ValidatePolicy(validatePolicy)
-        , GraphPerProcess(graphPerProcess)
-        , Mutables(mutables)
-        , ElementsCache(elementsCache)
-        , NodePushBack(std::move(nodePushBack))
-    {}
+        TNodeLocator nodeLocator,
+        const IFunctionRegistry& functionRegistry,
+        const TTypeEnvironment& env,
+        NUdf::ITypeInfoHelper::TPtr typeInfoHelper,
+        NUdf::ICountersProvider* countersProvider,
+        const NUdf::ISecureParamsProvider* secureParamsProvider,
+        const NUdf::ILogProvider* logProvider,
+        NYql::TLangVersion langver,
+        const TNodeFactory& nodeFactory,
+        const THolderFactory& holderFactory,
+        const NUdf::IValueBuilder* builder,
+        NUdf::EValidateMode validateMode,
+        NUdf::EValidatePolicy validatePolicy,
+        EGraphPerProcess graphPerProcess,
+        TComputationMutables& mutables,
+        TComputationNodeOnNodeMap& elementsCache,
+        TNodePushBack&& nodePushBack,
+        NYql::TRuntimeSettings::TConstPtr runtimeSettings);
+
+    ~TComputationNodeFactoryContext();
 };
 
-using TComputationNodeFactory = std::function<IComputationNode* (TCallable&, const TComputationNodeFactoryContext&)>;
+using TComputationNodeFactory = std::function<IComputationNode*(TCallable&, const TComputationNodeFactoryContext&)>;
 using TStreamEmitter = std::function<void(NUdf::TUnboxedValue&&)>;
 
 struct TPatternCacheEntry;
 
 struct TComputationPatternOpts {
-    TComputationPatternOpts(TAllocState& allocState, const TTypeEnvironment& env)
-        : AllocState(allocState)
-        , Env(env)
-    {}
+    TComputationPatternOpts(TAllocState& allocState, const TTypeEnvironment& env);
 
     TComputationPatternOpts(
         TAllocState& allocState,
@@ -334,43 +410,27 @@ struct TComputationPatternOpts {
         const IFunctionRegistry* functionRegistry,
         NUdf::EValidateMode validateMode,
         NUdf::EValidatePolicy validatePolicy,
-        const TString& optLLVM,
+        TString optLLVM,
         EGraphPerProcess graphPerProcess,
         IStatsRegistry* stats = nullptr,
         NUdf::ICountersProvider* countersProvider = nullptr,
-        const NUdf::ISecureParamsProvider* secureParamsProvider = nullptr)
-        : AllocState(allocState)
-        , Env(env)
-        , Factory(factory)
-        , FunctionRegistry(functionRegistry)
-        , ValidateMode(validateMode)
-        , ValidatePolicy(validatePolicy)
-        , OptLLVM(optLLVM)
-        , GraphPerProcess(graphPerProcess)
-        , Stats(stats)
-        , CountersProvider(countersProvider)
-        , SecureParamsProvider(secureParamsProvider)
-    {}
+        const NUdf::ISecureParamsProvider* secureParamsProvider = nullptr,
+        const NUdf::ILogProvider* logProvider = nullptr,
+        NYql::TLangVersion langver = NYql::UnknownLangVersion,
+        NYql::TRuntimeSettings::TConstPtr runtimeSettings = NYql::MakeRuntimeSettings());
+
+    ~TComputationPatternOpts();
 
     void SetOptions(TComputationNodeFactory factory, const IFunctionRegistry* functionRegistry,
-        NUdf::EValidateMode validateMode, NUdf::EValidatePolicy validatePolicy,
-        const TString& optLLVM, EGraphPerProcess graphPerProcess, IStatsRegistry* stats = nullptr,
-        NUdf::ICountersProvider* counters = nullptr,
-        const NUdf::ISecureParamsProvider* secureParamsProvider = nullptr) {
-        Factory = factory;
-        FunctionRegistry = functionRegistry;
-        ValidateMode = validateMode;
-        ValidatePolicy = validatePolicy;
-        OptLLVM = optLLVM;
-        GraphPerProcess = graphPerProcess;
-        Stats = stats;
-        CountersProvider = counters;
-        SecureParamsProvider = secureParamsProvider;
-    }
+                    NUdf::EValidateMode validateMode, NUdf::EValidatePolicy validatePolicy,
+                    const TString& optLLVM, EGraphPerProcess graphPerProcess, IStatsRegistry* stats = nullptr,
+                    NUdf::ICountersProvider* counters = nullptr,
+                    const NUdf::ISecureParamsProvider* secureParamsProvider = nullptr,
+                    const NUdf::ILogProvider* logProvider = nullptr,
+                    NYql::TLangVersion langver = NYql::UnknownLangVersion,
+                    NYql::TRuntimeSettings::TConstPtr runtimeSettings = NYql::MakeRuntimeSettings());
 
-    void SetPatternEnv(std::shared_ptr<TPatternCacheEntry> cacheEnv) {
-        PatternEnv = std::move(cacheEnv);
-    }
+    void SetPatternEnv(std::shared_ptr<TPatternCacheEntry> cacheEnv);
 
     mutable std::shared_ptr<TPatternCacheEntry> PatternEnv;
     TAllocState& AllocState;
@@ -385,15 +445,17 @@ struct TComputationPatternOpts {
     IStatsRegistry* Stats = nullptr;
     NUdf::ICountersProvider* CountersProvider = nullptr;
     const NUdf::ISecureParamsProvider* SecureParamsProvider = nullptr;
+    const NUdf::ILogProvider* LogProvider = nullptr;
+    NYql::TLangVersion LangVer = NYql::UnknownLangVersion;
+    NYql::TRuntimeSettings::TConstPtr RuntimeSettings;
 
-    TComputationOptsFull ToComputationOptions(IRandomProvider& randomProvider, ITimeProvider& timeProvider, TAllocState* allocStatePtr = nullptr) const {
-        return TComputationOptsFull(Stats, allocStatePtr ? *allocStatePtr : AllocState, Env, randomProvider, timeProvider, ValidatePolicy, SecureParamsProvider, CountersProvider);
-    }
+    TComputationOptsFull ToComputationOptions(IRandomProvider& randomProvider, ITimeProvider& timeProvider,
+                                              TAllocState* allocStatePtr = nullptr) const;
 };
 
 class IComputationPattern: public TAtomicRefCount<IComputationPattern> {
 public:
-    typedef TIntrusivePtr<IComputationPattern> TPtr;
+    using TPtr = TIntrusivePtr<IComputationPattern>;
 
     virtual ~IComputationPattern() = default;
     virtual void Compile(TString optLLVM, IStatsRegistry* stats) = 0;
@@ -406,27 +468,26 @@ public:
 
 // node cookie's will be clean up when graph will be destroyed, explorer must not be changed/destroyed until that time
 IComputationPattern::TPtr MakeComputationPattern(
-        TExploringNodeVisitor& explorer,
-        const TRuntimeNode& root,
-        const std::vector<TNode*>& entryPoints,
-        const TComputationPatternOpts& opts);
+    TExploringNodeVisitor& explorer,
+    const TRuntimeNode& root,
+    const std::vector<TNode*>& entryPoints,
+    const TComputationPatternOpts& opts);
 
 std::unique_ptr<NUdf::ISecureParamsProvider> MakeSimpleSecureParamsProvider(const THashMap<TString, TString>& secureParams);
 
-using TCallableComputationNodeBuilder = std::function<IComputationNode* (TCallable&, const TComputationNodeFactoryContext& ctx)>;
+using TCallableComputationNodeBuilder = std::function<IComputationNode*(TCallable&, const TComputationNodeFactoryContext& ctx)>;
 
-template<typename... Ts>
-TCallableComputationNodeBuilder WrapComputationBuilder(IComputationNode* (*f)(const TComputationNodeFactoryContext&, Ts...)){
+template <typename... Ts>
+TCallableComputationNodeBuilder WrapComputationBuilder(IComputationNode* (*f)(const TComputationNodeFactoryContext&, Ts...)) {
     return [f](TCallable& callable, const TComputationNodeFactoryContext& ctx) {
         MKQL_ENSURE(callable.GetInputsCount() == sizeof...(Ts), "Incorrect number of inputs");
         return CallComputationBuilderWithArgs(f, callable, ctx, std::make_index_sequence<sizeof...(Ts)>());
     };
 }
-template<typename F, size_t... Is>
+template <typename F, size_t... Is>
 auto CallComputationBuilderWithArgs(F* f, TCallable& callable, const TComputationNodeFactoryContext& ctx,
-                                           const std::integer_sequence<size_t, Is...> &)  {
+                                    const std::integer_sequence<size_t, Is...>&) {
     return f(ctx, callable.GetInput(Is)...);
 }
 
-} // namespace NMiniKQL
-} // namespace NKikimr
+} // namespace NKikimr::NMiniKQL

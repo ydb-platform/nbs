@@ -1,18 +1,11 @@
-IF (YQL_PACKAGED)
-    PACKAGE()
-        FROM_SANDBOX(FILE {FILE_RESOURCE_ID} OUT_NOAUTO
-            libunicode_udf.so
-        )
-    END()
-ELSE ()
 YQL_UDF_CONTRIB(unicode_udf)
     
     YQL_ABI_VERSION(
         2
-        27
+        37
         0
     )
-    
+
     SRCS(
         unicode_base.cpp
     )
@@ -22,8 +15,6 @@ YQL_UDF_CONTRIB(unicode_udf)
     )
     
     END()
-ENDIF ()
-
 
 RECURSE_FOR_TESTS(
     test

@@ -1,6 +1,6 @@
-UNITTEST_FOR(contrib/ydb/library/yql/core/qplayer/storage/ydb)
+IF (NOT OPENSOURCE)
 
-TAG(ya:manual)
+UNITTEST_FOR(contrib/ydb/library/yql/core/qplayer/storage/ydb)
 
 SRCS(
     yql_qstorage_ydb_ut.cpp
@@ -11,3 +11,6 @@ PEERDIR(
 )
 
 END()
+
+ENDIF()
+

@@ -1,21 +1,19 @@
+SUBSCRIBER(g:yql)
+
 RECURSE(
     ast
     core
-    dq
+    docs
     minikql
     parser
+    protos
     providers
     public
     sql
     tests
     tools
+    types
     udfs
     utils
 )
 
-IF (OS_LINUX)
-    # YT target is a shared library, works only under Linux.
-    RECURSE(
-        yt
-    )
-ENDIF()

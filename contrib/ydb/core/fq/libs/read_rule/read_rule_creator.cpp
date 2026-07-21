@@ -4,7 +4,8 @@
 #include <contrib/ydb/core/fq/libs/events/events.h>
 
 #include <contrib/ydb/library/services/services.pb.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_topic/topic.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/topic/client.h>
+#include <contrib/ydb/public/sdk/cpp/adapters/issue/issue.h>
 
 #include <contrib/ydb/library/yql/providers/dq/api/protos/service.pb.h>
 #include <contrib/ydb/library/yql/providers/pq/proto/dq_task_params.pb.h>
@@ -13,14 +14,7 @@
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/log.h>
 
-#define LOG_E(stream) \
-    LOG_ERROR_S(*TlsActivationContext, NKikimrServices::STREAMS, QueryId << ": " << stream)
-
-#define LOG_I(stream) \
-    LOG_INFO_S(*TlsActivationContext, NKikimrServices::STREAMS, QueryId << ": " << stream)
-
-#define LOG_D(stream) \
-    LOG_DEBUG_S(*TlsActivationContext, NKikimrServices::STREAMS, QueryId << ": " << stream)
+#define YDB_LOG_THIS_FILE_COMPONENT NKikimrServices::STREAMS
 
 
 namespace NFq {
@@ -71,6 +65,7 @@ public:
         NActors::TActorId owner,
         TString queryId,
         NYdb::TDriver ydbDriver,
+        const NYql::IPqGateway::TPtr& pqGateway,
         const Fq::Private::TopicConsumer& topicConsumer,
         std::shared_ptr<NYdb::ICredentialsProviderFactory> credentialsProvider,
         ui64 index
@@ -79,6 +74,7 @@ public:
         , QueryId(std::move(queryId))
         , TopicConsumer(topicConsumer)
         , YdbDriver(std::move(ydbDriver))
+        , PqGateway(pqGateway)
         , TopicClient(YdbDriver, GetTopicClientSettings(std::move(credentialsProvider)))
         , Index(index)
     {
@@ -104,7 +100,10 @@ public:
     void StartRequest() {
         Y_ABORT_UNLESS(!RequestInFlight);
         RequestInFlight = true;
-        LOG_D("Make request for read rule creation for topic `" << TopicConsumer.topic_path() << "` [" << Index << "]");
+        YDB_LOG_DEBUG("Make request for read rule creation",
+            {"queryId", QueryId},
+            {"topicPath", TopicConsumer.topic_path()},
+            {"index", Index});
 
         const NYdb::NTopic::TAlterTopicSettings alterTopicSettings =
             NYdb::NTopic::TAlterTopicSettings()
@@ -142,9 +141,14 @@ public:
                 nextRetryDelay = Nothing(); // Not retryable
             }
 
-            LOG_D("Failed to add read rule to `" << TopicConsumer.topic_path() << "`: " << status.GetIssues().ToOneLineString() << ". Status: " << status.GetStatus() << ". Retry after: " << nextRetryDelay);
+            YDB_LOG_DEBUG("Failed to add read rule",
+                {"queryId", QueryId},
+                {"topicPath", TopicConsumer.topic_path()},
+                {"statusIssues", status.GetIssues().ToOneLineString()},
+                {"status", status.GetStatus()},
+                {"nextRetryDelay", nextRetryDelay});
             if (!nextRetryDelay) { // Not retryable
-                Send(Owner, MakeHolder<TEvPrivate::TEvSingleReadRuleCreatorResult>(status.GetIssues()), 0, Index);
+                Send(Owner, MakeHolder<TEvPrivate::TEvSingleReadRuleCreatorResult>(NYdb::NAdapters::ToYqlIssues(status.GetIssues())), 0, Index);
                 PassAway();
             } else {
                 if (!CheckFinish()) {
@@ -183,7 +187,7 @@ public:
 
 private:
     NYdb::NTopic::TTopicClientSettings GetTopicClientSettings(std::shared_ptr<NYdb::ICredentialsProviderFactory> credentialsProvider) {
-        return NYdb::NTopic::TTopicClientSettings()
+        return PqGateway->GetTopicClientSettings()
             .Database(TopicConsumer.database())
             .DiscoveryEndpoint(TopicConsumer.cluster_endpoint())
             .CredentialsProviderFactory(std::move(credentialsProvider))
@@ -196,6 +200,7 @@ private:
     const TString QueryId;
     const Fq::Private::TopicConsumer TopicConsumer;
     NYdb::TDriver YdbDriver;
+    NYql::IPqGateway::TPtr PqGateway;
     NYdb::NTopic::TTopicClient TopicClient;
     ui64 Index = 0;
     NYdb::NTopic::IRetryPolicy::IRetryState::TPtr RetryState;
@@ -210,12 +215,14 @@ public:
         NActors::TActorId owner,
         TString queryId,
         NYdb::TDriver ydbDriver,
+        const NYql::IPqGateway::TPtr& pqGateway,
         const ::google::protobuf::RepeatedPtrField<Fq::Private::TopicConsumer>& topicConsumers,
         TVector<std::shared_ptr<NYdb::ICredentialsProviderFactory>> credentials
     )
         : Owner(owner)
         , QueryId(std::move(queryId))
         , YdbDriver(std::move(ydbDriver))
+        , PqGateway(pqGateway)
         , TopicConsumers(VectorFromProto(topicConsumers))
         , Credentials(std::move(credentials))
     {
@@ -231,8 +238,11 @@ public:
         Children.reserve(TopicConsumers.size());
         Results.reserve(TopicConsumers.size());
         for (size_t i = 0; i < TopicConsumers.size(); ++i) {
-            LOG_D("Create read rule creation actor for `" << TopicConsumers[i].topic_path() << "` [" << i << "]");
-            Children.push_back(Register(new TSingleReadRuleCreator(SelfId(), QueryId, YdbDriver, TopicConsumers[i], Credentials[i], i)));
+            YDB_LOG_DEBUG("Create read rule creation actor",
+                {"queryId", QueryId},
+                {"topicPath", TopicConsumers[i].topic_path()},
+                {"index", i});
+            Children.push_back(Register(new TSingleReadRuleCreator(SelfId(), QueryId, YdbDriver, PqGateway, TopicConsumers[i], Credentials[i], i)));
         }
     }
 
@@ -281,6 +291,7 @@ private:
     const NActors::TActorId Owner;
     const TString QueryId;
     NYdb::TDriver YdbDriver;
+    NYql::IPqGateway::TPtr PqGateway;
     const TVector<Fq::Private::TopicConsumer> TopicConsumers;
     const TVector<std::shared_ptr<NYdb::ICredentialsProviderFactory>> Credentials;
     size_t ResultsGot = 0;
@@ -295,6 +306,7 @@ NActors::IActor* MakeReadRuleCreatorActor(
     NActors::TActorId owner,
     TString queryId,
     NYdb::TDriver ydbDriver,
+    const NYql::IPqGateway::TPtr& pqGateway,
     const ::google::protobuf::RepeatedPtrField<Fq::Private::TopicConsumer>& topicConsumers,
     TVector<std::shared_ptr<NYdb::ICredentialsProviderFactory>> credentials
 )
@@ -303,6 +315,7 @@ NActors::IActor* MakeReadRuleCreatorActor(
         owner,
         std::move(queryId),
         std::move(ydbDriver),
+        pqGateway,
         topicConsumers,
         std::move(credentials)
     );

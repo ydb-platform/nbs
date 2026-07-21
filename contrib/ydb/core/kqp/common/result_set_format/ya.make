@@ -1,0 +1,20 @@
+LIBRARY()
+
+SRCS(
+    kqp_formats_arrow.cpp
+    kqp_result_set_builders.cpp
+)
+
+PEERDIR(
+    contrib/libs/apache/arrow
+    contrib/ydb/public/api/protos
+    contrib/ydb/library/mkql_proto/protos
+    contrib/ydb/library/yql/dq/proto
+    contrib/ydb/library/yql/dq/runtime
+    contrib/ydb/library/yql/minikql
+    contrib/ydb/library/yql/public/udf
+)
+
+YQL_LAST_ABI_VERSION()
+
+END()

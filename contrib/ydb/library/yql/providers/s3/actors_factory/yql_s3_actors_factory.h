@@ -10,15 +10,19 @@
 #include <util/generic/size_literals.h>
 
 
-namespace NYql::NDq {
+namespace NYql {
+
+class TS3GatewayConfig;
+
+namespace NDq {
 
     struct TS3ReadActorFactoryConfig {
         ui64 RowsInBatch = 1000;
         ui64 MaxInflight = 20;
         ui64 DataInflight = 200_MB;
-        ui64 FileSizeLimit = 2_GB;
+        ui64 FileSizeLimit = 100_GB;
         ui64 BlockFileSizeLimit = 50_GB;
-        std::unordered_map<TString, ui64> FormatSizeLimits;
+        std::unordered_map<std::string, ui64> FormatSizeLimits;
     };
 
     class IS3ActorsFactory {
@@ -48,9 +52,13 @@ namespace NYql::NDq {
             IHTTPGateway::TPtr gateway,
             const IHTTPGateway::TRetryPolicy::TPtr& retryPolicy,
             const TS3ReadActorFactoryConfig& cfg = {},
-            ::NMonitoring::TDynamicCounterPtr counters = nullptr) = 0;
+            ::NMonitoring::TDynamicCounterPtr counters = nullptr,
+            bool allowLocalFiles = false) = 0;
     };
 
     std::shared_ptr<IS3ActorsFactory> CreateDefaultS3ActorsFactory();
 
-}
+    TS3ReadActorFactoryConfig CreateReadActorFactoryConfig(const ::NYql::TS3GatewayConfig& s3Config);
+} // namespace NDq
+
+} // namespace NYql

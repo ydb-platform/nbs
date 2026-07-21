@@ -1,6 +1,7 @@
 #pragma once
 
-#include <contrib/ydb/library/actors/core/actorsystem.h>
+#include <contrib/ydb/library/actors/core/actorsystem_fwd.h>
+#include <contrib/ydb/library/actors/core/actorid.h>
 
 #include <contrib/ydb/services/deprecated/persqueue_v0/api/grpc/persqueue.grpc.pb.h>
 
@@ -27,13 +28,9 @@ public:
         NYdbGrpc::TLoggerPtr logger,
         size_t index) override;
     void InitService(grpc::ServerCompletionQueue* cq, NYdbGrpc::TLoggerPtr logger) override;
-    void SetGlobalLimiterHandle(NYdbGrpc::TGlobalLimiter* limiter) override;
     void StopService() noexcept override;
 
     using NYdbGrpc::TGrpcServiceBase<NPersQueue::PersQueueService>::GetService;
-
-    bool IncRequest();
-    void DecRequest();
 
 private:
     void SetupIncomingRequests(NYdbGrpc::TLoggerPtr logger);
@@ -43,7 +40,6 @@ private:
     grpc::ServerCompletionQueue* CQ = nullptr;
 
     TIntrusivePtr<NMonitoring::TDynamicCounters> Counters;
-    NYdbGrpc::TGlobalLimiter* Limiter = nullptr;
     NActors::TActorId SchemeCache;
 
     std::shared_ptr<NGRpcProxy::TPQWriteService> WriteService;

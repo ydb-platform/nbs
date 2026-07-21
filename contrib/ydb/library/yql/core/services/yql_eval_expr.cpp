@@ -3,9 +3,11 @@
 #include "yql_out_transformers.h"
 
 #include <contrib/ydb/library/yql/ast/serialize/yql_expr_serialize.h>
+#include <contrib/ydb/library/yql/core/yql_opt_utils.h>
 #include <contrib/ydb/library/yql/core/type_ann/type_ann_core.h>
 #include <contrib/ydb/library/yql/core/type_ann/type_ann_expr.h>
 #include <contrib/ydb/library/yql/core/yql_expr_type_annotation.h>
+#include <contrib/ydb/library/yql/core/sql_types/yql_callable_names.h>
 #include <contrib/ydb/library/yql/core/peephole_opt/yql_opt_peephole_physical.h>
 #include <contrib/ydb/library/yql/providers/common/codec/yql_codec.h>
 #include <contrib/ydb/library/yql/providers/common/mkql/yql_type_mkql.h>
@@ -17,8 +19,6 @@
 #include <library/cpp/yson/node/node_io.h>
 #include <library/cpp/string_utils/base64/base64.h>
 
-#include <openssl/sha.h>
-
 #include <util/string/builder.h>
 
 namespace NYql {
@@ -29,41 +29,26 @@ using namespace NNodes;
 
 const TString EvaluationComponent = "Evaluation";
 
-static THashSet<TStringBuf> EvaluationFuncs = {
+namespace {
+
+THashSet<TStringBuf> EvaluationFuncs = {
     TStringBuf("EvaluateAtom"),
     TStringBuf("EvaluateExpr"),
     TStringBuf("EvaluateType"),
-    TStringBuf("EvaluateCode")
-};
+    TStringBuf("EvaluateCode")};
 
-static THashSet<TStringBuf> SubqueryExpandFuncs = {
+THashSet<TStringBuf> SubqueryExpandFuncs = {
     TStringBuf("SubqueryExtendFor"),
     TStringBuf("SubqueryUnionAllFor"),
     TStringBuf("SubqueryMergeFor"),
     TStringBuf("SubqueryUnionMergeFor"),
     TStringBuf("SubqueryOrderBy"),
-    TStringBuf("SubqueryAssumeOrderBy")
-};
+    TStringBuf("SubqueryAssumeOrderBy")};
 
-TString MakeCacheKey(const TExprNode& root, TExprContext& ctx) {
-    TConvertToAstSettings settings;
-    settings.NormalizeAtomFlags = true;
-    settings.AllowFreeArgs = false;
-    settings.RefAtoms = true;
-    settings.NoInlineFunc = [](const TExprNode&) { return true; };
-    auto ast = ConvertToAst(root, ctx, settings);
-    YQL_ENSURE(ast.Root);
-    auto str = ast.Root->ToString();
-    SHA256_CTX sha;
-    SHA256_Init(&sha);
-    SHA256_Update(&sha, str.Data(), str.Size());
-    unsigned char hash[SHA256_DIGEST_LENGTH];
-    SHA256_Final(hash, &sha);
-    return TString((const char*)hash, sizeof(hash));
-}
+} // namespace
 
 bool CheckPendingArgs(const TExprNode& root, TNodeSet& visited, TNodeMap<const TExprNode*>& activeArgs, const TNodeMap<ui32>& externalWorlds, TExprContext& ctx,
-    bool underTypeOf, bool& hasUnresolvedTypes) {
+                      bool underTypeOf, bool& hasUnresolvedTypes) {
     if (!visited.emplace(&root).second) {
         return true;
     }
@@ -97,7 +82,7 @@ bool CheckPendingArgs(const TExprNode& root, TNodeSet& visited, TNodeMap<const T
         const auto& child = *root.Child(index);
         auto onlyType = underTypeOf || (root.IsCallable("MatchType") || root.IsCallable("IfType")) && (index == 0);
         if (!CheckPendingArgs(child, visited, activeArgs, externalWorlds, ctx, onlyType,
-            hasUnresolvedTypes)) {
+                              hasUnresolvedTypes)) {
             return false;
         }
     };
@@ -110,11 +95,12 @@ public:
     TNodeSet Reachable;
     TNodeMap<ui32> ExternalWorlds;
     TDeque<TExprNode::TPtr> ExternalWorldsList;
-    bool HasConfigPending = false;
+    TNodeMap<bool> Visited;
+    bool ForceConfigure = false;
 
 public:
     void Scan(const TExprNode& node) {
-        VisitExprByFirst(node, [this](const TExprNode& n) {
+        VisitExpr(node, [this](const TExprNode& n) {
             if (n.IsCallable(ConfigureName)) {
                 if (n.ChildrenSize() > 3 && n.Child(1)->Child(0)->Content() == ConfigProviderName) {
                     bool pending = false;
@@ -126,25 +112,34 @@ public:
                     }
                     if (pending) {
                         const TStringBuf command = n.Child(2)->Content();
-                        if (command == "AddFileByUrl") {
-                            PendingFileAliases.insert(n.Child(3)->Content());
-                        } else if (command == "AddFolderByUrl") {
-                            PendingFolderPrefixes.insert(n.Child(3)->Content());
+                        if (!n.Child(3)->IsCallable("EvaluateAtom")) {
+                            if (command == "AddFileByUrl") {
+                                PendingFileAliases_.insert(n.Child(3)->Content());
+                            } else if (command == "AddFolderByUrl") {
+                                PendingFolderPrefixes_.insert(n.Child(3)->Content());
+                            }
+                        } else {
+                            ForceConfigure = true;
                         }
                     }
                 }
             }
             return true;
         });
-        ScanImpl(node);
+
+        bool hasConfigPending = false;
+        ScanImpl(node, hasConfigPending);
     }
 
 private:
-    void ScanImpl(const TExprNode& node) {
-        if (!Visited.emplace(&node).second) {
+    void ScanImpl(const TExprNode& node, bool& hasConfigPending) {
+        auto [it, inserted] = Visited.emplace(&node, false);
+        if (!inserted) {
+            hasConfigPending = it->second;
             return;
         }
 
+        bool localConfigPending = false;
         if (node.IsCallable("Seq!")) {
             for (ui32 i = 1; i < node.ChildrenSize(); ++i) {
                 auto lambda = node.Child(i);
@@ -155,17 +150,18 @@ private:
             }
         }
 
-        static THashSet<TStringBuf> FILE_CALLABLES = {"FilePath", "FileContent", "FolderPath"};
-        if (node.IsCallable(FILE_CALLABLES)) {
-            const auto alias = node.Head().Content();
-            if (PendingFileAliases.contains(alias) || AnyOf(PendingFolderPrefixes, [alias](const TStringBuf prefix) {
-                auto withSlash = TString(prefix) + "/";
-                return alias.StartsWith(withSlash);
-                })) {
-                for (auto& curr: CurrentEvalNodes) {
-                    Reachable.erase(curr);
+        static THashSet<TStringBuf> FileCallables = {"FilePath", "FileContent", "FolderPath"};
+        if (node.IsCallable(FileCallables)) {
+            if (node.Head().IsCallable("EvaluateAtom")) {
+                localConfigPending = true;
+            } else {
+                const auto alias = node.Head().Content();
+                if (PendingFileAliases_.contains(alias) || AnyOf(PendingFolderPrefixes_, [alias](const TStringBuf prefix) {
+                        auto withSlash = TString(prefix) + "/";
+                        return alias.StartsWith(withSlash);
+                    })) {
+                    localConfigPending = true;
                 }
-                HasConfigPending = true;
             }
         }
 
@@ -177,16 +173,14 @@ private:
         bool pop = false;
         if (node.IsCallable(EvaluationFuncs) || node.IsCallable(SubqueryExpandFuncs)) {
             Reachable.insert(&node);
-            CurrentEvalNodes.insert(&node);
             pop = true;
         }
 
-        if (node.IsCallable({ "EvaluateIf!", "EvaluateFor!", "EvaluateParallelFor!" })) {
+        if (node.IsCallable({"EvaluateIf!", "EvaluateFor!", "EvaluateParallelFor!"})) {
             // scan predicate/list only
             if (node.ChildrenSize() > 1) {
-                CurrentEvalNodes.insert(&node);
                 pop = true;
-                ScanImpl(*node.Child(1));
+                ScanImpl(*node.Child(1), localConfigPending);
             }
         } else if (node.IsCallable(SubqueryExpandFuncs)) {
             // scan list only if it's wrapped by evaluation func
@@ -196,40 +190,44 @@ private:
             }
             if (node.ChildrenSize() > index) {
                 if (node.Child(index)->IsCallable(EvaluationFuncs)) {
-                    CurrentEvalNodes.insert(&node);
                     pop = true;
-                    ScanImpl(*node.Child(index));
+                    ScanImpl(*node.Child(index), localConfigPending);
                 } else {
                     for (const auto& child : node.Children()) {
-                        ScanImpl(*child);
+                        ScanImpl(*child, localConfigPending);
                     }
                 }
             }
         } else {
             for (const auto& child : node.Children()) {
-                ScanImpl(*child);
+                ScanImpl(*child, localConfigPending);
             }
         }
         if (pop) {
-            CurrentEvalNodes.erase(&node);
+            if (localConfigPending) {
+                Reachable.erase(&node);
+            }
         }
+
+        hasConfigPending = hasConfigPending || localConfigPending;
+        it->second = hasConfigPending;
     }
 
 private:
-    TNodeSet Visited;
-    THashSet<TStringBuf> PendingFileAliases;
-    THashSet<TStringBuf> PendingFolderPrefixes;
-    TNodeSet CurrentEvalNodes;
+    THashSet<TStringBuf> PendingFileAliases_;
+    THashSet<TStringBuf> PendingFolderPrefixes_;
 };
 
 struct TEvalScope {
-    TEvalScope(TTypeAnnotationContext& types)
+    TEvalScope(TTypeAnnotationContext& types, TExprContext& ctx)
         : Types(types)
+        , Ctx(ctx)
     {
         ++Types.EvaluationInProgress;
         for (auto& dataProvider : Types.DataSources) {
             dataProvider->EnterEvaluation(Types.EvaluationInProgress);
         }
+        Ctx.ResetCycleDetector();
     }
 
     ~TEvalScope() {
@@ -237,8 +235,10 @@ struct TEvalScope {
             dataProvider->LeaveEvaluation(Types.EvaluationInProgress);
         }
         --Types.EvaluationInProgress;
+        Ctx.ResetCycleDetector();
     }
     TTypeAnnotationContext& Types;
+    TExprContext& Ctx;
 };
 
 bool ValidateCalcWorlds(const TExprNode& node, const TTypeAnnotationContext& types, TNodeSet& visited) {
@@ -254,7 +254,7 @@ bool ValidateCalcWorlds(const TExprNode& node, const TTypeAnnotationContext& typ
         return ValidateCalcWorlds(*node.Child(0), types, visited);
     }
 
-    if (node.IsCallable("Sync!")) {
+    if (node.IsCallable(SyncName)) {
         for (const auto& child : node.Children()) {
             if (!ValidateCalcWorlds(*child, types, visited)) {
                 return false;
@@ -262,6 +262,28 @@ bool ValidateCalcWorlds(const TExprNode& node, const TTypeAnnotationContext& typ
         }
 
         return true;
+    }
+
+    if (node.IsCallable(SeqName)) {
+        if (!node.ChildrenSize()) {
+            return false;
+        }
+        if (!ValidateCalcWorlds(node.Head(), types, visited)) {
+            return false;
+        }
+        for (size_t i = 1; i < node.ChildrenSize(); ++i) {
+            if (!node.Child(i)->IsLambda()) {
+                return false;
+            }
+            if (!ValidateCalcWorlds(node.Child(i)->Tail(), types, visited)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+    if (node.IsArgument()) {
+        return node.GetTypeAnn()->GetKind() == ETypeAnnotationKind::World;
     }
 
     for (auto& dataProvider : types.DataSources) {
@@ -274,131 +296,145 @@ bool ValidateCalcWorlds(const TExprNode& node, const TTypeAnnotationContext& typ
 }
 
 TExprNode::TPtr QuoteCode(const TExprNode::TPtr& node, TExprContext& ctx, TNodeOnNodeOwnedMap& knownArgs, TNodeOnNodeOwnedMap& visited,
-    const TNodeMap<ui32>& externalWorlds) {
+                          const TNodeMap<ui32>& externalWorlds) {
     auto& res = visited[node.Get()];
     if (res) {
         return res;
     }
 
     switch (node->Type()) {
-    case TExprNode::Atom: {
-        return res = ctx.Builder(node->Pos())
-            .Callable("AtomCode")
-                .Callable(0, "String")
-                    .Atom(0, node->Content())
-                .Seal()
-            .Seal()
-            .Build();
-    }
-
-    case TExprNode::Argument: {
-        auto it = knownArgs.find(node.Get());
-        if (it != knownArgs.end()) {
-            return res = it->second;
-        }
-
-        auto externalWorldIt = externalWorlds.find(node.Get());
-        if (externalWorldIt != externalWorlds.end()) {
-            return ctx.Builder(node->Pos())
-                .Callable("FuncCode")
+        case TExprNode::Atom: {
+            // clang-format off
+            return res = ctx.Builder(node->Pos())
+                .Callable("AtomCode")
                     .Callable(0, "String")
-                        .Atom(0, "WorldArg")
-                    .Seal()
-                    .Callable(1, "AtomCode")
-                        .Callable(0, "String")
-                            .Atom(0, ToString(externalWorldIt->second))
-                        .Seal()
+                        .Atom(0, node->Content())
                     .Seal()
                 .Seal()
                 .Build();
+            // clang-format on
         }
 
-        return res = ctx.Builder(node->Pos())
-            .Callable("ReprCode")
-                .Add(0, node)
-            .Seal()
-            .Build();
-    }
+        case TExprNode::Argument: {
+            auto it = knownArgs.find(node.Get());
+            if (it != knownArgs.end()) {
+                return res = it->second;
+            }
 
-    case TExprNode::List: {
-        TExprNode::TListType children;
-        children.reserve(node->ChildrenSize());
-        for (auto& child : node->Children()) {
-            auto childCode = QuoteCode(child, ctx, knownArgs, visited, externalWorlds);
-            if (!childCode) {
+            auto externalWorldIt = externalWorlds.find(node.Get());
+            if (externalWorldIt != externalWorlds.end()) {
+                // clang-format off
+                return ctx.Builder(node->Pos())
+                    .Callable("FuncCode")
+                        .Callable(0, "String")
+                            .Atom(0, "WorldArg")
+                        .Seal()
+                        .Callable(1, "AtomCode")
+                            .Callable(0, "String")
+                                .Atom(0, ToString(externalWorldIt->second))
+                            .Seal()
+                        .Seal()
+                    .Seal()
+                    .Build();
+                // clang-format on
+            }
+
+            // clang-format off
+            return res = ctx.Builder(node->Pos())
+                .Callable("ReprCode")
+                    .Add(0, node)
+                .Seal()
+                .Build();
+            // clang-format on
+        }
+
+        case TExprNode::List: {
+            TExprNode::TListType children;
+            children.reserve(node->ChildrenSize());
+            for (auto& child : node->Children()) {
+                auto childCode = QuoteCode(child, ctx, knownArgs, visited, externalWorlds);
+                if (!childCode) {
+                    return nullptr;
+                }
+
+                children.push_back(childCode);
+            }
+
+            return res = ctx.NewCallable(node->Pos(), "ListCode", std::move(children));
+        }
+
+        case TExprNode::Callable: {
+            TExprNode::TListType children;
+            children.reserve(node->ChildrenSize() + 1);
+            // clang-format off
+            children.push_back(ctx.Builder(node->Pos())
+                .Callable("String")
+                    .Atom(0, node->Content())
+                .Seal()
+                .Build());
+            // clang-format on
+
+            for (auto& child : node->Children()) {
+                auto childCode = QuoteCode(child, ctx, knownArgs, visited, externalWorlds);
+                if (!childCode) {
+                    return nullptr;
+                }
+
+                children.push_back(childCode);
+            }
+
+            return res = ctx.NewCallable(node->Pos(), "FuncCode", std::move(children));
+        }
+
+        case TExprNode::Lambda: {
+            TExprNode::TListType lambdaArgsItems;
+            for (auto arg : node->Child(0)->Children()) {
+                auto lambdaArg = ctx.NewArgument(arg->Pos(), arg->Content());
+                lambdaArgsItems.push_back(lambdaArg);
+                knownArgs.emplace(arg.Get(), lambdaArg);
+            }
+
+            auto lambdaArgs = ctx.NewArguments(node->Pos(), std::move(lambdaArgsItems));
+            auto body = QuoteCode(node->ChildPtr(1), ctx, knownArgs, visited, externalWorlds);
+            if (!body) {
                 return nullptr;
             }
 
-            children.push_back(childCode);
-        }
-
-        return res = ctx.NewCallable(node->Pos(), "ListCode", std::move(children));
-    }
-
-    case TExprNode::Callable: {
-        TExprNode::TListType children;
-        children.reserve(node->ChildrenSize() + 1);
-        children.push_back(ctx.Builder(node->Pos())
-            .Callable("String")
-                .Atom(0, node->Content())
-            .Seal()
-            .Build());
-
-        for (auto& child : node->Children()) {
-            auto childCode = QuoteCode(child, ctx, knownArgs, visited, externalWorlds);
-            if (!childCode) {
-                return nullptr;
+            for (auto arg : node->Child(0)->Children()) {
+                knownArgs.erase(arg.Get());
             }
 
-            children.push_back(childCode);
+            auto lambda = ctx.NewLambda(node->Pos(), std::move(lambdaArgs), std::move(body));
+            // clang-format off
+            return res = ctx.Builder(node->Pos())
+                .Callable("LambdaCode")
+                    .Add(0, lambda)
+                .Seal()
+                .Build();
+            // clang-format on
         }
 
-        return res = ctx.NewCallable(node->Pos(), "FuncCode", std::move(children));
-    }
-
-    case TExprNode::Lambda: {
-        TExprNode::TListType lambdaArgsItems;
-        for (auto arg : node->Child(0)->Children()) {
-            auto lambdaArg = ctx.NewArgument(arg->Pos(), arg->Content());
-            lambdaArgsItems.push_back(lambdaArg);
-            knownArgs.emplace(arg.Get(), lambdaArg);
+        case TExprNode::World: {
+            // clang-format off
+            return res = ctx.Builder(node->Pos())
+                .Callable("WorldCode")
+                .Seal()
+                .Build();
+            // clang-format on
         }
 
-        auto lambdaArgs = ctx.NewArguments(node->Pos(), std::move(lambdaArgsItems));
-        auto body = QuoteCode(node->ChildPtr(1), ctx, knownArgs, visited, externalWorlds);
-        if (!body) {
-            return nullptr;
-        }
-
-        for (auto arg : node->Child(0)->Children()) {
-            knownArgs.erase(arg.Get());
-        }
-
-        auto lambda = ctx.NewLambda(node->Pos(), std::move(lambdaArgs), std::move(body));
-        return res = ctx.Builder(node->Pos())
-            .Callable("LambdaCode")
-                .Add(0, lambda)
-            .Seal()
-            .Build();
-    }
-
-    case TExprNode::World: {
-        return res = ctx.Builder(node->Pos())
-            .Callable("WorldCode")
-            .Seal()
-            .Build();
-    }
-
-    default:
-        YQL_ENSURE(false, "Unknown type: " << node->Type());
+        default:
+            YQL_ENSURE(false, "Unknown type: " << node->Type());
     }
 }
 
 IGraphTransformer::TStatus EvaluateExpression(const TExprNode::TPtr& input, TExprNode::TPtr& output,
-    TTypeAnnotationContext& types, TExprContext& ctx, const IFunctionRegistry& functionRegistry, IGraphTransformer* calcTransfomer) {
+                                              TTypeAnnotationContext& types, TExprContext& ctx, const IFunctionRegistry& functionRegistry,
+                                              IGraphTransformer* calcTransfomer, TTypeAnnCallableFactory typeAnnCallableFactory) {
     output = input;
-    if (ctx.Step.IsDone(TExprStep::ExprEval))
+    if (ctx.Step.IsDone(TExprStep::ExprEval)) {
         return IGraphTransformer::TStatus::Ok;
+    }
 
     YQL_CLOG(DEBUG, CoreEval) << "EvaluateExpression - start";
     bool pure = false;
@@ -410,14 +446,13 @@ IGraphTransformer::TStatus EvaluateExpression(const TExprNode::TPtr& input, TExp
     bool isOptionalAtom = false;
     bool isTypePipeline = false;
     bool isCodePipeline = false;
-    TTransformationPipeline pipeline(&types);
+    TTransformationPipeline pipeline(&types, typeAnnCallableFactory);
     pipeline.AddServiceTransformers();
     pipeline.AddPreTypeAnnotation();
-    pipeline.AddExpressionEvaluation(functionRegistry);
+    pipeline.AddExpressionEvaluation(functionRegistry, calcTransfomer);
     pipeline.AddIOAnnotation();
     pipeline.AddTypeAnnotationTransformer();
-    pipeline.Add(CreateFunctorTransformer(
-        [&](TExprNode::TPtr input, TExprNode::TPtr& output, TExprContext& ctx) -> IGraphTransformer::TStatus {
+    auto topLevelTypeCheck = [&](TExprNode::TPtr input, TExprNode::TPtr& output, TExprContext& ctx) -> IGraphTransformer::TStatus {
         output = input;
         if (!input->GetTypeAnn()) {
             ctx.AddError(TIssue(ctx.GetPosition(input->Pos()), TStringBuilder() << "Lambda is not allowed as argument for function: " << input->Content()));
@@ -448,83 +483,85 @@ IGraphTransformer::TStatus EvaluateExpression(const TExprNode::TPtr& input, TExp
         }
 
         return IGraphTransformer::TStatus::Ok;
-    }), "TopLevelType", EYqlIssueCode::TIssuesIds_EIssueCode_DEFAULT_ERROR, "Ensure type of expression is correct");
+    };
+
+    pipeline.Add(CreateFunctorTransformer(topLevelTypeCheck), "TopLevelType", EYqlIssueCode::TIssuesIds_EIssueCode_DEFAULT_ERROR, "Ensure type of expression is correct");
     const bool forSubGraph = true;
     pipeline.AddPostTypeAnnotation(forSubGraph);
     pipeline.Add(TExprLogTransformer::Sync("EvalExpressionOpt", NLog::EComponent::CoreEval, NLog::ELevel::TRACE),
-        "EvalOptTrace", EYqlIssueCode::TIssuesIds_EIssueCode_DEFAULT_ERROR, "EvalOptTrace");
-    pipeline.AddOptimization(false);
+                 "EvalOptTrace", EYqlIssueCode::TIssuesIds_EIssueCode_DEFAULT_ERROR, "EvalOptTrace");
+    pipeline.AddOptimization(/*checkWorld=*/false);
     pipeline.Add(CreateFunctorTransformer(
-        [&](TExprNode::TPtr input, TExprNode::TPtr& output, TExprContext& ctx) -> IGraphTransformer::TStatus {
-        output = input;
-        if (!calcProvider) {
-            pure = false;
-            if (IsPureIsolatedLambda(*input)) {
-                pure = true;
-                if (calcTransfomer) {
-                    calcProvider.ConstructInPlace();
-                } else {
-                    if (nextProvider.empty()) {
-                        nextProvider = types.GetDefaultDataSource();
-                    }
-                    if (!nextProvider.empty() &&
-                        types.DataSourceMap.contains(nextProvider)) {
-                        calcProvider = types.DataSourceMap[nextProvider].Get();
-                    }
-                }
-            } else if (!calcTransfomer) {
-                for (auto& p : types.DataSources) {
-                    TSyncMap syncList;
-                    if (p->CanBuildResult(*input, syncList)) {
-                        bool canExec = true;
-                        for (auto& x : syncList) {
-                            if (x.first->Type() == TExprNode::World) {
-                                continue;
-                            }
+                     [&](TExprNode::TPtr input, TExprNode::TPtr& output, TExprContext& ctx) -> IGraphTransformer::TStatus {
+                         output = input;
+                         if (!calcProvider) {
+                             pure = false;
+                             if (IsPureIsolatedLambda(*input)) {
+                                 pure = true;
+                                 if (calcTransfomer) {
+                                     calcProvider.ConstructInPlace();
+                                 } else {
+                                     if (nextProvider.empty()) {
+                                         nextProvider = types.GetDefaultDataSource();
+                                     }
+                                     if (!nextProvider.empty() &&
+                                         types.DataSourceMap.contains(nextProvider)) {
+                                         calcProvider = types.DataSourceMap[nextProvider].Get();
+                                     }
+                                 }
+                             } else if (!calcTransfomer) {
+                                 for (auto& p : types.DataSources) {
+                                     TSyncMap syncList;
+                                     if (p->CanBuildResult(*input, syncList)) {
+                                         bool canExec = true;
+                                         for (auto& x : syncList) {
+                                             if (x.first->Type() == TExprNode::World) {
+                                                 continue;
+                                             }
 
-                            if (!p->GetExecWorld(x.first, calcWorldRoot)) {
-                                canExec = false;
-                                break;
-                            }
+                                             if (!p->GetExecWorld(x.first, calcWorldRoot)) {
+                                                 canExec = false;
+                                                 break;
+                                             }
 
-                            if (!calcWorldRoot) {
-                                continue;
-                            }
+                                             if (!calcWorldRoot) {
+                                                 continue;
+                                             }
 
-                            TNodeSet visited;
-                            if (!ValidateCalcWorlds(*calcWorldRoot, types, visited)) {
-                                canExec = false;
-                                break;
-                            }
-                        }
+                                             TNodeSet visited;
+                                             if (!ValidateCalcWorlds(*calcWorldRoot, types, visited)) {
+                                                 canExec = false;
+                                                 break;
+                                             }
+                                         }
 
-                        if (canExec) {
-                            calcProvider = p.Get();
-                            output = (*calcProvider.Get())->CleanupWorld(input, ctx);
-                            if (!output) {
-                                return IGraphTransformer::TStatus(IGraphTransformer::TStatus::Error);
-                            }
+                                         if (canExec) {
+                                             calcProvider = p.Get();
+                                             output = (*calcProvider.Get())->CleanupWorld(input, ctx);
+                                             if (!output) {
+                                                 return IGraphTransformer::TStatus(IGraphTransformer::TStatus::Error);
+                                             }
 
-                            return IGraphTransformer::TStatus(IGraphTransformer::TStatus::Repeat, true);
-                        }
-                    }
-                }
-            }
+                                             return IGraphTransformer::TStatus(IGraphTransformer::TStatus::Repeat, /*hasRestart=*/true);
+                                         }
+                                     }
+                                 }
+                             }
 
-            if (!calcProvider) {
-                ctx.AddError(TIssue(ctx.GetPosition(input->Pos()), TStringBuilder() << "Only pure expressions are supported"));
-                return IGraphTransformer::TStatus::Error;
-            }
-        }
+                             if (!calcProvider) {
+                                 ctx.AddError(TIssue(ctx.GetPosition(input->Pos()), TStringBuilder() << "Only pure expressions are supported"));
+                                 return IGraphTransformer::TStatus::Error;
+                             }
+                         }
 
-        if (!calcWorldRoot) {
-            calcWorldRoot = ctx.NewWorld(input->Pos());
-            calcWorldRoot->SetTypeAnn(ctx.MakeType<TUnitExprType>());
-            calcWorldRoot->SetState(TExprNode::EState::ConstrComplete);
-        }
+                         if (!calcWorldRoot) {
+                             calcWorldRoot = ctx.NewWorld(input->Pos());
+                             calcWorldRoot->SetTypeAnn(ctx.MakeType<TUnitExprType>());
+                             calcWorldRoot->SetState(TExprNode::EState::ConstrComplete);
+                         }
 
-        return IGraphTransformer::TStatus::Ok;
-    }), "CheckPure", EYqlIssueCode::TIssuesIds_EIssueCode_DEFAULT_ERROR, "Ensure expression is computable");
+                         return IGraphTransformer::TStatus::Ok;
+                     }), "CheckPure", EYqlIssueCode::TIssuesIds_EIssueCode_DEFAULT_ERROR, "Ensure expression is computable");
 
     pipeline.Add(MakePeepholeOptimization(&types), "PeepHole", EYqlIssueCode::TIssuesIds_EIssueCode_DEFAULT_ERROR, "Peephole optimizations");
 
@@ -538,18 +575,17 @@ IGraphTransformer::TStatus EvaluateExpression(const TExprNode::TPtr& input, TExp
     modifyCallables.insert(ConfigureName);
     modifyCallables.insert(CommitName);
     modifyCallables.insert("CommitAll!");
-    for (auto& dataSink: types.DataSinks) {
+    for (auto& dataSink : types.DataSinks) {
         dataSink->FillModifyCallables(modifyCallables);
     }
 
     IGraphTransformer::TStatus hasPendingEvaluations = IGraphTransformer::TStatus::Ok;
     TOptimizeExprSettings settings(nullptr);
     settings.VisitChanges = true;
-    auto status = OptimizeExpr(output, output, [&](const TExprNode::TPtr& node, TExprContext& ctx)->TExprNode::TPtr {
-        TIssueScopeGuard issueScope(ctx.IssueManager, [&]() {
-            return MakeIntrusive<TIssue>(ctx.GetPosition(node->Pos()), TStringBuilder() << "At function: " << node->Content());
-        });
-
+    settings.TrackFrames = true;
+    static const char ReuseLambdaFlag[] = "EvalReuseLambda";
+    settings.ReuseLambda = !IsOptimizerDisabled<ReuseLambdaFlag>(types);
+    auto status = OptimizeExpr(output, output, [&](const TExprNode::TPtr& node, TExprContext& ctx) -> TExprNode::TPtr {
         if (node->IsCallable("EvaluateIf!")) {
             if (!EnsureMinArgsCount(*node, 3, ctx)) {
                 return nullptr;
@@ -592,17 +628,21 @@ IGraphTransformer::TStatus EvaluateExpression(const TExprNode::TPtr& input, TExp
             }
 
             if (predValue) {
+                // clang-format off
                 return ctx.Builder(node->Pos())
                     .Apply(node->ChildPtr(2))
                         .With(0, node->ChildPtr(0))
                     .Seal()
                     .Build();
+                // clang-format on
             } else if (node->ChildrenSize() == 4) {
+                // clang-format off
                 return ctx.Builder(node->Pos())
                     .Apply(node->ChildPtr(3))
                         .With(0, node->ChildPtr(0))
                     .Seal()
                     .Build();
+                // clang-format on
             } else {
                 return node->ChildPtr(0);
             }
@@ -650,11 +690,13 @@ IGraphTransformer::TStatus EvaluateExpression(const TExprNode::TPtr& input, TExp
 
             if (noData) {
                 if (node->ChildrenSize() == 4) {
+                    // clang-format off
                     return ctx.Builder(node->Pos())
                         .Apply(node->ChildPtr(3))
                             .With(0, node->ChildPtr(0))
                         .Seal()
                         .Build();
+                    // clang-format on
                 } else {
                     return node->ChildPtr(0);
                 }
@@ -668,44 +710,45 @@ IGraphTransformer::TStatus EvaluateExpression(const TExprNode::TPtr& input, TExp
             auto itemsCount = list->ChildrenSize() - (list->IsCallable("List") ? 1 : 0);
             const auto limit = seq ? types.EvaluateForLimit : types.EvaluateParallelForLimit;
             if (itemsCount > limit) {
-                ctx.AddError(TIssue(ctx.GetPosition(list->Pos()), TStringBuilder() << "Too large list for EVALUATE " << (seq ? "" : "PARALLEL ") << "FOR, allowed: " <<
-                    limit << ", got: " << itemsCount));
+                ctx.AddError(TIssue(ctx.GetPosition(list->Pos()), TStringBuilder() << "Too large list for EVALUATE " << (seq ? "" : "PARALLEL ") << "FOR, allowed: " << limit << ", got: " << itemsCount));
                 return nullptr;
             }
 
             auto world = node->ChildPtr(0);
+            // clang-format off
             auto ret = ctx.Builder(node->Pos())
-                .Callable(seq ? "Seq!" : "Sync!")
-                    .Do([&](TExprNodeBuilder& parent) -> TExprNodeBuilder& {
-                        ui32 pos = 0;
+                .Callable(seq ? SeqName : SyncName)
+                .Do([&](TExprNodeBuilder& parent) -> TExprNodeBuilder& {
+                    ui32 pos = 0;
+                    if (seq) {
+                        parent.Add(pos++, world);
+                    }
+
+                    for (ui32 i = list->IsCallable("List") ? 1 : 0; i < list->ChildrenSize(); ++i) {
+                        auto arg = seq ? ctx.NewArgument(node->Pos(), "world") : world;
+                        auto body = ctx.Builder(node->Pos())
+                            .Apply(node->ChildPtr(2))
+                                .With(0, arg)
+                                .With(1, list->ChildPtr(i))
+                            .Seal()
+                            .Build();
+
                         if (seq) {
-                            parent.Add(pos++, world);
+                            auto lambda = ctx.NewLambda(node->Pos(), ctx.NewArguments(node->Pos(), {arg}), std::move(body));
+                            parent.Add(pos++, lambda);
+                        } else {
+                            parent.Add(pos++, body);
                         }
+                    }
 
-                        for (ui32 i = list->IsCallable("List") ? 1 : 0; i < list->ChildrenSize(); ++i) {
-                            auto arg = seq ? ctx.NewArgument(node->Pos(), "world") : world;
-                            auto body = ctx.Builder(node->Pos())
-                                .Apply(node->ChildPtr(2))
-                                    .With(0, arg)
-                                    .With(1, list->ChildPtr(i))
-                                .Seal()
-                                .Build();
-
-                            if (seq) {
-                                auto lambda = ctx.NewLambda(node->Pos(), ctx.NewArguments(node->Pos(), { arg }), std::move(body));
-                                parent.Add(pos++, lambda);
-                            } else {
-                                parent.Add(pos++, body);
-                            }
-                        }
-
-                        return parent;
-                    })
+                    return parent;
+                })
                 .Seal()
                 .Build();
+            // clang-format on
 
-            ctx.Step.Repeat(TExprStep::ExpandApplyForLambdas);
-            hasPendingEvaluations = hasPendingEvaluations.Combine(IGraphTransformer::TStatus(IGraphTransformer::TStatus::Repeat, true));
+            ctx.Step.Repeat(TExprStep::ExpandApplyForLambdas).Repeat(TExprStep::ExpandSeq);
+            hasPendingEvaluations = hasPendingEvaluations.Combine(IGraphTransformer::TStatus(IGraphTransformer::TStatus::Repeat, /*hasRestart=*/true));
             return ret;
         }
 
@@ -736,8 +779,7 @@ IGraphTransformer::TStatus EvaluateExpression(const TExprNode::TPtr& input, TExp
 
                 auto itemsCount = keys->ChildrenSize() - (keys->IsCallable("List") ? 1 : 0);
                 if (itemsCount > types.EvaluateOrderByColumnLimit) {
-                    ctx.AddError(TIssue(ctx.GetPosition(keys->Pos()), TStringBuilder() << "Too many columns for subquery order by, allowed: " <<
-                        types.EvaluateOrderByColumnLimit << ", got: " << itemsCount));
+                    ctx.AddError(TIssue(ctx.GetPosition(keys->Pos()), TStringBuilder() << "Too many columns for subquery order by, allowed: " << types.EvaluateOrderByColumnLimit << ", got: " << itemsCount));
                     return nullptr;
                 }
 
@@ -764,20 +806,23 @@ IGraphTransformer::TStatus EvaluateExpression(const TExprNode::TPtr& input, TExp
                         return nullptr;
                     }
 
-                    dirItems.push_back(direction);
+                    dirItems.emplace_back(direction);
+                    // clang-format off
                     extractorItems.push_back(ctx.Builder(k->Pos())
                         .Callable("Member")
                             .Add(0, arg)
                             .Add(1, columnName->ChildPtr(0))
                         .Seal()
                         .Build());
+                    // clang-format on
                 }
 
-                auto args = ctx.NewArguments(node->Pos(), { arg });
+                auto args = ctx.NewArguments(node->Pos(), {arg});
                 auto body = ctx.NewList(node->Pos(), std::move(extractorItems));
                 auto extractorLambda = ctx.NewLambda(node->Pos(), std::move(args), std::move(body));
 
                 auto dirs = ctx.NewList(node->Pos(), std::move(dirItems));
+                // clang-format off
                 auto sorted = ctx.Builder(node->Pos())
                     .Lambda()
                         .Param("world")
@@ -790,9 +835,10 @@ IGraphTransformer::TStatus EvaluateExpression(const TExprNode::TPtr& input, TExp
                         .Seal()
                     .Seal()
                     .Build();
+                // clang-format on
 
-                ctx.Step.Repeat(TExprStep::ExpandApplyForLambdas);
-                hasPendingEvaluations = hasPendingEvaluations.Combine(IGraphTransformer::TStatus(IGraphTransformer::TStatus::Repeat, true));
+                ctx.Step.Repeat(TExprStep::ExpandApplyForLambdas).Repeat(TExprStep::ExpandSeq);
+                hasPendingEvaluations = hasPendingEvaluations.Combine(IGraphTransformer::TStatus(IGraphTransformer::TStatus::Repeat, /*hasRestart=*/true));
                 return sorted;
             } else {
                 auto list = node->Child(0);
@@ -811,8 +857,7 @@ IGraphTransformer::TStatus EvaluateExpression(const TExprNode::TPtr& input, TExp
 
                 auto itemsCount = list->ChildrenSize();
                 if (itemsCount > types.EvaluateParallelForLimit) {
-                    ctx.AddError(TIssue(ctx.GetPosition(list->Pos()), TStringBuilder() << "Too large list for subquery loop, allowed: " <<
-                        types.EvaluateParallelForLimit << ", got: " << itemsCount));
+                    ctx.AddError(TIssue(ctx.GetPosition(list->Pos()), TStringBuilder() << "Too large list for subquery loop, allowed: " << types.EvaluateParallelForLimit << ", got: " << itemsCount));
                     return nullptr;
                 }
 
@@ -820,7 +865,7 @@ IGraphTransformer::TStatus EvaluateExpression(const TExprNode::TPtr& input, TExp
                     return node;
                 }
 
-                const auto status = ConvertToLambda(node->ChildRef(1), ctx, 2, 2, false);
+                const auto status = ConvertToLambda(node->ChildRef(1), ctx, 2, 2, /*withTypes=*/false);
                 if (status.Level == IGraphTransformer::TStatus::Error) {
                     return nullptr;
                 }
@@ -842,8 +887,8 @@ IGraphTransformer::TStatus EvaluateExpression(const TExprNode::TPtr& input, TExp
                 auto args = ctx.NewArguments(node->Pos(), std::move(argItems));
                 auto merged = ctx.NewLambda(node->Pos(), std::move(args), std::move(body));
 
-                ctx.Step.Repeat(TExprStep::ExpandApplyForLambdas);
-                hasPendingEvaluations = hasPendingEvaluations.Combine(IGraphTransformer::TStatus(IGraphTransformer::TStatus::Repeat, true));
+                ctx.Step.Repeat(TExprStep::ExpandApplyForLambdas).Repeat(TExprStep::ExpandSeq);
+                hasPendingEvaluations = hasPendingEvaluations.Combine(IGraphTransformer::TStatus(IGraphTransformer::TStatus::Repeat, /*hasRestart=*/true));
                 return merged;
             }
         }
@@ -902,9 +947,7 @@ IGraphTransformer::TStatus EvaluateExpression(const TExprNode::TPtr& input, TExp
                 }
             }
 
-            return node->IsCallable("MrTableEach") ?
-                ctx.NewCallable(node->Pos(), "MrTableConcat", std::move(keys)) :
-                ctx.NewList(node->Pos(), std::move(keys));
+            return node->IsCallable("MrTableEach") ? ctx.NewCallable(node->Pos(), "MrTableConcat", std::move(keys)) : ctx.NewList(node->Pos(), std::move(keys));
         }
 
         if (node->IsCallable("QuoteCode")) {
@@ -931,10 +974,15 @@ IGraphTransformer::TStatus EvaluateExpression(const TExprNode::TPtr& input, TExp
         }
 
         if (marked.Reachable.find(node.Get()) == marked.Reachable.cend()) {
-            if (marked.HasConfigPending) {
+            bool withRestart = false;
+            if (marked.ForceConfigure) {
                 ctx.Step.Repeat(TExprStep::Configure);
+                withRestart = true;
+            } else if (auto it = marked.Visited.find(node.Get()); it != marked.Visited.end() && it->second) {
+                ctx.Step.Repeat(TExprStep::Configure);
+                withRestart = true;
             }
-            hasPendingEvaluations = hasPendingEvaluations.Combine(IGraphTransformer::TStatus(IGraphTransformer::TStatus::Repeat, marked.HasConfigPending));
+            hasPendingEvaluations = hasPendingEvaluations.Combine(IGraphTransformer::TStatus(IGraphTransformer::TStatus::Repeat, withRestart));
             return node;
         }
 
@@ -943,7 +991,7 @@ IGraphTransformer::TStatus EvaluateExpression(const TExprNode::TPtr& input, TExp
             TNodeSet visited;
             TNodeMap<const TExprNode*> activeArgs;
             bool hasUnresolvedTypes = false;
-            if (!CheckPendingArgs(*newArg, visited, activeArgs, marked.ExternalWorlds, ctx, false, hasUnresolvedTypes)) {
+            if (!CheckPendingArgs(*newArg, visited, activeArgs, marked.ExternalWorlds, ctx, /*underTypeOf=*/false, hasUnresolvedTypes)) {
                 return nullptr;
             }
 
@@ -962,7 +1010,7 @@ IGraphTransformer::TStatus EvaluateExpression(const TExprNode::TPtr& input, TExp
         TExprNode::TPtr clonedArg;
         {
             TNodeOnNodeOwnedMap deepClones;
-            clonedArg = ctx.DeepCopy(*newArg, ctx, deepClones, false, true, true);
+            clonedArg = ctx.DeepCopy(*newArg, ctx, deepClones, /*internStrings=*/false, /*copyTypes=*/true, /*copyResult=*/true);
         }
 
         // trim modifications
@@ -987,94 +1035,109 @@ IGraphTransformer::TStatus EvaluateExpression(const TExprNode::TPtr& input, TExp
         isCodePipeline = node->IsCallable("EvaluateCode");
         isOptionalAtom = false;
         if (isTypePipeline) {
-            clonedArg = ctx.NewCallable(clonedArg->Pos(), "SerializeTypeHandle", { clonedArg });
+            clonedArg = ctx.NewCallable(clonedArg->Pos(), "SerializeTypeHandle", {clonedArg});
         } else if (isCodePipeline) {
-            clonedArg = ctx.NewCallable(clonedArg->Pos(), "SerializeCode", { clonedArg });
+            clonedArg = ctx.NewCallable(clonedArg->Pos(), "SerializeCode", {clonedArg});
         }
 
+        TString key;
+        TString yson;
         NYT::TNode ysonNode;
-        do {
-            calcProvider.Clear();
-            calcWorldRoot.Drop();
-            fullTransformer->Rewind();
-            auto prevSteps = ctx.Step;
-            TEvalScope scope(types);
-            ctx.Step = TExprStep();
-            status = SyncTransform(*fullTransformer, clonedArg, ctx);
-            ctx.Step = prevSteps;
-            if (status.Level == IGraphTransformer::TStatus::Error) {
-                return nullptr;
-            }
-
-            // execute calcWorldRoot
-            auto execTransformer = CreateExecutionTransformer(types, [](const TOperationProgress&){}, false);
-            status = SyncTransform(*execTransformer, calcWorldRoot, ctx);
-            if (status.Level == IGraphTransformer::TStatus::Error) {
-                return nullptr;
-            }
-
-            IDataProvider::TFillSettings fillSettings;
-            auto delegatedNode = Build<TResult>(ctx, node->Pos())
-                .Input(clonedArg)
-                .BytesLimit()
-                    .Value(TString())
-                .Build()
-                .RowsLimit()
-                    .Value(TString())
-                .Build()
-                .FormatDetails()
-                    .Value(ToString((ui32)NYson::EYsonFormat::Binary))
-                .Build()
-                .Settings().Build()
-                .Format()
-                    .Value(ToString((ui32)IDataProvider::EResultFormat::Yson))
-                .Build()
-                .PublicId()
-                    .Value(TString())
-                .Build()
-                .Discard()
-                    .Value("false")
-                .Build()
-                .Origin(calcWorldRoot)
-                .Done().Ptr();
-
-            auto atomType = ctx.MakeType<TUnitExprType>();
-            for (auto idx: {TResOrPullBase::idx_BytesLimit, TResOrPullBase::idx_RowsLimit, TResOrPullBase::idx_FormatDetails,
-                TResOrPullBase::idx_Format, TResOrPullBase::idx_PublicId, TResOrPullBase::idx_Discard, TResOrPullBase::idx_Settings }) {
-                delegatedNode->Child(idx)->SetTypeAnn(atomType);
-                delegatedNode->Child(idx)->SetState(TExprNode::EState::ConstrComplete);
-            }
-
-            delegatedNode->SetTypeAnn(atomType);
-            delegatedNode->SetState(TExprNode::EState::ConstrComplete);
-            TString yson;
-            TString key;
-            if (types.QContext) {
-                key = MakeCacheKey(*clonedArg, ctx);
-            }
-
-            if (types.QContext.CanRead()) {
-                auto item = types.QContext.GetReader()->Get({EvaluationComponent, key}).GetValueSync();
+        if (types.QContext) {
+            key = MakeCacheKey(*clonedArg);
+            if (types.QContext.CanRead() && types.QContext.CaptureMode() != EQPlayerCaptureMode::Full) {
+                auto item = types.QContext.GetReader()->Get({.Component = EvaluationComponent, .Label = key}).GetValueSync();
                 if (!item) {
                     throw yexception() << "Missing replay data";
                 }
 
-                yson = item->Value;
+                ysonNode = NYT::NodeFromYsonString(item->Value);
+            }
+        }
+
+        do {
+            if (ysonNode.IsUndefined() && isAtomPipeline && clonedArg->IsCallable("String")) {
+                ysonNode = NYT::TNode()("Data", NYT::TNode(clonedArg->Head().Content()));
+                yson = NYT::NodeToYsonString(ysonNode, NYT::NYson::EYsonFormat::Binary);
             } else {
+                calcProvider.Clear();
+                calcWorldRoot.Drop();
+                fullTransformer->Rewind();
+                auto prevSteps = ctx.Step;
+                TEvalScope scope(types, ctx);
+                ctx.Step.Reset();
+                if (prevSteps.IsDone(TExprStep::Recapture)) {
+                    ctx.Step.Done(TExprStep::Recapture);
+                }
+                status = SyncTransform(*fullTransformer, clonedArg, ctx);
+                ctx.Step = prevSteps;
+                if (status.Level == IGraphTransformer::TStatus::Error) {
+                    return nullptr;
+                }
+
+                // execute calcWorldRoot
+                auto execTransformer = CreateExecutionTransformer(types, [](const TOperationProgress&) {}, /*withFinalize=*/false);
+                status = SyncTransform(*execTransformer, calcWorldRoot, ctx);
+                if (status.Level == IGraphTransformer::TStatus::Error) {
+                    return nullptr;
+                }
+
+                if (types.QContext.CanRead() && types.QContext.CaptureMode() != EQPlayerCaptureMode::Full) {
+                    break;
+                }
+
+                IDataProvider::TFillSettings fillSettings;
+                // clang-format off
+                auto delegatedNode = Build<TResult>(ctx, node->Pos())
+                    .Input(clonedArg)
+                    .BytesLimit()
+                        .Value(TString())
+                    .Build()
+                    .RowsLimit()
+                        .Value(TString())
+                    .Build()
+                    .FormatDetails()
+                        .Value(ToString((ui32)NYson::EYsonFormat::Binary))
+                    .Build()
+                    .Settings()
+                    .Build()
+                    .Format()
+                        .Value(ToString((ui32)IDataProvider::EResultFormat::Yson))
+                    .Build()
+                    .PublicId()
+                        .Value(TString())
+                    .Build()
+                    .Discard()
+                        .Value("false")
+                    .Build()
+                    .Origin(calcWorldRoot)
+                    .Done()
+                    .Ptr();
+                // clang-format on
+
+                auto atomType = ctx.MakeType<TUnitExprType>();
+                for (auto idx : {TResOrPullBase::idx_BytesLimit, TResOrPullBase::idx_RowsLimit, TResOrPullBase::idx_FormatDetails,
+                                 TResOrPullBase::idx_Format, TResOrPullBase::idx_PublicId, TResOrPullBase::idx_Discard, TResOrPullBase::idx_Settings}) {
+                    delegatedNode->Child(idx)->SetTypeAnn(atomType);
+                    delegatedNode->Child(idx)->SetState(TExprNode::EState::ConstrComplete);
+                }
+
+                delegatedNode->SetTypeAnn(atomType);
+                delegatedNode->SetState(TExprNode::EState::ConstrComplete);
                 auto& transformer = calcTransfomer ? *calcTransfomer : (*calcProvider.Get())->GetCallableExecutionTransformer();
                 status = SyncTransform(transformer, delegatedNode, ctx);
                 if (status.Level == IGraphTransformer::TStatus::Error) {
                     return nullptr;
                 }
 
-                yson = delegatedNode->GetResult().Content();
+                yson = TString{delegatedNode->GetResult().Content()};
+                ysonNode = NYT::NodeFromYsonString(yson);
             }
 
-            ysonNode = NYT::NodeFromYsonString(yson);
             if (ysonNode.HasKey("FallbackProvider")) {
                 nextProvider = ysonNode["FallbackProvider"].AsString();
             } else if (types.QContext.CanWrite()) {
-                types.QContext.GetWriter()->Put({EvaluationComponent, key}, yson).GetValueSync();
+                types.QContext.GetWriter()->Put({.Component = EvaluationComponent, .Label = key}, yson).GetValueSync();
             }
         } while (ysonNode.HasKey("FallbackProvider"));
 
@@ -1145,8 +1208,8 @@ IGraphTransformer::TStatus EvaluateExpression(const TExprNode::TPtr& input, TExp
             });
 
             result = ctx.ReplaceNodes(std::move(result), replaces);
-            ctx.Step.Repeat(TExprStep::ExpandApplyForLambdas);
-            hasPendingEvaluations = hasPendingEvaluations.Combine(IGraphTransformer::TStatus(IGraphTransformer::TStatus::Repeat, true));
+            ctx.Step.Repeat(TExprStep::ExpandApplyForLambdas).Repeat(TExprStep::ExpandSeq);
+            hasPendingEvaluations = hasPendingEvaluations.Combine(IGraphTransformer::TStatus(IGraphTransformer::TStatus::Repeat, /*hasRestart=*/true));
             return result;
         }
 
@@ -1167,7 +1230,7 @@ IGraphTransformer::TStatus EvaluateExpression(const TExprNode::TPtr& input, TExp
     ctx.Step.Repeat(TExprStep::ValidateProviders);
     ctx.Step.Repeat(TExprStep::Configure);
     ctx.Step.Done(TExprStep::ExprEval);
-    return IGraphTransformer::TStatus(IGraphTransformer::TStatus::Repeat, true);
+    return IGraphTransformer::TStatus(IGraphTransformer::TStatus::Repeat, /*hasRestart=*/true);
 }
 
 } // namespace NYql

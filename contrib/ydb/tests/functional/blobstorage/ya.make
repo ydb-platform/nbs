@@ -1,38 +1,38 @@
 PY3TEST()
 
-ENV(YDB_DRIVER_BINARY="contrib/ydb/apps/ydbd/ydbd")
+INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/harness_dep.inc)
 TEST_SRCS(
+    test_node_warden_cache.py
+    test_security_token_not_in_logs.py
     test_pdisk_format_info.py
+    test_pdisk_slot_size_in_units.py
     test_replication.py
     test_self_heal.py
     test_tablet_channel_migration.py
+    test_vdisks.py
+    test_other.py
 )
 
-IF (SANITIZER_TYPE == "thread")
-    REQUIREMENTS(
-        cpu:4
-        ram:16
-    )
-    TIMEOUT(1800)
-    SIZE(LARGE)
-    TAG(ya:fat)
+IF (SANITIZER_TYPE)
+    REQUIREMENTS(ram:32 cpu:4)
 ELSE()
-    REQUIREMENTS(
-        cpu:4
-        ram:32
-    )
-    TIMEOUT(600)
+    REQUIREMENTS(cpu:2)
+ENDIF()
+IF (SANITIZER_TYPE == "thread")
+    SIZE(LARGE)
+    INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/large.inc)
+ELSE()
     SIZE(MEDIUM)
 ENDIF()
 
 SPLIT_FACTOR(20)
 
 DEPENDS(
-    contrib/ydb/apps/ydbd
 )
 
 PEERDIR(
     contrib/ydb/tests/library
+    contrib/ydb/tests/library/clients
     contrib/python/PyHamcrest
 )
 

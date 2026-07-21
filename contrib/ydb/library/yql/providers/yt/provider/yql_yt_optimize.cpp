@@ -3,21 +3,24 @@
 #include "yql_yt_table.h"
 #include "yql_yt_helpers.h"
 #include "yql_yt_provider_impl.h"
+#include "phy_opt/yql_yt_phy_opt_helper.h"
 
 #include <contrib/ydb/library/yql/providers/yt/lib/res_pull/table_limiter.h>
 #include <contrib/ydb/library/yql/providers/yt/lib/expr_traits/yql_expr_traits.h>
 #include <contrib/ydb/library/yql/providers/yt/common/yql_configuration.h>
 #include <contrib/ydb/library/yql/providers/common/codec/yql_codec_type_flags.h>
+#include <contrib/ydb/library/yql/providers/common/provider/yql_provider.h>
 #include <contrib/ydb/library/yql/core/expr_nodes/yql_expr_nodes.h>
 #include <contrib/ydb/library/yql/core/type_ann/type_ann_expr.h>
+#include <contrib/ydb/library/yql/core/services/yql_transform_pipeline.h>
 #include <contrib/ydb/library/yql/core/yql_expr_optimize.h>
 #include <contrib/ydb/library/yql/core/yql_type_helpers.h>
 #include <contrib/ydb/library/yql/core/yql_expr_constraint.h>
 #include <contrib/ydb/library/yql/core/yql_graph_transformer.h>
 #include <contrib/ydb/library/yql/core/yql_expr_csee.h>
+#include <contrib/ydb/library/yql/minikql/mkql_block_map_join_utils.h>
 #include <contrib/ydb/library/yql/public/udf/udf_value.h>
 #include <contrib/ydb/library/yql/utils/log/log.h>
-#include <contrib/ydb/library/yql/core/services/yql_transform_pipeline.h>
 
 #include <util/generic/xrange.h>
 #include <util/generic/ptr.h>
@@ -30,6 +33,8 @@
 namespace NYql {
 
 using namespace NNodes;
+using namespace NPrivate;
+
 namespace {
 TMaybeNode<TYtSection> MaterializeSectionIfRequired(TExprBase world, TYtSection section, TYtDSink dataSink, TYqlRowSpecInfo::TPtr outRowSpec, bool keepSortness,
     const TExprNode::TListType& limitNodes, const TYtState::TPtr& state, TExprContext& ctx)
@@ -73,7 +78,7 @@ TMaybeNode<TYtSection> MaterializeSectionIfRequired(TExprBase world, TYtSection 
                 .Paths()
                     .Add(path)
                 .Build()
-                .Settings(NYql::RemoveSetting(section.Settings().Ref(), EYtSettingType::Sample, ctx))
+                .Settings(NYql::RemoveSettings(section.Settings().Ref(), EYtSettingType::Sample | EYtSettingType::SysColumns, ctx))
                 .Done();
     }
 
@@ -89,7 +94,7 @@ TMaybeNode<TYtSection> UpdateSectionWithRange(TExprBase world, TYtSection sectio
     TVector<TYtPath> skippedPaths;
     if (auto limiter = TTableLimiter(range)) {
         if (auto materialized = MaterializeSectionIfRequired(world, section, dataSink, outRowSpec, keepSortness,
-            {NYql::KeepOnlySettings(section.Settings().Ref(), EYtSettingType::Take | EYtSettingType::Skip | EYtSettingType::SysColumns, ctx)}, state, ctx))
+            {NYql::KeepOnlySettings(section.Settings().Ref(), EYtSettingType::Take | EYtSettingType::Skip, ctx)}, state, ctx))
         {
             if (!allowMaterialize || state->Types->EvaluationInProgress) {
                 // Keep section as is
@@ -158,6 +163,7 @@ TMaybeNode<TYtSection> UpdateSectionWithRange(TExprBase world, TYtSection sectio
                             .Ranges<TExprList>()
                             .Build()
                             .Stat<TCoVoid>().Build()
+                            .QLFilter<TCoVoid>().Build()
                             .Done();
                         updatedPaths.push_back(path);
                     }
@@ -172,6 +178,7 @@ TMaybeNode<TYtSection> UpdateSectionWithRange(TExprBase world, TYtSection sectio
                 .Ranges<TExprList>()
                 .Build()
                 .Stat<TCoVoid>().Build()
+                .QLFilter<TCoVoid>().Build()
                 .Done());
         }
     }
@@ -317,7 +324,7 @@ TMaybeNode<TYtSection> UpdateSectionWithFilters(TYtSection section, const TVecto
         .Done();
 }
 
-} //namespace
+} // namespace
 
 TMaybeNode<TYtSection> UpdateSectionWithSettings(TExprBase world, TYtSection section, TYtDSink dataSink, TYqlRowSpecInfo::TPtr outRowSpec, bool keepSortness, bool allowWorldDeps, bool allowMaterialize,
     TSyncMap& syncList, const TYtState::TPtr& state, TExprContext& ctx)
@@ -366,11 +373,13 @@ TMaybeNode<TYtSection> UpdateSectionWithSettings(TExprBase world, TYtSection sec
 
 TYtSection MakeEmptySection(TYtSection section, NNodes::TYtDSink dataSink, bool keepSortness, const TYtState::TPtr& state, TExprContext& ctx) {
     TYtOutTableInfo outTable(GetSequenceItemType(section, false)->Cast<TStructExprType>(),
-        state->Configuration->UseNativeYtTypes.Get().GetOrElse(DEFAULT_USE_NATIVE_YT_TYPES) ? NTCF_ALL : NTCF_NONE);
+        GetNativeYtTypeCompatibility(dataSink.Cluster().StringValue(), *state->Configuration));
     if (section.Paths().Size() == 1) {
         auto srcTableInfo = TYtTableBaseInfo::Parse(section.Paths().Item(0).Table());
         if (keepSortness && srcTableInfo->RowSpec && srcTableInfo->RowSpec->IsSorted()) {
-            outTable.RowSpec->CopySortness(*srcTableInfo->RowSpec, TYqlRowSpecInfo::ECopySort::WithCalc);
+            outTable.RowSpec->CopySortness(ctx, *srcTableInfo->RowSpec,
+                state->Configuration->UseNativeYtDefaultColumnOrder.Get().GetOrElse(DEFAULT_USE_NATIVE_YT_DEFAULT_COLUMN_ORDER),
+                TYqlRowSpecInfo::ECopySort::WithCalc);
         }
     }
     outTable.SetUnique(section.Ref().GetConstraint<TDistinctConstraintNode>(), section.Pos(), ctx);
@@ -390,6 +399,7 @@ TYtSection MakeEmptySection(TYtSection section, NNodes::TYtDSink dataSink, bool 
                 .Columns<TCoVoid>().Build()
                 .Ranges<TCoVoid>().Build()
                 .Stat<TCoVoid>().Build()
+                .QLFilter<TCoVoid>().Build()
             .Build()
         .Build()
         .Settings(NYql::RemoveSettings(section.Settings().Ref(), EYtSettingType::Take | EYtSettingType::Skip | EYtSettingType::Sample, ctx))
@@ -424,7 +434,9 @@ TExprNode::TPtr OptimizeReadWithSettings(const TExprNode::TPtr& node, bool allow
     return res;
 }
 
-IGraphTransformer::TStatus UpdateTableContentMemoryUsage(const TExprNode::TPtr& input, TExprNode::TPtr& output, const TYtState::TPtr& state, TExprContext& ctx) {
+IGraphTransformer::TStatus UpdateTableContentMemoryUsage(const TExprNode::TPtr& input, TExprNode::TPtr& output, const TYtState::TPtr& state,
+    TExprContext& ctx, bool estimateTableContentWeight)
+{
     auto current = input;
     output.Reset();
     for (;;) {
@@ -447,10 +459,10 @@ IGraphTransformer::TStatus UpdateTableContentMemoryUsage(const TExprNode::TPtr& 
 
         TExprNode::TPtr newCurrent;
         auto status = OptimizeExpr(current, newCurrent,
-            [&parentsMap, current, state](const TExprNode::TPtr& node, TExprContext& ctx) -> TExprNode::TPtr {
-                if (auto maybeContent = TMaybeNode<TYtTableContent>(node)) {
+            [&parentsMap, current, state, estimateTableContentWeight](const TExprNode::TPtr& node, TExprContext& ctx) -> TExprNode::TPtr {
+                if (auto maybeContent = TMaybeNode<TYtTableContentBase>(node)) {
                     auto content = maybeContent.Cast();
-                    if (NYql::HasSetting(content.Settings().Ref(), EYtSettingType::MemUsage)) {
+                    if (NYql::HasAnySetting(content.Settings().Ref(), EYtSettingType::MemUsage | EYtSettingType::Small)) {
                         return node;
                     }
 
@@ -473,14 +485,15 @@ IGraphTransformer::TStatus UpdateTableContentMemoryUsage(const TExprNode::TPtr& 
                         collectRowFactor = 2 * (1 + fieldsCount) * sizeof(NKikimr::NUdf::TUnboxedValuePod);
                     }
 
+                    ui64 rawMemUsage = 0;
+
                     bool wrapToCollect = false;
                     TVector<std::pair<double, ui64>> factors; // first: sizeFactor, second: rowFactor
                     TNodeSet tableContentConsumers;
                     if (!GetTableContentConsumerNodes(*node, *current, parentsMap, tableContentConsumers)) {
                         wrapToCollect = true;
                         factors.emplace_back(2., collectRowFactor);
-                    }
-                    else {
+                    } else {
                         for (auto consumer: tableContentConsumers) {
                             if (consumer->IsCallable({"ToDict","SqueezeToDict", "SqlIn"})) {
                                 double sizeFactor = 1.;
@@ -490,14 +503,22 @@ IGraphTransformer::TStatus UpdateTableContentMemoryUsage(const TExprNode::TPtr& 
                                     return {};
                                 }
                                 factors.emplace_back(sizeFactor, rowFactor);
-                            }
-                            else if (consumer->IsCallable("Collect")) {
+                            } else if (consumer->IsCallable("Collect")) {
                                 factors.emplace_back(2., collectRowFactor);
+                            } else if (consumer->IsCallable("BlockStorage")) {
+                                factors.emplace_back(1., 0);
+                            } else if (consumer->IsCallable("BlockMapJoinIndex")) {
+                                auto rowCountSetting = GetSetting(*consumer->Child(TCoBlockMapJoinIndex::idx_Options), "rowCount");
+                                YQL_ENSURE(rowCountSetting);
+
+                                auto rowCount = FromString<size_t>(rowCountSetting->Child(1)->Content());
+                                rawMemUsage += NKikimr::NMiniKQL::EstimateBlockMapJoinIndexSize(rowCount);
                             }
                         }
                     }
 
                     ui64 memUsage = 0;
+                    ui64 dataWeight = 0;
                     ui64 itemsCount = 0;
                     bool useItemsCount = !NYql::HasSetting(content.Settings().Ref(), EYtSettingType::ItemsCount);
 
@@ -506,7 +527,7 @@ IGraphTransformer::TStatus UpdateTableContentMemoryUsage(const TExprNode::TPtr& 
                         memUsage = 16_MB;
                         useItemsCount = false;
                     }
-                    else {
+                    if (estimateTableContentWeight || !factors.empty()) {
                         if (auto maybeRead = content.Input().Maybe<TYtReadTable>()) {
                             TVector<ui64> records;
                             TVector<TYtPathInfo::TPtr> tableInfos;
@@ -527,9 +548,11 @@ IGraphTransformer::TStatus UpdateTableContentMemoryUsage(const TExprNode::TPtr& 
                                         } else {
                                             itemsCount += tableRecord;
                                         }
-                                        if (info->Table->Meta->IsDynamic) {
+                                        if (info->Table->Meta->IsDynamic || info->Table->Meta->HasRLS) {
                                             useItemsCount = false;
                                         }
+                                        YQL_ENSURE(info->Table->Cluster);
+                                        YQL_ENSURE(info->Table->Cluster != YtUnspecifiedCluster);
                                         records.push_back(tableRecord);
                                         tableInfos.push_back(info);
                                     }
@@ -550,19 +573,20 @@ IGraphTransformer::TStatus UpdateTableContentMemoryUsage(const TExprNode::TPtr& 
                                 }
                             }
                             if (!hasNotCalculated && !tableInfos.empty()) {
-                                if (auto dataSizes = EstimateDataSize(TString{maybeRead.Cast().DataSource().Cluster().Value()}, tableInfos, Nothing(), *state, ctx)) {
+                                if (auto dataSizes = EstimateDataSize(tableInfos, Nothing(), *state, ctx)) {
                                     YQL_ENSURE(dataSizes->size() == records.size());
                                     for (size_t i: xrange(records.size())) {
                                         for (auto& factor: factors) {
                                             memUsage += factor.first * dataSizes->at(i) + factor.second * records.at(i);
                                         }
+                                        dataWeight += dataSizes->at(i);
                                     }
+                                    memUsage += rawMemUsage;
                                 } else {
                                     return {};
                                 }
                             }
-                        }
-                        else {
+                        } else {
                             TYtOutTableInfo info(GetOutTable(content.Input().Cast<TYtOutput>()));
                             if (info.Stat) {
                                 const ui64 dataSize = info.Stat->DataSize;
@@ -570,7 +594,9 @@ IGraphTransformer::TStatus UpdateTableContentMemoryUsage(const TExprNode::TPtr& 
                                 for (auto& factor: factors) {
                                     memUsage += factor.first * dataSize + factor.second * records;
                                 }
+                                memUsage += rawMemUsage;
                                 itemsCount += records;
+                                dataWeight += dataSize;
                             }
                             else {
                                 YQL_CLOG(INFO, ProviderYt) << "Assume 1Gb memory usage for YtTableContent #"
@@ -585,6 +611,9 @@ IGraphTransformer::TStatus UpdateTableContentMemoryUsage(const TExprNode::TPtr& 
                     settings = NYql::AddSetting(*settings, EYtSettingType::MemUsage, ctx.NewAtom(node->Pos(), ToString(memUsage), TNodeFlags::Default), ctx);
                     if (useItemsCount) {
                         settings = NYql::AddSetting(*settings, EYtSettingType::ItemsCount, ctx.NewAtom(node->Pos(), ToString(itemsCount), TNodeFlags::Default), ctx);
+                    }
+                    if (estimateTableContentWeight && dataWeight < state->Configuration->TableContentLocalExecution.Get().GetOrElse(DEFAULT_TABLE_CONTENT_LOCAL_EXEC)) {
+                        settings = NYql::AddSetting(*settings, EYtSettingType::Small, {}, ctx);
                     }
 
                     return ctx.WrapByCallableIf(wrapToCollect, "Collect", ctx.ChangeChild(*node, TYtTableContent::idx_Settings, std::move(settings)));
@@ -641,6 +670,7 @@ private:
     void AfterTypeAnnotation(TTransformationPipeline* pipeline) const final {
         pipeline->Add(CreateYtPeepholeTransformer(State_, {}), "Peephole");
         pipeline->Add(CreateYtWideFlowTransformer(State_), "WideFlow");
+        pipeline->Add(CreateYtBlockInputTransformer(State_), "BlockInput");
     }
 
     void AfterOptimize(TTransformationPipeline*) const final {}
@@ -648,18 +678,324 @@ private:
     const TYtState::TPtr State_;
 };
 
+struct TPeepholeFinalPipelineConfigurator : public IPipelineConfigurator {
+    TPeepholeFinalPipelineConfigurator(TYtState::TPtr state)
+        : State_(std::move(state))
+        {}
+private:
+    void AfterCreate(TTransformationPipeline*) const final {}
+
+    void AfterTypeAnnotation(TTransformationPipeline*) const final {}
+
+    void AfterOptimize(TTransformationPipeline* pipeline) const final {
+        pipeline->Add(CreateYtBlockOutputTransformer(State_), "BlockOutput");
+    }
+
+    const TYtState::TPtr State_;
+};
+
 IGraphTransformer::TStatus PeepHoleOptimizeBeforeExec(TExprNode::TPtr input, TExprNode::TPtr& output,
-    const TYtState::TPtr& state, bool& hasNonDeterministicFunctions, TExprContext& ctx)
+    const TYtState::TPtr& state, bool& hasNonDeterministicFunctions, TExprContext& ctx, bool estimateTableContentWeight)
 {
-    if (const auto status = UpdateTableContentMemoryUsage(input, output, state, ctx);
+    if (const auto status = UpdateTableContentMemoryUsage(input, output, state, ctx, estimateTableContentWeight);
         status.Level != IGraphTransformer::TStatus::Ok) {
         return status;
     }
 
     const TPeepholePipelineConfigurator wideFlowTransformers(state);
+    const TPeepholeFinalPipelineConfigurator wideFlowFinalTransformers(state);
     TPeepholeSettings peepholeSettings;
     peepholeSettings.CommonConfig = &wideFlowTransformers;
+    peepholeSettings.FinalConfig = &wideFlowFinalTransformers;
     return PeepHoleOptimizeNode(output, output, ctx, *state->Types, nullptr, hasNonDeterministicFunctions, peepholeSettings);
+}
+
+TMaybe<bool> CanFuseLambdas(const TCoLambda& innerLambda, const TCoLambda& outerLambda, TExprContext& ctx, const TYtState::TPtr& state) {
+    auto maxJobMemoryLimit = state->Configuration->MaxExtraJobMemoryToFuseOperations.Get();
+    auto maxOperationFiles = state->Configuration->MaxOperationFiles.Get().GetOrElse(DEFAULT_MAX_OPERATION_FILES);
+    TMap<TStringBuf, ui64> memUsage;
+
+    TExprNode::TPtr updatedBody = innerLambda.Body().Ptr();
+    if (maxJobMemoryLimit) {
+        auto status = UpdateTableContentMemoryUsage(innerLambda.Body().Ptr(), updatedBody, state, ctx, false);
+        if (status.Level != IGraphTransformer::TStatus::Ok) {
+            return {};
+        }
+    }
+    size_t innerFiles = 1; // jobstate. Take into account only once
+    ScanResourceUsage(*updatedBody, *state->Configuration, state->Types, maxJobMemoryLimit ? &memUsage : nullptr, nullptr, &innerFiles);
+
+    auto prevMemory = Accumulate(memUsage.begin(), memUsage.end(), 0ul,
+        [](ui64 sum, const std::pair<const TStringBuf, ui64>& val) { return sum + val.second; });
+
+    updatedBody = outerLambda.Body().Ptr();
+    if (maxJobMemoryLimit) {
+        auto status = UpdateTableContentMemoryUsage(outerLambda.Body().Ptr(), updatedBody, state, ctx, false);
+        if (status.Level != IGraphTransformer::TStatus::Ok) {
+            return {};
+        }
+    }
+    size_t outerFiles = 0;
+    ScanResourceUsage(*updatedBody, *state->Configuration, state->Types, maxJobMemoryLimit ? &memUsage : nullptr, nullptr, &outerFiles);
+
+    auto currMemory = Accumulate(memUsage.begin(), memUsage.end(), 0ul,
+        [](ui64 sum, const std::pair<const TStringBuf, ui64>& val) { return sum + val.second; });
+
+    if (maxJobMemoryLimit && currMemory != prevMemory && currMemory > *maxJobMemoryLimit) {
+        YQL_CLOG(DEBUG, ProviderYt) << "Memory usage: innerLambda=" << prevMemory
+            << ", joinedLambda=" << currMemory << ", MaxJobMemoryLimit=" << *maxJobMemoryLimit;
+        return false;
+    }
+    if (innerFiles + outerFiles > maxOperationFiles) {
+        YQL_CLOG(DEBUG, ProviderYt) << "Files usage: innerLambda=" << innerFiles
+            << ", outerLambda=" << outerFiles << ", MaxOperationFiles=" << maxOperationFiles;
+        return false;
+    }
+
+    if (auto maxReplcationFactor = state->Configuration->MaxReplicationFactorToFuseOperations.Get()) {
+        double replicationFactor1 = NCommon::GetDataReplicationFactor(innerLambda.Ref(), ctx);
+        double replicationFactor2 = NCommon::GetDataReplicationFactor(outerLambda.Ref(), ctx);
+        YQL_CLOG(DEBUG, ProviderYt) << "Replication factors: innerLambda=" << replicationFactor1
+            << ", outerLambda=" << replicationFactor2 << ", MaxReplicationFactorToFuseOperations=" << *maxReplcationFactor;
+
+        if (replicationFactor1 > 1.0 && replicationFactor2 > 1.0 && replicationFactor1 * replicationFactor2 > *maxReplcationFactor) {
+            return false;
+        }
+    }
+    return true;
+}
+
+NNodes::TMaybeNode<NNodes::TExprBase> FuseMapToMapReduce(NNodes::TExprBase node, TExprContext& ctx,
+    const TOptimizeTransformerBase::TGetParents& getParents, const TYtState::TPtr& state)
+{
+    auto outerMapReduce = node.Cast<TYtMapReduce>();
+    auto maybeOuterLambda = outerMapReduce.Mapper().Maybe<TCoLambda>();
+    if (maybeOuterLambda && HasYtRowNumber(maybeOuterLambda.Cast().Body().Ref())) {
+        return node;
+    }
+
+    for (size_t index = 0; index < outerMapReduce.Input().Size(); index++) {
+        // Validate input
+        if (NYql::HasNonEmptyKeyFilter(outerMapReduce.Input().Item(index))) {
+            continue;
+        }
+        // TODO(mpereskokova): Support multiple paths in mapReduce input
+        if (outerMapReduce.Input().Item(index).Paths().Size() != 1) {
+            continue;
+        }
+
+        TYtPath path = outerMapReduce.Input().Item(index).Paths().Item(0);
+        auto maybeInnerMap = path.Table().Maybe<TYtOutput>().Operation().Maybe<TYtMap>();
+        if (!maybeInnerMap) {
+            continue;
+        }
+        TYtMap innerMap = maybeInnerMap.Cast();
+        if (innerMap.Ref().StartsExecution() || innerMap.Ref().HasResult()) {
+            continue;
+        }
+        if (innerMap.Output().Size() > 1) {
+            continue;
+        }
+        if (outerMapReduce.DataSink().Cluster().Value() != innerMap.DataSink().Cluster().Value()) {
+            continue;
+        }
+
+        if (maybeOuterLambda) {
+            auto outerLambda = maybeOuterLambda.Cast();
+
+            auto fuseRes = CanFuseLambdas(innerMap.Mapper(), outerLambda, ctx, state);
+            if (!fuseRes) {
+                // Some error
+                return {};
+            }
+            if (!*fuseRes) {
+                // Cannot fuse
+                continue;
+            }
+        }
+
+        if (NYql::HasAnySetting(innerMap.Settings().Ref(), EYtSettingType::Limit | EYtSettingType::SortLimitBy | EYtSettingType::JobCount)) {
+            continue;
+        }
+        if (NYql::HasAnySetting(outerMapReduce.Input().Item(index).Settings().Ref(),
+            EYtSettingType::Take | EYtSettingType::Skip | EYtSettingType::DirectRead | EYtSettingType::Sample | EYtSettingType::SysColumns | EYtSettingType::BlockInputApplied | EYtSettingType::BlockOutputApplied)) {
+            continue;
+        }
+
+        if (NYql::HasSetting(innerMap.Settings().Ref(), EYtSettingType::Flow) != NYql::HasSetting(outerMapReduce.Settings().Ref(), EYtSettingType::Flow)) {
+            continue;
+        }
+        if (!path.Ranges().Maybe<TCoVoid>()) {
+            continue;
+        }
+
+        const TParentsMap* parentsMap = getParents();
+        if (IsOutputUsedMultipleTimes(innerMap.Ref(), *parentsMap)) {
+            // Inner map output is used more than once
+            continue;
+        }
+
+        // Check world dependencies
+        auto parentsIt = parentsMap->find(innerMap.Raw());
+        bool failed = false;
+        YQL_ENSURE(parentsIt != parentsMap->cend());
+        for (auto dep: parentsIt->second) {
+            if (!TYtOutput::Match(dep)) {
+                failed = true;
+                break;
+            }
+        }
+        if (failed) {
+            continue;
+        }
+
+        const bool unorderedOut = IsUnorderedOutput(path.Table().Cast<TYtOutput>());
+        auto innerLambda = TCoLambda(ctx.DeepCopyLambda(innerMap.Mapper().Ref()));
+        innerLambda = FallbackLambdaOutput(innerLambda, ctx);
+        if (unorderedOut) {
+            innerLambda = Build<TCoLambda>(ctx, innerLambda.Pos())
+                .Args({"stream"})
+                .Body<TCoUnordered>()
+                    .Input<TExprApplier>()
+                        .Apply(innerLambda)
+                        .With(0, "stream")
+                    .Build()
+                .Build()
+                .Done();
+        }
+
+        TVector<TExprBase> updatedInputs;
+        TVector<TExprBase> switchArgs;
+        updatedInputs.reserve(innerMap.Input().Size() + outerMapReduce.Input().Size() - 1);
+        switchArgs.reserve(6);
+        auto identityLambda = Build<TCoLambda>(ctx, node.Pos())
+            .Args({"stream"})
+            .Body("stream")
+            .Done();
+
+        {
+            if (index > 0) {
+                auto atomListBuilder = Build<TCoAtomList>(ctx, node.Pos());
+                for (size_t inputIndex = 0; inputIndex < index; inputIndex++) {
+                    atomListBuilder.Add().Value(ToString(inputIndex)).Build();
+                    updatedInputs.push_back(outerMapReduce.Input().Item(inputIndex));
+                }
+                switchArgs.push_back(atomListBuilder.Done());
+                switchArgs.push_back(identityLambda);
+            }
+        }
+
+        TVector<TCoAtom> keys;
+        keys.reserve(innerMap.Input().Size());
+        for (size_t inputIndex = 0; inputIndex < innerMap.Input().Size(); inputIndex++) {
+            updatedInputs.push_back(innerMap.Input().Item(inputIndex));
+            keys.emplace_back(ctx.NewAtom(node.Pos(), inputIndex + index));
+        }
+        switchArgs.push_back(Build<TCoAtomList>(ctx, node.Pos()).Add(keys).Done());
+        switchArgs.push_back(innerLambda);
+
+        {
+            if (index + 1 < outerMapReduce.Input().Size()) {
+                auto atomListBuilder = Build<TCoAtomList>(ctx, node.Pos());
+                for (size_t inputIndex = index + 1; inputIndex < outerMapReduce.Input().Size(); inputIndex++) {
+                    atomListBuilder.Add().Value(ToString(inputIndex + innerMap.Input().Size() - 1)).Build();
+                    updatedInputs.push_back(outerMapReduce.Input().Item(inputIndex));
+                }
+                switchArgs.push_back(atomListBuilder.Done());
+                switchArgs.push_back(identityLambda);
+            }
+        }
+
+        innerLambda = Build<TCoLambda>(ctx, innerLambda.Pos())
+            .Args({"stream"})
+            .Body<TCoSwitch>()
+                .Input("stream")
+                .BufferBytes()
+                    .Value(ToString(state->Configuration->SwitchLimit.Get().GetOrElse(DEFAULT_SWITCH_MEMORY_LIMIT)))
+                .Build()
+                .FreeArgs()
+                    .Add(switchArgs)
+                .Build()
+            .Build()
+            .Done();
+
+        TMaybeNode<TCoLambda> resultLambda = innerLambda;
+        if (maybeOuterLambda) {
+            auto outerLambda = maybeOuterLambda.Cast();
+            auto [placeHolder, lambdaWithPlaceholder] = ReplaceDependsOn(outerLambda.Ptr(), ctx, state->Types);
+            if (!placeHolder) {
+                return {};
+            }
+
+            if (lambdaWithPlaceholder != outerLambda.Ptr()) {
+                outerLambda = TCoLambda(lambdaWithPlaceholder);
+            }
+            outerLambda = FallbackLambdaInput(outerLambda, ctx);
+
+            if (!path.Columns().Maybe<TCoVoid>()) {
+                auto columns = TYtColumnsInfo(path.Columns());
+                if (!columns.HasColumns() || columns.GetRenames()) {
+                    // TODO(mpereskokova): Implement fusing with filters with renames
+                    continue;
+                }
+
+                auto columnNameListBuilder = Build<TCoAtomList>(ctx, path.Columns().Pos());
+                bool hasTypes = false;
+                for (const auto& column : *columns.GetColumns()) {
+                    if (column.Type) {
+                        hasTypes = true;
+                        break;
+                    }
+                    columnNameListBuilder.Add().Value(column.Name).Build();
+                }
+                if (hasTypes) {
+                    // TODO(mpereskokova): Implement fusing with filters with types
+                    continue;
+                }
+
+                outerLambda = MapEmbedInputFieldsFilter(outerLambda, /*ordered*/false, columnNameListBuilder.Done(), ctx);
+            } else if (TYqlRowSpecInfo(innerMap.Output().Item(0).RowSpec()).HasAuxColumns()) {
+                auto itemType = GetSequenceItemType(path, false, ctx);
+                if (!itemType) {
+                    return {};
+                }
+                TSet<TStringBuf> fields;
+                for (auto item: itemType->Cast<TStructExprType>()->GetItems()) {
+                    fields.insert(item->GetName());
+                }
+                outerLambda = MapEmbedInputFieldsFilter(outerLambda, /*ordered*/false, TCoAtomList(ToAtomList(fields, node.Pos(), ctx)), ctx);
+            }
+            resultLambda = Build<TCoLambda>(ctx, node.Pos())
+                .Args({"stream"})
+                .Body<TExprApplier>()
+                    .Apply(outerLambda)
+                    .With<TExprApplier>(0)
+                        .Apply(innerLambda)
+                        .With(0, "stream")
+                    .Build()
+                    .With(TExprBase(placeHolder), "stream")
+                .Build()
+                .Done();
+        }
+
+        auto resultSettings = MergeSettings(
+            *NYql::RemoveSettings(outerMapReduce.Settings().Ref(), EYtSettingType::Flow | EYtSettingType::BlockInputReady, ctx),
+            *NYql::RemoveSettings(innerMap.Settings().Ref(), EYtSettingType::Ordered | EYtSettingType::KeepSorted | EYtSettingType::BlockInputReady | EYtSettingType::BlockOutputReady, ctx), ctx);
+        return Build<TYtMapReduce>(ctx, node.Pos())
+            .InitFrom(outerMapReduce)
+            .World<TCoSync>()
+                .Add(innerMap.World())
+                .Add(outerMapReduce.World())
+            .Build()
+            .Input()
+                .Add(updatedInputs)
+            .Build()
+            .Mapper(resultLambda.Cast())
+            .Settings(resultSettings)
+            .Done();
+    }
+
+    return node;
 }
 
 } // NYql

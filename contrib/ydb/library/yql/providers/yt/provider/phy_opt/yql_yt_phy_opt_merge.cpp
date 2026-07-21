@@ -12,7 +12,7 @@ TMaybeNode<TExprBase> TYtPhysicalOptProposalTransformer::BypassMerge(TExprBase n
     }
 
     auto op = node.Cast<TYtTransientOpBase>();
-    if (op.Maybe<TYtCopy>()) {
+    if (op.Maybe<TYtCopy>() || op.Maybe<TYtPersist>()) {
         return node;
     }
 
@@ -60,6 +60,7 @@ TMaybeNode<TExprBase> TYtPhysicalOptProposalTransformer::BypassMerge(TExprBase n
             for (auto path: section.Paths()) {
                 updatedPaths.push_back(path);
 
+                bool hasRangesOrQLFilter = false;
                 if (!path.Ranges().Maybe<TCoVoid>()) {
                     bool pathLimits = false;
                     for (auto range: path.Ranges().Cast<TExprList>()) {
@@ -67,10 +68,16 @@ TMaybeNode<TExprBase> TYtPhysicalOptProposalTransformer::BypassMerge(TExprBase n
                             pathLimits = true;
                             break;
                         }
+                        if (range.Maybe<TYtRangeItemBase>()) {
+                            hasRangesOrQLFilter = true;
+                        }
                     }
                     if (pathLimits) {
                         continue;
                     }
+                }
+                if (!path.QLFilter().Maybe<TCoVoid>()) {
+                    hasRangesOrQLFilter = true;
                 }
                 auto maybeInnerMerge = path.Table().Maybe<TYtOutput>().Operation().Maybe<TYtMerge>();
                 if (!maybeInnerMerge) {
@@ -79,6 +86,10 @@ TMaybeNode<TExprBase> TYtPhysicalOptProposalTransformer::BypassMerge(TExprBase n
                 auto innerMerge = maybeInnerMerge.Cast();
 
                 if (innerMerge.Ref().StartsExecution() || innerMerge.Ref().HasResult()) {
+                    continue;
+                }
+
+                if (innerMerge.DataSink().Cluster().Value() != op.DataSink().Cluster().Value()) {
                     continue;
                 }
 
@@ -118,8 +129,19 @@ TMaybeNode<TExprBase> TYtPhysicalOptProposalTransformer::BypassMerge(TExprBase n
                 if (hasTakeSkip && sortedMerge && NYql::HasSetting(innerMerge.Settings().Ref(), EYtSettingType::KeepSorted)) {
                     continue;
                 }
-                if (hasTakeSkip && AnyOf(innerMergeSection.Paths(), [](const auto& path) { return !path.Ranges().template Maybe<TCoVoid>(); })) {
+
+                if ((hasTakeSkip || hasRangesOrQLFilter) && AnyOf(innerMergeSection.Paths(), [](const auto& path) { return !path.Ranges().template Maybe<TCoVoid>() || !path.QLFilter().template Maybe<TCoVoid>(); })) {
                     continue;
+                }
+
+                const auto convertDynamicTablesToStatic = State_->Configuration->ConvertDynamicTablesToStatic.Get().GetOrElse(EConvertDynamicTablesToStatic::Disable);
+                const auto keepMergeWithDynamicInput = State_->Configuration->KeepMergeWithDynamicInput.Get().GetOrElse(false);
+                if (keepMergeWithDynamicInput || convertDynamicTablesToStatic != EConvertDynamicTablesToStatic::Disable) {
+                    if (AnyOf(innerMergeSection.Paths(), [](TYtPath path) {
+                        return TYtTableBaseInfo::GetMeta(path.Table())->IsDynamic;
+                    })) {
+                        continue;
+                    }
                 }
 
                 const bool unordered = IsUnorderedOutput(path.Table().Cast<TYtOutput>());
@@ -159,7 +181,7 @@ TMaybeNode<TExprBase> TYtPhysicalOptProposalTransformer::BypassMerge(TExprBase n
                     columns = ToAtomList(items, op.Pos(), ctx);
                 }
 
-                if (!columns.IsValid() && path.Ranges().Maybe<TCoVoid>() && !unordered) {
+                if (!columns.IsValid() && path.Ranges().Maybe<TCoVoid>() && path.QLFilter().Maybe<TCoVoid>() && !unordered) {
                     for (auto mergePath: innerMergeSection.Paths()) {
                         updatedPaths.push_back(mergePath);
                     }
@@ -168,10 +190,15 @@ TMaybeNode<TExprBase> TYtPhysicalOptProposalTransformer::BypassMerge(TExprBase n
                         auto builder = Build<TYtPath>(ctx, mergePath.Pos()).InitFrom(mergePath);
 
                         if (columns) {
-                            builder.Columns(columns.Cast());
+                            TYtColumnsInfo innerColumns(mergePath.Columns());
+                            innerColumns.Apply(TYtColumnsInfo(columns.Cast()));
+                            builder.Columns(innerColumns.ToExprNode(ctx, columns.Cast().Pos()));
                         }
                         if (!path.Ranges().Maybe<TCoVoid>()) {
                             builder.Ranges(path.Ranges());
+                        }
+                        if (!path.QLFilter().Maybe<TCoVoid>()) {
+                            builder.QLFilter(path.QLFilter());
                         }
 
                         auto updatedPath = builder.Done();
@@ -225,6 +252,7 @@ TMaybeNode<TExprBase> TYtPhysicalOptProposalTransformer::BypassMergeBeforePublis
     auto publish = node.Cast<TYtPublish>();
 
     auto cluster = publish.DataSink().Cluster().StringValue();
+    YQL_ENSURE(cluster != YtUnspecifiedCluster);
     auto path = publish.Publish().Name().StringValue();
     auto commitEpoch = TEpochInfo::Parse(publish.Publish().CommitEpoch().Ref()).GetOrElse(0);
 
@@ -244,6 +272,10 @@ TMaybeNode<TExprBase> TYtPhysicalOptProposalTransformer::BypassMergeBeforePublis
             }
 
             if (merge.Ref().StartsExecution() || merge.Ref().HasResult()) {
+                continue;
+            }
+
+            if (publish.DataSink().Cluster().Value() != merge.DataSink().Cluster().Value()) {
                 continue;
             }
 
@@ -268,17 +300,21 @@ TMaybeNode<TExprBase> TYtPhysicalOptProposalTransformer::BypassMergeBeforePublis
             }
 
             if (!AllOf(mergeSection.Paths(), [](TYtPath path) {
+                const auto tableInfo = TYtTableBaseInfo::GetMeta(path.Table());
+
                 return path.Table().Maybe<TYtOutput>()
                     && path.Columns().Maybe<TCoVoid>()
                     && path.Ranges().Maybe<TCoVoid>()
-                    && !TYtTableBaseInfo::GetMeta(path.Table())->IsDynamic;
+                    && path.QLFilter().Maybe<TCoVoid>()
+                    && !tableInfo->IsDynamic
+                    && !tableInfo->HasRLS;
             })) {
                 continue;
             }
 
             if (dstRowSpec->GetColumnOrder().Defined() && AnyOf(mergeSection.Paths(), [colOrder = *dstRowSpec->GetColumnOrder()](auto path) {
                 auto rowSpec = TYtTableBaseInfo::GetRowSpec(path.Table());
-                return rowSpec->GetColumnOrder().Defined() && rowSpec->GetColumnOrder() != colOrder;
+                return rowSpec->GetColumnOrder().Defined() && *rowSpec->GetColumnOrder() != colOrder;
             })) {
                 continue;
             }
@@ -366,6 +402,16 @@ TMaybeNode<TExprBase> TYtPhysicalOptProposalTransformer::MapToMerge(TExprBase no
             // Don't convert YtMap, which produces sorted output from unsorted input
             return node;
         }
+
+        for (auto path: map.Input().Item(0).Paths()) {
+            auto inputRowSpec = TYtPathInfo(path).Table->RowSpec;
+            if (outRowSpec.SortedBy.size() > inputRowSpec->SortedBy.size() ||
+                !std::equal(outRowSpec.SortedBy.begin(), outRowSpec.SortedBy.end(), inputRowSpec->SortedBy.begin())) {
+                    // In this case merge will be sorted, but sorted merge with different in\out sorts is not supported by yt.
+                    return node;
+            }
+        }
+
         if (auto maxTablesForSortedMerge = State_->Configuration->MaxInputTablesForSortedMerge.Get()) {
             if (map.Input().Item(0).Paths().Size() > *maxTablesForSortedMerge) {
                 return node;
@@ -405,7 +451,12 @@ TMaybeNode<TExprBase> TYtPhysicalOptProposalTransformer::MergeToCopy(TExprBase n
         return node;
     }
 
-    if (NYql::HasAnySetting(merge.Settings().Ref(), EYtSettingType::ForceTransform | EYtSettingType::CombineChunks)) {
+    auto cluster = merge.DataSink().Cluster().StringValue();
+    if (cluster == YtUnspecifiedCluster || cluster != GetClusterFromSection(merge.Input().Item(0))) {
+        return node;
+    }
+
+    if (NYql::HasAnySetting(merge.Settings().Ref(), EYtSettingType::ForceTransform | EYtSettingType::SoftTransform | EYtSettingType::CombineChunks)) {
         return node;
     }
 
@@ -416,7 +467,7 @@ TMaybeNode<TExprBase> TYtPhysicalOptProposalTransformer::MergeToCopy(TExprBase n
 
     TYtSection section = merge.Input().Item(0);
     TYtPath path = section.Paths().Item(0);
-    if (!path.Ranges().Maybe<TCoVoid>() || !path.Ref().GetTypeAnn()->Equals(*path.Table().Ref().GetTypeAnn())) {
+    if (!path.Ranges().Maybe<TCoVoid>() || !path.QLFilter().Maybe<TCoVoid>() || !path.Ref().GetTypeAnn()->Equals(*path.Table().Ref().GetTypeAnn())) {
         return node;
     }
     if (path.Table().Maybe<TYtOutput>().Operation().Maybe<TYtEquiJoin>()) {
@@ -424,7 +475,7 @@ TMaybeNode<TExprBase> TYtPhysicalOptProposalTransformer::MergeToCopy(TExprBase n
         return node;
     }
     auto tableInfo = TYtTableBaseInfo::Parse(path.Table());
-    if (path.Table().Maybe<TYtTable>() || tableInfo->Meta->IsDynamic || !tableInfo->RowSpec || !tableInfo->RowSpec->StrictSchema) {
+    if (path.Table().Maybe<TYtTable>() || tableInfo->Meta->IsDynamic || tableInfo->Meta->HasRLS || !tableInfo->RowSpec || !tableInfo->RowSpec->StrictSchema) {
         return node;
     }
     if (tableInfo->IsUnordered && tableInfo->RowSpec->IsSorted()) {
@@ -442,8 +493,26 @@ TMaybeNode<TExprBase> TYtPhysicalOptProposalTransformer::MergeToCopy(TExprBase n
             return node;
         }
     }
-    TYtOutTableInfo outTableInfo(merge.Output().Item(0));
+
+    const auto outTable = merge.Output().Item(0);
+    TYtOutTableInfo outTableInfo(outTable);
     if (!tableInfo->RowSpec->CompareSortness(*outTableInfo.RowSpec)) {
+        return node;
+    }
+
+    TStringBuf outColGroup;
+    if (auto setting = NYql::GetSetting(outTable.Settings().Ref(), EYtSettingType::ColumnGroups)) {
+        outColGroup = setting->Tail().Content();
+    }
+
+    YQL_ENSURE(path.Table().Maybe<TYtOutput>());
+    TStringBuf inputColGroup;
+    const auto out = path.Table().Cast<TYtOutput>();
+    if (auto setting = NYql::GetSetting(GetOutputOp(out).Output().Item(FromString<ui32>(out.OutIndex().Value())).Settings().Ref(), EYtSettingType::ColumnGroups)) {
+        inputColGroup = setting->Tail().Content();
+    }
+
+    if (outColGroup != inputColGroup) {
         return node;
     }
 
@@ -468,4 +537,121 @@ TMaybeNode<TExprBase> TYtPhysicalOptProposalTransformer::MergeToCopy(TExprBase n
         .Done();
 }
 
-}  // namespace NYql
+TMaybeNode<TExprBase> TYtPhysicalOptProposalTransformer::ForceTransform(TExprBase node, TExprContext& ctx) const {
+    auto merge = node.Cast<TYtMerge>();
+
+    if (merge.Ref().HasResult()) {
+        return node;
+    }
+
+    if (!NYql::HasSetting(merge.Settings().Ref(), EYtSettingType::ForceTransform)
+        && NYql::HasSetting(merge.Input().Item(0).Settings().Ref(), EYtSettingType::Sample)) {
+        return TExprBase(ctx.ChangeChild(merge.Ref(), TYtMerge::idx_Settings, NYql::AddSetting(merge.Settings().Ref(), EYtSettingType::ForceTransform, {}, ctx)));
+    }
+
+    return node;
+}
+
+template <class TNodeType>
+TMaybeNode<TExprBase> TYtPhysicalOptProposalTransformer::ConvertSpecificTablesToStatic(TExprBase node, TExprContext& ctx, std::function<bool(const TYtTableMetaInfo::TPtr&)> tableChecker) const {
+    auto op = node.Cast<TNodeType>();
+
+    TVector<TYtSection> newInputs;
+    newInputs.reserve(op.Input().Size());
+    bool hasChanges = false;
+
+    for (const auto& input : op.Input()) {
+        auto section = input.template Cast<TYtSection>();
+
+        TVector<TYtPath> dynamicTableInputs;
+        dynamicTableInputs.reserve(section.Paths().Size());
+
+        TVector<TYtPath> otherInputs;
+        otherInputs.reserve(section.Paths().Size());
+
+        for (const auto& path : section.Paths()) {
+            if (tableChecker(TYtTableBaseInfo::GetMeta(path.Table()))) {
+                dynamicTableInputs.emplace_back(path);
+            } else {
+                otherInputs.emplace_back(path);
+            }
+        }
+
+        TMaybeNode<NNodes::TYtDSink> dataSink;
+        if constexpr (std::is_same_v<TNodeType, TYtReadTable>) {
+            dataSink = TYtDSink(ctx.RenameNode(op.DataSource().Ref(), "DataSink"));
+        } else {
+            dataSink = op.DataSink();
+        }
+
+        if (!dynamicTableInputs.empty()) {
+            otherInputs.push_back(
+                CopyOrTrivialMap(
+                    section.Pos(),
+                    op.World(),
+                    dataSink.Cast(),
+                    *section.Ref().GetTypeAnn()->template Cast<TListExprType>()->GetItemType(),
+                    Build<TYtSection>(ctx, section.Pos())
+                        .Paths()
+                            .Add(dynamicTableInputs)
+                        .Build()
+                        .Settings(NYql::KeepOnlySettings(section.Settings().Ref(), EYtSettingType::KeyFilter | EYtSettingType::KeyFilter2 | EYtSettingType::SysColumns, ctx))
+                        .Done(),
+                    {},
+                    ctx,
+                    State_,
+                    TCopyOrTrivialMapOpts()
+                        .SetTryKeepSortness(!NYql::HasSetting(section.Settings().Ref(), EYtSettingType::Unordered))
+                        .SetConstraints(section.Ref().GetConstraintSet())
+            ));
+            newInputs.push_back(
+                Build<TYtSection>(ctx, section.Pos())
+                    .Paths()
+                        .Add(otherInputs)
+                    .Build()
+                    .Settings(NYql::RemoveSettings(section.Settings().Ref(), EYtSettingType::SysColumns, ctx))
+                    .Done());
+            hasChanges = true;
+        } else {
+            newInputs.emplace_back(input);
+        }
+    }
+
+    if (hasChanges) {
+        return ctx.ChangeChild(
+            node.Ref(),
+            TNodeType::idx_Input,
+            Build<TYtSectionList>(ctx, op.Input().Pos())
+                .Add(newInputs)
+                .Done()
+                .Ptr());
+    }
+    return node;
+}
+
+template TMaybeNode<TExprBase> TYtPhysicalOptProposalTransformer::ConvertDynamicTablesToStatic<TYtReadTable>(TExprBase node, TExprContext& ctx) const;
+template TMaybeNode<TExprBase> TYtPhysicalOptProposalTransformer::ConvertDynamicTablesToStatic<TYtTransientOpBase>(TExprBase node, TExprContext& ctx) const;
+
+template <class TNodeType>
+TMaybeNode<TExprBase> TYtPhysicalOptProposalTransformer::ConvertDynamicTablesToStatic(TExprBase node, TExprContext& ctx) const {
+    const auto convertDynamicTablesToStatic = State_->Configuration->ConvertDynamicTablesToStatic.Get().GetOrElse(EConvertDynamicTablesToStatic::Disable);
+    if (convertDynamicTablesToStatic == EConvertDynamicTablesToStatic::Disable) {
+        return node;
+    } else if (convertDynamicTablesToStatic == EConvertDynamicTablesToStatic::Join
+        && !TYtEquiJoin::Match(node.Raw())) {
+        return node;
+    }
+
+    if (TYtMerge::Match(node.Raw()) || TYtMap::Match(node.Raw())) {
+        // To not get stuck in a loop
+        return node;
+    }
+
+    return ConvertSpecificTablesToStatic<TNodeType>(node, ctx, [](const TYtTableMetaInfo::TPtr& meta) { return meta->IsDynamic; });
+}
+
+TMaybeNode<TExprBase> TYtPhysicalOptProposalTransformer::ConvertRLSTablesToStatic(TExprBase node, TExprContext& ctx) const {
+    return ConvertSpecificTablesToStatic<TYtReadTable>(node, ctx, [](const TYtTableMetaInfo::TPtr& meta) { return meta->HasRLS; });
+}
+
+} // namespace NYql

@@ -1,6 +1,8 @@
 #pragma once
+#include "util/generic/yexception.h"
 #include <contrib/ydb/core/protos/tx_columnshard.pb.h>
 #include <contrib/ydb/core/protos/data_events.pb.h>
+#include <contrib/ydb/library/yverify_stream/yverify_stream.h>
 
 namespace NKikimr::NEvWrite {
 enum class EModificationType {
@@ -8,7 +10,9 @@ enum class EModificationType {
     Insert,
     Update,
     Replace,
-    Delete
+    Delete,
+    Increment,
+    UpsertIncrement
 };
 
 }
@@ -30,6 +34,8 @@ public:
             case NEvWrite::EModificationType::Upsert:
             case NEvWrite::EModificationType::Delete:
             case NEvWrite::EModificationType::Update:
+            case NEvWrite::EModificationType::Increment:
+            case NEvWrite::EModificationType::UpsertIncrement:
                 return false;
             case NEvWrite::EModificationType::Insert:
             case NEvWrite::EModificationType::Replace:
@@ -42,6 +48,8 @@ public:
             case NEvWrite::EModificationType::Upsert:
             case NEvWrite::EModificationType::Delete:
             case NEvWrite::EModificationType::Update:
+            case NEvWrite::EModificationType::Increment:
+            case NEvWrite::EModificationType::UpsertIncrement:
                 return false;
             case NEvWrite::EModificationType::Insert:
             case NEvWrite::EModificationType::Replace:
@@ -49,18 +57,22 @@ public:
         }
     }
 
-    static TProto SerializeToProto(const NEvWrite::EModificationType value) {
+    static NKikimrDataEvents::TEvWrite::TOperation::EOperationType SerializeToWriteProto(const NEvWrite::EModificationType value) {
         switch (value) {
             case NEvWrite::EModificationType::Upsert:
-                return NKikimrTxColumnShard::TEvWrite::OPERATION_UPSERT;
+                return NKikimrDataEvents::TEvWrite::TOperation::OPERATION_UPSERT;
             case NEvWrite::EModificationType::Insert:
-                return NKikimrTxColumnShard::TEvWrite::OPERATION_INSERT;
+                return NKikimrDataEvents::TEvWrite::TOperation::OPERATION_INSERT;
             case NEvWrite::EModificationType::Delete:
-                return NKikimrTxColumnShard::TEvWrite::OPERATION_DELETE;
+                return NKikimrDataEvents::TEvWrite::TOperation::OPERATION_DELETE;
             case NEvWrite::EModificationType::Replace:
-                return NKikimrTxColumnShard::TEvWrite::OPERATION_REPLACE;
+                return NKikimrDataEvents::TEvWrite::TOperation::OPERATION_REPLACE;
             case NEvWrite::EModificationType::Update:
-                return NKikimrTxColumnShard::TEvWrite::OPERATION_UPDATE;
+                return NKikimrDataEvents::TEvWrite::TOperation::OPERATION_UPDATE;
+            case NEvWrite::EModificationType::Increment:
+                return NKikimrDataEvents::TEvWrite::TOperation::OPERATION_INCREMENT;
+            case NEvWrite::EModificationType::UpsertIncrement:
+                return NKikimrDataEvents::TEvWrite::TOperation::OPERATION_UPSERT_INCREMENT;
         }
     }
 
@@ -78,6 +90,28 @@ public:
                 return NEvWrite::EModificationType::Delete;
             case NKikimrDataEvents::TEvWrite::TOperation::OPERATION_REPLACE:
                 return NEvWrite::EModificationType::Replace;
+            case NKikimrDataEvents::TEvWrite::TOperation::OPERATION_INCREMENT:
+                return NEvWrite::EModificationType::Increment;
+            case NKikimrDataEvents::TEvWrite::TOperation::OPERATION_UPSERT_INCREMENT:
+                return NEvWrite::EModificationType::UpsertIncrement;
+        }
+    }
+
+    static TProto SerializeToProto(const NEvWrite::EModificationType value) {
+        switch (value) {
+            case NEvWrite::EModificationType::Upsert:
+                return NKikimrTxColumnShard::TEvWrite::OPERATION_UPSERT;
+            case NEvWrite::EModificationType::Insert:
+                return NKikimrTxColumnShard::TEvWrite::OPERATION_INSERT;
+            case NEvWrite::EModificationType::Delete:
+                return NKikimrTxColumnShard::TEvWrite::OPERATION_DELETE;
+            case NEvWrite::EModificationType::Replace:
+                return NKikimrTxColumnShard::TEvWrite::OPERATION_REPLACE;
+            case NEvWrite::EModificationType::Update:
+                return NKikimrTxColumnShard::TEvWrite::OPERATION_UPDATE;
+            case NEvWrite::EModificationType::Increment:
+            case NEvWrite::EModificationType::UpsertIncrement:
+                Y_ENSURE(false);
         }
     }
 

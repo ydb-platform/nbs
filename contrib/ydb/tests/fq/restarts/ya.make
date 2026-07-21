@@ -8,6 +8,7 @@ INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/tools/fq_runner/ydb_runner.inc)
 
 PEERDIR(
     contrib/python/boto3
+    library/python/port_manager
     library/python/testing/recipe
     library/python/testing/yatest_common
     library/recipes/common
@@ -26,15 +27,12 @@ PY_SRCS(
     conftest.py
 )
 
+REQUIREMENTS(cpu:2)
 IF (SANITIZER_TYPE == "thread")
-    TIMEOUT(2400)
     SIZE(LARGE)
-    TAG(ya:fat)
+    INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/large.inc)
 ELSE()
-    TIMEOUT(600)
     SIZE(MEDIUM)
 ENDIF()
-
-REQUIREMENTS(ram:16)
 
 END()

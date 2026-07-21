@@ -243,10 +243,10 @@ Y_UNIT_TEST_SUITE(SelfHeal) {
         env.CreateBoxAndPool(1, 1);
 
         env.UpdateSettings(false, true, false); // disable self-heal
-        
+
         // set PDisk (9,1000) to ACTIVE + NO_NEW_VDISKS
         ChangeDiskStatus(env, { 9, 1000 }, NKikimrBlobStorage::EDriveStatus::ACTIVE, NKikimrBlobStorage::TMaintenanceStatus::NO_NEW_VDISKS);
-    
+
         // set PDisk (1,1000) to ACTIVE + LONG_TERM_MAINTENANCE_PLANNED
         ChangeDiskStatus(env, { 1, 1000 }, NKikimrBlobStorage::EDriveStatus::ACTIVE, NKikimrBlobStorage::TMaintenanceStatus::LONG_TERM_MAINTENANCE_PLANNED);
 
@@ -254,7 +254,7 @@ Y_UNIT_TEST_SUITE(SelfHeal) {
         bool reassignSeen = false;
         bool seenReassignFailure = false;
 
-        auto catchReassigns = [&](ui32 /*nodeId*/, std::unique_ptr<IEventHandle>& ev) { 
+        auto catchReassigns = [&](ui32 /*nodeId*/, std::unique_ptr<IEventHandle>& ev) {
             if (seenReassignFailure) {
                 return true;
             }
@@ -351,12 +351,12 @@ Y_UNIT_TEST_SUITE(SelfHeal) {
         env.CreateBoxAndPool(1, 1);
 
         env.UpdateSettings(false, true, false); // disable self-heal
-        
+
         ChangeDiskStatus(env, { 1, 1000 }, NKikimrBlobStorage::EDriveStatus::ACTIVE, NKikimrBlobStorage::TMaintenanceStatus::LONG_TERM_MAINTENANCE_PLANNED);
 
         bool seenParameters = false;
 
-        auto catchReassigns = [&](ui32 /*nodeId*/, std::unique_ptr<IEventHandle>& ev) { 
+        auto catchReassigns = [&](ui32 /*nodeId*/, std::unique_ptr<IEventHandle>& ev) {
             if (ev->GetTypeRewrite() == TEvBlobStorage::TEvControllerConfigRequest::EventType) {
                 const auto& request = ev->Get<TEvBlobStorage::TEvControllerConfigRequest>()->Record.GetRequest();
                 for (const auto& command : request.GetCommand()) {

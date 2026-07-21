@@ -2,6 +2,7 @@
 
 #include <contrib/ydb/core/protos/config.pb.h>
 #include <contrib/ydb/library/yaml_config/protos/config.pb.h>
+#include <contrib/ydb/library/yaml_config/protos/blobstorage_config.pb.h>
 
 #include <library/cpp/json/writer/json_value.h>
 #include <library/cpp/protobuf/json/json2proto.h>
@@ -10,10 +11,12 @@
 #include <google/protobuf/message.h>
 #include <contrib/ydb/core/protos/config.pb.h>
 #include <contrib/ydb/core/protos/blobstorage.pb.h>
+#include <contrib/ydb/public/api/protos/ydb_config.pb.h>
 
 #include <util/generic/string.h>
 
 #include <map>
+#include <optional>
 
 namespace NKikimr::NYaml {
 
@@ -40,12 +43,17 @@ namespace NKikimr::NYaml {
     };
 
     struct TTransformContext {
-        bool DisableBuiltinSecurity;
-        bool ExplicitEmptyDefaultGroups;
-        bool ExplicitEmptyDefaultAccess;
+        std::optional<bool> DisableBuiltinSecurity;
+        std::optional<bool> DisableBuiltinGroups;
+        std::optional<bool> DisableBuiltinAccess;
         std::map<TCombinedDiskInfoKey, NKikimrConfig::TCombinedDiskInfo> CombinedDiskInfo;
         std::map<TPoolConfigKey, TPoolConfigInfo> PoolConfigInfo;
         std::map<ui32, TString> GroupErasureSpecies;
+    };
+
+    // Top-level TAppConfig fields tagged with the OpaqueConfig marker
+    struct TOpaqueField {
+        TString Name;       // snake_case key
     };
 
     NProtobufJson::TJson2ProtoConfig GetJsonToProtoConfig(
@@ -53,6 +61,8 @@ namespace NKikimr::NYaml {
         TSimpleSharedPtr<NProtobufJson::IUnknownFieldsCollector> unknownFieldsCollector = nullptr);
 
     NKikimrBlobStorage::TConfigRequest BuildInitDistributedStorageCommand(const TString& data);
+    Ydb::Config::ReplaceConfigRequest BuildReplaceDistributedStorageCommand(const TString& data);
+    TString ParseProtoToYaml(const NKikimrConfig::StorageConfig& protoConfig);
 
     void ExtractExtraFields(NJson::TJsonValue& json, TTransformContext& ctx);
     void ClearEphemeralFields(NJson::TJsonValue& json);
@@ -60,9 +70,30 @@ namespace NKikimr::NYaml {
 
     void TransformProtoConfig(TTransformContext& ctx, NKikimrConfig::TAppConfig& config, NKikimrConfig::TEphemeralInputFields& ephemeralConfig, bool relaxed = false);
 
-    void Parse(const NJson::TJsonValue& json, NProtobufJson::TJson2ProtoConfig convertConfig, NKikimrConfig::TAppConfig& config, bool transform, bool relaxed = false);
+    // TODO: replace bools with something meaningful
+
+    enum class EParsePhase {
+        Preprocess,
+        JsonToProto,
+        Transform,
+    };
+
+    void Parse(const NJson::TJsonValue& json, NProtobufJson::TJson2ProtoConfig convertConfig, NKikimrConfig::TAppConfig& config,
+               bool transform, EParsePhase* phase = nullptr, bool relaxed = false);
     NKikimrConfig::TAppConfig Parse(const TString& data, bool transform = true);
 
     void ValidateMetadata(const NJson::TJsonValue& metadata);
+
+    // Get top-level TAppConfig fields tagged with the OpaqueConfig marker
+    // (computed once)
+    const TVector<TOpaqueField>& OpaqueConfigFields();
+
+    // Handle opaque-marked fields so the cluster accepts their content without
+    // knowing the schema and without allow_unknown_fields.
+    // Replaces the sub-tree with an empty object, so the proto merge stores
+    // an empty message and the unknown-field collector never sees the content
+    // (which is recovered later from the resolved YAML).
+    // Only message field types are supported.
+    void CaptureOpaqueConfigFields(NJson::TJsonValue& configJson);
 
 } // namespace NKikimr::NYaml

@@ -26,6 +26,8 @@ namespace NKikimr {
         DEFINE_TRACING_LEVELS(TDistributedTransactions, 2, 7, 11, 14, 15)
         DEFINE_TRACING_LEVELS(TTablet, 3, 8, 12, 14, 15)
         DEFINE_TRACING_LEVELS(TDistributedStorage, 4, 9, 13, 14, 15)
+        DEFINE_TRACING_LEVELS(TTopic, 4, 9, 13, 14, 15)
+        DEFINE_TRACING_LEVELS(TNbs, 4, 9, 13, 14, 15)
 
 #undef DEFINE_TRACING_LEVELS
 
@@ -41,12 +43,18 @@ namespace NKikimr {
     struct TWilson {
         enum {
             BlobStorage = TComponentTracingLevels::TDistributedStorage::TopLevel,
-            DsProxyInternals = TComponentTracingLevels::TDistributedStorage::Detailed,
-            VDiskTopLevel = TComponentTracingLevels::TDistributedStorage::Basic,
-            VDiskInternals = TComponentTracingLevels::TDistributedStorage::Detailed,
-            PDiskTopLevel = TComponentTracingLevels::TDistributedStorage::Basic,
-            PDiskBasic = TComponentTracingLevels::TDistributedStorage::Detailed,
-            PDiskDetailed = TComponentTracingLevels::TDistributedStorage::Detailed,
+
+                    DsProxyInternals = TComponentTracingLevels::TDistributedStorage::Detailed,
+
+                VDiskTopLevel = TComponentTracingLevels::TDistributedStorage::Basic,
+                    VDiskInternals = TComponentTracingLevels::TDistributedStorage::Detailed,
+
+                DDiskTopLevel = TComponentTracingLevels::TDistributedStorage::Basic,
+                    DDiskInternals = TComponentTracingLevels::TDistributedStorage::Detailed,
+
+                PDiskTopLevel = TComponentTracingLevels::TDistributedStorage::Basic,
+                    PDiskBasic = TComponentTracingLevels::TDistributedStorage::Detailed,
+                        PDiskDetailed = TComponentTracingLevels::TDistributedStorage::Diagnostic,
         };
     };
 
@@ -70,6 +78,7 @@ namespace NKikimr {
                     ScanExecuterRunTasks = TComponentTracingLevels::TQueryProcessor::Detailed,
 
                 KqpNodeSendTasks = TComponentTracingLevels::TQueryProcessor::Basic,
+                KqpNodeCreateTasks = TComponentTracingLevels::TQueryProcessor::Basic,
 
                 ProposeTransaction = TComponentTracingLevels::TQueryProcessor::Basic,
 
@@ -81,8 +90,15 @@ namespace NKikimr {
                 LookupActor = TComponentTracingLevels::TQueryProcessor::Basic,
                     LookupActorShardsResolve = TComponentTracingLevels::TQueryProcessor::Detailed,
 
-                WriteActor = TComponentTracingLevels::TQueryProcessor::Basic,
-                    WriteActorTableNavigate = TComponentTracingLevels::TQueryProcessor::Detailed,
+                LockActor = TComponentTracingLevels::TQueryProcessor::Basic,
+
+                ForwardWriteActor = TComponentTracingLevels::TQueryProcessor::Basic,
+                DirectWriteActor = TComponentTracingLevels::TQueryProcessor::Basic,
+                BufferWriteActor = TComponentTracingLevels::TQueryProcessor::Basic,
+                    BufferWriteActorState = TComponentTracingLevels::TQueryProcessor::Detailed,
+                    TableWriteActor = TComponentTracingLevels::TQueryProcessor::Detailed,
+
+                VectorResolveActor = TComponentTracingLevels::TQueryProcessor::Basic,
 
             BulkUpsertActor = TComponentTracingLevels::TQueryProcessor::TopLevel,
         };
@@ -101,6 +117,24 @@ namespace NKikimr {
             RequestProxy = TComponentTracingLevels::TGrpcProxy::TopLevel,
             RequestActor = TComponentTracingLevels::TGrpcProxy::TopLevel,
             RequestCheckActor = TComponentTracingLevels::TGrpcProxy::Basic,
+        };
+    };
+
+    struct TWilsonTopic {
+        enum {
+            TopicTopLevel = TComponentTracingLevels::TTopic::TopLevel,
+            TopicBasic = TComponentTracingLevels::TTopic::Basic,
+            TopicDetailed = TComponentTracingLevels::TTopic::Detailed,
+            TopicTrace = TComponentTracingLevels::TTopic::Trace,
+        };
+    };
+
+    struct TWilsonNbs {
+        enum {
+            NbsTopLevel = TComponentTracingLevels::TNbs::TopLevel,
+            NbsBasic = TComponentTracingLevels::TNbs::Basic,
+            NbsDetailed = TComponentTracingLevels::TNbs::Detailed,
+            NbsTrace = TComponentTracingLevels::TNbs::Trace,
         };
     };
 

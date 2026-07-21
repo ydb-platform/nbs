@@ -5,7 +5,9 @@
 #include <contrib/ydb/library/yql/providers/yt/lib/yson_helpers/yson_helpers.h>
 #include <contrib/ydb/library/yql/providers/yt/common/yql_names.h>
 #include <contrib/ydb/library/yql/providers/yt/codec/yt_codec.h>
+#include <contrib/ydb/library/yql/providers/yt/expr_nodes/yql_yt_expr_nodes.h>
 #include <contrib/ydb/library/yql/providers/common/gateway/yql_provider_gateway.h>
+#include <contrib/ydb/library/yql/core/expr_nodes/yql_expr_nodes.h>
 #include <contrib/ydb/library/yql/core/issue/yql_issue.h>
 #include <contrib/ydb/library/yql/core/yql_type_annotation.h>
 #include <contrib/ydb/library/yql/minikql/aligned_page_pool.h>
@@ -21,6 +23,7 @@
 #include <library/cpp/threading/future/future.h>
 
 #include <util/string/split.h>
+#include <util/string/type.h>
 #include <util/system/env.h>
 #include <util/generic/hash_set.h>
 #include <util/generic/hash.h>
@@ -32,6 +35,8 @@
 #include <util/generic/algorithm.h>
 
 namespace NYql {
+
+using namespace NNodes;
 
 namespace {
 EYqlIssueCode IssueCodeForYtError(const NYT::TYtError& error) {
@@ -99,7 +104,7 @@ TString TransformPath(TStringBuf tmpFolder, TStringBuf name, bool isTempTable, T
         return path.substr(2);
     }
 
-    if (isTempTable && !tmpFolder && path.StartsWith("tmp/")) {
+    if (isTempTable && !tmpFolder && path.StartsWith("tmp/") && !path.StartsWith("tmp/yql/")) {
         TStringBuilder builder;
         builder << "tmp/yql/";
         if (userName) {
@@ -128,6 +133,7 @@ THashSet<TStringBuf> SERVICE_YQL_ATTRS = {
     TStringBuf("_yql_runner"),
     TStringBuf("_yql_op_id"),
     TStringBuf("_yql_op_title"),
+    TStringBuf("_yql_op_url"),
     TStringBuf("_yql_query_name"),
 };
 
@@ -240,6 +246,9 @@ IYtGateway::TCanonizedPath CanonizedPath(const TString& path) {
             }
         }
     }
+    while (richYPath.Path_.EndsWith('&')) {
+        richYPath.Path_.pop_back();
+    }
     return {
         richYPath.Path_,
         richYPath.Columns_.Defined() ? richYPath.Columns_->Parts_ : TMaybe<TVector<TString>>(),
@@ -322,6 +331,7 @@ static bool IterateRows(NYT::ITransactionPtr tx,
     TMkqlIOCache& specsCache,
     IExecuteResOrPull& exec,
     const TTableLimiter& limiter,
+    const bool supportRLSTables,
     const TMaybe<TSampleParams>& sampling)
 {
     const ui64 startRecordInTable = limiter.GetTableStart();
@@ -340,18 +350,26 @@ static bool IterateRows(NYT::ITransactionPtr tx,
     }
 
     NYT::TTableReaderOptions readerOptions;
-    if (sampling && sampling->Mode == EYtSampleMode::Bernoulli) {
+    if (supportRLSTables) {
+        // OmitInaccessibleRows is required for RLS tables
+        readerOptions.OmitInaccessibleRows(true);
+    }
+
+    if (sampling) {
         NYT::TNode spec = NYT::TNode::CreateMap();
         spec["sampling_rate"] = sampling->Percentage / 100.;
         if (sampling->Repeat) {
             spec["sampling_seed"] = static_cast<i64>(sampling->Repeat);
+        }
+        if (sampling->Mode == EYtSampleMode::System) {
+            spec["sampling_mode"] = "block";
         }
         readerOptions.Config(spec);
     }
 
     if (!YAMRED_DSV && exec.GetColumns()) {
         if (!specsCache.GetSpecs().Inputs[tableIndex]->OthersStructIndex) {
-            path.Columns(*exec.GetColumns());
+            path.Columns(TColumnOrder(*exec.GetColumns()).GetPhysicalNames());
         }
     }
 
@@ -366,7 +384,7 @@ static bool IterateRows(NYT::ITransactionPtr tx,
     } else {
         auto format = specsCache.GetSpecs().MakeInputFormat(tableIndex);
         auto rawReader = tx->CreateRawReader(path, format, readerOptions);
-        TMkqlReaderImpl reader(*rawReader, 0, 4 << 10, tableIndex);
+        TMkqlReaderImpl reader(*rawReader, 0, 4 << 10, tableIndex, true);
         reader.SetSpecs(specsCache.GetSpecs(), specsCache.GetHolderFactory());
 
         for (reader.Next(); reader.IsValid(); reader.Next()) {
@@ -385,9 +403,10 @@ bool IterateYamredRows(NYT::ITransactionPtr tx,
     TMkqlIOCache& specsCache,
     IExecuteResOrPull& exec,
     const TTableLimiter& limiter,
+    const bool supportRLSTables,
     const TMaybe<TSampleParams>& sampling)
 {
-    return IterateRows<true>(tx, table, tableIndex, specsCache, exec, limiter, sampling);
+    return IterateRows<true>(tx, table, tableIndex, specsCache, exec, limiter, supportRLSTables, sampling);
 }
 
 bool IterateYsonRows(NYT::ITransactionPtr tx,
@@ -396,9 +415,10 @@ bool IterateYsonRows(NYT::ITransactionPtr tx,
     TMkqlIOCache& specsCache,
     IExecuteResOrPull& exec,
     const TTableLimiter& limiter,
+    const bool supportRLSTables,
     const TMaybe<TSampleParams>& sampling)
 {
-    return IterateRows<false>(tx, table, tableIndex, specsCache, exec, limiter, sampling);
+    return IterateRows<false>(tx, table, tableIndex, specsCache, exec, limiter, supportRLSTables, sampling);
 }
 
 bool SelectRows(NYT::IClientPtr client,
@@ -429,14 +449,16 @@ bool SelectRows(NYT::IClientPtr client,
     sqlBuilder << " FROM [";
     sqlBuilder << NYT::AddPathPrefix(table, NYT::TConfig::Get()->Prefix);
     sqlBuilder << "]";
+
+    ui64 effectiveLimit = endRecordInTable;
     if (exec.GetRowsLimit()) {
-        ui64 effectiveLimit = endRecordInTable;
         if (!effectiveLimit) {
             effectiveLimit = startRecordInTable + *exec.GetRowsLimit() + 1;
         } else {
             effectiveLimit = Min(effectiveLimit, *exec.GetRowsLimit() + 1);
         }
-
+    }
+    if (effectiveLimit) {
         sqlBuilder << " LIMIT " << effectiveLimit;
     }
 
@@ -556,6 +578,9 @@ NYT::TNode YqlOpOptionsToAttrs(const TYqlOperationOptions& opOpts) {
     if (auto id = opOpts.Id.GetOrElse(TString())) {
         attrs["_yql_op_id"] = id;
     }
+    if (auto url = opOpts.Url.GetOrElse(TString())) {
+        attrs["_yql_op_url"] = url;
+    }
     if (auto title = opOpts.Title.GetOrElse(TString())) {
         attrs["_yql_op_title"] = title;
     }
@@ -626,7 +651,7 @@ void FillResultFromOperationError(NCommon::TOperationResult& result, const NYT::
             } else {
                 TString errorDescription = failedJob.Error.ShortDescription();
                 if (uniqueErrors.insert(errorDescription).second) {
-                    rootIssue.AddSubIssue(MakeIntrusive<TIssue>(YqlIssue(pos, TIssuesIds::UNEXPECTED, errorDescription)));
+                    rootIssue.AddSubIssue(MakeIntrusive<TIssue>(YqlIssue(pos, TIssuesIds::DEFAULT_ERROR, errorDescription)));
                 }
             }
         }
@@ -643,6 +668,293 @@ void FillResultFromErrorResponse(NCommon::TOperationResult& result, const NYT::T
     result.AddIssue(rootIssue);
 }
 
+bool GetIntegerConstraints(const EDataSlot dataSlot, bool& isSigned, ui64& minValueAbs, ui64& maxValueAbs) {
+    switch (dataSlot) {
+        case EDataSlot::Uint8:
+            isSigned = false;
+            minValueAbs = 0;
+            maxValueAbs = Max<ui8>();
+            return true;
+        case EDataSlot::Uint16:
+            isSigned = false;
+            minValueAbs = 0;
+            maxValueAbs = Max<ui16>();
+            return true;
+        case EDataSlot::Uint32:
+            isSigned = false;
+            minValueAbs = 0;
+            maxValueAbs = Max<ui32>();
+            return true;
+        case EDataSlot::Uint64:
+            isSigned = false;
+            minValueAbs = 0;
+            maxValueAbs = Max<ui64>();
+            return true;
+        case EDataSlot::Int8:
+            isSigned = true;
+            minValueAbs = (ui64)Max<i8>() + 1;
+            maxValueAbs = (ui64)Max<i8>();
+            return true;
+        case EDataSlot::Int16:
+            isSigned = true;
+            minValueAbs = (ui64)Max<i16>() + 1;
+            maxValueAbs = (ui64)Max<i16>();
+            return true;
+        case EDataSlot::Int32:
+            isSigned = true;
+            minValueAbs = (ui64)Max<i32>() + 1;
+            maxValueAbs = (ui64)Max<i32>();
+            return true;
+        case EDataSlot::Int64:
+            isSigned = true;
+            minValueAbs = (ui64)Max<i64>() + 1;
+            maxValueAbs = (ui64)Max<i64>();
+            return true;
+        default:
+            return false;
+    }
+}
+
+void QuoteColumnForQL(const TStringBuf& columnName, TStringBuilder& result) {
+    result << '`';
+    if (!columnName.Contains('`')) {
+        result << columnName;
+    } else {
+        for (const auto c : columnName) {
+            if (c == '`') {
+                result << "\\`";
+            } else {
+                result << c;
+            }
+        }
+    }
+    result << '`';
+}
+
+void ConvertComparisonForQL(const TStringBuf& opName, TStringBuilder& result) {
+    if (opName == "==") {
+        result << '=';
+    } else {
+        result << opName;
+    }
+}
+
+TMaybe<TString> ConvertValueForQL(const TExprNode::TPtr& node) {
+    if (const auto maybeData = TMaybeNode<TCoDataCtor>(node)) {
+        const auto atom = maybeData.Cast().Literal();
+        if (atom.Ref().Flags() & TNodeFlags::BinaryContent) {
+            YQL_CLOG(ERROR, ProviderYt) << "YtQLFilter: unsupported binary content in const value";
+            return {};
+        }
+        const TString value(atom.Value());
+        if (TCoIntegralCtor::Match(node.Get()) || TCoBool::Match(node.Get())) {
+            return {value};
+        }
+        if (TCoFloat::Match(node.Get()) || TCoDouble::Match(node.Get())) {
+            double parsed;
+            if (!TryFromString(value, parsed)) {
+                YQL_CLOG(ERROR, ProviderYt) << "YtQLFilter: unsupported const value " << value;
+                return {};
+            }
+            return {value};
+        }
+        if (TCoString::Match(node.Get()) || TCoUtf8::Match(node.Get())) {
+            return {value.Quote()};
+        }
+    }
+    YQL_CLOG(ERROR, ProviderYt) << "YtQLFilter: unexpected type of const value " << node->Dump();
+    return {};
+}
+
+TMaybe<bool> OptimizePossibleOutOfBounds(const TStringBuf& opName, EDataSlot columnDataSlot, const TExprNode::TPtr& intValue) {
+    bool columnsIsSigned;
+    ui64 minValueAbs;
+    ui64 maxValueAbs;
+    if (!GetIntegerConstraints(columnDataSlot, columnsIsSigned, minValueAbs, maxValueAbs)) {
+        return {};
+    }
+
+    const TMaybeNode<TCoIntegralCtor> maybeIntValue(intValue);
+    if (!maybeIntValue) {
+        return {};
+    }
+
+    bool hasSign;
+    bool isSigned;
+    ui64 valueAbs;
+    ExtractIntegralValue(maybeIntValue.Ref(), false, hasSign, isSigned, valueAbs);
+
+    if (!hasSign && valueAbs > maxValueAbs) {
+        // Value is greater than maximum.
+        if (opName == ">" || opName == ">=" || opName == "==") {
+            return {false};
+        } else {
+            return {true};
+        }
+    }
+    if (hasSign && valueAbs > minValueAbs) {
+        // Value is less than minimum.
+        if (opName == "<" || opName == "<=" || opName == "==") {
+            return {false};
+        } else {
+            return {true};
+        }
+    }
+    return {};
+}
+
+bool GenerateInputQueryComparison(const TStringBuf& opName, const TExprNode::TPtr& column, TExprNode::TPtr value, const TMaybe<bool>& nullValue, TStringBuilder& result) {
+    for (auto maybeJust = TMaybeNode<TCoJust>(value); maybeJust;) {
+        value = maybeJust.Cast().Input().Ptr();
+        maybeJust = TMaybeNode<TCoJust>(value);
+    }
+
+    if (TMaybeNode<TCoNull>(value) || TMaybeNode<TCoNothing>(value)) {
+        YQL_ENSURE(nullValue.Defined(), "YtQLFilter: optional type without coalesce is not supported");
+        if (nullValue.GetRef()) {
+            result << "TRUE";
+        } else {
+            result << "FALSE";
+        }
+        return true;
+    }
+
+    bool columnIsOptional = false;
+    const TDataExprType* dataType = nullptr;
+    const bool columnHasDataType = IsDataOrOptionalOfData(column->GetTypeAnn(), columnIsOptional, dataType);
+    if (columnIsOptional) {
+        YQL_ENSURE(nullValue.Defined(), "YtQLFilter: optional type without coalesce is not supported");
+    }
+
+    YQL_ENSURE(columnHasDataType, "YtQLFilter: unsupported type of column " << column->Dump());
+    YQL_ENSURE(dataType);
+    const EDataSlot dataSlot = dataType->Cast<TDataExprType>()->GetSlot();
+    const TMaybe<bool> constantFilter = OptimizePossibleOutOfBounds(opName, dataSlot, value);
+
+    const auto columnName = column->ChildPtr(1)->Content();
+    if (!constantFilter.Defined()) {
+        // Value is in the range, comparison is not constant.
+        if (columnIsOptional) {
+            const bool isLess = opName == "<" || opName == "<=";
+            if (isLess && !nullValue.GetRef()) {
+                // QL will handle 'x [operation] NULL' as TRUE here, but we need FALSE.
+                QuoteColumnForQL(columnName, result);
+                result << " != NULL AND ";
+            } else if (!isLess && nullValue.GetRef()) {
+                // QL will handle 'x [operation] NULL' as FALSE here, but we need TRUE.
+                QuoteColumnForQL(columnName, result);
+                result << " = NULL OR ";
+            }
+        }
+        QuoteColumnForQL(columnName, result);
+        result << " ";
+        ConvertComparisonForQL(opName, result);
+        const auto valueStr = ConvertValueForQL(value);
+        if (!valueStr.Defined()) {
+            return false;
+        }
+        result << " " << valueStr.GetRef();
+    } else if (constantFilter.GetRef()) {
+        // Value is out of the range, comparison is always TRUE.
+        if (columnIsOptional && !nullValue.GetRef()) {
+            // Handle comparison with NULL as FALSE.
+            QuoteColumnForQL(columnName, result);
+            result << " IS NOT NULL";
+        } else {
+            result << "TRUE";
+        }
+    } else {
+        // Value is out of the range, comparison is always FALSE.
+        if (columnIsOptional && nullValue.GetRef()) {
+            // Handle comparison with NULL as TRUE.
+            QuoteColumnForQL(columnName, result);
+            result << " IS NULL";
+        } else {
+            result << "FALSE";
+        }
+    }
+    return true;
+}
+
+bool GenerateInputQueryComparison(const TCoCompare& op, const TMaybe<bool>& nullValue, TStringBuilder& result) {
+    YQL_ENSURE(op.Ref().IsCallable({"<", "<=", ">", ">=", "==", "!="}));
+    const auto left = op.Left().Ptr();
+    const auto right = op.Right().Ptr();
+    if (left->IsCallable("Member")) {
+        return GenerateInputQueryComparison(op.CallableName(), left, right, nullValue, result);
+    } else {
+        YQL_ENSURE(right->IsCallable("Member"));
+        auto invertedOp = op.CallableName();
+        if (invertedOp == "<") {
+            invertedOp = ">";
+        } else if (invertedOp == "<=") {
+            invertedOp = ">=";
+        } else if (invertedOp == ">") {
+            invertedOp = "<";
+        } else if (invertedOp == ">=") {
+            invertedOp = "<=";
+        }
+        return GenerateInputQueryComparison(invertedOp, right, left, nullValue, result);
+    }
+}
+
+bool GenerateInputQueryWhereExpression(const TExprNode::TPtr& node, TStringBuilder& result) {
+    if (const auto maybeCompare = TMaybeNode<TCoCompare>(node)) {
+        return GenerateInputQueryComparison(maybeCompare.Cast(), {}, result);
+    } else if (node->IsCallable("Not")) {
+        const auto child = node->ChildPtr(0);
+        if (child->IsCallable("Exists")) {
+            // Do not generate NOT (x IS NOT NULL).
+            result << "(";
+            if (!GenerateInputQueryWhereExpression(child->ChildPtr(0), result)) {
+                return false;
+            }
+            result << ") IS NULL";
+        } else {
+            result << "NOT (";
+            if (!GenerateInputQueryWhereExpression(child, result)) {
+                return false;
+            }
+            result << ")";
+        }
+    } else if (node->IsCallable("Exists")) {
+        result << "(";
+        if (!GenerateInputQueryWhereExpression(node->ChildPtr(0), result)) {
+            return false;
+        }
+        result << ") IS NOT NULL";
+    } else if (node->IsCallable({"And", "Or"})) {
+        const TStringBuf op = node->IsCallable("And") ? "AND" : "OR";
+        result << "(";
+        if (!GenerateInputQueryWhereExpression(node->Child(0), result)) {
+            return false;
+        }
+        result << ")";
+        const auto size = node->ChildrenSize();
+        for (TExprNode::TListType::size_type i = 1U; i < size; ++i) {
+            result << " " << op << " (";
+            if (!GenerateInputQueryWhereExpression(node->Child(i), result)) {
+                return false;
+            }
+            result << ")";
+        };
+    } else if (node->IsCallable("Coalesce")) {
+        YQL_ENSURE(node->ChildrenSize() == 2);
+        const auto op = TMaybeNode<TCoCompare>(node->Child(0)).Cast();
+        const auto nullValueStr = TMaybeNode<TCoBool>(node->Child(1)).Cast().Literal().Value();
+        const TMaybe<bool> nullValue(IsTrue(nullValueStr));
+        return GenerateInputQueryComparison(op, nullValue, result);
+    } else if (const auto maybeBool = TMaybeNode<TCoBool>(node)) {
+        result << maybeBool.Cast().Literal().Value();
+    } else if (node->IsCallable("Member")) {
+        const auto columnName = node->ChildPtr(1)->Content();
+        QuoteColumnForQL(columnName, result);
+    } else {
+        YQL_ENSURE(false, "unexpected node type");
+    }
+    return true;
+}
+
 } // unnamed
 
 void FillResultFromCurrentException(NCommon::TOperationResult& result, TPosition pos, bool shortErrors) {
@@ -655,7 +967,7 @@ void FillResultFromCurrentException(NCommon::TOperationResult& result, TPosition
     } catch (const std::exception& e) {
         result.SetException(e, pos);
     } catch (const NKikimr::TMemoryLimitExceededException&) {
-        result.SetStatus(TIssuesIds::UNEXPECTED);
+        result.SetStatus(TIssuesIds::DEFAULT_ERROR);
         result.AddIssue(TIssue(pos, "Memory limit exceeded in MKQL runtime"));
     } catch (...) {
         result.SetStatus(TIssuesIds::UNEXPECTED);
@@ -678,6 +990,95 @@ void EnsureSpecDoesntUseNativeYtTypes(const NYT::TNode& spec, TStringBuf tableNa
             throw yexception() << "Cannot " << (read ? "read" : "modify") << " table \"" << tableName << "\" with type_v3 schema using yson codec";
         }
     }
+}
+
+TMaybe<TString> GenerateInputQuery(const TExprNode::TPtr& qlFilterNode) {
+    YQL_ENSURE(qlFilterNode && qlFilterNode->IsCallable("YtQLFilter"));
+    TStringBuilder result;
+    result << "* WHERE ";
+    const TYtQLFilter qlFilter(qlFilterNode);
+    if (!GenerateInputQueryWhereExpression(qlFilter.Predicate().Body().Ptr(), result)) {
+        YQL_CLOG(INFO, ProviderYt)  << __FUNCTION__ << ": Ignore YtQLFilter";
+        return {};
+    }
+    YQL_CLOG(INFO, ProviderYt)  << __FUNCTION__ << ": Got input_query for YtQLFilter\n" << result;
+    return {result};
+}
+
+TString UploadBinarySnapshotToYt(
+    const TString& remotePath,
+    NYT::IClientPtr client,
+    NYT::ITransactionPtr snapshotTx,
+    const TString& localPath,
+    TDuration expirationInterval,
+    const TMaybe<NYT::TNode>& transactionSpec)
+{
+    NYT::ILockPtr fileLock;
+    NYT::ITransactionPtr lockTx;
+    NYT::ILockPtr waitLock;
+
+    for (bool uploaded = false; ;) {
+        try {
+            YQL_CLOG(INFO, ProviderYt) << "Taking snapshot of " << remotePath;
+            fileLock = snapshotTx->Lock(remotePath, NYT::ELockMode::LM_SNAPSHOT);
+            break;
+        } catch (const NYT::TErrorResponse& e) {
+            // Yt returns NoSuchTransaction as inner issue for ResolveError
+            if (!e.IsResolveError() || e.IsNoSuchTransaction()) {
+                throw;
+            }
+        }
+        YQL_ENSURE(!uploaded, "Fail to take snapshot");
+
+        NYT::TStartTransactionOptions transactionOptions;
+        if (transactionSpec.Defined()) {
+            transactionOptions.Attributes(*transactionSpec);
+        }
+
+        if (!lockTx) {
+            auto pos = remotePath.rfind("/");
+            auto dir = remotePath.substr(0, pos);
+            auto childKey = remotePath.substr(pos + 1) + ".lock";
+
+            lockTx = client->StartTransaction(transactionOptions);
+            YQL_CLOG(INFO, ProviderYt) << "Waiting for " << dir << '/' << childKey;
+            waitLock = lockTx->Lock(dir, NYT::ELockMode::LM_SHARED, NYT::TLockOptions().Waitable(true).ChildKey(childKey));
+            waitLock->GetAcquiredFuture().GetValueSync();
+            // Try to take snapshot again after waiting lock. Someone else may complete uploading the file at the moment
+            continue;
+        }
+        // Lock is already taken and file still doesn't exist
+        YQL_CLOG(INFO, ProviderYt) << "Start uploading " << localPath << " to " << remotePath;
+        Y_SCOPE_EXIT(localPath, remotePath) {
+            YQL_CLOG(INFO, ProviderYt) << "Complete uploading " << localPath << " to " << remotePath;
+        };
+        auto uploadTx = client->StartTransaction(transactionOptions);
+        try {
+            auto out = uploadTx->CreateFileWriter(NYT::TRichYPath(remotePath).Executable(true), NYT::TFileWriterOptions().CreateTransaction(false));
+            TIFStream in(localPath);
+            TransferData(&in, out.Get());
+            out->Finish();
+            uploadTx->Commit();
+        } catch (...) {
+            uploadTx->Abort();
+            throw;
+        }
+        // Continue with taking snapshot lock after uploading
+        uploaded = true;
+    }
+
+    if (expirationInterval) {
+        TString expirationTime = (Now() + expirationInterval).ToStringUpToSeconds();
+        try {
+            YQL_CLOG(INFO, ProviderYt) << "Prolonging expiration time for " << remotePath << " up to " << expirationTime;
+            client->Set(remotePath + "/@expiration_time", expirationTime);
+        } catch (...) {
+            // log and ignore the error
+            YQL_CLOG(ERROR, ProviderYt) << "Error setting expiration time for " << remotePath << ": " << CurrentExceptionMessage();
+        }
+    }
+
+    return GetGuidAsString(fileLock->GetLockedNodeId());
 }
 
 } // NYql

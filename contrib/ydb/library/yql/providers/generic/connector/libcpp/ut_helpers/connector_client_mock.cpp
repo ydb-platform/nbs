@@ -29,10 +29,16 @@ namespace NYql::NConnector::NTest {
     DEFINE_SIMPLE_TYPE_SETTER(i64, INT64, int64_value);
     DEFINE_SIMPLE_TYPE_SETTER(ui64, UINT64, uint64_value);
 
+    template <>
+    void SetValue(const ui32& value, Ydb::TypedValue* proto, const ::Ydb::Type::PrimitiveTypeId& typeId, bool optional) {
+        *proto->mutable_type() = MakeYdbType(typeId, optional);
+        proto->mutable_value()->Y_CAT(set_, uint32_value)(value);
+    }
+
     void CreatePostgreSQLExternalDataSource(
         const std::shared_ptr<NKikimr::NKqp::TKikimrRunner>& kikimr,
         const TString& dataSourceName,
-        NApi::EProtocol protocol,
+        NYql::EGenericProtocol protocol,
         const TString& host,
         int port,
         const TString& login,
@@ -45,14 +51,14 @@ namespace NYql::NConnector::NTest {
         auto session = tc.CreateSession().GetValueSync().GetSession();
         const TString query = fmt::format(
             R"(
-            CREATE OBJECT {data_source_name}_password (TYPE SECRET) WITH (value={password});
+            CREATE SECRET {data_source_name}_password WITH (value="{password}");
 
             CREATE EXTERNAL DATA SOURCE {data_source_name} WITH (
                 SOURCE_TYPE="{source_type}",
                 LOCATION="{host}:{port}",
                 AUTH_METHOD="BASIC",
                 LOGIN="{login}",
-                PASSWORD_SECRET_NAME="{data_source_name}_password",
+                PASSWORD_SECRET_PATH="{data_source_name}_password",
                 USE_TLS="{use_tls}",
                 PROTOCOL="{protocol}",
                 DATABASE_NAME="{database}",
@@ -65,7 +71,7 @@ namespace NYql::NConnector::NTest {
             "login"_a = login,
             "password"_a = password,
             "use_tls"_a = useTls ? "TRUE" : "FALSE",
-            "protocol"_a = NApi::EProtocol_Name(protocol),
+            "protocol"_a = NYql::EGenericProtocol_Name(protocol),
             "source_type"_a = PG_SOURCE_TYPE,
             "database"_a = databaseName,
             "schema"_a = schema);
@@ -76,7 +82,7 @@ namespace NYql::NConnector::NTest {
     void CreateClickHouseExternalDataSource(
         const std::shared_ptr<NKikimr::NKqp::TKikimrRunner>& kikimr,
         const TString& dataSourceName,
-        NApi::EProtocol protocol,
+        NYql::EGenericProtocol protocol,
         const TString& clickHouseClusterId,
         const TString& login,
         const TString& password,
@@ -89,17 +95,17 @@ namespace NYql::NConnector::NTest {
         auto session = tc.CreateSession().GetValueSync().GetSession();
         const TString query = fmt::format(
             R"(
-            CREATE OBJECT sa_signature (TYPE SECRET) WITH (value=sa_signature);
-            CREATE OBJECT {data_source_name}_password (TYPE SECRET) WITH (value={password});
+            CREATE SECRET sa_signature WITH (value="sa_signature");
+            CREATE SECRET {data_source_name}_password WITH (value="{password}");
 
             CREATE EXTERNAL DATA SOURCE {data_source_name} WITH (
                 SOURCE_TYPE="{source_type}",
                 MDB_CLUSTER_ID="{cluster_id}",
                 AUTH_METHOD="MDB_BASIC",
                 SERVICE_ACCOUNT_ID="{service_account_id}",
-                SERVICE_ACCOUNT_SECRET_NAME="{service_account_id_signature}",
+                SERVICE_ACCOUNT_SECRET_PATH="{service_account_id_signature}",
                 LOGIN="{login}",
-                PASSWORD_SECRET_NAME="{data_source_name}_password",
+                PASSWORD_SECRET_PATH="{data_source_name}_password",
                 USE_TLS="{use_tls}",
                 PROTOCOL="{protocol}",
                 DATABASE_NAME="{database}"
@@ -110,7 +116,7 @@ namespace NYql::NConnector::NTest {
             "login"_a = login,
             "password"_a = password,
             "use_tls"_a = useTls ? "TRUE" : "FALSE",
-            "protocol"_a = NYql::NConnector::NApi::EProtocol_Name(protocol),
+            "protocol"_a = NYql::EGenericProtocol_Name(protocol),
             "service_account_id"_a = serviceAccountId,
             "service_account_id_signature"_a = serviceAccountIdSignature,
             "source_type"_a = ToString(NYql::EDatabaseType::ClickHouse),
@@ -132,7 +138,7 @@ namespace NYql::NConnector::NTest {
         auto session = tc.CreateSession().GetValueSync().GetSession();
         const TString query = fmt::format(
             R"(
-            CREATE OBJECT {data_source_name}_password (TYPE SECRET) WITH (value={password});
+            CREATE SECRET {data_source_name}_password WITH (value="{password}");
 
             CREATE EXTERNAL DATA SOURCE {data_source_name} WITH (
                 SOURCE_TYPE="{source_type}",
@@ -140,7 +146,7 @@ namespace NYql::NConnector::NTest {
                 AUTH_METHOD="BASIC",
                 LOGIN="{login}",
                 DATABASE_NAME="{database}",
-                PASSWORD_SECRET_NAME="{data_source_name}_password",
+                PASSWORD_SECRET_PATH="{data_source_name}_password",
                 USE_TLS="{use_tls}"
             );
         )",

@@ -1,47 +1,26 @@
-# Приложение на C# (.NET)
+# Приложение на C#
 
-На этой странице подробно разбирается код [тестового приложения](https://github.com/ydb-platform/ydb-dotnet-examples), использующего [C# (.NET) SDK](https://github.com/ydb-platform/ydb-dotnet-sdk) {{ ydb-short-name }}.
-
-{% include [addition.md](auxilary/addition.md) %}
+На этой странице подробно разбирается код [тестового приложения](https://github.com/ydb-platform/ydb-dotnet-sdk/examples), использующего [C# SDK](https://github.com/ydb-platform/ydb-dotnet-sdk) {{ ydb-short-name }}.
 
 {% include [steps/01_init.md](steps/01_init.md) %}
 
-Фрагмент кода приложения для инициализации драйвера:
+Фрагмент кода приложения для подключения к базе данных:
 
 ```c#
-public static async Task Run(
-    string endpoint,
-    string database,
-    ICredentialsProvider credentialsProvider)
-{
-    var config = new DriverConfig(
-        endpoint: endpoint,
-        database: database,
-        credentials: credentialsProvider
-    );
+using Ydb.Sdk.Ado;
 
-    using var driver = new Driver(
-        config: config
-    );
-
-    await driver.Initialize();
-}
-```
-
-Фрагмент кода приложения для создания сессии:
-
-```c#
-using var tableClient = new TableClient(driver, new TableClientConfig());
+await using var dataSource = new YdbDataSource("Host=localhost;Port=2136;Database=/local");
+await using var connection = await dataSource.OpenConnectionAsync();
 ```
 
 {% include [steps/02_create_table.md](steps/02_create_table.md) %}
 
-Для создания таблиц используется метод `session.ExecuteSchemeQuery` с DDL (Data Definition Language) YQL-запросом.
+Для создания таблиц используется `YdbCommand` с DDL (Data Definition Language) YQL-запросом:
 
 ```c#
-var response = await tableClient.SessionExec(async session =>
+await using var command = new YdbCommand(connection)
 {
-    return await session.ExecuteSchemeQuery(@"
+    CommandText = @"
         CREATE TABLE series (
             series_id Uint64 NOT NULL,
             title Utf8,
@@ -66,11 +45,9 @@ var response = await tableClient.SessionExec(async session =>
             title Utf8,
             air_date Date,
             PRIMARY KEY (series_id, season_id, episode_id)
-        );
-    ");
-});
-
-response.Status.EnsureSuccess();
+        );"
+};
+await command.ExecuteNonQueryAsync();
 ```
 
 {% include [steps/03_write_queries.md](steps/03_write_queries.md) %}
@@ -78,110 +55,55 @@ response.Status.EnsureSuccess();
 Фрагмент кода, демонстрирующий выполнение запроса на запись/изменение данных:
 
 ```c#
-var response = await tableClient.SessionExec(async session =>
-{
-    var query = @"
-        DECLARE $id AS Uint64;
-        DECLARE $title AS Utf8;
-        DECLARE $release_date AS Date;
-
-        UPSERT INTO series (series_id, title, release_date) VALUES
-            ($id, $title, $release_date);
-    ";
-
-    return await session.ExecuteDataQuery(
-        query: query,
-        txControl: TxControl.BeginSerializableRW().Commit(),
-        parameters: new Dictionary<string, YdbValue>
-            {
-                { "$id", YdbValue.MakeUint64(1) },
-                { "$title", YdbValue.MakeUtf8("NewTitle") },
-                { "$release_date", YdbValue.MakeDate(DateTime.UtcNow) }
-            }
-    );
-});
-
-response.Status.EnsureSuccess();
+await using var command = new YdbCommand(@"
+    UPSERT INTO series (series_id, title, release_date) VALUES
+        ($id, $title, $release_date);
+    ", connection);
+command.Parameters.Add(new YdbParameter("$id", YdbDbType.Uint64, 1UL));
+command.Parameters.Add(new YdbParameter("$title", YdbDbType.Text, "NewTitle"));
+command.Parameters.Add(new YdbParameter("$release_date", YdbDbType.Date, DateTime.UtcNow));
+await command.ExecuteNonQueryAsync();
 ```
-
-{% include [pragmatablepathprefix.md](auxilary/pragmatablepathprefix.md) %}
 
 {% include [steps/04_query_processing.md](steps/04_query_processing.md) %}
 
-Для выполнения YQL-запросов используется метод `session.ExecuteDataQuery()`. SDK позволяет в явном виде контролировать выполнение транзакций и настраивать необходимый режим выполнения транзакций с помощью класса `TxControl`. В фрагменте кода, приведенном ниже, используется транзакция с режимом `SerializableRW` и автоматическим коммитом после выполнения запроса. Значения параметров запроса передаются в виде словаря имя-значение в аргументе `parameters`.
+Для выполнения YQL-запросов с чтением данных используется метод `ExecuteReaderAsync`. Параметры запроса передаются через коллекцию `Parameters` объекта `YdbCommand`:
 
 ```c#
-var response = await tableClient.SessionExec(async session =>
-{
-    var query = @"
-        DECLARE $id AS Uint64;
-
-        SELECT
-            series_id,
-            title,
-            release_date
-        FROM series
-        WHERE series_id = $id;
-    ";
-
-    return await session.ExecuteDataQuery(
-        query: query,
-        txControl: TxControl.BeginSerializableRW().Commit(),
-        parameters: new Dictionary<string, YdbValue>
-            {
-                { "$id", YdbValue.MakeUint64(id) }
-            },
-    );
-});
-
-response.Status.EnsureSuccess();
-var queryResponse = (ExecuteDataQueryResponse)response;
-var resultSet = queryResponse.Result.ResultSets[0];
+await using var command = new YdbCommand(@"
+    SELECT
+        series_id,
+        title,
+        release_date
+    FROM series
+    WHERE series_id = $id;
+    ", connection);
+command.Parameters.Add(new YdbParameter("$id", YdbDbType.Uint64, id));
+await using var reader = await command.ExecuteReaderAsync();
 ```
 
 {% include [steps/05_results_processing.md](steps/05_results_processing.md) %}
 
-Результат выполнения запроса (ResultSet) состоит из упорядоченного набора строк (Rows). Пример обработки результата выполнения запроса:
+Результат выполнения запроса обрабатывается через `DbDataReader`. Пример обработки результата:
 
 ```c#
-foreach (var row in resultSet.Rows)
+while (await reader.ReadAsync())
 {
     Console.WriteLine($"> Series, " +
-        $"series_id: {(ulong)row["series_id"]}, " +
-        $"title: {(string?)row["title"]}, " +
-        $"release_date: {(DateTime?)row["release_date"]}");
+        $"series_id: {reader.GetUint64(0)}, " +
+        $"title: {reader.GetString(1)}, " +
+        $"release_date: {reader.GetDateTime(2)}");
 }
 ```
 
-
-
-{% include [scan_query.md](steps/08_scan_query.md) %}
+Для последовательного чтения строк из другого запроса:
 
 ```c#
-public void executeScanQuery()
+await using var command = new YdbCommand(
+    "SELECT title FROM seasons ORDER BY series_id, season_id;", connection);
+await using var reader = await command.ExecuteReaderAsync();
+while (await reader.ReadAsync())
 {
-  var scanStream = TableClient.ExecuteScanQuery(@$"
-    SELECT series_id, season_id, COUNT(*) AS episodes_count
-    FROM episodes
-    GROUP BY series_id, season_id
-    ORDER BY series_id, season_id;
-  ");
-
-  while (await scanStream.Next())
-  {
-    scanStream.Response.EnsureSuccess();
-
-    var resultSet = scanStream.Response.Result.ResultSetPart;
-    if (resultSet != null)
-    {
-      foreach (var row in resultSet.Rows)
-      {
-        Console.WriteLine($"> ScanQuery, " +
-          $"series_id: {(ulong)row["series_id"]}, " +
-          $"season_id: {(ulong?)row["season_id"]}, " +
-          $"episodes_count: {(ulong)row["episodes_count"]}");
-      }
-    }
-  }
+    Console.WriteLine(reader.GetString(0));
 }
 ```

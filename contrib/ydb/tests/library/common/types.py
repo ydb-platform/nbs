@@ -8,23 +8,6 @@ from contrib.ydb.tests.library.common.generators import int_between, one_of, flo
 
 
 @unique
-class DeltaTypes(IntEnum):
-    AddTable = 1,
-    DropTable = 2,
-    AddColumn = 3,
-    DropColumn = 4,
-    AddColumnToKey = 5,
-    AddColumnToFamily = 6,
-    AddFamily = 7,
-    UpdateExecutorInfo = 8,
-    SetCompactionPolicy = 9,
-    SetRoom = 10,
-    SetFamily = 11,
-    SetRedo = 12,
-    SetTable = 13
-
-
-@unique
 class PDiskCategory(IntEnum):
     ROT = 0
     SSD = 1
@@ -36,6 +19,7 @@ class FailDomainType(IntEnum):
     Room = 20
     Rack = 30
     Body = 40
+    Disk = 255
 
 
 @unique
@@ -56,14 +40,7 @@ def _erasure_type(id_, min_fail_domains, min_alive_replicas):
 @unique
 class Erasure(Enum):
     NONE = _erasure_type(id_=0, min_fail_domains=1, min_alive_replicas=1)
-    MIRROR_3 = _erasure_type(id_=1, min_fail_domains=4, min_alive_replicas=1)
-    BLOCK_3_1 = _erasure_type(id_=2, min_fail_domains=5, min_alive_replicas=4)
-    STRIPE_3_1 = _erasure_type(id_=3, min_fail_domains=5, min_alive_replicas=4)
     BLOCK_4_2 = _erasure_type(id_=4, min_fail_domains=8, min_alive_replicas=6)
-    BLOCK_3_2 = _erasure_type(id_=5, min_fail_domains=7, min_alive_replicas=5)
-    STRIPE_4_2 = _erasure_type(id_=6, min_fail_domains=8, min_alive_replicas=6)
-    STRIPE_3_2 = _erasure_type(id_=7, min_fail_domains=7, min_alive_replicas=5)
-    MIRROR_3_2 = _erasure_type(id_=8, min_fail_domains=5, min_alive_replicas=3)
     MIRROR_3_DC = _erasure_type(id_=9, min_fail_domains=3, min_alive_replicas=3)
     MIRROR_3OF4 = _erasure_type(id_=18, min_fail_domains=8, min_alive_replicas=6)
 
@@ -105,8 +82,7 @@ class Erasure(Enum):
     @staticmethod
     def common_used():
         return (
-            Erasure.NONE, Erasure.BLOCK_4_2, Erasure.MIRROR_3_DC,
-            Erasure.MIRROR_3
+            Erasure.NONE, Erasure.BLOCK_4_2, Erasure.MIRROR_3_DC
         )
 
 
@@ -264,6 +240,8 @@ class PType(AbstractTypeEnum):
 
     Double = _ptype_from(32, float_in(-100, 100), float, proto_field='Double')
     Float = _ptype_from(33, float_in(-100, 100), float, proto_field='Float')
+
+    Timestamp = _ptype_from(50, int_between(0, 2 ** 64 - 1), int, proto_field='Timestamp', min_value=0, max_value=2 ** 64 - 1)
 
     # Rework Pair later
     PairUi64Ui64 = _ptype_from(257, int_between(0, 2 ** 64 - 1), int)

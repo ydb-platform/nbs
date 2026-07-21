@@ -9,8 +9,6 @@ ELSE()
     SIZE(MEDIUM)
 ENDIF()
 
-OWNER(g:yql)
-
 PEERDIR(
     contrib/ydb/library/yql/public/udf
     contrib/ydb/library/yql/public/udf/service/exception_policy

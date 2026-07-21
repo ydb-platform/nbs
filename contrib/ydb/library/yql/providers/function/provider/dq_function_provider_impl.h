@@ -4,7 +4,7 @@
 
 #include <contrib/ydb/library/yql/providers/common/transform/yql_visit.h>
 #include <contrib/ydb/library/yql/core/yql_graph_transformer.h>
-#include <contrib/ydb/library/yql/dq/integration/yql_dq_integration.h>
+#include <contrib/ydb/library/yql/core/dq_integration/yql_dq_integration.h>
 
 namespace NYql::NDqFunction {
 

@@ -1,12 +1,20 @@
 #pragma once
-#include "defs.h"
-
 #include "schemeshard_identificators.h"
+
+#include <contrib/ydb/core/base/storage_pools.h>
+#include <contrib/ydb/public/api/protos/ydb_status_codes.pb.h>
+
+#include <contrib/ydb/core/protos/flat_scheme_op.pb.h>
+
+#include <contrib/ydb/library/actors/core/event_local.h>
+#include <contrib/ydb/library/actors/core/events.h>
+
+#include <util/datetime/base.h>
 
 namespace NKikimr {
 namespace NSchemeShard {
 
-struct TEvPrivate {
+namespace TEvPrivate {
     enum EEv {
         EvProgressOperation = EventSpaceBegin(TKikimrEvents::ES_PRIVATE),
         EvOperationPlanStep,
@@ -15,6 +23,10 @@ struct TEvPrivate {
         EvRunConditionalErase,
         EvIndexBuildBilling,
         EvImportSchemeReady,
+        EvImportSchemaMappingReady,
+        EvImportSchemeQueryResult,
+        EvExportSchemeUploadResult,
+        EvExportUploadMetadataResult,
         EvServerlessStorageBilling,
         EvCleanDroppedPaths,
         EvCleanDroppedSubDomains,
@@ -27,10 +39,23 @@ struct TEvPrivate {
         EvPersistTableStats,
         EvConsoleConfigsTimeout,
         EvRunCdcStreamScan,
+        EvRunIncrementalRestore,
+        EvProgressIncrementalRestore,
         EvPersistTopicStats,
         EvSendBaseStatsToSA,
         EvRunBackgroundCleaning,
         EvRetryNodeSubscribe,
+        EvRunShred,
+        EvRunTenantShred,
+        EvAddNewShardToShred,
+        EvContinuousBackupCleanerResult,
+        EvTestNotifySubdomainCleanup,
+        EvFlushConditionalEraseBatch,
+        EvRunForcedCompaction,
+        EvProgressTablePartitionsFormatSweep,
+        EvFullBackupItemDone,
+        EvProgressForcedCompaction,
+        EvMoveShardToStoragePool,
         EvEnd
     };
 
@@ -71,6 +96,14 @@ struct TEvPrivate {
     struct TEvRunConditionalErase: public TEventLocal<TEvRunConditionalErase, EvRunConditionalErase> {
     };
 
+    struct TEvFlushConditionalEraseBatch : public TEventLocal<TEvFlushConditionalEraseBatch, EvFlushConditionalEraseBatch> {
+        TInstant BatchStartTime;
+
+        explicit TEvFlushConditionalEraseBatch(const TInstant& batchStartTime)
+            : BatchStartTime(batchStartTime)
+        { }
+    };
+
     struct TEvIndexBuildingMakeABill: public TEventLocal<TEvIndexBuildingMakeABill, EvIndexBuildBilling> {
         const ui64 BuildId;
         const TInstant SendAt;
@@ -90,6 +123,67 @@ struct TEvPrivate {
         TEvImportSchemeReady(ui64 id, ui32 itemIdx, bool success, const TString& error)
             : ImportId(id)
             , ItemIdx(itemIdx)
+            , Success(success)
+            , Error(error)
+        {}
+    };
+
+    struct TEvImportSchemaMappingReady: public TEventLocal<TEvImportSchemaMappingReady, EvImportSchemaMappingReady> {
+        const ui64 ImportId;
+        const bool Success;
+        const TString Error;
+
+        TEvImportSchemaMappingReady(ui64 id, bool success, const TString& error)
+            : ImportId(id)
+            , Success(success)
+            , Error(error)
+        {}
+    };
+
+    struct TEvImportSchemeQueryResult: public TEventLocal<TEvImportSchemeQueryResult, EvImportSchemeQueryResult> {
+        const ui64 ImportId;
+        const ui32 ItemIdx;
+        const Ydb::StatusIds::StatusCode Status;
+        const std::variant<TString, NKikimrSchemeOp::TModifyScheme> Result;
+
+        // failed query
+        TEvImportSchemeQueryResult(ui64 id, ui32 itemIdx, Ydb::StatusIds::StatusCode status, TString&& error)
+            : ImportId(id)
+            , ItemIdx(itemIdx)
+            , Status(status)
+            , Result(error)
+        {}
+
+        // successful query
+        TEvImportSchemeQueryResult(ui64 id, ui32 itemIdx, Ydb::StatusIds::StatusCode status, NKikimrSchemeOp::TModifyScheme&& preparedQuery)
+            : ImportId(id)
+            , ItemIdx(itemIdx)
+            , Status(status)
+            , Result(preparedQuery)
+        {}
+    };
+
+    struct TEvExportSchemeUploadResult: public TEventLocal<TEvExportSchemeUploadResult, EvExportSchemeUploadResult> {
+        const ui64 ExportId;
+        const ui32 ItemIdx;
+        const bool Success;
+        const TString Error;
+
+        TEvExportSchemeUploadResult(ui64 id, ui32 itemIdx, bool success, const TString& error)
+            : ExportId(id)
+            , ItemIdx(itemIdx)
+            , Success(success)
+            , Error(error)
+        {}
+    };
+
+    struct TEvExportUploadMetadataResult: public TEventLocal<TEvExportUploadMetadataResult, EvExportUploadMetadataResult> {
+        const ui64 ExportId;
+        const bool Success;
+        const TString Error;
+
+        TEvExportUploadMetadataResult(ui64 id, bool success, const TString& error)
+            : ExportId(id)
             , Success(success)
             , Error(error)
         {}
@@ -121,6 +215,14 @@ struct TEvPrivate {
 
         explicit TEvNotifyShardDeleted(const TShardIdx& shardIdx)
             : ShardIdx(shardIdx)
+        { }
+    };
+
+    struct TEvTestNotifySubdomainCleanup : public TEventLocal<TEvTestNotifySubdomainCleanup, EvTestNotifySubdomainCleanup> {
+        TPathId SubdomainPathId;
+
+        explicit TEvTestNotifySubdomainCleanup(const TPathId& subdomainPathId)
+            : SubdomainPathId(subdomainPathId)
         { }
     };
 
@@ -182,6 +284,27 @@ struct TEvPrivate {
         {}
     };
 
+    struct TEvRunIncrementalRestore: public TEventLocal<TEvRunIncrementalRestore, EvRunIncrementalRestore> {
+        const TPathId BackupCollectionPathId;
+        const TOperationId OperationId;
+        const TVector<TString> IncrementalBackupNames;
+
+        TEvRunIncrementalRestore(const TPathId& backupCollectionPathId, const TOperationId& operationId, const TVector<TString>& incrementalBackupNames)
+            : BackupCollectionPathId(backupCollectionPathId)
+            , OperationId(operationId)
+            , IncrementalBackupNames(incrementalBackupNames)
+        {}
+
+    };
+
+    struct TEvProgressIncrementalRestore : public TEventLocal<TEvProgressIncrementalRestore, EvProgressIncrementalRestore> {
+        ui64 OperationId;
+
+        explicit TEvProgressIncrementalRestore(ui64 operationId)
+            : OperationId(operationId)
+        {}
+    };
+
     struct TEvSendBaseStatsToSA: public TEventLocal<TEvSendBaseStatsToSA, EvSendBaseStatsToSA> {
     };
 
@@ -192,6 +315,70 @@ struct TEvPrivate {
             : NodeId(nodeId)
         { }
     };
+
+    struct TEvAddNewShardToShred : public TEventLocal<TEvAddNewShardToShred, EvAddNewShardToShred> {
+        const std::vector<TShardIdx> Shards;
+
+        TEvAddNewShardToShred(std::vector<TShardIdx>&& shards)
+            : Shards(std::move(shards))
+        {}
+    };
+
+    struct TEvContinuousBackupCleanerResult : public NActors::TEventLocal<TEvContinuousBackupCleanerResult, EvContinuousBackupCleanerResult> {
+    public:
+        TEvContinuousBackupCleanerResult(ui64 backupId, TPathId item, bool success, const TString& error = "")
+            : BackupId(backupId)
+            , Item(item)
+            , Success(success)
+            , Error(error)
+        {}
+
+        const ui64 BackupId = 0;
+        const TPathId Item;
+        const bool Success = false;
+        const TString Error;
+    };
+
+    struct TEvProgressTablePartitionsFormatSweep
+        : public TEventLocal<TEvProgressTablePartitionsFormatSweep, EvProgressTablePartitionsFormatSweep>
+    {};
+
+    // Sent self->self post-commit when a CopyTable sub-op of a tracked full backup finishes.
+    struct TEvFullBackupItemDone : public NActors::TEventLocal<TEvFullBackupItemDone, EvFullBackupItemDone> {
+        TEvFullBackupItemDone(ui64 fullBackupId, TPathId dstPathId, bool success)
+            : FullBackupId(fullBackupId)
+            , DstPathId(dstPathId)
+            , Success(success)
+        {}
+
+        const ui64 FullBackupId;
+        const TPathId DstPathId;
+        const bool Success;
+    };
+
+    struct TEvProgressForcedCompaction : TEventLocal<TEvProgressForcedCompaction, EvProgressForcedCompaction> {
+        TEvProgressForcedCompaction()
+        {}
+    };
+
+    // Sent by the DevUI move-shard actor once Hive acks, to persist the shard's new channel
+    // bindings in a dedicated tx. That tx also answers the HTTP request (from Complete()), so
+    // success is reported only after the binding is durable. HttpSender: the request's sender;
+    // HiveReply: the already-serialized Hive response to hand back.
+    struct TEvMoveShardToStoragePool : public TEventLocal<TEvMoveShardToStoragePool, EvMoveShardToStoragePool> {
+        TShardIdx ShardIdx;
+        TChannelsBindings NewBindings;
+        TActorId HttpSender;
+        TString HiveReply;
+
+        TEvMoveShardToStoragePool(const TShardIdx& shardIdx, TChannelsBindings newBindings, const TActorId& httpSender, TString hiveReply)
+            : ShardIdx(shardIdx)
+            , NewBindings(std::move(newBindings))
+            , HttpSender(httpSender)
+            , HiveReply(std::move(hiveReply))
+        {}
+    };
+
 }; // TEvPrivate
 
 } // NSchemeShard

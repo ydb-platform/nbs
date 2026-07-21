@@ -28,7 +28,6 @@ Y_UNIT_TEST_SUITE(DataShardFollowers) {
 
         runtime.SetLogPriority(NKikimrServices::TX_DATASHARD, NLog::PRI_TRACE);
         runtime.SetLogPriority(NKikimrServices::TX_PROXY, NLog::PRI_DEBUG);
-        runtime.GetAppData().AllowReadTableImmediate = true;
 
         InitRoot(server, sender);
 
@@ -425,10 +424,9 @@ Y_UNIT_TEST_SUITE(DataShardFollowers) {
         auto observer = runtime.AddObserver<NSharedCache::TEvRequest>([&](NSharedCache::TEvRequest::TPtr& ev) {
             NSharedCache::TEvRequest *msg = ev->Get();
             Cerr << "Captured pages request" << Endl;
-            for (auto pageId : msg->Fetch->Pages) {
-                auto type = NTable::NPage::EPage(msg->Fetch->PageCollection->Page(pageId).Type);
-                // Note: FlatIndex pages also have been preloaded, but don't stick in private cache (see TLoaderEnv)
-                UNIT_ASSERT_C(type != NTable::EPage::BTreeIndex, "Index pages should be preload during a part switch");
+            for (auto pageId : msg->Pages) {
+                auto type = NTable::NPage::EPage(msg->PageCollection->Page(pageId).Type);
+                UNIT_ASSERT_C(type != NTable::EPage::BTreeIndex && type != NTable::EPage::FlatIndex, "Index pages should be preload during a part switch");
             }
         });
 
@@ -505,8 +503,8 @@ Y_UNIT_TEST_SUITE(DataShardFollowers) {
         TVector<THolder<IEventHandle>> blockedReads;
         auto observer = runtime.AddObserver<NSharedCache::TEvRequest>([&](NSharedCache::TEvRequest::TPtr& ev) {
             NSharedCache::TEvRequest *msg = ev->Get();
-            for (auto pageId : msg->Fetch->Pages) {
-                auto type = NTable::NPage::EPage(msg->Fetch->PageCollection->Page(pageId).Type);
+            for (auto pageId : msg->Pages) {
+                auto type = NTable::NPage::EPage(msg->PageCollection->Page(pageId).Type);
                 if (type == NTable::NPage::EPage::Schem2) {
                     Cerr << "... blocking part load read" << Endl;
                     blockedReads.emplace_back(ev.Release());
@@ -547,8 +545,8 @@ Y_UNIT_TEST_SUITE(DataShardFollowers) {
         ui32 readDataPages = 0;
         observer = runtime.AddObserver<NSharedCache::TEvRequest>([&](NSharedCache::TEvRequest::TPtr& ev) {
             NSharedCache::TEvRequest *msg = ev->Get();
-            for (auto pageId : msg->Fetch->Pages) {
-                auto type = NTable::NPage::EPage(msg->Fetch->PageCollection->Page(pageId).Type);
+            for (auto pageId : msg->Pages) {
+                auto type = NTable::NPage::EPage(msg->PageCollection->Page(pageId).Type);
                 readDataPages += type == NTable::NPage::EPage::DataPage;
             }
         });
@@ -634,8 +632,8 @@ Y_UNIT_TEST_SUITE(DataShardFollowers) {
         TVector<THolder<IEventHandle>> blockedReads;
         auto observer = runtime.AddObserver<NSharedCache::TEvRequest>([&](NSharedCache::TEvRequest::TPtr& ev) {
             NSharedCache::TEvRequest *msg = ev->Get();
-            for (auto pageId : msg->Fetch->Pages) {
-                auto type = NTable::NPage::EPage(msg->Fetch->PageCollection->Page(pageId).Type);
+            for (auto pageId : msg->Pages) {
+                auto type = NTable::NPage::EPage(msg->PageCollection->Page(pageId).Type);
                 if (type == NTable::NPage::EPage::Schem2) {
                     Cerr << "... blocking part load read" << Endl;
                     blockedReads.emplace_back(ev.Release());
@@ -675,8 +673,8 @@ Y_UNIT_TEST_SUITE(DataShardFollowers) {
         ui32 readDataPages = 0;
         observer = runtime.AddObserver<NSharedCache::TEvRequest>([&](NSharedCache::TEvRequest::TPtr& ev) {
             NSharedCache::TEvRequest *msg = ev->Get();
-            for (auto pageId : msg->Fetch->Pages) {
-                auto type = NTable::NPage::EPage(msg->Fetch->PageCollection->Page(pageId).Type);
+            for (auto pageId : msg->Pages) {
+                auto type = NTable::NPage::EPage(msg->PageCollection->Page(pageId).Type);
                 readDataPages += type == NTable::NPage::EPage::DataPage;
             }
         });
@@ -705,8 +703,8 @@ Y_UNIT_TEST_SUITE(DataShardFollowers) {
 
         observer = runtime.AddObserver<NSharedCache::TEvRequest>([&](NSharedCache::TEvRequest::TPtr& ev) {
             NSharedCache::TEvRequest *msg = ev->Get();
-            for (auto pageId : msg->Fetch->Pages) {
-                auto type = NTable::NPage::EPage(msg->Fetch->PageCollection->Page(pageId).Type);
+            for (auto pageId : msg->Pages) {
+                auto type = NTable::NPage::EPage(msg->PageCollection->Page(pageId).Type);
                 UNIT_ASSERT_C(type != NTable::NPage::EPage::DataPage, "Shouldn't read any data");
             }
         });
@@ -776,9 +774,6 @@ Y_UNIT_TEST_SUITE(DataShardFollowers) {
         UNIT_ASSERT_VALUES_EQUAL(
             FormatResult(runtime.WaitFuture(std::move(readFuture))),
             "ERROR: UNAVAILABLE");
-
-        // Let followers catch up
-        runtime.SimulateSleep(TDuration::Seconds(1));
 
         Cerr << "... reading from the left follower" << Endl;
         UNIT_ASSERT_VALUES_EQUAL(

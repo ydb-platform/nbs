@@ -2,8 +2,8 @@ RECURSE(
     actors
     common
     comp_nodes
+    constraints
     expr_nodes
-    integration
     opt
     runtime
     state

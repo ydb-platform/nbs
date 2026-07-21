@@ -4,6 +4,7 @@
 #include <contrib/ydb/library/yql/public/issue/yql_issue.h>
 #include <contrib/ydb/library/yql/public/issue/yql_issue_id.h>
 #include <contrib/ydb/library/yql/public/issue/yql_issue_message.h>
+#include <contrib/ydb/library/yql/public/ydb_issue/ydb_issue_message.h>
 
 namespace NKikimr {
 

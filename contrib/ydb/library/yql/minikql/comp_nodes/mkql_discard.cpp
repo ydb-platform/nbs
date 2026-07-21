@@ -1,6 +1,6 @@
 #include "mkql_discard.h"
 
-#include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node_codegen.h>  // Y_IGNORE
+#include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node_codegen.h> // Y_IGNORE
 #include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node_holders.h>
 #include <contrib/ydb/library/yql/minikql/mkql_node_cast.h>
 #include <contrib/ydb/library/yql/minikql/mkql_runtime_version.h>
@@ -10,17 +10,21 @@ namespace NMiniKQL {
 
 namespace {
 
-class TDiscardFlowWrapper : public TStatelessFlowCodegeneratorRootNode<TDiscardFlowWrapper> {
+class TDiscardFlowWrapper: public TStatelessFlowCodegeneratorRootNode<TDiscardFlowWrapper> {
     typedef TStatelessFlowCodegeneratorRootNode<TDiscardFlowWrapper> TBaseComputation;
+
 public:
     TDiscardFlowWrapper(IComputationNode* flow)
-        : TBaseComputation(flow, EValueRepresentation::Embedded), Flow(flow)
-    {}
+        : TBaseComputation(flow, EValueRepresentation::Embedded)
+        , Flow(flow)
+    {
+    }
 
     NUdf::TUnboxedValuePod DoCalculate(TComputationContext& ctx) const {
         while (true) {
-            if (auto item = Flow->GetValue(ctx); item.IsSpecial())
+            if (auto item = Flow->GetValue(ctx); item.IsSpecial()) {
                 return item.Release();
+            }
         }
     }
 
@@ -36,7 +40,7 @@ public:
 
         block = loop;
         const auto item = GetNodeValue(Flow, ctx, block);
-        BranchInst::Create(exit, skip, IsSpecial(item, block), block);
+        BranchInst::Create(exit, skip, IsSpecial(item, block, context), block);
 
         block = skip;
         ValueCleanup(Flow->GetRepresentation(), item, ctx, block);
@@ -54,12 +58,16 @@ private:
     IComputationNode* const Flow;
 };
 
-class TDiscardWideFlowWrapper : public TStatelessFlowCodegeneratorRootNode<TDiscardWideFlowWrapper> {
-using TBaseComputation = TStatelessFlowCodegeneratorRootNode<TDiscardWideFlowWrapper>;
+class TDiscardWideFlowWrapper: public TStatelessFlowCodegeneratorRootNode<TDiscardWideFlowWrapper> {
+    using TBaseComputation = TStatelessFlowCodegeneratorRootNode<TDiscardWideFlowWrapper>;
+
 public:
     TDiscardWideFlowWrapper(IComputationWideFlowNode* flow, ui32 size)
-        : TBaseComputation(flow, EValueRepresentation::Embedded), Flow(flow), Stub(size, nullptr)
-    {}
+        : TBaseComputation(flow, EValueRepresentation::Embedded)
+        , Flow(flow)
+        , Stub(size, nullptr)
+    {
+    }
 
     NUdf::TUnboxedValuePod DoCalculate(TComputationContext& ctx) const {
         while (true) {
@@ -104,10 +112,11 @@ private:
     mutable std::vector<NUdf::TUnboxedValue*> Stub;
 };
 
-class TDiscardWrapper : public TCustomValueCodegeneratorNode<TDiscardWrapper> {
+class TDiscardWrapper: public TCustomValueCodegeneratorNode<TDiscardWrapper> {
     typedef TCustomValueCodegeneratorNode<TDiscardWrapper> TBaseComputation;
+
 public:
-    class TValue : public TComputationValue<TValue> {
+    class TValue: public TComputationValue<TValue> {
     public:
         TValue(TMemoryUsageInfo* memInfo, NUdf::TUnboxedValue&& stream)
             : TComputationValue(memInfo)
@@ -136,8 +145,9 @@ public:
 
     NUdf::TUnboxedValuePod DoCalculate(TComputationContext& ctx) const {
 #ifndef MKQL_DISABLE_CODEGEN
-        if (ctx.ExecuteLLVM && Fetch)
+        if (ctx.ExecuteLLVM && Fetch) {
             return ctx.HolderFactory.Create<TStreamCodegenValueStateless>(Fetch, &ctx, Stream->GetValue(ctx));
+        }
 #endif
         return ctx.HolderFactory.Create<TValue>(Stream->GetValue(ctx));
     }
@@ -154,8 +164,9 @@ private:
     }
 
     void FinalizeFunctions(NYql::NCodegen::ICodegen& codegen) final {
-        if (FetchFunc)
+        if (FetchFunc) {
             Fetch = reinterpret_cast<TFetchPtr>(codegen.GetPointerToFunction(FetchFunc));
+        }
     }
 
     Function* GenerateFetch(NYql::NCodegen::ICodegen& codegen) const {
@@ -163,17 +174,20 @@ private:
         auto& context = codegen.GetContext();
 
         const auto& name = TBaseComputation::MakeName("Fetch");
-        if (const auto f = module.getFunction(name.c_str()))
+        if (const auto f = module.getFunction(name.c_str())) {
             return f;
+        }
 
         const auto valueType = Type::getInt128Ty(context);
-        const auto containerType = codegen.GetEffectiveTarget() == NYql::NCodegen::ETarget::Windows ? static_cast<Type*>(PointerType::getUnqual(valueType)) : static_cast<Type*>(valueType);
+        const auto containerType = static_cast<Type*>(valueType);
         const auto contextType = GetCompContextType(context);
         const auto statusType = Type::getInt32Ty(context);
         const auto funcType = FunctionType::get(statusType, {PointerType::getUnqual(contextType), containerType, PointerType::getUnqual(valueType)}, false);
 
         TCodegenContext ctx(codegen);
         ctx.Func = cast<Function>(module.getOrInsertFunction(name.c_str(), funcType).getCallee());
+
+        DISubprogramAnnotator annotator(ctx, ctx.Func);
 
         auto args = ctx.Func->arg_begin();
 
@@ -183,8 +197,7 @@ private:
         const auto main = BasicBlock::Create(context, "main", ctx.Func);
         auto block = main;
 
-        const auto container = codegen.GetEffectiveTarget() == NYql::NCodegen::ETarget::Windows ?
-            new LoadInst(valueType, containerArg, "load_container", false, block) : static_cast<Value*>(containerArg);
+        const auto container = static_cast<Value*>(containerArg);
 
         const auto loop = BasicBlock::Create(context, "loop", ctx.Func);
 
@@ -194,7 +207,7 @@ private:
         BranchInst::Create(loop, block);
         block = loop;
 
-        const auto status = CallBoxedValueVirtualMethod<NUdf::TBoxedValueAccessor::EMethod::Fetch>(statusType, container, codegen, block, stub);
+        const auto status = CallBoxedValueFetch(container, ctx, block, stub);
 
         const auto icmp = CmpInst::Create(Instruction::ICmp, ICmpInst::ICMP_NE, status, ConstantInt::get(statusType, static_cast<ui32>(NUdf::EFetchStatus::Ok)), "cond", block);
 
@@ -216,7 +229,7 @@ private:
     IComputationNode* const Stream;
 };
 
-}
+} // namespace
 
 IComputationNode* WrapDiscard(TCallable& callable, const TComputationNodeFactoryContext& ctx) {
     MKQL_ENSURE(callable.GetInputsCount() == 1, "Expected 1 arg");
@@ -225,7 +238,7 @@ IComputationNode* WrapDiscard(TCallable& callable, const TComputationNodeFactory
     if (type->IsFlow()) {
         if (const auto wide = dynamic_cast<IComputationWideFlowNode*>(flow)) {
             auto flowType = AS_TYPE(TFlowType, callable.GetInput(0U).GetStaticType());
-            if (RuntimeVersion > 35 && flowType->GetItemType()->IsMulti() || flowType->GetItemType()->IsTuple()) {
+            if (flowType->GetItemType()->IsMulti() || flowType->GetItemType()->IsTuple()) {
                 return new TDiscardWideFlowWrapper(wide, GetWideComponentsCount(flowType));
             }
             return new TDiscardWideFlowWrapper(wide, 0U);
@@ -239,5 +252,5 @@ IComputationNode* WrapDiscard(TCallable& callable, const TComputationNodeFactory
     THROW yexception() << "Expected flow or stream.";
 }
 
-}
-}
+} // namespace NMiniKQL
+} // namespace NKikimr

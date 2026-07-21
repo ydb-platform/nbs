@@ -6,12 +6,13 @@ namespace NYql::NDq {
 class TDqAsyncInputBuffer : public TDqInputImpl<TDqAsyncInputBuffer, IDqAsyncInputBuffer> {
     using TBaseImpl = TDqInputImpl<TDqAsyncInputBuffer, IDqAsyncInputBuffer>;
     friend TBaseImpl;
+    bool Pending = false;
 public:
     TDqAsyncInputBufferStats PushStats;
     TDqInputStats PopStats;
 
     TDqAsyncInputBuffer(ui64 inputIndex, const TString& type, NKikimr::NMiniKQL::TType* inputType, ui64 maxBufferBytes, TCollectStatsLevel level)
-        : TBaseImpl(inputType, maxBufferBytes)
+        : TBaseImpl(inputType, maxBufferBytes, nullptr)
     {
         PopStats.Level = level;
         PushStats.Level = level;
@@ -32,14 +33,36 @@ public:
     }
 
     void Push(NKikimr::NMiniKQL::TUnboxedValueBatch&& batch, i64 space) override {
-        Y_ABORT_UNLESS(!batch.empty() || !space);
+        Pending = space != 0;
         if (!batch.empty()) {
-            AddBatch(std::move(batch), space);
+            auto rows = AddBatch(std::move(batch), space);
+
+            if (PushStats.CollectBasic()) {
+                PushStats.Bytes += space;
+                PushStats.Rows += rows;
+                PushStats.Chunks++;
+                PushStats.Resume();
+                if (PushStats.CollectFull()) {
+                    PushStats.MaxMemoryUsage = std::max(PushStats.MaxMemoryUsage, StoredBytes);
+                }
+            }
+
+            if (GetFreeSpace() < 0) {
+                PopStats.TryPause();
+            }
         }
+    }
+
+    void Push(TInstant watermark) override {
+        PushWatermark(watermark);
     }
 
     virtual void Push(TDqSerializedBatch&&, i64) override {
         YQL_ENSURE(!"Unimplemented");
+    }
+
+    bool IsPending() const override {
+        return Pending && !IsFinished();
     }
 };
 

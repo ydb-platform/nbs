@@ -381,7 +381,7 @@ public:
     void VerifyOwnedChunks(const TActorContext& /*ctx*/) {
         for (const auto& [idx, info] : Recovered.Chunks) {
             if (info.GetCommitState() == ECommitState::COMMITTED) {
-                Y_VERIFY_S(OwnedChunks.count(idx), SelfInfo() << " has commited chunk# " << idx << " from Recovered.Chunks,"
+                Y_VERIFY_S(OwnedChunks.contains(idx), SelfInfo() << " has commited chunk# " << idx << " from Recovered.Chunks,"
                         << " but can't find it in OwnedChunks list from PDisk");
                 OwnedChunks.erase(idx);
             }
@@ -787,7 +787,7 @@ public:
         void *cookie = reinterpret_cast<void *>(NextWriteCookie++);
 
         SendPDiskRequest(ctx, new NPDisk::TEvChunkWrite(PDiskParams->Owner, PDiskParams->OwnerRound, it->first,
-                offsetInBlocks * PDiskParams->AppendBlockSize, new NPDisk::TEvChunkWrite::TStrokaBackedUpParts(data),
+                offsetInBlocks * PDiskParams->AppendBlockSize, new NPDisk::TEvChunkWrite::TAlignedParts(TString(data)),
                 cookie, true, NPriWrite::HullHugeAsyncBlob), [&] {
             State.WritesInFlight.push_back(TWriteRecord{it->first, offsetInBlocks, numBlocks, std::move(checksums),
                     cookie});

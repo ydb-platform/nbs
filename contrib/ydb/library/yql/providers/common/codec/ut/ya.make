@@ -1,7 +1,5 @@
 UNITTEST_FOR(contrib/ydb/library/yql/providers/common/codec)
 
-TAG(ya:manual)
-
 FORK_SUBTESTS()
 
 IF (SANITIZER_TYPE OR WITH_VALGRIND)
@@ -10,7 +8,6 @@ ENDIF()
 
 SRCS(
     yql_json_codec_ut.cpp
-    yql_restricted_yson_ut.cpp
 )
 
 PEERDIR(

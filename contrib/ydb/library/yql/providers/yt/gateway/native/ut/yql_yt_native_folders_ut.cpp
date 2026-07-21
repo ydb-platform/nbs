@@ -1,6 +1,9 @@
 #include "library/cpp/testing/unittest/registar.h"
 #include <library/cpp/yson/node/node_io.h>
-#include <contrib/ydb/library/yql/core/ut_common/yql_ut_common.h>
+#include <contrib/ydb/library/yql/providers/yt/lib/access_provider/dummy/yt_dummy_access_provider.h>
+#include <contrib/ydb/library/yql/providers/yt/lib/secret_masker/dummy/dummy_secret_masker.h>
+#include <contrib/ydb/library/yql/providers/yt/lib/tvm_client/dummy/dummy_tvm_client.h>
+#include <contrib/ydb/library/yql/providers/yt/lib/ut_common/yql_ut_common.h>
 #include <library/cpp/testing/common/network.h>
 #include <library/cpp/testing/mock_server/server.h>
 #include <contrib/ydb/library/yql/providers/yt/gateway/native/yql_yt_native.h>
@@ -12,7 +15,11 @@ namespace NYql {
 
 namespace {
 
-constexpr auto CYPRES_TX_ID = "\"123321\"";
+const std::vector<TStringBuf> CYPRESS_TX_IDS = {
+    "\"9518f6d4-f0480586-41103e8-ca595920\"",
+    "\"9b86fed7-4be58942-3f403e8-834d2964\"",
+};
+
 constexpr auto CYPRES_NODE_A_CONTENT = R"(
 [
     {
@@ -124,9 +131,17 @@ public:
 
         HttpCodes code = HTTP_NOT_FOUND;
         TString content;
-        if (parsed.Path == "/api/v3/start_tx") {
-            content = CYPRES_TX_ID;
+        if (parsed.Path == "/auth/whoami") {
+            content = "{\"login\":\"robot-unit-test\", \"realm\":\"blackbox:token:foo:YT\"}";
             code = HTTP_OK;
+        }
+        else if (parsed.Path == "/api/v3/start_tx") {
+            if (CurrTx_ < CYPRESS_TX_IDS.size()) {
+                content = CYPRESS_TX_IDS[CurrTx_++];
+                code = HTTP_OK;
+            } else {
+                code = HTTP_INTERNAL_SERVER_ERROR;
+            }
         }
         else if (parsed.Path == "/api/v3/ping_tx") {
             code = HTTP_OK;
@@ -142,8 +157,8 @@ public:
 
         return true;
     }
-    explicit TYtReplier(THandler handleListCommand, THandler handleGetCommand, TMaybe<std::function<void(const NYT::TNode& request)>> assertion): 
-        HandleListCommand_(handleListCommand), HandleGetCommand_(handleGetCommand) {
+    explicit TYtReplier(size_t& currTx, THandler handleListCommand, THandler handleGetCommand, TMaybe<std::function<void(const NYT::TNode& request)>> assertion):
+        CurrTx_(currTx), HandleListCommand_(handleListCommand), HandleGetCommand_(handleGetCommand) {
             if (assertion) {
                 Assertion_ = assertion.GetRef();
             }
@@ -177,36 +192,42 @@ private:
         return THttpResponse{HTTP_NOT_FOUND};
     }
 
+    size_t& CurrTx_;
+
     std::function<void(const NYT::TNode& request)> Assertion_ = [] ([[maybe_unused]] auto _) {};
     THandler HandleListCommand_;
     THandler HandleGetCommand_;
-
 };
 
 Y_UNIT_TEST_SUITE(YtNativeGateway) {
-    
-std::pair<TIntrusivePtr<TYtState>, IYtGateway::TPtr> InitTest(const NTesting::TPortHolder& port) {
+
+std::pair<std::shared_ptr<TYtState>, IYtGateway::TPtr> InitTest(const NTesting::TPortHolder& port, TTypeAnnotationContext* types) {
     TYtNativeServices nativeServices;
     auto gatewaysConfig = MakeGatewaysConfig(port);
     nativeServices.Config = std::make_shared<TYtGatewayConfig>(gatewaysConfig.GetYt());
     nativeServices.FileStorage = CreateFileStorage(TFileStorageConfig{});
+    nativeServices.SecretMasker = CreateDummySecretMasker();
+    nativeServices.TvmClient = CreateDummyTvmClient();
+    nativeServices.YtAccessProvider = CreateYtDummyAccessProvider();
 
     auto ytGateway = CreateYtNativeGateway(nativeServices);
-    auto ytState = MakeIntrusive<TYtState>();
+    auto ytState = std::make_shared<TYtState>(types);
     ytState->Gateway = ytGateway;
 
     InitializeYtGateway(ytGateway, ytState);
     return {ytState, ytGateway};
 }
 
-IYtGateway::TFolderResult GetFolderResult(TYtReplier::THandler handleList, TYtReplier::THandler handleGet, 
+IYtGateway::TFolderResult GetFolderResult(TYtReplier::THandler handleList, TYtReplier::THandler handleGet,
 TMaybe<std::function<void(const NYT::TNode& request)>> gatewayRequestAssertion, std::function<IYtGateway::TFolderOptions(TString)> makeFolderOptions) {
     const auto port = NTesting::GetFreePort();
-    NMock::TMockServer mockServer{port, 
-        [gatewayRequestAssertion, handleList, handleGet] () {return new TYtReplier(handleList, handleGet, gatewayRequestAssertion);}
+    size_t currTx = 0;
+    NMock::TMockServer mockServer{port,
+        [&currTx, gatewayRequestAssertion, handleList, handleGet] () {return new TYtReplier(currTx, handleList, handleGet, gatewayRequestAssertion);}
     };
 
-    auto [ytState, ytGateway] = InitTest(port);
+    TTypeAnnotationContext types;
+    auto [ytState, ytGateway] = InitTest(port, &types);
 
     IYtGateway::TFolderOptions folderOptions = makeFolderOptions(ytState->SessionId);
     auto folderFuture = ytGateway->GetFolder(std::move(folderOptions));
@@ -237,7 +258,7 @@ Y_UNIT_TEST(GetFolder) {
         }
         UNIT_ASSERT_VALUES_EQUAL(requiredAttributes[path], attributesSet);
     };
-    
+
     const auto handleGet = [] (TStringBuf path, const NYT::TNode& attributes) {
         Y_UNUSED(attributes);
         THttpResponse resp{HTTP_OK};
@@ -252,7 +273,7 @@ Y_UNIT_TEST(GetFolder) {
 
         return THttpResponse{HTTP_NOT_FOUND};
     };
-    
+
     const auto handleList = [] (TStringBuf path, const NYT::TNode& attributes) {
         Y_UNUSED(attributes);
         THttpResponse resp{HTTP_OK};
@@ -262,7 +283,7 @@ Y_UNIT_TEST(GetFolder) {
         }
         return THttpResponse{HTTP_NOT_FOUND};
     };
-    
+
     const auto makeFolderOptions = [] (const TString& sessionId) {
         IYtGateway::TFolderOptions folderOptions{sessionId};
         TYtSettings ytSettings {};
@@ -273,12 +294,12 @@ Y_UNIT_TEST(GetFolder) {
         return folderOptions;
     };
 
-    auto folderRes 
+    auto folderRes
         = GetFolderResult(handleList, handleGet, checkRequiredAttributes, makeFolderOptions);
 
     UNIT_ASSERT_EQUAL_C(folderRes.Success(), true, folderRes.Issues().ToString());
     UNIT_ASSERT_EQUAL(
-        folderRes.ItemsOrFileLink, 
+        folderRes.ItemsOrFileLink,
         (std::variant<TVector<IYtGateway::TFolderResult::TFolderItem>, TFileLinkPtr>(EXPECTED_ITEMS)));
     }
 
@@ -313,9 +334,9 @@ Y_UNIT_TEST(EmptyResolveIsNotError) {
         return folderOptions;
     };
 
-    auto folderRes 
+    auto folderRes
         = GetFolderResult(handleList, handleGet, Nothing(), makeFolderOptions);
-    
+
     UNIT_ASSERT_EQUAL_C(folderRes.Success(), true, folderRes.Issues().ToString());
 }
 
@@ -352,9 +373,9 @@ Y_UNIT_TEST(GetFolderException) {
         return folderOptions;
     };
 
-    const auto folderRes 
+    const auto folderRes
         = GetFolderResult(handleList, handleGet, Nothing(), makeFolderOptions);
-    
+
     UNIT_ASSERT(!folderRes.Issues().Empty());
     UNIT_ASSERT_STRING_CONTAINS(folderRes.Issues().ToString(), "Authentication failed");
 }

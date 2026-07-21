@@ -1,10 +1,10 @@
-#include "schemeshard__operation_part.h"
 #include "schemeshard__operation_common.h"
+#include "schemeshard__operation_part.h"
 #include "schemeshard_impl.h"
 
-#include <contrib/ydb/core/tx/sequenceshard/public/events.h>
-#include <contrib/ydb/core/mind/hive/hive.h>
 #include <contrib/ydb/core/base/subdomain.h>
+#include <contrib/ydb/core/mind/hive/hive.h>
+#include <contrib/ydb/core/tx/sequenceshard/public/events.h>
 
 
 namespace {
@@ -19,7 +19,7 @@ private:
     TString DebugHint() const override {
         return TStringBuilder()
                 << "TCopySequence TConfigureParts"
-                << " operationId#" << OperationId;
+                << " operationId# " << OperationId;
     }
 
 public:
@@ -138,7 +138,7 @@ private:
     TString DebugHint() const override {
         return TStringBuilder()
             << "TCopySequence TPropose"
-            << " operationId#" << OperationId;
+            << " operationId# " << OperationId;
     }
 
 public:
@@ -239,7 +239,7 @@ public:
         LOG_INFO_S(context.Ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
                    DebugHint() << " HandleReply TEvPrivate::TEvCompleteBarrier"
                                << ", msg: " << ev->Get()->ToString()
-                               << ", at tablet" << ssId);
+                               << ", at tablet# " << ssId);
 
         NIceDb::TNiceDb db(context.GetDB());
 
@@ -271,7 +271,7 @@ private:
     TString DebugHint() const override {
         return TStringBuilder()
                 << "TCopySequence TProposedCopySequence"
-                << " operationId#" << OperationId;
+                << " operationId# " << OperationId;
     }
 
     void UpdateSequenceDescription(NKikimrSchemeOp::TSequenceDescription& descr) {
@@ -551,18 +551,22 @@ public:
                 .IsResolved()
                 .NotDeleted()
                 .NotUnderDeleting()
-                .IsCommonSensePath()
                 .FailOnRestrictedCreateInTempZone(Transaction.GetAllowCreateInTempDir());
 
             if (checks) {
-                if (parentPath->IsTable()) {
+                if (parentPath.Parent()->IsTableIndex()) {
+                    checks.IsUnderTheSameOperation(OperationId.GetTxId()); // allowed only as part of consistent operations
+                    checks.IsInsideTableIndexPath();
+                } else if (parentPath->IsTable()) {
                     // allow immediately inside a normal table
+                    checks.IsCommonSensePath();
                     if (parentPath.IsUnderOperation()) {
                         checks.IsUnderTheSameOperation(OperationId.GetTxId()); // allowed only as part of consistent operations
                     }
                 } else {
                     // otherwise don't allow unexpected object types
-                    checks.IsLikeDirectory();
+                    checks.IsCommonSensePath()
+                          .IsLikeDirectory();
                 }
             }
 
@@ -625,7 +629,7 @@ public:
             }
 
             if (checks) {
-                checks.IsValidLeafName();
+                checks.IsValidLeafName(context.UserToken.Get());
 
                 if (!parentPath->IsTable()) {
                     checks.DepthLimit();
@@ -732,7 +736,7 @@ public:
         context.OnComplete.PublishToSchemeBoard(OperationId, dstPath->PathId);
 
         domainInfo->IncPathsInside(context.SS);
-        parentPath->IncAliveChildren();
+        IncAliveChildrenDirect(OperationId, parentPath, context); // for correct discard of ChildrenExist prop
 
         SetState(NextState());
         return result;

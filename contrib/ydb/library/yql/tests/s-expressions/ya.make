@@ -1,3 +1,5 @@
-RECURSE(
-    yt_native_file
+SUBSCRIBER(g:yql)
+
+RECURSE_FOR_TESTS(
+    minirun
 )

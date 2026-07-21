@@ -2,14 +2,7 @@ UNITTEST_FOR(contrib/ydb/core/statistics/database)
 
 FORK_SUBTESTS()
 
-IF (WITH_VALGRIND)
-    TIMEOUT(3600)
-    SIZE(LARGE)
-    TAG(ya:fat)
-ELSE()
-    TIMEOUT(600)
-    SIZE(MEDIUM)
-ENDIF()
+SIZE(MEDIUM)
 
 YQL_LAST_ABI_VERSION()
 

@@ -3,6 +3,7 @@
 #include <contrib/ydb/library/yql/providers/yt/common/yql_yt_settings.h>
 
 #include <contrib/ydb/library/yql/core/file_storage/storage.h>
+#include <contrib/ydb/library/yql/providers/common/metrics/metrics_registry.h>
 
 #include <yt/cpp/mapreduce/interface/client.h>
 #include <yt/cpp/mapreduce/interface/fwd.h>
@@ -31,29 +32,34 @@ public:
     using TSpecProvider = std::function<NYT::TNode()>;
 
     struct TEntry : public TThrRefBase {
+        TString Cluster;
         TString Server;
         NYT::IClientPtr Client;
+        TString EffectiveUser;  // actual YT user for the used token
         NYT::ITransactionPtr Tx;
         NYT::ITransactionPtr ExternalTx;
         NYT::IClientBasePtr CacheTx;
         NYT::TTransactionId CacheTxId;
+        NYT::ITransactionPtr DumpTx;
         TDuration CacheTtl;
         THashMap<NYT::TTransactionId, NYT::ITransactionPtr> SnapshotTxs;
         THashMap<NYT::TTransactionId, NYT::ITransactionPtr> WriteTxs;
         NYT::ITransactionPtr LastSnapshotTx;
-        THashSet<TString> TablesToDeleteAtFinalize;
+        THashMap<TString, bool> TablesToDeleteAtFinalize;  // table -> assumed as deleted
         THashSet<TString> TablesToDeleteAtCommit;
         ui32 InflightTempTablesLimit = Max<ui32>();
         bool KeepTables = false;
         THashMap<std::pair<TString, ui32>, std::tuple<TString, NYT::TTransactionId, ui64>> Snapshots; // {tablepath, epoch} -> {table_id, transaction_id, revision}
         NYT::TNode TransactionSpec;
-        THashMap<TString, NYT::TTableColumnarStatistics> StatisticsCache;
         THashMap<TString, TString> BinarySnapshots; // remote path -> snapshot path
         NYT::ITransactionPtr BinarySnapshotTx;
+        NYT::ITransactionPtr LayersSnapshotTx;
         THashMap<TString, NYT::ITransactionPtr> CheckpointTxs;
         TString DefaultTmpFolder;
         THashMap<std::tuple<TString, TString, TString>, std::vector<NYT::TRichYPath>> RangeCache;
         THashMap<TString, std::pair<std::vector<TString>, std::vector<std::exception_ptr>>> PartialRangeCache;
+
+        THashMap<TString, NYT::TNode> SchemasBySchemaId;
 
         using TFolderCache = THashMap<TString, std::vector<std::tuple<TString, TString, NYT::TNode>>>;
         TFolderCache FolderCache;
@@ -61,6 +67,7 @@ public:
         THashMap<TString, TFileLinkPtr> FolderFilePtrCache;
 
         TMutex Lock_;
+        IMetricsRegistryPtr Metrics;
 
         inline void DeleteAtFinalize(const TString& table) {
             with_lock(Lock_) {
@@ -81,7 +88,20 @@ public:
         }
 
         void RemoveInternal(const TString& table);
-        void Finalize(const TString& clusterName);
+        void Finalize(const TString& clusterName, bool commitDumpTx = false);
+
+        template<typename T>
+        T AssumeAsDeletedAtFinalize(const T& range) {
+            T filteredRange;
+            with_lock(Lock_) {
+                for (const auto& i : range) {
+                    if (AssumeAsDeletedAtFinalizeUnlocked(i)) {
+                        filteredRange.insert(filteredRange.end(), i);
+                    }
+                }
+            }
+            return filteredRange;
+        }
 
         template<typename T>
         T CancelDeleteAtFinalize(const T& range) {
@@ -114,18 +134,38 @@ public:
         void CompleteWriteTx(const NYT::TTransactionId& id, bool abort);
 
         TMaybe<ui64> GetColumnarStat(NYT::TRichYPath ytPath) const;
-        void UpdateColumnarStat(NYT::TRichYPath ytPath, ui64 size);
-        void UpdateColumnarStat(NYT::TRichYPath ytPath, const NYT::TTableColumnarStatistics& columnStat);
+        TMaybe<NYT::TTableColumnarStatistics> GetExtendedColumnarStat(NYT::TRichYPath ytPath) const;
+
+        void UpdateColumnarStat(NYT::TRichYPath ytPath, ui64 size, bool extended = false);
+        void UpdateColumnarStat(NYT::TRichYPath ytPath, const NYT::TTableColumnarStatistics& columnStat, bool extended = false);
 
         std::pair<TString, NYT::TTransactionId> GetBinarySnapshot(TString remoteTmpFolder, const TString& md5, const TString& localPath, TDuration expirationInterval);
+        TMaybe<std::pair<TString, NYT::TTransactionId>> GetBinarySnapshotFromCache(TString binaryCacheFolder, const TString& md5, const TString& fileName);
+        TVector<std::pair<TString, ui64>> GetLayersSnapshot(const TVector<TString>& paths);
+
+
+        enum class ECacheStatus {
+            Hit,
+            Miss,
+            Other
+        };
+        void UpdateCacheMetrics(const TString& fileName, ECacheStatus status);
 
         void CreateDefaultTmpFolder();
 
         using TPtr = TIntrusivePtr<TEntry>;
 
     private:
+        struct TStatisticsCacheEntry {
+            std::unordered_set<TString> ExtendedStatColumns;
+            NYT::TTableColumnarStatistics ColumnarStat;
+        };
+
+        THashMap<TString, TStatisticsCacheEntry> StatisticsCache;
+
         void DeleteAtFinalizeUnlocked(const TString& table, bool isInternal);
         bool CancelDeleteAtFinalizeUnlocked(const TString& table, bool isInternal);
+        bool AssumeAsDeletedAtFinalizeUnlocked(const TString& table);
         void DoRemove(const TString& table);
 
         size_t ExternalTempTablesCount = 0;
@@ -134,11 +174,11 @@ public:
     TTransactionCache(const TString& userName);
 
     TEntry::TPtr GetEntry(const TString& server);
-    TEntry::TPtr GetOrCreateEntry(const TString& server, const TString& token, const TMaybe<TString>& impersonationUser, const TSpecProvider& specProvider, const TYtSettings::TConstPtr& config);
+    TEntry::TPtr GetOrCreateEntry(const TString& cluster, const TString& server, const TString& token, const TMaybe<TString>& impersonationUser, const TSpecProvider& specProvider, const TYtSettings::TConstPtr& config, IMetricsRegistryPtr metrics, bool createDumpTx = false);
     TEntry::TPtr TryGetEntry(const TString& server);
 
     void Commit(const TString& server);
-    void Finalize();
+    void Finalize(bool commitDumpTxs = false);
     void AbortAll();
     void DetachSnapshotTxs();
 

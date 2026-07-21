@@ -21,8 +21,8 @@ PEERDIR(
     contrib/ydb/library/security
     contrib/ydb/library/protobuf_printer
     contrib/ydb/library/yql/public/issue
-    contrib/ydb/public/sdk/cpp/client/ydb_scheme
-    contrib/ydb/public/sdk/cpp/client/ydb_value
+    contrib/ydb/public/sdk/cpp/src/client/scheme
+    contrib/ydb/public/sdk/cpp/src/client/value
 )
 
 YQL_LAST_ABI_VERSION()

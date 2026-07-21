@@ -2,14 +2,18 @@
 
 #include <library/cpp/lwtrace/shuttle.h>
 
-#include <contrib/ydb/core/scheme/scheme_tabledefs.h>
-#include <contrib/ydb/core/protos/data_events.pb.h>
 #include <contrib/ydb/core/base/events.h>
+#include <contrib/ydb/core/protos/data_events.pb.h>
+#include <contrib/ydb/core/scheme/scheme_tabledefs.h>
+#include <contrib/ydb/core/tx/data_events/common/error_codes.h>
 #include <contrib/ydb/public/api/protos/ydb_issue_message.pb.h>
 
 #include <contrib/ydb/library/accessor/accessor.h>
 #include <contrib/ydb/library/actors/core/event_pb.h>
 #include <contrib/ydb/library/actors/core/log.h>
+#include <contrib/ydb/library/yql/core/issue/yql_issue.h>
+
+#include <contrib/ydb/library/yql/public/issue/yql_issue_message.h>
 
 namespace NKikimr::NEvents {
 
@@ -30,6 +34,9 @@ struct TDataEvents {
     enum EEventType {
         EvWrite = EventSpaceBegin(TKikimrEvents::ES_DATA_OPERATIONS),
         EvWriteResult,
+        EvLockRows,
+        EvLockRowsCancel,
+        EvLockRowsResult,
         EvEnd
     };
 
@@ -38,7 +45,6 @@ struct TDataEvents {
     struct TEvWrite : public NActors::TEventPB<TEvWrite, NKikimrDataEvents::TEvWrite, TDataEvents::EvWrite> {
     public:
         TEvWrite() = default;
-
 
         TEvWrite(const ui64 txId, NKikimrDataEvents::TEvWrite::ETxMode txMode) {
             Y_ABORT_UNLESS(txMode != NKikimrDataEvents::TEvWrite::MODE_UNSPECIFIED);
@@ -62,8 +68,10 @@ struct TDataEvents {
             return *this;
         }
 
-        void AddOperation(NKikimrDataEvents::TEvWrite_TOperation::EOperationType operationType, const TTableId& tableId, const std::vector<ui32>& columnIds,
-            ui64 payloadIndex, NKikimrDataEvents::EDataFormat payloadFormat) {
+        NKikimrDataEvents::TEvWrite::TOperation& AddOperation(NKikimrDataEvents::TEvWrite_TOperation::EOperationType operationType,
+            const TTableId& tableId, const std::vector<ui32>& columnIds,
+            ui64 payloadIndex, NKikimrDataEvents::EDataFormat payloadFormat,
+            const ui32 defaultFilledColumnCount = 0) {
             Y_ABORT_UNLESS(operationType != NKikimrDataEvents::TEvWrite::TOperation::OPERATION_UNSPECIFIED);
             Y_ABORT_UNLESS(payloadFormat != NKikimrDataEvents::FORMAT_UNSPECIFIED);
 
@@ -75,6 +83,8 @@ struct TDataEvents {
             operation->MutableTableId()->SetTableId(tableId.PathId.LocalPathId);
             operation->MutableTableId()->SetSchemaVersion(tableId.SchemaVersion);
             operation->MutableColumnIds()->Assign(columnIds.begin(), columnIds.end());
+            operation->SetDefaultFilledColumnCount(defaultFilledColumnCount);
+            return *operation;
         }
 
         ui64 GetTxId() const {
@@ -94,12 +104,19 @@ struct TDataEvents {
 
         static std::unique_ptr<TEvWriteResult> BuildError(const ui64 origin, const ui64 txId, const NKikimrDataEvents::TEvWriteResult::EStatus& status, const TString& errorMsg) {
             auto result = std::make_unique<TEvWriteResult>();
-            ACFL_ERROR("event", "ev_write_error")("status", NKikimrDataEvents::TEvWriteResult::EStatus_Name(status))("details", errorMsg)("tx_id", txId);
+            YDB_LOG_WARN_COMP(NActors::NStructuredLog::TLogStack::GetComponent(), "",
+                {"event", "ev_write_error"},
+                {"status", NKikimrDataEvents::TEvWriteResult::EStatus_Name(status)},
+                {"details", errorMsg},
+                {"txId", txId});
             result->Record.SetOrigin(origin);
             result->Record.SetTxId(txId);
             result->Record.SetStatus(status);
-            auto issue = result->Record.AddIssues();
-            issue->set_message(errorMsg);
+            NYql::TIssue issue(errorMsg);
+            if (const auto statusConclusion = NKikimr::NEvWrite::NErrorCodes::TOperator::GetStatusInfo(status); statusConclusion.IsSuccess()) {
+                NYql::SetIssueCode(statusConclusion->GetIssueCode(), issue);
+            }
+            NYql::IssueToMessage(issue, result->Record.AddIssues());
             return result;
         }
 
@@ -169,6 +186,83 @@ struct TDataEvents {
         NLWTrace::TOrbit&& MoveOrbit() { return std::move(Orbit); }
     private:
         NLWTrace::TOrbit Orbit;
+    };
+
+    struct TEvLockRows : public NActors::TEventPB<TEvLockRows, NKikimrDataEvents::TEvLockRows, TDataEvents::EvLockRows> {
+    public:
+        TEvLockRows() = default;
+
+        explicit TEvLockRows(ui64 requestId) {
+            Record.SetRequestId(requestId);
+        }
+
+        TTableId GetTableId() const {
+            const auto& p = Record.GetTableId();
+            return TTableId(p.GetOwnerId(), p.GetTableId(), p.GetSchemaVersion());
+        }
+
+        void SetTableId(const TTableId& tableId) {
+            auto* p = Record.MutableTableId();
+            p->SetOwnerId(tableId.PathId.OwnerId);
+            p->SetTableId(tableId.PathId.LocalPathId);
+            if (tableId.SchemaVersion) {
+                p->SetSchemaVersion(tableId.SchemaVersion);
+            }
+        }
+
+        TSerializedCellMatrix GetCellMatrix() const {
+            TSerializedCellMatrix matrix;
+            TString payload = GetPayload(Record.GetPayloadIndex()).ConvertToString();
+            if (!TSerializedCellMatrix::TryParse(std::move(payload), matrix)) {
+                throw yexception() << "Failed to parse TSerializedCellVec payload";
+            }
+            return matrix;
+        }
+
+        void SetCellMatrix(TString matrix) {
+            auto payloadIndex = AddPayload(TRope(std::move(matrix)));
+            Record.SetPayloadIndex(payloadIndex);
+        }
+    };
+
+    struct TEvLockRowsCancel : public NActors::TEventPB<TEvLockRowsCancel, NKikimrDataEvents::TEvLockRowsCancel, TDataEvents::EvLockRowsCancel> {
+    public:
+        TEvLockRowsCancel() = default;
+
+        explicit TEvLockRowsCancel(ui64 requestId) {
+            Record.SetRequestId(requestId);
+        }
+    };
+
+    struct TEvLockRowsResult : public NActors::TEventPB<TEvLockRowsResult, NKikimrDataEvents::TEvLockRowsResult, TDataEvents::EvLockRowsResult> {
+    public:
+        TEvLockRowsResult() = default;
+
+        TEvLockRowsResult(ui64 tabletId, ui64 requestId, NKikimrDataEvents::TEvLockRowsResult::EStatus status) {
+            Record.SetTabletId(tabletId);
+            Record.SetRequestId(requestId);
+            Record.SetStatus(status);
+        }
+
+        TEvLockRowsResult(ui64 tabletId, ui64 requestId, NKikimrDataEvents::TEvLockRowsResult::EStatus status, const TString& errorMsg)
+            : TEvLockRowsResult(tabletId, requestId, status)
+        {
+            NYql::TIssue issue(errorMsg);
+            NYql::IssueToMessage(issue, Record.AddIssues());
+        }
+
+        void AddLock(ui64 lockId, ui64 shard, ui32 generation, ui64 counter, ui64 ssId, ui64 pathId, bool hasWrites) {
+            auto* entry = Record.AddLocks();
+            entry->SetLockId(lockId);
+            entry->SetDataShard(shard);
+            entry->SetGeneration(generation);
+            entry->SetCounter(counter);
+            entry->SetSchemeShard(ssId);
+            entry->SetPathId(pathId);
+            if (hasWrites) {
+                entry->SetHasWrites(true);
+            }
+        }
     };
 
 };

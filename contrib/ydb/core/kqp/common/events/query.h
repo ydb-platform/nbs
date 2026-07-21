@@ -1,17 +1,27 @@
 #pragma once
+
 #include <contrib/ydb/core/resource_pools/resource_pool_settings.h>
 #include <contrib/ydb/core/protos/kqp.pb.h>
-#include <contrib/ydb/core/kqp/common/simple/kqp_event_ids.h>
+#include <contrib/ydb/core/kqp/common/result_set_format/kqp_result_set_format_settings.h>
 #include <contrib/ydb/core/kqp/common/kqp_user_request_context.h>
-#include <contrib/ydb/core/grpc_services/base/base.h>
+#include <contrib/ydb/core/kqp/common/simple/kqp_event_ids.h>
+#include <contrib/ydb/core/grpc_services/base/iface.h>
 #include <contrib/ydb/core/grpc_services/cancelation/cancelation_event.h>
 #include <contrib/ydb/core/grpc_services/cancelation/cancelation.h>
 
 #include <contrib/ydb/public/api/protos/ydb_query.pb.h>
 #include <contrib/ydb/public/api/protos/ydb_table.pb.h>
 #include <contrib/ydb/library/aclib/aclib.h>
+#include <contrib/ydb/library/aclib/user_context.h>
 #include <contrib/ydb/library/actors/core/event_pb.h>
 #include <contrib/ydb/library/actors/core/event_local.h>
+
+#include <memory>
+
+namespace NKikimr::NKqp::NWorkload {
+class ISessionUpdater;
+class IQueryClassifier;
+}
 
 namespace NKikimr::NKqp::NPrivateEvents {
 
@@ -45,10 +55,22 @@ struct TQueryRequestSettings {
         return *this;
     }
 
+    TQueryRequestSettings& SetSchemaInclusionMode(const ::Ydb::Query::SchemaInclusionMode& mode) {
+        SchemaInclusionMode = mode;
+        return *this;
+    }
+
+    TQueryRequestSettings& SetResultSetFormat(const ::Ydb::ResultSet::Format& format) {
+        ResultSetFormat = format;
+        return *this;
+    }
+
     ui64 OutputChunkMaxSize = 0;
     bool KeepSession = false;
     bool UseCancelAfter = true;
     ::Ydb::Query::Syntax Syntax = Ydb::Query::Syntax::SYNTAX_UNSPECIFIED;
+    ::Ydb::Query::SchemaInclusionMode SchemaInclusionMode = Ydb::Query::SchemaInclusionMode::SCHEMA_INCLUSION_MODE_UNSPECIFIED;
+    ::Ydb::ResultSet::Format ResultSetFormat = Ydb::ResultSet::FORMAT_UNSPECIFIED;
     bool SupportsStreamTrailingResult = false;
 };
 
@@ -68,21 +90,26 @@ public:
         const ::Ydb::Table::QueryCachePolicy* queryCachePolicy,
         const ::Ydb::Operations::OperationParams* operationParams,
         const TQueryRequestSettings& querySettings = TQueryRequestSettings(),
-        const TString& poolId = "");
+        const TString& poolId = "",
+        std::optional<NFormats::TArrowFormatSettings> arrowFormatSettings = std::nullopt);
 
     TEvQueryRequest() {
         Record.MutableRequest()->SetUsePublicResponseDataFormat(true);
     }
 
+    TEvQueryRequest(TIntrusivePtr<NACLib::TUserContext> userCtx);
+
     bool IsSerializable() const override {
         return true;
     }
 
-    TEventSerializationInfo CreateSerializationInfo() const override { return {}; }
+    TEventSerializationInfo CreateSerializationInfo(bool /*allowExternalDataChannel*/) const override { return {}; }
 
     const TString& GetDatabase() const {
         return RequestCtx ? Database : Record.GetRequest().GetDatabase();
     }
+
+    TIntrusivePtr<NACLib::TUserContext> GetUserCtx();
 
     const std::shared_ptr<NGRpcService::IRequestCtxMtSafe>& GetRequestCtx() const {
         return RequestCtx;
@@ -96,8 +123,24 @@ public:
         return Record.GetRequest().GetTopicOperations();
     }
 
+    const ::NKikimrKqp::TKafkaApiOperationsRequest& GetKafkaApiOperations() const {
+        return Record.GetRequest().GetKafkaApiOperations();
+    }
+
     bool HasTopicOperations() const {
         return Record.GetRequest().HasTopicOperations();
+    }
+
+    bool HasKafkaApiOperations() const {
+        return Record.GetRequest().HasKafkaApiOperations();
+    }
+
+    bool HasDeferredPublication() const {
+        return Record.GetRequest().HasDeferredPublication();
+    }
+
+    const ::NKikimrKqp::TTopicDeferredPublicationRequest& GetDeferredPublication() const {
+        return Record.GetRequest().GetDeferredPublication();
     }
 
     bool GetKeepSession() const {
@@ -182,10 +225,6 @@ public:
         return RequestCtx ? RequestActorId : ActorIdFromProto(Record.GetRequestActorId());
     }
 
-    google::protobuf::Arena* GetArena() {
-        return RequestCtx ? RequestCtx->GetArena() : nullptr;
-    }
-
     const TString& GetTraceId() const {
         if (RequestCtx) {
             if (!TraceId) {
@@ -236,6 +275,14 @@ public:
         return Record.GetRequest().GetClientAddress();
     }
 
+    TString GetApplicationName() const {
+        if (RequestCtx) {
+            return "";  // gRPC path carries app name via the session, not the query request
+        }
+
+        return Record.GetRequest().GetApplicationName();
+    }
+
     const ::google::protobuf::Map<TProtoStringType, ::Ydb::TypedValue>& GetYdbParameters() const {
         if (YdbParameters) {
             return *YdbParameters;
@@ -272,6 +319,11 @@ public:
         return RequestCtx ? RequestCtx->IsInternalCall() : Record.GetRequest().GetIsInternalCall();
     }
 
+    bool GetIsWarmupCompilation() const {
+        // RequestCtx is set only if request came from grpc, warmup is internal operation
+        return RequestCtx ? false : Record.GetRequest().GetIsWarmupCompilation();
+    }
+
     ui64 GetParametersSize() const {
         if (ParametersSize > 0) {
             return ParametersSize;
@@ -299,23 +351,14 @@ public:
         return Record.SerializeToZeroCopyStream(chunker);
     }
 
-    static NActors::IEventBase* Load(TEventSerializedData* data) {
-        auto pbEv = THolder<TEvQueryRequestRemote>(static_cast<TEvQueryRequestRemote*>(TEvQueryRequestRemote::Load(data)));
+    static TEvQueryRequest* Load(const TEventSerializedData* data) {
+        auto pbEv = THolder<TEvQueryRequestRemote>(TEvQueryRequestRemote::Load(data));
         auto req = new TEvQueryRequest();
         req->Record.Swap(&pbEv->Record);
         return req;
     }
 
-    void SetClientLostAction(TActorId actorId, NActors::TActorSystem* as) {
-        if (RequestCtx) {
-            RequestCtx->SetFinishAction([actorId, as]() {
-                as->Send(actorId, new NGRpcService::TEvClientLost());
-                });
-        } else if (Record.HasCancelationActor()) {
-            auto cancelationActor = ActorIdFromProto(Record.GetCancelationActor());
-            NGRpcService::SubscribeRemoteCancel(cancelationActor, actorId, as);
-        }
-    }
+    void SetClientLostAction(TActorId actorId, NActors::TActorSystem* as);
 
     void SetUserRequestContext(TIntrusivePtr<TUserRequestContext> userRequestContext) {
         UserRequestContext = userRequestContext;
@@ -323,6 +366,22 @@ public:
 
     TIntrusivePtr<TUserRequestContext> GetUserRequestContext() const {
         return UserRequestContext;
+    }
+
+    void SetWmSessionUpdater(const std::shared_ptr<NWorkload::ISessionUpdater>& wmSessionUpdater) {
+        WmSessionUpdater = wmSessionUpdater;
+    }
+
+    std::shared_ptr<NWorkload::ISessionUpdater> GetWmSessionUpdater() const {
+        return WmSessionUpdater;
+    }
+
+    void SetWmQueryClassifier(std::shared_ptr<NWorkload::IQueryClassifier> classifier) {
+        WmQueryClassifier = std::move(classifier);
+    }
+
+    std::shared_ptr<NWorkload::IQueryClassifier> GetWmQueryClassifier() const {
+        return WmQueryClassifier;
     }
 
     void SetProgressStatsPeriod(TDuration progressStatsPeriod) {
@@ -369,6 +428,63 @@ public:
         DatabaseId = databaseId;
     }
 
+    ::Ydb::Query::SchemaInclusionMode GetSchemaInclusionMode() const {
+        return RequestCtx ? QuerySettings.SchemaInclusionMode : Record.GetRequest().GetSchemaInclusionMode();
+    }
+
+    ::Ydb::ResultSet::Format GetResultSetFormat() const {
+        return RequestCtx ? QuerySettings.ResultSetFormat : Record.GetRequest().GetResultSetFormat();
+    }
+
+    bool HasArrowFormatSettings() const {
+        if (RequestCtx) {
+            return ArrowFormatSettings.has_value();
+        }
+        return Record.GetRequest().HasArrowFormatSettings();
+    }
+
+    std::optional<NFormats::TArrowFormatSettings> GetArrowFormatSettings() const {
+        if (RequestCtx) {
+            return ArrowFormatSettings;
+        }
+        if (Record.GetRequest().HasArrowFormatSettings()) {
+            return NFormats::TArrowFormatSettings::ImportFromProto(Record.GetRequest().GetArrowFormatSettings());
+        }
+        return std::nullopt;
+    }
+
+    bool GetSaveQueryPhysicalGraph() const {
+        return SaveQueryPhysicalGraph;
+    }
+
+    void SetSaveQueryPhysicalGraph(bool saveQueryPhysicalGraph) {
+        SaveQueryPhysicalGraph = saveQueryPhysicalGraph;
+    }
+
+    std::shared_ptr<const NKikimrKqp::TQueryPhysicalGraph> GetQueryPhysicalGraph() const {
+        return QueryPhysicalGraph;
+    }
+
+    void SetQueryPhysicalGraph(NKikimrKqp::TQueryPhysicalGraph queryPhysicalGraph) {
+        QueryPhysicalGraph = std::make_shared<const NKikimrKqp::TQueryPhysicalGraph>(std::move(queryPhysicalGraph));
+    }
+
+    void SetGeneration(i64 generation) {
+        Generation = generation;
+    }
+
+    i64 GetGeneration() const {
+        return Generation;
+    }
+
+    void SetDisableDefaultTimeout(bool disableDefaultTimeout) {
+        DisableDefaultTimeout = disableDefaultTimeout;
+    }
+
+    bool GetDisableDefaultTimeout() const {
+        return DisableDefaultTimeout;
+    }
+
     mutable NKikimrKqp::TEvQueryRequest Record;
 
 private:
@@ -383,6 +499,7 @@ private:
     TString Database;
     TString DatabaseId;
     TString SessionId;
+    TIntrusivePtr<NACLib::TUserContext> UserCtx;
     TString YqlText;
     TString QueryId;
     TString PoolId;
@@ -399,6 +516,13 @@ private:
     TIntrusivePtr<TUserRequestContext> UserRequestContext;
     TDuration ProgressStatsPeriod;
     std::optional<NResourcePool::TPoolSettings> PoolConfig;
+    std::optional<NFormats::TArrowFormatSettings> ArrowFormatSettings;
+    bool SaveQueryPhysicalGraph = false;  // Used only in execute script queries
+    std::shared_ptr<const NKikimrKqp::TQueryPhysicalGraph> QueryPhysicalGraph;
+    i64 Generation = 0;
+    bool DisableDefaultTimeout = false;
+    std::shared_ptr<NWorkload::ISessionUpdater> WmSessionUpdater;
+    std::shared_ptr<NWorkload::IQueryClassifier> WmQueryClassifier;
 };
 
 struct TEvDataQueryStreamPart: public TEventPB<TEvDataQueryStreamPart,
@@ -406,90 +530,6 @@ struct TEvDataQueryStreamPart: public TEventPB<TEvDataQueryStreamPart,
 };
 
 struct TEvDataQueryStreamPartAck: public TEventLocal<TEvDataQueryStreamPartAck, TKqpEvents::EvDataQueryStreamPartAck> {};
-
-// Wrapper to use Arena allocated protobuf with ActorSystem (for serialization path).
-// Arena deserialization is not supported.
-// TODO: Add arena support to actor system TEventPB?
-template<typename TProto>
-class TProtoArenaHolder: public TNonCopyable {
-public:
-    TProtoArenaHolder()
-        : Protobuf_(google::protobuf::Arena::CreateMessage<TProto>(nullptr))
-        , NeedDelete_(true) {
-    }
-
-    ~TProtoArenaHolder() {
-        // Deallocate message only if it was "normal" allocation
-        // In case of protobuf arena memory will be freed during arena deallocation
-        if (NeedDelete_) {
-            delete Protobuf_;
-        }
-    }
-
-    void Realloc(std::shared_ptr<google::protobuf::Arena> arena) {
-        ReallocRef(arena.get());
-        Arena_ = arena;
-    }
-
-    void ReallocRef(google::protobuf::Arena* arena) {
-        // Allow realloc only if previous allocation was made using "normal" allocator
-        // and no data was writen. It prevents ineffective using of protobuf.
-        Y_ASSERT(!Protobuf_->GetArena());
-        Y_ASSERT(ByteSize() == 0);
-        delete Protobuf_;
-        Protobuf_ = google::protobuf::Arena::CreateMessage<TProto>(arena);
-        if (arena) {
-            NeedDelete_ = false;
-        }
-    }
-
-    bool ParseFromString(const TString& data) {
-        return Protobuf_->ParseFromString(data);
-    }
-
-    bool ParseFromZeroCopyStream(google::protobuf::io::ZeroCopyInputStream* input) {
-        return Protobuf_->ParseFromZeroCopyStream(input);
-    }
-
-    bool SerializeToZeroCopyStream(google::protobuf::io::ZeroCopyOutputStream* output) const {
-        return Protobuf_->SerializeToZeroCopyStream(output);
-    }
-
-    bool SerializeToString(TString* output) const {
-        return Protobuf_->SerializeToString(output);
-    }
-
-    int ByteSize() const {
-        return Protobuf_->ByteSize();
-    }
-
-    TString DebugString() const {
-        return Protobuf_->DebugString();
-    }
-
-    TString ShortDebugString() const {
-        return Protobuf_->ShortDebugString();
-    }
-
-    TString GetTypeName() const {
-        return Protobuf_->GetTypeName();
-    }
-
-    const TProto& GetRef() const {
-        return *Protobuf_;
-    }
-
-    TProto& GetRef() {
-        return *Protobuf_;
-    }
-
-private:
-    TProtoArenaHolder(TProtoArenaHolder&&) = default;
-    TProtoArenaHolder& operator=(TProtoArenaHolder&&) = default;
-    TProto* Protobuf_;
-    std::shared_ptr<google::protobuf::Arena> Arena_;
-    bool NeedDelete_;
-};
 
 struct TEvQueryTimeout: public TEventLocal<TEvQueryTimeout, TKqpEvents::EvQueryTimeout> {
     TEvQueryTimeout(ui32 queryId)
@@ -499,8 +539,14 @@ struct TEvQueryTimeout: public TEventLocal<TEvQueryTimeout, TKqpEvents::EvQueryT
     ui32 QueryId;
 };
 
-struct TEvQueryResponse: public TEventPB<TEvQueryResponse, TProtoArenaHolder<NKikimrKqp::TEvQueryResponse>,
-    TKqpEvents::EvQueryResponse> {
+struct TEvQueryResponse: public TEventPBWithArena<TEvQueryResponse, NKikimrKqp::TEvQueryResponse, TKqpEvents::EvQueryResponse> {
+    using TBaseEv = TEventPBWithArena<TEvQueryResponse, NKikimrKqp::TEvQueryResponse, TKqpEvents::EvQueryResponse> ;
+    using TBaseEv::TEventPBBase;
+
+    TEvQueryResponse() = default;
+    explicit TEvQueryResponse(TIntrusivePtr<NActors::TProtoArenaHolder> arena)
+        : TEventPBBase(arena ? std::move(arena) : MakeIntrusive<NActors::TProtoArenaHolder>())
+    {}
 };
 
 } // namespace NKikimr::NKqp

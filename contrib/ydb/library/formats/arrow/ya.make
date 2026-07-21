@@ -2,11 +2,23 @@ RECURSE_FOR_TESTS(
     ut
 )
 
+RECURSE(
+    common
+    switch
+    csv
+    validation
+    hash    
+    modifier
+    scalar
+    simple_builder
+    splitter
+    transformer
+)
+
 LIBRARY()
 
 PEERDIR(
     contrib/libs/apache/arrow
-    contrib/ydb/library/formats/arrow/accessor
     contrib/ydb/library/formats/arrow/simple_builder
     contrib/ydb/library/formats/arrow/transformer
     contrib/ydb/library/formats/arrow/splitter
@@ -15,8 +27,8 @@ PEERDIR(
     contrib/ydb/library/formats/arrow/hash
     contrib/ydb/library/actors/core
     contrib/ydb/library/arrow_kernels
-    contrib/ydb/library/binary_json
-    contrib/ydb/library/dynumber
+    contrib/ydb/library/yql/types/binary_json
+    contrib/ydb/library/yql/types/dynumber
     contrib/ydb/library/services
     contrib/ydb/library/yql/core/arrow_kernels/request
 )
@@ -34,6 +46,10 @@ ELSE()
         contrib/ydb/library/arrow_clickhouse
     )
 ENDIF()
+
+CFLAGS(
+    -Wno-unused-parameter
+)
 
 YQL_LAST_ABI_VERSION()
 

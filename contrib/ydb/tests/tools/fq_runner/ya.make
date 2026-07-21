@@ -11,6 +11,7 @@ PY_SRCS(
 
 PEERDIR(
     contrib/python/requests
+    library/python/port_manager
     library/python/retry
     library/python/testing/yatest_common
     contrib/ydb/library/yql/providers/common/proto

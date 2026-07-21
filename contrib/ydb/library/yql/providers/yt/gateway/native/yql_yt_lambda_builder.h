@@ -29,13 +29,13 @@ namespace NNative {
 
 struct TSession;
 
-struct TNativeYtLambdaBuilder: public TLambdaBuilder {
+struct TNativeYtLambdaBuilder: public TGatewayLambdaBuilder {
     TNativeYtLambdaBuilder(NKikimr::NMiniKQL::TScopedAlloc& alloc, const NKikimr::NMiniKQL::IFunctionRegistry* functionRegistry,
-        const TSession& session, const NKikimr::NUdf::ISecureParamsProvider* secureParamsProvider = nullptr);
+        const TSession& session, const NKikimr::NUdf::ISecureParamsProvider* secureParamsProvider,
+        TLangVersion langver, TRuntimeSettings::TConstPtr runtimeSettings);
 
-    TNativeYtLambdaBuilder(NKikimr::NMiniKQL::TScopedAlloc& alloc, const TYtNativeServices& services, const TSession& session);
-
-    TString BuildLambdaWithIO(const NCommon::IMkqlCallableCompiler& compiler, NNodes::TCoLambda lambda, TExprContext& exprCtx);
+    TNativeYtLambdaBuilder(NKikimr::NMiniKQL::TScopedAlloc& alloc, const TYtNativeServices& services, const TSession& session,
+        TLangVersion langver, TRuntimeSettings::TConstPtr runtimeSettings);
 };
 
 NKikimr::NMiniKQL::TComputationNodeFactory GetGatewayNodeFactory(NYql::NCommon::TCodecContext* codecCtx,

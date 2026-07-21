@@ -11,9 +11,16 @@
 * `global options` — [глобальные параметры](commands/global-options.md).
 * `options` — [параметры подкоманды](#options).
 * `kind` — тип операции. Возможные значения:
+  * `analyze` — операции сбора статистики [ANALYZE](../../yql/reference/syntax/analyze.md);
   * `buildindex` — операции построения индекса;
-  * `export/s3` — операции экспорта;
-  * `import/s3` — операции импорта.
+  * `compaction` — операции компакшна таблиц;
+  * `export/s3` — операции экспорта в S3;
+  * `export/nfs` — операции экспорта на NFS;
+  * `import/s3` — операции импорта из S3;
+  * `import/nfs` — операции импорта с NFS;
+  * `scriptexec` — операции выполнения скриптов;
+  * `incbackup` — операции инкрементального резервного копирования;
+  * `restore` — операции восстановления из резервной копии.
 
 Посмотрите описание команды получения списка фоновых операций:
 
@@ -27,16 +34,16 @@
 ---|---
 `-s`, `--page-size` | Количество операций на одной странице. Если список операций содержит больше строк, чем задано в параметре `--page-size`, то вывод будет разделен на несколько страниц. Для получения следующей страницы укажите параметр `--page-token`.
 `-t`, `--page-token` | Токен страницы.
-`--format` | Формат вывода.<br>Значение по умолчанию — `pretty`.<br>Возможные значения:<ul><li>`pretty` — человекочитаемый формат;</li><li>`proto-json-base64` — вывод Protobuf в формате [JSON]{% if lang == "ru" %}(https://ru.wikipedia.org/wiki/JSON){% endif %}{% if lang == "en" %}(https://en.wikipedia.org/wiki/JSON){% endif %}, бинарные строки закодированы в [Base64]{% if lang == "ru" %}(https://ru.wikipedia.org/wiki/Base64){% endif %}{% if lang == "en" %}(https://en.wikipedia.org/wiki/Base64){% endif %}.</li></ul>
+`--format` | Формат вывода.<br/>Значение по умолчанию — `pretty`.<br/>Возможные значения:<ul><li>`pretty` — человекочитаемый формат;</li><li>`proto-json-base64` — вывод Protobuf в формате [JSON](https://ru.wikipedia.org/wiki/JSON), бинарные строки закодированы в [Base64](https://ru.wikipedia.org/wiki/Base64).</li></ul>
 
-## Примеры {examples}
+## Примеры {#examples}
 
 {% include [ydb-cli-profile](../../_includes/ydb-cli-profile.md) %}
 
 Получите список фоновых операций построение индекса для таблицы `series`:
 
 ```bash
-ydb -p quickstart operation list \
+{{ ydb-cli }} -p quickstart operation list \
   buildindex
 ```
 

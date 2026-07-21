@@ -108,16 +108,45 @@ namespace NKikimr::NBsController {
         TBoxInfo& origin = getBox(cmd.GetOriginBoxId(), cmd.GetOriginBoxGeneration(), "origin");
         TBoxInfo& target = getBox(cmd.GetTargetBoxId(), cmd.GetTargetBoxGeneration(), "target");
 
-        while (origin.Hosts) {
-            auto node = origin.Hosts.extract(origin.Hosts.begin());
-            node.key().BoxId = cmd.GetTargetBoxId();
-            if (!target.Hosts.insert(std::move(node)).inserted) {
-                throw TExError() << "duplicate hosts in merged box";
+        THashMap<std::tuple<THostConfigId, THostConfigId>, THostConfigId> mergedHostConfigs;
+
+        for (auto& [originKey, originValue] : origin.Hosts) {
+            const TBoxInfo::THostKey targetKey = originKey.ChangeBox(cmd.GetTargetBoxId()); // make new key for target set
+            if (const auto [it, inserted] = target.Hosts.try_emplace(targetKey, std::move(originValue)); !inserted) {
+                TBoxInfo::THostInfo& targetValue = it->second;
+                if (targetValue.EnforcedNodeId != originValue.EnforcedNodeId) {
+                    throw TExError() << "different EnforcedNodeId for the same HostId# " << THostId(originKey);
+                } else {
+                    const auto sourceConfigs = std::make_tuple(std::min(originValue.HostConfigId, targetValue.HostConfigId),
+                        std::max(originValue.HostConfigId, targetValue.HostConfigId));
+
+                    const auto [jt, inserted] = mergedHostConfigs.try_emplace(sourceConfigs);
+                    if (inserted) {
+                        auto& hostConfigs = HostConfigs.Unshare();
+                        jt->second = hostConfigs.empty() ? 1 : std::prev(hostConfigs.end())->first + 1;
+                        Y_ABORT_UNLESS(!hostConfigs.contains(jt->second));
+                        THostConfigInfo& newHostConfig = hostConfigs[jt->second];
+                        newHostConfig.Generation = 1;
+
+                        auto addDrivesFrom = [&](THostConfigId hostConfigId) {
+                            const auto it = hostConfigs.find(hostConfigId);
+                            if (it == hostConfigs.end()) {
+                                throw TExError() << "missing HostConfig for origin/target box";
+                            }
+                            for (const auto& [key, value] : it->second.Drives) {
+                                const THostConfigInfo::TDriveKey newKey{{jt->second, key.Path}};
+                                if (const auto [it, inserted] = newHostConfig.Drives.emplace(newKey, value); !inserted) {
+                                    throw TExError() << "duplicate drives in origin/target host configs";
+                                }
+                            }
+                        };
+                        addDrivesFrom(originValue.HostConfigId);
+                        addDrivesFrom(targetValue.HostConfigId);
+                    }
+                    targetValue.HostConfigId = jt->second;
+                }
             }
         }
-
-        // spin the generation
-        target.Generation = target.Generation.GetOrElse(1) + 1;
 
         auto& storagePools = StoragePools.Unshare();
         auto& storagePoolGroups = StoragePoolGroups.Unshare();
@@ -161,20 +190,18 @@ namespace NKikimr::NBsController {
             storagePools.insert(std::move(node));
 
             // process storage pool to group mapping
-            for (;;) {
-                auto node = storagePoolGroups.extract(origin);
-                if (node.empty()) {
-                    break;
-                }
+            for (auto it = storagePoolGroups.lower_bound({origin, Min<TGroupId>()});
+                    it != storagePoolGroups.end() && it->first == origin; ) {
+                auto node = storagePoolGroups.extract(it++);
 
                 // update storage pool id mapping in group itself
-                TGroupInfo *group = Groups.FindForUpdate(node.mapped());
+                TGroupInfo *group = Groups.FindForUpdate(node.value().second);
                 Y_ABORT_UNLESS(group);
                 Y_ABORT_UNLESS(group->StoragePoolId == origin);
                 group->StoragePoolId = target;
 
                 // update the key and insert item back into map
-                node.key() = target;
+                node.value().first = target;
                 storagePoolGroups.insert(std::move(node));
             }
         }
@@ -209,7 +236,7 @@ namespace NKikimr::NBsController {
             ui32 targetPDiskId = pdiskId.GetPDiskId();
             if (const auto& hostId = state.HostRecords->GetHostId(targetNodeId)) {
                 TPDiskId target(targetNodeId, targetPDiskId);
-                if (state.PDisks.Find(target) && !state.PDisksToRemove.count(target)) {
+                if (state.PDisks.Find(target) && !state.PDisksToRemove.contains(target)) {
                     return target;
                 }
                 throw TExPDiskNotFound(targetNodeId, targetPDiskId);
@@ -228,7 +255,7 @@ namespace NKikimr::NBsController {
                     return *pdiskId;
                 }
             }
-            
+
             throw TExPDiskNotFound(targetFqdn, targetDiskPath);
         }
         throw TExError() << "Either TargetPDiskId or PDiskLocation must be specified";
@@ -249,6 +276,7 @@ namespace NKikimr::NBsController {
             if (slot->Group) {
                 auto *m = VSlots.FindForUpdate(slot->VSlotId);
                 m->VDiskStatus = NKikimrBlobStorage::EVDiskStatus::ERROR;
+                m->OnlyPhantomsRemain = false;
                 m->IsReady = false;
                 TGroupInfo *group = Groups.FindForUpdate(slot->Group->ID);
                 GroupFailureModelChanged.insert(slot->Group->ID);
@@ -273,6 +301,7 @@ namespace NKikimr::NBsController {
                 if (slot->Group) {
                     auto *m = VSlots.FindForUpdate(slot->VSlotId);
                     m->VDiskStatus = NKikimrBlobStorage::EVDiskStatus::ERROR;
+                    m->OnlyPhantomsRemain = false;
                     m->IsReady = false;
                     TGroupInfo *group = Groups.FindForUpdate(slot->Group->ID);
                     GroupFailureModelChanged.insert(slot->Group->ID);
@@ -299,11 +328,78 @@ namespace NKikimr::NBsController {
             if (slot->Group) {
                 auto *m = VSlots.FindForUpdate(slot->VSlotId);
                 m->VDiskStatus = NKikimrBlobStorage::EVDiskStatus::ERROR;
+                m->OnlyPhantomsRemain = false;
                 m->IsReady = false;
                 TGroupInfo *group = Groups.FindForUpdate(slot->Group->ID);
                 GroupFailureModelChanged.insert(slot->Group->ID);
                 group->CalculateGroupStatus();
             }
+        }
+    }
+
+    void TBlobStorageController::TConfigState::ExecuteStep(const NKikimrBlobStorage::TPopulatePDisk& cmd, TStatus& /*status*/) {
+        const TPDiskId destinationPDiskId = GetPDiskId(*this, cmd.GetDestinationPDisk());
+
+        const TPDiskInfo *destinationPDisk = PDisks.Find(destinationPDiskId);
+
+        if (!destinationPDisk) {
+            throw TExPDiskNotFound(destinationPDiskId.NodeId, destinationPDiskId.PDiskId);
+        }
+
+        const bool hasExplicitVDisks = cmd.VDiskIdSize() != 0;
+        if (!hasExplicitVDisks) {
+            throw TExError() << "Specify non-empty VDiskId list";
+        }
+
+        TVector<const TVSlotInfo*> selected;
+        THashSet<TVSlotId> selectedIds;
+
+        selected.reserve(cmd.VDiskIdSize());
+        for (const auto& protoVDiskId : cmd.GetVDiskId()) {
+            const TVDiskID vdiskId = VDiskIDFromVDiskID(protoVDiskId);
+
+            const TGroupInfo *group = Groups.Find(vdiskId.GroupID);
+            if (!group) {
+                throw TExGroupNotFound(vdiskId.GroupID.GetRawId());
+            }
+            if (group->VDisksInGroup.empty()) {
+                throw TExReassignNotViable() << "GroupId# " << group->ID << " has no active VDisks";
+            }
+            if (!group->Topology->IsValidId(vdiskId)) {
+                throw TExError() << "VDiskId# " << vdiskId << " out of range";
+            }
+            if (vdiskId.GroupGeneration && vdiskId.GroupGeneration != group->Generation) {
+                throw TExGroupGenerationMismatch(group->ID.GetRawId(), vdiskId.GroupGeneration, group->Generation);
+            }
+
+            const ui32 orderNumber = group->Topology->GetOrderNumber(vdiskId);
+            const TVSlotInfo *slot = group->VDisksInGroup.at(orderNumber);
+            Y_ABORT_UNLESS(slot);
+
+            if (slot->IsBeingDeleted() || slot->Mood == TMood::Donor) {
+                throw TExReassignNotViable() << "VDiskId# " << vdiskId << " is not movable at the moment";
+            }
+            if (!selectedIds.insert(slot->VSlotId).second) {
+                throw TExError() << "Duplicate VDiskId# " << vdiskId;
+            }
+
+            if (slot->VSlotId.ComprisingPDiskId() != destinationPDiskId) {
+                selected.push_back(slot);
+            }
+        }
+
+        for (const TVSlotInfo *slot : selected) {
+            Y_ABORT_UNLESS(slot->Group);
+            const auto [it, inserted] = ExplicitReconfigureMap.emplace(slot->VSlotId, destinationPDiskId);
+            if (!inserted) {
+                throw TExError() << "VSlotId# " << slot->VSlotId << " is already scheduled for reassignment";
+            }
+
+            if (cmd.GetSuppressDonorMode()) {
+                SuppressDonorMode.insert(slot->VSlotId);
+            }
+
+            Fit.PoolsAndGroups.emplace(slot->Group->StoragePoolId, slot->Group->ID);
         }
     }
 
@@ -341,11 +437,11 @@ namespace NKikimr::NBsController {
         for (const auto& [id, srcSlot] : sourcePDisk->VSlotsOnPDisk) {
             if (srcSlot->Group) {
                 TVDiskIdShort diskId = srcSlot->GetShortVDiskId();
-                
+
                 TVSlotId newSlotId(destinationPDiskId, srcSlot->VSlotId.VSlotId);
 
                 auto* group = Groups.FindForUpdate(srcSlot->Group->ID);
-                
+
                 // Remove source slot from the group, so ConstructInplaceNewEntry can populate it with the new slot.
                 const ui32 orderNumber = group->Topology->GetOrderNumber(diskId);
                 group->VDisksInGroup[orderNumber] = nullptr;
@@ -365,17 +461,17 @@ namespace NKikimr::NBsController {
                         slot->GroupGeneration = group->Generation;
                     }
                 }
-                
+
                 // Create a new slot on the destination PDisk.
                 TVSlotInfo *dstSlot = VSlots.ConstructInplaceNewEntry(newSlotId, newSlotId, destinationPDisk,
                     srcSlot->GroupId, srcSlot->GroupGeneration, group->Generation, srcSlot->Kind, srcSlot->RingIdx,
                     srcSlot->FailDomainIdx, srcSlot->VDiskIdx, TMood::Normal, group, &Self.VSlotReadyTimestampQ,
-                    TInstant::Zero(), TDuration::Zero());
+                    TInstant::Zero(), TDuration::Zero(), 0, 0);
 
                 dstSlot->VDiskStatusTimestamp = Mono;
 
                 UncommittedVSlots.insert(newSlotId);
-                
+
                 // Remove old slot from the source PDisk.
                 VSlots.DeleteExistingEntry(srcSlot->VSlotId);
             }

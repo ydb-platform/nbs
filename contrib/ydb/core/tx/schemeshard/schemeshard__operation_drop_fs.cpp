@@ -1,8 +1,9 @@
-#include "schemeshard__operation_part.h"
 #include "schemeshard__operation_common.h"
+#include "schemeshard__operation_part.h"
 #include "schemeshard_impl.h"
 
 #include <contrib/ydb/core/base/subdomain.h>
+#include <contrib/ydb/core/filestore/core/filestore.h>
 #include <contrib/ydb/core/mind/hive/hive.h>
 
 namespace {
@@ -58,7 +59,7 @@ public:
         context.SS->PersistDropStep(db, pathId, step, OperationId);
         auto domainInfo = context.SS->ResolveDomainInfo(pathId);
         domainInfo->DecPathsInside(context.SS);
-        parentDir->DecAliveChildren();
+        DecAliveChildrenDirect(OperationId, parentDir, context); // for correct discard of ChildrenExist prop
 
         // KIKIMR-13173
         // Repeat it here for a while, delete it from TDeleteParts after

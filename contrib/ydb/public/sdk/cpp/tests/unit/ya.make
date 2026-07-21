@@ -1,0 +1,5 @@
+RECURSE(
+    client
+    library
+    plugins
+)

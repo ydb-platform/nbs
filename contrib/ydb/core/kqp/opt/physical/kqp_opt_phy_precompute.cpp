@@ -1,5 +1,10 @@
 #include "kqp_opt_phy_rules.h"
-#include "kqp_opt_phy_impl.h"
+
+#include <contrib/ydb/core/kqp/expr_nodes/kqp_expr_nodes.h>
+#include <contrib/ydb/library/yql/dq/opt/dq_opt.h>
+#include <contrib/ydb/library/yql/dq/opt/dq_opt_phy.h>
+
+#include <contrib/ydb/library/yql/core/yql_expr_optimize.h>
 
 // Set of rules to avoid additional query phase (physical tx) for results computations on
 // already precomputed inputs.

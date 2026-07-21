@@ -21,16 +21,19 @@ public:
 
     ~TDqComputeStorage();
 
-    NThreading::TFuture<TKey> Put(TRope&& blob);
+    NThreading::TFuture<TKey> Put(TChunkedBuffer&& blob) override;
 
-    NThreading::TFuture<std::optional<TRope>> Get(TKey key);
+    NThreading::TFuture<std::optional<TChunkedBuffer>> Get(TKey key) override;
 
-    NThreading::TFuture<std::optional<TRope>> Extract(TKey key);
+    NThreading::TFuture<std::optional<TChunkedBuffer>> Extract(TKey key) override;
 
-    NThreading::TFuture<void> Delete(TKey key);
+    NThreading::TFuture<void> Delete(TKey key) override;
+
+    void ReportAlloc(ui64 bytes) override;
+    void ReportFree(ui64 bytes) override;
 
 private:
-    NThreading::TFuture<std::optional<TRope>> GetInternal(TKey key, bool removeBlobAfterRead);
+    NThreading::TFuture<std::optional<TChunkedBuffer>> GetInternal(TKey key, bool removeBlobAfterRead);
 
     NActors::TActorSystem* ActorSystem_;
     IDqComputeStorageActor* ComputeStorageActor_;

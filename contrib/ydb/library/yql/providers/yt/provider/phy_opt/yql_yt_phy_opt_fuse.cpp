@@ -4,7 +4,6 @@
 #include <contrib/ydb/library/yql/providers/yt/provider/yql_yt_optimize.h>
 #include <contrib/ydb/library/yql/providers/yt/provider/yql_yt_helpers.h>
 #include <contrib/ydb/library/yql/providers/yt/lib/expr_traits/yql_expr_traits.h>
-#include <contrib/ydb/library/yql/providers/common/provider/yql_provider.h>
 
 #include <contrib/ydb/library/yql/core/yql_opt_utils.h>
 #include <contrib/ydb/library/yql/core/yql_type_helpers.h>
@@ -15,61 +14,6 @@ namespace NYql {
 
 using namespace NNodes;
 using namespace NPrivate;
-
-TMaybe<bool> TYtPhysicalOptProposalTransformer::CanFuseLambdas(const TCoLambda& innerLambda, const TCoLambda& outerLambda, TExprContext& ctx) const {
-    auto maxJobMemoryLimit = State_->Configuration->MaxExtraJobMemoryToFuseOperations.Get();
-    auto maxOperationFiles = State_->Configuration->MaxOperationFiles.Get().GetOrElse(DEFAULT_MAX_OPERATION_FILES);
-    TMap<TStringBuf, ui64> memUsage;
-
-    TExprNode::TPtr updatedBody = innerLambda.Body().Ptr();
-    if (maxJobMemoryLimit) {
-        auto status = UpdateTableContentMemoryUsage(innerLambda.Body().Ptr(), updatedBody, State_, ctx);
-        if (status.Level != TStatus::Ok) {
-            return {};
-        }
-    }
-    size_t innerFiles = 1; // jobstate. Take into account only once
-    ScanResourceUsage(*updatedBody, *State_->Configuration, State_->Types, maxJobMemoryLimit ? &memUsage : nullptr, nullptr, &innerFiles);
-
-    auto prevMemory = Accumulate(memUsage.begin(), memUsage.end(), 0ul,
-        [](ui64 sum, const std::pair<const TStringBuf, ui64>& val) { return sum + val.second; });
-
-    updatedBody = outerLambda.Body().Ptr();
-    if (maxJobMemoryLimit) {
-        auto status = UpdateTableContentMemoryUsage(outerLambda.Body().Ptr(), updatedBody, State_, ctx);
-        if (status.Level != TStatus::Ok) {
-            return {};
-        }
-    }
-    size_t outerFiles = 0;
-    ScanResourceUsage(*updatedBody, *State_->Configuration, State_->Types, maxJobMemoryLimit ? &memUsage : nullptr, nullptr, &outerFiles);
-
-    auto currMemory = Accumulate(memUsage.begin(), memUsage.end(), 0ul,
-        [](ui64 sum, const std::pair<const TStringBuf, ui64>& val) { return sum + val.second; });
-
-    if (maxJobMemoryLimit && currMemory != prevMemory && currMemory > *maxJobMemoryLimit) {
-        YQL_CLOG(DEBUG, ProviderYt) << "Memory usage: innerLambda=" << prevMemory
-            << ", joinedLambda=" << currMemory << ", MaxJobMemoryLimit=" << *maxJobMemoryLimit;
-        return false;
-    }
-    if (innerFiles + outerFiles > maxOperationFiles) {
-        YQL_CLOG(DEBUG, ProviderYt) << "Files usage: innerLambda=" << innerFiles
-            << ", outerLambda=" << outerFiles << ", MaxOperationFiles=" << maxOperationFiles;
-        return false;
-    }
-
-    if (auto maxReplcationFactor = State_->Configuration->MaxReplicationFactorToFuseOperations.Get()) {
-        double replicationFactor1 = NCommon::GetDataReplicationFactor(innerLambda.Ref(), ctx);
-        double replicationFactor2 = NCommon::GetDataReplicationFactor(outerLambda.Ref(), ctx);
-        YQL_CLOG(DEBUG, ProviderYt) << "Replication factors: innerLambda=" << replicationFactor1
-            << ", outerLambda=" << replicationFactor2 << ", MaxReplicationFactorToFuseOperations=" << *maxReplcationFactor;
-
-        if (replicationFactor1 > 1.0 && replicationFactor2 > 1.0 && replicationFactor1 * replicationFactor2 > *maxReplcationFactor) {
-            return false;
-        }
-    }
-    return true;
-}
 
 TMaybeNode<TExprBase> TYtPhysicalOptProposalTransformer::FuseReduce(TExprBase node, TExprContext& ctx, const TGetParents& getParents) const {
     auto outerReduce = node.Cast<TYtReduce>();
@@ -120,9 +64,15 @@ TMaybeNode<TExprBase> TYtPhysicalOptProposalTransformer::FuseReduce(TExprBase no
         !NYql::HasSetting(innerReduce.Settings().Ref(), EYtSettingType::ReduceBy)) {
         return node;
     }
-
     if (NYql::HasSetting(outerReduce.Settings().Ref(), EYtSettingType::SortBy)) {
-        return node;
+        auto innerSortBy = NYql::GetSettingAsColumnList(innerReduce.Settings().Ref(), EYtSettingType::SortBy);
+        auto outerSortBy = NYql::GetSettingAsColumnList(outerReduce.Settings().Ref(), EYtSettingType::SortBy);
+        if (outerSortBy.size() > innerSortBy.size()) {
+            return node;
+        }
+        if (!std::equal(outerSortBy.cbegin(), outerSortBy.cend(), innerSortBy.cbegin())) {
+            return node;
+        }
     }
 
     if (NYql::HasSettingsExcept(innerReduce.Settings().Ref(), EYtSettingType::ReduceBy |
@@ -130,6 +80,7 @@ TMaybeNode<TExprBase> TYtPhysicalOptProposalTransformer::FuseReduce(TExprBase no
                                                              EYtSettingType::Flow |
                                                              EYtSettingType::FirstAsPrimary |
                                                              EYtSettingType::SortBy |
+                                                             EYtSettingType::KeepSorted |
                                                              EYtSettingType::NoDq)) {
         return node;
     }
@@ -138,13 +89,21 @@ TMaybeNode<TExprBase> TYtPhysicalOptProposalTransformer::FuseReduce(TExprBase no
                                                             EYtSettingType::ReduceBy |
                                                             EYtSettingType::FirstAsPrimary |
                                                             EYtSettingType::NoDq |
-                                                            EYtSettingType::SortBy)) {
+                                                            EYtSettingType::SortBy |
+                                                            EYtSettingType::KeepSorted)) {
+        return node;
+    }
+
+    const auto outerReduceBy = NYql::GetSettingAsColumnList(outerReduce.Settings().Ref(), EYtSettingType::ReduceBy);
+    const auto innerReduceBy = NYql::GetSettingAsColumnList(innerReduce.Settings().Ref(), EYtSettingType::ReduceBy);
+
+    if (outerReduceBy.size() != innerReduceBy.size()) {
         return node;
     }
 
     auto innerLambda = innerReduce.Reducer();
     auto outerLambda = outerReduce.Reducer();
-    auto fuseRes = CanFuseLambdas(innerLambda, outerLambda, ctx);
+    auto fuseRes = CanFuseLambdas(innerLambda, outerLambda, ctx, State_);
     if (!fuseRes) {
         // Some error
         return {};
@@ -167,8 +126,6 @@ TMaybeNode<TExprBase> TYtPhysicalOptProposalTransformer::FuseReduce(TExprBase no
     innerLambda = FallbackLambdaOutput(innerLambda, ctx);
     outerLambda = FallbackLambdaInput(outerLambda, ctx);
 
-
-    const auto outerReduceBy = NYql::GetSettingAsColumnList(outerReduce.Settings().Ref(), EYtSettingType::ReduceBy);
     auto reduceByList = [&](TExprNodeBuilder& parent) -> TExprNodeBuilder& {
         size_t index = 0;
         for (const auto& reduceByName: outerReduceBy) {
@@ -181,7 +138,7 @@ TMaybeNode<TExprBase> TYtPhysicalOptProposalTransformer::FuseReduce(TExprBase no
     };
 
     // adds _yql_sys_tablekeyswitch column which is required for outer lambda
-    // _yql_sys_tableswitch equals "true" when reduce key is changed
+    // _yql_sys_tablekeyswitch equals "true" when reduce key is changed
     TExprNode::TPtr keySwitchLambda = ctx.Builder(node.Pos())
         .Lambda()
             .Param("stream")
@@ -227,6 +184,16 @@ TMaybeNode<TExprBase> TYtPhysicalOptProposalTransformer::FuseReduce(TExprBase no
         newSettings = NYql::AddSetting(*newSettings, EYtSettingType::NoDq, {}, ctx);
     }
 
+    if (NYql::HasSetting(outerReduce.Settings().Ref(), EYtSettingType::KeepSorted) &&
+       !NYql::HasSetting(innerReduce.Settings().Ref(), EYtSettingType::KeepSorted)) {
+        newSettings = NYql::AddSetting(*newSettings, EYtSettingType::KeepSorted, {}, ctx);
+    }
+
+    if (!NYql::HasSetting(outerReduce.Settings().Ref(), EYtSettingType::KeepSorted) &&
+       NYql::HasSetting(innerReduce.Settings().Ref(), EYtSettingType::KeepSorted)) {
+        newSettings = NYql::RemoveSettings(*newSettings, EYtSettingType::KeepSorted, ctx);
+    }
+
     return Build<TYtReduce>(ctx, node.Pos())
         .InitFrom(outerReduce)
         .World<TCoSync>()
@@ -248,6 +215,353 @@ TMaybeNode<TExprBase> TYtPhysicalOptProposalTransformer::FuseReduce(TExprBase no
                 .With(TExprBase(placeHolder), "stream")
             .Build()
         .Build()
+        .Settings(newSettings)
+        .Done();
+}
+
+TMaybeNode<TExprBase> TYtPhysicalOptProposalTransformer::FuseReduceWithTrivialMap(TExprBase node, TExprContext& ctx, const TGetParents& getParents) const {
+    const EYtSettingTypes acceptedReduceSettings =
+          EYtSettingType::ReduceBy
+        | EYtSettingType::Limit
+        | EYtSettingType::SortLimitBy
+        | EYtSettingType::SortBy
+        // | EYtSettingType::JoinReduce
+        // | EYtSettingType::FirstAsPrimary
+        | EYtSettingType::Flow
+        | EYtSettingType::KeepSorted
+        | EYtSettingType::KeySwitch
+        // | EYtSettingType::ReduceInputType
+        | EYtSettingType::NoDq;
+
+    const EYtSettingTypes acceptedMapSettings =
+          EYtSettingType::Ordered
+        //| EYtSettingType::Limit
+        //| EYtSettingType::SortLimitBy
+        //| EYtSettingType::WeakFields
+        //| EYtSettingType::Sharded
+        //| EYtSettingType::JobCount
+        | EYtSettingType::Flow
+        | EYtSettingType::KeepSorted
+        | EYtSettingType::NoDq
+        //| EYtSettingType::BlockInputReady
+        //| EYtSettingType::BlockInputApplied
+    ;
+
+    auto outerReduce = node.Cast<TYtReduce>();
+    if (NYql::HasSettingsExcept(outerReduce.Settings().Ref(), acceptedReduceSettings)) {
+        return node;
+    }
+
+    const bool hasKeySwitch = NYql::HasSetting(outerReduce.Settings().Ref(), EYtSettingType::KeySwitch);
+    const bool isFlow = NYql::HasSetting(outerReduce.Settings().Ref(), EYtSettingType::Flow);
+
+    const auto sortBy = NYql::GetSettingAsColumnList(outerReduce.Settings().Ref(), EYtSettingType::SortBy);
+    const auto reduceBy = NYql::GetSettingAsColumnList(outerReduce.Settings().Ref(), EYtSettingType::ReduceBy);
+
+    THashSet<TString> sortOrKeyColumns(sortBy.begin(), sortBy.end());
+    sortOrKeyColumns.insert(reduceBy.begin(), reduceBy.end());
+
+    struct TFused {
+        TYtPath Path;
+        TCoLambda MapLambda;
+        TCoLambda ReduceLambda;
+        TExprBase ReducePlaceholder;
+        size_t InputIndex;
+        size_t OrigInputIndex;
+        TYtMap OrigMap;
+    };
+
+    TExprNode::TPtr origVariantType;
+    if (outerReduce.Input().Size() > 1) {
+        auto itemType = GetSequenceItemType(outerReduce.Reducer().Args().Arg(0), true);
+        YQL_ENSURE(itemType);
+        origVariantType = ExpandType(outerReduce.Pos(), *itemType->Cast<TVariantExprType>(), ctx);
+    }
+
+    TMaybe<TFused> fusedMap;
+    TVector<TYtSection> newInput;
+    const size_t origReduceInputs = outerReduce.Input().Size();
+    for (size_t i = 0; i < origReduceInputs; ++i) {
+        const auto& section = outerReduce.Input().Item(i);
+        if (fusedMap.Defined() || section.Settings().Size() != 0) {
+            newInput.push_back(section);
+            continue;
+        }
+
+        TVector<TYtPath> newPaths;
+        newPaths.reserve(section.Paths().Size());
+        for (const auto& path : section.Paths()) {
+            if (fusedMap.Defined() || !path.Ranges().Maybe<TCoVoid>()) {
+                newPaths.push_back(path);
+                continue;
+            }
+
+            auto maybeInnerMap = path.Table().Maybe<TYtOutput>().Operation().Maybe<TYtMap>();
+            if (!maybeInnerMap) {
+                newPaths.push_back(path);
+                continue;
+            }
+
+            TYtMap innerMap = maybeInnerMap.Cast();
+            if (innerMap.Ref().StartsExecution() ||
+                innerMap.Ref().HasResult() ||
+                outerReduce.DataSink().Cluster().Value() != innerMap.DataSink().Cluster().Value() ||
+                innerMap.Output().Size() > 1 ||
+                innerMap.Input().Size() > 1 ||
+                innerMap.Input().Item(0).Paths().Size() > 1 ||
+                !NYql::HasSetting(innerMap.Settings().Ref(), EYtSettingType::Ordered) ||
+                isFlow != NYql::HasSetting(innerMap.Settings().Ref(), EYtSettingType::Flow) ||
+                NYql::HasSettingsExcept(innerMap.Settings().Ref(), acceptedMapSettings))
+            {
+                newPaths.push_back(path);
+                continue;
+            }
+
+            const TParentsMap* parents = getParents();
+            if (IsOutputUsedMultipleTimes(path.Table().Cast<TYtOutput>().Ref(), *parents)) {
+                // Inner map output is used more than once
+                newPaths.push_back(path);
+                continue;
+            }
+
+            // Check world dependencies
+            auto parentsIt = parents->find(innerMap.Raw());
+            YQL_ENSURE(parentsIt != parents->cend());
+            if (!AllOf(parentsIt->second, [](const TExprNode* dep) { return TYtOutput::Match(dep); })) {
+                newPaths.push_back(path);
+                continue;
+            }
+
+            const TCoLambda mapLambda = innerMap.Mapper();
+            auto maybeFlatMap = GetFlatMapOverInputStream(mapLambda, *parents);
+            TMaybe<THashSet<TStringBuf>> passthrough;
+            if (!maybeFlatMap.Maybe<TCoOrderedFlatMap>() ||
+                !IsJustOrSingleAsList(maybeFlatMap.Cast().Lambda().Body().Ref()) ||
+                !IsPassthroughFlatMap(maybeFlatMap.Cast(), &passthrough) ||
+                !passthrough ||
+                !AllOf(sortOrKeyColumns, [&](const TString& col) { return passthrough->contains(col); }))
+            {
+                newPaths.push_back(path);
+                continue;
+            }
+
+            auto fuseRes = CanFuseLambdas(mapLambda, outerReduce.Reducer(), ctx, State_);
+            if (!fuseRes) {
+                // Some error
+                return {};
+            }
+            if (!*fuseRes) {
+                // Cannot fuse
+                newPaths.push_back(path);
+                continue;
+            }
+
+            auto [placeHolder, lambdaWithPlaceholder] = ReplaceDependsOn(outerReduce.Reducer().Ptr(), ctx, State_->Types);
+            if (!placeHolder) {
+                return {};
+            }
+
+            TYtPath newPath = innerMap.Input().Item(0).Paths().Item(0);
+            YQL_ENSURE(newInput.size() == i);
+            if (!newPaths.empty()) {
+                newInput.push_back(
+                    Build<TYtSection>(ctx, section.Pos())
+                        .InitFrom(section)
+                        .Paths()
+                            .Add(newPaths)
+                        .Build()
+                        .Done());
+                newPaths.clear();
+            }
+            size_t inputIndex = newInput.size();
+            newInput.push_back(
+                Build<TYtSection>(ctx, section.Pos())
+                    .InitFrom(section)
+                    .Paths()
+                        .Add(newPath)
+                    .Build()
+                    .Done());
+            fusedMap = {
+                .Path = newPath,
+                .MapLambda = mapLambda,
+                .ReduceLambda = TCoLambda(lambdaWithPlaceholder),
+                .ReducePlaceholder = TExprBase(placeHolder),
+                .InputIndex = inputIndex,
+                .OrigInputIndex = i,
+                .OrigMap = innerMap,
+            };
+        }
+        if (!newPaths.empty()) {
+            newInput.push_back(
+                Build<TYtSection>(ctx, section.Pos())
+                    .InitFrom(section)
+                    .Paths()
+                        .Add(newPaths)
+                    .Build()
+                    .Done());
+        }
+    }
+
+    if (!fusedMap) {
+        return node;
+    }
+
+    YQL_ENSURE(newInput.size() >= origReduceInputs);
+    // one section can be rewritten into 3:
+    // (ABA) -> (A), (C), (A)
+    YQL_ENSURE(newInput.size() - origReduceInputs <= 2);
+
+    TExprNode::TPtr remapLambda = ctx.Builder(fusedMap->MapLambda.Pos())
+        .Lambda()
+            .Param("item")
+            .Apply(fusedMap->MapLambda.Ptr())
+                .With(0)
+                    .Callable("AsList")
+                        .Arg(0, "item")
+                    .Seal()
+                .Done()
+            .Seal()
+        .Seal()
+        .Build();
+    if (hasKeySwitch) {
+        remapLambda = ctx.Builder(fusedMap->MapLambda.Pos())
+            .Lambda()
+                .Param("item")
+                .Callable(0, "OrderedMap")
+                    .Apply(0, remapLambda)
+                        .With(0)
+                            .Callable("RemoveMember")
+                                .Arg(0, "item")
+                                .Atom(1, "_yql_sys_tablekeyswitch")
+                            .Seal()
+                        .Done()
+                    .Seal()
+                    .Lambda(1)
+                        .Param("remappedItem")
+                        .Callable(0, "AddMember")
+                            .Arg(0, "remappedItem")
+                            .Atom(1, "_yql_sys_tablekeyswitch")
+                            .Callable(2, "Member")
+                                .Arg(0, "item")
+                                .Atom(1, "_yql_sys_tablekeyswitch")
+                            .Seal()
+                        .Seal()
+                    .Seal()
+                .Seal()
+            .Seal()
+            .Build();
+    }
+
+    TExprNode::TPtr flatMapLambda;
+    if (newInput.size() == 1) {
+        flatMapLambda = remapLambda;
+    } else {
+        flatMapLambda = ctx.Builder(outerReduce.Pos())
+            .Lambda()
+                .Param("item")
+                .Callable("Visit")
+                    .Arg(0, "item")
+                    .Do([&](TExprNodeBuilder& parent) -> TExprNodeBuilder& {
+                        for (size_t i = 0; i < newInput.size(); ++i) {
+                            TString paramName = TStringBuilder() << "alt" << i;
+                            TString remappedName = TStringBuilder() << "remapped" << i;
+                            if (i != fusedMap->InputIndex) {
+                                size_t origInputIndex = i;
+                                if (i > fusedMap->InputIndex) {
+                                    size_t delta = newInput.size() - origReduceInputs;
+                                    YQL_ENSURE(i >= delta);
+                                    origInputIndex = i - delta;
+                                }
+                                parent
+                                    .Atom(2 * i + 1, i)
+                                    .Lambda(2 * i + 2)
+                                        .Param(paramName)
+                                        .Callable("AsList")
+                                            .Do([&](TExprNodeBuilder& parent) -> TExprNodeBuilder& {
+                                                if (origVariantType) {
+                                                    parent
+                                                        .Callable(0, "Variant")
+                                                            .Arg(0, paramName)
+                                                            .Atom(1, origInputIndex)
+                                                            .Add(2, origVariantType)
+                                                        .Seal();
+                                                } else {
+                                                    parent
+                                                        .Arg(0, paramName);
+                                                }
+                                                return parent;
+                                            })
+                                        .Seal()
+                                    .Seal();
+                            } else {
+                                parent
+                                    .Atom(2 * i + 1, i)
+                                    .Lambda(2 * i + 2)
+                                        .Param(paramName)
+                                        .Callable("OrderedMap")
+                                            .Apply(0, remapLambda)
+                                                .With(0, paramName)
+                                            .Seal()
+                                            .Lambda(1)
+                                                .Param(remappedName)
+                                                .Do([&](TExprNodeBuilder& parent) -> TExprNodeBuilder& {
+                                                    if (origVariantType) {
+                                                        parent
+                                                            .Callable("Variant")
+                                                                .Arg(0, remappedName)
+                                                                .Atom(1, fusedMap->OrigInputIndex)
+                                                                .Add(2, origVariantType)
+                                                            .Seal();
+                                                    } else {
+                                                        parent
+                                                            .Arg(remappedName);
+                                                    }
+                                                    return parent;
+                                                })
+                                            .Seal()
+                                        .Seal()
+                                    .Seal();
+                            }
+                        }
+                        return parent;
+                    })
+                .Seal()
+            .Seal()
+            .Build();
+    }
+
+    TExprNode::TPtr newReduceLambda = ctx.Builder(outerReduce.Pos())
+        .Lambda()
+            .Param("inputStream")
+            .Apply(0, fusedMap->ReduceLambda.Ptr())
+                .With(0)
+                    .Callable("OrderedFlatMap")
+                        .Arg(0, "inputStream")
+                        .Add(1, flatMapLambda)
+                    .Seal()
+                .Done()
+                .WithNode(fusedMap->ReducePlaceholder.Ref(), "inputStream")
+            .Seal()
+        .Seal()
+        .Build();
+
+    auto newSettings = outerReduce.Settings().Ptr();
+    if (!NYql::HasSetting(outerReduce.Settings().Ref(), EYtSettingType::NoDq) &&
+        NYql::HasSetting(fusedMap->OrigMap.Settings().Ref(), EYtSettingType::NoDq))
+    {
+        newSettings = NYql::AddSetting(*newSettings, EYtSettingType::NoDq, {}, ctx);
+    }
+
+    return Build<TYtReduce>(ctx, node.Pos())
+        .InitFrom(outerReduce)
+        .World<TCoSync>()
+            .Add(fusedMap->OrigMap.World())
+            .Add(outerReduce.World())
+        .Build()
+        .Input()
+            .Add(newInput)
+        .Build()
+        .Reducer(newReduceLambda)
         .Settings(newSettings)
         .Done();
 }
@@ -278,7 +592,7 @@ TMaybeNode<TExprBase> TYtPhysicalOptProposalTransformer::FuseInnerMap(TExprBase 
         return node;
     }
     if (NYql::HasAnySetting(outerMap.Input().Item(0).Settings().Ref(),
-        EYtSettingType::Take | EYtSettingType::Skip | EYtSettingType::DirectRead | EYtSettingType::Sample | EYtSettingType::SysColumns))
+        EYtSettingType::Take | EYtSettingType::Skip | EYtSettingType::DirectRead | EYtSettingType::Sample | EYtSettingType::SysColumns | EYtSettingType::BlockInputApplied | EYtSettingType::BlockOutputApplied))
     {
         return node;
     }
@@ -316,7 +630,7 @@ TMaybeNode<TExprBase> TYtPhysicalOptProposalTransformer::FuseInnerMap(TExprBase 
         return node;
     }
 
-    auto fuseRes = CanFuseLambdas(innerLambda, outerLambda, ctx);
+    auto fuseRes = CanFuseLambdas(innerLambda, outerLambda, ctx, State_);
     if (!fuseRes) {
         // Some error
         return {};
@@ -370,7 +684,7 @@ TMaybeNode<TExprBase> TYtPhysicalOptProposalTransformer::FuseInnerMap(TExprBase 
     }
 
     const auto mergedSettings = MergeSettings(
-        *NYql::RemoveSettings(outerMap.Settings().Ref(), EYtSettingType::Flow, ctx),
+        *NYql::RemoveSettings(outerMap.Settings().Ref(), EYtSettingType::Flow | EYtSettingType::BlockInputReady | EYtSettingType::BlockOutputReady, ctx),
         *NYql::RemoveSettings(innerMap.Settings().Ref(), EYtSettingType::Ordered | EYtSettingType::KeepSorted, ctx), ctx);
 
     return Build<TYtMap>(ctx, node.Pos())
@@ -423,7 +737,7 @@ TMaybeNode<TExprBase> TYtPhysicalOptProposalTransformer::FuseOuterMap(TExprBase 
     if (NYql::HasAnySetting(inner.Settings().Ref(), EYtSettingType::Limit | EYtSettingType::SortLimitBy | EYtSettingType::JobCount)) {
         return node;
     }
-    if (NYql::HasSetting(outerMap.Settings().Ref(), EYtSettingType::JobCount)) {
+    if (NYql::HasAnySetting(outerMap.Settings().Ref(), EYtSettingType::JobCount | EYtSettingType::BlockInputApplied | EYtSettingType::BlockOutputApplied)) {
         return node;
     }
     if (outerMap.Input().Item(0).Settings().Size() != 0) {
@@ -464,7 +778,7 @@ TMaybeNode<TExprBase> TYtPhysicalOptProposalTransformer::FuseOuterMap(TExprBase 
 
     auto lambda = inner.Maybe<TYtMapReduce>() ? inner.Cast<TYtMapReduce>().Reducer() : inner.Cast<TYtReduce>().Reducer();
 
-    auto fuseRes = CanFuseLambdas(lambda, outerLambda, ctx);
+    auto fuseRes = CanFuseLambdas(lambda, outerLambda, ctx, State_);
     if (!fuseRes) {
         // Some error
         return {};
@@ -521,7 +835,12 @@ TMaybeNode<TExprBase> TYtPhysicalOptProposalTransformer::FuseOuterMap(TExprBase 
         lambda.Ptr());
     res = ctx.ChangeChild(*res, TYtWithUserJobsOpBase::idx_Output, outerMap.Output().Ptr());
 
-    auto mergedSettings = NYql::RemoveSettings(outerMap.Settings().Ref(), EYtSettingType::Ordered | EYtSettingType::Sharded | EYtSettingType::Flow, ctx);
+    EYtSettingTypes toRemove = EYtSettingType::Ordered | EYtSettingType::Sharded | EYtSettingType::Flow | EYtSettingType::BlockInputReady | EYtSettingType::BlockOutputReady;
+    if (inner.Maybe<TYtMapReduce>()) {
+        // Can be safely removed, because outer map has no sorted outputs (checked below)
+        toRemove |= EYtSettingType::KeepSorted;
+    }
+    auto mergedSettings = NYql::RemoveSettings(outerMap.Settings().Ref(), toRemove, ctx);
     mergedSettings = MergeSettings(inner.Settings().Ref(), *mergedSettings, ctx);
     res = ctx.ChangeChild(*res, TYtWithUserJobsOpBase::idx_Settings, std::move(mergedSettings));
     res = ctx.ChangeChild(*res, TYtWithUserJobsOpBase::idx_World,
@@ -533,4 +852,8 @@ TMaybeNode<TExprBase> TYtPhysicalOptProposalTransformer::FuseOuterMap(TExprBase 
     return TExprBase(res);
 }
 
-}  // namespace NYql
+TMaybeNode<TExprBase> TYtPhysicalOptProposalTransformer::FuseMapToMapReduce(TExprBase node, TExprContext& ctx, const TGetParents& getParents) const {
+    return NYql::FuseMapToMapReduce(node, ctx, getParents, State_);
+}
+
+} // namespace NYql

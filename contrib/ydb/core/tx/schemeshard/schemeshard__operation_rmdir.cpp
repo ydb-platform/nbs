@@ -1,5 +1,7 @@
+#include "schemeshard__operation_common.h"
 #include "schemeshard__operation_part.h"
 #include "schemeshard_impl.h"
+#include "schemeshard_private.h"
 
 namespace {
 
@@ -154,9 +156,11 @@ public:
         Y_ABORT_UNLESS(!path->Dropped());
         path->SetDropped(step, OperationId.GetTxId());
         context.SS->PersistDropStep(db, pathId, step, OperationId);
+
+        const EPathCategory pathCategory = path->IsSystemDirectory() ? EPathCategory::System : EPathCategory::Regular;
         auto domainInfo = context.SS->ResolveDomainInfo(pathId);
-        domainInfo->DecPathsInside(context.SS);
-        parentDir->DecAliveChildren();
+        domainInfo->DecPathsInside(context.SS, 1, pathCategory);
+        DecAliveChildrenDirect(OperationId, parentDir, context); // for correct discard of ChildrenExist prop
 
         ++parentDir->DirAlterVersion;
         context.SS->PersistPathDirAlterVersion(db, parentDir);

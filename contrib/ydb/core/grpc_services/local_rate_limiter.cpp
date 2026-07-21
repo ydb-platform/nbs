@@ -13,7 +13,8 @@ TActorId RateLimiterAcquireUseSameMailbox(
     const TDuration& duration,
     std::function<void()>&& onSuccess,
     std::function<void()>&& onTimeout,
-    const TActorContext& ctx)
+    const TActorContext& ctx,
+    NWilson::TTraceId traceId)
 {
     auto cb = [onSuccess{std::move(onSuccess)}, onTimeout{std::move(onTimeout)}]
         (const Ydb::RateLimiter::AcquireResourceResponse& resp)
@@ -43,7 +44,8 @@ TActorId RateLimiterAcquireUseSameMailbox(
         fullPath.DatabaseName,
         fullPath.Token,
         std::move(cb),
-        ctx);
+        ctx,
+        std::move(traceId));
 }
 
 TActorId RateLimiterAcquireUseSameMailbox(
@@ -51,10 +53,11 @@ TActorId RateLimiterAcquireUseSameMailbox(
     const TString& database,
     const TString& token,
     std::function<void(Ydb::RateLimiter::AcquireResourceResponse resp)>&& cb,
-    const TActorContext& ctx)
+    const TActorContext& ctx,
+    NWilson::TTraceId traceId)
 {
     return DoLocalRpcSameMailbox<NKikimr::NGRpcService::TEvAcquireRateLimiterResource>(
-        std::move(request), std::move(cb), database, token, ctx);
+        std::move(request), std::move(cb), database, token, ctx, false, std::move(traceId));
 }
 
 TActorId RateLimiterAcquireUseSameMailbox(
@@ -63,7 +66,8 @@ TActorId RateLimiterAcquireUseSameMailbox(
     const TDuration& duration,
     std::function<void()>&& onSuccess,
     std::function<void()>&& onTimeout,
-    const TActorContext& ctx)
+    const TActorContext& ctx,
+    NWilson::TTraceId traceId)
 {
     if (const auto maybeRlPath = reqCtx.GetRlPath()) {
         auto cb = [onSuccess{std::move(onSuccess)}, onTimeout{std::move(onTimeout)}]
@@ -92,10 +96,11 @@ TActorId RateLimiterAcquireUseSameMailbox(
         request.set_required(required);
         return RateLimiterAcquireUseSameMailbox(
             std::move(request),
-            reqCtx.GetDatabaseName().GetOrElse(""),
+            rlPath.DatabaseName,
             reqCtx.GetSerializedToken(),
             std::move(cb),
-            ctx);
+            ctx,
+            std::move(traceId));
     }
     return {};
 }
@@ -125,7 +130,7 @@ static void Fill(const TRlConfig::TOnRespAction&,
     res.push_back({Actions::OnResp, request});
 }
 
-TMaybe<TRlPath> Match(const TRlConfig& rlConfig, const THashMap<TString, TString>& attrs) {
+TMaybe<TRlPath> MakeRlPath(const TString& database, const TRlConfig& rlConfig, const THashMap<TString, TString>& attrs) {
     const auto coordinationNodeIt = attrs.find(rlConfig.CoordinationNodeKey);
     if (coordinationNodeIt == attrs.end()) {
         return {};
@@ -136,7 +141,7 @@ TMaybe<TRlPath> Match(const TRlConfig& rlConfig, const THashMap<TString, TString
         return {};
     }
 
-    return TRlPath{coordinationNodeIt->second, rlResourcePathIt->second};
+    return TRlPath{database, coordinationNodeIt->second, rlResourcePathIt->second};
 }
 
 TVector<std::pair<Actions, Ydb::RateLimiter::AcquireResourceRequest>> MakeRequests(

@@ -1,6 +1,7 @@
 #include "result_aggregator.h"
 #include "result_receiver.h"
 
+#include <contrib/ydb/library/yql/dq/common/rope_over_buffer.h>
 #include <contrib/ydb/library/yql/providers/dq/actors/events.h>
 #include <contrib/ydb/library/yql/providers/dq/actors/executer_actor.h>
 #include <contrib/ydb/library/yql/providers/dq/actors/result_actor_base.h>
@@ -70,7 +71,7 @@ public:
 
 public:
     STFUNC(Handler) {
-        switch (const ui32 etype = ev->GetTypeRewrite()) {
+        switch (ev->GetTypeRewrite()) {
             HFunc(TEvPullDataResponse, OnPullResponse);
             cFunc(TEvents::TEvWakeup::EventType, OnWakeup)
             sFunc(TEvMessageProcessed, OnMessageProcessed)
@@ -83,7 +84,7 @@ public:
     }
 
     STFUNC(ShutdownHandler) {
-        switch (const ui32 etype = ev->GetTypeRewrite()) {
+        switch (ev->GetTypeRewrite()) {
             sFunc(TEvMessageProcessed, OnMessageProcessed);
             default:
                 TBase::ShutdownHandlerBase(ev);
@@ -185,7 +186,7 @@ private:
         TDqSerializedBatch batch;
         batch.Proto = std::move(*response.MutableData());
         if (batch.Proto.HasPayloadId()) {
-            batch.Payload = ev->Get()->GetPayload(batch.Proto.GetPayloadId());
+            batch.Payload = MakeChunkedBuffer(ev->Get()->GetPayload(batch.Proto.GetPayloadId()));
         }
 
         // guid here is redundant and serves only for logic validation
@@ -202,45 +203,6 @@ private:
     bool PingRequested = false;
     NActors::TSchedulerCookieHolder TimerCookieHolder;
     bool Continue;
-};
-
-class TResultPrinter: public TActor<TResultPrinter> {
-public:
-    static constexpr char ActorName[] = "YQL_DQ_RESULT_PRINTER";
-
-    TResultPrinter(IOutputStream& output, NThreading::TPromise<void>& promise)
-        : TActor<TResultPrinter>(&TResultPrinter::Handler)
-        , Output(output)
-        , Promise(promise)
-    {
-    }
-
-private:
-    STRICT_STFUNC(Handler, { HFunc(TEvQueryResponse, OnQueryResult); })
-
-    void OnQueryResult(TEvQueryResponse::TPtr& ev, const TActorContext&) {
-        if (!ev->Get()->Record.HasResultSet()&&ev->Get()->Record.GetYson().empty()) {
-            NYql::TIssues issues;
-            NYql::IssuesFromMessage(ev->Get()->Record.GetIssues(), issues);
-            Cerr << issues.ToString() << Endl;
-        } else {
-            auto ysonString = !ev->Get()->Record.GetYson().empty()
-                ? ev->Get()->Record.GetYson()
-                : NYdb::FormatResultSetYson(ev->Get()->Record.GetResultSet(), NYson::EYsonFormat::Binary);
-            auto ysonNode = NYT::NodeFromYsonString(ysonString, NYson::EYsonType::Node);
-            YQL_ENSURE(ysonNode.GetType() == NYT::TNode::EType::List);
-            for (const auto& row : ysonNode.AsList()) {
-                Output << NYT::NodeToYsonString(row) << "\n";
-            }
-        }
-
-        Promise.SetValue();
-        PassAway();
-    }
-
-private:
-    IOutputStream& Output;
-    NThreading::TPromise<void>& Promise;
 };
 
 } // unnamed

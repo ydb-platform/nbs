@@ -4,7 +4,6 @@
 #include <contrib/ydb/core/base/tablet_types.h>
 #include <contrib/ydb/core/protos/tx.pb.h>
 #include <contrib/ydb/core/protos/subdomains.pb.h>
-#include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/core/base/appdata.h>
 
 #include <contrib/ydb/library/actors/core/event_pb.h>
@@ -240,7 +239,7 @@ struct TTestTxConfig {
     static constexpr ui64 UseLessId = 0xFFFFFFFFFFFFFFF;
 };
 
-struct TEvSubDomain {
+namespace TEvSubDomain {
     enum EEv {
         EvConfigure = EventSpaceBegin(TKikimrEvents::ES_SUB_DOMAIN),
         EvConfigureStatus,

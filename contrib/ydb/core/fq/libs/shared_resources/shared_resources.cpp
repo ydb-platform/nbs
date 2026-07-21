@@ -2,12 +2,13 @@
 
 #include <contrib/ydb/core/fq/libs/events/events.h>
 #include <contrib/ydb/library/actors/core/actorsystem.h>
+#include <contrib/ydb/library/db_pool/protos/config.pb.h>
 #include <contrib/ydb/library/logger/actor.h>
 #include <contrib/ydb/library/services/services.pb.h>
 
 #include <contrib/ydb/public/api/protos/ydb_discovery.pb.h>
-#include <contrib/ydb/public/sdk/cpp/client/extensions/discovery_mutator/discovery_mutator.h>
-#include <contrib/ydb/public/sdk/cpp/client/extensions/solomon_stats/pull_client.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/extensions/discovery_mutator/discovery_mutator.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/extensions/solomon_stats/pull_client.h>
 
 #include <util/generic/cast.h>
 #include <util/generic/strbuf.h>
@@ -84,7 +85,7 @@ struct TYqSharedResourcesImpl : public TActorSystemPtrMixin, public TYqSharedRes
             cfg.SetGrpcMemoryQuota(config.GetGrpcMemoryQuota());
         }
         cfg.SetDiscoveryMode(NYdb::EDiscoveryMode::Async); // We are in actor system!
-        cfg.SetLog(MakeHolder<NKikimr::TDeferredActorLogBackend>(ActorSystemPtr, NKikimrServices::EServiceKikimr::YDB_SDK));
+        cfg.SetLog(std::make_unique<NKikimr::TDeferredActorLogBackend>(ActorSystemPtr, NKikimrServices::EServiceKikimr::YDB_SDK));
         return cfg;
     }
 

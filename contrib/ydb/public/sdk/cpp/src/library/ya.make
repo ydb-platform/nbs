@@ -1,0 +1,13 @@
+RECURSE(
+    decimal
+    grpc/client
+    issue
+    jwt
+    kafka
+    operation_id
+    persqueue/obfuscate
+    persqueue/topic_parser_public
+    string_utils/helpers
+    time
+    uuid
+)

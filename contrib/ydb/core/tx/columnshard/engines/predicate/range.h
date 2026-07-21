@@ -1,24 +1,25 @@
 #pragma once
 #include "container.h"
-#include <contrib/ydb/core/tx/columnshard/engines/portion_info.h>
-#include <contrib/ydb/core/tx/columnshard/engines/index_info.h>
+
+#include <contrib/ydb/core/tx/columnshard/engines/portions/portion_info.h>
+#include <contrib/ydb/core/tx/columnshard/engines/scheme/index_info.h>
 
 namespace NKikimr::NOlap {
 
-class TPKRangeFilter {
+class TPKRangeFilter: public TMoveOnly {
 private:
     TPredicateContainer PredicateFrom;
     TPredicateContainer PredicateTo;
-    TPKRangeFilter(TPredicateContainer&& f, TPredicateContainer&& t)
-        : PredicateFrom(std::move(f))
-        , PredicateTo(std::move(t)) {
-    }
+    TPKRangeFilter(TPredicateContainer&& f, TPredicateContainer&& t);
 
 public:
+    TPKRangeFilter& operator=(TPKRangeFilter&& rhs);
 
-    bool IsEmpty() const {
-        return PredicateFrom.IsEmpty() && PredicateTo.IsEmpty();
-    }
+    TPKRangeFilter(TPKRangeFilter&& rhs);
+
+    bool IsEmpty() const;
+
+    bool IsPointRange(const std::shared_ptr<arrow::Schema>& pkSchema) const;
 
     const TPredicateContainer& GetPredicateFrom() const {
         return PredicateFrom;
@@ -30,22 +31,20 @@ public:
 
     static TConclusion<TPKRangeFilter> Build(TPredicateContainer&& from, TPredicateContainer&& to);
 
-    NArrow::TColumnFilter BuildFilter(const arrow::Datum& data) const;
-
-    bool IsPortionInUsage(const TPortionInfo& info) const;
-    bool CheckPoint(const NArrow::TReplaceKey& point) const;
+    bool IsUsed(const TPortionInfo& info) const;
+    bool CheckPoint(const NArrow::NMerger::TSortableBatchPosition& point) const;
 
     enum class EUsageClass {
-        DontUsage,
+        NoUsage,
         PartialUsage,
         FullUsage
     };
 
-    EUsageClass IsPortionInPartialUsage(const NArrow::TReplaceKey& start, const NArrow::TReplaceKey& end) const;
+    EUsageClass GetUsageClass(const NArrow::NMerger::TSortableBatchPosition& start, const NArrow::NMerger::TSortableBatchPosition& end) const;
 
     std::set<ui32> GetColumnIds(const TIndexInfo& indexInfo) const;
     TString DebugString() const;
     std::set<std::string> GetColumnNames() const;
 };
 
-}
+}   // namespace NKikimr::NOlap

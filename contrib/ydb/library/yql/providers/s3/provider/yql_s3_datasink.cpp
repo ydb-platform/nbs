@@ -1,4 +1,5 @@
 #include "yql_s3_provider_impl.h"
+#include "yql_s3_datasink_constraints.h"
 #include "yql_s3_dq_integration.h"
 
 #include <contrib/ydb/library/yql/core/expr_nodes/yql_expr_nodes.h>
@@ -29,14 +30,16 @@ void ScanPlanDependencies(const TExprNode::TPtr& input, TExprNode::TListType& ch
 
 class TS3DataSinkProvider : public TDataProviderBase {
 public:
-    TS3DataSinkProvider(TS3State::TPtr state)
-        : State_(state)
+    explicit TS3DataSinkProvider(TS3State::TPtr state)
+        : State_(std::move(state))
         , TypeAnnotationTransformer_(CreateS3DataSinkTypeAnnotationTransformer(State_))
         , ExecutionTransformer_(CreateS3DataSinkExecTransformer(State_))
         , LogicalOptProposalTransformer_(CreateS3LogicalOptProposalTransformer(State_))
         , PhysicalOptProposalTransformer_(CreateS3PhysicalOptProposalTransformer(State_))
         , DqIntegration_(CreateS3DqIntegration(State_))
+        , ConstraintsTransformer_(CreateS3DataSinkConstraintTransformer(State_))
     {}
+
 private:
     TStringBuf GetName() const override {
         return S3ProviderName;
@@ -53,6 +56,11 @@ private:
     IGraphTransformer& GetTypeAnnotationTransformer(bool instantOnly) override {
         Y_UNUSED(instantOnly);
         return *TypeAnnotationTransformer_;
+    }
+
+    IGraphTransformer& GetConstraintTransformer(bool instantOnly, bool subGraph) override {
+        Y_UNUSED(instantOnly, subGraph);
+        return *ConstraintsTransformer_;
     }
 
     IGraphTransformer& GetCallableExecutionTransformer() override {
@@ -90,12 +98,19 @@ private:
     TExprNode::TPtr RewriteIO(const TExprNode::TPtr& write, TExprContext& ctx) override {
         const TS3Write w(write);
         auto settings = write->Tail().ChildrenList();
+
+        TExprNode::TPtr format = ExtractFormat(settings);
+        if (!format) {
+            ctx.AddError(TIssue(ctx.GetPosition(write->Pos()), "No write format specified. Please use WITH FORMAT for writing into S3"));
+            return nullptr;
+        }
+
         return Build<TS3WriteObject>(ctx, w.Pos())
                 .World(w.World())
                 .DataSink(w.DataSink())
                 .Target<TS3Target>()
                     .Path(write->Child(2U)->Head().Tail().HeadPtr())
-                    .Format(ExtractFormat(settings))
+                    .Format(std::move(format))
                     .Settings(ctx.NewList(w.Pos(), std::move(settings)))
                     .Build()
                 .Input(write->ChildPtr(3))
@@ -136,9 +151,10 @@ private:
     const THolder<IGraphTransformer> LogicalOptProposalTransformer_;
     const THolder<IGraphTransformer> PhysicalOptProposalTransformer_;
     const THolder<IDqIntegration> DqIntegration_;
+    const TAutoPtr<IGraphTransformer> ConstraintsTransformer_;
 };
 
-}
+} // anonymous namespace
 
 TIntrusivePtr<IDataProvider> CreateS3DataSink(TS3State::TPtr state) {
     return new TS3DataSinkProvider(std::move(state));

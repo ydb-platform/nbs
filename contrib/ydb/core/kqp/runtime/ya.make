@@ -1,11 +1,15 @@
 LIBRARY()
 
 SRCS(
+    kqp_arrow_memory_pool.cpp
+    kqp_buffer_lock_actor.cpp
+    kqp_buffer_lookup_actor.cpp
     kqp_compute.cpp
-    kqp_effects.cpp
-    kqp_output_stream.cpp
+    kqp_full_text_source.cpp
+    kqp_sys_view_source.cpp
+    kqp_fulltext_analyze.cpp
+    kqp_stream_enumerate.cpp
     kqp_program_builder.cpp
-    kqp_compute_scheduler.cpp
     kqp_read_actor.cpp
     kqp_read_iterator_common.cpp
     kqp_read_table.cpp
@@ -14,38 +18,60 @@ SRCS(
     kqp_sequencer_actor.cpp
     kqp_sequencer_factory.cpp
     kqp_scan_data_meta.cpp
+    kqp_stream_lookup_join_helpers.cpp
     kqp_stream_lookup_actor.cpp
     kqp_stream_lookup_actor.h
     kqp_stream_lookup_factory.cpp
     kqp_stream_lookup_factory.h
     kqp_stream_lookup_worker.cpp
     kqp_stream_lookup_worker.h
-    kqp_tasks_runner.cpp
+    kqp_stream_lock_worker.cpp
+    kqp_stream_lock_worker.h
     kqp_transport.cpp
+    kqp_vector_index_levels_cache.cpp
+    kqp_vector_index_levels_cache.h
+    kqp_vector_actor.cpp
     kqp_write_actor_settings.cpp
     kqp_write_actor.cpp
     kqp_write_table.cpp
+
+    scheduler/kqp_compute_scheduler_service.cpp
+    scheduler/kqp_schedulable_actor.cpp
+    scheduler/kqp_schedulable_read.cpp
+    scheduler/kqp_schedulable_task.cpp
+    scheduler/tree/dynamic.cpp
+    scheduler/tree/snapshot.cpp
 )
 
 PEERDIR(
     contrib/libs/apache/arrow
+    library/cpp/regex/pire
+    library/cpp/threading/hot_swap
     contrib/ydb/core/actorlib_impl
     contrib/ydb/core/base
+    contrib/ydb/library/json_index
     contrib/ydb/core/engine
     contrib/ydb/core/engine/minikql
     contrib/ydb/core/formats
     contrib/ydb/core/kqp/common
+    contrib/ydb/core/kqp/common/buffer
+    contrib/ydb/core/mon
+    contrib/ydb/core/persqueue/events
+    contrib/ydb/core/persqueue/public
     contrib/ydb/core/protos
     contrib/ydb/core/scheme
+    contrib/ydb/core/tx/scheme_board
     contrib/ydb/core/ydb_convert
-    contrib/ydb/library/yql/minikql/computation/llvm14
-    contrib/ydb/library/yql/minikql/comp_nodes
-    contrib/ydb/library/yql/utils
+    contrib/ydb/library/aclib
+    contrib/ydb/library/yql/dq/actors
     contrib/ydb/library/yql/dq/actors/protos
     contrib/ydb/library/yql/dq/actors/spilling
     contrib/ydb/library/yql/dq/common
     contrib/ydb/library/yql/dq/runtime
-    library/cpp/threading/hot_swap
+    contrib/ydb/library/yql/minikql/computation/llvm16
+    contrib/ydb/library/yql/minikql/comp_nodes
+    contrib/ydb/library/yql/utils
+    contrib/ydb/core/kqp/common/result_set_format
 )
 
 YQL_LAST_ABI_VERSION()

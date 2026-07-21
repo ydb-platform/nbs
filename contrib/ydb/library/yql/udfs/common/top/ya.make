@@ -1,10 +1,3 @@
-IF (YQL_PACKAGED)
-    PACKAGE()
-        FROM_SANDBOX(FILE {FILE_RESOURCE_ID} OUT_NOAUTO
-            libtop_udf.so
-        )
-    END()
-ELSE ()
 YQL_UDF_CONTRIB(top_udf)
     
     YQL_ABI_VERSION(
@@ -12,7 +5,7 @@ YQL_UDF_CONTRIB(top_udf)
         28
         0
     )
-    
+
     SRCS(
         top_udf.cpp
     )
@@ -22,8 +15,6 @@ YQL_UDF_CONTRIB(top_udf)
     )
     
     END()
-ENDIF ()
-
 
 RECURSE_FOR_TESTS(
     test

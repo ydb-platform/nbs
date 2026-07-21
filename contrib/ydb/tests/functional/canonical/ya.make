@@ -5,21 +5,22 @@ ENV(YDB_ADDITIONAL_LOG_CONFIGS="GRPC_SERVER:DEBUG,TICKET_PARSER:WARN,KQP_COMPILE
 TEST_SRCS(
     test_sql.py
 )
+REQUIREMENTS(cpu:2)
+IF (SANITIZER_TYPE)
+    SIZE(LARGE)
+    INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/large.inc)
+ELSE()
+    SIZE(MEDIUM)
+ENDIF()
 
-TIMEOUT(600)
-SIZE(MEDIUM)
-
-ENV(YDB_DRIVER_BINARY="contrib/ydb/apps/ydbd/ydbd")
+INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/harness_dep.inc)
 DEPENDS(
-    contrib/ydb/apps/ydbd
 )
-
 
 DATA (
     arcadia/contrib/ydb/tests/functional/canonical/canondata
     arcadia/contrib/ydb/tests/functional/canonical/sql
 )
-
 
 PEERDIR(
     contrib/ydb/tests/library

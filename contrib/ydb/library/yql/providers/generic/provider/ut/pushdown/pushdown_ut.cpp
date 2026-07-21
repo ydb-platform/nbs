@@ -1,29 +1,29 @@
+#include <contrib/ydb/library/yql/dq/expr_nodes/dq_expr_nodes.h>
+#include <contrib/ydb/library/yql/providers/common/db_id_async_resolver/db_async_resolver.h>
+#include <contrib/ydb/library/yql/providers/dq/common/yql_dq_settings.h>
+#include <contrib/ydb/library/yql/providers/dq/expr_nodes/dqs_expr_nodes.h>
 #include <contrib/ydb/library/yql/providers/generic/expr_nodes/yql_generic_expr_nodes.h>
 #include <contrib/ydb/library/yql/providers/generic/proto/source.pb.h>
-#include <contrib/ydb/library/yql/providers/generic/provider/yql_generic_state.h>
 #include <contrib/ydb/library/yql/providers/generic/provider/yql_generic_provider.h>
+#include <contrib/ydb/library/yql/providers/generic/provider/yql_generic_state.h>
 
 #include <contrib/ydb/library/yql/ast/yql_ast.h>
 #include <contrib/ydb/library/yql/ast/yql_expr.h>
+#include <contrib/ydb/library/yql/core/dq_integration/yql_dq_integration.h>
+#include <contrib/ydb/library/yql/core/services/yql_out_transformers.h>
+#include <contrib/ydb/library/yql/core/services/yql_transform_pipeline.h>
 #include <contrib/ydb/library/yql/core/yql_graph_transformer.h>
 #include <contrib/ydb/library/yql/core/yql_type_annotation.h>
-#include <contrib/ydb/library/yql/core/services/yql_transform_pipeline.h>
-#include <contrib/ydb/library/yql/core/services/yql_out_transformers.h>
-#include <contrib/ydb/library/yql/dq/integration/yql_dq_integration.h>
 #include <contrib/ydb/library/yql/minikql/invoke_builtins/mkql_builtins.h>
 #include <contrib/ydb/library/yql/minikql/mkql_function_registry.h>
-#include <contrib/ydb/library/yql/providers/common/db_id_async_resolver/db_async_resolver.h>
 #include <contrib/ydb/library/yql/providers/common/provider/yql_provider_names.h>
 #include <contrib/ydb/library/yql/providers/common/transform/yql_optimize.h>
-#include <contrib/ydb/library/yql/providers/dq/common/yql_dq_settings.h>
-#include <contrib/ydb/library/yql/providers/dq/expr_nodes/dqs_expr_nodes.h>
-#include <contrib/ydb/library/yql/dq/expr_nodes/dq_expr_nodes.h>
+#include <contrib/ydb/library/yql/providers/common/udf_resolve/yql_simple_udf_resolver.h>
 #include <contrib/ydb/library/yql/providers/result/provider/yql_result_provider.h>
 #include <contrib/ydb/library/yql/sql/sql.h>
 #include <contrib/ydb/library/yql/utils/log/log.h>
 
 #include <library/cpp/testing/unittest/registar.h>
-
 #include <library/cpp/random_provider/random_provider.h>
 
 #include <google/protobuf/text_format.h>
@@ -73,8 +73,31 @@ struct TFakeDatabaseResolver: public IDatabaseAsyncResolver {
     }
 };
 
+
+class TListSplitsIteratorMock: public NConnector::IListSplitsStreamIterator {
+public:
+    TListSplitsIteratorMock() {}
+
+    NConnector::TAsyncResult<NConnector::NApi::TListSplitsResponse> ReadNext() override {
+        NConnector::TResult<NConnector::NApi::TListSplitsResponse> result;
+
+        if (!Responded_) {
+            result.Status = NYdbGrpc::TGrpcStatus(); // OK
+            result.Response = NConnector::NApi::TListSplitsResponse(); 
+            result.Response->add_splits();
+            Responded_ = true;  
+        } else {
+            result.Status = NYdbGrpc::TGrpcStatus(grpc::StatusCode::OUT_OF_RANGE, "Read EOF");
+        }
+
+        return NThreading::MakeFuture<NConnector::TResult<NConnector::NApi::TListSplitsResponse>>(std::move(result));
+    }
+private:
+    bool Responded_ = false;
+};
+
 struct TFakeGenericClient: public NConnector::IClient {
-    NConnector::TDescribeTableAsyncResult DescribeTable(const NConnector::NApi::TDescribeTableRequest& request) {
+    NConnector::TDescribeTableAsyncResult DescribeTable(const NConnector::NApi::TDescribeTableRequest& request, TDuration) override {
         UNIT_ASSERT_VALUES_EQUAL(request.table(), "test_table");
         NConnector::TResult<NConnector::NApi::TDescribeTableResponse> result;
         auto& resp = result.Response.emplace();
@@ -120,19 +143,39 @@ struct TFakeGenericClient: public NConnector::IClient {
         PRIMITIVE_TYPE_COL("json_document", JSON_DOCUMENT);
         PRIMITIVE_TYPE_COL("dynumber", DYNUMBER);
 
+        // Add decimal columns
+        {
+            auto* col = schema.add_columns();
+            col->set_name("col_decimal_precision10_scale0");
+            auto* t = col->mutable_type();
+            auto* decimalType = t->mutable_decimal_type();
+            decimalType->set_precision(10);
+            decimalType->set_scale(0);
+        }
+        {
+            auto* col = schema.add_columns();
+            col->set_name("col_decimal_precision4_scale2");
+            auto* t = col->mutable_type();
+            auto* decimalType = t->mutable_decimal_type();
+            decimalType->set_precision(4);
+            decimalType->set_scale(2);
+        }
+
         return NThreading::MakeFuture<NConnector::TDescribeTableAsyncResult::value_type>(std::move(result));
     }
 
-    NConnector::TListSplitsStreamIteratorAsyncResult ListSplits(const NConnector::NApi::TListSplitsRequest& request) {
+    NConnector::TListSplitsStreamIteratorAsyncResult ListSplits(const NConnector::NApi::TListSplitsRequest& request, TDuration) override {
         Y_UNUSED(request);
-        try {
-            throw std::runtime_error("ListSplits unimplemented");
-        } catch (...) {
-            return NThreading::MakeErrorFuture<NConnector::TListSplitsStreamIteratorAsyncResult::value_type>(std::current_exception());
-        }
+
+        NConnector::TIteratorResult<NConnector::IListSplitsStreamIterator> iteratorResult{
+            NYdbGrpc::TGrpcStatus(),
+            std::make_shared<TListSplitsIteratorMock>(),
+        };
+
+        return NThreading::MakeFuture<NConnector::TIteratorResult<NConnector::IListSplitsStreamIterator>>(std::move(iteratorResult));
     }
 
-    NConnector::TReadSplitsStreamIteratorAsyncResult ReadSplits(const NConnector::NApi::TReadSplitsRequest& request) {
+    NConnector::TReadSplitsStreamIteratorAsyncResult ReadSplits(const NConnector::NApi::TReadSplitsRequest& request, TDuration) override {
         Y_UNUSED(request);
         try {
             throw std::runtime_error("ReadSplits unimplemented");
@@ -162,7 +205,7 @@ public:
         UNIT_ASSERT(genericDataSource != Types->DataSourceMap.end());
         auto dqIntegration = genericDataSource->second->GetDqIntegration();
         UNIT_ASSERT(dqIntegration);
-        auto newRead = dqIntegration->WrapRead(TDqSettings(), input.Ptr(), ctx);
+        auto newRead = dqIntegration->WrapRead(input.Ptr(), ctx, IDqIntegration::TWrapReadSettings{});
         BuildSettings(newRead, dqIntegration, ctx);
         return newRead;
     }
@@ -180,7 +223,7 @@ public:
                 .Ptr();
         ::google::protobuf::Any settings;
         TString sourceType;
-        dqIntegration->FillSourceSettings(*dqSourceNode, settings, sourceType, 1);
+        dqIntegration->FillSourceSettings(*dqSourceNode, settings, sourceType, 1, ctx);
         UNIT_ASSERT_STRINGS_EQUAL(sourceType, "PostgreSqlGeneric");
         UNIT_ASSERT(settings.Is<Generic::TSource>());
         settings.UnpackTo(DqSourceSettings_);
@@ -221,7 +264,12 @@ struct TPushdownFixture: public NUnitTest::TBaseFixture {
         TypesCtx = MakeIntrusive<TTypeAnnotationContext>();
         TypesCtx->RandomProvider = CreateDeterministicRandomProvider(1);
 
-        FunctionRegistry = CreateFunctionRegistry(CreateBuiltinRegistry())->Clone(); // TODO: remove Clone()
+        auto functionRegistry = CreateFunctionRegistry(&PrintBackTrace, NKikimr::NMiniKQL::CreateBuiltinRegistry(), false, {})->Clone();
+        NKikimr::NMiniKQL::FillStaticModules(*functionRegistry);
+        FunctionRegistry = std::move(functionRegistry);
+
+        TypesCtx->UdfResolver = NYql::NCommon::CreateSimpleUdfResolver(FunctionRegistry.Get());
+        TypesCtx->UserDataStorage = MakeIntrusive<TUserDataStorage>(nullptr, TUserDataTable(), nullptr, nullptr);
 
         {
             auto* setting = GatewaysCfg.MutableGeneric()->AddDefaultSettings();
@@ -230,13 +278,13 @@ struct TPushdownFixture: public NUnitTest::TBaseFixture {
 
             auto* cluster = GatewaysCfg.MutableGeneric()->AddClusterMapping();
             cluster->SetName("test_cluster");
-            cluster->SetKind(NConnector::NApi::POSTGRESQL);
+            cluster->SetKind(NYql::EGenericDataSourceKind::POSTGRESQL);
             cluster->MutableEndpoint()->set_host("host");
             cluster->MutableEndpoint()->set_port(42);
             cluster->MutableCredentials()->mutable_basic()->set_username("user");
             cluster->MutableCredentials()->mutable_basic()->set_password("password");
             cluster->SetDatabaseName("database");
-            cluster->SetProtocol(NConnector::NApi::NATIVE);
+            cluster->SetProtocol(NYql::EGenericProtocol::NATIVE);
         }
 
         GenericState = MakeIntrusive<TGenericState>(
@@ -327,7 +375,7 @@ struct TPushdownFixture: public NUnitTest::TBaseFixture {
     void AssertFilter(const TString& lambdaText, const TString& filterText) {
         const auto& filter = BuildProtoFilterFromLambda(lambdaText);
         NConnector::NApi::TPredicate expectedFilter;
-        UNIT_ASSERT(google::protobuf::TextFormat::ParseFromString(filterText, &expectedFilter));
+        UNIT_ASSERT_C(google::protobuf::TextFormat::ParseFromString(filterText, &expectedFilter), expectedFilter.InitializationErrorString());
         UNIT_ASSERT_STRINGS_EQUAL(filter.Utf8DebugString(), expectedFilter.Utf8DebugString());
     }
 
@@ -372,7 +420,7 @@ Y_UNIT_TEST_SUITE_F(PushdownTest, TPushdownFixture) {
             R"ast(
                 (Coalesce
                     (!= (Member $row '"col_optional_uint64") (Member $row '"col_uint32"))
-                    (Bool '"true")
+                    (Bool '"false")
                 )
                 )ast",
             R"proto(
@@ -383,6 +431,46 @@ Y_UNIT_TEST_SUITE_F(PushdownTest, TPushdownFixture) {
                     }
                     right_value {
                         column: "col_uint32"
+                    }
+                }
+            )proto");
+    }
+
+    Y_UNIT_TEST(TrueCoalesce) {
+        AssertFilter(
+            // Note that R"ast()ast" is empty string!
+            R"ast(
+                (Coalesce
+                    (!= (Member $row '"col_optional_uint64") (Member $row '"col_uint32"))
+                    (Bool '"true")
+                )
+                )ast",
+            R"proto(
+                coalesce {
+                    operands {
+                        comparison {
+                            operation: NE
+                            left_value {
+                                column: "col_optional_uint64"
+                            }
+                            right_value {
+                                column: "col_uint32"
+                            }
+                        }
+                    }
+                    operands {
+                        bool_expression {
+                            value {
+                                typed_value {
+                                    type {
+                                        type_id: BOOL
+                                    }
+                                    value {
+                                        bool_value: true
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             )proto");
@@ -421,7 +509,7 @@ Y_UNIT_TEST_SUITE_F(PushdownTest, TPushdownFixture) {
                         (< (Unwrap (/ (Int64 '42) (Member $row '"col_int64"))) (Int64 '10))
                         (>= (Member $row '"col_uint32") (- (Uint32 '15) (Uint32 '1)))
                     )
-                    (Bool '"true")
+                    (Bool '"false")
                 )
                 )ast",
             R"proto(
@@ -515,7 +603,7 @@ Y_UNIT_TEST_SUITE_F(PushdownTest, TPushdownFixture) {
                         (< (Unwrap (/ (Int64 '42) (Member $row '"col_int64"))) (Int64 '10))
                         (>= (Member $row '"col_uint32") (Uint32 '15))
                     )
-                    (Bool '"true")
+                    (Bool '"false")
                 )
                 )ast",
             R"proto(
@@ -592,7 +680,7 @@ Y_UNIT_TEST_SUITE_F(PushdownTest, TPushdownFixture) {
     }
 
     Y_UNIT_TEST(StringFieldsNotSupported) {
-        AssertNoPush(
+        AssertFilter(
             // Note that R"ast()ast" is empty string!
             R"ast(
                 (Coalesce
@@ -600,19 +688,164 @@ Y_UNIT_TEST_SUITE_F(PushdownTest, TPushdownFixture) {
                         (Member $row '"col_utf8")
                         (Member $row '"col_optional_utf8")
                     )
-                    (Bool '"true")
+                    (Bool '"false")
                 )
-                )ast");
+                )ast",
+            R"proto(
+                comparison {
+                    operation: EQ
+                    left_value {
+                        column: "col_utf8"
+                    }
+                    right_value {
+                        column: "col_optional_utf8"
+                    }
+                }
+            )proto"
+        );
     }
 
     Y_UNIT_TEST(StringFieldsNotSupported2) {
-        AssertNoPush(
+        AssertFilter(
             // Note that R"ast()ast" is empty string!
             R"ast(
                 (!=
                     (Member $row '"col_string")
                     (String '"value")
                 )
-                )ast");
+                )ast",
+            R"proto(
+                comparison {
+                    operation: NE
+                    left_value {
+                        column: "col_string"
+                    }
+                    right_value {
+                        typed_value {
+                            type {
+                                type_id: STRING
+                            }
+                            value {
+                                bytes_value: "value"
+                            }
+                        }
+                    }
+                }
+            )proto"
+        );
+    }
+
+    Y_UNIT_TEST(RegexpPushdown) {
+        AssertFilter(
+            // Test REGEXP pushdown with a simple pattern matching digits
+            R"ast(
+                (Coalesce
+                    (Apply (Udf '"Re2.Grep" '((String '"\\\\d+") (Nothing 
+                        (OptionalType 
+                            (StructType 
+                                '('"CaseSensitive" (DataType 'Bool))
+                                '('"DotNl" (DataType 'Bool)) 
+                                '('"Literal" (DataType 'Bool)) 
+                                '('"LogErrors" (DataType 'Bool)) 
+                                '('"LongestMatch" (DataType 'Bool)) 
+                                '('"MaxMem" (DataType 'Uint64)) 
+                                '('"NeverCapture" (DataType 'Bool)) 
+                                '('"NeverNl" (DataType 'Bool)) 
+                                '('"OneLine" (DataType 'Bool)) 
+                                '('"PerlClasses" (DataType 'Bool)) 
+                                '('"PosixSyntax" (DataType 'Bool)) 
+                                '('"Utf8" (DataType 'Bool)) 
+                                '('"WordBoundary" (DataType 'Bool))
+                            )
+                        )
+                    ))) 
+                        (Member $row '"col_string")
+                    )
+                    (Bool '"false")
+                )
+                )ast",
+            R"proto(
+                regexp {
+                    value {
+                        column: "col_string"
+                    }
+                    pattern {
+                        typed_value {
+                            type {
+                                type_id: STRING
+                            }
+                            value {
+                                bytes_value: "\\\\d+"
+                            }
+                        }
+                    }
+                }
+            )proto"
+        );
+    }
+
+    Y_UNIT_TEST(DecimalPushdownPrecision10Scale0) {
+        AssertFilter(
+            R"ast(
+                (==
+                    (Member $row '"col_decimal_precision10_scale0")
+                    (Decimal '"1" '"10" '"0")
+                )
+                )ast",
+            R"proto(
+                comparison {
+                    operation: EQ
+                    left_value {
+                        column: "col_decimal_precision10_scale0"
+                    }
+                    right_value {
+                        typed_value {
+                            type {
+                                decimal_type {
+                                    precision: 10
+                                    scale: 0
+                                }
+                            }
+                            value {
+                                bytes_value: "\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000"
+                            }
+                        }
+                    }
+                }
+            )proto"
+        );
+    }
+
+    Y_UNIT_TEST(DecimalPushdownPrecesion4Scale2) {
+        // Test with negative decimal value with fractional part
+        AssertFilter(
+            R"ast(
+                (==
+                    (Member $row '"col_decimal_precision4_scale2")
+                    (Decimal '"-22.22" '"4" '"2")
+                )
+                )ast",
+            R"proto(
+                comparison {
+                    operation: EQ
+                    left_value {
+                        column: "col_decimal_precision4_scale2"
+                    }
+                    right_value {
+                        typed_value {
+                            type {
+                                decimal_type {
+                                    precision: 4
+                                    scale: 2
+                                }
+                            }
+                            value {
+                                bytes_value: "R\367\377\377\377\377\377\377\377\377\377\377\377\377\377\377"
+                            }
+                        }
+                    }
+                }
+            )proto"
+        );
     }
 }

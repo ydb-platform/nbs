@@ -4,7 +4,7 @@
 #include <contrib/ydb/library/yql/minikql/mkql_function_registry.h>
 #include <contrib/ydb/library/yql/minikql/mkql_string_util.h>
 
-#include <contrib/ydb/core/testlib/basics/appdata.h>
+#include <contrib/ydb/library/services/services.pb.h>
 
 #include <util/system/env.h>
 
@@ -22,7 +22,7 @@ NYql::NDqProto::TCheckpoint CreateCheckpoint(ui64 id) {
     return checkpoint;
 }
 
-TFakeActor::TFakeActor(TAsyncInputPromises& sourcePromises, TAsyncOutputPromises& asyncOutputPromises)
+TFakeActor::TFakeActor(std::shared_ptr<TAsyncInputPromises> sourcePromises, std::shared_ptr<TAsyncOutputPromises> asyncOutputPromises)
     : TActor<TFakeActor>(&TFakeActor::StateFunc)
     , Alloc(__LOCATION__)
     , MemoryInfo("test")
@@ -55,7 +55,7 @@ void TFakeActor::InitAsyncInput(IDqComputeActorAsyncInput* dqAsyncInput, IActor*
     DqAsyncInputAsActor = dqAsyncInputAsActor;
 }
 
-void TFakeActor::Terminate() {
+void TFakeActor::Terminate(std::shared_ptr<std::atomic<bool>> done) {
     if (DqAsyncInputActorId) {
         DqAsyncInput->PassAway();
 
@@ -71,6 +71,7 @@ void TFakeActor::Terminate() {
         DqAsyncOutput = nullptr;
         DqAsyncOutputAsActor = nullptr;
     }
+    done->store(true);
 }
 
 TFakeActor::TAsyncOutputCallbacks& TFakeActor::GetAsyncOutputCallbacks() {
@@ -82,7 +83,7 @@ NKikimr::NMiniKQL::THolderFactory& TFakeActor::GetHolderFactory() {
 }
 
 TFakeCASetup::TFakeCASetup()
-    : Runtime(new NActors::TTestBasicRuntime(1, true))
+    : Runtime(new NActors::TTestActorRuntimeBase(1, true))
     , FakeActorId(0, "FakeActor")
 {
     Runtime->AddLocalService(
@@ -94,16 +95,25 @@ TFakeCASetup::TFakeCASetup()
 
     Runtime->SetLogBackend(CreateStderrBackend());
 
-    TAutoPtr<NKikimr::TAppPrepare> app = new NKikimr::TAppPrepare();
-    Runtime->Initialize(app->Unwrap());
+    Runtime->Initialize();
+
+    Runtime->GetLogSettings(0)->Append(
+        NKikimrServices::EServiceKikimr_MIN,
+        NKikimrServices::EServiceKikimr_MAX,
+        NKikimrServices::EServiceKikimr_Name);
 
     Runtime->SetLogPriority(NKikimrServices::KQP_COMPUTE, NActors::NLog::EPriority::PRI_TRACE);
 }
 
 TFakeCASetup::~TFakeCASetup() {
-    Execute([](TFakeActor& actor) {
-        actor.Terminate();
+    auto shouldStop = std::make_shared<std::atomic<bool>>(); 
+    Execute([shouldStop](TFakeActor& actor) {
+        actor.Terminate(shouldStop);
     });
+
+    while (!*shouldStop) {
+        Sleep(TDuration::MilliSeconds(200));
+    }
 }
 
 void TFakeCASetup::AsyncOutputWrite(const TWriteValueProducer valueProducer, TMaybe<NDqProto::TCheckpoint> checkpoint, bool finish) {

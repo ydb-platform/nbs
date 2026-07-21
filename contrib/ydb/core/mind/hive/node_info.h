@@ -3,12 +3,15 @@
 #include "hive.h"
 #include "tablet_info.h"
 
+#include <util/generic/intrlist.h>
+
 namespace NKikimr {
 namespace NHive {
 
 struct TTabletInfo;
 
-struct TNodeInfo {
+struct TSegmentNodesTag {};
+struct TNodeInfo: public TIntrusiveListItem<TNodeInfo, TSegmentNodesTag> {
     enum class EVolatileState {
         Unknown,
         Disconnected,
@@ -58,6 +61,12 @@ public:
         }
     };
 
+    struct TLastScheduledTablet {
+        TFullTabletId TabletId;
+        NMetrics::TFastRiseAverageValue<double, 20> UsageSince;
+        double UsageBefore;
+    };
+
     THive& Hive;
     TNodeId Id;
     TActorId Local;
@@ -91,6 +100,10 @@ public:
     NKikimrHive::TNodeStatistics Statistics;
     bool DeletionScheduled = false;
     TString Name;
+    ui64 DrainSeqNo = 0;
+    std::optional<TLastScheduledTablet> LastScheduledTablet; // remembered for a limited time
+    TBridgePileId BridgePileId;
+    THiveDrain* DrainActor = nullptr;
 
     TNodeInfo(TNodeId nodeId, THive& hive);
     TNodeInfo(const TNodeInfo&) = delete;
@@ -106,7 +119,7 @@ public:
 
     void ChangeVolatileState(EVolatileState state);
     bool OnTabletChangeVolatileState(TTabletInfo* tablet, TTabletInfo::EVolatileState newState);
-    void UpdateResourceValues(const TTabletInfo* tablet, const NKikimrTabletBase::TMetrics& before, const NKikimrTabletBase::TMetrics& after);
+    void UpdateResourceValues(const TTabletInfo* tablet, const TMetrics& before, const TMetrics& after);
 
     ui32 GetTabletsScheduled() const {
         auto it = Tablets.find(TTabletInfo::EVolatileState::TABLET_VOLATILE_STATE_STARTING);
@@ -155,11 +168,15 @@ public:
         return VolatileState == EVolatileState::Connecting || VolatileState == EVolatileState::Connected;
     }
 
+    TNodeId GetId() const {
+        return Id;
+    }
+
     bool MatchesFilter(const TNodeFilter& filter, TTabletDebugState* debugState = nullptr) const;
     bool IsAllowedToRunTablet(TTabletDebugState* debugState = nullptr) const;
     bool IsAllowedToRunTablet(const TTabletInfo& tablet, TTabletDebugState* debugState = nullptr) const;
     bool IsAbleToRunTablet(const TTabletInfo& tablet, TTabletDebugState* debugState = nullptr) const;
-    i32 GetPriorityForTablet(const TTabletInfo& tablet) const;
+    i32 GetPriorityForTablet(const TTabletInfo& tablet, TDataCenterPriority& dcPriority) const;
     ui64 GetMaxTabletsScheduled() const;
     ui64 GetMaxCountForTabletType(TTabletTypes::EType tabletType) const;
 
@@ -247,7 +264,7 @@ public:
         return ResourceMaximumValues;
     }
 
-    double GetNodeUsageForTablet(const TTabletInfo& tablet) const;
+    double GetNodeUsageForTablet(const TTabletInfo& tablet, bool neighbourPenalty = true) const;
     double GetNodeUsage(EResourceToBalance resource = EResourceToBalance::ComputeResources) const;
     double GetNodeUsage(const TResourceNormalizedValues& normValues,
                         EResourceToBalance resource = EResourceToBalance::ComputeResources) const;
@@ -265,16 +282,28 @@ public:
         return TStringBuilder() << ServicedDomains;
     }
 
-    TSubDomainKey GetServicedDomain() const {
-        return ServicedDomains.empty() ? TSubDomainKey() : ServicedDomains.front();
+    const TSubDomainKey& GetServicedDomain() const {
+        if (!ServicedDomains.empty()) {
+            return ServicedDomains.front();
+        }
+        if (!LastSeenServicedDomains.empty()) {
+            return LastSeenServicedDomains.front();
+        }
+        return InvalidSubDomainKey;
     }
 
-    void UpdateResourceTotalUsage(const NKikimrHive::TEvTabletMetrics& metrics);
+    void UpdateResourceTotalUsage(const NKikimrHive::TEvTabletMetrics& metrics, NIceDb::TNiceDb& db);
     void ActualizeNodeStatistics(TInstant now);
-    ui64 GetRestartsPerPeriod(TInstant barrier) const;
+    ui64 GetRestartsPerPeriod(TInstant barrier = {}) const;
 
     TDataCenterId GetDataCenter() const {
         return Location.GetDataCenterId();
+    }
+
+    // For balancing, only nodes in the same "segment" are compared
+    // This function defines which parameters are used to define segments
+    TSegmentId GetSegment() const {
+        return std::forward_as_tuple(GetServicedDomain(), BridgePileId);
     }
 };
 

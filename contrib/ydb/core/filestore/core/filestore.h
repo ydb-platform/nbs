@@ -2,12 +2,12 @@
 
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/actorid.h>
-#include <contrib/ydb/core/base/blobstorage.h>
+#include <contrib/ydb/core/base/events.h>
 #include <contrib/ydb/core/protos/filestore_config.pb.h>
 
 namespace NKikimr {
 
-struct TEvFileStore {
+namespace TEvFileStore {
     enum EEv {
         EvBegin = EventSpaceBegin(TKikimrEvents::ES_FILESTORE),
 

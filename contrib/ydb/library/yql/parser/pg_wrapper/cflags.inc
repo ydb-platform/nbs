@@ -36,6 +36,18 @@ CFLAGS(
 ENDIF()
 
 CFLAGS(
+    -Dadd_size=yql_add_size
+    -Dmul_size=yql_mul_size
+    -Dpalloc_mul=yql_palloc_mul
+    -Dpalloc0_mul=yql_palloc0_mul
+    -Drepalloc_mul=yql_repalloc_mul
+    -Dpalloc_mul_extended=yql_palloc_mul_extended
+    -Dmonths=yql_months
+    -Dpg_popcount32=yql_pg_popcount32
+    -Dpg_popcount64=yql_pg_popcount64
+    -Dpg_number_of_ones=yql_pg_number_of_ones
+    -Dpg_leftmost_one_pos=yql_pg_leftmost_one_pos
+    -Dpg_rightmost_one_pos=yql_pg_rightmost_one_pos
     -Darray_length=yql_array_length
     -Dpg_encoding_max_length=yql_pg_encoding_max_length
     -Dpg_encoding_mblen=yql_pg_encoding_mblen
@@ -116,4 +128,34 @@ CFLAGS(
     -Dpg_hmac_init=yql_pg_hmac_init
     -Dpg_hmac_create=yql_pg_hmac_create
     -Dpg_pwritev_with_retry=yql_pg_pwritev_with_retry
+    -Dpg_cryptohash_error=yql_pg_cryptohash_error
+    -Dpg_hmac_error=yql_pg_hmac_error
+    -Dpg_global_prng_state=yql_pg_global_prng_state
+    -Dpg_prng_bool=yql_pg_prng_bool
+    -Dpg_prng_double=yql_pg_prng_double
+    -Dpg_prng_int32p=yql_pg_prng_int32p
+    -Dpg_prng_int32=yql_pg_prng_int32
+    -Dpg_prng_uint32=yql_pg_prng_uint32
+    -Dpg_prng_int64p=yql_pg_prng_int64p
+    -Dpg_prng_int64=yql_pg_prng_int64
+    -Dpg_prng_uint64_range=yql_pg_prng_uint64_range
+    -Dpg_prng_uint64=yql_pg_prng_uint64
+    -Dpg_prng_fseed=yql_pg_prng_fseed
+    -Dpg_prng_seed_check=yql_pg_prng_seed_check
+    -Dpg_prng_seed=yql_pg_prng_seed
+    -Dpg_prng_double_normal=yql_pg_prng_double_normal
+    -Djson_errdetail=yql_json_errdetail
+    -DappendBinaryStringInfoNT=yql_appendBinaryStringInfoNT
+    -DappendStringInfoSpaces=yql_appendStringInfoSpaces
+    -DappendStringInfoChar=yql_appendStringInfoChar
+    -DappendBinaryStringInfo=yql_appendBinaryStringInfo
+    -DappendStringInfoString=yql_appendStringInfoString
+    -DappendStringInfoVA=yql_appendStringInfoVA
+    -DenlargeStringInfo=yql_enlargeStringInfo
+    -DappendStringInfo=yql_appendStringInfo
+    -DresetStringInfo=yql_resetStringInfo
+    -DinitStringInfo=yql_initStringInfo
+    -DmakeStringInfo=yql_makeStringInfo
+    -Dpg_encoding_set_invalid=yql_pg_encoding_set_invalid
+    -Dpg_encoding_mblen_or_incomplete=yql_pg_encoding_mblen_or_incomplete
 )

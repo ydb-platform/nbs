@@ -3,7 +3,7 @@
  * parallel.c
  *	  Infrastructure for launching parallel workers
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -14,7 +14,6 @@
 
 #include "postgres.h"
 
-#include "access/heapam.h"
 #include "access/nbtree.h"
 #include "access/parallel.h"
 #include "access/session.h"
@@ -25,6 +24,7 @@
 #include "catalog/pg_enum.h"
 #include "catalog/storage.h"
 #include "commands/async.h"
+#include "commands/vacuum.h"
 #include "executor/execParallel.h"
 #include "libpq/libpq.h"
 #include "libpq/pqformat.h"
@@ -76,6 +76,7 @@
 #define PARALLEL_KEY_REINDEX_STATE			UINT64CONST(0xFFFFFFFFFFFF000C)
 #define PARALLEL_KEY_RELMAPPER_STATE		UINT64CONST(0xFFFFFFFFFFFF000D)
 #define PARALLEL_KEY_UNCOMMITTEDENUMS		UINT64CONST(0xFFFFFFFFFFFF000E)
+#define PARALLEL_KEY_CLIENTCONNINFO			UINT64CONST(0xFFFFFFFFFFFF000F)
 
 /* Fixed-size parallel state. */
 typedef struct FixedParallelState
@@ -83,12 +84,15 @@ typedef struct FixedParallelState
 	/* Fixed-size state that workers must restore. */
 	Oid			database_id;
 	Oid			authenticated_user_id;
-	Oid			current_user_id;
+	Oid			session_user_id;
 	Oid			outer_user_id;
+	Oid			current_user_id;
 	Oid			temp_namespace_id;
 	Oid			temp_toast_namespace_id;
 	int			sec_context;
-	bool		is_superuser;
+	bool		authenticated_user_is_superuser;
+	bool		session_user_is_superuser;
+	bool		role_is_superuser;
 	PGPROC	   *parallel_leader_pgproc;
 	pid_t		parallel_leader_pid;
 	BackendId	parallel_leader_backend_id;
@@ -112,7 +116,7 @@ typedef struct FixedParallelState
 __thread int			ParallelWorkerNumber = -1;
 
 /* Is there a parallel message pending which we need to receive? */
-__thread volatile bool ParallelMessagePending = false;
+__thread volatile sig_atomic_t ParallelMessagePending = false;
 
 /* Are we initializing a parallel worker? */
 __thread bool		InitializingParallelWorker = false;
@@ -212,6 +216,7 @@ InitializeParallelDSM(ParallelContext *pcxt)
 	Size		reindexlen = 0;
 	Size		relmapperlen = 0;
 	Size		uncommittedenumslen = 0;
+	Size		clientconninfolen = 0;
 	Size		segsize = 0;
 	int			i;
 	FixedParallelState *fps;
@@ -225,6 +230,15 @@ InitializeParallelDSM(ParallelContext *pcxt)
 	/* Allow space to store the fixed-size parallel state. */
 	shm_toc_estimate_chunk(&pcxt->estimator, sizeof(FixedParallelState));
 	shm_toc_estimate_keys(&pcxt->estimator, 1);
+
+	/*
+	 * If we manage to reach here while non-interruptible, it's unsafe to
+	 * launch any workers: we would fail to process interrupts sent by them.
+	 * We can deal with that edge case by pretending no workers were
+	 * requested.
+	 */
+	if (!INTERRUPTS_CAN_BE_PROCESSED())
+		pcxt->nworkers = 0;
 
 	/*
 	 * Normally, the user will have requested at least one worker process, but
@@ -272,8 +286,10 @@ InitializeParallelDSM(ParallelContext *pcxt)
 		shm_toc_estimate_chunk(&pcxt->estimator, relmapperlen);
 		uncommittedenumslen = EstimateUncommittedEnumsSpace();
 		shm_toc_estimate_chunk(&pcxt->estimator, uncommittedenumslen);
+		clientconninfolen = EstimateClientConnectionInfoSpace();
+		shm_toc_estimate_chunk(&pcxt->estimator, clientconninfolen);
 		/* If you add more chunks here, you probably need to add keys. */
-		shm_toc_estimate_keys(&pcxt->estimator, 11);
+		shm_toc_estimate_keys(&pcxt->estimator, 12);
 
 		/* Estimate space need for error queues. */
 		StaticAssertStmt(BUFFERALIGN(PARALLEL_ERROR_QUEUE_SIZE) ==
@@ -321,9 +337,12 @@ InitializeParallelDSM(ParallelContext *pcxt)
 		shm_toc_allocate(pcxt->toc, sizeof(FixedParallelState));
 	fps->database_id = MyDatabaseId;
 	fps->authenticated_user_id = GetAuthenticatedUserId();
+	fps->session_user_id = GetSessionUserId();
 	fps->outer_user_id = GetCurrentRoleId();
-	fps->is_superuser = session_auth_is_superuser;
 	GetUserIdAndSecContext(&fps->current_user_id, &fps->sec_context);
+	fps->authenticated_user_is_superuser = GetAuthenticatedUserIsSuperuser();
+	fps->session_user_is_superuser = GetSessionUserIsSuperuser();
+	fps->role_is_superuser = session_auth_is_superuser;
 	GetTempNamespaceState(&fps->temp_namespace_id,
 						  &fps->temp_toast_namespace_id);
 	fps->parallel_leader_pgproc = MyProc;
@@ -352,6 +371,7 @@ InitializeParallelDSM(ParallelContext *pcxt)
 		char	   *session_dsm_handle_space;
 		char	   *entrypointstate;
 		char	   *uncommittedenumsspace;
+		char	   *clientconninfospace;
 		Size		lnamelen;
 
 		/* Serialize shared libraries we have loaded. */
@@ -370,8 +390,8 @@ InitializeParallelDSM(ParallelContext *pcxt)
 		shm_toc_insert(pcxt->toc, PARALLEL_KEY_COMBO_CID, combocidspace);
 
 		/*
-		 * Serialize the transaction snapshot if the transaction
-		 * isolation-level uses a transaction snapshot.
+		 * Serialize the transaction snapshot if the transaction isolation
+		 * level uses a transaction snapshot.
 		 */
 		if (IsolationUsesXactSnapshot())
 		{
@@ -422,6 +442,12 @@ InitializeParallelDSM(ParallelContext *pcxt)
 		shm_toc_insert(pcxt->toc, PARALLEL_KEY_UNCOMMITTEDENUMS,
 					   uncommittedenumsspace);
 
+		/* Serialize our ClientConnectionInfo. */
+		clientconninfospace = shm_toc_allocate(pcxt->toc, clientconninfolen);
+		SerializeClientConnectionInfo(clientconninfolen, clientconninfospace);
+		shm_toc_insert(pcxt->toc, PARALLEL_KEY_CLIENTCONNINFO,
+					   clientconninfospace);
+
 		/* Allocate space for worker information. */
 		pcxt->worker = palloc0(sizeof(ParallelWorkerInfo) * pcxt->nworkers);
 
@@ -463,6 +489,9 @@ InitializeParallelDSM(ParallelContext *pcxt)
 		shm_toc_insert(pcxt->toc, PARALLEL_KEY_ENTRYPOINT, entrypointstate);
 	}
 
+	/* Update nworkers_to_launch, in case we changed nworkers above. */
+	pcxt->nworkers_to_launch = pcxt->nworkers;
+
 	/* Restore previous memory context. */
 	MemoryContextSwitchTo(oldcontext);
 }
@@ -474,7 +503,11 @@ InitializeParallelDSM(ParallelContext *pcxt)
 void
 ReinitializeParallelDSM(ParallelContext *pcxt)
 {
+	MemoryContext oldcontext;
 	FixedParallelState *fps;
+
+	/* We might be running in a very short-lived memory context. */
+	oldcontext = MemoryContextSwitchTo(TopTransactionContext);
 
 	/* Wait for any old workers to exit. */
 	if (pcxt->nworkers_launched > 0)
@@ -513,6 +546,9 @@ ReinitializeParallelDSM(ParallelContext *pcxt)
 			pcxt->worker[i].error_mqh = shm_mq_attach(mq, pcxt->seg, NULL);
 		}
 	}
+
+	/* Restore previous memory context. */
+	MemoryContextSwitchTo(oldcontext);
 }
 
 /*
@@ -526,10 +562,11 @@ ReinitializeParallelWorkers(ParallelContext *pcxt, int nworkers_to_launch)
 {
 	/*
 	 * The number of workers that need to be launched must be less than the
-	 * number of workers with which the parallel context is initialized.
+	 * number of workers with which the parallel context is initialized.  But
+	 * the caller might not know that InitializeParallelDSM reduced nworkers,
+	 * so just silently trim the request.
 	 */
-	Assert(pcxt->nworkers >= nworkers_to_launch);
-	pcxt->nworkers_to_launch = nworkers_to_launch;
+	pcxt->nworkers_to_launch = Min(pcxt->nworkers, nworkers_to_launch);
 }
 
 /*
@@ -1141,11 +1178,11 @@ HandleParallelMessage(ParallelContext *pcxt, int i, StringInfo msg)
 				 * If desired, add a context line to show that this is a
 				 * message propagated from a parallel worker.  Otherwise, it
 				 * can sometimes be confusing to understand what actually
-				 * happened.  (We don't do this in FORCE_PARALLEL_REGRESS mode
+				 * happened.  (We don't do this in DEBUG_PARALLEL_REGRESS mode
 				 * because it causes test-result instability depending on
 				 * whether a parallel worker is actually used or not.)
 				 */
-				if (force_parallel_mode != FORCE_PARALLEL_REGRESS)
+				if (debug_parallel_query != DEBUG_PARALLEL_REGRESS)
 				{
 					if (edata.context)
 						edata.context = psprintf("%s\n%s", edata.context,
@@ -1270,6 +1307,7 @@ ParallelWorkerMain(Datum main_arg)
 	char	   *reindexspace;
 	char	   *relmapperspace;
 	char	   *uncommittedenumsspace;
+	char	   *clientconninfospace;
 	StringInfoData msgbuf;
 	char	   *session_dsm_handle_space;
 	Snapshot	tsnapshot;
@@ -1318,7 +1356,7 @@ ParallelWorkerMain(Datum main_arg)
 	/* Arrange to signal the leader if we exit. */
 	ParallelLeaderPid = fps->parallel_leader_pid;
 	ParallelLeaderBackendId = fps->parallel_leader_backend_id;
-	on_shmem_exit(ParallelWorkerShutdown, (Datum) 0);
+	before_shmem_exit(ParallelWorkerShutdown, PointerGetDatum(seg));
 
 	/*
 	 * Now we can find and attach to the error queue provided for us.  That's
@@ -1383,10 +1421,27 @@ ParallelWorkerMain(Datum main_arg)
 
 	entrypt = LookupParallelWorkerFunction(library_name, function_name);
 
-	/* Restore database connection. */
+	/*
+	 * Restore current session authorization and role id.  No verification
+	 * happens here, we just blindly adopt the leader's state.  Note that this
+	 * has to happen before InitPostgres, since InitializeSessionUserId will
+	 * not set these variables.
+	 */
+	SetAuthenticatedUserId(fps->authenticated_user_id,
+						   fps->authenticated_user_is_superuser);
+	SetSessionAuthorization(fps->session_user_id,
+							fps->session_user_is_superuser);
+	SetCurrentRoleId(fps->outer_user_id, fps->role_is_superuser);
+
+	/*
+	 * Restore database connection.  We skip connection authorization checks,
+	 * reasoning that (a) the leader checked these things when it started, and
+	 * (b) we do not want parallel mode to cause these failures, because that
+	 * would make use of parallel query plans not transparent to applications.
+	 */
 	BackgroundWorkerInitializeConnectionByOid(fps->database_id,
 											  fps->authenticated_user_id,
-											  0);
+											  BGWORKER_BYPASS_ALLOWCONN);
 
 	/*
 	 * Set the client encoding to the database encoding, since that is what
@@ -1448,13 +1503,13 @@ ParallelWorkerMain(Datum main_arg)
 	InvalidateSystemCaches();
 
 	/*
-	 * Restore current role id.  Skip verifying whether session user is
-	 * allowed to become this role and blindly restore the leader's state for
-	 * current role.
+	 * Restore current user ID and security context.  No verification happens
+	 * here, we just blindly adopt the leader's state.  We can't do this till
+	 * after restoring GUCs, else we'll get complaints about restoring
+	 * session_authorization and role.  (In effect, we're assuming that all
+	 * the restored values are okay to set, even if we are now inside a
+	 * restricted context.)
 	 */
-	SetCurrentRoleId(fps->outer_user_id, fps->is_superuser);
-
-	/* Restore user ID and security context. */
 	SetUserIdAndSecContext(fps->current_user_id, fps->sec_context);
 
 	/* Restore temp-namespace state to ensure search path matches leader's. */
@@ -1478,6 +1533,19 @@ ParallelWorkerMain(Datum main_arg)
 	uncommittedenumsspace = shm_toc_lookup(toc, PARALLEL_KEY_UNCOMMITTEDENUMS,
 										   false);
 	RestoreUncommittedEnums(uncommittedenumsspace);
+
+	/* Restore the ClientConnectionInfo. */
+	clientconninfospace = shm_toc_lookup(toc, PARALLEL_KEY_CLIENTCONNINFO,
+										 false);
+	RestoreClientConnectionInfo(clientconninfospace);
+
+	/*
+	 * Initialize SystemUser now that MyClientConnectionInfo is restored. Also
+	 * ensure that auth_method is actually valid, aka authn_id is not NULL.
+	 */
+	if (MyClientConnectionInfo.authn_id)
+		InitializeSystemUser(MyClientConnectionInfo.authn_id,
+							 hba_authname(MyClientConnectionInfo.auth_method));
 
 	/* Attach to the leader's serializable transaction, if SERIALIZABLE. */
 	AttachSerializableXact(fps->serializable_xact_handle);
@@ -1531,6 +1599,16 @@ ParallelWorkerReportLastRecEnd(XLogRecPtr last_xlog_end)
  * This guards against the case where we exit uncleanly without sending an
  * ErrorResponse to the leader, for example because some code calls proc_exit
  * directly.
+ *
+ * Also explicitly detach from dsm segment so that subsystems using
+ * on_dsm_detach() have a chance to send stats before the stats subsystem is
+ * shut down as part of a before_shmem_exit() hook.
+ *
+ * One might think this could instead be solved by carefully ordering the
+ * attaching to dsm segments, so that the pgstats segments get detached from
+ * later than the parallel query one. That turns out to not work because the
+ * stats hash might need to grow which can cause new segments to be allocated,
+ * which then will be detached from earlier.
  */
 static void
 ParallelWorkerShutdown(int code, Datum arg)
@@ -1538,6 +1616,8 @@ ParallelWorkerShutdown(int code, Datum arg)
 	SendProcSignal(ParallelLeaderPid,
 				   PROCSIG_PARALLEL_MESSAGE,
 				   ParallelLeaderBackendId);
+
+	dsm_detach((dsm_segment *) DatumGetPointer(arg));
 }
 
 /*

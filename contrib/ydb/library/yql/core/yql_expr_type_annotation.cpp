@@ -9,7 +9,8 @@
 #include <contrib/ydb/library/yql/public/udf/udf_data_type.h>
 #include <contrib/ydb/library/yql/minikql/dom/json.h>
 #include <contrib/ydb/library/yql/minikql/dom/yson.h>
-#include <contrib/ydb/library/yql/minikql/jsonpath/jsonpath.h>
+#include <contrib/ydb/library/yql/minikql/jsonpath/parser/parser.h>
+#include <contrib/ydb/library/yql/core/sql_types/block.h>
 #include <contrib/ydb/library/yql/core/sql_types/simple_types.h>
 #include "contrib/ydb/library/yql/parser/pg_catalog/catalog.h"
 #include <contrib/ydb/library/yql/parser/pg_wrapper/interface/utils.h>
@@ -88,11 +89,101 @@ TExprNode::TPtr RebuildVariant(const TExprNode::TPtr& node,
     return ret;
 }
 
+bool IsDatetimeToDatetimeCastAllowed(EDataSlot from, EDataSlot to) {
+    if (from == EDataSlot::Date && (to == EDataSlot::TzDate ||
+                                    to == EDataSlot::Date32 ||
+                                    to == EDataSlot::TzDate32 ||
+                                    to == EDataSlot::Datetime ||
+                                    to == EDataSlot::TzDatetime ||
+                                    to == EDataSlot::Datetime64 ||
+                                    to == EDataSlot::TzDatetime64 ||
+                                    to == EDataSlot::Timestamp ||
+                                    to == EDataSlot::TzTimestamp ||
+                                    to == EDataSlot::Timestamp64 ||
+                                    to == EDataSlot::TzTimestamp64)
+    ) {
+        return true;
+    } else if (from == EDataSlot::TzDate && (to == EDataSlot::TzDate32 ||
+                                             to == EDataSlot::TzDatetime ||
+                                             to == EDataSlot::TzDatetime64 ||
+                                             to == EDataSlot::TzTimestamp ||
+                                             to == EDataSlot::TzTimestamp64)
+    ) {
+        return true;
+    } else if (from == EDataSlot::Date32 && (to == EDataSlot::TzDate32 ||
+                                             to == EDataSlot::Datetime64 ||
+                                             to == EDataSlot::TzDatetime64 ||
+                                             to == EDataSlot::Timestamp64 ||
+                                             to == EDataSlot::TzTimestamp64)
+    ) {
+        return true;
+    } else if (from == EDataSlot::TzDate32 && (to == EDataSlot::TzDatetime64 ||
+                                               to == EDataSlot::TzTimestamp64)
+    ) {
+        return true;
+    } else if (from == EDataSlot::Datetime && (to == EDataSlot::TzDatetime ||
+                                               to == EDataSlot::Datetime64 ||
+                                               to == EDataSlot::TzDatetime64 ||
+                                               to == EDataSlot::Timestamp ||
+                                               to == EDataSlot::TzTimestamp ||
+                                               to == EDataSlot::Timestamp64 ||
+                                               to == EDataSlot::TzTimestamp64)
+    ) {
+        return true;
+    } else if (from == EDataSlot::TzDatetime && (to == EDataSlot::TzDatetime64 ||
+                                                 to == EDataSlot::TzTimestamp ||
+                                                 to == EDataSlot::TzTimestamp64)
+    ) {
+        return true;
+    } else if (from == EDataSlot::Datetime64 && (to == EDataSlot::TzDatetime64 ||
+                                                 to == EDataSlot::Timestamp64 ||
+                                                 to == EDataSlot::TzTimestamp64)
+    ) {
+        return true;
+    } else if (from == EDataSlot::TzDatetime64 && to == EDataSlot::TzTimestamp64) {
+        return true;
+    } else if (from == EDataSlot::Timestamp && (to == EDataSlot::TzTimestamp ||
+                                                to == EDataSlot::Timestamp64 ||
+                                                to == EDataSlot::TzTimestamp64)
+    ) {
+        return true;
+    } else if (from == EDataSlot::TzTimestamp && to == EDataSlot::TzTimestamp64) {
+        return true;
+    } else if (from == EDataSlot::Timestamp64 && to == EDataSlot::TzTimestamp64) {
+        return true;
+    } else if (from == EDataSlot::Interval && (to == EDataSlot::Interval64)) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
 IGraphTransformer::TStatus TryConvertToImpl(TExprContext& ctx, TExprNode::TPtr& node,
-    const TTypeAnnotationNode& sourceType, const TTypeAnnotationNode& expectedType, TConvertFlags flags, bool raiseIssues = false) {
+    const TTypeAnnotationNode& sourceType, const TTypeAnnotationNode& expectedType, TConvertFlags flags,
+    bool raiseIssues, const TTypeAnnotationContext* typeCtx) {
 
     if (IsSameAnnotation(sourceType, expectedType)) {
         return IGraphTransformer::TStatus::Ok;
+    }
+
+    if (expectedType.GetKind() == ETypeAnnotationKind::Universal) {
+        node = ctx.NewCallable(node->Pos(), "InstanceOf", { ExpandType(node->Pos(), expectedType, ctx) });
+        return IGraphTransformer::TStatus::Repeat;
+    }
+
+    if (expectedType.GetKind() == ETypeAnnotationKind::UniversalStruct && sourceType.GetKind() == ETypeAnnotationKind::Struct) {
+        node = ctx.NewCallable(node->Pos(), "InstanceOf", { ExpandType(node->Pos(), expectedType, ctx) });
+        return IGraphTransformer::TStatus::Repeat;
+    }
+
+    if (sourceType.GetKind() == ETypeAnnotationKind::Universal) {
+        node = ctx.NewCallable(node->Pos(), "InstanceOf", { ExpandType(node->Pos(), expectedType, ctx) });
+        return IGraphTransformer::TStatus::Repeat;
+    }
+
+    if (sourceType.GetKind() == ETypeAnnotationKind::UniversalStruct && expectedType.GetKind() == ETypeAnnotationKind::Struct) {
+        node = ctx.NewCallable(node->Pos(), "InstanceOf", { ExpandType(node->Pos(), expectedType, ctx) });
+        return IGraphTransformer::TStatus::Repeat;
     }
 
     if (expectedType.GetKind() == ETypeAnnotationKind::Stream) {
@@ -131,7 +222,7 @@ IGraphTransformer::TStatus TryConvertToImpl(TExprContext& ctx, TExprNode::TPtr& 
     if (expectedType.GetKind() == ETypeAnnotationKind::Optional) {
         auto nextType = expectedType.Cast<TOptionalExprType>()->GetItemType();
         auto originalNode = node;
-        auto status1 = TryConvertToImpl(ctx, node, sourceType, *nextType, flags, raiseIssues);
+        auto status1 = TryConvertToImpl(ctx, node, sourceType, *nextType, flags, raiseIssues, typeCtx);
         if (status1.Level != IGraphTransformer::TStatus::Error) {
             node = ctx.NewCallable(node->Pos(), "Just", { node });
             return IGraphTransformer::TStatus::Repeat;
@@ -141,7 +232,7 @@ IGraphTransformer::TStatus TryConvertToImpl(TExprContext& ctx, TExprNode::TPtr& 
         if (node->IsCallable("Just")) {
             auto sourceItemType = sourceType.Cast<TOptionalExprType>()->GetItemType();
             auto value = node->HeadRef();
-            auto status = TryConvertToImpl(ctx, value, *sourceItemType, *nextType, flags, raiseIssues);
+            auto status = TryConvertToImpl(ctx, value, *sourceItemType, *nextType, flags, raiseIssues, typeCtx);
             if (status.Level != IGraphTransformer::TStatus::Error) {
                 node = ctx.NewCallable(node->Pos(), "Just", { value });
                 return IGraphTransformer::TStatus::Repeat;
@@ -150,7 +241,7 @@ IGraphTransformer::TStatus TryConvertToImpl(TExprContext& ctx, TExprNode::TPtr& 
             auto sourceItemType = sourceType.Cast<TOptionalExprType>()->GetItemType();
             auto arg = ctx.NewArgument(node->Pos(), "item");
             auto originalArg = arg;
-            auto status = TryConvertToImpl(ctx, arg, *sourceItemType, *nextType, flags, raiseIssues);
+            auto status = TryConvertToImpl(ctx, arg, *sourceItemType, *nextType, flags, raiseIssues, typeCtx);
             if (status.Level != IGraphTransformer::TStatus::Error) {
                 auto lambda = ctx.NewLambda(node->Pos(),
                     ctx.NewArguments(node->Pos(), { originalArg }),
@@ -162,7 +253,16 @@ IGraphTransformer::TStatus TryConvertToImpl(TExprContext& ctx, TExprNode::TPtr& 
         }
 
         if (IsNull(sourceType)) {
-            node = ctx.NewCallable(node->Pos(), "Nothing", { ExpandType(node->Pos(), expectedType, ctx) });
+            auto res = ctx.NewCallable(node->Pos(), "Nothing", { ExpandType(node->Pos(), expectedType, ctx) });
+            if (typeCtx) {
+                res = KeepWorld(res, *node, ctx, *typeCtx);
+            }
+
+            if (node->HasSideEffects()) {
+                res = ctx.NewCallable(node->Pos(), "Seq", { node, res });
+            }
+
+            node = res;
             return IGraphTransformer::TStatus::Repeat;
         }
     }
@@ -174,6 +274,21 @@ IGraphTransformer::TStatus TryConvertToImpl(TExprContext& ctx, TExprNode::TPtr& 
                 .Callable("Apply")
                     .Callable(0, "Udf")
                         .Atom(0, to == EDataSlot::Yson ? "Yson2.Serialize" : "Yson2.SerializeJson", TNodeFlags::Default)
+                    .Seal()
+                    .Add(1, std::move(node))
+                .Seal()
+                .Build();
+
+            return IGraphTransformer::TStatus::Repeat;
+        }
+    } else if (expectedType.GetKind() == ETypeAnnotationKind::Resource && sourceType.GetKind() == ETypeAnnotationKind::Resource) {
+        const auto from = sourceType.Cast<TResourceExprType>()->GetTag();
+        const auto to = expectedType.Cast<TResourceExprType>()->GetTag();
+        if (from == "DateTime2.TM" && to == "DateTime2.TM64") {
+            node = ctx.Builder(node->Pos())
+                .Callable("Apply")
+                    .Callable(0, "Udf")
+                        .Atom(0, "DateTime2.Convert", TNodeFlags::Default)
                     .Seal()
                     .Add(1, std::move(node))
                 .Seal()
@@ -232,8 +347,7 @@ IGraphTransformer::TStatus TryConvertToImpl(TExprContext& ctx, TExprNode::TPtr& 
                 .Build();
 
             return IGraphTransformer::TStatus::Repeat;
-
-        } else if ((GetDataTypeInfo(fromSlot).Features & (NUdf::EDataTypeFeatures::DateType | NUdf::EDataTypeFeatures::TzDateType)) && to == "DateTime2.TM") {
+        } else if ((GetDataTypeInfo(fromSlot).Features & (NUdf::EDataTypeFeatures::DateType | NUdf::EDataTypeFeatures::TzDateType)) && (to == "DateTime2.TM" || to == "DateTime2.TM64")) {
             node = ctx.Builder(node->Pos())
                 .Callable("Apply")
                     .Callable(0, "Udf")
@@ -318,43 +432,10 @@ IGraphTransformer::TStatus TryConvertToImpl(TExprContext& ctx, TExprNode::TPtr& 
         if (IsDataTypeNumeric(from) && IsDataTypeNumeric(to)) {
             allow = GetNumericDataTypeLevel(to) >= GetNumericDataTypeLevel(from);
             isSafe = false;
-        } else if (from == EDataSlot::Date && (
-                    to == EDataSlot::Date32 ||
-                    to == EDataSlot::TzDate ||
-                    to == EDataSlot::Datetime ||
-                    to == EDataSlot::Timestamp ||
-                    to == EDataSlot::TzDatetime ||
-                    to == EDataSlot::TzTimestamp ||
-                    to == EDataSlot::Datetime64 ||
-                    to == EDataSlot::Timestamp64))
+        } else if (IsDataTypeDateOrTzDateOrInterval(from) &&
+                   IsDataTypeDateOrTzDateOrInterval(to) &&
+                   IsDatetimeToDatetimeCastAllowed(from, to))
         {
-            allow = true;
-            useCast = true;
-        } else if (from == EDataSlot::Datetime && (
-                    to == EDataSlot::Datetime64 ||
-                    to == EDataSlot::TzDatetime ||
-                    to == EDataSlot::Timestamp ||
-                    to == EDataSlot::TzTimestamp ||
-                    to == EDataSlot::Timestamp64))
-        {
-            allow = true;
-            useCast = true;
-        } else if (from == EDataSlot::TzDate && (to == EDataSlot::TzDatetime || to == EDataSlot::TzTimestamp)) {
-            allow = true;
-            useCast = true;
-        } else if (from == EDataSlot::TzDatetime && to == EDataSlot::TzTimestamp) {
-            allow = true;
-            useCast = true;
-        } else if (from == EDataSlot::Timestamp && (to == EDataSlot::TzTimestamp || to == EDataSlot::Timestamp64)) {
-            allow = true;
-            useCast = true;
-        } else if (from == EDataSlot::Date32 && (to == EDataSlot::Datetime64 || to == EDataSlot::Timestamp64)) {
-            allow = true;
-            useCast = true;
-        } else if (from == EDataSlot::Datetime64 && (to == EDataSlot::Timestamp64)) {
-            allow = true;
-            useCast = true;
-        } else if (from == EDataSlot::Interval && (to == EDataSlot::Interval64)) {
             allow = true;
             useCast = true;
         } else if (from == EDataSlot::Json && to == EDataSlot::Utf8) {
@@ -379,6 +460,27 @@ IGraphTransformer::TStatus TryConvertToImpl(TExprContext& ctx, TExprNode::TPtr& 
                 .Build();
 
             return IGraphTransformer::TStatus::Repeat;
+        } else if (IsDataTypeDecimal(from) && IsDataTypeDecimal(to)) {
+            auto* sourceDecimal = sourceType.Cast<TDataExprParamsType>();
+            auto* expectedDecimal = expectedType.Cast<TDataExprParamsType>();
+            ui8 p1 = FromString(sourceDecimal->GetParamOne());
+            ui8 s1 = FromString(sourceDecimal->GetParamTwo());
+            ui8 p2 = FromString(expectedDecimal->GetParamOne());
+            ui8 s2 = FromString(expectedDecimal->GetParamTwo());
+            if (s1 > s2) {
+                TString message = TStringBuilder() << "Implicit decimal cast would lose precision";
+                auto issue = TIssue(node->Pos(ctx), message);
+                ctx.AddError(issue);
+                return IGraphTransformer::TStatus::Error;
+            }
+            if (p1 - s1 > p2 - s2) {
+                TString message = TStringBuilder() << "Implicit decimal cast would narrow the range";
+                auto issue = TIssue(node->Pos(ctx), message);
+                ctx.AddError(issue);
+                return IGraphTransformer::TStatus::Error;
+            }
+            allow = true;
+            useCast = true;
         }
 
         if (!allow || !isSafe) {
@@ -440,6 +542,14 @@ IGraphTransformer::TStatus TryConvertToImpl(TExprContext& ctx, TExprNode::TPtr& 
             TExprNode::TPtr field;
             if (!pos) {
                 switch (newField->GetItemType()->GetKind()) {
+                case ETypeAnnotationKind::Universal:
+                    field = ctx.Builder(node->Pos())
+                        .Callable("InstanceOf")
+                            .Callable(0, "UniversalType")
+                            .Seal()
+                        .Seal()
+                        .Build();
+                    break;
                 case ETypeAnnotationKind::Null:
                     field = ctx.Builder(node->Pos())
                         .Callable(ToString(newField->GetItemType()->GetKind())).Seal()
@@ -480,7 +590,7 @@ IGraphTransformer::TStatus TryConvertToImpl(TExprContext& ctx, TExprNode::TPtr& 
                         .Build();
                 }
 
-                auto status = TryConvertToImpl(ctx, field, *oldType->GetItemType(), *newField->GetItemType(), flags, raiseIssues);
+                auto status = TryConvertToImpl(ctx, field, *oldType->GetItemType(), *newField->GetItemType(), flags, raiseIssues, typeCtx);
                 if (status.Level == IGraphTransformer::TStatus::Error) {
                     if (raiseIssues) {
                         ctx.AddError(TIssue(node->Pos(ctx), TStringBuilder() <<
@@ -536,7 +646,7 @@ IGraphTransformer::TStatus TryConvertToImpl(TExprContext& ctx, TExprNode::TPtr& 
                 auto status = TryConvertToImpl(
                     ctx, targetItem,
                     *fromUnderlying->GetItems()[*fromTargetIndex]->GetItemType(),
-                    *toUnderlying->GetItems()[*toTargetIndex]->GetItemType(), flags, raiseIssues);
+                    *toUnderlying->GetItems()[*toTargetIndex]->GetItemType(), flags, raiseIssues, typeCtx);
                 if (status.Level == IGraphTransformer::TStatus::Error) {
                     return status;
                 }
@@ -553,7 +663,7 @@ IGraphTransformer::TStatus TryConvertToImpl(TExprContext& ctx, TExprNode::TPtr& 
                     auto fromElement = item->GetItemType();
                     auto toElement = toUnderlying->GetItems()[*toIndex]->GetItemType();
                     auto arg = ctx.NewArgument(TPositionHandle(), "arg");
-                    auto status1 = TryConvertToImpl(ctx, arg, *fromElement, *toElement, flags, raiseIssues);
+                    auto status1 = TryConvertToImpl(ctx, arg, *fromElement, *toElement, flags, raiseIssues, typeCtx);
                     if (status1.Level == IGraphTransformer::TStatus::Error) {
                         return status1;
                     }
@@ -583,7 +693,7 @@ IGraphTransformer::TStatus TryConvertToImpl(TExprContext& ctx, TExprNode::TPtr& 
                 auto status = TryConvertToImpl(
                     ctx, targetItem,
                     *fromUnderlying->GetItems()[targetIndex],
-                    *toUnderlying->GetItems()[targetIndex], flags, raiseIssues);
+                    *toUnderlying->GetItems()[targetIndex], flags, raiseIssues, typeCtx);
                 if (status.Level == IGraphTransformer::TStatus::Error) {
                     return status;
                 }
@@ -594,7 +704,7 @@ IGraphTransformer::TStatus TryConvertToImpl(TExprContext& ctx, TExprNode::TPtr& 
                     }
                     auto arg = ctx.NewArgument(TPositionHandle(), "arg");
                     auto status1 = TryConvertToImpl(ctx, arg, *fromUnderlying->GetItems()[i],
-                        *toUnderlying->GetItems()[i], flags, raiseIssues);
+                        *toUnderlying->GetItems()[i], flags, raiseIssues, typeCtx);
                     if (status1.Level == IGraphTransformer::TStatus::Error) {
                         return status1;
                     }
@@ -611,7 +721,7 @@ IGraphTransformer::TStatus TryConvertToImpl(TExprContext& ctx, TExprNode::TPtr& 
                 break;
             }
             default:
-                Y_UNREACHABLE();
+                YQL_ENSURE(false, "Unreachable");
         }
 
         return IGraphTransformer::TStatus::Repeat;
@@ -649,7 +759,7 @@ IGraphTransformer::TStatus TryConvertToImpl(TExprContext& ctx, TExprNode::TPtr& 
                     auto arg = ctx.NewArgument(node->Pos(), "item");
                     auto originalArg = arg;
 
-                    auto status = TryConvertToImpl(ctx, arg, *fromElement, *toElement, flags, raiseIssues);
+                    auto status = TryConvertToImpl(ctx, arg, *fromElement, *toElement, flags, raiseIssues, typeCtx);
                     if (status.Level == IGraphTransformer::TStatus::Error) {
                         return status;
                     }
@@ -684,7 +794,7 @@ IGraphTransformer::TStatus TryConvertToImpl(TExprContext& ctx, TExprNode::TPtr& 
                     auto arg = ctx.NewArgument(node->Pos(), "item");
                     auto originalArg = arg;
 
-                    auto status = TryConvertToImpl(ctx, arg, *fromElement, *toElement, flags, raiseIssues);
+                    auto status = TryConvertToImpl(ctx, arg, *fromElement, *toElement, flags, raiseIssues, typeCtx);
                     if (status.Level == IGraphTransformer::TStatus::Error) {
                         return status;
                     }
@@ -704,7 +814,7 @@ IGraphTransformer::TStatus TryConvertToImpl(TExprContext& ctx, TExprNode::TPtr& 
                 break;
             }
             default:
-                Y_UNREACHABLE();
+                YQL_ENSURE(false, "Unreachable");
         }
 
         node = RebuildVariant(node, transforms, ctx);
@@ -720,7 +830,8 @@ IGraphTransformer::TStatus TryConvertToImpl(TExprContext& ctx, TExprNode::TPtr& 
                 const auto oldType = from->GetItems()[i];
                 const auto newType = to->GetItems()[i];
                 auto value = node->ChildPtr(i);
-                if (const auto status = TryConvertToImpl(ctx, value, *oldType, *newType, flags, raiseIssues); status.Level == IGraphTransformer::TStatus::Error) {
+                if (const auto status = TryConvertToImpl(ctx, value, *oldType, *newType, flags, raiseIssues, typeCtx);
+                    status.Level == IGraphTransformer::TStatus::Error) {
                     return status;
                 }
 
@@ -735,6 +846,11 @@ IGraphTransformer::TStatus TryConvertToImpl(TExprContext& ctx, TExprNode::TPtr& 
                         continue;
                     case ETypeAnnotationKind::Null:
                         valueTransforms.push_back(ctx.NewCallable(node->Pos(), "Null", {}));
+                        continue;
+                    case ETypeAnnotationKind::Universal:
+                        valueTransforms.push_back(ctx.NewCallable(node->Pos(), "InstanceOf", {
+                            ctx.NewCallable(node->Pos(), "UniversalType", {})
+                        }));
                         continue;
                     default:
                         return IGraphTransformer::TStatus::Error;
@@ -761,7 +877,8 @@ IGraphTransformer::TStatus TryConvertToImpl(TExprContext& ctx, TExprNode::TPtr& 
                     .Seal()
                     .Build();
 
-                if (const auto status = TryConvertToImpl(ctx, value, *oldType, *newType, flags, raiseIssues); status.Level == IGraphTransformer::TStatus::Error) {
+                if (const auto status = TryConvertToImpl(ctx, value, *oldType, *newType, flags, raiseIssues, typeCtx);
+                    status.Level == IGraphTransformer::TStatus::Error) {
                     return status;
                 }
 
@@ -776,6 +893,11 @@ IGraphTransformer::TStatus TryConvertToImpl(TExprContext& ctx, TExprNode::TPtr& 
                         continue;
                     case ETypeAnnotationKind::Null:
                         valueTransforms.push_back(ctx.NewCallable(node->Pos(), "Null", {}));
+                        continue;
+                    case ETypeAnnotationKind::Universal:
+                        valueTransforms.push_back(ctx.NewCallable(node->Pos(), "InstanceOf", {
+                            ctx.NewCallable(node->Pos(), "UniversalType", {})
+                        }));
                         continue;
                     default:
                         return IGraphTransformer::TStatus::Error;
@@ -800,7 +922,7 @@ IGraphTransformer::TStatus TryConvertToImpl(TExprContext& ctx, TExprNode::TPtr& 
 
         for (ui32 i = node->IsCallable("List") ? 1 : 0; i < node->ChildrenSize(); ++i) {
             auto value = node->ChildPtr(i);
-            auto status = TryConvertToImpl(ctx, value, *oldItemType, *newItemType, flags, raiseIssues);
+            auto status = TryConvertToImpl(ctx, value, *oldItemType, *newItemType, flags, raiseIssues, typeCtx);
             if (status.Level == IGraphTransformer::TStatus::Error) {
                 return status;
             }
@@ -818,7 +940,7 @@ IGraphTransformer::TStatus TryConvertToImpl(TExprContext& ctx, TExprNode::TPtr& 
         auto nextType = to->GetItemType();
         auto arg = ctx.NewArgument(node->Pos(), "item");
         auto originalArg = arg;
-        auto status = TryConvertToImpl(ctx, arg, *from->GetItemType(), *nextType, flags, raiseIssues);
+        auto status = TryConvertToImpl(ctx, arg, *from->GetItemType(), *nextType, flags, raiseIssues, typeCtx);
         if (status.Level != IGraphTransformer::TStatus::Error) {
             auto lambda = ctx.NewLambda(node->Pos(), ctx.NewArguments(node->Pos(), { originalArg }), std::move(arg));
 
@@ -834,7 +956,7 @@ IGraphTransformer::TStatus TryConvertToImpl(TExprContext& ctx, TExprNode::TPtr& 
         auto nextType = to->GetItemType();
         auto arg = ctx.NewArgument(node->Pos(), "item");
         auto originalArg = arg;
-        auto status = TryConvertToImpl(ctx, arg, *from->GetItemType(), *nextType, flags, raiseIssues);
+        auto status = TryConvertToImpl(ctx, arg, *from->GetItemType(), *nextType, flags, raiseIssues, typeCtx);
         if (status.Level != IGraphTransformer::TStatus::Error) {
             auto lambda = ctx.NewLambda(node->Pos(), ctx.NewArguments(node->Pos(), { originalArg }), std::move(arg));
 
@@ -860,8 +982,8 @@ IGraphTransformer::TStatus TryConvertToImpl(TExprContext& ctx, TExprNode::TPtr& 
         for (ui32 i = node->IsCallable("Dict") ? 1 : 0; i < node->ChildrenSize(); ++i) {
             auto valueKey = node->Child(i)->ChildPtr(0);
             auto valuePayload = node->Child(i)->ChildPtr(1);
-            auto status = TryConvertToImpl(ctx, valueKey, *oldKeyType, *newKeyType, flags, raiseIssues);
-            status = status.Combine(TryConvertToImpl(ctx, valuePayload, *oldPayloadType, *newPayloadType, flags, raiseIssues));
+            auto status = TryConvertToImpl(ctx, valueKey, *oldKeyType, *newKeyType, flags, raiseIssues, typeCtx);
+            status = status.Combine(TryConvertToImpl(ctx, valuePayload, *oldPayloadType, *newPayloadType, flags, raiseIssues, typeCtx));
             if (status.Level == IGraphTransformer::TStatus::Error) {
                 return status;
             }
@@ -883,8 +1005,8 @@ IGraphTransformer::TStatus TryConvertToImpl(TExprContext& ctx, TExprNode::TPtr& 
         auto arg = ctx.NewArgument(node->Pos(), "item");
         auto key = ctx.NewCallable(node->Pos(), "Nth", { arg, ctx.NewAtom(node->Pos(), "0") });
         auto value = ctx.NewCallable(node->Pos(), "Nth", { arg, ctx.NewAtom(node->Pos(), "1") });
-        auto status = TryConvertToImpl(ctx, key, *oldKeyType, *newKeyType, flags, raiseIssues);
-        status = status.Combine(TryConvertToImpl(ctx, value, *oldPayloadType, *newPayloadType, flags, raiseIssues));
+        auto status = TryConvertToImpl(ctx, key, *oldKeyType, *newKeyType, flags, raiseIssues, typeCtx);
+        status = status.Combine(TryConvertToImpl(ctx, value, *oldPayloadType, *newPayloadType, flags, raiseIssues, typeCtx));
         if (status.Level != IGraphTransformer::TStatus::Error) {
             auto body = ctx.NewList(node->Pos(), { key, value });
             auto lambda = ctx.NewLambda(node->Pos(), ctx.NewArguments(node->Pos(), { arg }), std::move(body));
@@ -897,17 +1019,35 @@ IGraphTransformer::TStatus TryConvertToImpl(TExprContext& ctx, TExprNode::TPtr& 
         if (from->GetTag() == to->GetTag()) {
             auto nextType = to->GetBaseType();
             auto arg = ctx.NewCallable(node->Pos(), "Untag", { node, ctx.NewAtom(node->Pos(), from->GetTag()) });
-            auto status = TryConvertToImpl(ctx, arg, *from->GetBaseType(), *nextType, flags, raiseIssues);
+            auto status = TryConvertToImpl(ctx, arg, *from->GetBaseType(), *nextType, flags, raiseIssues, typeCtx);
             if (status.Level != IGraphTransformer::TStatus::Error) {
                 node = ctx.NewCallable(node->Pos(), "AsTagged", { arg, ctx.NewAtom(node->Pos(), from->GetTag()) });
                 return IGraphTransformer::TStatus::Repeat;
             }
         }
     } else if (expectedType.GetKind() == ETypeAnnotationKind::List && sourceType.GetKind() == ETypeAnnotationKind::EmptyList) {
-        node = ctx.NewCallable(node->Pos(), "List", { ExpandType(node->Pos(), expectedType, ctx) });
+        auto res = ctx.NewCallable(node->Pos(), "List", { ExpandType(node->Pos(), expectedType, ctx) });
+        if (typeCtx) {
+            res = KeepWorld(res, *node, ctx, *typeCtx);
+        }
+
+        if (node->HasSideEffects()) {
+            res = ctx.NewCallable(node->Pos(), "Seq", { node, res });
+        }
+
+        node = res;
         return IGraphTransformer::TStatus::Repeat;
     } else if (expectedType.GetKind() == ETypeAnnotationKind::Dict && sourceType.GetKind() == ETypeAnnotationKind::EmptyDict) {
-        node = ctx.NewCallable(node->Pos(), "Dict", { ExpandType(node->Pos(), expectedType, ctx) });
+        auto res = ctx.NewCallable(node->Pos(), "Dict", { ExpandType(node->Pos(), expectedType, ctx) });
+        if (typeCtx) {
+            res = KeepWorld(res, *node, ctx, *typeCtx);
+        }
+
+        if (node->HasSideEffects()) {
+            res = ctx.NewCallable(node->Pos(), "Seq", { node, res });
+        }
+
+        node = res;
         return IGraphTransformer::TStatus::Repeat;
     }
 
@@ -981,7 +1121,7 @@ NUdf::TCastResultOptions CastResult(const TDataExprType* source, const TDataExpr
         }
         return Strong ? NUdf::ECastOptions::MayFail:
             NUdf::ECastOptions::MayFail |
-            ((sParts.first >= dDst || sParts.second >0u) ? NUdf::ECastOptions::MayLoseData : NUdf::ECastOptions::Complete);
+            ((sParts.first >= dDst || sParts.second >0U) ? NUdf::ECastOptions::MayLoseData : NUdf::ECastOptions::Complete);
     }
 
     const auto option = *NUdf::GetCastResult(sSlot, tSlot);
@@ -1219,7 +1359,8 @@ ECompareOptions CanCompare(const TStructExprType* left, const TStructExprType* r
 
     const auto& fields = GetFieldsTypes(*left, *right);
 
-    bool hasMissed = false, hasCommon = false;
+    bool hasMissed = false;
+    bool hasCommon = false;
     for (const auto& field : fields) {
         switch (CanCompare<Equality>(field.second.front(), field.second.back())) {
             case ECompareOptions::Null: hasMissed = true; continue;
@@ -1606,13 +1747,28 @@ template NUdf::TCastResultOptions CastResult<true>(const TTypeAnnotationNode* so
 template NUdf::TCastResultOptions CastResult<false>(const TTypeAnnotationNode* source, const TTypeAnnotationNode* target);
 
 template <bool Equality>
-ECompareOptions CanCompare(const TTypeAnnotationNode* left, const TTypeAnnotationNode* right) {
-    if (!(left && right)) {
+ECompareOptions CanCompare(const TTypeAnnotationNode* source, const TTypeAnnotationNode* target) {
+    if (!(source && target)) {
         return ECompareOptions::Null;
     }
 
-    const auto lKind = left->GetKind();
-    const auto rKind = right->GetKind();
+    const auto lKind = source->GetKind();
+    const auto rKind = target->GetKind();
+    if (lKind == ETypeAnnotationKind::Universal || rKind == ETypeAnnotationKind::Universal) {
+        return ECompareOptions::Comparable;
+    }
+
+    if (lKind == ETypeAnnotationKind::UniversalStruct && rKind == ETypeAnnotationKind::Struct) {
+        return Equality ? ECompareOptions::Comparable : ECompareOptions::Uncomparable;
+    }
+
+    if (rKind == ETypeAnnotationKind::UniversalStruct && lKind == ETypeAnnotationKind::Struct) {
+        return Equality ? ECompareOptions::Comparable : ECompareOptions::Uncomparable;
+    }
+
+    if (rKind == ETypeAnnotationKind::UniversalStruct && lKind == ETypeAnnotationKind::UniversalStruct) {
+        return Equality ? ECompareOptions::Comparable : ECompareOptions::Uncomparable;
+    }
 
     if (lKind == rKind) {
         switch (lKind) {
@@ -1621,46 +1777,46 @@ ECompareOptions CanCompare(const TTypeAnnotationNode* left, const TTypeAnnotatio
             case ETypeAnnotationKind::EmptyList: return ECompareOptions::Comparable;
             case ETypeAnnotationKind::EmptyDict: return Equality ? ECompareOptions::Comparable : ECompareOptions::Uncomparable;
             case ETypeAnnotationKind::Optional:
-                return CanCompare<Equality>(left->Cast<TOptionalExprType>(), right->Cast<TOptionalExprType>());
+                return CanCompare<Equality>(source->Cast<TOptionalExprType>(), target->Cast<TOptionalExprType>());
             case ETypeAnnotationKind::List:
-                return CanCompare<Equality>(left->Cast<TListExprType>(), right->Cast<TListExprType>());
+                return CanCompare<Equality>(source->Cast<TListExprType>(), target->Cast<TListExprType>());
             case ETypeAnnotationKind::Dict:
-                return CanCompare<Equality>(left->Cast<TDictExprType>(), right->Cast<TDictExprType>());
+                return CanCompare<Equality>(source->Cast<TDictExprType>(), target->Cast<TDictExprType>());
             case ETypeAnnotationKind::Tuple:
-                return CanCompare<Equality>(left->Cast<TTupleExprType>(), right->Cast<TTupleExprType>());
+                return CanCompare<Equality>(source->Cast<TTupleExprType>(), target->Cast<TTupleExprType>());
             case ETypeAnnotationKind::Struct:
-                return CanCompare<Equality>(left->Cast<TStructExprType>(), right->Cast<TStructExprType>());
+                return CanCompare<Equality>(source->Cast<TStructExprType>(), target->Cast<TStructExprType>());
             case ETypeAnnotationKind::Variant:
-                return CanCompare<Equality>(left->Cast<TVariantExprType>(), right->Cast<TVariantExprType>());
+                return CanCompare<Equality>(source->Cast<TVariantExprType>(), target->Cast<TVariantExprType>());
             case ETypeAnnotationKind::Tagged:
-                return CanCompare<Equality>(left->Cast<TTaggedExprType>(), right->Cast<TTaggedExprType>());
+                return CanCompare<Equality>(source->Cast<TTaggedExprType>(), target->Cast<TTaggedExprType>());
             case ETypeAnnotationKind::Data:
-                return CanCompare(left->Cast<TDataExprType>(), right->Cast<TDataExprType>());
+                return CanCompare(source->Cast<TDataExprType>(), target->Cast<TDataExprType>());
             case ETypeAnnotationKind::Pg:
-                return CanCompare<Equality>(left->Cast<TPgExprType>(), right->Cast<TPgExprType>());
+                return CanCompare<Equality>(source->Cast<TPgExprType>(), target->Cast<TPgExprType>());
             default: break;
         }
     } else if (lKind == ETypeAnnotationKind::Null || rKind == ETypeAnnotationKind::Null) {
         return ECompareOptions::Null;
     } else if (lKind == ETypeAnnotationKind::Optional) {
-        return AddOptional(CanCompare<Equality>(left->Cast<TOptionalExprType>()->GetItemType(), right));
+        return AddOptional(CanCompare<Equality>(source->Cast<TOptionalExprType>()->GetItemType(), target));
     } else if (rKind == ETypeAnnotationKind::Optional) {
-        return AddOptional(CanCompare<Equality>(left, right->Cast<TOptionalExprType>()->GetItemType()));
+        return AddOptional(CanCompare<Equality>(source, target->Cast<TOptionalExprType>()->GetItemType()));
     } else if (lKind == ETypeAnnotationKind::EmptyList && rKind == ETypeAnnotationKind::List) {
-        return CanCompare<Equality>(right->Cast<TListExprType>(), right->Cast<TListExprType>());
+        return CanCompare<Equality>(target->Cast<TListExprType>(), target->Cast<TListExprType>());
     } else if (rKind == ETypeAnnotationKind::EmptyList && lKind == ETypeAnnotationKind::List) {
-        return CanCompare<Equality>(left->Cast<TListExprType>(), left->Cast<TListExprType>());
+        return CanCompare<Equality>(source->Cast<TListExprType>(), source->Cast<TListExprType>());
     } else if (lKind == ETypeAnnotationKind::EmptyDict && rKind == ETypeAnnotationKind::Dict) {
-        return CanCompare<Equality>(right->Cast<TDictExprType>(), right->Cast<TDictExprType>());
+        return CanCompare<Equality>(target->Cast<TDictExprType>(), target->Cast<TDictExprType>());
     } else if (rKind == ETypeAnnotationKind::EmptyDict && lKind == ETypeAnnotationKind::Dict) {
-        return CanCompare<Equality>(left->Cast<TDictExprType>(), left->Cast<TDictExprType>());
+        return CanCompare<Equality>(source->Cast<TDictExprType>(), source->Cast<TDictExprType>());
     }
 
     return ECompareOptions::Uncomparable;
 }
 
-template ECompareOptions CanCompare<true>(const TTypeAnnotationNode* left, const TTypeAnnotationNode* right);
-template ECompareOptions CanCompare<false>(const TTypeAnnotationNode* left, const TTypeAnnotationNode* right);
+template ECompareOptions CanCompare<true>(const TTypeAnnotationNode* source, const TTypeAnnotationNode* target);
+template ECompareOptions CanCompare<false>(const TTypeAnnotationNode* source, const TTypeAnnotationNode* target);
 
 const TTypeAnnotationNode* DryType(const TTypeAnnotationNode* type, bool& hasOptional, TExprContext& ctx) {
     if (type) {
@@ -1716,7 +1872,8 @@ const TTypeAnnotationNode* JoinDryKeyType(const TTypeAnnotationNode* primary, co
 }
 
 const TTypeAnnotationNode* JoinCommonDryKeyType(TPositionHandle position, bool outer, const TTypeAnnotationNode* one, const TTypeAnnotationNode* two, TExprContext& ctx) {
-    bool optOne = false, optTwo = false;
+    bool optOne = false;
+    bool optTwo = false;
     auto dryOne = DryType(one, optOne, ctx);
     auto dryTwo = DryType(two, optTwo, ctx);
     if (!(dryOne && dryTwo))
@@ -1773,6 +1930,22 @@ const TTypeAnnotationNode* CommonType(TPositionHandle pos, const TTypeAnnotation
         if constexpr (!Silent)
             ctx.AddError(TIssue(ctx.GetPosition(pos), TStringBuilder() << "Cannot infer common type for " << kindOne));
     } else {
+        if (kindOne == ETypeAnnotationKind::Universal) {
+            return one;
+        }
+
+        if (kindTwo == ETypeAnnotationKind::Universal) {
+            return two;
+        }
+
+        if (kindOne == ETypeAnnotationKind::UniversalStruct && kindTwo == ETypeAnnotationKind::Struct) {
+            return one;
+        }
+
+        if (kindTwo == ETypeAnnotationKind::UniversalStruct && kindOne == ETypeAnnotationKind::Struct) {
+            return two;
+        }
+
         if constexpr (!Strict) {
             if (ETypeAnnotationKind::Pg == kindOne) {
                 if (ETypeAnnotationKind::Null == kindTwo)
@@ -1828,7 +2001,8 @@ const TTypeAnnotationNode* CommonType(TPositionHandle position, const TTypeAnnot
         default: break;
     }
 
-    const auto left = types.size() >> 1U, right = types.size() - left;
+    const auto left = types.size() >> 1U;
+    const auto right = types.size() - left;
     return CommonType<false, false>(position, CommonType(position, types.first(left), ctx, warn), CommonType(position, types.last(right), ctx, warn), ctx, warn);
 }
 
@@ -1882,18 +2056,45 @@ void EnsureAllNodesTypeAnnotated(const TExprNode& root) {
 
 namespace {
 
+bool HasError(const TTypeAnnotationNode* type, TIssue* errIssue) {
+    if (errIssue) {
+        *errIssue = {};
+    }
+
+    if (!type) {
+        return false;
+    }
+
+    if (type->GetKind() == ETypeAnnotationKind::Error) {
+        if (errIssue) {
+            *errIssue = type->Cast<TErrorExprType>()->GetError();
+        }
+        return true;
+    }
+
+    if (type->GetKind() == ETypeAnnotationKind::Type) {
+        return HasError(type->Cast<TTypeExprType>()->GetType(), errIssue);
+    }
+
+    return false;
+}
+
 bool IsPg(
     TPosition pos,
     const TTypeAnnotationNode* typeAnnotation,
     const TPgExprType*& pgType,
-    TIssue& err,
+    TIssue* err,
     bool& hasErrorType)
 {
-    err = {};
+    if (err) {
+        *err = {};
+    }
     hasErrorType = false;
 
     if (!typeAnnotation) {
-        err = TIssue(pos, TStringBuilder() << "Expected pg, but got lambda");
+        if (err) {
+            *err = TIssue(pos, TStringBuilder() << "Expected pg, but got lambda");
+        }
         return false;
     }
 
@@ -1903,7 +2104,9 @@ bool IsPg(
     }
 
     if (!HasError(typeAnnotation, err)) {
-        err = TIssue(pos, TStringBuilder() << "Expected pg, but got: " << *typeAnnotation);
+        if (err) {
+            *err = TIssue(pos, TStringBuilder() << "Expected pg, but got: " << *typeAnnotation);
+        }
     } else {
         hasErrorType = true;
     }
@@ -1911,13 +2114,21 @@ bool IsPg(
 }
 
 bool IsDataOrOptionalOfData(TPosition pos, const TTypeAnnotationNode* typeAnnotation, bool& isOptional,
-    const TDataExprType*& dataType, TIssue& err, bool& hasErrorType)
+    const TDataExprType*& dataType, TIssue* err, bool& hasErrorType, bool* isUniversal = nullptr)
 {
-    err = {};
+    if (err) {
+        *err = {};
+    }
+
     hasErrorType = false;
+    if (isUniversal) {
+        *isUniversal = false;
+    }
 
     if (!typeAnnotation) {
-        err = TIssue(pos, TStringBuilder() << "Expected data or optional of data, but got lambda");
+        if (err) {
+            *err = TIssue(pos, TStringBuilder() << "Expected data or optional of data, but got lambda");
+        }
         return false;
     }
 
@@ -1929,7 +2140,14 @@ bool IsDataOrOptionalOfData(TPosition pos, const TTypeAnnotationNode* typeAnnota
 
     if (typeAnnotation->GetKind() != ETypeAnnotationKind::Optional) {
         if (!HasError(typeAnnotation, err)) {
-            err = TIssue(pos, TStringBuilder() << "Expected data or optional of data, but got: " << *typeAnnotation);
+            if (isUniversal && typeAnnotation->GetKind() == ETypeAnnotationKind::Universal) {
+                *isUniversal = true;
+                return true;
+            }
+
+            if (err) {
+                *err = TIssue(pos, TStringBuilder() << "Expected data or optional of data, but got: " << *typeAnnotation);
+            }
         } else {
             hasErrorType = true;
         }
@@ -1939,7 +2157,14 @@ bool IsDataOrOptionalOfData(TPosition pos, const TTypeAnnotationNode* typeAnnota
     auto itemType = typeAnnotation->Cast<TOptionalExprType>()->GetItemType();
     if (itemType->GetKind() != ETypeAnnotationKind::Data) {
         if (!HasError(itemType, err)) {
-            err = TIssue(pos, TStringBuilder() << "Expected data or optional of data, but got optional of: " << *itemType);
+            if (isUniversal && itemType->GetKind() == ETypeAnnotationKind::Universal) {
+                *isUniversal = true;
+                return true;
+            }
+
+            if (err) {
+                *err = TIssue(pos, TStringBuilder() << "Expected data or optional of data, but got optional of: " << *itemType);
+            }
         } else {
             hasErrorType = true;
         }
@@ -1951,13 +2176,12 @@ bool IsDataOrOptionalOfData(TPosition pos, const TTypeAnnotationNode* typeAnnota
     return true;
 }
 
-}
+} // anonymous namespace
 
 bool IsDataOrOptionalOfData(const TTypeAnnotationNode* typeAnnotation, bool& isOptional, const TDataExprType*& dataType)
 {
-    TIssue err;
     bool hasErrorType;
-    return IsDataOrOptionalOfData({}, typeAnnotation, isOptional, dataType, err, hasErrorType);
+    return IsDataOrOptionalOfData({}, typeAnnotation, isOptional, dataType, /*err=*/nullptr, hasErrorType);
 }
 
 bool IsDataOrOptionalOfData(const TTypeAnnotationNode* typeAnnotation) {
@@ -1967,9 +2191,8 @@ bool IsDataOrOptionalOfData(const TTypeAnnotationNode* typeAnnotation) {
 }
 
 bool IsPg(const TTypeAnnotationNode* typeAnnotation, const TPgExprType*& pgType) {
-    TIssue err;
     bool hasErrorType;
-    return IsPg({}, typeAnnotation, pgType, err, hasErrorType);
+    return IsPg({}, typeAnnotation, pgType, /*err=*/nullptr, hasErrorType);
 }
 
 bool IsDataOrOptionalOfDataOrPg(const TTypeAnnotationNode* typeAnnotation) {
@@ -2044,6 +2267,25 @@ bool EnsureAtom(const TExprNode& node, TExprContext& ctx) {
     return true;
 }
 
+bool EnsureAtomOrUniversal(const TExprNode& node, TExprContext& ctx, bool& isUniversal) {
+    isUniversal = false;
+    if (HasError(node.GetTypeAnn(), ctx)) {
+        return false;
+    }
+
+    if (node.GetTypeAnn() && node.GetTypeAnn()->GetKind() == ETypeAnnotationKind::Universal) {
+        isUniversal = true;
+        return true;
+    }
+
+    if (node.Type() != TExprNode::Atom) {
+        ctx.AddError(TIssue(ctx.GetPosition(node.Pos()), TStringBuilder() << "Expected atom, but got: " << node.Type()));
+        return false;
+    }
+
+    return true;
+}
+
 bool EnsureCallable(const TExprNode& node, TExprContext& ctx) {
     if (HasError(node.GetTypeAnn(), ctx)) {
         return false;
@@ -2079,6 +2321,29 @@ bool EnsureTupleOfAtoms(TExprNode& node, TExprContext& ctx) {
     for (const auto& atom : node.ChildrenList()) {
         if (!EnsureAtom(*atom, ctx)) {
             return false;
+        }
+    }
+    return true;
+}
+
+bool EnsureTupleOfAtomsOrUniversal(TExprNode& node, TExprContext& ctx, bool& isUniversal) {
+    isUniversal = false;
+    if (node.GetTypeAnn() && node.GetTypeAnn()->GetKind() == ETypeAnnotationKind::Universal) {
+        isUniversal = true;
+        return true;
+    }
+
+    if (!EnsureTuple(node, ctx)) {
+        return false;
+    }
+
+    for (const auto& atom : node.ChildrenList()) {
+        if (!EnsureAtomOrUniversal(*atom, ctx, isUniversal)) {
+            return false;
+        }
+
+        if (isUniversal) {
+            return true;
         }
     }
     return true;
@@ -2456,8 +2721,25 @@ bool EnsureLambda(const TExprNode& node, TExprContext& ctx) {
     return true;
 }
 
-IGraphTransformer::TStatus ConvertToLambda(TExprNode::TPtr& node, TExprContext& ctx, ui32 minArgumentsCount,
+IGraphTransformer::TStatus ConvertToLambda(TExprNode::TPtr& node, TExprContext& ctx, ui32 argumentsCount,
     ui32 maxArgumentsCount, bool withTypes) {
+    bool isUniversal = false;
+    auto status = ConvertToLambda(node, ctx, isUniversal, argumentsCount, maxArgumentsCount, withTypes);
+    if (status != IGraphTransformer::TStatus::Ok) {
+        return status;
+    }
+
+    if (isUniversal) {
+        ctx.AddError(TIssue(ctx.GetPosition(node->Pos()), "Callable with universal type is not supported for lambdas"));
+        return IGraphTransformer::TStatus::Error;
+    }
+
+    return status;
+}
+
+IGraphTransformer::TStatus ConvertToLambda(TExprNode::TPtr& node, TExprContext& ctx, bool& isUniversal,
+    ui32 minArgumentsCount, ui32 maxArgumentsCount, bool withTypes) {
+    isUniversal = false;
     if (node->Type() == TExprNode::Lambda || node->IsCallable("WithOptionalArgs")) {
         auto& actualLambda = node->IsCallable("WithOptionalArgs") ? *node->Child(0) : *node;
         const ui32 optionalArgsCount = node->IsCallable("WithOptionalArgs") ? FromString<ui32>(node->Child(1)->Content()) : 0;
@@ -2528,6 +2810,11 @@ IGraphTransformer::TStatus ConvertToLambda(TExprNode::TPtr& node, TExprContext& 
 
     if (HasError(node->GetTypeAnn(), ctx)) {
         return IGraphTransformer::TStatus::Error;
+    }
+
+    if (node->GetTypeAnn() && node->GetTypeAnn()->GetKind() == ETypeAnnotationKind::Universal) {
+        isUniversal = true;
+        return IGraphTransformer::TStatus::Ok;
     }
 
     if (!withTypes || node->GetTypeAnn()->GetKind() != ETypeAnnotationKind::Callable) {
@@ -2701,10 +2988,7 @@ bool EnsureTypeWithStructType(const TExprNode& node, TExprContext& ctx) {
     }
     auto nodeType = node.GetTypeAnn()->Cast<TTypeExprType>()->GetType();
     YQL_ENSURE(nodeType);
-    if (!EnsureStructType(node.Pos(), *nodeType, ctx)) {
-        return false;
-    }
-    return true;
+    return EnsureStructType(node.Pos(), *nodeType, ctx);
 }
 
 bool EnsureComposable(const TExprNode& node, TExprContext& ctx) {
@@ -3088,6 +3372,46 @@ bool EnsureWideStreamType(TPositionHandle position, const TTypeAnnotationNode& t
     return true;
 }
 
+bool EnsureWideFlowOrStreamType(const TExprNode& node, TExprContext& ctx) {
+    if (HasError(node.GetTypeAnn(), ctx)) {
+        return false;
+    }
+
+    if (!node.GetTypeAnn()) {
+        YQL_ENSURE(node.Type() == TExprNode::Lambda);
+        ctx.AddError(TIssue(ctx.GetPosition(node.Pos()), TStringBuilder() << "Expected wide stream or flow type, but got lambda"));
+        return false;
+    }
+
+    if (!IsWideFlowOrStreamType(*node.GetTypeAnn())) {
+        ctx.AddError(TIssue(ctx.GetPosition(node.Pos()), TStringBuilder() << "Expected wide stream or flow type, but got: " << *node.GetTypeAnn()));
+        return false;
+    }
+
+    return true;
+}
+
+bool IsWideFlowOrStreamType(const TTypeAnnotationNode& type) {
+    if (type.GetKind() == ETypeAnnotationKind::Stream && type.Cast<TStreamExprType>()->GetItemType()->GetKind() == ETypeAnnotationKind::Multi) {
+        return true;
+    } else if (type.GetKind() == ETypeAnnotationKind::Flow && type.Cast<TFlowExprType>()->GetItemType()->GetKind() == ETypeAnnotationKind::Multi) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
+const TMultiExprType* GetWideFlowOrStreamComponents(const TTypeAnnotationNode& type) {
+    MKQL_ENSURE(IsWideFlowOrStreamType(type), "Expected wide stream or flow type.");
+    if (type.GetKind() == ETypeAnnotationKind::Flow) {
+        return type.Cast<TFlowExprType>()->GetItemType()->Cast<TMultiExprType>();
+    } else if (type.GetKind() == ETypeAnnotationKind::Stream) {
+        return type.Cast<TStreamExprType>()->GetItemType()->Cast<TMultiExprType>();
+    } else {
+        YQL_ENSURE(false, "Unreachable");
+    }
+}
+
 bool IsWideBlockType(const TTypeAnnotationNode& type) {
     if (type.GetKind() != ETypeAnnotationKind::Multi) {
         return false;
@@ -3126,12 +3450,20 @@ bool IsWideSequenceBlockType(const TTypeAnnotationNode& type) {
     return IsWideBlockType(*itemType);
 }
 
-bool IsSupportedAsBlockType(TPositionHandle pos, const TTypeAnnotationNode& type, TExprContext& ctx, TTypeAnnotationContext& types) {
+bool IsSupportedAsBlockType(TPositionHandle pos, const TTypeAnnotationNode& type, TExprContext& ctx, TTypeAnnotationContext& types,
+    bool reportUnspported)
+{
     if (!types.ArrowResolver) {
         return false;
     }
 
-    auto resolveStatus = types.ArrowResolver->AreTypesSupported(ctx.GetPosition(pos), { &type }, ctx);
+    IArrowResolver::TUnsupportedTypeCallback onUnsupportedType;
+    if (reportUnspported) {
+        onUnsupportedType  = [&types](const auto& typeKindOrSlot) {
+            std::visit([&types](const auto& value) { types.IncNoBlockType(value); }, typeKindOrSlot);
+        };
+    }
+    auto resolveStatus = types.ArrowResolver->AreTypesSupported(ctx.GetPosition(pos), { &type }, ctx, onUnsupportedType);
     YQL_ENSURE(resolveStatus != IArrowResolver::ERROR);
     return resolveStatus == IArrowResolver::OK;
 }
@@ -3192,6 +3524,52 @@ bool EnsureWideBlockType(TPositionHandle position, const TTypeAnnotationNode& ty
     return true;
 }
 
+bool EnsureBlockStructType(TPositionHandle position, const TTypeAnnotationNode& type, TVector<const TItemExprType*>& structItems, TExprContext& ctx) {
+    if (HasError(&type, ctx)) {
+        return false;
+    }
+
+    if (type.GetKind() != ETypeAnnotationKind::Struct) {
+        ctx.AddError(TIssue(ctx.GetPosition(position), TStringBuilder() << "Expected struct, but got: " << type));
+        return false;
+    }
+
+    auto& items = type.Cast<TStructExprType>()->GetItems();
+    if (items.empty()) {
+        ctx.AddError(TIssue(ctx.GetPosition(position), "Expected at least one column"));
+        return false;
+    }
+
+    bool hasBlockLengthColumn = false;
+    for (auto item : items) {
+        auto blockType = item->GetItemType();
+        if (!EnsureBlockOrScalarType(position, *blockType, ctx)) {
+            return false;
+        }
+
+        bool isScalar = false;
+        auto itemType = GetBlockItemType(*blockType, isScalar);
+
+        if (item->GetName() == BlockLengthColumnName) {
+            if (!isScalar) {
+                ctx.AddError(TIssue(ctx.GetPosition(position), "Block length column should be a scalar"));
+                return false;
+            }
+            if (!EnsureSpecificDataType(position, *itemType, EDataSlot::Uint64, ctx)) {
+                return false;
+            }
+            hasBlockLengthColumn = true;
+        } else {
+            structItems.push_back(ctx.MakeType<TItemExprType>(item->GetName(), itemType));
+        }
+    }
+    if (!hasBlockLengthColumn) {
+        ctx.AddError(TIssue(ctx.GetPosition(position), "Block struct must contain block length column"));
+        return false;
+    }
+    return true;
+}
+
 bool EnsureWideFlowBlockType(const TExprNode& node, TTypeAnnotationNode::TListType& blockItemTypes, TExprContext& ctx, bool allowScalar) {
     if (!EnsureWideFlowType(node, ctx)) {
         return false;
@@ -3206,6 +3584,14 @@ bool EnsureWideStreamBlockType(const TExprNode& node, TTypeAnnotationNode::TList
     }
 
     return EnsureWideBlockType(node.Pos(), *node.GetTypeAnn()->Cast<TStreamExprType>()->GetItemType(), blockItemTypes, ctx, allowScalar);
+}
+
+bool EnsureBlockListType(const TExprNode& node, TVector<const TItemExprType*>& structItems, TExprContext& ctx) {
+    if (!EnsureListType(node, ctx)) {
+        return false;
+    }
+
+    return EnsureBlockStructType(node.Pos(), *node.GetTypeAnn()->Cast<TListExprType>()->GetItemType(), structItems, ctx);
 }
 
 bool EnsureOptionalType(const TExprNode& node, TExprContext& ctx) {
@@ -3490,6 +3876,22 @@ bool EnsureOneOrTupleOfDataOrOptionalOfData(const TExprNode& node, TExprContext&
     return EnsureOneOrTupleOfDataOrOptionalOfData(node.Pos(), *node.GetTypeAnn(), ctx);
 }
 
+bool EnsureOneOrTupleOfDataOrOptionalOfData(const TExprNode& node, TExprContext& ctx, bool& isUniversal) {
+    isUniversal = false;
+    if (HasError(node.GetTypeAnn(), ctx)) {
+        return false;
+    }
+
+    if (!node.GetTypeAnn()) {
+        YQL_ENSURE(node.Type() == TExprNode::Lambda);
+        ctx.AddError(TIssue(ctx.GetPosition(node.Pos()), TStringBuilder() <<
+            "Expected either data (optional of data) or non-empty tuple of data (optional of data), but got lambda"));
+        return false;
+    }
+
+    return EnsureOneOrTupleOfDataOrOptionalOfData(node.Pos(), *node.GetTypeAnn(), ctx, isUniversal);
+}
+
 bool EnsureOneOrTupleOfDataOrOptionalOfData(TPositionHandle position, const TTypeAnnotationNode& type, TExprContext& ctx) {
     bool ok = false;
     bool isOptional = false;
@@ -3499,13 +3901,49 @@ bool EnsureOneOrTupleOfDataOrOptionalOfData(TPositionHandle position, const TTyp
     TPosition pos = ctx.GetPosition(position);
     if (type.GetKind() == ETypeAnnotationKind::Tuple) {
         for (auto& child: type.Cast<TTupleExprType>()->GetItems()) {
-            ok = IsDataOrOptionalOfData(pos, child, isOptional, dataType, err, hasErrorType);
+            ok = IsDataOrOptionalOfData(pos, child, isOptional, dataType, &err, hasErrorType);
             if (!ok) {
                 break;
             }
         }
     } else {
-        ok = IsDataOrOptionalOfData(pos, &type, isOptional, dataType, err, hasErrorType);
+        ok = IsDataOrOptionalOfData(pos, &type, isOptional, dataType, &err, hasErrorType);
+    }
+
+    if (!ok) {
+        ctx.AddError(err);
+        if (!hasErrorType) {
+            ctx.AddError(TIssue(pos, TStringBuilder()
+                << "Expected either data (optional of data) or non-empty tuple of data (optional of data), but got: " << type));
+        }
+    }
+
+    return ok;
+}
+
+bool EnsureOneOrTupleOfDataOrOptionalOfData(TPositionHandle position, const TTypeAnnotationNode& type, TExprContext& ctx, bool& isUniversal) {
+    isUniversal = false;
+    bool ok = false;
+    bool isOptional = false;
+    const TDataExprType* dataType = nullptr;
+    TIssue err;
+    bool hasErrorType = false;
+    TPosition pos = ctx.GetPosition(position);
+    if (type.GetKind() == ETypeAnnotationKind::Tuple) {
+        for (auto& child: type.Cast<TTupleExprType>()->GetItems()) {
+            ok = IsDataOrOptionalOfData(pos, child, isOptional, dataType, &err, hasErrorType, &isUniversal);
+            if (!ok) {
+                break;
+            }
+            if (isUniversal) {
+                return true;
+            }
+        }
+    } else {
+        ok = IsDataOrOptionalOfData(pos, &type, isOptional, dataType, &err, hasErrorType, &isUniversal);
+        if (isUniversal) {
+            return true;
+        }
     }
 
     if (!ok) {
@@ -3551,7 +3989,7 @@ bool IsInstantEqual(const TTypeAnnotationNode& type) {
     case ETypeAnnotationKind::Void: return true;
     case ETypeAnnotationKind::Tuple: {
         const auto tupleType = type.Cast<TTupleExprType>();
-        if (const auto size = tupleType->GetSize()) {
+        if (/* const auto size = */ tupleType->GetSize()) {
             for (const auto& item : tupleType->GetItems()) {
                 if (!IsInstantEqual(*item)) {
                     return false;
@@ -3562,7 +4000,7 @@ bool IsInstantEqual(const TTypeAnnotationNode& type) {
     }
     case ETypeAnnotationKind::Struct: {
         const auto structType = type.Cast<TStructExprType>();
-        if (const auto size = structType->GetSize()) {
+        if (/* const auto size = */ structType->GetSize()) {
             for (const auto& item : structType->GetItems()) {
                 if (!IsInstantEqual(*item)) {
                     return false;
@@ -3672,15 +4110,71 @@ bool EnsureDataOrOptionalOfData(TPositionHandle position, const TTypeAnnotationN
 {
     TIssue err;
     bool hasErrorType;
-    if (!IsDataOrOptionalOfData(ctx.GetPosition(position), type, isOptional, dataType, err, hasErrorType)) {
+    if (!IsDataOrOptionalOfData(ctx.GetPosition(position), type, isOptional, dataType, &err, hasErrorType)) {
         ctx.AddError(err);
         return false;
     }
     return true;
 }
 
-bool EnsurePersistable(const TExprNode& node, TExprContext& ctx) {
+bool EnsureDataOrOptionalOfData(const TExprNode& node, bool& isOptional, const TDataExprType*& dataType, TExprContext& ctx, bool& isUniversal) {
+    if (!node.GetTypeAnn()) {
+        YQL_ENSURE(node.Type() == TExprNode::Lambda);
+    }
+
+    return EnsureDataOrOptionalOfData(node.Pos(), node.GetTypeAnn(), isOptional, dataType, ctx, isUniversal);
+}
+
+bool EnsureDataOrOptionalOfData(TPositionHandle position, const TTypeAnnotationNode* type, bool& isOptional, const TDataExprType*& dataType, TExprContext& ctx, bool& isUniversal) {
+    TIssue err;
+    bool hasErrorType;
+    if (!IsDataOrOptionalOfData(ctx.GetPosition(position), type, isOptional, dataType, &err, hasErrorType, &isUniversal)) {
+        ctx.AddError(err);
+        return false;
+    }
+    return true;
+}
+
+bool EnsureLinearType(const TExprNode& node, TExprContext& ctx) {
     if (HasError(node.GetTypeAnn(), ctx)) {
+        return false;
+    }
+
+    if (!node.GetTypeAnn()) {
+        YQL_ENSURE(node.Type() == TExprNode::Lambda);
+        ctx.AddError(TIssue(ctx.GetPosition(node.Pos()), TStringBuilder() << "Expected linear type, but got lambda"));
+        return false;
+    }
+
+    if (node.GetTypeAnn()->GetKind() != ETypeAnnotationKind::Linear) {
+        ctx.AddError(TIssue(ctx.GetPosition(node.Pos()), TStringBuilder() << "Expected linear type, but got: " << *node.GetTypeAnn()));
+        return false;
+    }
+
+    return true;
+}
+
+bool EnsureDynamicLinearType(const TExprNode& node, TExprContext& ctx) {
+    if (HasError(node.GetTypeAnn(), ctx)) {
+        return false;
+    }
+
+    if (!node.GetTypeAnn()) {
+        YQL_ENSURE(node.Type() == TExprNode::Lambda);
+        ctx.AddError(TIssue(ctx.GetPosition(node.Pos()), TStringBuilder() << "Expected dynamic linear type, but got lambda"));
+        return false;
+    }
+
+    if (node.GetTypeAnn()->GetKind() != ETypeAnnotationKind::DynamicLinear) {
+        ctx.AddError(TIssue(ctx.GetPosition(node.Pos()), TStringBuilder() << "Expected dynamic linear type, but got: " << *node.GetTypeAnn()));
+        return false;
+    }
+
+    return true;
+}
+
+bool EnsurePersistable(const TExprNode& node, TExprContext& ctx) {
+    if (HasAnyError(node.GetTypeAnn(), ctx)) {
         return false;
     }
 
@@ -3701,7 +4195,7 @@ bool EnsurePersistable(const TExprNode& node, TExprContext& ctx) {
 }
 
 bool EnsurePersistableType(TPositionHandle position, const TTypeAnnotationNode& type, TExprContext& ctx) {
-    if (HasError(&type, ctx)) {
+    if (HasAnyError(&type, ctx)) {
         return false;
     }
 
@@ -4037,34 +4531,114 @@ bool EnsureStructOrOptionalStructType(TPositionHandle position, const TTypeAnnot
     return true;
 }
 
-bool EnsureDependsOn(const TExprNode& node, TExprContext& ctx) {
+bool EnsureStructOrOptionalStructType(const TExprNode& node, bool& isOptional, const TStructExprType*& structType, TExprContext& ctx, bool& isUniversal) {
+    isUniversal = false;
     if (HasError(node.GetTypeAnn(), ctx)) {
         return false;
     }
 
-    if (!node.IsCallable()) {
-        ctx.AddError(TIssue(ctx.GetPosition(node.Pos()), TStringBuilder() << "Expected DependsOn, but got node with type: " << node.Type()));
+    if (!node.GetTypeAnn()) {
+        YQL_ENSURE(node.Type() == TExprNode::Lambda);
+        ctx.AddError(TIssue(ctx.GetPosition(node.Pos()), TStringBuilder() << "Expected either struct or optional of struct, but got lambda"));
         return false;
     }
 
-    if (!node.IsCallable("DependsOn")) {
-        ctx.AddError(TIssue(ctx.GetPosition(node.Pos()), TStringBuilder() << "Expected DependsOn, but got callable: " << node.Content()));
+    return EnsureStructOrOptionalStructType(node.Pos(), *node.GetTypeAnn(), isOptional, structType, ctx, isUniversal);
+}
+
+bool EnsureStructOrOptionalStructType(TPositionHandle position, const TTypeAnnotationNode& type, bool& isOptional, const TStructExprType*& structType, TExprContext& ctx, bool& isUniversal) {
+    isUniversal = false;
+    if (HasError(&type, ctx)) {
+        return false;
+    }
+
+    auto kind = type.GetKind();
+    if (kind == ETypeAnnotationKind::Universal || kind == ETypeAnnotationKind::UniversalStruct) {
+        isUniversal = true;
+        return true;
+    }
+
+    if (kind != ETypeAnnotationKind::Struct && kind != ETypeAnnotationKind::Optional) {
+        ctx.AddError(TIssue(ctx.GetPosition(position), TStringBuilder() << "Expected either struct or optional of struct, but got: " << type));
+        return false;
+    }
+
+    if (kind == ETypeAnnotationKind::Optional) {
+        auto itemType = type.Cast<TOptionalExprType>()->GetItemType();
+        kind = itemType->GetKind();
+        if (kind != ETypeAnnotationKind::Struct) {
+            if (kind == ETypeAnnotationKind::Universal || kind == ETypeAnnotationKind::UniversalStruct) {
+                isUniversal = true;
+                return true;
+            }
+
+            ctx.AddError(TIssue(ctx.GetPosition(position), TStringBuilder() << "Expected either struct or optional of struct, but got: " << type));
+            return false;
+        }
+        isOptional = true;
+        structType = itemType->Cast<TStructExprType>();
+    } else {
+        isOptional = false;
+        structType = type.Cast<TStructExprType>();
+    }
+
+    return true;
+}
+
+bool EnsureDependsOn(const TExprNode& node, TExprContext& ctx, bool inner) {
+    if (HasError(node.GetTypeAnn(), ctx)) {
+        return false;
+    }
+
+    const std::string_view expected = inner ? "InnerDependsOn" : "DependsOn";
+    if (!node.IsCallable()) {
+        ctx.AddError(TIssue(ctx.GetPosition(node.Pos()), TStringBuilder() << "Expected " << expected << ", but got node with type: " << node.Type()));
+        return false;
+    }
+
+    if (!node.IsCallable(expected)) {
+        ctx.AddError(TIssue(ctx.GetPosition(node.Pos()), TStringBuilder() << "Expected " << expected << ", but got callable: " << node.Content()));
         return false;
     }
 
     return true;
 }
 
-bool EnsureDependsOnTail(const TExprNode& node, TExprContext& ctx, unsigned requiredArgumentCount, unsigned requiredDependsOnCount) {
-    if (!EnsureMinArgsCount(node, requiredArgumentCount+requiredDependsOnCount, ctx)) {
-        return false;
+IGraphTransformer::TStatus EnsureDependsOnTailAndRewrite(
+    const TExprNode::TPtr& input, TExprNode::TPtr& output, TExprContext& ctx, const TTypeAnnotationContext& types,
+    ui32 requiredArgumentCount, ui32 requiredDependsOnCount, bool& isUniversal
+) {
+    isUniversal = false;
+    if (!EnsureMinArgsCount(*input, requiredArgumentCount + requiredDependsOnCount, ctx)) {
+        return IGraphTransformer::TStatus::Error;
     }
-    for (unsigned i = requiredArgumentCount; i < node.ChildrenSize(); ++i) {
-        if (!EnsureDependsOn(*node.Child(i), ctx)) {
-            return false;
+    if (input->ChildrenSize() == requiredArgumentCount) {
+        return IGraphTransformer::TStatus::Ok;
+    }
+
+    bool inner = input->Child(requiredArgumentCount)->IsCallable("InnerDependsOn");
+    for (ui32 i = requiredArgumentCount; i < input->ChildrenSize(); ++i) {
+        if (input->Child(i)->GetTypeAnn() && input->Child(i)->GetTypeAnn()->GetKind() == ETypeAnnotationKind::Universal) {
+            isUniversal = true;
+            return IGraphTransformer::TStatus::Ok;
+        }
+
+        if (!EnsureDependsOn(*input->Child(i), ctx, inner)) {
+            return IGraphTransformer::TStatus::Error;
         }
     }
-    return true;
+    if (inner || !types.NormalizeDependsOn) {
+        return IGraphTransformer::TStatus::Ok;
+    }
+
+    TExprNode::TListType newChildren;
+    newChildren.insert(newChildren.begin(), input->Children().begin(), input->Children().begin() + requiredArgumentCount);
+    for (unsigned i = requiredArgumentCount; i < input->ChildrenSize(); ++i) {
+        newChildren.push_back(ctx.RenameNode(*input->Child(i), "InnerDependsOn"));
+    }
+
+    output = ctx.ChangeChildren(*input, std::move(newChildren));
+    return IGraphTransformer::TStatus::Repeat;
 }
 
 const TTypeAnnotationNode* MakeTypeHandleResourceType(TExprContext& ctx) {
@@ -4113,8 +4687,11 @@ const TTypeAnnotationNode* MakeSequenceType(ETypeAnnotationKind sequenceKind, co
     ythrow yexception() << "Wrong sequence kind.";
 }
 
-IGraphTransformer::TStatus TryConvertTo(TExprNode::TPtr& node, const TTypeAnnotationNode& expectedType,
-    TExprContext& ctx, TConvertFlags flags) {
+IGraphTransformer::TStatus TryConvertToInternal2(TExprNode::TPtr& node, const TTypeAnnotationNode& sourceType,
+    const TTypeAnnotationNode& expectedType, TExprContext& ctx, TConvertFlags flags, bool useTypeDiff, const TTypeAnnotationContext* typeCtx);
+
+IGraphTransformer::TStatus TryConvertToInternal1(TExprNode::TPtr& node, const TTypeAnnotationNode& expectedType,
+    TExprContext& ctx, TConvertFlags flags, bool useTypeDiff, const TTypeAnnotationContext* typeCtx) {
     if (HasError(node->GetTypeAnn(), ctx)) {
         return IGraphTransformer::TStatus::Error;
     }
@@ -4138,28 +4715,53 @@ IGraphTransformer::TStatus TryConvertTo(TExprNode::TPtr& node, const TTypeAnnota
         return IGraphTransformer::TStatus::Error;
     }
 
-    return TryConvertTo(node, *node->GetTypeAnn(), expectedType, ctx, flags);
+    return TryConvertToInternal2(node, *node->GetTypeAnn(), expectedType, ctx, flags, useTypeDiff, typeCtx);
 }
 
-IGraphTransformer::TStatus TryConvertTo(TExprNode::TPtr& node, const TTypeAnnotationNode& sourceType,
-    const TTypeAnnotationNode& expectedType, TExprContext& ctx, TConvertFlags flags) {
+IGraphTransformer::TStatus TryConvertTo(TExprNode::TPtr& node, const TTypeAnnotationNode& expectedType,
+    TExprContext& ctx, TConvertFlags flags, bool useTypeDiff) {
+    return TryConvertToInternal1(node, expectedType, ctx, flags, useTypeDiff, /*typeCtx=*/nullptr);
+}
+
+IGraphTransformer::TStatus TryConvertTo(TExprNode::TPtr& node, const TTypeAnnotationNode& expectedType,
+    TExprContext& ctx, const TTypeAnnotationContext& typeCtx, TConvertFlags flags) {
+    return TryConvertToInternal1(node, expectedType, ctx, flags, typeCtx.UseTypeDiffForConvertToError, &typeCtx);
+}
+
+IGraphTransformer::TStatus TryConvertToInternal2(TExprNode::TPtr& node, const TTypeAnnotationNode& sourceType,
+    const TTypeAnnotationNode& expectedType, TExprContext& ctx, TConvertFlags flags, bool useTypeDiff, const TTypeAnnotationContext* typeCtx) {
     if (HasError(node->GetTypeAnn(), ctx)) {
         return IGraphTransformer::TStatus::Error;
     }
 
     TIssueScopeGuard guard(ctx.IssueManager, [&] {
-            return MakeIntrusive<TIssue>(ctx.GetPosition(node->Pos()),
-                TStringBuilder() << "Failed to convert type: " << sourceType << " to " << expectedType);
+            if (useTypeDiff) {
+                return MakeIntrusive<TIssue>(ctx.GetPosition(node->Pos()),
+                    TStringBuilder() << "Failed to convert, type diff: " << GetTypeDiff(sourceType, expectedType));
+            } else {
+                return MakeIntrusive<TIssue>(ctx.GetPosition(node->Pos()),
+                    TStringBuilder() << "Failed to convert type: " << sourceType << " to " << expectedType);
+            }
         });
-    auto status = TryConvertToImpl(ctx, node, sourceType, expectedType, flags, /* raiseIssues */ true);
+    auto status = TryConvertToImpl(ctx, node, sourceType, expectedType, flags, /* raiseIssues */ true, typeCtx);
     if (status.Level  == IGraphTransformer::TStatus::Error) {
         guard.RaiseIssueForEmptyScope();
     }
     return status;
 }
 
-IGraphTransformer::TStatus TrySilentConvertTo(TExprNode::TPtr& node, const TTypeAnnotationNode& expectedType,
-    TExprContext& ctx, TConvertFlags flags) {
+IGraphTransformer::TStatus TryConvertTo(TExprNode::TPtr& node, const TTypeAnnotationNode& sourceType,
+    const TTypeAnnotationNode& expectedType, TExprContext& ctx, TConvertFlags flags, bool useTypeDiff) {
+    return TryConvertToInternal2(node, sourceType, expectedType, ctx, flags, useTypeDiff, /*typeCtx=*/nullptr);
+}
+
+IGraphTransformer::TStatus TryConvertTo(TExprNode::TPtr& node, const TTypeAnnotationNode& sourceType,
+    const TTypeAnnotationNode& expectedType, TExprContext& ctx, const TTypeAnnotationContext& typeCtx, TConvertFlags flags) {
+    return TryConvertToInternal2(node, sourceType, expectedType, ctx, flags, typeCtx.UseTypeDiffForConvertToError, &typeCtx);
+}
+
+IGraphTransformer::TStatus TrySilentConvertToInternal1(TExprNode::TPtr& node, const TTypeAnnotationNode& expectedType,
+    TExprContext& ctx, TConvertFlags flags, const TTypeAnnotationContext* typeCtx) {
     if (node->Type() == TExprNode::Lambda) {
         auto currentType = &expectedType;
         ui32 optLevel = 0;
@@ -4187,12 +4789,27 @@ IGraphTransformer::TStatus TrySilentConvertTo(TExprNode::TPtr& node, const TType
         return IGraphTransformer::TStatus::Error;
     }
 
-    return TrySilentConvertTo(node, *node->GetTypeAnn(), expectedType, ctx, flags);
+    return TryConvertToImpl(ctx, node, *node->GetTypeAnn(), expectedType, flags, /*raiseIssues=*/false, typeCtx);
+}
+
+IGraphTransformer::TStatus TrySilentConvertTo(TExprNode::TPtr& node, const TTypeAnnotationNode& expectedType,
+    TExprContext& ctx, TConvertFlags flags) {
+    return TrySilentConvertToInternal1(node, expectedType, ctx, flags, /*typeCtx=*/nullptr);
+}
+
+IGraphTransformer::TStatus TrySilentConvertTo(TExprNode::TPtr& node, const TTypeAnnotationNode& expectedType,
+    TExprContext& ctx, const TTypeAnnotationContext& typeCtx, TConvertFlags flags) {
+    return TrySilentConvertToInternal1(node, expectedType, ctx, flags, &typeCtx);
 }
 
 IGraphTransformer::TStatus TrySilentConvertTo(TExprNode::TPtr& node, const TTypeAnnotationNode& sourceType,
     const TTypeAnnotationNode& expectedType, TExprContext& ctx, TConvertFlags flags) {
-    return TryConvertToImpl(ctx, node, sourceType, expectedType, flags);
+    return TryConvertToImpl(ctx, node, sourceType, expectedType, flags, /*raiseIssues=*/false, /*typeCtx=*/nullptr);
+}
+
+IGraphTransformer::TStatus TrySilentConvertTo(TExprNode::TPtr& node, const TTypeAnnotationNode& sourceType,
+    const TTypeAnnotationNode& expectedType, TExprContext& ctx, const TTypeAnnotationContext& typeCtx, TConvertFlags flags) {
+    return TryConvertToImpl(ctx, node, sourceType, expectedType, flags, /*raiseIssues=*/false, &typeCtx);
 }
 
 bool IsDataTypeNumeric(EDataSlot dataSlot) {
@@ -4236,7 +4853,7 @@ bool IsDataTypeTzDate(EDataSlot dataSlot) {
 }
 
 bool IsDataTypeBigDate(EDataSlot dataSlot) {
-    return (NUdf::GetDataTypeInfo(dataSlot).Features & NUdf::BigDateType);
+    return (NUdf::GetDataTypeInfo(dataSlot).Features & NUdf::ExtDateType);
 }
 
 EDataSlot WithTzDate(EDataSlot dataSlot) {
@@ -4315,6 +4932,53 @@ EDataSlot MakeUnsigned(EDataSlot dataSlot) {
     }
 }
 
+std::expected<std::pair<const TDataExprType*, bool>, TString> IsAddAllowedYqlTypes(const TTypeAnnotationNode* left, const TTypeAnnotationNode* right, TExprContext& ctx) {
+    const TDataExprType* leftUnpacked = nullptr;
+    auto isLeftOptional = false;
+    const TDataExprType* rightUnpacked = nullptr;
+    auto isRightOptional = false;
+
+    if (!IsDataOrOptionalOfData(left, isLeftOptional, leftUnpacked)) {
+        return std::unexpected(TStringBuilder() << "Expected data or optional, but got " << *static_cast<const TTypeAnnotationNode*>(left));
+    }
+
+    if (!IsDataOrOptionalOfData(right, isRightOptional, rightUnpacked)) {
+        return std::unexpected(TStringBuilder() << "Expected data or optional, but got " << *static_cast<const TTypeAnnotationNode*>(right));
+    }
+
+    const bool isLeftNumeric = IsDataTypeNumeric(leftUnpacked->GetSlot());
+    const bool isRightNumeric = IsDataTypeNumeric(rightUnpacked->GetSlot());
+
+    bool haveOptional = isLeftOptional || isRightOptional;
+    const TDataExprType* commonType = nullptr;
+    if (isLeftNumeric && isRightNumeric) {
+        auto commonTypeSlot = GetNumericDataTypeByLevel(Max(GetNumericDataTypeLevel(leftUnpacked->GetSlot()),
+                                                            GetNumericDataTypeLevel(rightUnpacked->GetSlot())));
+        commonType = ctx.MakeType<TDataExprType>(commonTypeSlot);
+    } else if ((IsDataTypeDate(leftUnpacked->GetSlot()) || IsDataTypeTzDate(leftUnpacked->GetSlot())) && IsDataTypeInterval(rightUnpacked->GetSlot())) {
+        commonType = leftUnpacked;
+        haveOptional = true;
+    } else if (IsDataTypeInterval(leftUnpacked->GetSlot()) && (IsDataTypeDate(rightUnpacked->GetSlot()) || IsDataTypeTzDate(rightUnpacked->GetSlot()))) {
+        commonType = rightUnpacked;
+        haveOptional = true;
+    } else if (IsDataTypeInterval(leftUnpacked->GetSlot()) && IsDataTypeInterval(rightUnpacked->GetSlot())) {
+        commonType = IsDataTypeBigDate(leftUnpacked->GetSlot()) ? leftUnpacked : rightUnpacked;
+        haveOptional = true;
+    } else if (IsDataTypeDecimal(leftUnpacked->GetSlot()) && IsDataTypeDecimal(rightUnpacked->GetSlot())) {
+        const auto dataTypeOne = static_cast<const TDataExprParamsType*>(leftUnpacked);
+        const auto dataTypeTwo = static_cast<const TDataExprParamsType*>(rightUnpacked);
+
+        if (!(*dataTypeOne == *dataTypeTwo)) {
+            return std::unexpected(TString("Cannot add different decimals."));
+        }
+
+        commonType = leftUnpacked;
+    } else {
+        return std::unexpected(TStringBuilder() << "Cannot add type " << *left << " and " << *right);
+    }
+    return std::make_pair(commonType, haveOptional);
+}
+
 bool IsDataTypeDecimal(EDataSlot dataSlot) {
     return dataSlot == EDataSlot::Decimal;
 }
@@ -4335,7 +4999,7 @@ TMaybe<EDataSlot> GetSuperType(EDataSlot dataSlot1, EDataSlot dataSlot2, bool wa
             std::swap(lvl1, lvl2);
         }
         bool isFromSignedToUnsigned = (lvl1 & 1) && !(lvl2 & 1);
-        bool isFromUnsignedToSignedSameWidth = ((lvl1 == (lvl2 & ~1u)) && ((lvl1 ^ lvl2) & 1));
+        bool isFromUnsignedToSignedSameWidth = ((lvl1 == (lvl2 & ~1U)) && ((lvl1 ^ lvl2) & 1));
         if (warn && lvl2 < 8 && (isFromSignedToUnsigned || isFromUnsignedToSignedSameWidth)) {
             auto issue = TIssue(ctx->GetPosition(*pos), TStringBuilder() <<
                 "Consider using explicit CAST or BITCAST to convert from " <<
@@ -4374,7 +5038,7 @@ TMaybe<EDataSlot> GetSuperType(EDataSlot dataSlot1, EDataSlot dataSlot2, bool wa
     }
 
     if (IsDataTypeInterval(dataSlot1) && IsDataTypeInterval(dataSlot2)) {
-        return (dataSlot1 == EDataSlot::Interval64 || dataSlot2 == EDataSlot::Interval64) 
+        return (dataSlot1 == EDataSlot::Interval64 || dataSlot2 == EDataSlot::Interval64)
             ? EDataSlot::Interval64
             : EDataSlot::Interval;
     }
@@ -4382,18 +5046,9 @@ TMaybe<EDataSlot> GetSuperType(EDataSlot dataSlot1, EDataSlot dataSlot2, bool wa
     return {};
 }
 
-IGraphTransformer::TStatus SilentInferCommonType(TExprNode::TPtr& node1, TExprNode::TPtr& node2, TExprContext& ctx,
-    const TTypeAnnotationNode*& commonType, TConvertFlags flags) {
-    if (!node1->GetTypeAnn() || !node2->GetTypeAnn()) {
-        return IGraphTransformer::TStatus::Error;
-    }
-
-    return SilentInferCommonType(node1, *node1->GetTypeAnn(), node2, *node2->GetTypeAnn(), ctx, commonType, flags);
-}
-
-IGraphTransformer::TStatus SilentInferCommonType(TExprNode::TPtr& node1, const TTypeAnnotationNode& type1,
+IGraphTransformer::TStatus SilentInferCommonTypeInternal(TExprNode::TPtr& node1, const TTypeAnnotationNode& type1,
     TExprNode::TPtr& node2, const TTypeAnnotationNode& type2, TExprContext& ctx,
-    const TTypeAnnotationNode*& commonType, TConvertFlags flags) {
+    const TTypeAnnotationNode*& commonType, TConvertFlags flags, const TTypeAnnotationContext* typeCtx) {
     if (IsSameAnnotation(type1, type2)) {
         commonType = &type1;
         return IGraphTransformer::TStatus::Ok;
@@ -4401,12 +5056,12 @@ IGraphTransformer::TStatus SilentInferCommonType(TExprNode::TPtr& node1, const T
 
     auto newFlags = flags;
     newFlags.Set(NConvertFlags::DisableTruncation);
-    if (const auto status = TrySilentConvertTo(node1, type1, type2, ctx, newFlags); status != IGraphTransformer::TStatus::Error) {
+    if (const auto status = TryConvertToImpl(ctx, node1, type1, type2, newFlags, /*raiseIssues=*/false, typeCtx); status != IGraphTransformer::TStatus::Error) {
         commonType = &type2;
         return status;
     }
 
-    if (const auto status = TrySilentConvertTo(node2, type2, type1, ctx, newFlags); status != IGraphTransformer::TStatus::Error) {
+    if (const auto status = TryConvertToImpl(ctx, node2, type2, type1, newFlags, /*raiseIssues=*/false, typeCtx); status != IGraphTransformer::TStatus::Error) {
         commonType = &type1;
         return status;
     }
@@ -4414,10 +5069,11 @@ IGraphTransformer::TStatus SilentInferCommonType(TExprNode::TPtr& node1, const T
     if (type2.GetKind() == ETypeAnnotationKind::Optional && type1.GetKind() != ETypeAnnotationKind::Optional) {
         auto type1Opt = ctx.MakeType<TOptionalExprType>(&type1);
         auto prev = node1;
-        node1 = ctx.NewCallable(node1->Pos(), "Just", { std::move(node1) });
+        node1 = ctx.NewCallable(node1->Pos(), "Just", { node1 });
 
         const TTypeAnnotationNode* commonItemType;
-        if (SilentInferCommonType(node1, *type1Opt, node2, type2, ctx, commonItemType, flags) != IGraphTransformer::TStatus::Error) {
+        if (SilentInferCommonTypeInternal(node1, *type1Opt, node2, type2, ctx, commonItemType, flags, typeCtx)
+            != IGraphTransformer::TStatus::Error) {
             commonType = commonItemType;
             return IGraphTransformer::TStatus::Repeat;
         }
@@ -4428,10 +5084,11 @@ IGraphTransformer::TStatus SilentInferCommonType(TExprNode::TPtr& node1, const T
     if (type1.GetKind() == ETypeAnnotationKind::Optional && type2.GetKind() != ETypeAnnotationKind::Optional) {
         auto type2Opt = ctx.MakeType<TOptionalExprType>(&type2);
         auto prev = node2;
-        node2 = ctx.NewCallable(node2->Pos(), "Just", { std::move(node2) });
+        node2 = ctx.NewCallable(node2->Pos(), "Just", { node2 });
 
         const TTypeAnnotationNode* commonItemType;
-        if (SilentInferCommonType(node1, type1, node2, *type2Opt, ctx, commonItemType, flags) != IGraphTransformer::TStatus::Error) {
+        if (SilentInferCommonTypeInternal(node1, type1, node2, *type2Opt, ctx, commonItemType, flags, typeCtx)
+            != IGraphTransformer::TStatus::Error) {
             commonType = commonItemType;
             return IGraphTransformer::TStatus::Repeat;
         }
@@ -4447,7 +5104,7 @@ IGraphTransformer::TStatus SilentInferCommonType(TExprNode::TPtr& node1, const T
         } else {
             auto type2Opt = ctx.MakeType<TOptionalExprType>(&type2);
             node1 = ctx.NewCallable(node1->Pos(), "Nothing", { ExpandType(node2->Pos(), *type2Opt, ctx) });
-            node2 = ctx.NewCallable(node2->Pos(), "Just", { std::move(node2) });
+            node2 = ctx.NewCallable(node2->Pos(), "Just", { node2 });
             commonType = type2Opt;
             return IGraphTransformer::TStatus::Repeat;
         }
@@ -4462,7 +5119,7 @@ IGraphTransformer::TStatus SilentInferCommonType(TExprNode::TPtr& node1, const T
         else {
             auto type1Opt = ctx.MakeType<TOptionalExprType>(&type1);
             node2 = ctx.NewCallable(node2->Pos(), "Nothing", { ExpandType(node1->Pos(), *type1Opt, ctx) });
-            node1 = ctx.NewCallable(node1->Pos(), "Just", { std::move(node1) });
+            node1 = ctx.NewCallable(node1->Pos(), "Just", { node1 });
             commonType = type1Opt;
             return IGraphTransformer::TStatus::Repeat;
         }
@@ -4485,7 +5142,8 @@ IGraphTransformer::TStatus SilentInferCommonType(TExprNode::TPtr& node1, const T
         auto item1 = arg1;
         auto item2 = arg2;
         const TTypeAnnotationNode* commonItemType;
-        if (SilentInferCommonType(item1, *item1type, item2, *item2type, ctx, commonItemType, flags) != IGraphTransformer::TStatus::Error) {
+        if (SilentInferCommonTypeInternal(item1, *item1type, item2, *item2type, ctx, commonItemType, flags, typeCtx)
+            != IGraphTransformer::TStatus::Error) {
             if (item1 != arg1) {
                 node1 = ctx.Builder(node1->Pos())
                     .Callable("OrderedMap")
@@ -4528,7 +5186,8 @@ IGraphTransformer::TStatus SilentInferCommonType(TExprNode::TPtr& node1, const T
                 auto arg1 = ctx.NewCallable(node1->Pos(), "Nth", { node1, atom });
                 auto arg2 = ctx.NewCallable(node2->Pos(), "Nth", { node2, atom });
                 const TTypeAnnotationNode* commonItemType;
-                if (SilentInferCommonType(arg1, *item1type, arg2, *item2type, ctx, commonItemType, flags) == IGraphTransformer::TStatus::Error) {
+                if (SilentInferCommonTypeInternal(arg1, *item1type, arg2, *item2type, ctx, commonItemType, flags, typeCtx)
+                    == IGraphTransformer::TStatus::Error) {
                     hasError = true;
                     break;
                 }
@@ -4573,7 +5232,8 @@ IGraphTransformer::TStatus SilentInferCommonType(TExprNode::TPtr& node1, const T
                 auto arg1 = ctx.NewCallable(node1->Pos(), "Member", { node1, atom });
                 auto arg2 = ctx.NewCallable(node2->Pos(), "Member", { node2, atom });
                 const TTypeAnnotationNode* commonItemType;
-                if (SilentInferCommonType(arg1, *member1->GetItemType(), arg2, *member2->GetItemType(), ctx, commonItemType, flags) == IGraphTransformer::TStatus::Error) {
+                if (SilentInferCommonTypeInternal(arg1, *member1->GetItemType(), arg2, *member2->GetItemType(), ctx, commonItemType, flags, typeCtx)
+                    == IGraphTransformer::TStatus::Error) {
                     hasError = true;
                     break;
                 }
@@ -4585,7 +5245,8 @@ IGraphTransformer::TStatus SilentInferCommonType(TExprNode::TPtr& node1, const T
                 auto member1 = structType1->GetItems()[*pos1];
                 auto commonItemType = member1->GetItemType();
                 auto atom = ctx.NewAtom(TPositionHandle(), x);
-                TExprNode::TPtr arg1, arg2;
+                TExprNode::TPtr arg1;
+                TExprNode::TPtr arg2;
                 if (commonItemType->GetKind() != ETypeAnnotationKind::Null) {
                     bool addJust = false;
                     if (commonItemType->GetKind() != ETypeAnnotationKind::Optional) {
@@ -4610,7 +5271,8 @@ IGraphTransformer::TStatus SilentInferCommonType(TExprNode::TPtr& node1, const T
                 auto member2 = structType2->GetItems()[*pos2];
                 auto commonItemType = member2->GetItemType();
                 auto atom = ctx.NewAtom(TPositionHandle(), x);
-                TExprNode::TPtr arg1, arg2;
+                TExprNode::TPtr arg1;
+                TExprNode::TPtr arg2;
                 if (commonItemType->GetKind() != ETypeAnnotationKind::Null) {
                     bool addJust = false;
                     if (commonItemType->GetKind() != ETypeAnnotationKind::Optional) {
@@ -4659,7 +5321,8 @@ IGraphTransformer::TStatus SilentInferCommonType(TExprNode::TPtr& node1, const T
             auto oldValue1 = value1;
             auto oldValue2 = value2;
             const TTypeAnnotationNode* commonPayloadType;
-            if (SilentInferCommonType(value1, *payload1type, value2, *payload2type, ctx, commonPayloadType, flags) != IGraphTransformer::TStatus::Error) {
+            if (SilentInferCommonTypeInternal(value1, *payload1type, value2, *payload2type, ctx, commonPayloadType, flags, typeCtx)
+                != IGraphTransformer::TStatus::Error) {
                 if (oldValue1 != value1) {
                     auto body1 = ctx.NewList(node1->Pos(), { key1, value1 });
                     auto lambda1 = ctx.NewLambda(node1->Pos(), ctx.NewArguments(node1->Pos(), { arg1 }), std::move(body1));
@@ -4687,7 +5350,8 @@ IGraphTransformer::TStatus SilentInferCommonType(TExprNode::TPtr& node1, const T
             const TTypeAnnotationNode* commonBaseType;
             auto arg1 = ctx.NewCallable(node1->Pos(), "Untag", { node1, atom });
             auto arg2 = ctx.NewCallable(node2->Pos(), "Untag", { node2, atom });
-            if (SilentInferCommonType(arg1, *taggedType1->GetBaseType(), arg2, *taggedType2->GetBaseType(), ctx, commonBaseType, flags) != IGraphTransformer::TStatus::Error) {
+            if (SilentInferCommonTypeInternal(arg1, *taggedType1->GetBaseType(), arg2, *taggedType2->GetBaseType(), ctx, commonBaseType, flags, typeCtx)
+                != IGraphTransformer::TStatus::Error) {
                 commonType = ctx.MakeType<TTaggedExprType>(commonBaseType, taggedType1->GetTag());
                 node1 = ctx.NewCallable(node1->Pos(), "AsTagged", { arg1, atom });
                 node2 = ctx.NewCallable(node2->Pos(), "AsTagged", { arg2, atom });
@@ -4717,7 +5381,10 @@ IGraphTransformer::TStatus SilentInferCommonType(TExprNode::TPtr& node1, const T
             }
 
             TVector<const TTypeAnnotationNode*> commonItemTypes;
-            TVector<TExprNode::TPtr> args1, args2, originalArgs1, originalArgs2;
+            TVector<TExprNode::TPtr> args1;
+            TVector<TExprNode::TPtr> args2;
+            TVector<TExprNode::TPtr> originalArgs1;
+            TVector<TExprNode::TPtr> originalArgs2;
             for (size_t i = 0; i < underlying1->GetSize(); i++) {
                 auto elem1 = underlying1->GetItems()[i];
                 auto elem2 = underlying2->GetItems()[i];
@@ -4728,7 +5395,8 @@ IGraphTransformer::TStatus SilentInferCommonType(TExprNode::TPtr& node1, const T
                 auto originalArg2 = arg2;
 
                 const TTypeAnnotationNode* commonBaseType;
-                if (SilentInferCommonType(arg1, *elem1, arg2, *elem2, ctx, commonBaseType, flags) == IGraphTransformer::TStatus::Error) {
+                if (SilentInferCommonTypeInternal(arg1, *elem1, arg2, *elem2, ctx, commonBaseType, flags, typeCtx)
+                    == IGraphTransformer::TStatus::Error) {
                     return IGraphTransformer::TStatus::Error;
                 }
 
@@ -4783,7 +5451,10 @@ IGraphTransformer::TStatus SilentInferCommonType(TExprNode::TPtr& node1, const T
                 names.emplace(x->GetName());
             }
 
-            THashMap<TStringBuf, TExprNode::TPtr> args1, args2, originalArgs1, originalArgs2;
+            THashMap<TStringBuf, TExprNode::TPtr> args1;
+            THashMap<TStringBuf, TExprNode::TPtr> args2;
+            THashMap<TStringBuf, TExprNode::TPtr> originalArgs1;
+            THashMap<TStringBuf, TExprNode::TPtr> originalArgs2;
             for (const auto& x : names) {
                 auto pos1 = underlying1->FindItem(x);
                 auto pos2 = underlying2->FindItem(x);
@@ -4809,7 +5480,8 @@ IGraphTransformer::TStatus SilentInferCommonType(TExprNode::TPtr& node1, const T
                     auto originalArg2 = arg2;
 
                     const TTypeAnnotationNode* commonBaseType;
-                    if (SilentInferCommonType(arg1, *elem1->GetItemType(), arg2, *elem2->GetItemType(), ctx, commonBaseType, flags) == IGraphTransformer::TStatus::Error) {
+                    if (SilentInferCommonTypeInternal(arg1, *elem1->GetItemType(), arg2, *elem2->GetItemType(), ctx, commonBaseType, flags, typeCtx)
+                        == IGraphTransformer::TStatus::Error) {
                         return IGraphTransformer::TStatus::Error;
                     }
 
@@ -4859,7 +5531,7 @@ IGraphTransformer::TStatus SilentInferCommonType(TExprNode::TPtr& node1, const T
             break;
         }
         default:
-            Y_UNREACHABLE();
+            YQL_ENSURE(false, "Unreachable");
         }
 
         if (changed1) {
@@ -4876,7 +5548,38 @@ IGraphTransformer::TStatus SilentInferCommonType(TExprNode::TPtr& node1, const T
     return IGraphTransformer::TStatus::Error;
 }
 
-IGraphTransformer::TStatus ConvertChildrenToType(const TExprNode::TPtr& input, const TTypeAnnotationNode* targetType, TExprContext& ctx) {
+IGraphTransformer::TStatus SilentInferCommonType(TExprNode::TPtr& node1, TExprNode::TPtr& node2, TExprContext& ctx,
+    const TTypeAnnotationNode*& commonType, TConvertFlags flags) {
+    if (!node1->GetTypeAnn() || !node2->GetTypeAnn()) {
+        return IGraphTransformer::TStatus::Error;
+    }
+
+    return SilentInferCommonTypeInternal(node1, *node1->GetTypeAnn(), node2, *node2->GetTypeAnn(), ctx, commonType, flags, /*typeCtx=*/nullptr);
+}
+
+IGraphTransformer::TStatus SilentInferCommonType(TExprNode::TPtr& node1, TExprNode::TPtr& node2, TExprContext& ctx,
+    const TTypeAnnotationContext& typeCtx, const TTypeAnnotationNode*& commonType, TConvertFlags flags) {
+    if (!node1->GetTypeAnn() || !node2->GetTypeAnn()) {
+        return IGraphTransformer::TStatus::Error;
+    }
+
+    return SilentInferCommonTypeInternal(node1, *node1->GetTypeAnn(), node2, *node2->GetTypeAnn(), ctx, commonType, flags, &typeCtx);
+}
+
+IGraphTransformer::TStatus SilentInferCommonType(TExprNode::TPtr& node1, const TTypeAnnotationNode& type1,
+    TExprNode::TPtr& node2, const TTypeAnnotationNode& type2, TExprContext& ctx,
+    const TTypeAnnotationNode*& commonType, TConvertFlags flags) {
+    return SilentInferCommonTypeInternal(node1, type1, node2, type2, ctx, commonType, flags, /*typeCtx=*/nullptr);
+}
+
+IGraphTransformer::TStatus SilentInferCommonType(TExprNode::TPtr& node1, const TTypeAnnotationNode& type1,
+    TExprNode::TPtr& node2, const TTypeAnnotationNode& type2, TExprContext& ctx, const TTypeAnnotationContext& typeCtx,
+    const TTypeAnnotationNode*& commonType, TConvertFlags flags) {
+    return SilentInferCommonTypeInternal(node1, type1, node2, type2, ctx, commonType, flags, &typeCtx);
+}
+
+IGraphTransformer::TStatus ConvertChildrenToTypeInternal(const TExprNode::TPtr& input, const TTypeAnnotationNode* targetType, TExprContext& ctx,
+    bool useTypeDiff, const TTypeAnnotationContext* typeCtx) {
     if (!input->ChildrenSize()) {
         return IGraphTransformer::TStatus::Ok;
     }
@@ -4888,12 +5591,21 @@ IGraphTransformer::TStatus ConvertChildrenToType(const TExprNode::TPtr& input, c
             return IGraphTransformer::TStatus::Error;
         }
 
-        status = status.Combine(TryConvertTo(input->ChildRef(i), *targetType, ctx));
+        status = status.Combine(TryConvertToInternal1(input->ChildRef(i), *targetType, ctx, {}, useTypeDiff, typeCtx));
         if (status == IGraphTransformer::TStatus::Error)
             break;
     }
 
     return status;
+}
+
+IGraphTransformer::TStatus ConvertChildrenToType(const TExprNode::TPtr& input, const TTypeAnnotationNode* targetType, TExprContext& ctx, bool useTypeDiff) {
+    return ConvertChildrenToTypeInternal(input, targetType, ctx, useTypeDiff, /*typeCtx=*/nullptr);
+}
+
+IGraphTransformer::TStatus ConvertChildrenToType(const TExprNode::TPtr& input,const TTypeAnnotationNode* targetType, TExprContext& ctx,
+    const TTypeAnnotationContext& typeCtx) {
+    return ConvertChildrenToTypeInternal(input, targetType, ctx, typeCtx.UseTypeDiffForConvertToError, &typeCtx);
 }
 
 bool IsSqlInCollectionItemsNullable(const NNodes::TCoSqlIn& node) {
@@ -4902,21 +5614,53 @@ bool IsSqlInCollectionItemsNullable(const NNodes::TCoSqlIn& node) {
         collectionType = collectionType->Cast<TOptionalExprType>()->GetItemType();
     }
 
+    auto lookupType = node.Lookup().Ref().GetTypeAnn();
+
     const auto collectionKind = collectionType->GetKind();
     bool result = false;
     switch (collectionKind) {
         case ETypeAnnotationKind::Tuple:
         {
             const auto tupleType = collectionType->Cast<TTupleExprType>();
-            result = AnyOf(tupleType->GetItems(), [](const auto& item) { return item->HasOptionalOrNull(); } );
+            for (const auto& item : tupleType->GetItems()) {
+                if (item->HasOptionalOrNull()) {
+                    result = true;
+                    break;
+                }
+
+                auto cmp = CanCompare<true>(lookupType, item);
+                if (cmp == ECompareOptions::Optional || cmp == ECompareOptions::Null) {
+                    result = true;
+                    break;
+                }
+            }
+
             break;
         }
-        case ETypeAnnotationKind::Dict:
-            result = collectionType->Cast<TDictExprType>()->GetKeyType()->HasOptionalOrNull();
+        case ETypeAnnotationKind::Dict: {
+            if (collectionType->Cast<TDictExprType>()->GetKeyType()->HasOptionalOrNull()) {
+                result = true;
+            } else {
+                auto cmp = CanCompare<true>(lookupType, collectionType->Cast<TDictExprType>()->GetKeyType());
+                if (cmp == ECompareOptions::Optional || cmp == ECompareOptions::Null) {
+                    result = true;
+                }
+            }
+
             break;
-        case ETypeAnnotationKind::List:
-            result = collectionType->Cast<TListExprType>()->GetItemType()->HasOptionalOrNull();
+        }
+        case ETypeAnnotationKind::List: {
+            if (collectionType->Cast<TListExprType>()->GetItemType()->HasOptionalOrNull()) {
+                result = true;
+            } else {
+                auto cmp = CanCompare<true>(lookupType, collectionType->Cast<TListExprType>()->GetItemType());
+                if (cmp == ECompareOptions::Optional || cmp == ECompareOptions::Null) {
+                    result = true;
+                }
+            }
+
             break;
+        }
         case ETypeAnnotationKind::EmptyDict:
         case ETypeAnnotationKind::EmptyList:
         case ETypeAnnotationKind::Null:
@@ -5050,6 +5794,11 @@ bool IsPureIsolatedLambdaImpl(const TExprNode& lambdaBody, TNodeSet& visited, TS
             }
 
             return false;
+        }
+
+        if (lambdaBody.IsCallable("WithWorld")) {
+            syncList->emplace(lambdaBody.ChildPtr(1), syncList->size());
+            return true;
         }
     }
 
@@ -5189,13 +5938,13 @@ void ExtractIntegralValue(const TExprNode& constructor, bool negate, bool& hasSi
         else {
             value = (~value + 1);
             if (constructor.IsCallable("Uint8")) {
-                value = value & 0xFFu;
+                value = value & 0xFFU;
             }
             else if (constructor.IsCallable("Uint16")) {
-                value = value & 0xFFFFu;
+                value = value & 0xFFFFU;
             }
             else if (constructor.IsCallable("Uint32")) {
-                value = value & 0xFFFFFFFFu;
+                value = value & 0xFFFFFFFFU;
             }
         }
     }
@@ -5348,58 +6097,14 @@ bool EnsureHashableDataType(TPositionHandle position, EDataSlot dataSlot, TExprC
     return true;
 }
 
-TMaybe<TIssue> NormalizeName(TPosition position, TString& name) {
-    const ui32 inputLength = name.length();
-    ui32 startCharPos = 0;
-    ui32 totalSkipped = 0;
-    bool atStart = true;
-    bool justSkippedUnderscore = false;
-    for (ui32 i = 0; i < inputLength; ++i) {
-        const char c = name.at(i);
-        if (c == '_') {
-            if (!atStart) {
-                if (justSkippedUnderscore) {
-                    return TIssue(position, TStringBuilder() << "\"" << name << "\" looks weird, has multiple consecutive underscores");
-                }
-                justSkippedUnderscore = true;
-                ++totalSkipped;
-                continue;
-            } else {
-                ++startCharPos;
-            }
-        }
-        else {
-            atStart = false;
-            justSkippedUnderscore = false;
-        }
+bool HasAnyError(const TTypeAnnotationNode* type, TExprContext& ctx) {
+    if (type && type->HasErrors()) {
+        TErrorTypeVisitor errorVisitor(ctx);
+        type->Accept(errorVisitor);
+        return true;
     }
 
-    if (totalSkipped >= 5) {
-        return TIssue(position, TStringBuilder() << "\"" << name << "\" looks weird, has multiple consecutive underscores");
-    }
-
-    ui32 outPos = startCharPos;
-    for (ui32 i = startCharPos; i < inputLength; i++) {
-        const char c = name.at(i);
-        if (c == '_') {
-            continue;
-        } else {
-            name[outPos] = AsciiToLower(c);
-            ++outPos;
-        }
-    }
-
-    name.resize(outPos);
-    Y_ABORT_UNLESS(inputLength - outPos == totalSkipped);
-
-    return Nothing();
-}
-
-TString NormalizeName(const TStringBuf& name) {
-    TString result(name);
-    TMaybe<TIssue> error = NormalizeName(TPosition(), result);
-    YQL_ENSURE(error.Empty(), "" << error->GetMessage());
-    return result;
+    return false;
 }
 
 bool HasError(const TTypeAnnotationNode* type, TExprContext& ctx) {
@@ -5412,22 +6117,7 @@ bool HasError(const TTypeAnnotationNode* type, TExprContext& ctx) {
 }
 
 bool HasError(const TTypeAnnotationNode* type, TIssue& errIssue) {
-    errIssue = {};
-
-    if (!type) {
-        return false;
-    }
-
-    if (type->GetKind() == ETypeAnnotationKind::Error) {
-        errIssue = type->Cast<TErrorExprType>()->GetError();
-        return true;
-    }
-
-    if (type->GetKind() == ETypeAnnotationKind::Type) {
-        return HasError(type->Cast<TTypeExprType>()->GetType(), errIssue);
-    }
-
-    return false;
+    return HasError(type, &errIssue);
 }
 
 bool IsNull(const TExprNode& node) {
@@ -5465,6 +6155,13 @@ bool IsBoolLike(const TTypeAnnotationNode& type) {
 
 bool IsBoolLike(const TExprNode& node) {
     return node.GetTypeAnn() && IsBoolLike(*node.GetTypeAnn());
+}
+
+bool IsUniversalLiteral(const TExprNode::TPtr& node) {
+    return node->IsCallable("InstanceOf") &&
+           node->ChildrenSize() == 1 &&
+           node->Head().IsCallable("UniversalType") &&
+           node->Head().ChildrenSize() == 0;
 }
 
 namespace {
@@ -5541,7 +6238,7 @@ void PrintTupleDiff(TStringBuilder& res, size_t level, const TIndentPrinter& ind
     }
 }
 
-static void PrintTypeDiff(TStringBuilder& res, size_t level, const TIndentPrinter& indent, const TTypeAnnotationNode& left, const TTypeAnnotationNode& right) {
+void PrintTypeDiff(TStringBuilder& res, size_t level, const TIndentPrinter& indent, const TTypeAnnotationNode& left, const TTypeAnnotationNode& right) {
     if (&left == &right) {
         res << "no diff";
         return;
@@ -5645,6 +6342,10 @@ TExprNode::TPtr ExpandTypeNoCache(TPositionHandle position, const TTypeAnnotatio
     switch (type.GetKind()) {
     case ETypeAnnotationKind::Unit:
         return ctx.NewCallable(position, "UnitType", {});
+    case ETypeAnnotationKind::Universal:
+        return ctx.NewCallable(position, "UniversalType", {});
+    case ETypeAnnotationKind::UniversalStruct:
+        return ctx.NewCallable(position, "UniversalStructType", {});
     case ETypeAnnotationKind::EmptyList:
         return ctx.NewCallable(position, "EmptyListType", {});
     case ETypeAnnotationKind::EmptyDict:
@@ -5837,6 +6538,20 @@ TExprNode::TPtr ExpandTypeNoCache(TPositionHandle position, const TTypeAnnotatio
         return ret;
     }
 
+    case ETypeAnnotationKind::Linear:
+    {
+        auto ret = ctx.NewCallable(position, "LinearType",
+            { ExpandType(position, *type.Cast<TLinearExprType>()->GetItemType(), ctx) });
+        return ret;
+    }
+
+    case ETypeAnnotationKind::DynamicLinear:
+    {
+        auto ret = ctx.NewCallable(position, "DynamicLinearType",
+            { ExpandType(position, *type.Cast<TDynamicLinearExprType>()->GetItemType(), ctx) });
+        return ret;
+    }
+
     default:
         YQL_ENSURE(false, "Unsupported kind: " << (ui32)type.GetKind());
     }
@@ -5855,43 +6570,78 @@ bool IsSystemMember(const TStringBuf& memberName) {
 }
 
 template<bool Deduplicte, ui8 OrListsOfAtomsDepth>
-IGraphTransformer::TStatus NormalizeTupleOfAtoms(const TExprNode::TPtr& input, ui32 index, TExprNode::TPtr& output, TExprContext& ctx)
+IGraphTransformer::TStatus NormalizeTupleOfAtoms(const TExprNode::TPtr& input, ui32 index, TExprNode::TPtr& output,
+    TExprContext& ctx, bool& isUniversal)
 {
+    isUniversal = false;
+    if (input->GetTypeAnn() && input->GetTypeAnn()->GetKind() == ETypeAnnotationKind::Universal) {
+        isUniversal = true;
+        return IGraphTransformer::TStatus::Ok;
+    }
+
     auto children = input->Child(index)->ChildrenList();
     bool needRestart = false;
 
     if constexpr (OrListsOfAtomsDepth == 2U) {
+        if (input->Child(index)->GetTypeAnn() && input->Child(index)->GetTypeAnn()->GetKind() == ETypeAnnotationKind::Universal) {
+            input->SetTypeAnn(input->Child(index)->GetTypeAnn());
+            return IGraphTransformer::TStatus::Ok;
+        }
+
         if (!EnsureTuple(*input->Child(index), ctx))
             return IGraphTransformer::TStatus::Error;
 
         for (auto i = 0U; i < children.size(); ++i) {
             if (const auto item = input->Child(index)->Child(i); item->IsList()) {
-                if (1U == item->ChildrenSize() && item->Head().IsAtom()) {
+                if (1U == item->ChildrenSize() && item->Head().GetTypeAnn() &&
+                    item->Head().GetTypeAnn()->GetKind() == ETypeAnnotationKind::Universal) {
+                    isUniversal = true;
+                    return IGraphTransformer::TStatus::Ok;
+                } else if (1U == item->ChildrenSize() && item->Head().IsAtom()) {
                     needRestart = true;
                     children[i] = item->HeadPtr();
-                } else if (const auto status = NormalizeTupleOfAtoms<Deduplicte, 1U>(input->ChildPtr(index), i, children[i], ctx); status == IGraphTransformer::TStatus::Error)
+                } else if (const auto status = NormalizeTupleOfAtoms<Deduplicte, 1U>(input->ChildPtr(index), i, children[i], ctx, isUniversal);
+                    status == IGraphTransformer::TStatus::Error || isUniversal)
                     return status;
                 else
                     needRestart = needRestart || (status == IGraphTransformer::TStatus::Repeat);
-            } else if (!EnsureAtom(*item, ctx))
+            } else if (!EnsureAtomOrUniversal(*item, ctx, isUniversal))
                 return IGraphTransformer::TStatus::Error;
         }
     } else if constexpr (OrListsOfAtomsDepth == 1U) {
+        if (input->Child(index)->GetTypeAnn() && input->Child(index)->GetTypeAnn()->GetKind() == ETypeAnnotationKind::Universal) {
+            input->SetTypeAnn(input->Child(index)->GetTypeAnn());
+            return IGraphTransformer::TStatus::Ok;
+        }
+
         if (!EnsureTuple(*input->Child(index), ctx))
             return IGraphTransformer::TStatus::Error;
 
         for (auto i = 0U; i < children.size(); ++i) {
             if (const auto item = input->Child(index)->Child(i); item->IsList()) {
-                if (1U == item->ChildrenSize() && item->Head().IsAtom()) {
+                if (1U == item->ChildrenSize() && item->Head().GetTypeAnn() &&
+                    item->Head().GetTypeAnn()->GetKind() == ETypeAnnotationKind::Universal) {
+                    isUniversal = true;
+                    return IGraphTransformer::TStatus::Ok;
+                } else if (1U == item->ChildrenSize() && item->Head().IsAtom()) {
                     needRestart = true;
                     children[i] = item->HeadPtr();
-                } else if (!EnsureTupleOfAtoms(*item, ctx))
+                } else if (!EnsureTupleOfAtomsOrUniversal(*item, ctx, isUniversal))
                     return IGraphTransformer::TStatus::Error;
-            } else if (!EnsureAtom(*item, ctx))
+            } else if (!EnsureAtomOrUniversal(*item, ctx, isUniversal))
                 return IGraphTransformer::TStatus::Error;
+
+            if (isUniversal) {
+                break;
+            }
         }
-    } else if (!EnsureTupleOfAtoms(*input->Child(index), ctx))
+    } else if (!EnsureTupleOfAtomsOrUniversal(*input->Child(index), ctx, isUniversal)) {
         return IGraphTransformer::TStatus::Error;
+    }
+
+    if (isUniversal) {
+        return IGraphTransformer::TStatus::Ok;
+    }
 
     const auto getKey = [](const TExprNode::TPtr& node) {
         if constexpr (OrListsOfAtomsDepth == 2U) {
@@ -5948,15 +6698,19 @@ IGraphTransformer::TStatus NormalizeTupleOfAtoms(const TExprNode::TPtr& input, u
     return IGraphTransformer::TStatus::Ok;
 }
 
-template IGraphTransformer::TStatus NormalizeTupleOfAtoms<true, 2U>(const TExprNode::TPtr& input, ui32 index, TExprNode::TPtr& output, TExprContext& ctx);
-template IGraphTransformer::TStatus NormalizeTupleOfAtoms<true, 1U>(const TExprNode::TPtr& input, ui32 index, TExprNode::TPtr& output, TExprContext& ctx);
-template IGraphTransformer::TStatus NormalizeTupleOfAtoms<true, 0U>(const TExprNode::TPtr& input, ui32 index, TExprNode::TPtr& output, TExprContext& ctx);
-template IGraphTransformer::TStatus NormalizeTupleOfAtoms<false, 0U>(const TExprNode::TPtr& input, ui32 index, TExprNode::TPtr& output, TExprContext& ctx);
+template IGraphTransformer::TStatus NormalizeTupleOfAtoms<true, 2U>(const TExprNode::TPtr& input, ui32 index, TExprNode::TPtr& output, TExprContext& ctx, bool& isUniversal);
+template IGraphTransformer::TStatus NormalizeTupleOfAtoms<true, 1U>(const TExprNode::TPtr& input, ui32 index, TExprNode::TPtr& output, TExprContext& ctx, bool& isUniversal);
+template IGraphTransformer::TStatus NormalizeTupleOfAtoms<true, 0U>(const TExprNode::TPtr& input, ui32 index, TExprNode::TPtr& output, TExprContext& ctx, bool& isUniversal);
+template IGraphTransformer::TStatus NormalizeTupleOfAtoms<false, 0U>(const TExprNode::TPtr& input, ui32 index, TExprNode::TPtr& output, TExprContext& ctx, bool& isUniversal);
 
 IGraphTransformer::TStatus NormalizeKeyValueTuples(const TExprNode::TPtr& input, ui32 startIndex, TExprNode::TPtr& output,
     TExprContext &ctx, bool deduplicate)
 {
-    YQL_ENSURE(input->IsCallable() || input->IsList());
+    if (!input->IsCallable() && !input->IsList()) {
+        ctx.AddError(TIssue(ctx.GetPosition(input->Pos()), TStringBuilder() << "Expected tuple or callable, but got: " << input->Type()));
+        return IGraphTransformer::TStatus::Error;
+    }
+
     YQL_ENSURE(startIndex <= input->ChildrenSize());
 
     auto children = input->ChildrenList();
@@ -5965,6 +6719,10 @@ IGraphTransformer::TStatus NormalizeKeyValueTuples(const TExprNode::TPtr& input,
 
     for (auto item = begin; item != end; ++item) {
         auto node = *item;
+        if (node->GetTypeAnn() && node->GetTypeAnn()->GetKind() == ETypeAnnotationKind::Universal) {
+            return IGraphTransformer::TStatus::Ok;
+        }
+
         if (!EnsureTupleMinSize(*node, 1, ctx)) {
             return IGraphTransformer::TStatus::Error;
         }
@@ -5998,8 +6756,8 @@ IGraphTransformer::TStatus NormalizeKeyValueTuples(const TExprNode::TPtr& input,
     return IGraphTransformer::TStatus::Ok;
 }
 
-std::optional<ui32> GetFieldPosition(const TMultiExprType& multiType, const TStringBuf& field) {
-    if (ui32 pos; TryFromString(field, pos) && pos < multiType.GetSize())
+std::optional<ui32> GetFieldPosition(const TMultiExprType& tupleType, const TStringBuf& field) {
+    if (ui32 pos; TryFromString(field, pos) && pos < tupleType.GetSize())
         return {pos};
     return std::nullopt;
 }
@@ -6016,9 +6774,22 @@ std::optional<ui32> GetFieldPosition(const TStructExprType& structType, const TS
     return std::nullopt;
 }
 
+std::optional<ui32> GetWideBlockFieldPosition(const TMultiExprType& tupleType, const TStringBuf& field) {
+    YQL_ENSURE(tupleType.GetSize() >= 1);
+    if (ui32 pos; TryFromString(field, pos) && pos < tupleType.GetSize() - 1)
+        return {pos};
+    return std::nullopt;
+}
+
 bool ExtractPgType(const TTypeAnnotationNode* type, ui32& pgType, bool& convertToPg, TPositionHandle pos, TExprContext& ctx) {
+    bool isUniversal;
+    return ExtractPgType(type, pgType, convertToPg, pos, ctx, isUniversal);
+}
+
+bool ExtractPgType(const TTypeAnnotationNode* type, ui32& pgType, bool& convertToPg, TPositionHandle pos, TExprContext& ctx, bool& isUniversal) {
     pgType = 0;
     convertToPg = false;
+    isUniversal = false;
     if (!type) {
         ctx.AddError(TIssue(ctx.GetPosition(pos), "Expected PG type, but got lambda"));
         return false;
@@ -6028,9 +6799,19 @@ bool ExtractPgType(const TTypeAnnotationNode* type, ui32& pgType, bool& convertT
         return true;
     }
 
+    if (type->GetKind() == ETypeAnnotationKind::Universal) {
+        isUniversal = true;
+        return true;
+    }
+
     if (type->GetKind() == ETypeAnnotationKind::Data || type->GetKind() == ETypeAnnotationKind::Optional) {
         const TTypeAnnotationNode* unpacked = RemoveOptionalType(type);
         if (unpacked->GetKind() != ETypeAnnotationKind::Data) {
+            if (unpacked->GetKind() == ETypeAnnotationKind::Universal) {
+                isUniversal = true;
+                return true;
+            }
+
             ctx.AddError(TIssue(ctx.GetPosition(pos),
                 "Nested optional type is not compatible to PG"));
             return false;
@@ -6153,7 +6934,13 @@ bool EnsureScalarType(TPositionHandle position, const TTypeAnnotationNode& type,
     return true;
 }
 
-bool EnsureValidJsonPath(const TExprNode& node, TExprContext& ctx) {
+bool EnsureValidJsonPath(const TExprNode& node, TExprContext& ctx, bool& isUniversal) {
+    isUniversal = false;
+    if (node.GetTypeAnn() && node.GetTypeAnn()->GetKind() == ETypeAnnotationKind::Universal) {
+        isUniversal = true;
+        return true;
+    }
+
     if (!EnsureSpecificDataType(node, EDataSlot::Utf8, ctx))
         return false;
 
@@ -6183,14 +6970,42 @@ const TTypeAnnotationNode* GetBlockItemType(const TTypeAnnotationNode& type, boo
     return type.Cast<TScalarExprType>()->GetItemType();
 }
 
+const TTypeAnnotationNode* UnpackOptionalBlockItemType(const TTypeAnnotationNode& type, TExprContext& ctx, bool convertToScalar) {
+    YQL_ENSURE(type.IsBlockOrScalar());
+    bool isScalar;
+    auto* underlyingOptionalType = GetBlockItemType(type, isScalar);
+    YQL_ENSURE(underlyingOptionalType->GetKind() == ETypeAnnotationKind::Optional);
+    auto* underlyingType = underlyingOptionalType->Cast<TOptionalExprType>()->GetItemType();
+    if (isScalar || convertToScalar) {
+        return ctx.MakeType<TScalarExprType>(underlyingType);
+    } else {
+        return ctx.MakeType<TBlockExprType>(underlyingType);
+    }
+}
+
+const TTypeAnnotationNode* GetLinearItemType(const TTypeAnnotationNode& type, bool& isDynamic) {
+    YQL_ENSURE(type.IsLinearOrDynamicLinear());
+    const auto kind = type.GetKind();
+    if (kind == ETypeAnnotationKind::Linear) {
+        isDynamic = false;
+        return type.Cast<TLinearExprType>()->GetItemType();
+    }
+
+    isDynamic = true;
+    return type.Cast<TDynamicLinearExprType>()->GetItemType();
+}
+
 const TTypeAnnotationNode* AggApplySerializedStateType(const TExprNode::TPtr& input, TExprContext& ctx) {
     auto name = input->Child(0)->Content();
     if (name == "count" || name == "count_all" || name == "min" || name == "max" || name == "some") {
         return input->GetTypeAnn();
     } else if (name == "avg" || name == "sum") {
-        auto itemType = input->Content().StartsWith("AggBlock") ?
-            input->Child(1)->GetTypeAnn()->Cast<TTypeExprType>()->GetType() :
-            input->Child(2)->GetTypeAnn();
+        const TTypeAnnotationNode* itemType;
+        if (input->Content().StartsWith("AggBlock")) {
+            itemType = input->Child(1)->GetTypeAnn()->Cast<TTypeExprType>()->GetType();
+        } else {
+            itemType = input->Child(2)->GetTypeAnn();
+        }
         if (input->Content().EndsWith("State")) {
             return itemType;
         }
@@ -6248,8 +7063,10 @@ const TTypeAnnotationNode* AggApplySerializedStateType(const TExprNode::TPtr& in
             }
         } else {
             bool needRetype = false;
-            auto status = ExtractPgTypesFromMultiLambda(input->ChildRef(2), argTypes, needRetype, ctx);
+            bool isUniversal;
+            auto status = ExtractPgTypesFromMultiLambda(input->ChildRef(2), argTypes, needRetype, ctx, isUniversal);
             YQL_ENSURE(status == IGraphTransformer::TStatus::Ok);
+            YQL_ENSURE(!isUniversal);
         }
 
         const NPg::TAggregateDesc& aggDesc = NPg::LookupAggregation(TString(func), argTypes);
@@ -6386,13 +7203,18 @@ bool GetMinMaxResultType(const TPositionHandle& pos, const TTypeAnnotationNode& 
 }
 
 IGraphTransformer::TStatus ExtractPgTypesFromMultiLambda(TExprNode::TPtr& lambda, TVector<ui32>& argTypes,
-    bool& needRetype, TExprContext& ctx) {
+    bool& needRetype, TExprContext& ctx, bool& isUniversal) {
+    isUniversal = false;
     for (ui32 i = 1; i < lambda->ChildrenSize(); ++i) {
         auto type = lambda->Child(i)->GetTypeAnn();
         ui32 argType;
         bool convertToPg;
-        if (!ExtractPgType(type, argType, convertToPg, lambda->Child(i)->Pos(), ctx)) {
+        if (!ExtractPgType(type, argType, convertToPg, lambda->Child(i)->Pos(), ctx, isUniversal)) {
             return IGraphTransformer::TStatus::Error;
+        }
+
+        if (isUniversal) {
+            return IGraphTransformer::TStatus::Ok;
         }
 
         if (convertToPg) {
@@ -6408,8 +7230,12 @@ IGraphTransformer::TStatus ExtractPgTypesFromMultiLambda(TExprNode::TPtr& lambda
             auto type = lambda->Child(i)->GetTypeAnn();
             ui32 argType;
             bool convertToPg;
-            if (!ExtractPgType(type, argType, convertToPg, lambda->Child(i)->Pos(), ctx)) {
+            if (!ExtractPgType(type, argType, convertToPg, lambda->Child(i)->Pos(), ctx, isUniversal)) {
                 return IGraphTransformer::TStatus::Error;
+            }
+
+            if (isUniversal) {
+                return IGraphTransformer::TStatus::Ok;
             }
 
             if (convertToPg) {
@@ -6449,7 +7275,7 @@ TExprNode::TPtr ExpandPgAggregationTraits(TPositionHandle pos, const NPg::TAggre
                 .Atom(1, ToString(aggDesc.FinalFuncId))
                 .List(2)
                     .Do([aggResultType, originalAggResultType](TExprNodeBuilder& builder) -> TExprNodeBuilder& {
-                        if (aggResultType != originalAggResultType) { 
+                        if (aggResultType != originalAggResultType) {
                             builder.List(0)
                                 .Atom(0, "type")
                                 .Atom(1, NPg::LookupType(aggResultType).Name)
@@ -6497,7 +7323,8 @@ TExprNode::TPtr ExpandPgAggregationTraits(TPositionHandle pos, const NPg::TAggre
         searchNonNullForState = true;
     }
 
-    TExprNode::TPtr initLambda, updateLambda;
+    TExprNode::TPtr initLambda;
+    TExprNode::TPtr updateLambda;
     if (!searchNonNullForState) {
         initLambda = ctx.Builder(pos)
             .Lambda()
@@ -6780,12 +7607,12 @@ void AdjustReturnType(ui32& returnType, const TVector<ui32>& procArgTypes, ui32 
             returnType = *inputArrayType;
         }
     } else if (returnType == NPg::AnyElementOid) {
-        for (ui32 i = 0; i < argTypes.size(); ++i) {
-            if (!argTypes[i]) {
+        for (const ui32 argType : argTypes) {
+            if (!argType) {
                 continue;
             }
 
-            const auto& typeDesc = NPg::LookupType(argTypes[i]);
+            const auto& typeDesc = NPg::LookupType(argType);
             if (typeDesc.ArrayTypeId == typeDesc.TypeId) {
                 returnType = typeDesc.ElementTypeId;
                 return;
@@ -6871,7 +7698,7 @@ void CheckExpectedTypeAndColumnOrder(const TExprNode& node, TExprContext& ctx, T
             auto status = typesCtx.SetColumnOrder(node, oldColumnOrder, ctx);
             YQL_ENSURE(status == IGraphTransformer::TStatus::Ok);
         } else {
-            YQL_ENSURE(newColumnOrder == oldColumnOrder,
+            YQL_ENSURE(newColumnOrder && *newColumnOrder == oldColumnOrder,
                 "Rewrite error, column order should be: "
                 << FormatColumnOrder(oldColumnOrder) << ", but it is: "
                 << FormatColumnOrder(newColumnOrder) << " for node "

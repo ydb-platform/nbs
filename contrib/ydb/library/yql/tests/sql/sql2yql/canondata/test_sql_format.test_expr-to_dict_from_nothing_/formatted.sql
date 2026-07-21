@@ -1,0 +1,3 @@
+SELECT
+    ToSet(Nothing(List<Uint8>?))
+;

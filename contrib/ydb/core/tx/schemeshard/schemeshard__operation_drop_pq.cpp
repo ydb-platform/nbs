@@ -1,8 +1,11 @@
-#include "schemeshard__operation_part.h"
 #include "schemeshard__operation_common.h"
+#include "schemeshard__operation_part.h"
+#include "schemeshard__operation.h"
 #include "schemeshard_impl.h"
+#include "schemeshard_pq_helpers.h"  // for PQGroupReserve
 
 #include <contrib/ydb/core/base/subdomain.h>
+#include <contrib/ydb/core/persqueue/events/global.h>
 
 namespace {
 
@@ -16,7 +19,7 @@ private:
     TString DebugHint() const override {
         return TStringBuilder()
                 << "TDropPQ TDropParts"
-                << " operationId#" << OperationId;
+                << " operationId# " << OperationId;
     }
 
 public:
@@ -188,6 +191,7 @@ public:
         auto domainInfo = context.SS->ResolveDomainInfo(pathId);
         domainInfo->DecPathsInside(context.SS);
         domainInfo->DecPQPartitionsInside(pqGroup->TotalPartitionCount);
+        domainInfo->DecPQGroupsInside();
         domainInfo->DecPQReservedStorage(reserve.Storage);
         domainInfo->AggrDiskSpaceUsage({}, pqGroup->Stats);
         if (domainInfo->CheckDiskSpaceQuotas(context.SS)) {
@@ -202,7 +206,7 @@ public:
 
         context.SS->TabletCounters->Simple()[COUNTER_STREAM_SHARDS_COUNT].Sub(pqGroup->TotalPartitionCount);
 
-        parentDir->DecAliveChildren();
+        DecAliveChildrenDirect(OperationId, parentDir, context); // for correct discard of ChildrenExist prop
 
         if (!AppData()->DisableSchemeShardCleanupOnDropForTest) {
             context.SS->PersistRemovePersQueueGroup(db, pathId);
@@ -355,11 +359,11 @@ public:
             }
 
             if (!checks) {
-                result->SetError(checks.GetStatus(), checks.GetError());
                 if (path.IsResolved() && path.Base()->IsPQGroup() && path.Base()->PlannedToDrop()) {
                     result->SetPathDropTxId(ui64(path.Base()->DropTxId));
                     result->SetPathId(path.Base()->PathId.LocalPathId);
                 }
+                result->SetError(checks.GetStatus(), checks.GetError());
                 return result;
             }
         }
@@ -442,7 +446,10 @@ public:
             context.OnComplete.PublishToSchemeBoard(OperationId, path.Base()->PathId);
         }
 
+        // Activate main tx state machine
         SetState(NextState());
+        context.OnComplete.ActivateTx(OperationId);
+
         return result;
     }
 
@@ -466,6 +473,14 @@ ISubOperation::TPtr CreateDropPQ(TOperationId id, const TTxTransaction& tx) {
 ISubOperation::TPtr CreateDropPQ(TOperationId id, TTxState::ETxState state) {
     Y_ABORT_UNLESS(state != TTxState::Invalid);
     return MakeSubOperation<TDropPQ>(id, state);
+}
+
+bool CreateDropPQ(TOperationId id, const TTxTransaction& tx, TOperationContext& context, TVector<ISubOperation::TPtr>& result) {
+    Y_UNUSED(context);
+    Y_ABORT_UNLESS(tx.GetOperationType() == NKikimrSchemeOp::EOperationType::ESchemeOpDropPersQueueGroup);
+
+    result.push_back(CreateDropPQ(NextPartId(id, result), tx));
+    return true;
 }
 
 }

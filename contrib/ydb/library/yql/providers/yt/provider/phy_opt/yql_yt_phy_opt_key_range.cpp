@@ -3,11 +3,13 @@
 
 #include <contrib/ydb/library/yql/providers/yt/provider/yql_yt_helpers.h>
 
+#include <contrib/ydb/library/yql/core/dq_expr_nodes/dq_expr_nodes.h>
 #include <contrib/ydb/library/yql/utils/log/log.h>
 
 namespace NYql {
 
 using namespace NNodes;
+using namespace NNodes::NDq;
 using namespace NPrivate;
 
 // All keyFilter settings are combined by OR.
@@ -349,4 +351,4 @@ TMaybeNode<TExprBase> TYtPhysicalOptProposalTransformer::ExtractKeyRange(TExprBa
     return newOp;
 }
 
-}  // namespace NYql
+} // namespace NYql

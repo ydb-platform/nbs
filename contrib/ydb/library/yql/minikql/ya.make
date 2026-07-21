@@ -7,8 +7,12 @@ SRCS(
     compact_hash.h
     defs.h
     mkql_alloc.cpp
+    mkql_block_map_join_utils.cpp
+    mkql_block_map_join_utils.h
     mkql_buffer.cpp
     mkql_buffer.h
+    mkql_date_scaler.cpp
+    mkql_date_scaler.h
     mkql_function_metadata.cpp
     mkql_function_metadata.h
     mkql_function_registry.cpp
@@ -30,6 +34,8 @@ SRCS(
     mkql_opt_literal.h
     mkql_program_builder.cpp
     mkql_program_builder.h
+    mkql_rh_hash_utils.cpp
+    mkql_rh_hash_utils.h
     mkql_runtime_version.cpp
     mkql_runtime_version.h
     mkql_stats_registry.cpp
@@ -42,6 +48,7 @@ SRCS(
     mkql_type_ops.cpp
     mkql_type_ops.h
     mkql_watermark.h
+    mkql_window_comparator_bounds.h
     mkql_unboxed_value_stream.cpp
     mkql_unboxed_value_stream.h
     pack_num.cpp
@@ -55,25 +62,27 @@ SRCS(
 PEERDIR(
     contrib/libs/apache/arrow
     contrib/libs/cctz/tzdata
-    contrib/ydb/library/actors/util
     library/cpp/deprecated/enum_codegen
     library/cpp/enumbitset
     library/cpp/monlib/dynamic_counters
     library/cpp/packedtypes
+    library/cpp/type_info/tz
     library/cpp/resource
     library/cpp/yson
-    contrib/ydb/library/binary_json
-    contrib/ydb/library/dynumber
     contrib/ydb/library/yql/core/pg_settings
+    contrib/ydb/library/yql/core/sql_types
+    contrib/ydb/library/yql/core/issue
     contrib/ydb/library/yql/minikql/dom
     contrib/ydb/library/yql/parser/pg_catalog
     contrib/ydb/library/yql/parser/pg_wrapper/interface
+    contrib/ydb/library/yql/public/issue
+    contrib/ydb/library/yql/public/langver
     contrib/ydb/library/yql/public/udf
-    contrib/ydb/library/yql/public/udf/tz
+    contrib/ydb/library/yql/types/binary_json
+    contrib/ydb/library/yql/types/dynumber
+    contrib/ydb/library/yql/types/uuid
     contrib/ydb/library/yql/utils
-    contrib/ydb/library/yql/core/sql_types
-    contrib/ydb/library/uuid
-    contrib/ydb/public/lib/scheme_types
+    contrib/ydb/library/yql/utils/memory_profiling
 )
 
 IF (MKQL_RUNTIME_VERSION)
@@ -97,9 +106,12 @@ RECURSE(
     jsonpath
     perf
     protobuf_udf
+    runtime_settings
 )
 
 RECURSE_FOR_TESTS(
     benchmark
     ut
+    sanitizer_ut
+    udf_value_test_support
 )

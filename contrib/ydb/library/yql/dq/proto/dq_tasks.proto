@@ -6,6 +6,7 @@ package NYql.NDqProto;
 import "google/protobuf/any.proto";
 import "contrib/ydb/library/actors/protos/actors.proto";
 import "contrib/ydb/library/yql/dq/proto/dq_transport.proto";
+import "contrib/ydb/library/yql/minikql/runtime_settings/proto/runtime_settings.proto";
 
 enum ERuntimeVersion {
     RUNTIME_VERSION_UNSPECIFIED = 0;
@@ -52,6 +53,8 @@ message TProgram {
     uint32 RuntimeVersion = 1;
     bytes Raw = 2;
     TSettings Settings = 3;
+    uint32 LangVer = 4;
+    NProto.TRuntimeSettings RuntimeSettings = 5;
 }
 
 message TDqUri {
@@ -83,6 +86,7 @@ message TChannel {
     bool InMemory = 8;
     ECheckpointingMode CheckpointingMode = 9;
     EWatermarksMode WatermarksMode = 10;
+    optional uint64 WatermarksIdleTimeoutUs = 14;
     bool EnableSpilling = 13;
 }
 
@@ -93,6 +97,7 @@ message TSourceInput {
     string Type = 1;
     google.protobuf.Any Settings = 2;
     EWatermarksMode WatermarksMode = 3;
+    optional uint64 WatermarksIdleTimeoutUs = 4;
 }
 
 message TSortColumn {
@@ -132,9 +137,27 @@ message TTaskOutputRangePartition {
 message TTaskOutputBroadcast {
 }
 
+message THashV1 {
+}
+
+message THashV2 {
+}
+
+message TColumnShardHashV1 {
+    uint64 ShardCount = 1;
+    repeated uint64 TaskIndexByHash = 2;
+    repeated uint32 KeyColumnTypes = 3;
+}
+
 message TTaskOutputHashPartition {
     repeated string KeyColumns = 1;
     uint32 PartitionsCount = 2;
+
+    oneof HashKind {
+        THashV1 HashV1 = 3;
+        THashV2 HashV2 = 5;
+        TColumnShardHashV1 ColumnShardHashV1 = 4;
+    }
 }
 
 message TTaskOutputEffects {
@@ -161,7 +184,7 @@ message TTaskOutput {
 message TDqTransform {
     string Type = 1;
 
-    // binary YSON(codec ydb/library/yql/providers/common/schema/mkql)
+    // binary YSON(codec contrib/ydb/library/yql/providers/common/schema/mkql)
     bytes InputType = 2;
     bytes OutputType = 3;
 
@@ -184,7 +207,12 @@ message TDqInputTransformLookupSettings {
     repeated string RightJoinKeyNames = 6; //Join column names in the right hand, in the same order as previous
     bytes NarrowInputRowType = 7; //Serialized struct type
     bytes NarrowOutputRowType = 8; //Serialized struct type
-    //TODO add lookup cache parameters
+    uint64 CacheLimit = 9;
+    uint64 CacheTtlSeconds = 10;
+    uint64 MaxDelayedRows = 11;
+    bool IsMultiget = 12;
+    bool IsMultiMatches = 13;
+    optional uint64 FullscanLimit = 14;
 }
 
 message TDqTask {
@@ -207,4 +235,19 @@ message TDqTask {
     repeated bytes ReadRanges = 17;
     map<string, string> RequestContext = 18;
     optional bool EnableSpilling = 19;
+    optional uint32 ArrayBufferMinFillPercentage = 20;
+    optional bool DisableMetering = 22;
+    optional uint64 BufferPageAllocSize = 23;
+    EValuePackerVersion ValuePackerVersion = 24;
+    string RateLimiterDatabase = 25;
+    uint32 DqChannelVersion = 26;
+}
+
+message TDqControlPlaneActorSettings {
+    string Type = 1;
+}
+
+message TDqIntegrationCommonSettings {
+    google.protobuf.Any Settings = 1;
+    map<string, TDqControlPlaneActorSettings> StageControlPlaneActors = 2;
 }

@@ -1,6 +1,6 @@
 PY3TEST()
 
-ENV(YDB_DRIVER_BINARY="contrib/ydb/apps/ydbd/ydbd")
+INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/harness_dep.inc)
 PY_SRCS (
     conftest.py
     common.py
@@ -10,31 +10,28 @@ TEST_SRCS(
     test_rename.py
 )
 
-
-REQUIREMENTS(
-    cpu:4
-    ram:32
-)
-
 FORK_TEST_FILES()
 FORK_SUBTESTS()
 SPLIT_FACTOR(10)
 
-IF (SANITIZER_TYPE == "thread" OR WITH_VALGRIND)
-    TIMEOUT(3600)
-    SIZE(LARGE)
-    TAG(ya:fat)
+IF (SANITIZER_TYPE)
+    REQUIREMENTS(ram:32 cpu:4)
 ELSE()
-    TIMEOUT(600)
+    REQUIREMENTS(cpu:2)
+ENDIF()
+IF (SANITIZER_TYPE == "thread")
+    SIZE(LARGE)
+    INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/large.inc)
+ELSE()
     SIZE(MEDIUM)
 ENDIF()
 
 DEPENDS(
-    contrib/ydb/apps/ydbd
 )
 
 PEERDIR(
     contrib/ydb/tests/library
+    contrib/ydb/tests/library/fixtures
     contrib/ydb/tests/oss/ydb_sdk_import
     contrib/ydb/public/sdk/python
     contrib/python/tornado/tornado-4

@@ -1,5 +1,9 @@
 #pragma once
 
+#include "mvp.h"
+
+#include <contrib/ydb/mvp/core/merger.h>
+
 #include <contrib/ydb/library/actors/core/actorsystem.h>
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
@@ -7,8 +11,6 @@
 #include <contrib/ydb/library/actors/core/event_local.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/http/http.h>
-#include "mvp.h"
-#include <contrib/ydb/mvp/core/merger.h>
 
 namespace NMVP {
 

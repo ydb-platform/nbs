@@ -3,26 +3,19 @@ UNITTEST_FOR(contrib/ydb/core/tx/columnshard/engines/storage/optimizer)
 SIZE(SMALL)
 
 PEERDIR(
-    contrib/ydb/core/tx/columnshard/engines/changes
-    contrib/ydb/core/tx/columnshard/engines
+    contrib/ydb/core/testlib/actors
+    contrib/ydb/core/testlib/basics
     contrib/ydb/core/tx/columnshard
-    contrib/ydb/library/yql/public/udf
-    contrib/ydb/core/formats/arrow/compression
-    contrib/ydb/core/grpc_services
-    contrib/ydb/core/scheme
-    contrib/ydb/core/ydb_convert
-    contrib/ydb/library/mkql_proto
-    contrib/ydb/core/tx/tx_proxy
-    contrib/ydb/library/mkql_proto
-    contrib/ydb/core/tx/schemeshard
-    contrib/ydb/library/yql/parser/pg_wrapper
-    contrib/ydb/core/persqueue
-    contrib/ydb/core/tx/time_cast
-    contrib/ydb/library/yql/sql/pg
+    contrib/ydb/core/tx/columnshard/test_helper
+    contrib/ydb/library/actors/core
+    contrib/ydb/library/yql/sql/pg_dummy
 )
 
+YQL_LAST_ABI_VERSION()
+
 SRCS(
-    ut_optimizer.cpp
+    ut_lcbuckets_skip_level.cpp
+    ut_tiling.cpp
 )
 
 END()

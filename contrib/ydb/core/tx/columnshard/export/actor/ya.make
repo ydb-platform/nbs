@@ -2,15 +2,18 @@ LIBRARY()
 
 SRCS(
     export_actor.cpp
-    write.cpp
 )
 
 PEERDIR(
     contrib/ydb/core/tx/columnshard/blobs_action/abstract
     contrib/ydb/library/actors/core
+    contrib/ydb/library/signals
     contrib/ydb/core/tx/columnshard/engines/writer
-    contrib/ydb/core/tx/columnshard/export/events
     contrib/ydb/core/kqp/compute_actor
 )
 
 END()
+
+RECURSE_FOR_TESTS(
+    ut
+)

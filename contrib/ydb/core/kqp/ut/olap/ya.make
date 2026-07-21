@@ -1,52 +1,53 @@
 UNITTEST_FOR(contrib/ydb/core/kqp)
 
 FORK_SUBTESTS()
-SPLIT_FACTOR(200)
+SPLIT_FACTOR(150)
 
-IF (WITH_VALGRIND)
-    TIMEOUT(3600)
+REQUIREMENTS(cpu:2)
+IF (SANITIZER_TYPE)
     SIZE(LARGE)
-    TAG(ya:fat)
+    INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/large.inc)
 ELSE()
-    TIMEOUT(600)
     SIZE(MEDIUM)
 ENDIF()
 
 SRCS(
-    delete_ut.cpp
-    kqp_olap_stats_ut.cpp
-    GLOBAL kqp_olap_ut.cpp
-    sys_view_ut.cpp
-    datatime64_ut.cpp
-    indexes_ut.cpp
     GLOBAL blobs_sharing_ut.cpp
-    statistics_ut.cpp
-    clickbench_ut.cpp
+    GLOBAL kqp_olap_ut.cpp
     aggregations_ut.cpp
-    write_ut.cpp
-    sparsed_ut.cpp
+    clickbench_ut.cpp
+    locks_ut.cpp
+    optimizer_ut.cpp
+    peephole_ut.cpp
+    sys_view_ut.cpp
     tiering_ut.cpp
-    decimal_ut.cpp
 )
 
 PEERDIR(
     contrib/ydb/core/kqp
     contrib/ydb/core/kqp/ut/common
+    contrib/ydb/core/protos
     contrib/ydb/library/yql/sql/pg_dummy
     contrib/ydb/core/tx/columnshard/hooks/testing
     contrib/ydb/core/tx/columnshard/test_helper
     contrib/ydb/core/tx/columnshard
     contrib/ydb/core/kqp/ut/olap/helpers
+    contrib/ydb/core/kqp/ut/olap/combinatory
     contrib/ydb/core/tx/datashard/ut_common
-    contrib/ydb/public/sdk/cpp/client/ydb_operation
+    contrib/ydb/library/aws_init
+    contrib/ydb/public/sdk/cpp/src/client/operation
 )
 
 YQL_LAST_ABI_VERSION()
 
-IF (SSA_RUNTIME_VERSION)
-    CFLAGS(
-        -DSSA_RUNTIME_VERSION=$SSA_RUNTIME_VERSION
-    )
-ENDIF()
-
 END()
+
+RECURSE_FOR_TESTS(
+    indexes
+    types
+    operations
+    statistics
+    storage
+    reading
+    pushdown
+)

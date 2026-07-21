@@ -31,6 +31,13 @@ namespace NKikimr {
         return runtime.Register(CreateBootstrapper(info, bi.Get()), nodeIndex);
     }
 
+    TActorId StartTestTablet(TTestActorRuntime &runtime, TTabletStorageInfo *info,
+            std::function<IActor* (const TActorId &, TTabletStorageInfo*)> op, ui32 nodeIndex)
+    {
+        auto setup = MakeIntrusive<TTabletSetupInfo>(op, TMailboxType::Simple, ui32(0), TMailboxType::Simple, ui32(0));
+        return runtime.Register(CreateTablet({}, info, setup.Get(), 0), nodeIndex);
+    }
+
     NTabletPipe::TClientConfig GetPipeConfigWithRetries()
     {
         NTabletPipe::TClientConfig pipeConfig;
@@ -39,22 +46,25 @@ namespace NKikimr {
     }
 
     struct TPDiskReplyChecker : IReplyChecker {
-        ~TPDiskReplyChecker()
-        {
-        }
-
-        void OnRequest(IEventHandle *request) override {
-            if (request->Type == TEvBlobStorage::EvMultiLog) {
-                NPDisk::TEvMultiLog *evLogs = request->Get<NPDisk::TEvMultiLog>();
-                LastLsn = evLogs->LsnSeg.Last;
+        bool OnRequest(IEventHandle *request) override {
+            if (const ui32 type = request->GetTypeRewrite(); type == TEvBlobStorage::EvMultiLog) {
+                LastLsn = request->Get<NPDisk::TEvMultiLog>()->LsnSeg.Last;
+                return true;
             } else {
                 LastLsn = {};
+                // PDisk replies with EvConfigureSchedulerResult, so we must wait for it.
+                return true;
             }
         }
 
         bool IsWaitingForMoreResponses(IEventHandle *response) override {
             if (!LastLsn) {
                 return false;
+            }
+            if (response->Type == TEvBlobStorage::EvConfigureSchedulerResult) {
+                // Scheduler reconfiguration responses may interleave with MultiLog replies.
+                // Keep waiting for EvLogResult that carries requested LSNs.
+                return true;
             }
             Y_VERIFY_S(response->Type == TEvBlobStorage::EvLogResult, "expected EvLogResult "
                     << (ui64)TEvBlobStorage::EvLogResult << ", but given " << response->Type);

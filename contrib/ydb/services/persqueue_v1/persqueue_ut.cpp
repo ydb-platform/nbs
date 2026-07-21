@@ -1,5 +1,6 @@
 #include "actors/read_session_actor.h"
 #include "actors/helpers.h"
+#include <cmath>
 #include <contrib/ydb/services/persqueue_v1/ut/pq_data_writer.h>
 #include <contrib/ydb/services/persqueue_v1/ut/api_test_setup.h>
 #include <contrib/ydb/services/persqueue_v1/ut/rate_limiter_test_setup.h>
@@ -8,15 +9,15 @@
 #include <contrib/ydb/services/persqueue_v1/ut/functions_executor_wrapper.h>
 
 #include <contrib/ydb/core/base/appdata.h>
-#include <contrib/ydb/core/mon/sync_http_mon.h>
+#include <contrib/ydb/core/mon/mon.h>
 #include <contrib/ydb/core/testlib/test_pq_client.h>
 #include <contrib/ydb/core/protos/grpc_pq_old.pb.h>
-#include <contrib/ydb/core/persqueue/cluster_tracker.h>
+#include <contrib/ydb/core/persqueue/public/cluster_tracker/cluster_tracker.h>
 #include <contrib/ydb/core/persqueue/writer/source_id_encoding.h>
 #include <contrib/ydb/core/tablet/tablet_counters_aggregator.h>
 
 #include <contrib/ydb/library/aclib/aclib.h>
-#include <contrib/ydb/library/persqueue/obfuscate/obfuscate.h>
+#include <contrib/ydb/public/sdk/cpp/src/library/persqueue/obfuscate/obfuscate.h>
 #include <contrib/ydb/library/persqueue/tests/counters.h>
 #include <contrib/ydb/library/persqueue/topic_parser/topic_parser.h>
 
@@ -39,12 +40,15 @@
 #include <contrib/ydb/public/api/protos/persqueue_error_codes_v1.pb.h>
 #include <contrib/ydb/public/api/grpc/ydb_topic_v1.grpc.pb.h>
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_persqueue_public/persqueue.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_persqueue_core/ut/ut_utils/data_plane_helpers.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_scheme/scheme.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_proto/accessor.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_topic/include/client.h>
-#include <contrib/ydb/public/sdk/cpp/client/resources/ydb_resources.h>
+#include <contrib/ydb/public/sdk/cpp/src/client/persqueue_public/persqueue.h>
+#include <contrib/ydb/public/sdk/cpp/src/client/persqueue_public/ut/ut_utils/data_plane_helpers.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/scheme/scheme.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/proto/accessor.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/topic/client.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/resources/ydb_resources.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/coordination/coordination.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/rate_limiter/rate_limiter.h>
+
 #include <thread>
 
 
@@ -76,7 +80,7 @@ TAutoPtr<IEventHandle> GetClassifierUpdate(TServer& server, const TActorId sende
 THolder<TTempFileHandle> CreateNetDataFile(const TString& content) {
     auto netDataFile = MakeHolder<TTempFileHandle>();
 
-    netDataFile->Write(content.Data(), content.Size());
+    netDataFile->Write(content.data(), content.size());
     netDataFile->FlushData();
 
     return netDataFile;
@@ -159,7 +163,7 @@ Y_UNIT_TEST_SUITE(TPersQueueTest) {
         auto driver = server.Server->AnnoyingClient->GetDriver();
 
         NYdb::NPersQueue::TReadSessionSettings settings;
-        settings.ConsumerName("shared/user").AppendTopics(topicPath).ReadMirrored("dc1");
+        settings.ConsumerName("shared/user").AppendTopics(std::string{topicPath}).ReadMirrored("dc1");
         Cerr << "=== Create reader\n";
         auto reader = CreateReader(*driver, settings);
 
@@ -378,8 +382,7 @@ Y_UNIT_TEST_SUITE(TPersQueueTest) {
         }
     }
 
-
-    Y_UNIT_TEST(StreamReadCreateAndDestroyMsgs) {
+    void TestStreamReadCreateAndDestroyMsgs(bool directRead = false) {
         TPersQueueV1TestServer server;
         SET_LOCALS;
         MAKE_INSECURE_STUB(Ydb::Topic::V1::TopicService);
@@ -399,8 +402,8 @@ Y_UNIT_TEST_SUITE(TPersQueueTest) {
             Ydb::Topic::StreamReadMessage::FromServer resp;
 
             req.mutable_init_request()->add_topics_read_settings()->set_path("acc/topic1");
-
             req.mutable_init_request()->set_consumer("user");
+            req.mutable_init_request()->set_direct_read(directRead);
 
             if (!readStream->Write(req)) {
                 ythrow yexception() << "write fail";
@@ -479,8 +482,8 @@ Y_UNIT_TEST_SUITE(TPersQueueTest) {
             Ydb::Topic::StreamReadMessage::FromServer resp;
 
             req.mutable_init_request()->add_topics_read_settings()->set_path("acc/topic1");
-
             req.mutable_init_request()->set_consumer("user");
+            req.mutable_init_request()->set_direct_read(directRead);
 
             if (!readStreamSecond->Write(req)) {
                 ythrow yexception() << "write fail";
@@ -506,6 +509,10 @@ Y_UNIT_TEST_SUITE(TPersQueueTest) {
 
             req.Clear();
             req.mutable_stop_partition_session_response()->set_partition_session_id(stream_id);
+            if (directRead) {
+                req.mutable_stop_partition_session_response()->set_graceful(resp.stop_partition_session_request().graceful());
+            }
+
             if (!readStream->Write(req)) {
                 ythrow yexception() << "write fail";
             }
@@ -545,6 +552,13 @@ Y_UNIT_TEST_SUITE(TPersQueueTest) {
         }
     }
 
+    Y_UNIT_TEST(StreamReadCreateAndDestroyMsgs) {
+        TestStreamReadCreateAndDestroyMsgs(false);
+    }
+
+    Y_UNIT_TEST(StreamReadCreateAndDestroyMsgs_DirectRead) {
+        TestStreamReadCreateAndDestroyMsgs(true);
+    }
 
     Y_UNIT_TEST(StreamReadCommitAndStatusMsgs) {
         TPersQueueV1TestServer server;
@@ -553,6 +567,9 @@ Y_UNIT_TEST_SUITE(TPersQueueTest) {
         server.EnablePQLogs({ NKikimrServices::PQ_METACACHE, NKikimrServices::PQ_READ_PROXY });
         server.EnablePQLogs({ NKikimrServices::KQP_PROXY }, NLog::EPriority::PRI_EMERG);
         server.EnablePQLogs({ NKikimrServices::FLAT_TX_SCHEMESHARD }, NLog::EPriority::PRI_ERROR);
+
+        const TString databaseName = "/" + server.GetServerSettings().DomainName;
+        rcontext.AddMetadata(NYdb::YDB_DATABASE_HEADER, databaseName);
 
         auto readStream = StubP_->StreamRead(&rcontext);
         UNIT_ASSERT(readStream);
@@ -591,7 +608,7 @@ Y_UNIT_TEST_SUITE(TPersQueueTest) {
             //lock partition
             UNIT_ASSERT(readStream->Read(&resp));
             UNIT_ASSERT(resp.server_message_case() == Ydb::Topic::StreamReadMessage::FromServer::kStartPartitionSessionRequest);
-            UNIT_ASSERT_VALUES_EQUAL(resp.start_partition_session_request().partition_session().path(), "acc/topic1");
+            UNIT_ASSERT_VALUES_EQUAL(resp.start_partition_session_request().partition_session().path(), "topic1");
             UNIT_ASSERT(resp.start_partition_session_request().partition_session().partition_id() == 0);
 
             assignId = resp.start_partition_session_request().partition_session().partition_session_id();
@@ -669,6 +686,7 @@ Y_UNIT_TEST_SUITE(TPersQueueTest) {
             UNIT_ASSERT(resp.partition_session_status_response().committed_offset() == 13);
             UNIT_ASSERT(resp.partition_session_status_response().partition_offsets().end() == 16);
             UNIT_ASSERT(resp.partition_session_status_response().write_time_high_watermark().seconds() > 0);
+            UNIT_ASSERT_VALUES_EQUAL(resp.partition_session_status_response().read_offset(), 16);
         }
 
         // send update token request, await response
@@ -713,6 +731,141 @@ Y_UNIT_TEST_SUITE(TPersQueueTest) {
         Cerr << "Got response " << resp << "\n";
         UNIT_ASSERT_C(resp.server_message_case() == Ydb::Topic::StreamReadMessage::FromServer::kReadResponse, resp);
     }
+
+    void StreamReadFromTimestampImpl(const TInstant readFromTimestamp, bool hasData) {
+        TPersQueueV1TestServer server(true, true);
+        SET_LOCALS;
+        MAKE_INSECURE_STUB(Ydb::Topic::V1::TopicService);
+        server.EnablePQLogs({ NKikimrServices::PQ_METACACHE, NKikimrServices::PQ_READ_PROXY });
+        server.EnablePQLogs({ NKikimrServices::KQP_PROXY }, NLog::EPriority::PRI_EMERG);
+        server.EnablePQLogs({ NKikimrServices::FLAT_TX_SCHEMESHARD }, NLog::EPriority::PRI_ERROR);
+        server.Server->GetRuntime()->GetAppData().FeatureFlags.SetEnableSkipMessagesWithObsoleteTimestamp(true);
+
+        const TString topicPath = "/Root/acc/topic1";
+        const TString consumerName = "user";
+        //server.Server->AnnoyingClient->CreateConsumer(consumerName);
+
+        const int nMsg = 100;
+        // write to partition in 1 session
+        auto driver = pqClient->GetDriver();
+        {
+            auto writer = CreateSimpleWriter(*driver, topicPath, "source");
+            for (int i = 1; i <= nMsg; ++i) {
+                bool res = writer->Write(ToString(i) + TString(800_KB, ' '), i);
+                UNIT_ASSERT(res);
+                Sleep(TDuration::MilliSeconds(1));
+            }
+            bool res = writer->Close(TDuration::Seconds(10));
+            UNIT_ASSERT(res);
+        }
+
+        auto readStream = StubP_->StreamRead(&rcontext);
+        UNIT_ASSERT(readStream);
+
+        // init read session
+        {
+            Ydb::Topic::StreamReadMessage::FromClient req;
+            Ydb::Topic::StreamReadMessage::FromServer resp;
+
+            auto* topicSettings = req.mutable_init_request()->add_topics_read_settings();
+            topicSettings->set_path(topicPath);
+            *topicSettings->mutable_read_from() = ::google::protobuf::util::TimeUtil::MillisecondsToTimestamp(readFromTimestamp.MilliSeconds());
+            req.mutable_init_request()->set_consumer("user");
+
+            Y_ENSURE(readStream->Write(req));
+            UNIT_ASSERT(readStream->Read(&resp));
+            Cerr << "===Got response: " << resp.ShortDebugString() << Endl;
+            UNIT_ASSERT(resp.server_message_case() == Ydb::Topic::StreamReadMessage::FromServer::kInitResponse);
+        }
+
+        // await and confirm CreatePartitionStreamRequest from server
+        i64 assignId = 0;
+        {
+            Ydb::Topic::StreamReadMessage::FromClient req;
+            Ydb::Topic::StreamReadMessage::FromServer resp;
+
+            //lock partition
+            UNIT_ASSERT(readStream->Read(&resp));
+            UNIT_ASSERT(resp.server_message_case() == Ydb::Topic::StreamReadMessage::FromServer::kStartPartitionSessionRequest);
+            UNIT_ASSERT(resp.start_partition_session_request().partition_session().partition_id() == 0);
+
+            assignId = resp.start_partition_session_request().partition_session().partition_session_id();
+
+            req.mutable_start_partition_session_response()->set_partition_session_id(assignId);
+            Y_ENSURE(readStream->Write(req));
+        }
+
+        // send status request, await status
+        {
+            Ydb::Topic::StreamReadMessage::FromClient req;
+            Ydb::Topic::StreamReadMessage::FromServer resp;
+
+            req.mutable_partition_session_status_request()->set_partition_session_id(assignId);
+            Y_ENSURE(readStream->Write(req));
+
+            UNIT_ASSERT(readStream->Read(&resp));
+            UNIT_ASSERT_C(resp.server_message_case() == Ydb::Topic::StreamReadMessage::FromServer::kPartitionSessionStatusResponse, resp);
+            UNIT_ASSERT_VALUES_EQUAL(resp.partition_session_status_response().partition_session_id(), assignId);
+            UNIT_ASSERT_VALUES_EQUAL(resp.partition_session_status_response().committed_offset(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(resp.partition_session_status_response().partition_offsets().end(), nMsg);
+            UNIT_ASSERT_GE(resp.partition_session_status_response().write_time_high_watermark().seconds(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(resp.partition_session_status_response().read_offset(), 0);
+        }
+
+        //send some reads
+        {
+            Ydb::Topic::StreamReadMessage::FromClient req;
+
+            req.Clear();
+            req.mutable_read_request()->set_bytes_size(800_MB);
+            Y_ENSURE(readStream->Write(req));
+        }
+
+        if (hasData) {
+             Ydb::Topic::StreamReadMessage::FromServer resp;
+             for (int i = 0; i < nMsg;) {
+                 UNIT_ASSERT(readStream->Read(&resp));
+
+                 UNIT_ASSERT_C(resp.server_message_case() == Ydb::Topic::StreamReadMessage::FromServer::kReadResponse, resp);
+                 UNIT_ASSERT_VALUES_EQUAL(resp.read_response().partition_data_size(), 1);
+                 UNIT_ASSERT_GE(resp.read_response().partition_data(0).batches_size(), 1);
+                 for (const auto& batch : resp.read_response().partition_data(0).batches()) {
+                     UNIT_ASSERT_GE(batch.message_data_size(), 1);
+                     UNIT_ASSERT_VALUES_EQUAL(batch.message_data(0).offset(), i);
+                     i += batch.message_data_size();
+                 }
+             }
+        }
+
+        // send status request, await status
+        {
+            Ydb::Topic::StreamReadMessage::FromClient req;
+            Ydb::Topic::StreamReadMessage::FromServer resp;
+
+            do {
+                req.Clear();
+                req.mutable_partition_session_status_request()->set_partition_session_id(assignId);
+                Y_ENSURE(readStream->Write(req));
+                UNIT_ASSERT(readStream->Read(&resp));
+                UNIT_ASSERT(resp.server_message_case() != Ydb::Topic::StreamReadMessage::FromServer::kReadResponse);
+            } while (resp.server_message_case() != Ydb::Topic::StreamReadMessage::FromServer::kPartitionSessionStatusResponse || resp.partition_session_status_response().read_offset() == 0);
+            UNIT_ASSERT_C(resp.server_message_case() == Ydb::Topic::StreamReadMessage::FromServer::kPartitionSessionStatusResponse, resp);
+            UNIT_ASSERT_VALUES_EQUAL(resp.partition_session_status_response().partition_session_id(), assignId);
+            UNIT_ASSERT_VALUES_EQUAL(resp.partition_session_status_response().committed_offset(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(resp.partition_session_status_response().partition_offsets().end(), nMsg);
+            UNIT_ASSERT_GE(resp.partition_session_status_response().write_time_high_watermark().seconds(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(resp.partition_session_status_response().read_offset(), nMsg);
+        }
+    }
+
+    Y_UNIT_TEST(StreamReadFromPastTimestamp) {
+        StreamReadFromTimestampImpl(TInstant::Now() - TDuration::Hours(2), true);
+    }
+
+    Y_UNIT_TEST(StreamReadFromFutureTimestamp) {
+         StreamReadFromTimestampImpl(TInstant::Now() + TDuration::Hours(2), false);
+    }
+
 
     Y_UNIT_TEST(UpdatePartitionLocation) {
         TPersQueueV1TestServer server;
@@ -786,6 +939,8 @@ Y_UNIT_TEST_SUITE(TPersQueueTest) {
         std::unique_ptr<Service::Stub> Stub;
         THolder<grpc::ClientContext> ControlContext;
         THolder<grpc::ClientContext> DirectContext;
+        NPersQueue::TTestServer* Server;
+        TAtomicCounter ForgetReadsDone = 0;
 
     public:
         std::unique_ptr<grpc::ClientReaderWriter<Topic::StreamReadMessage_FromClient, Topic::StreamReadMessage_FromServer>> ControlStream;
@@ -794,12 +949,24 @@ Y_UNIT_TEST_SUITE(TPersQueueTest) {
 
         TDirectReadTestSetup(TPersQueueV1TestServer& server)
             : DirectContext(MakeHolder<grpc::ClientContext>())
+            , Server(server.Server.Get())
         {
             server.EnablePQLogs({ NKikimrServices::PQ_READ_PROXY, NKikimrServices::PERSQUEUE });
             server.EnablePQLogs({ NKikimrServices::KQP_PROXY }, NLog::EPriority::PRI_EMERG);
             server.EnablePQLogs({ NKikimrServices::FLAT_TX_SCHEMESHARD }, NLog::EPriority::PRI_ERROR);
 
             Connect(server);
+            Server->GetRuntime()->SetObserverFunc([&](TAutoPtr<IEventHandle>& ev) {
+                if (ev->CastAsLocal<TEvPQ::TEvForgetDirectRead>()) {
+                    ForgetReadsDone.Inc();
+                }
+                return TTestActorRuntime::EEventAction::PROCESS;
+            });
+        }
+        ~TDirectReadTestSetup() {
+            Server->GetRuntime()->SetObserverFunc([&](auto&) {
+                return TTestActorRuntime::EEventAction::PROCESS;
+            });
         }
 
         void Connect(TPersQueueV1TestServer& server) {
@@ -814,7 +981,7 @@ Y_UNIT_TEST_SUITE(TPersQueueTest) {
             Stub = Service::NewStub(Channel);
         }
 
-        void InitControlSession(const TString& topic) {
+        void InitControlSession(const TString& topic, ui64 readRequestBytes = 40_MB) {
             // Send InitRequest, get InitResponse, send ReadRequest.
 
             ControlContext = MakeHolder<grpc::ClientContext>();
@@ -835,37 +1002,113 @@ Y_UNIT_TEST_SUITE(TPersQueueTest) {
             UNIT_ASSERT(resp.server_message_case() == Ydb::Topic::StreamReadMessage::FromServer::kInitResponse);
             SessionId = resp.init_response().session_id();
 
-            req.Clear();
-            req.mutable_read_request()->set_bytes_size(40_MB);
+            SendReadRequest(readRequestBytes);
+        }
+        void SendReadRequest(ui64 size) {
+            Topic::StreamReadMessage::FromClient req;
+            req.mutable_read_request()->set_bytes_size(size);
+            if (!ControlStream->Write(req)) {
+                ythrow yexception() << "write fail";
+            }
+        }
+        struct TAssignInfo {
+            ui64 AssignId;
+            ui64 Generation;
+            ui64 PartitionId;
+        };
+
+        TAssignInfo GetNextAssign(const TString& topic, ui64 prevGeneration=0, ui64 readOffset=0, ui64 commitOffset=0, ui64 maxOffset=0) {
+            // Get StartPartitionSessionRequest, send StartPartitionSessionResponse.
+
+            Cerr << "Get next assign id\n";
+            Topic::StreamReadMessage::FromServer resp;
+            UNIT_ASSERT(ControlStream->Read(&resp));
+
+            TStringBuilder msg;
+            msg << "GOT SERVER MESSAGE (expect start partition session): " << resp.DebugString() << "\n";
+            Cerr << msg;
+            TAssignInfo result;
+            if (!prevGeneration) {
+                UNIT_ASSERT(resp.server_message_case() == Topic::StreamReadMessage::FromServer::kStartPartitionSessionRequest);
+                UNIT_ASSERT_VALUES_EQUAL(resp.start_partition_session_request().partition_session().path(), topic);
+                result.PartitionId = resp.start_partition_session_request().partition_session().partition_id();
+                result.Generation = resp.start_partition_session_request().partition_location().generation();
+                UNIT_ASSERT(result.Generation > 0);
+                result.AssignId = resp.start_partition_session_request().partition_session().partition_session_id();
+
+                Topic::StreamReadMessage::FromClient req;
+                req.mutable_start_partition_session_response()->set_partition_session_id(result.AssignId);
+                if (readOffset)
+                    req.mutable_start_partition_session_response()->set_read_offset(readOffset);
+                if (commitOffset)
+                    req.mutable_start_partition_session_response()->set_commit_offset(commitOffset);
+                if (maxOffset)
+                    req.mutable_start_partition_session_response()->set_max_offset(maxOffset);
+                if (!ControlStream->Write(req)) {
+                    ythrow yexception() << "write fail";
+                }
+            } else {
+                UNIT_ASSERT(resp.server_message_case() == Topic::StreamReadMessage::FromServer::kUpdatePartitionSession);
+                result.Generation = resp.update_partition_session().partition_location().generation();
+                UNIT_ASSERT(result.Generation > prevGeneration);
+                result.AssignId = resp.update_partition_session().partition_session_id();
+            }
+            return result;
+        }
+
+        void ExpectDestroyPartitionSession(ui64 assignId) {
+            Topic::StreamDirectReadMessage::FromServer resp;
+
+            //lock partition
+            UNIT_ASSERT(DirectStream->Read(&resp));
+            TStringBuilder msg;
+            if (resp.server_message_case() != Topic::StreamDirectReadMessage::FromServer::kDirectReadResponse) {
+                msg  << "GOT SERVER MESSAGE (expect stop partition session): " << resp.ShortDebugString() << "\n";
+            } else {
+                msg  << "GOT SERVER MESSAGE with data while (expecting stop partition session). ReadId: " << resp.direct_read_response().direct_read_id() << Endl;
+
+            }
+            Cerr << msg;
+            UNIT_ASSERT(resp.server_message_case() == Topic::StreamDirectReadMessage::FromServer::kStopDirectReadPartitionSession);
+            UNIT_ASSERT_VALUES_EQUAL(resp.stop_direct_read_partition_session().partition_session_id(), assignId);
+        }
+
+        void ExpectPartitionRelease(ui64 assignId) {
+            Cerr << "Get next assign id\n";
+            Topic::StreamReadMessage::FromServer resp;
+            UNIT_ASSERT(ControlStream->Read(&resp));
+
+            TStringBuilder msg;
+            msg << "Got message from control session (expect partition release): " << resp.DebugString() << "\n";
+
+            Cerr << msg;
+            UNIT_ASSERT(resp.server_message_case() == Topic::StreamReadMessage::FromServer::kStopPartitionSessionRequest);
+            UNIT_ASSERT_VALUES_EQUAL(resp.stop_partition_session_request().partition_session_id(), assignId);
+            Topic::StreamReadMessage::FromClient req;
+            req.mutable_stop_partition_session_response()->set_partition_session_id(assignId);
             if (!ControlStream->Write(req)) {
                 ythrow yexception() << "write fail";
             }
         }
 
-        std::pair<ui32, i64> GetNextAssign(const TString& topic) {
-            // Get StartPartitionSessionRequest, send StartPartitionSessionResponse.
-
-            Cerr << "Get next assign id\n";
+        ui64 ExpectAnyPartitionRelease() {
+            Cerr << "Get StopPartitionSessionRequest\n";
             Topic::StreamReadMessage::FromServer resp;
-
-            //lock partition
             UNIT_ASSERT(ControlStream->Read(&resp));
 
-            Cerr << "GOT SERVER MESSAGE - start session: " << resp.DebugString() << "\n";
+            TStringBuilder msg;
+            msg << "Got message from control session (expect partition release): " << resp.DebugString() << "\n";
 
-            UNIT_ASSERT(resp.server_message_case() == Topic::StreamReadMessage::FromServer::kStartPartitionSessionRequest);
-            UNIT_ASSERT_VALUES_EQUAL(resp.start_partition_session_request().partition_session().path(), topic);
-            auto partitionId = resp.start_partition_session_request().partition_session().partition_id();
-            UNIT_ASSERT(resp.start_partition_session_request().partition_location().generation() > 0);
-            auto assignId = resp.start_partition_session_request().partition_session().partition_session_id();
-
+            Cerr << msg;
+            UNIT_ASSERT(resp.server_message_case() == Topic::StreamReadMessage::FromServer::kStopPartitionSessionRequest);
+            auto assignId = resp.stop_partition_session_request().partition_session_id();
             Topic::StreamReadMessage::FromClient req;
-            req.mutable_start_partition_session_response()->set_partition_session_id(assignId);
+            req.mutable_stop_partition_session_response()->set_partition_session_id(assignId);
+            req.mutable_stop_partition_session_response()->set_graceful(resp.stop_partition_session_request().graceful());
             if (!ControlStream->Write(req)) {
                 ythrow yexception() << "write fail";
             }
-
-            return {partitionId, assignId};
+            return assignId;
         }
 
         void DoWrite(NYdb::TDriver* driver, const TString& topic, ui64 size, ui32 count,
@@ -880,31 +1123,100 @@ Y_UNIT_TEST_SUITE(TPersQueueTest) {
             writer->Close();
         }
 
-        void DoRead(ui64 assignId, ui64& nextReadId, ui32& currTotalMessages, const ui32 messageLimit) {
+        struct TReadDataNoAckResult {
+            // Start offset, end offset. E.g. if the messages in the response have offsets 1, 2, 3, then Range = {1, 4}.
+            std::pair<i64, i64> Range;
+            Ydb::Topic::StreamDirectReadMessage::FromServer Response;
+        };
+
+        TReadDataNoAckResult ReadDataNoAck(ui64 assignId, i64 directReadId) {
+            Cerr << "Wait for direct read id " << directReadId << Endl;
+            Ydb::Topic::StreamDirectReadMessage::FromServer resp;
+            UNIT_ASSERT(DirectStream->Read(&resp));
+            bool success = resp.status() == Ydb::StatusIds::SUCCESS;
+            bool isDirectReadResponse = resp.server_message_case() == Ydb::Topic::StreamDirectReadMessage::FromServer::kDirectReadResponse;
+
+            UNIT_ASSERT(success);
+            UNIT_ASSERT(isDirectReadResponse);
+            UNIT_ASSERT_VALUES_EQUAL(resp.direct_read_response().direct_read_id(), directReadId);
+
+            i64 id = resp.direct_read_response().partition_session_id();
+            UNIT_ASSERT_VALUES_EQUAL(id, assignId);
+
+            Cerr << (TStringBuilder() << "Got direct read response: direct_read_id=" << resp.direct_read_response().direct_read_id()
+                                      << " bytes_size=" << resp.direct_read_response().bytes_size() << Endl);
+
+            const auto& data = resp.direct_read_response().partition_data();
+            if (data.batches_size() == 0) {
+                // This case is possible on DirectRead restarts. See test DirectReadBudgetOnRestart.
+                return { .Range = {0, 0}, .Response = resp };
+            }
+            UNIT_ASSERT_GE_C(data.batches_size(), 1, "data.batches_size()=" << data.batches_size());
+            const auto& firstBatch = data.batches(0);
+            const auto firstOffset = firstBatch.message_data(0).offset();
+            const auto& lastBatch = data.batches(data.batches_size() - 1);
+            const auto lastOffset = lastBatch.message_data(lastBatch.message_data_size() - 1).offset();
+            Cerr << (TStringBuilder() << "First offset: " << firstOffset << ", last offset: " << lastOffset << Endl);
+            return { .Range = {firstOffset, lastOffset + 1}, .Response = resp };
+        };
+
+        auto Commit(std::pair<ui64, ui64> offsets, ui64 assignId) {
+            Cerr << "Commit offsets: " << offsets.first << " - " << offsets.second << Endl;
+            Ydb::Topic::StreamReadMessage::FromClient req;
+            auto* commit = req.mutable_commit_offset_request()->add_commit_offsets();
+            commit->set_partition_session_id(assignId);
+            auto* range = commit->add_offsets();
+            range->set_start(offsets.first);
+            range->set_end(offsets.second + 1);
+            if (!ControlStream->Write(req)) {
+                ythrow yexception() << "write fail";
+            }
+        }
+
+        void WaitCommitAck() {
+            Topic::StreamReadMessage::FromServer resp;
+            Cerr << "Got message from control session (expect commit ack): " << resp.DebugString() << "\n";
+            UNIT_ASSERT(ControlStream->Read(&resp));
+            UNIT_ASSERT(resp.server_message_case() == Topic::StreamReadMessage::FromServer::kCommitOffsetResponse);
+        }
+
+        void DoRead(ui64 assignId, ui64& nextReadId, ui32& currTotalMessages, const ui32 messageCountMin, const ui32 messageCountMax = 0) {
             // Get DirectReadResponse messages, send DirectReadAck messages.
 
             auto endTime = TInstant::Now() + TDuration::Seconds(10);
-            while (currTotalMessages < messageLimit && endTime > TInstant::Now()) {
-                Cerr << "Wait for direct read id: " << nextReadId << ", currently have " << currTotalMessages << " messages, limit is " << messageLimit << Endl;
+            while (currTotalMessages < messageCountMin && endTime > TInstant::Now()) {
+                Cerr << "Wait for direct read id: " << nextReadId << ", currently have " << currTotalMessages << " messages, expected count is " << messageCountMin << Endl;
 
                 Ydb::Topic::StreamDirectReadMessage::FromServer resp;
                 UNIT_ASSERT(DirectStream->Read(&resp));
                 Cerr << "Got direct read response: " << resp.direct_read_response().direct_read_id() << Endl;
                 UNIT_ASSERT_C(resp.status() == Ydb::StatusIds::SUCCESS, resp.DebugString());
-                UNIT_ASSERT(resp.server_message_case() == Ydb::Topic::StreamDirectReadMessage::FromServer::kDirectReadResponse);
-                UNIT_ASSERT_VALUES_EQUAL(resp.direct_read_response().direct_read_id(), nextReadId);
-
-                Ydb::Topic::StreamReadMessage::FromClient req;
-                req.mutable_direct_read_ack()->set_partition_session_id(assignId);
-                req.mutable_direct_read_ack()->set_direct_read_id(nextReadId++);
-                if (!ControlStream->Write(req)) {
-                    ythrow yexception() << "write fail";
+                if (resp.server_message_case() != Ydb::Topic::StreamDirectReadMessage::FromServer::kDirectReadResponse) {
+                    TStringBuilder msg;
+                    msg << "Unexpected server message (expect direct read response): " << resp.DebugString() << "\n";
+                    Cerr << msg;
+                    UNIT_FAIL("Unexpected server message");
                 }
+
                 for (const auto& batch : resp.direct_read_response().partition_data().batches()) {
                     currTotalMessages += batch.message_data_size();
                 }
+
+                UNIT_ASSERT_VALUES_EQUAL(resp.direct_read_response().direct_read_id(), nextReadId);
+                Ydb::Topic::StreamReadMessage::FromClient req;
+                req.mutable_direct_read_ack()->set_partition_session_id(assignId);
+                req.mutable_direct_read_ack()->set_direct_read_id(nextReadId);
+                if (!ControlStream->Write(req)) {
+                    ythrow yexception() << "write fail";
+                }
+                nextReadId++;
             }
-            UNIT_ASSERT_VALUES_EQUAL(currTotalMessages, messageLimit);
+            if (messageCountMax) {
+                UNIT_ASSERT(currTotalMessages >= messageCountMin);
+                UNIT_ASSERT(currTotalMessages <= messageCountMax);
+            } else {
+                UNIT_ASSERT_VALUES_EQUAL(currTotalMessages, messageCountMin);
+            }
         }
 
         void InitDirectSession(
@@ -918,13 +1230,14 @@ Y_UNIT_TEST_SUITE(TPersQueueTest) {
                 DirectStream = nullptr;
                 DirectContext = MakeHolder<grpc::ClientContext>();
             }
-            DirectStream = Stub->StreamDirectRead(DirectContext.Release());
+            DirectStream = Stub->StreamDirectRead(DirectContext.Get());
             UNIT_ASSERT(DirectStream);
 
             Topic::StreamDirectReadMessage::FromClient req;
             req.mutable_init_request()->add_topics_read_settings()->set_path(topic);
             req.mutable_init_request()->set_consumer(consumer);
             req.mutable_init_request()->set_session_id(SessionId);
+            Cerr << "Send direct read init request: " << req.ShortDebugString() << Endl;
             if (!DirectStream->Write(req)) {
                 ythrow yexception() << "write fail";
             }
@@ -942,16 +1255,20 @@ Y_UNIT_TEST_SUITE(TPersQueueTest) {
             UNIT_ASSERT_EQUAL(resp.server_message_case(), Ydb::Topic::StreamDirectReadMessage::FromServer::kInitResponse);
         }
 
-        void SendReadSessionAssign(const ui64 assignId, const Ydb::StatusIds::StatusCode status = Ydb::StatusIds::SUCCESS) {
+        void SendReadSessionAssign(const ui64 assignId, i64 generation, ui64 lastId = 0,
+                                   const Ydb::StatusIds::StatusCode operationStatus = Ydb::StatusIds::SUCCESS,
+                                   const Ydb::StatusIds::StatusCode stopStatus = Ydb::StatusIds::STATUS_CODE_UNSPECIFIED) {
+            // opStatus is for resp.status()
+            // stopStatus is for resp.stop_direct_read_partition_session.status(), if specified
             // Send StartDirectReadPartitionSessionRequest, get StartDirectReadPartitionSessionResponse.
 
-            Cerr << "Send next assign to data session" << assignId << Endl;
+            Cerr << "Send next assign to data session " << assignId << Endl;
 
             Topic::StreamDirectReadMessage::FromClient req;
             auto x = req.mutable_start_direct_read_partition_session_request();
             x->set_partition_session_id(assignId);
-            x->set_last_direct_read_id(0);
-            x->set_generation(1);
+            x->set_last_direct_read_id(lastId);
+            x->set_generation(generation);
             if (!DirectStream->Write(req)) {
                 ythrow yexception() << "write fail";
             }
@@ -960,15 +1277,42 @@ Y_UNIT_TEST_SUITE(TPersQueueTest) {
             UNIT_ASSERT(DirectStream->Read(&resp));
             Cerr << "Got response: " << resp.ShortDebugString() << Endl;
 
-            UNIT_ASSERT_EQUAL(resp.status(), status);
+            UNIT_ASSERT_EQUAL(resp.status(), operationStatus);
 
-            if (status != Ydb::StatusIds::SUCCESS) {
+            if (operationStatus != Ydb::StatusIds::SUCCESS) {
+                return;
+            }
+
+            if (stopStatus != Ydb::StatusIds::STATUS_CODE_UNSPECIFIED) {
+                UNIT_ASSERT_EQUAL(resp.server_message_case(), Ydb::Topic::StreamDirectReadMessage::FromServer::kStopDirectReadPartitionSession);
+                UNIT_ASSERT_EQUAL(resp.stop_direct_read_partition_session().status(), stopStatus);
                 return;
             }
 
             UNIT_ASSERT_EQUAL(resp.server_message_case(), Ydb::Topic::StreamDirectReadMessage::FromServer::kStartDirectReadPartitionSessionResponse);
             UNIT_ASSERT_EQUAL(resp.start_direct_read_partition_session_response().partition_session_id(), static_cast<i64>(assignId));
-            UNIT_ASSERT_EQUAL(resp.start_direct_read_partition_session_response().generation(), 1);
+            UNIT_ASSERT_EQUAL(resp.start_direct_read_partition_session_response().generation(), generation);
+        }
+
+        void SendDirectReadAck(ui64 assignId, ui64 directReadId) {
+            auto currentForgetDone = ForgetReadsDone.Val();
+            Topic::StreamReadMessage::FromClient req;
+            auto& ack = *req.mutable_direct_read_ack();
+            ack.set_partition_session_id(assignId);
+            ack.set_direct_read_id(directReadId);
+            Cerr << "Send direct read ack for id" << directReadId << Endl;
+
+            if (!ControlStream->Write(req)) {
+                ythrow yexception() << "write fail";
+            }
+            for (auto i = 0u; i < 10; i++) {
+                if (ForgetReadsDone.Val() == currentForgetDone) {
+                    Sleep(TDuration::Seconds(1));
+                    continue;
+                }
+                UNIT_ASSERT_EQUAL(ForgetReadsDone.Val(), currentForgetDone + 1);
+                return;
+            }
         }
     };
 
@@ -981,14 +1325,14 @@ Y_UNIT_TEST_SUITE(TPersQueueTest) {
     }
 
     Y_UNIT_TEST(DirectReadPreCached) {
-TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
+        TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
         SET_LOCALS;
         TDirectReadTestSetup setup{server};
         setup.DoWrite(pqClient->GetDriver(), "acc/topic1", 1_MB, 30);
 
         setup.InitControlSession("acc/topic1");
-        auto [partitionId, assignId] = setup.GetNextAssign("acc/topic1");
-        UNIT_ASSERT_VALUES_EQUAL(partitionId, 0);
+        auto assignResult = setup.GetNextAssign("acc/topic1");
+        UNIT_ASSERT_VALUES_EQUAL(assignResult.PartitionId, 0);
         setup.InitDirectSession("acc/topic1");
 
         // Without retrying the test is flaky as the cachedData might be empty.
@@ -1000,11 +1344,11 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
             }
         }
         UNIT_ASSERT_VALUES_EQUAL(cachedData->Data.size(), 1);
-        setup.SendReadSessionAssign(assignId);
+        setup.SendReadSessionAssign(assignResult.AssignId, assignResult.Generation);
 
         ui32 totalMsg = 0;
         ui64 nextReadId = 1;
-        setup.DoRead(assignId, nextReadId, totalMsg, 30);
+        setup.DoRead(assignResult.AssignId, nextReadId, totalMsg, 30);
 
         Sleep(TDuration::Seconds(1));
         cachedData = RequestCacheData(runtime, new TEvPQ::TEvGetFullDirectReadData());
@@ -1013,18 +1357,316 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
         UNIT_ASSERT_VALUES_EQUAL(cachedData->Data.begin()->second.Reads.size(), 0);
     }
 
+    Y_UNIT_TEST(DirectReadNotCached) {
+        TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
+        SET_LOCALS;
+        TDirectReadTestSetup setup{server};
+
+        setup.InitControlSession("acc/topic1");
+        auto assignResult = setup.GetNextAssign("acc/topic1");
+        auto assignId = assignResult.AssignId;
+        UNIT_ASSERT_VALUES_EQUAL(assignResult.PartitionId, 0);
+        setup.InitDirectSession("acc/topic1");
+        setup.SendReadSessionAssign(assignId, assignResult.Generation);
+
+        ui32 totalMsg = 0;
+        ui64 nextReadId = 1;
+        Sleep(TDuration::Seconds(3));
+        setup.DoWrite(pqClient->GetDriver(), "acc/topic1", 1_MB, 50);
+
+        Cerr << "First read\n";
+        setup.DoRead(assignId, nextReadId, totalMsg, 40, 48);
+
+        Topic::StreamReadMessage::FromClient req;
+        req.mutable_read_request()->set_bytes_size(50_MB);
+        if (!setup.ControlStream->Write(req)) {
+            ythrow yexception() << "write fail";
+        }
+        Cerr << "Second read\n";
+        setup.DoRead(assignId, nextReadId, totalMsg, 50);
+
+        Sleep(TDuration::Seconds(1));
+        auto cachedData = RequestCacheData(runtime, new TEvPQ::TEvGetFullDirectReadData());
+        UNIT_ASSERT_VALUES_EQUAL(cachedData->Data.size(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(cachedData->Data.begin()->second.StagedReads.size(), 0);
+        UNIT_ASSERT_VALUES_EQUAL(cachedData->Data.begin()->second.Reads.size(), 0);
+    }
+
+    Y_UNIT_TEST(DirectReadBudgetOnRestart) {
+        // Correct bytes bookkeeping on tablet restarts.
+        // Write a message. Read it without acknowledging it.
+        // Write more messages, ensure that the old message is deleted by retention period.
+        // Restart the tablet.
+        // Set up a new direct read session. Receive DirectReadResponse with proper bytes_size, but no offsets.
+
+        TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
+        SET_LOCALS;
+        TString topicPath{"acc/topic2"};
+        TString oldPath{"/Root/PQ/rt3.dc1--acc--topic2"};
+
+        server.Server->AnnoyingClient->CreateTopicNoLegacy({
+            .Name = oldPath,
+            .PartsCount = 1,
+            // Set small retention period to get empty DirectReadResponse with proper bytes_size after restart.
+            .RetentionPeriod = TDuration::Seconds(5),
+        });
+        TDirectReadTestSetup setup{server};
+
+        {
+            // 1. Write one message.
+            Cerr << (TStringBuilder() << "XXXXX Write 1 message" << Endl);
+            setup.DoWrite(pqClient->GetDriver(), topicPath, 1_MB, 1);
+        }
+
+        Cerr << (TStringBuilder() << "XXXXX InitControlSession" << Endl);
+        setup.InitControlSession(topicPath, 100_KB);
+
+        // Get StartPartitionSessionRequest, send StartPartitionSessionResponse.
+        auto assignRes = setup.GetNextAssign(topicPath);
+        UNIT_ASSERT_VALUES_EQUAL(assignRes.PartitionId, 0);
+        auto assignId = assignRes.AssignId;
+
+        Cerr << (TStringBuilder() << "XXXXX InitDirectSession" << Endl);
+        setup.InitDirectSession(topicPath);
+
+        // Send StartDirectReadPartitionSessionRequest, get StartDirectReadPartitionSessionResponse
+        setup.SendReadSessionAssign(assignId, assignRes.Generation);
+
+        // 2. Read the message back. It should contain only one offset.
+        ui64 nextReadId = 1;
+        Cerr << (TStringBuilder() << "XXXXX ReadDataNoAck" << Endl);
+        auto resp = setup.ReadDataNoAck(assignId, nextReadId);
+
+        // 3. Log the bytes_size and offsets. Ensure that we've got 1MB of data.
+        const auto grpcByteSize = resp.Response.ByteSize();
+        const auto directReadResponseBytesSize = resp.Response.direct_read_response().bytes_size();
+        const auto startOffset = resp.Range.first;
+        const auto endOffset = resp.Range.second;
+        Cerr << (TStringBuilder() << "XXXXX grpcByteSize = " << grpcByteSize << " bytes_size = " << directReadResponseBytesSize
+                                  << " startOffset = " << startOffset << " endOffset = " << endOffset << Endl);
+
+        // 4. Write 40MB of data, so the first message is deleted by retention period.
+        Cerr << (TStringBuilder() << "XXXXX Write 40_MB" << Endl);
+        setup.DoWrite(pqClient->GetDriver(), topicPath, 1_MB, 20);
+        setup.DoWrite(pqClient->GetDriver(), topicPath, 1_MB, 20);
+
+        // 5. Ensure that the StartOffset has been incremented.
+        while (true) {
+            using namespace NYdb::NTopic;
+            auto settings = TDescribeTopicSettings().IncludeStats(true);
+            auto client = TTopicClient(server.Server->GetDriver());
+            auto desc = client.DescribeTopic(oldPath, settings)
+                            .ExtractValueSync()
+                            .GetTopicDescription();
+
+            Cerr << ">>>Describe result: partitions count is " << desc.GetTotalPartitionsCount() << Endl;
+            UNIT_ASSERT(desc.GetPartitions().size() == 1);
+            UNIT_ASSERT(desc.GetPartitions()[0].GetPartitionStats().has_value());
+            auto startOffset = desc.GetPartitions()[0].GetPartitionStats().value().GetStartOffset();
+            if (startOffset > 0) {
+                break;
+            } else {
+                Sleep(TDuration::Seconds(1));
+            }
+        }
+
+        // 6. Kill the tablet.
+        Cerr << "XXXXX Kill tablet\n";
+        auto pathDescr = server.Server->AnnoyingClient->Ls(oldPath)->Record.GetPathDescription().GetPersQueueGroup();
+        auto tabletId = pathDescr.GetPartitions(0).GetTabletId();
+        server.Server->AnnoyingClient->KillTablet(*(server.Server->CleverServer), tabletId);
+
+        Cerr << "XXXXX ExpectDestroyPartitionSession\n";
+        setup.ExpectDestroyPartitionSession(assignId);
+
+        Cerr << "XXXXX Sleep 5 seconds\n";
+        Sleep(TDuration::Seconds(5));
+
+        // 7. Wait for the update_partition_session and set up a new direct read session.
+        Cerr << "XXXXX Get next assing\n";
+        auto nextAssignRes = setup.GetNextAssign(topicPath, assignRes.Generation);
+        assignId = nextAssignRes.AssignId;
+
+        Cerr << "XXXXX Sleep 6 seconds\n";
+        Sleep(TDuration::Seconds(6));
+
+        Cerr << "XXXXX SendReadSessionAssign\n";
+        setup.SendReadSessionAssign(assignId, nextAssignRes.Generation);
+
+        Cerr << "XXXXX Sleep 3 seconds\n";
+        Sleep(TDuration::Seconds(3));
+
+        // 8. Read data again, ensure that the bytes_size is the same as in the first response, and there are no offsets.
+        Cerr << "XXXXX ReadDataNoAck\n";
+        resp = setup.ReadDataNoAck(assignId, nextReadId);
+        Cerr << (TStringBuilder() << "XXXXX grpcByteSize = " << resp.Response.ByteSize() << " bytes_size = " << resp.Response.direct_read_response().bytes_size()
+                                  << " firstOffset = " << resp.Range.first << " lastOffset = " << resp.Range.second << Endl);
+        UNIT_ASSERT(resp.Response.direct_read_response().bytes_size() == directReadResponseBytesSize);
+        UNIT_ASSERT_VALUES_EQUAL(resp.Range.first, 0);
+        UNIT_ASSERT_LE_C(resp.Range.first, resp.Range.second, "resp.Range.first=" << resp.Range.first << ", resp.Range.second=" << resp.Range.second);
+    }
+
+    Y_UNIT_TEST(DirectReadCorrectOffsetsOnRestart) {
+        TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
+        SET_LOCALS;
+        TString topicPath{"acc/topic1"};
+        TString oldPath{"/Root/PQ/rt3.dc1--acc--topic1"};
+        TDirectReadTestSetup setup{server};
+
+        {
+            // 1. Write one message.
+            Cerr << (TStringBuilder() << "XXXXX Write 1 message" << Endl);
+            setup.DoWrite(pqClient->GetDriver(), topicPath, 1_MB, 1);
+        }
+
+        Cerr << (TStringBuilder() << "XXXXX InitControlSession" << Endl);
+        setup.InitControlSession(topicPath, 100_KB);
+
+        Cerr << "XXXXX GetNextAssign\n";
+        auto assignRes = setup.GetNextAssign(topicPath);
+        UNIT_ASSERT_VALUES_EQUAL(assignRes.PartitionId, 0);
+        auto assignId = assignRes.AssignId;
+
+        Cerr << (TStringBuilder() << "XXXXX InitDirectSession" << Endl);
+        setup.InitDirectSession(topicPath);
+
+        // Send StartDirectReadPartitionSessionRequest, get StartDirectReadPartitionSessionResponse
+        setup.SendReadSessionAssign(assignId, assignRes.Generation);
+
+        // 2. Read the message back. It should contain only one offset.
+        Cerr << "XXXXX ReadDataNoAck\n";
+        auto resp = setup.ReadDataNoAck(assignId, 1);
+        auto startOffset = resp.Range.first;
+        auto endOffset = resp.Range.second;
+        Cerr << (TStringBuilder() << "XXXXX startOffset = " << startOffset << " endOffset = " << endOffset << Endl);
+
+        Cerr << "XXXXX Write one more message\n";
+        setup.DoWrite(pqClient->GetDriver(), topicPath, 1_MB, 1);
+
+        Cerr << "XXXXX Kill tablet\n";
+        auto pathDescr = server.Server->AnnoyingClient->Ls(oldPath)->Record.GetPathDescription().GetPersQueueGroup();
+        auto tabletId = pathDescr.GetPartitions(0).GetTabletId();
+        server.Server->AnnoyingClient->KillTablet(*(server.Server->CleverServer), tabletId);
+        Cerr << "XXXXX ExpectDestroyPartitionSession\n";
+        setup.ExpectDestroyPartitionSession(assignId);
+
+        Cerr << "XXXXX Sleep 1 seconds\n";
+        Sleep(TDuration::Seconds(1));
+
+        Cerr << "XXXXX GetNextAssign\n";
+        auto nextAssignRes = setup.GetNextAssign(topicPath, assignRes.Generation);
+        assignId = nextAssignRes.AssignId;
+
+        Cerr << "XXXXX Sleep 2 seconds\n";
+        Sleep(TDuration::Seconds(2));
+
+        Cerr << "XXXXX SendReadSessionAssign\n";
+        setup.SendReadSessionAssign(assignId, nextAssignRes.Generation);
+
+        Cerr << "XXXXX Sleep 3 seconds\n";
+        Sleep(TDuration::Seconds(3));
+
+        Cerr << "XXXXX ReadDataNoAck direct_read_id = 1\n";
+        resp = setup.ReadDataNoAck(assignId, 1);
+        Cerr << (TStringBuilder() << "XXXXX grpcByteSize = " << resp.Response.ByteSize() << " bytes_size = " << resp.Response.direct_read_response().bytes_size()
+                                  << " startOffset = " << resp.Range.first << " endOffset = " << resp.Range.second << Endl);
+        UNIT_ASSERT_VALUES_EQUAL(startOffset, resp.Range.first);
+        UNIT_ASSERT_VALUES_EQUAL(endOffset, resp.Range.second);
+
+        startOffset = resp.Range.first;
+        endOffset = resp.Range.second;
+
+        setup.SendReadRequest(2_MB);
+
+        Cerr << "XXXXX ReadDataNoAck direct_read_id = 2\n";
+        resp = setup.ReadDataNoAck(assignId, 2);
+        Cerr << (TStringBuilder() << "XXXXX grpcByteSize = " << resp.Response.ByteSize() << " bytes_size = " << resp.Response.direct_read_response().bytes_size()
+                                  << " startOffset = " << resp.Range.first << " endOffset = " << resp.Range.second << Endl);
+        UNIT_ASSERT_VALUES_EQUAL(endOffset, resp.Range.first);
+        UNIT_ASSERT_VALUES_EQUAL(resp.Range.second, 2);
+    }
+
+    Y_UNIT_TEST(DirectReadCorrectMaxOffsetOnRestart) {
+        TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
+        SET_LOCALS;
+        TString topicPath{"acc/topic1"};
+        TString oldPath{"/Root/PQ/rt3.dc1--acc--topic1"};
+        TDirectReadTestSetup setup{server};
+
+        {
+            // 1. Write 10 messages.
+            Cerr << (TStringBuilder() << "XXXXX Write 10 messages" << Endl);
+            setup.DoWrite(pqClient->GetDriver(), topicPath, 10_KB, 10);
+        }
+
+        Cerr << (TStringBuilder() << "XXXXX InitControlSession" << Endl);
+        setup.InitControlSession(topicPath, 1_MB);
+
+        Cerr << "XXXXX GetNextAssign\n";
+        auto assignRes = setup.GetNextAssign(topicPath, 0, /*read_offset*/5, /*commit_offset*/2, /*max_offset*/8);
+        UNIT_ASSERT_VALUES_EQUAL(assignRes.PartitionId, 0);
+        auto assignId = assignRes.AssignId;
+
+        Cerr << (TStringBuilder() << "XXXXX InitDirectSession" << Endl);
+        setup.InitDirectSession(topicPath);
+
+        // Send StartDirectReadPartitionSessionRequest, get StartDirectReadPartitionSessionResponse
+        setup.SendReadSessionAssign(assignId, assignRes.Generation);
+
+        // 2. Read the message back. It should contain 4 messages from 5 to 8 (inclusive).
+        Cerr << "XXXXX ReadDataNoAck\n";
+        auto resp = setup.ReadDataNoAck(assignId, 1);
+        auto startOffset = resp.Range.first;
+        auto endOffset = resp.Range.second;
+        Cerr << (TStringBuilder() << "XXXXX startOffset = " << startOffset << " endOffset = " << endOffset << Endl);
+        UNIT_ASSERT_VALUES_EQUAL(5, startOffset);
+        UNIT_ASSERT_VALUES_EQUAL(8 + 1, endOffset);
+
+        Cerr << "XXXXX Kill tablet\n";
+        auto pathDescr = server.Server->AnnoyingClient->Ls(oldPath)->Record.GetPathDescription().GetPersQueueGroup();
+        auto tabletId = pathDescr.GetPartitions(0).GetTabletId();
+        server.Server->AnnoyingClient->KillTablet(*(server.Server->CleverServer), tabletId);
+        Cerr << "XXXXX ExpectDestroyPartitionSession\n";
+        setup.ExpectDestroyPartitionSession(assignId);
+
+        Cerr << "XXXXX Sleep 1 seconds\n";
+        Sleep(TDuration::Seconds(1));
+
+        Cerr << "XXXXX GetNextAssign\n";
+        auto nextAssignRes = setup.GetNextAssign(topicPath, assignRes.Generation);
+        assignId = nextAssignRes.AssignId;
+
+        Cerr << "XXXXX Sleep 2 seconds\n";
+        Sleep(TDuration::Seconds(2));
+
+        Cerr << "XXXXX SendReadSessionAssign\n";
+        setup.SendReadSessionAssign(assignId, nextAssignRes.Generation);
+
+        Cerr << "XXXXX Sleep 3 seconds\n";
+        Sleep(TDuration::Seconds(3));
+
+        Cerr << "XXXXX ReadDataNoAck direct_read_id = 1\n";
+        resp = setup.ReadDataNoAck(assignId, 1);
+        Cerr << (TStringBuilder() << "XXXXX grpcByteSize = " << resp.Response.ByteSize() << " bytes_size = " << resp.Response.direct_read_response().bytes_size()
+                                  << " startOffset = " << resp.Range.first << " endOffset = " << resp.Range.second << Endl);
+        UNIT_ASSERT_VALUES_EQUAL(startOffset, resp.Range.first);
+        UNIT_ASSERT_VALUES_EQUAL(endOffset, resp.Range.second);
+
+
+    }
+
     Y_UNIT_TEST(DirectReadBadCases) {
         TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
         SET_LOCALS;
         TDirectReadTestSetup setup{server};
         setup.InitControlSession("acc/topic1");
         auto sessionId = setup.SessionId;
-        auto assignId = setup.GetNextAssign("acc/topic1").second;
+        auto assignId = setup.GetNextAssign("acc/topic1").AssignId;
         setup.SessionId = "bad-session";
         Cerr << "First init bad session\n";
         setup.InitDirectSession("acc/topic1");
         // No control session:
-        setup.SendReadSessionAssign(assignId, Ydb::StatusIds::BAD_REQUEST);
+        setup.SendReadSessionAssign(assignId, 1, 0, Ydb::StatusIds::BAD_REQUEST);
         setup.SessionId = sessionId;
         Cerr << "Init bad topic session\n";
         setup.InitDirectSession("acc/topic-bad", Ydb::StatusIds::SCHEME_ERROR);
@@ -1040,10 +1682,21 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
         Cerr << "Init read session\n";
         setup.InitDirectSession("acc/topic1");
         // No control session:
-        setup.SendReadSessionAssign(assignId, Ydb::StatusIds::BAD_REQUEST);
+        setup.SendReadSessionAssign(assignId, 1, 0, Ydb::StatusIds::BAD_REQUEST);
 
         auto cachedData = RequestCacheData(runtime, new TEvPQ::TEvGetFullDirectReadData());
         UNIT_ASSERT_VALUES_EQUAL(cachedData->Data.size(), 0);
+    }
+
+    Y_UNIT_TEST(DirectReadWrongGeneration) {
+        TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
+        SET_LOCALS;
+        TDirectReadTestSetup setup{server};
+        setup.InitControlSession("acc/topic1");
+        auto assignId = setup.GetNextAssign("acc/topic1").AssignId;
+        setup.InitDirectSession("acc/topic1");
+        i64 wrongGeneration = 2;
+        setup.SendReadSessionAssign(assignId, wrongGeneration, 0, Ydb::StatusIds::SUCCESS, Ydb::StatusIds::UNAVAILABLE);
     }
 
     Y_UNIT_TEST(DirectReadStop) {
@@ -1057,9 +1710,11 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
         setup.DoWrite(pqClient->GetDriver(), "acc/topic1", 100_KB, 1, "src2", 1);
 
         setup.InitControlSession("acc/topic1");
-        auto [partitionId1, assignId1] = setup.GetNextAssign("acc/topic1");
-        auto [partitionId2, assignId2] = setup.GetNextAssign("acc/topic1");
-        UNIT_ASSERT(partitionId1 + partitionId2 == 1); // partitions 0 and 1;
+        auto assign1Res = setup.GetNextAssign("acc/topic1");
+        auto assign2Res = setup.GetNextAssign("acc/topic1");
+        auto assignId1 = assign1Res.AssignId;
+        auto assignId2 = assign2Res.AssignId;
+        UNIT_ASSERT(assign1Res.PartitionId + assign2Res.PartitionId == 1); // partitions 0 and 1;
         UNIT_ASSERT(assignId1 != assignId2);
 
         auto readData = [&](i64 assignId) {
@@ -1082,9 +1737,9 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
         };
 
         setup.InitDirectSession("acc/topic1");
-        setup.SendReadSessionAssign(assignId1);
+        setup.SendReadSessionAssign(assignId1, assign1Res.Generation);
         readData(assignId1);
-        setup.SendReadSessionAssign(assignId2);
+        setup.SendReadSessionAssign(assignId2, assign2Res.Generation);
         readData(assignId2);
 
         // Read from both parts so that LastReadId goes forward;
@@ -1094,7 +1749,7 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
         rSettings.ConsumerName("user").AppendTopics({"acc/topic1"});
         auto readSession = topicClient.CreateReadSession(rSettings);
 
-        auto assignId = 0;
+        auto assignId = 0u;
         {
             Topic::StreamReadMessage::FromServer resp;
 
@@ -1139,7 +1794,7 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
     }
 
     Y_UNIT_TEST(DirectReadCleanCache) {
-        TPersQueueV1TestServer server;
+        TPersQueueV1TestServer server{{.NodeCount=1}};
         SET_LOCALS;
         TString topicPath{"/Root/PQ/rt3.dc1--acc--topic2"};
         server.Server->AnnoyingClient->CreateTopicNoLegacy(topicPath, 1);
@@ -1147,15 +1802,16 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
         auto tabletId = pathDescr.GetPartitions(0).GetTabletId();
         Cerr << "PQ descr: " << pathDescr.DebugString() << Endl;
 
-
         TDirectReadTestSetup setup{server};
 
         setup.InitControlSession("acc/topic2");
         setup.InitDirectSession("acc/topic2");
-        auto pair = setup.GetNextAssign("acc/topic2");
-        UNIT_ASSERT_VALUES_EQUAL(pair.first, 0);
-        auto assignId = pair.second;
-        setup.SendReadSessionAssign(assignId);
+        auto assignRes = setup.GetNextAssign("acc/topic2");
+        UNIT_ASSERT_VALUES_EQUAL(assignRes.PartitionId, 0);
+        auto assignId = assignRes.AssignId;
+        setup.SendReadSessionAssign(assignId, assignRes.Generation);
+        // auto cachedData = RequestCacheData(runtime, new TEvPQ::TEvGetFullDirectReadData());
+        // UNIT_ASSERT_VALUES_EQUAL(cachedData->Data.size(), 1);
         setup.DoWrite(pqClient->GetDriver(), "acc/topic2", 10_MB, 1);
         Ydb::Topic::StreamDirectReadMessage::FromServer resp;
         Cerr << "Request initial read data\n";
@@ -1168,13 +1824,174 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
         Cerr << "Kill the tablet\n";
         server.Server->AnnoyingClient->KillTablet(*(server.Server->CleverServer), tabletId);
         Cerr << "Get session closure\n";
-
-        resp.Clear();
-        UNIT_ASSERT(setup.DirectStream->Read(&resp));
-
+        setup.ExpectDestroyPartitionSession(assignId);
         Cerr << "Check caching service data empty\n";
         cachedData = RequestCacheData(runtime, new TEvPQ::TEvGetFullDirectReadData());
         UNIT_ASSERT_VALUES_EQUAL(cachedData->Data.size(), 0);
+    }
+
+    Y_UNIT_TEST(DirectReadRestartPQRB) {
+        TPersQueueV1TestServer server{{.NodeCount=1}};
+        SET_LOCALS;
+        TString topicPath{"/Root/PQ/rt3.dc1--acc--topic3"};
+        server.Server->AnnoyingClient->CreateTopicNoLegacy(topicPath, 1);
+        auto pathDescr = server.Server->AnnoyingClient->Ls(topicPath)->Record.GetPathDescription().GetPersQueueGroup();
+        auto tabletId = pathDescr.GetBalancerTabletID();
+
+        TDirectReadTestSetup setup{server};
+        setup.InitControlSession("acc/topic3");
+        setup.InitDirectSession("acc/topic3");
+        setup.DoWrite(pqClient->GetDriver(), "acc/topic3", 10_KB, 1);
+        auto assignRes = setup.GetNextAssign("acc/topic3");
+        UNIT_ASSERT_VALUES_EQUAL(assignRes.PartitionId, 0);
+        auto assignId = assignRes.AssignId;
+        setup.SendReadSessionAssign(assignId, assignRes.Generation);
+        Cerr << "Read data for id = 1\n";
+
+        auto range = setup.ReadDataNoAck(assignId, 1).Range;
+        Y_UNUSED(range);
+        setup.Commit(range, assignId);
+        setup.WaitCommitAck();
+        Cerr << "Kill PQRB \n";
+        server.Server->AnnoyingClient->KillTablet(*(server.Server->CleverServer), tabletId);
+        setup.DoWrite(pqClient->GetDriver(), "acc/topic3", 10_MB, 1);
+        setup.ExpectPartitionRelease(assignId);
+        setup.ExpectDestroyPartitionSession(assignId);
+        assignRes = setup.GetNextAssign("acc/topic3");
+        setup.SendReadSessionAssign(assignRes.AssignId, assignRes.Generation);
+        setup.DoWrite(pqClient->GetDriver(), "acc/topic3", 10_KB, 1);
+        setup.Commit(range, assignRes.AssignId);
+        setup.SendDirectReadAck(assignId, 2);
+    }
+
+    Y_UNIT_TEST(DirectReadRestartTablet) {
+        // TODO(abcdef): temporarily deleted
+        return;
+
+        TPersQueueV1TestServer server{{.NodeCount=1}};
+        SET_LOCALS;
+        TString topicPath{"/Root/PQ/rt3.dc1--acc--topic3"};
+        server.Server->AnnoyingClient->CreateTopicNoLegacy(topicPath, 1);
+        auto pathDescr = server.Server->AnnoyingClient->Ls(topicPath)->Record.GetPathDescription().GetPersQueueGroup();
+        auto tabletId = pathDescr.GetPartitions(0).GetTabletId();
+
+        TDirectReadTestSetup setup{server};
+
+        setup.InitControlSession("acc/topic3");
+        setup.InitDirectSession("acc/topic3");
+        auto assignRes = setup.GetNextAssign("acc/topic3");
+        UNIT_ASSERT_VALUES_EQUAL(assignRes.PartitionId, 0);
+        auto assignId = assignRes.AssignId;
+        setup.SendReadSessionAssign(assignId, assignRes.Generation);
+        setup.DoWrite(pqClient->GetDriver(), "acc/topic3", 10_MB, 1);
+        Ydb::Topic::StreamDirectReadMessage::FromServer resp;
+        Cerr << "Read data for id = 1\n";
+        setup.ReadDataNoAck(assignId, 1);
+
+        auto checkCachedData = [&](ui64 assignId, ui64 firstReadId, ui64 expectedCount, ui64 generation = 0, bool doFail = true) {
+
+#define CHECK_EQUAL(a, b)               \
+    if (doFail) {                       \
+        UNIT_ASSERT_VALUES_EQUAL(a, b); \
+    } else if (a != b) {                \
+        return false;                   \
+    }
+
+            Cerr << " checkCachedData for Gen: " << generation << Endl;
+            auto cachedData = RequestCacheData(runtime, new TEvPQ::TEvGetFullDirectReadData());
+            CHECK_EQUAL(cachedData->Data.size(), 1);
+            CHECK_EQUAL(cachedData->Data[0].first.PartitionSessionId, assignId);
+            if (generation) {
+                CHECK_EQUAL(cachedData->Data[0].second.Generation, generation);
+            }
+            CHECK_EQUAL(cachedData->Data[0].second.Reads.size(), expectedCount);
+            if (expectedCount > 0 && firstReadId > 0) {
+                CHECK_EQUAL(cachedData->Data[0].second.Reads.begin()->first, firstReadId);
+            }
+            return true;
+#undef CHECK_EQUAL
+        };
+
+        checkCachedData(assignId, 1, 1);
+        setup.SendDirectReadAck(assignId, 1);
+        Cerr << "Check cached data after ack\n";
+        checkCachedData(assignId, 0, 0);
+
+        setup.DoWrite(pqClient->GetDriver(), "acc/topic3", 10_MB, 1); // 2
+        setup.DoWrite(pqClient->GetDriver(), "acc/topic3", 10_MB, 1); // 3
+        setup.DoWrite(pqClient->GetDriver(), "acc/topic3", 10_MB, 1); // 4
+        Cerr << "Read data for id = 2-4\n";
+        setup.ReadDataNoAck(assignId, 2);
+        setup.ReadDataNoAck(assignId, 3);
+        setup.ReadDataNoAck(assignId, 4);
+
+        Cerr << "Kill the tablet\n";
+        server.Server->AnnoyingClient->KillTablet(*(server.Server->CleverServer), tabletId);
+        setup.SendDirectReadAck(assignId, 2);
+        setup.ExpectDestroyPartitionSession(assignId);
+        setup.SendDirectReadAck(assignId, 3);
+        Cerr << "Get next assing\n";
+        auto nextAssignRes = setup.GetNextAssign("acc/topic3", assignRes.Generation);
+        assignId = nextAssignRes.AssignId;
+        //setup.SendReadSessionAssign(assignId, nextAssignRes.Generation, 4);
+        setup.SendReadSessionAssign(assignId, nextAssignRes.Generation, 3);
+
+        bool checked = false;
+        for (auto i = 0u; i < 50 && !checked; ++i) {
+            checked = checkCachedData(nextAssignRes.AssignId, 4, 1, nextAssignRes.Generation, false);
+            Sleep(TDuration::MilliSeconds(200));
+        }
+        if (!checked)
+            checkCachedData(nextAssignRes.AssignId, 4, 1, nextAssignRes.Generation);
+
+        setup.DoWrite(pqClient->GetDriver(), "acc/topic3", 10_MB, 1); // 5
+        setup.ReadDataNoAck(assignId, 4);
+        Cerr << "Ack direct read 4\n";
+        setup.SendDirectReadAck(assignId, 4);
+
+        Cerr << "Wait direct read 5\n";
+        checkCachedData(nextAssignRes.AssignId, 0, 0, nextAssignRes.Generation);
+        setup.SendReadRequest(40_MB);
+
+        setup.ReadDataNoAck(assignId, 5);
+        checkCachedData(nextAssignRes.AssignId, 5, 1, nextAssignRes.Generation);
+    }
+
+    Y_UNIT_TEST(DirectReadTwoSessions) {
+        TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
+        SET_LOCALS;
+        TString topicPath{"acc/topic2"};
+        TString oldPath{"/Root/PQ/rt3.dc1--acc--topic2"};
+
+        // Create a topic with two partitions:
+        server.Server->AnnoyingClient->CreateTopicNoLegacy({ .Name = oldPath, .PartsCount = 2 });
+
+        TDirectReadTestSetup setup1{server};
+        TDirectReadTestSetup setup2{server};
+
+        setup1.InitControlSession(topicPath);
+        auto assignResult1 = setup1.GetNextAssign(topicPath);
+        auto assignResult2 = setup1.GetNextAssign(topicPath);
+        UNIT_ASSERT(assignResult1.PartitionId == 0 && assignResult2.PartitionId == 1 ||
+                    assignResult1.PartitionId == 1 && assignResult2.PartitionId == 0);
+        setup1.InitDirectSession(topicPath);
+
+        setup1.SendReadSessionAssign(assignResult1.AssignId, assignResult1.Generation);
+        setup1.SendReadSessionAssign(assignResult2.AssignId, assignResult2.Generation);
+
+        setup2.InitControlSession(topicPath);
+
+        auto releasedAssignId = setup1.ExpectAnyPartitionRelease();
+        auto partitionId = releasedAssignId == assignResult1.AssignId
+            ? assignResult1.PartitionId
+            : assignResult2.PartitionId;
+
+        auto assignResult3 = setup2.GetNextAssign(topicPath);
+        UNIT_ASSERT(assignResult3.PartitionId == partitionId);
+        setup2.InitDirectSession(topicPath);
+
+        setup2.SendReadSessionAssign(assignResult3.AssignId, assignResult3.Generation);
+
     }
 
     Y_UNIT_TEST(StreamReadManyUpdateTokenAndRead) {
@@ -1185,16 +2002,18 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
         server.EnablePQLogs({ NKikimrServices::KQP_PROXY }, NLog::EPriority::PRI_EMERG);
         server.EnablePQLogs({ NKikimrServices::FLAT_TX_SCHEMESHARD }, NLog::EPriority::PRI_ERROR);
 
+        const TString databaseName = "/" + server.GetServerSettings().DomainName;
+        rcontext.AddMetadata(NYdb::YDB_DATABASE_HEADER, databaseName);
         rcontext.AddMetadata("x-ydb-auth-ticket", "user@" BUILTIN_ACL_DOMAIN);
 
-        TVector<std::pair<TString, TVector<TString>>> permissions;
+        std::vector<std::pair<std::string, std::vector<std::string>>> permissions;
         permissions.push_back({"user@" BUILTIN_ACL_DOMAIN, {"ydb.generic.read"}});
         for (ui32 i = 0; i < 10; ++i) {
             permissions.push_back({"test_user_" + ToString(i) + "@" + BUILTIN_ACL_DOMAIN, {"ydb.generic.read"}});
         }
         server.ModifyTopicACL("/Root/PQ/rt3.dc1--acc--topic1", permissions);
 
-        TVector<std::pair<TString, TVector<TString>>> consumerPermissions;
+        std::vector<std::pair<std::string, std::vector<std::string>>> consumerPermissions;
         consumerPermissions.push_back({"user@" BUILTIN_ACL_DOMAIN, {"ydb.generic.read", "ydb.granular.write_attributes"}});
         for (ui32 i = 0; i < 10; ++i) {
             consumerPermissions.push_back({"test_user_" + ToString(i) + "@" + BUILTIN_ACL_DOMAIN, {"ydb.generic.read", "ydb.granular.write_attributes"}});
@@ -1236,7 +2055,7 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
             //lock partition
             UNIT_ASSERT(readStream->Read(&resp));
             UNIT_ASSERT(resp.server_message_case() == Ydb::Topic::StreamReadMessage::FromServer::kStartPartitionSessionRequest);
-            UNIT_ASSERT_VALUES_EQUAL(resp.start_partition_session_request().partition_session().path(), "acc/topic1");
+            UNIT_ASSERT_VALUES_EQUAL(resp.start_partition_session_request().partition_session().path(), "topic1");
             UNIT_ASSERT(resp.start_partition_session_request().partition_session().partition_id() == 0);
 
             assignId = resp.start_partition_session_request().partition_session().partition_session_id();
@@ -1323,18 +2142,48 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
 
     }
 
-    Y_UNIT_TEST(TopicServiceCommitOffset) {
-        TPersQueueV1TestServer server;
-        SET_LOCALS;
-        MAKE_INSECURE_STUB(Ydb::Topic::V1::TopicService);
-        server.EnablePQLogs({ NKikimrServices::PQ_METACACHE, NKikimrServices::PQ_READ_PROXY });
-        server.EnablePQLogs({ NKikimrServices::KQP_PROXY }, NLog::EPriority::PRI_EMERG);
-        server.EnablePQLogs({ NKikimrServices::FLAT_TX_SCHEMESHARD }, NLog::EPriority::PRI_ERROR);
-        server.EnablePQLogs({ NKikimrServices::PERSQUEUE }, NLog::EPriority::PRI_DEBUG);
+    THolder<NPersQueue::TTestServer> SetupLbFederationServer() {
+        const TString dbRoot = "/Root/LbAccount";
+        auto settings = PQSettings(0).SetDomainName("Root").SetNodeCount(1);
+        settings.PQConfig.MutablePQDiscoveryConfig()->SetLbUserDatabaseRoot(dbRoot);
+        settings.PQConfig.SetTestDatabaseRoot(dbRoot);
+        settings.PQConfig.SetTopicsAreFirstClassCitizen(false);
 
-        auto driver = pqClient->GetDriver();
+        auto server = MakeHolder<NPersQueue::TTestServer>(settings, true);
+        server->EnableLogs({ NKikimrServices::PQ_READ_PROXY, NKikimrServices::PQ_WRITE_PROXY });
+        server->AnnoyingClient->MkDir("/Root", "LbAccount");
+        server->AnnoyingClient->MkDir("/Root/LbAccount", "account");
+        return server;
+    }
+
+    THolder<NPersQueue::TTestServer> SetupLbFederationServerWithTopic(
+            const TString& shortTopicName, ui64 partsCount,
+            const std::vector<TString>& consumers = {"user"})
+    {
+        auto server = SetupLbFederationServer();
+        server->AnnoyingClient->CreateTopicNoLegacy(
+            "/Root/LbAccount/account/" + shortTopicName, partsCount,
+            /*doWait=*/true, /*canWrite=*/true, "dc1", consumers, "account");
+        server->WaitInit("account/" + shortTopicName);
+        return server;
+    }
+
+    Y_UNIT_TEST(TopicServiceCommitOffset) {
+        auto server = SetupLbFederationServerWithTopic("topic1", 1, {"user"});
+        server->EnableLogs({ NKikimrServices::PQ_METACACHE, NKikimrServices::PQ_READ_PROXY });
+        server->EnableLogs({ NKikimrServices::KQP_PROXY }, NLog::EPriority::PRI_EMERG);
+        server->EnableLogs({ NKikimrServices::FLAT_TX_SCHEMESHARD }, NLog::EPriority::PRI_ERROR);
+        server->EnableLogs({ NKikimrServices::PERSQUEUE }, NLog::EPriority::PRI_DEBUG);
+
+        const TString topicPath = "account/topic1";
+
+        auto Channel_ = grpc::CreateChannel("localhost:" + ToString(server->GrpcPort), grpc::InsecureChannelCredentials());
+
+        NYdb::TDriverConfig driverCfg;
+        driverCfg.SetEndpoint(TStringBuilder() << "localhost:" << server->GrpcPort).SetDatabase("/Root");
+        NYdb::TDriver driver(driverCfg);
         {
-            auto writer = CreateSimpleWriter(*driver, "acc/topic1", "source");
+            auto writer = CreateSimpleWriter(driver, topicPath, "source");
             for (int i = 1; i < 17; ++i) {
                 bool res = writer->Write("valuevaluevalue" + ToString(i), i);
                 UNIT_ASSERT(res);
@@ -1355,7 +2204,7 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
             Ydb::Topic::StreamReadMessage::FromClient req;
             Ydb::Topic::StreamReadMessage::FromServer resp;
 
-            req.mutable_init_request()->add_topics_read_settings()->set_path("acc/topic1");
+            req.mutable_init_request()->add_topics_read_settings()->set_path(topicPath);
 
             req.mutable_init_request()->set_consumer("user");
 
@@ -1370,7 +2219,7 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
             // await and confirm StartPartitionSessionRequest from server
             UNIT_ASSERT(readStream->Read(&resp));
             UNIT_ASSERT(resp.server_message_case() == Ydb::Topic::StreamReadMessage::FromServer::kStartPartitionSessionRequest);
-            UNIT_ASSERT_VALUES_EQUAL(resp.start_partition_session_request().partition_session().path(), "acc/topic1");
+            UNIT_ASSERT_VALUES_EQUAL(resp.start_partition_session_request().partition_session().path(), topicPath);
             UNIT_ASSERT(resp.start_partition_session_request().partition_session().partition_id() == 0);
             UNIT_ASSERT(resp.start_partition_session_request().committed_offset() == 0);
 
@@ -1395,7 +2244,7 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
             Cerr << "Got read response " << resp << "\n";
             UNIT_ASSERT_C(resp.server_message_case() == Ydb::Topic::StreamReadMessage::FromServer::kReadResponse, resp);
             UNIT_ASSERT(resp.read_response().partition_data_size() == 1);
-            UNIT_ASSERT(resp.read_response().partition_data(0).batches_size() == 1);
+            UNIT_ASSERT_GE(resp.read_response().partition_data(0).batches_size(), 1);
             UNIT_ASSERT(resp.read_response().partition_data(0).batches(0).message_data_size() >= 1);
         }
 
@@ -1404,7 +2253,7 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
             Ydb::Topic::CommitOffsetRequest req;
             Ydb::Topic::CommitOffsetResponse resp;
 
-            req.set_path("acc/topic1");
+            req.set_path(topicPath);
             req.set_consumer("user");
             req.set_offset(5);
             grpc::ClientContext rcontext;
@@ -1441,20 +2290,23 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
     }
 
     Y_UNIT_TEST(TopicServiceCommitOffsetBadOffsets) {
-        TPersQueueV1TestServer server;
-        SET_LOCALS;
-        MAKE_INSECURE_STUB(Ydb::Topic::V1::TopicService);
-        server.EnablePQLogs({ NKikimrServices::PQ_METACACHE, NKikimrServices::PQ_READ_PROXY });
-        server.EnablePQLogs({ NKikimrServices::KQP_PROXY }, NLog::EPriority::PRI_EMERG);
-        server.EnablePQLogs({ NKikimrServices::FLAT_TX_SCHEMESHARD }, NLog::EPriority::PRI_ERROR);
-        server.EnablePQLogs({ NKikimrServices::PERSQUEUE }, NLog::EPriority::PRI_DEBUG);
+        auto server = SetupLbFederationServer();
+        server->EnableLogs({ NKikimrServices::PQ_METACACHE, NKikimrServices::PQ_READ_PROXY });
+        server->EnableLogs({ NKikimrServices::KQP_PROXY }, NLog::EPriority::PRI_EMERG);
+        server->EnableLogs({ NKikimrServices::FLAT_TX_SCHEMESHARD }, NLog::EPriority::PRI_ERROR);
+        server->EnableLogs({ NKikimrServices::PERSQUEUE }, NLog::EPriority::PRI_DEBUG);
 
+        const TString topicPath = "account/topic2";
+        const TString fullTopicPath = "/Root/LbAccount/account/topic2";
+
+        auto Channel_ = grpc::CreateChannel("localhost:" + ToString(server->GrpcPort), grpc::InsecureChannelCredentials());
         auto TopicStubP_ = Ydb::Topic::V1::TopicService::NewStub(Channel_);
 
         {
             Ydb::Topic::CreateTopicRequest request;
             Ydb::Topic::CreateTopicResponse response;
-            request.set_path(TStringBuilder() << "/Root/PQ/rt3.dc1--acc--topic2");
+            request.set_path(fullTopicPath);
+            (*request.mutable_attributes())["_federation_account"] = "account";
 
             request.set_retention_storage_mb(1);
 
@@ -1471,13 +2323,15 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
             Cerr << response << "\n" << res << "\n";
             UNIT_ASSERT_VALUES_EQUAL(response.operation().status(), Ydb::StatusIds::SUCCESS);
 
-            server.Server->AnnoyingClient->WaitTopicInit("acc/topic2");
-            server.Server->AnnoyingClient->AddTopic("acc/topic2");
+            server->AnnoyingClient->WaitTopicInit(topicPath);
+            server->AnnoyingClient->AddTopic(fullTopicPath, "dc1");
         }
 
-        auto driver = pqClient->GetDriver();
+        NYdb::TDriverConfig driverCfg;
+        driverCfg.SetEndpoint(TStringBuilder() << "localhost:" << server->GrpcPort).SetDatabase("/Root");
+        NYdb::TDriver driver(driverCfg);
         {
-            auto writer = CreateSimpleWriter(*driver, "acc/topic2", "source", /*partitionGroup=*/{}, /*codec=*/{"raw"});
+            auto writer = CreateSimpleWriter(driver, topicPath, "source", /*partitionGroup=*/{}, /*codec=*/{"raw"});
             TString blob{1_MB, 'x'};
             for (int i = 1; i <= 20; ++i) {
                 bool res = writer->Write(blob + ToString(i), i);
@@ -1491,16 +2345,16 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
         {
             using namespace NYdb::NTopic;
             auto settings = TDescribeTopicSettings().IncludeStats(true);
-            auto client = TTopicClient(server.Server->GetDriver());
-            auto desc = client.DescribeTopic("/Root/PQ/rt3.dc1--acc--topic2", settings)
+            auto client = TTopicClient(driver);
+            auto desc = client.DescribeTopic(fullTopicPath, settings)
                             .ExtractValueSync()
                             .GetTopicDescription();
             Cerr << ">>>Describe result: partitions count is " << desc.GetTotalPartitionsCount() << Endl;
             for (const auto& partInfo: desc.GetPartitions()) {
                 Cerr << ">>>Describe result: partition id = " << partInfo.GetPartitionId() << ", ";
                 auto stats = partInfo.GetPartitionStats();
-                UNIT_ASSERT(stats.Defined());
-                Cerr << "offsets: [ " << stats.Get()->GetStartOffset() << ", " << stats.Get()->GetEndOffset() << " )" << Endl;
+                UNIT_ASSERT(stats.has_value());
+                Cerr << "offsets: [ " << stats.value().GetStartOffset() << ", " << stats.value().GetEndOffset() << " )" << Endl;
             }
 
             TAlterTopicSettings alterSettings;
@@ -1509,7 +2363,7 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
                 .EndAddConsumer()
                 .BeginAddConsumer("second-consumer").Important(true)
                 .EndAddConsumer();
-            auto res = client.AlterTopic("/Root/PQ/rt3.dc1--acc--topic2", alterSettings);
+            auto res = client.AlterTopic(fullTopicPath, alterSettings);
             res.Wait();
             Cerr << res.GetValue().IsSuccess() << " " << res.GetValue().GetIssues().ToString() << "\n";
             UNIT_ASSERT(res.GetValue().IsSuccess());
@@ -1521,7 +2375,7 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
             Ydb::Topic::CommitOffsetRequest req;
             Ydb::Topic::CommitOffsetResponse resp;
 
-            req.set_path("acc/topic2");
+            req.set_path(topicPath);
             req.set_consumer("first-consumer");
             req.set_offset(25);
 
@@ -1534,12 +2388,12 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
             UNIT_ASSERT_VALUES_EQUAL(resp.operation().status(), Ydb::StatusIds::BAD_REQUEST);
         }
 
-        // commit to past - expect bad request
+        // commit to past - expect commit to start offset
         {
             Ydb::Topic::CommitOffsetRequest req;
             Ydb::Topic::CommitOffsetResponse resp;
 
-            req.set_path("acc/topic2");
+            req.set_path(topicPath);
             req.set_consumer("first-consumer");
             req.set_offset(3);
 
@@ -1549,7 +2403,7 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
 
             Cerr << resp << "\n";
             UNIT_ASSERT(status.ok());
-            UNIT_ASSERT_VALUES_EQUAL(resp.operation().status(), Ydb::StatusIds::BAD_REQUEST);
+            UNIT_ASSERT_VALUES_EQUAL(resp.operation().status(), Ydb::StatusIds::SUCCESS);
         }
 
         // commit to valid offset - expect successful commit
@@ -1557,7 +2411,7 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
             Ydb::Topic::CommitOffsetRequest req;
             Ydb::Topic::CommitOffsetResponse resp;
 
-            req.set_path("acc/topic2");
+            req.set_path(topicPath);
             req.set_consumer("first-consumer");
             req.set_offset(18);
 
@@ -1576,7 +2430,7 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
             Ydb::Topic::CommitOffsetRequest req;
             Ydb::Topic::CommitOffsetResponse resp;
 
-            req.set_path("acc/topic2");
+            req.set_path(topicPath);
             req.set_consumer("second-consumer");
             req.set_offset(18);
 
@@ -1589,12 +2443,12 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
             UNIT_ASSERT_VALUES_EQUAL(resp.operation().status(), Ydb::StatusIds::SUCCESS);
         }
 
-        // commit to past - expect error
+        // commit to past - expect commit to start offset
         {
             Ydb::Topic::CommitOffsetRequest req;
             Ydb::Topic::CommitOffsetResponse resp;
 
-            req.set_path("acc/topic2");
+            req.set_path(topicPath);
             req.set_consumer("second-consumer");
             req.set_offset(3);
 
@@ -1604,7 +2458,7 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
 
             Cerr << resp << "\n";
             UNIT_ASSERT(status.ok());
-            UNIT_ASSERT_VALUES_EQUAL(resp.operation().status(), Ydb::StatusIds::BAD_REQUEST);
+            UNIT_ASSERT_VALUES_EQUAL(resp.operation().status(), Ydb::StatusIds::SUCCESS);
         }
 
         // commit to future - expect bad request
@@ -1612,7 +2466,7 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
             Ydb::Topic::CommitOffsetRequest req;
             Ydb::Topic::CommitOffsetResponse resp;
 
-            req.set_path("acc/topic2");
+            req.set_path(topicPath);
             req.set_consumer("second-consumer");
             req.set_offset(25);
 
@@ -1639,14 +2493,15 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
         UNIT_ASSERT(readStream);
 
         auto driver = pqClient -> GetDriver();
-        auto writer = CreateSimpleWriter(*driver, "acc/topic1", "source", /*partitionGroup=*/{}, /*codec=*/{"raw"});
 
         Ydb::Topic::StreamReadMessage::FromClient req;
         Ydb::Topic::StreamReadMessage::FromServer resp;
 
         auto WriteSome = [&](ui64 size) {
             TString data(size, 'x');
+            auto writer = CreateSimpleWriter(*driver, "acc/topic1", "source", /*partitionGroup=*/{}, /*codec=*/{"raw"});
             UNIT_ASSERT(writer->Write(data));
+            UNIT_ASSERT(writer->Close(TDuration::Seconds(10)));
         };
 
         i64 budget = 0;
@@ -1755,8 +2610,6 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
         }
 
         AwaitExpected(1);
-
-        UNIT_ASSERT(writer->Close(TDuration::Seconds(10)));
     } // Y_UNIT_TEST(TopicServiceReadBudget)
 
     Y_UNIT_TEST(TopicServiceSimpleHappyWrites) {
@@ -1786,9 +2639,16 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
             request.mutable_supported_codecs()->add_codecs(Ydb::Topic::CODEC_RAW);
             request.mutable_supported_codecs()->add_codecs(Ydb::Topic::CODEC_CUSTOM + 42);
 
-            auto consumer = request.add_consumers();
-            consumer->set_name("first-consumer");
-            consumer->set_important(false);
+            {
+                auto consumer = request.add_consumers();
+                consumer->set_name("first-consumer");
+                consumer->set_important(false);
+            }
+            {
+                auto consumer = request.add_consumers();
+                consumer->set_name("user");
+                consumer->set_important(false);
+            }
             grpc::ClientContext rcontext;
 
             auto status = TopicStubP_->CreateTopic(&rcontext, request, &response);
@@ -1980,7 +2840,6 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
 
     Y_UNIT_TEST(SetupWriteSession) {
         NPersQueue::TTestServer server{PQSettings(0, 2), false};
-        server.ServerSettings.SetEnableSystemViews(false);
         server.StartServer();
 
         server.EnableLogs({ NKikimrServices::PERSQUEUE }, NActors::NLog::PRI_INFO);
@@ -2373,7 +3232,7 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
         server.AnnoyingClient->CreateTopic(DEFAULT_TOPIC_NAME, 2);
 
         {
-            THolder<NMsgBusProxy::TBusPersQueue> request = TRequestDescribePQ().GetRequest({});
+            THolder<NMsgBusProxy::TBusPersQueue> request = TRequestDescribePQ().GetRequest({DEFAULT_TOPIC_NAME});
 
             NKikimrClient::TResponse response;
 
@@ -2512,38 +3371,94 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
 
     // expects that L2 size is 32Mb
     Y_UNIT_TEST(Cache) {
-        NPersQueue::TTestServer server(PQSettings(0).SetDomainName("Root").SetGrpcMaxMessageSize(48_MB));
+        auto settings = PQSettings(0).SetDomainName("Root").SetGrpcMaxMessageSize(48_MB);
+        settings.PQConfig.MutableCompactionConfig()->SetBlobsCount(1);
+        settings.PQConfig.MutableCompactionConfig()->SetMaxBlobsCount(1);
+        settings.PQConfig.MutableCompactionConfig()->SetMaxWTimeLagSec(1);
+        settings.PQConfig.MutableCompactionConfig()->SetBlobsSize(1_MB);
+        NPersQueue::TTestServer server(settings);
         server.AnnoyingClient->CreateTopic(DEFAULT_TOPIC_NAME, 1, 8_MB, 86400);
 
         server.EnableLogs({ NKikimrServices::FLAT_TX_SCHEMESHARD, NKikimrServices::PERSQUEUE });
 
         TString value(1_MB, 'x');
-        for (ui32 i = 0; i < 32; ++i)
+        for (ui32 i = 0; i < 32; ++i) {
             server.AnnoyingClient->WriteToPQ({DEFAULT_TOPIC_NAME, 0, "source1", i}, value);
+        }
 
+        Cerr << ">>>>> 1" << Endl << Flush;
         auto info0 = server.AnnoyingClient->ReadFromPQ({DEFAULT_TOPIC_NAME, 0, 0, 16, "user"}, 16);
+        Cerr << ">>>>> 2" << Endl << Flush;
         auto info16 = server.AnnoyingClient->ReadFromPQ({DEFAULT_TOPIC_NAME, 0, 16, 16, "user"}, 16);
 
-        UNIT_ASSERT_VALUES_EQUAL(info0.BlobsFromCache, 3);
-        UNIT_ASSERT_VALUES_EQUAL(info16.BlobsFromCache, 2);
-        UNIT_ASSERT_VALUES_EQUAL(info0.BlobsFromDisk + info16.BlobsFromDisk, 0);
+        auto readAfterCompaction = [&]() {
+            auto res = info0.BlobsFromCache == 2 && info16.BlobsFromCache == 1 && (info0.BlobsFromDisk + info16.BlobsFromDisk == 2);
+            if (!res) {
+                Cerr << "info0, from cache: " << info0.BlobsFromCache << ", info16 from cache: " << info16.BlobsFromCache << ", info0 from disk: " << info0.BlobsFromDisk << ", info16 from disk: " << info16.BlobsFromDisk << Endl << Flush;
+            }
+            return res;
+        };
+
+        auto readBeforeCompaction = [&]() {
+            return info0.BlobsFromCache == 1 && info16.BlobsFromCache == 1 && (info0.BlobsFromDisk + info16.BlobsFromDisk == 3);
+        };
+
+        UNIT_ASSERT(readAfterCompaction() || readBeforeCompaction());
 
         for (ui32 i = 0; i < 8; ++i)
             server.AnnoyingClient->WriteToPQ({DEFAULT_TOPIC_NAME, 0, "source1", 32+i}, value);
 
+        Cerr << ">>>>> 3" << Endl << Flush;
         info0 = server.AnnoyingClient->ReadFromPQ({DEFAULT_TOPIC_NAME, 0, 0, 16, "user"}, 16);
+        Cerr << ">>>>> 4" << Endl << Flush;
         info16 = server.AnnoyingClient->ReadFromPQ({DEFAULT_TOPIC_NAME, 0, 16, 16, "user"}, 16);
 
         ui32 fromDisk = info0.BlobsFromDisk + info16.BlobsFromDisk;
         ui32 fromCache = info0.BlobsFromCache + info16.BlobsFromCache;
-        UNIT_ASSERT(fromDisk > 0);
-        UNIT_ASSERT(fromDisk < 5);
-        UNIT_ASSERT(fromCache > 0);
-        UNIT_ASSERT(fromCache < 5);
+        UNIT_ASSERT_GE(fromDisk, 0);
+        UNIT_ASSERT_LE(fromDisk, 6);
+        UNIT_ASSERT_GT(fromCache, 0);
+        UNIT_ASSERT_LE(fromCache, 6);
+
+        // ======================
+        // SYNC INIT DATA KEY: d0000000000_00000000000000000000_00000_0000000007_00016 size 8365489
+        // SYNC INIT DATA KEY: d0000000000_00000000000000000007_00002_0000000008_00015 size 7878213
+        // SYNC INIT DATA KEY: d0000000000_00000000000000000015_00001_0000000008_00015 size 7878213
+        // SYNC INIT DATA KEY: d0000000000_00000000000000000023_00000_0000000007_00016 size 8365489
+        // SYNC INIT DATA KEY: d0000000000_00000000000000000030_00002_0000000008_00015 size 7878213
+        // SYNC INIT HEAD KEY: d0000000000_00000000000000000038_00001_0000000001_00001| size 536753
+        // SYNC INIT HEAD KEY: d0000000000_00000000000000000039_00000_0000000001_00002| size 1048780
+
+        Cerr << ">>>>> 5" << Endl << Flush;
+        auto info9 = server.AnnoyingClient->ReadFromPQ({DEFAULT_TOPIC_NAME, 0, 9, 12, "user"}, 12);
+        Cerr << ">>>>> 6" << Endl << Flush;
+        auto info25 = server.AnnoyingClient->ReadFromPQ({DEFAULT_TOPIC_NAME, 0, 25, 10, "user"}, 10);
+
+        UNIT_ASSERT_VALUES_EQUAL(info9.BlobsFromDisk, 0);
+        UNIT_ASSERT_VALUES_EQUAL(info9.BlobsFromCache, 2);
+        UNIT_ASSERT_VALUES_EQUAL(info25.BlobsFromDisk, 0);
+        UNIT_ASSERT_VALUES_EQUAL(info25.BlobsFromCache, 2);
+
+        server.KillTopicPqTablets("/Root/PQ/" + DEFAULT_TOPIC_NAME);
+
+        Cerr << ">>>>> 7" << Endl << Flush;
+        info9 = server.AnnoyingClient->ReadFromPQ({DEFAULT_TOPIC_NAME, 0, 9, 12, "user"}, 12);
+        Cerr << ">>>>> 8" << Endl << Flush;
+        info25 = server.AnnoyingClient->ReadFromPQ({DEFAULT_TOPIC_NAME, 0, 25, 10, "user"}, 10);
+
+        UNIT_ASSERT_VALUES_EQUAL(info9.BlobsFromDisk, 2);
+        UNIT_ASSERT_VALUES_EQUAL(info9.BlobsFromCache, 0);
+        UNIT_ASSERT_VALUES_EQUAL(info25.BlobsFromDisk, 2);
+        UNIT_ASSERT_VALUES_EQUAL(info25.BlobsFromCache, 0);
     }
 
     Y_UNIT_TEST(CacheHead) {
-        NPersQueue::TTestServer server(PQSettings(0).SetDomainName("Root").SetGrpcMaxMessageSize(16_MB));
+        auto settings = PQSettings(0).SetDomainName("Root").SetGrpcMaxMessageSize(16_MB);
+        settings.PQConfig.MutableCompactionConfig()->SetBlobsCount(1);
+        settings.PQConfig.MutableCompactionConfig()->SetMaxBlobsCount(1);
+        settings.PQConfig.MutableCompactionConfig()->SetMaxWTimeLagSec(1);
+        settings.PQConfig.MutableCompactionConfig()->SetBlobsSize(1_MB);
+        NPersQueue::TTestServer server(settings);
         server.AnnoyingClient->CreateTopic(DEFAULT_TOPIC_NAME, 1, 6_MB, 86400);
 
         server.EnableLogs({ NKikimrServices::FLAT_TX_SCHEMESHARD, NKikimrServices::PERSQUEUE });
@@ -2558,8 +3473,9 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
 
             ui64 offset = seqNo;
             TString value(blobSize, 'a');
-            for (ui32 i = 0; i < count; ++i)
+            for (ui32 i = 0; i < count; ++i) {
                 server.AnnoyingClient->WriteToPQ({DEFAULT_TOPIC_NAME, 0, "source1", seqNo++}, value);
+            }
 
             auto info_half1 = server.AnnoyingClient->ReadFromPQ({DEFAULT_TOPIC_NAME, 0, offset, half, "user1"}, half);
             auto info_half2 = server.AnnoyingClient->ReadFromPQ({DEFAULT_TOPIC_NAME, 0, offset, half, "user1"}, half);
@@ -2645,8 +3561,8 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
                 NKikimrServices::PQ_METACACHE });
         }
 
-        server.AnnoyingClient->DescribeTopic({});
-        server.AnnoyingClient->TestCase({}, 0, 0, true);
+        server.AnnoyingClient->DescribeTopic({DEFAULT_TOPIC_NAME}, true);
+        server.AnnoyingClient->TestCase({{DEFAULT_TOPIC_NAME, {5}}}, 0, 0, false);
 
         server.AnnoyingClient->CreateTopic(DEFAULT_TOPIC_NAME, 10);
         server.AnnoyingClient->AlterTopic(DEFAULT_TOPIC_NAME, 20);
@@ -2666,7 +3582,6 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
         server.AnnoyingClient->TestCase({{DEFAULT_TOPIC_NAME, {}}}, 20, 1, true);
         server.AnnoyingClient->TestCase({{DEFAULT_TOPIC_NAME, {5, 5}}}, 0, 0, false);
         server.AnnoyingClient->TestCase({{DEFAULT_TOPIC_NAME, {111}}}, 0, 0, false);
-        server.AnnoyingClient->TestCase({}, 45, 1, true);
         server.AnnoyingClient->TestCase({{thirdTopic, {}}}, 0, 0, false);
         server.AnnoyingClient->TestCase({{DEFAULT_TOPIC_NAME, {}}, {thirdTopic, {}}}, 0, 0, false);
         server.AnnoyingClient->TestCase({{DEFAULT_TOPIC_NAME, {}}, {secondTopic, {}}}, 45, 1, true);
@@ -2675,7 +3590,6 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
         server.AnnoyingClient->DescribeTopic({DEFAULT_TOPIC_NAME});
         server.AnnoyingClient->DescribeTopic({secondTopic});
         server.AnnoyingClient->DescribeTopic({secondTopic, DEFAULT_TOPIC_NAME});
-        server.AnnoyingClient->DescribeTopic({});
         server.AnnoyingClient->DescribeTopic({thirdTopic}, true);
     }
 
@@ -2730,30 +3644,30 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
     class TTestCredentialsProvider : public NYdb::ICredentialsProvider {
         public:
 
-        TTestCredentialsProvider(const NYdb::TStringType& token)
+        TTestCredentialsProvider(const std::string& token)
         : Token(token)
         {}
 
         virtual ~TTestCredentialsProvider()
         {}
 
-        NYdb::TStringType GetAuthInfo() const override {
+        std::string GetAuthInfo() const override {
             return Token;
         }
 
-        void SetToken(const NYdb::TStringType& token) {
+        void SetToken(const std::string& token) {
             Token = token;
         }
         bool IsValid() const override {
             return true;
         }
 
-        NYdb::TStringType Token;
+        std::string Token;
     };
 
     class TTestCredentialsProviderFactory : public NYdb::ICredentialsProviderFactory {
     public:
-        TTestCredentialsProviderFactory(const NYdb::TStringType& token)
+        TTestCredentialsProviderFactory(const std::string& token)
         : CredentialsProvider(new TTestCredentialsProvider(token))
         {}
 
@@ -2767,11 +3681,11 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
             return CredentialsProvider;
         }
 
-        NYdb::TStringType GetClientIdentity() const override {
+        std::string GetClientIdentity() const override {
             return CreateGuidAsString();
         }
 
-        void SetToken(const NYdb::TStringType& token) {
+        void SetToken(const std::string& token) {
             CredentialsProvider->SetToken(token);
         }
     private:
@@ -2794,10 +3708,10 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
         writer.Write(SHORT_TOPIC_NAME, {"valuevaluevalue1"}, true, TString()); // Fail if user set empty token
         writer.Write(SHORT_TOPIC_NAME, {"valuevaluevalue1"}, true, "topic1@" BUILTIN_ACL_DOMAIN);
 
-        auto driver = server.AnnoyingClient->GetDriver();
+        const auto& driver = server.GetDriver();
 
 
-        ModifyTopicACL(driver, "/Root/PQ/" + DEFAULT_TOPIC_NAME, {{"topic1@" BUILTIN_ACL_DOMAIN, {"ydb.generic.write"}}});
+        ModifyTopicACL(&driver, "/Root/PQ/" + DEFAULT_TOPIC_NAME, {{"topic1@" BUILTIN_ACL_DOMAIN, {"ydb.generic.write"}}});
 
 
         writer2.Write(SHORT_TOPIC_NAME, {"valuevaluevalue1"}, false, "topic1@" BUILTIN_ACL_DOMAIN);
@@ -2805,10 +3719,10 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
 
 
         for (ui32 i = 0; i < 2; ++i) {
-            std::shared_ptr<NYdb::ICredentialsProviderFactory> creds = std::make_shared<TTestCredentialsProviderFactory>(NYdb::TStringType("topic1@" BUILTIN_ACL_DOMAIN));
-            dynamic_cast<TTestCredentialsProviderFactory*>(creds.get())->SetToken(NYdb::TStringType("topic1@" BUILTIN_ACL_DOMAIN));
+            std::shared_ptr<NYdb::ICredentialsProviderFactory> creds = std::make_shared<TTestCredentialsProviderFactory>("topic1@" BUILTIN_ACL_DOMAIN);
+            dynamic_cast<TTestCredentialsProviderFactory*>(creds.get())->SetToken("topic1@" BUILTIN_ACL_DOMAIN);
 
-            auto writer = CreateWriter(*driver, SHORT_TOPIC_NAME, "123", {}, {}, {}, creds);
+            auto writer = CreateWriter(driver, SHORT_TOPIC_NAME, "123", {}, {}, {}, creds);
 
             auto msg = writer->GetEvent(true);
             UNIT_ASSERT(msg); // ReadyToAcceptEvent
@@ -2832,7 +3746,7 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
             auto ack = std::get_if<NYdb::NPersQueue::TWriteSessionEvent::TAcksEvent>(&*msg);
             UNIT_ASSERT(ack);
 
-            NYdb::TStringType token = i == 0 ? "user_without_rights@" BUILTIN_ACL_DOMAIN : "invalid_ticket";
+            std::string token = i == 0 ? "user_without_rights@" BUILTIN_ACL_DOMAIN : "invalid_ticket";
             Cerr << "Set token " << token << "\n";
 
             dynamic_cast<TTestCredentialsProviderFactory*>(creds.get())->SetToken(token);
@@ -2878,9 +3792,9 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
 
         server.CleverServer->GetRuntime()->GetAppData().PQConfig.SetRequireCredentialsInNewProtocol(true);
 
-        auto driver = server.AnnoyingClient->GetDriver();
+        const auto& driver = server.GetDriver();
 
-        ModifyTopicACL(driver, "/Root/PQ/" + topic2, {{"1@" BUILTIN_ACL_DOMAIN, {"ydb.generic.read"}},
+        ModifyTopicACL(&driver, "/Root/PQ/" + topic2, {{"1@" BUILTIN_ACL_DOMAIN, {"ydb.generic.read"}},
                                                       {"2@" BUILTIN_ACL_DOMAIN, {"ydb.generic.read"}},
                                                       {"user1@" BUILTIN_ACL_DOMAIN, {"ydb.generic.read"}},
                                                       {"user2@" BUILTIN_ACL_DOMAIN, {"ydb.generic.read"}}});
@@ -2899,7 +3813,7 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
         writer.Read(shortTopic2Name, "user5", ticket1, true, false, true);
         writer.Read(shortTopic2Name, "user5", ticket2, true, false, true);
 
-        ModifyTopicACL(driver, "/Root/PQ/" + topic2, {{"user3@" BUILTIN_ACL_DOMAIN, {"ydb.generic.read"}}});
+        ModifyTopicACL(&driver, "/Root/PQ/" + topic2, {{"user3@" BUILTIN_ACL_DOMAIN, {"ydb.generic.read"}}});
 
 
         Cerr << "==== Writer - read\n";
@@ -2954,6 +3868,7 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
             request.set_get_only_original(true);
             request.add_topics()->set_path(shortTopic2Name);
             grpc::ClientContext rcontext;
+            rcontext.AddMetadata("x-ydb-database", "/Root");
             if (i == 0) {
                 rcontext.AddMetadata("x-ydb-auth-ticket", "user_without_rights@" BUILTIN_ACL_DOMAIN);
             }
@@ -2982,7 +3897,7 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
         auto decompressor = CreateSyncExecutorWrapper();
 
         NYdb::NPersQueue::TReadSessionSettings settings;
-        settings.ConsumerName("shared/user").AppendTopics(SHORT_TOPIC_NAME).ReadOriginal({"dc1"});
+        settings.ConsumerName("shared/user").AppendTopics(std::string{SHORT_TOPIC_NAME}).ReadOriginal({"dc1"});
         settings.DecompressionExecutor(decompressor);
         auto reader = CreateReader(*driver, settings);
 
@@ -3079,7 +3994,7 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
         auto decompressor = CreateThreadPoolExecutorWrapper(2);
 
         NYdb::NPersQueue::TReadSessionSettings settings;
-        settings.ConsumerName("shared/user").AppendTopics(SHORT_TOPIC_NAME).ReadOriginal({"dc1"});
+        settings.ConsumerName("shared/user").AppendTopics(std::string{SHORT_TOPIC_NAME}).ReadOriginal({"dc1"});
         settings.DecompressionExecutor(decompressor);
         auto reader = CreateReader(*driver, settings);
 
@@ -3218,7 +4133,7 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
         auto decompressor = CreateThreadPoolExecutorWrapper(2);
 
         NYdb::NPersQueue::TReadSessionSettings settings;
-        settings.ConsumerName("shared/user").AppendTopics(SHORT_TOPIC_NAME).ReadOriginal({"dc1"});
+        settings.ConsumerName("shared/user").AppendTopics(std::string{SHORT_TOPIC_NAME}).ReadOriginal({"dc1"});
         settings.DecompressionExecutor(decompressor);
         auto reader = CreateReader(*driver, settings);
 
@@ -3347,6 +4262,54 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
         DumpCounters("End");
     }
 
+    Y_UNIT_TEST(NoDecompressionMemoryLeaks) {
+
+        NPersQueue::TTestServer server;
+        server.EnableLogs({ NKikimrServices::PQ_WRITE_PROXY, NKikimrServices::PQ_READ_PROXY});
+        server.AnnoyingClient->CreateTopic(DEFAULT_TOPIC_NAME, 1);
+
+        auto driver = server.AnnoyingClient->GetDriver();
+        auto decompressor = CreateThreadPoolExecutorWrapper(2);
+
+        NYdb::NPersQueue::TReadSessionSettings settings;
+        settings.ConsumerName("shared/user").AppendTopics(std::string{SHORT_TOPIC_NAME}).ReadOriginal({"dc1"});
+        settings.DecompressionExecutor(decompressor);
+        settings.MaxMemoryUsageBytes(5_MB);
+        settings.Decompress(true);
+
+        auto reader = CreateReader(*driver, settings);
+
+        //
+        // there should be 1 TCreatePartitionStreamEvent events in the queue
+        //
+        {
+            auto msg = reader->GetEvent(true, 1);
+            UNIT_ASSERT(msg);
+
+            Cerr << ">>>> message: " << NYdb::NPersQueue::DebugString(*msg) << Endl;
+
+            auto ev = std::get_if<NYdb::NPersQueue::TReadSessionEvent::TCreatePartitionStreamEvent>(&*msg);
+            UNIT_ASSERT(ev);
+
+            ev->Confirm();
+        }
+
+        for (ui32 i = 0; i < 10; ++i) {
+            auto writer = CreateSimpleWriter(*driver, SHORT_TOPIC_NAME, TStringBuilder() << "source" << i);
+
+            std::string message(1_MB - 1_KB, 'x');
+
+            bool res = writer->Write(message, 1);
+            UNIT_ASSERT(res);
+
+            res = writer->Close(TDuration::Seconds(10));
+            UNIT_ASSERT(res);
+        }
+
+        decompressor->StartFuncs({0, 1, 2});
+        Sleep(TDuration::Seconds(1));
+    }
+
     enum WhenTheTopicIsDeletedMode {
         AFTER_WRITES,
         AFTER_START_TASKS,
@@ -3362,7 +4325,7 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
         auto decompressor = CreateThreadPoolExecutorWrapper(2);
 
         NYdb::NPersQueue::TReadSessionSettings settings;
-        settings.ConsumerName("shared/user").AppendTopics(SHORT_TOPIC_NAME).ReadOriginal({"dc1"});
+        settings.ConsumerName("shared/user").AppendTopics(std::string{SHORT_TOPIC_NAME}).ReadOriginal({"dc1"});
         settings.DecompressionExecutor(decompressor);
         settings.MaxMemoryUsageBytes(maxMemoryUsageSize);
         settings.Decompress(decompress);
@@ -3557,7 +4520,7 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
         auto decompressor = CreateThreadPoolExecutorWrapper(2);
 
         NYdb::NPersQueue::TReadSessionSettings settings;
-        settings.ConsumerName("shared/user").AppendTopics(SHORT_TOPIC_NAME).ReadOriginal({"dc1"});
+        settings.ConsumerName("shared/user").AppendTopics(std::string{SHORT_TOPIC_NAME}).ReadOriginal({"dc1"});
         settings.DecompressionExecutor(decompressor);
 
         auto reader = CreateReader(*driver, settings);
@@ -3602,7 +4565,8 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
             auto checkCounters = [](auto monPort, const TString& session,
                                     const std::set<std::string>& canonicalSensorNames,
                                     const TString& clientDc, const TString& originDc,
-                                    const TString& client, const TString& consumerPath) {
+                                    const TString& client,
+                                    const TString& consumerPath) {
                 NJson::TJsonValue counters;
 
                 if (clientDc.empty() && originDc.empty()) {
@@ -3661,7 +4625,7 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
 
             const auto monPort = TPortManager().GetPort();
             auto Counters = server.CleverServer->GetGRpcServerRootCounters();
-            NActors::TSyncHttpMon Monitoring({
+            NActors::TMon Monitoring({
                 .Port = monPort,
                 .Address = "localhost",
                 .Threads = 3,
@@ -3669,7 +4633,7 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
                 .Host = "localhost",
             });
             Monitoring.RegisterCountersPage("counters", "Counters", Counters);
-            Monitoring.Start();
+            Monitoring.Start(server.CleverServer->GetRuntime()->SingleSys());
 
             server.EnableLogs({ NKikimrServices::PQ_WRITE_PROXY, NKikimrServices::NET_CLASSIFIER });
             server.EnableLogs({ NKikimrServices::PERSQUEUE }, NActors::NLog::PRI_ERROR);
@@ -3678,7 +4642,16 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
 
             GetClassifierUpdate(*server.CleverServer, sender); //wait for initializing
 
-            server.AnnoyingClient->CreateTopic("rt3.dc1--account--topic1", 10, 10000, 10000, 2000);
+            server.AnnoyingClient->CreateTopic(
+                "rt3.dc1--account--topic1",
+                10,
+                10000,
+                10000,
+                2000,
+                "",
+                200000000,
+                { consumerName }
+            );
 
             auto driver = server.AnnoyingClient->GetDriver();
 
@@ -3754,7 +4727,8 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
             {
                 NYdb::NPersQueue::TReadSessionSettings settings;
                 settings.ConsumerName(originallyProvidedConsumerName)
-                    .AppendTopics(TString("account/topic1")).ReadOriginal({"dc1"})
+                    .AppendTopics(std::string{"account/topic1"})
+                    .ReadOriginal({"dc1"})
                     .Header({{NYdb::YDB_APPLICATION_NAME, userAgent}});
 
                 auto reader = CreateReader(*driver, settings);
@@ -3838,6 +4812,7 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
 
                 checkUserAgentCounters(monPort, "BytesReadByUserAgent", "pqv1", userAgent, "", consumerPath);
             }
+            Monitoring.Stop();
         };
 
         testWriteStat("some@random@consumer", "some@random@consumer", "some/random/consumer");
@@ -4651,7 +5626,6 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
         UNIT_ASSERT_C(serverMessage.server_message_case() == StreamingWriteServerMessage::kBatchWriteResponse, serverMessage);
         UNIT_ASSERT_VALUES_EQUAL_C(defaultCodecs.size(), serverMessage.batch_write_response().offsets_size(), serverMessage);
     }
-
     Y_UNIT_TEST(Codecs_WriteMessageWithNonDefaultCodecThatHasToBeConfiguredAdditionally_SessionClosedWithBadRequestError) {
         APITestSetup setup{TEST_CASE_NAME};
         auto log = setup.GetLog();
@@ -4821,9 +5795,11 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
 
     Y_UNIT_TEST(SchemeOperationsTest) {
         NPersQueue::TTestServer server;
-        server.EnableLogs({NKikimrServices::PQ_READ_PROXY, NKikimrServices::BLACKBOX_VALIDATOR });
+        server.EnableLogs({NKikimrServices::PQ_READ_PROXY, NKikimrServices::BLACKBOX_VALIDATOR, NKikimrServices::PQ_SCHEMA});
         TString topic1 = "rt3.dc1--acc--topic1";
         TString topic3 = "rt3.dc1--acc--topic3";
+        TString topic5 = "rt3.dc1--acc--topic5";
+        TString topicWithMessageLimits = "rt3.dc1--acc--topic-with-message-limits";
         server.AnnoyingClient->CreateTopic(topic1, 1);
         server.AnnoyingClient->CreateTopic(DEFAULT_TOPIC_NAME, 1);
         server.AnnoyingClient->CreateConsumer("user");
@@ -4844,6 +5820,7 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
             request.set_path(TStringBuilder() << "/Root/PQ/" << topic3);
 
             grpc::ClientContext rcontext;
+            rcontext.AddMetadata("x-ydb-database", "/Root");
             rcontext.AddMetadata("x-ydb-auth-ticket", "user@" BUILTIN_ACL_DOMAIN);
 
             auto status = TopicStubP_->CreateTopic(&rcontext, request, &response);
@@ -4872,6 +5849,8 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
             (*request.mutable_attributes())["_max_partition_storage_size"] = "1000";
             request.set_partition_write_speed_bytes_per_second(1000);
             request.set_partition_write_burst_bytes(1000);
+            request.set_partition_write_speed_messages_per_second(100000);
+            request.set_partition_write_burst_messages(50000);
 
             request.mutable_supported_codecs()->add_codecs(Ydb::Topic::CODEC_RAW);
             request.mutable_supported_codecs()->add_codecs(Ydb::Topic::CODEC_ZSTD);
@@ -4896,6 +5875,41 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
 
         }
 
+        {
+            Ydb::Topic::CreateTopicRequest request;
+            Ydb::Topic::CreateTopicResponse response;
+            request.set_path(TStringBuilder() << "/Root/PQ/" << topicWithMessageLimits);
+
+            request.mutable_partitioning_settings()->set_min_active_partitions(1);
+            request.mutable_retention_period()->set_seconds(TDuration::Days(1).Seconds());
+            request.set_partition_write_speed_bytes_per_second(1000);
+            request.set_partition_write_burst_bytes(1000);
+            request.set_partition_write_speed_messages_per_second(120);
+
+            grpc::ClientContext rcontext;
+            auto status = TopicStubP_->CreateTopic(&rcontext, request, &response);
+
+            UNIT_ASSERT(status.ok());
+            Ydb::Topic::CreateTopicResult res;
+            response.operation().result().UnpackTo(&res);
+            Cerr << response << "\n" << res << "\n";
+            UNIT_ASSERT_VALUES_EQUAL(response.operation().status(), Ydb::StatusIds::SUCCESS);
+            server.AnnoyingClient->AddTopic(topicWithMessageLimits);
+
+            Ydb::Topic::DescribeTopicRequest describeRequest;
+            Ydb::Topic::DescribeTopicResponse describeResponse;
+            describeRequest.set_path(TStringBuilder() << "/Root/PQ/" << topicWithMessageLimits);
+
+            grpc::ClientContext describeContext;
+            status = TopicStubP_->DescribeTopic(&describeContext, describeRequest, &describeResponse);
+            UNIT_ASSERT(status.ok());
+            Ydb::Topic::DescribeTopicResult describeResult;
+            describeResponse.operation().result().UnpackTo(&describeResult);
+            UNIT_ASSERT_VALUES_EQUAL(describeResponse.operation().status(), Ydb::StatusIds::SUCCESS);
+            UNIT_ASSERT_VALUES_EQUAL(describeResult.partition_write_speed_messages_per_second(), 120);
+            UNIT_ASSERT_VALUES_EQUAL(describeResult.partition_write_burst_messages(), 120);
+        }
+
 
         auto driver = server.AnnoyingClient->GetDriver();
 
@@ -4911,6 +5925,7 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
             Ydb::Topic::AlterTopicResponse response;
 
             grpc::ClientContext rcontext;
+            rcontext.AddMetadata("x-ydb-database", "/Root");
             if (auth)
                 rcontext.AddMetadata("x-ydb-auth-ticket", "user@" BUILTIN_ACL_DOMAIN);
 
@@ -4920,7 +5935,7 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
             Ydb::Topic::AlterTopicResult res;
             response.operation().result().UnpackTo(&res);
             Cerr << response << "\n" << res << "\n";
-            UNIT_ASSERT_VALUES_EQUAL(response.operation().status(), statusCode);
+            UNIT_ASSERT_VALUES_EQUAL_C(response.operation().status(), statusCode, response.operation().DebugString());
         };
 
         Ydb::Topic::AlterTopicRequest request;
@@ -4942,6 +5957,8 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
         request.mutable_set_supported_codecs()->add_codecs(Ydb::Topic::CODEC_CUSTOM + 5);
 
         request.set_set_partition_write_speed_bytes_per_second(123);
+        request.set_set_partition_write_speed_messages_per_second(80000);
+        request.set_set_partition_write_burst_messages(40000);
         (*request.mutable_alter_attributes())["_max_partition_storage_size"] = "234";
         rr->set_name("consumer");
 
@@ -4996,7 +6013,6 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
       MaxCountInPartition: 2147483647
       MaxSizeInPartition: 234
       LifetimeSeconds: 172800
-      ImportantClientId: "consumer"
       SourceIdLifetimeSeconds: 1382400
       WriteSpeedInBytesPerSecond: 123
       BurstSize: 1000
@@ -5036,6 +6052,8 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
       ExplicitChannelProfiles {
         PoolKind: "test"
       }
+      WriteSpeedInMessagesPerSecond: 80000
+      BurstSizeInMessages: 40000
       SourceIdMaxCounts: 6000000
     }
     Version: 6
@@ -5043,25 +6061,8 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
     RequireAuthWrite: true
     RequireAuthRead: false
     Producer: "acc"
-    Ident: "acc"
     Topic: "topic3"
     DC: "dc1"
-    ReadRules: "first-consumer"
-    ReadRules: "consumer"
-    ReadFromTimestampsMs: 11223344000
-    ReadFromTimestampsMs: 111000
-    ConsumerFormatVersions: 0
-    ConsumerFormatVersions: 0
-    ConsumerCodecs {
-    }
-    ConsumerCodecs {
-      Ids: 2
-      Ids: 10004
-      Codecs: "lzop"
-      Codecs: "CUSTOM"
-    }
-    ReadRuleServiceTypes: "data-streams"
-    ReadRuleServiceTypes: "data-streams"
     FormatVersion: 0
     Codecs {
       Ids: 2
@@ -5069,8 +6070,6 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
       Codecs: "lzop"
       Codecs: "CUSTOM"
     }
-    ReadRuleVersions: 0
-    ReadRuleVersions: 567
     TopicPath: "/Root/PQ/rt3.dc1--acc--topic3"
     YdbDatabasePath: "/Root"
     Consumers {
@@ -5081,7 +6080,7 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
       }
       ServiceType: "data-streams"
       Version: 0
-      Important: false
+      Type: CONSUMER_TYPE_STREAMING
     }
     Consumers {
       Name: "consumer"
@@ -5096,7 +6095,9 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
       ServiceType: "data-streams"
       Version: 567
       Important: true
+      Type: CONSUMER_TYPE_STREAMING
     }
+    ContentBasedDeduplication: false
   }
   ErrorCode: OK
 }
@@ -5112,6 +6113,7 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
             Ydb::Topic::DescribeTopicResponse response;
             request.set_path(TStringBuilder() << "/Root/PQ/" << topic3);
             grpc::ClientContext rcontext;
+            rcontext.AddMetadata("x-ydb-database", "/Root");
             rcontext.AddMetadata("x-ydb-auth-ticket", "user@" BUILTIN_ACL_DOMAIN);
 
             auto status = TopicStubP_->DescribeTopic(&rcontext, request, &response);
@@ -5261,7 +6263,7 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
             Ydb::Topic::DropTopicResult res;
             response.operation().result().UnpackTo(&res);
             Cerr << response << "\n" << res << "\n";
-            UNIT_ASSERT_VALUES_EQUAL(response.operation().status(), Ydb::StatusIds::SUCCESS);
+            UNIT_ASSERT_VALUES_EQUAL_C(response.operation().status(), Ydb::StatusIds::SUCCESS, response.ShortDebugString());
             server.AnnoyingClient->RemoveTopic(topic3);
         }
 
@@ -5277,7 +6279,7 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
             Ydb::Topic::DropTopicResult res;
             response.operation().result().UnpackTo(&res);
             Cerr << response << "\n" << res << "\n";
-            UNIT_ASSERT_VALUES_EQUAL(response.operation().status(), Ydb::StatusIds::SCHEME_ERROR);
+            UNIT_ASSERT_VALUES_EQUAL_C(response.operation().status(), Ydb::StatusIds::SCHEME_ERROR, response.ShortDebugString());
         }
 
         server.AnnoyingClient->CreateTopic("rt3.dc1--acc--topic5", 1); //ensure creation
@@ -5301,7 +6303,7 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
             auto ct = std::get_if<NYdb::NPersQueue::TWriteSessionEvent::TReadyToAcceptEvent>(&*ev);
             UNIT_ASSERT(ct);
             writer->Write(std::move(ct->ContinuationToken), "1234567890");
-            UNIT_ASSERT(ev.Defined());
+            UNIT_ASSERT(ev.has_value());
             while(true) {
                 ev = writer->GetEvent(true);
                 auto ack = std::get_if<NYdb::NPersQueue::TWriteSessionEvent::TAcksEvent>(&*ev);
@@ -5621,7 +6623,7 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
             settings.PQConfig.AddClientServiceType()->SetName("SecondType");
         }
         NPersQueue::TTestServer server(settings);
-        server.EnableLogs({ NKikimrServices::PQ_READ_PROXY, NKikimrServices::BLACKBOX_VALIDATOR });
+        server.EnableLogs({ NKikimrServices::PQ_READ_PROXY, NKikimrServices::PQ_SCHEMA, NKikimrServices::BLACKBOX_VALIDATOR });
 
         std::unique_ptr<Ydb::PersQueue::V1::PersQueueService::Stub> pqStub;
 
@@ -5629,7 +6631,14 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
             std::shared_ptr<grpc::Channel> channel = grpc::CreateChannel("localhost:" + ToString(server.GrpcPort), grpc::InsecureChannelCredentials());
             pqStub = Ydb::PersQueue::V1::PersQueueService::NewStub(channel);
         }
-        auto checkDescribe = [&](const TVector<std::pair<TString, TString>>& readRules) {
+        struct TReadRuleParameters {
+            TString ConsumerName;
+            TString ServiceType;
+             // "nothing" means "do not check"
+            TMaybe<bool> Important = Nothing();
+            TMaybe<TDuration> AvailabilityPeriod = Nothing();
+        };
+        auto checkDescribe = [&](const TConstArrayRef<TReadRuleParameters> readRules, std::source_location source = std::source_location::current()) {
             DescribeTopicRequest request;
             DescribeTopicResponse response;
             request.set_path("/Root/PQ/rt3.dc1--acc--some-topic");
@@ -5645,8 +6654,15 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
             UNIT_ASSERT_VALUES_EQUAL(res.settings().read_rules().size(), readRules.size());
             for (ui64 i = 0; i < readRules.size(); ++i) {
                 const auto& rr = res.settings().read_rules(i);
-                UNIT_ASSERT_EQUAL(rr.consumer_name(), readRules[i].first);
-                UNIT_ASSERT_EQUAL(rr.service_type(), readRules[i].second);
+                const auto& expected = readRules[i];
+                UNIT_ASSERT_VALUES_EQUAL_C(rr.consumer_name(), expected.ConsumerName, LabeledOutput(i, expected.ConsumerName, source.file_name(), source.line()));
+                UNIT_ASSERT_VALUES_EQUAL_C(rr.service_type(), expected.ServiceType, LabeledOutput(i, expected.ConsumerName, source.file_name(), source.line()));
+                if (expected.AvailabilityPeriod.Defined()) {
+                    UNIT_ASSERT_VALUES_EQUAL_C(rr.availability_period().seconds(), expected.AvailabilityPeriod->Seconds(), LabeledOutput(i, expected.ConsumerName, source.file_name(), source.line()));
+                }
+                if (expected.Important.Defined()) {
+                    UNIT_ASSERT_VALUES_EQUAL_C(rr.important(), *expected.Important, LabeledOutput(i, expected.ConsumerName, source.file_name(), source.line()));
+                }
             }
         };
         {
@@ -5667,11 +6683,11 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
                 rr->set_supported_format(Ydb::PersQueue::V1::TopicSettings::Format(1));
                 rr->set_consumer_name("acc/consumer2");
                 rr->set_service_type("MyGreatType");
+                rr->mutable_availability_period()->set_seconds(TDuration::Days(1).Seconds());
             }
 
             grpc::ClientContext rcontext;
             auto status = pqStub->CreateTopic(&rcontext, request, &response);
-
             UNIT_ASSERT(status.ok());
             CreateTopicResult res;
             response.operation().result().UnpackTo(&res);
@@ -5679,8 +6695,8 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
             UNIT_ASSERT_VALUES_EQUAL(response.operation().status(), Ydb::StatusIds::SUCCESS);
         }
         checkDescribe({
-            {"acc/consumer1", "data-streams"},
-            {"acc/consumer2", "MyGreatType"}
+            {.ConsumerName = "acc/consumer1", .ServiceType = "data-streams", .Important = false, .AvailabilityPeriod = TDuration::Zero()},
+            {.ConsumerName = "acc/consumer2", .ServiceType = "MyGreatType", .Important = false, .AvailabilityPeriod = TDuration::Days(1)},
         });
         {
             AlterTopicRequest request;
@@ -5694,6 +6710,7 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
                 auto rr = props->add_read_rules();
                 rr->set_supported_format(Ydb::PersQueue::V1::TopicSettings::Format(1));
                 rr->set_consumer_name("acc/consumer1");
+                rr->set_important(true);
             }
             {
                 auto rr = props->add_read_rules();
@@ -5706,6 +6723,7 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
                 rr->set_supported_format(Ydb::PersQueue::V1::TopicSettings::Format(1));
                 rr->set_consumer_name("acc/consumer3");
                 rr->set_service_type("SecondType");
+                rr->mutable_availability_period()->set_seconds(TDuration::Days(2).Seconds());
             }
 
             grpc::ClientContext rcontext;
@@ -5715,12 +6733,12 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
             CreateTopicResult res;
             response.operation().result().UnpackTo(&res);
             Cerr << response << "\n" << res << "\n";
-            UNIT_ASSERT_VALUES_EQUAL(response.operation().status(), Ydb::StatusIds::SUCCESS);
+            UNIT_ASSERT_VALUES_EQUAL_C(response.operation().status(), Ydb::StatusIds::SUCCESS, response.operation().ShortDebugString());
         }
         checkDescribe({
-            {"acc/consumer1", "data-streams"},
-            {"acc/consumer2", "AnotherType"},
-            {"acc/consumer3", "SecondType"}
+            {.ConsumerName = "acc/consumer1", .ServiceType = "data-streams", .Important = true, .AvailabilityPeriod = TDuration::Zero()},
+            {.ConsumerName = "acc/consumer2", .ServiceType = "AnotherType", .Important = false, .AvailabilityPeriod = TDuration::Zero()},
+            {.ConsumerName = "acc/consumer3", .ServiceType = "SecondType", .Important = false, .AvailabilityPeriod = TDuration::Days(2)}
         });
 
         {
@@ -5748,9 +6766,9 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
             UNIT_ASSERT_VALUES_EQUAL(response.operation().status(), Ydb::StatusIds::BAD_REQUEST);
         }
         checkDescribe({
-            {"acc/consumer1", "data-streams"},
-            {"acc/consumer2", "AnotherType"},
-            {"acc/consumer3", "SecondType"}
+            {.ConsumerName = "acc/consumer1", .ServiceType = "data-streams"},
+            {.ConsumerName = "acc/consumer2", .ServiceType = "AnotherType"},
+            {.ConsumerName = "acc/consumer3", .ServiceType = "SecondType"}
         });
     }
 
@@ -6069,6 +7087,7 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
 
 
         auto checkDescribe = [&](const TString& topic, const TVector<std::pair<TString, TString>>& readRules) {
+            Cerr << ">>>>> Check topic: " << topic << Endl;
             DescribeTopicRequest request;
             DescribeTopicResponse response;
             request.set_path(topic);
@@ -6078,7 +7097,8 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
             UNIT_ASSERT(status.ok());
             DescribeTopicResult res;
             response.operation().result().UnpackTo(&res);
-            Cerr << response << "\n" << res << "\n";
+            Cerr << ">>>>> Response: " << response << Endl;
+            Cerr << ">>>>> Result:" << res << "\n";
             UNIT_ASSERT_VALUES_EQUAL(response.operation().status(), Ydb::StatusIds::SUCCESS);
 
             UNIT_ASSERT_VALUES_EQUAL(res.settings().read_rules().size(), readRules.size());
@@ -6399,6 +7419,76 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
         TestReadRuleServiceTypePasswordImpl(true);
     }
 
+    Y_UNIT_TEST(MetricsLevel) {
+        TServerSettings settings = PQSettings(0);
+        {
+            settings.PQConfig.AddClientServiceType()->SetName("MyGreatType");
+            settings.PQConfig.AddClientServiceType()->SetName("AnotherType");
+            settings.PQConfig.AddClientServiceType()->SetName("SecondType");
+        }
+        NPersQueue::TTestServer server(settings);
+        server.EnableLogs({ NKikimrServices::PQ_READ_PROXY, NKikimrServices::BLACKBOX_VALIDATOR });
+        std::unique_ptr<Ydb::PersQueue::V1::PersQueueService::Stub> pqStub;
+        {
+            std::shared_ptr<grpc::Channel> channel = grpc::CreateChannel("localhost:" + ToString(server.GrpcPort), grpc::InsecureChannelCredentials());
+            pqStub = Ydb::PersQueue::V1::PersQueueService::NewStub(channel);
+        }
+        auto checkDescribe = [&](const ui32 metricsLevel, std::source_location source = std::source_location::current()) {
+            DescribeTopicRequest request;
+            DescribeTopicResponse response;
+            request.set_path("/Root/PQ/rt3.dc1--acc--some-topic");
+            grpc::ClientContext rcontext;
+
+            auto status = pqStub->DescribeTopic(&rcontext, request, &response);
+            UNIT_ASSERT(status.ok());
+            DescribeTopicResult res;
+            response.operation().result().UnpackTo(&res);
+            Cerr << response << "\n" << res << "\n";
+            UNIT_ASSERT_VALUES_EQUAL(response.operation().status(), Ydb::StatusIds::SUCCESS);
+
+            UNIT_ASSERT_VALUES_EQUAL_C(res.settings().metrics_level(), metricsLevel, LabeledOutput(metricsLevel, source.file_name(), source.line()));
+        };
+        {
+            CreateTopicRequest request;
+            CreateTopicResponse response;
+            request.set_path("/Root/PQ/rt3.dc1--acc--some-topic");
+            auto props = request.mutable_settings();
+            props->set_partitions_count(1);
+            props->set_supported_format(Ydb::PersQueue::V1::TopicSettings::FORMAT_BASE);
+            props->set_retention_period_ms(TDuration::Days(1).MilliSeconds());
+            props->set_metrics_level(4);
+
+            grpc::ClientContext rcontext;
+            auto status = pqStub->CreateTopic(&rcontext, request, &response);
+            UNIT_ASSERT(status.ok());
+            CreateTopicResult res;
+            response.operation().result().UnpackTo(&res);
+            Cerr << response << "\n" << res << "\n";
+            UNIT_ASSERT_VALUES_EQUAL(response.operation().status(), Ydb::StatusIds::SUCCESS);
+        }
+        checkDescribe(4);
+        {
+            AlterTopicRequest request;
+            AlterTopicResponse response;
+            request.set_path("/Root/PQ/rt3.dc1--acc--some-topic");
+            auto props = request.mutable_settings();
+            props->set_partitions_count(1);
+            props->set_supported_format(Ydb::PersQueue::V1::TopicSettings::FORMAT_BASE);
+            props->set_retention_period_ms(TDuration::Days(1).MilliSeconds());
+            props->set_metrics_level(3);
+
+            grpc::ClientContext rcontext;
+            auto status = pqStub->AlterTopic(&rcontext, request, &response);
+
+            UNIT_ASSERT(status.ok());
+            AlterTopicResult res;
+            response.operation().result().UnpackTo(&res);
+            Cerr << response << "\n" << res << "\n";
+            UNIT_ASSERT_VALUES_EQUAL(response.operation().status(), Ydb::StatusIds::SUCCESS);
+        }
+        checkDescribe(3);
+    }
+
     void CreateTopicWithMeteringMode(bool meteringEnabled) {
         TServerSettings serverSettings = PQSettings(0);
         serverSettings.PQConfig.SetTopicsAreFirstClassCitizen(true);
@@ -6492,6 +7582,433 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
         DefaultMeteringMode(true);
     }
 
+    // Complete end-to-end test: write to a topic via the Topics API and observe the
+    // resulting billing record (schema "ydb.serverless.requests.v1") produced by the
+    // Kesus rate-accounting subsystem.
+    //
+    // Path exercised:
+    //   TopicClient write session (StreamWrite, RLSWITCH(RuTopic))
+    //     -> gRPC check actor selects ruRlTopicConfig, reads DB user-attributes
+    //        serverless_rt_coordination_node_path + serverless_rt_topic_resource_ru
+    //        and calls SetRlPath()
+    //     -> write session (TRlHelpers) with MeteringMode == REQUEST_UNITS acquires RU
+    //        against the coordination-node resource
+    //     -> Kesus TRateAccounting (OnDemand.Enabled) emits a TBillRecord and sends
+    //        TEvWriteMeteringJson to MakeMeteringServiceID()
+    Y_UNIT_TEST(BillingRequestUnits) {
+        // Use a metering file to capture billing records emitted by the Kesus
+        // accounting actor. The TMeteringSink sends TEvWriteMeteringJson to the
+        // named metering service actor (YDB_METER), which is only registered when
+        // SetMeteringFilePath is configured.
+        auto meteringFile = MakeHolder<TTempFileHandle>();
+
+        TServerSettings serverSettings = PQSettings(0);
+        serverSettings.PQConfig.SetTopicsAreFirstClassCitizen(true);
+        serverSettings.PQConfig.SetRoot("/" + serverSettings.DomainName);
+        serverSettings.PQConfig.SetDatabase("/" + serverSettings.DomainName);
+        serverSettings.PQConfig.MutableBillingMeteringConfig()->SetEnabled(true);
+        serverSettings.PQConfig.MutableQuotingConfig()->SetQuotaWaitDurationMs(100);
+
+        serverSettings.SetMeteringFilePath(meteringFile->Name());
+        NPersQueue::TTestServer server(serverSettings);
+
+        server.EnableLogs({
+            NKikimrServices::PQ_WRITE_PROXY,
+            NKikimrServices::QUOTER_SERVICE,
+            NKikimrServices::QUOTER_PROXY,
+            NKikimrServices::KESUS_PROXY,
+            NKikimrServices::KESUS_PROXY_SERVICE,
+            NKikimrServices::KESUS_TABLET,
+            NKikimrServices::METERING_WRITER
+        }, NActors::NLog::PRI_DEBUG);
+
+        const TString coordinationNodePath = "/Root/RtCoordNode";
+        const TString resourcePath = "write_quota";
+        const TString topicPath = "billed-topic";
+        const TString DEFAULT_CLOUD_ID = "somecloud";
+        const TString DEFAULT_FOLDER_ID = "somefolder";
+
+        NYdb::TDriverConfig driverCfg;
+        driverCfg.SetEndpoint(TStringBuilder() << "localhost:" << server.GrpcPort)
+                 .SetDatabase("/" + serverSettings.DomainName)
+                 .SetAuthToken("root@builtin");
+        NYdb::TDriver driver(driverCfg);
+        // 1. Tell the database which coordination-node resource backs topic RU billing.
+        //    The gRPC request-check actor reads these database user attributes and, for
+        //    RuTopic-mode requests (StreamWrite), builds the rate-limiter path via
+        //    MakeRlPath() using the "serverless_rt_coordination_node_path" and
+        //    "serverless_rt_topic_resource_ru" keys. That RlPath propagates into the
+        //    write session actor's TRlContext, enabling RU quota acquisition/metering.
+        {
+            TClient alterClient(server.ServerSettings);
+            UNIT_ASSERT_VALUES_EQUAL(NMsgBusProxy::MSTATUS_OK,
+                alterClient.AlterUserAttributes("/", "Root",
+                    {
+                        {"serverless_rt_coordination_node_path", coordinationNodePath},
+                        {"serverless_rt_topic_resource_ru", resourcePath},
+                        {"cloud_id", DEFAULT_CLOUD_ID},
+                        {"database_id", "root"}
+                    }));
+            Sleep(TDuration::Seconds(5));
+        }
+
+        // 2. Create the coordination node and the metered resource with OnDemand billing.
+        {
+            NYdb::NCoordination::TClient coordinationClient(driver);
+            auto res = coordinationClient.CreateNode(coordinationNodePath).ExtractValueSync();
+            UNIT_ASSERT_C(res.IsSuccess(), res.GetIssues().ToString());
+        }
+        {
+            using namespace NYdb::NRateLimiter;
+            NYdb::NRateLimiter::TRateLimiterClient rateLimiterClient(driver);
+
+            const TString metricFieldsJson = TStringBuilder()
+                << R"({"version":"version",)"
+                << R"("schema":"ydb.serverless.requests.v1",)"
+                << R"("cloud_id":")" << DEFAULT_CLOUD_ID << R"(",)"
+                << R"("folder_id":")" << DEFAULT_FOLDER_ID << R"(",)"
+                << R"("resource_id":"/Root/)" << topicPath << R"(",)"
+                << R"("source_id":"mysource"})";
+
+            auto res = rateLimiterClient.CreateResource(coordinationNodePath, resourcePath,
+                TCreateResourceSettings()
+                    .MaxUnitsPerSecond(1000.0)
+                    // OnDemand accounting bucket capacity is
+                    //   OvershootCoefficient(default 1.1) * MaxUnitsPerSecond * PrefetchCoefficient.
+                    // For a root resource PrefetchCoefficient is NOT defaulted (only inherited from a
+                    // parent), so leaving it unset yields a zero-capacity OnDemand bucket and all the
+                    // consumption is classified as "overshoot" (which we don't meter) instead of
+                    // "ondemand" - no bill would ever be emitted. Set it explicitly (mirrors the
+                    // tablet-level reference test TestQuoterAccountResourcesOnDemand).
+                    .PrefetchCoefficient(300.0)
+                    // Accounting/billing time grid (mapped into the Kesus TAccountingConfig):
+                    //   ReportPeriod -> report_period_ms   (how often the quoter reports consumption)
+                    //   MeterPeriod  -> AccountPeriodMs     (accounting granularity)
+                    //   CollectPeriod-> collect_period_sec  (how far accounting lags wall clock)
+                    //   OnDemand.BillingPeriod -> billing_period_sec (bill cell width)
+                    // These MUST be small so that, within the test lifetime, accounting time
+                    // advances past whole billing cells and flushes bills while the session is
+                    // still reporting. The Kesus billing period is clamped to a minimum of 2s
+                    // (TimeGridForPeriod), so BillingPeriod must be >= 2s to avoid a grid reset.
+                    // Values mirror the reference tablet test TestQuoterAccountResourcesOnDemand.
+                    .MeteringConfig(TMeteringConfig()
+                        .Enabled(true)
+                        .ReportPeriod(std::chrono::milliseconds(1000))
+                        .MeterPeriod(std::chrono::milliseconds(1000))
+                        .CollectPeriod(std::chrono::seconds(2))
+                        .OnDemand(TMetric()
+                            .Enabled(true)
+                            .BillingPeriod(std::chrono::seconds(2))
+                            .MetricFieldsJson(metricFieldsJson))
+                        .Provisioned(TMetric()
+                            .Enabled(true)
+                            .BillingPeriod(std::chrono::seconds(2))
+                            .MetricFieldsJson(metricFieldsJson))
+                        .Overshoot(TMetric()
+                            .Enabled(true)
+                            .BillingPeriod(std::chrono::seconds(2))
+                            .MetricFieldsJson(metricFieldsJson)))
+            ).ExtractValueSync();
+            UNIT_ASSERT_C(res.IsSuccess(), res.GetIssues().ToString());
+            Sleep(TDuration::Seconds(5));
+        }
+
+        // 3. Create a topic that meters in request units.
+        {
+            using namespace NYdb::NTopic;
+            auto topicClient = TTopicClient(driver);
+            auto res = topicClient.CreateTopic(topicPath, TCreateTopicSettings()
+                .MeteringMode(EMeteringMode::RequestUnits)
+                .BeginAddConsumer("reader").EndAddConsumer()
+            ).ExtractValueSync();
+            UNIT_ASSERT_C(res.IsSuccess(), res.GetIssues().ToString());
+        }
+        server.WaitInit(topicPath);
+
+        // 4. Write data to consume request units (WRITE_BLOCK_SIZE == 4KB per RU).
+        //    Spread the writes over many accounting/billing periods (with pauses between
+        //    batches) so the Kesus OnDemand accounting history accumulates non-zero
+        //    consumption across several complete billing periods.
+        //
+        //    IMPORTANT timing subtlety: the Kesus accounting lags real time by CollectPeriod
+        //    (2s), and TBillingMetric::SendBill (rate_accounting.cpp) only flushes an
+        //    accumulated 2s billing cell once accounting time advances into a *strictly
+        //    later* cell. The resource stops ticking its accounting as soon as the write
+        //    session disconnects, so the tail periods never flush. We therefore keep the
+        //    session writing across enough billing periods that earlier cells are flushed
+        //    *while the session is still active*.
+        const ui32 numBatches = 4;
+         using namespace NYdb::NTopic;
+        auto topicClient = TTopicClient(driver);
+        TWriteSessionSettings wSettings;
+        wSettings.Path(topicPath);
+        wSettings.ProducerId("srcId");
+        wSettings.DirectWriteToPartition(false);
+        wSettings.Codec(ECodec::RAW);
+        auto writer = topicClient.CreateSimpleBlockingWriteSession(wSettings);
+        Sleep(TDuration::MilliSeconds(5000));
+        for (ui32 batch = 0; batch < numBatches; ++batch) {
+            TString payload = NUnitTest::RandomString(5_KB, std::rand());
+            Sleep(TDuration::MilliSeconds(500));
+
+            UNIT_ASSERT(writer->Write(payload));
+        }
+        Sleep(TDuration::Seconds(2));
+
+        // 5. Read data back.
+        //    Billing on the read path is driven by TReadSessionActor via NPQ::TRlHelpers:
+        //    it acquires init quota (IsQuotaRequired) and per-response data quota
+        //    (CalcRuConsumption + MaybeRequestQuota), which reports RU consumption to the
+        //    same Kesus resource used for writes (serverless_rt_topic_resource_ru).
+        //
+        //    Same timing subtlety as writes: the read-consumption cells only flush once
+        //    accounting time advances into a strictly later billing cell *while the resource
+        //    is still active/reporting*. A tight read burst followed by an immediate session
+        //    close would leave the read cells unaccounted. We therefore keep the read session
+        //    open and pace the reads across several billing periods so earlier read cells are
+        //    flushed while the session is still alive.
+
+        TReadSessionSettings rSettings;
+        rSettings.ConsumerName("reader").AppendTopics({topicPath});
+        auto readSession = topicClient.CreateReadSession(rSettings);
+
+        ui32 totalMessages = 0;
+        Cerr << "Start reads" << Endl;
+        while (totalMessages < numBatches) {
+            auto ev = readSession->GetEvent(true);
+            UNIT_ASSERT(ev.has_value());
+
+            auto spsEv = std::get_if<NYdb::NTopic::TReadSessionEvent::TStartPartitionSessionEvent>(&*ev);
+            if (spsEv) {
+                spsEv->Confirm();
+                Cerr << "Got start stream event" << Endl;
+                continue;
+            }
+            auto dataEv = std::get_if<NYdb::NTopic::TReadSessionEvent::TDataReceivedEvent>(&*ev);
+            UNIT_ASSERT(dataEv);
+            const auto& messages = dataEv->GetMessages();
+            totalMessages += messages.size();
+            Cerr << "Got data event with total " << messages.size() << " messages, current total messages: " << totalMessages << Endl;
+        }
+
+        Sleep(TDuration::Seconds(5));
+
+        // 6. Read the metering file and find our billing record.
+        //    The metering writer actor (registered via SetMeteringFilePath) writes each
+        //    TEvWriteMeteringJson as a single JSON line to the file.
+        if (meteringFile->IsOpen()) {
+            meteringFile->Flush();
+            meteringFile->Close();
+        }
+        auto input = TFileInput(TFile(meteringFile->Name(), RdOnly | OpenExisting));
+
+        TString line;
+        bool found = false;
+        while (input.ReadLine(line)) {
+            Cerr << "Metering file line: " << line << Endl;
+            NJson::TJsonValue lineJson;
+            if (!NJson::ReadJsonTree(line, &lineJson)) {
+                continue;
+            }
+            auto& map = lineJson.GetMap();
+            if (map.contains("schema") &&
+                map.at("schema").GetString() == "ydb.serverless.requests.v1") {
+
+                UNIT_ASSERT_C(!line.empty(), "No billing record with schema 'ydb.serverless.requests.v1' found in the metering file");
+                Cerr << "Captured bill record: " << line << Endl;
+
+                NJson::TJsonValue json;
+                UNIT_ASSERT(NJson::ReadJsonTree(line, &json));
+
+                UNIT_ASSERT_VALUES_EQUAL(json["schema"].GetString(), "ydb.serverless.requests.v1");
+                UNIT_ASSERT_VALUES_EQUAL(json["cloud_id"].GetString(), DEFAULT_CLOUD_ID);
+                UNIT_ASSERT_VALUES_EQUAL(json["folder_id"].GetString(), DEFAULT_FOLDER_ID);
+                UNIT_ASSERT_VALUES_EQUAL(json["resource_id"].GetString(), TString("/Root/") + topicPath);
+                UNIT_ASSERT_VALUES_EQUAL(json["source_id"].GetString(), "mysource");
+                UNIT_ASSERT_VALUES_EQUAL(json["usage"]["unit"].GetString(), "request_unit");
+                UNIT_ASSERT_C(json["usage"]["quantity"].GetInteger() > 0,
+                    "Expected a positive billed quantity, got: " << line);
+                found = true;
+            }
+        }
+        UNIT_ASSERT_C(found, "No billing record with schema 'ydb.serverless.requests.v1' found in the metering file");
+
+        writer->Close(TDuration::Seconds(30));
+    }
+
+    Y_UNIT_TEST(ConsumerAdvancedMonitoringSettings) {
+        TServerSettings settings = PQSettings(0);
+        {
+            settings.PQConfig.AddClientServiceType()->SetName("MyGreatType");
+            settings.PQConfig.AddClientServiceType()->SetName("AnotherType");
+            settings.PQConfig.AddClientServiceType()->SetName("SecondType");
+        }
+        NPersQueue::TTestServer server(settings);
+        server.EnableLogs({ NKikimrServices::PERSQUEUE });
+        std::unique_ptr<Ydb::PersQueue::V1::PersQueueService::Stub> pqStub;
+        {
+            std::shared_ptr<grpc::Channel> channel = grpc::CreateChannel("localhost:" + ToString(server.GrpcPort), grpc::InsecureChannelCredentials());
+            pqStub = Ydb::PersQueue::V1::PersQueueService::NewStub(channel);
+        }
+        {
+            CreateTopicRequest request;
+            CreateTopicResponse response;
+            request.set_path("/Root/PQ/rt3.dc1--acc--some-topic");
+            auto props = request.mutable_settings();
+            props->set_partitions_count(1);
+            props->set_supported_format(Ydb::PersQueue::V1::TopicSettings::FORMAT_BASE);
+            props->set_retention_period_ms(TDuration::Days(1).MilliSeconds());
+            {
+                auto& attributes = *props->mutable_attributes();
+                NJson::TJsonMap consumers;
+                consumers["consumer2"]["metrics_level"] = 2;
+                consumers["consumer2"]["monitoring_project_id"] = "project2";
+                consumers["consumer3"]["metrics_level"] = 3;
+                consumers["consumer3"]["monitoring_project_id"] = "project3";
+                attributes["_advanced_monitoring"] = WriteJson(consumers, false, false, true);
+            }
+            {
+                auto rr = props->add_read_rules();
+                rr->set_supported_format(Ydb::PersQueue::V1::TopicSettings::Format(1));
+                rr->set_consumer_name("consumer1");
+            }
+            {
+                auto rr = props->add_read_rules();
+                rr->set_supported_format(Ydb::PersQueue::V1::TopicSettings::Format(1));
+                rr->set_consumer_name("consumer2");
+            }
+            {
+                auto rr = props->add_read_rules();
+                rr->set_supported_format(Ydb::PersQueue::V1::TopicSettings::Format(1));
+                rr->set_consumer_name("consumer3");
+            }
+            grpc::ClientContext rcontext;
+            auto status = pqStub->CreateTopic(&rcontext, request, &response);
+            UNIT_ASSERT(status.ok());
+            CreateTopicResult res;
+            response.operation().result().UnpackTo(&res);
+            Cerr << response << "\n" << res << "\n";
+            UNIT_ASSERT_VALUES_EQUAL(response.operation().status(), Ydb::StatusIds::SUCCESS);
+        }
+        {
+            auto res = server.AnnoyingClient->DescribeTopic({"rt3.dc1--acc--some-topic"});
+            Cerr << res.DebugString();
+            for (const auto& consumer : res.GetTopicInfo().at(0).GetConfig().GetConsumers()) {
+                if (consumer.GetName() == "consumer1") {
+                    UNIT_ASSERT(!consumer.HasMetricsLevel());
+                    UNIT_ASSERT(!consumer.HasMonitoringProjectId());
+                } else if (consumer.GetName() == "consumer2") {
+                    UNIT_ASSERT_VALUES_EQUAL(consumer.GetMetricsLevel(), 2);
+                    UNIT_ASSERT_VALUES_EQUAL(consumer.GetMonitoringProjectId(), "project2");
+                } else if (consumer.GetName() == "consumer3") {
+                    UNIT_ASSERT_VALUES_EQUAL(consumer.GetMetricsLevel(), 3);
+                    UNIT_ASSERT_VALUES_EQUAL(consumer.GetMonitoringProjectId(), "project3");
+                } else {
+                    UNIT_FAIL("Unknown consumer " << consumer.GetName());
+                }
+            }
+            UNIT_ASSERT_VALUES_EQUAL(res.GetTopicInfo().at(0).GetConfig().ConsumersSize(), 3);
+        }
+        // remove consumer2 from adv settings
+        {
+            AlterTopicRequest request;
+            AlterTopicResponse response;
+            request.set_path("/Root/PQ/rt3.dc1--acc--some-topic");
+            auto props = request.mutable_settings();
+            props->set_partitions_count(1);
+            props->set_supported_format(Ydb::PersQueue::V1::TopicSettings::FORMAT_BASE);
+            props->set_retention_period_ms(TDuration::Days(1).MilliSeconds());
+            {
+                auto& attributes = *props->mutable_attributes();
+                NJson::TJsonMap consumers;
+                consumers["consumer3"]["metrics_level"] = 2;
+                consumers["consumer3"]["monitoring_project_id"] = "new-project3";
+                attributes["_advanced_monitoring"] = WriteJson(consumers, false, false, true);
+            }
+            {
+                auto rr = props->add_read_rules();
+                rr->set_supported_format(Ydb::PersQueue::V1::TopicSettings::Format(1));
+                rr->set_consumer_name("consumer1");
+            }
+            {
+                auto rr = props->add_read_rules();
+                rr->set_supported_format(Ydb::PersQueue::V1::TopicSettings::Format(1));
+                rr->set_consumer_name("consumer2");
+            }
+            {
+                auto rr = props->add_read_rules();
+                rr->set_supported_format(Ydb::PersQueue::V1::TopicSettings::Format(1));
+                rr->set_consumer_name("consumer3");
+            }
+            grpc::ClientContext rcontext;
+            auto status = pqStub->AlterTopic(&rcontext, request, &response);
+
+            UNIT_ASSERT(status.ok());
+            CreateTopicResult res;
+            response.operation().result().UnpackTo(&res);
+            Cerr << response << "\n" << res << "\n";
+            UNIT_ASSERT_VALUES_EQUAL(response.operation().status(), Ydb::StatusIds::SUCCESS);
+        }
+        {
+            auto res = server.AnnoyingClient->DescribeTopic({"rt3.dc1--acc--some-topic"});
+            Cerr << res.DebugString();
+            for (const auto& consumer : res.GetTopicInfo().at(0).GetConfig().GetConsumers()) {
+                if (consumer.GetName() == "consumer1" || consumer.GetName() == "consumer2") {
+                    UNIT_ASSERT(!consumer.HasMetricsLevel());
+                    UNIT_ASSERT(!consumer.HasMonitoringProjectId());
+
+                } else if (consumer.GetName() == "consumer3") {
+                    UNIT_ASSERT_VALUES_EQUAL(consumer.GetMetricsLevel(), 2);
+                    UNIT_ASSERT_VALUES_EQUAL(consumer.GetMonitoringProjectId(), "new-project3");
+                } else {
+                    UNIT_FAIL("Unknown consumer " << consumer.GetName());
+                }
+            }
+            UNIT_ASSERT_VALUES_EQUAL(res.GetTopicInfo().at(0).GetConfig().ConsumersSize(), 3);
+        }
+
+        struct TSubcase {
+            TStringBuf Json;
+            TStringBuf ErrorMessage;
+        };
+        const TSubcase invalidSubcases[]{
+            {R"-({"consumer4":{}})-", "unknown consumer"},
+            {R"-("json")-", "not a map"},
+            {R"-()-", "not a valid json"},
+            {R"-(json)-", "not a valid json"},
+            {R"-({"consumer3":{"metrics_level":"foo","monitoring_project_id":"bar"}})-", "non-integer"},
+            {R"-({"consumer3":{"metrics_level":3,"monitoring_project_id":null}})-", "non-string"},
+        };
+        for (const auto& subcase : invalidSubcases) {
+            AlterTopicRequest request;
+            AlterTopicResponse response;
+            request.set_path("/Root/PQ/rt3.dc1--acc--some-topic");
+            auto props = request.mutable_settings();
+            props->set_partitions_count(1);
+            props->set_supported_format(Ydb::PersQueue::V1::TopicSettings::FORMAT_BASE);
+            props->set_retention_period_ms(TDuration::Days(1).MilliSeconds());
+            {
+                auto& attributes = *props->mutable_attributes();
+                attributes["_advanced_monitoring"] = subcase.Json;
+            }
+            {
+                auto rr = props->add_read_rules();
+                rr->set_supported_format(Ydb::PersQueue::V1::TopicSettings::Format(1));
+                rr->set_consumer_name("consumer1");
+            }
+
+            grpc::ClientContext rcontext;
+            auto status = pqStub->AlterTopic(&rcontext, request, &response);
+
+            UNIT_ASSERT_C(status.ok(), subcase.Json);
+            CreateTopicResult res;
+            response.operation().result().UnpackTo(&res);
+            Cerr << response << "\n" << res << "\n";
+            UNIT_ASSERT_VALUES_EQUAL_C(response.operation().status(), Ydb::StatusIds::BAD_REQUEST, subcase.Json);
+            UNIT_ASSERT_STRING_CONTAINS_C(response.operation().issues(0).message(), subcase.ErrorMessage, subcase.Json);
+        }
+    }
+
     Y_UNIT_TEST(TClusterTrackerTest) {
         APITestSetup setup{TEST_CASE_NAME};
         setup.GetPQConfig().SetClustersUpdateTimeoutSec(0);
@@ -6532,7 +8049,7 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
                     .ReadOnlyOriginal(true)
             );
 
-            TMaybe<NYdb::NPersQueue::TReadSessionEvent::TEvent> event = reader->GetEvent(true, 1);
+            std::optional<NYdb::NPersQueue::TReadSessionEvent::TEvent> event = reader->GetEvent(true, 1);
             auto createStream = std::get_if<NYdb::NPersQueue::TReadSessionEvent::TCreatePartitionStreamEvent>(&*event);
             UNIT_ASSERT(createStream);
             TString stepDescription = TStringBuilder() << "create stream for partition=" << partition
@@ -6580,7 +8097,7 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
             auto ct = std::get_if<NYdb::NPersQueue::TWriteSessionEvent::TReadyToAcceptEvent >(&*ev);
             UNIT_ASSERT(ct);
             writer->Write(std::move(ct->ContinuationToken), "1234567890");
-            UNIT_ASSERT(ev.Defined());
+            UNIT_ASSERT(ev.has_value());
             while(true) {
                 ev = writer->GetEvent(true);
                 auto ack = std::get_if<NYdb::NPersQueue::TWriteSessionEvent::TAcksEvent>(&*ev);
@@ -6622,14 +8139,14 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
         auto reader = CreateReader(
             *driver,
             NYdb::NPersQueue::TReadSessionSettings()
-                .AppendTopics(topic)
+                .AppendTopics(std::string{topic})
                 .ConsumerName("shared/user")
                 .ReadOnlyOriginal(true)
         );
 
 
         {
-            TMaybe<NYdb::NPersQueue::TReadSessionEvent::TEvent> event = reader->GetEvent(true, 1);
+            std::optional<NYdb::NPersQueue::TReadSessionEvent::TEvent> event = reader->GetEvent(true, 1);
             auto createStream = std::get_if<NYdb::NPersQueue::TReadSessionEvent::TCreatePartitionStreamEvent>(&*event);
             UNIT_ASSERT(createStream);
             Cerr << "Create stream event: " << createStream->DebugString() << Endl;
@@ -6638,7 +8155,7 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
         {
             auto future = reader->WaitEvent();
             UNIT_ASSERT(future.Wait(TDuration::Seconds(10)));
-            TMaybe<NYdb::NPersQueue::TReadSessionEvent::TEvent> event = reader->GetEvent(true, 1);
+            std::optional<NYdb::NPersQueue::TReadSessionEvent::TEvent> event = reader->GetEvent(true, 1);
             auto partitionStatus = std::get_if<NYdb::NPersQueue::TReadSessionEvent::TPartitionStreamStatusEvent>(&*event);
             UNIT_ASSERT(partitionStatus);
             Cerr << "partition status: " << partitionStatus->DebugString() << Endl;
@@ -6666,7 +8183,7 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
 
         THashSet<ui32> locksGot = {};
         while(locksGot.size() < 2) {
-            TMaybe<NYdb::NPersQueue::TReadSessionEvent::TEvent> event = reader->GetEvent(true, 1);
+            std::optional<NYdb::NPersQueue::TReadSessionEvent::TEvent> event = reader->GetEvent(true, 1);
             auto createStream = std::get_if<NYdb::NPersQueue::TReadSessionEvent::TCreatePartitionStreamEvent>(&*event);
             UNIT_ASSERT(createStream);
             Cerr << "Create stream event: " << createStream->DebugString() << Endl;
@@ -6688,7 +8205,7 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
         locksGot.clear();
         THashSet<ui32> releasesGot = {};
         while (locksGot.size() < 3) {
-            TMaybe<NYdb::NPersQueue::TReadSessionEvent::TEvent> event = reader2->GetEvent(true, 1);
+            std::optional<NYdb::NPersQueue::TReadSessionEvent::TEvent> event = reader2->GetEvent(true, 1);
             auto createStream = std::get_if<NYdb::NPersQueue::TReadSessionEvent::TCreatePartitionStreamEvent>(&*event);
             UNIT_ASSERT(createStream);
             Cerr << "Create stream event: " << createStream->DebugString() << Endl;
@@ -6705,7 +8222,7 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
         }
 
         while (!releasesGot.empty()) {
-            TMaybe<NYdb::NPersQueue::TReadSessionEvent::TEvent> event = reader->GetEvent(true, 1);
+            std::optional<NYdb::NPersQueue::TReadSessionEvent::TEvent> event = reader->GetEvent(true, 1);
             auto release = std::get_if<NYdb::NPersQueue::TReadSessionEvent::TDestroyPartitionStreamEvent>(&*event);
             UNIT_ASSERT(release);
             UNIT_ASSERT_VALUES_EQUAL(release->GetPartitionStream()->GetTopicPath(), topic);
@@ -6735,17 +8252,19 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
     }
 
     Y_UNIT_TEST(MessageMetadata) {
-        NPersQueue::TTestServer server;
-        server.CleverServer->GetRuntime()->GetAppData().FeatureFlags.SetEnableTopicMessageMeta(true);
-        TString topicFullName = "rt3.dc1--topic1";
-        auto driver = SetupTestAndGetDriver(server, topicFullName);
+        auto server = SetupLbFederationServerWithTopic("topic1", 1, {"user", "debug"});
+        const TString topicPath = "account/topic1";
 
-        auto topicClient = NYdb::NTopic::TTopicClient(*driver);
+        NYdb::TDriverConfig driverCfg;
+        driverCfg.SetEndpoint(TStringBuilder() << "localhost:" << server->GrpcPort).SetDatabase("/Root");
+        NYdb::TDriver driver(driverCfg);
 
-        NYdb::NTopic::TWriteSessionSettings wSettings {topicFullName, "srcId", "srcId"};
+        auto topicClient = NYdb::NTopic::TTopicClient(driver);
+
+        NYdb::NTopic::TWriteSessionSettings wSettings {topicPath, "srcId", "srcId"};
         wSettings.DirectWriteToPartition(false);
         auto writer = topicClient.CreateSimpleBlockingWriteSession(wSettings);
-        TVector<std::pair<TString, TString>> metadata = {{"key1", "val1"}, {"key2", "val2"}};
+        std::vector<std::pair<std::string, std::string>> metadata = {{"key1", "val1"}, {"key2", "val2"}};
         {
             auto message = NYdb::NTopic::TWriteMessage{"Somedata"}.MessageMeta(metadata);
             writer->Write(std::move(message));
@@ -6758,11 +8277,11 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
         writer->Write("Somedata3");
         writer->Close();
         NYdb::NTopic::TReadSessionSettings rSettings;
-        rSettings.ConsumerName("debug").AppendTopics({topicFullName});
+        rSettings.ConsumerName("debug").AppendTopics({topicPath});
         auto readSession = topicClient.CreateReadSession(rSettings);
 
         auto ev = readSession->GetEvent(true);
-        UNIT_ASSERT(ev.Defined());
+        UNIT_ASSERT(ev.has_value());
         auto spsEv = std::get_if<NYdb::NTopic::TReadSessionEvent::TStartPartitionSessionEvent>(&*ev);
         UNIT_ASSERT(spsEv);
         spsEv->Confirm();
@@ -6831,21 +8350,22 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
     }
 
     Y_UNIT_TEST(DisableDeduplication) {
-        NPersQueue::TTestServer server;
-        TString topicFullName = "rt3.dc1--topic1";
-        auto driver = SetupTestAndGetDriver(server, topicFullName, 3);
+        auto server = SetupLbFederationServerWithTopic("topic1", 3, {"user", "debug"});
+        const TString topicPath = "account/topic1";
 
-        auto topicClient = NYdb::NTopic::TTopicClient(*driver);
+        NYdb::TDriverConfig driverCfg;
+        driverCfg.SetEndpoint(TStringBuilder() << "localhost:" << server->GrpcPort).SetDatabase("/Root");
+        NYdb::TDriver driver(driverCfg);
+
+        auto topicClient = NYdb::NTopic::TTopicClient(driver);
         NYdb::NTopic::TWriteSessionSettings wSettings;
-        wSettings.Path(topicFullName).DeduplicationEnabled(false);
+        wSettings.Path(topicPath).DeduplicationEnabled(false);
         wSettings.DirectWriteToPartition(false);
 
         TVector<std::shared_ptr<NYdb::NTopic::ISimpleBlockingWriteSession>> writers;
-        for (auto i = 0u; i < 3; i++) {
+        for (auto i = 0u; i < 9; i++) {
             auto writer = topicClient.CreateSimpleBlockingWriteSession(wSettings);
-            for (auto j = 0u; j < 3; j++) {
-                writer->Write(TString("MyData") + ToString(i) + ToString(j));
-            }
+            writer->Write(TString("MyData") + ToString(i));
             writers.push_back(writer);
         }
 
@@ -6854,7 +8374,7 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
         }
 
         NYdb::NTopic::TReadSessionSettings rSettings;
-        rSettings.ConsumerName("debug").AppendTopics({topicFullName});
+        rSettings.ConsumerName("debug").AppendTopics({topicPath});
         auto readSession = topicClient.CreateReadSession(rSettings);
 
         THashSet<ui64> partitions;
@@ -6862,7 +8382,7 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
         Cerr << "Start reads\n";
         while(totalMessages < 9) {
             auto ev = readSession->GetEvent(true);
-            UNIT_ASSERT(ev.Defined());
+            UNIT_ASSERT(ev.has_value());
 
             auto spsEv = std::get_if<NYdb::NTopic::TReadSessionEvent::TStartPartitionSessionEvent>(&*ev);
             if (spsEv) {
@@ -6902,19 +8422,21 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
         NYdb::NPersQueue::TPersQueueClient persqueueClient(*driver);
         NYdb::NPersQueue::TReadSessionSettings settings;
 
-        settings.ConsumerName("shared/user").AppendTopics(SHORT_TOPIC_NAME).ReadOriginal({"dc1"});
+        settings.ConsumerName("shared/user").AppendTopics(std::string{SHORT_TOPIC_NAME}).ReadOriginal({"dc1"});
         settings.MaxMemoryUsageBytes(1_MB);
         settings.DisableClusterDiscovery(true);
 
         //
-        // the handler stores the number of messages in each call
+        // the handler updates the total number of messages
         //
-        std::vector<size_t> dataSizes;
+        size_t messageCount = 0;
 
         auto handler = [&](NYdb::NPersQueue::TReadSessionEvent::TDataReceivedEvent& event){
-            UNIT_ASSERT_LE(event.GetMessages().size(), 154);
+            const size_t batchSize = event.GetMessages().size();
 
-            dataSizes.push_back(event.GetMessages().size());
+            UNIT_ASSERT_LE(batchSize, 154);
+
+            messageCount += batchSize;
         };
         settings.EventHandlers_.SimpleDataHandlers(std::move(handler), true);
 
@@ -6941,10 +8463,11 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
         //
         // 700 messages of 2000 characters are transmitted
         //
+        const size_t totalMessageCount = 700;
         {
             auto writer = CreateSimpleWriter(*driver, SHORT_TOPIC_NAME, TStringBuilder() << "source" << 0, {}, TString("raw"));
 
-            for (ui32 i = 1; i <= 700; ++i) {
+            for (ui32 i = 1; i <= totalMessageCount; ++i) {
                 std::string message(2'000, 'x');
 
                 bool res = writer->Write(message, i);
@@ -6955,49 +8478,41 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
             UNIT_ASSERT(res);
         }
 
-        //
-        // auxiliary functions for decompressor and handler control
-        //
-        auto WaitTasks = [&](auto f, size_t c) {
-            while (f() < c) {
-                Sleep(TDuration::Seconds(1));
-            };
-        };
-        auto WaitPlannedTasks = [&](auto e, size_t count) {
-            WaitTasks([&]() { return e->GetPlannedCount(); }, count);
-        };
-        auto WaitExecutedTasks = [&](auto e, size_t count) {
-            WaitTasks([&]() { return e->GetExecutedCount(); }, count);
-        };
+        auto RunAllTasks = [&](auto e) {
+            size_t planned = e->GetFuncsCount();
+            size_t started = e->GetRunningCount() + e->GetExecutedCount();
 
-        auto RunTasks = [&](auto e, const std::vector<size_t>& tasks) {
-            size_t n = tasks.size();
-            WaitPlannedTasks(e, n);
-            size_t completed = e->GetExecutedCount();
+            if (planned <= started) {
+                return;
+            }
+
+            std::vector<size_t> tasks;
+            for (size_t task = started; task < planned; ++task) {
+                tasks.push_back(task);
+            }
+
             e->StartFuncs(tasks);
-            WaitExecutedTasks(e, completed + n);
+
+            while (e->GetExecutedCount() < planned) {
+                Sleep(TDuration::MilliSeconds(100));
+            }
         };
 
         //
         // run executors
         //
-        RunTasks(executor, {0}); // TCreatePartitionStreamEvent
+        while (messageCount < totalMessageCount) {
+            RunAllTasks(decompressor);
+            RunAllTasks(executor);
 
-        RunTasks(decompressor, {0});
-        RunTasks(executor, {1, 2});
+            Sleep(TDuration::MilliSeconds(100));
+        }
 
-        RunTasks(decompressor, {1});
-        RunTasks(executor, {3, 4});
-
-        RunTasks(decompressor, {2});
-        RunTasks(executor, {5, 6});
 
         //
         // all messages received
         //
-        UNIT_ASSERT_VALUES_EQUAL(dataSizes.size(), 6);
-        UNIT_ASSERT_VALUES_EQUAL(std::accumulate(dataSizes.begin(), dataSizes.end(), 0), 700);
-        UNIT_ASSERT_VALUES_EQUAL(*std::max_element(dataSizes.begin(), dataSizes.end()), 154);
+        UNIT_ASSERT_VALUES_EQUAL(messageCount, totalMessageCount);
 
         UNIT_ASSERT_VALUES_EQUAL(counters->MessagesInflight->Val(), 0);
         UNIT_ASSERT_VALUES_EQUAL(counters->BytesInflightUncompressed->Val(), 0);
@@ -7014,20 +8529,35 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
 
     Y_UNIT_TEST(ReadWithoutConsumerFederation) {
         const ui32 partititonsCount = 5;
-        const auto topic = "rt3.dc1--topic2";
+        const TString shortTopicName = "topic2";
+        const TString DbRoot = "/Root/LbAccount";
+        const TString Account = "account";
+        const TString DbPath = DbRoot + "/" + Account;
+        const TString fullTopicName = DbPath + "/" + shortTopicName;
+        const TString topicName = Account + "/" + shortTopicName;
 
-        TPersQueueV1TestServer server;
-        server.Server->AnnoyingClient->CreateTopic(topic, partititonsCount);
+        auto settings = PQSettings(0).SetDomainName("Root").SetNodeCount(1);
+        settings.PQConfig.MutablePQDiscoveryConfig()->SetLbUserDatabaseRoot(DbRoot);
+        settings.PQConfig.SetTestDatabaseRoot(DbRoot);
+        settings.PQConfig.SetTopicsAreFirstClassCitizen(false);
+
+        NPersQueue::TTestServer server(settings, true);
+        server.EnableLogs({ NKikimrServices::PQ_READ_PROXY, NKikimrServices::PQ_WRITE_PROXY });
+        server.AnnoyingClient->MkDir("/Root", "LbAccount");
+        server.AnnoyingClient->MkDir("/Root/LbAccount", "account");
+        server.AnnoyingClient->CreateTopicNoLegacy(fullTopicName, partititonsCount, true, true, "dc1", {"user", "test-consumer"}, "account");
+        server.WaitInit(topicName);
 
         NACLib::TDiffACL acl;
         acl.AddAccess(NACLib::EAccessType::Allow, NACLib::GenericFull, "user@" BUILTIN_ACL_DOMAIN);
-        server.Server->AnnoyingClient->ModifyACL("/Root/PQ", topic, acl.SerializeAsString());
+        server.AnnoyingClient->ModifyACL(DbPath, shortTopicName, acl.SerializeAsString());
 
+        NYdb::NPersQueue::TPersQueueClient persQueueClient(server.GetDriver());
         auto writeSettings = NYdb::NPersQueue::TWriteSessionSettings()
-            .Path(topic)
+            .Path(topicName)
             .MessageGroupId("src_id");
 
-        auto writer = server.PersQueueClient->CreateSimpleBlockingWriteSession(writeSettings);
+        auto writer = persQueueClient.CreateSimpleBlockingWriteSession(writeSettings);
 
         auto res = writer->Write("some_data");
         UNIT_ASSERT(res);
@@ -7036,10 +8566,11 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
         std::shared_ptr<grpc::Channel> Channel_;
         std::unique_ptr<Ydb::Topic::V1::TopicService::Stub> StubP_;
 
-        Channel_ = grpc::CreateChannel("localhost:" + ToString(server.Server->GrpcPort), grpc::InsecureChannelCredentials());
+        Channel_ = grpc::CreateChannel("localhost:" + ToString(server.GrpcPort), grpc::InsecureChannelCredentials());
         StubP_ = Ydb::Topic::V1::TopicService::NewStub(Channel_);
 
         grpc::ClientContext rcontext;
+        rcontext.AddMetadata("x-ydb-database", "/Root");
         rcontext.AddMetadata("x-ydb-auth-ticket", "user@" BUILTIN_ACL_DOMAIN);
         auto readStream = StubP_->StreamRead(&rcontext);
         UNIT_ASSERT(readStream);
@@ -7048,7 +8579,7 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
             Ydb::Topic::StreamReadMessage::FromClient  req;
             Ydb::Topic::StreamReadMessage::FromServer resp;
             auto topicReadSettings = req.mutable_init_request()->add_topics_read_settings();
-            topicReadSettings->set_path(topic);
+            topicReadSettings->set_path(topicName);
             for (ui32 i = 0; i < partititonsCount; i++) {
                 topicReadSettings->add_partition_ids(i);
             }
@@ -7322,7 +8853,6 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
         settings.PQConfig.SetTopicsAreFirstClassCitizen(true);
         settings.PQConfig.SetRoot("/Root");
         settings.PQConfig.SetDatabase("/Root");
-        settings.SetEnableTopicServiceTx(true);
         NPersQueue::TTestServer server{settings, true};
 
         server.EnableLogs({ NKikimrServices::PERSQUEUE }, NActors::NLog::PRI_INFO);
@@ -7411,5 +8941,312 @@ TPersQueueV1TestServer server{{.CheckACL=true, .NodeCount=1}};
         }
     }
 
+    void TestConsumerAvailabilityPeriod(bool setAvailabilityPeriod) {
+        TPersQueueV1TestServer server;
+        SET_LOCALS;
+        MAKE_INSECURE_STUB(Ydb::Topic::V1::TopicService);
+        server.EnablePQLogs({ NKikimrServices::PQ_METACACHE, NKikimrServices::PQ_READ_PROXY });
+        server.EnablePQLogs({ NKikimrServices::KQP_PROXY }, NLog::EPriority::PRI_EMERG);
+        server.EnablePQLogs({ NKikimrServices::FLAT_TX_SCHEMESHARD }, NLog::EPriority::PRI_ERROR);
+        server.EnablePQLogs({ NKikimrServices::PERSQUEUE }, NLog::EPriority::PRI_DEBUG);
+
+        auto TopicStubP_ = Ydb::Topic::V1::TopicService::NewStub(Channel_);
+
+        {
+            Ydb::Topic::CreateTopicRequest request;
+            Ydb::Topic::CreateTopicResponse response;
+            request.set_path(TStringBuilder() << "/Root/PQ/rt3.dc1--acc--topic2");
+
+            request.set_retention_storage_mb(1);
+
+            request.mutable_supported_codecs()->add_codecs(Ydb::Topic::CODEC_RAW);
+            request.mutable_supported_codecs()->add_codecs(Ydb::Topic::CODEC_GZIP);
+
+            grpc::ClientContext rcontext;
+
+            auto status = TopicStubP_->CreateTopic(&rcontext, request, &response);
+
+            UNIT_ASSERT(status.ok());
+            Ydb::Topic::CreateTopicResult res;
+            response.operation().result().UnpackTo(&res);
+            Cerr << response << "\n" << res << "\n";
+            UNIT_ASSERT_VALUES_EQUAL(response.operation().status(), Ydb::StatusIds::SUCCESS);
+
+            server.Server->AnnoyingClient->WaitTopicInit("acc/topic2");
+            server.Server->AnnoyingClient->AddTopic("acc/topic2");
+        }
+
+        {
+            using namespace NYdb::NTopic;
+            auto settings = TDescribeTopicSettings().IncludeStats(true);
+            auto client = TTopicClient(server.Server->GetDriver());
+            auto desc = client.DescribeTopic("/Root/PQ/rt3.dc1--acc--topic2", settings)
+                            .ExtractValueSync()
+                            .GetTopicDescription();
+            Cerr << ">>>Describe result: partitions count is " << desc.GetTotalPartitionsCount() << Endl;
+            for (const auto& partInfo: desc.GetPartitions()) {
+                Cerr << ">>>Describe result: partition id = " << partInfo.GetPartitionId() << ", ";
+                auto stats = partInfo.GetPartitionStats();
+                UNIT_ASSERT(stats.has_value());
+                Cerr << "offsets: [ " << stats.value().GetStartOffset() << ", " << stats.value().GetEndOffset() << " )" << Endl;
+            }
+
+            TAlterTopicSettings alterSettings;
+
+            alterSettings
+                .BeginAddConsumer("first-consumer")
+                .EndAddConsumer();
+            if (setAvailabilityPeriod) {
+                alterSettings.BeginAddConsumer("second-consumer").AvailabilityPeriod(TDuration::Hours(2)).EndAddConsumer();
+            } else {
+                alterSettings.BeginAddConsumer("second-consumer").EndAddConsumer();
+            }
+            auto res = client.AlterTopic("/Root/PQ/rt3.dc1--acc--topic2", alterSettings);
+            res.Wait();
+            Cerr << res.GetValue().IsSuccess() << " " << res.GetValue().GetIssues().ToString() << "\n";
+            UNIT_ASSERT(res.GetValue().IsSuccess());
+        }
+
+        const int nMsg = 40;
+        auto driver = pqClient->GetDriver();
+        {
+            auto writer = CreateSimpleWriter(*driver, "acc/topic2", "source", /*partitionGroup=*/{}, /*codec=*/{"raw"});
+            TString blob{1_MB, 'x'};
+            for (int i = 1; i <= nMsg; ++i) {
+                bool res = writer->Write(blob + ToString(i), i);
+                UNIT_ASSERT(res);
+            }
+
+            bool res = writer->Close(TDuration::Seconds(10));
+            UNIT_ASSERT(res);
+        }
+        for (bool pass = false; !pass; ) {
+            pass = true;
+            Sleep(TDuration::MilliSeconds(100));
+            using namespace NYdb::NTopic;
+            auto settings = TDescribeTopicSettings().IncludeStats(true);
+            auto client = TTopicClient(server.Server->GetDriver());
+            auto desc = client.DescribeTopic("/Root/PQ/rt3.dc1--acc--topic2", settings)
+                            .ExtractValueSync()
+                            .GetTopicDescription();
+
+            UNIT_ASSERT_VALUES_EQUAL(desc.GetConsumers().size(), 2);
+            for (const auto& consumer: desc.GetConsumers()) {
+                TDuration expected = (consumer.GetConsumerName().ends_with("second-consumer") && setAvailabilityPeriod) ? TDuration::Hours(2) : TDuration::Zero();
+                UNIT_ASSERT_VALUES_EQUAL_C(consumer.GetAvailabilityPeriod().MicroSeconds(), expected.MicroSeconds(), LabeledOutput(consumer.GetConsumerName(), setAvailabilityPeriod));
+            }
+
+            Cerr << ">>>Describe result: partitions count is " << desc.GetTotalPartitionsCount() << Endl;
+            for (const auto& partInfo: desc.GetPartitions()) {
+                Cerr << ">>>Describe result: partition id = " << partInfo.GetPartitionId() << ", ";
+                auto stats = partInfo.GetPartitionStats();
+                UNIT_ASSERT(stats.has_value());
+                Cerr << "offsets: [ " << stats.value().GetStartOffset() << ", " << stats.value().GetEndOffset() << " )" << Endl;
+
+                if (setAvailabilityPeriod) {
+                    UNIT_ASSERT_VALUES_EQUAL(stats.value().GetStartOffset(), 0);
+                    UNIT_ASSERT_VALUES_EQUAL(stats.value().GetEndOffset(), nMsg);
+                } else {
+                    if (stats.value().GetStartOffset() == 0) {
+                        pass = false;
+                        continue; // wait for compaction & cleanup
+                    }
+                    UNIT_ASSERT_GT(stats.value().GetStartOffset(),  0);
+                    UNIT_ASSERT_VALUES_EQUAL(stats.value().GetEndOffset(), nMsg);
+                }
+            }
+        }
+        {
+            using namespace NYdb::NTopic;
+            auto settings = TDescribeTopicSettings().IncludeStats(true);
+            auto client = TTopicClient(server.Server->GetDriver());
+            TAlterTopicSettings alterSettings;
+
+            alterSettings
+                .BeginAlterConsumer().ConsumerName("first-consumer").SetAvailabilityPeriod(TDuration::Hours(20)).EndAlterConsumer()
+                .BeginAlterConsumer().ConsumerName("second-consumer").SetAvailabilityPeriod(TDuration::Zero()).EndAlterConsumer();
+
+            auto res = client.AlterTopic("/Root/PQ/rt3.dc1--acc--topic2", alterSettings);
+            res.Wait();
+            Cerr << res.GetValue().IsSuccess() << " " << res.GetValue().GetIssues().ToString() << "\n";
+            UNIT_ASSERT(res.GetValue().IsSuccess());
+        }
+        {
+            using namespace NYdb::NTopic;
+            auto settings = TDescribeTopicSettings().IncludeStats(true);
+            auto client = TTopicClient(server.Server->GetDriver());
+            auto desc = client.DescribeTopic("/Root/PQ/rt3.dc1--acc--topic2", settings)
+                            .ExtractValueSync()
+                            .GetTopicDescription();
+
+            UNIT_ASSERT_VALUES_EQUAL(desc.GetConsumers().size(), 2);
+            for (const auto& consumer: desc.GetConsumers()) {
+                TDuration expected = consumer.GetConsumerName().ends_with("first-consumer") ? TDuration::Hours(20) : TDuration::Zero();
+                UNIT_ASSERT_VALUES_EQUAL_C(consumer.GetAvailabilityPeriod().MicroSeconds(), expected.MicroSeconds(), LabeledOutput(consumer.GetConsumerName(), setAvailabilityPeriod));
+            }
+        }
+        {
+            using namespace NYdb::NTopic;
+            auto settings = TDescribeTopicSettings().IncludeStats(true);
+            auto client = TTopicClient(server.Server->GetDriver());
+            TAlterTopicSettings alterSettings;
+
+            alterSettings
+                .BeginAlterConsumer().ConsumerName("first-consumer").SetAvailabilityPeriod(TDuration::Hours(20)).SetImportant(true).EndAlterConsumer();
+
+            auto res = client.AlterTopic("/Root/PQ/rt3.dc1--acc--topic2", alterSettings);
+            res.Wait();
+            Cerr << res.GetValue().IsSuccess() << " " << res.GetValue().GetIssues().ToString() << "\n";
+            UNIT_ASSERT(!res.GetValue().IsSuccess());
+        }
+    }
+
+    Y_UNIT_TEST(ConsumerAvailabilityPeriod) {
+        TestConsumerAvailabilityPeriod(true);
+    }
+
+    Y_UNIT_TEST(ConsumerAvailabilityPeriodCleanup) {
+        TestConsumerAvailabilityPeriod(false);
+    }
+
+    Y_UNIT_TEST(ReadCommitMaxOffset) {
+        NPersQueue::TTestServer server;
+        TString topicFullName = "rt3.dc1--topic1";
+        auto driver = SetupTestAndGetDriver(server, topicFullName);
+
+        auto topicClient = NYdb::NTopic::TTopicClient(*driver);
+
+        NYdb::NTopic::TWriteSessionSettings wSettings {topicFullName, "srcId", "srcId"};
+        wSettings.DirectWriteToPartition(false);
+        auto writer = topicClient.CreateSimpleBlockingWriteSession(wSettings);
+        for (int i = 1; i <= 10; ++i) {
+            auto res = writer->Write("Message_" + ToString(i), i);
+            UNIT_ASSERT(res);
+        }
+        auto res = writer->Close();
+        UNIT_ASSERT(res);
+
+        {
+            std::optional<ui64> readOffset = 4;
+            std::optional<ui64> commitOffset = 3;
+            std::optional<ui64> maxOffset = 6; //inclusive
+            NYdb::NTopic::TReadSessionSettings rSettings;
+            rSettings.ConsumerName("debug").AppendTopics({topicFullName});
+            auto readSession = topicClient.CreateReadSession(rSettings);
+
+            auto ev = readSession->GetEvent(true);
+            UNIT_ASSERT(ev.has_value());
+            auto spsEv = std::get_if<NYdb::NTopic::TReadSessionEvent::TStartPartitionSessionEvent>(&*ev);
+            UNIT_ASSERT(spsEv);
+            spsEv->Confirm(readOffset, commitOffset, maxOffset);
+            ev = readSession->GetEvent(true);
+            auto dataEv = std::get_if<NYdb::NTopic::TReadSessionEvent::TDataReceivedEvent>(&*ev);
+            UNIT_ASSERT(dataEv);
+            const auto& messages = dataEv->GetMessages();
+            UNIT_ASSERT_VALUES_EQUAL(messages.size(), 3);
+            UNIT_ASSERT_VALUES_EQUAL(messages[0].GetData(), "Message_5");
+            UNIT_ASSERT_VALUES_EQUAL(messages[1].GetData(), "Message_6");
+            UNIT_ASSERT_VALUES_EQUAL(messages[2].GetData(), "Message_7");
+
+            UNIT_ASSERT(!readSession->WaitEvent().Wait(TDuration::Seconds(3))); // no more events
+        }
+
+    }
+
+    Y_UNIT_TEST(ReadCommitMaxOffsetWithGaps) {
+        NPersQueue::TTestServer server;
+        TString topicFullName = "rt3.dc1--topic1";
+        auto driver = SetupTestAndGetDriver(server, topicFullName);
+
+        auto topicClient = NYdb::NTopic::TTopicClient(*driver);
+
+        /*NYdb::NTopic::TWriteSessionSettings wSettings {topicFullName, "srcId", "srcId"};
+        wSettings.DirectWriteToPartition(false);
+        auto writer = topicClient.CreateSimpleBlockingWriteSession(wSettings);
+        for (int i = 1; i <= 10; ++i) {
+            auto res = writer->Write("Message_" + ToString(i), i);
+            UNIT_ASSERT(res);
+        }
+        auto res = writer->Close();
+        UNIT_ASSERT(res);
+        */
+
+        auto write = [&](TRequestWritePQ& writeRequest, const TString& data, const TMaybe<i64>& writeOffset = {}) {
+            NKikimrPQClient::TDataChunk dataChunk;
+            dataChunk.SetCreateTime(42);
+            dataChunk.SetSeqNo(++writeRequest.SeqNo);
+            dataChunk.SetData(data);
+
+            TString serialized;
+            UNIT_ASSERT(dataChunk.SerializeToString(&serialized));
+            server.AnnoyingClient->WriteToPQ(writeRequest, serialized, "", NMsgBusProxy::MSTATUS_OK, NMsgBusProxy::MSTATUS_OK, writeOffset);
+        };
+
+        TRequestWritePQ writeRequest = {topicFullName, 0, NPQ::NSourceIdEncoding::Decode("srcId"), 0};
+        // write 10 messages
+        for (ui64 i = 1; i <= 10; ++i) {
+            write(writeRequest, "Message_" + ToString(i));
+        }
+
+        // write one message with offset gap - offset = 20
+        write(writeRequest, "Message_21", 20);
+        //  write the rest
+        for (ui64 i = 22; i <= 30; ++i) {
+            write(writeRequest, "Message_" + ToString(i));
+        }
+
+        {
+            // set max offset in the gap - should get back messages 8, 9, 10
+            std::optional<ui64> readOffset = 7;
+            std::optional<ui64> commitOffset = 3;
+            std::optional<ui64> maxOffset = 12; //inclusive
+            NYdb::NTopic::TReadSessionSettings rSettings;
+            rSettings.ConsumerName("debug").AppendTopics({topicFullName});
+            auto readSession = topicClient.CreateReadSession(rSettings);
+
+            auto ev = readSession->GetEvent(true);
+            UNIT_ASSERT(ev.has_value());
+            auto spsEv = std::get_if<NYdb::NTopic::TReadSessionEvent::TStartPartitionSessionEvent>(&*ev);
+            UNIT_ASSERT(spsEv);
+            spsEv->Confirm(readOffset, commitOffset, maxOffset);
+            ev = readSession->GetEvent(true);
+            auto dataEv = std::get_if<NYdb::NTopic::TReadSessionEvent::TDataReceivedEvent>(&*ev);
+            UNIT_ASSERT(dataEv);
+            const auto& messages = dataEv->GetMessages();
+            UNIT_ASSERT_VALUES_EQUAL(messages.size(), 3);
+            UNIT_ASSERT_VALUES_EQUAL(messages[0].GetData(), "Message_8");
+            UNIT_ASSERT_VALUES_EQUAL(messages[1].GetData(), "Message_9");
+            UNIT_ASSERT_VALUES_EQUAL(messages[2].GetData(), "Message_10");
+
+            UNIT_ASSERT(!readSession->WaitEvent().Wait(TDuration::Seconds(3))); // no more events
+        }
+
+        {
+            // set read offset before the gap, max offset after the gap - should get back messages 10, 21, 22
+            std::optional<ui64> readOffset = 9;
+            std::optional<ui64> commitOffset = 3;
+            std::optional<ui64> maxOffset = 21; //inclusive
+            NYdb::NTopic::TReadSessionSettings rSettings;
+            rSettings.ConsumerName("debug").AppendTopics({topicFullName});
+            auto readSession = topicClient.CreateReadSession(rSettings);
+
+            auto ev = readSession->GetEvent(true);
+            UNIT_ASSERT(ev.has_value());
+            auto spsEv = std::get_if<NYdb::NTopic::TReadSessionEvent::TStartPartitionSessionEvent>(&*ev);
+            UNIT_ASSERT(spsEv);
+            spsEv->Confirm(readOffset, commitOffset, maxOffset);
+            ev = readSession->GetEvent(true);
+            auto dataEv = std::get_if<NYdb::NTopic::TReadSessionEvent::TDataReceivedEvent>(&*ev);
+            UNIT_ASSERT(dataEv);
+            const auto& messages = dataEv->GetMessages();
+            UNIT_ASSERT_VALUES_EQUAL(messages.size(), 3);
+            UNIT_ASSERT_VALUES_EQUAL(messages[0].GetData(), "Message_10");
+            UNIT_ASSERT_VALUES_EQUAL(messages[1].GetData(), "Message_21");
+            UNIT_ASSERT_VALUES_EQUAL(messages[2].GetData(), "Message_22");
+
+            UNIT_ASSERT(!readSession->WaitEvent().Wait(TDuration::Seconds(3))); // no more events
+        }
+
+    }
 }
 }

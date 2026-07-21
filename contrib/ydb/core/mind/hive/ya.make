@@ -5,10 +5,13 @@ SRCS(
     balancer.h
     boot_queue.cpp
     boot_queue.h
+    bridge_pile_info.h
+    compact_actor.cpp
     data_center_info.h
     domain_info.cpp
     domain_info.h
     drain.cpp
+    drain.h
     fill.cpp
     hive.cpp
     hive.h
@@ -30,6 +33,7 @@ SRCS(
     node_info.cpp
     node_info.h
     object_distribution.h
+    reassign_actor.cpp
     sequencer.cpp
     sequencer.h
     follower_group.h
@@ -53,11 +57,13 @@ SRCS(
     tx__delete_tablet.cpp
     tx__delete_tablet_result.cpp
     tx__disconnect_node.cpp
+    tx__generate_data_ut.cpp
     tx__init_scheme.cpp
     tx__kill_node.cpp
     tx__load_everything.cpp
     tx__lock_tablet.cpp
     tx__process_boot_queue.cpp
+    tx__process_metrics.cpp
     tx__process_pending_operations.cpp
     tx__reassign_groups.cpp
     tx__reassign_groups_on_decommit.cpp
@@ -70,6 +76,8 @@ SRCS(
     tx__restart_tablet.cpp
     tx__seize_tablets.cpp
     tx__seize_tablets_reply.cpp
+    tx__set_down.cpp
+    tx__shrink_pool.cpp
     tx__resume_tablet.cpp
     tx__start_tablet.cpp
     tx__status.cpp
@@ -80,6 +88,7 @@ SRCS(
     tx__unlock_tablet.cpp
     tx__update_dc_followers.cpp
     tx__update_domain.cpp
+    tx__update_pile.cpp
     tx__update_tablet_groups.cpp
     tx__update_tablet_metrics.cpp
     tx__update_tablet_status.cpp
@@ -109,4 +118,5 @@ END()
 
 RECURSE_FOR_TESTS(
     ut
+    ut_manual
 )

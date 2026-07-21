@@ -25,6 +25,7 @@ namespace NKikimr::NBsController {
                 bool IsReady;
                 TMonotonic ReadySince;
                 NKikimrBlobStorage::EVDiskStatus VDiskStatus;
+                std::optional<TString> DiskScope;
             };
             ui32 Generation;
             TBlobStorageGroupType Type;
@@ -54,6 +55,6 @@ namespace NKikimr::NBsController {
         {}
     };
 
-    TSelfHealSettings ParseSelfHealSettings(const NKikimrBlobStorage::TStorageConfig& storageConfig);
+    TSelfHealSettings ParseSelfHealSettings(const std::shared_ptr<const NKikimrBlobStorage::TStorageConfig> storageConfig);
 
 } // NKikimr::NBsController

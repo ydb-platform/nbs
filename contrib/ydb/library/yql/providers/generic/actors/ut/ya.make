@@ -1,12 +1,11 @@
 UNITTEST_FOR(contrib/ydb/library/yql/providers/generic/actors)
 
-TAG(ya:manual)
-
 PEERDIR(
-    contrib/ydb/library/yql/sql/pg_dummy
-    contrib/ydb/library/yql/providers/generic/connector/libcpp/ut_helpers
-    contrib/ydb/library/actors/testlib
     library/cpp/testing/unittest
+    contrib/ydb/core/kqp/ut/federated_query/common
+    contrib/ydb/library/actors/testlib
+    contrib/ydb/library/yql/providers/generic/connector/libcpp/ut_helpers
+    contrib/ydb/library/yql/sql/pg_dummy
 )
 
 SRCS(

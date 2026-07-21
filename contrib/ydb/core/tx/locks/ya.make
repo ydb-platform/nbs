@@ -11,13 +11,10 @@ SRCS(
 PEERDIR(
     contrib/ydb/core/protos
     contrib/ydb/core/tablet_flat
+    contrib/ydb/library/actors/async
+    contrib/ydb/library/range_treap
 )
 
 YQL_LAST_ABI_VERSION()
 
 END()
-
-
-RECURSE_FOR_TESTS(
-    ut_range_treap
-)

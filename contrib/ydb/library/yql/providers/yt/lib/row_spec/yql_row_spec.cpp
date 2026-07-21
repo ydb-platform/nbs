@@ -55,22 +55,21 @@ ui64 GetNativeYtTypeFlagsImpl(const TTypeAnnotationNode* itemType) {
             case EDataSlot::Decimal:
                 return NTCF_DECIMAL;
             case EDataSlot::Uuid:
+                return NTCF_UUID;
             case EDataSlot::TzDate:
             case EDataSlot::TzDatetime:
             case EDataSlot::TzTimestamp:
+                return NTCF_TZDATE;
             case EDataSlot::TzDate32:
             case EDataSlot::TzDatetime64:
             case EDataSlot::TzTimestamp64:
+                return NTCF_BIGTZDATE;
             case EDataSlot::DyNumber:
             case EDataSlot::JsonDocument:
                 return NTCF_NO_YT_SUPPORT;
             default:
                 return NTCF_NONE;
             }
-        case ETypeAnnotationKind::Null:
-            return NTCF_NULL;
-        case ETypeAnnotationKind::Void:
-            return NTCF_VOID;
         case ETypeAnnotationKind::Optional:
             return NTCF_COMPLEX | GetNativeYtTypeFlagsImpl(itemType->Cast<TOptionalExprType>()->GetItemType());
         case ETypeAnnotationKind::List:
@@ -100,8 +99,12 @@ ui64 GetNativeYtTypeFlagsImpl(const TTypeAnnotationNode* itemType) {
         case ETypeAnnotationKind::EmptyDict:
         case ETypeAnnotationKind::EmptyList:
             return NTCF_COMPLEX;
+        case ETypeAnnotationKind::Null:
+        case ETypeAnnotationKind::Void:
         case ETypeAnnotationKind::World:
         case ETypeAnnotationKind::Unit:
+        case ETypeAnnotationKind::Universal:
+        case ETypeAnnotationKind::UniversalStruct:
         case ETypeAnnotationKind::Item:
         case ETypeAnnotationKind::Callable:
         case ETypeAnnotationKind::Generic:
@@ -113,34 +116,79 @@ ui64 GetNativeYtTypeFlagsImpl(const TTypeAnnotationNode* itemType) {
         case ETypeAnnotationKind::Type:
         case ETypeAnnotationKind::Block:
         case ETypeAnnotationKind::Scalar:
+        case ETypeAnnotationKind::Linear:
+        case ETypeAnnotationKind::DynamicLinear:
         case ETypeAnnotationKind::LastType:
             break;
     }
     return NTCF_NONE;
 }
 
+ui64 GetItemNativeYtTypeFlagsImpl(const TTypeAnnotationNode* itemType) {
+    ui64 flags = 0;
+    bool wasOptional = false;
+    if (itemType->GetKind() == ETypeAnnotationKind::Optional) {
+        wasOptional = true;
+        itemType = itemType->Cast<TOptionalExprType>()->GetItemType();
+    }
+
+    if (wasOptional && itemType->GetKind() == ETypeAnnotationKind::Pg) {
+        flags |= NTCF_COMPLEX;
+    }
+
+    flags |= GetNativeYtTypeFlagsImpl(itemType);
+    return flags;
+}
+
+NYT::TNode FilterSchemaColumns(const NYT::TNode& origSchema, const NYT::TNode& filterSchema) {
+    THashSet<TString> filterColumns;
+    for (const auto& entry : filterSchema.AsList()) {
+        YQL_ENSURE(entry.HasKey("name"), "No 'name' in schema tuple");
+        filterColumns.insert(entry["name"].AsString());
+    }
+
+    NYT::TNode filteredSchema = NYT::TNode::CreateList();
+    for (const auto& entry : origSchema.AsList()) {
+        YQL_ENSURE(entry.HasKey("name"), "No 'name' in schema tuple");
+        if (filterColumns.contains(entry["name"].AsString())) {
+            filteredSchema.Add(entry);
+        }
+    }
+
+    return filteredSchema;
+}
+
+}
+
+ui64 GetItemNativeYtTypeFlags(const TTypeAnnotationNode& type) {
+    return GetItemNativeYtTypeFlagsImpl(&type) & ~NTCF_NO_YT_SUPPORT;
 }
 
 ui64 GetNativeYtTypeFlags(const TStructExprType& type, const NCommon::TStructMemberMapper& mapper) {
     ui64 flags = 0;
     for (auto item: type.GetItems()) {
         if (!mapper || mapper(item->GetName())) {
-            const TTypeAnnotationNode* itemType = item->GetItemType();
-            bool wasOptional = false;
-            if (itemType->GetKind() == ETypeAnnotationKind::Optional) {
-                wasOptional = true;
-                itemType = itemType->Cast<TOptionalExprType>()->GetItemType();
-            }
-
-            if (wasOptional && itemType->GetKind() == ETypeAnnotationKind::Pg) {
-                flags |= NTCF_COMPLEX;
-            }
-
-            flags |= GetNativeYtTypeFlagsImpl(itemType);
+            flags |= GetItemNativeYtTypeFlagsImpl(item->GetItemType());
         }
     }
     flags &= ~NTCF_NO_YT_SUPPORT;
     return flags;
+}
+
+TColumnOrder GetNativeYtDefaultColumnOrder(const TStructExprType* type, const TVector<TString>& sortMembers) {
+    TVector<TString> order;
+    order.insert(order.end(), sortMembers.begin(), sortMembers.end());
+
+    THashSet<TStringBuf> usedColumns;
+    usedColumns.insert(sortMembers.begin(), sortMembers.end());
+    for (auto& item : type->GetItems()) {
+        if (!usedColumns.insert(item->GetName()).second) {
+            continue;
+        }
+        order.push_back(TString(item->GetName()));
+    }
+
+    return TColumnOrder(order);
 }
 
 using namespace NNodes;
@@ -160,6 +208,7 @@ bool TYqlRowSpecInfo::Parse(const NYT::TNode& rowSpecAttr, TExprContext& ctx, co
         if (!ParseType(rowSpecAttr, ctx, pos) || !ParseSort(rowSpecAttr, ctx, pos)) {
             return false;
         }
+        ParseColumnOrder(rowSpecAttr);
         ParseFlags(rowSpecAttr);
         ParseDefValues(rowSpecAttr);
         ParseConstraints(rowSpecAttr);
@@ -191,7 +240,7 @@ bool TYqlRowSpecInfo::ParsePatched(const NYT::TNode& rowSpecAttr, const THashMap
     if (!ParseType(schemaAsRowSpec, ctx, pos) || !ParseSort(schemaAsRowSpec, ctx, pos)) {
         return false;
     }
-    ParseFlags(schemaAsRowSpec);
+    ParseFlagsFromNativeSchema(schemaAsRowSpec);
 
     auto typePatch = NCommon::ParseTypeFromYson(rowSpecAttr[RowSpecAttrTypePatch], ctx, ctx.GetPosition(pos));
     if (!typePatch) {
@@ -263,9 +312,9 @@ bool TYqlRowSpecInfo::ParsePatched(const NYT::TNode& rowSpecAttr, const THashMap
 
             // Patch Columns
             TColumnOrder newColumns;
-            for (auto& col: *Columns) {
+            for (auto& [col, gen_col]: *Columns) {
                 if (!auxFields.contains(col)) {
-                    newColumns.push_back(col);
+                    newColumns.AddColumn(col);
                 }
             }
             Columns = std::move(newColumns);
@@ -278,7 +327,7 @@ bool TYqlRowSpecInfo::ParsePatched(const NYT::TNode& rowSpecAttr, const THashMap
         return false;
     }
 
-    ParseFlags(rowSpecAttr);
+    ParseColumnOrder(rowSpecAttr);
     ParseDefValues(rowSpecAttr);
     ParseConstraints(rowSpecAttr);
     ParseConstraintsNode(ctx);
@@ -289,13 +338,16 @@ bool TYqlRowSpecInfo::ParseFull(const NYT::TNode& rowSpecAttr, const THashMap<TS
     if (!ParseType(rowSpecAttr, ctx, pos) || !ParseSort(rowSpecAttr, ctx, pos)) {
         return false;
     }
-    ParseFlags(rowSpecAttr);
+    ParseColumnOrder(rowSpecAttr);
     ParseDefValues(rowSpecAttr);
     ParseConstraints(rowSpecAttr);
     ParseConstraintsNode(ctx);
 
     if (auto schemaAttr = attrs.FindPtr(SCHEMA_ATTR_NAME)) {
         auto schema = NYT::NodeFromYsonString(*schemaAttr);
+        auto schemaAsRowSpec = YTSchemaToRowSpec(schema);
+        ParseFlagsFromNativeSchema(schemaAsRowSpec);
+
         auto modeAttr = schema.GetAttributes()[SCHEMA_MODE_ATTR_NAME];
         const bool weak = !modeAttr.IsUndefined() && modeAttr.AsString() == "weak";
         // Validate type for non weak schema only
@@ -343,7 +395,7 @@ bool TYqlRowSpecInfo::ParseFull(const NYT::TNode& rowSpecAttr, const THashMap<TS
 // 3. _infer_schema + schema(SortBy)
 // 4. _read_schema + schema(SortBy)
 // 5. schema
-bool TYqlRowSpecInfo::Parse(const THashMap<TString, TString>& attrs, TExprContext& ctx, const TPositionHandle& pos) {
+bool TYqlRowSpecInfo::Parse(const THashMap<TString, TString>& attrs, bool parseExpressionColumns, TExprContext& ctx, const TPositionHandle& pos) {
     *this = {};
     try {
         if (auto rowSpecAttr = attrs.FindPtr(YqlRowSpecAttribute)) {
@@ -366,28 +418,45 @@ bool TYqlRowSpecInfo::Parse(const THashMap<TString, TString>& attrs, TExprContex
                 auto schema = NYT::NodeFromYsonString(*schemaAttr);
                 sortInfo = KeyColumnsFromSchema(schema);
                 MergeInferredSchemeWithSort(inferSchema, sortInfo);
+                if (parseExpressionColumns) {
+                    ExpressionColumns = GetExpressionColumnsFromSchema(schema);
+                }
             }
             auto schemaAsRowSpec = YTSchemaToRowSpec(inferSchema, schemaAttr ? &sortInfo : nullptr);
             if (!ParseType(schemaAsRowSpec, ctx, pos) || !ParseSort(schemaAsRowSpec, ctx, pos)) {
                 return false;
             }
-            ParseFlags(schemaAsRowSpec);
-        } else if (auto readSchema = attrs.FindPtr(READ_SCHEMA_ATTR_NAME)) {
+            // inferred schema does not contain native yt types
+        } else if (auto readSchemaAttr = attrs.FindPtr(READ_SCHEMA_ATTR_NAME)) {
+            NYT::TNode readSchema = NYT::NodeFromYsonString(*readSchemaAttr);
+            NYT::TNode schema;
             TYTSortInfo sortInfo;
             if (auto schemaAttr = attrs.FindPtr(SCHEMA_ATTR_NAME)) {
-                sortInfo = KeyColumnsFromSchema(NYT::NodeFromYsonString(*schemaAttr));
+                schema = NYT::NodeFromYsonString(*schemaAttr);
+                sortInfo = KeyColumnsFromSchema(schema);
+                if (parseExpressionColumns) {
+                    ExpressionColumns = GetExpressionColumnsFromSchema(schema);
+                }
             }
-            auto schemaAsRowSpec = YTSchemaToRowSpec(NYT::NodeFromYsonString(*readSchema), &sortInfo);
+            auto schemaAsRowSpec = YTSchemaToRowSpec(readSchema, &sortInfo);
             if (!ParseType(schemaAsRowSpec, ctx, pos) || !ParseSort(schemaAsRowSpec, ctx, pos)) {
                 return false;
             }
-            ParseFlags(schemaAsRowSpec);
+            if (!schema.IsUndefined()) {
+                // Derive native YT type flags from actual YT schema columns used by read schema
+                auto filteredSchema = FilterSchemaColumns(schema, readSchema);
+                ParseFlagsFromNativeSchema(YTSchemaToRowSpec(filteredSchema));
+            }
         } else if (auto schema = attrs.FindPtr(SCHEMA_ATTR_NAME)) {
-            auto schemaAsRowSpec = YTSchemaToRowSpec(NYT::NodeFromYsonString(*schema));
+            auto schemaNode = NYT::NodeFromYsonString(*schema);
+            auto schemaAsRowSpec = YTSchemaToRowSpec(schemaNode);
             if (!ParseType(schemaAsRowSpec, ctx, pos) || !ParseSort(schemaAsRowSpec, ctx, pos)) {
                 return false;
             }
-            ParseFlags(schemaAsRowSpec);
+            if (parseExpressionColumns) {
+                ExpressionColumns = GetExpressionColumnsFromSchema(schemaNode);
+            }
+            ParseFlagsFromNativeSchema(schemaAsRowSpec);
         } else {
             YQL_LOG_CTX_THROW yexception() << "Table has no supported schema attributes";
         }
@@ -399,15 +468,34 @@ bool TYqlRowSpecInfo::Parse(const THashMap<TString, TString>& attrs, TExprContex
     return Validate(ctx, pos);
 }
 
+void TYqlRowSpecInfo::ParseColumnOrder(const NYT::TNode& rowSpecAttr) {
+    if (rowSpecAttr.HasKey(RowSpecAttrColumnOrder)) {
+        TColumnOrder columns;
+        auto columnOrderAttr = rowSpecAttr[RowSpecAttrColumnOrder];
+        if (!columnOrderAttr.IsList()) {
+            YQL_LOG_CTX_THROW yexception() << "Row spec has invalid column order";
+        }
+        for (const auto& name: columnOrderAttr.AsList()) {
+            if (!name.IsString()) {
+                YQL_LOG_CTX_THROW yexception() << "Row spec has invalid column order";
+            }
+            columns.AddColumn(name.AsString());
+        }
+        Columns = columns;
+    }
+}
+
 bool TYqlRowSpecInfo::ParseType(const NYT::TNode& rowSpecAttr, TExprContext& ctx, const TPositionHandle& pos) {
     if (!rowSpecAttr.HasKey(RowSpecAttrType)) {
         YQL_LOG_CTX_THROW yexception() << "Row spec doesn't have mandatory Type attribute";
     }
-    TVector<TString> columns;
+    TColumnOrder columns;
+
     auto type = NCommon::ParseOrderAwareTypeFromYson(rowSpecAttr[RowSpecAttrType], columns, ctx, ctx.GetPosition(pos));
     if (!type) {
         return false;
     }
+
     if (type->GetKind() != ETypeAnnotationKind::Struct) {
         YQL_LOG_CTX_THROW yexception() << "Row spec defines not a struct type";
     }
@@ -428,7 +516,7 @@ bool TYqlRowSpecInfo::ParseType(const NYT::TNode& rowSpecAttr, TExprContext& ctx
                 ctx.MakeType<TDataExprType>(EDataSlot::String));
             items.push_back(ctx.MakeType<TItemExprType>(YqlOthersColumnName, dictType));
             Type = ctx.MakeType<TStructExprType>(items);
-            Columns->push_back(TString(YqlOthersColumnName));
+            Columns->AddColumn(TString(YqlOthersColumnName));
         }
     }
 
@@ -437,7 +525,7 @@ bool TYqlRowSpecInfo::ParseType(const NYT::TNode& rowSpecAttr, TExprContext& ctx
 
 bool TYqlRowSpecInfo::ParseSort(const NYT::TNode& rowSpecAttr, TExprContext& ctx, const TPositionHandle& pos) {
     if (rowSpecAttr.HasKey(RowSpecAttrSortMembers) || rowSpecAttr.HasKey(RowSpecAttrSortedBy) || rowSpecAttr.HasKey(RowSpecAttrSortDirections)) {
-        ClearSortness();
+        ClearSortness(ctx);
     }
     if (rowSpecAttr.HasKey(RowSpecAttrSortDirections)) {
         for (auto& item: rowSpecAttr[RowSpecAttrSortDirections].AsList()) {
@@ -489,6 +577,10 @@ void TYqlRowSpecInfo::ParseFlags(const NYT::TNode& rowSpecAttr) {
     }
 }
 
+void TYqlRowSpecInfo::ParseFlagsFromNativeSchema(const NYT::TNode& schemaAsRowSpec) {
+    NativeYtTypeFlags = schemaAsRowSpec[RowSpecAttrNativeYtTypeFlags].AsUint64();
+}
+
 void TYqlRowSpecInfo::ParseDefValues(const NYT::TNode& rowSpecAttr) {
     if (rowSpecAttr.HasKey(RowSpecAttrDefaultValues)) {
         for (auto& value : rowSpecAttr[RowSpecAttrDefaultValues].AsMap()) {
@@ -506,63 +598,13 @@ NYT::TNode TYqlRowSpecInfo::GetConstraintsNode() const {
     if (ConstraintsNode.HasValue())
         return ConstraintsNode;
 
-    auto map = NYT::TNode::CreateMap();
-
-    const auto pathToNode = [](const TPartOfConstraintBase::TPathType& path) -> NYT::TNode {
-        if (1U == path.size())
-            return TStringBuf(path.front());
-
-        auto list = NYT::TNode::CreateList();
-        for (const auto& col : path)
-            list.Add(TStringBuf(col));
-        return list;
-    };
-
-    const auto setToNode = [pathToNode](const TPartOfConstraintBase::TSetType& set) -> NYT::TNode {
-        if (1U == set.size() && 1U == set.front().size())
-            return TStringBuf(set.front().front());
-
-        auto list = NYT::TNode::CreateList();
-        for (const auto& path : set)
-            list.Add(pathToNode(path));
-        return list;
-    };
-
+    TConstraintSet set;
     if (HasNonTrivialSort()) {
-        auto list = NYT::TNode::CreateList();
-        for (const auto& item : Sorted->GetContent()) {
-            auto pair = NYT::TNode::CreateList();
-            auto set = NYT::TNode::CreateList();
-            for (const auto& path : item.first)
-                set.Add(pathToNode(path));
-            pair.Add(set).Add(item.second);
-            list.Add(pair);
-        }
-        map[Sorted->GetName()] = list;
+        set.AddConstraint(Sorted);
     }
-
-    if (Unique) {
-        auto list = NYT::TNode::CreateList();
-        for (const auto& sets : Unique->GetContent()) {
-            auto part = NYT::TNode::CreateList();
-            for (const auto& set : sets)
-                part.Add(setToNode(set));
-            list.Add(part);
-        }
-        map[Unique->GetName()] = list;
-    }
-
-    if (Distinct) {
-        auto list = NYT::TNode::CreateList();
-        for (const auto& sets : Distinct->GetContent()) {
-            auto part = NYT::TNode::CreateList();
-            for (const auto& set : sets)
-                part.Add(setToNode(set));
-            list.Add(part);
-        }
-        map[Distinct->GetName()] = list;
-    }
-    return map;
+    set.AddConstraint(Unique);
+    set.AddConstraint(Distinct);
+    return set.ToYson();
 }
 
 void TYqlRowSpecInfo::FillConstraints(NYT::TNode& attrs) const {
@@ -575,66 +617,12 @@ void TYqlRowSpecInfo::ParseConstraintsNode(TExprContext& ctx) {
         return;
 
     try  {
-        const auto nodeToPath = [&ctx](const NYT::TNode& node) {
-            if (node.IsString())
-                return TPartOfConstraintBase::TPathType{ctx.AppendString(node.AsString())};
-
-            TPartOfConstraintBase::TPathType path;
-            for (const auto& col : node.AsList())
-                path.emplace_back(ctx.AppendString(col.AsString()));
-            return path;
-        };
-
-        const auto nodeToSet = [&ctx, nodeToPath](const NYT::TNode& node) {
-            if (node.IsString())
-                return TPartOfConstraintBase::TSetType{TPartOfConstraintBase::TPathType(1U, ctx.AppendString(node.AsString()))};
-
-            TPartOfConstraintBase::TSetType set;
-            for (const auto& col : node.AsList())
-                set.insert_unique(nodeToPath(col));
-            return set;
-        };
-
-        const auto& constraints = ConstraintsNode.AsMap();
-
-        if (const auto it = constraints.find(TSortedConstraintNode::Name()); constraints.cend() != it) {
-            TSortedConstraintNode::TContainerType sorted;
-            for (const auto& pair : it->second.AsList()) {
-                TPartOfConstraintBase::TSetType set;
-                for (const auto& path : pair.AsList().front().AsList())
-                    set.insert_unique(nodeToPath(path));
-                sorted.emplace_back(std::move(set), pair.AsList().back().AsBool());
-            }
-            if (!sorted.empty())
-                Sorted = ctx.MakeConstraint<TSortedConstraintNode>(std::move(sorted));
-        }
-        if (const auto it = constraints.find(TUniqueConstraintNode::Name()); constraints.cend() != it) {
-            TUniqueConstraintNode::TContentType content;
-            for (const auto& item : it->second.AsList()) {
-                TPartOfConstraintBase::TSetOfSetsType sets;
-                for (const auto& part : item.AsList())
-                    sets.insert_unique(nodeToSet(part));
-                content.insert_unique(std::move(sets));
-            }
-            if (!content.empty())
-                Unique = ctx.MakeConstraint<TUniqueConstraintNode>(std::move(content));
-        }
-        if (const auto it = constraints.find(TDistinctConstraintNode::Name()); constraints.cend() != it) {
-            TDistinctConstraintNode::TContentType content;
-            for (const auto& item : it->second.AsList()) {
-                TPartOfConstraintBase::TSetOfSetsType sets;
-                for (const auto& part : item.AsList())
-                    sets.insert_unique(nodeToSet(part));
-                content.insert_unique(std::move(sets));
-            }
-            if (!content.empty())
-                Distinct = ctx.MakeConstraint<TDistinctConstraintNode>(std::move(content));
-        }
+        SetConstraints(ctx.MakeConstraintSet(ConstraintsNode));
     } catch (const yexception& error) {
         Sorted = nullptr;
         Unique = nullptr;
         Distinct = nullptr;
-        YQL_CLOG(WARN, ProviderDq) << " Error '" << error << "' on parse constraints node: " << ConstraintsNode.AsString();
+        YQL_CLOG(WARN, ProviderYt) << " Error '" << error << "' on parse constraints node: " << ConstraintsNode.AsString();
     }
 }
 
@@ -663,7 +651,7 @@ void TYqlRowSpecInfo::ParseConstraints(const NYT::TNode& rowSpecAttr) {
 
 bool TYqlRowSpecInfo::ValidateSort(const TYTSortInfo& sortInfo, TExprContext& ctx, const TPositionHandle& pos) {
     if (sortInfo.Keys.empty() && IsSorted()) {
-        ClearSortness();
+        ClearSortness(ctx);
         if (!ctx.AddWarning(YqlIssue(ctx.GetPosition(pos), EYqlIssueCode::TIssuesIds_EIssueCode_YT_ROWSPEC_DIFF_SORT,
             "Table attribute '_yql_row_spec' defines sorting, but the table is not really sorted. The sorting will be ignored."))) {
             return false;
@@ -677,13 +665,13 @@ bool TYqlRowSpecInfo::ValidateSort(const TYTSortInfo& sortInfo, TExprContext& ct
     } else if (IsSorted()) {
         bool diff = false;
         if (SortedBy.size() > sortInfo.Keys.size()) {
-            ClearSortness(sortInfo.Keys.size());
+            ClearSortness(ctx, sortInfo.Keys.size());
             diff = true;
         }
         auto backendSort = GetForeignSort();
         for (size_t i = 0; i < backendSort.size(); ++i) {
             if (backendSort[i].first != sortInfo.Keys[i].first || backendSort[i].second != (bool)sortInfo.Keys[i].second) {
-                ClearSortness(i);
+                ClearSortness(ctx, i);
                 diff = true;
                 break;
             }
@@ -797,6 +785,19 @@ bool TYqlRowSpecInfo::Validate(const TExprNode& node, TExprContext& ctx, const T
                 return false;
             }
             type = rawType->Cast<TStructExprType>();
+        } else if (name->Content() == RowSpecAttrColumnOrder) {
+            if (!EnsureTuple(*value, ctx)) {
+                return false;
+            }
+            TColumnOrder order;
+            for (const TExprNode::TPtr& item: value->Children()) {
+                if (!EnsureAtom(*item, ctx)) {
+                    return false;
+                }
+                order.AddColumn(TString(item->Content()));
+            }
+            columnOrder = order;
+
         } else if (name->Content() == RowSpecAttrSortedBy) {
             if (!EnsureTuple(*value, ctx)) {
                 return false;
@@ -886,6 +887,18 @@ bool TYqlRowSpecInfo::Validate(const TExprNode& node, TExprContext& ctx, const T
             << " option is mandatory for " << TYqlRowSpec::CallableName()));
         return false;
     }
+    if (columnOrder) {
+        if (columnOrder->Size() != type->GetSize()) {
+            ctx.AddError(TIssue(ctx.GetPosition(node.Pos()), TStringBuilder() << "Column order size " << columnOrder->Size()
+                << " != " << type->GetSize() << " (type size)"));
+        }
+        for (auto& [_, name]: *columnOrder) {
+            if (!type->FindItem(name)) {
+                ctx.AddError(TIssue(ctx.GetPosition(node.Pos()), TStringBuilder() << "Column " << name.Quote()
+                    << " from column order isn't present in type"));
+            }
+        }
+    }
     if (sortedBy.size() != sortDirectionsCount) {
         ctx.AddError(TIssue(ctx.GetPosition(node.Pos()), TStringBuilder() << TString{RowSpecAttrSortDirections}.Quote()
             << " should have the same size as " << TString{RowSpecAttrSortedBy}.Quote()));
@@ -938,7 +951,7 @@ bool TYqlRowSpecInfo::Validate(const TExprNode& node, TExprContext& ctx, const T
             ctx.MakeType<TDataExprType>(EDataSlot::String));
         items.push_back(ctx.MakeType<TItemExprType>(YqlOthersColumnName, dictType));
         if (columnOrder) {
-            columnOrder->push_back(TString(YqlOthersColumnName));
+            columnOrder->AddColumn(TString(YqlOthersColumnName));
         }
         type = ctx.MakeType<TStructExprType>(items);
     }
@@ -1010,10 +1023,17 @@ void TYqlRowSpecInfo::Parse(NNodes::TExprBase node, bool withTypes) {
             if (withTypes) {
                 if (val.Type() == TExprNode::Atom) {
                     TypeNode = NYT::NodeFromYsonString(val.Content());
-                    Columns = NCommon::ExtractColumnOrderFromYsonStructType(TypeNode);
+                    Columns = TColumnOrder(NCommon::ExtractColumnOrderFromYsonStructType(TypeNode));
                 }
                 Type = node.Ref().GetTypeAnn()->Cast<TStructExprType>();
             }
+        } else if (setting.Name().Value() == RowSpecAttrColumnOrder) {
+            auto& val = setting.Value().Cast().Ref();
+            TColumnOrder order;
+            for (const TExprNode::TPtr& item: val.Children()) {
+                order.AddColumn(TString(item->Content()));
+            }
+            Columns = order;
         } else if (setting.Name().Value() == RowSpecAttrConstraints) {
             ConstraintsNode = NYT::NodeFromYsonString(setting.Value().Cast().Ref().Content());
         } else if (setting.Name().Value() == RowSpecAttrSortedBy) {
@@ -1046,7 +1066,7 @@ void TYqlRowSpecInfo::Parse(NNodes::TExprBase node, bool withTypes) {
         }
     }
     if (Columns && !StrictSchema) {
-        Columns->push_back(TString(YqlOthersColumnName));
+        Columns->AddColumn(TString(YqlOthersColumnName));
     }
 }
 
@@ -1077,19 +1097,27 @@ NYT::TNode TYqlRowSpecInfo::GetTypeNode(const NCommon::TStructMemberMapper& mapp
     return typeNode;
 }
 
-void TYqlRowSpecInfo::SetType(const TStructExprType* type, TMaybe<ui64> nativeYtTypeFlags) {
+void TYqlRowSpecInfo::SetType(const TStructExprType* type, ui64 nativeTypeCompatibility) {
     Type = type;
     Columns = {};
     TypeNode = {};
-    if (nativeYtTypeFlags) {
-        NativeYtTypeFlags = *nativeYtTypeFlags;
-    }
-    NativeYtTypeFlags &= NYql::GetNativeYtTypeFlags(*Type);
+    NativeYtTypeFlags = NYql::GetNativeYtTypeFlags(*Type) & nativeTypeCompatibility;
 }
 
 void TYqlRowSpecInfo::SetColumnOrder(const TMaybe<TColumnOrder>& columns) {
     TypeNode = {};
     Columns = columns;
+}
+
+void TYqlRowSpecInfo::FillColumnOrder(NYT::TNode& attrs) const {
+    if (!Columns || !Columns->HasDuplicates()) {
+        return;
+    }
+    NYT::TNode order = NYT::TNode::CreateList();
+    for (const auto &name: Columns->GetLogicalNames()) {
+        order.Add(name);
+    }
+    attrs[RowSpecAttrColumnOrder] = order;
 }
 
 TString TYqlRowSpecInfo::ToYsonString() const {
@@ -1098,7 +1126,7 @@ TString TYqlRowSpecInfo::ToYsonString() const {
     return NYT::NodeToCanonicalYsonString(attrs);
 }
 
-void TYqlRowSpecInfo::CopyTypeOrders(const NYT::TNode& typeNode) {
+void TYqlRowSpecInfo::CopyTypeOrders(const NYT::TNode& typeNode, bool useNativeYtDefaultColumnOrder) {
     YQL_ENSURE(Type);
     if (!TypeNode.IsUndefined() || 0 == NativeYtTypeFlags) {
         return;
@@ -1114,26 +1142,29 @@ void TYqlRowSpecInfo::CopyTypeOrders(const NYT::TNode& typeNode) {
     }
 
     NYT::TNode members = NYT::TNode::CreateList();
-    TVector<TString> columns;
-    if (Columns.Defined() && Columns->size() == Type->GetSize()) {
+    TColumnOrder columns;
+    if (Columns.Defined() && Columns->Size() == Type->GetSize()) {
         columns = *Columns;
+    } else if (useNativeYtDefaultColumnOrder && NativeYtTypeFlags != 0) {
+        // workaround for YQL-20213 - maintain column order with SortMembers columns first
+        columns = GetNativeYtDefaultColumnOrder(Type, SortMembers);
     } else {
         for (auto& item : Type->GetItems()) {
-            columns.emplace_back(item->GetName());
+            columns.AddColumn(TString(item->GetName()));
         }
     }
-    for (auto name: columns) {
+    for (auto& [name, gen_name]: columns) {
         if (!StrictSchema && name == YqlOthersColumnName) {
             continue;
         }
-        auto origType = Type->FindItemType(name);
+        auto origType = Type->FindItemType(gen_name);
         YQL_ENSURE(origType);
         auto origTypeNode = NCommon::TypeToYsonNode(origType);
-        auto it = fromMembers.find(name);
+        auto it = fromMembers.find(gen_name);
         if (it == fromMembers.end() || !NCommon::EqualsYsonTypesIgnoreStructOrder(origTypeNode, it->second)) {
-            members.Add(NYT::TNode::CreateList().Add(name).Add(origTypeNode));
+            members.Add(NYT::TNode::CreateList().Add(gen_name).Add(origTypeNode));
         } else {
-            members.Add(NYT::TNode::CreateList().Add(name).Add(it->second));
+            members.Add(NYT::TNode::CreateList().Add(gen_name).Add(it->second));
         }
     }
 
@@ -1201,6 +1232,7 @@ void TYqlRowSpecInfo::FillSort(NYT::TNode& attrs, const NCommon::TStructMemberMa
             }
         }
     }
+
     if (!curSortedBy->empty()) {
         attrs[RowSpecAttrUniqueKeys] = curUniqueKeys;
     }
@@ -1294,9 +1326,10 @@ void TYqlRowSpecInfo::FillCodecNode(NYT::TNode& attrs, const NCommon::TStructMem
     FillDefValues(attrs, mapper);
     FillFlags(attrs);
     FillExplicitYson(attrs, mapper);
+    FillColumnOrder(attrs);
 }
 
-void TYqlRowSpecInfo::FillAttrNode(NYT::TNode& attrs, ui64 nativeTypeCompatibility, bool useCompactForm) const {
+void TYqlRowSpecInfo::FillAttrNode(NYT::TNode& attrs, bool useCompactForm) const {
     attrs = NYT::TNode::CreateMap();
 
     if (!useCompactForm) {
@@ -1320,7 +1353,7 @@ void TYqlRowSpecInfo::FillAttrNode(NYT::TNode& attrs, ui64 nativeTypeCompatibili
                 itemType = itemType->Cast<TOptionalExprType>()->GetItemType();
             }
             auto flags = GetNativeYtTypeFlagsImpl(itemType);
-            if (flags != (flags & NativeYtTypeFlags & nativeTypeCompatibility)) {
+            if (flags != (flags & NativeYtTypeFlags)) {
                 patchedFields.insert(item->GetName());
             }
         }
@@ -1333,6 +1366,7 @@ void TYqlRowSpecInfo::FillAttrNode(NYT::TNode& attrs, ui64 nativeTypeCompatibili
     if (!useCompactForm || HasAuxColumns() || AnyOf(SortedBy, [&patchedFields](const auto& name) { return patchedFields.contains(name); } )) {
         FillSort(attrs);
     }
+    FillColumnOrder(attrs);
     FillDefValues(attrs);
     FillFlags(attrs);
     FillConstraints(attrs);
@@ -1430,6 +1464,9 @@ NNodes::TExprBase TYqlRowSpecInfo::ToExprNode(TExprContext& ctx, const TPosition
 
     saveColumnList(RowSpecAttrSortMembers, SortMembers);
     saveColumnList(RowSpecAttrSortedBy, SortedBy);
+    if (Columns && Columns->HasDuplicates()) {
+        saveColumnList(RowSpecAttrColumnOrder, Columns->GetLogicalNames());
+    }
 
     if (!SortedByTypes.empty()) {
         auto listBuilder = Build<TExprList>(ctx, pos);
@@ -1500,7 +1537,7 @@ const TStructExprType* TYqlRowSpecInfo::GetExtendedType(TExprContext& ctx) const
     return extended ? ctx.MakeType<TStructExprType>(items) : Type;
 }
 
-bool TYqlRowSpecInfo::CopySortness(const TYqlRowSpecInfo& from, ECopySort mode) {
+bool TYqlRowSpecInfo::CopySortness(TExprContext& ctx, const TYqlRowSpecInfo& from, bool useNativeYtDefaultColumnOrder, ECopySort mode) {
     SortDirections = from.SortDirections;
     SortMembers = from.SortMembers;
     SortedBy = from.SortedBy;
@@ -1512,19 +1549,25 @@ bool TYqlRowSpecInfo::CopySortness(const TYqlRowSpecInfo& from, ECopySort mode) 
         for (size_t i = 0; i < SortMembers.size(); ++i) {
             const auto itemNdx = Type->FindItem(SortMembers[i]);
             if (!itemNdx || (SortedBy[i] == SortMembers[i] && Type->GetItems()[*itemNdx]->GetItemType() != SortedByTypes[i])) {
-                sortIsChanged = ClearSortness(i);
+                sortIsChanged = ClearSortness(ctx, i);
                 break;
             } else if (ECopySort::Pure == mode && SortedBy[i] != SortMembers[i]) {
-                sortIsChanged = ClearSortness(i);
+                sortIsChanged = ClearSortness(ctx, i);
                 break;
             }
         }
         if (ECopySort::WithCalc != mode) {
             if (SortMembers.size() < SortedBy.size()) {
-                sortIsChanged = ClearSortness(SortMembers.size()) || sortIsChanged;
+                sortIsChanged = ClearSortness(ctx, SortMembers.size()) || sortIsChanged;
             }
         }
     }
+
+    if (useNativeYtDefaultColumnOrder && !Columns && NativeYtTypeFlags != 0) {
+        // workaround for YQL-20213 - maintain column order with SortMembers columns first
+        SetColumnOrder(GetNativeYtDefaultColumnOrder(Type, SortMembers));
+    }
+
     return sortIsChanged;
 }
 
@@ -1535,42 +1578,42 @@ void TYqlRowSpecInfo::CopyConstraints(const TYqlRowSpecInfo& from) {
     Distinct = from.Distinct;
 }
 
-bool TYqlRowSpecInfo::KeepPureSortOnly() {
+bool TYqlRowSpecInfo::KeepPureSortOnly(TExprContext& ctx) {
     bool sortIsChanged = false;
     for (size_t i = 0; i < SortMembers.size(); ++i) {
         if (!Type->FindItem(SortMembers[i])) {
-            sortIsChanged = ClearSortness(i);
+            sortIsChanged = ClearSortness(ctx, i);
             break;
         } else if (SortedBy[i] != SortMembers[i]) {
-            sortIsChanged = ClearSortness(i);
+            sortIsChanged = ClearSortness(ctx, i);
             break;
         }
     }
     if (SortMembers.size() < SortedBy.size()) {
-        sortIsChanged = ClearSortness(SortMembers.size()) || sortIsChanged;
+        sortIsChanged = ClearSortness(ctx, SortMembers.size()) || sortIsChanged;
     }
     return sortIsChanged;
 }
 
-bool TYqlRowSpecInfo::ClearNativeDescendingSort() {
+bool TYqlRowSpecInfo::ClearNativeDescendingSort(TExprContext& ctx) {
     for (size_t i = 0; i < SortDirections.size(); ++i) {
         if (!SortDirections[i] && Type->FindItem(SortedBy[i])) {
-            return ClearSortness(i);
+            return ClearSortness(ctx, i);
         }
     }
     return false;
 }
 
-bool TYqlRowSpecInfo::MakeCommonSortness(const TYqlRowSpecInfo& from) {
+bool TYqlRowSpecInfo::MakeCommonSortness(TExprContext& ctx, const TYqlRowSpecInfo& from) {
     bool sortIsChanged = false;
     UniqueKeys = false; // Merge of two and more tables cannot have unique keys
     const size_t resultSize = Min<size_t>(SortMembers.size(), from.SortMembers.size()); // Truncate all calculated columns
     if (SortedBy.size() > resultSize) {
-        sortIsChanged = ClearSortness(resultSize);
+        sortIsChanged = ClearSortness(ctx, resultSize);
     }
     for (size_t i = 0; i < resultSize; ++i) {
         if (SortMembers[i] != from.SortMembers[i] || SortedBy[i] != from.SortedBy[i] || SortedByTypes[i] != from.SortedByTypes[i] || SortDirections[i] != from.SortDirections[i]) {
-            sortIsChanged = ClearSortness(i) || sortIsChanged;
+            sortIsChanged = ClearSortness(ctx, i) || sortIsChanged;
             break;
         }
     }
@@ -1586,13 +1629,16 @@ bool TYqlRowSpecInfo::CompareSortness(const TYqlRowSpecInfo& with, bool checkUni
         && (!checkUniqueFlag || UniqueKeys == with.UniqueKeys);
 }
 
-bool TYqlRowSpecInfo::ClearSortness(size_t fromMember) {
+bool TYqlRowSpecInfo::ClearSortness(TExprContext& ctx, size_t fromMember) {
     if (fromMember <= SortMembers.size()) {
         SortMembers.erase(SortMembers.begin() + fromMember, SortMembers.end());
         SortedBy.erase(SortedBy.begin() + fromMember, SortedBy.end());
         SortedByTypes.erase(SortedByTypes.begin() + fromMember, SortedByTypes.end());
         SortDirections.erase(SortDirections.begin() + fromMember, SortDirections.end());
         UniqueKeys = false;
+        ParseConstraintsNode(ctx);
+        ConstraintsNode.Clear();
+        Sorted = MakeSortConstraint(ctx);
         return true;
     }
     return false;
@@ -1613,7 +1659,7 @@ const TSortedConstraintNode* TYqlRowSpecInfo::MakeSortConstraint(TExprContext& c
 const TDistinctConstraintNode* TYqlRowSpecInfo::MakeDistinctConstraint(TExprContext& ctx) const {
     if (UniqueKeys && !SortMembers.empty() && SortedBy.size() == SortMembers.size()) {
         std::vector<std::string_view> uniqColumns(SortMembers.size());
-        std::transform(SortMembers.cbegin(), SortMembers.cend(), uniqColumns.begin(), std::bind(&TExprContext::AppendString, std::ref(ctx), std::placeholders::_1));
+        std::transform(SortMembers.cbegin(), SortMembers.cend(), uniqColumns.begin(), std::bind_front(&TExprContext::AppendString, std::ref(ctx)));
         return ctx.MakeConstraint<TDistinctConstraintNode>(uniqColumns);
     }
     return nullptr;
@@ -1643,6 +1689,11 @@ TConstraintSet TYqlRowSpecInfo::GetConstraints() const {
     if (Distinct)
         set.AddConstraint(Distinct);
     return set;
+}
+
+bool TYqlRowSpecInfo::HasPersistableYson() const {
+    YQL_ENSURE(Type);
+    return !Type->HasBareYson() || 0 == NativeYtTypeFlags;
 }
 
 }

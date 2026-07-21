@@ -1,15 +1,7 @@
 UNITTEST_FOR(contrib/ydb/core/blobstorage/vdisk/query)
 
-IF (WITH_VALGRIND)
-    FORK_SUBTESTS()
-    TIMEOUT(1800)
-    SIZE(LARGE)
-    TAG(ya:fat)
-ELSE()
-    FORK_SUBTESTS()
-    TIMEOUT(600)
-    SIZE(MEDIUM)
-ENDIF()
+FORK_SUBTESTS()
+SIZE(MEDIUM)
 
 PEERDIR(
     contrib/ydb/core/blobstorage/vdisk/huge

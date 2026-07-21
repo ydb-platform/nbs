@@ -1,0 +1,40 @@
+LIBRARY(commands)
+
+SRCS(
+    generate.cpp
+    ydb_root.cpp
+    ydb_service_experimental_fq.cpp
+    ydb_service_experimental.cpp
+    ydb_sql.cpp
+)
+
+PEERDIR(
+    contrib/libs/apache/arrow
+    contrib/libs/protobuf
+    library/cpp/json
+    library/cpp/protobuf/json
+    library/cpp/protobuf/util
+    library/cpp/threading/future
+    contrib/ydb/apps/ydb/commands
+    contrib/ydb/public/api/protos
+    contrib/ydb/public/lib/fq
+    contrib/ydb/public/lib/json_value
+    contrib/ydb/public/lib/operation_id
+    contrib/ydb/public/lib/ydb_cli/commands
+    contrib/ydb/public/lib/ydb_cli/common
+    contrib/ydb/public/lib/ydb_cli/dump
+    contrib/ydb/public/lib/ydb_cli/import
+    contrib/ydb/public/lib/ydb_cli/topic
+    contrib/ydb/public/lib/yson_value
+    contrib/ydb/public/sdk/cpp/src/client/draft
+    contrib/ydb/public/sdk/cpp/src/client/driver
+    contrib/ydb/public/sdk/cpp/src/client/operation
+    contrib/ydb/public/sdk/cpp/src/client/proto
+    contrib/ydb/public/sdk/cpp/src/client/query
+    contrib/ydb/public/sdk/cpp/src/client/scheme
+    contrib/ydb/public/sdk/cpp/src/client/table
+    contrib/ydb/public/sdk/cpp/src/client/topic
+    contrib/ydb/library/yql/public/issue
+)
+
+END()

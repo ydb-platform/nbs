@@ -174,7 +174,7 @@ namespace NYql {
 
                         // If we work with managed YDB, we find out database name
                         // only after database id (== cluster id) resolving.
-                        if (clusterConfigIter->second.kind() == NConnector::NApi::EDataSourceKind::YDB) {
+                        if (clusterConfigIter->second.kind() == NYql::EGenericDataSourceKind::YDB) {
                             clusterConfigIter->second.set_databasename(databaseDescription.Database);
                         }
 
@@ -190,10 +190,10 @@ namespace NYql {
             TDatabaseResolverResponse::TDatabaseDescriptionMap DatabaseDescriptions_;
             NThreading::TFuture<void> AsyncFuture_;
         };
-    }
+    } // namespace
 
     THolder<IGraphTransformer> CreateGenericIODiscoveryTransformer(TGenericState::TPtr state) {
         return THolder(new TGenericIODiscoveryTransformer(std::move(state)));
     }
 
-}
+} // namespace NYql

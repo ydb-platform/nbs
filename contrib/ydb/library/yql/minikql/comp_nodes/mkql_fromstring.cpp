@@ -1,7 +1,7 @@
 #include "mkql_fromstring.h"
 
 #include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node_holders.h>
-#include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node_codegen.h>  // Y_IGNORE
+#include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node_codegen.h> // Y_IGNORE
 #include <contrib/ydb/library/yql/minikql/mkql_node_cast.h>
 #include <contrib/ydb/library/yql/minikql/mkql_node_builder.h>
 #include <contrib/ydb/library/yql/minikql/invoke_builtins/mkql_builtins_decimal.h> // Y_IGNORE
@@ -42,8 +42,9 @@ void ThrowConvertError(NYql::NUdf::TStringRef data, TStringBuf type) {
 }
 
 template <bool IsStrict, bool IsOptional>
-class TDecimalFromStringWrapper : public TMutableCodegeneratorNode<TDecimalFromStringWrapper<IsStrict, IsOptional>> {
+class TDecimalFromStringWrapper: public TMutableCodegeneratorNode<TDecimalFromStringWrapper<IsStrict, IsOptional>> {
     typedef TMutableCodegeneratorNode<TDecimalFromStringWrapper<IsStrict, IsOptional>> TBaseComputation;
+
 public:
     TDecimalFromStringWrapper(TComputationMutables& mutables, IComputationNode* data, ui8 precision, ui8 scale)
         : TBaseComputation(mutables, EValueRepresentation::Embedded)
@@ -78,13 +79,11 @@ public:
 
         const auto valType = Type::getInt128Ty(context);
         const auto psType = Type::getInt8Ty(context);
-        const auto valTypePtr = PointerType::getUnqual(valType);
 
         const auto name = "DecimalFromString";
         ctx.Codegen.AddGlobalMapping(name, reinterpret_cast<const void*>(&DecimalFromString));
-        const auto fnType = NYql::NCodegen::ETarget::Windows != ctx.Codegen.GetEffectiveTarget() ?
-            FunctionType::get(valType, { valType, psType, psType }, false):
-            FunctionType::get(Type::getVoidTy(context), { valTypePtr, valTypePtr, psType, psType }, false);
+        const auto fnType =
+            FunctionType::get(valType, {valType, psType, psType}, false);
         const auto func = ctx.Codegen.GetModule().getOrInsertFunction(name, fnType);
 
         const auto zero = ConstantInt::get(valType, 0ULL);
@@ -108,18 +107,11 @@ public:
             block = call;
         }
 
-        Value* decimal;
-        if (NYql::NCodegen::ETarget::Windows != ctx.Codegen.GetEffectiveTarget()) {
-            decimal = CallInst::Create(func, { value, precision, scale }, "from_string", block);
-        } else {
-            const auto retPtr = new AllocaInst(valType, 0U, "ret_ptr", block);
-            new StoreInst(value, retPtr, block);
-            CallInst::Create(func, { retPtr, retPtr, precision, scale }, "", block);
-            decimal = new LoadInst(valType, retPtr, "res", block);
-        }
+        const auto decimal = CallInst::Create(func, {value, precision, scale}, "from_string", block);
 
-        if (Data->IsTemporaryValue())
+        if (Data->IsTemporaryValue()) {
             ValueCleanup(Data->GetRepresentation(), value, ctx, block);
+        }
 
         const auto test = NDecimal::GenIsError(decimal, context, block);
         BranchInst::Create(fail, good, test, block);
@@ -127,10 +119,7 @@ public:
         {
             block = fail;
             if constexpr (IsStrict) {
-                const auto doFunc = ConstantInt::get(Type::getInt64Ty(context), GetMethodPtr(&TDecimalFromStringWrapper::Throw));
-                const auto doFuncType = FunctionType::get(Type::getVoidTy(context), {valType, psType, psType}, false);
-                const auto doFuncPtr = CastInst::Create(Instruction::IntToPtr, doFunc, PointerType::getUnqual(doFuncType), "thrower", block);
-                CallInst::Create(doFuncType, doFuncPtr, { value, precision, scale }, "", block);
+                EmitFunctionCall<&TDecimalFromStringWrapper::Throw>(Type::getVoidTy(context), {value, precision, scale}, ctx, block);
                 new UnreachableInst(context, block);
             } else {
                 phi->addIncoming(zero, block);
@@ -166,14 +155,16 @@ private:
 };
 
 template <bool IsStrict, bool IsOptional>
-class TFromStringWrapper : public TMutableCodegeneratorNode<TFromStringWrapper<IsStrict, IsOptional>> {
+class TFromStringWrapper: public TMutableCodegeneratorNode<TFromStringWrapper<IsStrict, IsOptional>> {
     typedef TMutableCodegeneratorNode<TFromStringWrapper<IsStrict, IsOptional>> TBaseComputation;
+
 public:
     TFromStringWrapper(TComputationMutables& mutables, IComputationNode* data, NUdf::TDataTypeId schemeType)
         : TBaseComputation(mutables, GetValueRepresentation(schemeType))
         , Data(data)
         , SchemeType(NUdf::GetDataSlot(schemeType))
-    {}
+    {
+    }
 
     NUdf::TUnboxedValue DoCalculate(TComputationContext& ctx) const {
         const auto& data = Data->GetValue(ctx);
@@ -198,13 +189,11 @@ public:
 
         const auto valType = Type::getInt128Ty(context);
         const auto slotType = Type::getInt32Ty(context);
-        const auto valTypePtr = PointerType::getUnqual(valType);
 
         const auto name = "DataFromString";
         ctx.Codegen.AddGlobalMapping(name, reinterpret_cast<const void*>(&DataFromString));
-        const auto fnType = NYql::NCodegen::ETarget::Windows != ctx.Codegen.GetEffectiveTarget() ?
-            FunctionType::get(valType, { valType, slotType }, false):
-            FunctionType::get(Type::getVoidTy(context), { valTypePtr, valTypePtr, slotType }, false);
+        const auto fnType =
+            FunctionType::get(valType, {valType, slotType}, false);
         const auto func = ctx.Codegen.GetModule().getOrInsertFunction(name, fnType);
 
         const auto zero = ConstantInt::get(valType, 0ULL);
@@ -224,18 +213,11 @@ public:
             block = call;
         }
 
-        Value* data;
-        if (NYql::NCodegen::ETarget::Windows != ctx.Codegen.GetEffectiveTarget()) {
-            data = CallInst::Create(func, { value, slot }, "from_string", block);
-        } else {
-            const auto retPtr = new AllocaInst(valType, 0U, "ret_ptr", block);
-            new StoreInst(value, retPtr, block);
-            CallInst::Create(func, { retPtr, retPtr, slot }, "", block);
-            data = new LoadInst(valType, retPtr, "res", block);
-        }
+        Value* data = CallInst::Create(func, {value, slot}, "from_string", block);
 
-        if (Data->IsTemporaryValue())
+        if (Data->IsTemporaryValue()) {
             ValueCleanup(Data->GetRepresentation(), value, ctx, block);
+        }
 
         if constexpr (IsOptional) {
             phi->addIncoming(data, block);
@@ -246,10 +228,7 @@ public:
             BranchInst::Create(fail, last, test, block);
 
             block = fail;
-            const auto doFunc = ConstantInt::get(Type::getInt64Ty(context), GetMethodPtr(&TFromStringWrapper::Throw));
-            const auto doFuncType = FunctionType::get(Type::getVoidTy(context), {valType, slotType}, false);
-            const auto doFuncPtr = CastInst::Create(Instruction::IntToPtr, doFunc, PointerType::getUnqual(doFuncType), "thrower", block);
-            CallInst::Create(doFuncType, doFuncPtr, { value, slot }, "", block);
+            EmitFunctionCall<&TFromStringWrapper::Throw>(Type::getVoidTy(context), {value, slot}, ctx, block);
             new UnreachableInst(context, block);
         } else if constexpr (IsOptional) {
             BranchInst::Create(last, block);
@@ -275,7 +254,7 @@ private:
     const NUdf::EDataSlot SchemeType;
 };
 
-}
+} // namespace
 
 IComputationNode* WrapFromString(TCallable& callable, const TComputationNodeFactoryContext& ctx) {
     MKQL_ENSURE(callable.GetInputsCount() >= 2, "Expected 2 args");
@@ -340,5 +319,5 @@ IComputationNode* WrapStrictFromString(TCallable& callable, const TComputationNo
     }
 }
 
-}
-}
+} // namespace NMiniKQL
+} // namespace NKikimr

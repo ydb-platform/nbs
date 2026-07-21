@@ -3,8 +3,7 @@ UNITTEST_FOR(contrib/ydb/core/blobstorage/ut_blobstorage)
     FORK_SUBTESTS()
 
     SIZE(MEDIUM)
-
-    TIMEOUT(600)
+    REQUIREMENTS(cpu:2)
 
     SRCS(
         donor.cpp

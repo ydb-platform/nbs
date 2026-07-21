@@ -2,6 +2,8 @@
 
 #include <contrib/ydb/core/tx/datashard/datashard.h>
 
+#define YDB_LOG_THIS_FILE_COMPONENT NKikimrServices::STATISTICS
+
 namespace NKikimr::NStat {
 
 struct TStatisticsAggregator::TTxDatashardScanResponse : public TTxBase {
@@ -16,7 +18,8 @@ struct TStatisticsAggregator::TTxDatashardScanResponse : public TTxBase {
     TTxType GetTxType() const override { return TXTYPE_SCAN_RESPONSE; }
 
     bool Execute(TTransactionContext& txc, const TActorContext&) override {
-        SA_LOG_D("[" << Self->TabletID() << "] TTxDatashardScanResponse::Execute");
+        YDB_LOG_DEBUG("TTxDatashardScanResponse::Execute",
+            {"tabletId", Self->TabletID()});
 
         NIceDb::TNiceDb db(txc.DB);
 
@@ -38,8 +41,8 @@ struct TStatisticsAggregator::TTxDatashardScanResponse : public TTxBase {
         for (auto& column : Record.GetColumns()) {
             auto tag = column.GetTag();
             for (auto& statistic : column.GetStatistics()) {
-                if (statistic.GetType() == NKikimr::NStat::COUNT_MIN_SKETCH) {
-                    auto* data = statistic.GetData().Data();
+                if (statistic.GetType() == static_cast<ui32>(EStatType::COUNT_MIN_SKETCH)) {
+                    auto* data = statistic.GetData().data();
                     auto* sketch = reinterpret_cast<const TCountMinSketch*>(data);
 
                     if (Self->ColumnNames.find(tag) == Self->ColumnNames.end()) {
@@ -66,7 +69,8 @@ struct TStatisticsAggregator::TTxDatashardScanResponse : public TTxBase {
     }
 
     void Complete(const TActorContext&) override {
-        SA_LOG_D("[" << Self->TabletID() << "] TTxDatashardScanResponse::Complete");
+        YDB_LOG_DEBUG("TTxDatashardScanResponse::Complete",
+            {"tabletId", Self->TabletID()});
 
         if (IsCorrectShardId && !Self->DatashardRanges.empty()) {
             Self->DatashardRanges.pop_front();

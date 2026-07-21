@@ -1,19 +1,19 @@
 #include "service_query.h"
 
 #include <contrib/ydb/core/base/appdata.h>
-#include <contrib/ydb/library/ydb_issue/issue_helpers.h>
 #include <contrib/ydb/core/grpc_services/base/base.h>
+#include <contrib/ydb/core/grpc_services/rpc_common/rpc_common.h>
 #include <contrib/ydb/core/grpc_services/rpc_request_base.h>
 #include <contrib/ydb/core/kqp/common/kqp.h>
 #include <contrib/ydb/core/kqp/common/kqp_script_executions.h>
 #include <contrib/ydb/core/kqp/common/simple/services.h>
 #include <contrib/ydb/core/kqp/proxy_service/kqp_script_executions.h>
-#include <contrib/ydb/public/api/protos/ydb_query.pb.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/interconnect.h>
+#include <contrib/ydb/library/ydb_issue/issue_helpers.h>
+#include <contrib/ydb/public/api/protos/ydb_query.pb.h>
 
 namespace NKikimr::NGRpcService {
 
@@ -57,7 +57,7 @@ public:
         }
 
         RowsOffset = 0;
-        if (!req->fetch_token().Empty()) {
+        if (!req->fetch_token().empty()) {
             auto fetch_token = TryFromString<ui64>(req->fetch_token());
             if (fetch_token) {
                 RowsOffset = *fetch_token;
@@ -71,7 +71,7 @@ public:
             return;
         }
 
-        Register(NKqp::CreateGetScriptExecutionResultActor(SelfId(), DatabaseName, ExecutionId, req->result_set_index(), RowsOffset, req->rows_limit(), req->rows_limit() ? 0 : MAX_SIZE_LIMIT, Request->GetDeadline()));
+        Register(NKqp::CreateGetScriptExecutionResultActor(SelfId(), GetDatabaseName(), ExecutionId, GetUserSID(*Request), req->result_set_index(), RowsOffset, req->rows_limit(), req->rows_limit() ? 0 : MAX_SIZE_LIMIT, Request->GetDeadline()));
 
         Become(&TFetchScriptResultsRPC::StateFunc);
     }
@@ -125,12 +125,13 @@ private:
     }
 
     bool GetExecutionIdFromRequest() {
-        TMaybe<TString> executionId = NKqp::ScriptExecutionIdFromOperation(GetProtoRequest()->operation_id());
+        TString error;
+        auto executionId = NKqp::ScriptExecutionIdFromOperation(GetProtoRequest()->operation_id(), error);
         if (!executionId) {
-            Reply(Ydb::StatusIds::BAD_REQUEST, "Invalid operation id");
+            Reply(Ydb::StatusIds::BAD_REQUEST, error);
             return false;
         }
-        ExecutionId = *executionId;
+        ExecutionId = std::move(*executionId);
         return true;
     }
 

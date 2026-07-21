@@ -2,7 +2,15 @@
 
 #include "contrib/ydb/core/base/tablet_pipe.h"
 #include "contrib/ydb/core/grpc_services/local_rpc/local_rpc.h"
+#include <contrib/ydb/core/grpc_services/service_scheme.h>
+#include <contrib/ydb/core/grpc_services/service_topic.h>
+#include "contrib/ydb/core/kafka_proxy/actors/actors.h"
 #include <contrib/ydb/core/kafka_proxy/kafka_events.h>
+#include <contrib/ydb/core/kafka_proxy/actors/kafka_topic_group_path_struct.h>
+#include <contrib/ydb/core/tx/replication/ydb_proxy/ydb_proxy.h>
+#include <contrib/ydb/core/tx/replication/ydb_proxy/local_proxy/local_proxy.h>
+#include <contrib/ydb/core/tx/replication/ydb_proxy/local_proxy/local_proxy_request.h>
+#include <contrib/ydb/core/persqueue/events/global.h>
 #include <contrib/ydb/core/persqueue/events/internal.h>
 #include <contrib/ydb/library/aclib/aclib.h>
 #include <contrib/ydb/library/actors/core/actor.h>
@@ -12,10 +20,15 @@
 #include <contrib/ydb/services/persqueue_v1/actors/events.h>
 #include "contrib/ydb/services/persqueue_v1/actors/persqueue_utils.h"
 #include <contrib/ydb/services/persqueue_v1/actors/read_init_auth_actor.h>
+#include <contrib/ydb/core/kafka_proxy/kafka_consumer_groups_metadata_initializers.h>
+#include <contrib/ydb/core/kqp/common/events/events.h>
+#include <contrib/ydb/core/kafka_proxy/kqp_helper.h>
 
 
 namespace NKafka {
 using namespace NKikimr;
+
+extern const TString CHECK_GROUP_GENERATION;
 
 class TKafkaOffsetCommitActor: public NActors::TActorBootstrapped<TKafkaOffsetCommitActor> {
 
@@ -51,6 +64,9 @@ private:
             HFunc(NKikimr::NGRpcProxy::V1::TEvPQProxy::TEvCloseSession, Handle);
             HFunc(TEvTabletPipe::TEvClientConnected, Handle);
             HFunc(TEvTabletPipe::TEvClientDestroyed, Handle);
+            HFunc(NKikimr::NReplication::TEvYdbProxy::TEvAlterTopicResponse, Handle);
+            HFunc(NKqp::TEvKqp::TEvCreateSessionResponse, Handle);
+            HFunc(NKikimr::NKqp::TEvKqp::TEvQueryResponse, Handle);
         }
     }
 
@@ -59,10 +75,19 @@ private:
     void Handle(NKikimr::NGRpcProxy::V1::TEvPQProxy::TEvCloseSession::TPtr& ev, const TActorContext& ctx);
     void Handle(TEvTabletPipe::TEvClientConnected::TPtr& ev, const TActorContext& ctx);
     void Handle(TEvTabletPipe::TEvClientDestroyed::TPtr& ev, const TActorContext& ctx);
+    void Handle(NKikimr::NReplication::TEvYdbProxy::TEvAlterTopicResponse::TPtr& ev, const TActorContext& ctx);
+    void Handle(NKqp::TEvKqp::TEvCreateSessionResponse::TPtr& ev, const TActorContext& ctx);
+    void Handle(NKikimr::NKqp::TEvKqp::TEvQueryResponse::TPtr& ev, const TActorContext& ctx);
 
+    void SendAuthRequest(const NActors::TActorContext& ctx);
+    void CreateConsumerGroupIfNecessary(const TString& topicName,
+                                    const TString& topicPath,
+                                    const TString& groupId);
     void AddPartitionResponse(EKafkaErrors error, const TString& topicName, ui64 partitionId, const TActorContext& ctx);
     void ProcessPipeProblem(ui64 tabletId, const TActorContext& ctx);
     void SendFailedForAllPartitions(EKafkaErrors error, const TActorContext& ctx);
+    void SendCommits(const TActorContext& ctx);
+    void SendGenerationCheckRequest(const TActorContext& ctx);
 
 private:
     const TContext::TPtr Context;
@@ -70,15 +95,19 @@ private:
     const TMessagePtr<TOffsetCommitRequestData> Message;
     const TOffsetCommitResponseData::TPtr Response;
 
-    ui64 PendingResponses = 0;
     ui64 NextCookie = 0;
+    ui32 AlterTopicCookie = 0;
+    ui64 PendingResponses = 0;
     std::unordered_map<ui64, TVector<ui64>> TabletIdToCookies;
     std::unordered_map<ui64, TRequestInfo> CookieToRequestInfo;
     std::unordered_map<TString, ui64> ResponseTopicIds;
     NKikimr::NGRpcProxy::TTopicInitInfoMap TopicAndTablets;
     std::unordered_map<ui64, TActorId> TabletIdToPipe;
+    std::unordered_map<ui32, TString> AlterTopicCookieToName;
+    std::unordered_set<NKafka::TTopicGroupIdAndPath, NKafka::TTopicGroupIdAndPathHash> ConsumerTopicAlterRequestAttempts;
     TActorId AuthInitActor;
     EKafkaErrors Error = NONE_ERROR;
+    std::unique_ptr<NKafka::TKqpTxHelper> Kqp;
 
     static constexpr NTabletPipe::TClientRetryPolicy RetryPolicyForPipes = {
         .RetryLimitCount = 6,

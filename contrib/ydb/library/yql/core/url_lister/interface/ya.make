@@ -6,7 +6,6 @@ SRCS(
 )
 
 PEERDIR(
-    library/cpp/uri
     library/cpp/yson/node
     contrib/ydb/library/yql/core/credentials
     contrib/ydb/library/yql/core/url_preprocessing/interface

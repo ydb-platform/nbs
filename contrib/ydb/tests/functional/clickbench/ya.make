@@ -4,16 +4,14 @@ PY3TEST()
 
 TEST_SRCS(test.py)
 
-TIMEOUT(600)
 SIZE(MEDIUM)
 
 ENV(YDB_USE_IN_MEMORY_PDISKS=true)
 ENV(YDB_CLI_BINARY="contrib/ydb/apps/ydb/ydb")
 ENV(YDB_ENABLE_COLUMN_TABLES="true")
-REQUIREMENTS(
-    ram:32
-    cpu:4
-)
+ENV(YDB_FEATURE_FLAGS="enable_resource_pools")
+
+REQUIREMENTS(ram:32 cpu:4)
 
 DEPENDS(
     contrib/ydb/apps/ydb

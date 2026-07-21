@@ -1,19 +1,15 @@
 #include "auth_factory.h"
-#include "http_req.h"
+
+#include "auth_actors.h"
+#include "http_service.h"
+#include "metrics_actor.h"
+
 #include <contrib/ydb/core/base/feature_flags.h>
-#include <contrib/ydb/core/http_proxy/http_service.h>
-#include <contrib/ydb/core/http_proxy/http_req.h>
-#include <contrib/ydb/core/http_proxy/metrics_actor.h>
-#include <contrib/ydb/core/http_proxy/discovery_actor.h>
-
-#include <contrib/ydb/public/sdk/cpp/client/iam_private/iam.h>
-
 #include <contrib/ydb/library/actors/http/http_proxy.h>
-
-#include <contrib/ydb/core/protos/config.pb.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/iam_private/iam.h>
+#include <contrib/ydb/public/sdk/cpp/src/client/types/core_facility/simple_core_facility.h>
 
 namespace NKikimr::NHttpProxy {
-
 
 void TIamAuthFactory::InitTenantDiscovery(
     NActors::TActorSystemSetup::TLocalServices&,
@@ -26,7 +22,7 @@ void TIamAuthFactory::Initialize(
     NActors::TActorSystemSetup::TLocalServices& localServices,
     const TAppData& appData,
     const THttpConfig& httpConfig,
-    const  NKikimrConfig::TGRpcConfig& grpcConfig)
+    const NKikimrConfig::TGRpcConfig& grpcConfig)
 {
     if (!httpConfig.GetEnabled()) {
         return;
@@ -43,10 +39,12 @@ void TIamAuthFactory::Initialize(
     NKikimrConfig::TServerlessProxyConfig config;
     config.MutableHttpConfig()->CopyFrom(httpConfig);
     config.SetCaCert(CA);
-    if (httpConfig.GetYandexCloudServiceRegion().size() == 0) {
-        ythrow yexception() << "YandexCloudServiceRegion must not be empty";
+    if (httpConfig.GetYandexCloudMode() && httpConfig.GetYandexCloudServiceRegion().empty()) {
+        Cout << "HttpProxy: YandexCloudServiceRegion must not be empty" << Endl;
     }
-    IActor* actor = NKikimr::NHttpProxy::CreateAccessServiceActor(config);
+    NActors::IActor* actor = NKikimr::NHttpProxy::CreateAccessServiceActor(
+        config,
+        appData.FeatureFlags.GetEnableAccessServiceV2Interface());
     localServices.push_back(std::pair<TActorId, TActorSetupCmd>(
             NKikimr::NHttpProxy::MakeAccessServiceID(),
             TActorSetupCmd(actor, TMailboxType::HTSwap, appData.UserPoolId)));
@@ -59,8 +57,13 @@ void TIamAuthFactory::Initialize(
     const NYdb::TCredentialsProviderFactoryPtr credentialsProviderFactory = jwtFilename.empty()
         ? NYdb::CreateInsecureCredentialsProviderFactory()
         : NYdb::CreateIamJwtFileCredentialsProviderFactoryPrivate(
-            {{.Endpoint = iamExternalEndpoint}, jwtFilename} );
-    const NYdb::TCredentialsProviderPtr credentialsProvider = credentialsProviderFactory->CreateProvider();
+            {{.Endpoint = iamExternalEndpoint}, jwtFilename});
+
+    const std::shared_ptr<NYdb::ICoreFacility> coreFacility = jwtFilename.empty()
+        ? nullptr
+        : NYdb::CreateSimpleCoreFacility();
+
+    const NYdb::TCredentialsProviderPtr credentialsProvider = credentialsProviderFactory->CreateProvider(coreFacility);
 
 
     actor = NKikimr::NHttpProxy::CreateIamTokenServiceActor(config);
@@ -91,11 +94,9 @@ void TIamAuthFactory::Initialize(
             TActorSetupCmd(actor, TMailboxType::HTSwap, appData.UserPoolId)));
 }
 
-NActors::IActor* TIamAuthFactory::CreateAuthActor(const TActorId sender, THttpRequestContext& context, THolder<NKikimr::NSQS::TAwsRequestSignV4>&& signature) const
+NActors::IActor* TIamAuthFactory::CreateAuthActor(const NActors::TActorId sender, THttpRequestContext& context, THolder<NKikimr::NSQS::TAwsRequestSignV4>&& signature) const
 {
     return CreateIamAuthActor(sender, context, std::move(signature));
 }
 
-
-}
-
+} // namespace NKikimr::NHttpProxy

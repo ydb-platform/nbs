@@ -1,6 +1,11 @@
 LIBRARY()
 
 SRCS(
+    yql_yt_block_input.cpp
+    yql_yt_block_io_filter.cpp
+    yql_yt_block_io_utils.cpp
+    yql_yt_block_output.cpp
+    yql_yt_cbo_helpers.cpp
     yql_yt_datasink_constraints.cpp
     yql_yt_datasink_exec.cpp
     yql_yt_datasink_finalize.cpp
@@ -12,17 +17,20 @@ SRCS(
     yql_yt_datasource_type_ann.cpp
     yql_yt_datasource.cpp
     yql_yt_epoch.cpp
+    yql_yt_forwarding_gateway.cpp
     yql_yt_gateway.cpp
     yql_yt_horizontal_join.cpp
     yql_yt_helpers.cpp
     yql_yt_intent_determination.cpp
     yql_yt_io_discovery.cpp
+    yql_yt_io_discovery_partitions.cpp
     yql_yt_io_discovery_walk_folders.cpp
     yql_yt_join_impl.cpp
     yql_yt_join_reorder.cpp
     yql_yt_key.cpp
     yql_yt_load_table_meta.cpp
     yql_yt_load_columnar_stats.cpp
+    yql_yt_layers_integration.cpp
     yql_yt_logical_optimize.cpp
     yql_yt_mkql_compiler.cpp
     yql_yt_op_hash.cpp
@@ -31,6 +39,7 @@ SRCS(
     yql_yt_peephole.cpp
     yql_yt_physical_finalizing.cpp
     yql_yt_physical_optimize.cpp
+    yql_yt_provider_context.cpp
     yql_yt_provider_impl.cpp
     yql_yt_provider.cpp
     yql_yt_provider.h
@@ -41,9 +50,12 @@ SRCS(
     yql_yt_dq_optimize.cpp
     yql_yt_dq_hybrid.cpp
     yql_yt_wide_flow.cpp
+    yql_yt_ytflow_integration.cpp
+    yql_yt_ytflow_optimize.cpp
 
     phy_opt/yql_yt_phy_opt.cpp
     phy_opt/yql_yt_phy_opt_content.cpp
+    phy_opt/yql_yt_phy_opt_create.cpp
     phy_opt/yql_yt_phy_opt_fuse.cpp
     phy_opt/yql_yt_phy_opt_helper.h
     phy_opt/yql_yt_phy_opt_lambda.cpp
@@ -56,37 +68,51 @@ SRCS(
     phy_opt/yql_yt_phy_opt_field_subset.cpp
     phy_opt/yql_yt_phy_opt_helper.cpp
     phy_opt/yql_yt_phy_opt_key_range.cpp
+    phy_opt/yql_yt_phy_opt_ytql.cpp
     phy_opt/yql_yt_phy_opt_merge.cpp
     phy_opt/yql_yt_phy_opt_push.cpp
     phy_opt/yql_yt_phy_opt_write.cpp
 )
 
 PEERDIR(
+    contrib/libs/re2
     library/cpp/yson/node
+    library/cpp/json/writer
+    library/cpp/json
     library/cpp/disjoint_sets
+    library/cpp/type_info/tz
     yt/cpp/mapreduce/common
     yt/cpp/mapreduce/interface
     contrib/ydb/library/yql/ast
     contrib/ydb/library/yql/core/extract_predicate
+    contrib/ydb/library/yql/public/langver
     contrib/ydb/library/yql/public/udf
-    contrib/ydb/library/yql/public/udf/tz
     contrib/ydb/library/yql/sql
+    contrib/ydb/library/yql/sql/settings/flags
+    contrib/ydb/library/yql/sql/v1
+    contrib/ydb/library/yql/sql/v1/lexer/antlr4
+    contrib/ydb/library/yql/sql/v1/lexer/antlr4_ansi
+    contrib/ydb/library/yql/sql/v1/proto_parser/antlr4
+    contrib/ydb/library/yql/sql/v1/proto_parser/antlr4_ansi
+    contrib/ydb/library/yql/parser/pg_wrapper/interface
     contrib/ydb/library/yql/utils
     contrib/ydb/library/yql/utils/log
     contrib/ydb/library/yql/core
+    contrib/ydb/library/yql/core/dq_expr_nodes
+    contrib/ydb/library/yql/core/dqs_expr_nodes
     contrib/ydb/library/yql/core/expr_nodes
     contrib/ydb/library/yql/core/issue
-    contrib/ydb/library/yql/core/issue/protos
+    contrib/ydb/library/yql/core/langver
+    contrib/ydb/library/yql/public/issue/protos
     contrib/ydb/library/yql/core/peephole_opt
     contrib/ydb/library/yql/core/type_ann
     contrib/ydb/library/yql/core/file_storage
     contrib/ydb/library/yql/core/url_lister/interface
-    contrib/ydb/library/yql/dq/integration
-    contrib/ydb/library/yql/dq/opt
-    contrib/ydb/library/yql/dq/type_ann
+    contrib/ydb/library/yql/core/dq_integration
     contrib/ydb/library/yql/minikql
     contrib/ydb/library/yql/providers/common/codec
     contrib/ydb/library/yql/providers/common/config
+    contrib/ydb/library/yql/providers/common/config/transformer
     contrib/ydb/library/yql/providers/common/dq
     contrib/ydb/library/yql/providers/common/mkql
     contrib/ydb/library/yql/providers/common/proto
@@ -95,13 +121,12 @@ PEERDIR(
     contrib/ydb/library/yql/providers/common/schema/expr
     contrib/ydb/library/yql/providers/common/structured_token
     contrib/ydb/library/yql/providers/common/transform
-    contrib/ydb/library/yql/providers/dq/common
-    contrib/ydb/library/yql/providers/dq/expr_nodes
     contrib/ydb/library/yql/providers/result/expr_nodes
     contrib/ydb/library/yql/providers/stat/expr_nodes
     contrib/ydb/library/yql/providers/yt/common
     contrib/ydb/library/yql/providers/yt/expr_nodes
     contrib/ydb/library/yql/providers/yt/lib/expr_traits
+    contrib/ydb/library/yql/providers/yt/lib/full_capture
     contrib/ydb/library/yql/providers/yt/lib/graph_reorder
     contrib/ydb/library/yql/providers/yt/lib/hash
     contrib/ydb/library/yql/providers/yt/lib/key_filter
@@ -110,15 +135,35 @@ PEERDIR(
     contrib/ydb/library/yql/providers/yt/lib/row_spec
     contrib/ydb/library/yql/providers/yt/lib/schema
     contrib/ydb/library/yql/providers/yt/lib/skiff
+    contrib/ydb/library/yql/providers/yt/lib/temp_files
     contrib/ydb/library/yql/providers/yt/lib/yson_helpers
+    contrib/ydb/library/yql/providers/yt/lib/yt_token_resolver
     contrib/ydb/library/yql/providers/yt/opt
     contrib/ydb/library/yql/providers/yt/gateway/qplayer
     contrib/ydb/library/yql/providers/yt/proto
+    contrib/ydb/library/yql/providers/ytflow/expr_nodes
+    contrib/ydb/library/yql/providers/ytflow/integration/interface
+    contrib/ydb/library/yql/providers/ytflow/integration/proto
 )
 
 YQL_LAST_ABI_VERSION()
 
 GENERATE_ENUM_SERIALIZATION(yql_yt_op_settings.h)
+
+RUN_PROGRAM(
+    tools/enum_parser/enum_parser
+        --output
+        ${BINDIR}/yql_yt_op_settings.unused.cpp
+        --json-output
+        ${BINDIR}/yql_yt_op_settings.json
+        yql_yt_op_settings.h
+    IN yql_yt_op_settings.h
+    OUT_NOAUTO ${BINDIR}/yql_yt_op_settings.json
+)
+
+RESOURCE(
+    ${BINDIR}/yql_yt_op_settings.json /yql_yt_op_settings.json
+)
 
 END()
 

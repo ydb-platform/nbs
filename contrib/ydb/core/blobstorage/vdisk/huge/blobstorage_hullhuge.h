@@ -20,9 +20,12 @@ namespace NKikimr {
         const TIngress Ingress;
         TRope Data;
         const bool IgnoreBlock;
+        const bool IssueKeepFlag;
         const NKikimrBlobStorage::EPutHandleClass HandleClass;
+        const TWriteSource WriteSource;
         std::unique_ptr<TEvBlobStorage::TEvVPutResult> Result;
         NProtoBuf::RepeatedPtrField<NKikimrBlobStorage::TEvVPut::TExtraBlockCheck> ExtraBlockChecks;
+        const bool RewriteBlob;
 
         mutable NLWTrace::TOrbit Orbit;
 
@@ -32,17 +35,23 @@ namespace NKikimr {
                              const TIngress &ingress,
                              TRope&& data,
                              bool ignoreBlock,
+                             bool issueKeepFlag,
                              NKikimrBlobStorage::EPutHandleClass handleClass,
                              std::unique_ptr<TEvBlobStorage::TEvVPutResult> result,
-                             NProtoBuf::RepeatedPtrField<NKikimrBlobStorage::TEvVPut::TExtraBlockCheck> *extraBlockChecks)
+                             NProtoBuf::RepeatedPtrField<NKikimrBlobStorage::TEvVPut::TExtraBlockCheck> *extraBlockChecks,
+                             TWriteSource writeSource = UnknownWriteSource(),
+                             bool rewriteBlob = false)
             : SenderId(senderId)
             , Cookie(cookie)
             , LogoBlobId(logoBlobId)
             , Ingress(ingress)
             , Data(std::move(data))
             , IgnoreBlock(ignoreBlock)
+            , IssueKeepFlag(issueKeepFlag)
             , HandleClass(handleClass)
+            , WriteSource(writeSource)
             , Result(std::move(result))
+            , RewriteBlob(rewriteBlob)
         {
             if (extraBlockChecks) {
                 ExtraBlockChecks.Swap(extraBlockChecks);
@@ -70,31 +79,40 @@ namespace NKikimr {
         const TIngress Ingress;
         const TDiskPart HugeBlob;
         const bool IgnoreBlock;
+        const bool IssueKeepFlag;
         const TActorId OrigClient;
         const ui64 OrigCookie;
         const NKikimrBlobStorage::EPutHandleClass HandleClass;
+        const TWriteSource WriteSource;
         std::unique_ptr<TEvBlobStorage::TEvVPutResult> Result;
         NProtoBuf::RepeatedPtrField<NKikimrBlobStorage::TEvVPut::TExtraBlockCheck> ExtraBlockChecks;
+        const bool RewriteBlob;
 
         TEvHullLogHugeBlob(ui64 writeId,
                            const TLogoBlobID &logoBlobID,
                            const TIngress &ingress,
                            const TDiskPart &hugeBlob,
                            bool ignoreBlock,
+                           bool issueKeepFlag,
                            const TActorId &origClient,
                            ui64 origCookie,
                            NKikimrBlobStorage::EPutHandleClass handleClass,
                            std::unique_ptr<TEvBlobStorage::TEvVPutResult> result,
-                           NProtoBuf::RepeatedPtrField<NKikimrBlobStorage::TEvVPut::TExtraBlockCheck> *extraBlockChecks)
+                           NProtoBuf::RepeatedPtrField<NKikimrBlobStorage::TEvVPut::TExtraBlockCheck> *extraBlockChecks,
+                           TWriteSource writeSource,
+                           bool rewriteBlob = false)
             : WriteId(writeId)
             , LogoBlobID(logoBlobID)
             , Ingress(ingress)
             , HugeBlob(hugeBlob)
             , IgnoreBlock(ignoreBlock)
+            , IssueKeepFlag(issueKeepFlag)
             , OrigClient(origClient)
             , OrigCookie(origCookie)
             , HandleClass(handleClass)
+            , WriteSource(writeSource)
             , Result(std::move(result))
+            , RewriteBlob(rewriteBlob)
         {
             if (extraBlockChecks) {
                 ExtraBlockChecks.Swap(extraBlockChecks);
@@ -134,12 +152,15 @@ namespace NKikimr {
     class TEvHullFreeHugeSlots : public TEventLocal<TEvHullFreeHugeSlots, TEvBlobStorage::EvHullFreeHugeSlots> {
     public:
         const TDiskPartVec HugeBlobs;
+        const TDiskPartVec AllocatedBlobs;
         const ui64 DeletionLsn;
         const TLogSignature Signature; // identifies database we send update for
         const ui64 WId;
 
-        TEvHullFreeHugeSlots(TDiskPartVec &&hugeBlobs, ui64 deletionLsn, TLogSignature signature, ui64 wId)
+        TEvHullFreeHugeSlots(TDiskPartVec&& hugeBlobs, TDiskPartVec&& allocatedBlobs, ui64 deletionLsn,
+                TLogSignature signature, ui64 wId)
             : HugeBlobs(std::move(hugeBlobs))
+            , AllocatedBlobs(std::move(allocatedBlobs))
             , DeletionLsn(deletionLsn)
             , Signature(signature)
             , WId(wId)
@@ -148,7 +169,7 @@ namespace NKikimr {
         TString ToString() const {
             TStringStream str;
             str << "{" << Signature.ToString() << " DelLsn# " << DeletionLsn << " Slots# " << HugeBlobs.ToString()
-                << " WId# " << WId << "}";
+                << " Allocated# " << AllocatedBlobs.ToString() << " WId# " << WId << "}";
             return str.Str();
         }
     };
@@ -173,15 +194,6 @@ namespace NKikimr {
             str << "{Chunks# " << FormatList(Chunks) << "}";
             return str.Str();
         }
-    };
-
-    class TEvHugeUnlockChunks : public TEventLocal<TEvHugeUnlockChunks, TEvBlobStorage::EvHugeUnlockChunks> {
-    public:
-        TDefragChunks Chunks;
-
-        TEvHugeUnlockChunks(TDefragChunks chunks)
-            : Chunks(std::move(chunks))
-        {}
     };
 
     ////////////////////////////////////////////////////////////////////////////
@@ -217,6 +229,40 @@ namespace NKikimr {
     struct TEvHugePreCompactResult : TEventLocal<TEvHugePreCompactResult, TEvBlobStorage::EvHugePreCompactResult> {
         const ui64 WId; // this is going to be provided in free slots operation
         TEvHugePreCompactResult(ui64 wId) : WId(wId) {}
+    };
+
+    struct TEvHugeAllocateSlots : TEventLocal<TEvHugeAllocateSlots, TEvBlobStorage::EvHugeAllocateSlots> {
+        std::vector<ui32> BlobSizes;
+
+        TEvHugeAllocateSlots(std::vector<ui32> blobSizes)
+            : BlobSizes(std::move(blobSizes))
+        {}
+    };
+
+    struct TEvHugeAllocateSlotsResult : TEventLocal<TEvHugeAllocateSlotsResult, TEvBlobStorage::EvHugeAllocateSlotsResult> {
+        std::vector<TDiskPart> Locations;
+
+        TEvHugeAllocateSlotsResult(std::vector<TDiskPart> locations)
+            : Locations(std::move(locations))
+        {}
+    };
+
+    struct TEvHugeDropAllocatedSlots : TEventLocal<TEvHugeDropAllocatedSlots, TEvBlobStorage::EvHugeDropAllocatedSlots> {
+        std::vector<TDiskPart> Locations;
+
+        TEvHugeDropAllocatedSlots(std::vector<TDiskPart> locations)
+            : Locations(std::move(locations))
+        {}
+    };
+
+    struct TEvHugeShredNotify : TEventLocal<TEvHugeShredNotify, TEvBlobStorage::EvHugeShredNotify> {
+        std::vector<TChunkIdx> ChunksToShred;
+        TEvHugeShredNotify(std::vector<TChunkIdx> chunksToShred) : ChunksToShred(std::move(chunksToShred)) {}
+    };
+
+    struct TEvHugeForbiddenChunks : TEventLocal<TEvHugeForbiddenChunks, TEvBlobStorage::EvHugeForbiddenChunks> {
+        THashSet<TChunkIdx> ForbiddenChunks;
+        TEvHugeForbiddenChunks(THashSet<TChunkIdx> forbiddenChunks) : ForbiddenChunks(std::move(forbiddenChunks)) {}
     };
 
     ////////////////////////////////////////////////////////////////////////////

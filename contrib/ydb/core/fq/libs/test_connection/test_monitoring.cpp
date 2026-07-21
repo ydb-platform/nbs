@@ -9,10 +9,12 @@
 #include <contrib/ydb/library/yql/providers/common/structured_token/yql_token_builder.h>
 #include <contrib/ydb/library/yql/utils/url_builder.h>
 
-#include <contrib/ydb/library/yql/providers/solomon/async_io/dq_solomon_write_actor.h>
+#include <contrib/ydb/library/yql/providers/solomon/actors/dq_solomon_write_actor.h>
 #include <contrib/ydb/library/yql/utils/actors/http_sender_actor.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+
+#define YDB_LOG_THIS_FILE_COMPONENT ::NKikimrServices::YQ_TEST_CONNECTION
 
 namespace NFq {
 
@@ -63,7 +65,11 @@ public:
     static constexpr char ActorName[] = "YQ_TEST_MONITORING_CONNECTION";
 
     void Bootstrap() {
-        TC_LOG_D(Scope << " " << User << " " << NKikimr::MaskTicket(Token) << " Starting test monitoring connection actor. Actor id: " << SelfId());
+        YDB_LOG_DEBUG("Starting test monitoring connection actor",
+            {"scope", Scope},
+            {"user", User},
+            {"ticket", NKikimr::MaskTicket(Token)},
+            {"selfId", SelfId()});
         Become(&TTestMonitoringConnectionActor::StateFunc);
 
         try {
@@ -72,7 +78,15 @@ public:
             auto retryPolicy = NYql::NDq::THttpSenderRetryPolicy::GetNoRetryPolicy();
             const TActorId httpSenderId = Register(NYql::NDq::CreateHttpSenderActor(SelfId(), HttpProxyId, retryPolicy));
             Send(httpSenderId, new NHttp::TEvHttpProxy::TEvHttpOutgoingRequest(httpRequest), /*flags=*/0, Cookie);
-            TC_LOG_T(Scope << " " << User << " " << NKikimr::MaskTicket(Token) << " send request " << httpRequest->Method << " " << httpRequest->Protocol << " " << httpRequest->Host << " " << httpRequest->URL << " " << httpRequest->Body);
+            YDB_LOG_TRACE("Send request",
+                {"scope", Scope},
+                {"user", User},
+                {"ticket", NKikimr::MaskTicket(Token)},
+                {"method", httpRequest->Method},
+                {"protocol", httpRequest->Protocol},
+                {"host", httpRequest->Host},
+                {"url", httpRequest->URL},
+                {"body", httpRequest->Body});
         } catch (...) {
             ReplyError(CurrentExceptionMessage());
         }
@@ -117,13 +131,22 @@ public:
     void Handle(NYql::NDq::TEvHttpBase::TEvSendResult::TPtr& ev) {
         const auto* res = ev->Get();
         if (res->HttpIncomingResponse->Get()->Response->Status == "400") {
-            TC_LOG_T(Scope << " " << User << " " << NKikimr::MaskTicket(Token) << " ok " << res->HttpIncomingResponse->Get()->ToString());
+            YDB_LOG_TRACE("Ok",
+                {"scope", Scope},
+                {"user", User},
+                {"ticket", NKikimr::MaskTicket(Token)},
+                {"response", res->HttpIncomingResponse->Get()->ToString()});
             ReplyOk();
             return;
         }
 
         const TString& error = res->HttpIncomingResponse->Get()->GetError();
-        TC_LOG_T(Scope << " " << User << " " << NKikimr::MaskTicket(Token) << " access problem " << res->HttpIncomingResponse->Get()->ToString() << " " << error);
+        YDB_LOG_TRACE("Access problem",
+            {"scope", Scope},
+            {"user", User},
+            {"ticket", NKikimr::MaskTicket(Token)},
+            {"response", res->HttpIncomingResponse->Get()->ToString()},
+            {"error", error});
         ReplyError(error);
     }
 

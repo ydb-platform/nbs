@@ -1,5 +1,5 @@
 #include <library/cpp/testing/unittest/registar.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_persqueue_core/ut/ut_utils/test_server.h>
+#include <contrib/ydb/public/sdk/cpp/src/client/persqueue_public/ut/ut_utils/test_server.h>
 #include <contrib/ydb/core/persqueue/events/global.h>
 
 namespace NKikimr::NPQ {
@@ -8,25 +8,25 @@ using namespace NPersQueue;
 Y_UNIT_TEST_SUITE(TPQRBDescribes) {
 
     Y_UNIT_TEST(PartitionLocations) {
-        
+
         NPersQueue::TTestServer server;
         TString topicName = "rt3.dc1--topic";
         TString topicPath = TString("/Root/PQ/") + topicName;
         ui32 totalPartitions = 5;
         server.AnnoyingClient->CreateTopic(topicName, totalPartitions);
 
-        auto pathDescr = server.AnnoyingClient->Ls(topicPath)->Record.GetPathDescription().GetSelf();
-
-        ui64 balancerTabletId = pathDescr.GetBalancerTabletID();
         auto* runtime = server.CleverServer->GetRuntime();
         const auto edge = runtime->AllocateEdgeActor();
-        
+
+        auto pathDescr = server.AnnoyingClient->Describe(runtime, topicPath).GetPathDescription().GetPersQueueGroup();
+        ui64 balancerTabletId = pathDescr.GetBalancerTabletID();
+
         auto checkResponse = [&](TEvPersQueue::TEvGetPartitionsLocation* request, bool ok, ui64 partitionsCount = 0) {
             runtime->SendToPipe(balancerTabletId, edge, request);
             auto ev = runtime->GrabEdgeEvent<TEvPersQueue::TEvGetPartitionsLocationResponse>();
             const auto& response = ev->Record;
             Cerr << "response: " << response.DebugString();
-            
+
             UNIT_ASSERT(response.GetStatus() == ok);
             if (!ok) {
                 return ev;
@@ -55,7 +55,7 @@ Y_UNIT_TEST_SUITE(TPQRBDescribes) {
                     return;
                 }
             }
-            UNIT_FAIL("Could not get positive response from balancer"); 
+            UNIT_FAIL("Could not get positive response from balancer");
 
         };
         pollBalancer(5);
@@ -71,7 +71,7 @@ Y_UNIT_TEST_SUITE(TPQRBDescribes) {
             req->Record.AddPartitions(50);
             checkResponse(req, false);
         }
-    
+
     }
 };
 

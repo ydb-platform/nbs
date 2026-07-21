@@ -10,20 +10,162 @@ namespace NKikimr {
 namespace NMiniKQL {
 namespace GraceJoin {
 
+// Determines whether the right input can be safely skipped when the left input is empty.
+// For certain join kinds, the result will always be empty if the left side is empty,
+// regardless of the content of the right side. In such cases, it's safe to avoid reading the right input entirely.
+constexpr bool ShouldSkipRightIfLeftEmpty(EJoinKind kind) {
+    switch (kind) {
+        case EJoinKind::Inner:
+        case EJoinKind::LeftOnly:
+        case EJoinKind::LeftSemi:
+        case EJoinKind::RightSemi:
+            return true;
+        case EJoinKind::RightOnly:
+        case EJoinKind::Left:
+        case EJoinKind::Right:
+        case EJoinKind::Exclusion:
+        case EJoinKind::Full:
+        case EJoinKind::SemiMask:
+        case EJoinKind::SemiSide:
+        case EJoinKind::Cross:
+            return false;
+    }
+}
+
+// Determines whether the left input can be safely skipped when the right input is empty.
+// For certain join kinds, the result will always be empty if the right side is empty,
+// regardless of the content of the left side. In such cases, it's safe to avoid reading the left input entirely.
+constexpr bool ShouldSkipLeftIfRightEmpty(EJoinKind kind) {
+    switch (kind) {
+        case EJoinKind::Inner:
+        case EJoinKind::RightOnly:
+        case EJoinKind::RightSemi:
+        case EJoinKind::LeftSemi:
+            return true;
+        case EJoinKind::Min:
+        case EJoinKind::Left:
+        case EJoinKind::Right:
+        case EJoinKind::Exclusion:
+        case EJoinKind::Full:
+        case EJoinKind::SemiMask:
+        case EJoinKind::SemiSide:
+        case EJoinKind::Cross:
+            return false;
+    }
+}
+
 class TTableBucketSpiller;
-        
-const ui64 BitsForNumberOfBuckets = 5; // 2^5 = 32
-const ui64 BucketsMask = (0x00000001 << BitsForNumberOfBuckets)  - 1;
-const ui64 NumberOfBuckets = (0x00000001 << BitsForNumberOfBuckets);  // Number of hashed keys buckets to distribute incoming tables tuples
-const ui64 DefaultTuplesNum = 100; // Default initial number of tuples in one bucket to allocate memory
-const ui64 DefaultTupleBytes = 64; // Default size of all columns in table row for estimations
-const ui64 HashSize = 1; // Using ui64 hash size
-const ui64 SpillingSizeLimit = 1_MB; // Don't try to spill if net effect is lower than this size
-const ui32 SpillingRowLimit = 1024; // Don't try to invoke spilling more often than 1 in this number of rows
+#define GRACEJOIN_DEBUG NUdf::ELogLevel::Debug
+#define GRACEJOIN_TRACE NUdf::ELogLevel::Trace
+
+const ui64 BitsForNumberOfBuckets = 6; // 2^6 = 64
+const ui64 BucketsMask = (0x00000001 << BitsForNumberOfBuckets) - 1;
+const ui64 NumberOfBuckets = (0x00000001 << BitsForNumberOfBuckets); // Number of hashed keys buckets to distribute incoming tables tuples
+const ui64 DefaultTuplesNum = 101;                                   // Default initial number of tuples in one bucket to allocate memory
+const ui64 DefaultTupleBytes = 64;                                   // Default size of all columns in table row for estimations
+const ui64 HashSize = 1;                                             // Using ui64 hash size
+const ui64 SpillingSizeLimit = 1_MB;                                 // Don't try to spill if net effect is lower than this size
+const ui32 SpillingRowLimit = 1024;                                  // Don't try to invoke spilling more often than 1 in this number of rows
+
+constexpr ui64 CachelineBits = 9;
+constexpr ui64 CachelineSize = ui64(1) << CachelineBits;
+
+template <typename Alloc>
+class TBloomfilter {
+    std::vector<ui64, Alloc> Storage_;
+    ui64* Ptr_;
+    ui64 Bits_;
+    bool Finalized_ = false;
+
+public:
+    static constexpr ui64 BlockSize = CachelineSize;
+    static constexpr ui64 BlockBits = CachelineBits;
+
+    TBloomfilter() {
+    }
+    TBloomfilter(ui64 size) {
+        Resize(size);
+    }
+
+    void Reserve(ui64 size) {
+        size = std::max(size, CachelineSize);
+        Bits_ = 6;
+
+        for (; (ui64(1) << Bits_) < size; ++Bits_)
+            ;
+
+        Bits_ += 3; // -> multiply by 8
+
+        Storage_.reserve(ComputeStorageSize());
+    }
+
+    void Resize(ui64 size) {
+        Storage_.clear();
+
+        Reserve(size);
+        Storage_.resize(ComputeStorageSize());
+
+        // align Ptr_ up to BlockSize
+        Ptr_ = (ui64*)((uintptr_t(Storage_.data()) + BlockSize - 1) & ~(BlockSize - 1));
+        Finalized_ = false;
+    }
+
+    void Add(ui64 hash) {
+        Y_DEBUG_ABORT_UNLESS(!Finalized_);
+
+        auto bit = (hash >> (64 - Bits_));
+        Ptr_[bit / 64] |= (ui64(1) << (bit % 64));
+        // replace low BlockBits with next part of hash
+        auto low = hash >> (64 - Bits_ - BlockBits);
+        bit &= ~(BlockSize - 1);
+        bit ^= low & (BlockSize - 1);
+        Ptr_[bit / 64] |= (ui64(1) << (bit % 64));
+    }
+
+    bool IsMissing(ui64 hash) const {
+        Y_DEBUG_ABORT_UNLESS(Finalized_);
+
+        auto bit = (hash >> (64 - Bits_));
+        if (!(Ptr_[bit / 64] & (ui64(1) << (bit % 64)))) {
+            return true;
+        }
+        // replace low BlockBits with next part of hash
+        auto low = hash >> (64 - Bits_ - BlockBits);
+        bit &= ~(BlockSize - 1);
+        bit ^= low & (BlockSize - 1);
+        if (!(Ptr_[bit / 64] & (ui64(1) << (bit % 64)))) {
+            return true;
+        }
+        return false;
+    }
+
+    constexpr bool IsFinalized() const {
+        return Finalized_;
+    }
+
+    void Finalize() {
+        Finalized_ = true;
+    }
+
+    void Shrink() {
+        Finalized_ = false;
+        Bits_ = 1;
+        Storage_.clear();
+        Storage_.resize(1, ~ui64(0));
+        Storage_.shrink_to_fit();
+        Ptr_ = Storage_.data();
+    }
+
+private:
+    ui64 ComputeStorageSize() const {
+        MKQL_ENSURE(Bits_ >= 6, "Internal logic error");
+        return (1u << (Bits_ - 6)) + CachelineSize / sizeof(ui64) - 1;
+    }
+};
 
 /*
 Table data stored in buckets. Table columns are interpreted either as integers, strings or some interface-based type,
-providing IHash, IEquate, IPack and IUnpack functions.  
+providing IHash, IEquate, IPack and IUnpack functions.
 External clients should transform (pack) data into appropriate presentation.
 
 Key columns always first, following int columns, string columns and interface-based columns.
@@ -49,52 +191,52 @@ struct JoinTuplesIds {
 
 // To store keys values when making join only for unique keys (any join attribute)
 struct KeysHashTable {
-    ui64 SlotSize = 0; // Slot size in hash table
-    ui64 NSlots = 0; // Total number of slots in table  
-    ui64 FillCount = 0; // Number of ui64 slots which are filled
-    std::vector<ui64, TMKQLAllocator<ui64>> Table;  // Table to store keys data in particular slots
+    ui64 SlotSize = 0;                                 // Slot size in hash table
+    ui64 NSlots = 0;                                   // Total number of slots in table
+    ui64 FillCount = 0;                                // Number of ui64 slots which are filled
+    std::vector<ui64, TMKQLAllocator<ui64>> Table;     // Table to store keys data in particular slots
     std::vector<ui64, TMKQLAllocator<ui64>> SpillData; // Vector to store long data which cannot be fit in single hash table slot.
 };
 
 struct TTableBucket {
-    std::vector<ui64, TMKQLAllocator<ui64>> KeyIntVals;  // Vector to store table key values
-    std::vector<ui64, TMKQLAllocator<ui64>> DataIntVals; // Vector to store data values in bucket
-    std::vector<char, TMKQLAllocator<char>> StringsValues; // Vector to store data strings values
-    std::vector<ui32, TMKQLAllocator<ui32>> StringsOffsets; // Vector to store strings values sizes (offsets in StringsValues are calculated) for particular tuple.
-    std::vector<char, TMKQLAllocator<char>> InterfaceValues; // Vector to store types to work through external-provided IHash, IEquate interfaces
-    std::vector<ui32, TMKQLAllocator<ui32>> InterfaceOffsets; // Vector to store sizes of columns to work through IHash, IEquate interfaces
-    std::vector<JoinTuplesIds, TMKQLAllocator<JoinTuplesIds>>  JoinIds;     // Results of join operations stored as index of tuples in buckets 
-                                                                            // of two tables with the same number
+    std::vector<ui64, TMKQLAllocator<ui64>> KeyIntVals;                // Vector to store table key values
+    std::vector<ui64, TMKQLAllocator<ui64>> DataIntVals;               // Vector to store data values in bucket
+    std::vector<char, TMKQLAllocator<char>> StringsValues;             // Vector to store data strings values
+    std::vector<ui32, TMKQLAllocator<ui32>> StringsOffsets;            // Vector to store strings values sizes (offsets in StringsValues are calculated) for particular tuple.
+    std::vector<char, TMKQLAllocator<char>> InterfaceValues;           // Vector to store types to work through external-provided IHash, IEquate interfaces
+    std::vector<ui32, TMKQLAllocator<ui32>> InterfaceOffsets;          // Vector to store sizes of columns to work through IHash, IEquate interfaces
+    std::vector<JoinTuplesIds, TMKQLAllocator<JoinTuplesIds>> JoinIds; // Results of join operations stored as index of tuples in buckets
+                                                                       // of two tables with the same number
+    std::vector<ui32, TMKQLAllocator<ui32>> LeftIds;                   // Left-side ids missing in other table
 
-    std::vector<ui32, TMKQLAllocator<ui32>> RightIds; // Sorted Ids of right table joined tuples to process full join and exclusion join
+    std::vector<ui64, TMKQLAllocator<ui64>> JoinSlots; // Hashtable
+    ui64 NSlots = 0;                                   // Hashtable
+};
 
-    std::set<ui32> AllLeftMatchedIds;  // All row ids of left join table which have matching rows in right table. To process streaming join mode.
-    std::set<ui32> AllRightMatchedIds; // All row ids of right join table which matching rows in left table. To process streaming join mode. 
-
- };
-
- struct TTableBucketStats {
-    KeysHashTable AnyHashTable;      // Hash table to process join only for unique keys (any join attribute)
+struct TTableBucketStats {
+    TBloomfilter<TMKQLAllocator<ui64>> BloomFilter;
+    KeysHashTable AnyHashTable;     // Hash table to process join only for unique keys (any join attribute)
     ui64 TuplesNum = 0;             // Total number of tuples in bucket
     ui64 StringValuesTotalSize = 0; // Total size of StringsValues. Used to correctly calculate StringsOffsets.
     ui64 KeyIntValsTotalSize = 0;   // Total size of KeyIntVals. Used to correctly calculate StringsOffsets.
- };
+    ui32 SlotSize = 0;
+    bool HashtableMatches = false;
+};
 
 struct TupleData {
-    ui64 * IntColumns = nullptr; // Array of packed int  data of the table. Caller should allocate array of NumberOfIntColumns size
-    char ** StrColumns = nullptr; // Pointers to values of strings for table.  Strings are not null-terminated
-    ui32 * StrSizes = nullptr; // Sizes of strings for table.
-    NYql::NUdf::TUnboxedValue * IColumns = nullptr; // Array of TUboxedValues for interface-based columns. Caller should allocate array of required size.
-    bool AllNulls = false; // If tuple data contains all nulls (it is required for corresponding join types)
-
+    ui64* IntColumns = nullptr;                    // Array of packed int  data of the table. Caller should allocate array of NumberOfIntColumns size
+    char** StrColumns = nullptr;                   // Pointers to values of strings for table.  Strings are not null-terminated
+    ui32* StrSizes = nullptr;                      // Sizes of strings for table.
+    NYql::NUdf::TUnboxedValue* IColumns = nullptr; // Array of TUboxedValues for interface-based columns. Caller should allocate array of required size.
+    bool AllNulls = false;                         // If tuple data contains all nulls (it is required for corresponding join types)
 };
 
 // Interface to work with complex column types without "simple" byte-serialized representation (which can be used for keys comparison)
 struct TColTypeInterface {
-    NYql::NUdf::IHash::TPtr HashI = nullptr;  // Interface to calculate hash of column value
+    NYql::NUdf::IHash::TPtr HashI = nullptr;     // Interface to calculate hash of column value
     NYql::NUdf::IEquate::TPtr EquateI = nullptr; // Interface to compare two column values
-    std::shared_ptr<TValuePacker> Packer; // Class to pack and unpack column values
-    const THolderFactory& HolderFactory; // To use during unpacking 
+    std::shared_ptr<TValuePacker> Packer;        // Class to pack and unpack column values
+    const THolderFactory& HolderFactory;         // To use during unpacking
 };
 
 // Class that spills bucket data.
@@ -135,7 +277,6 @@ private:
     void ProcessFinalizing();
 
 private:
-
     enum class EState {
         InMemory,
         Spilling,
@@ -171,34 +312,31 @@ private:
     TTableBucket CurrentBucket;
 };
 
-
 // Class which represents single table data stored in buckets
 class TTable {
-    ui64 NumberOfKeyIntColumns = 0; // Key int columns always first and padded to sizeof(ui64).
+    ui64 NumberOfKeyIntColumns = 0;    // Key int columns always first and padded to sizeof(ui64).
     ui64 NumberOfKeyStringColumns = 0; // String key columns go after key int columns
-    ui64 NumberOfKeyIColumns = 0; // Number of interface - provided key columns
+    ui64 NumberOfKeyIColumns = 0;      // Number of interface - provided key columns
 
-
-    ui64 NumberOfDataIntColumns = 0; //Number of integer data columns in the Table
+    ui64 NumberOfDataIntColumns = 0;    // Number of integer data columns in the Table
     ui64 NumberOfDataStringColumns = 0; // Number of strings data columns in the Table
-    ui64 NumberOfDataIColumns = 0; //  Number of interface - provided data columns
-    
-    TColTypeInterface * ColInterfaces = nullptr; // Array of interfaces to work with corresponding columns data
+    ui64 NumberOfDataIColumns = 0;      // Number of interface - provided data columns
 
+    TColTypeInterface* ColInterfaces = nullptr; // Array of interfaces to work with corresponding columns data
 
-    ui64 NumberOfColumns = 0; // Number of columns in the Table
-    ui64 NumberOfKeyColumns = 0; // Number of key columns in the Table
-    ui64 NumberOfDataColumns = 0; // Number of data columns in the Table
-    ui64 NumberOfStringColumns = 0; // Total number of String Columns
-    ui64 NumberOfIColumns = 0; // Total number of interface-based columns
-    ui64 NullsBitmapSize_ = 1; // Default size of ui64 values used for null columns bitmap.
-                                // Every bit set means null value. Order of columns is equal to order in AddTuple call.
-                                // First key int column is  bit 1 in bit mask, second - bit 2, etc.  Bit 0 is least significant in bitmask and tells if key columns contain nulls.
-    ui64 TotalStringsSize = 0; // Bytes in tuple header reserved to store total strings size key tuple columns
+    ui64 NumberOfColumns = 0;                                                                                       // Number of columns in the Table
+    ui64 NumberOfKeyColumns = 0;                                                                                    // Number of key columns in the Table
+    ui64 NumberOfDataColumns = 0;                                                                                   // Number of data columns in the Table
+    ui64 NumberOfStringColumns = 0;                                                                                 // Total number of String Columns
+    ui64 NumberOfIColumns = 0;                                                                                      // Total number of interface-based columns
+    ui64 NullsBitmapSize_ = 1;                                                                                      // Default size of ui64 values used for null columns bitmap.
+                                                                                                                    // Every bit set means null value. Order of columns is equal to order in AddTuple call.
+                                                                                                                    // First key int column is  bit 1 in bit mask, second - bit 2, etc.  Bit 0 is least significant in bitmask and tells if key columns contain nulls.
+    ui64 TotalStringsSize = 0;                                                                                      // Bytes in tuple header reserved to store total strings size key tuple columns
     ui64 HeaderSize = HashSize + NullsBitmapSize_ + NumberOfKeyIntColumns + NumberOfKeyIColumns + TotalStringsSize; // Header of all tuples size
 
     ui64 BytesInKeyIntColumns = sizeof(ui64) * NumberOfKeyIntColumns;
-    
+
     // Table data is partitioned in buckets based on key value
     std::vector<TTableBucket> TableBuckets;
     // Statistics for buckets. Total number of tuples inside a single bucket and offsets.
@@ -215,11 +353,8 @@ class TTable {
     // Serialized values for interface-based columns
     std::vector<std::vector<char>> IColumnsVals;
 
-    // Current iterator index for NextTuple iterator
+    // Current iterator index for NextJoinedData iterator
     ui64 CurrIterIndex = 0;
-
-    // Index for NextJoinedData iterator
-    ui64 CurrJoinIdsIterIndex = 0;
 
     // Current bucket for iterators
     ui64 CurrIterBucket = 0;
@@ -231,45 +366,39 @@ class TTable {
     EJoinKind JoinKind = EJoinKind::Inner;
 
     // Pointers to the joined tables. Lifetime of source tables to join should be greater than joined table
-    TTable * JoinTable1 = nullptr;
-    TTable * JoinTable2 = nullptr;
+    TTable* JoinTable1 = nullptr;
+    TTable* JoinTable2 = nullptr;
 
     // Returns tuple data in td from bucket with id bucketNum.  Tuple id inside bucket is tupleId.
     inline void GetTupleData(ui32 bucketNum, ui32 tupleId, TupleData& td);
 
-    // True if current iterator of tuple in joinedTable has corresponding joined tuple in second table. Id of joined tuple in second table returns in tupleId2.
-    inline bool HasJoinedTupleId(TTable* joinedTable, ui32& tupleId2);
-
     // Adds keys to KeysHashTable, return true if added, false if equal key already added
-    inline bool AddKeysToHashTable(KeysHashTable& t, ui64* keys);
+    inline bool AddKeysToHashTable(KeysHashTable& t, ui64* keys, NYql::NUdf::TUnboxedValue* iColumns);
 
-    ui64 TotalPacked = 0; // Total number of packed tuples
+    ui64 TotalPacked = 0;   // Total number of packed tuples
     ui64 TotalUnpacked = 0; // Total number of unpacked tuples
 
-    bool LeftTableBatch_ = false; // True if left table is processed in batch mode
+    bool LeftTableBatch_ = false;  // True if left table is processed in batch mode
     bool RightTableBatch_ = false; // True if right table is procesed in batch mode
 
-    bool HasMoreLeftTuples_  = false; // True if join is not completed, rows from left table are coming
+    bool HasMoreLeftTuples_ = false;  // True if join is not completed, rows from left table are coming
     bool HasMoreRightTuples_ = false; // True if join is not completed, rows from right table are coming
 
-    bool IsAny_ = false;  // True if key duplicates need to be removed from table (any join)
-
-    bool Table2Initialized_ = false;    // True when iterator counters for second table already initialized
+    bool IsAny_ = false; // True if key duplicates need to be removed from table (any join)
 
     ui64 TuplesFound_ = 0; // Total number of matching keys found during join
 
+    const NUdf::TLoggerPtr Logger_ = nullptr;      // Logger instance
+    const NUdf::TLogComponentId LogComponent_ = 0; // Unique component id. GraceJoin here.
+
 public:
-
-    // Adds new tuple to the table.  intColumns, stringColumns - data of columns, 
-    // stringsSizes - sizes of strings columns.  Indexes of null-value columns
-    // in the form of bit array should be first values of intColumns.
-    void AddTuple(ui64* intColumns, char** stringColumns, ui32* stringsSizes, NYql::NUdf::TUnboxedValue * iColumns = nullptr);
-
     // Resets iterators. In case of join results table it also resets iterators for joined tables
     void ResetIterator();
 
     // Returns value of next tuple. Returs true if there are more tuples
     bool NextTuple(TupleData& td);
+
+    bool TryToPreallocateMemoryForJoin(TTable& t1, TTable& t2, EJoinKind joinKind, bool hasMoreLeftTuples, bool hasMoreRightTuples);
 
     // Joins two tables and stores join result in table data. Tuples of joined table could be received by
     // joined table iterator.  Life time of t1, t2 should be greater than lifetime of joined table
@@ -290,7 +419,7 @@ public:
     ui64 GetSizeOfBucket(ui64 bucket) const;
 
     // This functions wind the largest bucket and spills it to the disk.
-    bool TryToReduceMemoryAndWait();
+    bool TryToReduceMemoryAndWait(ui64 bucket);
 
     // Update state of spilling. Must be called during each DoCalculate.
     void UpdateSpilling();
@@ -329,19 +458,38 @@ public:
     void Clear();
 
     // Creates new table with key columns and data columns
-    TTable(ui64 numberOfKeyIntColumns = 0, ui64 numberOfKeyStringColumns = 0,
-            ui64 numberOfDataIntColumns = 0, ui64 numberOfDataStringColumns = 0,
-            ui64 numberOfKeyIColumns = 0, ui64 numberOfDataIColumns = 0, 
-            ui64 nullsBitmapSize = 1, TColTypeInterface * colInterfaces = nullptr, bool isAny = false);
-    
+    TTable(NUdf::TLoggerPtr logger = nullptr, NUdf::TLogComponentId logComponent = 0,
+           ui64 numberOfKeyIntColumns = 0, ui64 numberOfKeyStringColumns = 0,
+           ui64 numberOfDataIntColumns = 0, ui64 numberOfDataStringColumns = 0,
+           ui64 numberOfKeyIColumns = 0, ui64 numberOfDataIColumns = 0,
+           ui64 nullsBitmapSize = 1, TColTypeInterface* colInterfaces = nullptr,
+           bool isAny = false);
+
+    enum class EAddTupleResult { Added,
+                                 Unmatched,
+                                 AnyMatch };
+    // Adds new tuple to the table.  intColumns, stringColumns - data of columns,
+    // stringsSizes - sizes of strings columns.  Indexes of null-value columns
+    // in the form of bit array should be first values of intColumns.
+    EAddTupleResult AddTuple(ui64* intColumns, char** stringColumns, ui32* stringsSizes, NYql::NUdf::TUnboxedValue* iColumns = nullptr, const TTable& other = {});
+
     ~TTable();
 
+    ui64 InitHashTableCount_ = 0;
+
+    ui64 HashLookups_ = 0;        // hash lookups
+    ui64 HashO1Iterations_ = 0;   // hash chain
+    ui64 HashSlotIterations_ = 0; // O(SlotSize) operations
+
+    ui64 JoinTable1Total_ = 0;
+    ui64 JoinTable2Total_ = 0;
+    ui64 AnyFiltered_ = 0;
+
+    ui64 BloomLookups_ = 0;
+    ui64 BloomHits_ = 0;
+    ui64 BloomFalsePositives_ = 0;
 };
 
-
-
-
-
-}
-}
-}
+} // namespace GraceJoin
+} // namespace NMiniKQL
+} // namespace NKikimr

@@ -8,6 +8,7 @@ PEERDIR(
     library/cpp/testing/unittest
     library/cpp/json/yson
     contrib/ydb/library/yql/public/udf/service/stub
+    contrib/ydb/library/yql/sql/pg_dummy
 )
 
 YQL_LAST_ABI_VERSION()

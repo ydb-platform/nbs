@@ -4,6 +4,8 @@
 #include "data.h"
 #include "garbage_collection.h"
 
+#define YDB_LOG_THIS_FILE_COMPONENT BLOB_DEPOT
+
 namespace NKikimr::NBlobDepot {
 
     void TBlobDepot::ExecuteTxLoad() {
@@ -16,7 +18,9 @@ namespace NKikimr::NBlobDepot {
             {}
 
             bool Execute(TTransactionContext& txc, const TActorContext&) override {
-                STLOG(PRI_DEBUG, BLOB_DEPOT, BDT19, "TTxLoad::Execute", (Id, Self->GetLogId()));
+                YDB_LOG_DEBUG("TTxLoad::Execute",
+                    {"marker", "BDT19"},
+                    {"id", Self->GetLogId()});
 
                 NIceDb::TNiceDb db(txc.DB);
 
@@ -37,6 +41,9 @@ namespace NKikimr::NBlobDepot {
                         Self->DecommitState = table.GetValueOrDefault<Schema::Config::DecommitState>();
                         if (table.HaveValue<Schema::Config::AssimilatorState>()) {
                             Self->AssimilatorState.emplace(table.GetValue<Schema::Config::AssimilatorState>());
+                        }
+                        if (table.HaveValue<Schema::Config::PerGenerationCounter>()) {
+                            Self->PerGenerationCounter = table.GetValue<Schema::Config::PerGenerationCounter>();
                         }
                     }
                 }
@@ -113,8 +120,12 @@ namespace NKikimr::NBlobDepot {
             }
 
             void Complete(const TActorContext&) override {
-                STLOG(PRI_DEBUG, BLOB_DEPOT, BDT20, "TTxLoad::Complete", (Id, Self->GetLogId()),
-                    (Configured, Self->Configured));
+                YDB_LOG_DEBUG("TTxLoad::Complete",
+                    {"marker", "BDT20"},
+                    {"id", Self->GetLogId()},
+                    {"configured", Self->Configured});
+
+                Self->OnUpdateDecommitState();
 
                 if (Self->Configured) {
                     Self->StartOperation();

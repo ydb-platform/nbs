@@ -45,7 +45,15 @@ struct TKqpEvents {
         EvListProxyNodesRequest,
         EvListProxyNodesResponse,
         EvUpdateDatabaseInfo,
-        EvDelayedRequestError
+        EvDelayedRequestError,
+        EvBufferWrite,
+        EvBufferWriteResult,
+        EvProxyPingRequest,
+        EvProxyPingResponse,
+        EvListCompileCacheQueriesRequest,
+        EvListCompileCacheQueriesResponse,
+        EvWarmupComplete,
+        EvStartWarmup,
     };
 
     static_assert (EvCompileInvalidateRequest + 1 == EvAbortExecution);
@@ -61,7 +69,8 @@ struct TKqpExecuterEvents {
         EvProgress,
         EvStreamDataAck,
         EvTableResolveStatus,
-        EvShardsResolveStatus
+        EvShardsResolveStatus,
+        EvDelayedExecution
     };
 };
 
@@ -90,6 +99,7 @@ struct TKqpComputeEvents {
         EvScanInitActor,
         EvRemoteScanData,
         EvRemoteScanDataAck,
+        EvScanPing,
     };
 
     static_assert(Unused0 == EventSpaceBegin(TKikimrEvents::ES_KQP) + 200);
@@ -155,10 +165,20 @@ struct TKqpScriptExecutionEvents {
         EvScriptFinalizeRequest,
         EvScriptFinalizeResponse,
         EvSaveScriptFinalStatusResponse,
-        EvGetScriptExecutionOperationQueryResponse,
         EvDescribeSecretsResponse,
         EvSaveScriptResultPartFinished,
         EvScriptExecutionsTableCreationFinished,
+        EvScriptExecutionRestarted,
+        EvListExpiredLeasesResponse,
+        EvRefreshScriptExecutionLeasesResponse,
+        EvStartScriptExecutionBackgroundChecks,
+        EvSaveScriptPhysicalGraphRequest,
+        EvSaveScriptPhysicalGraphResponse,
+        EvGetScriptPhysicalGraphResponse,
+        EvSaveScriptProgressResponse,
+        EvResetScriptExecutionRetriesResponse,
+        EvGetScriptExecutionPhysicalGraph,
+        EvDescribeResourceIdResponse,
     };
 };
 
@@ -178,6 +198,25 @@ struct TKqpWorkloadServiceEvents {
         EvUpdatePoolInfo,
         EvSubscribeOnPoolChanges,
         EvFetchDatabaseResponse,
+    };
+};
+
+struct TKqpBufferWriterEvents {
+    enum EKqpBufferWriterEvents {
+        EvPrepare = EventSpaceBegin(TKikimrEvents::ES_KQP) + 800,
+        EvCommit,
+        EvRollback,
+        EvFlush,
+        EvResult,
+        EvError,
+        EvTerminate,
+    };
+};
+
+struct TKqpQueryTextCacheEvents {
+    enum EKqpQueryTextCacheEvents {
+        EvLookupQueryText = EventSpaceBegin(TKikimrEvents::ES_KQP) + 900,
+        EvLookupQueryTextResponse,
     };
 };
 

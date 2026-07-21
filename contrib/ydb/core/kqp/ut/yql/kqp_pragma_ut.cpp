@@ -1,6 +1,6 @@
 #include <contrib/ydb/core/kqp/ut/common/kqp_ut_common.h>
 
-#include <contrib/ydb/public/sdk/cpp/client/draft/ydb_scripting.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/draft/ydb_scripting.h>
 
 namespace NKikimr {
 namespace NKqp {
@@ -87,9 +87,7 @@ Y_UNIT_TEST_SUITE(KqpPragma) {
 
     Y_UNIT_TEST(MatchRecognizeWithTimeOrderRecoverer) {
         TKikimrSettings settings;
-        NKikimrConfig::TAppConfig appConfig;
-        appConfig.MutableQueryServiceConfig()->SetEnableMatchRecognize(true);
-        settings.SetAppConfig(appConfig);
+        settings.AppConfig.MutableQueryServiceConfig()->SetEnableMatchRecognize(true);
 
         TKikimrRunner kikimr(settings);
         NYdb::NScripting::TScriptingClient client(kikimr.GetDriver());
@@ -130,9 +128,7 @@ Y_UNIT_TEST_SUITE(KqpPragma) {
 
     Y_UNIT_TEST(MatchRecognizeWithoutTimeOrderRecoverer) {
         TKikimrSettings settings;
-        NKikimrConfig::TAppConfig appConfig;
-        appConfig.MutableQueryServiceConfig()->SetEnableMatchRecognize(true);
-        settings.SetAppConfig(appConfig);
+        settings.AppConfig.MutableQueryServiceConfig()->SetEnableMatchRecognize(true);
 
         TKikimrRunner kikimr(settings);
         NYdb::NScripting::TScriptingClient client(kikimr.GetDriver());

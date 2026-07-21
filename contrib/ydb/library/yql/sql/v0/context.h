@@ -4,7 +4,7 @@
 #include "sql.h"
 
 #include <contrib/ydb/library/yql/providers/common/provider/yql_provider_names.h>
-#include <contrib/ydb/library/yql/core/issue/protos/issue_id.pb.h>
+#include <contrib/ydb/library/yql/public/issue/protos/issue_id.pb.h>
 #include <contrib/ydb/library/yql/public/issue/yql_warning.h>
 #include <contrib/ydb/library/yql/sql/settings/translation_settings.h>
 #include <contrib/ydb/library/yql/sql/cluster_mapping.h>
@@ -18,7 +18,7 @@
 
 namespace NSQLTranslationV0 {
 
-    typedef TMap<TString, TNodePtr> TNamedNodesMap;
+    using TNamedNodesMap = TMap<TString, TNodePtr>;
 
     class TContext {
     public:
@@ -39,14 +39,14 @@ namespace NSQLTranslationV0 {
 
         template <typename TToken>
         const TString& Token(const TToken& token) {
-            Position.Row = token.GetLine();
-            Position.Column = token.GetColumn() + 1;
+            Position_.Row = token.GetLine();
+            Position_.Column = token.GetColumn() + 1;
             return token.GetValue();
         }
 
         template <typename TToken>
         TPosition TokenPosition(const TToken& token) {
-            TPosition pos = Position;
+            TPosition pos = Position_;
             pos.Row = token.GetLine();
             pos.Column = token.GetColumn() + 1;
             return pos;
@@ -68,7 +68,7 @@ namespace NSQLTranslationV0 {
         }
 
         TMaybe<TString> GetClusterProvider(const TString& cluster, TString& normalizedClusterName) const {
-            auto provider = ClusterMapping.GetClusterProvider(cluster, normalizedClusterName);
+            auto provider = ClusterMapping_.GetClusterProvider(cluster, normalizedClusterName);
             if (!provider) {
                 if (Settings.AssumeYdbOnClusterWithSlash && cluster.StartsWith('/')) {
                     normalizedClusterName = cluster;
@@ -100,11 +100,11 @@ namespace NSQLTranslationV0 {
         void PopBlockShortcuts();
 
         void BodyPart() {
-            IntoHeading = false;
+            IntoHeading_ = false;
         }
 
         bool IsParseHeading() const {
-            return IntoHeading;
+            return IntoHeading_;
         }
 
         bool DeclareVariable(const TString& varName, const TNodePtr& typeNode);
@@ -116,13 +116,13 @@ namespace NSQLTranslationV0 {
         IOutputStream& MakeIssue(NYql::ESeverity severity, NYql::TIssueCode code, NYql::TPosition pos);
 
     private:
-        NYql::TPosition Position;
-        THolder<TStringOutput> IssueMsgHolder;
-        NSQLTranslation::TClusterMapping ClusterMapping;
-        TString PathPrefix;
-        THashMap<TString, TString> ProviderPathPrefixes;
-        THashMap<TString, TString> ClusterPathPrefixes;
-        bool IntoHeading = true;
+        NYql::TPosition Position_;
+        THolder<TStringOutput> IssueMsgHolder_;
+        NSQLTranslation::TClusterMapping ClusterMapping_;
+        TString PathPrefix_;
+        THashMap<TString, TString> ProviderPathPrefixes_;
+        THashMap<TString, TString> ClusterPathPrefixes_;
+        bool IntoHeading_ = true;
 
     public:
         THashMap<TString, TNodePtr> Variables;
@@ -159,21 +159,22 @@ namespace NSQLTranslationV0 {
         TVector<TString> AllResults;
         TSet<TString> UsedClusters;
 
-        struct ShortcutStore {
+        struct TShortcutStore {
             THashMap<INode*, TString> BaseMap;
             TVector<std::pair<TString, TNodePtr>> Goal;
         };
-        THashMap<ui32, ShortcutStore> Shortcuts;
+
+        THashMap<ui32, TShortcutStore> Shortcuts;
         ui32 ShortcutCurrentLevel = 0;
 
     };
 
     class TTranslation {
     protected:
-        typedef TSet<ui32> TSetType;
+        using TSetType = TSet<ui32>;
 
     protected:
-        TTranslation(TContext& ctx);
+        explicit TTranslation(TContext& ctx);
 
     public:
         TContext& Context();
@@ -181,16 +182,16 @@ namespace NSQLTranslationV0 {
 
         template <typename TToken>
         const TString& Token(const TToken& token) {
-            return Ctx.Token(token);
+            return Ctx_.Token(token);
         }
 
         template <typename TToken>
         TString Identifier(const TToken& token) {
-            return IdContent(Ctx, Token(token));
+            return IdContent(Ctx_, Token(token));
         }
 
         TString Identifier(const TString& str) const {
-            return IdContent(Ctx, str);
+            return IdContent(Ctx_, str);
         }
 
         TNodePtr GetNamedNode(const TString& name);
@@ -212,6 +213,6 @@ namespace NSQLTranslationV0 {
         TString AltDescription(const google::protobuf::Message& node, ui32 altCase, const google::protobuf::Descriptor* descr) const;
 
     protected:
-        TContext& Ctx;
+        TContext& Ctx_;
     };
 }  // namespace NSQLTranslationV0

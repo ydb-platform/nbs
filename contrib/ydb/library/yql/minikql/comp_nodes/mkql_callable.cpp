@@ -1,5 +1,5 @@
 #include "mkql_callable.h"
-#include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node_codegen.h>  // Y_IGNORE
+#include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node_codegen.h> // Y_IGNORE
 #include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node_holders.h>
 #include <contrib/ydb/library/yql/minikql/mkql_node_cast.h>
 
@@ -8,54 +8,81 @@ namespace NMiniKQL {
 
 namespace {
 
-class TCallableWrapper : public TCustomValueCodegeneratorNode<TCallableWrapper> {
+class TCallableWrapper: public TCustomValueCodegeneratorNode<TCallableWrapper> {
     typedef TCustomValueCodegeneratorNode<TCallableWrapper> TBaseComputation;
+
 private:
-    class TValue : public TComputationValue<TValue> {
+    class TValue: public TComputationValue<TValue> {
     public:
         TValue(TMemoryUsageInfo* memInfo, TComputationContext& compCtx, IComputationNode* resultNode,
-            const TComputationExternalNodePtrVector& argNodes)
+               const TComputationExternalNodePtrVector& argNodes)
             : TComputationValue(memInfo)
             , CompCtx(compCtx)
             , ResultNode(resultNode)
             , ArgNodes(argNodes)
-        {}
+            , Upvalues(compCtx, resultNode, argNodes)
+        {
+        }
 
     private:
-        NUdf::TUnboxedValue Run(const NUdf::IValueBuilder*, const NUdf::TUnboxedValuePod* args) const override
-        {
+        NUdf::TUnboxedValue Run(const NUdf::IValueBuilder*, const NUdf::TUnboxedValuePod* args) const override {
             for (const auto node : ArgNodes) {
                 node->SetValue(CompCtx, NUdf::TUnboxedValuePod(*args++));
             }
 
-            return ResultNode->GetValue(CompCtx);
+            if (!Upvalues) {
+                return ResultNode->GetValue(CompCtx);
+            }
+
+            Upvalues.SetUpvalues(CompCtx);
+
+            const auto result = ResultNode->GetValue(CompCtx);
+
+            Upvalues.RestoreUpvalues(CompCtx);
+
+            return result;
         }
 
         TComputationContext& CompCtx;
-        IComputationNode *const ResultNode;
+        IComputationNode* const ResultNode;
         const TComputationExternalNodePtrVector ArgNodes;
+        const TComputationUpvalues Upvalues;
     };
 
-    class TCodegenValue : public TComputationValue<TCodegenValue> {
+    class TCodegenValue: public TComputationValue<TCodegenValue> {
     public:
         using TBase = TComputationValue<TCodegenValue>;
 
         using TRunPtr = NUdf::TUnboxedValuePod (*)(TComputationContext*, const NUdf::TUnboxedValuePod*);
 
-        TCodegenValue(TMemoryUsageInfo* memInfo, TRunPtr run, TComputationContext* ctx)
+        TCodegenValue(TMemoryUsageInfo* memInfo, TRunPtr run, TComputationContext* ctx, IComputationNode* resultNode, const TComputationExternalNodePtrVector& argNodes)
             : TBase(memInfo)
             , RunFunc(run)
             , Ctx(ctx)
-        {}
+            , Upvalues(*ctx, resultNode, argNodes)
+        {
+        }
 
     private:
         NUdf::TUnboxedValue Run(const NUdf::IValueBuilder*, const NUdf::TUnboxedValuePod* args) const override {
-            return RunFunc(Ctx, args);
+            if (!Upvalues) {
+                return RunFunc(Ctx, args);
+            }
+
+            Upvalues.SetUpvalues(*Ctx);
+
+            const auto result = RunFunc(Ctx, args);
+
+            Upvalues.RestoreUpvalues(*Ctx);
+
+            return result;
         }
 
         const TRunPtr RunFunc;
         TComputationContext* const Ctx;
+        const TComputationUpvalues Upvalues;
     };
+
 public:
     TCallableWrapper(TComputationMutables& mutables, IComputationNode* resultNode, TComputationExternalNodePtrVector&& argNodes)
         : TBaseComputation(mutables)
@@ -66,8 +93,9 @@ public:
 
     NUdf::TUnboxedValuePod DoCalculate(TComputationContext& ctx) const {
 #ifndef MKQL_DISABLE_CODEGEN
-        if (ctx.ExecuteLLVM && Run)
-            return ctx.HolderFactory.Create<TCodegenValue>(Run, &ctx);
+        if (ctx.ExecuteLLVM && Run) {
+            return ctx.HolderFactory.Create<TCodegenValue>(Run, &ctx, ResultNode, ArgNodes);
+        }
 #endif
         return ctx.HolderFactory.Create<TValue>(ctx, ResultNode, ArgNodes);
     }
@@ -88,8 +116,9 @@ private:
     }
 
     void FinalizeFunctions(NYql::NCodegen::ICodegen& codegen) final {
-        if (RunFunc)
+        if (RunFunc) {
             Run = reinterpret_cast<TRunPtr>(codegen.GetPointerToFunction(RunFunc));
+        }
     }
 
     Function* GenerateRun(NYql::NCodegen::ICodegen& codegen) const {
@@ -97,27 +126,23 @@ private:
         auto& context = codegen.GetContext();
 
         const auto& name = TBaseComputation::MakeName("Run");
-        if (const auto f = module.getFunction(name.c_str()))
+        if (const auto f = module.getFunction(name.c_str())) {
             return f;
+        }
 
         const auto valueType = Type::getInt128Ty(context);
         const auto argsType = ArrayType::get(valueType, ArgNodes.size());
         const auto contextType = GetCompContextType(context);
 
-        const auto funcType = codegen.GetEffectiveTarget() != NYql::NCodegen::ETarget::Windows ?
-            FunctionType::get(valueType, {PointerType::getUnqual(contextType), PointerType::getUnqual(argsType)}, false):
-            FunctionType::get(Type::getVoidTy(context), {PointerType::getUnqual(valueType), PointerType::getUnqual(contextType), PointerType::getUnqual(argsType)}, false);
+        const auto funcType =
+            FunctionType::get(valueType, {PointerType::getUnqual(contextType), PointerType::getUnqual(argsType)}, false);
 
         TCodegenContext ctx(codegen);
         ctx.Func = cast<Function>(module.getOrInsertFunction(name.c_str(), funcType).getCallee());
 
-        auto args = ctx.Func->arg_begin();
+        DISubprogramAnnotator annotator(ctx, ctx.Func);
 
-        const auto resultArg = codegen.GetEffectiveTarget() == NYql::NCodegen::ETarget::Windows ? &*args++ : nullptr;
-        if (resultArg) {
-            resultArg->addAttr(Attribute::StructRet);
-            resultArg->addAttr(Attribute::NoAlias);
-        }
+        auto args = ctx.Func->arg_begin();
 
         ctx.Ctx = &*args;
         const auto argsPtr = &*++args;
@@ -137,12 +162,7 @@ private:
 
         const auto result = GetNodeValue(ResultNode, ctx, block);
 
-        if (resultArg) {
-            new StoreInst(result, resultArg, block);
-            ReturnInst::Create(context, block);
-        } else {
-            ReturnInst::Create(context, result, block);
-        }
+        ReturnInst::Create(context, result, block);
         return ctx.Func;
     }
 
@@ -153,11 +173,11 @@ private:
     TRunPtr Run = nullptr;
 #endif
 
-    IComputationNode *const ResultNode;
+    IComputationNode* const ResultNode;
     const TComputationExternalNodePtrVector ArgNodes;
 };
 
-}
+} // namespace
 
 IComputationNode* WrapCallable(TCallable& callable, const TComputationNodeFactoryContext& ctx) {
     MKQL_ENSURE(callable.GetInputsCount() > 0U, "Expected at least one argument");
@@ -177,5 +197,5 @@ IComputationNode* WrapCallable(TCallable& callable, const TComputationNodeFactor
     return new TCallableWrapper(ctx.Mutables, resultNode, std::move(argNodes));
 }
 
-}
-}
+} // namespace NMiniKQL
+} // namespace NKikimr

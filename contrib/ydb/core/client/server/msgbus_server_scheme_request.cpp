@@ -1,9 +1,13 @@
-#include <contrib/ydb/core/base/ticket_parser.h>
 #include "msgbus_server.h"
 #include "msgbus_server_request.h"
 #include "msgbus_server_proxy.h"
 #include "msgbus_server_persqueue.h"
 #include "msgbus_securereq.h"
+
+#include <contrib/ydb/core/base/ticket_parser.h>
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
+
+#define YDB_LOG_THIS_FILE_COMPONENT NKikimrServices::PERSQUEUE
 
 namespace NKikimr {
 namespace NMsgBusProxy {
@@ -81,6 +85,7 @@ public:
     void StateWork(TAutoPtr<NActors::IEventHandle> &ev) {
         switch (ev->GetTypeRewrite()) {
             HFunc(TEvTxUserProxy::TEvProposeTransactionStatus, Handle);
+            CFunc(TEvents::TSystem::PoisonPill, TBase::Cancel);
         }
     }
 
@@ -213,19 +218,19 @@ void TMessageBusServerSchemeRequest<TBusSchemeOperation>::ReplyWithResult(ERespo
 }
 
 void TMessageBusServerProxy::Handle(TEvBusProxy::TEvPersQueue::TPtr& ev, const TActorContext& ctx) {
-    LOG_TRACE_S(ctx, NKikimrServices::PERSQUEUE, "TMessageBusServerProxy::Handle");
+    YDB_LOG_TRACE_CTX(ctx, "TMessageBusServerProxy::Handle");
 
     TEvBusProxy::TEvPersQueue *msg = ev->Get();
     const auto& rec = static_cast<TBusPersQueue *>(msg->MsgContext.GetMessage())->Record;
     if (rec.HasMetaRequest() && (rec.GetMetaRequest().HasCmdCreateTopic()
                                  || rec.GetMetaRequest().HasCmdChangeTopic()
                                  || rec.GetMetaRequest().HasCmdDeleteTopic())) {
-        LOG_TRACE_S(ctx, NKikimrServices::PERSQUEUE, "TMessageBusServerProxy::Handle new TMessageBusServerSchemeRequest");
+        YDB_LOG_TRACE_CTX(ctx, "TMessageBusServerProxy::Handle new TMessageBusServerSchemeRequest");
 
         ctx.Register(new TMessageBusServerSchemeRequest<TBusPersQueue>(ev->Get()), TMailboxType::HTSwap, AppData()->UserPoolId);
         return;
     }
-    LOG_TRACE_S(ctx, NKikimrServices::PERSQUEUE, "TMessageBusServerProxy::Handle CreateMessageBusServerPersQueue");
+    YDB_LOG_TRACE_CTX(ctx, "TMessageBusServerProxy::Handle CreateMessageBusServerPersQueue");
 
     ctx.Register(CreateMessageBusServerPersQueue(msg->MsgContext, PqMetaCache));
 }

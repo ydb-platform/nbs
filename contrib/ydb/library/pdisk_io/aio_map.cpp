@@ -25,6 +25,7 @@ struct TAsyncIoOperationMap : IObjectInQueue, IAsyncIoOperation {
     TInstant Deadline;
 
     bool PrevAsyncIoOperationIsInProgress = false;
+    bool IsFailed = false;
 
     TAsyncIoOperationMap(IAsyncIoContext &asyncIoContext, TSectorMap &sectorMap,
             TCountedQueueOneOne<IAsyncIoOperation*, 4 << 10> &completeQueue,
@@ -72,12 +73,12 @@ struct TAsyncIoOperationMap : IObjectInQueue, IAsyncIoOperation {
         switch (Type) {
             case IAsyncIoOperation::EType::PRead:
                 {
-                    SectorMap.Read((ui8*)Data, Size, Offset, PrevAsyncIoOperationIsInProgress);
+                    IsFailed = !SectorMap.Read((ui8*)Data, Size, Offset, PrevAsyncIoOperationIsInProgress);
                     break;
                 }
             case IAsyncIoOperation::EType::PWrite:
                 {
-                    SectorMap.Write((ui8*)Data, Size, Offset, PrevAsyncIoOperationIsInProgress);
+                    IsFailed = !SectorMap.Write((ui8*)Data, Size, Offset, PrevAsyncIoOperationIsInProgress);
                     break;
                 }
             default:
@@ -103,6 +104,8 @@ class TRandomWaitThreadPool : public IThreadPool {
     TThread WorkThread;
     std::atomic<bool> StopFlag;
     std::pair<TDuration, TDuration> WaitParams;
+    TSpinLock DeadlineLock;
+    TInstant LatestDeadline;
 
     ///////    Thread working part    /////
     static void *Proc(void* that) {
@@ -173,8 +176,14 @@ class TRandomWaitThreadPool : public IThreadPool {
             return false;
         }
         auto op = static_cast<TAsyncIoOperationMap*>(obj);
-        op->Deadline = TInstant::Now() + WaitParams.first
+        const TDuration randomWaitAddend = WaitParams.first
             + TDuration::MicroSeconds(RandomNumber<ui32>(WaitParams.second.MicroSeconds()));
+        {
+            TGuard<TSpinLock> guard(DeadlineLock);
+            const TInstant baseDeadline = Max(LatestDeadline, TInstant::Now());
+            op->Deadline = baseDeadline + randomWaitAddend;
+            LatestDeadline = op->Deadline;
+        }
         IncomingQueue.Push(op);
         return true;
     }
@@ -199,6 +208,7 @@ public:
         : WorkThread(TThread::TParams(Proc, this))
         , StopFlag(false)
         , WaitParams(waitParams)
+        , LatestDeadline(TInstant::Now())
     {
         WorkThread.Start();
     }
@@ -218,6 +228,8 @@ class TAsyncIoContextMap : public IAsyncIoContext {
 
     TSpinLock SpinLock;
     IAsyncIoOperation* LastOngoingAsyncIoOperation = nullptr;
+    std::atomic<ui64> GlobalCounter = 0;
+
 public:
 
     TAsyncIoContextMap(const TString &path, ui32 pDiskId, TIntrusivePtr<TSectorMap> sectorMap)
@@ -248,6 +260,25 @@ public:
         return EIoResult::Ok;
     }
 
+    EIoResult GenerateResultForOperaion(IAsyncIoOperation::EType type) {
+        auto result = EIoResult::Ok;
+
+        auto globalIdx = GlobalCounter++;
+        if (auto everyNth = SectorMap->IoErrorEveryNthRequests.load()) {
+            if (globalIdx % everyNth == everyNth - 1) {
+                result = EIoResult::FakeError;
+            }
+        }
+        if (type == IAsyncIoOperation::EType::PRead) {
+            if (auto everyNth = SectorMap->ReadIoErrorEveryNthRequests.load()) {
+                if (globalIdx % everyNth == everyNth - 1) {
+                    result = EIoResult::FakeError;
+                }
+            }
+        }
+        return result;
+    }
+
     i64 GetEvents(ui64 minEvents, ui64 maxEvents, TAsyncIoOperationResult *events, TDuration timeout) override {
         ui64 outputIdx = 0;
         TInstant startTime = TInstant::Now();
@@ -258,13 +289,11 @@ public:
                 for (TAtomicBase idx = 0; idx < size; ++idx) {
                     TAsyncIoOperationMap *op = static_cast<TAsyncIoOperationMap*>(CompleteQueue.Pop());
                     events[outputIdx].Operation = op;
-                    events[outputIdx].Result = (RandomNumber<double>() <
-                            SectorMap->ImitateIoErrorProbability.load())
-                        ? EIoResult::FakeError
-                        : EIoResult::Ok;
-                    if (op->GetType() == IAsyncIoOperation::EType::PRead &&
-                            RandomNumber<double>() < SectorMap->ImitateReadIoErrorProbability.load()) {
+
+                    if (op->IsFailed) {
                         events[outputIdx].Result = EIoResult::FakeError;
+                    } else {
+                        events[outputIdx].Result = GenerateResultForOperaion(op->GetType());
                     }
                     events[outputIdx].Operation->ExecCallback(&events[outputIdx]);
                     ++outputIdx;
@@ -293,7 +322,7 @@ public:
         }
     }
 
-    void PrepareImpl(IAsyncIoOperation *op, void *data, size_t size, size_t offset,
+    void PrepareImpl(IAsyncIoOperation *op, void *data, ui64 size, ui64 offset,
             IAsyncIoOperation::EType type) {
         TAsyncIoOperationMap *operation = static_cast<TAsyncIoOperationMap*>(op);
         operation->Data = data;
@@ -310,7 +339,7 @@ public:
         PrepareImpl(op, const_cast<void*>(source), size, offset, IAsyncIoOperation::EType::PWrite);
     }
 
-    void PreparePTrim(IAsyncIoOperation *op, size_t size, size_t offset) override {
+    void PreparePTrim(IAsyncIoOperation *op, ui64 size, ui64 offset) override {
         PrepareImpl(op, nullptr, size, offset, IAsyncIoOperation::EType::PTrim);
     }
 

@@ -3,10 +3,13 @@
 #include "common.h"
 #include "portion_info.h"
 
+#include <contrib/ydb/core/tx/columnshard/engines/portions/data_accessor.h>
 #include <contrib/ydb/core/tx/columnshard/splitter/abstract/chunks.h>
 
 #include <contrib/ydb/library/accessor/accessor.h>
+
 #include <contrib/libs/apache/arrow/cpp/src/arrow/record_batch.h>
+
 #include <map>
 
 namespace NKikimr::NOlap {
@@ -20,49 +23,49 @@ private:
     YDB_READONLY_DEF(TBlobChunks, Chunks);
     void RestoreChunk(const std::shared_ptr<IPortionDataChunk>& chunk);
 
-    TPortionInfo PortionInfo;
+    TPortionDataAccessor PortionInfo;
 
-    explicit TReadPortionInfoWithBlobs(TPortionInfo&& portionInfo)
-        : PortionInfo(std::move(portionInfo)) {
+    explicit TReadPortionInfoWithBlobs(TPortionDataAccessor&& portionInfo)
+        : PortionInfo(std::move(portionInfo))
+    {
     }
 
-    explicit TReadPortionInfoWithBlobs(const TPortionInfo& portionInfo)
-        : PortionInfo(portionInfo) {
+    explicit TReadPortionInfoWithBlobs(const TPortionDataAccessor& portionInfo)
+        : PortionInfo(portionInfo)
+    {
     }
 
     const TString& GetBlobByAddressVerified(const ui32 columnId, const ui32 chunkId) const;
 
 public:
-    static std::vector<TReadPortionInfoWithBlobs> RestorePortions(const std::vector<TPortionInfo>& portions, NBlobOperations::NRead::TCompositeReadBlobs& blobs,
-        const TVersionedIndex& tables);
-    static TReadPortionInfoWithBlobs RestorePortion(const TPortionInfo& portion, NBlobOperations::NRead::TCompositeReadBlobs& blobs,
-        const TIndexInfo& indexInfo);
+    static std::vector<TReadPortionInfoWithBlobs> RestorePortions(
+        const std::vector<TPortionDataAccessor>& portions, NBlobOperations::NRead::TCompositeReadBlobs& blobs, const TVersionedIndex& tables);
+    static TReadPortionInfoWithBlobs RestorePortion(
+        const TPortionDataAccessor& portion, NBlobOperations::NRead::TCompositeReadBlobs& blobs, const TIndexInfo& indexInfo);
 
-    std::shared_ptr<NArrow::TGeneralContainer> RestoreBatch(const ISnapshotSchema& data, const ISnapshotSchema& resultSchema, const std::set<ui32>& seqColumns) const;
-    static std::optional<TWritePortionInfoWithBlobsResult> SyncPortion(TReadPortionInfoWithBlobs&& source,
-        const ISnapshotSchema::TPtr& from, const ISnapshotSchema::TPtr& to, const TString& targetTier, const std::shared_ptr<IStoragesManager>& storages,
+    TConclusion<std::shared_ptr<NArrow::TGeneralContainer>> RestoreBatch(const ISnapshotSchema& data, const ISnapshotSchema& resultSchema,
+        const std::set<ui32>& seqColumns, const bool restoreAbsent = true) const;
+    static std::optional<TWritePortionInfoWithBlobsResult> SyncPortion(TReadPortionInfoWithBlobs&& source, const ISnapshotSchema::TPtr& from,
+        const ISnapshotSchema::TPtr& to, const TString& targetTier, const std::shared_ptr<IStoragesManager>& storages,
         std::shared_ptr<NColumnShard::TSplitterCounters> counters);
 
     std::vector<std::shared_ptr<IPortionDataChunk>> GetEntityChunks(const ui32 entityId) const;
 
-    bool ExtractColumnChunks(const ui32 columnId, std::vector<const TColumnRecord*>& records, std::vector<std::shared_ptr<IPortionDataChunk>>& chunks);
+    bool ExtractColumnChunks(
+        const ui32 columnId, std::vector<const TColumnRecord*>& records, std::vector<std::shared_ptr<IPortionDataChunk>>& chunks);
 
     TString DebugString() const {
         return TStringBuilder() << PortionInfo.DebugString() << ";";
     }
 
     const TPortionInfo& GetPortionInfo() const {
-        return PortionInfo;
+        return PortionInfo.GetPortionInfo();
     }
 
-    TPortionInfo& GetPortionInfo() {
-        return PortionInfo;
-    }
-
-    friend IOutputStream& operator << (IOutputStream& out, const TReadPortionInfoWithBlobs& info) {
+    friend IOutputStream& operator<<(IOutputStream& out, const TReadPortionInfoWithBlobs& info) {
         out << info.DebugString();
         return out;
     }
 };
 
-} // namespace NKikimr::NOlap
+}   // namespace NKikimr::NOlap

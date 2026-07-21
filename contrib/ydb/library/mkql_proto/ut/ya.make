@@ -4,8 +4,6 @@ ALLOCATOR(J)
 
 FORK_SUBTESTS()
 
-TIMEOUT(150)
-
 SIZE(MEDIUM)
 
 SRCS(
@@ -15,7 +13,7 @@ SRCS(
 PEERDIR(
     contrib/ydb/library/mkql_proto/ut/helpers
     contrib/ydb/library/yql/public/udf/service/exception_policy
-    contrib/ydb/core/yql_testlib
+    contrib/ydb/library/yql/sql/pg_dummy
 )
 
 YQL_LAST_ABI_VERSION()

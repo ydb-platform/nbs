@@ -2,6 +2,7 @@ LIBRARY()
 
 SRCS(
     yql_s3_datasink.cpp
+    yql_s3_datasink_constraints.cpp
     yql_s3_datasink_execution.cpp
     yql_s3_datasink_type_ann.cpp
     yql_s3_datasource.cpp
@@ -30,7 +31,7 @@ PEERDIR(
     contrib/ydb/library/yql/core
     contrib/ydb/library/yql/core/type_ann
     contrib/ydb/library/yql/dq/expr_nodes
-    contrib/ydb/library/yql/dq/integration
+    contrib/ydb/library/yql/core/dq_integration
     contrib/ydb/library/yql/minikql/comp_nodes
     contrib/ydb/library/yql/providers/common/config
     contrib/ydb/library/yql/providers/common/dq
@@ -53,6 +54,7 @@ PEERDIR(
     contrib/ydb/library/yql/providers/s3/path_generator
     contrib/ydb/library/yql/providers/s3/proto
     contrib/ydb/library/yql/providers/s3/range_helpers
+    contrib/ydb/library/yql/providers/s3/statistics
     contrib/ydb/library/yql/utils
     contrib/ydb/library/yql/utils/threading
 )

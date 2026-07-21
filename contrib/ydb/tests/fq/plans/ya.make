@@ -4,6 +4,7 @@ INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/tools/fq_runner/ydb_runner_with_datast
 
 PEERDIR(
     contrib/python/boto3
+    library/python/port_manager
     library/python/testing/recipe
     library/python/testing/yatest_common
     library/recipes/common
@@ -14,6 +15,13 @@ DEPENDS(
     contrib/python/moto/bin
 )
 
+IF (SANITIZER_TYPE)
+    SIZE(LARGE)
+    INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/large.inc)
+ELSE()
+    SIZE(MEDIUM)
+ENDIF()
+
 TEST_SRCS(
     test_stats_mode.py
 )
@@ -21,7 +29,5 @@ TEST_SRCS(
 PY_SRCS(
     conftest.py
 )
-
-SIZE(MEDIUM)
 
 END()

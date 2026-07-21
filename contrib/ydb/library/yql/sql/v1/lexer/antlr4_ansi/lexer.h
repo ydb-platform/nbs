@@ -1,0 +1,8 @@
+#pragma once
+#include <contrib/ydb/library/yql/parser/lexer_common/lexer.h>
+
+namespace NSQLTranslationV1 {
+
+NSQLTranslation::TLexerFactoryPtr MakeAntlr4AnsiLexerFactory();
+
+} // namespace NSQLTranslationV1

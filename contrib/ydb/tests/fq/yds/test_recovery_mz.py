@@ -8,7 +8,7 @@ import random
 import os
 import yatest
 
-import contrib.ydb.tests.library.common.yatest_common as yatest_common
+from contrib.ydb.tests.library.common.helpers import plain_or_under_sanitizer
 from contrib.ydb.tests.tools.fq_runner.kikimr_runner import StreamingOverKikimr
 from contrib.ydb.tests.tools.fq_runner.kikimr_runner import StreamingOverKikimrConfig
 from contrib.ydb.tests.tools.fq_runner.kikimr_runner import TenantConfig
@@ -22,13 +22,13 @@ import contrib.ydb.public.api.protos.draft.fq_pb2 as fq
 @pytest.fixture
 def kikimr():
     kikimr_conf = StreamingOverKikimrConfig(
-        cloud_mode=True, node_count={"/cp": TenantConfig(1), "/compute": TenantConfig(8)}
+        cloud_mode=True, node_count={"/cp": TenantConfig(1), "/compute": TenantConfig(2)}
     )
     kikimr = StreamingOverKikimr(kikimr_conf)
     # control
     kikimr.control_plane.fq_config['control_plane_storage']['mapping'] = {"common_tenant_name": ["/compute"]}
     kikimr.control_plane.fq_config['control_plane_storage']['task_lease_retry_policy'] = {}
-    kikimr.control_plane.fq_config['control_plane_storage']['task_lease_retry_policy']['retry_count'] = 5
+    kikimr.control_plane.fq_config['control_plane_storage']['task_lease_retry_policy']['retry_count'] = 10
     kikimr.control_plane.fq_config['control_plane_storage']['task_lease_retry_policy']['retry_period'] = "30s"
     kikimr.control_plane.fq_config['control_plane_storage']['task_lease_ttl'] = "3s"
     # compute
@@ -56,7 +56,7 @@ class TestRecovery(TestYdsBase):
                 return node_index
         assert False, "No active graphs found"
 
-    def dump_workers(self, worker_count, ca_count, wait_time=yatest_common.plain_or_under_sanitizer(30, 150)):
+    def dump_workers(self, worker_count, ca_count, wait_time=plain_or_under_sanitizer(30, 150)):
         deadline = time.time() + wait_time
         while True:
             wcs = 0
@@ -126,6 +126,9 @@ class TestRecovery(TestYdsBase):
             d[n] = 1
 
         self.dump_workers(2, 4)
+        kikimr.compute_plane.wait_completed_checkpoints(
+            query_id, self.kikimr.compute_plane.get_completed_checkpoints(query_id) + 1
+        )
 
         node_to_restart = None
         for node_index in kikimr.compute_plane.kikimr_cluster.nodes:
@@ -156,11 +159,19 @@ class TestRecovery(TestYdsBase):
             else:
                 d[n] = 1
 
+        kikimr.compute_plane.wait_completed_checkpoints(
+            query_id, self.kikimr.compute_plane.get_completed_checkpoints(query_id) + 1
+        )
+
         logging.debug("Restart Master node {}".format(master_node_index))
 
         kikimr.compute_plane.kikimr_cluster.nodes[master_node_index].stop()
         kikimr.compute_plane.kikimr_cluster.nodes[master_node_index].start()
         kikimr.compute_plane.wait_bootstrap(master_node_index)
+
+        kikimr.compute_plane.wait_completed_checkpoints(
+            query_id, self.kikimr.compute_plane.get_completed_checkpoints(query_id) + 1
+        )
         master_node_index = self.get_graph_master_node_id(query_id)
 
         logging.debug("New master node {}".format(master_node_index))

@@ -2,7 +2,7 @@
 
 #include "abstract_scheme.h"
 
-#include <contrib/ydb/core/tx/columnshard/engines/index_info.h>
+#include <contrib/ydb/core/tx/columnshard/engines/scheme/index_info.h>
 
 namespace NKikimr::NOlap {
 
@@ -14,13 +14,17 @@ class TFilteredSnapshotSchema: public ISnapshotSchema {
 
 protected:
     virtual TString DoDebugString() const override;
+
+    virtual NJson::TJsonValue DoDebugJson() const override;
+
 public:
     TFilteredSnapshotSchema(const ISnapshotSchema::TPtr& originalSnapshot, const std::vector<ui32>& columnIds);
     TFilteredSnapshotSchema(const ISnapshotSchema::TPtr& originalSnapshot, const std::set<ui32>& columnIds);
 
-    virtual const std::vector<ui32>& GetColumnIds() const override {
-        return ColumnIds;
+    virtual TColumnIdsView GetColumnIds() const override {
+        return { ColumnIds.begin(), ColumnIds.end() };
     }
+
     TColumnSaver GetColumnSaver(const ui32 columnId) const override;
     std::shared_ptr<TColumnLoader> GetColumnLoaderOptional(const ui32 columnId) const override;
     std::optional<ui32> GetColumnIdOptional(const std::string& columnName) const override;
@@ -34,4 +38,4 @@ public:
     ui64 GetVersion() const override;
 };
 
-}
+}   // namespace NKikimr::NOlap

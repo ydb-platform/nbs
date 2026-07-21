@@ -1,19 +1,18 @@
 PY3TEST()
 
-ENV(YDB_DRIVER_BINARY="contrib/ydb/apps/ydbd/ydbd")
+INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/harness_dep.inc)
 TEST_SRCS(
     test_schemeshard_limits.py
 )
 
-REQUIREMENTS(
-    ram:16
-)
+IF (SANITIZER_TYPE)
+    REQUIREMENTS(ram:16)
+ENDIF()
 
-TIMEOUT(600)
 SIZE(MEDIUM)
+REQUIREMENTS(cpu:4)
 
 DEPENDS(
-    contrib/ydb/apps/ydbd
 )
 
 PEERDIR(

@@ -8,10 +8,20 @@ var ReadSetsState = {
     rs: new Map(),
     acks: new Map(),
     delayedAcks: new Map(),
+    expectations: new Map(),
+    pipes: new Map(),
 };
 
 function makeRSKey(info) {
     return `${info.TxId}-${info.Origin}-${info.Source}-${info.Destination}-${info.SeqNo}`;
+}
+
+function makeRSExpectationKey(info) {
+    return `${info.TxId}-${info.Source}`;
+}
+
+function makeRSPipeKey(info) {
+    return `${info.Destination}`;
 }
 
 class RSInfo {
@@ -34,9 +44,9 @@ class RSInfo {
         return `
             <tr id="ds-out-rs-row-${this.key}">
                 <td><a href="#page=ds-op&op=${info.TxId}" onclick="showOp(${info.TxId})">${info.TxId}</a></td>
-                <td><a href="app?TabletID=${info.Origin}">${info.Origin}</a></td>
-                <td><a href="app?TabletID=${info.Source}">${info.Source}</a></td>
-                <td><a href="app?TabletID=${info.Destination}">${info.Destination}</a></td>
+                <td><a href="${makeTabletDevUiUrl(`TabletID=${info.Origin}`)}">${info.Origin}</a></td>
+                <td><a href="${makeTabletDevUiUrl(`TabletID=${info.Source}`)}">${info.Source}</a></td>
+                <td><a href="${makeTabletDevUiUrl(`TabletID=${info.Destination}`)}">${info.Destination}</a></td>
                 <td>${info.SeqNo}</td>
             </tr>
         `;
@@ -63,12 +73,120 @@ class RSAckInfo {
         return `
             <tr id="ds-out-rs-ack-row-${this.key}">
                 <td><a href="#page=ds-op&op=${info.TxId}" onclick="showOp(${info.TxId})">${info.TxId}</a></td>
-                <td><a href="app?TabletID=${info.Origin}">${info.Origin}</a></td>
-                <td><a href="app?TabletID=${info.Source}">${info.Source}</a></td>
-                <td><a href="app?TabletID=${info.Destination}">${info.Destination}</a></td>
+                <td><a href="${makeTabletDevUiUrl(`TabletID=${info.Origin}`)}">${info.Origin}</a></td>
+                <td><a href="${makeTabletDevUiUrl(`TabletID=${info.Source}`)}">${info.Source}</a></td>
+                <td><a href="${makeTabletDevUiUrl(`TabletID=${info.Destination}`)}">${info.Destination}</a></td>
                 <td>${info.SeqNo}</td>
             </tr>
         `;
+    }
+}
+
+class RSExpectationInfo {
+    constructor(info, body) {
+        this.key = makeRSExpectationKey(info);
+
+        var trHtml = this._makeTrHtml(info);
+        $(trHtml).appendTo($('#' + body));
+    }
+
+    update(info) {
+        $('#ds-rs-expectation-row-' + this.key).replaceWith(this._makeTrHtml(info));
+    }
+
+    remove() {
+        $('#ds-rs-expectation-row-' + this.key).remove();
+    }
+
+    _makeTrHtml(info) {
+        return `
+            <tr id="ds-rs-expectation-row-${this.key}">
+                <td>${info.TxId}</td>
+                <td>${info.Step}</td>
+                <td><a href="${makeTabletDevUiUrl(`TabletID=${info.Source}`)}">${info.Source}</a></td>
+            </tr>
+        `;
+    }
+}
+
+class RSPipeInfo {
+    constructor(info, body) {
+        this.key = makeRSPipeKey(info);
+
+        var trHtml = this._makeTrHtml(info);
+        $(trHtml).appendTo($('#' + body));
+    }
+
+    update(info) {
+        $('#ds-rs-pipe-row-' + this.key).replaceWith(this._makeTrHtml(info));
+    }
+
+    remove() {
+        $('#ds-rs-pipe-row-' + this.key).remove();
+    }
+
+    _makeTrHtml(info) {
+        return `
+            <tr id="ds-rs-pipe-row-${this.key}">
+                <td><a href="${makeTabletDevUiUrl(`TabletID=${info.Destination}`)}">${info.Destination}</a></td>
+                <td>${info.OutReadSets}</td>
+                <td>${info.Subscribed}</td>
+            </tr>
+        `;
+    }
+}
+
+function updateReadSetExpectations(data) {
+    var expectations = new Set();
+    if (data.Expectations) {
+        for (var info of data.Expectations) {
+            var key = makeRSExpectationKey(info);
+            expectations.add(key);
+            if (ReadSetsState.expectations.has(key)) {
+                ReadSetsState.expectations.get(key).update(info);
+            } else {
+                ReadSetsState.expectations.set(key, new RSExpectationInfo(info, 'ds-rs-expectations-body'));
+            }
+        }
+    }
+
+    var toRemove = [];
+    for (var key of ReadSetsState.expectations.keys()) {
+        if (!expectations.has(key)) {
+            toRemove.push(key);
+        }
+    }
+
+    for (var key of toRemove) {
+        ReadSetsState.expectations.get(key).remove();
+        ReadSetsState.expectations.delete(key);
+    }
+}
+
+function updateReadSetPipes(data) {
+    var pipes = new Set();
+    if (data.Pipes) {
+        for (var info of data.Pipes) {
+            var key = makeRSPipeKey(info);
+            pipes.add(key);
+            if (ReadSetsState.pipes.has(key)) {
+                ReadSetsState.pipes.get(key).update(info);
+            } else {
+                ReadSetsState.pipes.set(key, new RSPipeInfo(info, 'ds-rs-pipes-body'));
+            }
+        }
+    }
+
+    var toRemove = [];
+    for (var key of ReadSetsState.pipes.keys()) {
+        if (!pipes.has(key)) {
+            toRemove.push(key);
+        }
+    }
+
+    for (var key of toRemove) {
+        ReadSetsState.pipes.get(key).remove();
+        ReadSetsState.pipes.delete(key);
     }
 }
 
@@ -154,9 +272,14 @@ function onReadSetsLoaded(data) {
         ReadSetsState.delayedAcks.delete(key);
     }
 
+    updateReadSetExpectations(data);
+    updateReadSetPipes(data);
+
     $('#ds-out-rs-table').trigger('update', [true]);
     $('#ds-out-rs-ack-table').trigger('update', [true]);
     $('#ds-delayed-ack-table').trigger('update', [true]);
+    $('#ds-rs-expectations-table').trigger('update', [true]);
+    $('#ds-rs-pipes-table').trigger('update', [true]);
 
     scheduleLoadReadSets(ReadSetsState.fetchInterval);
 }
@@ -179,7 +302,7 @@ function loadReadSets() {
         return;
 
     ReadSetsState.loading = true;
-    var url = '../cms/api/datashard/json/getrsinfo?tabletid=' + TabletId;
+    var url = makeMonUrl('/cms/api/datashard/json/getrsinfo?tabletid=' + TabletId);
     $.get(url).done(onReadSetsLoaded).fail(onReadSetsFailed);
 }
 
@@ -212,6 +335,46 @@ function initReadSetsTab() {
                 theme: 'blue',
                 sortList: [[0,0]],
                 widgets : ['zebra', 'filter'],
+            });
+            $('#ds-rs-expectations-table').tablesorter({
+                theme: 'blue',
+                sortList: [[0,0]],
+                widgets : ['zebra', 'filter'],
+            });
+            $('#ds-rs-pipes-table').tablesorter({
+                theme: 'blue',
+                sortList: [[0,0]],
+                widgets : ['zebra', 'filter'],
+            });
+            $('#ds-op-send-rs').off('click').on('click', function() {
+                const body = $('#ds-send-rs-body');
+                const data = {
+                    TabletID: '',
+                    action: 'send-read-set'
+                };
+                for (const key of ['step', 'txId', 'srcTabletId', 'seqNo']) {
+                    data[key] = body.find('input[name='+key+']').val();
+                    if (!/^\d+$/.exec(data[key])) {
+                        $('#ds-send-rs-error').html('Invalid '+key);
+                        return;
+                    }
+                }
+                data['commit'] = body.find('select[name=commit]').val();
+                const m = /[&\?]TabletID=(\d+)/.exec(window.location.search);
+                if (!m) {
+                    $('#ds-send-rs-error').html('Invalid destination datashard ID');
+                    return;
+                }
+                data['TabletID'] = m[1];
+                $('#ds-send-rs-error').html('Sending...');
+                const url = makeTabletDevUiUrl($.param(data));
+                $.ajax({ type: 'POST', url: url, data: {}, dataType: 'text' })
+                    .done(function(data) {
+                        $('#ds-send-rs-error').html(data);
+                    })
+                    .fail(function(xhr, textStatus) {
+                        $('#ds-send-rs-error').html(xhr.responseText || xhr.statusText);
+                    });
             });
             scheduleLoadReadSets(0);
         }

@@ -1,36 +1,33 @@
 #pragma once
 
 #include "ydb_command.h"
-#include "ydb_common.h"
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_query/client.h>
 #include <contrib/ydb/public/lib/ydb_cli/common/format.h>
-#include <contrib/ydb/public/lib/ydb_cli/common/interruptible.h>
+#include <contrib/ydb/public/lib/ydb_cli/common/parameters.h>
+#include <contrib/ydb/public/lib/ydb_cli/common/query_utils.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/query/client.h>
 
-namespace NYdb {
-namespace NConsoleClient {
+namespace NYdb::NConsoleClient {
 
-class TCommandSql : public TYdbCommand, public TCommandWithFormat,
-    public TInterruptibleCommand
-{
+class TCommandSql : public TYdbCommand, public TCommandWithOutput, public TCommandWithParameters, public TInterruptableCommand {
 public:
     TCommandSql();
-    TCommandSql(TString script, TString collectStatsMode);
     virtual void Config(TConfig& config) override;
     virtual void Parse(TConfig& config) override;
     virtual int Run(TConfig& config) override;
+    void SetCollectStatsMode(TString&& collectStatsMode);
+    void SetScript(TString&& script);
+    void SetSyntax(const TString& syntax);
 
 private:
     int RunCommand(TConfig& config);
-    int PrintResponse(NQuery::TExecuteQueryIterator& result);
 
     TString CollectStatsMode;
     TString Query;
     TString QueryFile;
-    TString Syntax;
-    bool ExplainMode = false;
-    bool ExplainAnalyzeMode = false;
+    TString Progress;
+    TString ResourcePool;
+    TExecuteGenericQuery::TSettings ExecSettings;
 };
 
-}
-}
+} // namespace NYdb::NConsoleClient

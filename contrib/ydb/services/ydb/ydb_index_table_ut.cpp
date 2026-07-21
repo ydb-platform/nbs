@@ -1,7 +1,8 @@
-#include <contrib/ydb/public/sdk/cpp/client/ydb_params/params.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_table/table.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_types/status_codes.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/params/params.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/table/table.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/types/status_codes.h>
 
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 #include <contrib/ydb/core/tx/datashard/datashard.h>
 #include <contrib/ydb/core/client/flat_ut_client.h>
 
@@ -32,7 +33,7 @@ void CreateTestTableWithIndex(NYdb::NTable::TTableClient& client) {
                 .AddNullableColumn("Timestamp", EPrimitiveType::Int64)
                 .AddNullableColumn("Data", EPrimitiveType::String)
                 .SetPrimaryKeyColumns({"NameHash", "Name"})
-                .AddSecondaryIndex("TimestampIndex",TVector<TString>({"Timestamp", "Name", "Version"}));
+                .AddSecondaryIndex("TimestampIndex", {"Timestamp", "Name", "Version"});
 
         auto tableSettings = NYdb::NTable::TCreateTableSettings().PartitioningPolicy(
             NYdb::NTable::TPartitioningPolicy().UniformPartitions(SHARD_COUNT));
@@ -47,7 +48,11 @@ Y_UNIT_TEST_SUITE(YdbIndexTable) {
     Y_UNIT_TEST(AlterIndexImplBySuperUser) {
         TKikimrWithGrpcAndRootSchema server;
 
-        NYdb::TDriver driver(TDriverConfig().SetEndpoint(TStringBuilder() << "localhost:" << server.GetPort()));
+        NYdb::TDriver driver(
+            TDriverConfig()
+                .SetEndpoint(TStringBuilder() << "localhost:" << server.GetPort())
+                .SetDatabase("/Root")
+        );
         NYdb::NTable::TTableClient client(driver);
         NFlatTests::TFlatMsgBusClient oldClient(server.ServerSettings->Port);
 
@@ -64,7 +69,7 @@ Y_UNIT_TEST_SUITE(YdbIndexTable) {
             auto type = TTypeBuilder().BeginOptional().Primitive(EPrimitiveType::Uint64).EndOptional().Build();
             auto alter = TAlterTableSettings().AppendAddColumns(TColumn("FinishedTimestamp", type));
 
-            auto alterResult = session.AlterTable("Root/Foo/TimestampIndex/indexImplTable", alter).GetValueSync();
+            auto alterResult = session.AlterTable("/Root/Foo/TimestampIndex/indexImplTable", alter).GetValueSync();
             UNIT_ASSERT_VALUES_EQUAL_C(alterResult.GetStatus(), EStatus::SCHEME_ERROR,
                                        "Alter of index impl table must fail");
         }
@@ -210,7 +215,7 @@ Y_UNIT_TEST_SUITE(YdbIndexTable) {
             operation.result().UnpackTo(&result);
 
             auto partitioning = result.partitioning_settings().ShortDebugString();
-            UNIT_ASSERT_STRINGS_EQUAL(partitioning, 
+            UNIT_ASSERT_STRINGS_EQUAL(partitioning,
                 "partitioning_by_size: DISABLED "
                 "partitioning_by_load: ENABLED "
                 "min_partitions_count: 5"
@@ -244,6 +249,7 @@ Y_UNIT_TEST_SUITE(YdbIndexTable) {
         }
         {
             grpc::ClientContext context;
+            context.AddMetadata("x-ydb-database", "/Root");
             Ydb::Table::AlterTableRequest request;
             UNIT_ASSERT(::google::protobuf::TextFormat::ParseFromString(R"(
                 path: "/Root/TheTable"
@@ -291,7 +297,7 @@ Y_UNIT_TEST_SUITE(YdbIndexTable) {
             operation.result().UnpackTo(&result);
 
             auto partitioning = result.partitioning_settings().ShortDebugString();
-            UNIT_ASSERT_STRINGS_EQUAL(partitioning, 
+            UNIT_ASSERT_STRINGS_EQUAL(partitioning,
                 "partitioning_by_size: DISABLED "
                 "partitioning_by_load: ENABLED "
                 "min_partitions_count: 5"

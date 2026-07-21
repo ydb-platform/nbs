@@ -5,8 +5,6 @@
 #include "setup_sys_locks.h"
 #include "datashard_locks_db.h"
 
-#include <contrib/ydb/core/kqp/rm_service/kqp_rm_service.h>
-
 namespace NKikimr {
 namespace NDataShard {
 
@@ -45,7 +43,7 @@ EExecutionStatus TBuildWriteOutRSUnit::Execute(TOperation::TPtr op, TTransaction
 {
     TWriteOperation* writeOp = TWriteOperation::CastWriteOperation(op);
     auto writeTx = writeOp->GetWriteTx();
-    Y_ABORT_UNLESS(writeTx);
+    Y_ENSURE(writeTx);
 
     DataShard.ReleaseCache(*writeOp);
 
@@ -56,7 +54,7 @@ EExecutionStatus TBuildWriteOutRSUnit::Execute(TOperation::TPtr op, TTransaction
             case ERestoreDataStatus::Restart:
                 return EExecutionStatus::Restart;
             case ERestoreDataStatus::Error:
-                Y_ABORT("Failed to restore writeOp data: %s", writeTx->GetErrStr().c_str());
+                Y_ENSURE(false, "Failed to restore writeOp data: " << writeTx->GetErrStr());
         }
     }
 
@@ -74,7 +72,7 @@ EExecutionStatus TBuildWriteOutRSUnit::Execute(TOperation::TPtr op, TTransaction
 
     try {
         const auto& kqpLocks = writeTx->GetKqpLocks() ? writeTx->GetKqpLocks().value() : NKikimrDataEvents::TKqpLocks{};
-        KqpFillOutReadSets(op->OutReadSets(), kqpLocks, true, nullptr, DataShard.SysLocksTable(), tabletId);
+        KqpFillOutReadSets(op->OutReadSets(), kqpLocks, true, DataShard.SysLocksTable(), tabletId);
     } catch (const TNotReadyTabletException&) {
         LOG_C("Unexpected TNotReadyTabletException exception at build out rs");
         return OnTabletNotReady(*writeOp, txc, ctx);
@@ -85,7 +83,7 @@ EExecutionStatus TBuildWriteOutRSUnit::Execute(TOperation::TPtr op, TTransaction
             writeOp->SetError(NKikimrDataEvents::TEvWriteResult::STATUS_INTERNAL_ERROR, TStringBuilder() << "Tx was terminated: " << e.what());
             return EExecutionStatus::Executed;
         } else {
-            Y_FAIL_S("Unexpected exception in KQP out-readsets prepare: " << e.what());
+            throw;
         }
     }
 

@@ -36,5 +36,5 @@ namespace NYql {
 
 #include <contrib/ydb/library/yql/providers/generic/expr_nodes/yql_generic_expr_nodes.defs.inl.h>
 
-    }
-}
+    } // namespace NNodes
+} // namespace NYql

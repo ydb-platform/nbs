@@ -13,8 +13,8 @@ PEERDIR(
     contrib/libs/protobuf
     library/cpp/protobuf/yql
     contrib/ydb/library/yql/public/udf
+    contrib/ydb/library/yql/minikql
     yt/cpp/mapreduce/interface
-    yt/yt_proto/yt/formats
     yt/yt_proto/yt/formats
 )
 

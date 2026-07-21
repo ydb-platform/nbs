@@ -9,8 +9,9 @@ PEERDIR(
     library/cpp/monlib/dynamic_counters
     contrib/ydb/library/db_pool/protos
     contrib/ydb/library/security
-    contrib/ydb/public/sdk/cpp/client/ydb_driver
-    contrib/ydb/public/sdk/cpp/client/ydb_table
+    contrib/ydb/library/yverify_stream
+    contrib/ydb/public/sdk/cpp/src/client/driver
+    contrib/ydb/public/sdk/cpp/src/client/table
 )
 
 END()

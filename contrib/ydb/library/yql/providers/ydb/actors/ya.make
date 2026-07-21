@@ -12,7 +12,8 @@ PEERDIR(
     contrib/ydb/library/yql/public/types
     contrib/ydb/library/yql/utils/log
     contrib/ydb/public/lib/experimental
-    contrib/ydb/public/sdk/cpp/client/ydb_driver
+    contrib/ydb/public/sdk/cpp/adapters/issue
+    contrib/ydb/public/sdk/cpp/src/client/driver
     contrib/ydb/library/yql/dq/actors/compute
     contrib/ydb/library/yql/providers/ydb/proto
 )

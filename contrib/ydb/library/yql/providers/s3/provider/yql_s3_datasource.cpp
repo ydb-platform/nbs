@@ -2,7 +2,7 @@
 #include "yql_s3_dq_integration.h"
 
 #include <contrib/ydb/library/yql/core/expr_nodes/yql_expr_nodes.h>
-#include <contrib/ydb/library/yql/providers/common/config/yql_configuration_transformer.h>
+#include <contrib/ydb/library/yql/providers/common/config/transformer/yql_configuration_transformer.h>
 #include <contrib/ydb/library/yql/providers/common/config/yql_setting.h>
 #include <contrib/ydb/library/yql/providers/common/provider/yql_data_provider_impl.h>
 #include <contrib/ydb/library/yql/providers/common/provider/yql_provider.h>
@@ -126,6 +126,10 @@ public:
 
     const THashMap<TString, TString>* GetClusterTokens() override {
         return &State_->Configuration->Tokens;
+    }
+
+    const THashSet<TString>& GetValidClusters() override {
+        return State_->Configuration->GetValidClusters();
     }
 
     bool GetDependencies(const TExprNode& node, TExprNode::TListType& children, bool compact) override {

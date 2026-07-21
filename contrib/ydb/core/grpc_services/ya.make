@@ -1,10 +1,15 @@
 LIBRARY()
 
+ADDINCL(
+    contrib/ydb/public/sdk/cpp
+)
+
 SRCS(
-    audit_log.cpp
     audit_dml_operations.cpp
+    audit_log.cpp
     audit_logins.cpp
     db_metadata_cache.h
+    fs_path_validation.cpp
     grpc_endpoint_publish_actor.cpp
     grpc_helper.cpp
     grpc_mon.cpp
@@ -18,31 +23,38 @@ SRCS(
     rpc_alter_table.cpp
     rpc_backup.cpp
     rpc_begin_transaction.cpp
+    rpc_bridge.cpp
     rpc_calls.cpp
     rpc_cancel_operation.cpp
     rpc_cms.cpp
     rpc_commit_transaction.cpp
-    rpc_dynamic_config.cpp
+    rpc_config.cpp
+    rpc_cluster_state.cpp
     rpc_copy_table.cpp
     rpc_copy_tables.cpp
-    rpc_export.cpp
     rpc_create_coordination_node.cpp
     rpc_create_table.cpp
     rpc_describe_coordination_node.cpp
+    rpc_describe_external_data_source.cpp
+    rpc_describe_external_table.cpp
     rpc_describe_path.cpp
+    rpc_describe_secret.cpp
+    rpc_describe_system_view.cpp
     rpc_describe_table.cpp
     rpc_describe_table_options.cpp
+    rpc_discovery.cpp
     rpc_drop_coordination_node.cpp
     rpc_drop_table.cpp
-    rpc_discovery.cpp
+    rpc_dynamic_config.cpp
     rpc_execute_data_query.cpp
     rpc_execute_scheme_query.cpp
     rpc_execute_yql_script.cpp
-    rpc_explain_yql_script.cpp
     rpc_explain_data_query.cpp
+    rpc_explain_yql_script.cpp
+    rpc_export.cpp
     rpc_forget_operation.cpp
-    rpc_fq_internal.cpp
     rpc_fq.cpp
+    rpc_fq_internal.cpp
     rpc_get_operation.cpp
     rpc_get_scale_recommendation.cpp
     rpc_get_shard_locations.cpp
@@ -53,20 +65,23 @@ SRCS(
     rpc_kh_describe.cpp
     rpc_kh_snapshots.cpp
     rpc_kqp_base.cpp
+    rpc_list_objects_in_s3_export.cpp
     rpc_list_operations.cpp
-    rpc_login.cpp
     rpc_load_rows.cpp
     rpc_log_store.cpp
-    rpc_node_registration.cpp
+    rpc_login.cpp
     rpc_maintenance.cpp
     rpc_make_directory.cpp
     rpc_modify_permissions.cpp
     rpc_monitoring.cpp
+    rpc_node_registration.cpp
+    rpc_object_storage.cpp
+    rpc_ping.cpp
     rpc_prepare_data_query.cpp
     rpc_rate_limiter_api.cpp
     rpc_read_columns.cpp
-    rpc_read_table.cpp
     rpc_read_rows.cpp
+    rpc_read_table.cpp
     rpc_remove_directory.cpp
     rpc_rename_tables.cpp
     rpc_replication.cpp
@@ -74,9 +89,10 @@ SRCS(
     rpc_scheme_base.cpp
     rpc_stream_execute_scan_query.cpp
     rpc_stream_execute_yql_script.cpp
-    rpc_whoami.cpp
-    rpc_object_storage.cpp
+    rpc_test_shard.cpp
+    rpc_topic_deferred_publish.cpp
     rpc_view.cpp
+    rpc_whoami.cpp
     table_settings.cpp
 
     rpc_common/rpc_common_kqp_session.cpp
@@ -104,8 +120,11 @@ PEERDIR(
     library/cpp/digest/old_crc
     contrib/ydb/core/actorlib_impl
     contrib/ydb/core/audit
+    contrib/ydb/core/backup/common
+    contrib/ydb/core/backup/regexp
     contrib/ydb/core/base
-    contrib/ydb/core/control
+    contrib/ydb/core/control/lib
+    contrib/ydb/core/counters_info
     contrib/ydb/core/discovery
     contrib/ydb/core/engine
     contrib/ydb/core/formats
@@ -119,8 +138,11 @@ PEERDIR(
     contrib/ydb/core/io_formats/ydb_dump
     contrib/ydb/core/kesus/tablet
     contrib/ydb/core/kqp/common
-    contrib/ydb/core/kqp/session_actor
+    contrib/ydb/core/kqp/opt
+    contrib/ydb/core/local_indexes/bloom
+    contrib/ydb/core/persqueue/deferred_publish
     contrib/ydb/core/protos
+    contrib/ydb/core/statistics
     contrib/ydb/core/scheme
     contrib/ydb/core/sys_view
     contrib/ydb/core/tx
@@ -132,23 +154,46 @@ PEERDIR(
     contrib/ydb/core/ydb_convert
     contrib/ydb/core/security
     contrib/ydb/core/security/ldap_auth_provider
+    contrib/ydb/core/security/sasl
     contrib/ydb/library/aclib
-    contrib/ydb/library/binary_json
-    contrib/ydb/library/dynumber
+    contrib/ydb/library/yql/types/binary_json
+    contrib/ydb/library/yql/types/dynumber
     contrib/ydb/library/mkql_proto
     contrib/ydb/library/persqueue/topic_parser
-    contrib/ydb/library/yql/parser/pg_wrapper/interface
     contrib/ydb/library/protobuf_printer
+    contrib/ydb/library/yaml_config
+    contrib/ydb/library/cloud_permissions
+    contrib/ydb/library/yql/parser/pg_wrapper/interface
     contrib/ydb/library/yql/public/types
     contrib/ydb/library/yql/public/issue
     contrib/ydb/library/services
     contrib/ydb/public/api/grpc/draft
     contrib/ydb/public/api/protos
     contrib/ydb/public/lib/fq
-    contrib/ydb/public/lib/operation_id
-    contrib/ydb/public/sdk/cpp/client/resources
+    contrib/ydb/public/sdk/cpp/src/library/operation_id
+    contrib/ydb/public/sdk/cpp/src/client/resources
     contrib/ydb/services/ext_index/common
 )
+
+
+DEFAULT(YDB_EMBEDDED_NBS_ENABLED yes)
+
+IF (OS_LINUX AND YDB_EMBEDDED_NBS_ENABLED)
+    CFLAGS(
+        -DYDB_EMBEDDED_NBS_ENABLED
+    )
+    SRCS(
+        rpc_nbs.cpp
+        rpc_nbs_io.cpp
+    )
+    PEERDIR(
+        contrib/ydb/core/nbs/cloud/blockstore/libs/service
+        contrib/ydb/core/nbs/cloud/blockstore/libs/storage/partition_direct
+        contrib/ydb/core/nbs/cloud/blockstore/libs/storage/ss_proxy
+        contrib/ydb/core/nbs/cloud/blockstore/public/api/protos
+        contrib/ydb/core/nbs/cloud/storage/core/libs/common
+    )
+ENDIF()
 
 YQL_LAST_ABI_VERSION()
 
@@ -158,8 +203,11 @@ RECURSE(
     base
     counters
     local_rpc
+    tablet
 )
 
 RECURSE_FOR_TESTS(
     ut
+    grpc_request_check_actor_ut
+    grpc_request_tracing_ut
 )

@@ -7,9 +7,12 @@ SRCS(
     yql_generic_datasink_type_ann.cpp
     yql_generic_datasource.cpp
     yql_generic_datasource_type_ann.cpp
+    yql_generic_describe_table.cpp
+    yql_generic_describe_table.h
     yql_generic_dq_integration.cpp
     yql_generic_io_discovery.cpp
-    yql_generic_load_meta.cpp
+    yql_generic_list_splits.cpp
+    yql_generic_list_splits.h
     yql_generic_logical_opt.cpp
     yql_generic_mkql_compiler.cpp
     yql_generic_physical_opt.cpp
@@ -32,12 +35,13 @@ PEERDIR(
     library/cpp/json
     library/cpp/random_provider
     library/cpp/time_provider
+    contrib/ydb/core/fq/libs/common
     contrib/ydb/core/fq/libs/result_formatter
     contrib/ydb/library/yql/ast
     contrib/ydb/library/yql/core
     contrib/ydb/library/yql/core/type_ann
     contrib/ydb/library/yql/dq/expr_nodes
-    contrib/ydb/library/yql/dq/integration
+    contrib/ydb/library/yql/core/dq_integration
     contrib/ydb/library/yql/minikql/comp_nodes
     contrib/ydb/library/yql/providers/common/config
     contrib/ydb/library/yql/providers/common/db_id_async_resolver
@@ -53,11 +57,11 @@ PEERDIR(
     contrib/ydb/library/yql/providers/dq/expr_nodes
     contrib/ydb/library/yql/providers/generic/expr_nodes
     contrib/ydb/library/yql/providers/generic/proto
-    contrib/ydb/library/yql/providers/generic/connector/api/common
+    contrib/ydb/library/yql/providers/common/proto
     contrib/ydb/library/yql/providers/generic/connector/libcpp
     contrib/ydb/library/yql/providers/result/expr_nodes
     contrib/ydb/library/yql/utils/plan
-    contrib/ydb/public/sdk/cpp/client/ydb_types/credentials
+    contrib/ydb/public/sdk/cpp/src/client/types/credentials
 )
 
 END()

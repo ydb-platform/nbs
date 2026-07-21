@@ -16,6 +16,9 @@ struct TTaskInfo {
     TString Owner;
     TSet<TString> Permissions;
     bool HasSingleCompositeActionGroup = false;
+    TInstant CreateTime;
+    TInstant LastRefreshTime;
+    ui32 MaxInflightActions = 0;
 
     TString ToString() const {
         return TStringBuilder() << "{"
@@ -24,6 +27,9 @@ struct TTaskInfo {
             << " Owner: " << Owner
             << " Permissions: [" << JoinSeq(", ", Permissions) << "]"
             << " HasSingleCompositeActionGroup: " << HasSingleCompositeActionGroup
+            << " CreateTime: " << CreateTime
+            << " LastRefreshTime: " << LastRefreshTime
+            << " MaxInflightActions: " << MaxInflightActions
             << " }";
     }
 };
@@ -39,6 +45,7 @@ struct TCmsState : public TAtomicRefCount<TCmsState> {
     ui64 NextRequestId = 0;
     ui64 NextNotificationId = 0;
     ui64 LastLogRecordTimestamp = 0;
+    TInstant FirstBootTimestamp;
 
     // State of Wall-E tasks.
     THashMap<TString, TTaskInfo> WalleTasks;

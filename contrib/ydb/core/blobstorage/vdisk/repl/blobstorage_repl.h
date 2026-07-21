@@ -128,6 +128,7 @@ namespace NKikimr {
             bool UnrecoveredNonphantomBlobs = false;
             TVDiskID DonorVDiskId;
             bool DropDonor = false;
+            bool DonorNotReady = false;
 
             // plan generation stats
             ui64 ItemsTotal = 0; // total blobs to be recovered
@@ -161,18 +162,20 @@ namespace NKikimr {
             TDuration CommitDuration;
             TDuration OtherDuration;
             TDuration PhantomDuration;
+            TDuration OutOfSpaceDelayDuration;
 
             std::unique_ptr<NRepl::TProxyStat> ProxyStat;
 
             TUnreplicatedBlobRecords UnreplicatedBlobRecords;
             TMilestoneQueue MilestoneQueue;
 
-            void Finish(const TLogoBlobID &keyPos, bool eof, bool dropDonor, TUnreplicatedBlobRecords&& ubr,
+            void Finish(const TLogoBlobID &keyPos, bool eof, bool dropDonor, bool donorNotReady, TUnreplicatedBlobRecords&& ubr,
                     TMilestoneQueue&& milestoneQueue) {
                 End = TAppData::TimeProvider->Now();
                 KeyPos = keyPos;
                 Eof = eof;
                 DropDonor = dropDonor;
+                DonorNotReady = donorNotReady;
                 UnreplicatedBlobRecords = std::move(ubr);
                 MilestoneQueue = std::move(milestoneQueue);
             }

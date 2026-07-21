@@ -2,26 +2,25 @@ UNITTEST_FOR(contrib/ydb/core/blobstorage/nodewarden)
 
 FORK_SUBTESTS()
 
-IF (SANITIZER_TYPE == "thread" OR WITH_VALGRIND)
-    TIMEOUT(1200)
+REQUIREMENTS(cpu:2)
+IF (SANITIZER_TYPE == "thread")
     SIZE(LARGE)
-    TAG(ya:fat)
+    INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/large.inc)
 ELSE()
-    TIMEOUT(600)
     SIZE(MEDIUM)
 ENDIF()
 
 PEERDIR(
     contrib/ydb/core/testlib/default
+    contrib/ydb/core/util/actorsys_test
 )
 
 SRCS(
     blobstorage_node_warden_ut.cpp
     bind_queue_ut.cpp
+    distconf_ut.cpp
 )
 
 YQL_LAST_ABI_VERSION()
-
-REQUIREMENTS(ram:14)
 
 END()

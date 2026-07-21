@@ -1,4 +1,5 @@
 #include "service_coordination.h"
+#include <contrib/ydb/core/base/auth.h>
 #include <contrib/ydb/core/grpc_services/base/base.h>
 
 #include "rpc_common/rpc_common.h"
@@ -94,7 +95,7 @@ private:
         auto path = ::NKikimr::SplitPath(table);
         TMaybe<ui64> tabletId = TryParseLocalDbPath(path);
         if (tabletId) {
-            if (Request->GetSerializedToken().empty() || !IsSuperUser(NACLib::TUserToken(Request->GetSerializedToken()), *AppData(ctx))) {
+            if (!IsAdministrator(AppData(ctx), Request->GetInternalToken().Get())) {
                 return ReplyWithError(Ydb::StatusIds::NOT_FOUND, "Invalid table path specified", ctx);
             }
 
@@ -105,6 +106,8 @@ private:
             WaitingResolveReply = true;
         } else {
             TAutoPtr<NSchemeCache::TSchemeCacheNavigate> request(new NSchemeCache::TSchemeCacheNavigate());
+            request->DatabaseName = Request->GetDatabaseName().GetOrElse("");
+
             NSchemeCache::TSchemeCacheNavigate::TEntry entry;
             entry.Path = std::move(path);
             if (entry.Path.empty()) {
@@ -227,7 +230,7 @@ private:
     void ResolveShards(const NActors::TActorContext& ctx) {
         auto& entry = ResolveNamesResult->ResultSet.front();
 
-        if (entry.TableId.IsSystemView()) {
+        if (entry.TableId.IsSystemView() || entry.Kind == NSchemeCache::TSchemeCacheNavigate::KindSysView) {
             // Add fake shard for sys view
             auto* p = Result.add_partitions();
             p->set_tablet_id(1);
@@ -258,7 +261,7 @@ private:
         KeyRange.Reset(new TKeyDesc(entry.TableId, range, TKeyDesc::ERowOperation::Read, KeyColumnTypes, columns));
 
         TAutoPtr<NSchemeCache::TSchemeCacheRequest> request(new NSchemeCache::TSchemeCacheRequest());
-
+        request->DatabaseName = Request->GetDatabaseName().GetOrElse("");
         request->ResultSet.emplace_back(std::move(KeyRange));
 
         TAutoPtr<TEvTxProxySchemeCache::TEvResolveKeySet> resolveReq(new TEvTxProxySchemeCache::TEvResolveKeySet(request));

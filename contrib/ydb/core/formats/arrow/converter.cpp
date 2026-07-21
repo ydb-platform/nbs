@@ -1,9 +1,9 @@
 #include "converter.h"
 #include "switch/switch_type.h"
 
-#include <contrib/ydb/library/binary_json/read.h>
-#include <contrib/ydb/library/binary_json/write.h>
-#include <contrib/ydb/library/dynumber/dynumber.h>
+#include <contrib/ydb/library/yql/types/binary_json/read.h>
+#include <contrib/ydb/library/yql/types/binary_json/write.h>
+#include <contrib/ydb/library/yql/types/dynumber/dynumber.h>
 
 #include <util/generic/set.h>
 #include <util/memory/pool.h>
@@ -17,9 +17,13 @@
 
 namespace NKikimr::NArrow {
 
-static bool ConvertData(TCell& cell, const NScheme::TTypeInfo& colType, TMemoryPool& memPool, TString& errorMessage) {
+static bool ConvertData(TCell& cell, const NScheme::TTypeInfo& colType, TMemoryPool& memPool, TString& errorMessage, const bool allowInfDouble) {
     switch (colType.GetTypeId()) {
         case NScheme::NTypeIds::DyNumber: {
+            if (!cell.AsBuf()) {
+                cell = TCell();
+                break;
+            }
             const auto dyNumber = NDyNumber::ParseDyNumberString(cell.AsBuf());
             if (!dyNumber.Defined()) {
                 errorMessage = "Invalid DyNumber string representation";
@@ -30,12 +34,17 @@ static bool ConvertData(TCell& cell, const NScheme::TTypeInfo& colType, TMemoryP
             break;
         }
         case NScheme::NTypeIds::JsonDocument: {
-            const auto binaryJson = NBinaryJson::SerializeToBinaryJson(cell.AsBuf());
-            if (!binaryJson.Defined()) {
-                errorMessage = "Invalid JSON for JsonDocument provided";
+            if (!cell.AsBuf()) {
+                cell = TCell();
+                break;
+            }
+            const auto binaryJson = NBinaryJson::SerializeToBinaryJson(cell.AsBuf(), allowInfDouble);
+            if (std::holds_alternative<TString>(binaryJson)) {
+                errorMessage = "Invalid JSON for JsonDocument provided: " + std::get<TString>(binaryJson);
                 return false;
             }
-            const auto saved = memPool.AppendString(TStringBuf(binaryJson->Data(), binaryJson->Size()));
+            const auto& value = std::get<NBinaryJson::TBinaryJson>(binaryJson);
+            const auto saved = memPool.AppendString(TStringBuf(value.Data(), value.Size()));
             cell = TCell(saved.data(), saved.size());
             break;
         }
@@ -45,14 +54,26 @@ static bool ConvertData(TCell& cell, const NScheme::TTypeInfo& colType, TMemoryP
     return true;
 }
 
-static arrow::Status ConvertColumn(const NScheme::TTypeInfo colType, std::shared_ptr<arrow::Array>& column, std::shared_ptr<arrow::Field>& field) {
+static arrow::Status ConvertColumn(
+    const NScheme::TTypeInfo colType, std::shared_ptr<arrow::Array>& column, std::shared_ptr<arrow::Field>& field, const bool allowInfDouble) {
     switch (colType.GetTypeId()) {
-    case NScheme::NTypeIds::Decimal:
-        return arrow::Status::OK();
+    case NScheme::NTypeIds::DyNumber: {
+        if (!arrow::is_binary_like(column->type()->id())) {
+            return arrow::Status::TypeError("Cannot convert DyNumber to ", column->type()->ToString());
+        }
+
+        if (field->type()->id() == arrow::Type::STRING) {
+            field = std::make_shared<arrow::Field>(field->name(), std::make_shared<arrow::BinaryType>(), field->nullable());
+        }
+        break;
+    }
     case NScheme::NTypeIds::JsonDocument: {
-        const static TSet<arrow::Type::type> jsonDocArrowTypes{ arrow::Type::BINARY, arrow::Type::STRING };
-        if (!jsonDocArrowTypes.contains(column->type()->id())) {
+        if (!arrow::is_binary_like(column->type()->id())) {
             return arrow::Status::TypeError("Cannot convert JsonDocument to ", column->type()->ToString());
+        }
+
+        if (field->type()->id() == arrow::Type::STRING) {
+            field = std::make_shared<arrow::Field>(field->name(), std::make_shared<arrow::BinaryType>(), field->nullable());
         }
         break;
     }
@@ -60,7 +81,6 @@ static arrow::Status ConvertColumn(const NScheme::TTypeInfo colType, std::shared
         if (column->type()->id() != arrow::Type::BINARY) {
             return arrow::Status::TypeError("Cannot convert ", NScheme::TypeName(colType), " to ", column->type()->ToString());
         }
-        break;
     }
 
     auto& binaryArray = static_cast<arrow::BinaryArray&>(*column);
@@ -71,13 +91,20 @@ static arrow::Status ConvertColumn(const NScheme::TTypeInfo colType, std::shared
     switch (colType.GetTypeId()) {
         case NScheme::NTypeIds::DyNumber: {
             for (i32 i = 0; i < binaryArray.length(); ++i) {
+                if (binaryArray.IsNull(i)) {
+                    auto appendResult = builder.AppendNull();
+                    if (!appendResult.ok()) {
+                        return appendResult;
+                    }
+                    continue;
+                }
                 auto value = binaryArray.Value(i);
                 const auto dyNumber = NDyNumber::ParseDyNumberString(TStringBuf(value.data(), value.size()));
                 if (!dyNumber.Defined()) {
                     return arrow::Status::SerializationError("Cannot parse dy number: ", value);
                 }
                 auto appendResult = builder.Append((*dyNumber).data(), (*dyNumber).size());
-                if (appendResult.ok()) {
+                if (!appendResult.ok()) {
                     return appendResult;
                 }
             }
@@ -85,6 +112,13 @@ static arrow::Status ConvertColumn(const NScheme::TTypeInfo colType, std::shared
         }
         case NScheme::NTypeIds::JsonDocument: {
             for (i32 i = 0; i < binaryArray.length(); ++i) {
+                if (binaryArray.IsNull(i)) {
+                    auto appendResult = builder.AppendNull();
+                    if (!appendResult.ok()) {
+                        return appendResult;
+                    }
+                    continue;
+                }
                 auto value = binaryArray.Value(i);
                 if (!value.size()) {
                     Y_ABORT_UNLESS(builder.AppendNull().ok());
@@ -97,11 +131,13 @@ static arrow::Status ConvertColumn(const NScheme::TTypeInfo colType, std::shared
                         return appendResult;
                     }
                 } else {
-                    const auto binaryJson = NBinaryJson::SerializeToBinaryJson(valueBuf);
-                    if (!binaryJson.Defined()) {
-                        return arrow::Status::SerializationError("Cannot serialize json: ", valueBuf);
+                    const auto maybeBinaryJson = NBinaryJson::SerializeToBinaryJson(valueBuf, allowInfDouble);
+                    if (std::holds_alternative<TString>(maybeBinaryJson)) {
+                        return arrow::Status::SerializationError("Cannot serialize json (", std::get<TString>(maybeBinaryJson),
+                            "): ", valueBuf.SubStr(0, Min(valueBuf.Size(), size_t{1024})));
                     }
-                    auto appendResult = builder.Append(binaryJson->Data(), binaryJson->Size());
+                    const auto& binaryJson = std::get<NBinaryJson::TBinaryJson>(maybeBinaryJson);
+                    auto appendResult = builder.Append(binaryJson.Data(), binaryJson.Size());
                     if (!appendResult.ok()) {
                         return appendResult;
                     }
@@ -120,24 +156,20 @@ static arrow::Status ConvertColumn(const NScheme::TTypeInfo colType, std::shared
     }
 
     column = result;
-    if (colType.GetTypeId() == NScheme::NTypeIds::JsonDocument && field->type()->id() == arrow::Type::STRING) {
-        field = std::make_shared<arrow::Field>(field->name(), std::make_shared<arrow::BinaryType>());
-    }
-
     return arrow::Status::OK();
 }
 
-arrow::Result<std::shared_ptr<arrow::RecordBatch>> ConvertColumns(const std::shared_ptr<arrow::RecordBatch>& batch,
-                                                   const THashMap<TString, NScheme::TTypeInfo>& columnsToConvert)
-{
+arrow::Result<std::shared_ptr<arrow::RecordBatch>> ConvertColumns(
+    const std::shared_ptr<arrow::RecordBatch>& batch, const THashMap<TString, NScheme::TTypeInfo>& columnsToConvert, const bool allowInfDouble) {
     std::vector<std::shared_ptr<arrow::Array>> columns = batch->columns();
     std::vector<std::shared_ptr<arrow::Field>> fields = batch->schema()->fields();
     Y_ABORT_UNLESS(columns.size() == fields.size());
+
     for (i32 i = 0; i < batch->num_columns(); ++i) {
         auto& colName = batch->column_name(i);
         auto it = columnsToConvert.find(TString(colName.data(), colName.size()));
         if (it != columnsToConvert.end()) {
-            auto convertResult = ConvertColumn(it->second, columns[i], fields[i]);
+            auto convertResult = ConvertColumn(it->second, columns[i], fields[i], allowInfDouble);
             if (!convertResult.ok()) {
                 return arrow::Status::FromArgs(convertResult.code(), "column ", colName, ": ", convertResult.ToString());
             }
@@ -180,17 +212,16 @@ static std::shared_ptr<arrow::Array> InplaceConvertColumn(const std::shared_ptr<
             return std::make_shared<arrow::TimestampArray>(newData);
         }
         case NScheme::NTypeIds::Date32: {
-
             Y_ABORT_UNLESS(arrow::bit_width(column->type()->id()) == 32);
 
             auto newData = column->data()->Copy();
             newData->type = arrow::int32();
             return std::make_shared<arrow::NumericArray<arrow::Int32Type>>(newData);
         }
+        case NScheme::NTypeIds::Interval:
         case NScheme::NTypeIds::Timestamp64:
         case NScheme::NTypeIds::Interval64:
         case NScheme::NTypeIds::Datetime64: {
-
             Y_ABORT_UNLESS(arrow::bit_width(column->type()->id()) == 64);
 
             auto newData = column->data()->Copy();
@@ -229,12 +260,15 @@ bool TArrowToYdbConverter::NeedDataConversion(const NScheme::TTypeInfo& colType)
     switch (colType.GetTypeId()) {
         case NScheme::NTypeIds::DyNumber:
         case NScheme::NTypeIds::JsonDocument:
-        case NScheme::NTypeIds::Decimal:
             return true;
         default:
             break;
     }
     return false;
+}
+
+bool TArrowToYdbConverter::NeedDataConversionWithSettings(const NScheme::TTypeInfo& colType) {
+    return WithConversion_ ? NeedDataConversion(colType) : false;
 }
 
 bool TArrowToYdbConverter::NeedInplaceConversion(const NScheme::TTypeInfo& typeInRequest, const NScheme::TTypeInfo& expectedType) {
@@ -247,6 +281,11 @@ bool TArrowToYdbConverter::NeedInplaceConversion(const NScheme::TTypeInfo& typeI
         case NScheme::NTypeIds::Datetime:
             return typeInRequest.GetTypeId() == NScheme::NTypeIds::Int32;
         case NScheme::NTypeIds::Timestamp:
+            if (typeInRequest.GetTypeId() == NScheme::NTypeIds::Uint64) {
+                return true;
+            }
+            [[fallthrough]];
+        case NScheme::NTypeIds::Interval:
         case NScheme::NTypeIds::Timestamp64:
         case NScheme::NTypeIds::Interval64:
         case NScheme::NTypeIds::Datetime64:
@@ -259,6 +298,8 @@ bool TArrowToYdbConverter::NeedInplaceConversion(const NScheme::TTypeInfo& typeI
 
 bool TArrowToYdbConverter::NeedConversion(const NScheme::TTypeInfo& typeInRequest, const NScheme::TTypeInfo& expectedType) {
     switch (expectedType.GetTypeId()) {
+        case NScheme::NTypeIds::DyNumber:
+            return typeInRequest.GetTypeId() == NScheme::NTypeIds::Utf8;
         case NScheme::NTypeIds::JsonDocument:
             return typeInRequest.GetTypeId() == NScheme::NTypeIds::Utf8;
         default:
@@ -297,9 +338,6 @@ bool TArrowToYdbConverter::Process(const arrow::RecordBatch& batch, TString& err
     for (; row < rowsUnroll; row += unroll) {
         ui32 col = 0;
         for (auto& [colName, colType] : YdbSchema_) {
-            // TODO: support pg types
-            Y_ABORT_UNLESS(colType.GetTypeId() != NScheme::NTypeIds::Pg, "pg types are not supported");
-
             auto& column = allColumns[col];
             bool success = SwitchYqlTypeToArrowType(colType, [&]<typename TType>(TTypeWrapper<TType> typeHolder) {
                 Y_UNUSED(typeHolder);
@@ -320,9 +358,9 @@ bool TArrowToYdbConverter::Process(const arrow::RecordBatch& batch, TString& err
                 return false;
             }
 
-            if (NeedDataConversion(colType)) {
+            if (NeedDataConversionWithSettings(colType)) {
                 for (i32 i = 0; i < unroll; ++i) {
-                    if (!ConvertData(cells[i][col], colType, memPool, errorMessage)) {
+                    if (WithConversion_ && !ConvertData(cells[i][col], colType, memPool, errorMessage, AllowInfDouble_)) {
                         return false;
                     }
                 }
@@ -347,9 +385,6 @@ bool TArrowToYdbConverter::Process(const arrow::RecordBatch& batch, TString& err
 
         ui32 col = 0;
         for (auto& [colName, colType] : YdbSchema_) {
-            // TODO: support pg types
-            Y_ABORT_UNLESS(colType.GetTypeId() != NScheme::NTypeIds::Pg, "pg types are not supported");
-
             auto& column = allColumns[col];
             auto& curCell = cells[0][col];
             if (column->IsNull(row)) {
@@ -370,7 +405,7 @@ bool TArrowToYdbConverter::Process(const arrow::RecordBatch& batch, TString& err
                 return false;
             }
 
-            if (!ConvertData(curCell, colType, memPool, errorMessage)) {
+            if (WithConversion_ && !ConvertData(curCell, colType, memPool, errorMessage, AllowInfDouble_)) {
                 return false;
             }
             ++col;

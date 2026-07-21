@@ -1,22 +1,23 @@
 #pragma once
 
 #include "kqp_compute_actor.h"
-#include "kqp_compute_actor_impl.h"
 
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/protos/tx_datashard.pb.h>
 #include <contrib/ydb/core/kqp/rm_service/kqp_rm_service.h>
 #include <contrib/ydb/core/kqp/runtime/kqp_compute.h>
 #include <contrib/ydb/core/kqp/runtime/kqp_scan_data.h>
-#include <contrib/ydb/core/kqp/runtime/kqp_compute_scheduler.h>
+#include <contrib/ydb/core/kqp/runtime/scheduler/kqp_compute_actor.h>
 #include <contrib/ydb/core/sys_view/scan.h>
 #include <contrib/ydb/library/yverify_stream/yverify_stream.h>
 
 
-namespace NKikimr {
-namespace NKqp {
+namespace NKikimr::NKqp {
 
-class TKqpComputeActor : public TSchedulableComputeActorBase<TKqpComputeActor> {
+using namespace NYql;
+using namespace NYql::NDq;
+
+class TKqpComputeActor : public NScheduler::TSchedulableComputeActorBase<TKqpComputeActor> {
     using TBase = TSchedulableComputeActorBase<TKqpComputeActor>;
 
 public:
@@ -29,11 +30,19 @@ public:
         const TComputeRuntimeSettings& settings, const TComputeMemoryLimits& memoryLimits,
         NWilson::TTraceId traceId, TIntrusivePtr<NActors::TProtoArenaHolder> arena,
         const std::optional<TKqpFederatedQuerySetup>& federatedQuerySetup, const TGUCSettings::TPtr& GUCSettings,
-        TComputeActorSchedulingOptions);
+        NScheduler::TSchedulableActorOptions schedulableOptions,
+        NKikimrConfig::TTableServiceConfig::EBlockTrackingMode mode,
+        TIntrusiveConstPtr<NACLib::TUserToken> userToken,
+        const TString& database
+    );
 
     void DoBootstrap();
 
     STFUNC(StateFunc);
+
+    ui64 GetSourcesState();
+
+    void PollSources(ui64 prevFreeSpace);
 
 protected:
     ui64 CalcMkqlMemoryLimit() override;
@@ -48,12 +57,14 @@ private:
 
 private:
     void HandleExecute(TEvKqpCompute::TEvScanInitActor::TPtr& ev);
-    
+
     void HandleExecute(TEvKqpCompute::TEvScanData::TPtr& ev);
 
     void HandleExecute(TEvKqpCompute::TEvScanError::TPtr& ev);
 
     bool IsDebugLogEnabled(const TActorSystem* actorSystem);
+
+    ui64 CalculateFreeSpace() const;
 
 private:
     NMiniKQL::TKqpScanComputeContext ComputeCtx;
@@ -62,14 +73,10 @@ private:
     TActorId SysViewActorId;
     const TDqTaskRunnerParameterProvider ParameterProvider;
     const std::optional<TKqpFederatedQuerySetup> FederatedQuerySetup;
+    const NKikimrConfig::TTableServiceConfig::EBlockTrackingMode BlockTrackingMode;
+    const TMaybe<ui8> ArrayBufferMinFillPercentage;
+    TIntrusiveConstPtr<NACLib::TUserToken> UserToken;
+    const TString Database;
 };
 
-IActor* CreateKqpComputeActor(const TActorId& executerId, ui64 txId, NDqProto::TDqTask* task,
-    IDqAsyncIoFactory::TPtr asyncIoFactory,
-    const TComputeRuntimeSettings& settings, const TComputeMemoryLimits& memoryLimits,
-    NWilson::TTraceId traceId, TIntrusivePtr<NActors::TProtoArenaHolder> arena,
-    const std::optional<TKqpFederatedQuerySetup>& federatedQuerySetup, const TGUCSettings::TPtr& GUCSettings,
-    TComputeActorSchedulingOptions);
-
-} // namespace NKqp
-} // namespace NKikimr
+} // namespace NKikimr::NKqp

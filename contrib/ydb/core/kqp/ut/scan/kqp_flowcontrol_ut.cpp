@@ -53,12 +53,9 @@ void DoFlowControlTest(ui64 limit, bool hasBlockedByCapacity) {
     appCfg.MutableTableServiceConfig()->MutableResourceManager()->SetMinChannelBufferSize(limit);
     appCfg.MutableTableServiceConfig()->MutableResourceManager()->SetMkqlHeavyProgramMemoryLimit(200ul << 20);
     appCfg.MutableTableServiceConfig()->MutableResourceManager()->SetQueryMemoryLimit(20ul << 30);
-    appCfg.MutableTableServiceConfig()->SetEnableKqpScanQueryStreamLookup(false);
 
     // TODO: KIKIMR-14294
-    auto kikimrSettings = TKikimrSettings()
-        .SetAppConfig(appCfg)
-        .SetKqpSettings({});
+    auto kikimrSettings = TKikimrSettings(appCfg).SetKqpSettings({});
 
     TKikimrRunner kikimr{kikimrSettings};
     // kikimr.GetTestServer().GetRuntime()->SetLogPriority(NKikimrServices::KQP_EXECUTER, NActors::NLog::PRI_DEBUG);
@@ -80,6 +77,8 @@ void DoFlowControlTest(ui64 limit, bool hasBlockedByCapacity) {
     settings.CollectQueryStats(ECollectQueryStatsMode::Profile);
 
     auto it = db.StreamExecuteScanQuery(R"(
+            pragma ydb.DqChannelVersion = "1";
+
             $r = (select * from `/Root/FourShard` where Key > 201);
 
             SELECT l.Key as key, l.Text as text, r.Value1 as value

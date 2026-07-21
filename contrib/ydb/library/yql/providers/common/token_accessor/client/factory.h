@@ -1,6 +1,6 @@
 #pragma once
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_types/credentials/credentials.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/types/credentials/credentials.h>
 #include <util/datetime/base.h>
 
 namespace NYql {

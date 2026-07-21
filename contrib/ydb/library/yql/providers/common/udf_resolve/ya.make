@@ -9,6 +9,7 @@ SRCS(
     yql_simple_udf_resolver.h
     yql_udf_resolver_with_index.cpp
     yql_udf_resolver_with_index.h
+    yql_udf_resolver_logger.cpp
 )
 
 PEERDIR(
@@ -20,8 +21,10 @@ PEERDIR(
     contrib/ydb/library/yql/utils
     contrib/ydb/library/yql/utils/log
     contrib/ydb/library/yql/core
+    contrib/ydb/library/yql/core/url_preprocessing/interface
     contrib/ydb/library/yql/providers/common/mkql
     contrib/ydb/library/yql/providers/common/proto
+    contrib/ydb/library/yql/minikql/runtime_settings
     contrib/ydb/library/yql/providers/common/schema/expr
 )
 

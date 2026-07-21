@@ -96,7 +96,14 @@ enum class EEnabledSpillingNodes : ui64 {
     None        = 0ULL      /* "None" */,
     GraceJoin   = 1ULL      /* "GraceJoin" */,
     Aggregation = 2ULL      /* "Aggregation" */,
+    WideSort    = 4ULL      /* "WideSort" */,
     All         = ~0ULL     /* "All" */,
+};
+
+enum class EHashShuffleFuncType {
+    HashV1            = 0     /* "HashV1" */,
+    HashV2            = 2     /* "HashV2" */,
+    ColumnShardHashV1 = 1     /* "ColumnShardHashV1" */,
 };
 
 class TSpillingSettings {
@@ -114,6 +121,10 @@ public:
 
     bool IsAggregationSpillingEnabled() const {
         return Mask & ui64(EEnabledSpillingNodes::Aggregation);
+    }
+
+    bool IsWideSortSpillingEnabled() const {
+        return Mask & ui64(EEnabledSpillingNodes::WideSort);
     }
 
 private:

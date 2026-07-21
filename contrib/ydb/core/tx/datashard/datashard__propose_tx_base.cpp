@@ -4,6 +4,7 @@
 #include "probes.h"
 
 #include <contrib/ydb/core/util/pb.h>
+#include <contrib/ydb/library/aclib/user_context.h>
 #include <contrib/ydb/library/wilson_ids/wilson.h>
 
 LWTRACE_USING(DATASHARD_PROVIDER)
@@ -15,7 +16,8 @@ TDataShard::TTxProposeTransactionBase::TTxProposeTransactionBase(TDataShard *sel
                                                                         TEvDataShard::TEvProposeTransaction::TPtr &&ev,
                                                                         TInstant receivedAt, ui64 tieBreakerIndex,
                                                                         bool delayed,
-                                                                        NWilson::TSpan &&datashardTransactionSpan)
+                                                                        NWilson::TSpan &&datashardTransactionSpan,
+                                                                        TIntrusivePtr<NACLib::TUserContext> userCtx)
     : TBase(self, datashardTransactionSpan.GetTraceId())
     , Ev(std::move(ev))
     , ReceivedAt(receivedAt)
@@ -24,6 +26,7 @@ TDataShard::TTxProposeTransactionBase::TTxProposeTransactionBase(TDataShard *sel
     , TxId(Ev->Get()->GetTxId())
     , Acked(!delayed)
     , DatashardTransactionSpan(std::move(datashardTransactionSpan))
+    , UserCtx(userCtx)
 { }
 
 bool TDataShard::TTxProposeTransactionBase::Execute(NTabletFlatExecutor::TTransactionContext &txc,
@@ -49,7 +52,7 @@ bool TDataShard::TTxProposeTransactionBase::Execute(NTabletFlatExecutor::TTransa
                 return false;
 
             if (status != NKikimrTxDataShard::TError::OK) {
-                LOG_LOG_S_THROTTLE(Self->GetLogThrottler(TDataShard::ELogThrottlerType::TxProposeTransactionBase_Execute), ctx, NActors::NLog::PRI_ERROR, NKikimrServices::TX_DATASHARD, 
+                LOG_LOG_S_THROTTLE(Self->GetLogThrottler(TDataShard::ELogThrottlerType::TxProposeTransactionBase_Execute), ctx, NActors::NLog::PRI_ERROR, NKikimrServices::TX_DATASHARD,
                     "Errors while proposing transaction txid " << TxId << " at tablet " << Self->TabletID() << " status: " << status << " error: " << errMessage);
 
                 auto kind = static_cast<NKikimrTxDataShard::ETransactionKind>(Kind);
@@ -67,19 +70,19 @@ bool TDataShard::TTxProposeTransactionBase::Execute(NTabletFlatExecutor::TTransa
         }
 
         if (Ev) {
-            Y_ABORT_UNLESS(!Op);
+            Y_ENSURE(!Op);
 
             if (Self->CheckDataTxRejectAndReply(Ev, ctx)) {
                 Ev = nullptr;
                 return true;
             }
-            
-            TOperation::TPtr op = Self->Pipeline.BuildOperation(Ev, ReceivedAt, TieBreakerIndex, txc, ctx, std::move(DatashardTransactionSpan));
+
+            TOperation::TPtr op = Self->Pipeline.BuildOperation(Ev, ReceivedAt, TieBreakerIndex, txc, ctx, std::move(DatashardTransactionSpan), UserCtx);
 
             // Unsuccessful operation parse.
             if (op->IsAborted()) {
                 LWTRACK(ProposeTransactionParsed, op->Orbit, false);
-                Y_ABORT_UNLESS(op->Result());
+                Y_ENSURE(op->Result());
                 op->OperationSpan.EndError("Unsuccessful operation parse");
                 ctx.Send(op->GetTarget(), op->Result().Release());
                 return true;
@@ -96,7 +99,7 @@ bool TDataShard::TTxProposeTransactionBase::Execute(NTabletFlatExecutor::TTransa
             Op->IncrementInProgress();
         }
 
-        Y_ABORT_UNLESS(Op && Op->IsInProgress() && !Op->GetExecutionPlan().empty());
+        Y_ENSURE(Op && Op->IsInProgress() && !Op->GetExecutionPlan().empty());
 
         auto status = Self->Pipeline.RunExecutionPlan(Op, CompleteList, txc, ctx);
 
@@ -126,7 +129,7 @@ bool TDataShard::TTxProposeTransactionBase::Execute(NTabletFlatExecutor::TTransa
                 break;
 
             default:
-                Y_FAIL_S("unexpected execution status " << status << " for operation "
+                Y_ENSURE(false, "unexpected execution status " << status << " for operation "
                         << *Op << " " << Op->GetKind() << " at " << Self->TabletID());
         }
 
@@ -144,15 +147,6 @@ bool TDataShard::TTxProposeTransactionBase::Execute(NTabletFlatExecutor::TTransa
         LOG_DEBUG_S(ctx, NKikimrServices::TX_DATASHARD,
             "TX [" << 0 << " : " << TxId << "] can't prepare (tablet's not ready) at tablet " << Self->TabletID());
         return false;
-    } catch (const TSchemeErrorTabletException &ex) {
-        Y_UNUSED(ex);
-        Y_ABORT();
-    } catch (const TMemoryLimitExceededException &ex) {
-        Y_ABORT("there must be no leaked exceptions: TMemoryLimitExceededException");
-    } catch (const std::exception &e) {
-        Y_ABORT("there must be no leaked exceptions: %s", e.what());
-    } catch (...) {
-        Y_ABORT("there must be no leaked exceptions");
     }
 }
 
@@ -161,7 +155,7 @@ void TDataShard::TTxProposeTransactionBase::Complete(const TActorContext &ctx) {
                 "TTxProposeTransactionBase::Complete at " << Self->TabletID());
 
     if (Op) {
-        Y_ABORT_UNLESS(!Op->GetExecutionPlan().empty());
+        Y_ENSURE(!Op->GetExecutionPlan().empty());
         if (!CompleteList.empty()) {
             auto commitTime = AppData()->TimeProvider->Now() - CommitStart;
             Op->SetCommitTime(CompleteList.front(), commitTime);
@@ -187,7 +181,6 @@ void TDataShard::TTxProposeTransactionBase::Complete(const TActorContext &ctx) {
     }
 
     Self->CheckSplitCanStart(ctx);
-    Self->CheckMvccStateChangeCanStart(ctx);
 }
 
 }}

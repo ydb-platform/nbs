@@ -1,5 +1,8 @@
 #pragma once
 
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/types/status/status.h>
+
+#include <util/folder/path.h>
 #include <util/stream/file.h>
 #include <util/string/builder.h>
 #include <util/generic/string.h>
@@ -11,8 +14,7 @@
 #include <util/system/env.h>
 #endif
 
-namespace NYdb {
-namespace NConsoleClient {
+namespace NYdb::NConsoleClient {
 
 #if defined(_darwin_)
     const TString HomeDir = GetHomeDir();
@@ -22,7 +24,43 @@ namespace NConsoleClient {
     const TString HomeDir = GetHomeDir();
 #endif
 
+// Print 'Try "--help" option for more info'
 class TMisuseException : public yexception {};
+
+// I.e. help was printed, just need to return EXIT_SUCCESS
+class TNeedToExitWithCode : public yexception {
+public:
+    TNeedToExitWithCode(int code)
+        : Code(code) {}
+    int GetCode() const {
+        return Code;
+    }
+private:
+    int Code;
+};
+
+class TInitializationException : public TNeedToExitWithCode {
+public:
+    TInitializationException()
+        : TNeedToExitWithCode(EXIT_FAILURE)
+    {}
+
+    explicit TInitializationException(TString errorCode)
+        : TNeedToExitWithCode(EXIT_FAILURE)
+        , ErrorCode(std::move(errorCode))
+    {}
+
+    const std::optional<TString>& GetErrorCode() const {
+        return ErrorCode;
+    }
+
+    bool HasErrorCode() const {
+        return ErrorCode.has_value();
+    }
+
+private:
+    std::optional<TString> ErrorCode;
+};
 
 class TProfileConfig {
 public:
@@ -41,7 +79,9 @@ bool ReadFromFileIfExists(TString& filePath, const TString& fileName, TString& o
 bool ReadFromFileIfExists(const TString& filePath, const TString& fileName, TString& output, bool allowEmpty = false);
 TString ReadFromFile(TString& filePath, const TString& fileName, bool allowEmpty = false);
 TString ReadFromFile(const TString& filePath, const TString& fileName, bool allowEmpty = false);
+TFsPath GetExistingFsPath(TString& filePath, const TString& fileName);
 TString InputPassword();
 
-}
-}
+bool ThrowOnErrorAndCheckEOS(NYdb::TStreamPartStatus status);
+
+} // namespace NYdb::NConsoleClient

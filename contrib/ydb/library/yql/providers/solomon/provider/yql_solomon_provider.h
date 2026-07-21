@@ -3,6 +3,7 @@
 #include "yql_solomon_gateway.h"
 #include "yql_solomon_config.h"
 
+#include <contrib/ydb/library/yql/providers/common/token_accessor/client/factory.h>
 #include <contrib/ydb/library/yql/core/yql_data_provider.h>
 
 namespace NYql {
@@ -21,14 +22,19 @@ public:
 
 public:
     bool SupportRtmrMode = true;
+    bool WriteThroughDqIntegration = false;
 
     ISolomonGateway::TPtr Gateway;
     TTypeAnnotationContext* Types = nullptr;
+    ISecuredServiceAccountCredentialsFactory::TPtr CredentialsFactory;
     TSolomonConfiguration::TPtr Configuration = MakeIntrusive<TSolomonConfiguration>();
     THolder<IDqIntegration> DqIntegration;
+    THolder<IYtflowIntegration> YtflowIntegration;
+    THolder<IYtflowOptimization> YtflowOptimization;
+    ui32 ExecutorPoolId = 0;
 };
 
-TDataProviderInitializer GetSolomonDataProviderInitializer(ISolomonGateway::TPtr gateway, bool supportRtmrMode = true);
+TDataProviderInitializer GetSolomonDataProviderInitializer(ISolomonGateway::TPtr gateway, ISecuredServiceAccountCredentialsFactory::TPtr credentialsFactory = nullptr, bool supportRtmrMode = true, bool useYtflowEngine = false);
 
 TIntrusivePtr<IDataProvider> CreateSolomonDataSource(TSolomonState::TPtr state);
 TIntrusivePtr<IDataProvider> CreateSolomonDataSink(TSolomonState::TPtr state);

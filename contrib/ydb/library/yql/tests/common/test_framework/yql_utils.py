@@ -2,6 +2,7 @@ from __future__ import print_function
 
 import hashlib
 import io
+import json
 import os
 import os.path
 import six
@@ -20,6 +21,7 @@ from threading import Lock
 import pytest
 import yatest.common
 import cyson
+from library.python import resource
 
 import logging
 import getpass
@@ -32,10 +34,26 @@ KSV_ATTR = '''{_yql_row_spec={
         [subkey;[DataType;String]];
         [value;[DataType;String]]]]}}'''
 
+UNDEFINED_SANITIZER_IGNORE_STRINGS = [
+    "Failed to find UDF function",
+    "Module not loaded for script type"
+]
+
+FEATURES = json.loads(resource.find('contrib/ydb/library/yql/data/language/features.json'))
+LANGVER = json.loads(resource.find('contrib/ydb/library/yql/data/language/langver.json'))
+
 
 def get_param(name, default=None):
     name = 'YQL_' + name.upper()
     return yatest.common.get_param(name, os.environ.get(name) or default)
+
+
+def get_secure_params(cfg):
+    return {
+        item[1]: item[2]
+        for item in cfg
+        if len(item) == 3 and item[0] == 'secure_param'
+    }
 
 
 def do_custom_query_check(res, sql_query):
@@ -50,6 +68,26 @@ def do_custom_query_check(res, sql_query):
     return True
 
 
+def do_custom_error_check(res, sql_query):
+    custom_errors = re.findall(r"/\* custom error:(.*?)\*/", sql_query, re.DOTALL)
+    assert custom_errors, 'Expected custom error check in test.\nTest error: %s' % res.std_err
+
+    missing_errors = []
+    for err_string in custom_errors:
+        err_string = err_string.strip()
+        log('Custom error: ' + err_string)
+        if err_string not in res.std_err:
+            missing_errors.append(err_string)
+
+    missing_list = '\n'.join('  - "' + e + '"' for e in missing_errors)
+    assert len(missing_errors) == 0, 'Custom errors not found in stderr:\n%s\n\nActual stderr:\n%s' % (missing_list, res.std_err)
+
+
+def skip_on_ubsan_known_failure(res_text):
+    if yatest.common.context.sanitize == 'undefined' and any(known_failure in res_text for known_failure in UNDEFINED_SANITIZER_IGNORE_STRINGS):
+        pytest.skip('An attempt to load UDF under UBSan was detected. Ignoring these tests due to problems with shared library loading under UBSan.')
+
+
 def get_gateway_cfg_suffix():
     default_suffix = None
     return get_param('gateway_config_suffix', default_suffix) or ''
@@ -61,6 +99,15 @@ def get_gateway_cfg_filename():
         return 'gateways.conf'
     else:
         return 'gateways-' + suffix + '.conf'
+
+
+def merge_gateway_cfg_patch(patch_cfg_file, gateway_config):
+    """Merge gateway config patch from a file path, if it exists."""
+    if not patch_cfg_file:
+        return
+    if os.path.exists(patch_cfg_file):
+        with open(patch_cfg_file) as f:
+            text_format.Merge(f.read(), gateway_config)
 
 
 def merge_default_gateway_cfg(cfg_dir, gateway_config):
@@ -141,13 +188,15 @@ Table = namedtuple('Table', (
     'yqlrun_file',
     'attr',
     'format',
-    'exists'
+    'exists',
+    'cluster'
 ))
 
 
 def new_table(full_name, file_path=None, yqlrun_file=None, content=None, res_dir=None,
-              attr=None, format_name='yson', def_attr=None, should_exist=False, src_file_alternative=None):
+              attr=None, format_name='yson', def_attr=None, should_exist=False, src_file_alternative=None, attr_postprocess=None):
     assert '.' in full_name, 'expected name like cedar.Input'
+    cluster = full_name.split('.')[0]
     name = '.'.join(full_name.split('.')[1:])
 
     if res_dir is None:
@@ -159,20 +208,45 @@ def new_table(full_name, file_path=None, yqlrun_file=None, content=None, res_dir
         src_file = file_path or yqlrun_file
         if src_file is None:
             # nonexistent table, will be output for query
-            content = ''
+            content = b''
             exists = False
         else:
+            def _read_splitted(path):
+                """Return concatenated part-file bytes if path has a splitted attr, else None."""
+                attr_path = path + '.attr'
+                if not os.path.exists(attr_path):
+                    return None
+                with open(attr_path, 'rb') as attr_f:
+                    attr_bytes = attr_f.read()
+                if not attr_bytes:
+                    return None
+                num_parts = cyson.loads(attr_bytes).get(b'splitted')
+                if num_parts is None:
+                    return None
+                parts = []
+                for i in range(int(num_parts)):
+                    with open(path + '.part.{}'.format(i), 'rb') as f:
+                        parts.append(f.read())
+                return b''.join(parts)
+
             if os.path.exists(src_file):
                 with open(src_file, 'rb') as f:
                     content = f.read()
+                # Main file may be empty when data is in .part.N files (FMR splitted output).
+                if not content:
+                    splitted = _read_splitted(src_file)
+                    if splitted is not None:
+                        content = splitted
             elif src_file_alternative and os.path.exists(src_file_alternative):
                 with open(src_file_alternative, 'rb') as f:
                     content = f.read()
                 src_file = src_file_alternative
                 yqlrun_file, src_file_alternative = src_file_alternative, yqlrun_file
             else:
-                content = ''
+                content = b''
                 exists = False
+    elif isinstance(content, six.text_type):
+        content = content.encode('utf-8')
 
     file_path = os.path.join(res_dir, name + '.txt')
     new_yqlrun_file = os.path.join(res_dir, name + '.yqlrun.txt')
@@ -208,6 +282,9 @@ def new_table(full_name, file_path=None, yqlrun_file=None, content=None, res_dir
         attr = def_attr
 
     if attr is not None:
+        if attr_postprocess is not None:
+            attr = attr_postprocess(attr)
+
         # probably we get it, now write attr file to proper place
         attr_file = new_yqlrun_file + '.attr'
         with open(attr_file, 'w') as f:
@@ -221,7 +298,8 @@ def new_table(full_name, file_path=None, yqlrun_file=None, content=None, res_dir
         new_yqlrun_file,
         attr,
         format_name,
-        exists
+        exists,
+        cluster
     )
 
 
@@ -278,8 +356,11 @@ def normalize_yson(y):
         return [normalize_yson(i) for i in y]
     if isinstance(y, dict):
         return {normalize_yson(k): normalize_yson(v) for k, v in six.iteritems(y)}
-    s = str(y) if not isinstance(y, six.text_type) else y.encode('utf-8', errors='xmlcharrefreplace')
-    return s
+    if isinstance(y, bytes):
+        return y
+    if isinstance(y, six.text_type):
+        return y.encode('utf-8')
+    return str(y).encode('ascii')
 
 
 volatile_attrs = {'DataSize', 'ModifyTime', 'Id', 'Revision'}
@@ -291,9 +372,13 @@ def _replace_vals_impl(y):
         return [_replace_vals_impl(i) for i in y]
     if isinstance(y, dict):
         return {_replace_vals_impl(k): _replace_vals_impl(v) for k, v in six.iteritems(y) if k not in volatile_attrs}
+    if isinstance(y, bytes):
+        s = y.replace(b'tmp/yql/' + current_user.encode('ascii') + b'/', b'tmp/')
+        s = re.sub(b'tmp/[0-9a-f]+-[0-9a-f]+-[0-9a-f]+-[0-9a-f]+', b'tmp/<temp_table_guid>', s)
+        return s
     if isinstance(y, str):
         s = y.replace('tmp/yql/' + current_user + '/', 'tmp/')
-        s = re.sub(r'tmp/[0-9a-f]+-[0-9a-f]+-[0-9a-f]+-[0-9a-f]+', 'tmp/<temp_table_guid>', s)
+        s = re.sub('tmp/[0-9a-f]+-[0-9a-f]+-[0-9a-f]+-[0-9a-f]+', 'tmp/<temp_table_guid>', s)
         return s
     return y
 
@@ -353,21 +438,22 @@ def prepare_program(program, program_file, yql_dir, ext='yql'):
     return program, program_file
 
 
-def get_program_cfg(suite, case, DATA_PATH):
+def get_program_cfg(suite, case, data_path):
     ret = []
-    config = os.path.join(DATA_PATH, suite if suite else '', case + '.cfg')
+    config = os.path.join(data_path, suite if suite else '', case + '.cfg')
     if not os.path.exists(config):
-        config = os.path.join(DATA_PATH, suite if suite else '', 'default.cfg')
+        config = os.path.join(data_path, suite if suite else '', 'default.cfg')
 
     if os.path.exists(config):
-        for line in open(config, 'r'):
-            if line.strip():
-                ret.append(tuple(line.split()))
+        with open(config, 'r') as f:
+            for line in f:
+                if line.strip():
+                    ret.append(tuple(line.split()))
     else:
         in_filename = case + '.in'
-        in_path = os.path.join(DATA_PATH, in_filename)
+        in_path = os.path.join(data_path, in_filename)
         default_filename = 'default.in'
-        default_path = os.path.join(DATA_PATH, default_filename)
+        default_path = os.path.join(data_path, default_filename)
         for filepath in [in_path, in_filename, default_path, default_filename]:
             if os.path.exists(filepath):
                 try:
@@ -383,8 +469,8 @@ def get_program_cfg(suite, case, DATA_PATH):
     return ret
 
 
-def find_user_file(suite, path, DATA_PATH):
-    source_path = os.path.join(DATA_PATH, suite, path)
+def find_user_file(suite, path, data_path):
+    source_path = os.path.join(data_path, suite, path)
     if os.path.exists(source_path):
         return source_path
     else:
@@ -394,7 +480,7 @@ def find_user_file(suite, path, DATA_PATH):
             raise Exception('Can not find file ' + path)
 
 
-def get_input_tables(suite, cfg, DATA_PATH, def_attr=None):
+def get_input_tables(suite, cfg, data_path, def_attr=None, attr_postprocess=None):
     in_tables = []
     for item in cfg:
         if item[0] in ('in', 'out'):
@@ -402,24 +488,22 @@ def get_input_tables(suite, cfg, DATA_PATH, def_attr=None):
             if io == 'in':
                 in_tables.append(new_table(
                     full_name=table_name.replace('yamr.', '').replace('yt.', ''),
-                    yqlrun_file=os.path.join(DATA_PATH, suite if suite else '', file_name),
+                    yqlrun_file=os.path.join(data_path, suite if suite else '', file_name),
                     src_file_alternative=os.path.join(yql_work_path(), suite if suite else '', file_name),
                     def_attr=def_attr,
-                    should_exist=True
+                    should_exist=True,
+                    attr_postprocess=attr_postprocess
                 ))
     return in_tables
 
 
-def get_tables(suite, cfg, DATA_PATH, def_attr=None):
+def get_tables(suite, cfg, data_path, def_attr=None, attr_postprocess=None):
     in_tables = []
     out_tables = []
-    suite_dir = os.path.join(DATA_PATH, suite)
+    suite_dir = os.path.join(data_path, suite)
     res_dir = get_yql_dir('table_')
 
     for splitted in cfg:
-        if splitted[0] == 'udf' and yatest.common.context.sanitize == 'undefined':
-            pytest.skip("udf under ubsan")
-
         if len(splitted) == 4:
             type_name, table, file_name, format_name = splitted
         elif len(splitted) == 3:
@@ -434,15 +518,25 @@ def get_tables(suite, cfg, DATA_PATH, def_attr=None):
                 yqlrun_file=yqlrun_file,
                 format_name=format_name,
                 def_attr=def_attr,
-                res_dir=res_dir
+                res_dir=res_dir,
+                attr_postprocess=attr_postprocess
             ))
         if type_name == 'out':
             out_tables.append(new_table(
                 full_name='plato.' + table if '.' not in table else table,
                 yqlrun_file=yqlrun_file if os.path.exists(yqlrun_file) else None,
-                res_dir=res_dir
+                res_dir=res_dir,
+                attr_postprocess=attr_postprocess
             ))
     return in_tables, out_tables
+
+
+def get_table_clusters(suite, cfg, data_path):
+    in_tables, out_tables = get_tables(suite, cfg, data_path)
+    clusters = set()
+    for t in in_tables + out_tables:
+        clusters.add(t.cluster)
+    return clusters
 
 
 def get_supported_providers(cfg):
@@ -460,11 +554,52 @@ def is_os_supported(cfg):
     return True
 
 
-def is_xfail(cfg):
+def is_xsqlfail(cfg, filename=''):
+    return (
+        any(item[0] == 'xsqlfail' for item in cfg) or
+        filename.endswith('.sqlx')
+    )
+
+
+def is_xfail(cfg, filename=''):
+    return (
+        any(item[0] == 'xfail' for item in cfg) or
+        is_xsqlfail(cfg, filename)
+    )
+
+
+def get_langver(cfg):
+    def decode(langver):
+        if langver == 'max':
+            return LANGVER['max']
+        if langver == 'unknown':
+            return None
+        return langver
+
+    def resolve(alias):
+        if alias in FEATURES:
+            return FEATURES[alias]["min_langver"]
+        if alias[0].isdigit():
+            return alias
+        raise ValueError('Bad alias ' + alias)
+
+    return next((
+        decode(resolve(item[1]))
+        for item in cfg
+        if item[0] == 'langver'
+    ), None)
+
+
+def get_envs(cfg):
+    envs = dict()
     for item in cfg:
-        if item[0] == 'xfail':
-            return True
-    return False
+        if item[0] == 'env':
+            envs[item[1]] = item[2]
+    return envs
+
+
+def is_forceblocks(cfg):
+    return any(item[0] == 'forceblocks' for item in cfg)
 
 
 def is_skip_forceblocks(cfg):
@@ -502,6 +637,20 @@ def is_canonize_yt(cfg):
     return False
 
 
+def get_gateway_cfg_patch(cfg):
+    for item in cfg:
+        if item[0] == 'gateway_cfg_patch':
+            return item[1]
+    return None
+
+
+def is_with_final_result_issues(cfg):
+    for item in cfg:
+        if item[0] == 'with_final_result_issues':
+            return True
+    return False
+
+
 def skip_test_if_required(cfg):
     for item in cfg:
         if item[0] == 'skip_test':
@@ -529,6 +678,8 @@ def execute(
         output_tables=None,
         pretty_plan=True,
         parameters={},
+        langver=None,
+        attrs={}
 ):
     '''
     Executes YQL/SQL
@@ -545,6 +696,7 @@ def execute(
     :param output_tables: list of Table (will be returned)
     :param pretty_plan: whether to use pretty printing for plan or not
     :param parameters: query parameters as dict like {name: json_value}
+    :param attrs: query operation attributes as dict like {attr_name: attr value}
     :return: YQLExecResult
     '''
 
@@ -567,7 +719,9 @@ def execute(
         check_error=check_error,
         tables=(output_tables + input_tables),
         pretty_plan=pretty_plan,
-        parameters=parameters
+        parameters=parameters,
+        langver=langver,
+        attrs=attrs
     )
 
     try:
@@ -624,9 +778,12 @@ def get_mount_config_file(content=None):
 
 
 def run_command(program, cmd, tmpdir_module=None, stdin=None,
-                check_exit_code=True, env=None, stdout=None):
+                check_exit_code=True, env=None, stdout=None,
+                cwd=None):
     if tmpdir_module is None:
         tmpdir_module = tempfile.mkdtemp()
+    if cwd is None:
+        cwd = tmpdir_module
 
     stdin_stream = None
     if isinstance(stdin, six.string_types):
@@ -657,7 +814,7 @@ def run_command(program, cmd, tmpdir_module=None, stdin=None,
 
     res = yatest.common.execute(
         cmd,
-        cwd=tmpdir_module,
+        cwd=cwd,
         stdin=stdin_stream,
         stdout=stdout_stream,
         stderr=stderr_stream,
@@ -679,13 +836,13 @@ def yson_to_csv(yson_content, columns=None, with_header=True, strict=False):
         headers = sorted(columns)
     else:
         headers = set()
-        for item in yson.loads(yson_content, yson_type='list_fragment'):
+        for item in yson.loads(yson_content):
             headers.update(six.iterkeys(item))
         headers = sorted(headers)
     csv_content = []
     if with_header:
         csv_content.append(';'.join(headers))
-    for item in yson.loads(yson_content, yson_type='list_fragment'):
+    for item in yson.loads(yson_content):
         if strict and sorted(six.iterkeys(item)) != headers:
             return None
         csv_content.append(';'.join([str(item[h]).replace('YsonEntity', '').encode('string_escape') if h in item else '' for h in headers]))
@@ -696,6 +853,7 @@ udfs_lock = Lock()
 
 
 def get_udfs_path(extra_paths=None):
+    essentials_udfs_build_path = yatest.common.build_path('contrib/ydb/library/yql/udfs')
     udfs_build_path = yatest.common.build_path('yql/udfs')
     ydb_udfs_build_path = yatest.common.build_path('contrib/ydb/library/yql/udfs')
     contrib_ydb_udfs_build_path = yatest.common.build_path('contrib/ydb/library/yql/udfs')
@@ -722,7 +880,17 @@ def get_udfs_path(extra_paths=None):
         if not os.path.isdir(merged_udfs_path):
             os.mkdir(merged_udfs_path)
 
-        udfs_paths = [udfs_project_path, ydb_udfs_project_path, udfs_bin_path, udfs_build_path, ydb_udfs_build_path, contrib_ydb_udfs_build_path, rthub_udfs_build_path, kwyt_udfs_build_path]
+        udfs_paths = [
+            udfs_project_path,
+            ydb_udfs_project_path,
+            udfs_bin_path,
+            essentials_udfs_build_path,
+            udfs_build_path,
+            ydb_udfs_build_path,
+            contrib_ydb_udfs_build_path,
+            rthub_udfs_build_path,
+            kwyt_udfs_build_path
+        ]
         if extra_paths is not None:
             udfs_paths += extra_paths
 
@@ -746,7 +914,10 @@ def get_udfs_path(extra_paths=None):
 
 
 def get_test_prefix():
-    return 'yql_tmp_' + hashlib.md5(yatest.common.context.test_name).hexdigest()
+    test_name = yatest.common.context.test_name
+    if isinstance(test_name, six.text_type):
+        test_name = test_name.encode('utf-8')
+    return 'yql_tmp_' + hashlib.md5(test_name).hexdigest()
 
 
 def normalize_plan_ids(plan, no_detailed=False):
@@ -844,9 +1015,9 @@ def normalize_table_yson(y):
 
 
 def dump_table_yson(res_yson, sort=True):
-    rows = normalize_table_yson(cyson.loads('[' + res_yson + ']'))
+    rows = normalize_table_yson(cyson.loads(b'[' + res_yson + b']'))
     if sort:
-        rows = sorted(rows)
+        rows = sorted(rows, key=cyson.dumps)
     return cyson.dumps(rows, format="pretty")
 
 
@@ -855,17 +1026,17 @@ def normalize_source_code_path(s):
     s = re.sub(r'\b(contrib/)(ydb/library/yql.*)', r'\2', s)
     # replace line number in source code with 'xxx'
     s = re.sub(r'\b(yql/[\w/]+(?:\.cpp|\.h)):(?:\d+)', r'\1:xxx', s)
-    return re.sub(r'(/lib/yql/[\w/]+(?:\.yql|\.sql)):(?:\d+):(?:\d+)', r'\1:xxx:yyy', s)
+    return re.sub(r'(/lib/yql/[\w/]+(?:\.yql|\.yqls|\.sql)):(?:\d+):(?:\d+)', r'\1:xxx:yyy', s)
 
 
-def do_get_files(suite, config, DATA_PATH, config_key):
+def do_get_files(suite, config, data_path, config_key):
     files = dict()
-    suite_dir = os.path.join(DATA_PATH, suite)
+    suite_dir = os.path.join(data_path, suite)
     res_dir = None
     for line in config:
         if line[0] == config_key:
             _, name, path = line
-            userpath = find_user_file(suite, path, DATA_PATH)
+            userpath = find_user_file(suite, path, data_path)
             relpath = os.path.relpath(userpath, suite_dir)
             if os.path.exists(os.path.join('cwd', relpath)):
                 path = relpath
@@ -883,16 +1054,16 @@ def do_get_files(suite, config, DATA_PATH, config_key):
     return files
 
 
-def get_files(suite, config, DATA_PATH):
-    return do_get_files(suite, config, DATA_PATH, 'file')
+def get_files(suite, config, data_path):
+    return do_get_files(suite, config, data_path, 'file')
 
 
-def get_http_files(suite, config, DATA_PATH):
-    return do_get_files(suite, config, DATA_PATH, 'http_file')
+def get_http_files(suite, config, data_path):
+    return do_get_files(suite, config, data_path, 'http_file')
 
 
-def get_yt_files(suite, config, DATA_PATH):
-    return do_get_files(suite, config, DATA_PATH, 'yt_file')
+def get_yt_files(suite, config, data_path):
+    return do_get_files(suite, config, data_path, 'yt_file')
 
 
 def get_syntax_version(program):
@@ -925,18 +1096,40 @@ def pytest_get_current_part(path):
 
 
 def normalize_result(res, sort):
-    res = cyson.loads(res) if res else cyson.loads("[]")
+    res = cyson.loads(res) if res else cyson.loads(b"[]")
     res = replace_vals(res)
     for r in res:
-        for data in r['Write']:
-            if sort and 'Data' in data:
-                data['Data'] = sorted(data['Data'])
-            if 'Ref' in data:
-                data['Ref'] = []
-                data['Truncated'] = True
-            if 'Data' in data and len(data['Data']) == 0:
-                del data['Data']
+        for data in r[b'Write']:
+            is_list = (b'Type' in data) and (data[b'Type'][0] == b'ListType')
+            if is_list and sort and b'Data' in data:
+                data[b'Data'] = sorted(data[b'Data'])
+            if b'Ref' in data:
+                data[b'Ref'] = []
+                data[b'Truncated'] = True
+            if is_list and b'Data' in data and len(data[b'Data']) == 0:
+                del data[b'Data']
     return res
+
+
+def is_sorted_table(table):
+    assert table.attr is not None
+    for column in cyson.loads(table.attr)[b'schema']:
+        if b'sort_order' in column:
+            return True
+    return False
+
+
+def is_unordered_result(res):
+    path = res.results_file
+    assert os.path.exists(path)
+    with open(path, 'rb') as f:
+        res = f.read()
+    res = cyson.loads(res)
+    for r in res:
+        for data in r[b'Write']:
+            if b'Unordered' in data:
+                return True
+    return False
 
 
 def stable_write(writer, node):
@@ -965,20 +1158,20 @@ def stable_write(writer, node):
 def stable_result_file(res):
     path = res.results_file
     assert os.path.exists(path)
-    with open(path) as f:
+    with open(path, 'rb') as f:
         res = f.read()
     res = cyson.loads(res)
     res = replace_vals(res)
     for r in res:
-        for data in r['Write']:
-            if 'Unordered' in r and 'Data' in data:
-                data['Data'] = sorted(data['Data'])
-    with open(path, 'w') as f:
+        for data in r[b'Write']:
+            if b'Unordered' in r and b'Data' in data:
+                data[b'Data'] = sorted(data[b'Data'], key=cyson.dumps)
+    with open(path, 'wb') as f:
         writer = cyson.Writer(stream=cyson.OutputStream.from_file(f), format='pretty', mode='node')
         writer.begin_stream()
         stable_write(writer, res)
         writer.end_stream()
-    with open(path) as f:
+    with open(path, 'rb') as f:
         return f.read()
 
 
@@ -987,21 +1180,21 @@ def stable_table_file(table):
     assert os.path.exists(path)
     assert table.attr is not None
     is_sorted = False
-    for column in cyson.loads(table.attr)['schema']:
-        if 'sort_order' in column:
+    for column in cyson.loads(table.attr)[b'schema']:
+        if b'sort_order' in column:
             is_sorted = True
             break
     if not is_sorted:
-        with open(path) as f:
+        with open(path, 'rb') as f:
             r = cyson.Reader(cyson.InputStream.from_file(f), mode='list_fragment')
-            lst = sorted(list(r.list_fragments()))
-        with open(path, 'w') as f:
+            lst = sorted(list(r.list_fragments()), key=cyson.dumps)
+        with open(path, 'wb') as f:
             writer = cyson.Writer(stream=cyson.OutputStream.from_file(f), format='pretty', mode='list_fragment')
             writer.begin_stream()
             for r in lst:
                 stable_write(writer, r)
             writer.end_stream()
-    with open(path) as f:
+    with open(path, 'rb') as f:
         return f.read()
 
 

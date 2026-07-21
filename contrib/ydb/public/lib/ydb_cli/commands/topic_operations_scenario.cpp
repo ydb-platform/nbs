@@ -1,13 +1,19 @@
 #include "topic_readwrite_scenario.h"
 
+#include <contrib/ydb/public/lib/ydb_cli/common/scoped_driver.h>
+
 #include <contrib/ydb/public/lib/ydb_cli/commands/topic_workload/topic_workload_defines.h>
 #include <contrib/ydb/public/lib/ydb_cli/commands/topic_workload/topic_workload_describe.h>
 #include <contrib/ydb/public/lib/ydb_cli/commands/topic_workload/topic_workload_reader.h>
+#include <contrib/ydb/public/lib/ydb_cli/commands/topic_workload/topic_workload_keyed_writer.h>
 #include <contrib/ydb/public/lib/ydb_cli/commands/topic_workload/topic_workload_writer.h>
+#include <contrib/ydb/public/lib/ydb_cli/commands/topic_workload/topic_workload_configurator.h>
+#include <contrib/ydb/public/lib/ydb_cli/commands/topic_workload/topic_workload_params.h>
 #include <contrib/ydb/public/lib/ydb_cli/commands/ydb_common.h>
+#include <contrib/ydb/public/lib/ydb_cli/common/log.h>
 
 #define INCLUDE_YDB_INTERNAL_H
-#include <contrib/ydb/public/sdk/cpp/client/impl/ydb_internal/logger/log.h>
+#include <contrib/ydb/public/sdk/cpp/src/client/impl/internal/logger/log.h>
 #undef INCLUDE_YDB_INTERNAL_H
 
 #include <util/generic/guid.h>
@@ -21,7 +27,7 @@ TTopicOperationsScenario::TTopicOperationsScenario() :
 {
 }
 
-int TTopicOperationsScenario::Run(const TConfig& config)
+int TTopicOperationsScenario::Run(TConfig& config)
 {
     InitLog(config);
     InitDriver(config);
@@ -44,6 +50,25 @@ void TTopicOperationsScenario::EnsureWarmupSecIsValid() const
     }
 }
 
+void TTopicOperationsScenario::EnsureRatesIsValid() const
+{
+    Y_ENSURE_EX(MessagesPerSec >= 0, TMisuseException() << "--messages-per-sec should be non negative.");
+    Y_ENSURE_EX(BytesPerSec >= 0, TMisuseException() << "--bytes-per-sec should be non negative.");
+}
+
+void TTopicOperationsScenario::EnsureCodecOptionsAreValid() const
+{
+    if (BatchInnerCodecStr.empty()) {
+        return;
+    }
+
+    if ((NTopic::ECodec)Codec != NTopic::ECodec::KAFKA_BATCH) {
+        throw TMisuseException() << "--batch-inner-codec can be set only when --codec is kafka-batch";
+    }
+
+    TCommandWorkloadTopicParams::StrToBatchInnerCodec(BatchInnerCodecStr);
+}
+
 TString TTopicOperationsScenario::GetReadOnlyTableName() const
 {
     return TableName + "-ro";
@@ -54,23 +79,28 @@ TString TTopicOperationsScenario::GetWriteOnlyTableName() const
     return TableName;
 }
 
-THolder<TLogBackend> TTopicOperationsScenario::MakeLogBackend(TConfig::EVerbosityLevel level)
+ui32 TTopicOperationsScenario::GetTopicMaxPartitionCount() const
 {
-    return CreateLogBackend("cerr",
-                            TConfig::VerbosityLevelToELogPriority(level));
+    return TopicMaxPartitionCount >= TopicPartitionCount ? TopicMaxPartitionCount : (TopicPartitionCount << 3);
 }
 
-void TTopicOperationsScenario::InitLog(const TConfig& config)
+THolder<TLogBackend> TTopicOperationsScenario::MakeLogBackend(ui32 level)
+{
+    return CreateLogBackend("cerr",
+                            VerbosityLevelToELogPriority(level));
+}
+
+void TTopicOperationsScenario::InitLog(TConfig& config)
 {
     Log = std::make_shared<TLog>(MakeLogBackend(config.VerbosityLevel));
     Log->SetFormatter(GetPrefixLogFormatter(""));
 }
 
-void TTopicOperationsScenario::InitDriver(const TConfig& config)
+void TTopicOperationsScenario::InitDriver(TConfig& config)
 {
-    Driver =
-        std::make_unique<NYdb::TDriver>(TYdbCommand::CreateDriver(config,
-                                                                  MakeLogBackend(config.VerbosityLevel)));
+    Driver = std::make_unique<TScopedDriver>(TYdbCommand::CreateDriver(
+        config,
+        std::unique_ptr<TLogBackend>(MakeLogBackend(config.VerbosityLevel).Release())));
 }
 
 void TTopicOperationsScenario::InitStatsCollector()
@@ -91,13 +121,19 @@ void TTopicOperationsScenario::InitStatsCollector()
 void TTopicOperationsScenario::CreateTopic(const TString& database,
                                            const TString& topic,
                                            ui32 partitionCount,
-                                           ui32 consumerCount)
+                                           ui32 consumerCount,
+                                           bool autoscaling,
+                                           ui32 maxPartitionCount,
+                                           ui32 stabilizationWindowSeconds,
+                                           ui32 upUtilizationPercent,
+                                           ui32 downUtilizationPercent,
+                                           bool cleanupPopicyCompact)
 {
     auto topicPath =
         TCommandWorkloadTopicDescribe::GenerateFullTopicName(database, topic);
 
     EnsureTopicNotExist(topicPath);
-    CreateTopic(topicPath, partitionCount, consumerCount);
+    CreateTopic(topicPath, partitionCount, consumerCount, autoscaling, maxPartitionCount, stabilizationWindowSeconds, upUtilizationPercent, downUtilizationPercent, cleanupPopicyCompact);
 }
 
 void TTopicOperationsScenario::DropTopic(const TString& database,
@@ -110,7 +146,7 @@ void TTopicOperationsScenario::DropTopic(const TString& database,
         TCommandWorkloadTopicDescribe::GenerateFullTopicName(database, topic);
 
     auto result = client.DropTopic(topicPath).GetValueSync();
-    ThrowOnError(result);
+    NStatusHelpers::ThrowOnErrorOrPrintIssues(result);
 }
 
 void TTopicOperationsScenario::DropTable(const TString& database, const TString& table)
@@ -118,7 +154,7 @@ void TTopicOperationsScenario::DropTable(const TString& database, const TString&
     NTable::TTableClient client(*Driver);
     auto session = GetSession(client);
     auto result = session.DropTable(database + "/" + table).GetValueSync();
-    ThrowOnError(result);
+    NStatusHelpers::ThrowOnErrorOrPrintIssues(result);
 }
 
 void TTopicOperationsScenario::ExecSchemeQuery(const TString& query)
@@ -126,7 +162,7 @@ void TTopicOperationsScenario::ExecSchemeQuery(const TString& query)
     NTable::TTableClient client(*Driver);
     auto session = GetSession(client);
     auto result = session.ExecuteSchemeQuery(query).GetValueSync();
-    ThrowOnError(result);
+    NStatusHelpers::ThrowOnErrorOrPrintIssues(result);
 }
 
 void TTopicOperationsScenario::ExecDataQuery(const TString& query,
@@ -137,7 +173,7 @@ void TTopicOperationsScenario::ExecDataQuery(const TString& query,
     auto result = session.ExecuteDataQuery(query,
                                            NTable::TTxControl::BeginTx(NTable::TTxSettings::SerializableRW()).CommitTx(),
                                            params).ExtractValueSync();
-    ThrowOnError(result);
+    NStatusHelpers::ThrowOnErrorOrPrintIssues(result);
 }
 
 void TTopicOperationsScenario::EnsureTopicNotExist(const TString& topic)
@@ -155,14 +191,40 @@ void TTopicOperationsScenario::EnsureTopicNotExist(const TString& topic)
 
 void TTopicOperationsScenario::CreateTopic(const TString& topic,
                                            ui32 partitionCount,
-                                           ui32 consumerCount)
+                                           ui32 consumerCount,
+                                           bool autoscaling,
+                                           ui32 maxPartitionCount,
+                                           ui32 stabilizationWindowSeconds,
+                                           ui32 upUtilizationPercent,
+                                           ui32 downUtilizationPercent,
+                                           bool cleanupPolicyCompact)
 {
     Y_ABORT_UNLESS(Driver);
 
     NTopic::TTopicClient client(*Driver);
 
     NTopic::TCreateTopicSettings settings;
-    settings.PartitioningSettings(partitionCount, partitionCount);
+    if (autoscaling) {
+        settings.BeginConfigurePartitioningSettings()
+            .MinActivePartitions(partitionCount)
+            .MaxActivePartitions(maxPartitionCount)
+            .BeginConfigureAutoPartitioningSettings()
+                .Strategy(NTopic::EAutoPartitioningStrategy::ScaleUpAndDown)
+                .StabilizationWindow(TDuration::Seconds(stabilizationWindowSeconds))
+                .UpUtilizationPercent(upUtilizationPercent)
+                .DownUtilizationPercent(downUtilizationPercent)
+            .EndConfigureAutoPartitioningSettings()
+            .EndConfigurePartitioningSettings();
+    } else {
+        settings.PartitioningSettings(partitionCount, partitionCount);
+    }
+    if (cleanupPolicyCompact) {
+        settings.AddAttribute("_cleanup_policy", "compact");
+    }
+
+    if (PartitionsPerTablet.Defined()) {
+        settings.AddAttribute("_partitions_per_tablet", ToString(*PartitionsPerTablet));
+    }
 
     for (unsigned consumerIdx = 0; consumerIdx < consumerCount; ++consumerIdx) {
         settings
@@ -171,13 +233,13 @@ void TTopicOperationsScenario::CreateTopic(const TString& topic,
     }
 
     auto result = client.CreateTopic(topic, settings).GetValueSync();
-    ThrowOnError(result);
+    NStatusHelpers::ThrowOnErrorOrPrintIssues(result);
 }
 
 NTable::TSession TTopicOperationsScenario::GetSession(NTable::TTableClient& client)
 {
     auto result = client.GetSession({}).GetValueSync();
-    ThrowOnError(result);
+    NStatusHelpers::ThrowOnErrorOrPrintIssues(result);
     return result.GetSession();
 }
 
@@ -203,15 +265,20 @@ void TTopicOperationsScenario::StartConsumerThreads(std::vector<std::future<void
                 .ConsumerPrefix = ConsumerPrefix,
                 .ReaderIdx = readerIdx,
                 .UseTransactions = UseTransactions,
-                .UseTopicCommit = OnlyTableInTx,
+                .UseTopicCommit = OnlyTopicInTx,
                 .UseTableSelect = UseTableSelect && !OnlyTopicInTx,
                 .UseTableUpsert = !OnlyTopicInTx,
+                .RestartInterval = RestartInterval,
+                .ReadWithoutCommit = ReadWithoutCommit,
                 .ReadWithoutConsumer = ReadWithoutConsumer,
-                .CommitPeriod = CommitPeriod,
-                .CommitMessages = CommitMessages
+                .CommitPeriodMs = TxCommitIntervalMs != 0 ? TxCommitIntervalMs : CommitPeriodSeconds * 1000, // seconds to ms conversion,
+                .CommitMessages = CommitMessages,
+                .MaxMemoryUsageBytes = ConsumerMaxMemoryUsageBytes,
+                .PartitionMaxInflightBytes = PartitionMaxInflightBytes,
+                .DirectRead = DirectRead,
             };
 
-            threads.push_back(std::async([readerParams = std::move(readerParams)]() mutable { TTopicWorkloadReader::RetryableReaderLoop(readerParams); }));
+            threads.push_back(std::async([readerParams = std::move(readerParams)]() { TTopicWorkloadReader::RetryableReaderLoop(readerParams); }));
         }
     }
 
@@ -220,12 +287,25 @@ void TTopicOperationsScenario::StartConsumerThreads(std::vector<std::future<void
     }
 }
 
+/*!
+ * This method starts producers threads specified in -t option, that will write to topic in parallel. Every producer thread will create
+ * WriteSession for every partition in the topic and will write in partitions in round robin manner.
+ * */
 void TTopicOperationsScenario::StartProducerThreads(std::vector<std::future<void>>& threads,
                                                     ui32 partitionCount,
                                                     ui32 partitionSeed,
-                                                    const std::vector<TString>& generatedMessages)
+                                                    const std::vector<TString>& generatedMessages,
+                                                    const TString& database)
 {
+    auto describeTopicResult = TCommandWorkloadTopicDescribe::DescribeTopic(database, TopicName, *Driver);
+    bool useAutoPartitioning = NYdb::NTopic::EAutoPartitioningStrategy::Disabled != describeTopicResult.GetPartitioningSettings().GetAutoPartitioningSettings().GetStrategy();
+
     auto count = std::make_shared<std::atomic_uint>();
+    TMaybe<ui32> batchInnerCodec;
+    if (!BatchInnerCodecStr.empty()) {
+        batchInnerCodec = TCommandWorkloadTopicParams::StrToBatchInnerCodec(BatchInnerCodecStr);
+    }
+
     for (ui32 writerIdx = 0; writerIdx < ProducerThreadCount; ++writerIdx) {
         TTopicWorkloadWriterParams writerParams{
             .TotalSec = TotalSec.Seconds(),
@@ -236,24 +316,91 @@ void TTopicOperationsScenario::StartProducerThreads(std::vector<std::future<void
             .ErrorFlag = ErrorFlag,
             .StartedCount = count,
             .GeneratedMessages = generatedMessages,
+            .Database = database,
             .TopicName = TopicName,
-            .ByteRate = MessageRate != 0 ? MessageRate * MessageSize : ByteRate,
-            .MessageSize = MessageSize,
+            .BytesPerSec = MessagesPerSec != 0 ? MessagesPerSec * MessageSizeBytes : BytesPerSec,
+            .MessageSize = MessageSizeBytes,
             .ProducerThreadCount = ProducerThreadCount,
             .WriterIdx = writerIdx,
-            .ProducerId = TGUID::CreateTimebased().AsGuidString(),
-            .PartitionId = (partitionSeed + writerIdx) % partitionCount,
+            .PartitionCount = partitionCount,
+            .PartitionSeed = partitionSeed,
             .Direct = Direct,
             .Codec = Codec,
-            .UseTransactions = UseTransactions
+            .BatchInnerCodec = batchInnerCodec,
+            .UseTransactions = UseTransactions,
+            .TrackProducerIdInTx = !NoTrackProducerIdInTx,
+            .UseAutoPartitioning = useAutoPartitioning,
+            .CommitIntervalMs = TxCommitIntervalMs != 0 ? TxCommitIntervalMs : CommitPeriodSeconds * 1000, // seconds to ms conversion
+            .CommitMessages = CommitMessages,
+            .UseCpuTimestamp = UseCpuTimestamp,
+            .KeyPrefix = KeyPrefix,
+            .KeyCount = KeyCount,
+            .KeySeed = writerIdx,
+            .MaxMemoryUsageBytes = ProducerMaxMemoryUsageBytes,
+            .BatchFlushInterval = BatchFlushInterval,
+            .BatchFlushSizeBytes = BatchFlushSizeBytes,
+            .BatchFlushMessageCount = BatchFlushMessageCount,
         };
 
-        threads.push_back(std::async([writerParams = std::move(writerParams)]() mutable { TTopicWorkloadWriterWorker::WriterLoop(writerParams); }));
+        if (KeyedWrites) {
+            TTopicWorkloadKeyedWriterParams keyedWriterParams(writerParams);
+            keyedWriterParams.ProducerKeysCount = ProducerKeysCount;
+
+            threads.push_back(std::async([keyedWriterParams = std::move(keyedWriterParams)]() {
+                TTopicWorkloadKeyedWriterWorker::RetryableWriterLoop(keyedWriterParams);
+            }));
+        } else {
+            threads.push_back(std::async([writerParams = std::move(writerParams)]() {
+                TTopicWorkloadWriterWorker::RetryableWriterLoop(writerParams);
+            }));
+        }
     }
 
     while (*count != ProducerThreadCount) {
         Sleep(TDuration::MilliSeconds(10));
     }
+}
+
+void TTopicOperationsScenario::StartConfiguratorThread(std::vector<std::future<void>>& threads,
+                                                       const TString& database)
+{
+    if (!ConfigConsumerCount) {
+        return;
+    }
+
+    TTopicWorkloadConfiguratorParams params{
+        .TotalSec = TotalSec.Seconds(),
+        .WarmupSec = WarmupSec.Seconds(),
+        .Driver = *Driver,
+        .Log = Log,
+        .ErrorFlag = ErrorFlag,
+        .Database = database,
+        .TopicName = TopicName,
+        .ConsumerCount = ConfigConsumerCount
+    };
+    threads.push_back(std::async([params = std::move(params)]() { TTopicWorkloadWriterWorker::RetryableConfiguratorLoop(params); }));
+}
+
+void TTopicOperationsScenario::StartDescriberThread(std::vector<std::future<void>>& threads,
+                                                    const TString& database)
+{
+    if (!NeedDescribeTopic && DescribeConsumerName.empty()) {
+        return;
+    }
+
+    TTopicWorkloadDescriberParams params{
+        .TotalSec = TotalSec.Seconds(),
+        .WarmupSec = WarmupSec.Seconds(),
+        .Driver = *Driver,
+        .Log = Log,
+        .ErrorFlag = ErrorFlag,
+        .Database = database,
+        .TopicName = TopicName,
+        .ConsumerName = DescribeConsumerName,
+        .NeedDescribeTopic = NeedDescribeTopic,
+        .NeedDescribeConsumer = !DescribeConsumerName.empty()
+    };
+    threads.push_back(std::async([params = std::move(params)]() { TTopicWorkloadWriterWorker::RetryableDescriberLoop(params); }));
 }
 
 void TTopicOperationsScenario::JoinThreads(const std::vector<std::future<void>>& threads)
@@ -296,6 +443,24 @@ bool TTopicOperationsScenario::AnyOutgoingMessages() const
     WRITE_LOG(Log, ELogPriority::TLOG_EMERG, "No messages were written.");
 
     return false;
+}
+
+void TTopicOperationsScenario::ConfigMetadataMonitoringOptions(TClientCommand::TConfig& config)
+{
+    config.Opts->AddLongOption("configure-consumers", "Number of consumers to continuously add and remove from the topic")
+        .Optional()
+        .Hidden()
+        .DefaultValue(0)
+        .StoreResult(&ConfigConsumerCount);
+    config.Opts->AddLongOption("describe-topic", "Continuously call DescribeTopic method to monitor topic metadata")
+        .Optional()
+        .Hidden()
+        .DefaultValue(false)
+        .StoreTrue(&NeedDescribeTopic);
+    config.Opts->AddLongOption("describe-consumer", "Consumer name for which DescribeConsumer method will be called continuously")
+        .Optional()
+        .Hidden()
+        .StoreResult(&DescribeConsumerName);
 }
 
 }

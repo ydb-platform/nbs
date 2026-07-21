@@ -1,12 +1,14 @@
 # Включение метрик в Prometheus
 
-{% include [work in progress message](_includes/addition.md) %}
-
-Ниже приведены примеры кода включения метрик в Prometheus в разных {{ ydb-short-name }} SDK.
+Ниже приведены примеры кода для включения метрик в Prometheus в различных {{ ydb-short-name }} SDK.
 
 {% list tabs %}
 
-- Go (native)
+- Go
+
+  {% list tabs %}
+
+  - Нативный SDK
 
     ```go
     package main
@@ -39,7 +41,7 @@
     }
     ```
 
-- Go (database/sql)
+  - database/sql
 
     ```go
     package main
@@ -75,11 +77,30 @@
             panic(err)
         }
 
-        db := sql.OpnDB(connector)
+        db := sql.OpenDB(connector)
         defer db.Close()
         ...
     }
     ```
 
+  {% endlist %}
+
+- Java
+
+  Данная функциональность в настоящее время не поддерживается.
+
+- Python
+
+  Данная функциональность в настоящее время не поддерживается.
+
+- JavaScript
+
+  {% include [work-in-progress](../../_includes/work-in-progress.md) %}
+
+- Rust
+
+  {% include [feature-not-supported](../../_includes/feature-not-supported.md) %}
+
+  Отслеживайте прогресс или голосуйте за поддержку Rust SDK: [ydb-rs-sdk#267](https://github.com/ydb-platform/ydb-rs-sdk/issues/267)
 
 {% endlist %}

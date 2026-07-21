@@ -6,6 +6,9 @@
 #include <contrib/ydb/core/tx/datashard/ut_common/datashard_ut_common.h>
 #include <contrib/ydb/core/tx/tx_proxy/proxy.h>
 #include <contrib/ydb/core/base/blobstorage.h>
+#include <contrib/ydb/core/base/tablet_pipecache.h>
+
+#include <limits>
 
 namespace NKikimr {
 namespace NKqp {
@@ -19,13 +22,14 @@ using namespace NKikimr::NDataShard::NKqpHelpers;
 namespace {
 
     /* sum(value) == 596400 */
-    TString FillTableQuery() {
+    TString FillTableQuery(bool addPgSuffix = false) {
+        TString suffix = addPgSuffix ? "p" : "";
         TStringBuilder sql;
         sql << "UPSERT INTO `/Root/table-1` (key, value) VALUES ";
         for (int i = 1; i < 100; ++i) {
-            sql << " (" << i << ", " << i << i << "),";
+            sql << " (" << i << suffix << ", " << i << i << suffix << "),";
         }
-        sql << " (100500, 100500);";
+        sql << " (100500" << suffix << ", 100500" << suffix << ");";
         return sql;
     }
 
@@ -88,7 +92,7 @@ Y_UNIT_TEST_SUITE(KqpScan) {
                  */
                 case NKqp::TKqpExecuterEvents::EvShardsResolveStatus: {
                     auto* msg = ev->Get<NKqp::NShardResolver::TEvShardsResolveStatus>();
-                    for (auto& [shardId, nodeId]: msg->ShardNodes) {
+                    for (auto& [shardId, nodeId]: msg->ShardsToNodes) {
                         Cerr << "-- nodeId: " << nodeId << Endl;
                         Cerr.Flush();
                         nodeId = runtime.GetNodeId(0);
@@ -156,6 +160,146 @@ Y_UNIT_TEST_SUITE(KqpScan) {
     }
 
     /*
+     * Regression test for #33166: when a datashard is killed mid-scan, the
+     * fetcher retries via TEvRetryShard. The retry must resume after the
+     * already-delivered rows; otherwise the new datashard generation re-emits
+     * rows the compute actor already received, producing duplicates.
+     *
+     * Datashard scans send a batch when Rows >= MAX_BATCH_ROWS (10'000) or
+     * when the byte budget is hit. To force a non-final first batch, we load
+     * 15'000 rows so the scan is guaranteed to emit one batch with
+     * Finished=false (and a non-empty LastKey on the fetcher) before the
+     * second batch arrives. The kill is triggered on the FIRST EvScanData
+     * whose Finished flag is false, after letting it through to the fetcher.
+     *
+     * After all retries land, the test asserts that every primary key
+     * appears exactly once in the executer-side stream output.
+     */
+    Y_UNIT_TEST(ScanRetryReadNoDuplicates) {
+        constexpr ui32 ROW_COUNT = 15000;
+
+        TPortManager pm;
+        TServerSettings serverSettings(pm.GetPort(2134));
+        serverSettings.SetDomainName("Root")
+            .SetNodeCount(2)
+            .SetUseRealThreads(false);
+
+        Tests::TServer::TPtr server = new TServer(serverSettings);
+        auto& runtime = *server->GetRuntime();
+        auto sender = runtime.AllocateEdgeActor();
+
+        InitRoot(server, sender);
+        CreateShardedTable(server, sender, "/Root", "table-1", 1);
+
+        // Fill ROW_COUNT rows in chunks. A single mega-UPSERT with 15k VALUES
+        // tuples blows the YQL parser; 1k per batch is comfortable. Datashards
+        // emit batches at MAX_BATCH_ROWS=10'000, so 15'000 rows guarantees a
+        // first batch with Finished=false (and a non-empty LastKey on the
+        // fetcher) plus a second batch we can intercept.
+        for (ui32 base = 1; base <= ROW_COUNT; base += 1000) {
+            TStringBuilder sql;
+            sql << "UPSERT INTO `/Root/table-1` (key, value) VALUES ";
+            const ui32 end = Min<ui32>(base + 1000, ROW_COUNT + 1);
+            for (ui32 i = base; i < end; ++i) {
+                sql << "(" << i << ", " << i << ")";
+                if (i + 1 < end) sql << ", ";
+            }
+            sql << ";";
+            ExecSQL(server, sender, sql);
+        }
+
+        auto shards = NKqp::GetTableShards(server, sender, "/Root/table-1");
+        UNIT_ASSERT_VALUES_EQUAL(shards.size(), 1u);
+        const ui64 tabletId = shards[0];
+
+        TActorId fetcherActorId;
+        TActorId originalScanActor;
+        bool deliveryProblemSent = false;
+        TVector<ui32> receivedKeys;
+
+        auto captureEvents = [&](TAutoPtr<IEventHandle>& ev) -> auto {
+            switch (ev->GetTypeRewrite()) {
+                // Pin all shards to node 0 so the observer sees their events.
+                case NKqp::TKqpExecuterEvents::EvShardsResolveStatus: {
+                    auto* msg = ev->Get<NKqp::NShardResolver::TEvShardsResolveStatus>();
+                    for (auto& [shardId, nodeId] : msg->ShardsToNodes) {
+                        nodeId = runtime.GetNodeId(0);
+                    }
+                    break;
+                }
+
+                // Capture the keys the executer ships to the client; drop the
+                // event after acking so the test owns the row stream.
+                case NKqp::TKqpExecuterEvents::EvStreamData: {
+                    auto& record = ev->Get<NKqp::TEvKqpExecuter::TEvStreamData>()->Record;
+                    for (auto& row : record.GetResultSet().rows()) {
+                        UNIT_ASSERT_VALUES_EQUAL(row.items().size(), 1);
+                        receivedKeys.push_back(row.items(0).uint32_value());
+                    }
+                    auto resp = MakeHolder<NKqp::TEvKqpExecuter::TEvStreamDataAck>(
+                        record.GetSeqNo(), record.GetChannelId());
+                    resp->Record.SetEnough(false);
+                    resp->Record.SetFreeSpace(8 << 20);
+                    runtime.Send(new IEventHandle(ev->Sender, sender, resp.Release()));
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+
+                // Strategy: pass the first EvScanData through so the fetcher
+                // updates state.LastKey, then DROP every subsequent batch from
+                // the same scan actor and inject a TEvDeliveryProblem to the
+                // fetcher. That deterministically forces the retry path
+                // without racing the scan actor's mailbox against TEvKill.
+                case NKqp::TKqpComputeEvents::EvScanData: {
+                    if (!fetcherActorId) {
+                        fetcherActorId = ev->Recipient;
+                        originalScanActor = ev->Sender;
+                        // First batch flows through.
+                        break;
+                    }
+                    if (ev->Sender == originalScanActor) {
+                        // Subsequent batch from the original generation: drop
+                        // it and trigger the disconnect on the first drop.
+                        if (!deliveryProblemSent) {
+                            deliveryProblemSent = true;
+                            runtime.Send(new IEventHandle(
+                                fetcherActorId, sender,
+                                new TEvPipeCache::TEvDeliveryProblem(
+                                    tabletId, /* notDelivered = */ true)));
+                        }
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                    // EvScanData from the post-retry scan actor: let through.
+                    break;
+                }
+
+                default:
+                    break;
+            }
+            return TTestActorRuntime::EEventAction::PROCESS;
+        };
+        runtime.SetObserverFunc(captureEvents);
+
+        auto streamSender = runtime.AllocateEdgeActor();
+        SendRequest(runtime, streamSender,
+            MakeStreamRequest(streamSender,
+                "SELECT key FROM `/Root/table-1` ORDER BY key;", false));
+        auto resp = runtime.GrabEdgeEventRethrow<NKqp::TEvKqp::TEvQueryResponse>(streamSender);
+
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            resp->Get()->Record.GetYdbStatus(), Ydb::StatusIds::SUCCESS,
+            resp->Get()->Record.DebugString());
+        UNIT_ASSERT_C(deliveryProblemSent,
+            "Test setup did not trigger a delivery problem - scan completed in one batch");
+
+        THashSet<ui32> uniqueKeys(receivedKeys.begin(), receivedKeys.end());
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            uniqueKeys.size(), receivedKeys.size(),
+            "Duplicates: " << receivedKeys.size() << " rows received but only "
+                           << uniqueKeys.size() << " distinct keys");
+        UNIT_ASSERT_VALUES_EQUAL(receivedKeys.size(), ROW_COUNT);
+    }
+
+    /*
      * Force remote scans by meddling with EvShardsResolveStatus. Check that remote scan actually took place.
      */
     Y_UNIT_TEST(RemoteShardScan) {
@@ -193,7 +337,7 @@ Y_UNIT_TEST_SUITE(KqpScan) {
                  */
                 case NKqp::TKqpExecuterEvents::EvShardsResolveStatus: {
                     auto* msg = ev->Get<NKqp::NShardResolver::TEvShardsResolveStatus>();
-                    for (auto& [shardId, nodeId]: msg->ShardNodes) {
+                    for (auto& [shardId, nodeId]: msg->ShardsToNodes) {
                         nodeId = firstNodeId;
                     }
                     break;
@@ -286,7 +430,7 @@ Y_UNIT_TEST_SUITE(KqpScan) {
             switch (ev->GetTypeRewrite()) {
                 case NKqp::TKqpExecuterEvents::EvShardsResolveStatus: {
                     auto* msg = ev->Get<NKqp::NShardResolver::TEvShardsResolveStatus>();
-                    for (auto& [shardId, nodeId]: msg->ShardNodes) {
+                    for (auto& [shardId, nodeId]: msg->ShardsToNodes) {
                         tabletId = shardId;
                         Cerr << (TStringBuilder() << "-- tabletId= " << tabletId << Endl);
                         Cerr.Flush();
@@ -403,7 +547,7 @@ Y_UNIT_TEST_SUITE(KqpScan) {
             switch (ev->GetTypeRewrite()) {
                 case NKqp::TKqpExecuterEvents::EvShardsResolveStatus: {
                     auto* msg = ev->Get<NKqp::NShardResolver::TEvShardsResolveStatus>();
-                    for (auto& [shardId, nodeId]: msg->ShardNodes) {
+                    for (auto& [shardId, nodeId]: msg->ShardsToNodes) {
                         tabletId = shardId;
                         Cerr << (TStringBuilder() << "-- tabletId= " << tabletId << Endl);
                         Cerr.Flush();
@@ -532,7 +676,7 @@ Y_UNIT_TEST_SUITE(KqpScan) {
             switch (ev->GetTypeRewrite()) {
                 case NKqp::TKqpExecuterEvents::EvShardsResolveStatus: {
                     auto* msg = ev->Get<NKqp::NShardResolver::TEvShardsResolveStatus>();
-                    for (auto& [shardId, nodeId]: msg->ShardNodes) {
+                    for (auto& [shardId, nodeId]: msg->ShardsToNodes) {
                         tabletId = shardId;
                         Cerr << (TStringBuilder() << "-- tabletId= " << tabletId << Endl);
                         Cerr.Flush();
@@ -643,7 +787,7 @@ Y_UNIT_TEST_SUITE(KqpScan) {
                  */
                 case NKqp::TKqpExecuterEvents::EvShardsResolveStatus: {
                     auto* msg = ev->Get<NKqp::NShardResolver::TEvShardsResolveStatus>();
-                    for (auto& [shardId, nodeId]: msg->ShardNodes) {
+                    for (auto& [shardId, nodeId]: msg->ShardsToNodes) {
                         Cerr << "-- nodeId: " << nodeId << Endl;
                         nodeId = runtime.GetNodeId(0);
                     }
@@ -804,7 +948,7 @@ Y_UNIT_TEST_SUITE(KqpScan) {
                 }
                 case NKqp::TEvKqp::TEvQueryResponse::EventType: {
                     auto* msg = ev->Get<NKqp::TEvKqp::TEvQueryResponse>();
-                    auto& record = msg->Record.GetRef();
+                    auto& record = msg->Record;
                     status = record.GetYdbStatus();
                     break;
                 }
@@ -889,6 +1033,132 @@ Y_UNIT_TEST_SUITE(KqpScan) {
         UNIT_ASSERT_VALUES_EQUAL(*status, Ydb::StatusIds::SUCCESS);
         UNIT_ASSERT(result);
         UNIT_ASSERT_VALUES_EQUAL(*result, 596400);
+    }
+
+    Y_UNIT_TEST(ScanInvalidSnapshot) {
+        NKikimrConfig::TAppConfig appCfg;
+
+        auto* rm = appCfg.MutableTableServiceConfig()->MutableResourceManager();
+        rm->SetChannelBufferSize(100);
+        rm->SetMinChannelBufferSize(100);
+
+        TPortManager pm;
+        TServerSettings serverSettings(pm.GetPort(2134));
+        serverSettings.SetDomainName("Root")
+            .SetNodeCount(2)
+            .SetAppConfig(appCfg)
+            .SetUseRealThreads(false);
+
+        Tests::TServer::TPtr server = new TServer(serverSettings);
+        auto& runtime = *server->GetRuntime();
+        auto sender = runtime.AllocateEdgeActor();
+
+        InitRoot(server, sender);
+        CreateShardedTable(server, sender, "/Root", "table-1", 1);
+        ExecSQL(server, sender, FillTableQuery());
+
+        bool injected = false;
+        runtime.SetObserverFunc([&](TAutoPtr<IEventHandle>& ev) {
+            if (!injected && ev->GetTypeRewrite() == TEvDataShard::EvKqpScan) {
+                auto& request = ev->Get<TEvDataShard::TEvKqpScan>()->Record;
+                auto* snapshot = request.MutableSnapshot();
+                // set invalid snapshot
+                snapshot->SetStep(std::numeric_limits<ui64>::max());
+                snapshot->SetTxId(0);
+                injected = true;
+            }
+            return TTestActorRuntime::EEventAction::PROCESS;
+        });
+
+        auto streamSender = runtime.AllocateEdgeActor();
+        SendRequest(runtime, streamSender, MakeStreamRequest(streamSender, "SELECT value FROM `/Root/table-1`;", false));
+        auto ev = runtime.GrabEdgeEventRethrow<NKqp::TEvKqp::TEvQueryResponse>(streamSender);
+        auto& record = ev->Get()->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(record.GetYdbStatus(), Ydb::StatusIds::ABORTED);
+
+        bool hasIssue = false;
+        for (const auto& issueMsg : record.GetResponse().GetQueryIssues()) {
+            if (issueMsg.issue_code() == (ui32)NYql::TIssuesIds::KIKIMR_PRECONDITION_FAILED) {
+                hasIssue = true;
+                break;
+            }
+            for (const auto& subIssue : issueMsg.issues()) {
+                if (subIssue.issue_code() == (ui32)NYql::TIssuesIds::KIKIMR_PRECONDITION_FAILED) {
+                    hasIssue = true;
+                    break;
+                }
+            }
+            if (hasIssue) {
+                break;
+            }
+        }
+        UNIT_ASSERT(hasIssue);
+    }
+
+    Y_UNIT_TEST(ScanPg) {
+        NKikimrConfig::TAppConfig appCfg;
+
+        auto* rm = appCfg.MutableTableServiceConfig()->MutableResourceManager();
+        rm->SetChannelBufferSize(100);
+        rm->SetMinChannelBufferSize(100);
+
+        NKikimrConfig::TFeatureFlags featureFlags;
+        // featureFlags.SetEnablePgSyntax(true);
+        featureFlags.SetEnableTablePgTypes(true);
+
+        TPortManager pm;
+        TServerSettings serverSettings(pm.GetPort(2134));
+        serverSettings.SetDomainName("Root")
+            .SetNodeCount(2)
+            .SetAppConfig(appCfg)
+            .SetUseRealThreads(false)
+            .SetFeatureFlags(featureFlags);
+
+        Tests::TServer::TPtr server = new TServer(serverSettings);
+        auto &runtime = *server->GetRuntime();
+        auto sender = runtime.AllocateEdgeActor();
+
+        InitRoot(server, sender);
+
+        auto opts = TShardedTableOptions()
+            .Columns({
+                {"key",   "pgint4", true,  false},
+                {"value", "pgint4", false, false}
+            });
+        CreateShardedTable(server, sender, "/Root", "table-1", opts);
+        ExecSQL(server, sender, FillTableQuery(true));
+
+        ui64 result = 0;
+
+        auto captureEvents = [&](TAutoPtr<IEventHandle> &ev) -> auto {
+
+            switch (ev->GetTypeRewrite()) {
+                case NKqp::TKqpExecuterEvents::EvStreamData: {
+                    auto& record = ev->Get<NKqp::TEvKqpExecuter::TEvStreamData>()->Record;
+
+                    Y_ASSERT(record.GetResultSet().rows().size() == 1);
+                    Y_ASSERT(record.GetResultSet().rows().at(0).items().size() == 1);
+                    result = record.GetResultSet().rows().at(0).items().at(0).int64_value();
+
+                    auto resp = MakeHolder<NKqp::TEvKqpExecuter::TEvStreamDataAck>(record.GetSeqNo(), record.GetChannelId());
+                    resp->Record.SetEnough(false);
+                    resp->Record.SetFreeSpace(100);
+                    runtime.Send(new IEventHandle(ev->Sender, sender, resp.Release()));
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+                default:
+                    break;
+            }
+            return TTestActorRuntime::EEventAction::PROCESS;
+        };
+        runtime.SetObserverFunc(captureEvents);
+
+        auto streamSender = runtime.AllocateEdgeActor();
+        SendRequest(runtime, streamSender, MakeStreamRequest(streamSender, "SELECT sum(FromPg(value)) FROM `/Root/table-1`;", false));
+        auto ev = runtime.GrabEdgeEventRethrow<NKqp::TEvKqp::TEvQueryResponse>(streamSender);
+
+        UNIT_ASSERT_VALUES_EQUAL(result, 596400);
     }
 
 }

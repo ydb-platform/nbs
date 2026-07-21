@@ -6,42 +6,66 @@
 
 #include <openssl/sha.h>
 
+#include <utility>
+
 namespace NYql::NCommon {
 
 namespace {
 
+const TString UdfResolver_GetSystemModulePath = "UdfResolver_GetSystemModulePath";
+const TString UdfResolver_LoadMetadataImports = "UdfResolver_LoadMetadataImports";
 const TString UdfResolver_LoadMetadata = "UdfResolver_LoadMetadata";
+const TString UdfResolver_ContainsModule = "UdfResolver_ContainsModule";
 
+// TODO(vitya-smirnov): Copy-pasted from core/qplayer/url_lister/qplayer_url_lister_manager.
 TString MakeHash(const TString& str) {
     SHA256_CTX sha;
     SHA256_Init(&sha);
-    SHA256_Update(&sha, str.Data(), str.Size());
-    unsigned char hash[SHA256_DIGEST_LENGTH];
-    SHA256_Final(hash, &sha);
-    return TString((const char*)hash, sizeof(hash));
+    SHA256_Update(&sha, str.data(), str.size());
+    std::array<unsigned char, SHA256_DIGEST_LENGTH> hash;
+    SHA256_Final(hash.data(), &sha);
+    return TString((const char*)hash.data(), sizeof(hash));
 }
 
-class TResolver : public IUdfResolver {
+class TResolver: public IUdfResolver {
 public:
     TResolver(IUdfResolver::TPtr inner, const TQContext& qContext)
-        : Inner_(inner)
+        : Inner_(std::move(inner))
         , QContext_(qContext)
-    {}
+    {
+    }
 
     TMaybe<TFilePathWithMd5> GetSystemModulePath(const TStringBuf& moduleName) const final {
         if (QContext_.CanRead()) {
-            ythrow yexception() << "can't replay GetSystemModulePath";
+            auto res = QContext_.GetReader()->Get({.Component = UdfResolver_GetSystemModulePath, .Label = TString(moduleName)}).GetValueSync();
+            return MakeMaybe<TFilePathWithMd5>(res ? res->Value : "", "");
         }
 
-        return Inner_-> GetSystemModulePath(moduleName);
+        auto res = Inner_->GetSystemModulePath(moduleName);
+        if (res && QContext_.CanWrite()) {
+            QContext_.GetWriter()->Put({.Component = UdfResolver_GetSystemModulePath, .Label = TString(moduleName)}, res->Path).GetValueSync();
+        }
+
+        return res;
     }
 
     bool LoadMetadata(const TVector<TImport*>& imports,
-        const TVector<TFunction*>& functions, TExprContext& ctx) const final {
+                      const TVector<TFunction*>& functions, TExprContext& ctx, NUdf::ELogLevel logLevel, THoldingFileStorage& storage) const final {
         if (QContext_.CanRead()) {
+            for (auto& import : imports) {
+                auto key = MakeKey(import);
+                auto res = QContext_.GetReader()->Get({.Component = UdfResolver_LoadMetadataImports, .Label = key}).GetValueSync();
+                if (!res) {
+                    // for compatibility
+                    continue;
+                }
+
+                LoadValue(import, res->Value);
+            }
+
             for (auto& f : functions) {
                 auto key = MakeKey(f);
-                auto res = QContext_.GetReader()->Get({UdfResolver_LoadMetadata, key}).GetValueSync();
+                auto res = QContext_.GetReader()->Get({.Component = UdfResolver_LoadMetadata, .Label = key}).GetValueSync();
                 if (!res) {
                     ythrow yexception() << "Missing replay data";
                 }
@@ -52,39 +76,66 @@ public:
             return true;
         }
 
-        auto res = Inner_->LoadMetadata(imports, functions, ctx);
+        auto res = Inner_->LoadMetadata(imports, functions, ctx, logLevel, storage);
         if (res && QContext_.CanWrite()) {
+            for (const auto& import : imports) {
+                auto key = MakeKey(import);
+                auto value = SaveValue(import);
+                QContext_.GetWriter()->Put({.Component = UdfResolver_LoadMetadataImports, .Label = key}, value).GetValueSync();
+            }
+
             // calculate hash for each function and store it
             for (const auto& f : functions) {
                 auto key = MakeKey(f);
                 auto value = SaveValue(f);
-                QContext_.GetWriter()->Put({UdfResolver_LoadMetadata, key}, value).GetValueSync();
+                QContext_.GetWriter()->Put({.Component = UdfResolver_LoadMetadata, .Label = key}, value).GetValueSync();
             }
         }
 
         return res;
     }
 
-    TResolveResult LoadRichMetadata(const TVector<TImport>& imports) const final {
+    TResolveResult LoadRichMetadata(const TVector<TImport>& imports, NUdf::ELogLevel logLevel, THoldingFileStorage& storage) const final {
         if (QContext_.CanRead()) {
-            ythrow yexception() << "can't replay LoadRichMetadata";
+            ythrow yexception() << "Can't replay LoadRichMetadata";
         }
 
-        return Inner_->LoadRichMetadata(imports);
+        return Inner_->LoadRichMetadata(imports, logLevel, storage);
     }
 
     bool ContainsModule(const TStringBuf& moduleName) const final {
         if (QContext_.CanRead()) {
-            ythrow yexception() << "can't replay ContainsModule";
+            auto res = QContext_.GetReader()->Get({.Component = UdfResolver_ContainsModule, .Label = TString(moduleName)}).GetValueSync();
+            if (!res) {
+                ythrow yexception() << "Missing replay data";
+            }
+
+            return res->Value == "1";
         }
 
-        return Inner_->ContainsModule(moduleName);
+        auto ret = Inner_->ContainsModule(moduleName);
+        if (QContext_.CanWrite()) {
+            QContext_.GetWriter()->Put({.Component = UdfResolver_ContainsModule, .Label = TString(moduleName)}, ret ? "1" : "0").GetValueSync();
+        }
+
+        return ret;
     }
 
 private:
-    TString MakeKey(const TFunction* f) const {
+    TString MakeKey(const TImport* import) const {
+        // clang-format off
         auto node = NYT::TNode()
-                ("Name", NYT::TNode(f->Name));
+            ("FileAlias", NYT::TNode(import->FileAlias))
+            ("PosColumn", NYT::TNode(import->Pos.Column))
+            ("PosRow", NYT::TNode(import->Pos.Row))
+            ("PosFile", NYT::TNode(import->Pos.File));
+        // clang-format on
+
+        return MakeHash(NYT::NodeToCanonicalYsonString(node, NYT::NYson::EYsonFormat::Binary));
+    }
+
+    TString MakeKey(const TFunction* f) const {
+        auto node = NYT::TNode()("Name", NYT::TNode(f->Name));
         if (f->TypeConfig) {
             node("TypeConfig", NYT::TNode(f->TypeConfig));
         }
@@ -96,9 +147,22 @@ private:
         return MakeHash(NYT::NodeToCanonicalYsonString(node, NYT::NYson::EYsonFormat::Binary));
     }
 
+    TString SaveValue(const TImport* import) const {
+        auto node = NYT::TNode::CreateMap();
+        if (import->Modules) {
+            auto modules = NYT::TNode::CreateList();
+            for (const auto& x : *import->Modules) {
+                modules.Add(x);
+            }
+
+            node("Modules", modules);
+        }
+
+        return NYT::NodeToYsonString(node, NYT::NYson::EYsonFormat::Binary);
+    }
+
     TString SaveValue(const TFunction* f) const {
-        auto node = NYT::TNode()
-            ("CallableType", TypeToYsonNode(f->CallableType));
+        auto node = NYT::TNode()("NormalizedName", f->NormalizedName)("CallableType", TypeToYsonNode(f->CallableType));
         if (f->NormalizedUserType && f->NormalizedUserType->GetKind() != ETypeAnnotationKind::Void) {
             node("NormalizedUserType", TypeToYsonNode(f->NormalizedUserType));
         }
@@ -115,11 +179,37 @@ private:
             node("IsStrict", NYT::TNode(true));
         }
 
-        return NYT::NodeToYsonString(node,NYT::NYson::EYsonFormat::Binary);
+        if (!f->Messages.empty()) {
+            auto list = NYT::TNode::CreateList();
+            for (const auto& x : f->Messages) {
+                list.Add(x);
+            }
+
+            node("Messages", list);
+        }
+
+        return NYT::NodeToYsonString(node, NYT::NYson::EYsonFormat::Binary);
+    }
+
+    void LoadValue(TImport* import, const TString& value) const {
+        auto node = NYT::NodeFromYsonString(value);
+        if (node.HasKey("Modules")) {
+            import->Modules.ConstructInPlace();
+            const auto& moduleNodes = node["Modules"].AsList();
+            for (const auto& moduleNode : moduleNodes) {
+                import->Modules->push_back(moduleNode.AsString());
+            }
+        }
     }
 
     void LoadValue(TFunction* f, const TString& value, TExprContext& ctx) const {
         auto node = NYT::NodeFromYsonString(value);
+        if (node.HasKey("NormalizedName")) {
+            f->NormalizedName = node["NormalizedName"].AsString();
+        } else {
+            f->NormalizedName = f->Name;
+        }
+
         f->CallableType = ParseTypeFromYson(node["CallableType"], ctx);
         if (node.HasKey("NormalizedUserType")) {
             f->NormalizedUserType = ParseTypeFromYson(node["NormalizedUserType"], ctx);
@@ -136,6 +226,12 @@ private:
         if (node.HasKey("IsStrict")) {
             f->IsStrict = node["IsStrict"].AsBool();
         }
+
+        if (node.HasKey("Messages")) {
+            for (const auto& x : node["Messages"].AsList()) {
+                f->Messages.push_back(x.AsString());
+            }
+        }
     }
 
 private:
@@ -143,10 +239,10 @@ private:
     const TQContext QContext_;
 };
 
-}
+} // namespace
 
 IUdfResolver::TPtr WrapUdfResolverWithQContext(IUdfResolver::TPtr inner, const TQContext& qContext) {
     return new TResolver(inner, qContext);
 }
 
-}
+} // namespace NYql::NCommon

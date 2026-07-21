@@ -3,7 +3,7 @@
  * parse_agg.c
  *	  handle aggregates and window functions in parser
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -14,6 +14,7 @@
  */
 #include "postgres.h"
 
+#include "access/htup_details.h"
 #include "catalog/pg_aggregate.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_type.h"
@@ -28,13 +29,15 @@
 #include "rewrite/rewriteManip.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
-
+#include "utils/syscache.h"
 
 typedef struct
 {
 	ParseState *pstate;
 	int			min_varlevel;
 	int			min_agglevel;
+	int			min_ctelevel;
+	RangeTblEntry *min_cte;
 	int			sublevels_up;
 } check_agg_arguments_context;
 
@@ -54,7 +57,8 @@ typedef struct
 static int	check_agg_arguments(ParseState *pstate,
 								List *directargs,
 								List *args,
-								Expr *filter);
+								Expr *filter,
+								int agglocation);
 static bool check_agg_arguments_walker(Node *node,
 									   check_agg_arguments_context *context);
 static void check_ungrouped_columns(Node *node, ParseState *pstate, Query *qry,
@@ -109,18 +113,6 @@ transformAggregateCall(ParseState *pstate, Aggref *agg,
 	AttrNumber	attno = 1;
 	int			save_next_resno;
 	ListCell   *lc;
-
-	/*
-	 * Before separating the args into direct and aggregated args, make a list
-	 * of their data type OIDs for use later.
-	 */
-	foreach(lc, args)
-	{
-		Expr	   *arg = (Expr *) lfirst(lc);
-
-		argtypes = lappend_oid(argtypes, exprType((Node *) arg));
-	}
-	agg->aggargtypes = argtypes;
 
 	if (AGGKIND_IS_ORDERED_SET(agg->aggkind))
 	{
@@ -233,6 +225,29 @@ transformAggregateCall(ParseState *pstate, Aggref *agg,
 	agg->aggorder = torder;
 	agg->aggdistinct = tdistinct;
 
+	/*
+	 * Now build the aggargtypes list with the type OIDs of the direct and
+	 * aggregated args, ignoring any resjunk entries that might have been
+	 * added by ORDER BY/DISTINCT processing.  We can't do this earlier
+	 * because said processing can modify some args' data types, in particular
+	 * by resolving previously-unresolved "unknown" literals.
+	 */
+	foreach(lc, agg->aggdirectargs)
+	{
+		Expr	   *arg = (Expr *) lfirst(lc);
+
+		argtypes = lappend_oid(argtypes, exprType((Node *) arg));
+	}
+	foreach(lc, tlist)
+	{
+		TargetEntry *tle = (TargetEntry *) lfirst(lc);
+
+		if (tle->resjunk)
+			continue;			/* ignore junk */
+		argtypes = lappend_oid(argtypes, exprType((Node *) tle->expr));
+	}
+	agg->aggargtypes = argtypes;
+
 	check_agglevels_and_constraints(pstate, (Node *) agg);
 }
 
@@ -321,7 +336,8 @@ check_agglevels_and_constraints(ParseState *pstate, Node *expr)
 	min_varlevel = check_agg_arguments(pstate,
 									   directargs,
 									   args,
-									   filter);
+									   filter,
+									   location);
 
 	*p_levelsup = min_varlevel;
 
@@ -363,8 +379,6 @@ check_agglevels_and_constraints(ParseState *pstate, Node *expr)
 
 			break;
 		case EXPR_KIND_FROM_SUBSELECT:
-			/* Should only be possible in a LATERAL subquery */
-			Assert(pstate->p_lateral_active);
 
 			/*
 			 * Aggregate/grouping scope rules make it worth being explicit
@@ -433,6 +447,13 @@ check_agglevels_and_constraints(ParseState *pstate, Node *expr)
 		case EXPR_KIND_UPDATE_SOURCE:
 		case EXPR_KIND_UPDATE_TARGET:
 			errkind = true;
+			break;
+		case EXPR_KIND_MERGE_WHEN:
+			if (isAgg)
+				err = _("aggregate functions are not allowed in MERGE WHEN conditions");
+			else
+				err = _("grouping operations are not allowed in MERGE WHEN conditions");
+
 			break;
 		case EXPR_KIND_GROUP_BY:
 			errkind = true;
@@ -617,7 +638,8 @@ static int
 check_agg_arguments(ParseState *pstate,
 					List *directargs,
 					List *args,
-					Expr *filter)
+					Expr *filter,
+					int agglocation)
 {
 	int			agglevel;
 	check_agg_arguments_context context;
@@ -625,6 +647,8 @@ check_agg_arguments(ParseState *pstate,
 	context.pstate = pstate;
 	context.min_varlevel = -1;	/* signifies nothing found yet */
 	context.min_agglevel = -1;
+	context.min_ctelevel = -1;
+	context.min_cte = NULL;
 	context.sublevels_up = 0;
 
 	(void) check_agg_arguments_walker((Node *) args, &context);
@@ -663,6 +687,20 @@ check_agg_arguments(ParseState *pstate,
 	}
 
 	/*
+	 * If there's a non-local CTE that's below the aggregate's semantic level,
+	 * complain.  It's not quite clear what we should do to fix up such a case
+	 * (treating the CTE reference like a Var seems wrong), and it's also
+	 * unclear whether there is a real-world use for such cases.
+	 */
+	if (context.min_ctelevel >= 0 && context.min_ctelevel < agglevel)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("outer-level aggregate cannot use a nested CTE"),
+				 errdetail("CTE \"%s\" is below the aggregate's semantic level.",
+						   context.min_cte->eref->aliasname),
+				 parser_errposition(pstate, agglocation)));
+
+	/*
 	 * Now check for vars/aggs in the direct arguments, and throw error if
 	 * needed.  Note that we allow a Var of the agg's semantic level, but not
 	 * an Agg of that level.  In principle such Aggs could probably be
@@ -675,6 +713,7 @@ check_agg_arguments(ParseState *pstate,
 	{
 		context.min_varlevel = -1;
 		context.min_agglevel = -1;
+		context.min_ctelevel = -1;
 		(void) check_agg_arguments_walker((Node *) directargs, &context);
 		if (context.min_varlevel >= 0 && context.min_varlevel < agglevel)
 			ereport(ERROR,
@@ -690,6 +729,13 @@ check_agg_arguments(ParseState *pstate,
 					 parser_errposition(pstate,
 										locate_agg_of_level((Node *) directargs,
 															context.min_agglevel))));
+		if (context.min_ctelevel >= 0 && context.min_ctelevel < agglevel)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("outer-level aggregate cannot use a nested CTE"),
+					 errdetail("CTE \"%s\" is below the aggregate's semantic level.",
+							   context.min_cte->eref->aliasname),
+					 parser_errposition(pstate, agglocation)));
 	}
 	return agglevel;
 }
@@ -728,8 +774,7 @@ check_agg_arguments_walker(Node *node,
 				context->min_agglevel > agglevelsup)
 				context->min_agglevel = agglevelsup;
 		}
-		/* no need to examine args of the inner aggregate */
-		return false;
+		/* Continue and descend into subtree */
 	}
 	if (IsA(node, GroupingFunc))
 	{
@@ -768,6 +813,30 @@ check_agg_arguments_walker(Node *node,
 					 parser_errposition(context->pstate,
 										((WindowFunc *) node)->location)));
 	}
+
+	if (IsA(node, RangeTblEntry))
+	{
+		RangeTblEntry *rte = (RangeTblEntry *) node;
+
+		if (rte->rtekind == RTE_CTE)
+		{
+			int			ctelevelsup = rte->ctelevelsup;
+
+			/* convert levelsup to frame of reference of original query */
+			ctelevelsup -= context->sublevels_up;
+			/* ignore local CTEs of subqueries */
+			if (ctelevelsup >= 0)
+			{
+				if (context->min_ctelevel < 0 ||
+					context->min_ctelevel > ctelevelsup)
+				{
+					context->min_ctelevel = ctelevelsup;
+					context->min_cte = rte;
+				}
+			}
+		}
+		return false;			/* allow range_table_walker to continue */
+	}
 	if (IsA(node, Query))
 	{
 		/* Recurse into subselects */
@@ -777,7 +846,7 @@ check_agg_arguments_walker(Node *node,
 		result = query_tree_walker((Query *) node,
 								   check_agg_arguments_walker,
 								   (void *) context,
-								   0);
+								   QTW_EXAMINE_RTES_BEFORE);
 		context->sublevels_up--;
 		return result;
 	}
@@ -878,6 +947,9 @@ transformWindowFuncCall(ParseState *pstate, WindowFunc *wfunc,
 		case EXPR_KIND_UPDATE_SOURCE:
 		case EXPR_KIND_UPDATE_TARGET:
 			errkind = true;
+			break;
+		case EXPR_KIND_MERGE_WHEN:
+			err = _("window functions are not allowed in MERGE WHEN conditions");
 			break;
 		case EXPR_KIND_GROUP_BY:
 			errkind = true;
@@ -1015,6 +1087,10 @@ transformWindowFuncCall(ParseState *pstate, WindowFunc *wfunc,
 				 /* matched, no refname */ ;
 			else
 				continue;
+
+			/*
+			 * Also see similar de-duplication code in optimize_window_clauses
+			 */
 			if (equal(refwin->partitionClause, windef->partitionClause) &&
 				equal(refwin->orderClause, windef->orderClause) &&
 				refwin->frameOptions == windef->frameOptions &&
@@ -1152,7 +1228,7 @@ parseCheckAggregates(ParseState *pstate, Query *qry)
 	 * entries are RTE_JOIN kind.
 	 */
 	if (hasJoinRTEs)
-		groupClauses = (List *) flatten_join_alias_vars(qry,
+		groupClauses = (List *) flatten_join_alias_vars(NULL, qry,
 														(Node *) groupClauses);
 
 	/*
@@ -1196,7 +1272,7 @@ parseCheckAggregates(ParseState *pstate, Query *qry)
 							groupClauses, hasJoinRTEs,
 							have_non_var_grouping);
 	if (hasJoinRTEs)
-		clause = flatten_join_alias_vars(qry, clause);
+		clause = flatten_join_alias_vars(NULL, qry, clause);
 	check_ungrouped_columns(clause, pstate, qry,
 							groupClauses, groupClauseCommonVars,
 							have_non_var_grouping,
@@ -1207,7 +1283,7 @@ parseCheckAggregates(ParseState *pstate, Query *qry)
 							groupClauses, hasJoinRTEs,
 							have_non_var_grouping);
 	if (hasJoinRTEs)
-		clause = flatten_join_alias_vars(qry, clause);
+		clause = flatten_join_alias_vars(NULL, qry, clause);
 	check_ungrouped_columns(clause, pstate, qry,
 							groupClauses, groupClauseCommonVars,
 							have_non_var_grouping,
@@ -1536,7 +1612,7 @@ finalize_grouping_exprs_walker(Node *node,
 				Index		ref = 0;
 
 				if (context->hasJoinRTEs)
-					expr = flatten_join_alias_vars(context->qry, expr);
+					expr = flatten_join_alias_vars(NULL, context->qry, expr);
 
 				/*
 				 * Each expression must match a grouping entry at the current
@@ -1934,6 +2010,49 @@ resolve_aggregate_transtype(Oid aggfuncid,
 }
 
 /*
+ * agg_args_support_sendreceive
+ *		Returns true if all non-byval types of aggref's args have send and
+ *		receive functions.
+ */
+bool
+agg_args_support_sendreceive(Aggref *aggref)
+{
+	ListCell   *lc;
+
+	foreach(lc, aggref->args)
+	{
+		HeapTuple	typeTuple;
+		Form_pg_type pt;
+		TargetEntry *tle = (TargetEntry *) lfirst(lc);
+		Oid			type = exprType((Node *) tle->expr);
+
+		/*
+		 * RECORD is a special case: it has typsend/typreceive functions, but
+		 * record_recv only works if passed the correct typmod to identify the
+		 * specific anonymous record type.  array_agg_deserialize cannot do
+		 * that, so we have to disclaim support for the case.
+		 */
+		if (type == RECORDOID)
+			return false;
+
+		typeTuple = SearchSysCache1(TYPEOID, ObjectIdGetDatum(type));
+		if (!HeapTupleIsValid(typeTuple))
+			elog(ERROR, "cache lookup failed for type %u", type);
+
+		pt = (Form_pg_type) GETSTRUCT(typeTuple);
+
+		if (!pt->typbyval &&
+			(!OidIsValid(pt->typsend) || !OidIsValid(pt->typreceive)))
+		{
+			ReleaseSysCache(typeTuple);
+			return false;
+		}
+		ReleaseSysCache(typeTuple);
+	}
+	return true;
+}
+
+/*
  * Create an expression tree for the transition function of an aggregate.
  * This is needed so that polymorphic functions can be used within an
  * aggregate --- without the expression tree, such functions would not know
@@ -1951,6 +2070,11 @@ resolve_aggregate_transtype(Oid aggfuncid,
  * transfn_oid and invtransfn_oid identify the funcs to be called; the
  * latter may be InvalidOid, however if invtransfn_oid is set then
  * transfn_oid must also be set.
+ *
+ * transfn_oid may also be passed as the aggcombinefn when the *transfnexpr is
+ * to be used for a combine aggregate phase.  We expect invtransfn_oid to be
+ * InvalidOid in this case since there is no such thing as an inverse
+ * combinefn.
  *
  * Pointers to the constructed trees are returned into *transfnexpr,
  * *invtransfnexpr. If there is no invtransfn, the respective pointer is set
@@ -2012,35 +2136,6 @@ build_aggregate_transfn_expr(Oid *agg_input_types,
 		else
 			*invtransfnexpr = NULL;
 	}
-}
-
-/*
- * Like build_aggregate_transfn_expr, but creates an expression tree for the
- * combine function of an aggregate, rather than the transition function.
- */
-void
-build_aggregate_combinefn_expr(Oid agg_state_type,
-							   Oid agg_input_collation,
-							   Oid combinefn_oid,
-							   Expr **combinefnexpr)
-{
-	Node	   *argp;
-	List	   *args;
-	FuncExpr   *fexpr;
-
-	/* combinefn takes two arguments of the aggregate state type */
-	argp = make_agg_arg(agg_state_type, agg_input_collation);
-
-	args = list_make2(argp, argp);
-
-	fexpr = makeFuncExpr(combinefn_oid,
-						 agg_state_type,
-						 args,
-						 InvalidOid,
-						 agg_input_collation,
-						 COERCE_EXPLICIT_CALL);
-	/* combinefn is currently never treated as variadic */
-	*combinefnexpr = (Expr *) fexpr;
 }
 
 /*

@@ -3,15 +3,17 @@
 #include "yql_yt_optimize.h"
 
 #include <contrib/ydb/library/yql/providers/yt/expr_nodes/yql_yt_expr_nodes.h>
-#include <contrib/ydb/library/yql/providers/common/dq/yql_dq_optimization_impl.h>
-#include <contrib/ydb/library/yql/providers/dq/expr_nodes/dqs_expr_nodes.h>
+
+#include <contrib/ydb/library/yql/core/dqs_expr_nodes/dqs_expr_nodes.h>
 #include <contrib/ydb/library/yql/core/yql_expr_optimize.h>
+#include <contrib/ydb/library/yql/providers/common/dq/yql_dq_optimization_impl.h>
 #include <contrib/ydb/library/yql/utils/log/log.h>
 
 
 namespace NYql {
 
 using namespace NNodes;
+using namespace NNodes::NDq;
 
 class TYtDqOptimizers: public TDqOptimizationBase {
 public:
@@ -96,8 +98,10 @@ public:
             return read;
         }
 
+        const ERuntimeClusterSelectionMode selectionMode =
+            State_->Configuration->RuntimeClusterSelection.Get().GetOrElse(DEFAULT_RUNTIME_CLUSTER_SELECTION);
         TSyncMap syncList;
-        if (!IsYtCompleteIsolatedLambda(count.Count().Ref(), syncList, cluster, true, false)) {
+        if (!IsYtCompleteIsolatedLambda(count.Count().Ref(), syncList, cluster, false, selectionMode)) {
             return read;
         }
 
@@ -105,7 +109,7 @@ public:
         if (NYql::HasSetting(section.Settings().Ref(), EYtSettingType::Sample)) {
             return read;
         }
-        if (AnyOf(section.Paths(), [](const auto& path) { TYtPathInfo pathInfo(path); return (pathInfo.Table->Meta && pathInfo.Table->Meta->IsDynamic) || pathInfo.Ranges; })) {
+        if (AnyOf(section.Paths(), [](const auto& path) { TYtPathInfo pathInfo(path); return (pathInfo.Table->Meta && pathInfo.Table->Meta->IsDynamic) || pathInfo.Ranges || pathInfo.QLFilter; })) {
             return read;
         }
 

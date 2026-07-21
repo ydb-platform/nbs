@@ -1,6 +1,7 @@
 #include "yql_clickhouse_dq_integration.h"
 #include "yql_clickhouse_mkql_compiler.h"
 
+#include <contrib/ydb/library/yql/core/yql_expr_type_annotation.h>
 #include <contrib/ydb/library/yql/providers/common/dq/yql_dq_integration_impl.h>
 #include <contrib/ydb/library/yql/providers/dq/common/yql_dq_settings.h>
 #include <contrib/ydb/library/yql/providers/dq/expr_nodes/dqs_expr_nodes.h>
@@ -33,7 +34,7 @@ public:
         return Nothing();
     }
 
-    TExprNode::TPtr WrapRead(const TDqSettings&, const TExprNode::TPtr& read, TExprContext& ctx) override {
+    TExprNode::TPtr WrapRead(const TExprNode::TPtr& read, TExprContext& ctx, const TWrapReadSettings& ) override {
         if (const auto maybeClReadTable = TMaybeNode<TClReadTable>(read)) {
             const auto clReadTable = maybeClReadTable.Cast();
             const auto token = TString("cluster:default_") += clReadTable.DataSource().Cluster().StringValue();
@@ -52,6 +53,7 @@ public:
 
             return Build<TDqSourceWrap>(ctx, read->Pos())
                 .Input<TClSourceSettings>()
+                    .World(clReadTable.World())
                     .Table(clReadTable.Table())
                     .Token<TCoSecureParam>()
                         .Name().Build(token)
@@ -65,7 +67,7 @@ public:
         return read;
     }
 
-    ui64 Partition(const TDqSettings&, size_t, const TExprNode&, TVector<TString>& partitions, TString*, TExprContext&, bool) override {
+    ui64 Partition(const TExprNode&, TVector<TString>& partitions, TString*, TExprContext&, const TPartitionSettings&) override {
         partitions.clear();
         NCH::TRange range;
 //      range.SetRange("limit 42 offset 42 order by ...."); // Possible set range like this.
@@ -75,7 +77,7 @@ public:
         return 0ULL;
     }
 
-    void FillSourceSettings(const TExprNode& node, ::google::protobuf::Any& protoSettings, TString& sourceType, size_t) override {
+    void FillSourceSettings(const TExprNode& node, ::google::protobuf::Any& protoSettings, TString& sourceType, size_t, TExprContext&) override {
         const TDqSource source(&node);
         if (const auto maySettings = source.Settings().Maybe<TClSourceSettings>()) {
             const auto settings = maySettings.Cast();

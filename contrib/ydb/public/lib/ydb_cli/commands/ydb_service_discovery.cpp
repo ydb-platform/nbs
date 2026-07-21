@@ -16,21 +16,23 @@ TCommandListEndpoints::TCommandListEndpoints()
 
 void TCommandListEndpoints::Config(TConfig& config) {
     TYdbSimpleCommand::Config(config);
+    config.Opts->AddLongOption('p', "piles", "Output piles info").StoreTrue(&OutputPilesInfo).DefaultValue(false).Hidden();
     config.SetFreeArgsNum(0);
 }
 
 int TCommandListEndpoints::Run(TConfig& config) {
-    NDiscovery::TDiscoveryClient client(CreateDriver(config));
+    auto driver = CreateDriver(config);
+    NDiscovery::TDiscoveryClient client(driver);
     NDiscovery::TListEndpointsResult result = client.ListEndpoints(
         FillSettings(NDiscovery::TListEndpointsSettings())
     ).GetValueSync();
-    ThrowOnError(result);
+    NStatusHelpers::ThrowOnErrorOrPrintIssues(result);
     PrintResponse(result);
     return EXIT_SUCCESS;
 }
 
 void TCommandListEndpoints::PrintResponse(NDiscovery::TListEndpointsResult& result) {
-    const TVector<NDiscovery::TEndpointInfo>& endpoints = result.GetEndpointsInfo();
+    const std::vector<NDiscovery::TEndpointInfo>& endpoints = result.GetEndpointsInfo();
     if (endpoints.size()) {
         for (auto& endpoint : endpoints) {
             if (endpoint.Ssl) {
@@ -39,8 +41,11 @@ void TCommandListEndpoints::PrintResponse(NDiscovery::TListEndpointsResult& resu
                 Cout << "grpc://";
             }
             Cout << endpoint.Address << ":" << endpoint.Port;
-            if (endpoint.Location) {
+            if (!endpoint.Location.empty()) {
                 Cout << " [" << endpoint.Location << "]";
+            }
+            if (!endpoint.BridgePileName.empty()) {
+                Cout << " (" << endpoint.BridgePileName << ")";
             }
             for (const auto& service : endpoint.Services) {
                 Cout << " #" << service;
@@ -50,6 +55,14 @@ void TCommandListEndpoints::PrintResponse(NDiscovery::TListEndpointsResult& resu
     } else {
         Cout << "Endpoint list Is empty." << Endl;
     }
+
+    const auto& pileStates = result.GetPileStates();
+    if (OutputPilesInfo && pileStates.size()) {
+        Cout << Endl;
+        for (const auto& pileState : pileStates) {
+            Cout << "Pile \"" << pileState.PileName << "\": " << pileState.State << Endl;
+        }
+    }
 }
 
 TCommandWhoAmI::TCommandWhoAmI()
@@ -58,36 +71,65 @@ TCommandWhoAmI::TCommandWhoAmI()
 
 void TCommandWhoAmI::Config(TConfig& config) {
     TYdbSimpleCommand::Config(config);
-    config.Opts->AddLongOption('g', "groups", "With groups").NoArgument().SetFlag(&WithGroups);
+    config.Opts->AddLongOption('g', "groups", "Show groups").StoreTrue(&WithGroups);
+    config.Opts->AddLongOption('l', "access-list", "Show access list").StoreTrue(&WithAccessList);
+    config.Opts->AddLongOption('a', "all", "Show all additional info (groups and access list)").StoreTrue(&WithAll);
     config.SetFreeArgsNum(0);
 }
 
 int TCommandWhoAmI::Run(TConfig& config) {
     auto driver = CreateDriver(config);
     NDiscovery::TDiscoveryClient client(driver);
+
+    // If --all is specified, enable both groups and access list
+    bool showGroups = WithGroups || WithAll;
+
     NDiscovery::TWhoAmIResult result = client.WhoAmI(
-        FillSettings(NDiscovery::TWhoAmISettings().WithGroups(WithGroups))
+        FillSettings(NDiscovery::TWhoAmISettings().WithGroups(showGroups))
     ).GetValueSync();
-    ThrowOnError(result);
+    NStatusHelpers::ThrowOnErrorOrPrintIssues(result);
     PrintResponse(result);
-    driver.Stop(true);
     return EXIT_SUCCESS;
 }
 
 void TCommandWhoAmI::PrintResponse(NDiscovery::TWhoAmIResult& result) {
-    const TString& userName = result.GetUserName();
-    if (userName) {
+    const std::string& userName = result.GetUserName();
+    if (!userName.empty()) {
         Cout << "User SID: " << userName << Endl;
-        if (WithGroups) {
-            const TVector<TString>& groups = result.GetGroups();
+
+        // Show groups if --groups or --all is specified
+        bool showGroups = WithGroups || WithAll;
+        if (showGroups) {
+            const std::vector<std::string>& groups = result.GetGroups();
             if (groups.size() > 0) {
                 Cout << Endl << "Group SIDs:" << Endl;
-                for (const TString& group : groups) {
+                for (const std::string& group : groups) {
                     Cout << group << Endl;
                 }
             } else {
                 Cout << Endl << "User has no groups" << Endl;
             }
+        }
+    }
+
+    // Show access list if --access-list or --all is specified
+    bool showAccessList = WithAccessList || WithAll;
+    if (showAccessList) {
+        bool hasAnyAccess = result.IsDatabaseAllowed() || result.IsViewerAllowed() ||
+            result.IsMonitoringAllowed() || result.IsAdministrationAllowed() ||
+            result.IsRegisterNodeAllowed() || result.IsBootstrapAllowed();
+        if (hasAnyAccess) {
+            if (!userName.empty()) {
+                Cout << Endl;
+            }
+
+            Cout << "Access levels:" << Endl;
+            if (result.IsDatabaseAllowed()) Cout << "Database" << Endl;
+            if (result.IsViewerAllowed()) Cout << "Viewer" << Endl;
+            if (result.IsMonitoringAllowed()) Cout << "Monitoring" << Endl;
+            if (result.IsAdministrationAllowed()) Cout << "Administration" << Endl;
+            if (result.IsRegisterNodeAllowed()) Cout << "Register node" << Endl;
+            if (result.IsBootstrapAllowed()) Cout << "Bootstrap" << Endl;
         }
     }
 }

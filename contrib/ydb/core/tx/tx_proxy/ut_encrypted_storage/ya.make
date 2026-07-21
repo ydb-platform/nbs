@@ -2,22 +2,7 @@ UNITTEST_FOR(contrib/ydb/core/tx/tx_proxy)
 
 FORK_SUBTESTS()
 
-IF (WITH_VALGRIND)
-    TIMEOUT(3600)
-    SIZE(LARGE)
-    TAG(ya:fat)
-    REQUIREMENTS(
-        cpu:4
-        ram:32
-    )
-ELSE()
-    REQUIREMENTS(
-        cpu:4
-        ram:16
-    )
-    TIMEOUT(600)
-    SIZE(MEDIUM)
-ENDIF()
+SIZE(MEDIUM)
 
 PEERDIR(
     library/cpp/getopt

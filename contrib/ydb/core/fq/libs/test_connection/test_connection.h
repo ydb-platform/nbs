@@ -2,12 +2,11 @@
 
 #include "counters.h"
 
-#include <contrib/ydb/core/fq/libs/actors/logging/log.h>
+#include <contrib/ydb/library/actors/core/log.h>
 #include <contrib/ydb/core/fq/libs/config/protos/test_connection.pb.h>
 #include <contrib/ydb/core/fq/libs/db_id_async_resolver_impl/db_async_resolver_impl.h>
 #include <contrib/ydb/core/fq/libs/shared_resources/shared_resources.h>
 #include <contrib/ydb/core/fq/libs/signer/signer.h>
-#include <contrib/ydb/library/yql/minikql/mkql_function_registry.h>
 #include <contrib/ydb/library/yql/providers/common/http_gateway/yql_http_gateway.h>
 #include <contrib/ydb/library/yql/providers/common/token_accessor/client/factory.h>
 #include <contrib/ydb/library/yql/providers/pq/cm_client/client.h>
@@ -16,28 +15,9 @@
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 
-
-#define TC_LOG_D(s) \
-    LOG_YQ_TEST_CONNECTION_DEBUG(s)
-#define TC_LOG_I(s) \
-    LOG_YQ_TEST_CONNECTION_INFO(s)
-#define TC_LOG_W(s) \
-    LOG_YQ_TEST_CONNECTION_WARN(s)
-#define TC_LOG_E(s) \
-    LOG_YQ_TEST_CONNECTION_ERROR(s)
-#define TC_LOG_T(s) \
-    LOG_YQ_TEST_CONNECTION_TRACE(s)
-
-#define TC_LOG_AS_D(a, s) \
-    LOG_YQ_TEST_CONNECTION_AS_DEBUG(a, s)
-#define TC_LOG_AS_I(a, s) \
-    LOG_YQ_TEST_CONNECTION_AS_INFO(a, s)
-#define TC_LOG_AS_W(a, s) \
-    LOG_YQ_TEST_CONNECTION_AS_WARN(a, s)
-#define TC_LOG_AS_E(a, s) \
-    LOG_YQ_TEST_CONNECTION_AS_ERROR(a, s)
-#define TC_LOG_AS_T(a, s) \
-    LOG_YQ_TEST_CONNECTION_AS_TRACE(a, s)
+namespace NKikimr::NMiniKQL {
+    class IFunctionRegistry;
+} // namespace NKikimr::NMiniKQL
 
 namespace NFq {
 

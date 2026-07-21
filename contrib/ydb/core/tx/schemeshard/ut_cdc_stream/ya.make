@@ -4,12 +4,10 @@ FORK_SUBTESTS()
 
 SPLIT_FACTOR(2)
 
-IF (SANITIZER_TYPE == "thread" OR WITH_VALGRIND)
-    TIMEOUT(3600)
+IF (SANITIZER_TYPE == "thread")
     SIZE(LARGE)
-    TAG(ya:fat)
+    INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/large.inc)
 ELSE()
-    TIMEOUT(600)
     SIZE(MEDIUM)
 ENDIF()
 
@@ -24,7 +22,5 @@ SRCS(
 )
 
 YQL_LAST_ABI_VERSION()
-
-REQUIREMENTS(ram:11)
 
 END()

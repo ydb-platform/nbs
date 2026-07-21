@@ -3,7 +3,7 @@
 
 #include <contrib/ydb/public/lib/ydb_cli/commands/ydb_common.h>
 #include <contrib/ydb/public/lib/ydb_cli/common/tabbed_table.h>
-#include <library/cpp/colorizer/colors.h>
+#include <contrib/ydb/public/lib/ydb_cli/common/colors.h>
 
 namespace NYdb {
 namespace NConsoleClient {
@@ -21,7 +21,8 @@ void TSchemePrinterBase::Print() {
 bool TSchemePrinterBase::IsDirectoryLike(const NScheme::TSchemeEntry& entry) {
     return entry.Type == NScheme::ESchemeEntryType::Directory
         || entry.Type == NScheme::ESchemeEntryType::SubDomain
-        || entry.Type == NScheme::ESchemeEntryType::ColumnStore;
+        || entry.Type == NScheme::ESchemeEntryType::ColumnStore
+        || entry.Type == NScheme::ESchemeEntryType::BackupCollection;
 }
 
 NThreading::TFuture<void> TSchemePrinterBase::PrintDirectoryRecursive(const TString& fullPath, const TString& relativePath) {
@@ -30,7 +31,7 @@ NThreading::TFuture<void> TSchemePrinterBase::PrintDirectoryRecursive(const TStr
         Settings.ListDirectorySettings
     ).Apply([this, fullPath, relativePath](const NScheme::TAsyncListDirectoryResult& resultFuture) {
         const auto& result = resultFuture.GetValueSync();
-        ThrowOnError(result);
+        NStatusHelpers::ThrowOnErrorOrPrintIssues(result);
 
         if (relativePath || IsDirectoryLike(result.GetEntry())) {
             std::lock_guard g(Lock);
@@ -65,13 +66,13 @@ NTable::TDescribeTableResult TSchemePrinterBase::DescribeTable(const TString& re
     NTable::TCreateSessionResult sessionResult = TableClient.GetSession(
         NTable::TCreateSessionSettings()
     ).GetValueSync();
-    ThrowOnError(sessionResult);
+    NStatusHelpers::ThrowOnErrorOrPrintIssues(sessionResult);
 
     NTable::TDescribeTableResult tableResult = sessionResult.GetSession().DescribeTable(
         Settings.Path + (relativePath ? ("/" + relativePath) : ""),
         Settings.DescribeTableSettings
     ).GetValueSync();
-    ThrowOnError(tableResult);
+    NStatusHelpers::ThrowOnErrorOrPrintIssues(tableResult);
     return tableResult;
 }
 
@@ -83,7 +84,7 @@ void TDefaultSchemePrinter::PrintDirectory(
     const TString& relativePath,
     const NScheme::TListDirectoryResult& entryResult)
 {
-    TVector<NScheme::TSchemeEntry> children = entryResult.GetChildren();
+    std::vector<NScheme::TSchemeEntry> children = entryResult.GetChildren();
     NScheme::TSchemeEntry entry = entryResult.GetEntry();
 
     if (Settings.Recursive) {
@@ -94,7 +95,7 @@ void TDefaultSchemePrinter::PrintDirectory(
     }
     if (children.size()) {
         if (Settings.FromNewLine) {
-            NColorizer::TColors colors = NColorizer::AutoColors(Cout);
+            NColorizer::TColors colors = NConsoleClient::AutoColors(Cout);
             for (const auto& child : children) {
                 PrintSchemeEntry(Cout, child, colors);
                 Cout << Endl;
@@ -109,7 +110,7 @@ void TDefaultSchemePrinter::PrintDirectory(
 
 void TDefaultSchemePrinter::PrintEntry(const TString& relativePath, const NScheme::TSchemeEntry& entry) {
     if (!relativePath) {
-        NColorizer::TColors colors = NColorizer::AutoColors(Cout);
+        NColorizer::TColors colors = NConsoleClient::AutoColors(Cout);
         PrintSchemeEntry(Cout, entry, colors);
         Cout << Endl;
     }
@@ -140,7 +141,7 @@ void TTableSchemePrinter::PrintDirectory(
         // Do not print target directory itself
         if (!Settings.Recursive) {
             for (const auto& child : entryResult.GetChildren()) {
-                PrintEntry(child.Name, child);
+                PrintEntry(TString{child.Name}, child);
             }
         }
     }
@@ -159,7 +160,7 @@ void TTableSchemePrinter::PrintTable(const TString& relativePath, const NScheme:
     auto tableDescription = tableResult.GetTableDescription();
 
     // Empty relative path in case of a single non-directory object in Path
-    TString actualRelativePath = relativePath ? relativePath : entry.Name;
+    TString actualRelativePath = relativePath ? relativePath : TString{entry.Name};
 
     Table.AddRow()
         .Column(0, EntryTypeToString(entry.Type))
@@ -173,7 +174,7 @@ void TTableSchemePrinter::PrintTable(const TString& relativePath, const NScheme:
 
 void TTableSchemePrinter::PrintOther(const TString& relativePath, const NScheme::TSchemeEntry& entry) {
     // Empty relative path in case of a single non-directory object in Path
-    TString actualRelativePath = relativePath ? relativePath : entry.Name;
+    TString actualRelativePath = relativePath ? relativePath : TString{entry.Name};
     Table.AddRow()
         .Column(0, EntryTypeToString(entry.Type))
         .Column(1, entry.Owner)
@@ -210,7 +211,7 @@ void TJsonSchemePrinter::PrintDirectory(const TString& relativePath, const NSche
             NeedToCloseList = true;
         } else {
             for (const auto& child : entryResult.GetChildren()) {
-                PrintEntry(child.Name, child);
+                PrintEntry(TString{child.Name}, child);
             }
             Writer.EndList();
             Cout << Writer.Str() << Endl;
@@ -255,7 +256,7 @@ void TJsonSchemePrinter::PrintOther(const TString& relativePath, const NScheme::
 
 void TJsonSchemePrinter::PrintCommonInfo(const TString& relativePath, const NScheme::TSchemeEntry& entry) {
     // Empty relative path in case of a single non-directory object in Path
-    TString actualRelativePath = relativePath ? relativePath : entry.Name;
+    TString actualRelativePath = relativePath ? relativePath : TString{entry.Name};
     Writer.WriteKey("type");
     Writer.WriteString(EntryTypeToString(entry.Type));
     Writer.WriteKey("path");

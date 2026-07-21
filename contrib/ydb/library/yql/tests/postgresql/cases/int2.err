@@ -136,7 +136,7 @@ SELECT * FROM (TABLE int2_tbl) AS s (a, b);
 </sql-statement>
 -stdin-:<main>: Fatal: Table metadata loading
 
-    -stdin-:<main>: Fatal: ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.int2_tbl
+    -stdin-:<main>: Fatal: ydb/library/contrib/ydb/library/yql/providers/yt/gateway/file/yql_yt_file_services.cpp:44: Table not found: plato.int2_tbl
     
 <sql-statement>
 SELECT i.* FROM INT2_TBL i WHERE i.f1 <> int2 '0';

@@ -5,27 +5,26 @@ TEST_SRCS(
 )
 
 SPLIT_FACTOR(10)
-IF (SANITIZER_TYPE == "thread")
-    TIMEOUT(1800)
-    SIZE(LARGE)
-    TAG(ya:fat)
+
+SIZE(MEDIUM)
+
+IF (SANITIZER_TYPE)
+    REQUIREMENTS(ram:32 cpu:4)
+    IF (SANITIZER_TYPE == "thread")
+        SIZE(LARGE)
+        INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/large.inc)
+    ENDIF()
 ELSE()
-    TIMEOUT(600)
-    SIZE(MEDIUM)
+    REQUIREMENTS(cpu:2)
 ENDIF()
 
-REQUIREMENTS(
-    cpu:4
-    ram:32
-)
-
-ENV(YDB_DRIVER_BINARY="contrib/ydb/apps/ydbd/ydbd")
+INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/harness_dep.inc)
 DEPENDS(
-    contrib/ydb/apps/ydbd
 )
 
 PEERDIR(
     contrib/ydb/tests/library
+    contrib/ydb/tests/library/clients
 )
 
 FORK_SUBTESTS()

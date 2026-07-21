@@ -8,16 +8,21 @@ namespace NKikimr::Tests::NCS {
 class THelperSchemaless : public NCommon::THelper {
 private:
     using TBase = NCommon::THelper;
+protected:
+    void ExecuteModifyScheme(NKikimrSchemeOp::TModifyScheme& modifyScheme);
+
 public:
     static constexpr const char * ROOT_PATH = "/Root";
 
     using TBase::TBase;
-    void CreateTestOlapStore(TActorId sender, TString scheme);
-    void CreateTestOlapTable(TActorId sender, TString storeOrDirName, TString scheme);
+    void CreateTestOlapStore(TString scheme);
+    void CreateTestOlapTable(TString storeOrDirName, TString scheme);
     void SendDataViaActorSystem(TString testTable, ui64 pathIdBegin, ui64 tsBegin, size_t rowCount, const ui32 tsStepUs = 1) const;
-    void SendDataViaActorSystem(TString testTable, std::shared_ptr<arrow::RecordBatch> batch, const Ydb::StatusIds_StatusCode& expectedStatus =  Ydb::StatusIds::SUCCESS) const;
+    void SendDataViaActorSystem(TString testTable, std::shared_ptr<arrow::RecordBatch> batch,
+        const Ydb::StatusIds_StatusCode& expectedStatus = Ydb::StatusIds::SUCCESS, const TString& expectedIssuePrefix = {}) const;
 
-    virtual std::shared_ptr<arrow::RecordBatch> TestArrowBatch(ui64 pathIdBegin, ui64 tsBegin, size_t rowCount, const ui32 tsStepUs = 1) const = 0;
+    virtual std::shared_ptr<arrow::RecordBatch> TestArrowBatch(ui64 pathIdBegin, ui64 tsBegin, size_t rowCount, const ui64 tsStepUs = 1) const = 0;
+    virtual ~THelperSchemaless() = default;
 };
 
 class THelper: public THelperSchemaless {
@@ -37,6 +42,10 @@ protected:
     void CreateOlapTablesWithStore(TVector<TString> tableName = {"olapTable"}, TString storeName = "olapStore",
         ui32 storeShardsCount = 4, ui32 tableShardsCount = 3);
 
+    void CreateSchemaOlapTables(const TString tableSchema, TVector<TString> tableNames = {"olapTable"},
+        ui32 tableShardsCount = 3);
+    void CreateOlapTables(TVector<TString> tableName = {"olapTable"}, ui32 tableShardsCount = 3);
+
 public:
     using TBase::TBase;
 
@@ -46,6 +55,12 @@ public:
         return *this;
     }
 
+    void SetTilingPlanner(const TString& storeName = "olapStore");
+    void SetForcedCompaction(const TString& storeName = "olapStore");
+
+    static constexpr const char* TILING_NO_COMPACTION_FEATURES_JSON =
+        R"({"accumulator_portion_size_limit":18446744073709551615,"accumulator_trigger_portions":18446744073709551615,"accumulator_trigger_bytes":18446744073709551615,"accumulator_overload_portions":18446744073709551615,"accumulator_overload_bytes":18446744073709551615})";
+
     static constexpr const char * PROTO_SCHEMA = R"(
         Columns { Name: "timestamp" Type: "Timestamp" NotNull: true }
         Columns { Name: "resource_id" Type: "Utf8" DataAccessorConstructor{ ClassName: "SPARSED" }}
@@ -53,7 +68,6 @@ public:
         Columns { Name: "level" Type: "Int32" DataAccessorConstructor{ ClassName: "SPARSED" }}
         Columns { Name: "message" Type: "Utf8" }
         KeyColumnNames: "timestamp"
-        Engine: COLUMN_ENGINE_REPLACING_TIMESERIES
     )";
 
     void WithSomeNulls() {
@@ -65,7 +79,7 @@ public:
     }
     virtual TString GetTestTableSchema() const;
 
-    virtual std::shared_ptr<arrow::RecordBatch> TestArrowBatch(ui64 pathIdBegin, ui64 tsBegin, size_t rowCount, const ui32 tsStepUs = 1) const override;
+    virtual std::shared_ptr<arrow::RecordBatch> TestArrowBatch(ui64 pathIdBegin, ui64 tsBegin, size_t rowCount, const ui64 tsStepUs = 1) const override;
 };
 
 class TCickBenchHelper: public THelperSchemaless {
@@ -186,7 +200,7 @@ public:
         KeyColumnNames: ["EventTime", "EventDate", "CounterID", "UserID", "WatchID"]
     )";
 
-    std::shared_ptr<arrow::RecordBatch> TestArrowBatch(ui64, ui64 begin, size_t rowCount, const ui32 tsStepUs = 1) const override;
+    std::shared_ptr<arrow::RecordBatch> TestArrowBatch(ui64, ui64 begin, size_t rowCount, const ui64 tsStepUs = 1) const override;
 };
 
 class TTableWithNullsHelper: public THelperSchemaless {
@@ -207,7 +221,7 @@ public:
         KeyColumnNames: "id"
     )";
 
-    std::shared_ptr<arrow::RecordBatch> TestArrowBatch(ui64, ui64, size_t rowCount = 10, const ui32 tsStepUs = 1) const override;
+    std::shared_ptr<arrow::RecordBatch> TestArrowBatch(ui64, ui64, size_t rowCount = 10, const ui64 tsStepUs = 1) const override;
     std::shared_ptr<arrow::RecordBatch> TestArrowBatch() const;
 };
 

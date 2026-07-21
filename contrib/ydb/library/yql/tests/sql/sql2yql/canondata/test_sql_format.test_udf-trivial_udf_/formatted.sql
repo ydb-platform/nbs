@@ -1,0 +1,3 @@
+SELECT
+    Unicode::ToUpper("foo"u)
+;

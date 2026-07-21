@@ -1,7 +1,9 @@
 PROTO_LIBRARY()
+PROTOC_FATAL_WARNINGS()
 
 PEERDIR(
     contrib/ydb/library/actors/protos
+    contrib/ydb/library/yql/minikql/runtime_settings/proto
 )
 
 SRCS(

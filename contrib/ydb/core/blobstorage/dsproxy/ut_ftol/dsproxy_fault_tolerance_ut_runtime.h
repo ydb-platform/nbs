@@ -87,7 +87,7 @@ public:
         TIntrusivePtr<TStoragePoolCounters> storagePoolCounters = perPoolCounters.GetPoolCounters("pool_name");
         TControlWrapper enablePutBatching(DefaultEnablePutBatching, false, true);
         TControlWrapper enableVPatch(DefaultEnableVPatch, false, true);
-        IActor *dsproxy = CreateBlobStorageGroupProxyConfigured(TIntrusivePtr(GroupInfo), false, nodeMon,
+        IActor *dsproxy = CreateBlobStorageGroupProxyConfigured(TIntrusivePtr(GroupInfo), nullptr, false, nodeMon,
             std::move(storagePoolCounters), TBlobStorageProxyParameters{
                 .Controls = TBlobStorageProxyControlWrappers{
                     .EnablePutBatching = enablePutBatching,
@@ -99,7 +99,7 @@ public:
                 TActorSetupCmd(dsproxy, TMailboxType::Simple, 0));
 
         ActorSystem.reset(new TActorSystem(setup, AppData.get(), logSettings));
-        LOG_NOTICE(*ActorSystem, NActorsServices::TEST, "Actor system created");
+        YDB_LOG_NOTICE_CTX_COMP(*ActorSystem, NActorsServices::TEST, "Actor system created");
         ActorSystem->Start();
     }
 

@@ -1,4 +1,8 @@
 common:
+  - from: /concepts/architecture.md
+    to: /concepts/architecture/index.md
+  - from: /concepts/metadata-distribution.md
+    to: /concepts/architecture/metadata-services.md
   - from: /reference/ydb-cli/table-ttl-drop.md
     to: /reference/ydb-cli/table-ttl-reset.md
   - from: changelog.md
@@ -33,6 +37,15 @@ common:
     to: /public-materials/videos.md
   - from: /concepts/databases.md
     to: /concepts/glossary.md
+  - from: /concepts/vector_index.md
+    to: concepts/vector_search.md
+  # Redirects after PostgreSQL compatibility docs removal
+  - from: /postgresql/pg-dump.md
+    to: /postgresql/intro.md
+  - from: /postgresql/(.*)$
+    to: /postgresql/intro.md
+  - from: /concepts/column-table.md
+    to: /concepts/datamodel/table.md
 
 # DevOps-related redirects
   - from: /getting_started/kubernetes.md
@@ -51,8 +64,6 @@ common:
     to: /devops/kubernetes/initial-deployment.md
   - from: /deploy/orchestrated/operate.md
     to: /devops/kubernetes/initial-deployment.md
-  - from: /cluster/system-requirements.md
-    to: /devops/system-requirements.md
   - from: /cluster/index.md
     to: /devops/index.md
   - from: /cluster/logs.md
@@ -61,26 +72,100 @@ common:
     to: /reference/observability/metrics/grafana-dashboards.md
   - from: /administration/production-storage-config.md
     to: /deploy/configuration/config.md
-  - from: /administration/decommissioning.md
-    to: /devops/manual/decommissioning.md
-  - from: /deploy/manual/decommissioning.md
-    to: /devops/manual/decommissioning.md
-  - from: /administration/monitoring.md
-    to: /devops/manual/monitoring.md
-  - from: /deploy/manual/monitoring.md
-    to: /devops/manual/monitoring.md
+  - from: /administration/state-storage-reconfiguration.md
+    to: /devops/manual/state-storage-reconfiguration.md
   - from: /administration/state-storage-move.md
     to: /devops/manual/state-storage-move.md
   - from: /deploy/manual/static-group-move.md
     to: /devops/manual/static-group-move.md
+  - from: /administration/monitoring.md
+    to: /devops/manual/monitoring.md
+  - from: /deploy/manual/monitoring.md
+    to: /devops/manual/monitoring.md
   - from: /administration/upgrade.md
     to: /devops/manual/upgrade.md
   - from: /deploy/manual/upgrade.md
     to: /devops/manual/upgrade.md
   - from: /maintenance/backup_and_recovery.md
     to: /devops/manual/backup-and-recovery.md
+  - from: /deploy/index.md
+    to: /devops/index.md
+  - from: /deploy/manual/deploy-ydb-on-premises.md
+    to: /devops/deployment-options/manual/initial-deployment/index.md
+  - from: /deploy/configuration/config.md
+    to: /reference/configuration/index.md
+  - from: /deploy/manual/connector.md
+    to: /devops/manual/federated-queries/connector-deployment.md
+  - from: /deploy/manual/deploy-ydb-federated-query.md
+    to: /devops/manual/federated-queries/index.md
+  - from: /devops/manual/monitoring.md
+    to: /devops/observability/monitoring.md
+  - from: /devops/manual/maintenance-without-downtime.md
+    to: /devops/concepts/maintenance-without-downtime.md
+  - from: /devops/manual/backup-and-recovery.md
+    to: /devops/backup-and-recovery.md
+  - from: /devops/manual/static-group-move.md
+    to: /devops/configuration-management/configuration-v1/static-group-move.md
+  - from: /devops/manual/system-views.md
+    to: /devops/observability/system-views.md
+  - from: /devops/manual/logging.md
+    to: /devops/observability/logging.md
+  - from: /devops/manual/state-storage-reconfiguration.md
+    to: /devops/configuration-management/configuration-v1/state-storage-reconfiguration.md
+  - from: /devops/manual/state-storage-move.md
+    to: /devops/configuration-management/configuration-v1/state-storage-move.md
+  - from: /maintenance/manual/change_actorsystem_configs.md
+    to: /devops/configuration-management/configuration-v1/change_actorsystem_configs.md
+  - from: /maintenance/manual/dynamic-config-selectors.md
+    to: /devops/configuration-management/configuration-v1/dynamic-config-selectors.md
+  - from: /maintenance/manual/dynamic-config.md
+    to: /devops/configuration-management/configuration-v1/dynamic-config.md
+  - from: /maintenance/manual/config-overview.md
+    to: /devops/configuration-management/configuration-v1/config-overview.md
+  - from: /maintenance/manual/dynamic-config-volatile-config.md
+    to: /devops/configuration-management/configuration-v1/dynamic-config-volatile-config.md
+  - from: /maintenance/manual/cms.md
+    to: /devops/configuration-management/configuration-v1/cms.md
+  - from: /devops/manual/upgrade.md
+    to: /devops/deployment-options/manual/update-executable.md
+  - from: /devops/manual/backup-and-recovery.md
+    to: /devops/backup-and-recovery/index.md
+  - from: /devops/backup-and-recovery.md
+    to: /devops/backup-and-recovery/index.md
 
-# Dev-related redirects
+  # Redirects for Deployment Options
+  - from: /devops/(ansible|kubernetes|manual)/(.*)$
+    to: /devops/deployment-options/$1/$2
+
+  # Redirects for Observability
+  - from: /devops/manual/(monitoring|logging)\.md$
+    to: /devops/observability/$1.md
+  - from: /devops/manual/system-views.md
+    to: /devops/observability/system-views.md
+
+  # Redirects for Maintenance
+  - from: /devops/manual/upgrade.md
+    to: /devops/concepts/versioning.md
+  - from: /devops/manual/maintenance-without-downtime.md
+    to: /devops/concepts/maintenance-without-downtime.md
+
+  # Redirect for backup-and-recovery
+  - from: /devops/manual/backup-and-recovery.md
+    to: /devops/backup-and-recovery.md
+
+  # Redirect for deprecated instructions
+  - from: /devops/manual/state-storage-move.md
+    to: /devops/configuration-management/configuration-v1/state-storage-move.md
+  - from: /devops/manual/static-group-move.md
+    to: /devops/configuration-management/configuration-v1/static-group-move.md
+
+  # Redirect for system-requirements
+  - from: /devops/system-requirements.md
+    to: /devops/concepts/system-requirements.md
+  - from: /cluster/system-requirements.md
+    to: /devops/concepts/system-requirements.md
+
+  # Dev-related redirects
   - from: /db/index.md
     to: /dev/index.md
   - from: /troubleshooting/system_views.md
@@ -90,7 +175,11 @@ common:
   - from: /operations/manage-users-attr.md
     to: /dev/custom-attributes.md
   - from: /operations/query_plans_optimization.md
-    to: /dev/query-plans-optimization.md
+    to: /dev/query-execution-optimization/query-plans-optimization.md
+  - from: /dev/query-plans-optimization.md
+    to: /dev/query-execution-optimization/query-plans-optimization.md
+  - from: /dev/query-hints.md
+    to: /dev/query-execution-optimization/query-hints.md
   - from: /best_practices/cdc.md
     to: /dev/cdc.md
   - from: /best_practices/pk-olap-scalability.md
@@ -150,7 +239,9 @@ common:
   - from: /reference/ydb-sdk/example/example-dotnet.md
     to: /dev/example-app/example-dotnet.md
   - from: /reference/ydb-sdk/example/example-nodejs.md
-    to: /dev/example-app/example-nodejs.md
+    to: /dev/example-app/example-js.md
+  - from: /dev/example-app/example-nodejs.md
+    to: /dev/example-app/example-js.md
   - from: /reference/ydb-sdk/example/example-php.md
     to: /dev/example-app/example-php.md
   - from: /reference/ydb-sdk/example/go/index.md
@@ -162,13 +253,35 @@ common:
   - from: /reference/ydb-sdk/example/python/index.md
     to: /dev/example-app/python/index.md
 
+# YQL-related redirects
+  - from: /yql/reference/syntax/alter_topic.md
+    to: /yql/reference/syntax/alter-topic.md
+  - from: /yql/reference/syntax/create_topic.md
+    to: /yql/reference/syntax/create-topic.md
+  - from: /yql/reference/syntax/flatten.md
+    to: /yql/reference/syntax/select/flatten.md
+  - from: /yql/reference/syntax/group_by.md
+    to: /yql/reference/syntax/select/group-by.md
+  - from: /yql/reference/syntax/join.md
+    to: /yql/reference/syntax/select/join.md
+  - from: /yql/reference/syntax/window.md
+    to: /yql/reference/syntax/select/window.md
+  - from: /yql/reference/ddl/create-index.md
+    to: /yql/reference/syntax/create_table/secondary_index.md
+  - from: /yql/reference/syntax/alter_table/secondary_index.md
+    to: /yql/reference/syntax/alter_table/indexes.md
+
 # Security-related redirects
   - from: /cluster/access.md
-    to: /security/acess-management.md
+    to: /security/authorization.md
   - from: /cluster/audit-log.md
     to: /security/audit-log.md
   - from: /cluster/short-access-control-notation.md
     to: /security/short-access-control-notation.md
+  - from: /concepts/auth.md
+    to: /security/authentication.md
+  - from: /security/access-management.md
+    to: /security/authorization.md
 
 # Contributors-related redirects
   - from: /development/build-ya.md
@@ -203,6 +316,16 @@ common:
     to: /contributor/manage-releases.md
   - from: /development/suggest-change.md
     to: /contributor/suggest-change.md
+  - from: /concepts/clusters/index.md
+    to: /concepts/topology.md
+  - from: /concepts/clusters/common_scheme_ydb.md
+    to: /contributor/general-schema.md
+  - from: /concepts/cluster/common_scheme_ydb.md
+    to: /contributor/general-schema.md
+  - from: /concepts/clusters/distributed_storage.md
+    to: /contributor/distributed-storage.md
+  - from: /concepts/cluster/distributed_storage.md
+    to: /contributor/distributed-storage.md
 
 # Redirects for ydb-dstool
   - from: /administration/ydb-dstool-device-list.md
@@ -255,14 +378,6 @@ common:
     to: recipes/ydb-sdk/balancing.md
   - from: reference/ydb-sdk/recipes/bulk-upsert.md
     to: recipes/ydb-sdk/bulk-upsert.md
-  - from: reference/ydb-sdk/recipes/debug-jaeger.md
-    to: recipes/ydb-sdk/debug-jaeger.md
-  - from: reference/ydb-sdk/recipes/debug-logs.md
-    to: recipes/ydb-sdk/debug-logs.md
-  - from: reference/ydb-sdk/recipes/debug-prometheus.md
-    to: recipes/ydb-sdk/debug-prometheus.md
-  - from: reference/ydb-sdk/recipes/debug.md
-    to: recipes/ydb-sdk/debug.md
   - from: reference/ydb-sdk/recipes/index.md
     to: recipes/ydb-sdk/index.md
   - from: reference/ydb-sdk/recipes/init.md
@@ -276,28 +391,206 @@ common:
   - from: reference/ydb-sdk/recipes/upsert.md
     to: recipes/ydb-sdk/upsert.md
 
-# Redirects from export_import to export-import   
+# Redirects from export_import to export-import
   - from: /reference/ydb-cli/export_import/s3_conn.md
     to: /reference/ydb-cli/export-import/auth-s3.md
   - from: /reference/ydb-cli/export_import/s3_export.md
-    to: /reference/ydb-cli/export-import/export-s3.md    
+    to: /reference/ydb-cli/export-import/export-s3.md
   - from: /reference/ydb-cli/export_import/file_structure.md
-    to: /reference/ydb-cli/export-import/file-structure.md     
+    to: /reference/ydb-cli/export-import/file-structure.md
   - from: /reference/ydb-cli/export_import/import-file.md
-    to: /reference/ydb-cli/export-import/import-file.md      
+    to: /reference/ydb-cli/export-import/import-file.md
   - from: /reference/ydb-cli/export_import/s3_import.md
-    to: /reference/ydb-cli/export-import/import-s3.md   
+    to: /reference/ydb-cli/export-import/import-s3.md
   - from: /reference/ydb-cli/export_import/index.md
-    to: /reference/ydb-cli/export-import/index.md   
+    to: /reference/ydb-cli/export-import/index.md
   - from: /reference/ydb-cli/export_import/tools_dump.md
-    to: /reference/ydb-cli/export-import/tools-dump.md   
+    to: /reference/ydb-cli/export-import/tools-dump.md
   - from: /reference/ydb-cli/export_import/tools_restore.md
     to: /reference/ydb-cli/export-import/tools-restore.md
 
+# Redirects for integrations
+  - from: /integrations/grafana.md
+    to: /integrations/visualization/grafana.md
+  - from: /integrations/visualization/finebi.md
+    to: /integrations/visualization/index.md
+  - from: /integrations/ide/dbeaver.md
+    to: /integrations/gui/dbeaver.md
+  - from: /integrations/ide/datagrip.md
+    to: /integrations/gui/datagrip.md
+  - from: /integrations/fluent-bit.md
+    to: /integrations/ingestion/fluent-bit.md
+  - from: /integrations/import-jdbc.md
+    to: /integrations/data-migration/import-jdbc.md
+  - from: /integrations/ingestion/import-jdbc.md
+    to: /integrations/data-migration/import-jdbc.md
+  - from: /integrations/ingestion/import-mysql.md
+    to: /integrations/data-migration/import-mysql.md
+  - from: /integrations/ingestion/spark.md
+    to: /integrations/query-engines/spark.md
+  - from: /integrations/logstash.md
+    to: /integrations/ingestion/logstash.md
+  - from: /integrations/spring-data-jdbc.md
+    to: /integrations/orm/spring-data-jdbc.md
+  - from: /integrations/flyway.md
+    to: /integrations/migration/flyway.md
+  - from: /integrations/goose.md
+    to: /integrations/migration/goose.md
+  - from: /integrations/hibernate.md
+    to: /integrations/orm/hibernate.md
+  - from: /integrations/liquibase.md
+    to: /integrations/migration/liquibase.md
+
+# Redirects for troubleshooting
+
+  - from: /dev/troubleshooting/index.md
+    to: /troubleshooting/index.md
+  - from: /dev/troubleshooting/performance/hardware/io-bandwidth.md
+    to: /troubleshooting/performance/hardware/io-bandwidth.md
+  - from: /dev/troubleshooting/performance/hardware/disk-space.md
+    to: /troubleshooting/performance/hardware/disk-space.md
+  - from: /dev/troubleshooting/performance/hardware/insufficient-memory.md
+    to: /troubleshooting/performance/hardware/insufficient-memory.md
+  - from: /dev/troubleshooting/performance/hardware/cpu-bottleneck.md
+    to: /troubleshooting/performance/hardware/cpu-bottleneck.md
+  - from: /dev/troubleshooting/performance/queries/transaction-lock-invalidation.md
+    to: /troubleshooting/performance/queries/transaction-lock-invalidation.md
+  - from: /dev/troubleshooting/performance/queries/uncached-queries.md
+    to: /troubleshooting/performance/queries/uncached-queries.md
+  - from: /dev/troubleshooting/performance/queries/overloaded-errors.md
+    to: /troubleshooting/performance/queries/overloaded-errors.md
+  - from: /dev/troubleshooting/performance/schemas/splits-merges.md
+    to: /troubleshooting/performance/schemas/splits-merges.md
+  - from: /dev/troubleshooting/performance/schemas/overloaded-shards.md
+    to: /troubleshooting/performance/schemas/overloaded-shards.md
+  - from: /dev/troubleshooting/performance/system/system-clock-drift.md
+    to: /troubleshooting/performance/system/system-clock-drift.md
+  - from: /dev/troubleshooting/performance/index.md
+    to: /troubleshooting/performance/index.md
+  - from: /dev/troubleshooting/performance/ydb/tablets-moved.md
+    to: /troubleshooting/performance/ydb/tablets-moved.md
+  - from: /dev/troubleshooting/performance/ydb/ydb-updates.md
+    to: /troubleshooting/performance/ydb/ydb-updates.md
+  - from: /dev/troubleshooting/performance/infrastructure/hardware.md
+    to: /troubleshooting/performance/infrastructure/hardware.md
+  - from: /dev/troubleshooting/performance/infrastructure/network.md
+    to: /troubleshooting/performance/infrastructure/network.md
+  - from: /dev/troubleshooting/performance/infrastructure/dc-drills.md
+    to: /troubleshooting/performance/infrastructure/dc-drills.md
+  - from: /dev/troubleshooting/performance/infrastructure/dc-outage.md
+    to: /troubleshooting/performance/infrastructure/dc-outage.md
+
+# Redirects for reference/configuration
+
+  - from: /reference/configuration/node-authentication.md
+    to: /reference/configuration/client_certificate_authorization.md
+
+# Redirects for the olap section
+
+  - from: /olap/(.*)$
+    to: /analyst/$1
+  - from: /olap/datasets/(.*)$
+    to: /analyst/datasets/$1
+
+  # Redirects for query_execution
+
+  - from: /concepts/query_execution.md
+    to: /concepts/query_execution/index.md
+  - from: /concepts/mvcc.md
+    to: /concepts/query_execution/mvcc.md
+  - from: /concepts/optimizer.md
+    to: /concepts/query_execution/optimizer.md
+  - from: /concepts/spilling.md
+    to: /concepts/query_execution/spilling.md
+  - from: /concepts/vector_search.md
+    to: /concepts/query_execution/vector_search.md
+  - from: /concepts/secondary_indexes.md
+    to: /concepts/query_execution/secondary_indexes.md
+  - from: /concepts/scan_query.md
+    to: /concepts/query_execution/scan_query.md
+  - from: /reference/ydb-cli/commands/scan-query.md
+    to: /reference/ydb-cli/scan-query.md
+  - from: /concepts/federated_query/(.*)$
+    to: /concepts/query_execution/federated_query/$1
+
 ru:
-  - from: /concepts/column-table.md
-    to: /concepts/datamodel/table.md
-  - from: /postgresql/index.md
-    to: /postgresql/intro.md
   - from: /db/terraform.md
     to: /dev/terraform.md
+  - from: /maintenance/manual/replacing_nodes.md
+    to: /devops/configuration-management/configuration-v1/replacing-nodes.md
+  - from: /maintenance/manual/cluster_expansion.md
+    to: /devops/configuration-management/configuration-v1/cluster-expansion.md
+  - from: /concepts/topic.md
+    to: /concepts/datamodel/topic.md
+  - from: /devops/backup-and-recovery/system-tablet-backup.md
+    to: /concepts/backup.md#system-tablet-backup
+  - from: /reference/ydb-sdk/recipes/debug.md
+    to: /reference/ydb-sdk/observability/index.md
+  - from: /reference/ydb-sdk/recipes/debug-logs.md
+    to: /reference/ydb-sdk/observability/logging/logging.md
+  - from: /reference/ydb-sdk/recipes/debug-prometheus.md
+    to: /reference/ydb-sdk/observability/metrics/prometheus.md
+  - from: /reference/ydb-sdk/recipes/debug-jaeger.md
+    to: /reference/ydb-sdk/observability/tracing/jaeger.md
+  - from: /recipes/ydb-sdk/debug.md
+    to: /reference/ydb-sdk/observability/index.md
+  - from: /recipes/ydb-sdk/debug-logs.md
+    to: /reference/ydb-sdk/observability/logging/logging.md
+  - from: /recipes/ydb-sdk/debug-logs-otel.md
+    to: /reference/ydb-sdk/observability/logging/opentelemetry.md
+  - from: /recipes/ydb-sdk/debug-prometheus.md
+    to: /reference/ydb-sdk/observability/metrics/prometheus.md
+  - from: /recipes/ydb-sdk/debug-otel-metrics.md
+    to: /reference/ydb-sdk/observability/metrics/opentelemetry.md
+  - from: /recipes/ydb-sdk/debug-jaeger.md
+    to: /reference/ydb-sdk/observability/tracing/jaeger.md
+  - from: /recipes/ydb-sdk/debug-otel-tracing.md
+    to: /reference/ydb-sdk/observability/tracing/opentelemetry.md
+  - from: /integrations/sql-dialect-converter.md
+    to: /integrations/sql-translation/sql-dialect-converter.md
+
+en:
+  - from: /reference/ydb-sdk/recipes/debug-jaeger.md
+    to: /recipes/ydb-sdk/debug-jaeger.md
+  - from: /reference/ydb-sdk/recipes/debug-logs.md
+    to: /recipes/ydb-sdk/debug-logs.md
+  - from: /reference/ydb-sdk/recipes/debug-prometheus.md
+    to: /recipes/ydb-sdk/debug-prometheus.md
+  - from: /reference/ydb-sdk/recipes/debug.md
+    to: /recipes/ydb-sdk/debug.md
+  - from: /devops/deployment-options/manual/initial-deployment.md
+    to: /devops/deployment-options/manual/initial-deployment/index.md
+  - from: /devops/manual/initial-deployment.md
+    to: /devops/deployment-options/manual/initial-deployment/index.md
+
+  - from: /cluster/system-requirements.md
+    to: /devops/system-requirements.md
+  - from: /devops/observability/initial-deployment.md
+    to: /devops/deployment-options/manual/initial-deployment/index.md
+
+  - from: /devops/deployment-options/manual/initial-deployment.md
+    to: /devops/deployment-options/manual/initial-deployment/index.md
+  - from: /devops/manual/initial-deployment.md
+    to: /devops/deployment-options/manual/initial-deployment/index.md
+
+  - from: /maintenance/manual/index.md
+    to: /devops/deployment-options/manual/index.md
+
+  - from: /public-materials/videos/2017.md
+    to: /public-materials/videos/2022.md
+  - from: /public-materials/videos/2018.md
+    to: /public-materials/videos/2022.md
+  - from: /public-materials/videos/2019.md
+    to: /public-materials/videos/2022.md
+  - from: /public-materials/videos/2020.md
+    to: /public-materials/videos/2022.md
+  - from: /public-materials/videos/2021.md
+    to: /public-materials/videos/2022.md
+  - from: /public-materials/publications/2021.md
+    to: /public-materials/publications/2023.md
+  - from: /public-materials/publications/2025.md
+    to: /public-materials/publications/2024.md
+  - from: /public-materials/podcasts.md
+    to: /public-materials/videos.md
+  - from: /reference/ydbops/scenarios.md
+    to: /reference/ydbops/rolling-restart-scenario.md
