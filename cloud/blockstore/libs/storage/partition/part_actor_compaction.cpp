@@ -1693,6 +1693,12 @@ TDuration TPartitionActor::ComputeGarbageCompactionExecTime(
 
 void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
 {
+    // Sending compaction request in non-work state can lead to rejection, which
+    // means that subsequent calls of this function will be ignored.
+    if (CurrentState != STATE_WORK) {
+        return;
+    }
+
     if (CompactionMapLoadState) {
         return;
     }

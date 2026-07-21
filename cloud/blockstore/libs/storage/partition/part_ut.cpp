@@ -12918,6 +12918,163 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldEnqueueCompactionAfterCompactionMapLoaded)
+    {
+        static constexpr ui32 compactionThreshold = 4;
+
+        auto config = DefaultConfig();
+        config.SetSSDMaxBlobsPerRange(compactionThreshold);
+        config.SetHDDMaxBlobsPerRange(compactionThreshold);
+        config.SetMaxCompactionRangesLoadingPerTx(1);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        // Drop compaction while building enough blobs so the tablet still needs
+        // compaction after reboot, once the lazily loaded map is ready.
+        bool dropCompaction = true;
+        bool compactionRequestObserved = false;
+        TAutoPtr<IEventHandle> capturedLoadCMRequest;
+        bool holdLoadCMRequest = false;
+
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartitionPrivate::EvCompactionRequest: {
+                        if (dropCompaction) {
+                            return true;
+                        }
+                        compactionRequestObserved = true;
+                        break;
+                    }
+                    case TEvPartitionPrivate::EvLoadCompactionMapChunkRequest: {
+                        if (holdLoadCMRequest) {
+                            holdLoadCMRequest = false;
+                            capturedLoadCMRequest = event.Release();
+                            return true;
+                        }
+                        break;
+                    }
+                }
+                return false;
+            });
+
+        for (size_t i = 1; i < compactionThreshold + 1; ++i) {
+            partition.WriteBlocks(i, i);
+            partition.Flush();
+        }
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(
+                compactionThreshold,
+                stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlobsCount());
+        }
+
+        dropCompaction = false;
+        holdLoadCMRequest = true;
+
+        partition.RebootTablet();
+
+        UNIT_ASSERT(capturedLoadCMRequest);
+        UNIT_ASSERT(!compactionRequestObserved);
+
+        runtime->Send(capturedLoadCMRequest.Release());
+
+        TDispatchOptions options;
+        options.FinalEvents.emplace_back(
+            TEvPartitionPrivate::EvCompactionRequest);
+        runtime->DispatchEvents(options, TDuration::Seconds(1));
+
+        UNIT_ASSERT(compactionRequestObserved);
+    }
+
+    Y_UNIT_TEST(ShouldNotEnqueueCompactionBeforeStateWork)
+    {
+        static constexpr ui32 compactionThreshold = 4;
+
+        auto config = DefaultConfig();
+        config.SetSSDMaxBlobsPerRange(compactionThreshold);
+        config.SetHDDMaxBlobsPerRange(compactionThreshold);
+        config.SetMaxCompactionRangesLoadingPerTx(1);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        // Drop compaction while building enough blobs so the tablet still needs
+        // compaction after reboot.
+        bool dropCompaction = true;
+        bool compactionRequestObserved = false;
+        TAutoPtr<IEventHandle> capturedLoadFreshBlobsCompleted;
+        bool holdLoadFreshBlobsCompleted = false;
+
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartitionPrivate::EvCompactionRequest: {
+                        if (dropCompaction) {
+                            return true;
+                        }
+                        compactionRequestObserved = true;
+                        break;
+                    }
+                    case TEvPartitionCommonPrivate::EvLoadFreshBlobsCompleted: {
+                        if (holdLoadFreshBlobsCompleted) {
+                            holdLoadFreshBlobsCompleted = false;
+                            capturedLoadFreshBlobsCompleted = event.Release();
+                            return true;
+                        }
+                        break;
+                    }
+                }
+                return false;
+            });
+
+        for (size_t i = 1; i < compactionThreshold + 1; ++i) {
+            partition.WriteBlocks(i, i);
+            partition.Flush();
+        }
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(
+                compactionThreshold,
+                stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlobsCount());
+        }
+
+        dropCompaction = false;
+        holdLoadFreshBlobsCompleted = true;
+
+        partition.RebootTablet();
+
+        UNIT_ASSERT(capturedLoadFreshBlobsCompleted);
+
+        // Compaction map finishes loading while the tablet is still in
+        // STATE_INIT. EnqueueCompactionIfNeeded must not send a request here:
+        // it would be rejected and leave compaction status stuck at Enqueued.
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        UNIT_ASSERT(!compactionRequestObserved);
+
+        runtime->Send(capturedLoadFreshBlobsCompleted.Release());
+
+        TDispatchOptions options;
+        options.FinalEvents.emplace_back(
+            TEvPartitionPrivate::EvCompactionRequest);
+        runtime->DispatchEvents(options, TDuration::Seconds(1));
+
+        UNIT_ASSERT(compactionRequestObserved);
+    }
+
     Y_UNIT_TEST(ShouldAddRequestToLoadCompactionMapRangeIfNotLoaded)
     {
         const ui32 rangeCount = 100;
