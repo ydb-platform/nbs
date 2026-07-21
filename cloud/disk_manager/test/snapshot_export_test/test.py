@@ -305,36 +305,6 @@ class _SnapshotExportTestSetup:
         self.export_snapshot(snapshot_id, output_file, "--read-workers", "4")
         return compute_checksum(output_file)
 
-    def export_snapshot_partitions_checksum(
-        self,
-        snapshot_id: str,
-        file_name: str,
-        partition_count: int,
-    ) -> str:
-        output_file = self.working_dir / file_name
-        output_file.unlink(missing_ok=True)
-
-        with open(output_file, "wb") as output:
-            for partition in range(1, partition_count + 1):
-                partition_file = self.working_dir / (
-                    f"{file_name}.partition-{partition}"
-                )
-                self.export_snapshot(
-                    snapshot_id,
-                    partition_file,
-                    "--partition",
-                    str(partition),
-                    "--partition-count",
-                    str(partition_count),
-                    "--read-workers",
-                    "4",
-                )
-                with open(partition_file, "rb") as partition_data:
-                    for chunk in iter(lambda: partition_data.read(1024 * 1024), b""):
-                        output.write(chunk)
-
-        return compute_checksum(output_file)
-
 
 @pytest.mark.parametrize("use_s3", [False, True], ids=["ydb", "s3"])
 def test_snapshot_export_downloads_snapshot_and_preserves_data(use_s3):
@@ -378,13 +348,4 @@ def test_snapshot_export_downloads_snapshot_and_preserves_data(use_s3):
         ) == incremental_checksum
         assert (
             setup.working_dir / "incremental_snapshot.raw"
-        ).stat().st_size == disk_size
-
-        assert setup.export_snapshot_partitions_checksum(
-            incremental_snapshot_id,
-            "incremental_snapshot_from_partitions.raw",
-            partition_count=2,
-        ) == incremental_checksum
-        assert (
-            setup.working_dir / "incremental_snapshot_from_partitions.raw"
         ).stat().st_size == disk_size

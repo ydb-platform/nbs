@@ -5,7 +5,9 @@ import (
 	"errors"
 	"io"
 
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	dataplane_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	task_errors "github.com/ydb-platform/nbs/cloud/tasks/errors"
@@ -15,11 +17,6 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Must be equal to chunkSize used by dataplane tasks that create snapshots
-// (see internal/pkg/dataplane/consts.go). ReadChunk verifies the checksum of
-// the whole chunk, so a mismatch results in an error, not in corrupted output.
-const chunkSize = 4 * 1024 * 1024
-
 // Progress is logged after each logProgressChunkCount processed chunks.
 const logProgressChunkCount = 1024
 
@@ -27,7 +24,7 @@ const logProgressChunkCount = 1024
 // stream exports. Stdout still receives chunks in strict index order.
 const DefaultStreamReadWorkerCount = 16
 
-const streamReadAheadMultiplier = 4
+const readAheadMultiplier = 4
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -42,92 +39,43 @@ type Stats struct {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// ValidatePartition validates a 1-based partition number.
-func ValidatePartition(partition uint32, partitionCount uint32) error {
-	if partitionCount == 0 {
-		return task_errors.NewNonRetriableErrorf(
-			"partitionCount must be positive, got %v",
-			partitionCount,
-		)
-	}
-	if partition == 0 || partition > partitionCount {
-		return task_errors.NewNonRetriableErrorf(
-			"partition must be in range [1, %v], got %v",
-			partitionCount,
-			partition,
+// ExportSnapshot writes the snapshot raw stream. Data chunks are read
+// concurrently but written to dst in their original order.
+//
+// Chunk map reading, entry caching and zero chunk detection are delegated to
+// snapshot.NewSnapshotSource, the same source implementation that dataplane
+// transfer tasks use.
+func ExportSnapshot(
+	ctx context.Context,
+	snapshotStorage storage.Storage,
+	snapshotID string,
+	dst io.Writer,
+	readWorkerCount int,
+) (Stats, error) {
+
+	if readWorkerCount <= 0 {
+		return Stats{}, task_errors.NewNonRetriableErrorf(
+			"readWorkerCount must be positive, got %v",
+			readWorkerCount,
 		)
 	}
 
-	return nil
+	meta, err := checkSnapshotReadyForExport(ctx, snapshotStorage, snapshotID)
+	if err != nil {
+		return Stats{}, err
+	}
+
+	if meta.ChunkCount == 0 {
+		return Stats{Size: meta.Size}, nil
+	}
+
+	return newSnapshotExporter(
+		snapshotStorage,
+		snapshotID,
+		meta,
+		readWorkerCount,
+	).export(ctx, dst)
 }
-
-func partitionChunkRange(
-	chunkCount uint32,
-	partition uint32,
-	partitionCount uint32,
-) (uint32, uint32, error) {
-
-	if err := ValidatePartition(partition, partitionCount); err != nil {
-		return 0, 0, err
-	}
-
-	partitionIndex := uint64(partition - 1)
-	count := uint64(partitionCount)
-	chunks := uint64(chunkCount)
-	chunksPerPartition := chunks / count
-	partitionsWithExtraChunk := chunks % count
-
-	startChunkIndex := partitionIndex * chunksPerPartition
-	if partitionIndex < partitionsWithExtraChunk {
-		startChunkIndex += partitionIndex
-	} else {
-		startChunkIndex += partitionsWithExtraChunk
-	}
-
-	partitionChunkCount := chunksPerPartition
-	if partitionIndex < partitionsWithExtraChunk {
-		partitionChunkCount++
-	}
-
-	endChunkIndex := startChunkIndex + partitionChunkCount
-	return uint32(startChunkIndex), uint32(endChunkIndex), nil
-}
-
-func partitionSize(
-	snapshotSize uint64,
-	startChunkIndex uint32,
-	endChunkIndex uint32,
-) (uint64, error) {
-
-	if startChunkIndex > endChunkIndex {
-		return 0, task_errors.NewNonRetriableErrorf(
-			"invalid partition chunk range [%v, %v)",
-			startChunkIndex,
-			endChunkIndex,
-		)
-	}
-	if startChunkIndex == endChunkIndex {
-		return 0, nil
-	}
-
-	startOffset := uint64(startChunkIndex) * uint64(chunkSize)
-	if startOffset >= snapshotSize {
-		return 0, task_errors.NewNonRetriableErrorf(
-			"partition starts at chunk %v outside snapshot size %v",
-			startChunkIndex,
-			snapshotSize,
-		)
-	}
-
-	endOffset := uint64(endChunkIndex) * uint64(chunkSize)
-	if endOffset > snapshotSize {
-		endOffset = snapshotSize
-	}
-
-	return endOffset - startOffset, nil
-}
-
-////////////////////////////////////////////////////////////////////////////////
 
 func checkSnapshotReadyForExport(
 	ctx context.Context,
@@ -143,7 +91,7 @@ func checkSnapshotReadyForExport(
 	if meta.Encryption.GetMode() != types.EncryptionMode_NO_ENCRYPTION {
 		logging.Warn(
 			ctx,
-			"snapshot %v has encryption metadata; raw export data is plaintext logical disk data",
+			"snapshot %v has encryption metadata; exported data is the stored ciphertext, not decrypted plaintext",
 			snapshotID,
 		)
 	}
@@ -161,355 +109,278 @@ func checkSnapshotReadyForExport(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// ExportPartitionToWriterWithReadWorkers writes one 1-based partition of the
-// snapshot raw stream. Partitions are contiguous, chunk-aligned ranges;
-// concatenating them in ascending order reconstructs the complete raw snapshot.
-// Data chunks are read concurrently but written to dst in their original order
-// within the selected partition.
-func ExportPartitionToWriterWithReadWorkers(
-	ctx context.Context,
+// One position of the raw stream: either a zero chunk or a data chunk that a
+// background reader fills in.
+type pendingChunk struct {
+	chunkIndex uint32
+	zero       bool
+	data       []byte
+	err        error
+	// Closed when the read completes; nil for chunks absent from the map.
+	ready chan struct{}
+}
+
+// snapshotExporter streams snapshot chunks to a sequential writer. The
+// scheduler sends chunks to pendingChunks in stream order, data chunks are
+// read concurrently by at most cap(readSlots) readers, and writeChunks writes
+// everything to the destination strictly in order.
+type snapshotExporter struct {
+	source dataplane_common.Source
+	meta   storage.SnapshotMeta
+
+	errGroup *errgroup.Group
+
+	// Chunks in stream order; the capacity bounds the read-ahead.
+	pendingChunks chan *pendingChunk
+	// Semaphore limiting concurrent chunk reads.
+	readSlots chan struct{}
+	// Written chunk indices, returned to the source inflight queue.
+	processedChunkIndices chan uint32
+
+	chunkIndices       <-chan uint32
+	chunkIndicesErrors <-chan error
+}
+
+func newSnapshotExporter(
 	snapshotStorage storage.Storage,
 	snapshotID string,
-	dst io.Writer,
-	partition uint32,
-	partitionCount uint32,
+	meta storage.SnapshotMeta,
 	readWorkerCount int,
+) *snapshotExporter {
+
+	readAheadChunkCount := readWorkerCount * readAheadMultiplier
+	return &snapshotExporter{
+		source: snapshot.NewSnapshotSource(snapshotID, snapshotStorage),
+		meta:   meta,
+
+		pendingChunks:         make(chan *pendingChunk, readAheadChunkCount),
+		readSlots:             make(chan struct{}, readWorkerCount),
+		processedChunkIndices: make(chan uint32, readAheadChunkCount),
+	}
+}
+
+func (e *snapshotExporter) export(
+	ctx context.Context,
+	dst io.Writer,
 ) (Stats, error) {
 
-	if readWorkerCount <= 0 {
-		return Stats{}, task_errors.NewNonRetriableErrorf(
-			"readWorkerCount must be positive, got %v",
-			readWorkerCount,
-		)
-	}
-	if err := ValidatePartition(partition, partitionCount); err != nil {
-		return Stats{}, err
-	}
-
-	meta, err := checkSnapshotReadyForExport(ctx, snapshotStorage, snapshotID)
-	if err != nil {
-		return Stats{}, err
-	}
-
-	startChunkIndex, endChunkIndex, err := partitionChunkRange(
-		meta.ChunkCount,
-		partition,
-		partitionCount,
-	)
-	if err != nil {
-		return Stats{}, err
-	}
-
-	size, err := partitionSize(meta.Size, startChunkIndex, endChunkIndex)
-	if err != nil {
-		return Stats{}, err
-	}
-
-	logging.Info(
-		ctx,
-		"exporting partition %v/%v of snapshot %v: chunks [%v, %v), size %v bytes",
-		partition,
-		partitionCount,
-		snapshotID,
-		startChunkIndex,
-		endChunkIndex,
-		size,
-	)
-
-	partitionChunkCount := endChunkIndex - startChunkIndex
-	if partitionChunkCount == 0 {
-		return Stats{Size: size}, nil
-	}
-
-	readCtx, cancel := context.WithCancel(ctx)
+	exportCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	entriesByIndex, hasEntry, err := readStreamChunkMap(
-		readCtx,
-		snapshotStorage,
-		snapshotID,
-		startChunkIndex,
-		endChunkIndex,
-		meta.ChunkCount,
+	defer e.source.Close(ctx)
+	// Closing the channel stops the inflight queue goroutine of the source.
+	defer close(e.processedChunkIndices)
+
+	e.chunkIndices, _, e.chunkIndicesErrors = e.source.ChunkIndices(
+		exportCtx,
+		dataplane_common.Milestone{},
+		e.processedChunkIndices,
+		common.ChannelWithCancellation{}, // holeChunkIndices
 	)
+
+	var groupCtx context.Context
+	e.errGroup, groupCtx = errgroup.WithContext(exportCtx)
+	e.errGroup.Go(func() error {
+		return e.scheduleChunks(groupCtx)
+	})
+
+	stats, err := e.writeChunks(groupCtx, dst)
+	if err != nil {
+		cancel()
+		// Prefer the causal pipeline error over the cancellation it triggered.
+		waitErr := e.errGroup.Wait()
+		if waitErr != nil && errors.Is(err, context.Canceled) {
+			return Stats{}, waitErr
+		}
+
+		return Stats{}, err
+	}
+
+	err = e.errGroup.Wait()
 	if err != nil {
 		return Stats{}, err
 	}
 
-	type streamReadResult struct {
-		chunkIndex uint32
-		data       []byte
-		err        error
-	}
+	return stats, nil
+}
 
-	readAheadChunkCount := readWorkerCount * streamReadAheadMultiplier
-	if readAheadChunkCount < readWorkerCount {
-		readAheadChunkCount = readWorkerCount
-	}
+// scheduleChunks turns the sorted chunk index stream of the source into
+// pendingChunks. Indices absent from the chunk map are zero chunks: every gap
+// between consecutive indices is a range of holes.
+func (e *snapshotExporter) scheduleChunks(ctx context.Context) error {
+	defer close(e.pendingChunks)
 
-	jobs := make(chan storage.ChunkMapEntry)
-	results := make(chan streamReadResult, readAheadChunkCount)
+	nextChunkIndex := uint32(0)
+	hasPrevChunkIndex := false
+	var prevChunkIndex uint32
 
-	errGroup, groupCtx := errgroup.WithContext(readCtx)
-	for i := 0; i < readWorkerCount; i++ {
-		errGroup.Go(func() error {
-			for {
-				var entry storage.ChunkMapEntry
-				var ok bool
+	for {
+		var chunkIndex uint32
+		var ok bool
 
-				select {
-				case <-groupCtx.Done():
-					return groupCtx.Err()
-				case entry, ok = <-jobs:
-					if !ok {
-						return nil
-					}
-				}
-
-				data := make([]byte, chunkSize)
-				chunk := dataplane_common.Chunk{
-					ID:         entry.ChunkID,
-					Index:      entry.ChunkIndex,
-					StoredInS3: entry.StoredInS3,
-					Data:       data,
-				}
-
-				err := snapshotStorage.ReadChunk(groupCtx, &chunk)
-				if err != nil {
-					data = nil
-				}
-
-				select {
-				case results <- streamReadResult{
-					chunkIndex: entry.ChunkIndex,
-					data:       data,
-					err:        err,
-				}:
-				case <-groupCtx.Done():
-					return groupCtx.Err()
-				}
-			}
-		})
-	}
-
-	jobsClosed := false
-	workersDone := false
-	defer func() {
-		if !jobsClosed {
-			close(jobs)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case chunkIndex, ok = <-e.chunkIndices:
 		}
-		cancel()
-		if !workersDone {
-			_ = errGroup.Wait()
+		if !ok {
+			break
 		}
-	}()
+
+		if hasPrevChunkIndex && chunkIndex <= prevChunkIndex {
+			return task_errors.NewNonRetriableErrorf(
+				"chunk map is not ordered: got chunk index %v after %v",
+				chunkIndex,
+				prevChunkIndex,
+			)
+		}
+		if chunkIndex >= e.meta.ChunkCount {
+			return task_errors.NewNonRetriableErrorf(
+				"chunk index %v is outside snapshot chunk count %v",
+				chunkIndex,
+				e.meta.ChunkCount,
+			)
+		}
+		prevChunkIndex = chunkIndex
+		hasPrevChunkIndex = true
+
+		err := e.scheduleZeroChunks(ctx, nextChunkIndex, chunkIndex)
+		if err != nil {
+			return err
+		}
+
+		err = e.scheduleDataChunk(ctx, chunkIndex)
+		if err != nil {
+			return err
+		}
+
+		nextChunkIndex = chunkIndex + 1
+	}
+
+	err := <-e.chunkIndicesErrors
+	if err != nil {
+		return err
+	}
+
+	// The rest of the snapshot is not present in the chunk map.
+	return e.scheduleZeroChunks(ctx, nextChunkIndex, e.meta.ChunkCount)
+}
+
+func (e *snapshotExporter) scheduleZeroChunks(
+	ctx context.Context,
+	fromChunkIndex uint32,
+	toChunkIndex uint32,
+) error {
+
+	for chunkIndex := fromChunkIndex; chunkIndex < toChunkIndex; chunkIndex++ {
+		select {
+		case e.pendingChunks <- &pendingChunk{chunkIndex: chunkIndex, zero: true}:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+
+	return nil
+}
+
+func (e *snapshotExporter) scheduleDataChunk(
+	ctx context.Context,
+	chunkIndex uint32,
+) error {
+
+	select {
+	case e.readSlots <- struct{}{}:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
+	pending := &pendingChunk{
+		chunkIndex: chunkIndex,
+		ready:      make(chan struct{}),
+	}
+
+	e.errGroup.Go(func() error {
+		defer func() { <-e.readSlots }()
+		defer close(pending.ready)
+
+		chunk := dataplane_common.Chunk{
+			Index: chunkIndex,
+			Data:  make([]byte, dataplane_common.ChunkSize),
+		}
+		err := e.source.Read(ctx, &chunk)
+		if err != nil {
+			pending.err = err
+			return err
+		}
+
+		pending.zero = chunk.Zero
+		pending.data = chunk.Data
+		return nil
+	})
+
+	select {
+	case e.pendingChunks <- pending:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
+	return nil
+}
+
+func (e *snapshotExporter) writeChunks(
+	ctx context.Context,
+	dst io.Writer,
+) (Stats, error) {
 
 	var dataChunkCount, zeroChunkCount uint32
-	nextChunkIndex := startChunkIndex
-	scheduledChunkIndex := startChunkIndex
-	inFlightReads := 0
-	readyChunks := make(map[uint32][]byte)
-	zeroes := make([]byte, chunkSize)
+	var processedChunkCount uint32
+	zeroes := make([]byte, dataplane_common.ChunkSize)
 
-	pendingReadCount := func() int {
-		return inFlightReads + len(readyChunks)
-	}
-
-	scheduleReads := func() error {
-		for scheduledChunkIndex < endChunkIndex &&
-			pendingReadCount() < readAheadChunkCount {
-
-			localIndex := scheduledChunkIndex - startChunkIndex
-			entry := entriesByIndex[localIndex]
-			if hasEntry[localIndex] && len(entry.ChunkID) != 0 {
-				select {
-				case jobs <- entry:
-					inFlightReads++
-				case <-readCtx.Done():
-					return readCtx.Err()
-				}
-			}
-
-			scheduledChunkIndex++
-		}
-
-		return nil
-	}
-
-	writeZeroChunk := func(chunkIndex uint32) error {
-		zeroChunkCount++
-		return writeStreamChunk(dst, zeroes, chunkIndex, meta.Size)
-	}
-
-	for nextChunkIndex < endChunkIndex {
-		if err := scheduleReads(); err != nil {
-			return Stats{}, err
-		}
-
-		localIndex := nextChunkIndex - startChunkIndex
-		entry := entriesByIndex[localIndex]
-		if !hasEntry[localIndex] || len(entry.ChunkID) == 0 {
-			err = writeZeroChunk(nextChunkIndex)
-			if err != nil {
-				return Stats{}, err
-			}
-
-			nextChunkIndex++
-			logExportProgress(
-				ctx,
-				nextChunkIndex-startChunkIndex,
-				partitionChunkCount,
-			)
-			continue
-		}
-
-		data, ready := readyChunks[nextChunkIndex]
-		for !ready {
+	for pending := range e.pendingChunks {
+		if pending.ready != nil {
 			select {
-			case result := <-results:
-				inFlightReads--
-				if result.err != nil {
-					return Stats{}, result.err
-				}
-
-				if result.chunkIndex == nextChunkIndex {
-					data = result.data
-					ready = true
-				} else {
-					readyChunks[result.chunkIndex] = result.data
-				}
-			case <-readCtx.Done():
-				return Stats{}, readCtx.Err()
+			case <-pending.ready:
+			case <-ctx.Done():
+				return Stats{}, ctx.Err()
 			}
-
-			if !ready {
-				if err := scheduleReads(); err != nil {
-					return Stats{}, err
-				}
+			if pending.err != nil {
+				return Stats{}, pending.err
 			}
 		}
 
-		delete(readyChunks, nextChunkIndex)
-		err = writeStreamChunk(dst, data, nextChunkIndex, meta.Size)
+		data := pending.data
+		if pending.zero {
+			data = zeroes
+			zeroChunkCount++
+		} else {
+			dataChunkCount++
+		}
+
+		err := writeStreamChunk(dst, data, pending.chunkIndex, e.meta.Size)
 		if err != nil {
 			return Stats{}, err
 		}
 
-		dataChunkCount++
-		nextChunkIndex++
-		logExportProgress(
-			ctx,
-			nextChunkIndex-startChunkIndex,
-			partitionChunkCount,
-		)
-	}
+		processedChunkCount++
+		logExportProgress(ctx, processedChunkCount, e.meta.ChunkCount)
 
-	close(jobs)
-	jobsClosed = true
-
-	err = errGroup.Wait()
-	workersDone = true
-	if err != nil {
-		return Stats{}, err
+		if pending.ready != nil {
+			select {
+			case e.processedChunkIndices <- pending.chunkIndex:
+			case <-ctx.Done():
+				return Stats{}, ctx.Err()
+			}
+		}
 	}
 
 	return Stats{
-		Size:           size,
+		Size:           e.meta.Size,
 		DataChunkCount: dataChunkCount,
 		ZeroChunkCount: zeroChunkCount,
 	}, nil
 }
 
-func readStreamChunkMap(
-	ctx context.Context,
-	snapshotStorage storage.Storage,
-	snapshotID string,
-	startChunkIndex uint32,
-	endChunkIndex uint32,
-	chunkCount uint32,
-) ([]storage.ChunkMapEntry, []bool, error) {
-
-	if startChunkIndex > endChunkIndex || endChunkIndex > chunkCount {
-		return nil, nil, task_errors.NewNonRetriableErrorf(
-			"invalid chunk range [%v, %v) for snapshot chunk count %v",
-			startChunkIndex,
-			endChunkIndex,
-			chunkCount,
-		)
-	}
-
-	mapCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	entries, entriesErrors := snapshotStorage.ReadChunkMap(
-		mapCtx,
-		snapshotID,
-		startChunkIndex,
-	)
-
-	partitionChunkCount := endChunkIndex - startChunkIndex
-	entriesByIndex := make([]storage.ChunkMapEntry, int(partitionChunkCount))
-	hasEntry := make([]bool, int(partitionChunkCount))
-
-	var lastEntryIndex uint32
-	hasLastEntry := false
-	stoppedAtEnd := false
-
-	for entry := range entries {
-		if hasLastEntry && entry.ChunkIndex <= lastEntryIndex {
-			return nil, nil, task_errors.NewNonRetriableErrorf(
-				"chunk map is not ordered: got chunk index %v after %v chunks",
-				entry.ChunkIndex,
-				lastEntryIndex+1,
-			)
-		}
-		if entry.ChunkIndex < startChunkIndex {
-			return nil, nil, task_errors.NewNonRetriableErrorf(
-				"chunk index %v is before requested chunk range [%v, %v)",
-				entry.ChunkIndex,
-				startChunkIndex,
-				endChunkIndex,
-			)
-		}
-		if entry.ChunkIndex >= chunkCount {
-			return nil, nil, task_errors.NewNonRetriableErrorf(
-				"chunk index %v is outside snapshot chunk count %v",
-				entry.ChunkIndex,
-				chunkCount,
-			)
-		}
-
-		lastEntryIndex = entry.ChunkIndex
-		hasLastEntry = true
-
-		if entry.ChunkIndex >= endChunkIndex {
-			stoppedAtEnd = true
-			cancel()
-			break
-		}
-
-		localIndex := entry.ChunkIndex - startChunkIndex
-		entriesByIndex[localIndex] = entry
-		hasEntry[localIndex] = true
-	}
-
-	if stoppedAtEnd {
-		for range entries {
-		}
-	}
-
-	err := <-entriesErrors
-	if err != nil {
-		if !stoppedAtEnd || ctx.Err() != nil || !errors.Is(err, context.Canceled) {
-			return nil, nil, err
-		}
-	}
-	if err := ctx.Err(); err != nil {
-		return nil, nil, err
-	}
-
-	return entriesByIndex, hasEntry, nil
-}
+////////////////////////////////////////////////////////////////////////////////
 
 func logExportProgress(ctx context.Context, processedChunkCount uint32, chunkCount uint32) {
 	if processedChunkCount%logProgressChunkCount == 0 {
@@ -522,8 +393,6 @@ func logExportProgress(ctx context.Context, processedChunkCount uint32, chunkCou
 	}
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
 func writeStreamChunk(
 	dst io.Writer,
 	data []byte,
@@ -531,7 +400,7 @@ func writeStreamChunk(
 	size uint64,
 ) error {
 
-	offset := uint64(chunkIndex) * chunkSize
+	offset := uint64(chunkIndex) * dataplane_common.ChunkSize
 	if offset >= size {
 		return task_errors.NewNonRetriableErrorf(
 			"chunk index %v is outside snapshot size %v",

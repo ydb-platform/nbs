@@ -60,11 +60,11 @@ func fillChunkOnRead(args mock.Arguments) {
 }
 
 func assertTwoChunkStream(t *testing.T, data []byte) {
-	expected := make([]byte, 2*chunkSize)
-	for i := 0; i < chunkSize; i++ {
+	expected := make([]byte, 2*dataplane_common.ChunkSize)
+	for i := 0; i < dataplane_common.ChunkSize; i++ {
 		expected[i] = chunkDataByte(0)
 	}
-	for i := chunkSize; i < 2*chunkSize; i++ {
+	for i := dataplane_common.ChunkSize; i < 2*dataplane_common.ChunkSize; i++ {
 		expected[i] = chunkDataByte(1)
 	}
 	require.Equal(t, expected, data)
@@ -72,20 +72,22 @@ func assertTwoChunkStream(t *testing.T, data []byte) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func TestExportPartitionWritesRawImageStream(t *testing.T) {
+func TestExportWritesRawImageStream(t *testing.T) {
 	ctx := newContext()
 
 	entries := []storage.ChunkMapEntry{
 		{ChunkIndex: 0, ChunkID: "chunk-0", StoredInS3: true},
-		{ChunkIndex: 1, ChunkID: ""}, // Zero chunk.
-		{ChunkIndex: 2, ChunkID: "chunk-2"},
+		{ChunkIndex: 1, ChunkID: ""}, // Explicit zero chunk.
+		// Chunk 2 is absent from the map and must be emitted as zeroes.
+		{ChunkIndex: 3, ChunkID: "chunk-3"},
+		// Chunk 4 is an absent partial last chunk.
 	}
 
 	const partialLastChunkSize = 123
-	snapshotSize := uint64(2*chunkSize + partialLastChunkSize)
+	snapshotSize := uint64(4*dataplane_common.ChunkSize + partialLastChunkSize)
 	snapshotStorage := mocks.NewStorageMock()
 	snapshotStorage.On("CheckSnapshotReady", mock.Anything, "snapshot").Return(
-		storage.SnapshotMeta{Size: snapshotSize, ChunkCount: 3},
+		storage.SnapshotMeta{Size: snapshotSize, ChunkCount: 5},
 		nil,
 	)
 	entryChannel, errorChannel := newChunkMapChannels(entries, nil)
@@ -99,35 +101,33 @@ func TestExportPartitionWritesRawImageStream(t *testing.T) {
 
 	var dst bytes.Buffer
 
-	stats, err := ExportPartitionToWriterWithReadWorkers(
+	stats, err := ExportSnapshot(
 		ctx,
 		snapshotStorage,
 		"snapshot",
 		&dst,
-		1, // partition
-		1, // partitionCount
 		testWorkerCount,
 	)
 	require.NoError(t, err)
 
 	require.Equal(t, snapshotSize, stats.Size)
 	require.Equal(t, uint32(2), stats.DataChunkCount)
-	require.Equal(t, uint32(1), stats.ZeroChunkCount)
+	require.Equal(t, uint32(3), stats.ZeroChunkCount)
 
 	expected := make([]byte, int(snapshotSize))
-	for i := 0; i < chunkSize; i++ {
+	for i := 0; i < dataplane_common.ChunkSize; i++ {
 		expected[i] = chunkDataByte(0)
 	}
-	for i := 2 * chunkSize; i < len(expected); i++ {
-		expected[i] = chunkDataByte(2)
+	for i := 3 * dataplane_common.ChunkSize; i < 4*dataplane_common.ChunkSize; i++ {
+		expected[i] = chunkDataByte(3)
 	}
 	require.Equal(t, expected, dst.Bytes())
 
-	// Zero chunk should not be read from the storage.
+	// Zero chunks should not be read from the storage.
 	snapshotStorage.AssertNumberOfCalls(t, "ReadChunk", 2)
 }
 
-func TestExportPartitionReadsChunksConcurrently(t *testing.T) {
+func TestExportReadsChunksConcurrently(t *testing.T) {
 	ctx := newContext()
 
 	entries := []storage.ChunkMapEntry{
@@ -137,7 +137,7 @@ func TestExportPartitionReadsChunksConcurrently(t *testing.T) {
 
 	snapshotStorage := mocks.NewStorageMock()
 	snapshotStorage.On("CheckSnapshotReady", mock.Anything, "snapshot").Return(
-		storage.SnapshotMeta{Size: 2 * chunkSize, ChunkCount: 2},
+		storage.SnapshotMeta{Size: 2 * dataplane_common.ChunkSize, ChunkCount: 2},
 		nil,
 	)
 	entryChannel, errorChannel := newChunkMapChannels(entries, nil)
@@ -165,13 +165,11 @@ func TestExportPartitionReadsChunksConcurrently(t *testing.T) {
 	result := make(chan exportResult, 1)
 
 	go func() {
-		stats, err := ExportPartitionToWriterWithReadWorkers(
+		stats, err := ExportSnapshot(
 			ctx,
 			snapshotStorage,
 			"snapshot",
 			&dst,
-			1, // partition
-			1, // partitionCount
 			2, // readWorkerCount
 		)
 		result <- exportResult{stats: stats, err: err}
@@ -202,7 +200,7 @@ func TestExportPartitionReadsChunksConcurrently(t *testing.T) {
 	snapshotStorage.AssertNumberOfCalls(t, "ReadChunk", 2)
 }
 
-func TestExportPartitionWritesOutOfOrderReadsInChunkOrder(t *testing.T) {
+func TestExportWritesOutOfOrderReadsInChunkOrder(t *testing.T) {
 	ctx := newContext()
 
 	entries := []storage.ChunkMapEntry{
@@ -212,7 +210,7 @@ func TestExportPartitionWritesOutOfOrderReadsInChunkOrder(t *testing.T) {
 
 	snapshotStorage := mocks.NewStorageMock()
 	snapshotStorage.On("CheckSnapshotReady", mock.Anything, "snapshot").Return(
-		storage.SnapshotMeta{Size: 2 * chunkSize, ChunkCount: 2},
+		storage.SnapshotMeta{Size: 2 * dataplane_common.ChunkSize, ChunkCount: 2},
 		nil,
 	)
 	entryChannel, errorChannel := newChunkMapChannels(entries, nil)
@@ -247,13 +245,11 @@ func TestExportPartitionWritesOutOfOrderReadsInChunkOrder(t *testing.T) {
 	result := make(chan exportResult, 1)
 
 	go func() {
-		stats, err := ExportPartitionToWriterWithReadWorkers(
+		stats, err := ExportSnapshot(
 			ctx,
 			snapshotStorage,
 			"snapshot",
 			&dst,
-			1, // partition
-			1, // partitionCount
 			2, // readWorkerCount
 		)
 		result <- exportResult{stats: stats, err: err}
@@ -290,11 +286,11 @@ func TestExportPartitionWritesOutOfOrderReadsInChunkOrder(t *testing.T) {
 	assertTwoChunkStream(t, dst.Bytes())
 }
 
-func TestExportPartitionBoundsOutOfOrderReadBuffering(t *testing.T) {
+func TestExportBoundsOutOfOrderReadBuffering(t *testing.T) {
 	ctx := newContext()
 
 	readWorkerCount := 2
-	readAheadChunkCount := readWorkerCount * streamReadAheadMultiplier
+	readAheadChunkCount := readWorkerCount * readAheadMultiplier
 	chunkCount := uint32(readAheadChunkCount + 1)
 
 	entries := make([]storage.ChunkMapEntry, 0, chunkCount)
@@ -308,7 +304,7 @@ func TestExportPartitionBoundsOutOfOrderReadBuffering(t *testing.T) {
 	snapshotStorage := mocks.NewStorageMock()
 	snapshotStorage.On("CheckSnapshotReady", mock.Anything, "snapshot").Return(
 		storage.SnapshotMeta{
-			Size:       uint64(chunkCount) * chunkSize,
+			Size:       uint64(chunkCount) * dataplane_common.ChunkSize,
 			ChunkCount: chunkCount,
 		},
 		nil,
@@ -347,13 +343,11 @@ func TestExportPartitionBoundsOutOfOrderReadBuffering(t *testing.T) {
 	result := make(chan exportResult, 1)
 
 	go func() {
-		stats, err := ExportPartitionToWriterWithReadWorkers(
+		stats, err := ExportSnapshot(
 			ctx,
 			snapshotStorage,
 			"snapshot",
 			io.Discard,
-			1, // partition
-			1, // partitionCount
 			readWorkerCount,
 		)
 		result <- exportResult{stats: stats, err: err}
@@ -393,7 +387,7 @@ func TestExportPartitionBoundsOutOfOrderReadBuffering(t *testing.T) {
 	}
 }
 
-func TestExportPartitionWritesMissingChunksAsZeroes(t *testing.T) {
+func TestExportFailsOnChunkReadError(t *testing.T) {
 	ctx := newContext()
 
 	entries := []storage.ChunkMapEntry{
@@ -402,53 +396,7 @@ func TestExportPartitionWritesMissingChunksAsZeroes(t *testing.T) {
 
 	snapshotStorage := mocks.NewStorageMock()
 	snapshotStorage.On("CheckSnapshotReady", mock.Anything, "snapshot").Return(
-		storage.SnapshotMeta{Size: 2 * chunkSize, ChunkCount: 2},
-		nil,
-	)
-	entryChannel, errorChannel := newChunkMapChannels(entries, nil)
-	snapshotStorage.On("ReadChunkMap", mock.Anything, "snapshot", uint32(0)).Return(
-		entryChannel,
-		errorChannel,
-	)
-	snapshotStorage.On("ReadChunk", mock.Anything, mock.Anything).Run(
-		fillChunkOnRead,
-	).Return(nil)
-
-	var dst bytes.Buffer
-
-	stats, err := ExportPartitionToWriterWithReadWorkers(
-		ctx,
-		snapshotStorage,
-		"snapshot",
-		&dst,
-		1, // partition
-		1, // partitionCount
-		testWorkerCount,
-	)
-	require.NoError(t, err)
-
-	require.Equal(t, uint64(2*chunkSize), stats.Size)
-	require.Equal(t, uint32(1), stats.DataChunkCount)
-	require.Equal(t, uint32(1), stats.ZeroChunkCount)
-
-	expected := make([]byte, 2*chunkSize)
-	for i := 0; i < chunkSize; i++ {
-		expected[i] = chunkDataByte(0)
-	}
-	require.Equal(t, expected, dst.Bytes())
-	snapshotStorage.AssertNumberOfCalls(t, "ReadChunk", 1)
-}
-
-func TestExportPartitionFailsOnChunkReadError(t *testing.T) {
-	ctx := newContext()
-
-	entries := []storage.ChunkMapEntry{
-		{ChunkIndex: 0, ChunkID: "chunk-0"},
-	}
-
-	snapshotStorage := mocks.NewStorageMock()
-	snapshotStorage.On("CheckSnapshotReady", mock.Anything, "snapshot").Return(
-		storage.SnapshotMeta{Size: chunkSize, ChunkCount: 1},
+		storage.SnapshotMeta{Size: dataplane_common.ChunkSize, ChunkCount: 1},
 		nil,
 	)
 	entryChannel, errorChannel := newChunkMapChannels(entries, nil)
@@ -462,20 +410,18 @@ func TestExportPartitionFailsOnChunkReadError(t *testing.T) {
 
 	var dst bytes.Buffer
 
-	_, err := ExportPartitionToWriterWithReadWorkers(
+	_, err := ExportSnapshot(
 		ctx,
 		snapshotStorage,
 		"snapshot",
 		&dst,
-		1, // partition
-		1, // partitionCount
 		testWorkerCount,
 	)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "chunk read failed")
 }
 
-func TestExportPartitionFailsOnChunkMapError(t *testing.T) {
+func TestExportFailsOnChunkMapError(t *testing.T) {
 	ctx := newContext()
 
 	entries := []storage.ChunkMapEntry{
@@ -484,7 +430,7 @@ func TestExportPartitionFailsOnChunkMapError(t *testing.T) {
 
 	snapshotStorage := mocks.NewStorageMock()
 	snapshotStorage.On("CheckSnapshotReady", mock.Anything, "snapshot").Return(
-		storage.SnapshotMeta{Size: 2 * chunkSize, ChunkCount: 2},
+		storage.SnapshotMeta{Size: 2 * dataplane_common.ChunkSize, ChunkCount: 2},
 		nil,
 	)
 	entryChannel, errorChannel := newChunkMapChannels(
@@ -495,24 +441,26 @@ func TestExportPartitionFailsOnChunkMapError(t *testing.T) {
 		entryChannel,
 		errorChannel,
 	)
+	// Reads of chunks streamed before the failure may start; the export must
+	// still fail with the chunk map error.
+	snapshotStorage.On("ReadChunk", mock.Anything, mock.Anything).Run(
+		fillChunkOnRead,
+	).Return(nil)
 
 	var dst bytes.Buffer
 
-	_, err := ExportPartitionToWriterWithReadWorkers(
+	_, err := ExportSnapshot(
 		ctx,
 		snapshotStorage,
 		"snapshot",
 		&dst,
-		1, // partition
-		1, // partitionCount
 		testWorkerCount,
 	)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "chunk map read failed")
-	snapshotStorage.AssertNumberOfCalls(t, "ReadChunk", 0)
 }
 
-func TestExportPartitionFailsWhenSnapshotIsNotReady(t *testing.T) {
+func TestExportFailsWhenSnapshotIsNotReady(t *testing.T) {
 	ctx := newContext()
 
 	snapshotStorage := mocks.NewStorageMock()
@@ -523,13 +471,11 @@ func TestExportPartitionFailsWhenSnapshotIsNotReady(t *testing.T) {
 
 	var dst bytes.Buffer
 
-	_, err := ExportPartitionToWriterWithReadWorkers(
+	_, err := ExportSnapshot(
 		ctx,
 		snapshotStorage,
 		"snapshot",
 		&dst,
-		1, // partition
-		1, // partitionCount
 		testWorkerCount,
 	)
 	require.Error(t, err)
@@ -538,19 +484,31 @@ func TestExportPartitionFailsWhenSnapshotIsNotReady(t *testing.T) {
 	snapshotStorage.AssertNumberOfCalls(t, "ReadChunkMap", 0)
 }
 
-func TestReadStreamChunkMapValidation(t *testing.T) {
+func TestExportRejectsInvalidReadWorkerCount(t *testing.T) {
+	snapshotStorage := mocks.NewStorageMock()
+	var dst bytes.Buffer
+
+	_, err := ExportSnapshot(
+		newContext(),
+		snapshotStorage,
+		"snapshot",
+		&dst,
+		0, // readWorkerCount
+	)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "readWorkerCount must be positive")
+	snapshotStorage.AssertNumberOfCalls(t, "CheckSnapshotReady", 0)
+}
+
+func TestExportValidatesChunkMap(t *testing.T) {
 	testCases := []struct {
 		name           string
-		startChunk     uint32
-		endChunk       uint32
 		chunkCount     uint32
 		entries        []storage.ChunkMapEntry
 		errorSubstring string
 	}{
 		{
 			name:       "unordered",
-			startChunk: 0,
-			endChunk:   2,
 			chunkCount: 2,
 			entries: []storage.ChunkMapEntry{
 				{ChunkIndex: 1, ChunkID: "chunk-1"},
@@ -559,19 +517,7 @@ func TestReadStreamChunkMapValidation(t *testing.T) {
 			errorSubstring: "chunk map is not ordered",
 		},
 		{
-			name:       "before range",
-			startChunk: 1,
-			endChunk:   3,
-			chunkCount: 3,
-			entries: []storage.ChunkMapEntry{
-				{ChunkIndex: 0, ChunkID: "chunk-0"},
-			},
-			errorSubstring: "before requested chunk range",
-		},
-		{
 			name:       "outside chunk count",
-			startChunk: 0,
-			endChunk:   2,
 			chunkCount: 2,
 			entries: []storage.ChunkMapEntry{
 				{ChunkIndex: 2, ChunkID: "chunk-2"},
@@ -584,21 +530,33 @@ func TestReadStreamChunkMapValidation(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			ctx := newContext()
 			snapshotStorage := mocks.NewStorageMock()
+			snapshotStorage.On("CheckSnapshotReady", mock.Anything, "snapshot").Return(
+				storage.SnapshotMeta{
+					Size:       uint64(testCase.chunkCount) * dataplane_common.ChunkSize,
+					ChunkCount: testCase.chunkCount,
+				},
+				nil,
+			)
 			entryChannel, errorChannel := newChunkMapChannels(testCase.entries, nil)
 			snapshotStorage.On(
 				"ReadChunkMap",
 				mock.Anything,
 				"snapshot",
-				testCase.startChunk,
+				uint32(0),
 			).Return(entryChannel, errorChannel)
+			// Entries streamed before the invalid one may get read.
+			snapshotStorage.On("ReadChunk", mock.Anything, mock.Anything).Run(
+				fillChunkOnRead,
+			).Return(nil)
 
-			_, _, err := readStreamChunkMap(
+			var dst bytes.Buffer
+
+			_, err := ExportSnapshot(
 				ctx,
 				snapshotStorage,
 				"snapshot",
-				testCase.startChunk,
-				testCase.endChunk,
-				testCase.chunkCount,
+				&dst,
+				testWorkerCount,
 			)
 			require.Error(t, err)
 			require.Contains(t, err.Error(), testCase.errorSubstring)

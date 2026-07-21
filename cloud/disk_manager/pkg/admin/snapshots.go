@@ -324,8 +324,6 @@ type exportSnapshot struct {
 	serverConfig    *server_config.ServerConfig
 	snapshotID      string
 	readWorkerCount int
-	partition       uint32
-	partitionCount  uint32
 	verbose         bool
 }
 
@@ -346,25 +344,16 @@ ciphertext. Legacy snapshot storage configured by LegacyStorageFolder is not
 supported.
 
 The output stream is not sparse: zero chunks are written explicitly because
-stdout is sequential. Memory usage is roughly --read-workers * 4 MiB for chunk
-read buffers plus the selected partition chunk map. With the default
---partition-count=1 this is the whole snapshot map; use --partition-count and
-concatenate partitions in ascending order to bound map memory for large
-snapshots.`
+stdout is sequential. The chunk map is streamed, so it does not have to fit in
+memory; memory usage is bounded by the read-ahead window of
+--read-workers * 4 chunk read buffers, 4 MiB each.`
 
 const exportSnapshotExample = `  disk-manager-admin \
       --server-config /etc/disk-manager/server-config.txt \
       snapshots export --id <snapshot-or-image-id> > image.raw
 
   qemu-img info image.raw
-  qemu-img convert -f raw -O qcow2 image.raw image.qcow2
-
-  for p in 1 2 3 4; do
-      disk-manager-admin \
-          --server-config /etc/disk-manager/server-config.txt \
-          snapshots export --id <snapshot-or-image-id> \
-          --partition $p --partition-count 4 >> image.raw
-  done`
+  qemu-img convert -f raw -O qcow2 image.raw image.qcow2`
 
 func newExportSnapshotLogger(level logging.Level) logging.Logger {
 	config := logzap.ConsoleConfig(level)
@@ -373,10 +362,6 @@ func newExportSnapshotLogger(level logging.Level) logging.Logger {
 }
 
 func (c *exportSnapshot) run() error {
-	if err := exporter.ValidatePartition(c.partition, c.partitionCount); err != nil {
-		return err
-	}
-
 	level := logging.InfoLevel
 	if c.verbose {
 		level = logging.DebugLevel
@@ -427,13 +412,11 @@ func (c *exportSnapshot) run() error {
 		return err
 	}
 
-	stats, err := exporter.ExportPartitionToWriterWithReadWorkers(
+	stats, err := exporter.ExportSnapshot(
 		ctx,
 		snapshotStorage,
 		c.snapshotID,
 		os.Stdout,
-		c.partition,
-		c.partitionCount,
 		c.readWorkerCount,
 	)
 	if err != nil {
@@ -442,9 +425,7 @@ func (c *exportSnapshot) run() error {
 
 	logging.Info(
 		ctx,
-		"exported partition %v/%v of snapshot %v to stdout: size %v bytes, %v data chunks, %v zero chunks",
-		c.partition,
-		c.partitionCount,
+		"exported snapshot %v to stdout: size %v bytes, %v data chunks, %v zero chunks",
 		c.snapshotID,
 		stats.Size,
 		stats.DataChunkCount,
@@ -457,8 +438,6 @@ func newExportSnapshotCmd(serverConfig *server_config.ServerConfig) *cobra.Comma
 	c := &exportSnapshot{
 		serverConfig:    serverConfig,
 		readWorkerCount: exporter.DefaultStreamReadWorkerCount,
-		partition:       1,
-		partitionCount:  1,
 	}
 
 	cmd := &cobra.Command{
@@ -484,18 +463,6 @@ func newExportSnapshotCmd(serverConfig *server_config.ServerConfig) *cobra.Comma
 		"read-workers",
 		exporter.DefaultStreamReadWorkerCount,
 		"Number of parallel chunk read workers; each worker uses one 4 MiB read buffer",
-	)
-	cmd.Flags().Uint32Var(
-		&c.partition,
-		"partition",
-		1,
-		"1-based partition number to export",
-	)
-	cmd.Flags().Uint32Var(
-		&c.partitionCount,
-		"partition-count",
-		1,
-		"Total number of contiguous snapshot partitions",
 	)
 	cmd.Flags().BoolVarP(
 		&c.verbose,
