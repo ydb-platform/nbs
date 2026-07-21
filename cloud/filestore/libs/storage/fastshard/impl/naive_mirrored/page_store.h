@@ -3,44 +3,31 @@
 #include <cloud/filestore/libs/service/error.h>
 #include <cloud/filestore/libs/storage/fastshard/sn/quorum/storage_group.h>
 
+#include <memory>
+
 namespace NCloud::NFileStore::NStorage::NFastShard {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TPageStore
+class IPageStore
 {
-private:
-    IStorageGroupPtr Storage;
-    const ui64 PageSize;
-
-    struct TPage
-    {
-        TString Content;
-        bool Dirty = false;
-    };
-
-    // TODO: eviction strategy + size limit
-    mutable THashMap<ui64, TPage> PageCache;
-
 public:
-    TPageStore(
-            IStorageGroupPtr storage,
-            ui64 pageSize)
-        : Storage(std::move(storage))
-        , PageSize(pageSize)
-    {
-    }
+    virtual ~IPageStore() = default;
 
-public:
-    void CommitPages(const TVector<ui64>& pages);
-    void RollbackPages(const TVector<ui64>& pages);
-    void WritePage(
+    virtual void CommitPages(const TVector<ui64>& pages) = 0;
+    virtual void RollbackPages(const TVector<ui64>& pages) = 0;
+    virtual void WritePage(
         ui64 pageNo,
         TString page,
-        TVector<TPageGroup>& logRecord);
-    NProto::TError ReadPage(ui64 pageNo, TString* page) const;
+        TVector<TPageGroup>& logRecord) = 0;
+    virtual NProto::TError ReadPage(ui64 pageNo, TString* page) const = 0;
 };
 
-using TPageStorePtr = std::shared_ptr<TPageStore>;
+using IPageStorePtr = std::shared_ptr<IPageStore>;
+
+////////////////////////////////////////////////////////////////////////////////
+
+IPageStorePtr CreatePageStore(IStorageGroupPtr storage, ui64 pageSize);
+IPageStorePtr CreateMemPageStore(ui64 pageSize);
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard

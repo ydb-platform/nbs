@@ -8,6 +8,47 @@
 
 namespace NCloud::NFileStore::NStorage::NFastShard {
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TPageStore: public IPageStore
+{
+private:
+    IStorageGroupPtr Storage;
+
+protected:
+    const ui64 PageSize;
+
+private:
+    struct TPage
+    {
+        TString Content;
+        bool Dirty = false;
+    };
+
+    // TODO: eviction strategy + size limit
+    mutable THashMap<ui64, TPage> PageCache;
+
+public:
+    TPageStore(
+            IStorageGroupPtr storage,
+            ui64 pageSize)
+        : Storage(std::move(storage))
+        , PageSize(pageSize)
+    {
+    }
+
+public:
+    void CommitPages(const TVector<ui64>& pages) override;
+    void RollbackPages(const TVector<ui64>& pages) override;
+    void WritePage(
+        ui64 pageNo,
+        TString page,
+        TVector<TPageGroup>& logRecord) override;
+    NProto::TError ReadPage(ui64 pageNo, TString* page) const override;
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TPageStore::CommitPages(const TVector<ui64>& pages)
@@ -52,6 +93,10 @@ NProto::TError TPageStore::ReadPage(ui64 pageNo, TString* page) const
 
         *page = ptr->Content;
         return {};
+    }
+
+    if (!Storage) {
+        return MakeError(E_NOT_FOUND);
     }
 
     NProto::TReadPagesRequest request;
@@ -101,6 +146,42 @@ NProto::TError TPageStore::ReadPage(ui64 pageNo, TString* page) const
     *page = std::move(rpg.Content[0]);
     PageCache[pageNo] = {.Content = *page, .Dirty = false};
     return {};
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TMemPageStore: public TPageStore
+{
+public:
+    explicit TMemPageStore(ui64 pageSize)
+        : TPageStore(nullptr /* storage */, pageSize)
+    {
+    }
+
+    NProto::TError ReadPage(ui64 pageNo, TString* page) const override
+    {
+        auto error = TPageStore::ReadPage(pageNo, page);
+        if (error.GetCode() == E_NOT_FOUND) {
+            *page = TString(PageSize, 0);
+            return {};
+        }
+
+        return error;
+    }
+};
+
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+IPageStorePtr CreatePageStore(IStorageGroupPtr storage, ui64 pageSize)
+{
+    return std::make_shared<TPageStore>(std::move(storage), pageSize);
+}
+
+IPageStorePtr CreateMemPageStore(ui64 pageSize)
+{
+    return std::make_shared<TMemPageStore>(pageSize);
 }
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard

@@ -127,7 +127,7 @@ private:
 public:
     ui64 Init(
         const NProtoPrivate::TPersistentFastShardConfig& config,
-        TPageStorePtr pageStore)
+        IPageStorePtr pageStore)
     {
         const ui64 slotCount = Min(
             RoundUp(config.GetNodesPerGroup(), SlotsPerPage),
@@ -241,7 +241,7 @@ public:
     void Init(
         const NProtoPrivate::TPersistentFastShardConfig& config,
         ui64 firstPageNo,
-        TPageStorePtr pageStore)
+        IPageStorePtr pageStore)
     {
         const ui64 slotCount = Min(
             RoundUp(config.GetNodesPerGroup(), SlotsPerPage),
@@ -338,7 +338,7 @@ private:
     const NProtoPrivate::TPersistentFastShardConfig Config;
 
     IStorageGroupPtr Storage;
-    TPageStorePtr PageStore;
+    IPageStorePtr PageStore;
     TNodeTable Nodes;
     TNameTable Names;
     mutable silk::FiberMutex Mutex;
@@ -366,7 +366,7 @@ public:
             });
         }
         Storage = CreateNaiveMirroredStorageGroup(std::move(devices));
-        PageStore = std::make_shared<TPageStore>(Storage, PageSize);
+        PageStore = CreatePageStore(Storage, PageSize);
 
         const ui64 nodeTablePageCount = Nodes.Init(Config, PageStore);
         Names.Init(Config, nodeTablePageCount /* firstPageNo */, PageStore);

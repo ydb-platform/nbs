@@ -55,10 +55,10 @@ constexpr size_t NodesPerGroup = 64;
 
 ////////////////////////////////////////////////////////////////////////////////
 // Test fixture:
-// * allocates N files
-// * runs N storage nodes on top of them
-// * allocates N ports
-// * runs N storage node servers on top of the created storage nodes
+// * allocates a file
+// * allocates a port
+// * runs a storage node on top of that file
+// * and a storage node server on top of that node
 
 struct TStorageNodeFixture
 {
@@ -83,6 +83,11 @@ struct TStorageNodeFixture
         Server->Stop();
     }
 };
+
+////////////////////////////////////////////////////////////////////////////////
+// Test fixture:
+// * creates N storage node fixtures
+// * sets up shard config using the endpoints of those storage nodes
 
 struct TStorageFixture
 {

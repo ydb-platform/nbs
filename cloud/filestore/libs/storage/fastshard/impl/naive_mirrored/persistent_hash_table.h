@@ -26,7 +26,7 @@ private:
     const ui64 SlotSize;
     const ui64 SlotsPerPage;
     const TValue Tombstone;
-    TPageStorePtr PageStore;
+    IPageStorePtr PageStore;
 
     using TMakeKey = std::function<TKey(const TValue&)>;
     TMakeKey MakeKey;
@@ -44,7 +44,7 @@ public:
             ui64 slotCount,
             ui64 slotSize,
             const TValue& tombstone,
-            TPageStorePtr pageStore,
+            IPageStorePtr pageStore,
             TMakeKey makeKey,
             THash hash)
         : FirstPageNo(firstPageNo)
@@ -81,6 +81,7 @@ public:
         const ui64 slotNo,
         TVector<TPageGroup>& pageGroups)
     {
+        // TODO: verify that there's no key change
         return DoPut(v, slotNo, pageGroups);
     }
 
