@@ -59,10 +59,10 @@ message THeaders
             REQUEST_ORIGIN_UNSPECIFIED = 0;
 
             // Internal caller; arguments are picked by us
-            REQUEST_ORIGIN_CONTROLLED = 1;
+            REQUEST_ORIGIN_INTERNAL = 1;
 
             // Came over the public gRPC API; arguments are client-supplied
-            REQUEST_ORIGIN_UNCONTROLLED = 2;
+            REQUEST_ORIGIN_EXTERNAL = 2;
         }
 
         ERequestOrigin RequestOrigin = 6;

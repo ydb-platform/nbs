@@ -52,7 +52,7 @@ private:
     TString CheckpointId;
     TString OriginFqdn;
     // Whether the filesystem id came from the public gRPC API
-    bool FromUncontrolledSource;
+    bool FromExternalSource;
     bool RestoreClientSession;
     ui64 SeqNo;
     bool ReadOnly;
@@ -89,7 +89,7 @@ public:
         ui64 seqNo,
         bool readOnly,
         bool restoreClientSession,
-        bool fromUncontrolledSource,
+        bool fromExternalSource,
         TActorId owner);
 
     void Bootstrap(const TActorContext& ctx);
@@ -185,7 +185,7 @@ TCreateSessionActor::TCreateSessionActor(
         ui64 seqNo,
         bool readOnly,
         bool restoreClientSession,
-        bool fromUncontrolledSource,
+        bool fromExternalSource,
         TActorId owner)
     : Config(std::move(config))
     , RequestInfo(std::move(requestInfo))
@@ -193,7 +193,7 @@ TCreateSessionActor::TCreateSessionActor(
     , FileSystemId(std::move(fileSystemId))
     , CheckpointId(std::move(checkpointId))
     , OriginFqdn(std::move(originFqdn))
-    , FromUncontrolledSource(fromUncontrolledSource)
+    , FromExternalSource(fromExternalSource)
     , RestoreClientSession(restoreClientSession)
     , SeqNo(seqNo)
     , ReadOnly(readOnly)
@@ -232,8 +232,8 @@ void TCreateSessionActor::HandleDescribeFileStoreResponse(
                 FileSystemId.c_str(),
                 FormatError(msg->GetError()).c_str());
 
-            // not_found is expected from an uncontrolled source
-            if (!(FromUncontrolledSource && msg->GetStatus() == E_NOT_FOUND)) {
+            // not_found is expected from an external source
+            if (!(FromExternalSource && msg->GetStatus() == E_NOT_FOUND)) {
                 ReportDescribeFileStoreError();
             }
         }
@@ -807,7 +807,7 @@ void TStorageServiceActor::HandleCreateSession(
         msg->Record.GetReadOnly(),
         msg->Record.GetRestoreClientSession(),
         msg->Record.GetHeaders().GetInternal().GetRequestOrigin() ==
-            NProto::THeaders::TInternal::REQUEST_ORIGIN_UNCONTROLLED,
+            NProto::THeaders::TInternal::REQUEST_ORIGIN_EXTERNAL,
         SelfId());
 
     auto actorId = NCloud::Register(ctx, std::move(actor));

@@ -444,7 +444,7 @@ void TAppContext::ValidateRequest(
         NProto::THeaders::TInternal::REQUEST_ORIGIN_UNSPECIFIED)
     {
         internal.SetRequestOrigin(
-            NProto::THeaders::TInternal::REQUEST_ORIGIN_UNCONTROLLED);
+            NProto::THeaders::TInternal::REQUEST_ORIGIN_EXTERNAL);
     }
 
     // we will only get token from secure control channel
