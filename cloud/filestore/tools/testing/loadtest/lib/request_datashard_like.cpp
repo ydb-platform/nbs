@@ -79,11 +79,11 @@ public:
             IShmDataClientPtr dataClient,
             TString filesystemId,
             NProto::THeaders headers,
-            TCountLimiterPtr fileCreationLimiter)
+            TCountLimiterPtr countLimiter)
         : Spec(std::move(spec))
         , FileSystemId(std::move(filesystemId))
         , Headers(std::move(headers))
-        , CountLimiter(std::move(fileCreationLimiter))
+        , CountLimiter(std::move(countLimiter))
         , Session(std::move(session))
         , DataClient(std::move(dataClient))
     {
@@ -177,7 +177,7 @@ private:
     TFuture<TCompletedRequest> DoCreateNode()
     {
         auto started = TInstant::Now();
-        if (!CountLimiter->TryReserve()) {
+        if (!CountLimiter->TryReserveNode()) {
             return MakeFuture<TCompletedRequest>({
                 NProto::ACTION_CREATE_NODE,
                 started,
@@ -507,7 +507,7 @@ IRequestGeneratorPtr CreateDatashardLikeRequestGenerator(
     IShmDataClientPtr dataClient,
     TString filesystemId,
     NProto::THeaders headers,
-    TCountLimiterPtr fileCreationLimiter)
+    TCountLimiterPtr countLimiter)
 {
     return std::make_shared<TDatashardLikeRequestGenerator>(
         std::move(spec),
@@ -516,7 +516,7 @@ IRequestGeneratorPtr CreateDatashardLikeRequestGenerator(
         std::move(dataClient),
         std::move(filesystemId),
         std::move(headers),
-        std::move(fileCreationLimiter));
+        std::move(countLimiter));
 }
 
 }   // namespace NCloud::NFileStore::NLoadTest

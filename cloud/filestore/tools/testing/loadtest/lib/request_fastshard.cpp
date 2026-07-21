@@ -90,13 +90,13 @@ public:
             NProto::TFastShardLoadSpec spec,
             ui32 maxParallelism,
             ILoggingServicePtr /*logging*/,
-            TCountLimiterPtr fileCreationLimiter)
+            TCountLimiterPtr countLimiter)
         : Spec(std::move(spec))
         , ShardFileSystemId(Spec.GetShardFileSystemId())
         , ReadBytes(Spec.GetReadBytes() ? Spec.GetReadBytes() : DefaultIoSize)
         , WriteBytes(Spec.GetWriteBytes() ? Spec.GetWriteBytes() : DefaultIoSize)
         , InitialFileSize(Spec.GetInitialFileSize())
-        , CountLimiter(std::move(fileCreationLimiter))
+        , CountLimiter(std::move(countLimiter))
     {
         Y_ENSURE(!ShardFileSystemId.empty(), "ShardFileSystemId must be set");
         Y_ENSURE(maxParallelism > 0);
@@ -202,7 +202,7 @@ private:
 
         // Create a file if the pool had nothing to offer.
         if (s->File.Handle == 0) {
-            if (!ptr->CountLimiter->TryReserve()) {
+            if (!ptr->CountLimiter->TryReserveHandle()) {
                 releaseEndpoint();
                 s->Promise.SetValue({s->Action, s->Started, MakeError(S_FALSE)});
                 return;
@@ -359,13 +359,13 @@ IRequestGeneratorPtr CreateFastShardRequestGenerator(
     NProto::TFastShardLoadSpec spec,
     ui32 maxParallelism,
     ILoggingServicePtr logging,
-    TCountLimiterPtr fileCreationLimiter)
+    TCountLimiterPtr countLimiter)
 {
     return std::make_shared<TFastShardRequestGenerator>(
         std::move(spec),
         maxParallelism,
         std::move(logging),
-        std::move(fileCreationLimiter));
+        std::move(countLimiter));
 }
 
 }   // namespace NCloud::NFileStore::NLoadTest

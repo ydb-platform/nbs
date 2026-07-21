@@ -233,6 +233,7 @@ private:
 
         const auto request = CreateRequest<NProto::TCreateHandleRequest>();
         auto name = logRequest.GetNodeInfo().GetNodeName();
+
         const auto nodeId =
             NodeIdMapped(logRequest.GetNodeInfo().GetParentNodeId());
         if (nodeId == InvalidNodeId) {

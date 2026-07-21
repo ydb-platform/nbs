@@ -136,11 +136,11 @@ public:
             ISessionPtr session,
             TString filesystemId,
             NProto::THeaders headers,
-            TCountLimiterPtr fileCreationLimiter)
+            TCountLimiterPtr countLimiter)
         : Spec(std::move(spec))
         , FileSystemId(std::move(filesystemId))
         , Headers(std::move(headers))
-        , CountLimiter(std::move(fileCreationLimiter))
+        , CountLimiter(std::move(countLimiter))
         , Session(std::move(session))
     {
         Log = logging->CreateLog(Headers.GetClientId());
@@ -241,7 +241,7 @@ private:
 
         auto started = TInstant::Now();
         TGuard<TMutex> guard(StateLock);
-        if (!CountLimiter->TryReserve()) {
+        if (!CountLimiter->TryReserveHandle()) {
             return MakeFuture<TCompletedRequest>({
                 NProto::ACTION_CREATE_HANDLE,
                 started,
@@ -657,7 +657,7 @@ IRequestGeneratorPtr CreateDataRequestGenerator(
     ISessionPtr session,
     TString filesystemId,
     NProto::THeaders headers,
-    TCountLimiterPtr fileCreationLimiter)
+    TCountLimiterPtr countLimiter)
 {
     return std::make_shared<TDataRequestGenerator>(
         std::move(spec),
@@ -665,7 +665,7 @@ IRequestGeneratorPtr CreateDataRequestGenerator(
         std::move(session),
         std::move(filesystemId),
         std::move(headers),
-        std::move(fileCreationLimiter));
+        std::move(countLimiter));
 }
 
 }   // namespace NCloud::NFileStore::NLoadTest
