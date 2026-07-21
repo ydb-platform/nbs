@@ -1,7 +1,11 @@
 package dataplane
 
+import (
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
+)
+
 ////////////////////////////////////////////////////////////////////////////////
 
 const (
-	chunkSize = 4 * 1024 * 1024
+	chunkSize = common.ChunkSize
 )

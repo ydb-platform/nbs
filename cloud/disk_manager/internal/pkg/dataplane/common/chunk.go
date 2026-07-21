@@ -7,6 +7,10 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// ChunkSize is the size of a dataplane snapshot chunk. Snapshot chunk maps
+// and raw export offsets are built from it.
+const ChunkSize = 4 * 1024 * 1024
+
 var zeroes = make([]byte, 1024*1024)
 
 type Chunk struct {
