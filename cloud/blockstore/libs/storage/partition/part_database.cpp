@@ -74,6 +74,8 @@ std::pair<ui16, ui8> SplitBlobOffsetAndCompactionRangeCount(
     return {value & Max<ui16>(), value >> 16};
 }
 
+#define COUNT_METHOD_CALL IncrementMethodCallCount(__PRETTY_FUNCTION__);
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -716,7 +718,7 @@ bool TPartitionDatabase::ReadBlobMeta(
     const TPartialBlobId& blobId,
     TMaybe<NProto::TBlobMeta>& meta)
 {
-    IncrementMethodCallCount(__PRETTY_FUNCTION__);
+    COUNT_METHOD_CALL;
     using TTable = TPartitionSchema::BlobsIndex;
 
     auto it = Table<TTable>()
@@ -789,7 +791,7 @@ bool TPartitionDatabase::ReadBlockMask(
     const TPartialBlobId& blobId,
     TMaybe<TBlockMask>& blockMask)
 {
-    IncrementMethodCallCount(__PRETTY_FUNCTION__);
+    COUNT_METHOD_CALL;
     using TTable = TPartitionSchema::BlobsIndex;
 
     auto it = Table<TTable>()
@@ -813,7 +815,7 @@ bool TPartitionDatabase::ReadBlobInfo(
     TMaybe<TBlockMask>& blockMask,
     TMaybe<NProto::TBlobMeta>& blobMeta)
 {
-    IncrementMethodCallCount(__PRETTY_FUNCTION__);
+    COUNT_METHOD_CALL;
     using TTable = TPartitionSchema::BlobsIndex;
 
     auto it =

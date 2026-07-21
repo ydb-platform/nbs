@@ -36,17 +36,24 @@ public:
         Partial
     };
 
+private:
     THashMap<TString, ui64> MethodCallCounts;
-
-    void IncrementMethodCallCount(const TString& methodName)
-    {
-        MethodCallCounts[methodName]++;
-    }
+    bool NeedCountMethodCalls = false;
 
 public:
     TPartitionDatabase(NKikimr::NTable::TDatabase& database)
         : NKikimr::NIceDb::TNiceDb(database)
     {}
+
+    void SetNeedCountMethodCalls(bool needCountMethodCalls)
+    {
+        NeedCountMethodCalls = needCountMethodCalls;
+    }
+
+    [[nodiscard]] const THashMap<TString, ui64>& GetMethodCallCount() const
+    {
+        return MethodCallCounts;
+    }
 
     void InitSchema();
 
@@ -242,6 +249,14 @@ public:
     void DeleteUnconfirmedBlob(const TPartialBlobId& blobId);
 
     bool ReadUnconfirmedBlobs(TCommitIdToBlobsToConfirm& blobs);
+
+private:
+    void IncrementMethodCallCount(const TString& methodName)
+    {
+        if (Y_UNLIKELY(NeedCountMethodCalls)) {
+            MethodCallCounts[methodName]++;
+        }
+    }
 };
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

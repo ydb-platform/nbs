@@ -15,7 +15,7 @@ using TOutputIndex = TTxPartition::TCompactionReadBlobInfo::TOutputIndex;
 ui64 GetMethodCallCount(const TPartitionDatabase& db, const TString& methodName)
 {
     ui64 count = 0;
-    for (const auto& [name, callCount]: db.MethodCallCounts) {
+    for (const auto& [name, callCount]: db.GetMethodCallCount()) {
         if (name.Contains(methodName)) {
             count += callCount;
         }
@@ -155,8 +155,7 @@ Y_UNIT_TEST_SUITE(TReadBlobsInfoTest)
         executor.ReadTx(
             [&](TPartitionDatabase db)
             {
-                db.MethodCallCounts.clear();
-
+                db.SetNeedCountMethodCalls(true);
                 const bool ready = ReadBlobsInfo(
                     db,
                     blobsToOutputIndices,
