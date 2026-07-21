@@ -299,6 +299,20 @@ void TOptions::Parse(int argc, char** argv)
         "print debug statistics")
         .StoreTrue(&PrintDebugStats);
 
+    opts.AddLongOption("mon-address", "monitoring service address")
+        .RequiredArgument("STR")
+        .DefaultValue("localhost")
+        .StoreResult(&MonitoringAddress);
+
+    opts.AddLongOption("mon-port", "monitoring service port")
+        .RequiredArgument("NUM")
+        .StoreResult(&MonitoringPort);
+
+    opts.AddLongOption("mon-threads", "monitoring service thread count")
+        .RequiredArgument("NUM")
+        .DefaultValue(1)
+        .StoreResult(&MonitoringThreads);
+
     TOptsParseResultException(&opts, argc, argv);
 }
 

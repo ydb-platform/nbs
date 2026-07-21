@@ -20,6 +20,7 @@ Options:  \
 `--request-block-count` - number of blocks per request  \
 `--write-rate` - rate of write requests in percentage  \
 `--dump-config-path` - specify in which file store config after test stops  \
+`--mon-port` - expose monitoring metrics on `127.0.0.1` at the specified port; disabled by default  \
 Examples:
 ```(bash)
 $ ./eternal-load --config-type generated  --blocksize 4096 --file /dev/vdb --filesize 1023 --iodepth 32 --dump-config-path /tmp/load-config.json --write-rate 50

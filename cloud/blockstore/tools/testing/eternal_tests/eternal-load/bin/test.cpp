@@ -8,6 +8,7 @@
 #include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/test_scenarios/simple_test_scenario.h>
 #include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/test_scenarios/unaligned_test_scenario.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
+#include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
 #include <util/generic/size_literals.h>
 #include <util/string/printf.h>
@@ -32,6 +33,9 @@ private:
     IConfigHolderPtr ConfigHolder;
 
     ILoggingServicePtr Logging;
+
+    IMonitoringServicePtr Monitoring;
+
     TLog Log;
 
 public:
@@ -237,13 +241,27 @@ int TTest::RunTest()
 {
     auto settings = ConfigureTest();
 
-    Executor = CreateTestExecutor(std::move(settings));
+    if (Options->MonitoringPort) {
+        Monitoring = CreateMonitoringService(
+            Options->MonitoringPort,
+            Options->MonitoringAddress,
+            Options->MonitoringThreads);
+    } else {
+        Monitoring = CreateMonitoringServiceStub();
+    }
+    Monitoring->Start();
+
+    Executor = CreateTestExecutor(
+        std::move(settings),
+        Monitoring->GetCounters());
 
     int res = 0;
     if (!Executor->Run()) {
         STORAGE_ERROR("Test failed");
         res = 1;
     }
+
+    Monitoring->Stop();
 
     DumpConfiguration();
     return res;

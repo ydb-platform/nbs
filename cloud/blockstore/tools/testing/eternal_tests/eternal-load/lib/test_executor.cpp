@@ -1,5 +1,7 @@
 #include "test_executor.h"
 
+#include "request_stats.h"
+
 #include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/config.h>
 
 #include <cloud/storage/core/libs/common/file_io_service.h>
@@ -55,6 +57,10 @@ private:
     ui64 PreviousBytesRead = 0;
     ui64 PreviousBytesWritten = 0;
     TInstant PreviousStatsTimestamp;
+    TInstant PreviousMonitoringStatsTimestamp;
+    TInstant PreviousUpdateCountersTimestamp;
+
+    TRequestStats RequestStats;
 
     const TLog Log;
     const bool RunInCallbacks = false;
@@ -63,13 +69,17 @@ private:
     static constexpr TDuration PrintStatsInterval = TDuration::Seconds(5);
 
 public:
-    TTestExecutor(TTestExecutorSettings settings, IFileIOServicePtr service);
+    TTestExecutor(
+        TTestExecutorSettings settings,
+        IFileIOServicePtr service,
+        NMonitoring::TDynamicCounterPtr counters);
     bool Run() override;
     void Stop() override;
     void Fail(const TString& message);
 
 private:
     void PrintStats();
+    void UpdateMonitoringStats();
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -126,10 +136,14 @@ EOpenMode GetFileOpenMode(bool noDirect)
 
 TTestExecutor::TTestExecutor(
         TTestExecutorSettings settings,
-        IFileIOServicePtr service)
+        IFileIOServicePtr service,
+        NMonitoring::TDynamicCounterPtr counters)
     : TestStartTimestamp(Now())
     , FileService(std::move(service))
     , PreviousStatsTimestamp(TestStartTimestamp)
+    , PreviousMonitoringStatsTimestamp(TestStartTimestamp)
+    , PreviousUpdateCountersTimestamp(TestStartTimestamp)
+    , RequestStats(std::move(counters))
     , Log(settings.Log)
     , RunInCallbacks(settings.RunInCallbacks)
     , PrintDebugStats(settings.PrintDebugStats)
@@ -175,8 +189,9 @@ bool TTestExecutor::Run()
     auto workersFuture = WaitAll(workerFutures);
 
     if (RunInCallbacks) {
-        while (!workersFuture.Wait(PrintStatsInterval)) {
+        while (!workersFuture.Wait(UpdateStatsInterval)) {
             PrintStats();
+            UpdateMonitoringStats();
         }
     } else {
         TVector<TWorkerService*> workersToRun;
@@ -186,9 +201,9 @@ bool TTestExecutor::Run()
             for (auto* worker: workersToRun) {
                 worker->Run();
             }
-            if (Now() - PreviousStatsTimestamp > PrintStatsInterval) {
-                PrintStats();
-            }
+
+            PrintStats();
+            UpdateMonitoringStats();
         }
     }
 
@@ -224,6 +239,10 @@ void TTestExecutor::PrintStats()
     }
 
     auto now = Now();
+    if (now - PreviousStatsTimestamp < PrintStatsInterval) {
+        return;
+    }
+
     auto currentBytesRead = BytesRead.load();
     auto currentBytesWritten = BytesWritten.load();
 
@@ -238,6 +257,22 @@ void TTestExecutor::PrintStats()
     PreviousStatsTimestamp = now;
     PreviousBytesRead = currentBytesRead;
     PreviousBytesWritten = currentBytesWritten;
+}
+
+void TTestExecutor::UpdateMonitoringStats()
+{
+    const auto now = Now();
+    if (now - PreviousMonitoringStatsTimestamp < UpdateStatsInterval) {
+        return;
+    }
+
+    bool updateCounters = false;
+    if (now - PreviousUpdateCountersTimestamp >= UpdateCountersInterval) {
+        updateCounters = true;
+        PreviousUpdateCountersTimestamp = now;
+    }
+    RequestStats.UpdateStats(updateCounters);
+    PreviousMonitoringStatsTimestamp = now;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -322,15 +357,19 @@ void TTestExecutor::TWorkerService::Read(
 {
     RequestCount++;
     PendingRequestCount++;
+    const auto started = Now();
 
     Executor.FileService->AsyncRead(
         Scenario.File,
         static_cast<i64>(offset),
         TArrayRef(static_cast<char*>(buffer), count),
-        [this, count, callback = std::move(callback)](
+        [this, count, callback = std::move(callback), started](
             const NProto::TError& error,
             ui32 value)
         {
+            Executor.RequestStats.RequestCompleted(
+                ERequestType::ReadData,
+                Now() - started);
             if (HasError(error)) {
                 Executor.Fail(
                     "Can't read from file: " + error.GetMessage());
@@ -356,15 +395,19 @@ void TTestExecutor::TWorkerService::Write(
 {
     RequestCount++;
     PendingRequestCount++;
+    const auto started = Now();
 
     Executor.FileService->AsyncWrite(
         Scenario.File,
         static_cast<i64>(offset),
         TArrayRef(static_cast<const char*>(buffer), count),
-        [this, count, callback = std::move(callback)](
+        [this, count, callback = std::move(callback), started](
             const NProto::TError& error,
             ui32 value)
         {
+            Executor.RequestStats.RequestCompleted(
+                ERequestType::WriteData,
+                Now() - started);
             if (HasError(error)) {
                 Executor.Fail(
                     "Can't write to file: " + error.GetMessage());
@@ -622,7 +665,9 @@ IFileIOServicePtr CreateFileService(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ITestExecutorPtr CreateTestExecutor(TTestExecutorSettings settings)
+ITestExecutorPtr CreateTestExecutor(
+    TTestExecutorSettings settings,
+    NMonitoring::TDynamicCounterPtr counters)
 {
     ui64 sumWorkerCount = 0;
     for (const auto& it: settings.TestScenarios) {
@@ -631,9 +676,14 @@ ITestExecutorPtr CreateTestExecutor(TTestExecutorSettings settings)
 
     auto fileService = CreateFileService(settings.FileService, sumWorkerCount);
 
+    if (!counters) {
+        counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+    }
+
     return std::make_shared<TTestExecutor>(
         std::move(settings),
-        std::move(fileService));
+        std::move(fileService),
+        std::move(counters));
 }
 
 }   // namespace NCloud::NBlockStore::NTesting

@@ -71,6 +71,9 @@ struct TOptions
     bool DisableParallelReadWrite = false;
 
     bool PrintDebugStats = false;
+    TString MonitoringAddress;
+    ui16 MonitoringPort = 0;
+    ui16 MonitoringThreads = 1;
 
     void Parse(int argc, char** argv);
 };

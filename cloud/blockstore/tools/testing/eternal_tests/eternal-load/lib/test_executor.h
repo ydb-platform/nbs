@@ -3,6 +3,7 @@
 #include "public.h"
 
 #include <library/cpp/logger/log.h>
+#include <library/cpp/monlib/dynamic_counters/counters.h>
 
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
@@ -136,6 +137,8 @@ struct TTestExecutorSettings
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ITestExecutorPtr CreateTestExecutor(TTestExecutorSettings settings);
+ITestExecutorPtr CreateTestExecutor(
+    TTestExecutorSettings settings,
+    NMonitoring::TDynamicCounterPtr counters = {});
 
 }   // namespace NCloud::NBlockStore::NTesting
