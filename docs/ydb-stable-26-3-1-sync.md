@@ -13,6 +13,8 @@ This mirrors the existing import patches better than exposing top-level `yql/ess
 
 The sync also prunes YDB subtrees that are not needed by NBS or are absent from the current NBS `main` 24.4-style import. Documentation trees such as `contrib/ydb/docs` and `contrib/ydb/yql_docs` are removed entirely, together with the small docs-only build/test consumers that would otherwise point at those removed files.
 
+The top-level sync script is only an orchestrator. Individual steps live under `tools/ydb-sync/`: folded-layout copy, import patch application, path rewrites, subtree pruning, and extra dependency copy are split into separate scripts.
+
 ## Current Status
 
 Verified on `dev` in `/home/apkobzev/work/nbs-ydb-folded-layout-test`:
