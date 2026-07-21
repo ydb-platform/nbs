@@ -248,24 +248,6 @@ Y_UNIT_TEST_SUITE(TStateStorageConfig) {
         }
     }
 
-    /*
-    ui64 StabilityRun(ui32 replicas, ui32 nToSelect, ui32 replicasInRing, bool useRingSpecificNodeSelection) {
-        ui64 retHash = 0;
-
-        TStateStorageInfo info;
-        FillStateStorageInfo(&info, replicas, nToSelect, replicasInRing, useRingSpecificNodeSelection);
-
-        TStateStorageInfo::TSelection selection;
-        for (ui64 tabletId = 8000000; tabletId < 9000000; ++tabletId) {
-            info.SelectReplicas(tabletId, &selection);
-            Y_ABORT_UNLESS(nToSelect == selection.Sz);
-            for (ui32 idx : xrange(nToSelect))
-                retHash = CombineHashes<ui64>(retHash, selection.SelectedReplicas[idx].Hash());
-        }
-        return retHash;
-    }
-    */
-
     ui64 StabilityRun(ui32 replicas, ui32 nToSelect, ui32 replicasInRing, bool useRingSpecificNodeSelection) {
         ui64 retHash = 0;
 
