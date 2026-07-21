@@ -1,6 +1,7 @@
 #include "part_actor.h"
 
 #include "part_compaction_logic.h"
+#include "part_readblobinfo_logic.h"
 
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
@@ -52,6 +53,44 @@ TVector<ui32> EnsureBlockChecksums(
     return result;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+template <typename TRangeCompactionInfo>
+void FillRangeCompactionInfos(
+    TVector<TRangeCompactionInfo>& infos,
+    const TVector<TPartialBlobId>& blobsToReadBlobMetas,
+    const TVector<TPartialBlobId>& blobsToReadBlockMasks,
+    const TVector<NProto::TBlobMeta>& blobMetas,
+    const TVector<TBlockMask>& blockMasks)
+{
+    for (size_t i = 0; i < blobsToReadBlobMetas.size(); ++i) {
+        const auto& blobId = blobsToReadBlobMetas[i];
+        const auto& blobMeta = blobMetas[i];
+
+        for (auto& rc: infos) {
+            auto* ab = rc.AffectedBlobs.FindPtr(blobId);
+            if (!ab) {
+                continue;
+            }
+            ab->BlobMeta = blobMeta;
+        }
+    }
+
+    for (size_t i = 0; i < blobsToReadBlockMasks.size(); ++i) {
+        const auto& blobId = blobsToReadBlockMasks[i];
+        const auto& blockMask = blockMasks[i];
+
+        for (auto& rc: infos) {
+            auto* ab = rc.AffectedBlobs.FindPtr(blobId);
+            if (!ab) {
+                continue;
+            }
+            ab->BlockMask = blockMask;
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
 class TCompactionActor final: public TActorBootstrapped<TCompactionActor>
 {
     // Possible state transitions:
@@ -1104,31 +1143,12 @@ void TCompactionActor::HandleCompactionReadBlobInfoResponse(
         return;
     }
 
-    for (size_t i = 0; i < BlobsToReadBlobMetas.size(); ++i) {
-        const auto& blobId = BlobsToReadBlobMetas[i];
-        const auto& blobMeta = msg->BlobMetasForBlobs[i];
-
-        for (auto& rc: RangeCompactionInfos) {
-            auto* ab = rc.AffectedBlobs.FindPtr(blobId);
-            if (!ab) {
-                continue;
-            }
-            ab->BlobMeta = blobMeta;
-        }
-    }
-
-    for (size_t i = 0; i < BlobsToReadBlockMasks.size(); ++i) {
-        const auto& blobId = BlobsToReadBlockMasks[i];
-        const auto& blockMask = msg->BlockMasksForBlobs[i];
-
-        for (auto& rc: RangeCompactionInfos) {
-            auto* ab = rc.AffectedBlobs.FindPtr(blobId);
-            if (!ab) {
-                continue;
-            }
-            ab->BlockMask = blockMask;
-        }
-    }
+    FillRangeCompactionInfos(
+        RangeCompactionInfos,
+        BlobsToReadBlobMetas,
+        BlobsToReadBlockMasks,
+        msg->BlobMetasForBlobs,
+        msg->BlockMasksForBlobs);
 
     ApplyChecksumFixups();
 
@@ -1986,46 +2006,33 @@ bool TPartitionActor::PrepareCompaction(
     State->IncrementBlockMaskReadDuringCompaction(
         args.BlobsToReadBlockMasks.size());
 
-    for (const auto& blobId: args.BlobsToReadBlockMasks) {
-        TMaybe<TBlockMask> blockMask;
-        if (db.ReadBlockMask(blobId, blockMask)) {
-            STORAGE_VERIFY_C(
-                blockMask.Defined(),
-                TWellKnownEntityTypes::TABLET,
-                TabletID(),
-                TStringBuilder() << "Could not read block mask for blob: "
-                                 << MakeBlobId(TabletID(), blobId));
-        } else {
-            ready = false;
-            continue;
-        }
+    const TVector<TPartialBlobId> blobsToReadBlockMasks(
+        args.BlobsToReadBlockMasks.begin(),
+        args.BlobsToReadBlockMasks.end());
+    const TVector<TPartialBlobId> blobsToReadBlobMetas(
+        args.BlobsToReadBlobMetas.begin(),
+        args.BlobsToReadBlobMetas.end());
 
-        for (auto& rangeCompaction: args.RangeCompactions) {
-            if (auto* ab = rangeCompaction.AffectedBlobs.FindPtr(blobId)) {
-                ab->BlockMask = *blockMask;
-            }
-        }
+    TVector<TBlockMask> blockMasks;
+    TVector<NProto::TBlobMeta> blobMetas;
+    if (!ReadBlobsInfo(
+            db,
+            blobsToReadBlockMasks,
+            blobsToReadBlobMetas,
+            TabletID(),
+            blockMasks,
+            blobMetas))
+    {
+        ready = false;
     }
 
-    for (const auto& blobId: args.BlobsToReadBlobMetas) {
-        TMaybe<NProto::TBlobMeta> blobMeta;
-        if (db.ReadBlobMeta(blobId, blobMeta)) {
-            STORAGE_VERIFY_C(
-                blobMeta.Defined(),
-                TWellKnownEntityTypes::TABLET,
-                TabletID(),
-                TStringBuilder() << "Could not read blob meta for blob: "
-                                 << MakeBlobId(TabletID(), blobId));
-        } else {
-            ready = false;
-            continue;
-        }
-
-        for (auto& rangeCompaction: args.RangeCompactions) {
-            if (auto* ab = rangeCompaction.AffectedBlobs.FindPtr(blobId)) {
-                ab->BlobMeta = *blobMeta;
-            }
-        }
+    if (ready) {
+        FillRangeCompactionInfos(
+            args.RangeCompactions,
+            blobsToReadBlobMetas,
+            blobsToReadBlockMasks,
+            blobMetas,
+            blockMasks);
     }
 
     return ready;
