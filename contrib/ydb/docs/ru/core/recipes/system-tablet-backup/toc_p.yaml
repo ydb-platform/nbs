@@ -1,5 +1,0 @@
-items:
-- name: Включение и настройка
-  href: enabling-backup.md
-- name: Восстановление
-  href: recovery.md

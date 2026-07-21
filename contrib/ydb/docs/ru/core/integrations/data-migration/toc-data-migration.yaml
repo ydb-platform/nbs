@@ -1,5 +1,0 @@
-items:
-- name: Импорт из источников данных JDBC
-  href: import-jdbc.md
-- name: Импорт из MySQL
-  href: import-mysql.md

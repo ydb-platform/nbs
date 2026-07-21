@@ -1,9 +1,0 @@
-items:
-  - name: Authentication
-    href: auth.md
-  - name: Usage examples
-    href: examples.md
-  - name: Kafka Connect
-    include: { mode: link, path: ./connect/toc_p.yaml }
-  - name: Constraints
-    href: constraints.md

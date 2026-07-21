@@ -1,1 +1,0 @@
-"""MNC agent package."""

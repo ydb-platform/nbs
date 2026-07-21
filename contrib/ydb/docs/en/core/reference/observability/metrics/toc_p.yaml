@@ -1,5 +1,0 @@
-items:
-- name: Metrics reference
-  href: index.md
-- name: Grafana dashboards
-  href: grafana-dashboards.md

@@ -1,1 +1,0 @@
-Supported only for [row-oriented](../concepts/datamodel/table.md#row-oriented-tables) tables. Support for [column-oriented](../concepts/datamodel/table.md#column-oriented-tables) tables is currently under development.

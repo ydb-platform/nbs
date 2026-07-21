@@ -1,5 +1,0 @@
-RECURSE(
-  default
-  yt
-  rtmr
-)

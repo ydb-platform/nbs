@@ -1,5 +1,0 @@
-items:
-- name: Векторный индекс - быстрый старт
-  href: vector-index-quickstart.md
-- name: Векторный индекс с загрузкой внешнего набора данных
-  href: vector-index-with-prepared-dataset.md

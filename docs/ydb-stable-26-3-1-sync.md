@@ -11,6 +11,8 @@ The import keeps the current NBS-style layout:
 
 This mirrors the existing import patches better than exposing top-level `yql/essentials` and `yt/yql/providers` in NBS.
 
+The sync also prunes YDB subtrees that are not needed by NBS or are absent from the current NBS `main` 24.4-style import. Documentation trees such as `contrib/ydb/docs` and `contrib/ydb/yql_docs` are removed entirely, together with the small docs-only build/test consumers that would otherwise point at those removed files.
+
 ## Current Status
 
 Verified on `dev` in `/home/apkobzev/work/nbs-ydb-folded-layout-test`:

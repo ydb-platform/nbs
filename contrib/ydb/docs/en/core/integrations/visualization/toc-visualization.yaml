@@ -1,7 +1,0 @@
-items:
-- name: Apache Superset
-  href: superset.md
-- name: DataLens
-  href: datalens.md
-- name: Grafana data source
-  href: grafana.md

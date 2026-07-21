@@ -1,3 +1,0 @@
-```bash
-cargo add ydb
-```

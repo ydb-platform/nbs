@@ -1,4 +1,0 @@
-RECURSE(
-    service
-    usage
-)

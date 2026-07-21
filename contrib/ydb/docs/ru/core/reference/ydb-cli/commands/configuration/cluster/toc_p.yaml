@@ -1,8 +1,0 @@
-items:
-  - name: Генерация конфигурации V2
-    href: generate.md
-  - name: Получение текущей конфигурации
-    href: fetch.md
-  - name: Замена конфигурации
-    href: replace.md
-

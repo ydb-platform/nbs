@@ -1,1 +1,0 @@
-- [S3](../s3/external_table.md)

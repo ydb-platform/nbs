@@ -1,5 +1,0 @@
-items:
-- name: Обзор архитектуры
-  href: index.md
-- name: Сервисы распространения метаданных
-  href: metadata-services.md
