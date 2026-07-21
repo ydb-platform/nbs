@@ -119,6 +119,7 @@ private:
     ITraceServiceClientPtr TraceServiceClient;
     std::function<void(TLog& log)> SpdkLogInitializer;
     NStorage::TPartitionBudgetManagerPtr PartitionBudgetManager;
+    NStorage::IBlockDigestGeneratorFactoryPtr BlockDigestGeneratorFactory;
 
 public:
     TBootstrapYdb(

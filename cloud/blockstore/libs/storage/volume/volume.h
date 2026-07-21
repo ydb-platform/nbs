@@ -29,7 +29,7 @@ NActors::IActorPtr CreateVolumeTablet(
     TStorageConfigPtr config,
     TDiagnosticsConfigPtr diagnosticsConfig,
     IProfileLogPtr profileLog,
-    IBlockDigestGeneratorPtr blockDigestGenerator,
+    IBlockDigestGeneratorFactoryPtr blockDigestGeneratorFactory,
     ITraceSerializerPtr traceSerializer,
     NCloud::NStorage::NRdma::IClientPtr rdmaClient,
     TPartitionBudgetManagerPtr partitionBudgetManager,

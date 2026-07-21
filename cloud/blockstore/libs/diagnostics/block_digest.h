@@ -12,6 +12,8 @@ namespace NCloud::NBlockStore {
 
 struct IBlockDigestGenerator
 {
+    virtual ~IBlockDigestGenerator() = default;
+
     virtual TMaybe<ui32> ComputeDigest(
         ui64 blockIndex,
         TBlockDataRef blockContent) const = 0;

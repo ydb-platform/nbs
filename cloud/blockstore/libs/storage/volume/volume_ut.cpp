@@ -13,6 +13,7 @@
 #include <cloud/blockstore/libs/storage/volume/actors/follower_disk_actor.h>
 
 #include <util/system/hostname.h>
+#include <util/thread/lfqueue.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -59,6 +60,35 @@ IOutputStream& operator<<(IOutputStream& out, ETransferMethod rhs)
     }
     return out;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TTestProfileLog final: public IProfileLog
+{
+private:
+    TLockFreeQueue<IProfileLog::TRecord>& Queue;
+
+public:
+    explicit TTestProfileLog(TLockFreeQueue<IProfileLog::TRecord>& queue)
+        : Queue(queue)
+    {}
+
+    void Start() final
+    {}
+
+    void Stop() final
+    {}
+
+    void Write(TRecord record) final
+    {
+        Queue.Enqueue(std::move(record));
+    }
+
+    bool Flush() final
+    {
+        return true;
+    }
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -11376,6 +11406,92 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
 
         UNIT_ASSERT(deadActors.contains(firstFollower));
+    }
+
+    Y_UNIT_TEST(ShouldOverrideBlockDigestGenerator)
+    {
+        TLockFreeQueue<IProfileLog::TRecord> recordsQueue;
+
+        auto runtime = PrepareTestActorRuntime(
+            {},      // storageServiceConfig
+            {},      // diskRegistryState
+            {},      // featuresConfig
+            {},      // rdmaClient
+            {},      // diskAgentStates
+            false,   // debugActorRegistration
+            std::make_shared<TTestProfileLog>(recordsQueue));
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig();
+
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        {
+            NProto::TStorageServiceConfig patch;
+            patch.SetBlockDigestsEnabled(true);
+            volume.ChangeStorageConfig(std::move(patch));
+        }
+
+        volume.WriteBlocksLocal(
+            TBlockRange64::MakeOneBlock(1),
+            clientInfo.GetClientId(),
+            GetBlockContent(1));
+
+        volume.WriteBlocksLocal(
+            TBlockRange64::MakeOneBlock(2),
+            clientInfo.GetClientId(),
+            GetBlockContent(2));
+
+        TVector<IProfileLog::TRecord> records;
+
+        runtime->DispatchEvents(
+            {
+                .CustomFinalCondition =
+                    [&]
+                {
+                    recordsQueue.DequeueAll(&records);
+                    return records.size() == 2;
+                },
+            },
+            TDuration::Seconds(15));
+
+        UNIT_ASSERT_VALUES_EQUAL(2, records.size());
+
+        {
+            const auto& record = records[0];
+            UNIT_ASSERT_VALUES_EQUAL("vol0", record.DiskId);
+            auto* req = std::get_if<IProfileLog::TReadWriteRequestBlockInfos>(
+                &record.Request);
+            UNIT_ASSERT_C(req, record.Request.index());
+            UNIT_ASSERT_VALUES_EQUAL(
+                EBlockStoreRequest::WriteBlocks,
+                req->RequestType);
+            UNIT_ASSERT_VALUES_EQUAL(1, req->BlockInfos.size());
+
+            UNIT_ASSERT_VALUES_EQUAL(1, req->BlockInfos[0].BlockIndex);
+            UNIT_ASSERT_VALUES_UNEQUAL(0, req->BlockInfos[0].Checksum);
+        }
+
+        {
+            const auto& record = records[1];
+            UNIT_ASSERT_VALUES_EQUAL("vol0", record.DiskId);
+            auto* req = std::get_if<IProfileLog::TReadWriteRequestBlockInfos>(
+                &record.Request);
+            UNIT_ASSERT_C(req, record.Request.index());
+            UNIT_ASSERT_VALUES_EQUAL(
+                EBlockStoreRequest::WriteBlocks,
+                req->RequestType);
+            UNIT_ASSERT_VALUES_EQUAL(1, req->BlockInfos.size());
+
+            UNIT_ASSERT_VALUES_EQUAL(2, req->BlockInfos[0].BlockIndex);
+            UNIT_ASSERT_VALUES_UNEQUAL(0, req->BlockInfos[0].Checksum);
+        }
     }
 }
 

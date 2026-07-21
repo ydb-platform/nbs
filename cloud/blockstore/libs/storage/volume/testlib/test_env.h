@@ -598,7 +598,8 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
     NProto::TFeaturesConfig featuresConfig = {},
     NCloud::NStorage::NRdma::IClientPtr rdmaClient = {},
     TVector<TDiskAgentStatePtr> diskAgentStates = {},
-    bool debugActorRegistration = false);
+    bool debugActorRegistration = false,
+    IProfileLogPtr profileLog = nullptr);
 
 struct TTestRuntimeBuilder
 {

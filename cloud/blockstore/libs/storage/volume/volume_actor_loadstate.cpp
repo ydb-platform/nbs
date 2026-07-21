@@ -2,6 +2,7 @@
 
 #include "volume_database.h"
 
+#include <cloud/blockstore/libs/storage/core/block_digest_factory.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 
 #include <cloud/storage/core/libs/common/format.h>
@@ -111,6 +112,10 @@ void TVolumeActor::CompleteLoadState(
             TStorageConfig::Merge(GlobalStorageConfig, *args.StorageConfig);
         HasStorageConfigPatch = Config != GlobalStorageConfig;
     }
+
+    // Create BlockDigestGenerator using the effective storage configuration
+    BlockDigestGenerator =
+        BlockDigestGeneratorFactory->CreateBlockDigestGenerator(*Config);
 
     if (args.Meta.Defined()) {
         const auto throttlerInfo = args.ThrottlerStateInfo.GetOrElse(

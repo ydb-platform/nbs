@@ -19,7 +19,7 @@ NActors::IActorPtr CreateStorageService(
     TStorageConfigPtr config,
     TDiagnosticsConfigPtr diagnosticsConfig,
     IProfileLogPtr profileLog,
-    IBlockDigestGeneratorPtr blockDigestGenerator,
+    IBlockDigestGeneratorFactoryPtr blockDigestGeneratorFactory,
     NDiscovery::IDiscoveryServicePtr discoveryService,
     ITraceSerializerPtr traceSerializer,
     NServer::IEndpointEventHandlerPtr endpointEventHandler,

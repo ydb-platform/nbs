@@ -225,7 +225,7 @@ public:
             Args.StorageConfig,
             Args.DiagnosticsConfig,
             Args.ProfileLog,
-            Args.BlockDigestGenerator,
+            Args.BlockDigestGeneratorFactory,
             Args.DiscoveryService,
             Args.TraceSerializer,
             Args.EndpointEventHandler,
@@ -383,6 +383,7 @@ private:
     const TStorageConfigPtr StorageConfig;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
     const IProfileLogPtr ProfileLog;
+    const IBlockDigestGeneratorFactoryPtr BlockDigestGeneratorFactory;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     const ITraceSerializerPtr TraceSerializer;
     const NLogbroker::IServicePtr LogbrokerService;
@@ -400,6 +401,7 @@ public:
             TStorageConfigPtr storageConfig,
             TDiagnosticsConfigPtr diagnosticsConfig,
             IProfileLogPtr profileLog,
+            IBlockDigestGeneratorFactoryPtr blockDigestGeneratorFactory,
             IBlockDigestGeneratorPtr blockDigestGenerator,
             ITraceSerializerPtr traceSerializer,
             NLogbroker::IServicePtr logbrokerService,
@@ -414,6 +416,7 @@ public:
         , StorageConfig(std::move(storageConfig))
         , DiagnosticsConfig(std::move(diagnosticsConfig))
         , ProfileLog(std::move(profileLog))
+        , BlockDigestGeneratorFactory(std::move(blockDigestGeneratorFactory))
         , BlockDigestGenerator(std::move(blockDigestGenerator))
         , TraceSerializer(std::move(traceSerializer))
         , LogbrokerService(std::move(logbrokerService))
@@ -432,7 +435,7 @@ public:
         auto storageConfig = StorageConfig;
         auto diagnosticsConfig = DiagnosticsConfig;
         auto profileLog = ProfileLog;
-        auto blockDigestGenerator = BlockDigestGenerator;
+        auto blockDigestGeneratorFactory = BlockDigestGeneratorFactory;
         auto traceSerializer = TraceSerializer;
         auto logbrokerService = LogbrokerService;
         auto notifyService = NotifyService;
@@ -450,7 +453,7 @@ public:
                 storageConfig,
                 diagnosticsConfig,
                 profileLog,
-                blockDigestGenerator,
+                blockDigestGeneratorFactory,
                 traceSerializer,
                 rdmaClient,
                 partitionBudgetManager,
@@ -580,6 +583,7 @@ IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
             sArgs.StorageConfig,
             sArgs.DiagnosticsConfig,
             sArgs.ProfileLog,
+            sArgs.BlockDigestGeneratorFactory,
             sArgs.BlockDigestGenerator,
             sArgs.TraceSerializer,
             sArgs.LogbrokerService,

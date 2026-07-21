@@ -211,12 +211,14 @@ private:
     bool HasPerformanceProfileModifications = false;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
     const IProfileLogPtr ProfileLog;
-    const IBlockDigestGeneratorPtr BlockDigestGenerator;
+    const IBlockDigestGeneratorFactoryPtr BlockDigestGeneratorFactory;
     const ITraceSerializerPtr TraceSerializer;
     const NCloud::NStorage::NRdma::IClientPtr RdmaClient;
     const TPartitionBudgetManagerPtr PartitionBudgetManager;
     NServer::IEndpointEventHandlerPtr EndpointEventHandler;
     const EVolumeStartMode StartMode;
+
+    IBlockDigestGeneratorPtr BlockDigestGenerator;
     TLogTitle LogTitle;
     TVolumeThrottlerLogger ThrottlerLogger;
 
@@ -477,7 +479,7 @@ public:
         TStorageConfigPtr config,
         TDiagnosticsConfigPtr diagnosticsConfig,
         IProfileLogPtr profileLog,
-        IBlockDigestGeneratorPtr blockDigestGenerator,
+        IBlockDigestGeneratorFactoryPtr blockDigestGeneratorFactory,
         ITraceSerializerPtr traceSerializer,
         NCloud::NStorage::NRdma::IClientPtr rdmaClient,
         TPartitionBudgetManagerPtr partitionBudgetManager,

@@ -36,6 +36,9 @@ using TManuallyPreemptedVolumesPtr = std::shared_ptr<TManuallyPreemptedVolumes>;
 class TPartitionBudgetManager;
 using TPartitionBudgetManagerPtr = std::shared_ptr<TPartitionBudgetManager>;
 
+struct IBlockDigestGeneratorFactory;
+using IBlockDigestGeneratorFactoryPtr = std::shared_ptr<IBlockDigestGeneratorFactory>;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 enum class EStorageAccessMode

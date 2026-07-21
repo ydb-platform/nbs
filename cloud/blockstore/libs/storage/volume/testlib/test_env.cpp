@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/endpoints/endpoint_events.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
+#include <cloud/blockstore/libs/storage/core/block_digest_factory.h>
 #include <cloud/blockstore/libs/storage/core/partition_budget_manager.h>
 #include <cloud/blockstore/libs/storage/testlib/ss_proxy_mock.h>
 #include <cloud/blockstore/libs/storage/volume_proxy/volume_proxy.h>
@@ -795,7 +796,8 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
     NProto::TFeaturesConfig featuresConfig,
     NCloud::NStorage::NRdma::IClientPtr rdmaClient,
     TVector<TDiskAgentStatePtr> diskAgentStates,
-    bool debugActorRegistration)
+    bool debugActorRegistration,
+    IProfileLogPtr profileLog)
 {
     const ui32 agentCount = Max<ui32>(diskAgentStates.size(), 1);
     auto runtime = std::make_unique<TTestBasicRuntime>(agentCount);
@@ -965,6 +967,10 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
     auto partitionBudgetManager =
         std::make_shared<TPartitionBudgetManager>(config);
 
+    if (!profileLog) {
+        profileLog = CreateProfileLogStub();
+    }
+
     auto createFunc = [=](const TActorId& owner, TTabletStorageInfo* info)
     {
         auto tablet = CreateVolumeTablet(
@@ -972,8 +978,8 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
             info,
             config,
             diagConfig,
-            CreateProfileLogStub(),
-            CreateBlockDigestGeneratorStub(),
+            profileLog,
+            NStorage::CreateBlockDigestGeneratorFactory(),
             CreateTraceSerializer(
                 CreateLoggingService("console"),
                 "BLOCKSTORE_TRACE",
