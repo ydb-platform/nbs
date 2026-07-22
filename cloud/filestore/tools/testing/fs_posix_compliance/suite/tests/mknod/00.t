@@ -58,7 +58,7 @@ expect 0 unlink ${n0}
 # for update.
 expect 0 chown . 0 0
 time=`${fstest} stat . ctime`
-sleep 1
+sleep 2
 expect 0 mknod ${n0} f 0755 0 0
 atime=`${fstest} stat ${n0} atime`
 test_check $time -lt $atime
