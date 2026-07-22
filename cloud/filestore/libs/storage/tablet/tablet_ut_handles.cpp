@@ -171,6 +171,51 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Handles)
         }
     }
 
+    Y_UNIT_TEST(ShouldCacheAsyncCreateHandleFlagForDuplicateRequests)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetAsyncCreateHandleEnabled(true);
+        TTestEnv env({}, storageConfig);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        constexpr ui64 requestId = 100500;
+
+        auto createRequest = [&]
+        {
+            auto request = tablet.CreateCreateHandleRequest(
+                id,
+                TCreateHandleArgs::RDNLY);
+            request->Record.SetAllowAsyncCreateHandle(true);
+            request->Record.MutableHeaders()->SetRequestId(requestId);
+            return request;
+        };
+
+        tablet.SendRequest(createRequest());
+        auto response = tablet.RecvCreateHandleResponse();
+        UNIT_ASSERT(response->Record.GetHandleCreatedAsync());
+        const ui64 handle = response->Record.GetHandle();
+
+        // A retry is served from the duplicate cache and must still require
+        // confirmation of the handle.
+        tablet.SendRequest(createRequest());
+        response = tablet.RecvCreateHandleResponse();
+        UNIT_ASSERT(response->Record.GetHandleCreatedAsync());
+        UNIT_ASSERT_VALUES_EQUAL(handle, response->Record.GetHandle());
+
+        tablet.ConfirmCreateHandle(
+            id,
+            handle,
+            TCreateHandleArgs::RDNLY,
+            requestId);
+        tablet.DestroyHandle(handle);
+    }
+
     Y_UNIT_TEST(ShouldIgnoreAsyncCreateHandleOptInIfFeatureDisabled)
     {
         NProto::TStorageConfig storageConfig;

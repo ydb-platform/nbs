@@ -526,15 +526,6 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
         WriteOpLogEntry(*db, args.OpLogEntry);
     }
 
-    AddDupCacheEntry(
-        *db,
-        session,
-        args.RequestId,
-        args.Response,
-        Config->GetDupCacheEntryCount());
-
-    EnqueueTruncateIfNeeded(ctx);
-
     constexpr ui32 wflags = (ProtoFlag(NProto::TCreateHandleRequest::E_CREATE)
          | ProtoFlag(NProto::TCreateHandleRequest::E_WRITE)
          | ProtoFlag(NProto::TCreateHandleRequest::E_APPEND)
@@ -554,6 +545,19 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
         isReadOnly &&
         Config->GetTabletUnsafeAsyncReadOnlyCreateHandleEnabled();
 
+    if (safeAsync) {
+        args.Response.SetHandleCreatedAsync(true);
+    }
+
+    AddDupCacheEntry(
+        *db,
+        session,
+        args.RequestId,
+        args.Response,
+        Config->GetDupCacheEntryCount());
+
+    EnqueueTruncateIfNeeded(ctx);
+
     if (safeAsync || unsafeAsync) {
         LOG_DEBUG(
             ctx,
@@ -562,9 +566,6 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
             LogTag.c_str(),
             args.NodeId,
             args.Response.GetHandle());
-        if (safeAsync) {
-            args.Response.SetHandleCreatedAsync(true);
-        }
         CompleteCreateHandle(ctx, args);
     }
 }
