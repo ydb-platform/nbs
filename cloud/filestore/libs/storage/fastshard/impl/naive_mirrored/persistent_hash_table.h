@@ -216,7 +216,7 @@ public:
         const ui64 slotNo,
         TVector<TPageGroup>& pageGroups)
     {
-        // TODO: verify that there's no key change
+        // TODO(#5895): verify that there's no key change
         return DoPut(v, slotNo, pageGroups);
     }
 
@@ -523,6 +523,8 @@ private:
             // The next slot is not empty. This means that we can have a logical
             // slot chain which contains the current slot and which is necessary
             // to find some misplaced slots that go after this slot.
+            //
+            // TODO(#5895): implement backward-shift deletion.
             //
 
             it.Write(reinterpret_cast<const char*>(&Tombstone));

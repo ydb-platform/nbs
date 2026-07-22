@@ -159,7 +159,7 @@ public:
     ui64 AllocateNodeId()
     {
         // XXX
-        // TODO: introduce superblock, store LastNodeId in it
+        // TODO(#5894): introduce superblock, store LastNodeId in it
         return ++LastNodeId;
     }
 
@@ -341,7 +341,7 @@ private:
     IPageStorePtr PageStore;
     TNodeTable Nodes;
     TNameTable Names;
-    mutable silk::FiberMutex Mutex; // TODO: use it!!!
+    mutable silk::FiberMutex Mutex; // TODO(#5894): use it!!!
 
 public:
     TFiberShardImpl(
