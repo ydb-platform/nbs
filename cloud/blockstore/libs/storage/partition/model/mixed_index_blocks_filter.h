@@ -23,12 +23,6 @@ class TMixedBlocksFilter
         THashSet<ui32> MixedBlocksWrittenAfterCompaction;
     };
 
-    struct TCompactionRangeInfo
-    {
-        ui64 CommitId = 0;
-        THashSet<ui32> MixedBlocksWrittenAfterCompaction;
-    };
-
 private:
     TCompressedBitmap Blocks;
     TVector<std::optional<ui64>> CommitIdsPerRange;
