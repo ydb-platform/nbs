@@ -476,6 +476,7 @@ void TPartitionActor::CompleteLoadCompactionMapChunk(
             "%s Compaction map loaded",
             LogTitle.GetWithTime().c_str());
 
+        EnqueueCompactionIfNeeded(ctx);
         return;
     }
 
