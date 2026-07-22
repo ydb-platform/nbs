@@ -105,7 +105,9 @@ conservative path above.
 A compaction of range `r` has a compaction commit ID `K`.  On success the
 compaction has incorporated the range's mixed state through its snapshot, so
 the range can receive a new baseline `K`.  The replacement bitmap must retain
-writes that were not included in that compacted state.
+writes that were not included in that compacted state. We should also compact
+all mixed blocks from range, this allows us to leave only bits for blocks with
+commitId larger or equal `K`.
 
 ### Lifecycle
 
@@ -131,11 +133,12 @@ Blocks for r = { blocks written to mixed index with commit ID >= K
 CommitIdsPerRange[r] = K
 ```
 
-This means that all pre-compaction bits can be dropped, while writes at or
-after the compaction boundary remain discoverable.  The per-range queue is
-needed because a later compaction may begin before an earlier one finishes.
-Each write is recorded for every eligible queued compaction, so completing
-them in commit order preserves the same invariant after every completion.
+This means that all pre-compaction bits can be dropped (because we will compact
+ALL mixed blocks from range), while writes at or after the compaction boundary
+remain discoverable.  The per-range queue is needed because a later compaction
+may be queued before an earlier one finishes. Each write is recorded for every
+eligible queued compaction, so completing them in commit order preserves the
+same invariant after every completion.
 
 ## Initialization and persistence
 
@@ -145,9 +148,13 @@ the per-range baseline commit IDs have been restored, the range can provide
 negative answers.
 
 Bitmap and per-range baseline commit IDs can be stored like Compaction map in local db
-and loaded asynchroniosly after tablet start.
+and loaded asynchroniosly after tablet start. While compaction map is loading we reject
+all add blobs requests for not initialized ranges, we can do similar thing while loading
+blocks filter. If we received add blobs request for not initialized range, we reject such
+request and try to load this range out of order. So all concurent writes will be rejected
+and map loading can be made simple.
 
-## Integration and observability
+## Integration
 
 The filter belongs ahead of the existing mixed-index lookup in the `ReadBlocks`
 path:
