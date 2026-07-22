@@ -848,4 +848,8 @@ message TStorageConfig
 
     // Pass data buffer to the tablet as a message payload
     optional bool ExternalWriteDataPayloadEnabled = 526;
+
+    // When this flag is enabled, TAggregateStatsActor does not poll all shards.
+    // Instead, it requests aggregate statistics only from the main tablet.
+    optional bool FanoutStatsCollectionInShardsDisabled = 527;
 }

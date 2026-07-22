@@ -308,6 +308,25 @@ private:
     }
 };
 
+auto GetFileSystemCounters(TTestEnv& env, const TString& fsId)
+{
+    const auto counters = env.GetRuntime().GetAppData().Counters;
+    auto subgroup = counters->FindSubgroup("counters", "filestore");
+    UNIT_ASSERT(subgroup);
+    subgroup = subgroup->FindSubgroup("component", "storage_fs");
+    UNIT_ASSERT(subgroup);
+    subgroup = subgroup->FindSubgroup("host", "cluster");
+    UNIT_ASSERT(subgroup);
+    subgroup = subgroup->FindSubgroup("filesystem", fsId);
+    UNIT_ASSERT(subgroup);
+    subgroup = subgroup->FindSubgroup("cloud", "test_cloud");
+    UNIT_ASSERT(subgroup);
+    subgroup = subgroup->FindSubgroup("folder", "test_folder");
+    UNIT_ASSERT(subgroup);
+
+    return subgroup;
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -8127,7 +8146,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             true);
     }
 
-    SERVICE_TEST(ShouldCreateALotOfshards)
+    SERVICE_TEST(ShouldCreateALotOfShards)
     {
         const ui64 blockSize = 4_KB;
         const ui64 shardBlockCount = 1024;
@@ -8232,6 +8251,65 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         UNIT_ASSERT_VALUES_EQUAL(
             sevenBytesHandlesCount,
             mainStats.GetStats().GetSevenBytesHandlesCount());
+    }
+
+    void DoShouldHaveCorrectAggregateCountersWithFanoutDisabled(
+        NProto::TStorageConfig config,
+        const bool fanoutStatsCollectionInShardsDisabled)
+    {
+        constexpr ui64 blockSize = 4_KB;
+        constexpr ui64 shardBlockCount = 1024;
+        constexpr ui64 shardAllocationUnit = shardBlockCount * blockSize;
+        constexpr ui64 shardCount = 16;
+        constexpr ui64 filesCount = 32;
+        constexpr ui64 fsSize =
+            shardBlockCount * (shardCount - 1) + shardBlockCount / 2;
+
+        config.SetStrictFileSystemSizeEnforcementEnabled(true);
+        config.SetFanoutStatsCollectionInShardsDisabled(
+            fanoutStatsCollectionInShardsDisabled);
+        config.SetAutomaticShardCreationEnabled(true);
+        config.SetShardAllocationUnit(shardAllocationUnit);
+
+        const TString fsId = "test";
+        TTestEnv env({}, config);
+
+        const ui32 nodeIdx = env.AddDynamicNode();
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        service.CreateFileStore(fsId, fsSize);
+        WaitForTabletStart(service);
+
+        const auto headers = service.InitSession(fsId, "client");
+        const auto data = GenerateValidateData(blockSize);
+        for (ui64 i = 0; i < filesCount; ++i) {
+            const auto response = service.CreateNode(
+                headers,
+                TCreateNodeArgs::File(
+                    RootNodeId,
+                    TStringBuilder() << "file" << i));
+            const ui64 nodeId = response->Record.GetNode().GetId();
+            const ui64 handle = service.CreateHandle(
+                headers,
+                fsId,
+                nodeId,
+                "",
+                TCreateHandleArgs::RDWR)->Record.GetHandle();
+            service.WriteData(headers, fsId, nodeId, handle, 0, data);
+        }
+
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
+        // To make the following counter updates less dependent on timing,
+        // GetStorageStats is called to refresh the cache.
+        GetStorageStats(service, fsId);
+
+        // Update counters in the main tablet and all the shards.
+        TDispatchOptions options;
+        options.FinalEvents.emplace_back(
+            TDispatchOptions::TFinalEventCondition(
+                TEvIndexTabletPrivate::EvUpdateCounters,
+                shardCount + 2));
+        env.GetRuntime().DispatchEvents(options);
 
         env.GetRegistry()->Update(env.GetRuntime().GetCurrentTime());
         auto tabletCounters = env.GetRuntime().GetAppData().Counters
@@ -8239,17 +8317,46 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             ->FindSubgroup("component", "storage")
             ->FindSubgroup("type", "hdd");
 
-        const auto getStorageStatsCount =
+        const auto storageStatsRequestsPerShard =
             tabletCounters->FindSubgroup("request", "GetStorageStats")
                 ->GetCounter("Count")
-                ->GetAtomic();
+                ->GetAtomic() / shardCount;
 
-        // Each GetStorageStats to the main fs generate requests to all shards.
-        // Three calls to the main fs are made explicitly,
-        // one call from UpdateCounters and two GetStorageStats requests happen
-        // when it's called to a shard.
-        // So, we should have ~ 6 * shardCount GetStorageStats request.
-        UNIT_ASSERT_EQUAL(6, getStorageStatsCount / shardCount);
+        if (fanoutStatsCollectionInShardsDisabled) {
+            // Linear complexity by shardCount.
+            UNIT_ASSERT_LE(storageStatsRequestsPerShard, 4);
+        } else {
+            // Quadratic complexity by shardCount.
+            UNIT_ASSERT_GE(storageStatsRequestsPerShard, shardCount);
+        }
+
+        auto mainFsCounters = GetFileSystemCounters(env, fsId);
+        UNIT_ASSERT_VALUES_EQUAL(
+            filesCount,
+            mainFsCounters->GetCounter("AggregateUsedNodesCount")->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            filesCount * blockSize,
+            mainFsCounters->GetCounter("AggregateUsedBytesCount")->GetAtomic());
+
+        for (ui64 shardNo = 1; shardNo <= shardCount; ++shardNo) {
+            const TString shardId = TStringBuilder()
+                << fsId << ShardNumPrefix << shardNo;
+            auto shardCounters = GetFileSystemCounters(env, shardId);
+            UNIT_ASSERT_VALUES_EQUAL(
+                filesCount,
+                shardCounters->GetCounter("AggregateUsedNodesCount")
+                    ->GetAtomic());
+            UNIT_ASSERT_VALUES_EQUAL(
+                filesCount * blockSize,
+                shardCounters->GetCounter("AggregateUsedBytesCount")
+                    ->GetAtomic());
+        }
+    }
+
+    SERVICE_TEST(ShouldHaveCorrectAggregateCountersWithFanoutDisabled)
+    {
+        DoShouldHaveCorrectAggregateCountersWithFanoutDisabled(config, false);
+        DoShouldHaveCorrectAggregateCountersWithFanoutDisabled(config, true);
     }
 
     SERVICE_TEST(ShouldCreateALotOfShardsThrottled)
@@ -8557,7 +8664,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     void DoShouldShardedFileSystemHitNodesCountLimit(
         NProto::TStorageConfig config,
-        const bool strictFileSystemSizeEnforcementEnabled)
+        const bool strictFileSystemSizeEnforcementEnabled,
+        const bool fanoutStatsCollectionInShardsDisabled)
     {
         const ui64 blockSize = 4_KB;
         const ui64 shardBlockCount = 512;
@@ -8582,6 +8690,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetAutomaticallyCreatedShardSize(shardAllocationUnit);
         config.SetSizeToNodesRatio(sizeToNodeRatio);
         config.SetDefaultNodesLimit(filesPerFs / 2);
+        config.SetFanoutStatsCollectionInShardsDisabled(
+            fanoutStatsCollectionInShardsDisabled);
 
         TShardedFileSystemConfig fsConfig = {
             .ShardBlockCount = shardBlockCount,
@@ -8669,8 +8779,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST(ShouldShardedFileSystemHitNodesCountLimit)
     {
-        DoShouldShardedFileSystemHitNodesCountLimit(config, true);
-        DoShouldShardedFileSystemHitNodesCountLimit(config, false);
+        DoShouldShardedFileSystemHitNodesCountLimit(config, false, false);
+        DoShouldShardedFileSystemHitNodesCountLimit(config, true, false);
+        DoShouldShardedFileSystemHitNodesCountLimit(config, true, true);
     }
 
     SERVICE_TEST(ShouldNotUpdateShardBalancerInTabletZombieState)

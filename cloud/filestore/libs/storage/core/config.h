@@ -439,6 +439,8 @@ public:
     ui32 GetSoftBackpressureMaxReadIops() const;
 
     [[nodiscard]] bool GetExternalWriteDataPayloadEnabled() const;
+
+    [[nodiscard]] bool GetFanoutStatsCollectionInShardsDisabled() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

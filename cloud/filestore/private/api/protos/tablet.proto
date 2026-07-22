@@ -224,9 +224,6 @@ message TGetStorageStatsResponse
 
     // Time since tablet start.
     uint64 TabletUptimeMs = 4;
-
-    // Timestamp of the Stats.
-    uint64 StatsTs = 5;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
