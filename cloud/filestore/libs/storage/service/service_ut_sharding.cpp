@@ -8235,17 +8235,13 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             sevenBytesHandlesCount);
 
         env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
-        // To make the following counter updates less dependent on timing,
-        // GetStorageStats is called to refresh the cache.
-        GetStorageStats(service, fsId).GetStats();
 
         // Update counters in all the shards.
         TDispatchOptions options;
-        options.FinalEvents.emplace_back(
-            TDispatchOptions::TFinalEventCondition(
-                TEvIndexTabletPrivate::EvUpdateCounters,
-                shardCount + 2));
-        env.GetRuntime().DispatchEvents(options);
+        options.FinalEvents = {TDispatchOptions::TFinalEventCondition(
+            TEvIndexTabletPrivate::EvAggregateStatsCompleted,
+            shardCount + 1)};
+        service.AccessRuntime().DispatchEvents(options);
 
         const auto mainStats = GetStorageStats(service, fsId);
         UNIT_ASSERT_VALUES_EQUAL(
