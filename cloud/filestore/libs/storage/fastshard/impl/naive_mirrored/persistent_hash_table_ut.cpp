@@ -117,6 +117,72 @@ TEST(PersistentHashTableTest, PutGetUpdate)
     EXPECT_EQ(10U, slot.C);
 }
 
+TEST(PersistentHashTableTest, Delete)
+{
+    TFixture fx;
+
+    TVector<TPageGroup> pageGroups;
+    auto error = fx.Ht.Put(TSlot{.A = 1, .B = 100, .C = 3}, pageGroups);
+    EXPECT_EQ(S_OK, error.GetCode()) << FormatError(error);
+    Flush(pageGroups, *fx.PageStore);
+    error = fx.Ht.Put(TSlot{.A = 2, .B = 101, .C = 4}, pageGroups);
+    EXPECT_EQ(S_OK, error.GetCode()) << FormatError(error);
+    Flush(pageGroups, *fx.PageStore);
+    error = fx.Ht.Put(TSlot{.A = 3, .B = 102, .C = 5}, pageGroups);
+    EXPECT_EQ(S_OK, error.GetCode()) << FormatError(error);
+    Flush(pageGroups, *fx.PageStore);
+
+    TSlot slot;
+    error = fx.Ht.Delete(101, &slot, pageGroups);
+    EXPECT_EQ(2U, slot.A);
+    EXPECT_EQ(101U, slot.B);
+    EXPECT_EQ(4U, slot.C);
+    Flush(pageGroups, *fx.PageStore);
+
+    ui64 slotNo = 0;
+    error = fx.Ht.Get(100, &slot, &slotNo);
+    EXPECT_EQ(S_OK, error.GetCode()) << FormatError(error);
+    EXPECT_EQ(1U, slot.A);
+    EXPECT_EQ(100U, slot.B);
+    EXPECT_EQ(3U, slot.C);
+    error = fx.Ht.Get(101, &slot, &slotNo);
+    EXPECT_EQ(E_FS_NOENT, error.GetCode()) << FormatError(error);
+    error = fx.Ht.Get(102, &slot, &slotNo);
+    EXPECT_EQ(S_OK, error.GetCode()) << FormatError(error);
+    EXPECT_EQ(3U, slot.A);
+    EXPECT_EQ(102U, slot.B);
+    EXPECT_EQ(5U, slot.C);
+
+    error = fx.Ht.Delete(100, &slot, pageGroups);
+    EXPECT_EQ(1U, slot.A);
+    EXPECT_EQ(100U, slot.B);
+    EXPECT_EQ(3U, slot.C);
+    Flush(pageGroups, *fx.PageStore);
+
+    error = fx.Ht.Get(100, &slot, &slotNo);
+    EXPECT_EQ(E_FS_NOENT, error.GetCode()) << FormatError(error);
+    error = fx.Ht.Get(101, &slot, &slotNo);
+    EXPECT_EQ(E_FS_NOENT, error.GetCode()) << FormatError(error);
+    error = fx.Ht.Get(102, &slot, &slotNo);
+    EXPECT_EQ(S_OK, error.GetCode()) << FormatError(error);
+    EXPECT_EQ(3U, slot.A);
+    EXPECT_EQ(102U, slot.B);
+    EXPECT_EQ(5U, slot.C);
+
+    error = fx.Ht.Delete(102, &slot, pageGroups);
+    EXPECT_EQ(3U, slot.A);
+    EXPECT_EQ(102U, slot.B);
+    EXPECT_EQ(5U, slot.C);
+    Flush(pageGroups, *fx.PageStore);
+
+    error = fx.Ht.Get(100, &slot, &slotNo);
+    EXPECT_EQ(E_FS_NOENT, error.GetCode()) << FormatError(error);
+    error = fx.Ht.Get(101, &slot, &slotNo);
+    EXPECT_EQ(E_FS_NOENT, error.GetCode()) << FormatError(error);
+    error = fx.Ht.Get(102, &slot, &slotNo);
+    EXPECT_EQ(E_FS_NOENT, error.GetCode()) << FormatError(error);
+}
+
 TEST(PersistentHashTableTest, PutGetUpdateRandomized)
 {
     TFixture fx;
@@ -125,8 +191,9 @@ TEST(PersistentHashTableTest, PutGetUpdateRandomized)
 
     const double putProb = 0.5;
     const double updateProb = 0.2;
+    const double deleteProb = 0.3;
     TVector<ui64> keys;
-    THashMap<ui64, TSlot> refImpl;
+    THashMap<ui64, std::pair<TSlot, ui64>> refImpl;
 
     const ui64 seed = 111;
     TFastRng64 rng(seed);
@@ -149,10 +216,11 @@ TEST(PersistentHashTableTest, PutGetUpdateRandomized)
         if (keys.empty() || rng.GenRandReal2() < putProb) {
             auto slot = makeSlot();
             if (!refImpl.contains(slot.B)) {
-                refImpl[slot.B] = slot;
+                refImpl[slot.B] = {slot, keys.size()};
 
                 auto error = fx.Ht.Put(slot, pageGroups);
-                EXPECT_EQ(S_OK, error.GetCode()) << FormatError(error);
+                Cdbg << "PUT " << slot.B << Endl;
+                ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
                 Flush(pageGroups, *fx.PageStore);
                 keys.push_back(slot.B);
             }
@@ -166,11 +234,12 @@ TEST(PersistentHashTableTest, PutGetUpdateRandomized)
         ui64 slotNo = 0;
         const ui64 key = keys[rng.Uniform(0, keys.size())];
         auto error = fx.Ht.Get(key, &slot, &slotNo);
-        EXPECT_EQ(S_OK, error.GetCode()) << FormatError(error);
-        auto& expectedSlot = refImpl[key];
-        EXPECT_EQ(expectedSlot.A, slot.A);
-        EXPECT_EQ(expectedSlot.B, slot.B);
-        EXPECT_EQ(expectedSlot.C, slot.C);
+        Cdbg << "GET " << key << Endl;
+        ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
+        auto& expectedSlot = refImpl[key].first;
+        ASSERT_EQ(expectedSlot.A, slot.A);
+        ASSERT_EQ(expectedSlot.B, slot.B);
+        ASSERT_EQ(expectedSlot.C, slot.C);
 
         //
         // Update.
@@ -180,11 +249,39 @@ TEST(PersistentHashTableTest, PutGetUpdateRandomized)
             slot = makeSlot();
             slot.B = key;
 
-            refImpl[key] = slot;
+            refImpl[key].first = slot;
 
             error = fx.Ht.Update(slot, slotNo, pageGroups);
-            EXPECT_EQ(S_OK, error.GetCode()) << FormatError(error);
+            Cdbg << "UPDATE " << key << Endl;
+            ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
             Flush(pageGroups, *fx.PageStore);
+        }
+
+        //
+        // Delete.
+        //
+
+        if (rng.GenRandReal2() < deleteProb) {
+            auto it = refImpl.find(key);
+            Y_ABORT_UNLESS(it != refImpl.end());
+            const ui64 keysArrayIndex = it->second.second;
+            if (keysArrayIndex != keys.size() - 1) {
+                refImpl[keys.back()].second = keysArrayIndex;
+                keys[keysArrayIndex] = keys.back();
+            }
+            keys.pop_back();
+            refImpl.erase(it);
+
+            error = fx.Ht.Delete(key, &slot, pageGroups);
+            Cdbg << "DELETE " << key << Endl;
+            ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
+            Flush(pageGroups, *fx.PageStore);
+
+            error = fx.Ht.Get(key, &slot, &slotNo);
+            if (error.GetCode() != E_FS_NOENT) {
+                Cerr << slot.B << Endl;
+            }
+            ASSERT_EQ(E_FS_NOENT, error.GetCode()) << FormatError(error);
         }
 
         //
@@ -193,6 +290,22 @@ TEST(PersistentHashTableTest, PutGetUpdateRandomized)
 
         const ui64 key2 = rng.Uniform(maxKey, 1'000);
         error = fx.Ht.Get(key2, &slot, &slotNo);
-        EXPECT_EQ(E_FS_NOENT, error.GetCode()) << FormatError(error);
+        ASSERT_EQ(E_FS_NOENT, error.GetCode()) << FormatError(error);
+
+        //
+        // Output stats from time to time.
+        //
+
+        if (i % 10'000 == 0) {
+            TPersistentHashTableStats stats;
+            error = fx.Ht.CollectStats(&stats);
+            ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
+            Cerr << "values=" << stats.ValueCount << "/" << stats.SlotCount
+                << " tombstones=" << stats.TombstoneCount
+                << "/" << stats.SlotCount
+                << " misplaced=" << stats.MisplacedValueCount
+                << "/" << stats.ValueCount
+                << Endl;
+        }
     }
 }

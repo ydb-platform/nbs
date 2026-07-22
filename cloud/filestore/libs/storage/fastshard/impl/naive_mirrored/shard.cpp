@@ -234,7 +234,7 @@ private:
     static constexpr ui64 SlotsPerPage = 128;
     static_assert(SlotsPerPage * NameSlotSize <= PageSize);
 
-    using THt = TPersistentHashTable<const char*, TNameTableSlot>;
+    using THt = TPersistentHashTable<TStringBuf, TNameTableSlot>;
     std::unique_ptr<THt> Slots;
 
 public:
@@ -257,13 +257,13 @@ public:
             NameSlotSize,
             tombstone,
             std::move(pageStore),
-            [] (const TNameTableSlot& s) -> const char*
+            [] (const TNameTableSlot& s) -> TStringBuf
             {
-                return s.Name;
+                return {s.Name, strlen(s.Name)};
             },
-            [] (const char* const& name) -> ui64
+            [] (const TStringBuf& name) -> ui64
             {
-                return CityHash64(name, strlen(name));
+                return CityHash64(name.data(), name.size());
             });
     }
 
