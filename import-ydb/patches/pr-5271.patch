@@ -1,0 +1,31 @@
+From 34c94c32b460c4f85b2830c5a3f8e2e2f2e7d6c3 Mon Sep 17 00:00:00 2001
+From: Mikhail Montsev <svartmetal@nebius.com>
+Date: Wed, 18 Feb 2026 20:39:47 +0100
+Subject: [PATCH] Fix stupid mistake: changed wrong line in PR #5256
+
+---
+ contrib/ydb/tests/library/harness/kikimr_runner.py | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/contrib/ydb/tests/library/harness/kikimr_runner.py b/contrib/ydb/tests/library/harness/kikimr_runner.py
+index fcf91e02bcd..5d68820f60c 100644
+--- a/contrib/ydb/tests/library/harness/kikimr_runner.py
++++ b/contrib/ydb/tests/library/harness/kikimr_runner.py
+@@ -529,7 +529,7 @@ def __add_bs_box(self):
+         self._bs_config_invoke(request)
+
+     def _bs_config_invoke(self, request):
+-        timeout = yatest_common.plain_or_under_sanitizer(480, 960)
++        timeout = yatest_common.plain_or_under_sanitizer(120, 240)
+         sleep = 5
+         retries, success = timeout / sleep, False
+         while retries > 0 and not success:
+@@ -582,7 +582,7 @@ def __wait_for_bs_controller_to_start(self):
+         def predicate():
+             return blobstorage_controller_has_started_on_some_node(monitors)
+
+-        timeout_seconds = yatest_common.plain_or_under_sanitizer(120, 240)
++        timeout_seconds = yatest_common.plain_or_under_sanitizer(480, 960)
+         bs_controller_started = wait_for(
+             predicate=predicate, timeout_seconds=timeout_seconds, step_seconds=1.0, multiply=1.3
+         )
