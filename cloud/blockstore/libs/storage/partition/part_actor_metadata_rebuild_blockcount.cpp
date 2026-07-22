@@ -348,7 +348,8 @@ bool TPartitionActor::PrepareMetadataRebuildBlockCount(
         args.StartBlobId,
         args.FinalBlobId,
         args.BlobCountToRead);
-    auto ready = progress != TPartitionDatabase::EBlobIndexScanProgress::NotReady;
+    auto ready =
+        progress != TPartitionDatabase::EBlobIndexScanProgress::NotReady;
     if (ready) {
         visitor.UpdateTx();
     }
