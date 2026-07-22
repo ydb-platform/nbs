@@ -2,6 +2,7 @@ NFS profile:
 CreateFileStore
 CreateHandle
 CreateNode
+DestroyHandle
 ReadData
 RenameNode
 UnlinkNode
