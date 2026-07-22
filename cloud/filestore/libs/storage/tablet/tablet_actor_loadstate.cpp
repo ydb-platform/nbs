@@ -403,6 +403,13 @@ void TIndexTabletActor::CompleteTx_LoadState(
         config);
     UpdateLogTag();
 
+    if (Config->GetAsyncCreateHandleEnabled() &&
+        Config->GetAsyncCreateHandleRecoveryWindow() != TDuration::Zero())
+    {
+        AsyncCreateHandleRecoveryDeadline =
+            ctx.Now() + Config->GetAsyncCreateHandleRecoveryWindow();
+    }
+
     NMetrics::Store(Metrics.OpLogEntryCount, GetOpLogEntryCount());
     NMetrics::Store(Metrics.ResponseLogEntryCount, GetResponseLogEntryCount());
 
@@ -533,6 +540,7 @@ void TIndexTabletActor::CompleteTx_LoadState(
     RestartCheckpointDestruction(ctx);
     EnqueueCollectGarbageIfNeeded(ctx);
     EnqueueTruncateIfNeeded(ctx);
+    ScheduleDeferredZeroLinkNodesCleanup(ctx);
 
     RegisterFileStore(ctx);
     RegisterStatCounters(ctx.Now());

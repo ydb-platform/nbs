@@ -33,6 +33,7 @@ SRCS(
     tablet_actor_createnode.cpp
     tablet_actor_createsession.cpp
     tablet_actor_delete_zero_compaction_ranges.cpp
+    tablet_actor_deferred_zero_link_cleanup.cpp
     tablet_actor_deletecheckpoint.cpp
     tablet_actor_deletegarbage.cpp
     tablet_actor_destroycheckpoint.cpp

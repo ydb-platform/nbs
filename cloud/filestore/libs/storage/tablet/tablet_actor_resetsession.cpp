@@ -157,11 +157,12 @@ void TIndexTabletActor::ExecuteTx_ResetSession(
                 nodeId,
                 it->Attrs.GetSize());
 
-            auto e = RemoveNode(
+            auto e = RemoveOrDeferZeroLinkNode(
                 *db,
                 *it,
                 it->MinCommitId,
-                commitId);
+                commitId,
+                IsAsyncCreateHandleRecoveryWindowActive(ctx));
 
             if (HasError(e)) {
                 WriteOrphanNode(*db, TStringBuilder()

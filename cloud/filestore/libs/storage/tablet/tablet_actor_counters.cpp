@@ -499,6 +499,9 @@ void TIndexTabletActor::UpdateMetrics(
         nodeToSessionCounters.NodesOpenForReadingByMultipleSessions);
 
     Store(Metrics.OrphanNodesCount, miscNodeStats.OrphanNodesCount);
+    Store(
+        Metrics.DeferredZeroLinkNodesCount,
+        miscNodeStats.DeferredZeroLinkNodesCount);
 
     Metrics.BusyIdleCalc.OnUpdateStats();
     Metrics.UpdatePerformanceMetrics(now, diagConfig, fileSystem);

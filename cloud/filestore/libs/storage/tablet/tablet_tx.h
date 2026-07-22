@@ -94,6 +94,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(InitSchema,                         __VA_ARGS__)                       \
     xxx(LoadState,                          __VA_ARGS__)                       \
     xxx(LoadCompactionMapChunk,             __VA_ARGS__)                       \
+    xxx(CleanupDeferredZeroLinkNodes,       __VA_ARGS__)                       \
     xxx(UpdateConfig,                       __VA_ARGS__)                       \
     xxx(ConfigureShards,                    __VA_ARGS__)                       \
     xxx(ConfigureAsShard,                   __VA_ARGS__)                       \
@@ -393,6 +394,35 @@ struct TTxIndexTablet
             LargeDeletionMarkers.clear();
             OrphanNodeIds.clear();
             UnconfirmedData.clear();
+        }
+    };
+
+    //
+    // CleanupDeferredZeroLinkNodes
+    //
+
+    struct TCleanupDeferredZeroLinkNodes: TTxIndexTabletBase
+    {
+        // Unused, required by the generic transaction tracking machinery.
+        const TRequestInfoPtr RequestInfo;
+
+        TVector<ui64> NodeIds;
+        TVector<TMaybe<INodeIndexTabletDatabase::TNode>> Nodes;
+        ui32 Cleaned = 0;
+        ui32 Skipped = 0;
+        bool RemovedNodes = false;
+
+        explicit TCleanupDeferredZeroLinkNodes(TVector<ui64> nodeIds)
+            : NodeIds(std::move(nodeIds))
+        {}
+
+        void Clear() override
+        {
+            NodeIds.clear();
+            Nodes.clear();
+            Cleaned = 0;
+            Skipped = 0;
+            RemovedNodes = false;
         }
     };
 

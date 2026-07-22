@@ -152,6 +152,7 @@ struct TNodeToSessionCounters
 struct TMiscNodeStats
 {
     i64 OrphanNodesCount{0};
+    i64 DeferredZeroLinkNodesCount{0};
 };
 
 struct THandlesStats
@@ -568,7 +569,19 @@ public:
         const INodeIndexTabletDatabase::TNode& node,
         ui64 minCommitId,
         ui64 maxCommitId,
-        bool removeNodeRef);
+        bool removeNodeRef,
+        bool deferZeroLinkNodeCleanup);
+
+    [[nodiscard]] NProto::TError RemoveOrDeferZeroLinkNode(
+        IIndexTabletDatabase& db,
+        const INodeIndexTabletDatabase::TNode& node,
+        ui64 minCommitId,
+        ui64 maxCommitId,
+        bool deferZeroLinkNodeCleanup);
+
+    void DeferZeroLinkNodeCleanup(IIndexTabletDatabase& db, ui64 nodeId);
+    void DeleteOrphanNode(IIndexTabletDatabase& db, ui64 nodeId);
+    TVector<ui64> GetOrphanNodeIds() const;
 
     void UnlinkExternalNode(
         IIndexTabletDatabase& db,

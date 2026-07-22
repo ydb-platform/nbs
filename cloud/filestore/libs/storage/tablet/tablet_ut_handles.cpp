@@ -428,6 +428,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Handles)
         tablet.RebootTablet();
         tablet.RecoverSession();
 
+        // An unlink during the recovery window must only remove the name.
+        // The node is retained until the pending create is confirmed.
+        tablet.UnlinkNode(RootNodeId, "test", false);
+
         // The early-returned handle is not persisted yet, so recovery must
         // explicitly confirm that exact handle id.
         auto describeResponse = tablet.AssertDescribeDataFailed(
@@ -448,6 +452,31 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Handles)
         // ConfirmCreateHandle recreates and persists the exact returned handle.
         tablet.DescribeData(handle, 0, 1_KB);
         tablet.DestroyHandle(handle);
+    }
+
+    Y_UNIT_TEST(ShouldCleanupUnlinkedNodeAfterAsyncCreateRecoveryWindow)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetAsyncCreateHandleEnabled(true);
+        storageConfig.SetAsyncCreateHandleRecoveryWindow(60'000);
+        TTestEnv env({}, storageConfig);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto node =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        tablet.UnlinkNode(RootNodeId, "test", false);
+
+        // The node is available by id during the recovery window.
+        tablet.GetNodeAttr(node);
+
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Minutes(1));
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+        tablet.AssertGetNodeAttrFailed(node);
     }
 
     Y_UNIT_TEST(ShouldRestoreCreateHandleDupCacheAfterPostRestartConfirm)

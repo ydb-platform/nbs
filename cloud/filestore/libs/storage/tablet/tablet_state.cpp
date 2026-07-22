@@ -314,6 +314,8 @@ TMiscNodeStats TIndexTabletState::GetMiscNodeStats() const
 {
     return {
         .OrphanNodesCount = static_cast<i64>(Impl->OrphanNodeIds.size()),
+        .DeferredZeroLinkNodesCount =
+            static_cast<i64>(Impl->OrphanNodeIds.size()),
     };
 }
 

@@ -257,6 +257,9 @@ struct TTabletMetrics
     std::atomic<i64> NodesOpenForReadingByMultipleSessions{0};
 
     std::atomic<i64> OrphanNodesCount{0};
+    std::atomic<i64> DeferredZeroLinkNodesCount{0};
+    std::atomic<i64> DeferredZeroLinkNodesCleaned{0};
+    std::atomic<i64> DeferredZeroLinkNodesSkipped{0};
 
     NMetrics::TDefaultWindowCalculator MaxUsedQuota{0};
 

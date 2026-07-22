@@ -107,7 +107,12 @@ void TIndexTabletActor::ExecuteTx_DestroyHandle(
 
     if (args.Node->Attrs.GetLinks() == 0 && !HasOpenHandles(args.Node->NodeId))
     {
-        auto e = RemoveNode(*db, *args.Node, args.Node->MinCommitId, commitId);
+        auto e = RemoveOrDeferZeroLinkNode(
+            *db,
+            *args.Node,
+            args.Node->MinCommitId,
+            commitId,
+            IsAsyncCreateHandleRecoveryWindowActive(ctx));
 
         if (HasError(e)) {
             WriteOrphanNode(

@@ -164,6 +164,8 @@ private:
     bool SyncSessionsScheduled = false;
     bool CleanupSessionsScheduled = false;
     bool EnqueueBlobIndexOpIfNeededScheduled = false;
+    bool DeferredZeroLinkNodesCleanupScheduled = false;
+    TInstant AsyncCreateHandleRecoveryDeadline;
 
     TDeque<NActors::IEventHandlePtr> WaitReadyRequests;
 
@@ -675,6 +677,15 @@ private:
     void HandleRunRegularTasks(
         const TEvIndexTabletPrivate::TEvRunRegularTasks::TPtr& ev,
         const NActors::TActorContext& ctx);
+
+    void HandleCleanupDeferredZeroLinkNodes(
+        const TEvIndexTabletPrivate::TEvCleanupDeferredZeroLinkNodes::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void ScheduleDeferredZeroLinkNodesCleanup(
+        const NActors::TActorContext& ctx);
+    bool IsAsyncCreateHandleRecoveryWindowActive(
+        const NActors::TActorContext& ctx) const;
 
     void HandleReleaseCollectBarrier(
         const TEvIndexTabletPrivate::TEvReleaseCollectBarrier::TPtr& ev,

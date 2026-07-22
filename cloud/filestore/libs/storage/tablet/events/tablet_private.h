@@ -1222,6 +1222,7 @@ struct TEvIndexTabletPrivate
         EvUpdateCounters,
         EvUpdateLeakyBucketCounters,
         EvRunRegularTasks,
+        EvCleanupDeferredZeroLinkNodes,
 
         EvReadDataCompleted,
         EvWriteDataCompleted,
@@ -1265,6 +1266,8 @@ struct TEvIndexTabletPrivate
         TRequestEvent<TEmpty, EvUpdateLeakyBucketCounters>;
 
     using TEvRunRegularTasks = TRequestEvent<TEmpty, EvRunRegularTasks>;
+    using TEvCleanupDeferredZeroLinkNodes =
+        TRequestEvent<TEmpty, EvCleanupDeferredZeroLinkNodes>;
 
     using TEvReleaseCollectBarrier =
         TRequestEvent<TReleaseCollectBarrier, EvReleaseCollectBarrier>;
