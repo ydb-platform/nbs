@@ -1,13 +1,15 @@
 #pragma once
 
 #include <cloud/blockstore/libs/common/block_range.h>
+
 #include <cloud/storage/core/libs/common/compressed_bitmap.h>
 
 #include <util/generic/hash.h>
+#include <util/generic/hash_set.h>
 #include <util/generic/vector.h>
 
-#include <optional>
 #include <deque>
+#include <optional>
 
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
@@ -16,12 +18,12 @@ class TMixedBlocksFilter
     struct TCompactionRangeInfo
     {
         ui64 CommitId = 0;
-        TCompressedBitmap FilterAfterCompaction;
+        THashSet<ui32> MixedBlocksWrittenAfterCompaction;
     };
 
 private:
     TCompressedBitmap Blocks;
-    TVector<std::optional<ui64>> StartCommitIdsPerRange;
+    TVector<std::optional<ui64>> CommitIdsPerRange;
     THashMap<ui32, std::deque<TCompactionRangeInfo>>
         RangeIndexToCompactionRangeInfos;
 
