@@ -214,7 +214,7 @@ def setup_ydb(ydb_binary_path):
     configurator = KikimrConfigGenerator(
         erasure=None,
         use_in_memory_pdisks=False,
-        binary_path=ydb_binary_path,
+        binary_paths=[ydb_binary_path],
         dynamic_storage_pools=[
             dict(name="dynamic_storage_pool:1", kind="rot", pdisk_user_kind=0),
             dict(name="dynamic_storage_pool:2", kind="ssd", pdisk_user_kind=0),
