@@ -185,10 +185,11 @@ func TestCreateFilesystemTaskFromSnapshot(t *testing.T) {
 	nfsClient.On("Close").Return(nil)
 
 	scheduler.On(
-		"ScheduleTask",
+		"ScheduleZonalTask",
 		headers.SetIncomingIdempotencyKey(ctx, "toplevel_task_id_transfer_from_snapshot"),
 		"dataplane.TransferFromSnapshotToFilesystem",
 		"",
+		"zone",
 		&filesystem_snapshot_protos.TransferFromSnapshotToFilesystemRequest{
 			Filesystem: &types.Filesystem{
 				ZoneId:       "zone",

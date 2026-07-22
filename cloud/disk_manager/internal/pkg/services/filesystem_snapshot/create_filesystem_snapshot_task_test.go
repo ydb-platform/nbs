@@ -64,10 +64,11 @@ func TestCreateFilesystemSnapshotTask(t *testing.T) {
 	}, nil)
 
 	scheduler.On(
-		"ScheduleTask",
+		"ScheduleZonalTask",
 		headers.SetIncomingIdempotencyKey(ctx, "toplevel_task_id_run"),
 		"dataplane.CreateSnapshotFromFilesystem",
 		"",
+		"zone",
 		&dataplane_protos.CreateFilesystemSnapshotRequest{
 			Filesystem: &types.Filesystem{
 				ZoneId:       "zone",

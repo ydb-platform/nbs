@@ -108,10 +108,11 @@ func (t *createFilesystemFromSnapshotTask) Run(
 		return err
 	}
 
-	taskID, err := t.scheduler.ScheduleTask(
+	taskID, err := t.scheduler.ScheduleZonalTask(
 		headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_transfer_from_snapshot"),
 		"dataplane.TransferFromSnapshotToFilesystem",
 		"",
+		filesystemMeta.ZoneID,
 		&filesystem_snapshot_protos.TransferFromSnapshotToFilesystemRequest{
 			Filesystem: &types.Filesystem{
 				ZoneId:       filesystemMeta.ZoneID,

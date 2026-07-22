@@ -116,7 +116,8 @@ func (t *createFilesystemSnapshotTask) Run(
 		return nil
 	}
 
-	// TODO: (jkuradobery) Create fs checkpoint once checkpoints are implemented on the  filestore size.
+	// TODO: (jkuradobery) Create fs checkpoint once checkpoints
+	// are implemented on the  filestore side.
 	taskID, err := t.scheduler.ScheduleZonalTask(
 		headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_run"),
 		"dataplane.CreateSnapshotFromFilesystem",

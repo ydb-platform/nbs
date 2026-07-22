@@ -9,14 +9,11 @@ SRCS(
     service.go
 )
 
-GO_TEST_SRCS(
-    create_filesystem_snapshot_task_test.go
-)
-
 END()
 
 RECURSE_FOR_TESTS(
     mocks
+    ut
 )
 
 RECURSE(
