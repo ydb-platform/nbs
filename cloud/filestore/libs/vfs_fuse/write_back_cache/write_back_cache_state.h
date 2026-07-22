@@ -1,6 +1,5 @@
 #pragma once
 
-#include "flush_backpressure_calculator.h"
 #include "node_cache.h"
 #include "node_state.h"
 #include "node_state_holder.h"
@@ -56,7 +55,7 @@ private:
     const ITimerPtr Timer;
     const IWriteBackCacheStateStatsPtr Stats;
     const IWriteDataRequestManagerStatsPtr RequestManagerStats;
-    const TFlushBackpressureCalculator FlushBackpressureCalculator;
+    const TFlushBatchLimits FlushBatchLimits;
     const TString LogTag;
 
     TNodeStateHolder Nodes;
@@ -83,7 +82,7 @@ private:
     bool DrainingMode = false;
 
 public:
-    using TEntryVisitor = TFunctionRef<bool(const TCachedWriteDataRequest*)>;
+    using TEntryVisitor = TFunctionRef<void(const TCachedWriteDataRequest*)>;
 
     TWriteBackCacheState(
         IQueuedOperationsProcessor& processor,
@@ -91,7 +90,7 @@ public:
         IWriteBackCacheStateStatsPtr writeBackCacheStateStats,
         IWriteDataRequestManagerStatsPtr writeDataRequestManagerStats,
         INodeStateHolderStatsPtr nodeStateHolderStats,
-        TFlushBackpressureCalculator flushBackpressureCalculator,
+        const TFlushBatchLimits& flushBatchLimits,
         TString logTag);
 
     // Read state from the persistent storage
@@ -147,10 +146,12 @@ public:
     TNodeStatePin PinNodeStates();
     void UnpinNodeStates(TNodeStatePin pinId);
 
-    // Visit unflushed cached requests in the increasing order of SequenceId
-    void VisitUnflushedRequests(
+    // Returns empty batch if flush is not allowed due to barriers
+    // Forces completion of an incomplete flush batch if there are no completed
+    // flush batches
+    void VisitUnflushedRequestsFromFrontFlushBatch(
         ui64 nodeId,
-        const TEntryVisitor& visitor) const;
+        const TEntryVisitor& visitor);
 
     // Returns a known live handle that should be used for flushing requests or
     // NProto::E_INVALID_HANDLE if there are no unflushed requests with live

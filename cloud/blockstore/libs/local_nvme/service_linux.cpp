@@ -6,6 +6,7 @@
 
 #include <cloud/blockstore/libs/nvme/nvme.h>
 
+#include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/common/proto_helpers.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -769,10 +770,15 @@ auto TLocalNVMeService::GetOperationResult(
     const TString& idempotenceId) const
     -> std::optional<TFuture<typename TOpResult::value_type>>
 {
-    auto makeErrorFuture = [](ui32 code, TString msg)
+    auto makeErrorFuture = [](ui32 code,
+                              TString msg,
+                              NProto::EErrorFlag protoFlag = NProto::EF_NONE)
     {
+        ui32 flags = 0;
+        SetProtoFlag(flags, protoFlag);
+
         return MakeFuture<typename TOpResult::value_type>(
-            MakeError(code, std::move(msg)));
+            MakeError(code, std::move(msg), flags));
     };
 
     auto it = Operations.find(serialNumber);
@@ -796,7 +802,10 @@ auto TLocalNVMeService::GetOperationResult(
         }
 
         if (!op.FinishTime) {
-            return makeErrorFuture(E_TRY_AGAIN, "Operation is in progress");
+            return makeErrorFuture(
+                E_TRY_AGAIN,
+                "Operation is in progress",
+                NProto::EF_SILENT);
         }
 
         return *typedOp;
@@ -897,8 +906,11 @@ auto TLocalNVMeService::AcquireDevice(
         "Acquire NVMe device operation is still in progress for "
         << serialNumber.Quote() << ", idempotenceId: " << idempotenceId);
 
+    ui32 flags = 0;
+    SetProtoFlag(flags, NProto::EF_SILENT);
+
     return MakeFuture<TAcquireResult>(
-        MakeError(E_TRY_AGAIN, "Acquire in progress"));
+        MakeError(E_TRY_AGAIN, "Acquire in progress", flags));
 }
 
 auto TLocalNVMeService::AcquireDeviceImpl(const TSerialNumber& serialNumber)
@@ -1082,8 +1094,11 @@ auto TLocalNVMeService::ReleaseDevice(
         "Release NVMe device operation is still in progress for "
         << serialNumber.Quote() << ", idempotenceId: " << idempotenceId);
 
+    ui32 flags = 0;
+    SetProtoFlag(flags, NProto::EF_SILENT);
+
     return MakeFuture<NProto::TError>(
-        MakeError(E_TRY_AGAIN, "Release in progress"));
+        MakeError(E_TRY_AGAIN, "Release in progress", flags));
 }
 
 auto TLocalNVMeService::GetDevice(const TSerialNumber& serialNumber)

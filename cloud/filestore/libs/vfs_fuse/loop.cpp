@@ -1179,6 +1179,16 @@ private:
                  .SessionId = SessionId,
                  .ModuleStats = DirectoryHandleStats});
 
+            if (handleOpsQueue) {
+                ModuleStatsRegistry->Register(
+                    {.FileSystemId = Config->GetFileSystemId(),
+                     .ClientId = Config->GetClientId(),
+                     .CloudId = response.GetFileStore().GetCloudId(),
+                     .FolderId = response.GetFileStore().GetFolderId(),
+                     .SessionId = SessionId,
+                     .ModuleStats = handleOpsQueue->GetModuleStats()});
+            }
+
             FileSystem = CreateFileSystem(
                 Logging,
                 ProfileLog,

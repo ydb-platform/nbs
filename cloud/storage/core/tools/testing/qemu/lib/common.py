@@ -119,13 +119,52 @@ def is_arm():
     return platform.machine().lower() in ("aarch64", "arm64")
 
 
+def _get_env_value(name):
+    return os.getenv(name) or None
+
+
+def _get_env_path(name, *relative_roots):
+    value = _get_env_value(name)
+    if value is None:
+        return None
+
+    if os.path.isabs(value):
+        return value
+
+    paths = [os.path.join(root, value) for root in relative_roots]
+    paths += [common.build_path(value), common.source_path(value)]
+    for path in paths:
+        if os.path.exists(path):
+            return path
+
+    return paths[0]
+
+
+def get_virtiofs_migration():
+    virtiofs_migration = _get_env_value("QEMU_VIRTIOFS_MIGRATION")
+    if virtiofs_migration:
+        return virtiofs_migration
+
+    return None
+
+
+def get_chardev_reconnect():
+    reconnect = _get_env_value("QEMU_CHARDEV_RECONNECT")
+    if reconnect is not None:
+        return int(reconnect)
+
+    return None
+
+
 def get_qemu_kvm():
     bindir = _get_qemu_bindir()
-    qemu_system_bin = "qemu-system-x86_64"
-    if is_arm():
-        qemu_system_bin = "qemu-system-aarch64"
+    qemu_kvm = _get_env_path("QEMU_BIN", bindir)
+    if qemu_kvm is None:
+        qemu_system_bin = "qemu-system-x86_64"
+        if is_arm():
+            qemu_system_bin = "qemu-system-aarch64"
 
-    qemu_kvm = os.path.join(bindir, "usr", "bin", qemu_system_bin)
+        qemu_kvm = os.path.join(bindir, "usr", "bin", qemu_system_bin)
     if not os.path.exists(qemu_kvm):
         _unpack_qemu_bindir(bindir)
 
@@ -134,7 +173,9 @@ def get_qemu_kvm():
 
 def get_qemu_firmware():
     bindir = _get_qemu_bindir()
-    qemu_firmware = os.path.join(bindir, "usr", "share", "qemu")
+    qemu_firmware = _get_env_path("QEMU_FIRMWARE", bindir)
+    if qemu_firmware is None:
+        qemu_firmware = os.path.join(bindir, "usr", "share", "qemu")
     if not os.path.exists(qemu_firmware):
         _unpack_qemu_bindir(bindir)
 
@@ -145,11 +186,17 @@ def get_qemu_bios(is_arm_host=None):
     if is_arm_host is None:
         is_arm_host = is_arm()
 
+    bindir = _get_qemu_bindir()
+    qemu_bios = _get_env_path("QEMU_BIOS", bindir)
+    if qemu_bios is not None:
+        if not os.path.exists(qemu_bios):
+            _unpack_qemu_bindir(bindir)
+        return qemu_bios
+
     if not is_arm_host:
         return None
 
-    bindir = _get_qemu_bindir()
-    qemu_bios = os.path.join(bindir, "usr", "share", "qemu-efi-aarch64", "QEMU_EFI.fd")
+    qemu_bios = os.path.join(bindir, "usr", "share", "qemu", "edk2-aarch64-code.fd")
     if not os.path.exists(qemu_bios):
         _unpack_qemu_bindir(bindir)
 

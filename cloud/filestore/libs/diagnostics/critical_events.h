@@ -37,6 +37,7 @@ namespace NCloud::NFileStore{
     xxx(WriteBackCacheCreatingOrDeletingError)                                 \
     xxx(WriteBackCacheCorruptionError)                                         \
     xxx(WriteBackCacheDataLossError)                                           \
+    xxx(WriteBackCacheImpossibleState)                                         \
     xxx(WriteBackCacheWritingNotAllowedInDrainingMode)                         \
     xxx(ErrorWasSentToTheGuest)                                                \
     xxx(DirectoryHandlesStorageError)                                          \
@@ -59,6 +60,7 @@ namespace NCloud::NFileStore{
     xxx(ReadDataResponseParserFailed)                                          \
     xxx(MalformedShardNodeRef)                                                 \
     xxx(MalformedEncodedShardNodeRef)                                          \
+    xxx(BadValueInFeatureConfig)                                               \
 // FILESTORE_CRITICAL_EVENTS
 
 #define FILESTORE_CRITICAL_EVENTS_WITHOUT_LOGGING(xxx)                         \

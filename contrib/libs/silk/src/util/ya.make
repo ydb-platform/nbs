@@ -24,6 +24,9 @@ CFLAGS(
 
 SRCS(
     assert.cpp
+    bitmap.cpp
+    crash-dumper.cpp
+    error.cpp
     init.cpp
     logger.cpp
     memory-pool.cpp

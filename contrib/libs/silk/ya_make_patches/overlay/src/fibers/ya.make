@@ -18,11 +18,13 @@ PEERDIR(
 )
 
 SRCS(
+    condvar.cpp
     cpu.cpp
     fiber.cpp
     futex.cpp
     future.cpp
     histogram.cpp
+    multi-lock.cpp
     mutex.cpp
     profiler.cpp
     sequencer.cpp

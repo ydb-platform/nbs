@@ -72,12 +72,12 @@ bool TIndexTabletActor::PrepareTx_SetNodeXAttr(
 
     FILESTORE_VALIDATE_TX_SESSION(SetNodeXAttr, args);
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
     args.CommitId = GetCurrentCommitId();
 
     // validate target node exists
-    if (!ReadNode(db, args.NodeId, args.CommitId, args.Node)) {
+    if (!ReadNode(*db, args.NodeId, args.CommitId, args.Node)) {
         return false;   // not ready
     }
 
@@ -89,7 +89,7 @@ bool TIndexTabletActor::PrepareTx_SetNodeXAttr(
     // TODO: AccessCheck
     TABLET_VERIFY(args.Node);
     // fetch previous version
-    if (!ReadNodeAttr(db, args.NodeId, args.CommitId, args.Name, args.Attr)) {
+    if (!ReadNodeAttr(*db, args.NodeId, args.CommitId, args.Name, args.Attr)) {
         return false;   // not ready
     }
 
@@ -115,7 +115,7 @@ void TIndexTabletActor::ExecuteTx_SetNodeXAttr(
 
     Y_UNUSED(ctx);
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
@@ -125,7 +125,7 @@ void TIndexTabletActor::ExecuteTx_SetNodeXAttr(
 
     if (args.Attr) {
         args.Version = UpdateNodeAttr(
-            db,
+            *db,
             args.NodeId,
             args.Attr->MinCommitId,
             args.CommitId,
@@ -133,7 +133,7 @@ void TIndexTabletActor::ExecuteTx_SetNodeXAttr(
             args.Value);
     } else {
         args.Version = CreateNodeAttr(
-            db,
+            *db,
             args.NodeId,
             args.CommitId,
             args.Name,

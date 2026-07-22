@@ -1,7 +1,5 @@
 #include "user_stats_actor.h"
 
-#include "mon_page_wrapper.h"
-
 #include <cloud/storage/core/libs/kikimr/helpers.h>
 
 #include <contrib/ydb/core/base/appdata.h>
@@ -43,24 +41,36 @@ void TUserStatsActor::RegisterPages(const NActors::TActorContext& ctx)
     if (mon) {
         auto* rootPage = mon->RegisterIndexPage(Path, Title);
 
-        mon->RegisterActorPage(rootPage, "user_stats/human", "UserStats",
-            true, ctx.ActorSystem(), SelfId());
-
-        mon->Register(new TMonPageWrapper(
-            Path + "/user_stats/json",
-            [this] (IOutputStream& out) {
-                return OutputJsonPage(out);
-            }));
-        mon->Register(new TMonPageWrapper(
-            Path + "/user_stats/spack",
-            [this] (IOutputStream& out) {
-                return OutputSpackPage(out);
-            }));
-        mon->Register(new TMonPageWrapper(
-            Path + "/user_stats/prometheus",
-            [this] (IOutputStream& out) {
-                return OutputPrometheusPage(out);
-            }));
+        mon->RegisterActorPage({
+            .Title = "UserStats",
+            .RelPath = "user_stats/human",
+            .ActorSystem = ctx.ActorSystem(),
+            .Index = rootPage,
+            .PreTag = true,
+            .ActorId = SelfId(),
+            .UseAuth = false,
+        });
+        mon->RegisterActorPage({
+            .RelPath = "user_stats/json",
+            .ActorSystem = ctx.ActorSystem(),
+            .Index = rootPage,
+            .ActorId = SelfId(),
+            .UseAuth = false,
+        });
+        mon->RegisterActorPage({
+            .RelPath = "user_stats/spack",
+            .ActorSystem = ctx.ActorSystem(),
+            .Index = rootPage,
+            .ActorId = SelfId(),
+            .UseAuth = false,
+        });
+        mon->RegisterActorPage({
+            .RelPath = "user_stats/prometheus",
+            .ActorSystem = ctx.ActorSystem(),
+            .Index = rootPage,
+            .ActorId = SelfId(),
+            .UseAuth = false,
+        });
     }
 }
 
@@ -139,12 +149,29 @@ void TUserStatsActor::HandleHttpInfo(
     const NActors::TActorContext& ctx)
 {
     TStringStream out;
-    RenderHtmlInfo(out);
+    auto responseFormat = NActors::NMon::IEvHttpInfoRes::Html;
+
+    const TStringBuf path = ev->Get()->Request.GetPath();
+    if (path.EndsWith(TStringBuf("/user_stats/json"))) {
+        OutputJsonPage(out);
+        responseFormat = NActors::NMon::IEvHttpInfoRes::Custom;
+    } else if (path.EndsWith(TStringBuf("/user_stats/spack"))) {
+        OutputSpackPage(out);
+        responseFormat = NActors::NMon::IEvHttpInfoRes::Custom;
+    } else if (path.EndsWith(TStringBuf("/user_stats/prometheus"))) {
+        OutputPrometheusPage(out);
+        responseFormat = NActors::NMon::IEvHttpInfoRes::Custom;
+    } else {
+        RenderHtmlInfo(out);
+    }
 
     NCloud::Reply(
         ctx,
         *ev,
-        std::make_unique<NActors::NMon::TEvHttpInfoRes>(out.Str()));
+        std::make_unique<NActors::NMon::TEvHttpInfoRes>(
+            out.Str(),
+            0,  // subReqId
+            responseFormat));
 }
 
 void TUserStatsActor::HandleUserStatsProviderCreate(

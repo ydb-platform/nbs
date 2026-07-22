@@ -607,13 +607,13 @@ bool TIndexTabletActor::PrepareTx_Compaction(
 {
     InitTabletProfileLogRequestInfo(args.ProfileLogRequest, ctx.Now());
 
-    TIndexTabletDatabase db(tx.DB);
+    auto db = CreateIndexTabletDatabase(tx.DB);
 
     args.CommitId = GetCurrentCommitId();
 
     // should not ref mixed range on tx restart due to nodes validation
     if (!args.RangeLoaded) {
-        if (!LoadMixedBlocks(db, args.RangeId)) {
+        if (!LoadMixedBlocks(*db, args.RangeId)) {
             return false;
         }
     }
@@ -634,8 +634,8 @@ bool TIndexTabletActor::PrepareTx_Compaction(
 
     bool ready = true;
     for (auto nodeId: nodes) {
-        TMaybe<IIndexTabletDatabase::TNode> node;
-        if (!ReadNode(db, nodeId, args.CommitId, node)) {
+        TMaybe<INodeIndexTabletDatabase::TNode> node;
+        if (!ReadNode(*db, nodeId, args.CommitId, node)) {
             ready = false;
             continue;
         }
@@ -664,9 +664,9 @@ void TIndexTabletActor::ExecuteTx_Compaction(
     const auto stats = GetCompactionStats(args.RangeId);
 
     if (!args.CompactionBlobs) {
-        TIndexTabletDatabase db(tx.DB);
+        auto db = CreateIndexTabletDatabase(tx.DB);
         UpdateCompactionMap(args.RangeId, 0, stats.DeletionsCount, 0, true);
-        db.WriteCompactionMap(args.RangeId, 0, stats.DeletionsCount, 0);
+        db->WriteCompactionMap(args.RangeId, 0, stats.DeletionsCount, 0);
         args.SkipRangeRewrite = true;
     } else if (garbageThreshold && blobSizeThreshold) {
         ui32 storedBlocks = 0;

@@ -44,6 +44,10 @@ inputs:
     required: false
     default: "2"
     description: "Number of attempts for ya make when resource or network fetches fail"
+  target_platform:
+    required: false
+    default: ""
+    description: "ya make target platform"
 outputs:
   build_error_log_url:
     description: "URL to Markdown summary of ya build errors"
@@ -97,6 +101,7 @@ runs:
         BAZEL_REMOTE_URI: ${{ inputs.bazel_remote_uri }}
         USE_NETWORK_CACHE: ${{ inputs.use_network_cache }}
         CACHE_UPDATE: ${{ inputs.cache_update }}
+        TARGET_PLATFORM: ${{ inputs.target_platform }}
       run: |
         function grep_ya_tc() {
             # shellcheck disable=SC2009
@@ -126,6 +131,16 @@ runs:
                 extra_params+=(--target="${target}")
             done
         fi
+
+        if [ -n "$TARGET_PLATFORM" ]; then
+            extra_params+=(--target-platform="$TARGET_PLATFORM")
+        fi
+
+        case "$TARGET_PLATFORM" in
+            default-linux-armv9a_grace)
+                extra_params+=("-DALLOCATOR=TCMALLOC_256K")
+                ;;
+        esac
 
         if [ "$USE_NETWORK_CACHE" == "yes" ]; then
             if [ -n "$BAZEL_REMOTE_URI" ]; then

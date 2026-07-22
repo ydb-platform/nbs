@@ -26,6 +26,7 @@ jobs:
                     /* paths that remove the *right-team* requirement */
                     'cloud/blockstore/tools/csi_driver/',
                     'cloud/blockstore/tests/csi_driver/',
+                    'cloud/filestore/libs/storage/fastshard/',
                     '.github/',
                 ];
 

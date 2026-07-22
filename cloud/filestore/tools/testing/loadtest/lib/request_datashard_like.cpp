@@ -3,6 +3,7 @@
 #include <cloud/filestore/libs/client/session.h>
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/filestore.h>
+#include <cloud/filestore/libs/service/request.h>
 #include <cloud/filestore/public/api/protos/data.pb.h>
 #include <cloud/filestore/public/api/protos/node.pb.h>
 
@@ -342,7 +343,11 @@ private:
                 NodeInfos.emplace_back(std::move(nodeInfo));
             }
 
-            return {NProto::ACTION_READ, started, response.GetError()};
+            return {
+                NProto::ACTION_READ,
+                started,
+                response.GetError(),
+                CalculateByteCount(response)};
         } catch (const TServiceError& e) {
             auto error = MakeError(e.GetCode(), TString{e.GetMessage()});
             STORAGE_ERROR(
@@ -381,14 +386,20 @@ private:
         ui64 shmOffset =
             DataClient ? DataClient->PrepareWrite(*request) : Max<ui64>();
 
+        const auto requestBytes = CalculateByteCount(*request);
+
         auto self = weak_from_this();
         return Session->WriteData(CreateCallContext(), std::move(request))
             .Apply(
                 [=](const TFuture<NProto::TWriteDataResponse>& future)
                 {
                     if (auto ptr = self.lock()) {
-                        return ptr
-                            ->HandleWrite(future, nodeInfo, started, shmOffset);
+                        return ptr->HandleWrite(
+                            future,
+                            nodeInfo,
+                            started,
+                            shmOffset,
+                            requestBytes);
                     }
 
                     return TCompletedRequest{
@@ -402,7 +413,8 @@ private:
         const TFuture<NProto::TWriteDataResponse>& future,
         TNodeInfo nodeInfo,
         TInstant started,
-        ui64 shmOffset)
+        ui64 shmOffset,
+        ui64 requestBytes)
     {
         Y_DEFER
         {
@@ -418,7 +430,11 @@ private:
                 NodeInfos.emplace_back(std::move(nodeInfo));
             }
 
-            return {NProto::ACTION_WRITE, started, response.GetError()};
+            return {
+                NProto::ACTION_WRITE,
+                started,
+                response.GetError(),
+                requestBytes};
         } catch (const TServiceError& e) {
             auto error = MakeError(e.GetCode(), TString{e.GetMessage()});
             STORAGE_ERROR(

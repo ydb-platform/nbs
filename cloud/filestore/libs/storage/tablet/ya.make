@@ -90,6 +90,7 @@ SRCS(
     tablet_cache_read_bypass.cpp
     tablet_counters.cpp
     tablet_database.cpp
+    tablet_database_failure_injection.cpp
     tablet_schema.cpp
     tablet_state.cpp
     tablet_state_iface.cpp

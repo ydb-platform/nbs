@@ -79,7 +79,7 @@ bool TIndexTabletActor::ValidateTx_AccessNode(
 
 bool TIndexTabletActor::PrepareTx_AccessNode(
     const NActors::TActorContext& ctx,
-    IIndexTabletDatabase& db,
+    INodeIndexTabletDatabase& db,
     TTxIndexTablet::TAccessNode& args)
 {
     Y_UNUSED(ctx);

@@ -92,6 +92,7 @@ private:
     bool DiskStatesPublicationInProgress = false;
     bool AutomaticallyReplacedDevicesDeletionInProgress = false;
     THashSet<TString> SecureEraseInProgressPerPool;
+    THashMap<TString, TInstant> DeviceEraseStartTs;
     bool StartMigrationInProgress = false;
 
     TVector<TString> DisksBeingDestroyed;

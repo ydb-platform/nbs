@@ -20,6 +20,7 @@ RECURSE(
     functional
     fuzzing
     infra-cms
+    journalled_devices
     loadtest
     loadtest/remote
     local_nvme

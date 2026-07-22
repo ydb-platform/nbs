@@ -70,6 +70,12 @@ var (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func IsNemesisEnabled() bool {
+	return os.Getenv("NEMESIS_ENABLED") == "true"
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func newDefaultClientConfig() *client_config.Config {
 	endpoint := fmt.Sprintf(
 		"localhost:%v",
@@ -1121,6 +1127,8 @@ func GetCounter(
 		}
 	}
 
+	t.Logf("counter with name %s, labels %v is not found", name, labels)
+	t.Logf("Metric families: %v", metricFamilies)
 	return 0, false
 }
 

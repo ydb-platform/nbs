@@ -13,6 +13,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url"
 	url_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url/common"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/tasks"
@@ -29,6 +30,7 @@ type createSnapshotFromURLTask struct {
 	httpClientTimeout         time.Duration
 	httpClientMinRetryTimeout time.Duration
 	httpClientMaxRetryTimeout time.Duration
+	metricsRegistry           metrics.Registry
 
 	request *protos.CreateSnapshotFromURLRequest
 	state   *protos.CreateSnapshotFromURLTaskState
@@ -74,6 +76,7 @@ func (t *createSnapshotFromURLTask) Run(
 		t.config.GetHTTPClientMaxRetries(),
 		t.request.SrcURL,
 		chunkSize,
+		t.metricsRegistry,
 	)
 	if err != nil {
 		return err

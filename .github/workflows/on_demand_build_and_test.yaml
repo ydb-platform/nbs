@@ -26,6 +26,18 @@ on:
           - release-tsan
           - release-msan
           - release-ubsan
+      run_build:
+        type: boolean
+        default: true
+        description: "Run build"
+      run_tests:
+        type: boolean
+        default: true
+        description: "Run tests"
+      target_platform:
+        type: string
+        default: ""
+        description: "ya make target platform"
       cache_update_build:
         type: boolean
         default: false
@@ -77,6 +89,15 @@ on:
       build_preset:
         type: string
         default: "relwithdebinfo"
+      run_build:
+        type: boolean
+        default: true
+      run_tests:
+        type: boolean
+        default: true
+      target_platform:
+        type: string
+        default: ""
       vm_preset:
         type: string
         default: ""
@@ -221,8 +242,9 @@ jobs:
       build_target: ${{ inputs.build_target }}
       test_target: ${{ inputs.test_target }}
       build_preset: ${{ inputs.build_preset }}
-      run_build: true
-      run_tests: true
+      run_build: ${{ inputs.run_build }}
+      run_tests: ${{ inputs.run_tests }}
+      target_platform: ${{ inputs.target_platform }}
       test_size: ${{ inputs.test_size }}
       test_type: ${{ inputs.test_type }}
       build_threads: ${{ needs.provide-runner.outputs.build_threads || '60' }}

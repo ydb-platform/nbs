@@ -79,6 +79,7 @@ public:
     [[nodiscard]] NProto::TStorageServiceConfig GetStorageConfigProto() const;
 
     TString GetSchemeShardDir() const;
+    [[nodiscard]] ui32 GetListVolumesConcurrency() const;
     ui32 GetWriteBlobThreshold() const;
     ui32 GetWriteBlobThresholdSSD() const;
     [[nodiscard]] ui32 GetWriteMixedBlobThresholdHDD() const;
@@ -101,8 +102,12 @@ public:
     TDuration GetMinCompactionDelay() const;
     TDuration GetMaxCompactionExecTimePerSecond() const;
     TDuration GetMaxCompactionExecTimePerSecondForZeroed() const;
+    TDuration GetMinGarbageCompactionExecTimePerSecond() const;
     ui32 GetCompactionScoreHistorySize() const;
     ui32 GetCompactionScoreLimitForThrottling() const;
+    bool GetEnableDynamicGarbageCompactionThrottling() const;
+    ui32 GetThrottleGarbageCompactionBelowFillPercentage() const;
+    ui32 GetStopGarbageCompactionThrottlingAboveFillPercentage() const;
     ui64 GetTargetCompactionBytesPerOp() const;
     [[nodiscard]] ui32 GetMaxSkippedBlobsDuringCompaction() const;
     [[nodiscard]] ui32 GetMaxSkippedBlobsDuringCompactionHDD() const;
@@ -433,6 +438,11 @@ public:
         const TString& diskId) const;
 
     [[nodiscard]] bool IsUseRecreatedBlobMetasOnCleanupFeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
+
+    [[nodiscard]] bool IsDynamicGarbageCompactionThrottlingFeatureEnabled(
         const TString& cloudId,
         const TString& folderId,
         const TString& diskId) const;

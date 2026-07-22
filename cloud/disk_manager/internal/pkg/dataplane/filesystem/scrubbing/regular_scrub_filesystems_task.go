@@ -34,11 +34,17 @@ func (t *regularScrubFilesystemsTask) Load(_, state []byte) error {
 }
 
 func (t *regularScrubFilesystemsTask) idempotencyKey(
+	execCtx tasks.ExecutionContext,
 	filesystemID string,
 	generation uint64,
 ) string {
 
-	return fmt.Sprintf("%v_%v", filesystemID, generation)
+	return fmt.Sprintf(
+		"%v_%v_%v",
+		filesystemID,
+		generation,
+		execCtx.GetTaskID(),
+	)
 }
 
 func (t *regularScrubFilesystemsTask) Run(
@@ -62,7 +68,7 @@ func (t *regularScrubFilesystemsTask) Run(
 		taskID, err := t.scheduler.ScheduleTask(
 			headers.SetIncomingIdempotencyKey(
 				ctx,
-				t.idempotencyKey(fsID, generation),
+				t.idempotencyKey(execCtx, fsID, generation),
 			),
 			"dataplane.ScrubFilesystem",
 			"Scrub filesystem "+fsID,

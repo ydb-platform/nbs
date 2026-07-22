@@ -164,6 +164,7 @@ private:
     NBlobMetrics::TBlobLoadMetrics OverlayMetrics;
 
     bool FirstGarbageCollectionCompleted = false;
+    bool IsGarbageCompactionThrottlingMisconfigured = false;
 
     TTransactionTimeTracker TransactionTimeTracker;
     TBSGroupOperationTimeTracker BSGroupOperationTimeTracker;
@@ -451,6 +452,10 @@ private:
         ui64 diskThreshold,
         const NActors::TActorContext& ctx);
 
+    TDuration ComputeGarbageCompactionExecTime(
+        const NActors::TActorContext& ctx,
+        bool throttlingAllowed);
+
     bool IsCompactRangePending(
         const TString& operationId,
         ui32& ranges) const;
@@ -488,6 +493,7 @@ private:
     [[nodiscard]] bool IsReadBlockMaskOnCompactionOptimizationEnabled() const;
     [[nodiscard]] bool IsVerifyRecreatedBlobMetasOnCleanupEnabled() const;
     [[nodiscard]] bool IsUseRecreatedBlobMetasOnCleanupEnabled() const;
+    [[nodiscard]] bool IsDynamicGarbageCompactionThrottlingEnabled() const;
 
     void ProcessStorageStatusFlags(
         const NActors::TActorContext& ctx,

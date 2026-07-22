@@ -22,6 +22,8 @@
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/recent_blocks_tracker.h>
 
+#include <cloud/storage/core/libs/coroutine/public.h>
+
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
@@ -36,11 +38,11 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDiskAgentActor final
-    : public NActors::TActorBootstrapped<TDiskAgentActor>
+class TDiskAgentActor final: public NActors::TActorBootstrapped<TDiskAgentActor>
 {
     using TControlPlaneRequestNumber =
         TEvDiskAgentPrivate::TControlPlaneRequestNumber;
+
     struct TPostponedRequest
     {
         ui64 VolumeRequestId = 0;
@@ -71,13 +73,16 @@ private:
 
     NNvme::INvmeManagerPtr NvmeManager;
 
+    TExecutorPtr Executor;
+    std::shared_ptr<IStartable> JournalledDeviceTcpServer;
+
     std::unique_ptr<TDiskAgentState> State;
     std::unique_ptr<NKikimr::TTabletCountersBase> Counters;
 
     // Pending WaitReady requests
     TDeque<TPendingRequest> PendingRequests;
 
-    TBandwidthCalculator BandwidthCalculator {*AgentConfig};
+    TBandwidthCalculator BandwidthCalculator{*AgentConfig};
 
     ERegistrationState RegistrationState = ERegistrationState::NotStarted;
 
@@ -134,6 +139,7 @@ private:
     void UpdateCounters(const NActors::TActorContext& ctx);
 
     void UpdateActorStats();
+
     void UpdateActorStatsSampled()
     {
         static constexpr int SampleRate = 128;
@@ -151,10 +157,8 @@ private:
     void SendRegisterRequest(const NActors::TActorContext& ctx);
 
     template <typename TMethod, typename TEv, typename TOp>
-    void PerformIO(
-        const NActors::TActorContext& ctx,
-        const TEv& ev,
-        TOp operation);
+    void
+    PerformIO(const NActors::TActorContext& ctx, const TEv& ev, TOp operation);
 
     template <typename TMethod, typename TRequestPtr>
     bool CheckIntersection(
@@ -189,6 +193,8 @@ private:
 
     NProto::TError UpdateControlPlaneRequestNumber(
         TControlPlaneRequestNumber controlPlaneRequestNumber);
+
+    void StartJournalledDeviceTcpServer(const NActors::TActorContext& ctx);
 
 private:
     STFUNC(StateInit);
@@ -269,17 +275,20 @@ private:
     bool RejectRequests(STFUNC_SIG);
 
     BLOCKSTORE_DISK_AGENT_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvDiskAgent)
-    BLOCKSTORE_DISK_AGENT_REQUESTS_PRIVATE(BLOCKSTORE_IMPLEMENT_REQUEST, TEvDiskAgentPrivate)
+    BLOCKSTORE_DISK_AGENT_REQUESTS_PRIVATE(
+        BLOCKSTORE_IMPLEMENT_REQUEST,
+        TEvDiskAgentPrivate)
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_DISK_AGENT_COUNTER(name)                                    \
-    if (Counters) {                                                            \
-        auto& counter = Counters->Cumulative()                                 \
-            [TDiskAgentCounters::CUMULATIVE_COUNTER_Request_##name];           \
-        counter.Increment(1);                                                  \
-    }                                                                          \
-// BLOCKSTORE_DISK_AGENT_COUNTER
+#define BLOCKSTORE_DISK_AGENT_COUNTER(name)                              \
+    if (Counters) {                                                      \
+        auto& counter =                                                  \
+            Counters->Cumulative()                                       \
+                [TDiskAgentCounters::CUMULATIVE_COUNTER_Request_##name]; \
+        counter.Increment(1);                                            \
+    }                                                                    \
+    // BLOCKSTORE_DISK_AGENT_COUNTER
 
 }   // namespace NCloud::NBlockStore::NStorage

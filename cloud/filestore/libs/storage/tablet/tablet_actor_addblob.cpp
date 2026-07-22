@@ -42,11 +42,9 @@ public:
 public:
     void Execute(
         const TActorContext& ctx,
-        TTransactionContext& tx,
+        IIndexTabletDatabase& db,
         TTxIndexTablet::TAddBlob& args)
     {
-        TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
-
         switch (args.Mode) {
             case EAddBlobMode::Write:
                 args.CommitIdOverflowMessage = "AddBlobWrite";
@@ -82,7 +80,7 @@ public:
 private:
     void Execute_AddBlob_Write(
         const TActorContext& ctx,
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         TTxIndexTablet::TAddBlob& args)
     {
         Y_UNUSED(ctx);
@@ -213,7 +211,7 @@ private:
 
     void Execute_AddBlob_WriteUnconfirmed(
         const TActorContext& ctx,
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         TTxIndexTablet::TAddBlob& args)
     {
         // TODO(#5353) Support immediate response before Tx
@@ -246,7 +244,7 @@ private:
     }
 
     void Execute_AddBlob_Flush(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         TTxIndexTablet::TAddBlob& args)
     {
         TABLET_VERIFY(!args.SrcBlobs);
@@ -284,7 +282,7 @@ private:
     }
 
     void Execute_AddBlob_FlushBytes(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         TTxIndexTablet::TAddBlob& args)
     {
         TABLET_VERIFY(!args.MergedBlobs);
@@ -324,7 +322,7 @@ private:
     }
 
     void Execute_AddBlob_Compaction(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         TTxIndexTablet::TAddBlob& args)
     {
         TABLET_VERIFY(!args.MergedBlobs);
@@ -380,7 +378,7 @@ private:
     }
 
     void UpdateCompactionMap(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         TTxIndexTablet::TAddBlob& args)
     {
         for (const auto& [rangeId, updatedStats]: RangeId2CompactionStats) {
@@ -408,7 +406,7 @@ private:
     }
 
     void UpdateNodeAttrs(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         TTxIndexTablet::TAddBlob& args)
     {
         for (auto [id, maxOffset]: args.WriteRanges) {
@@ -491,14 +489,14 @@ bool TIndexTabletActor::PrepareTx_AddBlob(
 {
     InitTabletProfileLogRequestInfo(args.ProfileLogRequest, ctx.Now());
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
     args.CommitId = GetCurrentCommitId();
 
     bool ready = true;
     for (auto [id, maxOffset]: args.WriteRanges) {
-        TMaybe<IIndexTabletDatabase::TNode> node;
-        if (!ReadNode(db, id, args.CommitId, node)) {
+        TMaybe<INodeIndexTabletDatabase::TNode> node;
+        if (!ReadNode(*db, id, args.CommitId, node)) {
             ready = false;
         }
 
@@ -522,8 +520,9 @@ void TIndexTabletActor::ExecuteTx_AddBlob(
     TTransactionContext& tx,
     TTxIndexTablet::TAddBlob& args)
 {
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
     TAddBlobsExecutor executor(LogTag, *this);
-    executor.Execute(ctx, tx, args);
+    executor.Execute(ctx, *db, args);
 }
 
 void TIndexTabletActor::CompleteTx_AddBlob(

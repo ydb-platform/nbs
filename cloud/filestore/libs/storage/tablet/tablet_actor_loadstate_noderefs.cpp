@@ -23,7 +23,7 @@ bool TIndexTabletActor::ValidateTx_LoadNodeRefs(
 
 bool TIndexTabletActor::PrepareTx_LoadNodeRefs(
     const TActorContext& ctx,
-    IIndexTabletDatabase& db,
+    INodeIndexTabletDatabase& db,
     TTxIndexTablet::TLoadNodeRefs& args)
 {
     TVector<TIndexTabletDatabase::TNodeRef> nodeRefs;

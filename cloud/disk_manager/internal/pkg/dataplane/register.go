@@ -24,6 +24,7 @@ func RegisterForExecution(
 	storage storage.Storage,
 	legacyStorage storage.Storage,
 	metricsRegistry metrics.Registry,
+	urlMetricsRegistry metrics.Registry,
 	migrationDstStorage storage.Storage,
 	useS3InMigration bool,
 ) error {
@@ -78,6 +79,7 @@ func RegisterForExecution(
 			httpClientTimeout:         httpClientTimeout,
 			httpClientMinRetryTimeout: httpClientMinRetryTimeout,
 			httpClientMaxRetryTimeout: httpClientMaxRetryTimeout,
+			metricsRegistry:           urlMetricsRegistry,
 		}
 	})
 	if err != nil {

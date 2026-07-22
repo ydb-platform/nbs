@@ -69,6 +69,11 @@ ELogPriority GetDetailsLogPriority(const NProto::TError& error)
     }
 }
 
+ELogPriority GetNoRetryLogPriority(const NProto::TError& error)
+{
+    return error.GetCode() == E_IO_SILENT ? TLOG_WARNING : TLOG_ERR;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
@@ -351,7 +356,8 @@ private:
             }
 
             auto duration = TInstant::Now() - state->Started;
-            STORAGE_ERROR(
+            STORAGE_LOG(
+                GetNoRetryLogPriority(response.GetError()),
                 TRequestInfo(
                     TMethod::BlockStoreRequest,
                     requestId,

@@ -14,6 +14,7 @@ from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerato
 
 from cloud.filestore.config.server_pb2 import TServerAppConfig, TKikimrServiceConfig
 from cloud.filestore.config.storage_pb2 import TStorageConfig
+from cloud.filestore.config.diagnostics_pb2 import TDiagnosticsConfig
 from cloud.storage.core.protos.authorization_mode_pb2 import EAuthorizationMode
 from cloud.filestore.tests.python.lib.common import shutdown, get_restart_interval
 from cloud.filestore.tests.python.lib.server import FilestoreServer, wait_for_filestore_server
@@ -43,6 +44,7 @@ def start(argv):
     parser.add_argument("--in-memory-pdisks", action="store_true", default=False)
     parser.add_argument("--restart-interval", action="store", default=None)
     parser.add_argument("--storage-config-patch", action="store", default=None)
+    parser.add_argument("--diag-config-patch", action="store", default=None)
     parser.add_argument("--server-config-patch", action="store", default=None)
     parser.add_argument("--bs-cache-file-path", action="store", default=None)
     parser.add_argument("--use-unix-socket", action="store_true", default=False)
@@ -88,11 +90,17 @@ def start(argv):
     server_config = TServerAppConfig()
     server_config.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
     storage_config = TStorageConfig()
+    diag_config = TDiagnosticsConfig()
     if args.storage_config_patch:
         with open(common.source_path(args.storage_config_patch)) as p:
             storage_config = text_format.Parse(
                 p.read(),
                 TStorageConfig())
+    if args.diag_config_patch:
+        with open(common.source_path(args.diag_config_patch)) as p:
+            diag_config = text_format.Parse(
+                p.read(),
+                TDiagnosticsConfig())
     if args.use_unix_socket:
         # Create in temp directory because we would like a shorter path
         server_unix_socket_path = str(
@@ -151,6 +159,7 @@ def start(argv):
         restart_interval=restart_interval,
         access_service_port=access_service_port,
         storage_config=storage_config,
+        diag_config=diag_config,
         secure=secure,
         access_service_type=access_service_type,
         trace_sampling_rate=args.trace_sampling_rate,

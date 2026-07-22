@@ -97,6 +97,7 @@ def read_regular_filesystem_scrubbing_config(config_path: str) -> str:
 
 def start(argv):
     args = parse_args(argv)
+    set_env("NEMESIS_ENABLED", str(bool(args.nemesis)).lower())
 
     if args.regular_filesystem_scrubbing_config:
         config_path = yatest_common.source_path(

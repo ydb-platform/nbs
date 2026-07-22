@@ -101,7 +101,8 @@ private:
 
         auto request = std::make_unique<TEvAuth::TEvAuthorizationRequest>(
             std::move(AuthToken),
-            std::move(Permissions));
+            std::move(Permissions),
+            Peer);
 
         LWTRACK(
             AuthRequestSent_Proxy,

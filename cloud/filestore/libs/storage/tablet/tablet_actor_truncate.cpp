@@ -247,8 +247,8 @@ void TIndexTabletActor::ExecuteTx_TruncateCompleted(
 {
     Y_UNUSED(ctx);
 
-    TIndexTabletDatabase db(tx.DB);
-    DeleteTruncate(db, args.NodeId);
+    auto db = CreateIndexTabletDatabase(tx.DB);
+    DeleteTruncate(*db, args.NodeId);
 }
 
 void TIndexTabletActor::CompleteTx_TruncateCompleted(
@@ -314,7 +314,7 @@ void TIndexTabletActor::ExecuteTx_TruncateRange(
 {
     Y_UNUSED(ctx);
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
     ui64 commitId = GenerateCommitId();
     if (commitId == InvalidCommitId) {
@@ -327,7 +327,7 @@ void TIndexTabletActor::ExecuteTx_TruncateRange(
         args.Range.Length,
         args.ProfileLogRequest);
 
-    args.Error = TruncateRange(db, args.NodeId, commitId, args.Range);
+    args.Error = TruncateRange(*db, args.NodeId, commitId, args.Range);
 }
 
 void TIndexTabletActor::CompleteTx_TruncateRange(

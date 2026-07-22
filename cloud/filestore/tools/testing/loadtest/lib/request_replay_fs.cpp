@@ -556,7 +556,11 @@ private:
                     (TInstant::Now() - started).MicroSeconds());
 
                 if (value) {
-                    return TCompletedRequest(NProto::ACTION_READ, started, {});
+                    return TCompletedRequest(
+                        NProto::ACTION_READ,
+                        started,
+                        {},
+                        static_cast<ui64>(value));
                 }
                 return TCompletedRequest(
                     NProto::ACTION_READ,
@@ -662,7 +666,11 @@ private:
                     (TInstant::Now() - started).MicroSeconds());
 
                 if (value) {
-                    return TCompletedRequest(NProto::ACTION_WRITE, started, {});
+                    return TCompletedRequest(
+                        NProto::ACTION_WRITE,
+                        started,
+                        {},
+                        static_cast<ui64>(value));
                 }
                 return TCompletedRequest(
                     NProto::ACTION_WRITE,

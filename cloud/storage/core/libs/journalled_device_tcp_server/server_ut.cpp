@@ -11,6 +11,7 @@
 #include <util/generic/vector.h>
 
 #include <functional>
+#include <mutex>
 
 namespace NCloud::NJournalled {
 

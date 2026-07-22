@@ -29,6 +29,10 @@ extern "C" ptrdiff_t rseq_offset;
 #    define __rseq_offset rseq_offset
 #endif
 
+// librseq's public register API. Declared here (not via <rseq/rseq.h>) so
+// this header stays self-contained; the definition lives in librseq.
+extern "C" int rseq_register_current_thread(void);
+
 /** Suppress unused-variable warnings. */
 #define SILK_UNUSED(x) (void)(x)
 
@@ -39,12 +43,22 @@ extern "C" ptrdiff_t rseq_offset;
 namespace silk
 {
 
-#ifndef PAGE_SIZE
-#   define PAGE_SIZE 4096
+/** System page size in bytes. */
+#if defined(PAGE_SIZE)
+static constexpr uint64_t kPageSize = PAGE_SIZE;
+#else
+static constexpr uint64_t kPageSize = 4096;
 #endif
 
 /** Cache line size in bytes. */
-static constexpr uint64_t CACHELINE_SIZE = 64;
+#if defined(CACHE_LINESIZE)
+static constexpr uint64_t kCacheLineSize = CACHE_LINESIZE;
+#else
+static constexpr uint64_t kCacheLineSize = 64;
+#endif
+
+/** Hard cap on CPU index (largest known socket: 384 cores). */
+static constexpr uint16_t kInvalidProcessorNumber = (1 << 10);
 
 /** Round @p value up to the nearest multiple of @p align (must be a power of two). */
 template <typename T>
@@ -60,6 +74,20 @@ static constexpr T alignDown(T value, T align) noexcept
 {
     SILK_ASSERT_DEBUG(align != 0 && (align & (align - 1)) == 0);
     return value & ~(align - 1);
+}
+
+/** Round @p value up to the nearest multiple of @p align (must be a power of two). */
+template <typename T>
+static T * alignUp(T * ptr, size_t align) noexcept
+{
+    return reinterpret_cast<T *>(alignUp<uintptr_t>(reinterpret_cast<uintptr_t>(ptr), align));
+}
+
+/** Round @p value down to the nearest multiple of @p align (must be a power of two). */
+template <typename T>
+static T * alignDown(T * ptr, size_t align) noexcept
+{
+    return reinterpret_cast<T *>(alignDown<uintptr_t>(reinterpret_cast<uintptr_t>(ptr), align));
 }
 
 /**
@@ -83,22 +111,49 @@ static T * containerOf(M * member, M T::* memberPtr) noexcept
 }
 
 /** Return the total number of online processors. */
-static inline uint32_t getProcessorCount() noexcept
+static inline uint16_t getProcessorCount() noexcept
 {
-    return static_cast<uint32_t>(sysconf(_SC_NPROCESSORS_ONLN));
+    return static_cast<uint16_t>(sysconf(_SC_NPROCESSORS_ONLN));
 }
 
 /** Return the number of processors available to the calling process (respects taskset/cgroup affinity). */
-static inline uint32_t getAvailableProcessorCount() noexcept
+static inline uint16_t getAvailableProcessorCount() noexcept
 {
     cpu_set_t cpuSet;
     sched_getaffinity(0, sizeof(cpuSet), &cpuSet);
-    return static_cast<uint32_t>(CPU_COUNT(&cpuSet));
+    return static_cast<uint16_t>(CPU_COUNT(&cpuSet));
+}
+
+// Lazy per-thread rseq registration. Silk supports arbitrary application
+// threads calling fiber-aware APIs (docs/scheduler.md, "Proxy Fibers"), and
+// every such API funnels through getCurrentProcessor(). On glibc < 2.35 or
+// with GLIBC_TUNABLES=glibc.pthread.rseq=0 the C library does not register
+// rseq for us, so we do it here on first use. rseq_register_current_thread
+// is a no-op on glibc-owned rseq installs.
+//
+// The function is `inline` (not `static inline`) so its function-local
+// thread_local guard has vague linkage and is shared across every TU that
+// touches it. Otherwise each TU carries its own guard, hits registration
+// once, and later librseq's second sys_rseq for the same thread aborts
+// with "incoherent success/failure within process".
+inline void ensureRseqRegistered() noexcept
+{
+    static thread_local bool registered = false;
+    if (!registered) [[unlikely]] {
+        int r = rseq_register_current_thread();
+        SILK_ASSERT(r == 0);
+        registered = true;
+    }
 }
 
 /** Return the index of the CPU the calling thread is currently running on. */
-static inline uint32_t getCurrentProcessor() noexcept
+static inline uint16_t getCurrentProcessor() noexcept
 {
+    // Ensure the calling thread's rseq is registered before we read from
+    // its TLS area; without this, __rseq_offset stays zero and the read
+    // below returns garbage from some unrelated TLS slot.
+    ensureRseqRegistered();
+
     // The thread pointer is read through volatile asm rather than __builtin_thread_pointer(). A fiber
     // may suspend on one OS thread and resume on another (work-stealing, or the SQ-ring-overflow yield
     // in enqueueIo), which changes the thread pointer mid-function. The C++ abstract machine assumes the
@@ -120,7 +175,7 @@ static inline uint32_t getCurrentProcessor() noexcept
     // which is the same rseq read we do here. We skip the function call and the cpu_id >= 0
     // fallback to vDSO/syscall -- safe on Linux 4.18+ / glibc 2.35+ where rseq is always registered.
     struct rseq * rseq = reinterpret_cast<struct rseq *>(threadPointer + __rseq_offset);
-    return rseq->cpu_id;
+    return static_cast<uint16_t>(rseq->cpu_id);
 }
 
 /** Yield the calling thread's remaining timeslice to the OS scheduler. */

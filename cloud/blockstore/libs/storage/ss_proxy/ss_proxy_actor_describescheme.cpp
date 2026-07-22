@@ -268,18 +268,16 @@ void TDescribeSchemeActor::HandleDescribeSchemeResult(
     }
     if (entry.ListNodeEntry) {
         for (const auto& child: entry.ListNodeEntry->Children) {
-            NKikimrSchemeOp::TDirEntry* entry =
-                pathDescription.MutableChildren()->Add();
             auto pathType = ConvertSchemeCacheKind(child.Kind);
             if (!pathType) {
-                HandleError(
-                    ctx,
-                    MakeError(
-                        E_REJECTED,
-                        TStringBuilder()
-                            << "Unknown child path kind: " << child.Kind));
-                return;
+                LOG_WARN(ctx, TBlockStoreComponents::SS_PROXY,
+                    "Skipping child with unknown kind: %d, name: %s",
+                    static_cast<int>(child.Kind),
+                    child.Name.c_str());
+                continue;
             }
+
+            auto* entry = pathDescription.MutableChildren()->Add();
             entry->SetPathType(*pathType);
             entry->SetName(child.Name);
             entry->SetPathId(child.PathId.LocalPathId);

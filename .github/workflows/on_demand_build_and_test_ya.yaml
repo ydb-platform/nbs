@@ -41,6 +41,10 @@ on:
         type: boolean
         default: true
         description: "run tests"
+      target_platform:
+        type: string
+        default: ""
+        description: "ya make target platform"
       build_threads:
         type: string
         default: '60'
@@ -144,6 +148,7 @@ jobs:
       with:
         command: update
         build_preset: ${{ inputs.build_preset }}
+        target_platform: ${{ inputs.target_platform }}
         component: ${{ inputs.component == '' && 'all' || inputs.component }}
         workload_check_status: running
         current_job_name: Build and test ${{ inputs.build_preset }} [id=${{ inputs.runner_instance_id }} ip=${{ inputs.runner_ipv4 }}]
@@ -160,6 +165,7 @@ jobs:
         s3_key_secret: ${{ secrets.POOLED_HEAVY_AWS_SECRET_KEY }}
         folder_prefix: nebius-
         build_preset: ${{ inputs.build_preset }}
+        target_platform: ${{ inputs.target_platform }}
         install: false
 
     - name: Create background process that will adjust oom_score_adj for selection of processes
@@ -194,6 +200,7 @@ jobs:
         link_threads: ${{ inputs.link_threads }}
         clean_ya_dir: ${{ inputs.clean_ya_dir }}
         use_network_cache: ${{ inputs.use_network_cache }}
+        target_platform: ${{ inputs.target_platform }}
 
     - name: Run tests
       uses: ./.github/actions/test
@@ -224,6 +231,7 @@ jobs:
       with:
         command: update
         build_preset: ${{ inputs.build_preset }}
+        target_platform: ${{ inputs.target_platform }}
         component: ${{ inputs.component == '' && 'all' || inputs.component }}
         workload_check_status: failed_build
         build_error_log_url: ${{ steps.build.outputs.build_error_log_url }}
@@ -241,5 +249,6 @@ jobs:
       with:
         command: update
         build_preset: ${{ inputs.build_preset }}
+        target_platform: ${{ inputs.target_platform }}
         component: ${{ inputs.component == '' && 'all' || inputs.component }}
         workload_check_status: completed

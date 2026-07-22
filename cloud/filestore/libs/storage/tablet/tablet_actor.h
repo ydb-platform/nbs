@@ -843,8 +843,7 @@ private:
     FILESTORE_TABLET_INDEX_RO_TRANSACTIONS(
         FILESTORE_IMPLEMENT_RO_TRANSACTION,
         TTxIndexTablet,
-        TIndexTabletDatabaseProxy,
-        IIndexTabletDatabase);
+        INodeIndexTabletDatabase);
 
     STFUNC(StateBoot);
     STFUNC(StateInit);
@@ -861,6 +860,13 @@ private:
     bool HasBlocksLeft(ui64 blocksRequired) const;
     bool HasSpaceLeft(ui64 prevSize, ui64 newSize) const;
     bool HasNodesLeft() const;
+
+    std::unique_ptr<IIndexTabletDatabase> CreateIndexTabletDatabase(
+        NKikimr::NTable::TDatabase& database);
+
+    std::unique_ptr<IIndexTabletDatabase> CreateIndexTabletDatabaseProxy(
+        NKikimr::NTable::TDatabase& database,
+        TVector<IInMemoryIndexState::TIndexStateRequest>& nodeUpdates);
 };
 
 }   // namespace NCloud::NFileStore::NStorage

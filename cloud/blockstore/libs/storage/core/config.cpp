@@ -85,6 +85,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
 // clang-format off
 #define BLOCKSTORE_STORAGE_CONFIG_RO(xxx)                                      \
     xxx(SchemeShardDir,                TString,   "/Root"                     )\
+    xxx(ListVolumesConcurrency,        ui32,      100                         )\
     xxx(DisableLocalService,           bool,      false                       )\
     xxx(ServiceVersionInfo,            TString,   ""                          )\
     xxx(FolderId,                      TString,   ""                          )\
@@ -205,10 +206,16 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(OptimizeForShortRanges,             bool,      false                  )\
     xxx(MaxCompactionDelay,                 TDuration, TDuration::Zero()      )\
     xxx(MinCompactionDelay,                 TDuration, TDuration::Zero()      )\
-    xxx(MaxCompactionExecTimePerSecond,          TDuration, TDuration::Zero() )\
+    xxx(MaxCompactionExecTimePerSecond,     TDuration, TDuration::Zero()      )\
+    xxx(MinGarbageCompactionExecTimePerSecond,                                 \
+            TDuration,                                                         \
+            TDuration::Seconds(1)                                             )\
     xxx(MaxCompactionExecTimePerSecondForZeroed, TDuration, TDuration::Zero() )\
     xxx(CompactionScoreHistorySize,             ui32,   10                    )\
     xxx(CompactionScoreLimitForThrottling,      ui32,   300                   )\
+    xxx(EnableDynamicGarbageCompactionThrottling,           bool, false       )\
+    xxx(ThrottleGarbageCompactionBelowFillPercentage,       ui32, 120         )\
+    xxx(StopGarbageCompactionThrottlingAboveFillPercentage, ui32, 200         )\
     xxx(TargetCompactionBytesPerOp,             ui64,   64_KB                 )\
     xxx(MaxSkippedBlobsDuringCompaction,        ui32,   3                     )\
     xxx(MaxSkippedBlobsDuringCompactionHDD,     ui32,   3                     )\
@@ -758,6 +765,7 @@ BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_STORAGE_DECLARE_CONFIG)
     xxx(SplitCompactionTx)                                                     \
     xxx(VerifyRecreatedBlobMetasOnCleanup)                                     \
     xxx(UseRecreatedBlobMetasOnCleanup)                                       \
+    xxx(DynamicGarbageCompactionThrottling)                                    \
 
 // BLOCKSTORE_BINARY_FEATURES
 

@@ -1,6 +1,5 @@
 #pragma once
 
-#include "flush_backpressure_calculator.h"
 #include "node_cache.h"
 
 #include <cloud/filestore/public/api/protos/data.pb.h>
@@ -134,7 +133,16 @@ struct TNodeState
     // Handles that have THandleState::ReleaseHandleRequest initialized
     THashSet<ui64> HandlesWithReleaseRequests;
 
-    // Requests with SequenceId > BarrierId are prevented from being flushed
+    // Barriers are used to execute operations that should not interfere with
+    // cache. Pending or acquired barrier prohibits scheduling flush for a node
+    // when all unflushed requests have SequenceId > BarrierId.
+    //
+    // Pending barrier becomes acquired when the following conditions are met:
+    // - there are no unflushed requests with SequenceId < BarrierId;
+    // - all flushed requests are evicted.
+    //
+    // When building a flush batch, barriers are not taken into account - it is
+    // allowed to reorder concurrent pending requests.
     TMap<ui64, std::unique_ptr<TBarrier>> Barriers;
 
     bool CanBeDeleted() const
@@ -165,8 +173,8 @@ struct TNodeState
         if (!Barriers.empty()) {
             // Having a barrier means that there is an operation that wants
             // the data prior to barrier acquisition to be flushed and evicted.
-            // Therefore, flush should be scheduled if there is such data.
-            // Also, barrier prevents newer data from being flushed.
+            // If a barrier cannot be acquired due to unflushed data, flush
+            // is scheduled. Otherwise, flush is prohibited.
             return minUnflushedSequenceId < Barriers.cbegin()->first
                        ? ENodeFlushStatus::FlushRequested
                        : ENodeFlushStatus::NothingToFlush;

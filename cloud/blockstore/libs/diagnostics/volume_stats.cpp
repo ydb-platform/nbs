@@ -257,6 +257,20 @@ private:
     TRequestCounters RequestCounters;
     TDynamicCounters::TCounterPtr HasDowntimeCounter;
 
+    // Cumulative per-volume availability counters (derivative/RATE, seconds).
+    // Nested: ObservedSeconds >= AvailableSeconds >= HealthySeconds. Consumers
+    // compute availability = Available/Observed and quality = Healthy/Observed
+    // over a window. Advance only while the volume is being served,
+    // until the counters are trimmed.
+    TDynamicCounters::TCounterPtr ObservedSecondsCounter;
+    TDynamicCounters::TCounterPtr AvailableSecondsCounter;
+    TDynamicCounters::TCounterPtr HealthySecondsCounter;
+
+    // Wall-clock time up to which the availability counters have been credited
+    // for this instance. Seeded at construction (mount time) so that time
+    // before the volume was served is never counted.
+    TInstant AvailabilityLastUpdateTime;
+
     TInstant LastRemountTime;
 
     // Number of pins on the object.
@@ -293,6 +307,7 @@ public:
               GetRequestCountersOptions(*VolumeBase),
               histogramCounterOptions,
               executionTimeSizeClasses))
+        , AvailabilityLastUpdateTime(VolumeBase->Timer->Now())
     {}
 
     bool IsPinned() const noexcept
@@ -528,6 +543,16 @@ private:
         DiagnosticsConfig->GetExecutionTimeSizeClasses();
 
     TDynamicCountersPtr Counters;
+    // Separate, narrow counters tree (component=sli_volume) for the
+    // cumulative availability counters (ObservedSeconds/AvailableSeconds/
+    // HealthySeconds) only. The main per-volume tree (component=
+    // server_volume / client_volume) also carries ~200-280 other per-volume
+    // perf counters, so scraping the whole subtree just to reach our ~3
+    // sensors is wasteful; this sibling group lets a monitoring agent pull
+    // only these specific counters. Populated for both EServerStats and
+    // EClientStats in InitCounters; see RegisterInstance() for the per-volume
+    // subgroup layout.
+    TDynamicCountersPtr AvailabilityCounters;
     std::shared_ptr<NUserCounter::IUserCounterSupplier> UserCounters;
     std::unique_ptr<TSufferCounters> SufferCounters;
     std::unique_ptr<TSufferCounters> SmoothSufferCounters;
@@ -884,6 +909,12 @@ public:
         ui32 totalDownDisks = 0;
         std::array<ui32, NProto::EStorageMediaKind_ARRAYSIZE> downDisksCounters{};
 
+        // Wall-clock time of this stats tick. The cumulative availability
+        // counters advance on every tick (not only on the publish tick) by the
+        // real per-volume elapsed time, so state changes are sampled at tick
+        // resolution and newly mounted volumes are not over-credited.
+        const auto now = Timer->Now();
+
         for (auto& [logicalDiskId, holder]: Volumes) {
             TVolumeInfoBase& volumeBase = *holder.VolumeBase;
 
@@ -899,11 +930,16 @@ public:
 
             if (updateIntervalFinished) {
                 volumeBase.DowntimeHistory.PushBack(
-                    Timer->Now(),
+                    now,
                     hasDowntime
                     ? EDowntimeStateChange::DOWN
                     : EDowntimeStateChange::UP);
             }
+
+            const bool isSufferingCritically =
+                volumeBase.PerfCalc.IsSufferingCritically();
+            const bool isAvailable = !hasDowntime;
+            const bool isHealthy = isAvailable && !isSufferingCritically;
 
             for (auto& [key, instance]: holder.VolumeInfos) {
                 instance->RequestCounters.UpdateStats(updateIntervalFinished);
@@ -911,6 +947,43 @@ public:
                     Y_DEBUG_ABORT_UNLESS(instance->HasDowntimeCounter);
                     if (instance->HasDowntimeCounter) {
                         *instance->HasDowntimeCounter = hasDowntime;
+                    }
+                }
+
+                // Advance the cumulative availability counters by the real time
+                // this instance has been served since the last accounted tick.
+                // Sampling every tick (not only on the publish tick) tracks the
+                // downtime/suffering signal at tick resolution; the per-instance
+                // timestamp (seeded at mount) avoids crediting time before the
+                // volume was served; advancing the timestamp only by the whole
+                // seconds credited keeps the sub-second remainder and avoids
+                // drift.
+                if (instance->ObservedSecondsCounter &&
+                    now > instance->AvailabilityLastUpdateTime)
+                {
+                    const auto elapsed =
+                        now - instance->AvailabilityLastUpdateTime;
+                    if (elapsed > UpdateCountersInterval) {
+                        // A forward gap larger than the publish interval means
+                        // stats were not updated for a long time (thread
+                        // starvation, a suspended process, or a wall-clock
+                        // jump). Crediting the whole gap would count that
+                        // "stall" time as availability, so drop this increment
+                        // and just resync the timestamp.
+                        instance->AvailabilityLastUpdateTime = now;
+                    } else {
+                        const ui64 seconds = elapsed.Seconds();
+                        if (seconds) {
+                            *instance->ObservedSecondsCounter += seconds;
+                            if (isAvailable && instance->AvailableSecondsCounter) {
+                                *instance->AvailableSecondsCounter += seconds;
+                            }
+                            if (isHealthy && instance->HealthySecondsCounter) {
+                                *instance->HealthySecondsCounter += seconds;
+                            }
+                            instance->AvailabilityLastUpdateTime +=
+                                TDuration::Seconds(seconds);
+                        }
                     }
                 }
             }
@@ -1076,6 +1149,31 @@ private:
         info->RequestCounters.Register(*countersGroup);
         info->HasDowntimeCounter = countersGroup->GetCounter("HasDowntime");
 
+        // Register the cumulative counters in the narrow component=sli_volume
+        // tree (see AvailabilityCounters comment).
+        // "type" uses MediaKindToComputeType (not MediaKindToStatsString, the
+        // convention used by the DownDisks aggregate below) to produce the
+        // same disk-type spelling ("network-ssd", ...) this helper already
+        // produces elsewhere in the codebase.
+        // StorageMediaKind is immutable for the lifetime of a volume (unlike
+        // cloud/folder, which AlterVolume can change), so this extra level
+        // needs no re-registration/aliasing handling.
+        auto availabilityCountersGroup =
+            AvailabilityCounters
+                ->GetSubgroup("volume", volumeConfig.GetDiskId())
+                ->GetSubgroup("instance", realInstanceId.GetRealInstanceId())
+                ->GetSubgroup("cloud", volumeConfig.GetCloudId())
+                ->GetSubgroup("folder", volumeConfig.GetFolderId())
+                ->GetSubgroup(
+                    "type",
+                    MediaKindToComputeType(volumeConfig.GetStorageMediaKind()));
+        info->ObservedSecondsCounter =
+            availabilityCountersGroup->GetCounter("ObservedSeconds", true);
+        info->AvailableSecondsCounter =
+            availabilityCountersGroup->GetCounter("AvailableSeconds", true);
+        info->HealthySecondsCounter =
+            availabilityCountersGroup->GetCounter("HealthySeconds", true);
+
         auto reportZeroBlocksMetrics =
             !DiagnosticsConfig
                  ->GetSkipReportingZeroBlocksMetricsForYDBBasedDisks() ||
@@ -1104,6 +1202,10 @@ private:
         Counters->GetSubgroup("volume", volumeBase->Volume.GetDiskId())->
             RemoveSubgroup("instance", realInstanceId.GetRealInstanceId());
 
+        AvailabilityCounters
+            ->GetSubgroup("volume", volumeBase->Volume.GetDiskId())
+            ->RemoveSubgroup("instance", realInstanceId.GetRealInstanceId());
+
         NUserCounter::UnregisterServerVolumeInstance(
             *UserCounters,
             volumeBase->Volume.GetCloudId(),
@@ -1119,6 +1221,10 @@ private:
         }
 
         Counters->RemoveSubgroup("volume", volumeBase->Volume.GetDiskId());
+
+        AvailabilityCounters->RemoveSubgroup(
+            "volume",
+            volumeBase->Volume.GetDiskId());
     }
 
     void InitCounters()
@@ -1160,10 +1266,18 @@ private:
                     ++mk;
                 }
 
+                AvailabilityCounters = Counters
+                    ->GetSubgroup("component", "sli_volume")
+                    ->GetSubgroup("host", "cluster");
+
                 Counters = Counters->GetSubgroup("component", "server_volume");
                 break;
             }
             case EVolumeStatsType::EClientStats: {
+                AvailabilityCounters = Counters
+                    ->GetSubgroup("component", "sli_volume")
+                    ->GetSubgroup("host", "cluster");
+
                 Counters = Counters->GetSubgroup("component", "client_volume");
                 break;
             }

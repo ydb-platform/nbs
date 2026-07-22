@@ -19,4 +19,7 @@ message FilesystemSnapshotConfig {
     // Number of nodes to fetch from the storage per batch.
     optional uint32 FetchNodesFromStorageLimit = 6 [default = 1000];
     optional uint64 SnapshotDataDeletionLimit = 7 [default = 1000];
+    optional string SnapshotCollectionTimeout = 8 [default = "30m"];
+    optional string CollectSnapshotsTaskScheduleInterval = 9 [default = "1m"];
+    optional uint32 SnapshotCollectionInflightLimit = 10 [default = 10];
 }

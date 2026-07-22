@@ -39,11 +39,13 @@ jobs:
             rebase
             sleep
             disable_truncate
+            arm64
             nightly-tests
             nightly-asan
             nightly-tsan
             nightly-msan
             nightly-ubsan
+            nightly-arm
             nightly-sanitizers
             nightly-all
         run: |

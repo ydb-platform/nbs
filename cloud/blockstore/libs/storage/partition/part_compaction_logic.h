@@ -1,5 +1,6 @@
 #pragma once
 
+#include "part_database.h"
 #include "part_events_private.h"
 #include "part_tx.h"
 
@@ -26,7 +27,6 @@ namespace NKikimr {
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
 class TPartitionState;
-class TPartitionDatabase;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -118,6 +118,7 @@ void PrepareRangeCompaction(
     const ui64 commitId,
     const ui64 tabletId,
     const bool readBlockMaskOnCompactionOptimizationEnabled,
+    const bool useRecreatedBlobMetasOnCleanup,
     bool& ready,
     TPartitionDatabase& db,
     TPartitionState& state,

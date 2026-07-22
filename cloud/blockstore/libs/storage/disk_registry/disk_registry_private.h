@@ -299,15 +299,15 @@ struct TEvDiskRegistryPrivate
     struct TSecureEraseResponse
     {
         TString PoolName;
-        size_t CleanDevices = 0;
+        TVector<TString> CleanDevices;
 
         TSecureEraseResponse() = default;
 
         TSecureEraseResponse(
                 TString poolName,
-                size_t cleanDevices)
+                TVector<TString> cleanDevices)
             : PoolName(std::move(poolName))
-            , CleanDevices(cleanDevices)
+            , CleanDevices(std::move(cleanDevices))
         {}
     };
 
