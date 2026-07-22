@@ -64,6 +64,7 @@ void TMixedBlocksFilter::StartCompaction(
 {
     Y_ABORT_UNLESS(
         Compactions.empty() || Compactions.back().CommitId < commitId);
+    Sort(rangeIndices);
     Compactions.push_back(
         {.RangesForCompaction = std::move(rangeIndices),
          .CommitId = commitId,
