@@ -1,4 +1,5 @@
 #include "mixed_index_blocks_filter.h"
+#include "util/generic/algorithm.h"
 
 #include <util/generic/ymath.h>
 
@@ -40,61 +41,57 @@ void TMixedBlocksFilter::AddBlocksToMixedIndex(ui32 blockIndex, ui64 commitId)
         Blocks.Set(blockIndex, blockIndex + 1);
     }
 
-    auto* compactions = RangeIndexToCompactionRangeInfos.FindPtr(rangeIndex);
-    if (!compactions) {
-        return;
-    }
-
-    for (auto& compaction: *compactions) {
+    for (auto& compaction: Compactions) {
+        // Compactions are sorted by CommitId in ascending order.
         if (compaction.CommitId > commitId) {
             break;
         }
 
-        compaction.MixedBlocksWrittenAfterCompaction.insert(blockIndex);
+        auto hasRangeIndex = BinarySearch(
+            compaction.RangesForCompaction.begin(),
+            compaction.RangesForCompaction.end(),
+            rangeIndex);
+
+        if (hasRangeIndex) {
+            compaction.MixedBlocksWrittenAfterCompaction.insert(blockIndex);
+        }
     }
 }
 
-void TMixedBlocksFilter::StartCompactionRange(ui32 rangeIndex, ui64 commitId)
+void TMixedBlocksFilter::StartCompaction(
+    TVector<ui32> rangeIndices,
+    ui64 commitId)
 {
-    auto& compactions = RangeIndexToCompactionRangeInfos[rangeIndex];
-
     Y_ABORT_UNLESS(
-        compactions.empty() || compactions.back().CommitId < commitId);
-
-    compactions.push_back({.CommitId = commitId});
+        Compactions.empty() || Compactions.back().CommitId < commitId);
+    Compactions.push_back(
+        {.RangesForCompaction = std::move(rangeIndices),
+         .CommitId = commitId,
+         .MixedBlocksWrittenAfterCompaction = {}});
 }
 
-void TMixedBlocksFilter::CompactionRangeFinished(ui32 rangeIndex)
+void TMixedBlocksFilter::CompactionFinished()
 {
-    auto* compactions = RangeIndexToCompactionRangeInfos.FindPtr(rangeIndex);
-    Y_ABORT_UNLESS(compactions);
+    Y_ABORT_UNLESS(!Compactions.empty());
+    auto& compaction = Compactions.front();
+    for (auto& rangeIndex: compaction.RangesForCompaction) {
+        CommitIdsPerRange[rangeIndex] = compaction.CommitId;
+        Blocks.Unset(
+            rangeIndex * BlocksPerRange,
+            (rangeIndex + 1) * BlocksPerRange);
+    }
 
-    CommitIdsPerRange[rangeIndex] = compactions->front().CommitId;
-    Blocks.Unset(
-        rangeIndex * BlocksPerRange,
-        (rangeIndex + 1) * BlocksPerRange);
-
-    for (size_t blockIndex:
-         compactions->front().MixedBlocksWrittenAfterCompaction)
-    {
+    for (size_t blockIndex: compaction.MixedBlocksWrittenAfterCompaction) {
         Blocks.Set(blockIndex, blockIndex + 1);
     }
 
-    compactions->pop_front();
-    if (compactions->empty()) {
-        RangeIndexToCompactionRangeInfos.erase(rangeIndex);
-    }
+    Compactions.pop_front();
 }
 
-void TMixedBlocksFilter::CompactionRangeFailed(ui32 rangeIndex)
+void TMixedBlocksFilter::CompactionFailed()
 {
-    auto* compactions = RangeIndexToCompactionRangeInfos.FindPtr(rangeIndex);
-    Y_ABORT_UNLESS(compactions);
-
-    compactions->pop_front();
-    if (compactions->empty()) {
-        RangeIndexToCompactionRangeInfos.erase(rangeIndex);
-    }
+    Y_ABORT_UNLESS(!Compactions.empty());
+    Compactions.pop_front();
 }
 
 void TMixedBlocksFilter::UpdateChunk(TCompressedBitmap::TSerializedChunk chunk)

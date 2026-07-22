@@ -15,6 +15,14 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 
 class TMixedBlocksFilter
 {
+
+    struct TCompaction
+    {
+        TVector<ui32> RangesForCompaction;
+        ui64 CommitId = 0;
+        THashSet<ui32> MixedBlocksWrittenAfterCompaction;
+    };
+
     struct TCompactionRangeInfo
     {
         ui64 CommitId = 0;
@@ -24,8 +32,8 @@ class TMixedBlocksFilter
 private:
     TCompressedBitmap Blocks;
     TVector<std::optional<ui64>> CommitIdsPerRange;
-    THashMap<ui32, std::deque<TCompactionRangeInfo>>
-        RangeIndexToCompactionRangeInfos;
+
+    std::deque<TCompaction> Compactions;
 
     ui64 BlocksPerRange = 0;
 
@@ -40,9 +48,11 @@ public:
 
     void StartCompactionRange(ui32 rangeIndex, ui64 commitId);
 
-    void CompactionRangeFinished(ui32 rangeIndex);
+    void StartCompaction(TVector<ui32> rangeIndices, ui64 commitId);
 
-    void CompactionRangeFailed(ui32 rangeIndex);
+    void CompactionFinished();
+
+    void CompactionFailed();
 
     void UpdateChunk(TCompressedBitmap::TSerializedChunk chunk);
 
