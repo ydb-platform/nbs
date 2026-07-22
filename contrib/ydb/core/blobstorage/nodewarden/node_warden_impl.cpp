@@ -3,6 +3,7 @@
 #include <contrib/ydb/core/blobstorage/common/immediate_control_defaults.h>
 #include <contrib/ydb/core/blobstorage/crypto/secured_block.h>
 #include <contrib/ydb/core/blobstorage/dsproxy/dsproxy_request_reporting.h>
+#include <contrib/ydb/core/blobstorage/dsproxy/mock/dsproxy_mock.h>
 #include <contrib/ydb/core/blobstorage/pdisk/drivedata_serializer.h>
 #include <contrib/ydb/library/pdisk_io/file_params.h>
 #include <contrib/ydb/core/base/nameservice.h>
