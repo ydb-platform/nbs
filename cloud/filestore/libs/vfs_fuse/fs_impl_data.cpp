@@ -9,6 +9,7 @@
 #include <cloud/filestore/libs/vfs/fsync_queue.h>
 
 #include <cloud/storage/core/libs/common/aligned_buffer.h>
+#include <cloud/storage/core/libs/common/verify.h>
 
 #include <library/cpp/threading/future/subscription/wait_all.h>
 
@@ -45,7 +46,197 @@ void InitNodeInfo(
     nodeInfo->SetHandle(ToUnderlying(handle));
 }
 
+bool IsAsyncCreateHandleEligible(
+    const TFileSystemConfig& config,
+    ui32 flags)
+{
+    // Async create is safe only when close is async too. Otherwise a sync
+    // DestroyHandle can run before the queued ConfirmCreateHandle.
+    const bool asyncDestroyHandle =
+        config.GetAsyncDestroyHandleEnabled() ||
+        config.GetAsyncDestroyReadOnlyHandleEnabled();
+    if (!asyncDestroyHandle || !config.GetAsyncCreateHandleEnabled()) {
+        return false;
+    }
+
+    constexpr ui32 unsupportedFlags =
+        ProtoFlag(NProto::TCreateHandleRequest::E_CREATE) |
+        ProtoFlag(NProto::TCreateHandleRequest::E_WRITE) |
+        ProtoFlag(NProto::TCreateHandleRequest::E_APPEND) |
+        ProtoFlag(NProto::TCreateHandleRequest::E_TRUNCATE);
+
+    return (flags & unsupportedFlags) == 0;
+}
+
+fuse_file_info MakeFuseFileInfo(
+    const NProto::TCreateHandleResponse& response,
+    const TFileSystemConfig& config)
+{
+    fuse_file_info fi = {};
+    fi.fh = response.GetHandle();
+    if (config.GetGuestPageCacheDisabled()) {
+        fi.direct_io = 1;
+    }
+    if (response.GetGuestKeepCache() && config.GetGuestKeepCacheAllowed()) {
+        fi.keep_cache = 1;
+    }
+
+    return fi;
+}
+
 }   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+std::shared_ptr<NProto::TConfirmCreateHandleRequest>
+TFileSystem::CreateConfirmRequest(
+    const NProto::TCreateHandleRequest& createRequest,
+    ui64 nodeId,
+    ui64 handle,
+    ui64 requestId)
+{
+    auto request = std::make_shared<NProto::TConfirmCreateHandleRequest>();
+    *request->MutableHeaders() = createRequest.GetHeaders();
+    request->SetFileSystemId(createRequest.GetFileSystemId());
+    request->SetNodeId(nodeId);
+    request->SetHandle(handle);
+    request->SetFlags(createRequest.GetFlags());
+    request->SetRequestId(requestId);
+    return request;
+}
+
+void TFileSystem::ConfirmCreateHandleForOpen(
+    TCallContextPtr callContext,
+    fuse_req_t req,
+    NProto::TCreateHandleRequest createRequest,
+    ui64 nodeId,
+    ui64 handle,
+    ui64 requestId,
+    fuse_file_info fi)
+{
+    auto confirmRequest = CreateConfirmRequest(
+        createRequest,
+        nodeId,
+        handle,
+        requestId);
+
+    Session->ConfirmCreateHandle(callContext, std::move(confirmRequest))
+        .Subscribe(
+            [=, ptr = weak_from_this()](const auto& future) mutable
+            {
+                auto self = ptr.lock();
+                if (!self) {
+                    return;
+                }
+
+                const auto& confirmResponse = future.GetValue();
+                const auto& error = confirmResponse.GetError();
+                if (!HasError(error)) {
+                    self->ReplyOpen(
+                        *callContext,
+                        MakeError(S_OK),
+                        req,
+                        &fi);
+                    return;
+                }
+
+                STORAGE_ERROR(
+                    "ConfirmCreateHandle request failed: "
+                    << "filesystem " << self->Config->GetFileSystemId()
+                    << " error: " << FormatError(error));
+
+                if (GetErrorKind(error) == EErrorKind::ErrorRetriable) {
+                    self->Scheduler->Schedule(
+                        self->Timer->Now() +
+                            self->Config->GetAsyncHandleOperationPeriod(),
+                        [=, ptr = self->weak_from_this()]() mutable
+                        {
+                            if (auto self = ptr.lock()) {
+                                self->ConfirmCreateHandleForOpen(
+                                    callContext,
+                                    req,
+                                    std::move(createRequest),
+                                    nodeId,
+                                    handle,
+                                    requestId,
+                                    fi);
+                            }
+                        });
+                    return;
+                }
+
+                self->CleanupFailedCreateHandle(
+                    callContext,
+                    req,
+                    nodeId,
+                    handle,
+                    error);
+            });
+}
+
+void TFileSystem::CleanupFailedCreateHandle(
+    TCallContextPtr callContext,
+    fuse_req_t req,
+    ui64 nodeId,
+    ui64 handle,
+    NProto::TError confirmError)
+{
+    auto destroyRequest = StartRequest<NProto::TDestroyHandleRequest>(nodeId);
+    destroyRequest->SetHandle(handle);
+
+    Session->DestroyHandle(callContext, std::move(destroyRequest))
+        .Subscribe(
+            [=, ptr = weak_from_this()](const auto& future) mutable
+            {
+                auto self = ptr.lock();
+                if (!self) {
+                    return;
+                }
+
+                const auto& destroyResponse = future.GetValue();
+                const auto& destroyError = destroyResponse.GetError();
+                if (HasError(destroyError)) {
+                    STORAGE_ERROR(
+                        "DestroyHandle after failed ConfirmCreateHandle "
+                        "failed: filesystem "
+                        << self->Config->GetFileSystemId()
+                        << " error: " << FormatError(destroyError));
+
+                    if (GetErrorKind(destroyError) ==
+                            EErrorKind::ErrorRetriable)
+                    {
+                        self->Scheduler->Schedule(
+                            self->Timer->Now() +
+                                self->Config->GetAsyncHandleOperationPeriod(),
+                            [=, ptr = self->weak_from_this()]() mutable
+                            {
+                                if (auto self = ptr.lock()) {
+                                    self->CleanupFailedCreateHandle(
+                                        callContext,
+                                        req,
+                                        nodeId,
+                                        handle,
+                                        confirmError);
+                                }
+                            });
+                        return;
+                    }
+
+                    ReportHandleOpsQueueProcessError(
+                        TStringBuilder()
+                        << "DestroyHandle after failed ConfirmCreateHandle "
+                        << "failed permanently, filesystem: "
+                        << self->Config->GetFileSystemId()
+                        << " error: " << FormatError(destroyError));
+                }
+
+                self->ReplyError(
+                    *callContext,
+                    confirmError,
+                    req,
+                    ErrnoFromError(confirmError.GetCode()));
+            });
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // zero-copy iovec helpers
@@ -209,26 +400,103 @@ void TFileSystem::Open(
             : 0;
     request->SetFlags(flags | overrideRead);
 
+    const bool asyncCreateHandle =
+        HandleOpsQueue &&
+        IsAsyncCreateHandleEligible(*Config, request->GetFlags());
+    if (asyncCreateHandle) {
+        request->SetAllowAsyncCreateHandle(true);
+    }
+    auto requestForQueue = request;
+
     Session->CreateHandle(callContext, std::move(request))
         .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
             const auto& response = future.GetValue();
             if (auto self = ptr.lock(); CheckResponse(self, *callContext, req, response)) {
                 const auto& response = future.GetValue();
 
-                fuse_file_info fi = {};
-                fi.fh = response.GetHandle();
-                if (self->Config->GetGuestPageCacheDisabled()) {
-                    fi.direct_io = 1;
-                }
-                if (response.GetGuestKeepCache() &&
-                    self->Config->GetGuestKeepCacheAllowed())
-                {
-                    fi.keep_cache = 1;
+                if (response.GetHandleCreatedAsync()) {
+                    STORAGE_VERIFY_C(
+                        asyncCreateHandle,
+                        TWellKnownEntityTypes::FILESYSTEM,
+                        self->Config->GetFileSystemId(),
+                        TStringBuilder()
+                            << "CreateHandle returned an unpersisted handle "
+                            << "without client-side async create support #"
+                            << ino << " @" << response.GetHandle());
+                    self->ProcessAsyncCreateHandle(
+                        callContext,
+                        req,
+                        ino,
+                        *requestForQueue,
+                        response);
+                    return;
                 }
 
+                auto fi = MakeFuseFileInfo(response, *self->Config);
                 self->ReplyOpen(*callContext, response.GetError(), req, &fi);
             }
         });
+}
+
+void TFileSystem::ProcessAsyncCreateHandle(
+    TCallContextPtr callContext,
+    fuse_req_t req,
+    fuse_ino_t ino,
+    const NProto::TCreateHandleRequest& createRequest,
+    const NProto::TCreateHandleResponse& response)
+{
+    const auto requestId = createRequest.GetHeaders().GetRequestId()
+        ? createRequest.GetHeaders().GetRequestId()
+        : callContext->RequestId;
+
+    THandleOpsQueue::EResult result;
+    with_lock (HandleOpsQueueLock) {
+        result = HandleOpsQueue->AddCreateRequest(
+            createRequest,
+            ino,
+            response.GetHandle(),
+            requestId);
+    }
+
+    if (result == THandleOpsQueue::EResult::Ok) {
+        STORAGE_DEBUG(
+            "Create handle request added to queue #"
+            << ino << " @" << response.GetHandle());
+        auto fi = MakeFuseFileInfo(response, *Config);
+        ReplyOpen(*callContext, MakeError(S_OK), req, &fi);
+        return;
+    }
+
+    if (result == THandleOpsQueue::EResult::SerializationError) {
+        TStringBuilder msg;
+        msg << "Unable to add CreateHandleRequest to "
+            << "HandleOpsQueue #" << ino << " @"
+            << response.GetHandle()
+            << ". Serialization failed";
+        ReportHandleOpsQueueProcessError(msg);
+
+        auto destroyRequest = StartRequest<NProto::TDestroyHandleRequest>(ino);
+        destroyRequest->SetHandle(response.GetHandle());
+        Session->DestroyHandle(callContext, std::move(destroyRequest));
+        ReplyError(*callContext, MakeError(E_FAIL, msg), req, EIO);
+        return;
+    }
+
+    // result == THandleOpsQueue::EResult::QueueOverflow
+    STORAGE_DEBUG(
+        "HandleOpsQueue overflow, synchronously "
+        "confirming create handle #"
+        << ino << " @" << response.GetHandle());
+
+    const auto fi = MakeFuseFileInfo(response, *Config);
+    ConfirmCreateHandleForOpen(
+        std::move(callContext),
+        req,
+        createRequest,
+        ino,
+        response.GetHandle(),
+        requestId,
+        fi);
 }
 
 bool TFileSystem::ProcessAsyncRelease(

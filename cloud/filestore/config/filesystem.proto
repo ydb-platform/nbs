@@ -124,4 +124,7 @@ message TFileSystemConfig
 
     // Async processing of destroy handle requests only for read only handles.
     optional bool AsyncDestroyReadOnlyHandleEnabled = 36;
+
+    // Async processing of read-only create handle requests.
+    optional bool AsyncCreateHandleEnabled = 37;
 }
