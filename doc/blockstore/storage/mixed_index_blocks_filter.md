@@ -11,7 +11,7 @@ part of the read transaction CPU time.
 
 `TMixedBlocksFilter` is an in-memory, compressed-bitmask filter that lets the
 read path skip a mixed-index lookup when the requested block is known not to
-be present for the requested commit ID.  It is not a Bloom filter: a negative
+be present for the requested commit ID.  It is like a Bloom filter: a negative
 result is exact for the range/commit-ID conditions described below.  A positive
 result means *may be present* and must be confirmed by the existing mixed
 index.
@@ -166,3 +166,12 @@ ReadBlocks(range, commitId)
     |
     +-- filter says "may have" ----> existing mixed-index lookup
 ```
+
+## Why not bloom filter?
+
+A Bloom filter could also serve this purpose, but it would produce more false
+positives. Prototype measurements also show that it consumes slightly more
+memory. In addition, a Bloom filter must be tuned for the number of mixed
+blocks in a compaction range. Because that number is currently unbounded, the
+false-positive rate would vary with the workload. The bitmask filter is more
+stable.
