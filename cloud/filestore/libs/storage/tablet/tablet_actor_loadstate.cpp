@@ -118,6 +118,7 @@ bool TIndexTabletActor::PrepareTx_LoadState(
         db->ReadResponseLog(args.ResponseLog),
         db->ReadLargeDeletionMarkers(args.LargeDeletionMarkers),
         db->ReadOrphanNodes(args.OrphanNodeIds),
+        db->ReadDeferredZeroLinkNodes(args.DeferredZeroLinkNodeIds),
         db->ReadUnconfirmedData(args.UnconfirmedData),
     };
 
@@ -264,6 +265,7 @@ void TIndexTabletActor::CompleteAdapterLoadState(
         args.TabletStorageInfo,
         args.LargeDeletionMarkers,
         args.OrphanNodeIds,
+        args.DeferredZeroLinkNodeIds,
         args.OpLog,
         args.ResponseLog,
         config);
@@ -389,6 +391,11 @@ void TIndexTabletActor::CompleteTx_LoadState(
             LogTag << " Read " << args.OrphanNodeIds.size()
             << " orphan nodes");
     }
+    if (args.DeferredZeroLinkNodeIds) {
+        LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
+            LogTag << " Read " << args.DeferredZeroLinkNodeIds.size()
+            << " deferred zero-link nodes");
+    }
 
     LoadState(
         Executor()->Generation(),
@@ -398,6 +405,7 @@ void TIndexTabletActor::CompleteTx_LoadState(
         args.TabletStorageInfo,
         args.LargeDeletionMarkers,
         args.OrphanNodeIds,
+        args.DeferredZeroLinkNodeIds,
         args.OpLog,
         args.ResponseLog,
         config);

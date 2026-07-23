@@ -42,7 +42,9 @@ void TIndexTabletActor::HandleCleanupDeferredZeroLinkNodes(
     Y_UNUSED(ev);
 
     DeferredZeroLinkNodesCleanupScheduled = false;
-    ExecuteTx<TCleanupDeferredZeroLinkNodes>(ctx, GetOrphanNodeIds());
+    ExecuteTx<TCleanupDeferredZeroLinkNodes>(
+        ctx,
+        GetDeferredZeroLinkNodeIds());
 }
 
 bool TIndexTabletActor::PrepareTx_CleanupDeferredZeroLinkNodes(
@@ -90,24 +92,24 @@ void TIndexTabletActor::ExecuteTx_CleanupDeferredZeroLinkNodes(
         const auto& node = args.Nodes[i];
 
         if (!node) {
-            DeleteOrphanNode(*db, nodeId);
+            DeleteDeferredZeroLinkNode(*db, nodeId);
             continue;
         }
 
         if (node->Attrs.GetLinks() == 0 && !HasOpenHandles(nodeId)) {
             auto e = RemoveNode(*db, *node, node->MinCommitId, commitId);
             if (HasError(e)) {
-                // Retain the record so the next tablet incarnation retries it.
                 WriteOrphanNode(
                     *db,
                     TStringBuilder()
                         << "CleanupDeferredZeroLinkNodes: RemoveNode: "
                         << nodeId << ", Error: " << FormatError(e),
                     nodeId);
+                DeleteDeferredZeroLinkNode(*db, nodeId);
                 continue;
             }
 
-            DeleteOrphanNode(*db, nodeId);
+            DeleteDeferredZeroLinkNode(*db, nodeId);
             ++args.Cleaned;
             args.RemovedNodes = true;
             continue;
@@ -120,7 +122,7 @@ void TIndexTabletActor::ExecuteTx_CleanupDeferredZeroLinkNodes(
                 << "CleanupDeferredZeroLinkNodes: node " << nodeId
                 << " has " << node->Attrs.GetLinks() << " links");
         }
-        DeleteOrphanNode(*db, nodeId);
+        DeleteDeferredZeroLinkNode(*db, nodeId);
     }
 
     if (args.RemovedNodes) {

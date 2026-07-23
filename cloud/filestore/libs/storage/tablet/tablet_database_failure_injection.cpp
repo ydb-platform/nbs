@@ -748,6 +748,28 @@ bool TIndexTabletDatabaseWithFailureInjection::ReadOrphanNodes(TVector<ui64>& no
     return Real->ReadOrphanNodes(nodeIds);
 }
 
+void TIndexTabletDatabaseWithFailureInjection::WriteDeferredZeroLinkNode(
+    ui64 nodeId)
+{
+    Real->WriteDeferredZeroLinkNode(nodeId);
+}
+
+void TIndexTabletDatabaseWithFailureInjection::DeleteDeferredZeroLinkNode(
+    ui64 nodeId)
+{
+    Real->DeleteDeferredZeroLinkNode(nodeId);
+}
+
+bool TIndexTabletDatabaseWithFailureInjection::ReadDeferredZeroLinkNodes(
+    TVector<ui64>& nodeIds)
+{
+    if (Y_UNLIKELY(ShouldFailReadInTest())) {
+        return false;
+    }
+
+    return Real->ReadDeferredZeroLinkNodes(nodeIds);
+}
+
 void TIndexTabletDatabaseWithFailureInjection::WriteNewBlob(
     const TPartialBlobId& blobId)
 {

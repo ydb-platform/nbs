@@ -262,21 +262,23 @@ void TIndexTabletState::DeferZeroLinkNodeCleanup(
     IIndexTabletDatabase& db,
     ui64 nodeId)
 {
-    db.WriteOrphanNode(nodeId);
-    Impl->OrphanNodeIds.insert(nodeId);
+    db.WriteDeferredZeroLinkNode(nodeId);
+    Impl->DeferredZeroLinkNodeIds.insert(nodeId);
 }
 
-void TIndexTabletState::DeleteOrphanNode(
+void TIndexTabletState::DeleteDeferredZeroLinkNode(
     IIndexTabletDatabase& db,
     ui64 nodeId)
 {
-    db.DeleteOrphanNode(nodeId);
-    Impl->OrphanNodeIds.erase(nodeId);
+    db.DeleteDeferredZeroLinkNode(nodeId);
+    Impl->DeferredZeroLinkNodeIds.erase(nodeId);
 }
 
-TVector<ui64> TIndexTabletState::GetOrphanNodeIds() const
+TVector<ui64> TIndexTabletState::GetDeferredZeroLinkNodeIds() const
 {
-    return {Impl->OrphanNodeIds.begin(), Impl->OrphanNodeIds.end()};
+    return {
+        Impl->DeferredZeroLinkNodeIds.begin(),
+        Impl->DeferredZeroLinkNodeIds.end()};
 }
 
 void TIndexTabletState::WriteOrphanNode(
@@ -285,7 +287,8 @@ void TIndexTabletState::WriteOrphanNode(
     ui64 nodeId)
 {
     ReportGeneratedOrphanNode(message);
-    DeferZeroLinkNodeCleanup(db, nodeId);
+    db.WriteOrphanNode(nodeId);
+    Impl->OrphanNodeIds.insert(nodeId);
 }
 
 bool TIndexTabletState::HasPendingNodeCreateInShard(const TString& nodeName) const

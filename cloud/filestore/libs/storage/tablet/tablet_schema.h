@@ -596,6 +596,17 @@ struct TIndexTabletSchema
         using StoragePolicy = TStoragePolicy<IndexChannel>;
     };
 
+    struct DeferredZeroLinkNodes: TTableSchema<30>
+    {
+        struct NodeId: Column<1, NKikimr::NScheme::NTypeIds::Uint64> {};
+
+        using TKey = TableKey<NodeId>;
+
+        using TColumns = TableColumns<NodeId>;
+
+        using StoragePolicy = TStoragePolicy<IndexChannel>;
+    };
+
     using TTables = SchemaTables<
         FileSystem,
         Sessions,
@@ -625,7 +636,8 @@ struct TIndexTabletSchema
         LargeDeletionMarkers,
         OrphanNodes,
         ResponseLog,
-        UnconfirmedData
+        UnconfirmedData,
+        DeferredZeroLinkNodes
     >;
 
     using TSettings = SchemaSettings<

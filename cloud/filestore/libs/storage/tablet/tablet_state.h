@@ -293,6 +293,7 @@ public:
         const NCloud::NProto::TTabletStorageInfo& tabletStorageInfo,
         const TVector<TDeletionMarker>& largeDeletionMarkers,
         const TVector<ui64>& orphanNodeIds,
+        const TVector<ui64>& deferredZeroLinkNodeIds,
         const TVector<NProto::TOpLogEntry>& opLog,
         const TVector<NProtoPrivate::TResponseLogEntry>& responseLog,
         const TThrottlerConfig& throttlerConfig);
@@ -580,8 +581,8 @@ public:
         bool deferZeroLinkNodeCleanup);
 
     void DeferZeroLinkNodeCleanup(IIndexTabletDatabase& db, ui64 nodeId);
-    void DeleteOrphanNode(IIndexTabletDatabase& db, ui64 nodeId);
-    TVector<ui64> GetOrphanNodeIds() const;
+    void DeleteDeferredZeroLinkNode(IIndexTabletDatabase& db, ui64 nodeId);
+    TVector<ui64> GetDeferredZeroLinkNodeIds() const;
 
     void UnlinkExternalNode(
         IIndexTabletDatabase& db,

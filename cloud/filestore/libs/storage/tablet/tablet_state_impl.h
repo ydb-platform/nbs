@@ -70,6 +70,7 @@ struct TIndexTabletState::TImpl
     TReadAheadCache ReadAheadCache;
     std::unique_ptr<IInMemoryIndexState> InMemoryIndexState;
     TSet<ui64> OrphanNodeIds;
+    TSet<ui64> DeferredZeroLinkNodeIds;
     TSet<TString> PendingNodeCreateInShardNames;
     THashSet<TNodeRefKey, TNodeRefKeyHash> LockedNodeRefs;
     THashSet<ui64> OpLogEntryIds;

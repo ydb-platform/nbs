@@ -423,6 +423,14 @@ public:
     bool ReadOrphanNodes(TVector<ui64>& nodeIds) override;
 
     //
+    // DeferredZeroLinkNodes
+    //
+
+    void WriteDeferredZeroLinkNode(ui64 nodeId) override;
+    void DeleteDeferredZeroLinkNode(ui64 nodeId) override;
+    bool ReadDeferredZeroLinkNodes(TVector<ui64>& nodeIds) override;
+
+    //
     // NewBlobs
     //
 

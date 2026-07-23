@@ -1592,6 +1592,49 @@ bool TIndexTabletDatabase::ReadOrphanNodes(TVector<ui64>& nodeIds)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// DeferredZeroLinkNodes
+
+void TIndexTabletDatabase::WriteDeferredZeroLinkNode(ui64 nodeId)
+{
+    using TTable = TIndexTabletSchema::DeferredZeroLinkNodes;
+
+    Table<TTable>()
+        .Key(nodeId)
+        .Update();
+}
+
+void TIndexTabletDatabase::DeleteDeferredZeroLinkNode(ui64 nodeId)
+{
+    using TTable = TIndexTabletSchema::DeferredZeroLinkNodes;
+
+    Table<TTable>()
+        .Key(nodeId)
+        .Delete();
+}
+
+bool TIndexTabletDatabase::ReadDeferredZeroLinkNodes(TVector<ui64>& nodeIds)
+{
+    using TTable = TIndexTabletSchema::DeferredZeroLinkNodes;
+
+    auto it = Table<TTable>()
+        .Select();
+
+    if (!it.IsReady()) {
+        return false;   // not ready
+    }
+
+    while (it.IsValid()) {
+        nodeIds.emplace_back(it.GetValue<TTable::NodeId>());
+
+        if (!it.Next()) {
+            return false;   // not ready
+        }
+    }
+
+    return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // NewBlobs
 
 void TIndexTabletDatabase::WriteNewBlob(const TPartialBlobId& blobId)

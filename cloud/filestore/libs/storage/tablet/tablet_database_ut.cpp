@@ -565,6 +565,47 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
         });
     }
 
+    Y_UNIT_TEST(ShouldStoreDeferredZeroLinkNodes)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&] (TIndexTabletDatabase db) {
+            db.InitSchema();
+        });
+
+        executor.WriteTx([&] (TIndexTabletDatabase db) {
+            db.WriteOrphanNode(999);
+            db.WriteDeferredZeroLinkNode(111);
+            db.WriteDeferredZeroLinkNode(222);
+            db.WriteDeferredZeroLinkNode(333);
+        });
+
+        executor.ReadTx([&] (TIndexTabletDatabase db) {
+            TVector<ui64> nodeIds;
+            UNIT_ASSERT(db.ReadDeferredZeroLinkNodes(nodeIds));
+            UNIT_ASSERT_VALUES_EQUAL(3, nodeIds.size());
+            UNIT_ASSERT_VALUES_EQUAL(111, nodeIds[0]);
+            UNIT_ASSERT_VALUES_EQUAL(222, nodeIds[1]);
+            UNIT_ASSERT_VALUES_EQUAL(333, nodeIds[2]);
+
+            nodeIds.clear();
+            UNIT_ASSERT(db.ReadOrphanNodes(nodeIds));
+            UNIT_ASSERT_VALUES_EQUAL(1, nodeIds.size());
+            UNIT_ASSERT_VALUES_EQUAL(999, nodeIds[0]);
+        });
+
+        executor.WriteTx([&] (TIndexTabletDatabase db) {
+            db.DeleteDeferredZeroLinkNode(222);
+        });
+
+        executor.ReadTx([&] (TIndexTabletDatabase db) {
+            TVector<ui64> nodeIds;
+            UNIT_ASSERT(db.ReadDeferredZeroLinkNodes(nodeIds));
+            UNIT_ASSERT_VALUES_EQUAL(2, nodeIds.size());
+            UNIT_ASSERT_VALUES_EQUAL(111, nodeIds[0]);
+            UNIT_ASSERT_VALUES_EQUAL(333, nodeIds[1]);
+        });
+    }
+
     Y_UNIT_TEST(ShouldUseNoAutoPrechargeArgForNodeRefs)
     {
         TTestExecutor executor;

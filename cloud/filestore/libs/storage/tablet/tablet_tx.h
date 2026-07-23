@@ -367,6 +367,7 @@ struct TTxIndexTablet
         TVector<NProtoPrivate::TResponseLogEntry> ResponseLog;
         TVector<TDeletionMarker> LargeDeletionMarkers;
         TVector<ui64> OrphanNodeIds;
+        TVector<ui64> DeferredZeroLinkNodeIds;
         TVector<TIndexTabletDatabase::TUnconfirmedDataEntry> UnconfirmedData;
 
         void Clear() override
@@ -393,6 +394,7 @@ struct TTxIndexTablet
             ResponseLog.clear();
             LargeDeletionMarkers.clear();
             OrphanNodeIds.clear();
+            DeferredZeroLinkNodeIds.clear();
             UnconfirmedData.clear();
         }
     };

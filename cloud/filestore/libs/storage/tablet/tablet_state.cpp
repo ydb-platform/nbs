@@ -176,6 +176,7 @@ void TIndexTabletState::LoadState(
     const NCloud::NProto::TTabletStorageInfo& tabletStorageInfo,
     const TVector<TDeletionMarker>& largeDeletionMarkers,
     const TVector<ui64>& orphanNodeIds,
+    const TVector<ui64>& deferredZeroLinkNodeIds,
     const TVector<NProto::TOpLogEntry>& opLog,
     const TVector<NProtoPrivate::TResponseLogEntry>& responseLog,
     const TThrottlerConfig& throttlerConfig)
@@ -243,6 +244,9 @@ void TIndexTabletState::LoadState(
     }
 
     Impl->OrphanNodeIds.insert(orphanNodeIds.begin(), orphanNodeIds.end());
+    Impl->DeferredZeroLinkNodeIds.insert(
+        deferredZeroLinkNodeIds.begin(),
+        deferredZeroLinkNodeIds.end());
 
     for (const auto& entry: opLog) {
         Impl->OpLogEntryIds.insert(entry.GetEntryId());
@@ -315,7 +319,7 @@ TMiscNodeStats TIndexTabletState::GetMiscNodeStats() const
     return {
         .OrphanNodesCount = static_cast<i64>(Impl->OrphanNodeIds.size()),
         .DeferredZeroLinkNodesCount =
-            static_cast<i64>(Impl->OrphanNodeIds.size()),
+            static_cast<i64>(Impl->DeferredZeroLinkNodeIds.size()),
     };
 }
 
