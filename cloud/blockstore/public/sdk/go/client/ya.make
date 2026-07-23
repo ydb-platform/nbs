@@ -12,6 +12,7 @@ SRCS(
     iface.go
     log.go
     request.go
+    reloadable_transport_credentials.go
     response.go
     safe_client.go
     session.go

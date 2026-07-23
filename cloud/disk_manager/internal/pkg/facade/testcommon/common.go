@@ -407,6 +407,7 @@ func NewNfsTestingClient(
 	nfsFactory := nfs.NewFactory(
 		ctx,
 		newNfsClientConfig(),
+		0,
 		metrics.NewEmptyRegistry(),
 		metrics.NewEmptyRegistry(),
 	)

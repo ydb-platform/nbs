@@ -165,11 +165,22 @@ func run(
 		return err
 	}
 
+	var refreshCertsPeriod time.Duration
+	if config.GetGrpcConfig() != nil && !config.GetGrpcConfig().GetInsecure() {
+		refreshCertsPeriod, err = time.ParseDuration(
+			config.GetGrpcConfig().GetRefreshCertsPeriod(),
+		)
+		if err != nil {
+			return err
+		}
+	}
+
 	nbsClientMetricsRegistry := mon.NewRegistry("nbs_client")
 	nbsSessionMetricsRegistry := mon.NewRegistry("nbs_session")
 	nbsFactory, err := nbs.NewFactoryWithCreds(
 		ctx,
 		config.NbsConfig,
+		refreshCertsPeriod,
 		creds,
 		nbsClientMetricsRegistry,
 		nbsSessionMetricsRegistry,
@@ -314,6 +325,7 @@ func run(
 			nfsFactory := nfs.NewFactoryWithCreds(
 				ctx,
 				config.GetNfsConfig(),
+				refreshCertsPeriod,
 				creds,
 				nfsClientMetricsRegistry,
 				nfsSessionMetricsRegistry,

@@ -49,6 +49,7 @@ message GrpcConfig {
     // Used in tests.
     optional string Hostname = 4;
     required KeepAliveConfig KeepAlive = 5;
+    optional string RefreshCertsPeriod = 6 [default = "0s"];
 }
 
 ////////////////////////////////////////////////////////////////////////////////
