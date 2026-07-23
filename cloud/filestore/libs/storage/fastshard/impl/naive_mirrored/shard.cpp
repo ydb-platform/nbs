@@ -341,7 +341,7 @@ private:
     IPageStorePtr PageStore;
     TNodeTable Nodes;
     TNameTable Names;
-    mutable silk::FiberMutex Mutex; // TODO(#5894): use it!!!
+    mutable silk::FiberMutex Mutex;
 
 public:
     TFiberShardImpl(
@@ -399,6 +399,8 @@ public:
     NProto::TError
     GetNodeAttr(ui64 nodeId, const TString& name, NProto::TNodeAttr* attr)
     {
+        std::lock_guard g(Mutex);
+
         if (name) {
             auto error = Names.Get(name, &nodeId);
             if (HasError(error)) {
@@ -430,18 +432,23 @@ public:
         NProto::TSetNodeAttrResponse response;
 
         TWriteContext writeContext;
-        auto error = Nodes.UpdateNode(
-            request.GetNodeId(),
-            request.GetFlags(),
-            request.GetUpdate(),
-            response.MutableNode(),
-            writeContext);
-        if (HasError(error)) {
-            *response.MutableError() = std::move(error);
+
+        {
+            std::lock_guard g(Mutex);
+
+            auto error = Nodes.UpdateNode(
+                request.GetNodeId(),
+                request.GetFlags(),
+                request.GetUpdate(),
+                response.MutableNode(),
+                writeContext);
+            if (HasError(error)) {
+                *response.MutableError() = std::move(error);
+            }
         }
 
         auto pages = CollectPages(writeContext);
-        error = Storage->WriteLogRecord(
+        auto error = Storage->WriteLogRecord(
             std::move(writeContext.Headers),
             std::move(writeContext.PageGroups));
         if (HasError(error)) {
@@ -485,20 +492,25 @@ public:
             0 /* size */,
             request.GetUid(),
             request.GetGid());
-        auto error = Nodes.PutNode(attr, writeContext);
-        if (HasError(error)) {
-            *response.MutableError() = std::move(error);
-            return response;
-        }
 
-        error = Names.Put(request.GetName(), attr.GetId(), writeContext);
-        if (HasError(error)) {
-            *response.MutableError() = std::move(error);
-            return response;
+        {
+            std::lock_guard g(Mutex);
+
+            auto error = Nodes.PutNode(attr, writeContext);
+            if (HasError(error)) {
+                *response.MutableError() = std::move(error);
+                return response;
+            }
+
+            error = Names.Put(request.GetName(), attr.GetId(), writeContext);
+            if (HasError(error)) {
+                *response.MutableError() = std::move(error);
+                return response;
+            }
         }
 
         auto pages = CollectPages(writeContext);
-        error = Storage->WriteLogRecord(
+        auto error = Storage->WriteLogRecord(
             std::move(writeContext.Headers),
             std::move(writeContext.PageGroups));
         if (HasError(error)) {

@@ -2,8 +2,10 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 
+#include <silk/fibers/mutex.h>
 #include <silk/util/logger.h>
 
+#include <util/generic/scope.h>
 #include <util/string/builder.h>
 
 namespace NCloud::NFileStore::NStorage::NFastShard {
@@ -28,7 +30,9 @@ private:
     };
 
     // TODO: eviction strategy + size limit
-    mutable THashMap<ui64, TPage> PageCache;
+    using TPageCache = THashMap<ui64, TPage>;
+    mutable TPageCache PageCache;
+    mutable silk::FiberMutex Mutex;
 
 public:
     TPageStore(
@@ -78,22 +82,49 @@ void TPageStore::WritePage(
         .FirstPageNo = pageNo,
         .Content = TVector<TString>({page})
     });
+
+    std::lock_guard g(Mutex);
     PageCache[pageNo] = {.Content = std::move(page), .Dirty = true};
 }
 
 NProto::TError TPageStore::ReadPage(ui64 pageNo, TString* page) const
 {
-    if (const auto* ptr = PageCache.FindPtr(pageNo)) {
-        // TODO: block reader upon dirty page read attempt instead of erroring
-        if (ptr->Dirty) {
-            return MakeError(
-                E_REJECTED,
-                TStringBuilder() << "dirty page: " << pageNo);
+    page->clear();
+
+    TPageCache::iterator cachedPage;
+    {
+        std::lock_guard g(Mutex);
+
+        TPageCache::insert_ctx insertCtx;
+        cachedPage = PageCache.find(pageNo, insertCtx);
+        if (cachedPage != PageCache.end()) {
+            // TODO(#5894): block reader upon dirty page read attempt instead of
+            // erroring
+            if (cachedPage->second.Dirty) {
+                return MakeError(
+                    E_REJECTED,
+                    TStringBuilder() << "dirty page: " << pageNo);
+            }
+
+            *page = cachedPage->second.Content;
+            return {};
         }
 
-        *page = ptr->Content;
-        return {};
+        cachedPage = PageCache.insert_direct(
+            std::make_pair(pageNo, TPage{.Content = {}, .Dirty = true}),
+            insertCtx);
     }
+
+    Y_DEFER {
+        std::lock_guard g(Mutex);
+
+        if (page->empty()) {
+            PageCache.erase(cachedPage);
+        } else {
+            cachedPage->second.Content = *page;
+            cachedPage->second.Dirty = false;
+        }
+    };
 
     if (!Storage) {
         return MakeError(E_NOT_FOUND);
@@ -144,7 +175,6 @@ NProto::TError TPageStore::ReadPage(ui64 pageNo, TString* page) const
     }
 
     *page = std::move(rpg.Content[0]);
-    PageCache[pageNo] = {.Content = *page, .Dirty = false};
     return {};
 }
 
