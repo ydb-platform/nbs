@@ -183,7 +183,6 @@ TEST(NaiveMirroredShardTest, CreatesFiles)
             << FormatError(response.GetError());
     }
 
-    /*
     {
         TGetNodeAttrRequest request;
         request.SetNodeId(nodeId);
@@ -192,7 +191,6 @@ TEST(NaiveMirroredShardTest, CreatesFiles)
         EXPECT_EQ(NCloud::E_FS_NOENT, response.GetError().GetCode())
             << FormatError(response.GetError());
     }
-    */
 }
 
 TEST(NaiveMirroredShardTest, WritesAndReadsFiles)

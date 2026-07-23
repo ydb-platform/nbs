@@ -212,6 +212,12 @@ public:
         return Slots->Put(slot, writeContext.PageGroups);
     }
 
+    NProto::TError DeleteNode(ui64 nodeId, TWriteContext& writeContext)
+    {
+        TNodeTableSlot slot{};
+        return Slots->Delete(nodeId, &slot, writeContext.PageGroups);
+    }
+
     NProto::TError GetNode(ui64 nodeId, NProto::TNodeAttr* attr) const
     {
         TNodeTableSlot slot{};
@@ -278,6 +284,12 @@ public:
         memset(slot.Name + name.size(), 0, NameCapacity - name.size());
         slot.NodeId = nodeId;
         return Slots->Put(slot, writeContext.PageGroups);
+    }
+
+    NProto::TError Delete(const TString& name, TWriteContext& writeContext)
+    {
+        TNameTableSlot slot{};
+        return Slots->Delete(name, &slot, writeContext.PageGroups);
     }
 
     NProto::TError Get(const TString& name, ui64* nodeId) const
@@ -527,8 +539,49 @@ public:
     NProto::TUnlinkNodeResponse
     UnlinkNode(NProto::TUnlinkNodeRequest request)
     {
-        Y_UNUSED(request);
-        return {};
+        NProto::TUnlinkNodeResponse response;
+        if (request.GetNodeId() != RootNodeId) {
+            *response.MutableError() = ErrorInvalidParent(request.GetNodeId());
+            return response;
+        }
+
+        TWriteContext writeContext;
+
+        {
+            std::lock_guard g(Mutex);
+
+            ui64 nodeId = 0;
+            auto error = Names.Get(request.GetName(), &nodeId);
+            if (HasError(error)) {
+                *response.MutableError() = std::move(error);
+                return response;
+            }
+
+            error = Names.Delete(request.GetName(), writeContext);
+            if (HasError(error)) {
+                *response.MutableError() = std::move(error);
+                return response;
+            }
+
+            error = Nodes.DeleteNode(nodeId, writeContext);
+            if (HasError(error)) {
+                *response.MutableError() = std::move(error);
+                return response;
+            }
+        }
+
+        auto pages = CollectPages(writeContext);
+        auto error = Storage->WriteLogRecord(
+            std::move(writeContext.Headers),
+            std::move(writeContext.PageGroups));
+        if (HasError(error)) {
+            *response.MutableError() = std::move(error);
+            PageStore->RollbackPages(pages);
+            return response;
+        }
+
+        PageStore->CommitPages(pages);
+        return response;
     }
 
     NProto::TCreateHandleResponse
