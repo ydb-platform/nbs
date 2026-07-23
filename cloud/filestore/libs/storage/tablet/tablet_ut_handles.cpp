@@ -522,6 +522,45 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Handles)
         tablet.AssertGetNodeAttrFailed(node);
     }
 
+    Y_UNIT_TEST(ShouldRetainNodeWhenDeferredZeroLinkCleanupFails)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetAsyncCreateHandleEnabled(true);
+        storageConfig.SetLargeDeletionMarkersEnabled(true);
+        storageConfig.SetLargeDeletionMarkersThreshold(1);
+        storageConfig.SetLargeDeletionMarkersThresholdForBackpressure(0);
+        TTestEnv env({}, storageConfig);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        const auto node =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        TSetNodeAttrArgs attrs(node);
+        attrs.SetFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE);
+        attrs.SetSize(4_KB);
+        tablet.SetNodeAttr(attrs);
+        tablet.UnlinkNode(RootNodeId, "test", false);
+
+        // The zero backpressure threshold makes RemoveNode fail during cleanup.
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Minutes(1));
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+        tablet.GetNodeAttr(node);
+
+        // A successful later cleanup would remove a still-deferred node. The
+        // retained node proves the failed cleanup moved it to OrphanNodes.
+        storageConfig.SetAsyncCreateHandleEnabled(false);
+        storageConfig.SetLargeDeletionMarkersThresholdForBackpressure(1);
+        tablet.ChangeStorageConfig(storageConfig);
+        tablet.RebootTablet();
+        tablet.RecoverSession();
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+        tablet.GetNodeAttr(node);
+    }
+
     Y_UNIT_TEST(ShouldRestoreCreateHandleDupCacheAfterPostRestartConfirm)
     {
         NProto::TStorageConfig storageConfig;
