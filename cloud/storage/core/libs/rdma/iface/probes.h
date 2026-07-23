@@ -63,6 +63,22 @@
         GROUPS("StorageRequest"),                                              \
         TYPES(),                                                               \
         NAMES())                                                               \
+    PROBE(BindInBufferStarted,                                                 \
+        GROUPS("StorageRequest"),                                              \
+        TYPES(ui64),                                                           \
+        NAMES("requestId"))                                                    \
+    PROBE(BindInBufferCompleted,                                               \
+        GROUPS("StorageRequest"),                                              \
+        TYPES(ui64),                                                           \
+        NAMES("requestId"))                                                    \
+    PROBE(BindOutBufferStarted,                                                \
+        GROUPS("StorageRequest"),                                              \
+        TYPES(ui64),                                                           \
+        NAMES("requestId"))                                                    \
+    PROBE(BindOutBufferCompleted,                                              \
+        GROUPS("StorageRequest"),                                              \
+        TYPES(ui64),                                                           \
+        NAMES("requestId"))                                                    \
 // STORAGE_RDMA_PROVIDER
 
 LWTRACE_DECLARE_PROVIDER(STORAGE_RDMA_PROVIDER)
