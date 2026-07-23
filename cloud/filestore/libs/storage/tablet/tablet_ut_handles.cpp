@@ -471,7 +471,15 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Handles)
             CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         tablet.UnlinkNode(RootNodeId, "test", false);
 
-        // The node is available by id during the recovery window.
+        // Restarting before the first deadline must preserve the deferred row
+        // and start a new recovery window.
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(59));
+        tablet.RebootTablet();
+        tablet.RecoverSession();
+
+        // The original deadline has passed, but the restarted tablet's window
+        // has not.
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(2));
         tablet.GetNodeAttr(node);
 
         env.GetRuntime().AdvanceCurrentTime(TDuration::Minutes(1));
