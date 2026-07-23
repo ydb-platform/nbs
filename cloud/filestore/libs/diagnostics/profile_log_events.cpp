@@ -258,6 +258,17 @@ void InitProfileLogRequestInfo(
 template <>
 void InitProfileLogRequestInfo(
     NProto::TProfileLogRequestInfo& profileLogRequest,
+    const NProto::TConfirmCreateHandleRequest& request)
+{
+    auto* nodeInfo = profileLogRequest.MutableNodeInfo();
+    nodeInfo->SetNodeId(request.GetNodeId());
+    nodeInfo->SetHandle(request.GetHandle());
+    nodeInfo->SetFlags(request.GetFlags());
+}
+
+template <>
+void InitProfileLogRequestInfo(
+    NProto::TProfileLogRequestInfo& profileLogRequest,
     const NProto::TReadDataRequest& request)
 {
     auto* rangeInfo = profileLogRequest.AddRanges();
@@ -666,6 +677,7 @@ void UpdateRangeNodeIds(
     IMPLEMENT_DEFAULT_METHOD(AccessNode, NProto)
     IMPLEMENT_DEFAULT_METHOD(ReadLink, NProto)
     IMPLEMENT_DEFAULT_METHOD(RemoveNodeXAttr, NProto)
+    IMPLEMENT_DEFAULT_METHOD(ConfirmCreateHandle, NProto)
     IMPLEMENT_DEFAULT_METHOD(DestroyHandle, NProto)
     IMPLEMENT_DEFAULT_METHOD(AcquireLock, NProto)
     IMPLEMENT_DEFAULT_METHOD(ReleaseLock, NProto)

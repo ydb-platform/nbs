@@ -39,6 +39,7 @@ TPermissionList GetRequestPermissions(EFileStoreRequest requestType)
         case EFileStoreRequest::SetNodeXAttr:
         case EFileStoreRequest::RemoveNodeXAttr:
         case EFileStoreRequest::CreateHandle:
+        case EFileStoreRequest::ConfirmCreateHandle:
         case EFileStoreRequest::DestroyHandle:
         case EFileStoreRequest::WriteData:
         case EFileStoreRequest::AllocateData:

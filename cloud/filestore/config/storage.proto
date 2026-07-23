@@ -864,4 +864,7 @@ message TStorageConfig
     // or DestroySession transaction. Sessions with more handles are cleaned
     // up by a chain of transactions. 0 means no limit.
     optional uint32 MaxDeleteSessionHandlesPerTx = 530;
+
+    // Async processing of read-only create handle requests.
+    optional bool AsyncCreateHandleEnabled = 531;
 }

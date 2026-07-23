@@ -52,6 +52,7 @@ namespace NCloud::NFileStore {
     xxx(RemoveNodeXAttr,                    __VA_ARGS__)                       \
                                                                                \
     xxx(CreateHandle,                       __VA_ARGS__)                       \
+    xxx(ConfirmCreateHandle,                __VA_ARGS__)                       \
     xxx(DestroyHandle,                      __VA_ARGS__)                       \
                                                                                \
     xxx(AcquireLock,                        __VA_ARGS__)                       \
