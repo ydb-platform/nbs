@@ -5,6 +5,8 @@ RECURSE(
 
 RECURSE_FOR_TESTS(
     async_close_test
+    async_open_test
+    async_open_noshards_test
     auth
     build_arcadia_test
     client
