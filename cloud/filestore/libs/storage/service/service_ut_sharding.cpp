@@ -64,7 +64,7 @@ NProtoPrivate::TGetFileSystemTopologyResponse GetFileSystemTopology(
 NProtoPrivate::TGetStorageStatsResponse GetStorageStats(
     TServiceClient& service,
     const TString& fsId,
-    const ui32 cacheTTL = 0,
+    const ui64 cacheTTL = 0,
     const NProtoPrivate::EStatsRequestMode mode =
         NProtoPrivate::STATS_REQUEST_MODE_DEFAULT)
 {

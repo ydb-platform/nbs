@@ -1146,7 +1146,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         {
             NProtoPrivate::TGetStorageStatsRequest request;
             request.SetFileSystemId(fsId);
-            request.SetCacheTTL(Max<ui32>()); // in ms
+            request.SetCacheTTL(Max<ui64>()); // in ms
 
             NProtoPrivate::TGetStorageStatsResponse response =
                 GetStorageStats(service, request);
@@ -1291,7 +1291,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
 
         NProtoPrivate::TGetStorageStatsRequest request;
         request.SetFileSystemId(fsId);
-        request.SetCacheTTL(Max<ui32>()); // in ms
+        request.SetCacheTTL(Max<ui64>()); // in ms
 
         NProtoPrivate::TGetStorageStatsResponse response =
             GetStorageStats(service, request);
