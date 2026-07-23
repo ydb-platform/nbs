@@ -135,64 +135,6 @@ auto ValidateReadPagesRequest(const NCloud::NProto::TReadPagesRequest& request)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <typename TOrigResponse, typename TEvResponse>
-class TPromiseActor final
-    : public TActor<TPromiseActor<TOrigResponse, TEvResponse>>
-{
-    using TThis = TPromiseActor<TOrigResponse, TEvResponse>;
-    using TBase = TActor<TThis>;
-
-private:
-    TPromise<TOrigResponse> Promise;
-
-public:
-    explicit TPromiseActor(TPromise<TOrigResponse> promise)
-        : TActor<TThis>(&TThis::StateWork)
-        , Promise(std::move(promise))
-    {}
-
-private:
-    STFUNC(StateWork)
-    {
-        switch (ev->GetTypeRewrite()) {
-            HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
-            HFunc(TEvResponse, HandleResponse);
-
-            default:
-                HandleUnexpectedEvent(
-                    ev,
-                    TBlockStoreComponents::DISK_AGENT_WORKER,
-                    __PRETTY_FUNCTION__);
-                break;
-        }
-    }
-
-    void HandlePoisonPill(
-        const TEvents::TEvPoisonPill::TPtr& ev,
-        const TActorContext& ctx)
-    {
-        Y_UNUSED(ev);
-
-        Promise.SetValue(ErrorResponse<TOrigResponse>(E_REJECTED, "Stopping"));
-
-        TThis::Die(ctx);
-    }
-
-    void HandleResponse(
-        const TEventHandle<TEvResponse>::TPtr& ev,
-        const TActorContext& ctx)
-    {
-        TOrigResponse response;
-        response.MutableError()->CopyFrom(ev->Get()->Record.GetError());
-
-        Promise.SetValue(std::move(response));
-
-        TThis::Die(ctx);
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 class TJournalledDeviceHandler final: public IServerBackend
 {
 private:
@@ -219,8 +161,6 @@ public:
     {
         Y_UNUSED(now);
 
-        auto promise = NewPromise<NCloud::NProto::TAcquireDevicesResponse>();
-
         auto ev = std::make_unique<TEvDiskAgent::TEvAcquireDevicesRequest>();
 
         CopyHeaders(*ev->Record.MutableHeaders(), request.GetHeaders());
@@ -232,21 +172,19 @@ public:
         ev->Record.SetDiskId(request.GetHeaders().GetClientId());
         ev->Record.SetVolumeGeneration(DefaultVolumeGeneration);
 
-        const TActorId actorId = ActorSystem->Register(
-            new TPromiseActor<
-                NCloud::NProto::TAcquireDevicesResponse,
-                TEvDiskAgent::TEvAcquireDevicesResponse>(promise));
-
-        const bool ok = ActorSystem->Send(new IEventHandle(
+        auto future = ActorSystem->Ask<TEvDiskAgent::TEvAcquireDevicesResponse>(
             DiskAgentActorId,
-            actorId,
-            ev.release(),
-            0,   // flags
-            0    // cookie
-            ));
-        Y_DEBUG_ABORT_UNLESS(ok);
+            THolder(ev.release()));
 
-        return promise;
+        return future.Apply(
+            [](const auto& future)
+            {
+                NCloud::NProto::TAcquireDevicesResponse response;
+                const auto& ev = future.GetValue();
+                response.MutableError()->CopyFrom(ev->Record.GetError());
+
+                return response;
+            });
     }
 
     [[nodiscard]] auto ReleaseDevices(
@@ -265,21 +203,19 @@ public:
             request.GetDeviceUUIDs().begin(),
             request.GetDeviceUUIDs().end());
 
-        const TActorId actorId = ActorSystem->Register(
-            new TPromiseActor<
-                NCloud::NProto::TReleaseDevicesResponse,
-                TEvDiskAgent::TEvReleaseDevicesResponse>(promise));
-
-        const bool ok = ActorSystem->Send(new IEventHandle(
+        auto future = ActorSystem->Ask<TEvDiskAgent::TEvReleaseDevicesResponse>(
             DiskAgentActorId,
-            actorId,
-            ev.release(),
-            0,   // flags
-            0    // cookie
-            ));
-        Y_DEBUG_ABORT_UNLESS(ok);
+            THolder(ev.release()));
 
-        return promise;
+        return future.Apply(
+            [](const auto& future)
+            {
+                NCloud::NProto::TReleaseDevicesResponse response;
+                const auto& ev = future.GetValue();
+                response.MutableError()->CopyFrom(ev->Record.GetError());
+
+                return response;
+            });
     }
 
     [[nodiscard]] auto ReadPages(
