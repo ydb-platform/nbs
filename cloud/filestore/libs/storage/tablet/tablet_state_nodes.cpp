@@ -150,12 +150,7 @@ NProto::TError TIndexTabletState::UnlinkNode(
             DeferZeroLinkNodeCleanup(db, node.NodeId);
         }
     } else {
-        auto e = RemoveOrDeferZeroLinkNode(
-            db,
-            node,
-            minCommitId,
-            maxCommitId,
-            false);
+        auto e = RemoveNode(db, node, minCommitId, maxCommitId);
 
         if (HasError(e)) {
             return e;

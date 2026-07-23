@@ -855,7 +855,7 @@ message TStorageConfig
     // Async processing of read-only create handle requests.
     optional bool AsyncCreateHandleEnabled = 528;
 
-    // Time after tablet restart during which zero-link nodes are retained for
-    // pending async create-handle confirmations.
+    // Time in ms after tablet restart during which zero-link nodes are retained
+    // for pending async create-handle confirmations.
     optional uint32 AsyncCreateHandleRecoveryWindow = 529;
 }

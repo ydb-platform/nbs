@@ -301,6 +301,7 @@ void TIndexTabletActor::CompleteAdapterLoadState(
 
     ScheduleSyncSessions(ctx);
     ScheduleCleanupSessions(ctx);
+    ScheduleDeferredZeroLinkNodesCleanup(ctx);
 
     RegisterFileStore(ctx);
     RegisterStatCounters(ctx.Now());
@@ -356,6 +357,13 @@ void TIndexTabletActor::CompleteTx_LoadState(
 
     ScheduleUpdateCounters(ctx);
 
+    if (Config->GetAsyncCreateHandleEnabled() &&
+        Config->GetAsyncCreateHandleRecoveryWindow() != TDuration::Zero())
+    {
+        AsyncCreateHandleRecoveryDeadline =
+            ctx.Now() + Config->GetAsyncCreateHandleRecoveryWindow();
+    }
+
     if (args.FileSystem.GetIsFastShard()) {
         BecomeAux(ctx, STATE_ADAPTER);
         CompleteAdapterLoadState(ctx, args);
@@ -410,13 +418,6 @@ void TIndexTabletActor::CompleteTx_LoadState(
         args.ResponseLog,
         config);
     UpdateLogTag();
-
-    if (Config->GetAsyncCreateHandleEnabled() &&
-        Config->GetAsyncCreateHandleRecoveryWindow() != TDuration::Zero())
-    {
-        AsyncCreateHandleRecoveryDeadline =
-            ctx.Now() + Config->GetAsyncCreateHandleRecoveryWindow();
-    }
 
     NMetrics::Store(Metrics.OpLogEntryCount, GetOpLogEntryCount());
     NMetrics::Store(Metrics.ResponseLogEntryCount, GetResponseLogEntryCount());

@@ -1451,6 +1451,9 @@ STFUNC(TIndexTabletActor::StateAdapter)
         HFunc(TEvIndexTabletPrivate::TEvUpdateCounters, HandleUpdateCounters);
         HFunc(TEvIndexTabletPrivate::TEvRunRegularTasks, HandleRunRegularTasks);
         HFunc(
+            TEvIndexTabletPrivate::TEvCleanupDeferredZeroLinkNodes,
+            HandleCleanupDeferredZeroLinkNodes);
+        HFunc(
             TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters,
             HandleUpdateLeakyBucketCounters);
 
