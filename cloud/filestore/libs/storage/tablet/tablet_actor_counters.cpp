@@ -152,9 +152,8 @@ void TAggregateStatsActor::SendRequestToFileSystem(
     request->Record = Request;
     request->Record.SetFileSystemId(fileSystemId);
     if (ShouldOnlyGetStatsFromMainTablet()) {
-        // UpdateCountersInterval is multiplied by 2, to be sure that in almost
-        // all cases we get statistics from the cache.
-        request->Record.SetCacheTTL(UpdateCountersInterval.MilliSeconds() * 2);
+        // Get cached statiscis even it's 'inifinetely' old.
+        request->Record.SetCacheTTL(Max<ui32>());
     } else {
         request->Record.SetMode(
             NProtoPrivate::STATS_REQUEST_MODE_GET_ONLY_SELF);
