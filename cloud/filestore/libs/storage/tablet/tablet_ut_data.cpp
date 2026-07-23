@@ -8730,9 +8730,20 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         const i64 overloadThresholdMicros = 1'000'000 * overloadThreshold / 100;
 
         NProto::TStorageConfig storageConfig;
+        // disabling background ops to have as few activity unrelated to the
+        // test scenario as possible
+        storageConfig.SetCompactionThreshold(999'999);
+        storageConfig.SetCleanupThreshold(999'999);
+        storageConfig.SetCollectGarbageThreshold(1_GB);
+        storageConfig.SetFlushBytesThreshold(1_GB);
+        storageConfig.SetFlushThreshold(1_GB);
+        storageConfig.SetFlushThresholdForBackpressure(1_GB);
+        // setting a proper threshold to make sure that all writes go through
+        // the fresh layer (and thus use tablet actor's cpu time)
         storageConfig.SetWriteBlobThreshold(wbt);
         // setting a tiny value to make sure that we're always "overloaded"
-        storageConfig.SetTabletActorCpuUsageOverloadThreshold(1);
+        storageConfig.SetTabletActorCpuUsageOverloadThreshold(
+            overloadThreshold);
 
         TTestEnv env(
             testEnvConfig,
@@ -8799,6 +8810,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
 
         UNIT_ASSERT_GT(cpuUsageMicros, overloadThresholdMicros);
+        Cdbg << "cpuUsageMicros=" << cpuUsageMicros << Endl;
 
         {
             //
@@ -8841,6 +8853,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             //
             // Blob read - uses separate actor code path.
             //
+
+            tablet.Flush();
 
             auto response =
                 tablet.ReadData(handle, 0, 3 * tabletConfig.BlockSize);
