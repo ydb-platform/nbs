@@ -992,14 +992,15 @@ private:
             SessionId = response.GetSession().GetSessionId();
 
             THandleOpsQueuePtr handleOpsQueue;
-            const bool asyncDestroyEnabled =
+            const bool asyncOpsEnabled =
                 FileSystemConfig->GetAsyncDestroyHandleEnabled() ||
-                FileSystemConfig->GetAsyncDestroyReadOnlyHandleEnabled();
+                FileSystemConfig->GetAsyncDestroyReadOnlyHandleEnabled() ||;
+                FileSystemConfig->GetAsyncCreateHandleEnabled()
             if (Config->GetHandleOpsQueuePath()) {
                 const auto path = TFsPath(Config->GetHandleOpsQueuePath()) /
                                   FileSystemConfig->GetFileSystemId() /
                                   SessionId;
-                if (path.Exists() || asyncDestroyEnabled) {
+                if (path.Exists() || asyncOpsEnabled) {
                     auto error = CreateAndLockFile(
                         path,
                         HandleOpsQueueFileName,
@@ -1296,6 +1297,8 @@ private:
             features.GetAsyncDestroyHandleEnabled());
         config.SetAsyncDestroyReadOnlyHandleEnabled(
             features.GetAsyncDestroyReadOnlyHandleEnabled());
+        config.SetAsyncCreateHandleEnabled(
+            features.GetAsyncCreateHandleEnabled());
         config.SetAsyncHandleOperationPeriod(
             features.GetAsyncHandleOperationPeriod());
 

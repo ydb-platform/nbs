@@ -72,6 +72,7 @@ namespace NCloud::NFileStore {
     xxx(ReadData,                           __VA_ARGS__)                       \
     xxx(WriteData,                          __VA_ARGS__)                       \
     xxx(AllocateData,                       __VA_ARGS__)                       \
+    xxx(ConfirmCreateHandle,                __VA_ARGS__)                       \
 // FILESTORE_DATA_METHODS
 
 #define FILESTORE_LOCAL_DATA_METHODS(xxx, ...)                                 \

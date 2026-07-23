@@ -110,6 +110,36 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
         UNIT_ASSERT(!nodeInfo.HasSize());
     }
 
+    Y_UNIT_TEST(ShouldConfirmCreateHandleRequestInitializeFieldsCorrectly)
+    {
+        const auto nodeId = 12;
+        const auto handle = 34;
+        const auto flags = 56;
+
+        NProto::TConfirmCreateHandleRequest req;
+        req.SetNodeId(nodeId);
+        req.SetHandle(handle);
+        req.SetFlags(flags);
+
+        NProto::TProfileLogRequestInfo profileLogRequest;
+        InitProfileLogRequestInfo(profileLogRequest, req);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, profileLogRequest.RangesSize());
+        UNIT_ASSERT(profileLogRequest.HasNodeInfo());
+        UNIT_ASSERT(!profileLogRequest.HasLockInfo());
+
+        const auto& nodeInfo = profileLogRequest.GetNodeInfo();
+        UNIT_ASSERT(!nodeInfo.HasParentNodeId());
+        UNIT_ASSERT(!nodeInfo.HasNodeName());
+        UNIT_ASSERT(!nodeInfo.HasNewParentNodeId());
+        UNIT_ASSERT(!nodeInfo.HasNewNodeName());
+        UNIT_ASSERT_VALUES_EQUAL(flags, nodeInfo.GetFlags());
+        UNIT_ASSERT(!nodeInfo.HasMode());
+        UNIT_ASSERT_VALUES_EQUAL(nodeId, nodeInfo.GetNodeId());
+        UNIT_ASSERT_VALUES_EQUAL(handle, nodeInfo.GetHandle());
+        UNIT_ASSERT(!nodeInfo.HasSize());
+    }
+
     Y_UNIT_TEST(ShouldReadDataRequestInitializeFieldsCorrectly)
     {
         const auto nodeId = 12;
