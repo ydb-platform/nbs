@@ -22,6 +22,7 @@ SRCS(
     garbage_queue.cpp
     group_downtimes.cpp
     mixed_index_cache.cpp
+    mixed_index_blocks_filter.cpp
     operation_status.cpp
     part_counters_wrapper.cpp
     resource_metrics_updates_queue.cpp
