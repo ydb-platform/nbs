@@ -20,15 +20,16 @@ bool TIndexTabletActor::IsAsyncCreateHandleRecoveryWindowActive(
 void TIndexTabletActor::ScheduleDeferredZeroLinkNodesCleanup(
     const TActorContext& ctx)
 {
-    if (!AsyncCreateHandleRecoveryDeadline.GetValue() ||
-        DeferredZeroLinkNodesCleanupScheduled)
+    if (DeferredZeroLinkNodesCleanupScheduled ||
+        (!IsAsyncCreateHandleRecoveryWindowActive(ctx) &&
+         GetDeferredZeroLinkNodeIds().empty()))
     {
         return;
     }
 
     const auto delay = AsyncCreateHandleRecoveryDeadline > ctx.Now()
         ? AsyncCreateHandleRecoveryDeadline - ctx.Now()
-        : TDuration::Zero();
+        : TDuration::MilliSeconds(100);
     ctx.Schedule(
         delay,
         new TEvIndexTabletPrivate::TEvCleanupDeferredZeroLinkNodes());
@@ -83,7 +84,9 @@ void TIndexTabletActor::ExecuteTx_CleanupDeferredZeroLinkNodes(
     if (needCommitId) {
         commitId = GenerateCommitId();
         if (commitId == InvalidCommitId) {
-            return;
+            return ScheduleRebootTabletOnCommitIdOverflow(
+                ctx,
+                "CleanupDeferredZeroLinkNodes");
         }
     }
 
@@ -135,14 +138,13 @@ void TIndexTabletActor::CompleteTx_CleanupDeferredZeroLinkNodes(
     const TActorContext& ctx,
     TTxIndexTablet::TCleanupDeferredZeroLinkNodes& args)
 {
-    Y_UNUSED(ctx);
-
     Metrics.DeferredZeroLinkNodesCleaned.fetch_add(
         args.Cleaned,
         std::memory_order_relaxed);
     Metrics.DeferredZeroLinkNodesSkipped.fetch_add(
         args.Skipped,
         std::memory_order_relaxed);
+    ScheduleDeferredZeroLinkNodesCleanup(ctx);
 }
 
 }   // namespace NCloud::NFileStore::NStorage
