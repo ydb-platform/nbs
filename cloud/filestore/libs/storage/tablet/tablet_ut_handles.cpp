@@ -494,6 +494,34 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Handles)
         tablet.AssertGetNodeAttrFailed(node);
     }
 
+    Y_UNIT_TEST(ShouldDrainDeferredZeroLinkNodesWhenAsyncCreateHandleDisabled)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetAsyncCreateHandleEnabled(true);
+        TTestEnv env({}, storageConfig);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto node =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        tablet.UnlinkNode(RootNodeId, "test", false);
+
+        NProto::TStorageConfig patch;
+        patch.SetAsyncCreateHandleEnabled(false);
+        tablet.ChangeStorageConfig(std::move(patch));
+        tablet.RebootTablet();
+        tablet.RecoverSession();
+
+        // Disabled async create drains recovery entries without its recovery
+        // window.
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+        tablet.AssertGetNodeAttrFailed(node);
+    }
+
     Y_UNIT_TEST(ShouldRestoreCreateHandleDupCacheAfterPostRestartConfirm)
     {
         NProto::TStorageConfig storageConfig;
