@@ -451,7 +451,14 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Handles)
 
         // ConfirmCreateHandle recreates and persists the exact returned handle.
         tablet.DescribeData(handle, 0, 1_KB);
+
+        // Cleanup must retain a node owned by the recovered handle.
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Minutes(1));
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+        tablet.GetNodeAttr(id);
+
         tablet.DestroyHandle(handle);
+        tablet.AssertGetNodeAttrFailed(id);
     }
 
     Y_UNIT_TEST(ShouldCleanupUnlinkedNodeAfterAsyncCreateRecoveryWindow)
