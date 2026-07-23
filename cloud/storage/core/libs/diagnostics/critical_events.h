@@ -29,6 +29,10 @@ namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+using TCritEventLabels = std::vector<std::pair<TString, TString>>;
+
+////////////////////////////////////////////////////////////////////////////////
+
 void SetCriticalEventsLog(TLog log);
 void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters);
 
@@ -37,9 +41,18 @@ TString GetImpossibleEventFullName(const TString& name);
 
 TString ReportCriticalEvent(
     const TString& sensorName,
+    const TCritEventLabels& labels,
     const TString& message,
     bool verifyDebug);
 
+TString ReportCriticalEvent(
+    const TString& sensorName,
+    const TString& message,
+    bool verifyDebug);
+
+void ReportCriticalEventWithoutLogging(
+    const TString& sensorName,
+    const TCritEventLabels& labels);
 void ReportCriticalEventWithoutLogging(const TString& sensorName);
 
 #define STORAGE_DECLARE_CRITICAL_EVENT_ROUTINE(name)                           \

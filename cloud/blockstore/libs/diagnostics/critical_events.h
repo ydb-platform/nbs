@@ -13,40 +13,17 @@ using TCritEventParams =
 ////////////////////////////////////////////////////////////////////////////////
 
 #define BLOCKSTORE_CRITICAL_EVENTS(xxx)                                        \
-    xxx(InvalidTabletConfig)                                                   \
-    xxx(ReassignTablet)                                                        \
-    xxx(TabletBSFailure)                                                       \
-    xxx(DiskAllocationFailure)                                                 \
-    xxx(CollectGarbageError)                                                   \
     xxx(VhostQueueRunningError)                                                \
-    xxx(MigrationFailed)                                                       \
-    xxx(BadMigrationConfig)                                                    \
-    xxx(InitFreshBlocksError)                                                  \
-    xxx(TrimFreshLogError)                                                     \
-    xxx(NrdDestructionError)                                                   \
-    xxx(FailedToStartVolumeLocally)                                            \
     xxx(PublishDiskStateError)                                                 \
     xxx(EndpointRestoringError)                                                \
     xxx(HangingYdbStatsRequest)                                                \
     xxx(UserNotificationError)                                                 \
     xxx(BackupPathDescriptionsFailure)                                         \
     xxx(RdmaError)                                                             \
-    xxx(MirroredDiskAllocationCleanupFailure)                                  \
-    xxx(MirroredDiskAllocationPlacementGroupCleanupFailure)                    \
-    xxx(MirroredDiskDeviceReplacementForbidden)                                \
-    xxx(MirroredDiskDeviceReplacementFailure)                                  \
-    xxx(MirroredDiskDeviceReplacementRateLimitExceeded)                        \
-    xxx(MirroredDiskMinorityChecksumMismatch)                                  \
-    xxx(MirroredDiskMajorityChecksumMismatch)                                  \
-    xxx(MirroredDiskChecksumMismatchUponRead)                                  \
-    xxx(MirroredDiskAddTagFailed)                                              \
     xxx(CounterUpdateRace)                                                     \
     xxx(EndpointStartingError)                                                 \
-    xxx(ResyncFailed)                                                          \
     xxx(DiskRegistryBackupFailed)                                              \
     xxx(RegisterAgentWithEmptyRackName)                                        \
-    xxx(AddConfirmedBlobsError)                                                \
-    xxx(ConfirmBlobsError)                                                     \
     xxx(ManuallyPreemptedVolumesFileError)                                     \
     xxx(ServiceProxyWakeupTimerHit)                                            \
     xxx(ReceivedUnknownTaskId)                                                 \
@@ -57,24 +34,14 @@ using TCritEventParams =
     xxx(DiskRegistrySourceDiskNotFound)                                        \
     xxx(EndpointSwitchFailure)                                                 \
     xxx(ExternalEndpointUnexpectedExit)                                        \
-    xxx(BlockDigestMismatchInBlob)                                             \
     xxx(DiskRegistryResumeDeviceFailed)                                        \
     xxx(DiskRegistryAgentDevicePoolConfigMismatch)                             \
     xxx(DiskRegistryPurgeHostError)                                            \
     xxx(DiskRegistryOccupiedDeviceConfigurationHasChanged)                     \
     xxx(DiskRegistryWrongMigratedDeviceOwnership)                              \
     xxx(DiskRegistryInitialAgentRejectionThresholdExceeded)                    \
-    xxx(ErrorWasSentToTheGuestForReliableDisk)                                 \
-    xxx(ErrorWasSentToTheGuestForNonReliableDisk)                              \
-    xxx(MirroredDiskResyncChecksumMismatch)                                    \
     xxx(DiskAgentInconsistentMultiWriteResponse)                               \
-    xxx(ReleaseShadowDiskError)                                                \
-    xxx(WrongCellIdInDescribeVolume)                                           \
-    xxx(TrimFreshLogTimeout)                                                   \
     xxx(DiskRegistryStateIntegrityBroken)                                      \
-    xxx(AddFreshBlocksResultedInError)                                         \
-    xxx(OverlappingRequestsDetected)                                           \
-    xxx(CrossPartitionRequestDetected)                                         \
 // BLOCKSTORE_CRITICAL_EVENTS
 
 #define BLOCKSTORE_DISK_AGENT_CRITICAL_EVENTS(xxx)                             \
@@ -135,6 +102,42 @@ using TCritEventParams =
     xxx(CleanupBlobMetaBlocksMismatch)                                         \
 // BLOCKSTORE_IMPOSSIBLE_EVENTS
 
+#define BLOCKSTORE_VOLUME_CRITICAL_EVENTS(xxx)                                 \
+    xxx(InvalidTabletConfig)                                                   \
+    xxx(ReassignTablet)                                                        \
+    xxx(TabletBSFailure)                                                       \
+    xxx(DiskAllocationFailure)                                                 \
+    xxx(CollectGarbageError)                                                   \
+    xxx(MigrationFailed)                                                       \
+    xxx(BadMigrationConfig)                                                    \
+    xxx(InitFreshBlocksError)                                                  \
+    xxx(TrimFreshLogError)                                                     \
+    xxx(NrdDestructionError)                                                   \
+    xxx(FailedToStartVolumeLocally)                                            \
+    xxx(MirroredDiskAllocationCleanupFailure)                                  \
+    xxx(MirroredDiskAllocationPlacementGroupCleanupFailure)                    \
+    xxx(MirroredDiskDeviceReplacementForbidden)                                \
+    xxx(MirroredDiskDeviceReplacementFailure)                                  \
+    xxx(MirroredDiskDeviceReplacementRateLimitExceeded)                        \
+    xxx(MirroredDiskMinorityChecksumMismatch)                                  \
+    xxx(MirroredDiskMajorityChecksumMismatch)                                  \
+    xxx(MirroredDiskChecksumMismatchUponRead)                                  \
+    xxx(MirroredDiskAddTagFailed)                                              \
+    xxx(ResyncFailed)                                                          \
+    xxx(AddConfirmedBlobsError)                                                \
+    xxx(ConfirmBlobsError)                                                     \
+    xxx(BlockDigestMismatchInBlob)                                             \
+    xxx(ErrorWasSentToTheGuestForReliableDisk)                                 \
+    xxx(ErrorWasSentToTheGuestForNonReliableDisk)                              \
+    xxx(MirroredDiskResyncChecksumMismatch)                                    \
+    xxx(ReleaseShadowDiskError)                                                \
+    xxx(WrongCellIdInDescribeVolume)                                           \
+    xxx(TrimFreshLogTimeout)                                                   \
+    xxx(AddFreshBlocksResultedInError)                                         \
+    xxx(OverlappingRequestsDetected)                                           \
+    xxx(CrossPartitionRequestDetected)                                         \
+// BLOCKSTORE_VOLUME_CRITICAL_EVENTS
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters);
@@ -177,5 +180,30 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters);
 // BLOCKSTORE_DECLARE_IMPOSSIBLE_EVENT_ROUTINE
     BLOCKSTORE_IMPOSSIBLE_EVENTS(BLOCKSTORE_DECLARE_IMPOSSIBLE_EVENT_ROUTINE)
 #undef BLOCKSTORE_DECLARE_IMPOSSIBLE_EVENT_ROUTINE
+
+#define BLOCKSTORE_DECLARE_VOLUME_CRITICAL_EVENT_ROUTINE(name)                 \
+    TString Report##name(                                                      \
+        const TString& diskId,                                                 \
+        const TString& cloudId,                                                \
+        const TString& folderId,                                               \
+        const TString& message = "");                                          \
+    TString Report##name(                                                      \
+        const TString& diskId,                                                 \
+        const TString& cloudId,                                                \
+        const TString& folderId,                                               \
+        const TString& message,                                                \
+        const TCritEventParams& keyValues);                                    \
+    TString Report##name(                                                      \
+        const TString& diskId,                                                 \
+        const TString& cloudId,                                                \
+        const TString& folderId,                                               \
+        const TCritEventParams& keyValues);                                    \
+    const TString GetCriticalEventFor##name();                                 \
+    const TString GetDeprecatedCriticalEventFor##name();                       \
+// BLOCKSTORE_DECLARE_VOLUME_CRITICAL_EVENT_ROUTINE
+
+    BLOCKSTORE_VOLUME_CRITICAL_EVENTS(\
+        BLOCKSTORE_DECLARE_VOLUME_CRITICAL_EVENT_ROUTINE)
+#undef BLOCKSTORE_DECLARE_VOLUME_CRITICAL_EVENT_ROUTINE
 
 }   // namespace NCloud::NBlockStore

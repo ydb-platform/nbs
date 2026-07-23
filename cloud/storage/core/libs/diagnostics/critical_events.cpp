@@ -57,6 +57,7 @@ TString GetImpossibleEventFullName(const TString& name)
 
 TString ReportCriticalEvent(
     const TString& sensorName,
+    const TCritEventLabels& labels,
     const TString& message,
     bool verifyDebug)
 {
@@ -68,17 +69,12 @@ TString ReportCriticalEvent(
             message.c_str());
     }
 
-    if (CriticalEvents) {
-        auto counter = CriticalEvents->GetCounter(
-            sensorName,
-            true);
-        counter->Inc();
-    }
+    ReportCriticalEventWithoutLogging(sensorName, labels);
 
     TStringBuilder fullMessage;
     fullMessage << "CRITICAL_EVENT:" << sensorName;
     if (message) {
-        fullMessage << ":" << message;
+        fullMessage << ": " << message;
     }
 
     if (Log.IsNotNullLog()) {
@@ -93,14 +89,40 @@ TString ReportCriticalEvent(
     return fullMessage;
 }
 
+TString ReportCriticalEvent(
+    const TString& sensorName,
+    const TString& message,
+    bool verifyDebug)
+{
+    return ReportCriticalEvent(sensorName, {}, message, verifyDebug);
+}
+
+void ReportCriticalEventWithoutLogging(
+    const TString& sensorName,
+    const TCritEventLabels& labels)
+{
+    if (!CriticalEvents) {
+        return;
+    }
+
+    auto subgroup = CriticalEvents;
+    for (const auto& label : labels) {
+        subgroup = subgroup->GetSubgroup(label.first, label.second);
+    }
+
+    bool initialized = !!subgroup->FindCounter(sensorName);
+    auto counter = subgroup->GetCounter(sensorName, true);
+    // TODO: will it work for derivative counter with simultaneous init + increment?
+    if (!initialized) {
+        *counter = 0;
+    }
+
+    counter->Inc();
+}
+
 void ReportCriticalEventWithoutLogging(const TString& sensorName)
 {
-    if (CriticalEvents) {
-        auto counter = CriticalEvents->GetCounter(
-            sensorName,
-            true);
-        counter->Inc();
-    }
+    ReportCriticalEventWithoutLogging(sensorName, {});
 }
 
 #define STORAGE_DEFINE_CRITICAL_EVENT_ROUTINE(name)                            \

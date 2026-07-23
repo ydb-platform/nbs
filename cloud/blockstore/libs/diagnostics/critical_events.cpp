@@ -152,4 +152,92 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
     BLOCKSTORE_IMPOSSIBLE_EVENTS(BLOCKSTORE_DEFINE_IMPOSSIBLE_EVENT_ROUTINE)
 #undef BLOCKSTORE_DEFINE_IMPOSSIBLE_EVENT_ROUTINE
 
+#define BLOCKSTORE_DEFINE_VOLUME_CRITICAL_EVENT_ROUTINE(name)                  \
+    TString Report##name(                                                         \
+        const TString& diskId,                                                 \
+        const TString& cloudId,                                                \
+        const TString& folderId,                                               \
+        const TString& message)                                                \
+    {                                                                          \
+        return Report##name(                                                   \
+            diskId,                                                            \
+            cloudId,                                                           \
+            folderId,                                                          \
+            message,                                                           \
+            {});                                                               \
+    }                                                                          \
+    TString Report##name(                                                      \
+        const TString& diskId,                                                 \
+        const TString& cloudId,                                                \
+        const TString& folderId,                                               \
+        const TString& message,                                                \
+        const TCritEventParams& keyValues)                                     \
+    {                                                                          \
+        /* deprecated: keeps existing AppCriticalEvents/ * metrics alive */    \
+        ReportCriticalEvent(                                                   \
+            GetDeprecatedCriticalEventFor##name(), message, false);            \
+                                                                               \
+        auto prefix = TCritEventParams{                                        \
+            {"disk", diskId},                                                  \
+            {"cloud", cloudId},                                                \
+            {"folder", folderId}};                                             \
+                                                                               \
+        TString submsg;                                                        \
+                                                                               \
+        if (message.size() && keyValues.size()) {                              \
+            submsg = ComposeMessageWithSuffix(message, PrintParams(keyValues));\
+        }                                                                      \
+        else if (message.size() && !keyValues.size()) {                        \
+            submsg = message;                                                  \
+        }                                                                      \
+        else if (!message.size() && keyValues.size()) {                        \
+            submsg = PrintParams(keyValues);                                   \
+        }                                                                      \
+        else {                                                                 \
+            /* leave submsg empty */                                           \
+        }                                                                      \
+                                                                               \
+        TString msg =                                                          \
+            !submsg.empty()                                                    \
+                ? ComposeMessageWithSuffix(PrintParams(prefix), submsg)        \
+                : PrintParams(prefix);                                         \
+                                                                               \
+        auto labels = TCritEventLabels{                                        \
+            {"volume", diskId},                                                \
+            {"cloud", cloudId},                                                \
+            {"folder", folderId}};                                             \
+                                                                               \
+        return ReportCriticalEvent(                                            \
+            GetCriticalEventFor##name(),                                       \
+            labels,                                                            \
+            msg,                                                               \
+            false);                                                            \
+    }                                                                          \
+    TString Report##name(                                                      \
+        const TString& diskId,                                                 \
+        const TString& cloudId,                                                \
+        const TString& folderId,                                               \
+        const TCritEventParams& keyValues)                                     \
+    {                                                                          \
+        return Report##name(                                                   \
+            diskId,                                                            \
+            cloudId,                                                           \
+            folderId,                                                          \
+            {},                                                                \
+            keyValues);                                                        \
+    }                                                                          \
+    const TString GetCriticalEventFor##name()                                  \
+    {                                                                          \
+        return "VolumeCriticalEvents/"#name;                                   \
+    }                                                                          \
+    const TString GetDeprecatedCriticalEventFor##name()                        \
+    {                                                                          \
+        return "AppCriticalEvents/"#name;                                      \
+    }                                                                          \
+// BLOCKSTORE_DEFINE_VOLUME_CRITICAL_EVENT_ROUTINE
+
+    BLOCKSTORE_VOLUME_CRITICAL_EVENTS(\
+        BLOCKSTORE_DEFINE_VOLUME_CRITICAL_EVENT_ROUTINE)
+#undef BLOCKSTORE_DEFINE_VOLUME_CRITICAL_EVENT_ROUTINE
+
 }   // namespace NCloud::NBlockStore
