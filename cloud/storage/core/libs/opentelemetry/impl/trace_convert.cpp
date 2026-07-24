@@ -2,8 +2,8 @@
 
 #include "helpers.h"
 
-#include <contrib/libs/opentelemetry-proto/opentelemetry/proto/common/v1/common.pb.h>
-#include <contrib/libs/opentelemetry-proto/opentelemetry/proto/trace/v1/trace.pb.h>
+#include <contrib/proto/opentelemetry/opentelemetry/proto/common/v1/common.pb.h>
+#include <contrib/proto/opentelemetry/opentelemetry/proto/trace/v1/trace.pb.h>
 
 #include <library/cpp/protobuf/util/pb_io.h>
 
