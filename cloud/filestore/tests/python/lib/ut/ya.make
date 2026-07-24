@@ -1,6 +1,6 @@
 PY3TEST()
 
-TEST_SRCS(test.py)
+TEST_SRCS(daemon_config_ut.py)
 
 PEERDIR(
     cloud/filestore/config
