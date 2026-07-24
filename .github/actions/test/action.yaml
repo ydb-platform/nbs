@@ -571,6 +571,7 @@ runs:
             if PYTHONPATH="$PYTHONPATH:$GITHUB_WORKSPACE/.github" \
                 python3 -m scripts.tests.ya_trace_report \
                 --ya-out "$OUT_DIR" \
+                --evlog "$LOG_DIR/${i}/ya_evlog.jsonl" \
                 --output-dir "$ARTIFACTS_DIR/summary/${COMPONENT_DIR}${i}" \
                 --attempt-start-ns "$TRACE_START_TIME_NS" \
                 --attempt-end-ns "$TRACE_END_TIME_NS" \

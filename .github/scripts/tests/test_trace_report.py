@@ -7,7 +7,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from scripts.tests.ya_trace_report import build_ya_spans, load_ya_traces
+from scripts.tests.ya_trace_report import (
+    build_ya_spans,
+    load_ya_evlog,
+    load_ya_traces,
+)
 from scripts.trace_report import (
     Span,
     SpanEvent,
@@ -332,6 +336,131 @@ def test_ya_trace_preserves_chunks_and_anchors_finish_only_tests(
     assert {test.parent_span_id for test in tests.values()} == {
         chunk.span_id for chunk in chunks
     }
+
+
+def test_ya_evlog_adds_phases_and_build_nodes(
+    tmp_path: Path,
+) -> None:
+    trace_path = (
+        tmp_path / "out" / "suite" / "test-results" / "tests" / "ytest.report.trace"
+    )
+    trace_path.parent.mkdir(parents=True)
+    trace_path.write_text(
+        json.dumps(
+            {
+                "name": "chunk-event",
+                "timestamp": 20,
+                "value": {
+                    "chunk_index": 0,
+                    "nchunks": 1,
+                    "metrics": {
+                        "suite_start_timestamp": 18,
+                        "suite_finish_timestamp": 20,
+                    },
+                },
+            }
+        )
+        + "\n"
+    )
+    evlog_path = tmp_path / "ya_evlog.jsonl"
+    evlog_events = [
+        {
+            "namespace": "stages",
+            "event": "stage-finished",
+            "value": {
+                "name": "build_graph_and_tests",
+                "tag": "build_graph_and_tests",
+                "time": [10, 12],
+            },
+        },
+        {
+            "namespace": "stages",
+            "event": "stage-finished",
+            "value": {
+                "name": "dispatch_build",
+                "tag": "dispatch_build",
+                "time": [12, 30],
+            },
+        },
+        {
+            "namespace": "worker_threads",
+            "event": "node-finished",
+            "thread_name": "Worker-001",
+            "value": {
+                "name": ("FromCache(uid$(BUILD_ROOT)/library/cached.a)"),
+                "tag": "restore[AR]",
+                "time": [12.5, 13],
+            },
+        },
+        {
+            "namespace": "worker_threads",
+            "event": "node-finished",
+            "thread_name": "Worker-002",
+            "value": {
+                "name": "Run(uid$(BUILD_ROOT)/suite/main.cpp.o)",
+                "tag": "CC",
+                "time": [13, 17],
+            },
+        },
+        {
+            "namespace": "worker_threads",
+            "event": "node-finished",
+            "value": {
+                "name": "PutInCache(uid)",
+                "tag": "put_in_cache[CC]",
+                "time": [16.9, 17],
+            },
+        },
+        {
+            "namespace": "worker_threads",
+            "event": "node-finished",
+            "value": {
+                "name": ("Run(uid$(BUILD_ROOT)/suite/test-results/tests/meta.json)"),
+                "tag": "TM",
+                "time": [18, 20],
+            },
+        },
+    ]
+    evlog_path.write_text("".join(json.dumps(event) + "\n" for event in evlog_events))
+
+    spans = build_ya_spans(
+        load_ya_traces(tmp_path / "out"),
+        root_start_ns=9_000_000_000,
+        root_end_ns=31_000_000_000,
+        exit_code=0,
+        resource={},
+        evlog=load_ya_evlog(evlog_path),
+    )
+
+    root = spans[0]
+    phases = {
+        span.attributes["ya.stage.name"]: span
+        for span in spans
+        if span.scope_name == "ya.phase"
+    }
+    build = next(span for span in spans if span.scope_name == "ya.build")
+    nodes = [span for span in spans if span.scope_name == "ya.build.node"]
+    chunk = next(span for span in spans if span.scope_name == "ya.chunk")
+
+    assert set(phases) == {"build_graph_and_tests", "dispatch_build"}
+    assert build.parent_span_id == phases["dispatch_build"].span_id
+    assert chunk.parent_span_id == phases["dispatch_build"].span_id
+    assert build.duration_ns == 4_500_000_000
+    assert build.attributes["ya.build.node.count"] == 3
+    assert build.attributes["ya.build.node.cache_store.count"] == 1
+    assert build.attributes["ya.build.first_test_node_offset_seconds"] == 5.5
+    assert len(nodes) == 2
+    assert {span.attributes["ya.build.kind"] for span in nodes} == {
+        "cache_restore",
+        "execute",
+    }
+    cached = next(
+        span for span in nodes if span.attributes["ya.build.kind"] == "cache_restore"
+    )
+    assert cached.attributes["ya.build.cache.hit"] is True
+    assert cached.attributes["ya.build.outputs"] == ["library/cached.a"]
+    assert root.attributes["ya.build.node.count"] == 3
+    assert root.attributes["ya.build.node.span_count"] == 2
 
 
 def test_workflow_trace_adds_queue_job_step_and_imported_ya_spans() -> None:

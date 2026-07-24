@@ -18,6 +18,16 @@ finish-only events use the reported test duration and are marked with
 currently have absolute timestamps, so they remain explicitly named
 `ya.chunk.metric.*` attributes instead of synthetic spans.
 
+The per-attempt ya event log supplies absolute timing for graph generation,
+execution, and report-finalization phase spans. Completed worker nodes become
+searchable build spans for compilation, linking, archive creation, cache
+restores, and result materialization. Test-machine (`TM`) worker nodes are
+excluded, as are other nodes writing under `test-results`, because the
+corresponding chunks and tests already have richer spans.
+The `build operations` span reports both its wall-clock execution envelope and
+the cumulative worker-node time; the latter can be larger because nodes run in
+parallel.
+
 `render-workflow-trace.yaml` runs after the main test workflows complete. It
 combines GitHub workflow, queue, job, and step timings with any available ya
 bundles and stores `workflow-trace.*` in the same S3 report prefix. The

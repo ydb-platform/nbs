@@ -9,7 +9,7 @@ import logging
 import math
 import os
 import re
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
@@ -20,7 +20,15 @@ LOGGER = logging.getLogger(__name__)
 MAX_YA_TRACE_BYTES = 512 * 1024 * 1024
 MAX_YA_TRACE_FILES = 20_000
 MAX_YA_EVENTS = 2_000_000
+MAX_YA_EVLOG_BYTES = 512 * 1024 * 1024
+MAX_YA_EVLOG_LINE_CHARACTERS = 16 * 1024 * 1024
+MAX_YA_EVLOG_EVENTS = 2_000_000
+MAX_BUILD_NODE_SPANS = 50_000
 SAFE_METRIC_RE = re.compile(r"[^a-zA-Z0-9_.-]+")
+BUILD_ROOT_RE = re.compile(r"\$\(BUILD_ROOT\)/([^\s)]+)")
+TAG_WRAPPER_RE = re.compile(
+    r"^(restore|result|put_in_cache|write_through_caches)\[([^\]]+)\]$"
+)
 PASS_STATUSES = {"good", "pass", "passed", "success"}
 ERROR_STATUSES = {
     "crashed",
@@ -30,6 +38,15 @@ ERROR_STATUSES = {
     "internal",
     "not_launched",
     "timeout",
+}
+RENDERED_STAGE_NAMES = {
+    "get-tools": "prepare tools",
+    "build_graph_and_tests": "build graph",
+    "dispatch_build": "execute graph",
+    "cache_test_statuses": "cache test statuses",
+    "statistics": "collect statistics",
+    "finalize-reports": "finalize reports",
+    "dump_results": "dump results",
 }
 
 
@@ -47,6 +64,21 @@ class YaTraceFile:
     suite: str
     result_folder: str
     events: list[YaEvent]
+
+
+@dataclass
+class YaEvlogRecord:
+    name: str
+    tag: str
+    start_ns: int
+    end_ns: int
+    thread_name: str = ""
+
+
+@dataclass
+class YaEvlog:
+    stages: list[YaEvlogRecord]
+    nodes: list[YaEvlogRecord]
 
 
 def _timestamp_ns(value: Any) -> int | None:
@@ -139,6 +171,75 @@ def load_ya_traces(
             )
         )
     return traces
+
+
+def _evlog_time_range(value: Any) -> tuple[int, int] | None:
+    if not isinstance(value, list) or len(value) != 2:
+        return None
+    start_ns = _timestamp_ns(value[0])
+    end_ns = _timestamp_ns(value[1])
+    if start_ns is None or end_ns is None or end_ns < start_ns:
+        return None
+    return start_ns, end_ns
+
+
+def load_ya_evlog(path: Path | None) -> YaEvlog:
+    result = YaEvlog(stages=[], nodes=[])
+    if path is None:
+        return result
+    if not path.is_file():
+        LOGGER.warning("Ya event log does not exist: %s", path)
+        return result
+    if path.stat().st_size > MAX_YA_EVLOG_BYTES:
+        raise ValueError(f"Ya event log exceeds {MAX_YA_EVLOG_BYTES} bytes")
+
+    event_count = 0
+    with path.open(encoding="utf-8", errors="replace") as stream:
+        line_number = 0
+        while True:
+            line = stream.readline(MAX_YA_EVLOG_LINE_CHARACTERS + 1)
+            if not line:
+                break
+            line_number += 1
+            if len(line) > MAX_YA_EVLOG_LINE_CHARACTERS:
+                raise ValueError(
+                    "Ya event log line exceeds "
+                    f"{MAX_YA_EVLOG_LINE_CHARACTERS} characters "
+                    f"in {path}:{line_number}"
+                )
+            if not line.strip():
+                continue
+            event_count += 1
+            if event_count > MAX_YA_EVLOG_EVENTS:
+                raise ValueError(f"Ya event log exceeds {MAX_YA_EVLOG_EVENTS} events")
+            try:
+                raw = json.loads(line)
+            except json.JSONDecodeError as error:
+                LOGGER.warning("Skipping %s:%s: %s", path, line_number, error)
+                continue
+            namespace = raw.get("namespace")
+            event = raw.get("event")
+            if (namespace, event) not in {
+                ("stages", "stage-finished"),
+                ("worker_threads", "node-finished"),
+            } or not isinstance(raw.get("value"), Mapping):
+                continue
+            value = raw["value"]
+            time_range = _evlog_time_range(value.get("time"))
+            if time_range is None:
+                continue
+            record = YaEvlogRecord(
+                name=str(value.get("name", "unknown")),
+                tag=str(value.get("tag", "")),
+                start_ns=time_range[0],
+                end_ns=time_range[1],
+                thread_name=str(raw.get("thread_name", "")),
+            )
+            if namespace == "stages":
+                result.stages.append(record)
+            else:
+                result.nodes.append(record)
+    return result
 
 
 def _metric_name(name: object) -> str:
@@ -471,6 +572,258 @@ def resource_attributes(args: argparse.Namespace) -> dict[str, Any]:
     return {key: value for key, value in values.items() if value not in {"", None}}
 
 
+def _clipped_record(
+    record: YaEvlogRecord,
+    start_ns: int,
+    end_ns: int,
+) -> YaEvlogRecord | None:
+    clipped_start = max(start_ns, record.start_ns)
+    clipped_end = min(end_ns, record.end_ns)
+    if clipped_end <= clipped_start:
+        return None
+    return YaEvlogRecord(
+        name=record.name,
+        tag=record.tag,
+        start_ns=clipped_start,
+        end_ns=clipped_end,
+        thread_name=record.thread_name,
+    )
+
+
+def _node_kind(record: YaEvlogRecord) -> tuple[str, str]:
+    if "/test-results/" in record.name:
+        match = TAG_WRAPPER_RE.fullmatch(record.tag)
+        return "test", match.group(2) if match else record.tag
+    match = TAG_WRAPPER_RE.fullmatch(record.tag)
+    if match:
+        wrapper, tool = match.groups()
+        if tool == "TM":
+            return "test", tool
+        return {
+            "restore": "cache_restore",
+            "result": "materialize",
+            "put_in_cache": "cache_store",
+            "write_through_caches": "cache_store",
+        }[wrapper], tool
+    if record.tag == "TM":
+        return "test", record.tag
+    if record.name.startswith("Run("):
+        return "execute", record.tag
+    return "orchestration", record.tag
+
+
+def _node_outputs(name: str) -> list[str]:
+    return list(dict.fromkeys(BUILD_ROOT_RE.findall(name)))[:16]
+
+
+def _node_span_name(
+    record: YaEvlogRecord,
+    kind: str,
+    tool: str,
+) -> str:
+    output = next(iter(_node_outputs(record.name)), "")
+    labels = {
+        "cache_restore": "cache restore",
+        "materialize": "materialize",
+        "cache_store": "cache store",
+        "execute": tool or "execute",
+        "orchestration": tool or record.name,
+    }
+    label = labels[kind]
+    if kind in {"cache_restore", "materialize", "cache_store"} and tool:
+        label += f" [{tool}]"
+    return f"{label}: {output}" if output else label
+
+
+def _build_evlog_spans(
+    evlog: YaEvlog,
+    *,
+    trace_id: str,
+    root_span_id: str,
+    root_start_ns: int,
+    root_end_ns: int,
+    resource: Mapping[str, Any],
+) -> tuple[list[Span], str, dict[str, Any]]:
+    spans: list[Span] = []
+    dispatch_span_id = ""
+    dispatch_bounds: tuple[int, int] | None = None
+
+    stages = []
+    for record in evlog.stages:
+        if record.name not in RENDERED_STAGE_NAMES:
+            continue
+        clipped = _clipped_record(record, root_start_ns, root_end_ns)
+        if clipped is not None:
+            stages.append(clipped)
+    stages.sort(key=lambda record: (record.start_ns, record.end_ns, record.name))
+
+    for index, record in enumerate(stages):
+        span_id = stable_hex_id(
+            trace_id,
+            "ya.stage",
+            record.name,
+            record.start_ns,
+            index,
+            length=16,
+        )
+        if record.name == "dispatch_build":
+            dispatch_span_id = span_id
+            dispatch_bounds = (record.start_ns, record.end_ns)
+        spans.append(
+            Span(
+                trace_id=trace_id,
+                span_id=span_id,
+                parent_span_id=root_span_id,
+                name=f"ya phase: {RENDERED_STAGE_NAMES[record.name]}",
+                start_ns=record.start_ns,
+                end_ns=record.end_ns,
+                attributes={
+                    "ya.stage.name": record.name,
+                    "ya.stage.tag": record.tag,
+                },
+                resource_attributes=dict(resource),
+                scope_name="ya.phase",
+            )
+        )
+
+    clipped_nodes = [
+        clipped
+        for record in evlog.nodes
+        if (
+            clipped := _clipped_record(
+                record,
+                dispatch_bounds[0] if dispatch_bounds else root_start_ns,
+                dispatch_bounds[1] if dispatch_bounds else root_end_ns,
+            )
+        )
+        is not None
+    ]
+    classified = [(record, *_node_kind(record)) for record in clipped_nodes]
+    unbounded_build_records = [
+        (record, kind, tool) for record, kind, tool in classified if kind != "test"
+    ]
+    test_starts = [record.start_ns for record, kind, _ in classified if kind == "test"]
+    metadata: dict[str, Any] = {
+        "ya.phase.count": len(stages),
+        "ya.build.node.count": 0,
+    }
+    timed_records = [
+        (record, kind, tool)
+        for record, kind, tool in unbounded_build_records
+        if kind in {"cache_restore", "execute", "materialize"}
+    ]
+    if not timed_records:
+        return spans, dispatch_span_id, metadata
+
+    build_start_ns = min(record.start_ns for record, _, _ in timed_records)
+    build_end_ns = max(record.end_ns for record, _, _ in timed_records)
+    build_records = []
+    for record, kind, tool in unbounded_build_records:
+        clipped = _clipped_record(record, build_start_ns, build_end_ns)
+        if clipped is not None:
+            build_records.append((clipped, kind, tool))
+    metadata["ya.build.node.count"] = len(build_records)
+    counts = Counter(kind for _, kind, _ in build_records)
+    cumulative_ns = sum(
+        record.end_ns - record.start_ns for record, _, _ in build_records
+    )
+    build_span_id = stable_hex_id(
+        trace_id,
+        "ya.build",
+        build_start_ns,
+        build_end_ns,
+        length=16,
+    )
+    attributes: dict[str, Any] = {
+        "ya.build.wall_time.kind": "worker-node-execution-envelope",
+        "ya.build.node.count": len(build_records),
+        "ya.build.cumulative_node_seconds": cumulative_ns / 1_000_000_000,
+    }
+    for kind, count in sorted(counts.items()):
+        attributes[f"ya.build.node.{kind}.count"] = count
+    if test_starts:
+        attributes["ya.build.first_test_node_offset_seconds"] = (
+            max(0, min(test_starts) - build_start_ns) / 1_000_000_000
+        )
+
+    candidates = [
+        (record, kind, tool)
+        for record, kind, tool in build_records
+        if kind != "cache_store"
+    ]
+    dropped = max(0, len(candidates) - MAX_BUILD_NODE_SPANS)
+    if dropped:
+        candidates = sorted(
+            candidates,
+            key=lambda item: item[0].end_ns - item[0].start_ns,
+            reverse=True,
+        )[:MAX_BUILD_NODE_SPANS]
+        attributes["ya.build.node_spans.dropped"] = dropped
+    candidates.sort(
+        key=lambda item: (
+            item[0].start_ns,
+            item[0].end_ns,
+            item[0].name,
+            item[0].tag,
+        )
+    )
+    attributes["ya.build.node_spans.rendered"] = len(candidates)
+    spans.append(
+        Span(
+            trace_id=trace_id,
+            span_id=build_span_id,
+            parent_span_id=dispatch_span_id or root_span_id,
+            name="build operations",
+            start_ns=build_start_ns,
+            end_ns=build_end_ns,
+            attributes=attributes,
+            resource_attributes=dict(resource),
+            scope_name="ya.build",
+        )
+    )
+
+    for index, (record, kind, tool) in enumerate(candidates):
+        outputs = _node_outputs(record.name)
+        node_attributes: dict[str, Any] = {
+            "ya.build.kind": kind,
+            "ya.build.tag": record.tag,
+            "ya.build.node.name": record.name,
+        }
+        if tool:
+            node_attributes["ya.build.tool"] = tool
+        if outputs:
+            node_attributes["ya.build.outputs"] = outputs
+        if record.thread_name:
+            node_attributes["ya.worker.thread"] = record.thread_name
+        if kind == "cache_restore":
+            node_attributes["ya.build.cache.hit"] = True
+        spans.append(
+            Span(
+                trace_id=trace_id,
+                span_id=stable_hex_id(
+                    trace_id,
+                    "ya.build.node",
+                    record.name,
+                    record.tag,
+                    record.start_ns,
+                    index,
+                    length=16,
+                ),
+                parent_span_id=build_span_id,
+                name=_node_span_name(record, kind, tool),
+                start_ns=record.start_ns,
+                end_ns=record.end_ns,
+                attributes=node_attributes,
+                resource_attributes=dict(resource),
+                scope_name="ya.build.node",
+            )
+        )
+
+    metadata["ya.build.node.span_count"] = len(candidates)
+    metadata["ya.build.node.span_dropped_count"] = dropped
+    return spans, dispatch_span_id, metadata
+
+
 def build_ya_spans(
     traces: Sequence[YaTraceFile],
     *,
@@ -479,6 +832,7 @@ def build_ya_spans(
     exit_code: int,
     result_code: int | None = None,
     resource: Mapping[str, Any],
+    evlog: YaEvlog | None = None,
 ) -> list[Span]:
     effective_result_code = exit_code if result_code is None else result_code
     trace_id = stable_hex_id(
@@ -588,12 +942,31 @@ def build_ya_spans(
             for span in test_spans:
                 span.resource_attributes = dict(resource)
             spans.extend(test_spans)
+    if evlog is not None:
+        evlog_spans, dispatch_span_id, metadata = _build_evlog_spans(
+            evlog,
+            trace_id=trace_id,
+            root_span_id=root_span_id,
+            root_start_ns=root_start_ns,
+            root_end_ns=root_end_ns,
+            resource=resource,
+        )
+        root.attributes.update(metadata)
+        if dispatch_span_id:
+            for span in spans:
+                if (
+                    span.scope_name == "ya.chunk"
+                    and span.parent_span_id == root_span_id
+                ):
+                    span.parent_span_id = dispatch_span_id
+        spans[1:1] = evlog_spans
     return spans
 
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--ya-out", type=Path, required=True)
+    parser.add_argument("--evlog", type=Path)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--attempt-start-ns", type=int, required=True)
     parser.add_argument("--attempt-end-ns", type=int, required=True)
@@ -625,6 +998,7 @@ def main() -> None:
         exit_code=args.exit_code,
         result_code=args.result_code,
         resource=resource,
+        evlog=load_ya_evlog(args.evlog),
     )
     title_component = args.component or "all"
     manifest = write_trace_bundle(
