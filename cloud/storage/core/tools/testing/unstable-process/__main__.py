@@ -19,10 +19,10 @@ logger = logging.getLogger(__name__)
 
 
 def sighandler(sig, frame):
-    if process is not None:
+    if process:
         process.terminate()
 
-    if reservation is not None:
+    if reservation:
         reservation.release()
 
     sys.exit(0)
@@ -113,14 +113,14 @@ def main():
     global process
     global reservation
 
-    if len(args.reserve_port) != 0:
+    if args.reserve_port:
         reservation = PortReservation(args.reserve_port)
 
     while True:
         now = datetime.datetime.now()
         deadline = start_ts + interval if start_ts is not None else None
         if deadline is None or now >= deadline:
-            if process is not None:
+            if process:
                 while args.allow_restart_flag is not None and not os.path.exists(args.allow_restart_flag):
                     logging.debug("waiting for the allow restart flag")
                     time.sleep(1)
@@ -130,7 +130,7 @@ def main():
                 # so the ports are never observable as both unlocked and unbound.
                 #
                 # Needed to fix a race with unreserved ports (see issue #6518 for details)
-                if reservation is not None:
+                if reservation:
                     reservation.reserve_ports()
 
                 if should_kill_process():
@@ -147,7 +147,7 @@ def main():
                                             check_timeout=args.terminate_check_timeout)
 
             def start_process():
-                if process is not None and args.downtime > 0:
+                if process and args.downtime > 0:
                     logging.info(f'waiting {args.downtime} seconds before starting process')
                     time.sleep(args.downtime)
 
