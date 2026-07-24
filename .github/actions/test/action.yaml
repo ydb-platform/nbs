@@ -293,6 +293,7 @@ runs:
         # will kill VM with runner
         echo "failed_tests=yes" >> $GITHUB_OUTPUT
         while [ "$RETRIES" -gt 0 ]; do
+            TRACE_START_TIME_NS=$(date +%s%N)
             TEST_START_TIME=$(date +%s)
             echo TEST_START_TIME=$TEST_START_TIME | tee -a "$GITHUB_ENV"
             RETRIES=$((RETRIES - 1))
@@ -394,6 +395,7 @@ runs:
             esac
 
             touch "$LOG_DIR/${i}_build_finished"
+            TRACE_END_TIME_NS=$(date +%s%N)
             TEST_END_TIME=$(date +%s)
             echo TEST_END_TIME=$TEST_END_TIME | tee -a "$GITHUB_ENV"
 
@@ -560,6 +562,32 @@ runs:
                 fi
             fi
 
+            TRACE_REPORT_URL="$S3_WEBSITE_PREFIX/summary/${COMPONENT_DIR}${i}/trace.html"
+            TRACE_OTLP_URL="$S3_WEBSITE_PREFIX/summary/${COMPONENT_DIR}${i}/trace.otlp.jsonl.gz"
+            if [ -n "${S3_REPORTS_WEBSITE_PREFIX:-}" ]; then
+                TRACE_REPORT_URL="$S3_REPORTS_WEBSITE_PREFIX/${COMPONENT_DIR}${i}/trace.html"
+                TRACE_OTLP_URL="$S3_REPORTS_WEBSITE_PREFIX/${COMPONENT_DIR}${i}/trace.otlp.jsonl.gz"
+            fi
+            if PYTHONPATH="$PYTHONPATH:$GITHUB_WORKSPACE/.github" \
+                python3 -m scripts.tests.ya_trace_report \
+                --ya-out "$OUT_DIR" \
+                --output-dir "$ARTIFACTS_DIR/summary/${COMPONENT_DIR}${i}" \
+                --attempt-start-ns "$TRACE_START_TIME_NS" \
+                --attempt-end-ns "$TRACE_END_TIME_NS" \
+                --exit-code "$RC" \
+                --result-code "$FAIL_CHECKER_RC" \
+                --component "${COMPONENT_DIR%/}" \
+                --build-preset "$BUILD_PRESET" \
+                --test-target "$TEST_TARGET" \
+                --test-type "$TEST_TYPE" \
+                --test-size "$TEST_SIZE" \
+                --retry "$i"; then
+                TRACE_REPORT_AVAILABLE=1
+            else
+                TRACE_REPORT_AVAILABLE=0
+                echo "::warning title=Trace report::Unable to generate the ya OTLP trace bundle"
+            fi
+
             export SUMMARY_OUT_ENV_PATH=$(mktemp -p /home/github)
             PYTHONPATH="$PYTHONPATH:$GITHUB_WORKSPACE/.github" \
                 python3 -m scripts.tests.generate_summary \
@@ -580,6 +608,12 @@ runs:
                     echo "[Extracted build errors]($BUILD_ERROR_LOG_URL_FOR_ITERATION)"
                 } >> "$SUMMARY_OUT_ENV_PATH"
             fi
+            if [ "$TRACE_REPORT_AVAILABLE" -eq 1 ]; then
+                {
+                    echo
+                    echo "[Execution trace]($TRACE_REPORT_URL) ([raw OTLP JSONL]($TRACE_OTLP_URL))"
+                } >> "$SUMMARY_OUT_ENV_PATH"
+            fi
             cat $SUMMARY_OUT_ENV_PATH | tee -a $GITHUB_STEP_SUMMARY
             echo "::endgroup::"
 
@@ -596,10 +630,16 @@ runs:
 
             echo "::group::s3-sync"
             aws s3 sync --acl public-read --follow-symlinks --no-progress "$ARTIFACTS_DIR/" "$S3_BUCKET_PATH/"
-            if [ -n "${S3_REPORTS_BUCKET_PATH:-}" ] && [ -f "$ARTIFACTS_DIR/summary/${COMPONENT_DIR}${i}/summary.json" ]; then
-                aws s3 cp --acl public-read --follow-symlinks --no-progress \
-                    "$ARTIFACTS_DIR/summary/${COMPONENT_DIR}${i}/summary.json" \
-                    "$S3_REPORTS_BUCKET_PATH/${COMPONENT_DIR}${i}/summary.json"
+            REPORT_DIR="$ARTIFACTS_DIR/summary/${COMPONENT_DIR}${i}"
+            if [ -n "${S3_REPORTS_BUCKET_PATH:-}" ] && [ -f "$REPORT_DIR/summary.json" ]; then
+                aws s3 sync --acl public-read --follow-symlinks --no-progress \
+                    --exclude "*" \
+                    --include "summary.json" \
+                    --include "trace.html" \
+                    --include "trace.manifest.json" \
+                    --include "trace.otlp.jsonl.gz" \
+                    "$REPORT_DIR/" \
+                    "$S3_REPORTS_BUCKET_PATH/${COMPONENT_DIR}${i}/"
             fi
             touch "$LOG_DIR/${i}_artifacts_synced"
             echo "::endgroup::"

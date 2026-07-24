@@ -4,6 +4,33 @@ For validating syntax use action-validator
 find .github/workflows .github/actions -type f \( -iname \*.yaml -o -iname \*.yml \) -print | while read path; do echo Checking $path; action-validator --verbose $path; done
 ```
 
+## Static execution traces
+
+Each `ya make` test attempt writes these files beside `summary.json`:
+
+- `trace.otlp.jsonl.gz`: canonical OTLP/JSON Lines spans;
+- `trace.manifest.json`: bundle metadata and span counts;
+- `trace.html`: a self-contained, searchable waterfall.
+
+Observed `subtest-started`/`subtest-finished` events become test spans. Older
+finish-only events use the reported test duration and are marked with
+`test.timing.inferred=true`. Ya recipe and runner phase durations do not
+currently have absolute timestamps, so they remain explicitly named
+`ya.chunk.metric.*` attributes instead of synthetic spans.
+
+`render-workflow-trace.yaml` runs after the main test workflows complete. It
+combines GitHub workflow, queue, job, and step timings with any available ya
+bundles and stores `workflow-trace.*` in the same S3 report prefix. The
+`workflow_run` job always checks out the default branch and bounds both S3
+downloads and parsed OTLP data before rendering PR-produced content.
+
+To render a saved OTLP bundle locally:
+
+```bash
+PYTHONPATH=.github python3 -m scripts.trace_report \
+  trace.otlp.jsonl.gz -o trace.html
+```
+
 You can use [act](https://github.com/nektos/act) as a debugging tool for pipelines it acts as a GitHub runner of some sort, using docker.
 
 It is not 100% replacement for GitHub actions altogether (i.e. you can't run self-hosted GitHub runners), but you can use it to debug some of your changes before committing
