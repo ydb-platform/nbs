@@ -101,7 +101,7 @@ TOptionsYdbBase::TOptionsYdbBase()
         .StoreResult(&ActorSystemAvailableCpuCoresPercentage);
 
     Opts.AddLongOption("bs-file")
-        .OptionalArgument("FILE")
+        .RequiredArgument("FILE")
         .StoreResult(&BlobStorageConfig);
 }
 
