@@ -10,6 +10,7 @@ PEERDIR(
 
     library/python/testing/yatest_common
 
+    contrib/python/protobuf
     contrib/ydb/tests/library
 
     contrib/python/requests/py3

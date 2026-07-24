@@ -12,6 +12,7 @@ from contrib.ydb.core.protos.config_pb2 import (
     TLogConfig,
     TActorSystemConfig,
     TDynamicNameserviceConfig,
+    TBlobStorageConfig,
 )
 from contrib.ydb.core.protos.auth_pb2 import TAuthConfig
 import contrib.ydb.tests.library.common.yatest_common as yatest_common
@@ -64,6 +65,7 @@ class FilestoreDaemonConfigGenerator:
         access_service_type=AccessService,
         ic_port=None,
         trace_sampling_rate=None,
+        bs_failure_probability=None,
     ):
         self.__binary_path = binary_path
         self.__working_dir, self.__configs_dir = get_directories()
@@ -77,6 +79,7 @@ class FilestoreDaemonConfigGenerator:
         self.__storage_config_file_path = self.__config_file_path(storage_config_file)
         self.__storage_config = storage_config or TStorageConfig()
         self.__diag_config = diag_config or TDiagnosticsConfig()
+        self.__bs_failure_probability = bs_failure_probability
 
         self.__profile_log_path = self.__profile_file_path(profile_log)
 
@@ -269,6 +272,15 @@ class FilestoreDaemonConfigGenerator:
         auth_config.AccessServiceType = self.__access_service_type.access_service_type
         return auth_config
 
+    def __generate_bs_txt(self, bs_failure_probability):
+        if bs_failure_probability is not None:
+            blob_storage_config = TBlobStorageConfig()
+            failure_injection_config = (
+                blob_storage_config.ServiceSet.FailureInjectionConfig
+            )
+            failure_injection_config.FailureProbability = bs_failure_probability
+            return blob_storage_config
+
     def __config_file_path(self, name):
         return os.path.join(self.__configs_dir, name)
 
@@ -277,6 +289,7 @@ class FilestoreDaemonConfigGenerator:
 
     def __write_configs(self):
         for name, proto in self.__proto_configs.items():
+            if not proto: continue
             path = self.__config_file_path(name)
             with open(path, "w") as config_file:
                 config_file.write(MessageToString(proto))
@@ -297,6 +310,7 @@ class FilestoreDaemonConfigGenerator:
                     "diag.txt": self.__generate_diag_txt(),
                     "dyn_ns.txt": self.__generate_dyn_ns_txt(),
                     "auth.txt": self.__generate_auth_txt(self.__access_service_port),
+                    "bs.txt": self.__generate_bs_txt(self.__bs_failure_probability),
                 }
             )
         self.__write_configs()
@@ -354,6 +368,12 @@ class FilestoreDaemonConfigGenerator:
                     self.__config_file_path("auth.txt"),
                 ]
 
+            if self.__bs_failure_probability is not None:
+                command += [
+                    "--bs-file",
+                    self.__config_file_path("bs.txt"),
+                ]
+
         if self.__restart_interval:
             launcher_path = common.binary_path(
                 "cloud/storage/core/tools/testing/unstable-process/storage-unstable-process"
@@ -405,6 +425,7 @@ class FilestoreServerConfigGenerator(FilestoreDaemonConfigGenerator):
         access_service_type=AccessService,
         ic_port=None,
         trace_sampling_rate=None,
+        bs_failure_probability=None,
     ):
         super().__init__(
             binary_path,
@@ -426,6 +447,7 @@ class FilestoreServerConfigGenerator(FilestoreDaemonConfigGenerator):
             access_service_type=access_service_type,
             ic_port=ic_port,
             trace_sampling_rate=trace_sampling_rate,
+            bs_failure_probability=bs_failure_probability,
         )
 
 
@@ -447,6 +469,7 @@ class FilestoreVhostConfigGenerator(FilestoreDaemonConfigGenerator):
         access_service_type=AccessService,
         secure=False,
         trace_sampling_rate=None,
+        bs_failure_probability=None,
     ):
         super().__init__(
             binary_path,
@@ -467,6 +490,7 @@ class FilestoreVhostConfigGenerator(FilestoreDaemonConfigGenerator):
             access_service_type=access_service_type,
             secure=secure,
             trace_sampling_rate=trace_sampling_rate,
+            bs_failure_probability=bs_failure_probability,
         )
 
         self.__local_service_port = self._port_manager.get_port()
