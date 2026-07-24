@@ -182,6 +182,7 @@ def _test_attributes(
     subtest: str,
     *,
     inferred: bool,
+    timing_source: str = "",
     incomplete: bool = False,
 ) -> dict[str, Any]:
     status, _ = _status(event.value)
@@ -193,6 +194,8 @@ def _test_attributes(
     }
     if inferred:
         attributes["test.timing.inferred"] = True
+    if timing_source:
+        attributes["test.timing.source"] = timing_source
     if incomplete:
         attributes["test.incomplete"] = True
     attributes.update(_metric_attributes(event.value.get("metrics")))
@@ -206,6 +209,7 @@ def _test_spans(
     chunk_end_ns: int,
     events: Iterable[YaEvent],
     identity: str,
+    inferred_test_start_ns: int | None = None,
 ) -> list[Span]:
     grouped: dict[tuple[str, str], list[YaEvent]] = defaultdict(list)
     for event in events:
@@ -264,6 +268,7 @@ def _test_spans(
                     subtest,
                     inferred=start.timestamp_ns is None
                     or finish.timestamp_ns is None,
+                    timing_source="subtest-events",
                 )
                 source_order = start.order
             else:
@@ -276,6 +281,7 @@ def _test_spans(
                     test_class,
                     subtest,
                     inferred=start.timestamp_ns is None,
+                    timing_source="subtest-start-and-chunk-end",
                     incomplete=True,
                 )
                 source_order = start.order
@@ -306,9 +312,21 @@ def _test_spans(
             if finish_index in used_finishes:
                 continue
             duration_ns = _seconds_ns(finish.value.get("time"))
-            end_ns = finish.timestamp_ns or chunk_end_ns
-            start_ns = max(chunk_start_ns, end_ns - duration_ns)
-            end_ns = max(start_ns, min(end_ns, chunk_end_ns))
+            if inferred_test_start_ns is not None and len(grouped) == 1:
+                start_ns = max(
+                    chunk_start_ns,
+                    min(inferred_test_start_ns, chunk_end_ns),
+                )
+                end_ns = max(
+                    start_ns,
+                    min(start_ns + duration_ns, chunk_end_ns),
+                )
+                timing_source = "chunk-delay-and-test-duration"
+            else:
+                end_ns = finish.timestamp_ns or chunk_end_ns
+                start_ns = max(chunk_start_ns, end_ns - duration_ns)
+                end_ns = max(start_ns, min(end_ns, chunk_end_ns))
+                timing_source = "finish-event-and-test-duration"
             status, status_code = _status(finish.value)
             result.append(
                 Span(
@@ -330,6 +348,7 @@ def _test_spans(
                         test_class,
                         subtest,
                         inferred=True,
+                        timing_source=timing_source,
                     ),
                     status_code=status_code,
                     status_message=status if status_code == 2 else "",
@@ -339,28 +358,83 @@ def _test_spans(
     return result
 
 
+def _chunk_key(value: Mapping[str, Any]) -> tuple[int, int] | None:
+    try:
+        chunk_index = int(value["chunk_index"])
+        chunks_total = int(value["nchunks"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if chunk_index < 0 or chunks_total < 1 or chunk_index >= chunks_total:
+        return None
+    return chunk_index, chunks_total
+
+
 def _chunk_bounds(
-    trace: YaTraceFile, root_start_ns: int, root_end_ns: int
+    chunk_event: YaEvent | None,
+    events: Sequence[YaEvent],
+    root_start_ns: int,
+    root_end_ns: int,
 ) -> tuple[int, int, dict[str, Any]]:
-    chunk_events = [event for event in trace.events if event.name == "chunk-event"]
-    chunk_value = chunk_events[-1].value if chunk_events else {}
+    chunk_value = chunk_event.value if chunk_event is not None else {}
     metrics = chunk_value.get("metrics", {})
     start_ns = None
     end_ns = None
+    wall_time_ns = 0
     if isinstance(metrics, Mapping):
         start_ns = _timestamp_ns(metrics.get("suite_start_timestamp"))
         end_ns = _timestamp_ns(metrics.get("suite_finish_timestamp"))
+        wall_time_ns = _seconds_ns(metrics.get("wall_time"))
+        if end_ns is not None and wall_time_ns:
+            start_ns = end_ns - wall_time_ns
+        elif start_ns is not None and wall_time_ns:
+            end_ns = start_ns + wall_time_ns
 
     timestamps = [
-        event.timestamp_ns for event in trace.events if event.timestamp_ns is not None
+        event.timestamp_ns for event in events if event.timestamp_ns is not None
     ]
     start_ns = start_ns or (min(timestamps) if timestamps else root_start_ns)
-    end_ns = end_ns or (
-        max(timestamps) if chunk_events and timestamps else root_end_ns
-    )
+    if end_ns is None:
+        if chunk_event is not None and chunk_event.timestamp_ns is not None:
+            end_ns = chunk_event.timestamp_ns
+        elif chunk_event is not None and timestamps:
+            end_ns = max(timestamps)
+        else:
+            end_ns = root_end_ns
     start_ns = max(root_start_ns, min(start_ns, root_end_ns))
     end_ns = max(start_ns, min(end_ns, root_end_ns))
     return start_ns, end_ns, chunk_value
+
+
+def _chunk_records(
+    trace: YaTraceFile,
+) -> list[tuple[YaEvent | None, list[YaEvent]]]:
+    chunk_events = [event for event in trace.events if event.name == "chunk-event"]
+    test_events = [
+        event
+        for event in trace.events
+        if event.name in {"subtest-started", "subtest-finished"}
+    ]
+    if not chunk_events:
+        return [(None, test_events)]
+    if len(chunk_events) == 1:
+        return [(chunk_events[0], test_events)]
+
+    records = []
+    assigned_orders = set()
+    for chunk_event in chunk_events:
+        key = _chunk_key(chunk_event.value)
+        matching = [
+            event for event in test_events if _chunk_key(event.value) == key
+        ]
+        assigned_orders.update(event.order for event in matching)
+        records.append((chunk_event, matching))
+
+    unassigned = [
+        event for event in test_events if event.order not in assigned_orders
+    ]
+    if unassigned:
+        records.append((None, unassigned))
+    return records
 
 
 def resource_attributes(args: argparse.Namespace) -> dict[str, Any]:
@@ -428,6 +502,7 @@ def build_ya_spans(
             "process.exit.code": exit_code,
             "ci.result.code": effective_result_code,
             "ya.trace.file_count": len(traces),
+            "ya.chunk.count": sum(len(_chunk_records(trace)) for trace in traces),
         },
         status_code=1 if effective_result_code == 0 else 2,
         status_message=(
@@ -441,46 +516,78 @@ def build_ya_spans(
     spans = [root]
 
     for trace_index, trace in enumerate(traces):
-        chunk_start_ns, chunk_end_ns, chunk_value = _chunk_bounds(
-            trace, root_start_ns, root_end_ns
-        )
-        identity = f"{trace.suite}:{trace.result_folder}:{trace_index}"
-        chunk_span_id = stable_hex_id(trace_id, identity, length=16)
-        attributes = {
-            "test.suite": trace.suite,
-            "ya.test_results.folder": trace.result_folder,
-        }
-        for field_name in ("chunk_index", "nchunks", "status"):
-            if field_name in chunk_value:
-                attributes[f"ya.chunk.{field_name}"] = chunk_value[field_name]
-        attributes.update(_metric_attributes(chunk_value.get("metrics")))
-        chunk_status = str(chunk_value.get("status", "")).lower()
-        chunk_status_code = 2 if chunk_status in ERROR_STATUSES else 0
-        chunk = Span(
-            trace_id=trace_id,
-            span_id=chunk_span_id,
-            parent_span_id=root_span_id,
-            name=f"{trace.suite} [{trace.result_folder}]",
-            start_ns=chunk_start_ns,
-            end_ns=chunk_end_ns,
-            attributes=attributes,
-            status_code=chunk_status_code,
-            status_message=chunk_status if chunk_status_code == 2 else "",
-            resource_attributes=dict(resource),
-            scope_name="ya.chunk",
-        )
-        spans.append(chunk)
-        test_spans = _test_spans(
-            trace_id,
-            chunk_span_id,
-            chunk_start_ns,
-            chunk_end_ns,
-            trace.events,
-            identity,
-        )
-        for span in test_spans:
-            span.resource_attributes = dict(resource)
-        spans.extend(test_spans)
+        for record_index, (chunk_event, chunk_events) in enumerate(
+            _chunk_records(trace)
+        ):
+            chunk_start_ns, chunk_end_ns, chunk_value = _chunk_bounds(
+                chunk_event,
+                chunk_events,
+                root_start_ns,
+                root_end_ns,
+            )
+            chunk_key = _chunk_key(chunk_value)
+            identity = (
+                f"{trace.suite}:{trace.result_folder}:{trace_index}:"
+                f"{chunk_key or record_index}"
+            )
+            chunk_span_id = stable_hex_id(trace_id, identity, length=16)
+            attributes = {
+                "test.suite": trace.suite,
+                "ya.test_results.folder": trace.result_folder,
+            }
+            for field_name in ("chunk_index", "nchunks", "status"):
+                if field_name in chunk_value:
+                    attributes[f"ya.chunk.{field_name}"] = chunk_value[
+                        field_name
+                    ]
+            attributes.update(_metric_attributes(chunk_value.get("metrics")))
+            chunk_status = str(chunk_value.get("status", "")).lower()
+            chunk_status_code = 2 if chunk_status in ERROR_STATUSES else 0
+            if chunk_key is None:
+                chunk_label = f"record {record_index + 1}"
+            else:
+                chunk_label = f"chunk {chunk_key[0] + 1}/{chunk_key[1]}"
+            chunk = Span(
+                trace_id=trace_id,
+                span_id=chunk_span_id,
+                parent_span_id=root_span_id,
+                name=(
+                    f"{trace.suite} "
+                    f"[{trace.result_folder} {chunk_label}]"
+                ),
+                start_ns=chunk_start_ns,
+                end_ns=chunk_end_ns,
+                attributes=attributes,
+                status_code=chunk_status_code,
+                status_message=chunk_status if chunk_status_code == 2 else "",
+                resource_attributes=dict(resource),
+                scope_name="ya.chunk",
+            )
+            metrics = chunk_value.get("metrics", {})
+            test_start_ns = None
+            if isinstance(metrics, Mapping):
+                delay_ns = _seconds_ns(
+                    metrics.get("suite_delay_until_first_test_secs")
+                )
+                if delay_ns:
+                    test_start_ns = chunk_start_ns + delay_ns
+            test_spans = _test_spans(
+                trace_id,
+                chunk_span_id,
+                chunk_start_ns,
+                chunk_end_ns,
+                chunk_events,
+                identity,
+                inferred_test_start_ns=test_start_ns,
+            )
+            if any(span.status_code == 2 for span in test_spans):
+                chunk.status_code = 2
+                if not chunk.status_message:
+                    chunk.status_message = "one or more tests failed"
+            spans.append(chunk)
+            for span in test_spans:
+                span.resource_attributes = dict(resource)
+            spans.extend(test_spans)
     return spans
 
 

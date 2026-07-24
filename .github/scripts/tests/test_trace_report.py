@@ -244,6 +244,96 @@ def test_ya_trace_keeps_started_but_unfinished_test(
     assert test_span.attributes["test.incomplete"] is True
 
 
+def test_ya_trace_preserves_chunks_and_anchors_finish_only_tests(
+    tmp_path: Path,
+) -> None:
+    trace_path = (
+        tmp_path
+        / "suite"
+        / "test-results"
+        / "unittest"
+        / "ytest.report.trace"
+    )
+    trace_path.parent.mkdir(parents=True)
+    events = [
+        {
+            "name": "chunk-event",
+            "timestamp": 120,
+            "value": {
+                "chunk_index": 0,
+                "nchunks": 2,
+                "metrics": {
+                    "suite_finish_timestamp": 110,
+                    "wall_time": 10,
+                    "suite_delay_until_first_test_secs": 2,
+                },
+            },
+        },
+        {
+            "name": "subtest-finished",
+            "timestamp": 120,
+            "value": {
+                "class": "Suite",
+                "subtest": "first",
+                "status": "good",
+                "time": 3,
+                "chunk_index": 0,
+                "nchunks": 2,
+            },
+        },
+        {
+            "name": "chunk-event",
+            "timestamp": 120,
+            "value": {
+                "chunk_index": 1,
+                "nchunks": 2,
+                "metrics": {
+                    "suite_finish_timestamp": 112,
+                    "wall_time": 5,
+                    "suite_delay_until_first_test_secs": 1,
+                },
+            },
+        },
+        {
+            "name": "subtest-finished",
+            "timestamp": 120,
+            "value": {
+                "class": "Suite",
+                "subtest": "second",
+                "status": "good",
+                "time": 1,
+                "chunk_index": 1,
+                "nchunks": 2,
+            },
+        },
+    ]
+    trace_path.write_text("".join(json.dumps(event) + "\n" for event in events))
+
+    spans = build_ya_spans(
+        load_ya_traces(tmp_path),
+        root_start_ns=99_000_000_000,
+        root_end_ns=121_000_000_000,
+        exit_code=0,
+        resource={},
+    )
+
+    chunks = [span for span in spans if span.scope_name == "ya.chunk"]
+    tests = {span.name: span for span in spans if span.scope_name == "ya.test"}
+    assert len(chunks) == 2
+    assert spans[0].attributes["ya.chunk.count"] == 2
+    assert tests["Suite::first"].start_ns == 102_000_000_000
+    assert tests["Suite::first"].duration_ns == 3_000_000_000
+    assert tests["Suite::second"].start_ns == 108_000_000_000
+    assert tests["Suite::second"].duration_ns == 1_000_000_000
+    assert (
+        tests["Suite::first"].attributes["test.timing.source"]
+        == "chunk-delay-and-test-duration"
+    )
+    assert {test.parent_span_id for test in tests.values()} == {
+        chunk.span_id for chunk in chunks
+    }
+
+
 def test_workflow_trace_adds_queue_job_step_and_imported_ya_spans() -> None:
     workflow_run = {
         "id": 123,
