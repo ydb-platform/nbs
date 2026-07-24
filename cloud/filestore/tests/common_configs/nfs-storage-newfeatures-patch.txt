@@ -34,3 +34,4 @@ NodeRefsNoAutoPrecharge: true
 UseCustomReadDataResponseParser: true
 MaxShardManagementRequestsInFlight: 3
 FakeTxPageFaultsProbability: 0.001
+FanoutStatsCollectionInShardsDisabled: true

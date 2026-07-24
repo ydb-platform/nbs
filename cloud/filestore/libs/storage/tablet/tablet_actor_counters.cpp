@@ -18,6 +18,18 @@ using namespace NMetrics;
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
+// TAggregateStatsActor always replies with
+// TAggregateStatsCompleted to a TIndexTabletActor that created the actor.
+// 1. IsBackgroundRequest. It means the actor was created in
+//    TIndexTabletActor::HandleUpdateCounters.
+//    If MainFileSystemId is not empty and
+//    FanoutStatsCollectionInShardsDisabled, the actor requests cached
+//    aggregated statistics from the main tablet. Otherwise it sends requests to
+//    all shards.
+// 2. !IsBackgroundRequest. It means that TAggregateStatsActor is created in
+//    TIndexTabletActor::HandleGetStorageStats.
+//    In this case the actor always sends requests to all shards and replies to
+//    the original sender of the GetStorageStats request.
 
 class TAggregateStatsActor final
     : public TActorBootstrapped<TAggregateStatsActor>
@@ -30,7 +42,9 @@ private:
     TString MainFileSystemId;
     const google::protobuf::RepeatedPtrField<TString> ShardIds;
     std::unique_ptr<TEvIndexTablet::TEvGetStorageStatsResponse> Response;
-    int Responses = 0;
+    ui64 RemainingResponses = 0;
+    const bool IsBackgroundRequest;
+    const bool FanoutStatsCollectionInShardsDisabled;
 
 public:
     TAggregateStatsActor(
@@ -40,7 +54,9 @@ public:
         NProtoPrivate::TGetStorageStatsRequest request,
         TString mainFileSystemId,
         google::protobuf::RepeatedPtrField<TString> shardIds,
-        std::unique_ptr<TEvIndexTablet::TEvGetStorageStatsResponse> response);
+        std::unique_ptr<TEvIndexTablet::TEvGetStorageStatsResponse> response,
+        bool isBackgroundRequest,
+        bool fanoutStatsCollectionInShardsDisabled);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -64,18 +80,28 @@ private:
     void ReplyAndDie(
         const TActorContext& ctx,
         const NProto::TError& error);
+
+    const TString& GetFileSystemId(ui64 cookie) const;
+
+    bool ShouldOnlyGetStatsFromMainTablet() const
+    {
+        return IsBackgroundRequest && MainFileSystemId &&
+               FanoutStatsCollectionInShardsDisabled;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TAggregateStatsActor::TAggregateStatsActor(
-        TString logTag,
-        TActorId tablet,
-        TRequestInfoPtr requestInfo,
-        NProtoPrivate::TGetStorageStatsRequest request,
-        TString mainFileSystemId,
-        google::protobuf::RepeatedPtrField<TString> shardIds,
-        std::unique_ptr<TEvIndexTablet::TEvGetStorageStatsResponse> response)
+    TString logTag,
+    TActorId tablet,
+    TRequestInfoPtr requestInfo,
+    NProtoPrivate::TGetStorageStatsRequest request,
+    TString mainFileSystemId,
+    google::protobuf::RepeatedPtrField<TString> shardIds,
+    std::unique_ptr<TEvIndexTablet::TEvGetStorageStatsResponse> response,
+    bool isBackgroundRequest,
+    bool fanoutStatsCollectionInShardsDisabled)
     : LogTag(std::move(logTag))
     , Tablet(tablet)
     , RequestInfo(std::move(requestInfo))
@@ -83,6 +109,9 @@ TAggregateStatsActor::TAggregateStatsActor(
     , MainFileSystemId(std::move(mainFileSystemId))
     , ShardIds(std::move(shardIds))
     , Response(std::move(response))
+    , IsBackgroundRequest(isBackgroundRequest)
+    , FanoutStatsCollectionInShardsDisabled(
+          fanoutStatsCollectionInShardsDisabled)
 {
     auto& dst = *Response->Record.MutableStats();
     auto& shardStats = *dst.MutableShardStats();
@@ -101,13 +130,15 @@ void TAggregateStatsActor::Bootstrap(const TActorContext& ctx)
 
 void TAggregateStatsActor::SendRequests(const TActorContext& ctx)
 {
-    ui64 cookie = 0;
-    for (const auto& shardId: ShardIds) {
-        SendRequestToFileSystem(ctx, shardId, cookie++);
+    if (!ShouldOnlyGetStatsFromMainTablet()) {
+        ui64 cookie = 0;
+        for (const auto& shardId: ShardIds) {
+            SendRequestToFileSystem(ctx, shardId, cookie++);
+        }
     }
 
-    if (!MainFileSystemId.empty()) {
-        SendRequestToFileSystem(ctx, MainFileSystemId, cookie);
+    if (MainFileSystemId) {
+        SendRequestToFileSystem(ctx, MainFileSystemId, ShardIds.size());
     }
 }
 
@@ -120,7 +151,13 @@ void TAggregateStatsActor::SendRequestToFileSystem(
         std::make_unique<TEvIndexTablet::TEvGetStorageStatsRequest>();
     request->Record = Request;
     request->Record.SetFileSystemId(fileSystemId);
-    request->Record.SetMode(NProtoPrivate::STATS_REQUEST_MODE_GET_ONLY_SELF);
+    if (ShouldOnlyGetStatsFromMainTablet()) {
+        // Get cached statistics even it's 'inifinetely' old.
+        request->Record.SetCacheTTL(TDuration::Max().MilliSeconds());
+    } else {
+        request->Record.SetMode(
+            NProtoPrivate::STATS_REQUEST_MODE_GET_ONLY_SELF);
+    }
 
     LOG_DEBUG(
         ctx,
@@ -129,11 +166,26 @@ void TAggregateStatsActor::SendRequestToFileSystem(
         LogTag.c_str(),
         fileSystemId.c_str());
 
+    RemainingResponses++;
     ctx.Send(
         MakeIndexTabletProxyServiceId(),
         request.release(),
         {}, // flags
         cookie);
+}
+
+const TString& TAggregateStatsActor::GetFileSystemId(ui64 cookie) const
+{
+    TABLET_VERIFY_C(
+        cookie <= static_cast<ui64>(ShardIds.size()),
+        "ev->Cookie: " << cookie
+                       << " should be a shard number or shard count for the "
+                          "main tablet. Shard count: "
+                       << ShardIds.size());
+
+    const int shardIndex = static_cast<int>(cookie);
+    return shardIndex < ShardIds.size() ? ShardIds[shardIndex]
+                                        : MainFileSystemId;
 }
 
 void TAggregateStatsActor::HandleGetStorageStatsResponse(
@@ -142,18 +194,8 @@ void TAggregateStatsActor::HandleGetStorageStatsResponse(
 {
     const auto* msg = ev->Get();
 
-    const int requestsCount =
-        ShardIds.size() + (MainFileSystemId.empty() ? 0 : 1);
-    Y_ASSERT(requestsCount >= 0);
-    TABLET_VERIFY_C(
-        ev->Cookie < static_cast<ui64>(requestsCount),
-        "ev->Cookie: "
-            << ev->Cookie
-            << " should be a request number and less than requestsCount: "
-            << requestsCount);
     const int shardIndex = static_cast<int>(ev->Cookie);
-    const TString& fileSystemId =
-        shardIndex < ShardIds.size() ? ShardIds[shardIndex] : MainFileSystemId;
+    const TString& fileSystemId = GetFileSystemId(ev->Cookie);
 
     if (HasError(msg->GetError())) {
         LOG_ERROR(
@@ -165,6 +207,12 @@ void TAggregateStatsActor::HandleGetStorageStatsResponse(
             FormatError(msg->GetError()).Quote().c_str());
 
         ReplyAndDie(ctx, msg->GetError());
+        return;
+    }
+
+    if (ShouldOnlyGetStatsFromMainTablet()) {
+        Response->Record = msg->Record;
+        ReplyAndDie(ctx, {});
         return;
     }
 
@@ -203,7 +251,7 @@ void TAggregateStatsActor::HandleGetStorageStatsResponse(
         ss.SetUsedNodesCount(src.GetUsedNodesCount());
     }
 
-    if (++Responses == requestsCount) {
+    if (--RemainingResponses == 0) {
         ReplyAndDie(ctx, {});
     }
 }
@@ -236,7 +284,7 @@ void TAggregateStatsActor::ReplyAndDie(
         error,
         std::move(statsForTablet),
         startedTs,
-        !RequestInfo /* isBackgroundRequest */);
+        IsBackgroundRequest);
     NCloud::Send(ctx, Tablet, std::move(response));
 
     Die(ctx);
@@ -674,7 +722,11 @@ void TIndexTabletActor::HandleUpdateCounters(
         }
         if (shardIds.empty()) {
             CachedAggregateStats = std::move(*stats);
-            CachedAggregateStatsTs = ctx.Now();
+            // TIndexTabletActor can reply to a GetStorageStats request from
+            // cache only if it's a main tablet.
+            if (IsMainTablet()) {
+                CachedAggregateStatsTs = ctx.Now();
+            }
             Store(
                 Metrics.AggregateUsedBytesCount,
                 CachedAggregateStats.GetUsedBlocksCount() * GetBlockSize());
@@ -692,7 +744,9 @@ void TIndexTabletActor::HandleUpdateCounters(
             NProtoPrivate::TGetStorageStatsRequest(),
             !IsMainTablet() ? GetFileSystem().GetMainFileSystemId() : TString(),
             shardIds,
-            std::move(response));
+            std::move(response),
+            true, /* isBackgroundRequest */
+            Config->GetFanoutStatsCollectionInShardsDisabled());
 
         auto actorId = NCloud::Register(ctx, std::move(actor));
         WorkerActors.insert(actorId);
@@ -845,7 +899,9 @@ void TIndexTabletActor::HandleGetStorageStats(
         std::move(req),
         !IsMainTablet() ? GetFileSystem().GetMainFileSystemId() : TString(),
         shardIds,
-        std::move(response));
+        std::move(response),
+        false, /* isBackgroundRequest */
+        Config->GetFanoutStatsCollectionInShardsDisabled());
 
     auto actorId = NCloud::Register(ctx, std::move(actor));
     WorkerActors.insert(actorId);
@@ -880,6 +936,11 @@ void TIndexTabletActor::HandleAggregateStatsCompleted(
             Metrics.GetStorageStats.Update(1, 0, ctx.Now() - msg->StartedTs);
         }
         CachedAggregateStats = std::move(msg->AggregateStats);
+        // TIndexTabletActor can reply to a GetStorageStats request from cache
+        // only if it's a main tablet.
+        if (IsMainTablet()) {
+            CachedAggregateStatsTs = ctx.Now();
+        }
 
         TVector<TShardStats> shardStats;
         FillShardStats(CachedAggregateStats, shardStats);
@@ -910,8 +971,6 @@ void TIndexTabletActor::HandleAggregateStatsCompleted(
         Store(
             Metrics.AggregateUsedNodesCount,
             CachedAggregateStats.GetUsedNodesCount());
-
-        CachedAggregateStatsTs = ctx.Now();
     }
 
     WorkerActors.erase(ev->Sender);

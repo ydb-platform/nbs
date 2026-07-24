@@ -385,6 +385,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
                                                                                \
     xxx(ExternalWriteDataPayloadEnabled,               bool,    false         )\
     xxx(FakeTxPageFaultsProbability,                   double,   0            )\
+                                                                               \
+    xxx(FanoutStatsCollectionInShardsDisabled,         bool,    false         )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \

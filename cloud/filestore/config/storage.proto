@@ -851,4 +851,8 @@ message TStorageConfig
 
     // Enables injecting of errors in TIndexTabletDatabase. Must be only used in tests!
     optional double FakeTxPageFaultsProbability = 527;
+
+    // When this flag is enabled, TAggregateStatsActor does not poll all shards.
+    // Instead, it requests aggregate statistics only from the main tablet.
+    optional bool FanoutStatsCollectionInShardsDisabled = 528;
 }
