@@ -1,5 +1,6 @@
 import logging
 import os
+import time
 
 import library.python.filelock
 import yatest.common.network as ya_network
@@ -56,14 +57,24 @@ class PortReservation:
     with any PortManager sharing PORT_SYNC_PATH is preserved - and keeps them
     until the holding process exits.
 
-    reserve_ports() is called synchronously right before every terminate/kill,
-    it does all its work once, before the first restart, so the sockets are
-    never freed while the ports are unreserved.
+    reserve_ports() is called synchronously right before every terminate/kill.
+    A single non-blocking flock attempt is not enough there: a concurrent
+    PortManager takes the flock for a moment while it bind-checks the port
+    (the check fails while our child is alive, so the flock comes right
+    back), and if our only attempt happens to land in that moment we would
+    free the sockets with the port unreserved - exactly the race we are
+    fixing. So each call retries in short steps for up to grace_seconds.
+
+    A holder that does not go away within the grace period is not transient -
+    it is the allocating process itself, still alive and still holding the
+    flock. In that case the port is protected by that process for as long as
+    it lives, so it is safe to proceed with the restart - the next
+    reserve_ports() call retries and picks the flock up.
 
     Introduced to fix a race with unreserved ports (see issue #6518 for details)
     """
 
-    def __init__(self, ports, grace_seconds=60):
+    def __init__(self, ports, grace_seconds=2, retry_step_seconds=0.001):
         self._sync_dir = os.environ.get('PORT_SYNC_PATH')
         assert self._sync_dir
 
@@ -72,35 +83,46 @@ class PortReservation:
 
         self._locks = {}
         self._grace_seconds = grace_seconds
+        self._retry_step_seconds = retry_step_seconds
         self._reserve_done = False
 
     def reserve_ports(self):
-        # One-shot by design: all acquisition happens on the first call (right
-        # before the first restart) and later calls return immediately.
+        # All acquisition normally happens on the first call (right before
+        # the first restart), ports whose flocks are still held by a
+        # long-lived process (see the class docstring) are retried on every
+        # subsequent call until acquired
 
         if self._reserve_done:
             return
 
-        pending = set(self._ports)
-        for port in sorted(pending):
-            lock = library.python.filelock.FileLock(
-                os.path.join(self._sync_dir, str(port)))
-            if lock.acquire(blocking=False):
-                # Keep the fd open -> lock stays held until we exit
-                self._locks[port] = lock
-                pending.discard(port)
-                logging.info('reserved port %d (%s)', port, lock.path)
-            else:
-                # Port reservation is best effort. There may be legitimate port
-                # holders, such as test code
-                logging.info(
-                    'failed to reserve port %d (%s), someone else is holding it',
-                    port,
-                    lock.path,
-                )
+        pending = set(self._ports) - set(self._locks)
+        deadline = time.monotonic() + self._grace_seconds
+        while True:
+            for port in sorted(pending):
+                lock = library.python.filelock.FileLock(
+                    os.path.join(self._sync_dir, str(port)))
+                if lock.acquire(blocking=False):
+                    # Keep the fd open -> lock stays held until we exit
+                    self._locks[port] = lock
+                    pending.discard(port)
+                    logging.info('reserved port %d (%s)', port, lock.path)
 
-        if not pending:
-            self._reserve_done = True
+            if not pending:
+                self._reserve_done = True
+                break
+
+            if time.monotonic() >= deadline:
+                # Not transient: the flocks are held by a long-lived process
+                # (normally the allocating one, which itself keeps the ports
+                # protected).
+                #
+                # Proceed and retry on the next call
+                logging.info(
+                    'ports %s are still flocked by another process; '
+                    'will retry before the next restart', sorted(pending))
+                break
+
+            time.sleep(self._retry_step_seconds)
 
     def release(self):
         while self._locks:

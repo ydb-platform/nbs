@@ -136,6 +136,10 @@ def main():
                 if should_kill_process():
                     logging.info(f'killing process {cmdline}')
                     process.kill()
+                    # Reap the killed process before starting the next one:
+                    # its sockets are only guaranteed to be freed once it is
+                    # gone, and the new instance binds the same ports.
+                    process.wait()
                 else:
                     logging.info(f'terminating process {cmdline}')
                     process.terminate()
