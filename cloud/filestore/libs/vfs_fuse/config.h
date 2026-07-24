@@ -40,6 +40,7 @@ public:
 
     bool GetAsyncDestroyHandleEnabled() const;
     bool GetAsyncDestroyReadOnlyHandleEnabled() const;
+    bool GetAsyncCreateHandleEnabled() const;
     TDuration GetAsyncHandleOperationPeriod() const;
 
     bool GetDirectIoEnabled() const;

@@ -45,6 +45,7 @@ namespace NCloud::NFileStore::NStorage {
 // FILESTORE_SERVICE_REQUESTS_FWD_TO_SHARD_BY_NODE_ID
 
 #define FILESTORE_SERVICE_REQUESTS_FWD_TO_SHARD_BY_HANDLE(xxx, ...)            \
+    xxx(ConfirmCreateHandle,                __VA_ARGS__)                       \
     xxx(DestroyHandle,                      __VA_ARGS__)                       \
     xxx(AllocateData,                       __VA_ARGS__)                       \
                                                                                \
@@ -258,8 +259,8 @@ struct TEvService
         EvRegisterLocalFileStore = EvBegin + 71,
         EvUnregisterLocalFileStore,
 
-        // EvGetSessionAttrRequest
-        EvUnused2 = EvBegin + 73,
+        EvConfirmCreateHandleRequest = EvBegin + 73,
+        EvConfirmCreateHandleResponse,
 
         EvAddClusterNodeRequest = EvBegin + 75,
         EvAddClusterNodeResponse,
