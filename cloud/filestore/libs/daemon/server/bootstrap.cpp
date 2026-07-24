@@ -140,25 +140,29 @@ void TBootstrapServer::InitComponents()
         });
     }
 
-    if (Configs->ServerConfig->GetSecurePort() && certPathList.empty()) {
-        ythrow yexception()
-            << "Secure port is configured without certificates";
-    }
-
     if (Configs->ServerConfig->GetRefreshCertsPeriod()) {
         LongRunningTaskExecutor = CreateLongRunningTaskExecutor("CertRefresh");
     }
 
-    CertificateProvider = CreateCertificateProvider(
-        Logging,
-        GetComponentName(
-            NStorage::TFileStoreComponents::TLS_CERTIFICATE_PROVIDER),
-        Scheduler,
-        LongRunningTaskExecutor,
-        serverCounters,
-        Configs->ServerConfig->GetRootCertsFile(),
-        std::move(certPathList),
-        Configs->ServerConfig->GetRefreshCertsPeriod());
+    if (certPathList.empty()) {
+        if (Configs->ServerConfig->GetSecurePort()) {
+            ythrow yexception()
+                << "Secure port is configured without certificates";
+        }
+
+        CertificateProvider = CreateCertificateProviderStub();
+    } else {
+        CertificateProvider = CreateCertificateProvider(
+            Logging,
+            GetComponentName(
+                NStorage::TFileStoreComponents::TLS_CERTIFICATE_PROVIDER),
+            Scheduler,
+            LongRunningTaskExecutor,
+            serverCounters,
+            Configs->ServerConfig->GetRootCertsFile(),
+            std::move(certPathList),
+            Configs->ServerConfig->GetRefreshCertsPeriod());
+    }
 
     Server = NServer::CreateServer(
         Configs->ServerConfig,

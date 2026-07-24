@@ -156,6 +156,7 @@ class TFileStoreEndpoints final
 {
 private:
     using TEndpointsMap = TMap<TString, IFileStoreServicePtr>;
+    using TCertificateProvidersMap = TMap<TString, ICertificateProviderPtr>;
 
 private:
     TClientCertificateProviderFactory CertificateProviderFactory;
@@ -166,6 +167,7 @@ private:
     IActorSystemPtr ActorSystem;
 
     TEndpointsMap Endpoints;
+    TCertificateProvidersMap CertificateProviders;
 
 public:
     TFileStoreEndpoints(
@@ -185,6 +187,11 @@ public:
 
     void Start() override
     {
+        for (const auto& [name, certificateProvider]: CertificateProviders) {
+            Y_UNUSED(name);
+            certificateProvider->Start();
+        }
+
         for (const auto& [name, endpoint]: Endpoints) {
             endpoint->Start();
         }
@@ -194,6 +201,11 @@ public:
     {
         for (const auto& [name, endpoint]: Endpoints) {
             endpoint->Stop();
+        }
+
+        for (const auto& [name, certificateProvider]: CertificateProviders) {
+            Y_UNUSED(name);
+            certificateProvider->Stop();
         }
     }
 
@@ -211,6 +223,7 @@ public:
         ui32 permanentActorCount)
     {
         auto clientConfig = std::make_shared<NClient::TClientConfig>(config);
+        ICertificateProviderPtr certificateProvider;
         IFileStoreServicePtr fileStore;
         switch (kind) {
             case NDaemon::EServiceKind::Null: {
@@ -230,21 +243,28 @@ public:
                 if (LocalService) {
                     fileStore = LocalService;
                 } else {
+                    certificateProvider = CreateClientCertificateProvider(
+                        clientConfig,
+                        CertificateProviderFactory);
                     fileStore = NClient::CreateFileStoreClient(
                         clientConfig,
                         Logging,
-                        CreateClientCertificateProvider(
-                            clientConfig,
-                            CertificateProviderFactory));
+                        certificateProvider);
                 }
                 break;
             }
         }
 
-        return AddEndpoint(
+        const bool inserted = AddEndpoint(
             name,
             std::move(clientConfig),
             std::move(fileStore));
+
+        if (inserted && certificateProvider) {
+            CertificateProviders.emplace(name, std::move(certificateProvider));
+        }
+
+        return inserted;
     }
 
     bool Empty() const
@@ -421,6 +441,10 @@ void TBootstrapVhost::InitComponents()
                 Configs->VhostServiceConfig->GetEndpointStorageType());
     }
 
+    if (Configs->ServerConfig->GetRefreshCertsPeriod()) {
+        LongRunningTaskExecutor = CreateLongRunningTaskExecutor("CertRefresh");
+    }
+
     switch (Configs->Options->Service) {
         case NDaemon::EServiceKind::Local:
         case NDaemon::EServiceKind::Kikimr:
@@ -448,25 +472,25 @@ void TBootstrapVhost::InitComponents()
         });
     }
 
-    if (Configs->ServerConfig->GetSecurePort() && certPathList.empty()) {
-        ythrow yexception()
-            << "Secure port is configured without certificates";
-    }
+    if (certPathList.empty()) {
+        if (Configs->ServerConfig->GetSecurePort()) {
+            ythrow yexception()
+                << "Secure port is configured without certificates";
+        }
 
-    if (Configs->ServerConfig->GetRefreshCertsPeriod()) {
-        LongRunningTaskExecutor = CreateLongRunningTaskExecutor("CertRefresh");
+        CertificateProvider = CreateCertificateProviderStub();
+    } else {
+        CertificateProvider = CreateCertificateProvider(
+            Logging,
+            GetComponentName(
+                NStorage::TFileStoreComponents::TLS_CERTIFICATE_PROVIDER),
+            Scheduler,
+            LongRunningTaskExecutor,
+            serverCounters,
+            Configs->ServerConfig->GetRootCertsFile(),
+            std::move(certPathList),
+            Configs->ServerConfig->GetRefreshCertsPeriod());
     }
-
-    CertificateProvider = CreateCertificateProvider(
-        Logging,
-        GetComponentName(
-            NStorage::TFileStoreComponents::TLS_CERTIFICATE_PROVIDER),
-        Scheduler,
-        LongRunningTaskExecutor,
-        serverCounters,
-        Configs->ServerConfig->GetRootCertsFile(),
-        std::move(certPathList),
-        Configs->ServerConfig->GetRefreshCertsPeriod());
 
     Server = CreateServer(
         Configs->ServerConfig,
