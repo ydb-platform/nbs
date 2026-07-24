@@ -22,21 +22,15 @@
 #include <util/stream/file.h>
 #include <util/string/builder.h>
 
-#include <chrono>
 #include <thread>
 
 namespace NCloud::NBlockStore {
 
 using namespace NThreading;
-using namespace std::chrono_literals;
 
 namespace {
 
 namespace kms = yandex::cloud::priv::kms::v1;
-
-////////////////////////////////////////////////////////////////////////////////
-
-constexpr TDuration DefaultTimeout = 5min;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -241,6 +235,10 @@ void TRootKmsClient::Start()
 
     grpc::ChannelArguments channelArgs;
     channelArgs.SetLoadBalancingPolicyName("round_robin");
+    if (Params.SslTargetNameOverride) {
+        channelArgs.SetSslTargetNameOverride(
+            Params.SslTargetNameOverride);
+    }
 
     auto channel = grpc::CreateCustomChannel(
         Params.Address,
@@ -273,7 +271,7 @@ auto TRootKmsClient::Decrypt(const TString& keyId, const TString& ciphertext)
     STORAGE_DEBUG("Decrypt DEK with key " << keyId.Quote());
 
     auto requestHandler = std::make_unique<TDecryptDataKeyHandler>(
-        DefaultTimeout,
+        Params.RequestTimeout,
         keyId,
         ciphertext);
 
@@ -291,7 +289,7 @@ auto TRootKmsClient::GenerateDataEncryptionKey(const TString& keyId)
     STORAGE_DEBUG("Generate DEK with key " << keyId.Quote());
 
     auto requestHandler = std::make_unique<TGenerateDataKeyRequestHandler>(
-        DefaultTimeout,
+        Params.RequestTimeout,
         keyId);
 
     auto future = requestHandler->Execute(*Service, CQ);

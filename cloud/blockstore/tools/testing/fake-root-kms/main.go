@@ -28,19 +28,21 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type Config struct {
-	Port       uint32            `json:"port"`
-	RootCAPath string            `json:"ca"`
-	CertPath   string            `json:"server_cert"`
-	KeyPath    string            `json:"server_key"`
-	Keys       map[string]string `json:"keys"`
+	Port                uint32            `json:"port"`
+	RootCAPath          string            `json:"ca"`
+	CertPath            string            `json:"server_cert"`
+	KeyPath             string            `json:"server_key"`
+	Keys                map[string]string `json:"keys"`
+	HangDecryptRequests bool              `json:"hang_decrypt_requests"`
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type rootKmsService struct {
 	kms.UnimplementedSymmetricCryptoServiceServer
-	keys map[string]*rsa.PrivateKey
-	mtx  sync.RWMutex
+	keys                map[string]*rsa.PrivateKey
+	hangDecryptRequests bool
+	mtx                 sync.RWMutex
 }
 
 func generateAndEncryptDEK(publicKey *rsa.PublicKey) ([]byte, error) {
@@ -111,6 +113,12 @@ func (s *rootKmsService) Decrypt(
 			grpc_codes.NotFound,
 			fmt.Sprintf("Key %q not found", req.KeyId),
 		)
+	}
+
+	if s.hangDecryptRequests {
+		log.Printf("Waiting for Decrypt request deadline: %v", req)
+		<-ctx.Done()
+		return nil, ctx.Err()
 	}
 
 	symmetricKey, err := decryptDEK(req.Ciphertext, privateKey)
@@ -265,7 +273,8 @@ func run(configPath string) error {
 	)
 
 	rootKms := &rootKmsService{
-		keys: make(map[string]*rsa.PrivateKey),
+		keys:                make(map[string]*rsa.PrivateKey),
+		hangDecryptRequests: config.HangDecryptRequests,
 	}
 	if err := rootKms.loadKeys(config); err != nil {
 		return fmt.Errorf("failed to load keys: %v", err)

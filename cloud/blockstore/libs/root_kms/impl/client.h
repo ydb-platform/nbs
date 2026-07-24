@@ -4,6 +4,8 @@
 #include <cloud/blockstore/libs/encryption/public.h>
 #include <cloud/blockstore/libs/root_kms/iface/public.h>
 
+#include <util/datetime/base.h>
+
 namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -14,6 +16,8 @@ struct TCreateRootKmsClientParams
     TString RootCertsFile;
     TString CertChainFile;
     TString PrivateKeyFile;
+    TDuration RequestTimeout = TDuration::Minutes(5);
+    TString SslTargetNameOverride;
 };
 
 IRootKmsClientPtr CreateRootKmsClient(
