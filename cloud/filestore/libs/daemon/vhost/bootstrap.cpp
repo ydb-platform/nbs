@@ -31,6 +31,7 @@
 #include <cloud/filestore/libs/service_local/config.h>
 #include <cloud/filestore/libs/service_local/service.h>
 #include <cloud/filestore/libs/service_null/service.h>
+#include <cloud/filestore/libs/storage/api/components.h>
 #include <cloud/filestore/libs/storage/core/probes.h>
 #include <cloud/filestore/libs/storage/fastshard/bootstrap/core.h>
 #include <cloud/filestore/libs/storage/fastshard/client/async_client.h>
@@ -85,8 +86,51 @@ const TString ServerMetricsComponent = "server";
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TClientCertificateProviderFactory
+{
+    ILoggingServicePtr Logging;
+    TString LogComponent;
+    ISchedulerPtr Scheduler;
+    ITaskQueuePtr LongRunningTaskExecutor;
+    NMonitoring::TDynamicCountersPtr ServerGroup;
+    TDuration RefreshInterval;
+
+    TClientCertificateProviderFactory(
+            ILoggingServicePtr logging,
+            TString logComponent,
+            ISchedulerPtr scheduler,
+            ITaskQueuePtr longRunningTaskExecutor,
+            NMonitoring::TDynamicCountersPtr serverGroup,
+            TDuration refreshInterval)
+        : Logging(std::move(logging))
+        , LogComponent(std::move(logComponent))
+        , Scheduler(std::move(scheduler))
+        , LongRunningTaskExecutor(std::move(longRunningTaskExecutor))
+        , ServerGroup(std::move(serverGroup))
+        , RefreshInterval(refreshInterval)
+    {}
+
+    ICertificateProviderPtr Build(
+        TString rootCertPath,
+        TVector<TCertificateFiles> certificates) const
+    {
+        return CreateCertificateProvider(
+            Logging,
+            LogComponent,
+            Scheduler,
+            LongRunningTaskExecutor,
+            ServerGroup,
+            std::move(rootCertPath),
+            std::move(certificates),
+            RefreshInterval);
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 ICertificateProviderPtr CreateClientCertificateProvider(
-    const NClient::TClientConfigPtr& config)
+    const NClient::TClientConfigPtr& config,
+    const TClientCertificateProviderFactory& factory)
 {
     TVector<NCloud::TCertificateFiles> certPathList {
         {
@@ -95,7 +139,12 @@ ICertificateProviderPtr CreateClientCertificateProvider(
         }
     };
 
-    return CreateStaticCertificateProvider(
+    if (config->GetSecurePort() && certPathList.empty()) {
+        ythrow yexception()
+            << "Secure client port is configured without certificates";
+    }
+
+    return factory.Build(
         config->GetRootCertsFile(),
         std::move(certPathList));
 }
@@ -109,6 +158,7 @@ private:
     using TEndpointsMap = TMap<TString, IFileStoreServicePtr>;
 
 private:
+    TClientCertificateProviderFactory CertificateProviderFactory;
     ITimerPtr Timer;
     ISchedulerPtr Scheduler;
     ILoggingServicePtr Logging;
@@ -119,12 +169,14 @@ private:
 
 public:
     TFileStoreEndpoints(
+            TClientCertificateProviderFactory certificateProviderFactory,
             ITimerPtr timer,
             ISchedulerPtr scheduler,
             ILoggingServicePtr logging,
             IFileStoreServicePtr localService,
             IActorSystemPtr actorSystem)
-        : Timer(std::move(timer))
+        : CertificateProviderFactory(std::move(certificateProviderFactory))
+        , Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
         , Logging(std::move(logging))
         , LocalService(std::move(localService))
@@ -181,7 +233,9 @@ public:
                     fileStore = NClient::CreateFileStoreClient(
                         clientConfig,
                         Logging,
-                        CreateClientCertificateProvider(clientConfig));
+                        CreateClientCertificateProvider(
+                            clientConfig,
+                            CertificateProviderFactory));
                 }
                 break;
             }
@@ -394,11 +448,25 @@ void TBootstrapVhost::InitComponents()
         });
     }
 
-    if (!certPathList.empty()) {
-        CertificateProvider = CreateStaticCertificateProvider(
-            Configs->ServerConfig->GetRootCertsFile(),
-            std::move(certPathList));
+    if (Configs->ServerConfig->GetSecurePort() && certPathList.empty()) {
+        ythrow yexception()
+            << "Secure port is configured without certificates";
     }
+
+    if (Configs->ServerConfig->GetRefreshCertsPeriod()) {
+        LongRunningTaskExecutor = CreateLongRunningTaskExecutor("CertRefresh");
+    }
+
+    CertificateProvider = CreateCertificateProvider(
+        Logging,
+        GetComponentName(
+            NStorage::TFileStoreComponents::TLS_CERTIFICATE_PROVIDER),
+        Scheduler,
+        LongRunningTaskExecutor,
+        serverCounters,
+        Configs->ServerConfig->GetRootCertsFile(),
+        std::move(certPathList),
+        Configs->ServerConfig->GetRefreshCertsPeriod());
 
     Server = CreateServer(
         Configs->ServerConfig,
@@ -459,7 +527,17 @@ void TBootstrapVhost::InitEndpoints()
             localServiceConfig->Utf8DebugString().Quote().c_str());
     }
 
+    TClientCertificateProviderFactory certFactory(
+        Logging,
+        GetComponentName(
+            NStorage::TFileStoreComponents::TLS_CERTIFICATE_PROVIDER),
+        Scheduler,
+        LongRunningTaskExecutor,
+        FilestoreCounters->GetSubgroup("component", VhostMetricsComponent),
+        Configs->ServerConfig->GetRefreshCertsPeriod());
+
     auto endpoints = std::make_shared<TFileStoreEndpoints>(
+        std::move(certFactory),
         Timer,
         Scheduler,
         Logging,

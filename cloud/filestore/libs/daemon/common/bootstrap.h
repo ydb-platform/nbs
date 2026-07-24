@@ -80,6 +80,7 @@ protected:
     IActorSystemPtr ActorSystem;
     NStorage::NFastShard::IServerPtr FastShardServer;
     NCloud::NStorage::IStatsFetcherPtr StatsFetcher;
+    ITaskQueuePtr LongRunningTaskExecutor;
     ICertificateProviderPtr CertificateProvider;
 
 public:
