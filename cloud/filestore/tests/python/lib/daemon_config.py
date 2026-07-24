@@ -273,13 +273,12 @@ class FilestoreDaemonConfigGenerator:
         return auth_config
 
     def __generate_bs_txt(self, bs_failure_probability):
-        if bs_failure_probability is not None:
-            blob_storage_config = TBlobStorageConfig()
-            failure_injection_config = (
-                blob_storage_config.ServiceSet.FailureInjectionConfig
-            )
-            failure_injection_config.FailureProbability = bs_failure_probability
-            return blob_storage_config
+        blob_storage_config = TBlobStorageConfig()
+        failure_injection_config = (
+            blob_storage_config.ServiceSet.FailureInjectionConfig
+        )
+        failure_injection_config.FailureProbability = bs_failure_probability
+        return blob_storage_config
 
     def __config_file_path(self, name):
         return os.path.join(self.__configs_dir, name)
@@ -289,7 +288,6 @@ class FilestoreDaemonConfigGenerator:
 
     def __write_configs(self):
         for name, proto in self.__proto_configs.items():
-            if not proto: continue
             path = self.__config_file_path(name)
             with open(path, "w") as config_file:
                 config_file.write(MessageToString(proto))
@@ -310,9 +308,10 @@ class FilestoreDaemonConfigGenerator:
                     "diag.txt": self.__generate_diag_txt(),
                     "dyn_ns.txt": self.__generate_dyn_ns_txt(),
                     "auth.txt": self.__generate_auth_txt(self.__access_service_port),
-                    "bs.txt": self.__generate_bs_txt(self.__bs_failure_probability),
                 }
             )
+            if self.__bs_failure_probability:
+                self.__proto_configs["bs.txt"] = self.__generate_bs_txt(self.__bs_failure_probability)
         self.__write_configs()
 
     def generate_aux_params(self):
@@ -368,7 +367,7 @@ class FilestoreDaemonConfigGenerator:
                     self.__config_file_path("auth.txt"),
                 ]
 
-            if self.__bs_failure_probability is not None:
+            if self.__bs_failure_probability:
                 command += [
                     "--bs-file",
                     self.__config_file_path("bs.txt"),
