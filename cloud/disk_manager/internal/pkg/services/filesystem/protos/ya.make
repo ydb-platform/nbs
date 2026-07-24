@@ -7,6 +7,7 @@ PEERDIR(
 )
 
 SRCS(
+    create_filesystem_from_snapshot_task.proto
     create_filesystem_task.proto
     delete_filesystem_task.proto
     filesystem.proto

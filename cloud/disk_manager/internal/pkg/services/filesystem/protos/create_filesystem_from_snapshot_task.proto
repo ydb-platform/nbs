@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package filesystem;
+
+import "cloud/disk_manager/internal/pkg/services/filesystem/protos/create_filesystem_task.proto";
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message CreateFilesystemFromSnapshotRequest {
+    string SrcSnapshotId = 1;
+    CreateFilesystemRequest Params = 2;
+}
+
+message CreateFilesystemFromSnapshotTaskState {
+    string SelectedCellId = 1;
+    string TransferFromSnapshotTaskId = 2;
+}

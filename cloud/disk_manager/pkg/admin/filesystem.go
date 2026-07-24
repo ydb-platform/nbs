@@ -129,13 +129,14 @@ func newListFilesystemsCmd(
 ////////////////////////////////////////////////////////////////////////////////
 
 type createFilesystem struct {
-	clientConfig *client_config.ClientConfig
-	zoneID       string
-	filesystemID string
-	cloudID      string
-	folderID     string
-	blockSize    int64
-	size         int64
+	clientConfig  *client_config.ClientConfig
+	zoneID        string
+	filesystemID  string
+	cloudID       string
+	folderID      string
+	blockSize     int64
+	size          int64
+	srcSnapshotID string
 }
 
 func (c *createFilesystem) run() error {
@@ -156,6 +157,11 @@ func (c *createFilesystem) run() error {
 		FolderId:  c.folderID,
 		BlockSize: c.blockSize,
 		Size:      c.size,
+	}
+	if c.srcSnapshotID != "" {
+		req.Src = &disk_manager.CreateFilesystemRequest_SrcSnapshotId{
+			SrcSnapshotId: c.srcSnapshotID,
+		}
 	}
 
 	resp, err := client.CreateFilesystem(getRequestContext(ctx), req)
@@ -206,6 +212,8 @@ func newCreateFilesystemCmd(clientConfig *client_config.ClientConfig) *cobra.Com
 	if err := cmd.MarkFlagRequired("folder-id"); err != nil {
 		log.Fatalf("Error setting flag folder-id as required: %v", err)
 	}
+
+	cmd.Flags().StringVar(&c.srcSnapshotID, "src-snapshot-id", "", "ID of filesystem snapshot to create filesystem from")
 
 	return cmd
 }

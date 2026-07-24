@@ -41,6 +41,7 @@ func RegisterForExecution(
 			return &createFilesystemSnapshotTask{
 				scheduler:    taskScheduler,
 				cellSelector: cellSelector,
+				storage:      storage,
 			}
 		},
 	)
