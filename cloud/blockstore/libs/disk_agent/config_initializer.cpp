@@ -164,7 +164,13 @@ void TConfigInitializer::InitKikimrConfig()
     }
 
     auto& bsConfig = *KikimrConfig->MutableBlobStorageConfig();
-    bsConfig.MutableServiceSet()->AddAvailabilityDomains(1);
+    if (Options->BlobStorageConfig) {
+        ParseProtoTextFromFileRobust(
+            Options->BlobStorageConfig,
+            bsConfig);
+    } else {
+        bsConfig.MutableServiceSet()->AddAvailabilityDomains(1);
+    }
 }
 
 void TConfigInitializer::InitDiagnosticsConfig()
