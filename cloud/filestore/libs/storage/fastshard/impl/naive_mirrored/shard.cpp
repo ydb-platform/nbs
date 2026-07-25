@@ -600,14 +600,25 @@ public:
 class TPageAllocator
 {
 private:
-    //static constexpr ui64 SlotsPerPage = 160;
-    //static_assert(SlotsPerPage * NodePageClusterSlotSize <= PageSize);
+    //
+    // TODO(#5894) TODO(#5895)
+    // Implement a persistent bitmap, use it here to track allocated clusters.
+    //
+    // Current implementation is a dummy one.
+    //
+
+    ui64 PageClusterNo = 0;
+    ui64 PageClusterCount = 0;
 
 public:
     ui64 Init(ui64 firstPageNo, ui64 pageCount, IPageStorePtr pageStore)
     {
+        PageClusterNo =
+            RoundUp(firstPageNo, PageClusterPageCount) / PageClusterPageCount;
+        PageClusterCount = pageCount / PageClusterPageCount;
+
         // TODO
-        Y_UNUSED(firstPageNo, pageCount, pageStore);
+        Y_UNUSED(pageStore);
         return firstPageNo + pageCount;
     }
 
@@ -616,9 +627,18 @@ public:
         TVector<ui64>* storagePageClusterIds,
         TWriteContext& writeContext)
     {
+        if (pageClusterCount > PageClusterCount) {
+            return MakeError(E_FS_OUT_OF_SPACE);
+        }
+
+        for (ui64 i = 0; i < pageClusterCount; ++i) {
+            storagePageClusterIds->push_back(PageClusterNo++);
+            --PageClusterCount;
+        }
+
         // TODO
-        Y_UNUSED(pageClusterCount, storagePageClusterIds, writeContext);
-        return MakeError(E_FS_OUT_OF_SPACE);
+        Y_UNUSED(writeContext);
+        return {};
     }
 
     NProto::TError Deallocate(
@@ -653,6 +673,9 @@ auto CreateAttrs(ui64 id, ui32 mode, ui64 size, ui64 uid, ui64 gid)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+//
+// TODO(#5894) - implement layout dump
+//
 
 class TFiberShardImpl
 {
@@ -1185,7 +1208,7 @@ public:
 
             Y_ABORT_UNLESS(storagePageClusterIdIt
                 != storagePageClusterIdsToWrite.end());
-            if (*storagePageClusterIdIt == 0) {
+            if (*storagePageClusterIdIt == InvalidStoragePageClusterId) {
                 Y_ABORT_UNLESS(newStoragePageClusterIdIt
                     != newStoragePageClusterIds.end());
                 *storagePageClusterIdIt = *newStoragePageClusterIdIt;
@@ -1245,6 +1268,12 @@ public:
                     request.GetBuffer().data() + bufferOffset,
                     toCopy);
 
+                PageStore->WritePage(
+                    writeContext.Lsn,
+                    storagePageNo,
+                    std::move(page),
+                    writeContext.PageGroups);
+
                 bufferOffset += toCopy;
                 ++pageNoInCluster;
             }
@@ -1256,7 +1285,7 @@ public:
             ++storagePageClusterIdIt;
         }
 
-        l.release();
+        l.unlock();
 
         if (HasError(error)) {
             *response.MutableError() = std::move(error);

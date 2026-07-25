@@ -49,7 +49,7 @@ namespace {
 
 constexpr ui32 ShardNo = 1;
 constexpr size_t PageSize = 4_KB;
-constexpr size_t PageCount = 1024;
+constexpr size_t PageCount = 128_MB / PageSize;
 constexpr size_t FileSize = PageSize * PageCount;
 constexpr size_t NodesPerGroup = 64;
 
@@ -107,7 +107,7 @@ struct TStorageFixture
         }
 
         Config.SetNodesPerGroup(NodesPerGroup);
-        Config.SetExpectedGroupCapacity(FileSize);
+        Config.SetExpectedGroupCapacity(FileSize / 2);
     }
 };
 
