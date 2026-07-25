@@ -87,30 +87,44 @@ TEST(PersistentHashTableTest, PutGetUpdate)
     TFixture fx;
 
     TVector<TPageGroup> pageGroups;
-    auto error = fx.Ht.Put(TSlot{.A = 1, .B = 100, .C = 3}, pageGroups);
+    ui64 lsn = fx.PageStore->AllocateLsn();
+    auto error = fx.Ht.Put(lsn, TSlot{.A = 1, .B = 100, .C = 3}, pageGroups);
     EXPECT_EQ(S_OK, error.GetCode()) << FormatError(error);
 
     TSlot slot;
     ui64 slotNo = 0;
-    error = fx.Ht.Get(100, &slot, &slotNo);
+    error = fx.Ht.Get(0 /* lsn */, 100, &slot, &slotNo);
     EXPECT_EQ(E_REJECTED, error.GetCode()) << FormatError(error);
 
-    Flush(pageGroups, *fx.PageStore);
-
-    error = fx.Ht.Get(100, &slot, &slotNo);
+    error = fx.Ht.Get(lsn, 100, &slot, &slotNo);
     EXPECT_EQ(S_OK, error.GetCode()) << FormatError(error);
     EXPECT_EQ(1U, slot.A);
     EXPECT_EQ(100U, slot.B);
     EXPECT_EQ(3U, slot.C);
 
-    fx.Ht.Update(TSlot{.A = 2, .B = 100, .C = 10}, slotNo, pageGroups);
+    Flush(pageGroups, *fx.PageStore);
+    lsn = fx.PageStore->AllocateLsn();
 
-    error = fx.Ht.Get(100, &slot, &slotNo);
+    error = fx.Ht.Get(lsn, 100, &slot, &slotNo);
+    EXPECT_EQ(S_OK, error.GetCode()) << FormatError(error);
+    EXPECT_EQ(1U, slot.A);
+    EXPECT_EQ(100U, slot.B);
+    EXPECT_EQ(3U, slot.C);
+
+    fx.Ht.Update(lsn, TSlot{.A = 2, .B = 100, .C = 10}, slotNo, pageGroups);
+
+    error = fx.Ht.Get(0 /* lsn */, 100, &slot, &slotNo);
     EXPECT_EQ(E_REJECTED, error.GetCode()) << FormatError(error);
+
+    error = fx.Ht.Get(lsn, 100, &slot, &slotNo);
+    EXPECT_EQ(S_OK, error.GetCode()) << FormatError(error);
+    EXPECT_EQ(2U, slot.A);
+    EXPECT_EQ(100U, slot.B);
+    EXPECT_EQ(10U, slot.C);
 
     Flush(pageGroups, *fx.PageStore);
 
-    error = fx.Ht.Get(100, &slot, &slotNo);
+    error = fx.Ht.Get(0 /* lsn */, 100, &slot, &slotNo);
     EXPECT_EQ(S_OK, error.GetCode()) << FormatError(error);
     EXPECT_EQ(2U, slot.A);
     EXPECT_EQ(100U, slot.B);
@@ -122,64 +136,72 @@ TEST(PersistentHashTableTest, Delete)
     TFixture fx;
 
     TVector<TPageGroup> pageGroups;
-    auto error = fx.Ht.Put(TSlot{.A = 1, .B = 100, .C = 3}, pageGroups);
-    EXPECT_EQ(S_OK, error.GetCode()) << FormatError(error);
-    Flush(pageGroups, *fx.PageStore);
-    error = fx.Ht.Put(TSlot{.A = 2, .B = 101, .C = 4}, pageGroups);
-    EXPECT_EQ(S_OK, error.GetCode()) << FormatError(error);
-    Flush(pageGroups, *fx.PageStore);
-    error = fx.Ht.Put(TSlot{.A = 3, .B = 102, .C = 5}, pageGroups);
+    ui64 lsn = fx.PageStore->AllocateLsn();
+    auto error = fx.Ht.Put(lsn, TSlot{.A = 1, .B = 100, .C = 3}, pageGroups);
     EXPECT_EQ(S_OK, error.GetCode()) << FormatError(error);
     Flush(pageGroups, *fx.PageStore);
 
+    lsn = fx.PageStore->AllocateLsn();
+    error = fx.Ht.Put(lsn, TSlot{.A = 2, .B = 101, .C = 4}, pageGroups);
+    EXPECT_EQ(S_OK, error.GetCode()) << FormatError(error);
+    Flush(pageGroups, *fx.PageStore);
+
+    lsn = fx.PageStore->AllocateLsn();
+    error = fx.Ht.Put(lsn, TSlot{.A = 3, .B = 102, .C = 5}, pageGroups);
+    EXPECT_EQ(S_OK, error.GetCode()) << FormatError(error);
+    Flush(pageGroups, *fx.PageStore);
+
+    lsn = fx.PageStore->AllocateLsn();
     TSlot slot;
-    error = fx.Ht.Delete(101, &slot, pageGroups);
+    error = fx.Ht.Delete(lsn, 101, &slot, pageGroups);
     EXPECT_EQ(2U, slot.A);
     EXPECT_EQ(101U, slot.B);
     EXPECT_EQ(4U, slot.C);
     Flush(pageGroups, *fx.PageStore);
 
     ui64 slotNo = 0;
-    error = fx.Ht.Get(100, &slot, &slotNo);
+    error = fx.Ht.Get(0 /* lsn */, 100, &slot, &slotNo);
     EXPECT_EQ(S_OK, error.GetCode()) << FormatError(error);
     EXPECT_EQ(1U, slot.A);
     EXPECT_EQ(100U, slot.B);
     EXPECT_EQ(3U, slot.C);
-    error = fx.Ht.Get(101, &slot, &slotNo);
+    error = fx.Ht.Get(0 /* lsn */, 101, &slot, &slotNo);
     EXPECT_EQ(E_FS_NOENT, error.GetCode()) << FormatError(error);
-    error = fx.Ht.Get(102, &slot, &slotNo);
+    error = fx.Ht.Get(0 /* lsn */, 102, &slot, &slotNo);
     EXPECT_EQ(S_OK, error.GetCode()) << FormatError(error);
     EXPECT_EQ(3U, slot.A);
     EXPECT_EQ(102U, slot.B);
     EXPECT_EQ(5U, slot.C);
 
-    error = fx.Ht.Delete(100, &slot, pageGroups);
+    lsn = fx.PageStore->AllocateLsn();
+    error = fx.Ht.Delete(lsn, 100, &slot, pageGroups);
     EXPECT_EQ(1U, slot.A);
     EXPECT_EQ(100U, slot.B);
     EXPECT_EQ(3U, slot.C);
     Flush(pageGroups, *fx.PageStore);
 
-    error = fx.Ht.Get(100, &slot, &slotNo);
+    error = fx.Ht.Get(0 /* lsn */, 100, &slot, &slotNo);
     EXPECT_EQ(E_FS_NOENT, error.GetCode()) << FormatError(error);
-    error = fx.Ht.Get(101, &slot, &slotNo);
+    error = fx.Ht.Get(0 /* lsn */, 101, &slot, &slotNo);
     EXPECT_EQ(E_FS_NOENT, error.GetCode()) << FormatError(error);
-    error = fx.Ht.Get(102, &slot, &slotNo);
+    error = fx.Ht.Get(0 /* lsn */, 102, &slot, &slotNo);
     EXPECT_EQ(S_OK, error.GetCode()) << FormatError(error);
     EXPECT_EQ(3U, slot.A);
     EXPECT_EQ(102U, slot.B);
     EXPECT_EQ(5U, slot.C);
 
-    error = fx.Ht.Delete(102, &slot, pageGroups);
+    lsn = fx.PageStore->AllocateLsn();
+    error = fx.Ht.Delete(lsn, 102, &slot, pageGroups);
     EXPECT_EQ(3U, slot.A);
     EXPECT_EQ(102U, slot.B);
     EXPECT_EQ(5U, slot.C);
     Flush(pageGroups, *fx.PageStore);
 
-    error = fx.Ht.Get(100, &slot, &slotNo);
+    error = fx.Ht.Get(0 /* lsn */, 100, &slot, &slotNo);
     EXPECT_EQ(E_FS_NOENT, error.GetCode()) << FormatError(error);
-    error = fx.Ht.Get(101, &slot, &slotNo);
+    error = fx.Ht.Get(0 /* lsn */, 101, &slot, &slotNo);
     EXPECT_EQ(E_FS_NOENT, error.GetCode()) << FormatError(error);
-    error = fx.Ht.Get(102, &slot, &slotNo);
+    error = fx.Ht.Get(0 /* lsn */, 102, &slot, &slotNo);
     EXPECT_EQ(E_FS_NOENT, error.GetCode()) << FormatError(error);
 }
 
@@ -218,7 +240,8 @@ TEST(PersistentHashTableTest, PutGetUpdateRandomized)
             if (!refImpl.contains(slot.B)) {
                 refImpl[slot.B] = {slot, keys.size()};
 
-                auto error = fx.Ht.Put(slot, pageGroups);
+                ui64 lsn = fx.PageStore->AllocateLsn();
+                auto error = fx.Ht.Put(lsn, slot, pageGroups);
                 Cdbg << "PUT " << slot.B << Endl;
                 ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
                 Flush(pageGroups, *fx.PageStore);
@@ -233,7 +256,7 @@ TEST(PersistentHashTableTest, PutGetUpdateRandomized)
         TSlot slot;
         ui64 slotNo = 0;
         const ui64 key = keys[rng.Uniform(0, keys.size())];
-        auto error = fx.Ht.Get(key, &slot, &slotNo);
+        auto error = fx.Ht.Get(0 /* lsn */, key, &slot, &slotNo);
         Cdbg << "GET " << key << Endl;
         ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
         auto& expectedSlot = refImpl[key].first;
@@ -251,7 +274,8 @@ TEST(PersistentHashTableTest, PutGetUpdateRandomized)
 
             refImpl[key].first = slot;
 
-            error = fx.Ht.Update(slot, slotNo, pageGroups);
+            ui64 lsn = fx.PageStore->AllocateLsn();
+            error = fx.Ht.Update(lsn, slot, slotNo, pageGroups);
             Cdbg << "UPDATE " << key << Endl;
             ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
             Flush(pageGroups, *fx.PageStore);
@@ -272,12 +296,13 @@ TEST(PersistentHashTableTest, PutGetUpdateRandomized)
             keys.pop_back();
             refImpl.erase(it);
 
-            error = fx.Ht.Delete(key, &slot, pageGroups);
+            ui64 lsn = fx.PageStore->AllocateLsn();
+            error = fx.Ht.Delete(lsn, key, &slot, pageGroups);
             Cdbg << "DELETE " << key << Endl;
             ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
             Flush(pageGroups, *fx.PageStore);
 
-            error = fx.Ht.Get(key, &slot, &slotNo);
+            error = fx.Ht.Get(0 /* lsn */, key, &slot, &slotNo);
             if (error.GetCode() != E_FS_NOENT) {
                 Cerr << slot.B << Endl;
             }
@@ -289,7 +314,7 @@ TEST(PersistentHashTableTest, PutGetUpdateRandomized)
         //
 
         const ui64 key2 = rng.Uniform(maxKey, 1'000);
-        error = fx.Ht.Get(key2, &slot, &slotNo);
+        error = fx.Ht.Get(0 /* lsn */, key2, &slot, &slotNo);
         ASSERT_EQ(E_FS_NOENT, error.GetCode()) << FormatError(error);
 
         //

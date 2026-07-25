@@ -80,6 +80,40 @@ struct THandleSlot
 static_assert(sizeof(THandleSlot) <= HandleSlotSize);
 
 ////////////////////////////////////////////////////////////////////////////////
+// page index layout
+
+constexpr ui64 PageClusterPageCount = 8;
+constexpr ui64 PageClusterSize = PageClusterPageCount * PageSize;
+constexpr ui64 NodePageClusterSlotSize = 24;
+constexpr ui64 MaxSpacePerStorageGroup = 100_GB;
+constexpr ui64 MaxNodePageClusterTableSlotCount =
+    MaxSpacePerStorageGroup / PageClusterSize;
+constexpr ui64 MaxNodePageClusterTableSize =
+    MaxNodePageClusterTableSlotCount * NodePageClusterSlotSize;
+constexpr ui64 InvalidStoragePageClusterId = Max<ui64>();
+
+static_assert(MaxNodePageClusterTableSize == 75_MB);
+
+struct TNodePageClusterKey
+{
+    ui64 NodeId;
+    ui64 PageClusterId;
+
+    bool operator==(const TNodePageClusterKey& rhs) const
+    {
+        return NodeId == rhs.NodeId && PageClusterId == rhs.PageClusterId;
+    }
+};
+
+struct TNodePageClusterSlot
+{
+    TNodePageClusterKey Key;
+    ui64 StoragePageClusterId;
+};
+
+static_assert(sizeof(TNodePageClusterSlot) <= NodePageClusterSlotSize);
+
+////////////////////////////////////////////////////////////////////////////////
 
 NProto::TNodeAttr Convert(const TNodeTableSlot& slot)
 {
@@ -120,12 +154,18 @@ ui64 RoundUp(ui64 n, ui64 by)
     return ((n - 1) / by + 1) * by;
 }
 
+ui64 RoundDown(ui64 n, ui64 by)
+{
+    return (n / by) * by;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TWriteContext
 {
     NProto::TDeviceRequestHeaders Headers;
     TVector<TPageGroup> PageGroups;
+    ui64 Lsn = 0;
     bool PagesCollected = false;
 };
 
@@ -152,7 +192,9 @@ public:
     TWriteContextGuard(TWriteContext& context, IPageStore& store)
         : Context(context)
         , Store(store)
-    {}
+    {
+        Context.Lsn = Store.AllocateLsn();
+    }
 
     ~TWriteContextGuard()
     {
@@ -160,6 +202,8 @@ public:
             auto pages = CollectPages(Context);
             Store.RollbackPages(pages);
         }
+
+        // TODO(#5895) - notify storage that this Lsn was skipped
     }
 };
 
@@ -175,7 +219,6 @@ private:
 
     using THt = TPersistentHashTable<ui64, TNodeTableSlot>;
     std::unique_ptr<THt> Slots;
-    ui64 LastNodeId = 0;
 
 public:
     ui64 Init(
@@ -210,13 +253,22 @@ public:
         return pageCount;
     }
 
-    ui64 AllocateNodeId()
+    NProto::TError AllocateNodeId(ui64* nodeId)
     {
-        // XXX
-        // TODO(#5894): introduce superblock, store LastNodeId in it
-        // Or just scan the whole name table on start and find max node id
-        // Should be good enough for prototype
-        return ++LastNodeId;
+        while (true) {
+            *nodeId = ShardedId(RandomNumber<ui64>(), 0 /* shardNo */);
+            NProto::TNodeAttr attr;
+            auto error = GetNode(*nodeId, &attr);
+            if (!HasError(error)) {
+                continue;
+            }
+
+            if (error.GetCode() == E_FS_NOENT) {
+                return {};
+            }
+
+            return error;
+        }
     }
 
     NProto::TError UpdateNode(
@@ -228,7 +280,7 @@ public:
     {
         TNodeTableSlot slot{};
         ui64 slotNo = 0;
-        auto error = Slots->Get(nodeId, &slot, &slotNo);
+        auto error = Slots->Get(writeContext.Lsn, nodeId, &slot, &slotNo);
         if (HasError(error)) {
             return error;
         }
@@ -255,7 +307,7 @@ public:
             slot.Size = update.GetSize();
         }
 
-        Slots->Update(slot, slotNo, writeContext.PageGroups);
+        Slots->Update(writeContext.Lsn, slot, slotNo, writeContext.PageGroups);
         *attr = Convert(slot);
         return {};
     }
@@ -265,20 +317,24 @@ public:
         TWriteContext& writeContext)
     {
         auto slot = Convert(attr);
-        return Slots->Put(slot, writeContext.PageGroups);
+        return Slots->Put(writeContext.Lsn, slot, writeContext.PageGroups);
     }
 
     NProto::TError DeleteNode(ui64 nodeId, TWriteContext& writeContext)
     {
         TNodeTableSlot slot{};
-        return Slots->Delete(nodeId, &slot, writeContext.PageGroups);
+        return Slots->Delete(
+            writeContext.Lsn,
+            nodeId,
+            &slot,
+            writeContext.PageGroups);
     }
 
     NProto::TError GetNode(ui64 nodeId, NProto::TNodeAttr* attr) const
     {
         TNodeTableSlot slot{};
         ui64 slotNo = 0;
-        auto error = Slots->Get(nodeId, &slot, &slotNo);
+        auto error = Slots->Get(0 /* lsn */, nodeId, &slot, &slotNo);
         if (HasError(error)) {
             return error;
         }
@@ -341,20 +397,24 @@ public:
         memcpy(slot.Name, name.data(), name.size());
         memset(slot.Name + name.size(), 0, NameCapacity - name.size());
         slot.NodeId = nodeId;
-        return Slots->Put(slot, writeContext.PageGroups);
+        return Slots->Put(writeContext.Lsn, slot, writeContext.PageGroups);
     }
 
     NProto::TError Delete(const TString& name, TWriteContext& writeContext)
     {
         TNameTableSlot slot{};
-        return Slots->Delete(name, &slot, writeContext.PageGroups);
+        return Slots->Delete(
+            writeContext.Lsn,
+            name,
+            &slot,
+            writeContext.PageGroups);
     }
 
     NProto::TError Get(const TString& name, ui64* nodeId) const
     {
         ui64 slotNo = 0;
         TNameTableSlot slot{};
-        auto error = Slots->Get(name.c_str(), &slot, &slotNo);
+        auto error = Slots->Get(0 /* lsn */, name.c_str(), &slot, &slotNo);
         if (HasError(error)) {
             return error;
         }
@@ -430,25 +490,143 @@ public:
 
     NProto::TError Put(THandleSlot v, TWriteContext& writeContext)
     {
-        return Slots->Put(v, writeContext.PageGroups);
+        return Slots->Put(writeContext.Lsn, v, writeContext.PageGroups);
     }
 
     NProto::TError Delete(ui64 handle, TWriteContext& writeContext)
     {
         THandleSlot slot{};
-        return Slots->Delete(handle, &slot, writeContext.PageGroups);
+        return Slots->Delete(
+            writeContext.Lsn,
+            handle,
+            &slot,
+            writeContext.PageGroups);
     }
 
     NProto::TError Get(ui64 handle, ui64* nodeId) const
     {
         ui64 slotNo = 0;
         THandleSlot slot{};
-        auto error = Slots->Get(handle, &slot, &slotNo);
+        auto error = Slots->Get(0 /* lsn */, handle, &slot, &slotNo);
         if (HasError(error)) {
             return error;
         }
 
         *nodeId = slot.NodeId;
+        return {};
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TPageIndex
+{
+private:
+    static constexpr ui64 SlotsPerPage = 160;
+    static_assert(SlotsPerPage * NodePageClusterSlotSize <= PageSize);
+
+    using THt = TPersistentHashTable<TNodePageClusterKey, TNodePageClusterSlot>;
+    std::unique_ptr<THt> Slots;
+
+public:
+    ui64 Init(
+        const NProtoPrivate::TPersistentFastShardConfig& config,
+        ui64 firstPageNo,
+        IPageStorePtr pageStore)
+    {
+        const ui64 pageCount = Min(
+            config.GetExpectedGroupCapacity() / PageSize,
+            MaxNodePageClusterTableSize / PageSize);
+        const ui64 slotCount = pageCount * SlotsPerPage;
+        TNodePageClusterSlot tombstone{};
+        tombstone.Key.NodeId = Max<ui64>();
+        Slots = std::make_unique<THt>(
+            firstPageNo,
+            pageCount,
+            PageSize,
+            slotCount,
+            NodePageClusterSlotSize,
+            tombstone,
+            std::move(pageStore),
+            [] (const TNodePageClusterSlot& s) -> TNodePageClusterKey
+            {
+                return s.Key;
+            },
+            [] (const TNodePageClusterKey& k) -> ui64
+            {
+                return CityHash64(
+                    reinterpret_cast<const char*>(&k),
+                    sizeof(TNodePageClusterKey));
+            });
+
+        return pageCount;
+    }
+
+    NProto::TError Put(TNodePageClusterSlot v, TWriteContext& writeContext)
+    {
+        return Slots->Put(writeContext.Lsn, v, writeContext.PageGroups);
+    }
+
+    NProto::TError Delete(
+        const TNodePageClusterKey& k,
+        TWriteContext& writeContext)
+    {
+        TNodePageClusterSlot slot{};
+        return Slots->Delete(
+            writeContext.Lsn,
+            k,
+            &slot,
+            writeContext.PageGroups);
+    }
+
+    NProto::TError Get(
+        const TNodePageClusterKey& k,
+        ui64* storagePageClusterId) const
+    {
+        ui64 slotNo = 0;
+        TNodePageClusterSlot slot{};
+        auto error = Slots->Get(0 /* lsn */, k, &slot, &slotNo);
+        if (HasError(error)) {
+            return error;
+        }
+
+        *storagePageClusterId = slot.StoragePageClusterId;
+        return {};
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TPageAllocator
+{
+private:
+    //static constexpr ui64 SlotsPerPage = 160;
+    //static_assert(SlotsPerPage * NodePageClusterSlotSize <= PageSize);
+
+public:
+    ui64 Init(ui64 firstPageNo, ui64 pageCount, IPageStorePtr pageStore)
+    {
+        // TODO
+        Y_UNUSED(firstPageNo, pageCount, pageStore);
+        return 0;
+    }
+
+    NProto::TError Allocate(
+        ui64 pageClusterCount,
+        TVector<ui64>* storagePageClusterIds,
+        TWriteContext& writeContext)
+    {
+        // TODO
+        Y_UNUSED(pageClusterCount, storagePageClusterIds, writeContext);
+        return {};
+    }
+
+    NProto::TError Deallocate(
+        const TVector<ui64>& storagePageClusterIds,
+        TWriteContext& writeContext)
+    {
+        // TODO
+        Y_UNUSED(storagePageClusterIds, writeContext);
         return {};
     }
 };
@@ -487,6 +665,8 @@ private:
     TNodeTable Nodes;
     TNameTable Names;
     THandleTable Handles;
+    TPageIndex PageIndex;
+    TPageAllocator PageAllocator;
     mutable silk::FiberMutex Mutex;
 
 public:
@@ -530,6 +710,16 @@ public:
             firstPageNo,
             PageStore);
         firstPageNo += handleTablePageCount;
+        const ui64 pageIndexPageCount = PageIndex.Init(
+            Config,
+            firstPageNo,
+            PageStore);
+        firstPageNo += pageIndexPageCount;
+        const ui64 pageAllocatorPageCount = PageAllocator.Init(
+            firstPageNo,
+            Config.GetExpectedGroupCapacity() / PageSize,
+            PageStore);
+        firstPageNo += pageAllocatorPageCount;
     }
 
 public:
@@ -630,14 +820,20 @@ public:
         TWriteContext& writeContext,
         NProto::TNodeAttr* attr)
     {
+        ui64 nodeId = 0;
+        auto error = Nodes.AllocateNodeId(&nodeId);
+        if (HasError(error)) {
+            return error;
+        }
+
         *attr = CreateAttrs(
-            ShardedId(Nodes.AllocateNodeId(), ShardNo),
+            ShardedId(nodeId, ShardNo),
             mode,
             0 /* size */,
             uid,
             gid);
 
-        auto error = Nodes.PutNode(*attr, writeContext);
+        error = Nodes.PutNode(*attr, writeContext);
         if (HasError(error)) {
             return error;
         }
@@ -734,6 +930,10 @@ public:
                 *response.MutableError() = std::move(error);
                 return response;
             }
+
+            //
+            // TODO(#5894): deallocate pages and delete them from page index.
+            //
         }
 
         auto pages = CollectPages(writeContext);

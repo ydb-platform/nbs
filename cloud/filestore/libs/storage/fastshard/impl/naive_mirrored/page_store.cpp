@@ -26,13 +26,17 @@ private:
     struct TPage
     {
         TString Content;
+        ui64 Lsn = 0;
         bool Dirty = false;
     };
 
-    // TODO: eviction strategy + size limit
+    // TODO(#5895): eviction strategy + size limit
     using TPageCache = THashMap<ui64, TPage>;
     mutable TPageCache PageCache;
     mutable silk::FiberMutex Mutex;
+
+    // TODO(#5895): properly initialize this
+    ui64 Lsn = 0;
 
 public:
     TPageStore(
@@ -44,19 +48,31 @@ public:
     }
 
 public:
+    ui64 AllocateLsn() override;
     void CommitPages(const TVector<ui64>& pages) override;
     void RollbackPages(const TVector<ui64>& pages) override;
     void WritePage(
+        ui64 lsn,
         ui64 pageNo,
         TString page,
         TVector<TPageGroup>& logRecord) override;
-    NProto::TError ReadPage(ui64 pageNo, TString* page) const override;
+    NProto::TError ReadPage(
+        ui64 lsn,
+        ui64 pageNo,
+        TString* page) const override;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
+ui64 TPageStore::AllocateLsn()
+{
+    std::lock_guard g(Mutex);
+    return ++Lsn;
+}
+
 void TPageStore::CommitPages(const TVector<ui64>& pages)
 {
+    std::lock_guard g(Mutex);
     for (const ui64 pageNo: pages) {
         auto* page = PageCache.FindPtr(pageNo);
         Y_ABORT_UNLESS(page);
@@ -66,6 +82,7 @@ void TPageStore::CommitPages(const TVector<ui64>& pages)
 
 void TPageStore::RollbackPages(const TVector<ui64>& pages)
 {
+    std::lock_guard g(Mutex);
     for (const ui64 pageNo: pages) {
         auto it = PageCache.find(pageNo);
         Y_ABORT_UNLESS(it != PageCache.end());
@@ -74,6 +91,7 @@ void TPageStore::RollbackPages(const TVector<ui64>& pages)
 }
 
 void TPageStore::WritePage(
+    ui64 lsn,
     ui64 pageNo,
     TString page,
     TVector<TPageGroup>& logRecord)
@@ -84,10 +102,19 @@ void TPageStore::WritePage(
     });
 
     std::lock_guard g(Mutex);
-    PageCache[pageNo] = {.Content = std::move(page), .Dirty = true};
+    auto& p = PageCache[pageNo];
+    Y_ABORT_UNLESS(p.Lsn <= lsn);
+    p = {
+        .Content = std::move(page),
+        .Lsn = lsn,
+        .Dirty = true
+    };
 }
 
-NProto::TError TPageStore::ReadPage(ui64 pageNo, TString* page) const
+NProto::TError TPageStore::ReadPage(
+    ui64 lsn,
+    ui64 pageNo,
+    TString* page) const
 {
     page->clear();
 
@@ -100,10 +127,12 @@ NProto::TError TPageStore::ReadPage(ui64 pageNo, TString* page) const
         if (cachedPage != PageCache.end()) {
             // TODO(#5894): block reader upon dirty page read attempt instead of
             // erroring
-            if (cachedPage->second.Dirty) {
+            if (cachedPage->second.Dirty && cachedPage->second.Lsn != lsn) {
                 return MakeError(
                     E_REJECTED,
-                    TStringBuilder() << "dirty page: " << pageNo);
+                    TStringBuilder() << "dirty page (" << pageNo
+                        << ") with non-matching lsn ("
+                        << cachedPage->second.Lsn << " != " << lsn << ")");
             }
 
             *page = cachedPage->second.Content;
@@ -188,9 +217,9 @@ public:
     {
     }
 
-    NProto::TError ReadPage(ui64 pageNo, TString* page) const override
+    NProto::TError ReadPage(ui64 lsn, ui64 pageNo, TString* page) const override
     {
-        auto error = TPageStore::ReadPage(pageNo, page);
+        auto error = TPageStore::ReadPage(lsn, pageNo, page);
         if (error.GetCode() == E_NOT_FOUND) {
             *page = TString(PageSize, 0);
             return {};
