@@ -96,10 +96,27 @@ void TPageStore::WritePage(
     TString page,
     TVector<TPageGroup>& logRecord)
 {
-    logRecord.push_back({
-        .FirstPageNo = pageNo,
-        .Content = TVector<TString>({page})
-    });
+    bool found = false;
+
+    //
+    // Linear search is ok because we don't expect to have more than a couple
+    // page groups in log-record.
+    //
+
+    for (auto& pg: logRecord) {
+        const ui64 endPageNo = pg.FirstPageNo + pg.Content.size();
+        if (pg.FirstPageNo <= pageNo && endPageNo > pageNo) {
+            pg.Content[pageNo - pg.FirstPageNo] = page;
+            found = true;
+        }
+    }
+
+    if (!found) {
+        logRecord.push_back({
+            .FirstPageNo = pageNo,
+            .Content = TVector<TString>({page})
+        });
+    }
 
     std::lock_guard g(Mutex);
     auto& p = PageCache[pageNo];

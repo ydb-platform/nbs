@@ -608,7 +608,7 @@ public:
     {
         // TODO
         Y_UNUSED(firstPageNo, pageCount, pageStore);
-        return 0;
+        return firstPageNo + pageCount;
     }
 
     NProto::TError Allocate(
@@ -618,7 +618,7 @@ public:
     {
         // TODO
         Y_UNUSED(pageClusterCount, storagePageClusterIds, writeContext);
-        return {};
+        return MakeError(E_FS_OUT_OF_SPACE);
     }
 
     NProto::TError Deallocate(
@@ -1095,14 +1095,286 @@ public:
 
     NProto::TWriteDataResponse WriteData(NProto::TWriteDataRequest request)
     {
-        Y_UNUSED(request);
-        return {};
+        NProto::TWriteDataResponse response;
+
+        std::unique_lock l(Mutex);
+
+        ui64 nodeId = 0;
+        auto error = Handles.Get(request.GetHandle(), &nodeId);
+        if (HasError(error)) {
+            *response.MutableError() = std::move(error);
+            return response;
+        }
+
+        //
+        // Figuring out how many page clusters we need to allocate.
+        //
+
+        ui64 pageClusterIdsToAllocate = 0;
+        TVector<ui64> storagePageClusterIdsToWrite;
+
+        ui64 bufferOffset = request.GetBufferOffset();
+        while (bufferOffset < request.GetBuffer().size()) {
+            const ui64 fileOffset = bufferOffset - request.GetBufferOffset()
+                + request.GetOffset();
+            const ui64 pageClusterId = fileOffset / PageClusterSize;
+
+            ui64 storagePageClusterId = 0;
+            error = PageIndex.Get(
+                {.NodeId = nodeId, .PageClusterId = pageClusterId},
+                &storagePageClusterId);
+            if (error.GetCode() == E_FS_NOENT) {
+                ++pageClusterIdsToAllocate;
+                storagePageClusterIdsToWrite.push_back(
+                    InvalidStoragePageClusterId);
+                error = {};
+            } else if (HasError(error)) {
+                break;
+            }
+
+            storagePageClusterIdsToWrite.push_back(storagePageClusterId);
+            bufferOffset += PageClusterSize;
+        }
+
+        if (HasError(error)) {
+            *response.MutableError() = std::move(error);
+            return response;
+        }
+
+        TWriteContext writeContext;
+        TWriteContextGuard wcg(writeContext, *PageStore);
+
+        //
+        // The allocation of all page clusters must happen as a single call.
+        //
+
+        TVector<ui64> newStoragePageClusterIds;
+        if (pageClusterIdsToAllocate) {
+            error = PageAllocator.Allocate(
+                pageClusterIdsToAllocate,
+                &newStoragePageClusterIds,
+                writeContext);
+            if (HasError(error)) {
+                *response.MutableError() = std::move(error);
+                return response;
+            }
+
+            Y_ABORT_UNLESS(newStoragePageClusterIds.size()
+                == pageClusterIdsToAllocate);
+        }
+
+        //
+        // Updating index and writing pages.
+        //
+
+        const ui64 endOffset = request.GetOffset() + request.GetBuffer().size()
+            - request.GetBufferOffset();
+
+        bufferOffset = request.GetBufferOffset();
+
+        auto storagePageClusterIdIt = storagePageClusterIdsToWrite.begin();
+        auto newStoragePageClusterIdIt = newStoragePageClusterIds.begin();
+        while (bufferOffset < request.GetBuffer().size()) {
+            //
+            // Updating page index.
+            //
+
+            const ui64 fileOffset = bufferOffset - request.GetBufferOffset()
+                + request.GetOffset();
+            const ui64 pageClusterId = fileOffset / PageClusterSize;
+
+            Y_ABORT_UNLESS(storagePageClusterIdIt
+                != storagePageClusterIdsToWrite.end());
+            if (*storagePageClusterIdIt == 0) {
+                Y_ABORT_UNLESS(newStoragePageClusterIdIt
+                    != newStoragePageClusterIds.end());
+                *storagePageClusterIdIt = *newStoragePageClusterIdIt;
+                ++newStoragePageClusterIdIt;
+            }
+
+            TNodePageClusterSlot slot;
+            slot.Key.NodeId = nodeId;
+            slot.Key.PageClusterId = pageClusterId;
+            slot.StoragePageClusterId = *storagePageClusterIdIt;
+            error = PageIndex.Put(slot, writeContext);
+            if (HasError(error)) {
+                break;
+            }
+
+            //
+            // Writing this page cluster to storage.
+            //
+
+            const ui64 firstPageInCluster =
+                *storagePageClusterIdIt * PageClusterPageCount;
+
+            ui32 pageNoInCluster = 0;
+            while (pageNoInCluster < PageClusterPageCount) {
+                const ui64 storagePageNo = firstPageInCluster + pageNoInCluster;
+                const ui64 pageStart = RoundDown(fileOffset, PageSize)
+                    + pageNoInCluster * PageSize;
+                const ui64 pageEnd = pageStart + PageSize;
+                const bool isUnalignedHead =
+                    pageNoInCluster == 0 && pageStart != fileOffset;
+                const bool isUnalignedTail = pageEnd > endOffset;
+
+                if (pageStart >= endOffset) {
+                    break;
+                }
+
+                TString page;
+                if (isUnalignedHead || isUnalignedTail) {
+                    error = PageStore->ReadPage(
+                        writeContext.Lsn,
+                        storagePageNo,
+                        &page);
+
+                    if (HasError(error)) {
+                        break;
+                    }
+                } else {
+                    page.ReserveAndResize(PageSize);
+                }
+
+                const ui64 offsetInPage =
+                    pageNoInCluster == 0 ? fileOffset - pageStart : 0;
+                const ui64 toCopy =
+                    Min(pageEnd, endOffset) - (pageStart + offsetInPage);
+                memcpy(
+                    page.begin() + offsetInPage,
+                    request.GetBuffer().data() + bufferOffset,
+                    toCopy);
+
+                bufferOffset += toCopy;
+                ++pageNoInCluster;
+            }
+
+            if (HasError(error)) {
+                break;
+            }
+
+            ++storagePageClusterIdIt;
+        }
+
+        l.release();
+
+        if (HasError(error)) {
+            *response.MutableError() = std::move(error);
+            return response;
+        }
+
+        //
+        // Everything's fine, time to commit the result.
+        //
+
+        auto pages = CollectPages(writeContext);
+        error = Storage->WriteLogRecord(
+            std::move(writeContext.Headers),
+            std::move(writeContext.PageGroups));
+        if (HasError(error)) {
+            *response.MutableError() = std::move(error);
+            PageStore->RollbackPages(pages);
+            return response;
+        }
+
+        PageStore->CommitPages(pages);
+
+        return response;
     }
 
     NProto::TReadDataResponse ReadData(NProto::TReadDataRequest request)
     {
-        Y_UNUSED(request);
-        return {};
+        NProto::TReadDataResponse response;
+
+        std::lock_guard l(Mutex);
+
+        ui64 nodeId = 0;
+        auto error = Handles.Get(request.GetHandle(), &nodeId);
+        if (HasError(error)) {
+            *response.MutableError() = std::move(error);
+            return response;
+        }
+
+        auto& buffer = *response.MutableBuffer();
+        buffer.resize(request.GetLength(), 0);
+        const ui64 endOffset = request.GetOffset() + request.GetLength();
+
+        ui64 bufferOffset = 0;
+
+        while (bufferOffset < buffer.size()) {
+            //
+            // Updating page index.
+            //
+
+            const ui64 fileOffset = bufferOffset + request.GetOffset();
+            const ui64 pageClusterId = fileOffset / PageClusterSize;
+
+            ui64 storagePageClusterId = 0;
+            error = PageIndex.Get(
+                {.NodeId = nodeId, .PageClusterId = pageClusterId},
+                &storagePageClusterId);
+            if (error.GetCode() == E_FS_NOENT) {
+                const ui64 toSet =
+                    Min(PageClusterSize, buffer.size() - bufferOffset);
+                memset(buffer.begin() + bufferOffset, 0, toSet);
+                bufferOffset += toSet;
+                error = {};
+                continue;
+            }
+
+            if (HasError(error)) {
+                break;
+            }
+
+            //
+            // Writing this page cluster to storage.
+            //
+
+            const ui64 firstPageInCluster =
+                storagePageClusterId * PageClusterPageCount;
+
+            ui32 pageNoInCluster = 0;
+            while (pageNoInCluster < PageClusterPageCount) {
+                const ui64 storagePageNo = firstPageInCluster + pageNoInCluster;
+                const ui64 pageStart = RoundDown(fileOffset, PageSize)
+                    + pageNoInCluster * PageSize;
+                const ui64 pageEnd = pageStart + PageSize;
+
+                if (pageStart >= endOffset) {
+                    break;
+                }
+
+                TString page;
+                error = PageStore->ReadPage(0 /* lsn */, storagePageNo, &page);
+
+                if (HasError(error)) {
+                    break;
+                }
+
+                const ui64 offsetInPage =
+                    pageNoInCluster == 0 ? fileOffset - pageStart : 0;
+                const ui64 toCopy =
+                    Min(pageEnd, endOffset) - (pageStart + offsetInPage);
+                memcpy(
+                    buffer.begin() + bufferOffset,
+                    page.begin() + offsetInPage,
+                    toCopy);
+
+                bufferOffset += toCopy;
+                ++pageNoInCluster;
+            }
+
+            if (HasError(error)) {
+                break;
+            }
+        }
+
+        if (HasError(error)) {
+            buffer.clear();
+            *response.MutableError() = std::move(error);
+        }
+
+        return response;
     }
 
     //
