@@ -1303,7 +1303,7 @@ public:
 
         while (bufferOffset < buffer.size()) {
             //
-            // Updating page index.
+            // Reading page index.
             //
 
             const ui64 fileOffset = bufferOffset + request.GetOffset();
@@ -1314,6 +1314,11 @@ public:
                 {.NodeId = nodeId, .PageClusterId = pageClusterId},
                 &storagePageClusterId);
             if (error.GetCode() == E_FS_NOENT) {
+                //
+                // Page cluster mapping not found - filling the corresponding
+                // part of the buffer with zeroes.
+                //
+
                 const ui64 toSet =
                     Min(PageClusterSize, buffer.size() - bufferOffset);
                 memset(buffer.begin() + bufferOffset, 0, toSet);
@@ -1327,7 +1332,7 @@ public:
             }
 
             //
-            // Writing this page cluster to storage.
+            // Page cluster mapping found - reading the pages into the buffer.
             //
 
             const ui64 firstPageInCluster =
