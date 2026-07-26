@@ -28,8 +28,6 @@ public:
 
     struct TSource
     {
-        ESourceKind Kind = ESourceKind::Empty;
-
         // Commit which produced this visible source.
         // The source with the greatest CommitId wins.
         ui64 CommitId = 0;
@@ -40,7 +38,18 @@ public:
         // Valid only for Kind == Blob.
         // Offset in blob corresponding to this block.
         ui32 BlobOffset = 0;
+
+        // Deliberately declared last. TPartialBlobId and CommitId are 8 byte
+        // aligned, so a leading ui8 field would occupy a whole 8 byte slot,
+        // making TSource 40 bytes. At the end it fits into the padding that
+        // already follows BlobOffset, so TSource stays 32 bytes. We keep one
+        // TSource per block, so this is a 20% cut of the Blocks vector.
+        ESourceKind Kind = ESourceKind::Empty;
     };
+
+    static_assert(
+        32 == sizeof(TSource),
+        "TSource is stored per block, keep it compact");
 
     struct TBlobRange
     {
