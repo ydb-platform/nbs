@@ -135,6 +135,7 @@ var (
 	E_MOUNT_CONFLICT         = makeServiceError(6)
 
 	E_RDMA_UNAVAILABLE = makeRdmaError(1)
+	E_RDMA_RETRY_EXCEEDED = makeRdmaError(2)
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -198,6 +199,7 @@ var resultMap = map[uint32]string{
 	E_MOUNT_CONFLICT:         "E_MOUNT_CONFLICT",
 
 	E_RDMA_UNAVAILABLE: "E_RDMA_UNAVAILABLE",
+	E_RDMA_RETRY_EXCEEDED: "E_RDMA_RETRY_EXCEEDED",
 }
 
 func getSeverityString(code uint32) string {
