@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/private/api/protos/checkpoints.pb.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -32,6 +33,7 @@ private:
     const TString Input;
 
     NPrivateProto::TDeleteCheckpointDataRequest Request;
+    TLogTitle LogTitle;
 
 public:
     TDeleteCheckpointDataActionActor(
@@ -65,6 +67,7 @@ TDeleteCheckpointDataActionActor::TDeleteCheckpointDataActionActor(
         TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
+    , LogTitle(GetCycleCount(), TLogTitle::TServiceRequest{})
 {}
 
 void TDeleteCheckpointDataActionActor::Bootstrap(const TActorContext& ctx)
@@ -79,6 +82,8 @@ void TDeleteCheckpointDataActionActor::Bootstrap(const TActorContext& ctx)
         return;
     }
 
+    LogTitle.SetDiskId(Request.GetDiskId());
+
     if (!Request.GetCheckpointId()) {
         HandleError(ctx, MakeError(E_ARGUMENT, "CheckpointId should be supplied"));
         return;
@@ -91,9 +96,11 @@ void TDeleteCheckpointDataActionActor::DeleteCheckpointData(const TActorContext&
 {
     Become(&TThis::StateWork);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-        "Sending delete checkpoint data request for volume %s",
-        Request.GetDiskId().Quote().c_str());
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Sending delete checkpoint data request for volume",
+        LogTitle.GetWithTime().c_str());
 
     auto request = std::make_unique<TEvVolume::TEvDeleteCheckpointDataRequest>();
     request->Record.SetDiskId(Request.GetDiskId());

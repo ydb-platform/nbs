@@ -5,6 +5,8 @@
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/private/api/protos/volume.pb.h>
 
+#include <cloud/blockstore/libs/storage/model/log_title.h>
+
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
@@ -32,6 +34,7 @@ private:
     const TString Input;
 
     NProto::TUpdateVolumeParamsRequest Request;
+    TLogTitle LogTitle;
 
 public:
     TUpdateVolumeParamsActor(
@@ -65,6 +68,7 @@ TUpdateVolumeParamsActor::TUpdateVolumeParamsActor(
         TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
+    , LogTitle(GetCycleCount(), TLogTitle::TServiceRequest{})
 {}
 
 void TUpdateVolumeParamsActor::Bootstrap(const TActorContext& ctx)
@@ -79,6 +83,7 @@ void TUpdateVolumeParamsActor::Bootstrap(const TActorContext& ctx)
         return;
     }
 
+    LogTitle.SetDiskId(Request.GetDiskId());
     UpdateVolumeParams(ctx);
 }
 
@@ -87,8 +92,8 @@ void TUpdateVolumeParamsActor::UpdateVolumeParams(const TActorContext& ctx)
     Become(&TThis::StateWork);
 
     LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-        "Sending update volume params request for volume %s",
-        Request.GetDiskId().Quote().c_str());
+        "%s Sending update volume params request for volume",
+        LogTitle.GetWithTime().c_str());
 
     NCloud::Send(
         ctx,

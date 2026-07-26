@@ -108,6 +108,12 @@ public:
         TString AgentId;
     };
 
+    struct TServiceRequest
+    {
+        TString DiskId;
+        TString ClientId;
+    };
+
 private:
     using TData = std::variant<
         TVolume,
@@ -122,7 +128,8 @@ private:
         TPartitionMigration,
         TMirrorPartitionResync,
         TFreshBlocksWriter,
-        TAgentAvailabilityMonitoringActor>;
+        TAgentAvailabilityMonitoringActor,
+        TServiceRequest>;
 
     ui64 StartTime = 0;
     TData Data;

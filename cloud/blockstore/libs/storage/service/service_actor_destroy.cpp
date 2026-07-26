@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/libs/storage/model/volume_label.h>
 
 #include <cloud/storage/core/libs/common/media.h>
@@ -49,6 +50,7 @@ private:
     const TDuration AttachedDiskDestructionTimeout;
     const TVector<TString> DestructionAllowedOnlyForDisksWithIdPrefixes;
     TString DiskId;
+    TLogTitle LogTitle;
     const bool DestroyIfBroken;
     const bool Sync;
     const ui64 FillGeneration;
@@ -136,6 +138,7 @@ TDestroyVolumeActor::TDestroyVolumeActor(
     , DestructionAllowedOnlyForDisksWithIdPrefixes(
           std::move(destructionAllowedOnlyForDisksWithIdPrefixes))
     , DiskId(std::move(diskId))
+    , LogTitle(GetCycleCount(), TLogTitle::TServiceRequest{.DiskId = DiskId})
     , DestroyIfBroken(destroyIfBroken)
     , Sync(sync)
     , FillGeneration(fillGeneration)
@@ -182,7 +185,11 @@ void TDestroyVolumeActor::DestroyVolume(const TActorContext& ctx)
 
 void TDestroyVolumeActor::NotifyDiskRegistry(const TActorContext& ctx)
 {
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE, "notify disk registry");
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s notify disk registry",
+        LogTitle.GetWithTime().c_str());
 
     auto request = std::make_unique<TEvDiskRegistry::TEvMarkDiskForCleanupRequest>();
     request->Record.SetDiskId(DiskId);
@@ -192,7 +199,11 @@ void TDestroyVolumeActor::NotifyDiskRegistry(const TActorContext& ctx)
 
 void TDestroyVolumeActor::StatVolume(const TActorContext& ctx)
 {
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE, "stat volume");
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s stat volume",
+        LogTitle.GetWithTime().c_str());
 
     auto request = std::make_unique<TEvService::TEvStatVolumeRequest>();
     request->Record.SetDiskId(DiskId);
@@ -207,8 +218,12 @@ void TDestroyVolumeActor::StatVolume(const TActorContext& ctx)
 
 void TDestroyVolumeActor::DeallocateDisk(const TActorContext& ctx)
 {
-    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
-        "deallocate disk (Sync=%d)", Sync);
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s deallocate disk (Sync=%d)",
+        LogTitle.GetWithTime().c_str(),
+        Sync);
 
     auto request = std::make_unique<TEvDiskRegistry::TEvDeallocateDiskRequest>();
     request->Record.SetDiskId(DiskId);
@@ -254,18 +269,22 @@ void TDestroyVolumeActor::HandleModifyResponse(
     const auto& error = msg->GetError();
 
     if (HasError(error)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-            "Volume %s: drop failed, error %s",
-            DiskId.Quote().data(),
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s Volume: drop failed, error %s",
+            LogTitle.GetWithTime().c_str(),
             FormatError(error).data());
 
         ReplyAndDie(ctx, error);
         return;
     }
 
-    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
-        "Volume %s dropped successfully",
-        DiskId.Quote().c_str());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Volume dropped successfully",
+        LogTitle.GetWithTime().c_str());
 
     if (IsDiskRegistryBased) {
         DeallocateDisk(ctx);
@@ -284,16 +303,20 @@ void TDestroyVolumeActor::HandleWaitReadyResponse(
     const auto& error = msg->GetError();
 
     if (HasError(error)) {
-        LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-            "Volume %s WaitReady error %s",
-            DiskId.Quote().c_str(),
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s Volume WaitReady error %s",
+            LogTitle.GetWithTime().c_str(),
             error.GetMessage().Quote().c_str());
 
         DestroyVolume(ctx);
     } else {
-        LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-            "Volume %s WaitReady success",
-            DiskId.Quote().c_str());
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s Volume WaitReady success",
+            LogTitle.GetWithTime().c_str());
 
         ReplyAndDie(
             ctx,
@@ -307,7 +330,11 @@ void TDestroyVolumeActor::HandleMarkDiskForCleanupResponse(
     const TEvDiskRegistry::TEvMarkDiskForCleanupResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE, "handle response from disk registry");
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s handle response from disk registry",
+        LogTitle.GetWithTime().c_str());
 
     const auto* msg = ev->Get();
     const auto& error = msg->GetError();
@@ -317,16 +344,18 @@ void TDestroyVolumeActor::HandleMarkDiskForCleanupResponse(
         LOG_INFO(
             ctx,
             TBlockStoreComponents::SERVICE,
-            "volume %s not found in registry",
-            DiskId.Quote().data());
+            "%s volume not found in registry",
+            LogTitle.GetWithTime().c_str());
         DestroyVolume(ctx);
         return;
     }
 
     if (HasError(error)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-            "Volume %s: unable to notify DR about disk destruction: %s",
-            DiskId.Quote().data(),
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s Volume: unable to notify DR about disk destruction: %s",
+            LogTitle.GetWithTime().c_str(),
             FormatError(error).data());
 
         ReplyAndDie(ctx, error);
@@ -344,14 +373,18 @@ void TDestroyVolumeActor::HandleDeallocateDiskResponse(
     const auto& error = msg->GetError();
 
     if (HasError(error)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-            "Volume %s: unable to deallocate disk: %s",
-            DiskId.Quote().data(),
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s Volume: unable to deallocate disk: %s",
+            LogTitle.GetWithTime().c_str(),
             FormatError(error).data());
     } else {
-        LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
-            "Volume %s deallocated successfully",
-            DiskId.Quote().c_str());
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s Volume deallocated successfully",
+            LogTitle.GetWithTime().c_str());
     }
 
     ReplyAndDie(ctx, VolumeNotFoundInSS && error.GetCode() == S_ALREADY
@@ -363,7 +396,11 @@ void TDestroyVolumeActor::HandleStatVolumeResponse(
     const TEvService::TEvStatVolumeResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE, "handle stat response");
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s handle stat response",
+        LogTitle.GetWithTime().c_str());
 
     const auto* msg = ev->Get();
 
@@ -378,9 +415,11 @@ void TDestroyVolumeActor::HandleStatVolumeResponse(
     }
 
     if (auto error = msg->GetError(); HasError(error)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-            "Volume %s: unable to stat volume: %s",
-            DiskId.Quote().data(),
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s Volume: unable to stat volume: %s",
+            LogTitle.GetWithTime().c_str(),
             FormatError(error).data());
 
         ReplyAndDie(ctx, error);
@@ -408,8 +447,8 @@ void TDestroyVolumeActor::HandleStatVolumeResponse(
                 LOG_WARN(
                     ctx,
                     TBlockStoreComponents::SERVICE,
-                    "Volume %s does not exist. Delete secondary %s instead",
-                    DiskId.Quote().c_str(),
+                    "%s Volume does not exist. Delete secondary %s instead",
+                    LogTitle.GetWithTime().c_str(),
                     foundDiskId.Quote().c_str());
                 DiskId = foundDiskId;
                 break;
@@ -439,15 +478,19 @@ void TDestroyVolumeActor::HandleStatVolumeResponse(
             const bool isStale = disconnectTimestamp
                 && disconnectTimestamp + timeout < ctx.Now();
             if (isStale) {
-                LOG_WARN(ctx, TBlockStoreComponents::SERVICE,
-                    "Volume %s is attached to instance (stale): %s, dt: %s",
-                    DiskId.Quote().c_str(),
+                LOG_WARN(
+                    ctx,
+                    TBlockStoreComponents::SERVICE,
+                    "%s Volume is attached to instance (stale): %s, dt: %s",
+                    LogTitle.GetWithTime().c_str(),
                     client.GetInstanceId().Quote().c_str(),
                     ToString(disconnectTimestamp).c_str());
             } else {
-                LOG_WARN(ctx, TBlockStoreComponents::SERVICE,
-                    "Volume %s is attached to instance (active): %s",
-                    DiskId.Quote().c_str(),
+                LOG_WARN(
+                    ctx,
+                    TBlockStoreComponents::SERVICE,
+                    "%s Volume is attached to instance (active): %s",
+                    LogTitle.GetWithTime().c_str(),
                     client.GetInstanceId().Quote().c_str());
 
                 ReplyAndDie(
@@ -481,8 +524,8 @@ void TDestroyVolumeActor::HandleGracefulShutdownResponse(
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::SERVICE,
-            "Volume %s: unable to gracefully stop volume: %s",
-            DiskId.Quote().data(),
+            "%s Volume: unable to gracefully stop volume: %s",
+            LogTitle.GetWithTime().c_str(),
             FormatError(error).data());
 
         if (IsNotFoundSchemeShardError(error)) {
@@ -505,9 +548,8 @@ void TDestroyVolumeActor::HandleTimeout(
     LOG_ERROR(
         ctx,
         TBlockStoreComponents::SERVICE,
-        "Timeout destroy volume request, diskId = %s, destroyIfBroken = %d, "
-        "sync = %d",
-        DiskId.c_str(),
+        "%s Timeout destroy volume request, destroyIfBroken = %d, sync = %d",
+        LogTitle.GetWithTime().c_str(),
         DestroyIfBroken,
         Sync);
 

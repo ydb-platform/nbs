@@ -1,6 +1,7 @@
 #include "service_actor.h"
 
 #include <cloud/blockstore/libs/storage/api/volume.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 
@@ -36,6 +37,7 @@ private:
     ui32 BlocksCount = 0;
     TString CheckpointId;
     bool IndexOnly = false;
+    TLogTitle LogTitle;
 
 public:
     TDescribeBlocksActionActor(TRequestInfoPtr requestInfo, TString input);
@@ -63,6 +65,7 @@ TDescribeBlocksActionActor::TDescribeBlocksActionActor(
         TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
+    , LogTitle(GetCycleCount(), TLogTitle::TServiceRequest{})
 {}
 
 void TDescribeBlocksActionActor::Bootstrap(const TActorContext& ctx)
@@ -75,6 +78,7 @@ void TDescribeBlocksActionActor::Bootstrap(const TActorContext& ctx)
 
     if (input.Has("DiskId")) {
         DiskId = input["DiskId"].GetStringRobust();
+        LogTitle.SetDiskId(DiskId);
     }
 
     if (!DiskId) {
@@ -195,8 +199,11 @@ void TDescribeBlocksActionActor::HandleDescribeBlocksResponse(
     TString response;
     google::protobuf::util::MessageToJsonString(msg->Record, &response);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-        "Execute action private API: describe blocks response: %s",
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Execute action private API: describe blocks response: %s",
+        LogTitle.GetWithTime().c_str(),
         response.data());
 
     HandleSuccess(ctx, response);

@@ -4,7 +4,7 @@
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
-
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/private/api/protos/volume.pb.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -12,10 +12,10 @@
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/log.h>
 
-#include <google/protobuf/util/json_util.h>
-
 #include <util/generic/guid.h>
 #include <util/string/printf.h>
+
+#include <google/protobuf/util/json_util.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -33,6 +33,8 @@ class TRebuildMetadataActor final
     : public TActorBootstrapped<TRebuildMetadataActor>
 {
 private:
+    TLogTitle LogTitle;
+
     const TRequestInfoPtr RequestInfo;
     const TString Input;
 
@@ -64,7 +66,8 @@ private:
 TRebuildMetadataActor::TRebuildMetadataActor(
         TRequestInfoPtr requestInfo,
         TString input)
-    : RequestInfo(std::move(requestInfo))
+    : LogTitle(GetCycleCount(), TLogTitle::TServiceRequest{})
+    , RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
 {}
 
@@ -79,6 +82,8 @@ void TRebuildMetadataActor::Bootstrap(const TActorContext& ctx)
         ReplyAndDie(ctx, MakeError(E_ARGUMENT, "DiskId should be supplied"));
         return;
     }
+
+    LogTitle.SetDiskId(Request.GetDiskId());
 
     if (!Request.GetBatchSize()) {
         ReplyAndDie(ctx, MakeError(E_ARGUMENT, "Batch size should be supplied"));
@@ -111,8 +116,8 @@ void TRebuildMetadataActor::Bootstrap(const TActorContext& ctx)
     }
 
     LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
-        "Rebilding metadata for %s disk, metadata type: %u",
-        Request.GetDiskId().c_str(),
+        "%s Rebilding metadata for disk, metadata type: %u",
+        LogTitle.GetWithTime().c_str(),
         Request.GetMetadataType());
 
 
@@ -208,6 +213,7 @@ private:
     const TString Input;
 
     NPrivateProto::TGetRebuildMetadataStatusRequest Request;
+    TLogTitle LogTitle;
 
 public:
     TRebuildMetadataStatusActor(
@@ -237,6 +243,7 @@ TRebuildMetadataStatusActor::TRebuildMetadataStatusActor(
         TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
+    , LogTitle(GetCycleCount(), TLogTitle::TServiceRequest{})
 {
 }
 
@@ -252,12 +259,16 @@ void TRebuildMetadataStatusActor::Bootstrap(const TActorContext& ctx)
         return;
     }
 
+    LogTitle.SetDiskId(Request.GetDiskId());
+
     auto request = std::make_unique<TEvVolume::TEvGetRebuildMetadataStatusRequest>();
     request->Record.SetDiskId(Request.GetDiskId());
 
-    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
-        "Query rebild metadata progress for %s disk",
-        Request.GetDiskId().c_str());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Query rebild metadata progress for disk",
+        LogTitle.GetWithTime().c_str());
 
     NCloud::Send(
         ctx,

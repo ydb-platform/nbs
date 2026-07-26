@@ -202,6 +202,15 @@ TString ToString(const TLogTitle::TAgentAvailabilityMonitoringActor& data)
            << "[aam:" << data.DiskId << " agent:" << data.AgentId;
 }
 
+TString ToString(const TLogTitle::TServiceRequest& data)
+{
+    auto builder = TStringBuilder() << "[service d:" << data.DiskId;
+    if (data.ClientId) {
+        builder << " client:" << data.ClientId;
+    }
+    return builder;
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -1,12 +1,14 @@
 #include "service_actor.h"
 
+#include "cloud/blockstore/libs/storage/ss_proxy/ss_proxy_actor.h"
+
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/core/volume_model.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
-#include "cloud/blockstore/libs/storage/ss_proxy/ss_proxy_actor.h"
 #include <cloud/blockstore/private/api/protos/volume.pb.h>
 
 #include <cloud/storage/core/libs/common/media.h>
@@ -45,6 +47,7 @@ private:
 
     NPrivateProto::TVolumeChannelsToPoolsKinds VolumeChannelsToPoolsKinds;
     bool SetupChannelsRequested = false;
+    TLogTitle LogTitle;
 
 public:
     TAlterVolumeActor(
@@ -165,6 +168,7 @@ TAlterVolumeActor::TAlterVolumeActor(
     , NewBlocksCount(request.GetBlocksCount())
     , DiskId(request.GetDiskId())
     , ConfigVersion(request.GetConfigVersion())
+    , LogTitle(GetCycleCount(), TLogTitle::TServiceRequest{.DiskId = DiskId})
 {}
 
 TAlterVolumeActor::TAlterVolumeActor(
@@ -177,6 +181,7 @@ TAlterVolumeActor::TAlterVolumeActor(
     , Config(std::move(config))
     , DiskId(request.GetDiskId())
     , ConfigVersion(request.GetConfigVersion())
+    , LogTitle(GetCycleCount(), TLogTitle::TServiceRequest{.DiskId = DiskId})
 {
     VolumeConfig.SetProjectId(request.GetProjectId());
     VolumeConfig.SetFolderId(request.GetFolderId());
@@ -198,6 +203,7 @@ TAlterVolumeActor::TAlterVolumeActor(
     , ConfigVersion(request.GetConfigVersion())
     , VolumeChannelsToPoolsKinds(request.GetVolumeChannelsToPoolsKinds())
     , SetupChannelsRequested(true)
+    , LogTitle(GetCycleCount(), TLogTitle::TServiceRequest{.DiskId = DiskId})
 {
     VolumeConfig.SetIsPartitionsPoolKindSetManually(
         request.GetIsPartitionsPoolKindSetManually());
@@ -212,9 +218,11 @@ void TAlterVolumeActor::DescribeVolume(const TActorContext& ctx)
 {
     Become(&TThis::StateDescribeVolume);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-        "Sending describe request for volume %s",
-        DiskId.Quote().c_str());
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Sending describe request for volume",
+        LogTitle.GetWithTime().c_str());
 
     NCloud::Send(
         ctx,
@@ -230,8 +238,11 @@ void TAlterVolumeActor::AlterVolume(
 {
     Become(&TThis::StateAlterVolume);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-        "Sending alter request for %s",
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Sending alter request for %s",
+        LogTitle.GetWithTime().c_str(),
         path.Quote().c_str());
 
     auto request = CreateModifySchemeRequestForAlterVolume(
@@ -274,9 +285,11 @@ void TAlterVolumeActor::HandleDescribeVolumeResponse(
 
     const auto& error = msg->GetError();
     if (FAILED(error.GetCode())) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-            "Volume %s: describe failed: %s",
-            DiskId.Quote().c_str(),
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s Volume: describe failed: %s",
+            LogTitle.GetWithTime().c_str(),
             FormatError(error).c_str());
         Error = error;
 
@@ -424,9 +437,11 @@ void TAlterVolumeActor::HandleDescribeVolumeResponse(
                 && CompareVolumeConfigs(oldVolumeConfig, VolumeConfig)
            )
         {
-            LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-                "Volume %s already has the required settings, size=%lu",
-                DiskId.Quote().c_str(),
+            LOG_DEBUG(
+                ctx,
+                TBlockStoreComponents::SERVICE,
+                "%s Volume already has the required settings, size=%lu",
+                LogTitle.GetWithTime().c_str(),
                 volumeParams.GetBlocksCount());
 
             Error = MakeError(S_ALREADY, "Volume already has the required settings");
@@ -457,10 +472,12 @@ void TAlterVolumeActor::HandleAlterVolumeResponse(
     NProto::TError error = msg->GetError();
     ui32 errorCode = error.GetCode();
     if (FAILED(errorCode)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-            "%s of volume %s failed: %s",
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s %s of volume failed: %s",
+            LogTitle.GetWithTime().c_str(),
             GetOperationString(),
-            DiskId.Quote().c_str(),
             msg->GetErrorReason().c_str());
 
         Error = std::move(error);
@@ -468,9 +485,11 @@ void TAlterVolumeActor::HandleAlterVolumeResponse(
         return;
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-        "Sending WaitReady request to volume %s",
-        DiskId.Quote().c_str());
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Sending WaitReady request to volume",
+        LogTitle.GetWithTime().c_str());
 
     WaitReady(ctx);
 }
@@ -482,17 +501,21 @@ void TAlterVolumeActor::HandleWaitReadyResponse(
     const auto* msg = ev->Get();
 
     if (HasError(msg->GetError())) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-            "%s->WaitReady request failed for volume %s, error: %s",
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s %s->WaitReady request failed for volume, error: %s",
+            LogTitle.GetWithTime().c_str(),
             GetOperationString(),
-            DiskId.Quote().c_str(),
             msg->GetErrorReason().Quote().c_str());
         Error = msg->GetError();
     } else {
-        LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-            "Successfully %s volume %s",
-            GetOperationString(),
-            DiskId.Quote().c_str());
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s Successfully %s volume",
+            LogTitle.GetWithTime().c_str(),
+            GetOperationString());
     }
 
     ReplyAndDie(ctx);

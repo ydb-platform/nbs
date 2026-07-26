@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/private/api/protos/volume.pb.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -32,6 +33,7 @@ private:
     const TString Input;
 
     NProto::TUpdateUsedBlocksRequest Request;
+    TLogTitle LogTitle;
 
 public:
     TUpdateUsedBlocksActionActor(
@@ -65,6 +67,7 @@ TUpdateUsedBlocksActionActor::TUpdateUsedBlocksActionActor(
         TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
+    , LogTitle(GetCycleCount(), TLogTitle::TServiceRequest{})
 {}
 
 void TUpdateUsedBlocksActionActor::Bootstrap(const TActorContext& ctx)
@@ -79,6 +82,8 @@ void TUpdateUsedBlocksActionActor::Bootstrap(const TActorContext& ctx)
         return;
     }
 
+    LogTitle.SetDiskId(Request.GetDiskId());
+
     UpdateUsedBlocks(ctx);
 }
 
@@ -87,8 +92,8 @@ void TUpdateUsedBlocksActionActor::UpdateUsedBlocks(const TActorContext& ctx)
     Become(&TThis::StateWork);
 
     LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-        "Sending update used blocks request for volume %s",
-        Request.GetDiskId().Quote().c_str());
+        "%s Sending update used blocks request for volume",
+        LogTitle.GetWithTime().c_str());
 
     NCloud::Send(
         ctx,

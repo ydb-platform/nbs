@@ -1,9 +1,11 @@
 #include "service_actor.h"
+
 #include "service.h"
 
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -26,6 +28,7 @@ private:
 
     const TString DiskId;
     const bool Push;
+    TLogTitle LogTitle;
 
 public:
     THttpVolumeBindingActor(
@@ -58,6 +61,7 @@ THttpVolumeBindingActor::THttpVolumeBindingActor(
     : RequestInfo(std::move(requestInfo))
     , DiskId(std::move(diskId))
     , Push(push)
+    , LogTitle(GetCycleCount(), TLogTitle::TServiceRequest{.DiskId = DiskId})
 {}
 
 void THttpVolumeBindingActor::Bootstrap(const TActorContext& ctx)

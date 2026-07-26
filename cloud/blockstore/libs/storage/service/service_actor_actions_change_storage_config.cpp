@@ -4,6 +4,7 @@
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 
 #include <cloud/blockstore/public/api/protos/volume.pb.h>
 
@@ -29,6 +30,7 @@ class TChangeStorageConfigActionActor final
 private:
     const TRequestInfoPtr RequestInfo;
     const TString Input;
+    TLogTitle LogTitle;
 
 public:
     TChangeStorageConfigActionActor(TRequestInfoPtr requestInfo,
@@ -57,6 +59,7 @@ TChangeStorageConfigActionActor::TChangeStorageConfigActionActor(
         TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
+    , LogTitle(GetCycleCount(), TLogTitle::TServiceRequest{})
 {}
 
 void TChangeStorageConfigActionActor::Bootstrap(const TActorContext& ctx)
@@ -76,9 +79,11 @@ void TChangeStorageConfigActionActor::Bootstrap(const TActorContext& ctx)
         return;
     }
 
+    LogTitle.SetDiskId(request.GetDiskId());
+
     LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
-        "Start to change storage config of %s",
-        request.GetDiskId().c_str());
+        "%s Start to change storage config",
+        LogTitle.GetWithTime().c_str());
 
     auto requestToVolume =
         std::make_unique<TEvVolume::TEvChangeStorageConfigRequest>();

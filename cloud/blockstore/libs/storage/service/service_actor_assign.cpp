@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/mount_token.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
@@ -29,6 +30,7 @@ private:
     const TString DiskId;
     const TMountToken PublicToken;
     const ui64 TokenVersion;
+    const TLogTitle LogTitle;
 
 public:
     TAssignVolumeActor(
@@ -71,6 +73,7 @@ TAssignVolumeActor::TAssignVolumeActor(
     , DiskId(std::move(diskId))
     , PublicToken(std::move(publicToken))
     , TokenVersion(tokenVersion)
+    , LogTitle(GetCycleCount(), TLogTitle::TServiceRequest{.DiskId = DiskId})
 {}
 
 void TAssignVolumeActor::Bootstrap(const TActorContext& ctx)
@@ -99,9 +102,11 @@ void TAssignVolumeActor::HandleModifyResponse(
     const auto* msg = ev->Get();
 
     if (FAILED(msg->GetError().GetCode())) {
-        LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-            "Volume %s: assign failed",
-            DiskId.Quote().data());
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s Volume: assign failed",
+            LogTitle.GetWithTime().c_str());
 
         ReplyAndDie(
             ctx,
@@ -110,9 +115,11 @@ void TAssignVolumeActor::HandleModifyResponse(
         return;
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-        "Volume %s assigned successfully",
-        DiskId.Quote().data());
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Volume assigned successfully",
+        LogTitle.GetWithTime().c_str());
 
     ReplyAndDie(
         ctx,

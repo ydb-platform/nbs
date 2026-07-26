@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/private/api/protos/volume.pb.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -28,6 +29,7 @@ private:
     const TString Input;
 
     NProto::TCheckRangeRequest Request;
+    TLogTitle LogTitle;
 
 public:
     TCheckRangeActor(TRequestInfoPtr requestInfo, TString input);
@@ -54,6 +56,7 @@ private:
 TCheckRangeActor::TCheckRangeActor(TRequestInfoPtr requestInfo, TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
+    , LogTitle(GetCycleCount(), TLogTitle::TServiceRequest{})
 {}
 
 void TCheckRangeActor::Bootstrap(const TActorContext& ctx)
@@ -67,6 +70,8 @@ void TCheckRangeActor::Bootstrap(const TActorContext& ctx)
         ReplyAndDie(ctx, MakeError(E_ARGUMENT, "DiskId should be supplied"));
         return;
     }
+
+    LogTitle.SetDiskId(Request.GetDiskId());
 
     if (!Request.GetBlocksCount()) {
         ReplyAndDie(
@@ -83,8 +88,8 @@ void TCheckRangeActor::Bootstrap(const TActorContext& ctx)
     LOG_INFO(
         ctx,
         TBlockStoreComponents::SERVICE,
-        "Start check disk range for %s",
-        Request.GetDiskId().c_str());
+        "%s Start check disk range",
+        LogTitle.GetWithTime().c_str());
 
     NCloud::Send(
         ctx,

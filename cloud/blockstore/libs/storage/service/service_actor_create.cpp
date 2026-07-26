@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/storage/core/disk_validation.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/core/volume_model.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
 
 #include <cloud/storage/core/libs/common/helpers.h>
@@ -64,6 +65,7 @@ private:
     const IRootKmsKeyProviderPtr KeyProvider;
 
     ui64 BaseDiskTabletId = 0;
+    TLogTitle LogTitle;
 
 public:
     TCreateVolumeActor(
@@ -120,6 +122,9 @@ TCreateVolumeActor::TCreateVolumeActor(
     , Config(std::move(config))
     , Request(std::move(request))
     , KeyProvider(std::move(keyProvider))
+    , LogTitle(
+          GetCycleCount(),
+          TLogTitle::TServiceRequest{.DiskId = Request.GetDiskId()})
 {}
 
 void TCreateVolumeActor::Bootstrap(const TActorContext& ctx)
@@ -205,7 +210,7 @@ void TCreateVolumeActor::CreateVolume(const TActorContext& ctx)
         LOG_INFO_S(
             ctx,
             TBlockStoreComponents::SERVICE,
-            "Generate DEK for " << Request.GetDiskId().Quote());
+            LogTitle.GetWithTime() << " Generate DEK for volume");
 
         KeyProvider->GenerateDataEncryptionKey(Request.GetDiskId())
             .Subscribe(
@@ -318,7 +323,8 @@ void TCreateVolumeActor::CreateVolumeImpl(
         LOG_DEBUG_S(
             ctx,
             TBlockStoreComponents::SERVICE,
-            "Creating volume with an encryption: "
+            LogTitle.GetWithTime()
+                << " Creating volume with an encryption: "
                 << NProto::EEncryptionMode_Name(encryptionDesc.GetMode()));
 
         *config.MutableEncryptionDesc() = std::move(encryptionDesc);
@@ -327,9 +333,11 @@ void TCreateVolumeActor::CreateVolumeImpl(
     auto request = std::make_unique<TEvSSProxy::TEvCreateVolumeRequest>(
         std::move(config));
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-        "Sending createvolume request for volume %s",
-        Request.GetDiskId().Quote().c_str());
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Sending createvolume request for volume",
+        LogTitle.GetWithTime().c_str());
 
     NCloud::Send(
         ctx,
@@ -348,7 +356,8 @@ void TCreateVolumeActor::HandleCreateEncryptionKeyResponse(
         LOG_ERROR_S(
             ctx,
             TBlockStoreComponents::SERVICE,
-            "Failed to generate encryption key: " << FormatError(error));
+            LogTitle.GetWithTime() << " Failed to generate encryption key: "
+                                   << FormatError(error));
         ReplyAndDie(
             ctx,
             std::make_unique<TEvService::TEvCreateVolumeResponse>(error));
@@ -359,8 +368,8 @@ void TCreateVolumeActor::HandleCreateEncryptionKeyResponse(
     LOG_INFO_S(
         ctx,
         TBlockStoreComponents::SERVICE,
-        "Create volume " << Request.GetDiskId().Quote()
-                            << " with default AES XTS encryption");
+        LogTitle.GetWithTime()
+            << " Create volume with default AES XTS encryption");
 
     NKikimrBlockStore::TEncryptionDesc encryptionDesc;
     encryptionDesc.SetMode(NProto::ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY);
@@ -384,7 +393,8 @@ void TCreateVolumeActor::HandleDescribeVolumeResponse(
         LOG_ERROR_S(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "Could not resolve path for base volume "
+            LogTitle.GetWithTime()
+                << " Could not resolve path for base volume "
                 << baseDiskId.Quote() << ": " << FormatError(error));
 
         ReplyAndDie(
@@ -398,8 +408,12 @@ void TCreateVolumeActor::HandleDescribeVolumeResponse(
     const auto& volumeDescr = pathDescr.GetBlockStoreVolumeDescription();
     const auto& tabletId = volumeDescr.GetVolumeTabletId();
 
-    LOG_INFO_S(ctx, TBlockStoreComponents::VOLUME, "Resolved base disk id "
-        << baseDiskId.Quote() << " to tablet id " << tabletId);
+    LOG_INFO_S(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        LogTitle.GetWithTime()
+            << " Resolved base disk id " << baseDiskId.Quote()
+            << " to tablet id " << tabletId);
 
     BaseDiskTabletId = tabletId;
 
@@ -417,8 +431,8 @@ void TCreateVolumeActor::HandleCreateVolumeResponse(
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::SERVICE,
-            "Creation of volume %s failed: %s",
-            Request.GetDiskId().Quote().c_str(),
+            "%s Creation of volume failed: %s",
+            LogTitle.GetWithTime().c_str(),
             FormatError(error).c_str());
 
         ReplyAndDie(
@@ -428,9 +442,11 @@ void TCreateVolumeActor::HandleCreateVolumeResponse(
         return;
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-        "Sending WaitReady request to volume %s",
-        Request.GetDiskId().Quote().c_str());
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Sending WaitReady request to volume",
+        LogTitle.GetWithTime().c_str());
 
     auto request = std::make_unique<TEvVolume::TEvWaitReadyRequest>();
     request->Record.SetDiskId(Request.GetDiskId());
@@ -453,15 +469,15 @@ void TCreateVolumeActor::HandleWaitReadyResponse(
         LOG_WARN(
             ctx,
             TBlockStoreComponents::SERVICE,
-            "Volume %s creation failed with error: %s",
-            Request.GetDiskId().Quote().c_str(),
+            "%s Volume creation failed with error: %s",
+            LogTitle.GetWithTime().c_str(),
             FormatError(error).c_str());
     } else {
         LOG_DEBUG(
             ctx,
             TBlockStoreComponents::SERVICE,
-            "Successfully created volume %s",
-            Request.GetDiskId().Quote().c_str());
+            "%s Successfully created volume",
+            LogTitle.GetWithTime().c_str());
     }
 
     ReplyAndDie(

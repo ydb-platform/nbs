@@ -1,6 +1,7 @@
 #include "service_actor.h"
 
 #include <cloud/blockstore/libs/storage/api/service.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
@@ -29,6 +30,7 @@ private:
     const TString Input;
 
     NPrivateProto::TSetVhostDiscardFlagActionRequest Request;
+    TLogTitle LogTitle;
 
 public:
     TSetVhostDiscardFlagActionActor(
@@ -56,6 +58,7 @@ TSetVhostDiscardFlagActionActor::TSetVhostDiscardFlagActionActor(
     TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
+    , LogTitle(GetCycleCount(), TLogTitle::TServiceRequest{})
 {}
 
 void TSetVhostDiscardFlagActionActor::Bootstrap(const TActorContext& ctx)
@@ -70,6 +73,8 @@ void TSetVhostDiscardFlagActionActor::Bootstrap(const TActorContext& ctx)
         return;
     }
 
+    LogTitle.SetDiskId(Request.GetDiskId());
+
     SendRequest(ctx);
 }
 
@@ -81,8 +86,8 @@ void TSetVhostDiscardFlagActionActor::SendRequest(
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::SERVICE,
-        "Sending SetVhostDiscardFlagRequest for volume %s",
-        Request.GetDiskId().Quote().c_str());
+        "%s Sending SetVhostDiscardFlagRequest for volume",
+        LogTitle.GetWithTime().c_str());
 
     auto request = std::make_unique<TEvService::TEvSetVhostDiscardFlagRequest>(
         Request.GetDiskId(),
