@@ -13,20 +13,32 @@ namespace {
 class TStorageGroupStub: public IStorageGroup
 {
 public:
-#define SN_STUB_METHOD(name, ...)                                              \
-    NCloud::NProto::T##name##Response name(                                    \
-        NCloud::NProto::T##name##Request request) override                     \
-    {                                                                          \
-        Y_UNUSED(request);                                                     \
-        NProto::T##name##Response response;                                    \
-        *response.MutableError() = MakeError(E_NOT_IMPLEMENTED);               \
-        return response;                                                       \
-    }                                                                          \
-// SN_STUB_METHOD
+    NProto::TError AcquireDevices() override
+    {
+        return MakeError(E_NOT_IMPLEMENTED);
+    }
 
-    SN_METHODS(SN_STUB_METHOD)
+    NProto::TError ReleaseDevices() override
+    {
+        return MakeError(E_NOT_IMPLEMENTED);
+    }
 
-#undef SN_STUB_METHOD
+    NProto::TError WriteLogRecord(
+        NProto::TDeviceRequestHeaders headers,
+        TVector<TPageGroup> pageGroups) override
+    {
+        Y_UNUSED(headers, pageGroups);
+        return MakeError(E_NOT_IMPLEMENTED);
+    }
+
+    NProto::TError ReadPages(
+        NProto::TDeviceRequestHeaders headers,
+        const TVector<TPageGroupRef>& pageGroupRefs,
+        TVector<TPageGroup>* pageGroups) override
+    {
+        Y_UNUSED(headers, pageGroupRefs, pageGroups);
+        return MakeError(E_NOT_IMPLEMENTED);
+    }
 };
 
 }   // namespace
@@ -34,9 +46,9 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 IStorageGroupPtr CreateNaiveMirroredStorageGroup(
-    TVector<IStorageNodePtr> nodes)
+    TVector<TStorageDevice> devices)
 {
-    Y_UNUSED(nodes);
+    Y_UNUSED(devices);
 
     return std::make_shared<TStorageGroupStub>();
 }
