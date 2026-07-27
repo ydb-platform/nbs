@@ -10,7 +10,7 @@ import math
 import os
 import re
 from collections import Counter, defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
@@ -24,8 +24,11 @@ MAX_YA_EVLOG_BYTES = 512 * 1024 * 1024
 MAX_YA_EVLOG_LINE_CHARACTERS = 16 * 1024 * 1024
 MAX_YA_EVLOG_EVENTS = 2_000_000
 MAX_BUILD_NODE_SPANS = 50_000
+MAX_CACHE_TOOL_STATS = 24
 SAFE_METRIC_RE = re.compile(r"[^a-zA-Z0-9_.-]+")
+SAFE_TOOL_RE = re.compile(r"^[a-zA-Z0-9_.+-]{1,32}$")
 BUILD_ROOT_RE = re.compile(r"\$\(BUILD_ROOT\)/([^\s)]+)")
+NODE_UID_RE = re.compile(r"^[^(]+\(([^$()\s]+)\$\(BUILD_ROOT\)")
 TAG_WRAPPER_RE = re.compile(
     r"^(restore|result|put_in_cache|write_through_caches)\[([^\]]+)\]$"
 )
@@ -79,6 +82,7 @@ class YaEvlogRecord:
 class YaEvlog:
     stages: list[YaEvlogRecord]
     nodes: list[YaEvlogRecord]
+    statistics: dict[str, Any] = field(default_factory=dict)
 
 
 def _timestamp_ns(value: Any) -> int | None:
@@ -183,6 +187,71 @@ def _evlog_time_range(value: Any) -> tuple[int, int] | None:
     return start_ns, end_ns
 
 
+def _safe_statistics_mapping(value: Any) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        return {}
+    result = {}
+    for key, item in list(value.items())[:256]:
+        if isinstance(item, bool):
+            result[str(key)] = item
+        elif isinstance(item, int):
+            result[str(key)] = item
+        elif isinstance(item, float) and math.isfinite(item):
+            result[str(key)] = item
+        elif isinstance(item, str):
+            result[str(key)] = item[:8_192]
+    return result
+
+
+def _selected_evlog_statistics(value: Any) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        return {}
+    result: dict[str, Any] = {}
+    for key in (
+        "cache_hit",
+        "dist_cache_stat",
+        "execution_stages_msec",
+        "graph_lang_usage",
+    ):
+        selected = _safe_statistics_mapping(value.get(key))
+        if selected:
+            result[key] = selected
+    task_execution_msec = value.get("task_execution_msec")
+    if (
+        isinstance(task_execution_msec, int)
+        and not isinstance(task_execution_msec, bool)
+    ) or (
+        isinstance(task_execution_msec, float)
+        and math.isfinite(task_execution_msec)
+    ):
+        result["task_execution_msec"] = task_execution_msec
+
+    critical_path = []
+    if isinstance(value.get("critical_path"), list):
+        for item in value["critical_path"][:128]:
+            if not isinstance(item, Mapping):
+                continue
+            selected = _safe_statistics_mapping(
+                {
+                    key: item.get(key)
+                    for key in (
+                        "type",
+                        "elapsed",
+                        "start_ts",
+                        "end_ts",
+                        "text",
+                        "host",
+                        "uid",
+                    )
+                }
+            )
+            if selected:
+                critical_path.append(selected)
+    if critical_path:
+        result["critical_path"] = critical_path
+    return result
+
+
 def load_ya_evlog(path: Path | None) -> YaEvlog:
     result = YaEvlog(stages=[], nodes=[])
     if path is None:
@@ -219,12 +288,23 @@ def load_ya_evlog(path: Path | None) -> YaEvlog:
                 continue
             namespace = raw.get("namespace")
             event = raw.get("event")
+            raw_value = raw.get("value")
+            if (
+                namespace == "dump_debug"
+                and event == "log"
+                and isinstance(raw_value, Mapping)
+                and raw_value.get("key") == "stats"
+            ):
+                result.statistics = _selected_evlog_statistics(
+                    raw_value.get("value")
+                )
+                continue
             if (namespace, event) not in {
                 ("stages", "stage-finished"),
                 ("worker_threads", "node-finished"),
-            } or not isinstance(raw.get("value"), Mapping):
+            } or not isinstance(raw_value, Mapping):
                 continue
-            value = raw["value"]
+            value = raw_value
             time_range = _evlog_time_range(value.get("time"))
             if time_range is None:
                 continue
@@ -616,6 +696,11 @@ def _node_outputs(name: str) -> list[str]:
     return list(dict.fromkeys(BUILD_ROOT_RE.findall(name)))[:16]
 
 
+def _node_uid(name: str) -> str:
+    match = NODE_UID_RE.match(name)
+    return match.group(1) if match else ""
+
+
 def _node_span_name(
     record: YaEvlogRecord,
     kind: str,
@@ -633,6 +718,167 @@ def _node_span_name(
     if kind in {"cache_restore", "materialize", "cache_store"} and tool:
         label += f" [{tool}]"
     return f"{label}: {output}" if output else label
+
+
+def _number(value: Any) -> int | float | None:
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    if isinstance(value, float) and math.isfinite(value):
+        return value
+    return None
+
+
+def _is_test_critical_path_entry(entry: Mapping[str, Any]) -> bool:
+    task_type = str(entry.get("type", ""))
+    text = str(entry.get("text", ""))
+    return task_type in {"TA", "TM", "TS"} or "/test-results/" in text
+
+
+def _build_statistics_attributes(
+    statistics: Mapping[str, Any],
+    build_records: Sequence[tuple[YaEvlogRecord, str, str]],
+) -> tuple[dict[str, Any], dict[str, tuple[int, Mapping[str, Any]]]]:
+    attributes: dict[str, Any] = {}
+    cache = statistics.get("cache_hit")
+    if isinstance(cache, Mapping):
+        cache_hit_percent = _number(cache.get("cache_hit"))
+        if cache_hit_percent is not None:
+            attributes["ya.build.cache.all_task.hit.ratio"] = (
+                cache_hit_percent / 100
+            )
+        cache_fields = {
+            "run_tasks": "ya.build.task.total.count",
+            "executed_tasks": "ya.build.task.considered.count",
+            "cached_tasks": "ya.build.cache.all_task.hit.count",
+            "dyn_cached_tasks": "ya.build.cache.all_task.dynamic_hit.count",
+            "not_cached_tasks": "ya.build.cache.all_task.miss.count",
+            "tests_tasks": "ya.build.task.test.count",
+            "failed_tasks": "ya.build.task.failed.count",
+            "ok_tasks": "ya.build.task.ok.count",
+            "avoided_tasks": "ya.build.task.avoided.count",
+        }
+        for source, destination in cache_fields.items():
+            number = _number(cache.get(source))
+            if number is not None:
+                attributes[destination] = number
+        attributes["ya.build.cache.statistics.source"] = "ya"
+
+    dist_cache = statistics.get("dist_cache_stat")
+    if isinstance(dist_cache, Mapping):
+        dist_cache_fields = {
+            "get_count": "ya.build.dist_cache.get.count",
+            "get_data_size": "ya.build.dist_cache.get.bytes",
+            "put_count": "ya.build.dist_cache.put.count",
+            "put_data_size": "ya.build.dist_cache.put.bytes",
+        }
+        for source, destination in dist_cache_fields.items():
+            number = _number(dist_cache.get(source))
+            if number is not None:
+                attributes[destination] = number
+
+    execution_stages = statistics.get("execution_stages_msec")
+    if isinstance(execution_stages, Mapping):
+        for name, value in execution_stages.items():
+            milliseconds = _number(value)
+            normalized = _metric_name(name)
+            if milliseconds is not None and normalized:
+                attributes[
+                    f"ya.build.execution.stage.{normalized}.seconds"
+                ] = milliseconds / 1_000
+    task_execution_msec = _number(statistics.get("task_execution_msec"))
+    if task_execution_msec is not None:
+        attributes["ya.build.execution.total.seconds"] = (
+            task_execution_msec / 1_000
+        )
+
+    languages = statistics.get("graph_lang_usage")
+    if isinstance(languages, Mapping):
+        attributes["ya.build.graph.languages"] = sorted(
+            str(language) for language in languages
+        )[:128]
+
+    tool_counts: dict[str, Counter[str]] = defaultdict(Counter)
+    for _, kind, tool in build_records:
+        if (
+            kind in {"cache_restore", "execute"}
+            and SAFE_TOOL_RE.fullmatch(tool)
+        ):
+            tool_counts[_metric_name(tool)][kind] += 1
+    observed_hits = sum(
+        counts["cache_restore"] for counts in tool_counts.values()
+    )
+    observed_misses = sum(
+        counts["execute"] for counts in tool_counts.values()
+    )
+    observed_total = observed_hits + observed_misses
+    attributes["ya.build.cache.worker_node.hit.count"] = observed_hits
+    attributes["ya.build.cache.worker_node.miss.count"] = observed_misses
+    if observed_total:
+        attributes["ya.build.cache.worker_node.hit.ratio"] = (
+            observed_hits / observed_total
+        )
+    ranked_tools = sorted(
+        tool_counts,
+        key=lambda tool: (
+            -(
+                tool_counts[tool]["cache_restore"]
+                + tool_counts[tool]["execute"]
+            ),
+            tool,
+        ),
+    )[:MAX_CACHE_TOOL_STATS]
+    for normalized in ranked_tools:
+        hits = tool_counts[normalized]["cache_restore"]
+        misses = tool_counts[normalized]["execute"]
+        total = hits + misses
+        prefix = f"ya.build.cache.tool.{normalized}"
+        attributes[f"{prefix}.hit.count"] = hits
+        attributes[f"{prefix}.miss.count"] = misses
+        attributes[f"{prefix}.hit.ratio"] = hits / total
+
+    critical_entries = [
+        entry
+        for entry in statistics.get("critical_path", [])
+        if isinstance(entry, Mapping)
+        and not _is_test_critical_path_entry(entry)
+    ]
+    critical_by_uid = {
+        str(entry["uid"]): (index, entry)
+        for index, entry in enumerate(critical_entries)
+        if entry.get("uid")
+    }
+    if critical_entries:
+        work_msec = sum(
+            _number(entry.get("elapsed")) or 0
+            for entry in critical_entries
+        )
+        start_times = [
+            number
+            for entry in critical_entries
+            if (number := _number(entry.get("start_ts"))) is not None
+        ]
+        end_times = [
+            number
+            for entry in critical_entries
+            if (number := _number(entry.get("end_ts"))) is not None
+        ]
+        attributes["ya.build.critical_path.node.count"] = len(
+            critical_entries
+        )
+        attributes["ya.build.critical_path.work.seconds"] = work_msec / 1_000
+        if start_times and end_times:
+            attributes["ya.build.critical_path.elapsed.seconds"] = (
+                max(end_times) - min(start_times)
+            ) / 1_000
+        attributes["ya.build.critical_path.summary"] = [
+            (
+                f"{entry.get('type', 'unknown')}: "
+                f"{entry.get('text', 'unknown')} "
+                f"({(_number(entry.get('elapsed')) or 0) / 1_000:.3f}s)"
+            )
+            for entry in critical_entries[:128]
+        ]
+    return attributes, critical_by_uid
 
 
 def _build_evlog_spans(
@@ -745,6 +991,11 @@ def _build_evlog_spans(
         attributes["ya.build.first_test_node_offset_seconds"] = (
             max(0, min(test_starts) - build_start_ns) / 1_000_000_000
         )
+    statistics_attributes, critical_by_uid = _build_statistics_attributes(
+        evlog.statistics,
+        build_records,
+    )
+    attributes.update(statistics_attributes)
 
     candidates = [
         (record, kind, tool)
@@ -797,6 +1048,18 @@ def _build_evlog_spans(
             node_attributes["ya.worker.thread"] = record.thread_name
         if kind == "cache_restore":
             node_attributes["ya.build.cache.hit"] = True
+        uid = _node_uid(record.name)
+        if uid:
+            node_attributes["ya.build.node.uid"] = uid
+        if kind in {"cache_restore", "execute"} and uid in critical_by_uid:
+            critical_index, critical_entry = critical_by_uid[uid]
+            node_attributes["ya.build.critical_path"] = True
+            node_attributes["ya.build.critical_path.index"] = critical_index
+            elapsed = _number(critical_entry.get("elapsed"))
+            if elapsed is not None:
+                node_attributes[
+                    "ya.build.critical_path.reported_seconds"
+                ] = elapsed / 1_000
         spans.append(
             Span(
                 trace_id=trace_id,

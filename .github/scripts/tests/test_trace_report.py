@@ -387,7 +387,9 @@ def test_ya_evlog_adds_phases_and_build_nodes(
             "event": "node-finished",
             "thread_name": "Worker-001",
             "value": {
-                "name": ("FromCache(uid$(BUILD_ROOT)/library/cached.a)"),
+                "name": (
+                    "FromCache(cacheuid$(BUILD_ROOT)/library/cached.a)"
+                ),
                 "tag": "restore[AR]",
                 "time": [12.5, 13],
             },
@@ -397,7 +399,19 @@ def test_ya_evlog_adds_phases_and_build_nodes(
             "event": "node-finished",
             "thread_name": "Worker-002",
             "value": {
-                "name": "Run(uid$(BUILD_ROOT)/suite/main.cpp.o)",
+                "name": (
+                    "FromCache(loweruid$(BUILD_ROOT)/library/lower.a)"
+                ),
+                "tag": "restore[ar]",
+                "time": [12.6, 12.9],
+            },
+        },
+        {
+            "namespace": "worker_threads",
+            "event": "node-finished",
+            "thread_name": "Worker-003",
+            "value": {
+                "name": "Run(compileuid$(BUILD_ROOT)/suite/main.cpp.o)",
                 "tag": "CC",
                 "time": [13, 17],
             },
@@ -418,6 +432,58 @@ def test_ya_evlog_adds_phases_and_build_nodes(
                 "name": ("Run(uid$(BUILD_ROOT)/suite/test-results/tests/meta.json)"),
                 "tag": "TM",
                 "time": [18, 20],
+            },
+        },
+        {
+            "namespace": "dump_debug",
+            "event": "log",
+            "value": {
+                "key": "stats",
+                "value_type": "dict",
+                "value": {
+                    "cache_hit": {
+                        "cache_hit": 75,
+                        "run_tasks": 100,
+                        "executed_tasks": 4,
+                        "cached_tasks": 3,
+                        "dyn_cached_tasks": 1,
+                        "not_cached_tasks": 1,
+                        "tests_tasks": 1,
+                        "failed_tasks": 0,
+                        "ok_tasks": 1,
+                        "avoided_tasks": 96,
+                    },
+                    "dist_cache_stat": {
+                        "get_count": 2,
+                        "get_data_size": 1_024,
+                        "put_count": 1,
+                        "put_data_size": 512,
+                    },
+                    "execution_stages_msec": {
+                        "build_only": 3_500,
+                        "tests_only": 2_000,
+                    },
+                    "task_execution_msec": 5_500,
+                    "graph_lang_usage": {"cpp": 1},
+                    "critical_path": [
+                        {
+                            "type": "CC",
+                            "elapsed": 4_000,
+                            "start_ts": 13_000,
+                            "end_ts": 17_000,
+                            "text": "$(SOURCE_ROOT)/suite/main.cpp",
+                            "uid": "compileuid",
+                        },
+                        {
+                            "type": "TM",
+                            "elapsed": 2_000,
+                            "start_ts": 18_000,
+                            "end_ts": 20_000,
+                            "text": "suite/tests",
+                            "uid": "testuid",
+                        },
+                    ],
+                },
             },
         },
     ]
@@ -446,10 +512,23 @@ def test_ya_evlog_adds_phases_and_build_nodes(
     assert build.parent_span_id == phases["dispatch_build"].span_id
     assert chunk.parent_span_id == phases["dispatch_build"].span_id
     assert build.duration_ns == 4_500_000_000
-    assert build.attributes["ya.build.node.count"] == 3
+    assert build.attributes["ya.build.node.count"] == 4
     assert build.attributes["ya.build.node.cache_store.count"] == 1
     assert build.attributes["ya.build.first_test_node_offset_seconds"] == 5.5
-    assert len(nodes) == 2
+    assert build.attributes["ya.build.cache.all_task.hit.ratio"] == 0.75
+    assert build.attributes["ya.build.cache.all_task.hit.count"] == 3
+    assert build.attributes["ya.build.cache.all_task.miss.count"] == 1
+    assert build.attributes["ya.build.cache.worker_node.hit.ratio"] == 2 / 3
+    assert build.attributes["ya.build.task.avoided.count"] == 96
+    assert build.attributes["ya.build.dist_cache.get.bytes"] == 1_024
+    assert build.attributes["ya.build.execution.stage.build_only.seconds"] == 3.5
+    assert build.attributes["ya.build.execution.total.seconds"] == 5.5
+    assert build.attributes["ya.build.cache.tool.ar.hit.ratio"] == 1
+    assert build.attributes["ya.build.cache.tool.ar.hit.count"] == 2
+    assert build.attributes["ya.build.cache.tool.cc.hit.ratio"] == 0
+    assert build.attributes["ya.build.critical_path.node.count"] == 1
+    assert build.attributes["ya.build.critical_path.work.seconds"] == 4
+    assert len(nodes) == 3
     assert {span.attributes["ya.build.kind"] for span in nodes} == {
         "cache_restore",
         "execute",
@@ -459,8 +538,16 @@ def test_ya_evlog_adds_phases_and_build_nodes(
     )
     assert cached.attributes["ya.build.cache.hit"] is True
     assert cached.attributes["ya.build.outputs"] == ["library/cached.a"]
-    assert root.attributes["ya.build.node.count"] == 3
-    assert root.attributes["ya.build.node.span_count"] == 2
+    compiled = next(
+        span for span in nodes if span.attributes["ya.build.kind"] == "execute"
+    )
+    assert compiled.attributes["ya.build.critical_path"] is True
+    assert compiled.attributes["ya.build.critical_path.index"] == 0
+    assert compiled.attributes[
+        "ya.build.critical_path.reported_seconds"
+    ] == 4
+    assert root.attributes["ya.build.node.count"] == 4
+    assert root.attributes["ya.build.node.span_count"] == 3
 
 
 def test_workflow_trace_adds_queue_job_step_and_imported_ya_spans() -> None:

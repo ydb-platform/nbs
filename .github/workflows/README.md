@@ -26,7 +26,11 @@ excluded, as are other nodes writing under `test-results`, because the
 corresponding chunks and tests already have richer spans.
 The `build operations` span reports both its wall-clock execution envelope and
 the cumulative worker-node time; the latter can be larger because nodes run in
-parallel.
+parallel. It also carries ya's authoritative all-task cache statistics,
+observed test-excluded worker-node cache ratios (including per-tool `CC`, `AR`,
+`LD`, and similar breakdowns), execution-stage wall times, distributed-cache
+I/O, and the build-only portion of ya's reported critical path. Critical-path
+build nodes are marked on their individual spans.
 
 `render-workflow-trace.yaml` runs after the main test workflows complete. It
 combines GitHub workflow, queue, job, and step timings with any available ya
