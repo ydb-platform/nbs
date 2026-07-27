@@ -9,5 +9,8 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg
 ////////////////////////////////////////////////////////////////////////////////
 
 message OptimizeBaseDisksTaskState {
-    repeated ConfigurePoolRequest ConfigurePoolRequests = 1;
+    repeated ConfigurePoolRequest ConfigurePoolForImageSizeRequests = 1;
+    repeated ConfigurePoolRequest PoolReductionRequests = 2;
+    repeated string IdleBaseDiskIds = 3;
+    bool CollectedResourcesToOptimize = 4;
 }
