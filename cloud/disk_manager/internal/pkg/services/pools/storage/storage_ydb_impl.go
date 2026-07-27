@@ -3602,3 +3602,194 @@ func (s *storageYDB) unlockPool(
 
 	return tx.Commit(ctx)
 }
+
+func (s *storageYDB) getIdleBaseDisks(
+	ctx context.Context,
+	session *persistence.Session,
+	idleDuration time.Duration,
+	limit uint64,
+) ([]BaseDisk, error) {
+
+	idleBefore := time.Now().Add(-idleDuration)
+
+	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $idle_before as Timestamp;
+		declare $status as Int64;
+		declare $limit as Uint64;
+
+		select *
+		from base_disks
+		where from_pool = true
+			and active_units = 0
+			and status = $status
+			and last_unused_at > cast(0 as Timestamp)
+			and last_unused_at < $idle_before
+		limit $limit
+	`, s.tablesPath),
+		persistence.ValueParam("$idle_before", persistence.TimestampValue(idleBefore)),
+		persistence.ValueParam("$status", persistence.Int64Value(int64(baseDiskStatusReady))),
+		persistence.ValueParam("$limit", persistence.Uint64Value(limit)),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Close()
+
+	baseDisks, err := scanBaseDisks(ctx, res)
+	if err != nil {
+		return nil, err
+	}
+
+	var result []BaseDisk
+	for _, d := range baseDisks {
+		result = append(result, d.toBaseDisk())
+	}
+
+	return result, nil
+}
+
+func (s *storageYDB) ejectIdleBaseDisksFromPool(
+	ctx context.Context,
+	session *persistence.Session,
+	baseDiskIDs []string,
+	idleBefore time.Time,
+) error {
+
+	if len(baseDiskIDs) == 0 {
+		return nil
+	}
+
+	tx, err := session.BeginRWTransaction(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	baseDisks, err := s.findBaseDisksTx(ctx, tx, baseDiskIDs)
+	if err != nil {
+		return err
+	}
+
+	var transitions []baseDiskTransition
+
+	// Track capacity reduction per pool (imageID+zoneID).
+	type poolKey struct{ imageID, zoneID string }
+	capacityReductions := make(map[poolKey]uint64)
+
+	for i := range baseDisks {
+		d := &baseDisks[i]
+
+		if !d.fromPool || d.isDoomed() || d.activeUnits != 0 || d.lastUnusedAt.After(idleBefore) {
+			continue
+		}
+
+		oldState := *d
+		d.fromPool = false
+
+		transitions = append(transitions, baseDiskTransition{
+			oldState: &oldState,
+			state:    d,
+		})
+
+		key := poolKey{d.imageID, d.zoneID}
+		capacityReductions[key] += oldState.freeSlots()
+	}
+
+	if len(transitions) == 0 {
+		return tx.Commit(ctx)
+	}
+
+	err = s.updateBaseDisks(ctx, tx, transitions)
+	if err != nil {
+		return err
+	}
+
+	// Decrease config capacity so scheduler doesn't recreate.
+	for key, reduction := range capacityReductions {
+		err = s.reducePoolCapacity(ctx, tx, key.imageID, key.zoneID, reduction)
+		if err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit(ctx)
+}
+
+func (s *storageYDB) initializeIdleTimestamps(
+	ctx context.Context,
+	session *persistence.Session,
+) error {
+
+	now := time.Now()
+
+	_, err := session.ExecuteRW(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $now as Timestamp;
+		declare $status as Int64;
+
+		update base_disks
+		set last_unused_at = $now
+		where from_pool = true
+			and active_units = 0
+			and status = $status
+			and (last_unused_at = cast(0 as Timestamp) OR last_unused_at IS NULL)
+	`, s.tablesPath),
+		persistence.ValueParam("$now", persistence.TimestampValue(now)),
+		persistence.ValueParam("$status", persistence.Int64Value(int64(baseDiskStatusReady))),
+	)
+	return err
+}
+
+func (s *storageYDB) reducePoolCapacity(
+	ctx context.Context,
+	tx *persistence.Transaction,
+	imageID string,
+	zoneID string,
+	reduction uint64,
+) error {
+
+	capacity, err := s.getPoolCapacity(ctx, tx, imageID, zoneID)
+	if err != nil {
+		return err
+	}
+
+	var newCapacity uint64
+	if capacity > reduction {
+		newCapacity = capacity - reduction
+	}
+
+	_, err = tx.Execute(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $image_id as Utf8;
+		declare $zone_id as Utf8;
+		declare $capacity as Uint64;
+
+		upsert into configs (image_id, zone_id, kind, capacity)
+		values ($image_id, $zone_id, 0, $capacity)
+	`, s.tablesPath),
+		persistence.ValueParam("$image_id", persistence.UTF8Value(imageID)),
+		persistence.ValueParam("$zone_id", persistence.UTF8Value(zoneID)),
+		persistence.ValueParam("$capacity", persistence.Uint64Value(newCapacity)),
+	)
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.Execute(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $image_id as Utf8;
+		declare $zone_id as Utf8;
+
+		delete from configs
+		where image_id = $image_id and zone_id = $zone_id and kind != 0
+	`, s.tablesPath),
+		persistence.ValueParam("$image_id", persistence.UTF8Value(imageID)),
+		persistence.ValueParam("$zone_id", persistence.UTF8Value(zoneID)),
+	)
+	return err
+}

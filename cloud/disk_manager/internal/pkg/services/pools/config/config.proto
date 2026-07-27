@@ -45,4 +45,10 @@ message PoolsConfig {
     //  * Reducing this number also increases the total size of the base disks
     //    that need to be allocated.
     optional uint32 BaseDiskOverSubscription = 24 [default = 2];
+    // TTL for idle base disks in pools. Base disks with zero overlay disks
+    // for longer than this duration will be ejected from pool and deleted.
+    // Set to "0s" to disable.
+    optional string BaseDiskIdleTTL = 25 [default = "0s"];
+    optional string CleanupIdleBaseDisksTaskScheduleInterval = 26 [default = "10m"];
+    optional uint64 CleanupIdleBaseDisksLimit = 27 [default = 100];
 }

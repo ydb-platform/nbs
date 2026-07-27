@@ -7,6 +7,7 @@ SRCS(
     service.go
 
     acquire_base_disk_task.go
+    cleanup_idle_base_disks_task.go
     clear_deleted_base_disks_task.go
     clear_released_slots_task.go
     configure_pool_task.go
@@ -24,6 +25,7 @@ SRCS(
 
 GO_TEST_SRCS(
     acquire_base_disk_task_test.go
+    cleanup_idle_base_disks_task_test.go
     configure_pool_task_test.go
     optimize_base_disks_task_test.go
     release_base_disk_task_test.go

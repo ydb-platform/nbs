@@ -192,4 +192,22 @@ type Storage interface {
 	// Used in tests and SRE tools.
 	// Executes both CheckPoolsConsistency and CheckBaseDisksConsistency.
 	CheckConsistency(ctx context.Context) error
+
+	// Returns base disks that belong to a pool, have zero active units, and
+	// have been idle longer than |idleDuration|.
+	GetIdleBaseDisks(
+		ctx context.Context,
+		idleDuration time.Duration,
+		limit uint64,
+	) ([]BaseDisk, error)
+
+	// Ejects idle base disks from their pools (sets fromPool=false), which
+	// triggers deletion via applyInvariants.
+	EjectIdleBaseDisksFromPool(
+		ctx context.Context,
+		baseDiskIDs []string,
+		idleBefore time.Time,
+	) error
+
+	InitializeIdleTimestamps(ctx context.Context) error
 }

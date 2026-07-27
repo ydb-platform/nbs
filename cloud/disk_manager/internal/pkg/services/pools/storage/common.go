@@ -86,6 +86,12 @@ func baseDiskStatusToString(status baseDiskStatus) string {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func isTimestampUnset(t time.Time) bool {
+	return !t.After(time.Unix(0, 0))
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 type baseDisk struct {
 	id                  string
 	imageID             string
@@ -105,6 +111,7 @@ type baseDisk struct {
 	fromPool       bool
 	retiring       bool
 	deletedAt      time.Time
+	lastUnusedAt   time.Time // zero if disk has at least one active unit
 	status         baseDiskStatus
 }
 
@@ -205,6 +212,7 @@ func (d *baseDisk) structValue() persistence.Value {
 		persistence.StructFieldValue("from_pool", persistence.BoolValue(d.fromPool)),
 		persistence.StructFieldValue("retiring", persistence.BoolValue(d.retiring)),
 		persistence.StructFieldValue("deleted_at", persistence.TimestampValue(d.deletedAt)),
+		persistence.StructFieldValue("last_unused_at", persistence.TimestampValue(d.lastUnusedAt)),
 		persistence.StructFieldValue("status", persistence.Int64Value(int64(d.status))),
 	)
 }
@@ -229,6 +237,7 @@ func baseDiskStructTypeString() string {
 		from_pool: Bool,
 		retiring: Bool,
 		deleted_at: Timestamp,
+		last_unused_at: Timestamp,
 		status: Int64>`
 }
 
@@ -252,6 +261,7 @@ func baseDisksTableDescription() persistence.CreateTableDescription {
 		persistence.WithColumn("from_pool", persistence.Optional(persistence.TypeBool)),
 		persistence.WithColumn("retiring", persistence.Optional(persistence.TypeBool)),
 		persistence.WithColumn("deleted_at", persistence.Optional(persistence.TypeTimestamp)),
+		persistence.WithColumn("last_unused_at", persistence.Optional(persistence.TypeTimestamp)),
 		persistence.WithColumn("status", persistence.Optional(persistence.TypeInt64)),
 
 		persistence.WithPrimaryKeyColumn("id"),
@@ -278,6 +288,7 @@ func scanBaseDisk(res persistence.Result) (baseDisk baseDisk, err error) {
 		persistence.OptionalWithDefault("from_pool", &baseDisk.fromPool),
 		persistence.OptionalWithDefault("retiring", &baseDisk.retiring),
 		persistence.OptionalWithDefault("deleted_at", &baseDisk.deletedAt),
+		persistence.OptionalWithDefault("last_unused_at", &baseDisk.lastUnusedAt),
 		persistence.OptionalWithDefault("status", &baseDisk.status),
 	)
 	return
@@ -800,6 +811,8 @@ func acquireUnitsAndSlots(
 	slot.allottedUnits = computeAllottedUnits(slot)
 	disk.activeUnits += slot.allottedUnits
 
+	disk.lastUnusedAt = time.Time{}
+
 	return nil
 }
 
@@ -828,6 +841,8 @@ func acquireTargetUnitsAndSlots(
 
 	slot.targetAllottedUnits = computeAllottedUnits(slot)
 	disk.activeUnits += slot.targetAllottedUnits
+
+	disk.lastUnusedAt = time.Time{}
 
 	return nil
 }
@@ -884,6 +899,10 @@ func releaseUnitsAndSlots(
 	}
 	disk.activeUnits -= slot.allottedUnits
 
+	if disk.activeUnits == 0 && isTimestampUnset(disk.lastUnusedAt) {
+		disk.lastUnusedAt = time.Now()
+	}
+
 	return nil
 }
 
@@ -938,6 +957,10 @@ func releaseTargetUnitsAndSlots(
 		)
 	}
 	disk.activeUnits -= slot.targetAllottedUnits
+
+	if disk.activeUnits == 0 && isTimestampUnset(disk.lastUnusedAt) {
+		disk.lastUnusedAt = time.Now()
+	}
 
 	return nil
 }

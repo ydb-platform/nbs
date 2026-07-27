@@ -79,6 +79,20 @@ func RegisterForExecution(
 		return err
 	}
 
+	baseDiskIdleTTL, err := time.ParseDuration(
+		config.GetBaseDiskIdleTTL(),
+	)
+	if err != nil {
+		return err
+	}
+
+	cleanupIdleBaseDisksTaskScheduleInterval, err := time.ParseDuration(
+		config.GetCleanupIdleBaseDisksTaskScheduleInterval(),
+	)
+	if err != nil {
+		return err
+	}
+
 	err = taskRegistry.RegisterForExecution("pools.AcquireBaseDisk", func() tasks.Task {
 		return &acquireBaseDiskTask{
 			scheduler: taskScheduler,
@@ -228,6 +242,17 @@ func RegisterForExecution(
 		return err
 	}
 
+	err = taskRegistry.RegisterForExecution("pools.CleanupIdleBaseDisks", func() tasks.Task {
+		return &cleanupIdleBaseDisksTask{
+			storage:         storage,
+			baseDiskIdleTTL: baseDiskIdleTTL,
+			limit:           config.GetCleanupIdleBaseDisksLimit(),
+		}
+	})
+	if err != nil {
+		return err
+	}
+
 	taskScheduler.ScheduleRegularTasks(
 		ctx,
 		"pools.ScheduleBaseDisks",
@@ -274,6 +299,21 @@ func RegisterForExecution(
 			MaxTasksInflight: 1,
 		},
 	)
+
+	if baseDiskIdleTTL > 0 {
+		err = storage.InitializeIdleTimestamps(ctx)
+		if err != nil {
+			return err
+		}
+		taskScheduler.ScheduleRegularTasks(
+			ctx,
+			"pools.CleanupIdleBaseDisks",
+			tasks.TaskSchedule{
+				ScheduleInterval: cleanupIdleBaseDisksTaskScheduleInterval,
+				MaxTasksInflight: 1,
+			},
+		)
+	}
 
 	return nil
 }
