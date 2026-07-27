@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import gzip
 import json
+from html.parser import HTMLParser
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -81,6 +82,90 @@ def test_otlp_round_trip_and_static_html_escaping(tmp_path: Path) -> None:
 def test_renderer_marks_error_spans_and_supports_empty_input() -> None:
     assert 'class="span error"' in render_html([make_span(status_code=2)])
     assert "No spans found" in render_html([])
+
+
+def test_renderer_collapses_build_and_test_groups_by_default() -> None:
+    spans = [
+        make_span(scope_name="ya.run"),
+        make_span(
+            span_id="3" * 16,
+            parent_span_id="2" * 16,
+            name="build operations",
+            scope_name="ya.build",
+        ),
+        make_span(
+            span_id="4" * 16,
+            parent_span_id="3" * 16,
+            name="compile target",
+            scope_name="ya.build.node",
+        ),
+        make_span(
+            span_id="5" * 16,
+            parent_span_id="2" * 16,
+            name="cloud/tasks/storage/tests [tests chunk 1/1]",
+            scope_name="ya.chunk",
+        ),
+        make_span(
+            span_id="6" * 16,
+            parent_span_id="5" * 16,
+            name="TestSuite::test_case",
+            scope_name="ya.test",
+        ),
+    ]
+
+    class DetailsParser(HTMLParser):
+        def __init__(self) -> None:
+            super().__init__()
+            self.stack: list[str | None] = []
+            self.details: dict[
+                str,
+                tuple[dict[str, str | None], str | None],
+            ] = {}
+
+        def handle_starttag(
+            self,
+            tag: str,
+            attrs: list[tuple[str, str | None]],
+        ) -> None:
+            if tag != "details":
+                return
+            values = dict(attrs)
+            scope = values.get("data-scope")
+            parent_scope = next(
+                (value for value in reversed(self.stack) if value),
+                None,
+            )
+            if scope:
+                self.details[scope] = (values, parent_scope)
+            self.stack.append(scope)
+
+        def handle_endtag(self, tag: str) -> None:
+            if tag == "details":
+                self.stack.pop()
+
+    report = render_html(spans)
+    parser = DetailsParser()
+    parser.feed(report)
+
+    root, _ = parser.details["ya.run"]
+    build, build_parent = parser.details["ya.build"]
+    build_node, build_node_parent = parser.details["ya.build.node"]
+    chunk, chunk_parent = parser.details["ya.chunk"]
+    test, test_parent = parser.details["ya.test"]
+    assert "open" in root
+    assert root["data-default-open"] == "true"
+    assert "open" not in build
+    assert build["data-default-open"] == "false"
+    assert "open" not in chunk
+    assert chunk["data-default-open"] == "false"
+    assert build_parent == "ya.run"
+    assert build_node_parent == "ya.build"
+    assert chunk_parent == "ya.run"
+    assert test_parent == "ya.chunk"
+    assert build_node["data-default-open"] == "false"
+    assert test["data-default-open"] == "false"
+    assert "querySelectorAll('.span')" in report
+    assert "group.open=true" in report
 
 
 def test_reader_rejects_invalid_ids(tmp_path: Path) -> None:

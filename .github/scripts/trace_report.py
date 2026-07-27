@@ -388,10 +388,27 @@ def _attribute_rows(values: Mapping[str, Any]) -> str:
     return '<table class="attributes">' + "".join(rows) + "</table>"
 
 
-def _span_row(span: Span, depth: int, origin_ns: int, total_ns: int) -> str:
+def _span_search(span: Span) -> str:
+    return " ".join(
+        [
+            span.name,
+            span.status_message,
+            *(f"{key}={value}" for key, value in span.attributes.items()),
+        ]
+    ).lower()
+
+
+def _span_summary(span: Span, depth: int, origin_ns: int, total_ns: int) -> str:
     left = 100 * max(0, span.start_ns - origin_ns) / total_ns
     width = max(0.15, 100 * span.duration_ns / total_ns)
-    status = "error" if span.status_code == 2 else "ok" if span.status_code == 1 else ""
+    return f"""<summary>
+    <span class="name" style="padding-left:{depth * 1.1:.1f}rem">{html.escape(span.name)}</span>
+    <span class="duration">{html.escape(_format_duration(span.duration_ns))}</span>
+    <span class="track"><span class="bar" style="left:{left:.4f}%;width:{width:.4f}%"></span></span>
+  </summary>"""
+
+
+def _span_detail(span: Span) -> str:
     event_rows = "".join(
         "<li><code>"
         + html.escape(_format_duration(max(0, event.time_ns - span.start_ns)))
@@ -403,29 +420,55 @@ def _span_row(span: Span, depth: int, origin_ns: int, total_ns: int) -> str:
     )
     details = _attribute_rows(span.attributes)
     if event_rows:
-        details += "<h4>Events</h4><ul class=\"events\">" + event_rows + "</ul>"
+        details += '<h4>Events</h4><ul class="events">' + event_rows + "</ul>"
     resource = _attribute_rows(span.resource_attributes)
-    search = " ".join(
-        [
-            span.name,
-            span.status_message,
-            *(f"{key}={value}" for key, value in span.attributes.items()),
-        ]
-    ).lower()
-    return f"""
-<details class="span {status}" data-search="{html.escape(search, quote=True)}">
-  <summary>
-    <span class="name" style="padding-left:{depth * 1.1:.1f}rem">{html.escape(span.name)}</span>
-    <span class="duration">{html.escape(_format_duration(span.duration_ns))}</span>
-    <span class="track"><span class="bar" style="left:{left:.4f}%;width:{width:.4f}%"></span></span>
-  </summary>
-  <div class="detail">
+    return f"""<div class="detail">
     <p><b>Span ID:</b> <code>{span.span_id}</code>
        <b>Parent:</b> <code>{span.parent_span_id or "none"}</code>
        <b>Status:</b> {span.status_code} {html.escape(span.status_message)}</p>
     <h4>Attributes</h4>{details}
     <details><summary>Resource attributes</summary>{resource}</details>
+  </div>"""
+
+
+def _span_row(
+    span: Span,
+    depth: int,
+    origin_ns: int,
+    total_ns: int,
+    *,
+    children: str = "",
+) -> str:
+    status = (
+        "error"
+        if span.status_code == 2
+        else "ok" if span.status_code == 1 else ""
+    )
+    class_name = f"span {status}".rstrip()
+    search = _span_search(span)
+    summary = _span_summary(span, depth, origin_ns, total_ns)
+    detail = _span_detail(span)
+    scope = html.escape(span.scope_name, quote=True)
+    if children:
+        class_name = f"{class_name} span-group"
+        default_open = span.scope_name not in {"ya.build", "ya.chunk"}
+        open_attribute = " open" if default_open else ""
+        return f"""
+<details class="{class_name}" data-scope="{scope}" data-search="{html.escape(search, quote=True)}" data-default-open="{str(default_open).lower()}"{open_attribute}>
+  {summary}
+  <div class="group-content">
+    <details class="span-metadata">
+      <summary>Span metadata</summary>
+      {detail}
+    </details>
+    <div class="children">{children}</div>
   </div>
+</details>"""
+
+    return f"""
+<details class="{class_name}" data-scope="{scope}" data-search="{html.escape(search, quote=True)}" data-default-open="false">
+  {summary}
+  {detail}
 </details>"""
 
 
@@ -444,28 +487,50 @@ def render_html(
         end_ns = 1
     total_ns = max(1, end_ns - origin_ns)
 
-    by_id = {span.span_id: span for span in ordered}
-    depths: dict[str, int] = {}
+    by_key = {(span.trace_id, span.span_id): span for span in ordered}
+    children_by_key: dict[tuple[str, str], list[Span]] = defaultdict(list)
+    roots: list[Span] = []
+    for span in ordered:
+        key = (span.trace_id, span.span_id)
+        parent_key = (span.trace_id, span.parent_span_id)
+        if span.parent_span_id and parent_key in by_key and parent_key != key:
+            children_by_key[parent_key].append(span)
+        else:
+            roots.append(span)
 
-    def depth(span: Span) -> int:
-        if span.span_id in depths:
-            return depths[span.span_id]
-        seen = {span.span_id}
-        value = 0
-        current = span
-        while value < 20:
-            parent = by_id.get(current.parent_span_id)
-            if parent is None or parent.span_id in seen:
-                break
-            seen.add(parent.span_id)
-            value += 1
-            current = parent
-        depths[span.span_id] = value
-        return value
+    rendered: set[tuple[str, str]] = set()
 
-    rows = "".join(
-        _span_row(span, depth(span), origin_ns, total_ns) for span in ordered
+    def render_tree(
+        span: Span,
+        depth: int,
+        ancestors: frozenset[tuple[str, str]],
+    ) -> str:
+        key = (span.trace_id, span.span_id)
+        if key in ancestors or key in rendered:
+            return ""
+        rendered.add(key)
+        child_rows = []
+        next_ancestors = ancestors | {key}
+        for child in children_by_key.get(key, []):
+            child_row = render_tree(child, depth + 1, next_ancestors)
+            if child_row:
+                child_rows.append(child_row)
+        return _span_row(
+            span,
+            depth,
+            origin_ns,
+            total_ns,
+            children="".join(child_rows),
+        )
+
+    row_parts = [render_tree(span, 0, frozenset()) for span in roots]
+    # Preserve malformed cyclic or duplicate-parent traces as additional roots.
+    row_parts.extend(
+        render_tree(span, 0, frozenset())
+        for span in ordered
+        if (span.trace_id, span.span_id) not in rendered
     )
+    rows = "".join(row_parts)
     metadata_table = _attribute_rows(clean_attributes(metadata))
     failures = sum(span.status_code == 2 for span in ordered)
     return f"""<!doctype html>
@@ -487,15 +552,20 @@ h1 {{ margin:.2rem 0 }} .muted {{ color:var(--muted) }} .toolbar {{ position:sti
 input,button {{ color:inherit; background:var(--panel); border:1px solid var(--line);
   border-radius:6px; padding:.45rem .7rem }} input {{ min-width:20rem }}
 .trace {{ border:1px solid var(--line); border-radius:8px; overflow:hidden }}
-.span {{ border-bottom:1px solid var(--line) }} .span:last-child {{ border:0 }}
+.span {{ border-bottom:1px solid var(--line) }} .trace > .span:last-child,
+.children > .span:last-child {{ border-bottom:0 }}
 .span[hidden] {{ display:none }} summary {{ display:grid; grid-template-columns:minmax(20rem,38%)
   7rem 1fr; align-items:center; gap:.7rem; padding:.4rem .6rem; cursor:pointer }}
 summary:hover {{ background:var(--panel) }} .name {{ overflow:hidden; text-overflow:ellipsis;
   white-space:nowrap }} .duration {{ text-align:right; font-variant-numeric:tabular-nums }}
 .track {{ position:relative; height:.8rem; background:var(--panel); border-radius:4px }}
 .bar {{ position:absolute; top:0; bottom:0; border-radius:4px; background:var(--bar);
-  min-width:2px }} .error .bar {{ background:var(--bad) }} .error > summary .name {{ color:var(--bad) }}
+  min-width:2px }} .error > summary .bar {{ background:var(--bad) }}
+.error > summary .name {{ color:var(--bad) }}
 .detail {{ padding:.5rem 1rem 1rem 2rem; overflow:auto }} table {{ border-collapse:collapse }}
+.group-content {{ border-top:1px solid var(--line) }} .span-metadata {{ margin:.25rem .6rem }}
+.span-metadata > summary {{ display:list-item; padding:.3rem .6rem; color:var(--muted) }}
+.children {{ border-top:1px solid var(--line) }}
 th,td {{ border-bottom:1px solid var(--line); padding:.25rem .5rem; text-align:left;
   vertical-align:top }} th {{ color:var(--muted); white-space:nowrap }} td {{ word-break:break-word }}
 .attributes {{ width:100%; max-width:100rem }} code {{ font-family:ui-monospace,monospace }}
@@ -517,12 +587,29 @@ th,td {{ border-bottom:1px solid var(--line); padding:.25rem .5rem; text-align:l
 </main>
 <script>
 const spans=[...document.querySelectorAll('.span')];
+const groups=[...document.querySelectorAll('.span-group')];
 document.getElementById('filter').addEventListener('input',event=>{{
   const query=event.target.value.trim().toLowerCase();
-  spans.forEach(span=>span.hidden=query && !span.dataset.search.includes(query));
+  spans.forEach(span=>span.hidden=Boolean(query) && !span.dataset.search.includes(query));
+  if(query){{
+    [...groups].reverse().forEach(group=>{{
+      if(!group.hidden||[...group.querySelectorAll('.span')].some(span=>!span.hidden)){{
+        group.hidden=false;
+        group.open=true;
+      }}
+    }});
+  }}else{{
+    spans.forEach(span=>span.open=span.dataset.defaultOpen==='true');
+  }}
 }});
-document.getElementById('expand').addEventListener('click',()=>spans.forEach(span=>span.open=true));
-document.getElementById('collapse').addEventListener('click',()=>spans.forEach(span=>span.open=false));
+document.getElementById('expand').addEventListener('click',()=>{{
+  spans.forEach(span=>span.open=true);
+  document.querySelectorAll('.span-metadata').forEach(detail=>detail.open=true);
+}});
+document.getElementById('collapse').addEventListener('click',()=>{{
+  spans.forEach(span=>span.open=false);
+  document.querySelectorAll('.span-metadata').forEach(detail=>detail.open=false);
+}});
 </script>
 </body></html>
 """
