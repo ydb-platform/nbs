@@ -22,6 +22,7 @@
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
 #include <cloud/blockstore/libs/storage/api/volume_balancer.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
+#include <cloud/blockstore/libs/storage/core/block_digest_factory.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/manually_preempted_volumes.h>
 #include <cloud/blockstore/libs/storage/core/partition_budget_manager.h>
@@ -249,7 +250,7 @@ ui32 TTestEnv::CreateBlockStoreNode(
             storageConfig,
             diagnosticsConfig,
             CreateProfileLogStub(),
-            CreateBlockDigestGeneratorStub(),
+            NStorage::CreateBlockDigestGeneratorFactory(),
             TraceSerializer,
             nullptr,   // RdmaClient
             partitionBudgetManager,
@@ -409,7 +410,7 @@ ui32 TTestEnv::CreateBlockStoreNode(
         storageConfig,
         diagnosticsConfig,
         CreateProfileLogStub(),
-        CreateBlockDigestGeneratorStub(),
+        NStorage::CreateBlockDigestGeneratorFactory(),
         NDiscovery::CreateDiscoveryServiceStub(),
         TraceSerializer,
         NServer::CreateEndpointEventProxy(),

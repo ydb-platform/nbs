@@ -138,7 +138,7 @@ void TServiceActor::HandleMountVolume(
                 Config,
                 DiagnosticsConfig,
                 ProfileLog,
-                BlockDigestGenerator,
+                BlockDigestGeneratorFactory,
                 TraceSerializer,
                 EndpointEventHandler,
                 RdmaClient,

@@ -48,7 +48,7 @@ private:
     const TStorageConfigPtr Config;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
     const IProfileLogPtr ProfileLog;
-    const IBlockDigestGeneratorPtr BlockDigestGenerator;
+    const IBlockDigestGeneratorFactoryPtr BlockDigestGeneratorFactory;
     const ITraceSerializerPtr TraceSerializer;
     const NServer::IEndpointEventHandlerPtr EndpointEventHandler;
     const NCloud::NStorage::NRdma::IClientPtr RdmaClient;
@@ -90,7 +90,7 @@ public:
         TStorageConfigPtr config,
         TDiagnosticsConfigPtr diagnosticsConfig,
         IProfileLogPtr profileLog,
-        IBlockDigestGeneratorPtr blockDigestGenerator,
+        IBlockDigestGeneratorFactoryPtr blockDigestGeneratorFactory,
         ITraceSerializerPtr traceSerializer,
         NServer::IEndpointEventHandlerPtr endpointEventHandler,
         NCloud::NStorage::NRdma::IClientPtr rdmaClient,
@@ -185,7 +185,7 @@ TStartVolumeActor::TStartVolumeActor(
         TStorageConfigPtr config,
         TDiagnosticsConfigPtr diagnosticsConfig,
         IProfileLogPtr profileLog,
-        IBlockDigestGeneratorPtr blockDigestGenerator,
+        IBlockDigestGeneratorFactoryPtr blockDigestGeneratorFactory,
         ITraceSerializerPtr traceSerializer,
         NServer::IEndpointEventHandlerPtr endpointEventHandler,
         NCloud::NStorage::NRdma::IClientPtr rdmaClient,
@@ -196,7 +196,7 @@ TStartVolumeActor::TStartVolumeActor(
     , Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , ProfileLog(std::move(profileLog))
-    , BlockDigestGenerator(std::move(blockDigestGenerator))
+    , BlockDigestGeneratorFactory(std::move(blockDigestGeneratorFactory))
     , TraceSerializer(std::move(traceSerializer))
     , EndpointEventHandler(std::move(endpointEventHandler))
     , RdmaClient(std::move(rdmaClient))
@@ -587,7 +587,7 @@ void TStartVolumeActor::StartTablet(const TActorContext& ctx)
     auto config = Config;
     auto diagnosticsConfig = DiagnosticsConfig;
     auto profileLog = ProfileLog;
-    auto blockDigestGenerator = BlockDigestGenerator;
+    auto blockDigestGeneratorFactory = BlockDigestGeneratorFactory;
     auto traceSerializer = TraceSerializer;
     auto endpointEventHandler = EndpointEventHandler;
     auto rdmaClient = RdmaClient;
@@ -597,7 +597,7 @@ void TStartVolumeActor::StartTablet(const TActorContext& ctx)
         [config,
          diagnosticsConfig,
          profileLog,
-         blockDigestGenerator,
+         blockDigestGeneratorFactory,
          traceSerializer,
          rdmaClient,
          endpointEventHandler,
@@ -612,7 +612,7 @@ void TStartVolumeActor::StartTablet(const TActorContext& ctx)
             config,
             diagnosticsConfig,
             profileLog,
-            blockDigestGenerator,
+            blockDigestGeneratorFactory,
             traceSerializer,
             rdmaClient,
             partitionBudgetManager,
@@ -1119,7 +1119,7 @@ void TVolumeSessionActor::HandleStartVolumeRequest(
             Config,
             DiagnosticsConfig,
             ProfileLog,
-            BlockDigestGenerator,
+            BlockDigestGeneratorFactory,
             TraceSerializer,
             EndpointEventHandler,
             RdmaClient,

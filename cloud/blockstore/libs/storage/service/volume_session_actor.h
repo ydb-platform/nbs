@@ -54,7 +54,7 @@ private:
     const TStorageConfigPtr Config;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
     const IProfileLogPtr ProfileLog;
-    const IBlockDigestGeneratorPtr BlockDigestGenerator;
+    const IBlockDigestGeneratorFactoryPtr BlockDigestGeneratorFactory;
     const ITraceSerializerPtr TraceSerializer;
     const NServer::IEndpointEventHandlerPtr EndpointEventHandler;
     const NCloud::NStorage::NRdma::IClientPtr RdmaClient;
@@ -96,7 +96,7 @@ public:
         TStorageConfigPtr config,
         TDiagnosticsConfigPtr diagnosticsConfig,
         IProfileLogPtr profileLog,
-        IBlockDigestGeneratorPtr blockDigestGenerator,
+        IBlockDigestGeneratorFactoryPtr blockDigestGeneratorFactory,
         ITraceSerializerPtr traceSerializer,
         NServer::IEndpointEventHandlerPtr endpointEventHandler,
         NCloud::NStorage::NRdma::IClientPtr rdmaClient,
@@ -109,7 +109,7 @@ public:
         , Config(std::move(config))
         , DiagnosticsConfig(std::move(diagnosticsConfig))
         , ProfileLog(std::move(profileLog))
-        , BlockDigestGenerator(std::move(blockDigestGenerator))
+        , BlockDigestGeneratorFactory(std::move(blockDigestGeneratorFactory))
         , TraceSerializer(std::move(traceSerializer))
         , EndpointEventHandler(std::move(endpointEventHandler))
         , RdmaClient(std::move(rdmaClient))

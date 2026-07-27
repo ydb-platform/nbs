@@ -56,6 +56,7 @@ struct TServerActorSystemArgs
     IStorageProviderPtr LocalStorageProvider;
     IProfileLogPtr ProfileLog;
     IBlockDigestGeneratorPtr BlockDigestGenerator;
+    IBlockDigestGeneratorFactoryPtr BlockDigestGeneratorFactory;
     ITraceSerializerPtr TraceSerializer;
     NLogbroker::IServicePtr LogbrokerService;
     NNotify::IServicePtr NotifyService;

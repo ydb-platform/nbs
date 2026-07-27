@@ -45,6 +45,7 @@
 #include <cloud/blockstore/libs/service_local/storage_null.h>
 #include <cloud/blockstore/libs/spdk/iface/env.h>
 #include <cloud/blockstore/libs/spdk/iface/env_stub.h>
+#include <cloud/blockstore/libs/storage/core/block_digest_factory.h>
 #include <cloud/blockstore/libs/storage/core/manually_preempted_volumes.h>
 #include <cloud/blockstore/libs/storage/core/partition_budget_manager.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
@@ -774,16 +775,10 @@ void TBootstrapYdb::InitKikimrService()
 
     STORAGE_INFO("StatsFetcher initialized");
 
-    if (Configs->StorageConfig->GetBlockDigestsEnabled()) {
-        if (Configs->StorageConfig->GetUseTestBlockDigestGenerator()) {
-            BlockDigestGenerator = CreateTestBlockDigestGenerator();
-        } else {
-            BlockDigestGenerator = CreateExt4BlockDigestGenerator(
-                Configs->StorageConfig->GetDigestedBlocksPercentage());
-        }
-    } else {
-        BlockDigestGenerator = CreateBlockDigestGeneratorStub();
-    }
+    BlockDigestGeneratorFactory = NStorage::CreateBlockDigestGeneratorFactory();
+    BlockDigestGenerator =
+        BlockDigestGeneratorFactory->CreateBlockDigestGenerator(
+            *Configs->StorageConfig);
 
     STORAGE_INFO("DigestGenerator initialized");
 
@@ -849,6 +844,7 @@ void TBootstrapYdb::InitKikimrService()
     args.Allocator = Allocator;
     args.LocalStorageProvider = LocalStorageProvider;
     args.ProfileLog = ProfileLog;
+    args.BlockDigestGeneratorFactory = BlockDigestGeneratorFactory;
     args.BlockDigestGenerator = BlockDigestGenerator;
     args.TraceSerializer = TraceSerializer;
     args.LogbrokerService = LogbrokerService;

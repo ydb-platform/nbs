@@ -91,7 +91,7 @@ TVolumeActor::TVolumeActor(
     TStorageConfigPtr config,
     TDiagnosticsConfigPtr diagnosticsConfig,
     IProfileLogPtr profileLog,
-    IBlockDigestGeneratorPtr blockDigestGenerator,
+    IBlockDigestGeneratorFactoryPtr blockDigestGeneratorFactory,
     ITraceSerializerPtr traceSerializer,
     NCloud::NStorage::NRdma::IClientPtr rdmaClient,
     TPartitionBudgetManagerPtr partitionBudgetManager,
@@ -104,7 +104,7 @@ TVolumeActor::TVolumeActor(
     , Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , ProfileLog(std::move(profileLog))
-    , BlockDigestGenerator(std::move(blockDigestGenerator))
+    , BlockDigestGeneratorFactory(std::move(blockDigestGeneratorFactory))
     , TraceSerializer(std::move(traceSerializer))
     , RdmaClient(std::move(rdmaClient))
     , PartitionBudgetManager(std::move(partitionBudgetManager))
