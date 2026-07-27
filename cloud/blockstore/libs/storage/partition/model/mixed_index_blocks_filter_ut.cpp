@@ -37,7 +37,7 @@ Y_UNIT_TEST_SUITE(TMixedIndexBlocksFilterTest)
 {
     Y_UNIT_TEST(ShouldBeConservativeUntilRangeIsInitialized)
     {
-        TMixedBlocksFilter filter(BlocksPerRange, BlockCount);
+        TMixedBlocksFilter filter(0, BlocksPerRange, BlockCount);
 
         UNIT_ASSERT(MayHaveBlock(filter, 0));
         UNIT_ASSERT(MayHaveBlock(filter, BlocksPerRange));
@@ -59,7 +59,7 @@ Y_UNIT_TEST_SUITE(TMixedIndexBlocksFilterTest)
 
     Y_UNIT_TEST(ShouldLoadSerializedBlocks)
     {
-        TMixedBlocksFilter filter(BlocksPerRange, BlockCount);
+        TMixedBlocksFilter filter(0, BlocksPerRange, BlockCount);
         TCompressedBitmap bitmap(BlockCount);
 
         bitmap.Set(0, 1);
@@ -88,7 +88,7 @@ Y_UNIT_TEST_SUITE(TMixedIndexBlocksFilterTest)
 
     Y_UNIT_TEST(ShouldOnlyAddBlocksVisibleAtRangeCommitId)
     {
-        TMixedBlocksFilter filter(BlocksPerRange, BlockCount);
+        TMixedBlocksFilter filter(0, BlocksPerRange, BlockCount);
         const ui64 rangeCommitId = 10;
         filter.UpdateRangeCommitId(0, rangeCommitId);
 
@@ -106,7 +106,7 @@ Y_UNIT_TEST_SUITE(TMixedIndexBlocksFilterTest)
 
     Y_UNIT_TEST(ShouldReplaceCompactedRangeWithConcurrentWrites)
     {
-        TMixedBlocksFilter filter(BlocksPerRange, BlockCount);
+        TMixedBlocksFilter filter(0, BlocksPerRange, BlockCount);
         filter.UpdateRangeCommitId(0, 1);
 
         filter.AddBlocksToMixedIndex(0, 2);
@@ -128,7 +128,7 @@ Y_UNIT_TEST_SUITE(TMixedIndexBlocksFilterTest)
 
     Y_UNIT_TEST(ShouldClearRangeWhenCompactionHasNoConcurrentWrites)
     {
-        TMixedBlocksFilter filter(BlocksPerRange, BlockCount);
+        TMixedBlocksFilter filter(0, BlocksPerRange, BlockCount);
         filter.UpdateRangeCommitId(0, 1);
         filter.AddBlocksToMixedIndex(17, 2);
 
@@ -141,7 +141,7 @@ Y_UNIT_TEST_SUITE(TMixedIndexBlocksFilterTest)
 
     Y_UNIT_TEST(ShouldLeaveRangeUnchangedWhenCompactionFails)
     {
-        TMixedBlocksFilter filter(BlocksPerRange, BlockCount);
+        TMixedBlocksFilter filter(0, BlocksPerRange, BlockCount);
         filter.UpdateRangeCommitId(0, 1);
         filter.AddBlocksToMixedIndex(0, 2);
 
@@ -157,7 +157,7 @@ Y_UNIT_TEST_SUITE(TMixedIndexBlocksFilterTest)
 
     Y_UNIT_TEST(ShouldHandleQueuedCompactionsInCommitOrder)
     {
-        TMixedBlocksFilter filter(BlocksPerRange, BlockCount);
+        TMixedBlocksFilter filter(0, BlocksPerRange, BlockCount);
         filter.UpdateRangeCommitId(0, 1);
         filter.AddBlocksToMixedIndex(0, 2);
 
@@ -182,7 +182,7 @@ Y_UNIT_TEST_SUITE(TMixedIndexBlocksFilterTest)
 
     Y_UNIT_TEST(ShouldUpdateOnlyTheCompactedRange)
     {
-        TMixedBlocksFilter filter(BlocksPerRange, BlockCount);
+        TMixedBlocksFilter filter(0, BlocksPerRange, BlockCount);
         filter.UpdateRangeCommitId(0, 1);
         filter.UpdateRangeCommitId(1, 1);
 
