@@ -15,6 +15,8 @@ from scripts.tests.ya_trace_report import (
     load_ya_traces,
 )
 from scripts.trace_report import (
+    TRACE_HTML_TEMPLATE,
+    TRACE_SCRIPT_TEMPLATE,
     Span,
     SpanEvent,
     _trace_model,
@@ -129,22 +131,16 @@ def test_renderer_collapses_build_and_test_groups_by_default() -> None:
     report = render_html(spans)
     assert encoded["build operations"][1] == indexes["root"]
     assert encoded["compile target"][1] == indexes["build operations"]
-    assert (
-        encoded["cloud/tasks/storage/tests [tests chunk 1/1]"][1]
-        == indexes["root"]
-    )
+    assert encoded["cloud/tasks/storage/tests [tests chunk 1/1]"][1] == indexes["root"]
     assert (
         encoded["TestSuite::test_case"][1]
         == indexes["cloud/tasks/storage/tests [tests chunk 1/1]"]
     )
-    assert "const COLLAPSED_SCOPES=new Set(['ya.build','ya.chunk'])" in report
-    assert "const PAGE_SIZE=200" in report
-    assert "const INITIAL_RENDER_LIMIT=2000" in report
-    assert "new DecompressionStream('gzip')" in report
-    assert "function toggleSpanGroup(index)" in report
-    assert "name.addEventListener('click',()=>toggleSpanGroup(item.index))" in report
-    assert "metadata.className='metadata-button'" in report
-    assert "metadata.addEventListener('click',()=>showSpan(item.index))" in report
+    template = TRACE_HTML_TEMPLATE.read_text()
+    script = TRACE_SCRIPT_TEMPLATE.read_text()
+    assert "@@TRACE_SCRIPT@@" in template
+    assert script in report
+    assert "@@TRACE_" not in report
     assert "compile target" not in report
 
 
@@ -188,9 +184,7 @@ def test_reader_limits_decompressed_input(tmp_path: Path) -> None:
 
 
 def test_stable_hex_id_is_deterministic() -> None:
-    assert stable_hex_id("run", 1, length=16) == stable_hex_id(
-        "run", 1, length=16
-    )
+    assert stable_hex_id("run", 1, length=16) == stable_hex_id("run", 1, length=16)
     assert len(stable_hex_id("run", length=32)) == 32
 
 
@@ -266,12 +260,7 @@ def test_ya_trace_produces_observed_and_inferred_test_spans(
     assert root.status_code == 2
     assert chunk.start_ns == 100_000_000_000
     assert chunk.end_ns == 110_000_000_000
-    assert (
-        chunk.attributes[
-            "ya.chunk.metric.suite_prepare_recipes_seconds"
-        ]
-        == 2.25
-    )
+    assert chunk.attributes["ya.chunk.metric.suite_prepare_recipes_seconds"] == 2.25
     assert observed.duration_ns == 1_500_000_000
     assert "test.timing.inferred" not in observed.attributes
     assert inferred.duration_ns == 500_000_000
@@ -282,13 +271,7 @@ def test_ya_trace_produces_observed_and_inferred_test_spans(
 def test_ya_trace_keeps_started_but_unfinished_test(
     tmp_path: Path,
 ) -> None:
-    trace_path = (
-        tmp_path
-        / "suite"
-        / "test-results"
-        / "runner"
-        / "ytest.report.trace"
-    )
+    trace_path = tmp_path / "suite" / "test-results" / "runner" / "ytest.report.trace"
     trace_path.parent.mkdir(parents=True)
     trace_path.write_text(
         json.dumps(
@@ -316,13 +299,7 @@ def test_ya_trace_keeps_started_but_unfinished_test(
 def test_ya_trace_preserves_chunks_and_anchors_finish_only_tests(
     tmp_path: Path,
 ) -> None:
-    trace_path = (
-        tmp_path
-        / "suite"
-        / "test-results"
-        / "unittest"
-        / "ytest.report.trace"
-    )
+    trace_path = tmp_path / "suite" / "test-results" / "unittest" / "ytest.report.trace"
     trace_path.parent.mkdir(parents=True)
     events = [
         {
@@ -452,9 +429,7 @@ def test_ya_evlog_adds_phases_and_build_nodes(
             "event": "node-finished",
             "thread_name": "Worker-001",
             "value": {
-                "name": (
-                    "FromCache(cacheuid$(BUILD_ROOT)/library/cached.a)"
-                ),
+                "name": ("FromCache(cacheuid$(BUILD_ROOT)/library/cached.a)"),
                 "tag": "restore[AR]",
                 "time": [12.5, 13],
             },
@@ -464,9 +439,7 @@ def test_ya_evlog_adds_phases_and_build_nodes(
             "event": "node-finished",
             "thread_name": "Worker-002",
             "value": {
-                "name": (
-                    "FromCache(loweruid$(BUILD_ROOT)/library/lower.a)"
-                ),
+                "name": ("FromCache(loweruid$(BUILD_ROOT)/library/lower.a)"),
                 "tag": "restore[ar]",
                 "time": [12.6, 12.9],
             },
@@ -580,9 +553,7 @@ def test_ya_evlog_adds_phases_and_build_nodes(
     assert build.attributes["ya.build.node.count"] == 4
     assert build.attributes["ya.build.node.cache_store.count"] == 1
     assert build.attributes["ya.build.first_test_node_offset_seconds"] == 5.5
-    assert build.attributes[
-        "ya.build.cache.considered_task.hit.ratio"
-    ] == 0.75
+    assert build.attributes["ya.build.cache.considered_task.hit.ratio"] == 0.75
     assert build.attributes["ya.build.cache.considered_task.hit.count"] == 3
     assert build.attributes["ya.build.cache.considered_task.miss.count"] == 1
     assert build.attributes["ya.build.task.avoided.ratio"] == 0.96
@@ -612,9 +583,7 @@ def test_ya_evlog_adds_phases_and_build_nodes(
     )
     assert compiled.attributes["ya.build.critical_path"] is True
     assert compiled.attributes["ya.build.critical_path.index"] == 0
-    assert compiled.attributes[
-        "ya.build.critical_path.reported_seconds"
-    ] == 4
+    assert compiled.attributes["ya.build.critical_path.reported_seconds"] == 4
     assert root.attributes["ya.build.node.count"] == 4
     assert root.attributes["ya.build.node.span_count"] == 3
 

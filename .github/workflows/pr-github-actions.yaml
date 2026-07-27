@@ -310,6 +310,8 @@ jobs:
               --self-contained-html \
               .github/scripts/*_test.py \
               .github/scripts/tests
+      - name: trace report JavaScript tests
+        run: node .github/scripts/tests/trace_report_js_test.js
       - name: Upload pytest test results artifact
         if: ${{ env.ACT != 'true' && always() }}
         id: upload

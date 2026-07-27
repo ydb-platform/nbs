@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<title>@@TRACE_TITLE@@</title>
+<style>
+:root { color-scheme:light dark; --bg:#fff; --fg:#172033; --muted:#667085;
+  --line:#d8dee9; --panel:#f7f8fa; --bar:#6d5ce7; --bad:#d92d20;
+  --selected:#eef2ff; }
+@media (prefers-color-scheme:dark) { :root { --bg:#11151c; --fg:#e8edf5;
+  --muted:#9ca9bd; --line:#344054; --panel:#1b2230; --bar:#9b8cff;
+  --bad:#ff6b64; --selected:#252d47; } }
+* { box-sizing:border-box } body { margin:0; background:var(--bg); color:var(--fg);
+  font:14px/1.45 system-ui,sans-serif } main { max-width:1800px; margin:auto; padding:1.5rem }
+h1 { margin:.2rem 0 } .muted { color:var(--muted) } .toolbar { position:sticky;
+  top:0; z-index:2; display:flex; align-items:center; gap:.6rem; padding:.7rem 0;
+  background:var(--bg) }
+input,button { color:inherit; background:var(--panel); border:1px solid var(--line);
+  border-radius:6px; padding:.45rem .7rem } input { min-width:20rem }
+.trace { border:1px solid var(--line); border-radius:8px; overflow:hidden }
+.trace-head,.span-row { display:grid; grid-template-columns:minmax(20rem,38%) 7rem 1fr;
+  align-items:center; gap:.7rem; min-height:2.25rem; padding:.35rem .6rem }
+.trace-head { color:var(--muted); background:var(--panel); font-size:.8rem;
+  font-weight:600; text-transform:uppercase }
+.span-row { border-top:1px solid var(--line) } .span-row:hover { background:var(--panel) }
+.span-row.selected { background:var(--selected) }
+.name-cell { display:flex; align-items:center; min-width:0 }
+.toggle,.metadata-button { display:inline-grid; place-items:center; flex:none; width:2.25rem;
+  height:2.25rem; padding:0; border:1px solid transparent; background:transparent;
+  border-radius:6px }
+.toggle { font-size:1.15rem; font-weight:700 }
+.toggle:not(:disabled):hover,.metadata-button:hover { border-color:var(--line);
+  background:var(--selected) }
+.toggle:disabled { opacity:0; cursor:default }
+.span-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis;
+  white-space:nowrap; padding:.35rem .25rem; border:0; background:transparent;
+  text-align:left; cursor:default }
+.group-name { cursor:pointer } .group-name:not(:disabled):hover { text-decoration:underline }
+.metadata-button { color:var(--muted); font-size:1.05rem; cursor:pointer }
+.duration { text-align:right; font-variant-numeric:tabular-nums }
+.track { position:relative; height:.8rem; background:var(--panel); border-radius:4px }
+.bar { position:absolute; top:0; bottom:0; border-radius:4px; background:var(--bar);
+  min-width:2px } .error .bar { background:var(--bad) }
+.error .span-name { color:var(--bad) }
+.more-row { border-top:1px solid var(--line); padding:.35rem .6rem }
+.more-row button { margin-left:var(--indent) }
+.detail-panel { margin:.3rem 0 .8rem; padding:1rem; border:1px solid var(--line);
+  border-radius:8px; background:var(--panel); overflow:auto }
+.detail-head { display:flex; align-items:start; justify-content:space-between; gap:1rem }
+.detail-head h2 { margin:0; font-size:1.1rem } .detail-facts { margin:.4rem 0 }
+table { border-collapse:collapse }
+th,td { border-bottom:1px solid var(--line); padding:.25rem .5rem; text-align:left;
+  vertical-align:top } th { color:var(--muted); white-space:nowrap } td { word-break:break-word }
+.attributes { width:100%; max-width:100rem } code { font-family:ui-monospace,monospace }
+.events { padding-left:1.5rem } h3,h4 { margin:.8rem 0 .3rem }
+#loading { padding:1rem } [hidden] { display:none!important }
+@media (max-width:850px) { .trace-head,.span-row { grid-template-columns:1fr 6rem }
+  .track,.trace-head span:last-child { display:none } input { min-width:8rem; flex:1 }
+  .toolbar { flex-wrap:wrap } }
+</style>
+</head>
+<body><main>
+<h1>@@TRACE_TITLE@@</h1>
+<p class="muted">@@TRACE_SUMMARY@@</p>
+<details><summary>Run metadata</summary>@@TRACE_METADATA@@</details>
+<div class="toolbar">
+  <input id="filter" type="search" placeholder="Filter spans or attributes" disabled>
+  <button id="expand" type="button" disabled>Expand all</button>
+  <button id="collapse" type="button" disabled>Collapse all</button>
+  <span id="filter-status" class="muted"></span>
+</div>
+<section id="detail-panel" class="detail-panel" hidden>
+  <div class="detail-head">
+    <h2 id="detail-title"></h2>
+    <button id="detail-close" type="button">Close</button>
+  </div>
+  <div id="detail-content"></div>
+</section>
+<section class="trace">
+  <div class="trace-head"><span>Name</span><span>Duration</span><span>Waterfall</span></div>
+  <div id="rows"><p id="loading" class="muted">Loading compressed trace data…</p></div>
+</section>
+</main>
+<script id="trace-data" type="application/octet-stream">@@TRACE_PAYLOAD@@</script>
+<script>
+@@TRACE_SCRIPT@@
+</script>
+</body></html>
