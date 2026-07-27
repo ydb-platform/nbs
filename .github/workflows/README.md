@@ -12,6 +12,11 @@ Each `ya make` test attempt writes these files beside `summary.json`:
 - `trace.manifest.json`: bundle metadata and span counts;
 - `trace.html`: a self-contained, searchable waterfall.
 
+The standalone `build` action writes the same three files beside its build
+logs and copies them to the workflow trace reports prefix. Its bundle has a
+`ya make build` root with graph, cache, build-operation, and critical-path
+spans, but no test chunks.
+
 Observed `subtest-started`/`subtest-finished` events become test spans. Older
 finish-only events use the reported test duration and are marked with
 `test.timing.inferred=true`. Ya recipe and runner phase durations do not
@@ -26,11 +31,11 @@ excluded, as are other nodes writing under `test-results`, because the
 corresponding chunks and tests already have richer spans.
 The `build operations` span reports both its wall-clock execution envelope and
 the cumulative worker-node time; the latter can be larger because nodes run in
-parallel. It also carries ya's authoritative all-task cache statistics,
+parallel. It also carries ya's authoritative considered-task cache statistics,
 observed test-excluded worker-node cache ratios (including per-tool `CC`, `AR`,
-`LD`, and similar breakdowns), execution-stage wall times, distributed-cache
-I/O, and the build-only portion of ya's reported critical path. Critical-path
-build nodes are marked on their individual spans.
+`LD`, and similar breakdowns), total task reuse/avoidance, execution-stage wall
+times, distributed-cache I/O, and the build-only portion of ya's reported
+critical path. Critical-path build nodes are marked on their individual spans.
 
 `render-workflow-trace.yaml` runs after the main test workflows complete. It
 combines GitHub workflow, queue, job, and step timings with any available ya

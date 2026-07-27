@@ -515,9 +515,13 @@ def test_ya_evlog_adds_phases_and_build_nodes(
     assert build.attributes["ya.build.node.count"] == 4
     assert build.attributes["ya.build.node.cache_store.count"] == 1
     assert build.attributes["ya.build.first_test_node_offset_seconds"] == 5.5
-    assert build.attributes["ya.build.cache.all_task.hit.ratio"] == 0.75
-    assert build.attributes["ya.build.cache.all_task.hit.count"] == 3
-    assert build.attributes["ya.build.cache.all_task.miss.count"] == 1
+    assert build.attributes[
+        "ya.build.cache.considered_task.hit.ratio"
+    ] == 0.75
+    assert build.attributes["ya.build.cache.considered_task.hit.count"] == 3
+    assert build.attributes["ya.build.cache.considered_task.miss.count"] == 1
+    assert build.attributes["ya.build.task.avoided.ratio"] == 0.96
+    assert build.attributes["ya.build.task.reused_or_avoided.ratio"] == 0.99
     assert build.attributes["ya.build.cache.worker_node.hit.ratio"] == 2 / 3
     assert build.attributes["ya.build.task.avoided.count"] == 96
     assert build.attributes["ya.build.dist_cache.get.bytes"] == 1_024
@@ -548,6 +552,19 @@ def test_ya_evlog_adds_phases_and_build_nodes(
     ] == 4
     assert root.attributes["ya.build.node.count"] == 4
     assert root.attributes["ya.build.node.span_count"] == 3
+
+    build_only = build_ya_spans(
+        [],
+        root_start_ns=9_000_000_000,
+        root_end_ns=31_000_000_000,
+        exit_code=0,
+        resource={},
+        evlog=load_ya_evlog(evlog_path),
+        operation="build",
+    )
+    assert build_only[0].name == "ya make build"
+    assert not any(span.scope_name == "ya.chunk" for span in build_only)
+    assert any(span.scope_name == "ya.build" for span in build_only)
 
 
 def test_workflow_trace_adds_queue_job_step_and_imported_ya_spans() -> None:

@@ -624,13 +624,15 @@ def resource_attributes(args: argparse.Namespace) -> dict[str, Any]:
     run_id = os.environ.get("GITHUB_RUN_ID", "")
     sha = os.environ.get("GITHUB_SHA", "")
     values = {
-        "service.name": "nbs-ya-tests",
+        "service.name": f"nbs-ya-{args.operation}",
         "ci.component": args.component or "all",
         "ci.build.preset": args.build_preset,
+        "ci.build.target": args.build_target,
         "ci.test.target": args.test_target,
         "ci.test.type": args.test_type,
         "ci.test.size": args.test_size,
         "ci.ya.retry": args.retry,
+        "ci.ya.operation": args.operation,
         "github.repository": repository,
         "github.workflow": os.environ.get("GITHUB_WORKFLOW", ""),
         "github.workflow.ref": os.environ.get("GITHUB_WORKFLOW_REF", ""),
@@ -743,15 +745,17 @@ def _build_statistics_attributes(
     if isinstance(cache, Mapping):
         cache_hit_percent = _number(cache.get("cache_hit"))
         if cache_hit_percent is not None:
-            attributes["ya.build.cache.all_task.hit.ratio"] = (
+            attributes["ya.build.cache.considered_task.hit.ratio"] = (
                 cache_hit_percent / 100
             )
         cache_fields = {
             "run_tasks": "ya.build.task.total.count",
             "executed_tasks": "ya.build.task.considered.count",
-            "cached_tasks": "ya.build.cache.all_task.hit.count",
-            "dyn_cached_tasks": "ya.build.cache.all_task.dynamic_hit.count",
-            "not_cached_tasks": "ya.build.cache.all_task.miss.count",
+            "cached_tasks": "ya.build.cache.considered_task.hit.count",
+            "dyn_cached_tasks": (
+                "ya.build.cache.considered_task.dynamic_hit.count"
+            ),
+            "not_cached_tasks": "ya.build.cache.considered_task.miss.count",
             "tests_tasks": "ya.build.task.test.count",
             "failed_tasks": "ya.build.task.failed.count",
             "ok_tasks": "ya.build.task.ok.count",
@@ -761,6 +765,21 @@ def _build_statistics_attributes(
             number = _number(cache.get(source))
             if number is not None:
                 attributes[destination] = number
+        total_tasks = _number(cache.get("run_tasks"))
+        cached_tasks = _number(cache.get("cached_tasks"))
+        avoided_tasks = _number(cache.get("avoided_tasks"))
+        if (
+            total_tasks is not None
+            and total_tasks > 0
+            and cached_tasks is not None
+            and avoided_tasks is not None
+        ):
+            attributes["ya.build.task.avoided.ratio"] = (
+                avoided_tasks / total_tasks
+            )
+            attributes["ya.build.task.reused_or_avoided.ratio"] = (
+                cached_tasks + avoided_tasks
+            ) / total_tasks
         attributes["ya.build.cache.statistics.source"] = "ya"
 
     dist_cache = statistics.get("dist_cache_stat")
@@ -1096,6 +1115,7 @@ def build_ya_spans(
     result_code: int | None = None,
     resource: Mapping[str, Any],
     evlog: YaEvlog | None = None,
+    operation: str = "tests",
 ) -> list[Span]:
     effective_result_code = exit_code if result_code is None else result_code
     trace_id = stable_hex_id(
@@ -1105,6 +1125,7 @@ def build_ya_spans(
         resource.get("github.job", ""),
         resource.get("ci.component", ""),
         resource.get("ci.ya.retry", ""),
+        operation,
         root_start_ns,
         length=32,
     )
@@ -1112,7 +1133,7 @@ def build_ya_spans(
     root = Span(
         trace_id=trace_id,
         span_id=root_span_id,
-        name="ya make tests",
+        name=f"ya make {operation}",
         start_ns=root_start_ns,
         end_ns=root_end_ns,
         attributes={
@@ -1237,10 +1258,16 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--result-code", type=int)
     parser.add_argument("--component", default="")
     parser.add_argument("--build-preset", default="")
+    parser.add_argument("--build-target", default="")
     parser.add_argument("--test-target", default="")
     parser.add_argument("--test-type", default="")
     parser.add_argument("--test-size", default="")
     parser.add_argument("--retry", type=int, default=1)
+    parser.add_argument(
+        "--operation",
+        choices=("build", "tests"),
+        default="tests",
+    )
     return parser
 
 
@@ -1262,6 +1289,7 @@ def main() -> None:
         result_code=args.result_code,
         resource=resource,
         evlog=load_ya_evlog(args.evlog),
+        operation=args.operation,
     )
     title_component = args.component or "all"
     manifest = write_trace_bundle(
