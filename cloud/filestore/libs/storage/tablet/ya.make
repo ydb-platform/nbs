@@ -5,6 +5,7 @@ GENERATE_ENUM_SERIALIZATION(session.h)
 SRCS(
     checkpoint.cpp
     helpers.cpp
+    quota.cpp
     rebase_logic.cpp
     session.cpp
     shard_request_actor.cpp

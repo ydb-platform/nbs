@@ -1727,6 +1727,102 @@ bool TIndexTabletDatabase::ReadCheckpoints(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// Quotas
+
+void TIndexTabletDatabase::WriteQuota(const NProto::TQuota& quota)
+{
+    using TTable = TIndexTabletSchema::Quotas;
+
+    Table<TTable>()
+        .Key(quota.GetQuotaId())
+        .Update(NIceDb::TUpdate<TTable::Proto>(quota));
+}
+
+void TIndexTabletDatabase::DeleteQuota(ui32 quotaId)
+{
+    using TTable = TIndexTabletSchema::Quotas;
+
+    Table<TTable>()
+        .Key(quotaId)
+        .Delete();
+}
+
+bool TIndexTabletDatabase::ReadQuotas(TVector<NProto::TQuota>& quotas)
+{
+    using TTable = TIndexTabletSchema::Quotas;
+
+    auto it = Table<TTable>()
+        .Select();
+
+    if (!it.IsReady()) {
+        return false;   // not ready
+    }
+
+    while (it.IsValid()) {
+        quotas.emplace_back(it.GetValue<TTable::Proto>());
+
+        if (!it.Next()) {
+            return false;   // not ready
+        }
+    }
+
+    return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// QuotaUsage
+
+void TIndexTabletDatabase::WriteQuotaUsage(
+    ui32 quotaId,
+    ui64 usedBytes,
+    ui64 usedNodes)
+{
+    using TTable = TIndexTabletSchema::QuotaUsage;
+
+    Table<TTable>()
+        .Key(quotaId)
+        .Update(
+            NIceDb::TUpdate<TTable::UsedBytes>(usedBytes),
+            NIceDb::TUpdate<TTable::UsedNodes>(usedNodes)
+        );
+}
+
+void TIndexTabletDatabase::DeleteQuotaUsage(ui32 quotaId)
+{
+    using TTable = TIndexTabletSchema::QuotaUsage;
+
+    Table<TTable>()
+        .Key(quotaId)
+        .Delete();
+}
+
+bool TIndexTabletDatabase::ReadQuotaUsages(TVector<TQuotaUsage>& usages)
+{
+    using TTable = TIndexTabletSchema::QuotaUsage;
+
+    auto it = Table<TTable>()
+        .Select();
+
+    if (!it.IsReady()) {
+        return false;   // not ready
+    }
+
+    while (it.IsValid()) {
+        TQuotaUsage usage;
+        usage.QuotaId = it.GetValue<TTable::QuotaId>();
+        usage.UsedBytes = it.GetValue<TTable::UsedBytes>();
+        usage.UsedNodes = it.GetValue<TTable::UsedNodes>();
+        usages.push_back(usage);
+
+        if (!it.Next()) {
+            return false;   // not ready
+        }
+    }
+
+    return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // CheckpointNodes
 
 void TIndexTabletDatabase::WriteCheckpointNode(ui64 checkpointId, ui64 nodeId)
