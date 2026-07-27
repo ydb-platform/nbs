@@ -8,7 +8,7 @@ from tabulate import tabulate
 from collections import defaultdict
 from dateutil import parser as dateparser
 from dateutil.relativedelta import relativedelta
-from .helpers import setup_logger, github_client, get_jobs_raw, classify_runner
+from .helpers import setup_logger, github_client, get_workflow_jobs, classify_runner
 
 logger = setup_logger()
 
@@ -112,7 +112,7 @@ def main(start, end, threshold, github_token, repo):
             continue
 
         try:
-            jobs = get_jobs_raw(github_token, repo.full_name, run.id)
+            jobs = get_workflow_jobs(run)
         except Exception as e:
             logger.warning(f"Failed to get jobs for run {run.id}: {e}")
             continue

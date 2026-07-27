@@ -14,7 +14,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
-from ..trace_report import Span, stable_hex_id, write_trace_bundle
+from ..trace_report import (
+    Span,
+    github_trace_attributes,
+    stable_hex_id,
+    write_trace_bundle,
+)
 
 LOGGER = logging.getLogger(__name__)
 MAX_YA_TRACE_BYTES = 512 * 1024 * 1024
@@ -221,8 +226,7 @@ def _selected_evlog_statistics(value: Any) -> dict[str, Any]:
         isinstance(task_execution_msec, int)
         and not isinstance(task_execution_msec, bool)
     ) or (
-        isinstance(task_execution_msec, float)
-        and math.isfinite(task_execution_msec)
+        isinstance(task_execution_msec, float) and math.isfinite(task_execution_msec)
     ):
         result["task_execution_msec"] = task_execution_msec
 
@@ -295,9 +299,7 @@ def load_ya_evlog(path: Path | None) -> YaEvlog:
                 and isinstance(raw_value, Mapping)
                 and raw_value.get("key") == "stats"
             ):
-                result.statistics = _selected_evlog_statistics(
-                    raw_value.get("value")
-                )
+                result.statistics = _selected_evlog_statistics(raw_value.get("value"))
                 continue
             if (namespace, event) not in {
                 ("stages", "stage-finished"),
@@ -407,9 +409,7 @@ def _test_spans(
             )
         )
         starts = [event for event in test_events if event.name == "subtest-started"]
-        finishes = [
-            event for event in test_events if event.name == "subtest-finished"
-        ]
+        finishes = [event for event in test_events if event.name == "subtest-finished"]
         used_finishes: set[int] = set()
 
         for start_index, start in enumerate(starts):
@@ -423,10 +423,7 @@ def _test_spans(
                 (finish_index, finish)
                 for finish_index, finish in enumerate(finishes)
                 if finish_index not in used_finishes
-                and (
-                    finish.timestamp_ns is None
-                    or finish.timestamp_ns >= start_ns
-                )
+                and (finish.timestamp_ns is None or finish.timestamp_ns >= start_ns)
                 and (
                     next_start_ns is None
                     or finish.timestamp_ns is None
@@ -447,8 +444,7 @@ def _test_spans(
                     finish,
                     test_class,
                     subtest,
-                    inferred=start.timestamp_ns is None
-                    or finish.timestamp_ns is None,
+                    inferred=start.timestamp_ns is None or finish.timestamp_ns is None,
                     timing_source="subtest-events",
                 )
                 source_order = start.order
@@ -604,54 +600,34 @@ def _chunk_records(
     assigned_orders = set()
     for chunk_event in chunk_events:
         key = _chunk_key(chunk_event.value)
-        matching = [
-            event for event in test_events if _chunk_key(event.value) == key
-        ]
+        matching = [event for event in test_events if _chunk_key(event.value) == key]
         assigned_orders.update(event.order for event in matching)
         records.append((chunk_event, matching))
 
-    unassigned = [
-        event for event in test_events if event.order not in assigned_orders
-    ]
+    unassigned = [event for event in test_events if event.order not in assigned_orders]
     if unassigned:
         records.append((None, unassigned))
     return records
 
 
 def resource_attributes(args: argparse.Namespace) -> dict[str, Any]:
-    server_url = os.environ.get("GITHUB_SERVER_URL", "https://github.com").rstrip("/")
-    repository = os.environ.get("GITHUB_REPOSITORY", "")
-    run_id = os.environ.get("GITHUB_RUN_ID", "")
-    sha = os.environ.get("GITHUB_SHA", "")
-    values = {
-        "service.name": f"nbs-ya-{args.operation}",
-        "ci.component": args.component or "all",
-        "ci.build.preset": args.build_preset,
-        "ci.build.target": args.build_target,
-        "ci.test.target": args.test_target,
-        "ci.test.type": args.test_type,
-        "ci.test.size": args.test_size,
-        "ci.ya.retry": args.retry,
-        "ci.ya.operation": args.operation,
-        "github.repository": repository,
-        "github.workflow": os.environ.get("GITHUB_WORKFLOW", ""),
-        "github.workflow.ref": os.environ.get("GITHUB_WORKFLOW_REF", ""),
-        "github.job": os.environ.get("GITHUB_JOB", ""),
-        "github.run.id": run_id,
-        "github.run.number": os.environ.get("GITHUB_RUN_NUMBER", ""),
-        "github.run.attempt": os.environ.get("GITHUB_RUN_ATTEMPT", ""),
-        "github.event.name": os.environ.get("GITHUB_EVENT_NAME", ""),
-        "github.actor": os.environ.get("GITHUB_ACTOR", ""),
-        "github.sha": sha,
-        "github.ref": os.environ.get("GITHUB_REF", ""),
+    values = github_trace_attributes(environment=os.environ)
+    values.update(
+        {
+            "service.name": f"nbs-ya-{args.operation}",
+            "ci.component": args.component or "all",
+            "ci.build.preset": args.build_preset,
+            "ci.build.target": args.build_target,
+            "ci.test.target": args.test_target,
+            "ci.test.type": args.test_type,
+            "ci.test.size": args.test_size,
+            "ci.ya.retry": args.retry,
+            "ci.ya.operation": args.operation,
+        }
+    )
+    return {
+        key: value for key, value in values.items() if value is not None and value != ""
     }
-    if repository and run_id:
-        values["github.run.url"] = (
-            f"{server_url}/{repository}/actions/runs/{run_id}"
-        )
-    if repository and sha:
-        values["github.commit.url"] = f"{server_url}/{repository}/commit/{sha}"
-    return {key: value for key, value in values.items() if value not in {"", None}}
 
 
 def _clipped_record(
@@ -752,9 +728,7 @@ def _build_statistics_attributes(
             "run_tasks": "ya.build.task.total.count",
             "executed_tasks": "ya.build.task.considered.count",
             "cached_tasks": "ya.build.cache.considered_task.hit.count",
-            "dyn_cached_tasks": (
-                "ya.build.cache.considered_task.dynamic_hit.count"
-            ),
+            "dyn_cached_tasks": ("ya.build.cache.considered_task.dynamic_hit.count"),
             "not_cached_tasks": "ya.build.cache.considered_task.miss.count",
             "tests_tasks": "ya.build.task.test.count",
             "failed_tasks": "ya.build.task.failed.count",
@@ -774,9 +748,7 @@ def _build_statistics_attributes(
             and cached_tasks is not None
             and avoided_tasks is not None
         ):
-            attributes["ya.build.task.avoided.ratio"] = (
-                avoided_tasks / total_tasks
-            )
+            attributes["ya.build.task.avoided.ratio"] = avoided_tasks / total_tasks
             attributes["ya.build.task.reused_or_avoided.ratio"] = (
                 cached_tasks + avoided_tasks
             ) / total_tasks
@@ -801,14 +773,12 @@ def _build_statistics_attributes(
             milliseconds = _number(value)
             normalized = _metric_name(name)
             if milliseconds is not None and normalized:
-                attributes[
-                    f"ya.build.execution.stage.{normalized}.seconds"
-                ] = milliseconds / 1_000
+                attributes[f"ya.build.execution.stage.{normalized}.seconds"] = (
+                    milliseconds / 1_000
+                )
     task_execution_msec = _number(statistics.get("task_execution_msec"))
     if task_execution_msec is not None:
-        attributes["ya.build.execution.total.seconds"] = (
-            task_execution_msec / 1_000
-        )
+        attributes["ya.build.execution.total.seconds"] = task_execution_msec / 1_000
 
     languages = statistics.get("graph_lang_usage")
     if isinstance(languages, Mapping):
@@ -818,17 +788,10 @@ def _build_statistics_attributes(
 
     tool_counts: dict[str, Counter[str]] = defaultdict(Counter)
     for _, kind, tool in build_records:
-        if (
-            kind in {"cache_restore", "execute"}
-            and SAFE_TOOL_RE.fullmatch(tool)
-        ):
+        if kind in {"cache_restore", "execute"} and SAFE_TOOL_RE.fullmatch(tool):
             tool_counts[_metric_name(tool)][kind] += 1
-    observed_hits = sum(
-        counts["cache_restore"] for counts in tool_counts.values()
-    )
-    observed_misses = sum(
-        counts["execute"] for counts in tool_counts.values()
-    )
+    observed_hits = sum(counts["cache_restore"] for counts in tool_counts.values())
+    observed_misses = sum(counts["execute"] for counts in tool_counts.values())
     observed_total = observed_hits + observed_misses
     attributes["ya.build.cache.worker_node.hit.count"] = observed_hits
     attributes["ya.build.cache.worker_node.miss.count"] = observed_misses
@@ -839,10 +802,7 @@ def _build_statistics_attributes(
     ranked_tools = sorted(
         tool_counts,
         key=lambda tool: (
-            -(
-                tool_counts[tool]["cache_restore"]
-                + tool_counts[tool]["execute"]
-            ),
+            -(tool_counts[tool]["cache_restore"] + tool_counts[tool]["execute"]),
             tool,
         ),
     )[:MAX_CACHE_TOOL_STATS]
@@ -858,8 +818,7 @@ def _build_statistics_attributes(
     critical_entries = [
         entry
         for entry in statistics.get("critical_path", [])
-        if isinstance(entry, Mapping)
-        and not _is_test_critical_path_entry(entry)
+        if isinstance(entry, Mapping) and not _is_test_critical_path_entry(entry)
     ]
     critical_by_uid = {
         str(entry["uid"]): (index, entry)
@@ -868,8 +827,7 @@ def _build_statistics_attributes(
     }
     if critical_entries:
         work_msec = sum(
-            _number(entry.get("elapsed")) or 0
-            for entry in critical_entries
+            _number(entry.get("elapsed")) or 0 for entry in critical_entries
         )
         start_times = [
             number
@@ -881,9 +839,7 @@ def _build_statistics_attributes(
             for entry in critical_entries
             if (number := _number(entry.get("end_ts"))) is not None
         ]
-        attributes["ya.build.critical_path.node.count"] = len(
-            critical_entries
-        )
+        attributes["ya.build.critical_path.node.count"] = len(critical_entries)
         attributes["ya.build.critical_path.work.seconds"] = work_msec / 1_000
         if start_times and end_times:
             attributes["ya.build.critical_path.elapsed.seconds"] = (
@@ -1076,9 +1032,9 @@ def _build_evlog_spans(
             node_attributes["ya.build.critical_path.index"] = critical_index
             elapsed = _number(critical_entry.get("elapsed"))
             if elapsed is not None:
-                node_attributes[
-                    "ya.build.critical_path.reported_seconds"
-                ] = elapsed / 1_000
+                node_attributes["ya.build.critical_path.reported_seconds"] = (
+                    elapsed / 1_000
+                )
         spans.append(
             Span(
                 trace_id=trace_id,
@@ -1175,9 +1131,7 @@ def build_ya_spans(
             }
             for field_name in ("chunk_index", "nchunks", "status"):
                 if field_name in chunk_value:
-                    attributes[f"ya.chunk.{field_name}"] = chunk_value[
-                        field_name
-                    ]
+                    attributes[f"ya.chunk.{field_name}"] = chunk_value[field_name]
             attributes.update(_metric_attributes(chunk_value.get("metrics")))
             chunk_status = str(chunk_value.get("status", "")).lower()
             chunk_status_code = 2 if chunk_status in ERROR_STATUSES else 0
@@ -1189,10 +1143,7 @@ def build_ya_spans(
                 trace_id=trace_id,
                 span_id=chunk_span_id,
                 parent_span_id=root_span_id,
-                name=(
-                    f"{trace.suite} "
-                    f"[{trace.result_folder} {chunk_label}]"
-                ),
+                name=(f"{trace.suite} " f"[{trace.result_folder} {chunk_label}]"),
                 start_ns=chunk_start_ns,
                 end_ns=chunk_end_ns,
                 attributes=attributes,
@@ -1204,9 +1155,7 @@ def build_ya_spans(
             metrics = chunk_value.get("metrics", {})
             test_start_ns = None
             if isinstance(metrics, Mapping):
-                delay_ns = _seconds_ns(
-                    metrics.get("suite_delay_until_first_test_secs")
-                )
+                delay_ns = _seconds_ns(metrics.get("suite_delay_until_first_test_secs"))
                 if delay_ns:
                     test_start_ns = chunk_start_ns + delay_ns
             test_spans = _test_spans(

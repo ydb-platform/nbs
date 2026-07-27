@@ -448,30 +448,31 @@ def test_get_latest_github_runner_release_fetches_latest():
     assert release.sha256_by_arch["arm64"] == "b" * 64
 
 
-def test_get_jobs_raw_fetches_workflow_jobs_with_pygithub(monkeypatch):
-    jobs = [SimpleNamespace(name="job-1")]
+def test_get_workflow_jobs_fetches_latest_jobs_with_pygithub():
+    jobs = [SimpleNamespace(name="job-1", run_attempt=1)]
 
     class FakeRun:
-        def jobs(self):
+        def jobs(self, *, _filter):
+            assert _filter == "latest"
             return jobs
 
-    class FakeRepo:
-        def get_workflow_run(self, run_id):
-            assert run_id == 123
-            return FakeRun()
+    assert h.get_workflow_jobs(FakeRun()) == jobs
 
-    class FakeGithub:
-        def get_repo(self, repo):
-            assert repo == "owner/repo"
-            return FakeRepo()
 
-    def fake_github_client(token):
-        assert token == "token"
-        return FakeGithub()
+def test_get_workflow_jobs_filters_one_run_attempt():
+    jobs = [
+        SimpleNamespace(name="old", run_attempt=1),
+        SimpleNamespace(name="current", run_attempt=2),
+    ]
 
-    monkeypatch.setattr(h, "github_client", fake_github_client)
+    class FakeRun:
+        def jobs(self, *, _filter):
+            assert _filter == "all"
+            return jobs
 
-    assert h.get_jobs_raw("token", "owner/repo", 123) == jobs
+    assert [job.name for job in h.get_workflow_jobs(FakeRun(), run_attempt=2)] == [
+        "current"
+    ]
 
 
 def test_get_jobs_raw_retries_pygithub_failures(monkeypatch):

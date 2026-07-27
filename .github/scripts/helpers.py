@@ -21,6 +21,7 @@ from github.NamedUser import NamedUser
 from github.PullRequest import PullRequest
 from github.Team import Team
 from github.WorkflowJob import WorkflowJob
+from github.WorkflowRun import WorkflowRun
 
 SENSITIVE_DATA_VALUES = {}
 if os.environ.get("GITHUB_TOKEN"):
@@ -124,6 +125,19 @@ def get_s3_workflow_reports_path(
 
 def get_run_url() -> str:
     return f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
+
+
+def get_workflow_jobs(
+    run: WorkflowRun,
+    *,
+    run_attempt: int | None = None,
+) -> list[WorkflowJob]:
+    """Fetch workflow jobs through PyGithub, optionally for one run attempt."""
+
+    jobs = list(run.jobs(_filter="all" if run_attempt is not None else "latest"))
+    if run_attempt is not None:
+        jobs = [job for job in jobs if job.run_attempt == run_attempt]
+    return jobs
 
 
 def job_name_matches(expected_name: str, actual_name: str) -> bool:
@@ -466,10 +480,14 @@ def extract_github_runner_release(payload: dict) -> GithubRunnerRelease:
     return GithubRunnerRelease(version=version, sha256_by_arch=sha256_by_arch)
 
 
-def github_client(github_token: str | None = None) -> Github:
+def github_client(
+    github_token: str | None = None,
+    *,
+    base_url: str = "https://api.github.com",
+) -> Github:
     if github_token:
-        return Github(auth=GithubAuth.Token(github_token))
-    return Github()
+        return Github(auth=GithubAuth.Token(github_token), base_url=base_url)
+    return Github(base_url=base_url)
 
 
 def github_client_from_env() -> Github:

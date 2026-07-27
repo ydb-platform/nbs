@@ -7,23 +7,23 @@ import argparse
 import json
 import os
 import subprocess
-import urllib.error
-import urllib.parse
-import urllib.request
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
+from github.WorkflowJob import WorkflowJob
+
+from .helpers import get_workflow_jobs, github_client
 from .trace_report import (
     MAX_INPUT_BYTES,
     MAX_SPANS,
     Span,
+    github_trace_attributes,
     read_otlp_jsonl,
     stable_hex_id,
     write_trace_bundle,
 )
 
-MAX_JOB_PAGES = 100
 MAX_TRACE_INPUTS = 10_000
 
 
@@ -63,96 +63,8 @@ def _bounded_times(
     return start_ns, max(start_ns, end_ns)
 
 
-def _workflow_metadata(workflow_run: Mapping[str, Any]) -> dict[str, Any]:
-    pull_requests = workflow_run.get("pull_requests", [])
-    pr_numbers = [
-        item.get("number")
-        for item in pull_requests
-        if isinstance(item, Mapping) and item.get("number") is not None
-    ]
-    actor = workflow_run.get("actor") or {}
-    triggering_actor = workflow_run.get("triggering_actor") or {}
-    metadata = {
-        "github.repository": workflow_run.get("repository", {}).get(
-            "full_name", os.environ.get("GITHUB_REPOSITORY", "")
-        ),
-        "github.workflow": workflow_run.get("name", ""),
-        "github.workflow.path": workflow_run.get("path", ""),
-        "github.run.id": workflow_run.get("id", ""),
-        "github.run.number": workflow_run.get("run_number", ""),
-        "github.run.attempt": workflow_run.get("run_attempt", 1),
-        "github.run.url": workflow_run.get("html_url", ""),
-        "github.event.name": workflow_run.get("event", ""),
-        "github.sha": workflow_run.get("head_sha", ""),
-        "github.ref.name": workflow_run.get("head_branch", ""),
-        "github.actor": actor.get("login", "") if isinstance(actor, Mapping) else "",
-        "github.triggering_actor": (
-            triggering_actor.get("login", "")
-            if isinstance(triggering_actor, Mapping)
-            else ""
-        ),
-        "github.pull_request.number": pr_numbers,
-        "ci.conclusion": workflow_run.get("conclusion", ""),
-        "ci.display_title": workflow_run.get("display_title", ""),
-    }
-    repository = str(metadata["github.repository"])
-    sha = str(metadata["github.sha"])
-    if repository and sha:
-        metadata["github.commit.url"] = (
-            f"https://github.com/{repository}/commit/{urllib.parse.quote(sha, safe='')}"
-        )
-    return {
-        key: value
-        for key, value in metadata.items()
-        if value is not None and value != ""
-    }
-
-
-def fetch_jobs(
-    *,
-    repository: str,
-    run_id: int,
-    run_attempt: int,
-    token: str,
-    api_url: str = "https://api.github.com",
-) -> list[dict[str, Any]]:
-    jobs: list[dict[str, Any]] = []
-    base = api_url.rstrip("/")
-    quoted_repository = urllib.parse.quote(repository, safe="/")
-    for page in range(1, MAX_JOB_PAGES + 1):
-        url = (
-            f"{base}/repos/{quoted_repository}/actions/runs/{run_id}"
-            f"/attempts/{run_attempt}/jobs?per_page=100&page={page}"
-        )
-        request = urllib.request.Request(
-            url,
-            headers={
-                "Accept": "application/vnd.github+json",
-                "Authorization": f"Bearer {token}",
-                "User-Agent": "nbs-workflow-trace-report",
-                "X-GitHub-Api-Version": "2022-11-28",
-            },
-        )
-        try:
-            with urllib.request.urlopen(request, timeout=30) as response:
-                payload = json.load(response)
-        except (OSError, urllib.error.HTTPError, json.JSONDecodeError) as error:
-            raise RuntimeError(
-                f"Unable to fetch workflow jobs from {url}: {error}"
-            ) from error
-        page_jobs = payload.get("jobs", [])
-        if not isinstance(page_jobs, list):
-            raise RuntimeError("GitHub jobs response does not contain a jobs list")
-        jobs.extend(item for item in page_jobs if isinstance(item, dict))
-        if len(page_jobs) < 100:
-            break
-    if len(jobs) > MAX_SPANS:
-        raise ValueError(f"Workflow has more than {MAX_SPANS} jobs")
-    return jobs
-
-
 def _job_and_step_spans(
-    jobs: Sequence[Mapping[str, Any]],
+    jobs: Sequence[WorkflowJob],
     *,
     trace_id: str,
     root_span_id: str,
@@ -163,34 +75,34 @@ def _job_and_step_spans(
     spans: list[Span] = []
     job_spans: list[Span] = []
     for job_index, job in enumerate(jobs):
-        created_ns = timestamp_ns(job.get("created_at"))
-        started_ns = timestamp_ns(job.get("started_at"))
-        completed_ns = timestamp_ns(job.get("completed_at"))
+        created_ns = timestamp_ns(job.created_at)
+        started_ns = timestamp_ns(job.started_at)
+        completed_ns = timestamp_ns(job.completed_at)
         job_start_ns, job_end_ns = _bounded_times(
             created_ns or started_ns,
             completed_ns,
             workflow_start_ns,
             workflow_end_ns,
         )
-        job_id = job.get("id", job_index)
+        job_id = job.id if job.id is not None else job_index
         job_span_id = stable_hex_id(trace_id, "job", job_id, length=16)
-        conclusion = str(job.get("conclusion") or "")
+        conclusion = str(job.conclusion or "")
         job_span = Span(
             trace_id=trace_id,
             span_id=job_span_id,
             parent_span_id=root_span_id,
-            name=f"job: {job.get('name', job_id)}",
+            name=f"job: {job.name or job_id}",
             start_ns=job_start_ns,
             end_ns=job_end_ns,
             attributes={
                 "github.job.id": job_id,
-                "github.job.name": job.get("name", ""),
-                "github.job.status": job.get("status", ""),
+                "github.job.name": job.name or "",
+                "github.job.status": job.status or "",
                 "github.job.conclusion": conclusion,
-                "github.job.runner.name": job.get("runner_name", ""),
-                "github.job.runner.group": job.get("runner_group_name", ""),
-                "github.job.labels": job.get("labels", []),
-                "github.job.url": job.get("html_url", ""),
+                "github.job.runner.name": job.runner_name or "",
+                "github.job.runner.group": job.runner_group_name or "",
+                "github.job.labels": job.labels or [],
+                "github.job.url": job.html_url or "",
             },
             status_code=_status_code(conclusion),
             status_message=conclusion if _status_code(conclusion) == 2 else "",
@@ -222,16 +134,15 @@ def _job_and_step_spans(
                 )
             )
 
-        for step_index, step in enumerate(job.get("steps") or []):
-            if not isinstance(step, Mapping):
-                continue
+        for step_index, step in enumerate(job.steps or []):
             step_start_ns, step_end_ns = _bounded_times(
-                timestamp_ns(step.get("started_at")),
-                timestamp_ns(step.get("completed_at")),
+                timestamp_ns(step.started_at),
+                timestamp_ns(step.completed_at),
                 started_ns or job_start_ns,
                 job_end_ns,
             )
-            step_conclusion = str(step.get("conclusion") or "")
+            step_conclusion = str(step.conclusion or "")
+            step_number = step.number if step.number is not None else step_index
             spans.append(
                 Span(
                     trace_id=trace_id,
@@ -239,25 +150,23 @@ def _job_and_step_spans(
                         trace_id,
                         "step",
                         job_id,
-                        step.get("number", step_index),
+                        step_number,
                         length=16,
                     ),
                     parent_span_id=job_span_id,
-                    name=f"step: {step.get('name', step_index)}",
+                    name=f"step: {step.name or step_index}",
                     start_ns=step_start_ns,
                     end_ns=step_end_ns,
                     attributes={
                         "github.job.id": job_id,
-                        "github.step.number": step.get("number", step_index),
-                        "github.step.name": step.get("name", ""),
-                        "github.step.status": step.get("status", ""),
+                        "github.step.number": step_number,
+                        "github.step.name": step.name or "",
+                        "github.step.status": step.status or "",
                         "github.step.conclusion": step_conclusion,
                     },
                     status_code=_status_code(step_conclusion),
                     status_message=(
-                        step_conclusion
-                        if _status_code(step_conclusion) == 2
-                        else ""
+                        step_conclusion if _status_code(step_conclusion) == 2 else ""
                     ),
                     resource_attributes=dict(resource),
                     scope_name="github.actions",
@@ -270,8 +179,7 @@ def _parent_job(imported_root: Span, job_spans: Sequence[Span]) -> Span | None:
     containing = [
         job
         for job in job_spans
-        if job.start_ns <= imported_root.start_ns
-        and imported_root.end_ns <= job.end_ns
+        if job.start_ns <= imported_root.start_ns and imported_root.end_ns <= job.end_ns
     ]
     if not containing:
         overlapping = [
@@ -345,10 +253,13 @@ def _merge_imported_spans(
 
 def build_workflow_spans(
     workflow_run: Mapping[str, Any],
-    jobs: Sequence[Mapping[str, Any]],
+    jobs: Sequence[WorkflowJob],
     imported: Sequence[Span],
 ) -> tuple[list[Span], dict[str, Any]]:
-    metadata = _workflow_metadata(workflow_run)
+    metadata = github_trace_attributes(
+        environment=os.environ,
+        workflow_run=workflow_run,
+    )
     start_ns, end_ns = _bounded_times(
         timestamp_ns(workflow_run.get("created_at"))
         or timestamp_ns(workflow_run.get("run_started_at")),
@@ -452,9 +363,7 @@ def download_s3_trace_inputs(
 ) -> list[Path]:
     if not bucket or not prefix or prefix.startswith("/"):
         raise ValueError("A bucket and relative S3 prefix are required")
-    query = (
-        "Contents[?ends_with(Key, '/trace.otlp.jsonl.gz')].[Key,Size]"
-    )
+    query = "Contents[?ends_with(Key, '/trace.otlp.jsonl.gz')].[Key,Size]"
     result = subprocess.run(
         [
             "aws",
@@ -545,13 +454,15 @@ def main() -> None:
         raise ValueError("GitHub repository and token are required")
     workflow_run.setdefault("repository", {"full_name": repository})
 
-    jobs = fetch_jobs(
-        repository=repository,
-        run_id=int(workflow_run["id"]),
+    github = github_client(args.github_token, base_url=args.github_api_url)
+    repo = github.get_repo(repository)
+    run = repo.get_workflow_run(int(workflow_run["id"]))
+    jobs = get_workflow_jobs(
+        run,
         run_attempt=int(workflow_run.get("run_attempt", 1)),
-        token=args.github_token,
-        api_url=args.github_api_url,
     )
+    if len(jobs) > MAX_SPANS:
+        raise ValueError(f"Workflow has more than {MAX_SPANS} jobs")
     input_paths = _find_inputs(args.input, args.output_dir)
     if args.s3_bucket or args.s3_prefix:
         if not args.s3_bucket or not args.s3_prefix:

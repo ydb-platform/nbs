@@ -8,11 +8,13 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from github.WorkflowJob import WorkflowJob
 
 from scripts.tests.ya_trace_report import (
     build_ya_spans,
     load_ya_evlog,
     load_ya_traces,
+    resource_attributes,
 )
 from scripts.trace_report import (
     TRACE_HTML_TEMPLATE,
@@ -20,6 +22,7 @@ from scripts.trace_report import (
     Span,
     SpanEvent,
     _trace_model,
+    github_trace_attributes,
     read_otlp_jsonl,
     render_html,
     stable_hex_id,
@@ -94,6 +97,63 @@ def test_renderer_marks_error_spans_and_supports_empty_input() -> None:
     assert _trace_model([make_span(status_code=2)])["s"][0][7] == 2
     assert 'id="trace-data"' in render_html([make_span(status_code=2)])
     assert "No spans found" in render_html([])
+
+
+def test_github_trace_attributes_support_environment_and_workflow_run() -> None:
+    environment = {
+        "GITHUB_SERVER_URL": "https://github.example",
+        "GITHUB_REPOSITORY": "example/repo",
+        "GITHUB_WORKFLOW": "Build",
+        "GITHUB_RUN_ID": "123",
+        "GITHUB_SHA": "abc123",
+    }
+    current = github_trace_attributes(environment=environment)
+    assert current["github.run.url"] == (
+        "https://github.example/example/repo/actions/runs/123"
+    )
+    assert current["github.commit.url"] == (
+        "https://github.example/example/repo/commit/abc123"
+    )
+
+    completed = github_trace_attributes(
+        environment=environment,
+        workflow_run={
+            "id": 456,
+            "name": "Nightly",
+            "head_sha": "def456",
+            "repository": {"full_name": "upstream/repo"},
+            "pull_requests": [{"number": 42}],
+        },
+    )
+    assert completed["github.run.id"] == 456
+    assert completed["github.workflow"] == "Nightly"
+    assert completed["github.pull_request.number"] == [42]
+    assert completed["github.commit.url"] == (
+        "https://github.example/upstream/repo/commit/def456"
+    )
+
+
+def test_ya_resource_attributes_extend_common_github_attributes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GITHUB_REPOSITORY", "example/repo")
+    monkeypatch.setenv("GITHUB_RUN_ID", "123")
+    monkeypatch.setenv("GITHUB_SHA", "abc123")
+    attributes = resource_attributes(
+        SimpleNamespace(
+            operation="tests",
+            component="tasks",
+            build_preset="relwithdebinfo",
+            build_target="",
+            test_target="cloud/tasks",
+            test_type="unittest",
+            test_size="small",
+            retry=2,
+        )
+    )
+    assert attributes["service.name"] == "nbs-ya-tests"
+    assert attributes["github.run.url"].endswith("/example/repo/actions/runs/123")
+    assert attributes["ci.test.target"] == "cloud/tasks"
 
 
 def test_renderer_collapses_build_and_test_groups_by_default() -> None:
@@ -623,26 +683,33 @@ def test_workflow_trace_adds_queue_job_step_and_imported_ya_spans() -> None:
         "pull_requests": [{"number": 42}],
     }
     jobs = [
-        {
-            "id": 99,
-            "name": "tests",
-            "status": "completed",
-            "conclusion": "success",
-            "created_at": "2026-01-01T00:00:02Z",
-            "started_at": "2026-01-01T00:00:03Z",
-            "completed_at": "2026-01-01T00:00:09Z",
-            "labels": ["self-hosted", "runner_light"],
-            "steps": [
-                {
-                    "number": 1,
-                    "name": "Run tests",
-                    "status": "completed",
-                    "conclusion": "success",
-                    "started_at": "2026-01-01T00:00:03Z",
-                    "completed_at": "2026-01-01T00:00:09Z",
-                }
-            ],
-        }
+        WorkflowJob(
+            SimpleNamespace(is_not_lazy=False),
+            attributes={
+                "id": 99,
+                "name": "tests",
+                "status": "completed",
+                "conclusion": "success",
+                "created_at": "2026-01-01T00:00:02Z",
+                "started_at": "2026-01-01T00:00:03Z",
+                "completed_at": "2026-01-01T00:00:09Z",
+                "labels": ["self-hosted", "runner_light"],
+                "runner_name": "runner-1",
+                "runner_group_name": "light",
+                "html_url": "https://github.example/runs/123/jobs/99",
+                "steps": [
+                    {
+                        "number": 1,
+                        "name": "Run tests",
+                        "status": "completed",
+                        "conclusion": "success",
+                        "started_at": "2026-01-01T00:00:03Z",
+                        "completed_at": "2026-01-01T00:00:09Z",
+                    }
+                ],
+            },
+            completed=True,
+        )
     ]
     imported = [
         make_span(

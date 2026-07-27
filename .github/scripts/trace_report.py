@@ -94,6 +94,89 @@ def clean_attributes(values: Mapping[str, Any] | None) -> dict[str, Any]:
     return result
 
 
+def github_trace_attributes(
+    *,
+    environment: Mapping[str, Any],
+    workflow_run: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build common GitHub trace attributes from an environment or run event."""
+
+    server_url = str(
+        environment.get("GITHUB_SERVER_URL") or "https://github.com"
+    ).rstrip("/")
+    if workflow_run is None:
+        values: dict[str, Any] = {
+            "github.repository": environment.get("GITHUB_REPOSITORY", ""),
+            "github.workflow": environment.get("GITHUB_WORKFLOW", ""),
+            "github.workflow.ref": environment.get("GITHUB_WORKFLOW_REF", ""),
+            "github.job": environment.get("GITHUB_JOB", ""),
+            "github.run.id": environment.get("GITHUB_RUN_ID", ""),
+            "github.run.number": environment.get("GITHUB_RUN_NUMBER", ""),
+            "github.run.attempt": environment.get("GITHUB_RUN_ATTEMPT", ""),
+            "github.event.name": environment.get("GITHUB_EVENT_NAME", ""),
+            "github.actor": environment.get("GITHUB_ACTOR", ""),
+            "github.sha": environment.get("GITHUB_SHA", ""),
+            "github.ref": environment.get("GITHUB_REF", ""),
+        }
+    else:
+        repository = workflow_run.get("repository") or {}
+        if not isinstance(repository, Mapping):
+            repository = {}
+        actor = workflow_run.get("actor") or {}
+        if not isinstance(actor, Mapping):
+            actor = {}
+        triggering_actor = workflow_run.get("triggering_actor") or {}
+        if not isinstance(triggering_actor, Mapping):
+            triggering_actor = {}
+        pull_requests = workflow_run.get("pull_requests") or []
+        if not isinstance(pull_requests, list):
+            pull_requests = []
+        values = {
+            "github.repository": repository.get("full_name")
+            or environment.get("GITHUB_REPOSITORY", ""),
+            "github.workflow": workflow_run.get("name", ""),
+            "github.workflow.path": workflow_run.get("path", ""),
+            "github.run.id": workflow_run.get("id", ""),
+            "github.run.number": workflow_run.get("run_number", ""),
+            "github.run.attempt": workflow_run.get("run_attempt", 1),
+            "github.run.url": workflow_run.get("html_url", ""),
+            "github.event.name": workflow_run.get("event", ""),
+            "github.actor": actor.get("login", ""),
+            "github.triggering_actor": triggering_actor.get("login", ""),
+            "github.sha": workflow_run.get("head_sha", ""),
+            "github.ref.name": workflow_run.get("head_branch", ""),
+            "github.pull_request.number": [
+                item.get("number")
+                for item in pull_requests
+                if isinstance(item, Mapping) and item.get("number") is not None
+            ],
+            "ci.conclusion": workflow_run.get("conclusion", ""),
+            "ci.display_title": workflow_run.get("display_title", ""),
+        }
+
+    repository_name = str(values.get("github.repository") or "")
+    run_id = values.get("github.run.id")
+    sha = str(values.get("github.sha") or "")
+    if repository_name and run_id and not values.get("github.run.url"):
+        values["github.run.url"] = (
+            f"{server_url}/{repository_name}/actions/runs/"
+            f"{urllib.parse.quote(str(run_id), safe='')}"
+        )
+    if repository_name and sha:
+        values["github.commit.url"] = (
+            f"{server_url}/{repository_name}/commit/"
+            f"{urllib.parse.quote(sha, safe='')}"
+        )
+
+    return clean_attributes(
+        {
+            key: value
+            for key, value in values.items()
+            if value is not None and value != "" and value != []
+        }
+    )
+
+
 def _any_value(value: Any) -> dict[str, Any]:
     if isinstance(value, bool):
         return {"boolValue": value}

@@ -1,4 +1,4 @@
-PyGithub==2.9.1
+-r requirements_trace.txt
 boto3
 Jinja2
 nebius==0.3.59
