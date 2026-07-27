@@ -498,6 +498,55 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
         provider->UpdateCertificates();
         UNIT_ASSERT_VALUES_EQUAL(initialPending + 1, scheduler->PendingCount());
     }
+
+    Y_UNIT_TEST(ShouldReportExpireTsCounters)
+    {
+        TTempDir tempDir;
+        const TString rootPath = tempDir.Path() / "ca.crt";
+        WriteTextFile(rootPath, ReadCertResource("ca.crt"));
+
+        const TVector certs{
+            CreateCertificatePair(
+                tempDir.Name(),
+                "server",
+                ReadCertResource("server1.key"),
+                ReadCertResource("server1.crt")),
+            CreateCertificatePair(
+                tempDir.Name(),
+                "client",
+                ReadCertResource("server2.key"),
+                ReadCertResource("server2.crt")),
+        };
+
+        auto rootCounters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+        auto serverGroup = rootCounters->GetSubgroup("component", "server");
+
+        auto expireTs = [&](const auto& cert)
+        {
+            auto certGroup =
+                serverGroup->GetSubgroup("subsystem", "certificates")
+                    ->GetSubgroup("cert", GetBaseName(cert.CertChainPath));
+            return certGroup->GetCounter("ExpireTs", false)->Val();
+        };
+
+        auto provider = CreateStaticCertificateProvider(
+            rootPath,
+            certs,
+            CreateLoggingService("console"),
+            "TLS_CERTIFICATE_PROVIDER",
+            serverGroup);
+
+        UNIT_ASSERT(provider);
+        provider->Start();
+
+        UNIT_ASSERT(expireTs(certs[0]) > 0);
+        UNIT_ASSERT(expireTs(certs[1]) > 0);
+
+        UNIT_ASSERT(provider->CreateSecureServerCredentials());
+        UNIT_ASSERT(provider->CreateSecureClientCredentials());
+
+        provider->Stop();
+    }
 }
 
 }   // namespace NCloud
