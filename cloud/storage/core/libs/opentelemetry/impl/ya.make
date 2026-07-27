@@ -13,7 +13,7 @@ PEERDIR(
     cloud/storage/core/libs/grpc
     cloud/storage/core/libs/common
 
-    contrib/libs/opentelemetry-proto
+    contrib/proto/opentelemetry
     contrib/libs/grpc
 
     library/cpp/threading/future

@@ -5,7 +5,7 @@
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/startable.h>
 
-#include <contrib/libs/opentelemetry-proto/opentelemetry/proto/collector/trace/v1/trace_service.pb.h>
+#include <contrib/proto/opentelemetry/opentelemetry/proto/collector/trace/v1/trace_service.pb.h>
 
 #include <library/cpp/threading/future/future.h>
 

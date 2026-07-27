@@ -5,7 +5,7 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/opentelemetry/iface/trace_service_client.h>
 
-#include <contrib/libs/opentelemetry-proto/opentelemetry/proto/resource/v1/resource.pb.h>
+#include <contrib/proto/opentelemetry/opentelemetry/proto/resource/v1/resource.pb.h>
 
 #include <library/cpp/logger/log.h>
 #include <library/cpp/protobuf/util/pb_io.h>
