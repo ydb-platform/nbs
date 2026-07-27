@@ -141,6 +141,10 @@ def test_renderer_collapses_build_and_test_groups_by_default() -> None:
     assert "const PAGE_SIZE=200" in report
     assert "const INITIAL_RENDER_LIMIT=2000" in report
     assert "new DecompressionStream('gzip')" in report
+    assert "function toggleSpanGroup(index)" in report
+    assert "name.addEventListener('click',()=>toggleSpanGroup(item.index))" in report
+    assert "metadata.className='metadata-button'" in report
+    assert "metadata.addEventListener('click',()=>showSpan(item.index))" in report
     assert "compile target" not in report
 
 

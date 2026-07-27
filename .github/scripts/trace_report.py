@@ -512,10 +512,18 @@ input,button {{ color:inherit; background:var(--panel); border:1px solid var(--l
 .span-row {{ border-top:1px solid var(--line) }} .span-row:hover {{ background:var(--panel) }}
 .span-row.selected {{ background:var(--selected) }}
 .name-cell {{ display:flex; align-items:center; min-width:0 }}
-.toggle {{ flex:none; width:1.65rem; padding:.15rem; border:0; background:transparent }}
+.toggle,.metadata-button {{ display:inline-grid; place-items:center; flex:none; width:2.25rem;
+  height:2.25rem; padding:0; border:1px solid transparent; background:transparent;
+  border-radius:6px }}
+.toggle {{ font-size:1.15rem; font-weight:700 }}
+.toggle:not(:disabled):hover,.metadata-button:hover {{ border-color:var(--line);
+  background:var(--selected) }}
 .toggle:disabled {{ opacity:0; cursor:default }}
-.span-name {{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
-  padding:.15rem .25rem; border:0; background:transparent; text-align:left; cursor:pointer }}
+.span-name {{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis;
+  white-space:nowrap; padding:.35rem .25rem; border:0; background:transparent;
+  text-align:left; cursor:default }}
+.group-name {{ cursor:pointer }} .group-name:not(:disabled):hover {{ text-decoration:underline }}
+.metadata-button {{ color:var(--muted); font-size:1.05rem; cursor:pointer }}
 .duration {{ text-align:right; font-variant-numeric:tabular-nums }}
 .track {{ position:relative; height:.8rem; background:var(--panel); border-radius:4px }}
 .bar {{ position:absolute; top:0; bottom:0; border-radius:4px; background:var(--bar);
@@ -669,6 +677,13 @@ function flattenRows(){{
   return {{items:result,truncated}};
 }}
 
+function toggleSpanGroup(index){{
+  if(visible||!children[index].length)return;
+  if(expanded.has(index))expanded.delete(index);
+  else expanded.add(index);
+  renderRows();
+}}
+
 function spanRow(item){{
   const span=spans[item.index];
   const row=document.createElement('div');
@@ -686,18 +701,26 @@ function spanRow(item){{
   toggle.textContent=hasChildren?(isOpen?'▾':'▸'):'';
   toggle.disabled=!hasChildren||Boolean(visible);
   toggle.setAttribute('aria-label',isOpen?'Collapse span group':'Expand span group');
-  toggle.addEventListener('click',()=>{{
-    if(expanded.has(item.index))expanded.delete(item.index);
-    else expanded.add(item.index);
-    renderRows();
-  }});
-  const name=document.createElement('button');
-  name.className='span-name';
-  name.type='button';
+  toggle.setAttribute('aria-expanded',String(isOpen));
+  toggle.addEventListener('click',()=>toggleSpanGroup(item.index));
+  const name=document.createElement(hasChildren?'button':'span');
+  name.className=hasChildren?'span-name group-name':'span-name';
+  if(hasChildren){{
+    name.type='button';
+    name.disabled=Boolean(visible);
+    name.setAttribute('aria-expanded',String(isOpen));
+    name.addEventListener('click',()=>toggleSpanGroup(item.index));
+  }}
   name.textContent=span[NAME];
   name.title=span[NAME];
-  name.addEventListener('click',()=>showSpan(item.index));
-  nameCell.append(toggle,name);
+  const metadata=document.createElement('button');
+  metadata.className='metadata-button';
+  metadata.type='button';
+  metadata.textContent='ⓘ';
+  metadata.title=`Show metadata for ${{span[NAME]}}`;
+  metadata.setAttribute('aria-label',metadata.title);
+  metadata.addEventListener('click',()=>showSpan(item.index));
+  nameCell.append(toggle,name,metadata);
 
   const duration=document.createElement('span');
   duration.className='duration';
@@ -716,7 +739,7 @@ function spanRow(item){{
 function moreRow(item){{
   const row=document.createElement('div');
   row.className='more-row';
-  row.style.setProperty('--indent',`${{Math.min(item.depth,20)*1.1+1.65}}rem`);
+  row.style.setProperty('--indent',`${{Math.min(item.depth,20)*1.1+2.25}}rem`);
   const button=document.createElement('button');
   const remaining=item.total-item.shown;
   button.type='button';
