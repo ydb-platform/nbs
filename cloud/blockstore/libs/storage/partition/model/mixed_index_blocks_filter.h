@@ -15,7 +15,6 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 
 class TMixedBlocksFilter
 {
-
     struct TCompaction
     {
         TVector<ui32> RangesForCompaction;
@@ -31,7 +30,6 @@ private:
     TVector<std::optional<ui64>> CommitIdsPerRange;
 
     std::deque<TCompaction> Compactions;
-
 
 public:
     TMixedBlocksFilter(ui64 tabletId, ui64 blocksPerRange, size_t blockCount);
