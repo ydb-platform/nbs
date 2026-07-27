@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import subprocess
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
@@ -14,25 +15,34 @@ from typing import Any, Iterable, Mapping, Sequence
 from github.WorkflowJob import WorkflowJob
 
 from .helpers import get_workflow_jobs, github_client
+from .otlp import (
+    ResourceAttributes,
+    Span,
+    Trace,
+    decode_attributes,
+    encode_attributes,
+    make_span,
+    ns,
+    span_duration_ns,
+    stable_span_id,
+    stable_trace_id,
+)
 from .trace_report import (
     MAX_INPUT_BYTES,
     MAX_SPANS,
-    Span,
-    github_trace_attributes,
     read_otlp_jsonl,
-    stable_hex_id,
     write_trace_bundle,
 )
 
 MAX_TRACE_INPUTS = 10_000
 
 
-def timestamp_ns(value: Any) -> int | None:
+def timestamp_ns(value: Any) -> ns | None:
     if not value:
         return None
     text = str(value).replace("Z", "+00:00")
     try:
-        return int(datetime.fromisoformat(text).timestamp() * 1_000_000_000)
+        return ns(datetime.fromisoformat(text).timestamp() * 1_000_000_000)
     except ValueError:
         return None
 
@@ -53,26 +63,26 @@ def _status_code(conclusion: Any) -> int:
 
 
 def _bounded_times(
-    start: int | None,
-    end: int | None,
-    default_start: int,
-    default_end: int,
-) -> tuple[int, int]:
-    start_ns = start or default_start
-    end_ns = end or default_end
-    return start_ns, max(start_ns, end_ns)
+    start: ns | None,
+    end: ns | None,
+    default_start: ns,
+    default_end: ns,
+) -> tuple[ns, ns]:
+    start_ns = start or ns(default_start)
+    end_ns = end or ns(default_end)
+    return start_ns, ns(max(start_ns, end_ns))
 
 
 def _job_and_step_spans(
     jobs: Sequence[WorkflowJob],
     *,
-    trace_id: str,
-    root_span_id: str,
-    workflow_start_ns: int,
-    workflow_end_ns: int,
-    resource: Mapping[str, Any],
-) -> tuple[list[Span], list[Span]]:
-    spans: list[Span] = []
+    trace: Trace,
+    trace_id: bytes,
+    root_span_id: bytes,
+    workflow_start_ns: ns,
+    workflow_end_ns: ns,
+    resource: ResourceAttributes,
+) -> list[Span]:
     job_spans: list[Span] = []
     for job_index, job in enumerate(jobs):
         created_ns = timestamp_ns(job.created_at)
@@ -85,9 +95,9 @@ def _job_and_step_spans(
             workflow_end_ns,
         )
         job_id = job.id if job.id is not None else job_index
-        job_span_id = stable_hex_id(trace_id, "job", job_id, length=16)
+        job_span_id = stable_span_id(trace_id, "job", job_id)
         conclusion = str(job.conclusion or "")
-        job_span = Span(
+        job_span = make_span(
             trace_id=trace_id,
             span_id=job_span_id,
             parent_span_id=root_span_id,
@@ -106,17 +116,19 @@ def _job_and_step_spans(
             },
             status_code=_status_code(conclusion),
             status_message=conclusion if _status_code(conclusion) == 2 else "",
-            resource_attributes=dict(resource),
+        )
+        trace.add_span(
+            job_span,
+            resource=resource,
             scope_name="github.actions",
         )
-        spans.append(job_span)
         job_spans.append(job_span)
 
         if started_ns and job_start_ns < started_ns:
-            spans.append(
-                Span(
+            trace.add_span(
+                make_span(
                     trace_id=trace_id,
-                    span_id=stable_hex_id(trace_id, "job-queue", job_id, length=16),
+                    span_id=stable_span_id(trace_id, "job-queue", job_id),
                     parent_span_id=job_span_id,
                     name="queued for runner",
                     start_ns=job_start_ns,
@@ -129,9 +141,9 @@ def _job_and_step_spans(
                             else "workflow.run_started_at"
                         ),
                     },
-                    resource_attributes=dict(resource),
-                    scope_name="github.actions",
-                )
+                ),
+                resource=resource,
+                scope_name="github.actions",
             )
 
         for step_index, step in enumerate(job.steps or []):
@@ -143,15 +155,14 @@ def _job_and_step_spans(
             )
             step_conclusion = str(step.conclusion or "")
             step_number = step.number if step.number is not None else step_index
-            spans.append(
-                Span(
+            trace.add_span(
+                make_span(
                     trace_id=trace_id,
-                    span_id=stable_hex_id(
+                    span_id=stable_span_id(
                         trace_id,
                         "step",
                         job_id,
                         step_number,
-                        length=16,
                     ),
                     parent_span_id=job_span_id,
                     name=f"step: {step.name or step_index}",
@@ -168,37 +179,41 @@ def _job_and_step_spans(
                     status_message=(
                         step_conclusion if _status_code(step_conclusion) == 2 else ""
                     ),
-                    resource_attributes=dict(resource),
-                    scope_name="github.actions",
-                )
+                ),
+                resource=resource,
+                scope_name="github.actions",
             )
-    return spans, job_spans
+    return job_spans
 
 
 def _parent_job(imported_root: Span, job_spans: Sequence[Span]) -> Span | None:
     containing = [
         job
         for job in job_spans
-        if job.start_ns <= imported_root.start_ns and imported_root.end_ns <= job.end_ns
+        if (job.start_time_unix_nano or 0) <= (imported_root.start_time_unix_nano or 0)
+        and (imported_root.end_time_unix_nano or 0) <= (job.end_time_unix_nano or 0)
     ]
     if not containing:
         overlapping = [
             job
             for job in job_spans
-            if job.start_ns <= imported_root.end_ns
-            and imported_root.start_ns <= job.end_ns
+            if (job.start_time_unix_nano or 0)
+            <= (imported_root.end_time_unix_nano or 0)
+            and (imported_root.start_time_unix_nano or 0)
+            <= (job.end_time_unix_nano or 0)
         ]
         containing = overlapping
-    return min(containing, key=lambda job: job.duration_ns, default=None)
+    return min(containing, key=span_duration_ns, default=None)
 
 
 def _merge_imported_spans(
-    imported: Sequence[Span],
+    imported: Trace,
     *,
-    trace_id: str,
-    root_span_id: str,
+    result: Trace,
+    trace_id: bytes,
+    root_span_id: bytes,
     job_spans: Sequence[Span],
-) -> list[Span]:
+) -> None:
     imported_ids = {(span.trace_id, span.span_id) for span in imported}
     if len(imported_ids) != len(imported):
         raise ValueError("Imported OTLP contains duplicate span IDs")
@@ -215,48 +230,41 @@ def _merge_imported_spans(
             parent_job.span_id if parent_job is not None else root_span_id
         )
     id_map = {
-        (span.trace_id, span.span_id): stable_hex_id(
-            trace_id, "import", span.trace_id, span.span_id, length=16
+        (span.trace_id, span.span_id): stable_span_id(
+            trace_id, "import", span.trace_id, span.span_id
         )
         for span in imported
     }
 
-    result = []
-    for span in imported:
+    for resource, scope, span in imported.walk():
         old_key = (span.trace_id, span.span_id)
         old_parent_key = (span.trace_id, span.parent_span_id)
         parent_span_id = id_map.get(
             old_parent_key,
             root_parents.get(old_key, root_span_id),
         )
-        attributes = dict(span.attributes)
+        attributes = decode_attributes(span.attributes)
         attributes["ci.trace.source"] = "ya-otlp"
-        result.append(
-            Span(
+        result.add_span(
+            replace(
+                span,
                 trace_id=trace_id,
                 span_id=id_map[old_key],
                 parent_span_id=parent_span_id,
-                name=span.name,
-                start_ns=span.start_ns,
-                end_ns=span.end_ns,
-                attributes=attributes,
-                events=span.events,
-                status_code=span.status_code,
-                status_message=span.status_message,
-                resource_attributes=span.resource_attributes,
-                scope_name=span.scope_name,
-                scope_version=span.scope_version,
-            )
+                attributes=encode_attributes(attributes),
+            ),
+            resource=resource,
+            scope_name=str(scope.name or ""),
+            scope_version=str(scope.version or ""),
         )
-    return result
 
 
-def build_workflow_spans(
+def build_workflow_trace(
     workflow_run: Mapping[str, Any],
     jobs: Sequence[WorkflowJob],
-    imported: Sequence[Span],
-) -> tuple[list[Span], dict[str, Any]]:
-    metadata = github_trace_attributes(
+    imported: Trace,
+) -> tuple[Trace, ResourceAttributes]:
+    metadata = ResourceAttributes.from_github(
         environment=os.environ,
         workflow_run=workflow_run,
     )
@@ -264,25 +272,21 @@ def build_workflow_spans(
         timestamp_ns(workflow_run.get("created_at"))
         or timestamp_ns(workflow_run.get("run_started_at")),
         timestamp_ns(workflow_run.get("updated_at")),
-        0,
-        0,
+        ns(0),
+        ns(0),
     )
     if end_ns == 0:
         raise ValueError("workflow_run is missing usable timestamps")
 
-    trace_id = stable_hex_id(
+    trace_id = stable_trace_id(
         metadata.get("github.repository", ""),
         metadata.get("github.run.id", ""),
         metadata.get("github.run.attempt", ""),
-        length=32,
     )
-    root_span_id = stable_hex_id(trace_id, "workflow", length=16)
+    root_span_id = stable_span_id(trace_id, "workflow")
     conclusion = str(workflow_run.get("conclusion") or "")
-    resource = {
-        "service.name": "github-actions",
-        **metadata,
-    }
-    root = Span(
+    resource = metadata.with_attributes({"service.name": "github-actions"})
+    root = make_span(
         trace_id=trace_id,
         span_id=root_span_id,
         name=f"workflow: {workflow_run.get('name', 'unknown')}",
@@ -295,17 +299,16 @@ def build_workflow_spans(
         },
         status_code=_status_code(conclusion),
         status_message=conclusion if _status_code(conclusion) == 2 else "",
-        resource_attributes=resource,
-        scope_name="github.actions",
     )
-    spans = [root]
+    trace = Trace()
+    trace.add_span(root, resource=resource, scope_name="github.actions")
 
     run_started_ns = timestamp_ns(workflow_run.get("run_started_at"))
     if run_started_ns and start_ns < run_started_ns:
-        spans.append(
-            Span(
+        trace.add_span(
+            make_span(
                 trace_id=trace_id,
-                span_id=stable_hex_id(trace_id, "workflow-queue", length=16),
+                span_id=stable_span_id(trace_id, "workflow-queue"),
                 parent_span_id=root_span_id,
                 name="workflow queue",
                 start_ns=start_ns,
@@ -314,29 +317,28 @@ def build_workflow_spans(
                     "ci.queue.scope": "workflow",
                     "ci.queue.timing_source": "workflow_run.created_at",
                 },
-                resource_attributes=resource,
-                scope_name="github.actions",
-            )
+            ),
+            resource=resource,
+            scope_name="github.actions",
         )
 
-    github_spans, job_spans = _job_and_step_spans(
+    job_spans = _job_and_step_spans(
         jobs,
+        trace=trace,
         trace_id=trace_id,
         root_span_id=root_span_id,
         workflow_start_ns=start_ns,
         workflow_end_ns=end_ns,
         resource=resource,
     )
-    spans.extend(github_spans)
-    spans.extend(
-        _merge_imported_spans(
-            imported,
-            trace_id=trace_id,
-            root_span_id=root_span_id,
-            job_spans=job_spans,
-        )
+    _merge_imported_spans(
+        imported,
+        result=trace,
+        trace_id=trace_id,
+        root_span_id=root_span_id,
+        job_spans=job_spans,
     )
-    return spans, metadata
+    return trace, metadata
 
 
 def _find_inputs(paths: Iterable[Path], output_dir: Path) -> list[Path]:
@@ -480,10 +482,10 @@ def main() -> None:
         max_input_bytes=MAX_INPUT_BYTES,
         max_spans=MAX_SPANS,
     )
-    spans, metadata = build_workflow_spans(workflow_run, jobs, imported)
+    trace, metadata = build_workflow_trace(workflow_run, jobs, imported)
     manifest = write_trace_bundle(
         args.output_dir,
-        spans,
+        trace,
         title=f"Workflow trace · {workflow_run.get('name', 'unknown')}",
         metadata=metadata,
         file_prefix="workflow-trace",

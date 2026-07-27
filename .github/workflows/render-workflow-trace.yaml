@@ -59,7 +59,7 @@ jobs:
 
       - name: Install trace renderer dependencies
         shell: bash --noprofile --norc -eo pipefail {0}
-        run: python3 -m pip install -r .github/scripts/requirements_trace.txt
+        run: python3 -m pip install -r .github/scripts/requirements.txt
 
       - name: Resolve triggering report location
         shell: bash --noprofile --norc -eo pipefail {0}

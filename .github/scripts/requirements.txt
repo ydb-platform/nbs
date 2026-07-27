@@ -1,4 +1,5 @@
--r requirements_trace.txt
 boto3
 Jinja2
 nebius==0.3.59
+opentelemetry-proto-json==0.65b0
+PyGithub==2.9.1

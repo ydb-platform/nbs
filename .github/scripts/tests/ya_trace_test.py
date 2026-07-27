@@ -3,23 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
-
-from scripts.ya_trace import YaTraceCollection, ns
-
-
-def test_ns_owns_seconds_conversion_and_validation() -> None:
-    value = ns.from_seconds(1.5)
-    assert isinstance(value, ns)
-    assert value == 1_500_000_000
-    assert ns.from_seconds(None) is None
-    assert ns.from_seconds(-1) is None
-    assert ns.from_seconds(float("nan")) is None
-    assert ns.from_seconds_or_zero("invalid") == 0
-    assert ns.from_milliseconds(1.5) == 1_500_000
-    assert ns.from_milliseconds(-1) is None
-    with pytest.raises(ValueError, match="non-negative"):
-        ns(-1)
+from scripts.tests.ya_trace import YaTraceCollection
 
 
 def test_trace_collection_indexes_tests_and_disambiguates_chunks(

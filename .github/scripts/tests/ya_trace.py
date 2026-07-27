@@ -11,7 +11,18 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
-from .trace_report import Span, stable_hex_id
+from ..otlp import (
+    ResourceAttributes,
+    Span,
+    Trace,
+    decode_attributes,
+    make_span,
+    ns,
+    set_span_status,
+    span_status_code,
+    stable_span_id,
+    update_span_attributes,
+)
 
 __all__ = [
     "YaEvent",
@@ -21,7 +32,6 @@ __all__ = [
     "YaTraceFile",
     "load_ya_evlog",
     "load_ya_traces",
-    "ns",
 ]
 
 LOGGER = logging.getLogger(__name__)
@@ -59,40 +69,6 @@ RENDERED_STAGE_NAMES = {
     "finalize-reports": "finalize reports",
     "dump_results": "dump results",
 }
-
-
-class ns(int):
-    """A non-negative nanosecond value parsed from seconds."""
-
-    def __new__(cls, value: int | float | str) -> ns:
-        nanoseconds = int(value)
-        if nanoseconds < 0:
-            raise ValueError("nanoseconds must be non-negative")
-        return int.__new__(cls, nanoseconds)
-
-    @classmethod
-    def from_seconds(cls, value: Any) -> ns | None:
-        try:
-            seconds = float(value)
-        except (TypeError, ValueError):
-            return None
-        if not math.isfinite(seconds) or seconds < 0:
-            return None
-        return cls(seconds * 1_000_000_000)
-
-    @classmethod
-    def from_seconds_or_zero(cls, value: Any) -> ns:
-        return cls.from_seconds(value) or cls(0)
-
-    @classmethod
-    def from_milliseconds(cls, value: Any) -> ns | None:
-        try:
-            milliseconds = float(value)
-        except (TypeError, ValueError):
-            return None
-        if not math.isfinite(milliseconds) or milliseconds < 0:
-            return None
-        return cls(milliseconds * 1_000_000)
 
 
 @dataclass
@@ -313,13 +289,12 @@ class YaTraceFile:
 
     @staticmethod
     def _test_spans(
-        trace_id: str,
-        chunk_span_id: str,
+        trace_id: bytes,
+        chunk_span_id: bytes,
         chunk_start_ns: ns,
         chunk_end_ns: ns,
         events: Iterable[YaEvent],
         identity: str,
-        resource: Mapping[str, Any],
         inferred_test_start_ns: ns | None = None,
     ) -> list[Span]:
         grouped: dict[tuple[str, str], list[YaEvent]] = defaultdict(list)
@@ -394,15 +369,14 @@ class YaTraceFile:
                     source_order = start.order
 
                 result.append(
-                    Span(
+                    make_span(
                         trace_id=trace_id,
-                        span_id=stable_hex_id(
+                        span_id=stable_span_id(
                             trace_id,
                             identity,
                             test_class,
                             subtest,
                             source_order,
-                            length=16,
                         ),
                         parent_span_id=chunk_span_id,
                         name=f"{test_class}::{subtest}",
@@ -411,8 +385,6 @@ class YaTraceFile:
                         attributes=attributes,
                         status_code=status_code,
                         status_message=status if status_code == 2 else "",
-                        resource_attributes=dict(resource),
-                        scope_name="ya.test",
                     )
                 )
 
@@ -437,15 +409,14 @@ class YaTraceFile:
                     timing_source = "finish-event-and-test-duration"
                 status, status_code = finish.status
                 result.append(
-                    Span(
+                    make_span(
                         trace_id=trace_id,
-                        span_id=stable_hex_id(
+                        span_id=stable_span_id(
                             trace_id,
                             identity,
                             test_class,
                             subtest,
                             finish.order,
-                            length=16,
                         ),
                         parent_span_id=chunk_span_id,
                         name=f"{test_class}::{subtest}",
@@ -459,8 +430,6 @@ class YaTraceFile:
                         ),
                         status_code=status_code,
                         status_message=status if status_code == 2 else "",
-                        resource_attributes=dict(resource),
-                        scope_name="ya.test",
                     )
                 )
         return result
@@ -468,14 +437,14 @@ class YaTraceFile:
     def build_spans(
         self,
         *,
-        trace_id: str,
-        root_span_id: str,
+        trace: Trace,
+        trace_id: bytes,
+        root_span_id: bytes,
         root_start_ns: ns,
         root_end_ns: ns,
-        resource: Mapping[str, Any],
+        resource: ResourceAttributes,
         trace_index: int,
-    ) -> list[Span]:
-        spans: list[Span] = []
+    ) -> None:
         for record_index, (chunk_event, chunk_events) in enumerate(
             self.chunk_records()
         ):
@@ -490,7 +459,7 @@ class YaTraceFile:
                 f"{self.suite}:{self.result_folder}:{trace_index}:"
                 f"{chunk_key or record_index}"
             )
-            chunk_span_id = stable_hex_id(trace_id, identity, length=16)
+            chunk_span_id = stable_span_id(trace_id, identity)
             attributes = {
                 "test.suite": self.suite,
                 "ya.test_results.folder": self.result_folder,
@@ -505,7 +474,7 @@ class YaTraceFile:
                 chunk_label = f"record {record_index + 1}"
             else:
                 chunk_label = f"chunk {chunk_key[0] + 1}/{chunk_key[1]}"
-            chunk = Span(
+            chunk = make_span(
                 trace_id=trace_id,
                 span_id=chunk_span_id,
                 parent_span_id=root_span_id,
@@ -515,8 +484,6 @@ class YaTraceFile:
                 attributes=attributes,
                 status_code=chunk_status_code,
                 status_message=chunk_status if chunk_status_code == 2 else "",
-                resource_attributes=dict(resource),
-                scope_name="ya.chunk",
             )
             metrics = chunk_value.get("metrics", {})
             test_start_ns = None
@@ -533,16 +500,21 @@ class YaTraceFile:
                 chunk_end_ns,
                 chunk_events,
                 identity,
-                resource,
                 inferred_test_start_ns=test_start_ns,
             )
-            if any(span.status_code == 2 for span in test_spans):
-                chunk.status_code = 2
-                if not chunk.status_message:
-                    chunk.status_message = "one or more tests failed"
-            spans.append(chunk)
-            spans.extend(test_spans)
-        return spans
+            if any(span_status_code(span) == 2 for span in test_spans):
+                set_span_status(chunk, 2, "one or more tests failed")
+            trace.add_span(
+                chunk,
+                resource=resource,
+                scope_name="ya.chunk",
+            )
+            for test_span in test_spans:
+                trace.add_span(
+                    test_span,
+                    resource=resource,
+                    scope_name="ya.test",
+                )
 
 
 @dataclass
@@ -726,12 +698,11 @@ class YaEvlogRecord:
     def build_node_span(
         self,
         *,
-        trace_id: str,
-        parent_span_id: str,
+        trace_id: bytes,
+        parent_span_id: bytes,
         kind: str,
         tool: str,
         index: int,
-        resource: Mapping[str, Any],
         critical_by_uid: Mapping[str, tuple[int, Mapping[str, Any]]],
     ) -> Span:
         attributes: dict[str, Any] = {
@@ -756,24 +727,21 @@ class YaEvlogRecord:
             elapsed = _number(critical_entry.get("elapsed"))
             if elapsed is not None:
                 attributes["ya.build.critical_path.reported_seconds"] = elapsed / 1_000
-        return Span(
+        return make_span(
             trace_id=trace_id,
-            span_id=stable_hex_id(
+            span_id=stable_span_id(
                 trace_id,
                 "ya.build.node",
                 self.name,
                 self.tag,
                 self.start_ns,
                 index,
-                length=16,
             ),
             parent_span_id=parent_span_id,
             name=self.span_name(kind, tool),
             start_ns=self.start_ns,
             end_ns=self.end_ns,
             attributes=attributes,
-            resource_attributes=dict(resource),
-            scope_name="ya.build.node",
         )
 
 
@@ -869,18 +837,17 @@ class YaEvlog:
             attributes["ya.test.critical_path.reported_seconds"] = elapsed_msec / 1_000
         return attributes
 
-    def mark_critical_test_spans(self, spans: Sequence[Span]) -> dict[str, int]:
-        chunks = [span for span in spans if span.scope_name == "ya.chunk"]
+    def mark_critical_test_spans(self, trace: Trace) -> dict[str, int]:
+        chunks = list(trace.spans("ya.chunk"))
         test_nodes = [
             record for record in self.nodes if record.kind_and_tool[0] == "test"
         ]
-        tests_by_parent: dict[str, list[Span]] = defaultdict(list)
-        for span in spans:
-            if span.scope_name == "ya.test":
-                tests_by_parent[span.parent_span_id].append(span)
+        tests_by_parent: dict[bytes, list[Span]] = defaultdict(list)
+        for span in trace.spans("ya.test"):
+            tests_by_parent[span.parent_span_id].append(span)
 
-        marked_chunks: set[str] = set()
-        marked_tests: set[str] = set()
+        marked_chunks: set[bytes] = set()
+        marked_tests: set[bytes] = set()
         critical_entries = [
             (index, entry)
             for index, entry in enumerate(self.statistics.get("critical_path", []))
@@ -910,8 +877,8 @@ class YaEvlog:
                 if self._overlap_ns(
                     start_ns,
                     end_ns,
-                    chunk.start_ns,
-                    chunk.end_ns,
+                    ns(chunk.start_time_unix_nano or 0),
+                    ns(chunk.end_time_unix_nano or 0),
                 )
             ]
             if not candidates:
@@ -922,8 +889,10 @@ class YaEvlog:
                     chunk
                     for chunk in candidates
                     if (
-                        chunk.attributes.get("test.suite"),
-                        chunk.attributes.get("ya.test_results.folder"),
+                        decode_attributes(chunk.attributes).get("test.suite"),
+                        decode_attributes(chunk.attributes).get(
+                            "ya.test_results.folder"
+                        ),
                     )
                     == identity
                 ]
@@ -933,7 +902,8 @@ class YaEvlog:
                     matching_suite = [
                         chunk
                         for chunk in candidates
-                        if chunk.attributes.get("test.suite") == identity[0]
+                        if decode_attributes(chunk.attributes).get("test.suite")
+                        == identity[0]
                     ]
                     if matching_suite:
                         candidates = matching_suite
@@ -942,21 +912,22 @@ class YaEvlog:
             chunk = max(
                 candidates,
                 key=lambda candidate: (
-                    bool(candidate.attributes.get("test.suite"))
-                    and str(candidate.attributes["test.suite"]) in text,
+                    bool(decode_attributes(candidate.attributes).get("test.suite"))
+                    and str(decode_attributes(candidate.attributes)["test.suite"])
+                    in text,
                     self._overlap_ns(
                         start_ns,
                         end_ns,
-                        candidate.start_ns,
-                        candidate.end_ns,
+                        ns(candidate.start_time_unix_nano or 0),
+                        ns(candidate.end_time_unix_nano or 0),
                     ),
                 ),
             )
             attributes = self._critical_test_attributes(index, entry)
-            chunk.attributes.update(attributes)
+            update_span_attributes(chunk, attributes)
             marked_chunks.add(chunk.span_id)
             for test_span in tests_by_parent.get(chunk.span_id, []):
-                test_span.attributes.update(attributes)
+                update_span_attributes(test_span, attributes)
                 marked_tests.add(test_span.span_id)
 
         return {
@@ -1114,14 +1085,14 @@ class YaEvlog:
     def build_spans(
         self,
         *,
-        trace_id: str,
-        root_span_id: str,
+        trace: Trace,
+        trace_id: bytes,
+        root_span_id: bytes,
         root_start_ns: ns,
         root_end_ns: ns,
-        resource: Mapping[str, Any],
-    ) -> tuple[list[Span], str, dict[str, Any]]:
-        spans: list[Span] = []
-        dispatch_span_id = ""
+        resource: ResourceAttributes,
+    ) -> tuple[bytes | None, dict[str, Any]]:
+        dispatch_span_id = None
         dispatch_bounds: tuple[ns, ns] | None = None
 
         stages = []
@@ -1134,19 +1105,18 @@ class YaEvlog:
         stages.sort(key=lambda record: (record.start_ns, record.end_ns, record.name))
 
         for index, record in enumerate(stages):
-            span_id = stable_hex_id(
+            span_id = stable_span_id(
                 trace_id,
                 "ya.stage",
                 record.name,
                 record.start_ns,
                 index,
-                length=16,
             )
             if record.name == "dispatch_build":
                 dispatch_span_id = span_id
                 dispatch_bounds = (record.start_ns, record.end_ns)
-            spans.append(
-                Span(
+            trace.add_span(
+                make_span(
                     trace_id=trace_id,
                     span_id=span_id,
                     parent_span_id=root_span_id,
@@ -1157,9 +1127,9 @@ class YaEvlog:
                         "ya.stage.name": record.name,
                         "ya.stage.tag": record.tag,
                     },
-                    resource_attributes=dict(resource),
-                    scope_name="ya.phase",
-                )
+                ),
+                resource=resource,
+                scope_name="ya.phase",
             )
 
         clipped_nodes = [
@@ -1190,7 +1160,7 @@ class YaEvlog:
             if kind in {"cache_restore", "execute", "materialize"}
         ]
         if not timed_records:
-            return spans, dispatch_span_id, metadata
+            return dispatch_span_id, metadata
 
         build_start_ns = min(record.start_ns for record, _, _ in timed_records)
         build_end_ns = max(record.end_ns for record, _, _ in timed_records)
@@ -1204,12 +1174,11 @@ class YaEvlog:
         cumulative_ns = sum(
             record.end_ns - record.start_ns for record, _, _ in build_records
         )
-        build_span_id = stable_hex_id(
+        build_span_id = stable_span_id(
             trace_id,
             "ya.build",
             build_start_ns,
             build_end_ns,
-            length=16,
         )
         attributes: dict[str, Any] = {
             "ya.build.wall_time.kind": "worker-node-execution-envelope",
@@ -1249,8 +1218,8 @@ class YaEvlog:
             )
         )
         attributes["ya.build.node_spans.rendered"] = len(candidates)
-        spans.append(
-            Span(
+        trace.add_span(
+            make_span(
                 trace_id=trace_id,
                 span_id=build_span_id,
                 parent_span_id=dispatch_span_id or root_span_id,
@@ -1258,27 +1227,28 @@ class YaEvlog:
                 start_ns=build_start_ns,
                 end_ns=build_end_ns,
                 attributes=attributes,
-                resource_attributes=dict(resource),
-                scope_name="ya.build",
-            )
+            ),
+            resource=resource,
+            scope_name="ya.build",
         )
 
-        spans.extend(
-            record.build_node_span(
-                trace_id=trace_id,
-                parent_span_id=build_span_id,
-                kind=kind,
-                tool=tool,
-                index=index,
+        for index, (record, kind, tool) in enumerate(candidates):
+            trace.add_span(
+                record.build_node_span(
+                    trace_id=trace_id,
+                    parent_span_id=build_span_id,
+                    kind=kind,
+                    tool=tool,
+                    index=index,
+                    critical_by_uid=critical_by_uid,
+                ),
                 resource=resource,
-                critical_by_uid=critical_by_uid,
+                scope_name="ya.build.node",
             )
-            for index, (record, kind, tool) in enumerate(candidates)
-        )
 
         metadata["ya.build.node.span_count"] = len(candidates)
         metadata["ya.build.node.span_dropped_count"] = dropped
-        return spans, dispatch_span_id, metadata
+        return dispatch_span_id, metadata
 
 
 def load_ya_traces(

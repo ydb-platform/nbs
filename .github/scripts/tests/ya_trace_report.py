@@ -7,20 +7,23 @@ import argparse
 import logging
 import os
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Sequence
 
-from ..trace_report import (
-    Span,
-    github_trace_attributes,
-    stable_hex_id,
-    write_trace_bundle,
+from ..otlp import (
+    ResourceAttributes,
+    Trace,
+    make_span,
+    ns,
+    stable_span_id,
+    stable_trace_id,
+    update_span_attributes,
 )
-from ..ya_trace import YaEvlog, YaTraceFile, load_ya_evlog, load_ya_traces, ns
+from ..trace_report import write_trace_bundle
+from .ya_trace import YaEvlog, YaTraceFile, load_ya_evlog, load_ya_traces
 
 
-def resource_attributes(args: argparse.Namespace) -> dict[str, Any]:
-    values = github_trace_attributes(environment=os.environ)
-    values.update(
+def build_resource_attributes(args: argparse.Namespace) -> ResourceAttributes:
+    return ResourceAttributes.from_github(environment=os.environ).with_attributes(
         {
             "service.name": f"nbs-ya-{args.operation}",
             "ci.component": args.component or "all",
@@ -33,29 +36,26 @@ def resource_attributes(args: argparse.Namespace) -> dict[str, Any]:
             "ci.ya.operation": args.operation,
         }
     )
-    return {
-        key: value for key, value in values.items() if value is not None and value != ""
-    }
 
 
-def build_ya_spans(
+def build_ya_trace(
     traces: Sequence[YaTraceFile],
     *,
     root_start_ns: ns,
     root_end_ns: ns,
     exit_code: int,
     result_code: int | None = None,
-    resource: Mapping[str, Any],
+    resource: ResourceAttributes,
     evlog: YaEvlog | None = None,
     operation: str = "tests",
-) -> list[Span]:
+) -> Trace:
     root_start_ns = ns(root_start_ns)
     root_end_ns = ns(root_end_ns)
     if root_end_ns < root_start_ns:
         raise ValueError("root span end precedes start")
 
     effective_result_code = exit_code if result_code is None else result_code
-    trace_id = stable_hex_id(
+    trace_id = stable_trace_id(
         resource.get("github.repository", ""),
         resource.get("github.run.id", ""),
         resource.get("github.run.attempt", ""),
@@ -64,10 +64,9 @@ def build_ya_spans(
         resource.get("ci.ya.retry", ""),
         operation,
         root_start_ns,
-        length=32,
     )
-    root_span_id = stable_hex_id(trace_id, "ya make", length=16)
-    root = Span(
+    root_span_id = stable_span_id(trace_id, "ya make")
+    root = make_span(
         trace_id=trace_id,
         span_id=root_span_id,
         name=f"ya make {operation}",
@@ -85,41 +84,36 @@ def build_ya_spans(
             if effective_result_code == 0
             else f"ya test result code {effective_result_code}"
         ),
-        resource_attributes=dict(resource),
-        scope_name="ya",
     )
-    spans = [root]
+    result = Trace()
+    result.add_span(root, resource=resource, scope_name="ya")
 
-    for trace_index, trace in enumerate(traces):
-        spans.extend(
-            trace.build_spans(
-                trace_id=trace_id,
-                root_span_id=root_span_id,
-                root_start_ns=root_start_ns,
-                root_end_ns=root_end_ns,
-                resource=resource,
-                trace_index=trace_index,
-            )
+    for trace_index, ya_trace in enumerate(traces):
+        ya_trace.build_spans(
+            trace=result,
+            trace_id=trace_id,
+            root_span_id=root_span_id,
+            root_start_ns=root_start_ns,
+            root_end_ns=root_end_ns,
+            resource=resource,
+            trace_index=trace_index,
         )
     if evlog is not None:
-        evlog_spans, dispatch_span_id, metadata = evlog.build_spans(
+        dispatch_span_id, metadata = evlog.build_spans(
+            trace=result,
             trace_id=trace_id,
             root_span_id=root_span_id,
             root_start_ns=root_start_ns,
             root_end_ns=root_end_ns,
             resource=resource,
         )
-        metadata.update(evlog.mark_critical_test_spans(spans))
-        root.attributes.update(metadata)
+        metadata.update(evlog.mark_critical_test_spans(result))
+        update_span_attributes(root, metadata)
         if dispatch_span_id:
-            for span in spans:
-                if (
-                    span.scope_name == "ya.chunk"
-                    and span.parent_span_id == root_span_id
-                ):
+            for span in result.spans("ya.chunk"):
+                if span.parent_span_id == root_span_id:
                     span.parent_span_id = dispatch_span_id
-        spans[1:1] = evlog_spans
-    return spans
+    return result
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -151,12 +145,12 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO)
     if args.attempt_end_ns < args.attempt_start_ns:
         raise ValueError("attempt end precedes attempt start")
-    resource = resource_attributes(args)
+    resource = build_resource_attributes(args)
     traces = load_ya_traces(
         args.ya_out,
         modified_since=args.attempt_start_ns / 1_000_000_000 - 5,
     )
-    spans = build_ya_spans(
+    trace = build_ya_trace(
         traces,
         root_start_ns=args.attempt_start_ns,
         root_end_ns=args.attempt_end_ns,
@@ -169,7 +163,7 @@ def main() -> None:
     title_component = args.component or "all"
     manifest = write_trace_bundle(
         args.output_dir,
-        spans,
+        trace,
         title=f"ya make trace · {title_component} · attempt {args.retry}",
         metadata=resource,
     )

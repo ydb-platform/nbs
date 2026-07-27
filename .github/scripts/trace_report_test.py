@@ -9,44 +9,73 @@ from types import SimpleNamespace
 
 import pytest
 from github.WorkflowJob import WorkflowJob
+from opentelemetry.proto_json.trace.v1.trace import TracesData
 
 from scripts.tests.ya_trace_report import (
-    build_ya_spans,
-    resource_attributes,
+    build_resource_attributes,
+    build_ya_trace,
+)
+from scripts.otlp import (
+    ResourceAttributes,
+    Span,
+    Trace,
+    decode_attributes,
+    make_event,
+    make_span as new_span,
+    ns,
+    span_duration_ns,
+    span_status_code,
+    stable_span_id,
+    stable_trace_id,
 )
 from scripts.trace_report import (
     TRACE_HTML_TEMPLATE,
     TRACE_SCRIPT_TEMPLATE,
-    Span,
-    SpanEvent,
     _trace_model,
-    github_trace_attributes,
     read_otlp_jsonl,
     render_html,
-    stable_hex_id,
     write_trace_bundle,
 )
-from scripts.ya_trace import load_ya_evlog, load_ya_traces, ns
+from scripts.tests.ya_trace import load_ya_evlog, load_ya_traces
 from scripts.workflow_trace_report import (
-    build_workflow_spans,
+    build_workflow_trace,
     download_s3_trace_inputs,
 )
 
 
 def make_span(**kwargs) -> Span:
     values = {
-        "trace_id": "1" * 32,
-        "span_id": "2" * 16,
+        "trace_id": bytes.fromhex("1" * 32),
+        "span_id": bytes.fromhex("2" * 16),
         "name": "root",
         "start_ns": 1_000,
         "end_ns": 2_000,
     }
     values.update(kwargs)
-    return Span(**values)
+    return new_span(**values)
+
+
+def make_trace(
+    *spans: Span,
+    resource: ResourceAttributes | None = None,
+    scope_name: str = "nbs.ci",
+) -> Trace:
+    trace = Trace()
+    for span in spans:
+        trace.add_span(
+            span,
+            resource=resource or ResourceAttributes(),
+            scope_name=scope_name,
+        )
+    return trace
+
+
+def attributes(span: Span) -> dict:
+    return decode_attributes(span.attributes)
 
 
 def test_otlp_round_trip_and_static_html_escaping(tmp_path: Path) -> None:
-    spans = [
+    trace = make_trace(
         make_span(
             attributes={
                 "string": '<script>alert("attribute")</script>',
@@ -55,27 +84,35 @@ def test_otlp_round_trip_and_static_html_escaping(tmp_path: Path) -> None:
                 "array": ["one", "two"],
             },
             events=[
-                SpanEvent(
+                make_event(
                     name="<event>",
                     time_ns=1_500,
                     attributes={"detail": "<b>unsafe</b>"},
                 )
             ],
-            resource_attributes={"service.name": "test"},
             status_code=2,
             status_message="<failed>",
-        )
-    ]
+        ),
+        resource=ResourceAttributes({"service.name": "test"}),
+    )
+
+    assert isinstance(trace.data, TracesData)
+    encoded_span = trace.to_dict()["resourceSpans"][0]["scopeSpans"][0]["spans"][0]
+    assert encoded_span["traceId"] == "1" * 32
+    assert encoded_span["spanId"] == "2" * 16
+    assert encoded_span["startTimeUnixNano"] == "1000"
 
     manifest = write_trace_bundle(
         tmp_path,
-        spans,
+        trace,
         title="<trace>",
         metadata={"github.sha": "<sha>"},
     )
 
     restored = read_otlp_jsonl([tmp_path / manifest["otlp_file"]])
-    assert restored == spans
+    assert restored.to_dict() == trace.to_dict()
+    assert isinstance(restored[0].start_time_unix_nano, ns)
+    assert isinstance(restored[0].events[0].time_unix_nano, ns)
 
     report = (tmp_path / manifest["html_file"]).read_text()
     assert "<script>alert" not in report
@@ -93,12 +130,13 @@ def test_otlp_round_trip_and_static_html_escaping(tmp_path: Path) -> None:
 
 
 def test_renderer_marks_error_spans_and_supports_empty_input() -> None:
-    assert _trace_model([make_span(status_code=2)])["s"][0][7] == 2
-    assert 'id="trace-data"' in render_html([make_span(status_code=2)])
-    assert "No spans found" in render_html([])
+    trace = make_trace(make_span(status_code=2))
+    assert _trace_model(trace)["s"][0][7] == 2
+    assert 'id="trace-data"' in render_html(trace)
+    assert "No spans found" in render_html(Trace())
 
 
-def test_github_trace_attributes_support_environment_and_workflow_run() -> None:
+def test_resource_attributes_support_environment_and_workflow_run() -> None:
     environment = {
         "GITHUB_SERVER_URL": "https://github.example",
         "GITHUB_REPOSITORY": "example/repo",
@@ -106,7 +144,7 @@ def test_github_trace_attributes_support_environment_and_workflow_run() -> None:
         "GITHUB_RUN_ID": "123",
         "GITHUB_SHA": "abc123",
     }
-    current = github_trace_attributes(environment=environment)
+    current = ResourceAttributes.from_github(environment=environment)
     assert current["github.run.url"] == (
         "https://github.example/example/repo/actions/runs/123"
     )
@@ -114,7 +152,7 @@ def test_github_trace_attributes_support_environment_and_workflow_run() -> None:
         "https://github.example/example/repo/commit/abc123"
     )
 
-    completed = github_trace_attributes(
+    completed = ResourceAttributes.from_github(
         environment=environment,
         workflow_run={
             "id": 456,
@@ -138,7 +176,7 @@ def test_ya_resource_attributes_extend_common_github_attributes(
     monkeypatch.setenv("GITHUB_REPOSITORY", "example/repo")
     monkeypatch.setenv("GITHUB_RUN_ID", "123")
     monkeypatch.setenv("GITHUB_SHA", "abc123")
-    attributes = resource_attributes(
+    attributes = build_resource_attributes(
         SimpleNamespace(
             operation="tests",
             component="tasks",
@@ -156,38 +194,52 @@ def test_ya_resource_attributes_extend_common_github_attributes(
 
 
 def test_renderer_collapses_build_and_test_groups_by_default() -> None:
-    spans = [
-        make_span(scope_name="ya.run"),
-        make_span(
-            span_id="3" * 16,
-            parent_span_id="2" * 16,
-            name="build operations",
-            scope_name="ya.build",
+    trace = Trace()
+    for span, scope_name in (
+        (make_span(), "ya.run"),
+        (
+            make_span(
+                span_id=bytes.fromhex("3" * 16),
+                parent_span_id=bytes.fromhex("2" * 16),
+                name="build operations",
+            ),
+            "ya.build",
         ),
-        make_span(
-            span_id="4" * 16,
-            parent_span_id="3" * 16,
-            name="compile target",
-            scope_name="ya.build.node",
+        (
+            make_span(
+                span_id=bytes.fromhex("4" * 16),
+                parent_span_id=bytes.fromhex("3" * 16),
+                name="compile target",
+            ),
+            "ya.build.node",
         ),
-        make_span(
-            span_id="5" * 16,
-            parent_span_id="2" * 16,
-            name="cloud/tasks/storage/tests [tests chunk 1/1]",
-            scope_name="ya.chunk",
+        (
+            make_span(
+                span_id=bytes.fromhex("5" * 16),
+                parent_span_id=bytes.fromhex("2" * 16),
+                name="cloud/tasks/storage/tests [tests chunk 1/1]",
+            ),
+            "ya.chunk",
         ),
-        make_span(
-            span_id="6" * 16,
-            parent_span_id="5" * 16,
-            name="TestSuite::test_case",
-            scope_name="ya.test",
+        (
+            make_span(
+                span_id=bytes.fromhex("6" * 16),
+                parent_span_id=bytes.fromhex("5" * 16),
+                name="TestSuite::test_case",
+            ),
+            "ya.test",
         ),
-    ]
+    ):
+        trace.add_span(
+            span,
+            resource=ResourceAttributes(),
+            scope_name=scope_name,
+        )
 
-    model = _trace_model(spans)
+    model = _trace_model(trace)
     encoded = {span[2]: span for span in model["s"]}
     indexes = {span[2]: index for index, span in enumerate(model["s"])}
-    report = render_html(spans)
+    report = render_html(trace)
     assert encoded["build operations"][1] == indexes["root"]
     assert encoded["compile target"][1] == indexes["build operations"]
     assert encoded["cloud/tasks/storage/tests [tests chunk 1/1]"][1] == indexes["root"]
@@ -229,7 +281,7 @@ def test_reader_rejects_invalid_ids(tmp_path: Path) -> None:
         )
         + "\n"
     )
-    with pytest.raises(ValueError, match="Invalid OTLP span IDs"):
+    with pytest.raises(ValueError, match="Invalid OTLP JSON.*Invalid hex string"):
         read_otlp_jsonl([path])
 
 
@@ -242,9 +294,10 @@ def test_reader_limits_decompressed_input(tmp_path: Path) -> None:
         read_otlp_jsonl([path], max_input_bytes=200)
 
 
-def test_stable_hex_id_is_deterministic() -> None:
-    assert stable_hex_id("run", 1, length=16) == stable_hex_id("run", 1, length=16)
-    assert len(stable_hex_id("run", length=32)) == 32
+def test_span_ids_are_stable_and_have_otlp_lengths() -> None:
+    assert stable_span_id("run", 1) == stable_span_id("run", 1)
+    assert len(stable_span_id("run")) == 8
+    assert len(stable_trace_id("run")) == 16
 
 
 def test_ya_trace_produces_observed_and_inferred_test_spans(
@@ -303,12 +356,12 @@ def test_ya_trace_produces_observed_and_inferred_test_spans(
     trace_path.write_text("".join(json.dumps(event) + "\n" for event in events))
 
     traces = load_ya_traces(tmp_path / "out")
-    spans = build_ya_spans(
+    spans = build_ya_trace(
         traces,
         root_start_ns=ns(99_000_000_000),
         root_end_ns=ns(111_000_000_000),
         exit_code=1,
-        resource={"service.name": "test"},
+        resource=ResourceAttributes({"service.name": "test"}),
     )
 
     root, chunk = spans[:2]
@@ -316,15 +369,15 @@ def test_ya_trace_produces_observed_and_inferred_test_spans(
     observed = tests["Suite::test_ok"]
     inferred = tests["Suite::test_failed"]
     assert root.name == "ya make tests"
-    assert root.status_code == 2
-    assert chunk.start_ns == 100_000_000_000
-    assert chunk.end_ns == 110_000_000_000
-    assert chunk.attributes["ya.chunk.metric.suite_prepare_recipes_seconds"] == 2.25
-    assert observed.duration_ns == 1_500_000_000
-    assert "test.timing.inferred" not in observed.attributes
-    assert inferred.duration_ns == 500_000_000
-    assert inferred.attributes["test.timing.inferred"] is True
-    assert inferred.status_code == 2
+    assert span_status_code(root) == 2
+    assert chunk.start_time_unix_nano == 100_000_000_000
+    assert chunk.end_time_unix_nano == 110_000_000_000
+    assert attributes(chunk)["ya.chunk.metric.suite_prepare_recipes_seconds"] == 2.25
+    assert span_duration_ns(observed) == 1_500_000_000
+    assert "test.timing.inferred" not in attributes(observed)
+    assert span_duration_ns(inferred) == 500_000_000
+    assert attributes(inferred)["test.timing.inferred"] is True
+    assert span_status_code(inferred) == 2
 
 
 def test_ya_trace_keeps_started_but_unfinished_test(
@@ -342,17 +395,17 @@ def test_ya_trace_keeps_started_but_unfinished_test(
         )
         + "\n"
     )
-    spans = build_ya_spans(
+    spans = build_ya_trace(
         load_ya_traces(tmp_path),
         root_start_ns=ns(9_000_000_000),
         root_end_ns=ns(12_000_000_000),
         exit_code=137,
-        resource={},
+        resource=ResourceAttributes(),
     )
     test_span = spans[-1]
-    assert test_span.end_ns == 12_000_000_000
-    assert test_span.status_code == 2
-    assert test_span.attributes["test.incomplete"] is True
+    assert test_span.end_time_unix_nano == 12_000_000_000
+    assert span_status_code(test_span) == 2
+    assert attributes(test_span)["test.incomplete"] is True
 
 
 def test_ya_trace_preserves_chunks_and_anchors_finish_only_tests(
@@ -414,24 +467,24 @@ def test_ya_trace_preserves_chunks_and_anchors_finish_only_tests(
     ]
     trace_path.write_text("".join(json.dumps(event) + "\n" for event in events))
 
-    spans = build_ya_spans(
+    spans = build_ya_trace(
         load_ya_traces(tmp_path),
         root_start_ns=ns(99_000_000_000),
         root_end_ns=ns(121_000_000_000),
         exit_code=0,
-        resource={},
+        resource=ResourceAttributes(),
     )
 
-    chunks = [span for span in spans if span.scope_name == "ya.chunk"]
-    tests = {span.name: span for span in spans if span.scope_name == "ya.test"}
+    chunks = list(spans.spans("ya.chunk"))
+    tests = {span.name: span for span in spans.spans("ya.test")}
     assert len(chunks) == 2
-    assert spans[0].attributes["ya.chunk.count"] == 2
-    assert tests["Suite::first"].start_ns == 102_000_000_000
-    assert tests["Suite::first"].duration_ns == 3_000_000_000
-    assert tests["Suite::second"].start_ns == 108_000_000_000
-    assert tests["Suite::second"].duration_ns == 1_000_000_000
+    assert attributes(spans[0])["ya.chunk.count"] == 2
+    assert tests["Suite::first"].start_time_unix_nano == 102_000_000_000
+    assert span_duration_ns(tests["Suite::first"]) == 3_000_000_000
+    assert tests["Suite::second"].start_time_unix_nano == 108_000_000_000
+    assert span_duration_ns(tests["Suite::second"]) == 1_000_000_000
     assert (
-        tests["Suite::first"].attributes["test.timing.source"]
+        attributes(tests["Suite::first"])["test.timing.source"]
         == "chunk-delay-and-test-duration"
     )
     assert {test.parent_span_id for test in tests.values()} == {
@@ -598,87 +651,89 @@ def test_ya_evlog_adds_phases_and_build_nodes(
     ]
     evlog_path.write_text("".join(json.dumps(event) + "\n" for event in evlog_events))
 
-    spans = build_ya_spans(
+    spans = build_ya_trace(
         load_ya_traces(tmp_path / "out"),
         root_start_ns=ns(9_000_000_000),
         root_end_ns=ns(31_000_000_000),
         exit_code=0,
-        resource={},
+        resource=ResourceAttributes(),
         evlog=load_ya_evlog(evlog_path),
     )
 
     root = spans[0]
     phases = {
-        span.attributes["ya.stage.name"]: span
-        for span in spans
-        if span.scope_name == "ya.phase"
+        attributes(span)["ya.stage.name"]: span for span in spans.spans("ya.phase")
     }
-    build = next(span for span in spans if span.scope_name == "ya.build")
-    nodes = [span for span in spans if span.scope_name == "ya.build.node"]
-    chunk = next(span for span in spans if span.scope_name == "ya.chunk")
-    test = next(span for span in spans if span.scope_name == "ya.test")
+    build = next(spans.spans("ya.build"))
+    nodes = list(spans.spans("ya.build.node"))
+    chunk = next(spans.spans("ya.chunk"))
+    test = next(spans.spans("ya.test"))
+    build_attributes = attributes(build)
+    root_attributes = attributes(root)
+    chunk_attributes = attributes(chunk)
+    test_attributes = attributes(test)
 
     assert set(phases) == {"build_graph_and_tests", "dispatch_build"}
     assert build.parent_span_id == phases["dispatch_build"].span_id
     assert chunk.parent_span_id == phases["dispatch_build"].span_id
-    assert build.duration_ns == 4_500_000_000
-    assert build.attributes["ya.build.node.count"] == 4
-    assert build.attributes["ya.build.node.cache_store.count"] == 1
-    assert build.attributes["ya.build.first_test_node_offset_seconds"] == 5.5
-    assert build.attributes["ya.build.cache.considered_task.hit.ratio"] == 0.75
-    assert build.attributes["ya.build.cache.considered_task.hit.count"] == 3
-    assert build.attributes["ya.build.cache.considered_task.miss.count"] == 1
-    assert build.attributes["ya.build.task.avoided.ratio"] == 0.96
-    assert build.attributes["ya.build.task.reused_or_avoided.ratio"] == 0.99
-    assert build.attributes["ya.build.cache.worker_node.hit.ratio"] == 2 / 3
-    assert build.attributes["ya.build.task.avoided.count"] == 96
-    assert build.attributes["ya.build.dist_cache.get.bytes"] == 1_024
-    assert build.attributes["ya.build.execution.stage.build_only.seconds"] == 3.5
-    assert build.attributes["ya.build.execution.total.seconds"] == 5.5
-    assert build.attributes["ya.build.cache.tool.ar.hit.ratio"] == 1
-    assert build.attributes["ya.build.cache.tool.ar.hit.count"] == 2
-    assert build.attributes["ya.build.cache.tool.cc.hit.ratio"] == 0
-    assert build.attributes["ya.build.critical_path.node.count"] == 1
-    assert build.attributes["ya.build.critical_path.work.seconds"] == 4
+    assert span_duration_ns(build) == 4_500_000_000
+    assert build_attributes["ya.build.node.count"] == 4
+    assert build_attributes["ya.build.node.cache_store.count"] == 1
+    assert build_attributes["ya.build.first_test_node_offset_seconds"] == 5.5
+    assert build_attributes["ya.build.cache.considered_task.hit.ratio"] == 0.75
+    assert build_attributes["ya.build.cache.considered_task.hit.count"] == 3
+    assert build_attributes["ya.build.cache.considered_task.miss.count"] == 1
+    assert build_attributes["ya.build.task.avoided.ratio"] == 0.96
+    assert build_attributes["ya.build.task.reused_or_avoided.ratio"] == 0.99
+    assert build_attributes["ya.build.cache.worker_node.hit.ratio"] == 2 / 3
+    assert build_attributes["ya.build.task.avoided.count"] == 96
+    assert build_attributes["ya.build.dist_cache.get.bytes"] == 1_024
+    assert build_attributes["ya.build.execution.stage.build_only.seconds"] == 3.5
+    assert build_attributes["ya.build.execution.total.seconds"] == 5.5
+    assert build_attributes["ya.build.cache.tool.ar.hit.ratio"] == 1
+    assert build_attributes["ya.build.cache.tool.ar.hit.count"] == 2
+    assert build_attributes["ya.build.cache.tool.cc.hit.ratio"] == 0
+    assert build_attributes["ya.build.critical_path.node.count"] == 1
+    assert build_attributes["ya.build.critical_path.work.seconds"] == 4
     assert len(nodes) == 3
-    assert {span.attributes["ya.build.kind"] for span in nodes} == {
+    assert {attributes(span)["ya.build.kind"] for span in nodes} == {
         "cache_restore",
         "execute",
     }
     cached = next(
-        span for span in nodes if span.attributes["ya.build.kind"] == "cache_restore"
+        span for span in nodes if attributes(span)["ya.build.kind"] == "cache_restore"
     )
-    assert cached.attributes["ya.build.cache.hit"] is True
-    assert cached.attributes["ya.build.outputs"] == ["library/cached.a"]
+    assert attributes(cached)["ya.build.cache.hit"] is True
+    assert attributes(cached)["ya.build.outputs"] == ["library/cached.a"]
     compiled = next(
-        span for span in nodes if span.attributes["ya.build.kind"] == "execute"
+        span for span in nodes if attributes(span)["ya.build.kind"] == "execute"
     )
-    assert compiled.attributes["ya.build.critical_path"] is True
-    assert compiled.attributes["ya.build.critical_path.index"] == 0
-    assert compiled.attributes["ya.build.critical_path.reported_seconds"] == 4
-    assert root.attributes["ya.build.node.count"] == 4
-    assert root.attributes["ya.build.node.span_count"] == 3
-    assert root.attributes["ya.test.critical_path.entry.count"] == 1
-    assert root.attributes["ya.test.critical_path.chunk.count"] == 1
-    assert root.attributes["ya.test.critical_path.span.count"] == 1
-    assert chunk.attributes["ya.test.critical_path"] is True
-    assert chunk.attributes["ya.test.critical_path.granularity"] == "test-chunk"
-    assert test.attributes["ya.test.critical_path"] is True
-    assert test.attributes["ya.test.critical_path.inferred"] is True
-    assert test.attributes["ya.test.critical_path.reported_seconds"] == 2
+    assert attributes(compiled)["ya.build.critical_path"] is True
+    assert attributes(compiled)["ya.build.critical_path.index"] == 0
+    assert attributes(compiled)["ya.build.critical_path.reported_seconds"] == 4
+    assert root_attributes["ya.build.node.count"] == 4
+    assert root_attributes["ya.build.node.span_count"] == 3
+    assert root_attributes["ya.test.critical_path.entry.count"] == 1
+    assert root_attributes["ya.test.critical_path.chunk.count"] == 1
+    assert root_attributes["ya.test.critical_path.span.count"] == 1
+    assert chunk_attributes["ya.test.critical_path"] is True
+    assert chunk_attributes["ya.test.critical_path.granularity"] == "test-chunk"
+    assert test_attributes["ya.test.critical_path"] is True
+    assert test_attributes["ya.test.critical_path.inferred"] is True
+    assert test_attributes["ya.test.critical_path.reported_seconds"] == 2
 
-    build_only = build_ya_spans(
+    build_only = build_ya_trace(
         [],
         root_start_ns=ns(9_000_000_000),
         root_end_ns=ns(31_000_000_000),
         exit_code=0,
-        resource={},
+        resource=ResourceAttributes(),
         evlog=load_ya_evlog(evlog_path),
         operation="build",
     )
     assert build_only[0].name == "ya make build"
-    assert not any(span.scope_name == "ya.chunk" for span in build_only)
-    assert any(span.scope_name == "ya.build" for span in build_only)
+    assert not any(build_only.spans("ya.chunk"))
+    assert any(build_only.spans("ya.build"))
 
 
 def test_workflow_trace_adds_queue_job_step_and_imported_ya_spans() -> None:
@@ -731,26 +786,26 @@ def test_workflow_trace_adds_queue_job_step_and_imported_ya_spans() -> None:
             completed=True,
         )
     ]
-    imported = [
+    imported = make_trace(
         make_span(
-            trace_id="3" * 32,
-            span_id="4" * 16,
+            trace_id=bytes.fromhex("3" * 32),
+            span_id=bytes.fromhex("4" * 16),
             name="ya make tests",
             start_ns=1_767_225_604_000_000_000,
             end_ns=1_767_225_608_000_000_000,
-            resource_attributes={"service.name": "nbs-ya-tests"},
-        )
-    ]
+        ),
+        resource=ResourceAttributes({"service.name": "nbs-ya-tests"}),
+    )
 
-    spans, metadata = build_workflow_spans(workflow_run, jobs, imported)
+    trace, metadata = build_workflow_trace(workflow_run, jobs, imported)
 
-    by_name = {span.name: span for span in spans}
-    assert by_name["workflow queue"].duration_ns == 1_000_000_000
-    assert by_name["queued for runner"].duration_ns == 1_000_000_000
+    by_name = {span.name: span for span in trace}
+    assert span_duration_ns(by_name["workflow queue"]) == 1_000_000_000
+    assert span_duration_ns(by_name["queued for runner"]) == 1_000_000_000
     assert by_name["step: Run tests"].parent_span_id == by_name["job: tests"].span_id
     assert by_name["ya make tests"].parent_span_id == by_name["job: tests"].span_id
     assert by_name["ya make tests"].trace_id == by_name["workflow: PR-check"].trace_id
-    assert by_name["ya make tests"].attributes["ci.trace.source"] == "ya-otlp"
+    assert attributes(by_name["ya make tests"])["ci.trace.source"] == "ya-otlp"
     assert metadata["github.pull_request.number"] == [42]
 
 
