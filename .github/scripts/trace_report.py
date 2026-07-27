@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import gzip
 import hashlib
 import html
@@ -388,88 +389,87 @@ def _attribute_rows(values: Mapping[str, Any]) -> str:
     return '<table class="attributes">' + "".join(rows) + "</table>"
 
 
-def _span_search(span: Span) -> str:
-    return " ".join(
-        [
-            span.name,
-            span.status_message,
-            *(f"{key}={value}" for key, value in span.attributes.items()),
-        ]
-    ).lower()
+def _trace_model(spans: Sequence[Span]) -> dict[str, Any]:
+    """Build the compact, browser-side model used by the static renderer."""
+    ordered = sorted(spans, key=lambda span: (span.start_ns, -span.end_ns, span.name))
+    if ordered:
+        origin_ns = min(span.start_ns for span in ordered)
+        end_ns = max(span.end_ns for span in ordered)
+    else:
+        origin_ns = 0
+        end_ns = 1
+
+    trace_ids = list(dict.fromkeys(span.trace_id for span in ordered))
+    trace_indexes = {value: index for index, value in enumerate(trace_ids)}
+    scopes = list(dict.fromkeys(span.scope_name for span in ordered))
+    scope_indexes = {value: index for index, value in enumerate(scopes)}
+
+    resources: list[dict[str, Any]] = []
+    resource_indexes: dict[str, int] = {}
+    for span in ordered:
+        resource = clean_attributes(span.resource_attributes)
+        key = json.dumps(resource, sort_keys=True, separators=(",", ":"))
+        if key not in resource_indexes:
+            resource_indexes[key] = len(resources)
+            resources.append(resource)
+
+    by_key = {
+        (span.trace_id, span.span_id): index for index, span in enumerate(ordered)
+    }
+    encoded_spans = []
+    for span in ordered:
+        parent_index = by_key.get((span.trace_id, span.parent_span_id), -1)
+        if parent_index == by_key[(span.trace_id, span.span_id)]:
+            parent_index = -1
+        resource_key = json.dumps(
+            clean_attributes(span.resource_attributes),
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        encoded_spans.append(
+            [
+                span.span_id,
+                parent_index,
+                span.name,
+                span.start_ns - origin_ns,
+                span.duration_ns,
+                clean_attributes(span.attributes),
+                [
+                    [
+                        event.name,
+                        event.time_ns - span.start_ns,
+                        clean_attributes(event.attributes),
+                    ]
+                    for event in span.events
+                ],
+                span.status_code,
+                span.status_message,
+                resource_indexes[resource_key],
+                scope_indexes[span.scope_name],
+                trace_indexes[span.trace_id],
+                span.parent_span_id if parent_index < 0 else "",
+            ]
+        )
+
+    return {
+        "v": 1,
+        "o": str(origin_ns),
+        "d": max(1, end_ns - origin_ns),
+        "r": resources,
+        "t": trace_ids,
+        "c": scopes,
+        "s": encoded_spans,
+    }
 
 
-def _span_summary(span: Span, depth: int, origin_ns: int, total_ns: int) -> str:
-    left = 100 * max(0, span.start_ns - origin_ns) / total_ns
-    width = max(0.15, 100 * span.duration_ns / total_ns)
-    return f"""<summary>
-    <span class="name" style="padding-left:{depth * 1.1:.1f}rem">{html.escape(span.name)}</span>
-    <span class="duration">{html.escape(_format_duration(span.duration_ns))}</span>
-    <span class="track"><span class="bar" style="left:{left:.4f}%;width:{width:.4f}%"></span></span>
-  </summary>"""
-
-
-def _span_detail(span: Span) -> str:
-    event_rows = "".join(
-        "<li><code>"
-        + html.escape(_format_duration(max(0, event.time_ns - span.start_ns)))
-        + "</code> "
-        + html.escape(event.name)
-        + _attribute_rows(event.attributes)
-        + "</li>"
-        for event in span.events
-    )
-    details = _attribute_rows(span.attributes)
-    if event_rows:
-        details += '<h4>Events</h4><ul class="events">' + event_rows + "</ul>"
-    resource = _attribute_rows(span.resource_attributes)
-    return f"""<div class="detail">
-    <p><b>Span ID:</b> <code>{span.span_id}</code>
-       <b>Parent:</b> <code>{span.parent_span_id or "none"}</code>
-       <b>Status:</b> {span.status_code} {html.escape(span.status_message)}</p>
-    <h4>Attributes</h4>{details}
-    <details><summary>Resource attributes</summary>{resource}</details>
-  </div>"""
-
-
-def _span_row(
-    span: Span,
-    depth: int,
-    origin_ns: int,
-    total_ns: int,
-    *,
-    children: str = "",
-) -> str:
-    status = (
-        "error"
-        if span.status_code == 2
-        else "ok" if span.status_code == 1 else ""
-    )
-    class_name = f"span {status}".rstrip()
-    search = _span_search(span)
-    summary = _span_summary(span, depth, origin_ns, total_ns)
-    detail = _span_detail(span)
-    scope = html.escape(span.scope_name, quote=True)
-    if children:
-        class_name = f"{class_name} span-group"
-        default_open = span.scope_name not in {"ya.build", "ya.chunk"}
-        open_attribute = " open" if default_open else ""
-        return f"""
-<details class="{class_name}" data-scope="{scope}" data-search="{html.escape(search, quote=True)}" data-default-open="{str(default_open).lower()}"{open_attribute}>
-  {summary}
-  <div class="group-content">
-    <details class="span-metadata">
-      <summary>Span metadata</summary>
-      {detail}
-    </details>
-    <div class="children">{children}</div>
-  </div>
-</details>"""
-
-    return f"""
-<details class="{class_name}" data-scope="{scope}" data-search="{html.escape(search, quote=True)}" data-default-open="false">
-  {summary}
-  {detail}
-</details>"""
+def _trace_payload(model: Mapping[str, Any]) -> str:
+    encoded = json.dumps(
+        model,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode()
+    return base64.b64encode(gzip.compress(encoded, compresslevel=9, mtime=0)).decode()
 
 
 def render_html(
@@ -478,61 +478,11 @@ def render_html(
     title: str = "CI execution trace",
     metadata: Mapping[str, Any] | None = None,
 ) -> str:
-    ordered = sorted(spans, key=lambda span: (span.start_ns, -span.end_ns, span.name))
-    if ordered:
-        origin_ns = min(span.start_ns for span in ordered)
-        end_ns = max(span.end_ns for span in ordered)
-    else:
-        origin_ns = 0
-        end_ns = 1
-    total_ns = max(1, end_ns - origin_ns)
-
-    by_key = {(span.trace_id, span.span_id): span for span in ordered}
-    children_by_key: dict[tuple[str, str], list[Span]] = defaultdict(list)
-    roots: list[Span] = []
-    for span in ordered:
-        key = (span.trace_id, span.span_id)
-        parent_key = (span.trace_id, span.parent_span_id)
-        if span.parent_span_id and parent_key in by_key and parent_key != key:
-            children_by_key[parent_key].append(span)
-        else:
-            roots.append(span)
-
-    rendered: set[tuple[str, str]] = set()
-
-    def render_tree(
-        span: Span,
-        depth: int,
-        ancestors: frozenset[tuple[str, str]],
-    ) -> str:
-        key = (span.trace_id, span.span_id)
-        if key in ancestors or key in rendered:
-            return ""
-        rendered.add(key)
-        child_rows = []
-        next_ancestors = ancestors | {key}
-        for child in children_by_key.get(key, []):
-            child_row = render_tree(child, depth + 1, next_ancestors)
-            if child_row:
-                child_rows.append(child_row)
-        return _span_row(
-            span,
-            depth,
-            origin_ns,
-            total_ns,
-            children="".join(child_rows),
-        )
-
-    row_parts = [render_tree(span, 0, frozenset()) for span in roots]
-    # Preserve malformed cyclic or duplicate-parent traces as additional roots.
-    row_parts.extend(
-        render_tree(span, 0, frozenset())
-        for span in ordered
-        if (span.trace_id, span.span_id) not in rendered
-    )
-    rows = "".join(row_parts)
+    model = _trace_model(spans)
+    total_ns = model["d"]
     metadata_table = _attribute_rows(clean_attributes(metadata))
-    failures = sum(span.status_code == 2 for span in ordered)
+    failures = sum(span.status_code == 2 for span in spans)
+    payload = _trace_payload(model)
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -542,73 +492,411 @@ def render_html(
 <title>{html.escape(title)}</title>
 <style>
 :root {{ color-scheme:light dark; --bg:#fff; --fg:#172033; --muted:#667085;
-  --line:#d8dee9; --panel:#f7f8fa; --bar:#6d5ce7; --bad:#d92d20; }}
+  --line:#d8dee9; --panel:#f7f8fa; --bar:#6d5ce7; --bad:#d92d20;
+  --selected:#eef2ff; }}
 @media (prefers-color-scheme:dark) {{ :root {{ --bg:#11151c; --fg:#e8edf5;
-  --muted:#9ca9bd; --line:#344054; --panel:#1b2230; --bar:#9b8cff; --bad:#ff6b64; }} }}
+  --muted:#9ca9bd; --line:#344054; --panel:#1b2230; --bar:#9b8cff;
+  --bad:#ff6b64; --selected:#252d47; }} }}
 * {{ box-sizing:border-box }} body {{ margin:0; background:var(--bg); color:var(--fg);
   font:14px/1.45 system-ui,sans-serif }} main {{ max-width:1800px; margin:auto; padding:1.5rem }}
 h1 {{ margin:.2rem 0 }} .muted {{ color:var(--muted) }} .toolbar {{ position:sticky;
-  top:0; z-index:2; display:flex; gap:.6rem; padding:.7rem 0; background:var(--bg) }}
+  top:0; z-index:2; display:flex; align-items:center; gap:.6rem; padding:.7rem 0;
+  background:var(--bg) }}
 input,button {{ color:inherit; background:var(--panel); border:1px solid var(--line);
   border-radius:6px; padding:.45rem .7rem }} input {{ min-width:20rem }}
 .trace {{ border:1px solid var(--line); border-radius:8px; overflow:hidden }}
-.span {{ border-bottom:1px solid var(--line) }} .trace > .span:last-child,
-.children > .span:last-child {{ border-bottom:0 }}
-.span[hidden] {{ display:none }} summary {{ display:grid; grid-template-columns:minmax(20rem,38%)
-  7rem 1fr; align-items:center; gap:.7rem; padding:.4rem .6rem; cursor:pointer }}
-summary:hover {{ background:var(--panel) }} .name {{ overflow:hidden; text-overflow:ellipsis;
-  white-space:nowrap }} .duration {{ text-align:right; font-variant-numeric:tabular-nums }}
+.trace-head,.span-row {{ display:grid; grid-template-columns:minmax(20rem,38%) 7rem 1fr;
+  align-items:center; gap:.7rem; min-height:2.25rem; padding:.35rem .6rem }}
+.trace-head {{ color:var(--muted); background:var(--panel); font-size:.8rem;
+  font-weight:600; text-transform:uppercase }}
+.span-row {{ border-top:1px solid var(--line) }} .span-row:hover {{ background:var(--panel) }}
+.span-row.selected {{ background:var(--selected) }}
+.name-cell {{ display:flex; align-items:center; min-width:0 }}
+.toggle {{ flex:none; width:1.65rem; padding:.15rem; border:0; background:transparent }}
+.toggle:disabled {{ opacity:0; cursor:default }}
+.span-name {{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  padding:.15rem .25rem; border:0; background:transparent; text-align:left; cursor:pointer }}
+.duration {{ text-align:right; font-variant-numeric:tabular-nums }}
 .track {{ position:relative; height:.8rem; background:var(--panel); border-radius:4px }}
 .bar {{ position:absolute; top:0; bottom:0; border-radius:4px; background:var(--bar);
-  min-width:2px }} .error > summary .bar {{ background:var(--bad) }}
-.error > summary .name {{ color:var(--bad) }}
-.detail {{ padding:.5rem 1rem 1rem 2rem; overflow:auto }} table {{ border-collapse:collapse }}
-.group-content {{ border-top:1px solid var(--line) }} .span-metadata {{ margin:.25rem .6rem }}
-.span-metadata > summary {{ display:list-item; padding:.3rem .6rem; color:var(--muted) }}
-.children {{ border-top:1px solid var(--line) }}
+  min-width:2px }} .error .bar {{ background:var(--bad) }}
+.error .span-name {{ color:var(--bad) }}
+.more-row {{ border-top:1px solid var(--line); padding:.35rem .6rem }}
+.more-row button {{ margin-left:var(--indent) }}
+.detail-panel {{ margin:.3rem 0 .8rem; padding:1rem; border:1px solid var(--line);
+  border-radius:8px; background:var(--panel); overflow:auto }}
+.detail-head {{ display:flex; align-items:start; justify-content:space-between; gap:1rem }}
+.detail-head h2 {{ margin:0; font-size:1.1rem }} .detail-facts {{ margin:.4rem 0 }}
+table {{ border-collapse:collapse }}
 th,td {{ border-bottom:1px solid var(--line); padding:.25rem .5rem; text-align:left;
   vertical-align:top }} th {{ color:var(--muted); white-space:nowrap }} td {{ word-break:break-word }}
 .attributes {{ width:100%; max-width:100rem }} code {{ font-family:ui-monospace,monospace }}
-.events {{ padding-left:1.5rem }} h4 {{ margin:.8rem 0 .3rem }}
-@media (max-width:850px) {{ summary {{ grid-template-columns:1fr 6rem }} .track {{ display:none }}
-  input {{ min-width:8rem; flex:1 }} }}
+.events {{ padding-left:1.5rem }} h3,h4 {{ margin:.8rem 0 .3rem }}
+#loading {{ padding:1rem }} [hidden] {{ display:none!important }}
+@media (max-width:850px) {{ .trace-head,.span-row {{ grid-template-columns:1fr 6rem }}
+  .track,.trace-head span:last-child {{ display:none }} input {{ min-width:8rem; flex:1 }}
+  .toolbar {{ flex-wrap:wrap }} }}
 </style>
 </head>
 <body><main>
 <h1>{html.escape(title)}</h1>
-<p class="muted">{len(ordered):,} spans · {failures:,} errors · {_format_duration(total_ns)}</p>
+<p class="muted">{len(spans):,} spans · {failures:,} errors · {_format_duration(total_ns)}</p>
 <details><summary>Run metadata</summary>{metadata_table}</details>
 <div class="toolbar">
-  <input id="filter" type="search" placeholder="Filter spans or attributes">
-  <button id="expand" type="button">Expand all</button>
-  <button id="collapse" type="button">Collapse all</button>
+  <input id="filter" type="search" placeholder="Filter spans or attributes" disabled>
+  <button id="expand" type="button" disabled>Expand all</button>
+  <button id="collapse" type="button" disabled>Collapse all</button>
+  <span id="filter-status" class="muted"></span>
 </div>
-<section class="trace">{rows or '<p class="muted">No spans found.</p>'}</section>
+<section id="detail-panel" class="detail-panel" hidden>
+  <div class="detail-head">
+    <h2 id="detail-title"></h2>
+    <button id="detail-close" type="button">Close</button>
+  </div>
+  <div id="detail-content"></div>
+</section>
+<section class="trace">
+  <div class="trace-head"><span>Name</span><span>Duration</span><span>Waterfall</span></div>
+  <div id="rows"><p id="loading" class="muted">Loading compressed trace data…</p></div>
+</section>
 </main>
+<script id="trace-data" type="application/octet-stream">{payload}</script>
 <script>
-const spans=[...document.querySelectorAll('.span')];
-const groups=[...document.querySelectorAll('.span-group')];
-document.getElementById('filter').addEventListener('input',event=>{{
-  const query=event.target.value.trim().toLowerCase();
-  spans.forEach(span=>span.hidden=Boolean(query) && !span.dataset.search.includes(query));
-  if(query){{
-    [...groups].reverse().forEach(group=>{{
-      if(!group.hidden||[...group.querySelectorAll('.span')].some(span=>!span.hidden)){{
-        group.hidden=false;
-        group.open=true;
-      }}
-    }});
-  }}else{{
-    spans.forEach(span=>span.open=span.dataset.defaultOpen==='true');
+const ID=0,PARENT=1,NAME=2,START=3,DURATION=4,ATTRS=5,EVENTS=6,STATUS=7,
+  STATUS_MESSAGE=8,RESOURCE=9,SCOPE=10,TRACE=11,ORPHAN_PARENT=12;
+const PAGE_SIZE=200;
+const INITIAL_RENDER_LIMIT=2000;
+const COLLAPSED_SCOPES=new Set(['ya.build','ya.chunk']);
+const rowsElement=document.getElementById('rows');
+const filterElement=document.getElementById('filter');
+const filterStatus=document.getElementById('filter-status');
+const detailPanel=document.getElementById('detail-panel');
+const detailTitle=document.getElementById('detail-title');
+const detailContent=document.getElementById('detail-content');
+let model,spans,children,roots,expanded,limits,visible,selected=null,searchCache=[];
+let renderLimit=INITIAL_RENDER_LIMIT;
+
+function formatDuration(durationNs){{
+  const duration=durationNs/1e9;
+  if(duration<.001)return `${{(duration*1e6).toFixed(0)}} µs`;
+  if(duration<1)return `${{(duration*1e3).toFixed(1)}} ms`;
+  if(duration<60)return `${{duration.toFixed(3)}} s`;
+  const minutes=Math.floor(duration/60),seconds=duration-minutes*60;
+  if(minutes<60)return `${{minutes}}m ${{seconds.toFixed(1)}}s`;
+  const hours=Math.floor(minutes/60);
+  return `${{hours}}h ${{minutes-hours*60}}m ${{seconds.toFixed(0)}}s`;
+}}
+
+async function decodeModel(){{
+  if(!('DecompressionStream' in window)){{
+    throw new Error('This report requires a browser with DecompressionStream support.');
   }}
+  const encoded=document.getElementById('trace-data').textContent.trim();
+  const binary=atob(encoded);
+  const bytes=new Uint8Array(binary.length);
+  for(let index=0;index<binary.length;index++)bytes[index]=binary.charCodeAt(index);
+  const stream=new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
+  return JSON.parse(await new Response(stream).text());
+}}
+
+function resetDefaults(){{
+  expanded=new Set();
+  limits=new Map();
+  renderLimit=INITIAL_RENDER_LIMIT;
+  spans.forEach((span,index)=>{{
+    if(children[index].length&&!COLLAPSED_SCOPES.has(model.c[span[SCOPE]])){{
+      expanded.add(index);
+    }}
+  }});
+}}
+
+function spanMatches(span,index,query){{
+  if(!searchCache[index]){{
+    const attributes=Object.entries(span[ATTRS])
+      .map(([key,value])=>`${{key}}=${{typeof value==='string'?value:JSON.stringify(value)}}`);
+    searchCache[index]=[span[NAME],span[STATUS_MESSAGE],...attributes].join(' ').toLowerCase();
+  }}
+  return searchCache[index].includes(query);
+}}
+
+function applyFilter(){{
+  const query=filterElement.value.trim().toLowerCase();
+  if(!query){{
+    visible=null;
+    filterStatus.textContent='';
+    resetDefaults();
+    renderRows();
+    return;
+  }}
+  renderLimit=INITIAL_RENDER_LIMIT;
+  visible=new Set();
+  let matches=0;
+  spans.forEach((span,index)=>{{
+    if(!spanMatches(span,index,query))return;
+    matches++;
+    let current=index;
+    while(current>=0&&!visible.has(current)){{
+      visible.add(current);
+      current=spans[current][PARENT];
+    }}
+  }});
+  filterStatus.textContent=`${{matches.toLocaleString()}} matching spans`;
+  renderRows();
+}}
+
+function flattenRows(){{
+  const result=[],seen=new Set();
+  let truncated=false;
+  function addSpan(index,depth){{
+    if(truncated||seen.has(index)||(visible&&!visible.has(index)))return;
+    if(result.length>=renderLimit){{
+      truncated=true;
+      return;
+    }}
+    seen.add(index);
+    result.push({{kind:'span',index,depth}});
+    const candidates=visible
+      ? children[index].filter(child=>visible.has(child))
+      : children[index];
+    if(!candidates.length||(!visible&&!expanded.has(index)))return;
+    const limit=limits.get(index)||PAGE_SIZE;
+    candidates.slice(0,limit).forEach(child=>addSpan(child,depth+1));
+    if(candidates.length>limit){{
+      result.push({{kind:'more',index,depth:depth+1,total:candidates.length,shown:limit}});
+    }}
+  }}
+  roots.forEach(index=>addSpan(index,0));
+  return {{items:result,truncated}};
+}}
+
+function spanRow(item){{
+  const span=spans[item.index];
+  const row=document.createElement('div');
+  row.className=`span-row${{span[STATUS]===2?' error':''}}${{selected===item.index?' selected':''}}`;
+  row.dataset.index=String(item.index);
+
+  const nameCell=document.createElement('div');
+  nameCell.className='name-cell';
+  nameCell.style.paddingLeft=`${{Math.min(item.depth,20)*1.1}}rem`;
+  const toggle=document.createElement('button');
+  toggle.className='toggle';
+  toggle.type='button';
+  const hasChildren=children[item.index].length>0;
+  const isOpen=visible?hasChildren:expanded.has(item.index);
+  toggle.textContent=hasChildren?(isOpen?'▾':'▸'):'';
+  toggle.disabled=!hasChildren||Boolean(visible);
+  toggle.setAttribute('aria-label',isOpen?'Collapse span group':'Expand span group');
+  toggle.addEventListener('click',()=>{{
+    if(expanded.has(item.index))expanded.delete(item.index);
+    else expanded.add(item.index);
+    renderRows();
+  }});
+  const name=document.createElement('button');
+  name.className='span-name';
+  name.type='button';
+  name.textContent=span[NAME];
+  name.title=span[NAME];
+  name.addEventListener('click',()=>showSpan(item.index));
+  nameCell.append(toggle,name);
+
+  const duration=document.createElement('span');
+  duration.className='duration';
+  duration.textContent=formatDuration(span[DURATION]);
+  const track=document.createElement('span');
+  track.className='track';
+  const bar=document.createElement('span');
+  bar.className='bar';
+  bar.style.left=`${{100*Math.max(0,span[START])/model.d}}%`;
+  bar.style.width=`${{Math.max(.15,100*span[DURATION]/model.d)}}%`;
+  track.append(bar);
+  row.append(nameCell,duration,track);
+  return row;
+}}
+
+function moreRow(item){{
+  const row=document.createElement('div');
+  row.className='more-row';
+  row.style.setProperty('--indent',`${{Math.min(item.depth,20)*1.1+1.65}}rem`);
+  const button=document.createElement('button');
+  const remaining=item.total-item.shown;
+  button.type='button';
+  button.textContent=`Load ${{Math.min(PAGE_SIZE,remaining).toLocaleString()}} more (${{remaining.toLocaleString()}} remaining)`;
+  button.addEventListener('click',()=>{{
+    limits.set(item.index,item.shown+PAGE_SIZE);
+    renderRows();
+  }});
+  row.append(button);
+  return row;
+}}
+
+function renderRows(){{
+  const flattened=flattenRows();
+  const items=flattened.items;
+  const fragment=document.createDocumentFragment();
+  if(!items.length){{
+    const empty=document.createElement('p');
+    empty.className='muted';
+    empty.id='loading';
+    empty.textContent=visible?'No matching spans.':'No spans found.';
+    fragment.append(empty);
+  }}else{{
+    items.forEach(item=>fragment.append(item.kind==='span'?spanRow(item):moreRow(item)));
+    if(flattened.truncated){{
+      const limitRow=document.createElement('div');
+      limitRow.className='more-row';
+      const button=document.createElement('button');
+      button.type='button';
+      button.textContent=`Render up to ${{(renderLimit+INITIAL_RENDER_LIMIT).toLocaleString()}} visible rows`;
+      button.addEventListener('click',()=>{{
+        renderLimit+=INITIAL_RENDER_LIMIT;
+        renderRows();
+      }});
+      limitRow.append(button);
+      fragment.append(limitRow);
+    }}
+  }}
+  rowsElement.replaceChildren(fragment);
+}}
+
+function valueText(value){{
+  return typeof value==='string'?value:JSON.stringify(value);
+}}
+
+function attributeTable(values){{
+  if(!Object.keys(values).length){{
+    const empty=document.createElement('p');
+    empty.className='muted';
+    empty.textContent='No attributes';
+    return empty;
+  }}
+  const table=document.createElement('table');
+  table.className='attributes';
+  Object.entries(values).sort(([left],[right])=>left.localeCompare(right))
+    .forEach(([key,value])=>{{
+      const row=document.createElement('tr');
+      const heading=document.createElement('th');
+      heading.textContent=key;
+      const cell=document.createElement('td');
+      const rendered=valueText(value);
+      let linked=false;
+      if(typeof value==='string'){{
+        try{{
+          const url=new URL(value);
+          if(url.protocol==='http:'||url.protocol==='https:'){{
+            const link=document.createElement('a');
+            link.href=value;
+            link.rel='noopener noreferrer';
+            link.textContent=value;
+            cell.append(link);
+            linked=true;
+          }}
+        }}catch(error){{}}
+      }}
+      if(!linked)cell.textContent=rendered;
+      row.append(heading,cell);
+      table.append(row);
+    }});
+  return table;
+}}
+
+function heading(text,level=3){{
+  const element=document.createElement(`h${{level}}`);
+  element.textContent=text;
+  return element;
+}}
+
+function showSpan(index){{
+  selected=index;
+  const span=spans[index];
+  detailTitle.textContent=span[NAME];
+  const facts=document.createElement('p');
+  facts.className='detail-facts';
+  const parent=span[PARENT]>=0?spans[span[PARENT]][ID]:(span[ORPHAN_PARENT]||'none');
+  facts.append(
+    `Duration: ${{formatDuration(span[DURATION])}} · Scope: ${{model.c[span[SCOPE]]}} · Status: ${{span[STATUS]}} ${{span[STATUS_MESSAGE]}}`,
+    document.createElement('br'),
+    `Trace ID: ${{model.t[span[TRACE]]}} · Span ID: ${{span[ID]}} · Parent: ${{parent}}`,
+  );
+  const content=document.createDocumentFragment();
+  content.append(facts,heading('Attributes'),attributeTable(span[ATTRS]));
+  if(span[EVENTS].length){{
+    content.append(heading('Events'));
+    const events=document.createElement('ul');
+    events.className='events';
+    span[EVENTS].forEach(event=>{{
+      const item=document.createElement('li');
+      item.append(`${{formatDuration(Math.max(0,event[1]))}} · ${{event[0]}}`);
+      item.append(attributeTable(event[2]));
+      events.append(item);
+    }});
+    content.append(events);
+  }}
+  const resources=document.createElement('details');
+  const resourceSummary=document.createElement('summary');
+  resourceSummary.textContent='Resource attributes';
+  resources.append(resourceSummary,attributeTable(model.r[span[RESOURCE]]));
+  content.append(resources);
+  detailContent.replaceChildren(content);
+  detailPanel.hidden=false;
+  renderRows();
+}}
+
+function initialize(decoded){{
+  model=decoded;
+  spans=model.s;
+  children=spans.map(()=>[]);
+  roots=[];
+  spans.forEach((span,index)=>{{
+    if(span[PARENT]>=0&&span[PARENT]<spans.length)children[span[PARENT]].push(index);
+    else roots.push(index);
+  }});
+  const reachable=new Set();
+  function markReachable(start){{
+    const pending=[start];
+    while(pending.length){{
+      const index=pending.pop();
+      if(reachable.has(index))continue;
+      reachable.add(index);
+      pending.push(...children[index]);
+    }}
+  }}
+  roots.forEach(markReachable);
+  spans.forEach((span,index)=>{{
+    if(!reachable.has(index)){{
+      roots.push(index);
+      markReachable(index);
+    }}
+  }});
+  resetDefaults();
+  filterElement.disabled=false;
+  document.getElementById('expand').disabled=false;
+  document.getElementById('collapse').disabled=false;
+  renderRows();
+}}
+
+let filterTimer;
+filterElement.addEventListener('input',()=>{{
+  clearTimeout(filterTimer);
+  filterTimer=setTimeout(applyFilter,120);
 }});
 document.getElementById('expand').addEventListener('click',()=>{{
-  spans.forEach(span=>span.open=true);
-  document.querySelectorAll('.span-metadata').forEach(detail=>detail.open=true);
+  spans.forEach((span,index)=>{{if(children[index].length)expanded.add(index)}});
+  renderRows();
 }});
 document.getElementById('collapse').addEventListener('click',()=>{{
-  spans.forEach(span=>span.open=false);
-  document.querySelectorAll('.span-metadata').forEach(detail=>detail.open=false);
+  expanded.clear();
+  renderRows();
+}});
+document.getElementById('detail-close').addEventListener('click',()=>{{
+  selected=null;
+  detailPanel.hidden=true;
+  renderRows();
+}});
+
+decodeModel().then(initialize).catch(error=>{{
+  const loading=document.getElementById('loading');
+  loading.textContent=`Unable to load trace: ${{error.message}}`;
+  loading.style.color='var(--bad)';
 }});
 </script>
 </body></html>

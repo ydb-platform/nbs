@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import base64
 import gzip
 import json
-from html.parser import HTMLParser
+import re
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -16,6 +17,7 @@ from scripts.tests.ya_trace_report import (
 from scripts.trace_report import (
     Span,
     SpanEvent,
+    _trace_model,
     read_otlp_jsonl,
     render_html,
     stable_hex_id,
@@ -73,14 +75,22 @@ def test_otlp_round_trip_and_static_html_escaping(tmp_path: Path) -> None:
 
     report = (tmp_path / manifest["html_file"]).read_text()
     assert "<script>alert" not in report
-    assert "&lt;script&gt;alert" in report
+    assert "&lt;sha&gt;" in report
     assert "<h1>&lt;trace&gt;</h1>" in report
     assert "default-src &#x27;none&#x27;" not in report
+    payload = re.search(
+        r'<script id="trace-data"[^>]*>([^<]+)</script>',
+        report,
+    )
+    assert payload
+    model = json.loads(gzip.decompress(base64.b64decode(payload.group(1))))
+    assert model["s"][0][5]["string"] == '<script>alert("attribute")</script>'
     assert manifest["span_count"] == 1
 
 
 def test_renderer_marks_error_spans_and_supports_empty_input() -> None:
-    assert 'class="span error"' in render_html([make_span(status_code=2)])
+    assert _trace_model([make_span(status_code=2)])["s"][0][7] == 2
+    assert 'id="trace-data"' in render_html([make_span(status_code=2)])
     assert "No spans found" in render_html([])
 
 
@@ -113,59 +123,25 @@ def test_renderer_collapses_build_and_test_groups_by_default() -> None:
         ),
     ]
 
-    class DetailsParser(HTMLParser):
-        def __init__(self) -> None:
-            super().__init__()
-            self.stack: list[str | None] = []
-            self.details: dict[
-                str,
-                tuple[dict[str, str | None], str | None],
-            ] = {}
-
-        def handle_starttag(
-            self,
-            tag: str,
-            attrs: list[tuple[str, str | None]],
-        ) -> None:
-            if tag != "details":
-                return
-            values = dict(attrs)
-            scope = values.get("data-scope")
-            parent_scope = next(
-                (value for value in reversed(self.stack) if value),
-                None,
-            )
-            if scope:
-                self.details[scope] = (values, parent_scope)
-            self.stack.append(scope)
-
-        def handle_endtag(self, tag: str) -> None:
-            if tag == "details":
-                self.stack.pop()
-
+    model = _trace_model(spans)
+    encoded = {span[2]: span for span in model["s"]}
+    indexes = {span[2]: index for index, span in enumerate(model["s"])}
     report = render_html(spans)
-    parser = DetailsParser()
-    parser.feed(report)
-
-    root, _ = parser.details["ya.run"]
-    build, build_parent = parser.details["ya.build"]
-    build_node, build_node_parent = parser.details["ya.build.node"]
-    chunk, chunk_parent = parser.details["ya.chunk"]
-    test, test_parent = parser.details["ya.test"]
-    assert "open" in root
-    assert root["data-default-open"] == "true"
-    assert "open" not in build
-    assert build["data-default-open"] == "false"
-    assert "open" not in chunk
-    assert chunk["data-default-open"] == "false"
-    assert build_parent == "ya.run"
-    assert build_node_parent == "ya.build"
-    assert chunk_parent == "ya.run"
-    assert test_parent == "ya.chunk"
-    assert build_node["data-default-open"] == "false"
-    assert test["data-default-open"] == "false"
-    assert "querySelectorAll('.span')" in report
-    assert "group.open=true" in report
+    assert encoded["build operations"][1] == indexes["root"]
+    assert encoded["compile target"][1] == indexes["build operations"]
+    assert (
+        encoded["cloud/tasks/storage/tests [tests chunk 1/1]"][1]
+        == indexes["root"]
+    )
+    assert (
+        encoded["TestSuite::test_case"][1]
+        == indexes["cloud/tasks/storage/tests [tests chunk 1/1]"]
+    )
+    assert "const COLLAPSED_SCOPES=new Set(['ya.build','ya.chunk'])" in report
+    assert "const PAGE_SIZE=200" in report
+    assert "const INITIAL_RENDER_LIMIT=2000" in report
+    assert "new DecompressionStream('gzip')" in report
+    assert "compile target" not in report
 
 
 def test_reader_rejects_invalid_ids(tmp_path: Path) -> None:
