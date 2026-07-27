@@ -145,10 +145,9 @@ void TBootstrapServer::InitComponents()
     }
 
     if (certPathList.empty()) {
-        if (Configs->ServerConfig->GetSecurePort()) {
-            ythrow yexception()
-                << "Secure port is configured without certificates";
-        }
+        Y_ENSURE(
+            !Configs->ServerConfig->GetSecurePort(),
+            "Secure port is configured without certificates");
 
         CertificateProvider = CreateCertificateProviderStub();
     } else {

@@ -142,9 +142,12 @@ ICertificateProviderPtr CreateClientCertificateProvider(
         }
     };
 
-    if (config->GetSecurePort() && certPathList.empty()) {
-        ythrow yexception()
-            << "Secure client port is configured without certificates";
+    if (certPathList.empty() && !config->GetRootCertsFile()) {
+        Y_ENSURE(
+            !config->GetSecurePort(),
+            "Secure client port is configured without certificates");
+
+        return CreateCertificateProviderStub();
     }
 
     return factory.Build(
@@ -191,24 +194,22 @@ public:
 
     void Start() override
     {
-        for (const auto& [name, certificateProvider]: CertificateProviders) {
-            Y_UNUSED(name);
+        for (const auto& [_, certificateProvider]: CertificateProviders) {
             certificateProvider->Start();
         }
 
-        for (const auto& [name, endpoint]: Endpoints) {
+        for (const auto& [_, endpoint]: Endpoints) {
             endpoint->Start();
         }
     }
 
     void Stop() override
     {
-        for (const auto& [name, endpoint]: Endpoints) {
+        for (const auto& [_, endpoint]: Endpoints) {
             endpoint->Stop();
         }
 
-        for (const auto& [name, certificateProvider]: CertificateProviders) {
-            Y_UNUSED(name);
+        for (const auto& [_, certificateProvider]: CertificateProviders) {
             certificateProvider->Stop();
         }
     }
@@ -478,10 +479,10 @@ void TBootstrapVhost::InitComponents()
     }
 
     if (certPathList.empty()) {
-        if (Configs->ServerConfig->GetSecurePort()) {
-            ythrow yexception()
-                << "Secure port is configured without certificates";
-        }
+        Y_ENSURE(
+            !Configs->ServerConfig->GetSecurePort(),
+            "Secure port is configured without certificates");
+
 
         CertificateProvider = CreateCertificateProviderStub();
     } else {

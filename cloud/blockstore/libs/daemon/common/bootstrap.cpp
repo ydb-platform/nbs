@@ -315,25 +315,28 @@ void TBootstrapBase::Init()
         });
     }
 
-    if (Configs->ServerConfig->GetSecurePort() && certPathList.empty()) {
-        ythrow yexception()
-            << "Secure port is configured without certificates";
+    if (certPathList.empty()) {
+        Y_ENSURE(
+            !Configs->ServerConfig->GetSecurePort(),
+            "Secure port is configured without certificates");
+
+        CertificateProvider = CreateCertificateProviderStub();
+    } else {
+        // Below we use explicit name "BLOCKSTORE_TLS_CERTIFICATE_PROVIDER"
+        // because overwise it would break server_lightweight build.
+        // GetComponentName() depend on kikimr which is prohibited in
+        // server_lightweight.
+
+        CertificateProvider = CreateCertificateProvider(
+            Logging,
+            "BLOCKSTORE_TLS_CERTIFICATE_PROVIDER",
+            Scheduler,
+            LongRunningTaskExecutor,
+            serverGroup,
+            Configs->ServerConfig->GetRootCertsFile(),
+            std::move(certPathList),
+            Configs->ServerConfig->GetRefreshCertsPeriod());
     }
-
-    // Below we use explicit name "BLOCKSTORE_TLS_CERTIFICATE_PROVIDER"
-    // because overwise it would break server_lightweight build.
-    // GetComponentName() depend on kikimr which is prohibited in
-    // server_lightweight.
-
-    CertificateProvider = CreateCertificateProvider(
-        Logging,
-        "BLOCKSTORE_TLS_CERTIFICATE_PROVIDER",
-        Scheduler,
-        LongRunningTaskExecutor,
-        serverGroup,
-        Configs->ServerConfig->GetRootCertsFile(),
-        std::move(certPathList),
-        Configs->ServerConfig->GetRefreshCertsPeriod());
 
     for (auto& event: PostponedCriticalEvents) {
         ReportCriticalEvent(
