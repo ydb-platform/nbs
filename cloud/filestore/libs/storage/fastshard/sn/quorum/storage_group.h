@@ -2,18 +2,33 @@
 
 #include <cloud/filestore/libs/storage/fastshard/sn/iface/storage_node.h>
 
+#include <util/generic/vector.h>
+
 #include <memory>
 
 namespace NCloud::NFileStore::NStorage::NFastShard {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TPageGroupRef
+{
+    ui64 FirstPageNo = 0;
+    ui64 PageCount = 0;
+    ui64 PageSize = 0;
+};
+
+struct TPageGroup
+{
+    ui64 FirstPageNo = 0;
+    TVector<TString> Content;
+};
+
 /**
- * Storage group iface. Right now it's basically the same iface as IStorageNode
- * but it's better to keep a separate declaration to highlight that these things
- * are actually different entities. Storage groups are supposed to provide
- * some extra non-functional features on top of multiple storage nodes - like
- * redundancy or hedged requests.
+ * Storage group iface. Storage groups are supposed to provide some extra
+ * non-functional features on top of multiple storage devices - like redundancy
+ * or hedged requests. Storage groups are also responsible for locking the
+ * devices, replaying the tail of the log, maintaining log-sequence-number and
+ * in general for the relative consistency of the devices.
  *
  * The interface is synchronous and is supposed to be used from a fiber.
  */
@@ -21,17 +36,24 @@ struct IStorageGroup
 {
     virtual ~IStorageGroup() = default;
 
-#define SN_DECLARE_METHOD(name, ...)                                           \
-    virtual NProto::T##name##Response name(                                    \
-        NProto::T##name##Request request) = 0;                                 \
-// SN_DECLARE_METHOD
-
-    SN_METHODS(SN_DECLARE_METHOD)
-
-#undef SN_DECLARE_METHOD
+    virtual NProto::TError AcquireDevices() = 0;
+    virtual NProto::TError ReleaseDevices() = 0;
+    virtual NProto::TError WriteLogRecord(
+        NProto::TDeviceRequestHeaders headers,
+        TVector<TPageGroup> pageGroups) = 0;
+    virtual NProto::TError ReadPages(
+        NProto::TDeviceRequestHeaders headers,
+        const TVector<TPageGroupRef>& pageGroupRefs,
+        TVector<TPageGroup>* pageGroups) = 0;
 };
 
 using IStorageGroupPtr = std::shared_ptr<IStorageGroup>;
+
+struct TStorageDevice
+{
+    IStorageNodePtr Node;
+    TString DeviceUUID;
+};
 
 /**
  * Returns an IStorageGroup which mirrors each write into all storage nodes and
@@ -44,6 +66,6 @@ using IStorageGroupPtr = std::shared_ptr<IStorageGroup>;
  * @return - The constructed group.
  */
 IStorageGroupPtr CreateNaiveMirroredStorageGroup(
-    TVector<IStorageNodePtr> nodes);
+    TVector<TStorageDevice> devices);
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard
