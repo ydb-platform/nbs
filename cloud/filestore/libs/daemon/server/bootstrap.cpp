@@ -17,6 +17,7 @@
 #include <cloud/filestore/libs/service_local/config.h>
 #include <cloud/filestore/libs/service_local/service.h>
 #include <cloud/filestore/libs/service_null/service.h>
+#include <cloud/filestore/libs/storage/api/components.h>
 #include <cloud/filestore/libs/storage/core/config.h>
 #include <cloud/filestore/libs/storage/core/probes.h>
 #include <cloud/filestore/libs/storage/fastshard/bootstrap/core.h>
@@ -139,10 +140,28 @@ void TBootstrapServer::InitComponents()
         });
     }
 
-    if (!certPathList.empty()) {
-        CertificateProvider = CreateStaticCertificateProvider(
+    if (Configs->ServerConfig->GetRefreshCertsPeriod()) {
+        LongRunningTaskExecutor = CreateLongRunningTaskExecutor("CertRefresh");
+    }
+
+    if (certPathList.empty()) {
+        if (Configs->ServerConfig->GetSecurePort()) {
+            ythrow yexception()
+                << "Secure port is configured without certificates";
+        }
+
+        CertificateProvider = CreateCertificateProviderStub();
+    } else {
+        CertificateProvider = CreateCertificateProvider(
+            Logging,
+            GetComponentName(
+                NStorage::TFileStoreComponents::TLS_CERTIFICATE_PROVIDER),
+            Scheduler,
+            LongRunningTaskExecutor,
+            serverCounters,
             Configs->ServerConfig->GetRootCertsFile(),
-            std::move(certPathList));
+            std::move(certPathList),
+            Configs->ServerConfig->GetRefreshCertsPeriod());
     }
 
     Server = NServer::CreateServer(
