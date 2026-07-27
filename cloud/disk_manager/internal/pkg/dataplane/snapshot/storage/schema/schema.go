@@ -77,7 +77,7 @@ func Create(
 	err = db.CreateOrAlterTable(
 		ctx,
 		config.GetStorageFolder(),
-		"chunk_blobs",
+		config.GetChunkBlobsTableName(),
 		persistence.NewCreateTableDescription(
 			persistence.WithColumn("shard_id", persistence.Optional(persistence.TypeUint64)),
 			persistence.WithColumn("chunk_id", persistence.Optional(persistence.TypeUTF8)),
@@ -95,7 +95,7 @@ func Create(
 	if err != nil {
 		return err
 	}
-	logging.Info(ctx, "Created chunk_blobs table")
+	logging.Info(ctx, "Created %v table", config.GetChunkBlobsTableName())
 
 	err = db.CreateOrAlterTable(
 		ctx,
@@ -168,11 +168,11 @@ func Drop(
 	}
 	logging.Info(ctx, "Dropped incremental table")
 
-	err = db.DropTable(ctx, config.GetStorageFolder(), "chunk_blobs")
+	err = db.DropTable(ctx, config.GetStorageFolder(), config.GetChunkBlobsTableName())
 	if err != nil {
 		return err
 	}
-	logging.Info(ctx, "Dropped chunk_blobs table")
+	logging.Info(ctx, "Dropped %v table", config.GetChunkBlobsTableName())
 
 	err = db.DropTable(ctx, config.GetStorageFolder(), "chunk_map")
 	if err != nil {

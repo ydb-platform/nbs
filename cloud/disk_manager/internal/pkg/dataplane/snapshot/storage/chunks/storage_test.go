@@ -54,6 +54,7 @@ func newStorage(
 			config.GetS3Bucket(),
 			config.GetChunkBlobsS3KeyPrefix(),
 			tablesPath,
+			config.GetChunkBlobsTableName(),
 			metrics,
 			map[string]uint32{
 				"gzip": 0,
@@ -63,6 +64,7 @@ func newStorage(
 		return NewStorageYDB(
 			db,
 			tablesPath,
+			config.GetChunkBlobsTableName(),
 			metrics,
 			map[string]uint32{
 				"gzip": 0,
@@ -177,13 +179,13 @@ func chunkDataExistsInYDB(
 
 	res, err := db.ExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
-		pragma TablePathPrefix = "%v";
+		pragma TablePathPrefix = "%[1]v";
 		declare $chunk_id as Utf8;
 
 		select *
-		from chunk_blobs
+		from %[2]v
 		where chunk_id = $chunk_id and referer = "";
-	`, db.AbsolutePath(config.GetStorageFolder())),
+	`, db.AbsolutePath(config.GetStorageFolder()), config.GetChunkBlobsTableName()),
 		persistence.ValueParam("$chunk_id", persistence.UTF8Value(chunkID)),
 	)
 	require.NoError(t, err)
@@ -225,15 +227,15 @@ func deleteMetadata(
 
 	_, err := db.ExecuteRW(ctx, fmt.Sprintf(`
 		--!syntax_v1
-		pragma TablePathPrefix = "%v";
+		pragma TablePathPrefix = "%[1]v";
 		pragma AnsiInForEmptyOrNullableItemsCollections;
 		declare $chunk_id as Utf8;
 
-		delete from chunk_blobs
+		delete from %[2]v
 		where chunk_id = $chunk_id and
 			referer = "" and
 			refcnt <= 1;
-	`, db.AbsolutePath(config.GetStorageFolder())),
+	`, db.AbsolutePath(config.GetStorageFolder()), config.GetChunkBlobsTableName()),
 		persistence.ValueParam("$chunk_id", persistence.UTF8Value(chunkID)),
 	)
 	require.NoError(t, err)
@@ -251,6 +253,25 @@ func TestWriteIdempotency(t *testing.T) {
 				_, _, err := writeTestChunk(t, ctx, storage)
 				require.NoError(t, err)
 			}
+		})
+	}
+}
+
+func TestWriteChunkWithOverriddenTableName(t *testing.T) {
+	for _, testCase := range testCases() {
+		t.Run(testCase.name, func(t *testing.T) {
+			ctx, db, s3, config := setupEnvironment(t)
+
+			tableName := "chunk_blobs_v2"
+			config.ChunkBlobsTableName = &tableName
+			err := schema.Create(ctx, config, db, s3, false /* dropUnusedColumns */)
+			require.NoError(t, err)
+
+			storage := newStorage(db, s3, config, testCase.useS3)
+
+			_, chunkID, err := writeTestChunk(t, ctx, storage)
+			require.NoError(t, err)
+			require.True(t, chunkDataExists(t, ctx, s3, db, config, chunkID, testCase.useS3))
 		})
 	}
 }

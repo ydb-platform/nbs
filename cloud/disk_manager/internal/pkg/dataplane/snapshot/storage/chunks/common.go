@@ -14,16 +14,19 @@ import (
 type storageCommon struct {
 	db         *persistence.YDBClient
 	tablesPath string
+	tableName  string
 }
 
 func newStorageCommon(
 	db *persistence.YDBClient,
 	tablesPath string,
+	tableName string,
 ) storageCommon {
 
 	return storageCommon{
 		db:         db,
 		tablesPath: tablesPath,
+		tableName:  tableName,
 	}
 }
 
@@ -37,7 +40,7 @@ func (s *storageCommon) writeToChunkBlobs(
 
 	_, err := s.db.ExecuteRW(ctx, fmt.Sprintf(`
 		--!syntax_v1
-		pragma TablePathPrefix = "%v";
+		pragma TablePathPrefix = "%[1]v";
 		declare $shard_id as Uint64;
 		declare $referer as Utf8;
 		declare $chunk_id as Utf8;
@@ -45,11 +48,11 @@ func (s *storageCommon) writeToChunkBlobs(
 		declare $checksum as Uint32;
 		declare $compression as Utf8;
 
-		upsert into chunk_blobs (shard_id, chunk_id, referer, data, refcnt, checksum, compression)
+		upsert into %[2]v (shard_id, chunk_id, referer, data, refcnt, checksum, compression)
 		values
 			($shard_id, $chunk_id, "", $data, cast(1 as Uint32), $checksum, $compression),
 			($shard_id, $chunk_id, $referer, null, null, null, null)
-	`, s.tablesPath),
+	`, s.tablesPath, s.tableName),
 		persistence.ValueParam("$shard_id", persistence.Uint64Value(makeShardID(chunk.ID))),
 		persistence.ValueParam("$chunk_id", persistence.UTF8Value(chunk.ID)),
 		persistence.ValueParam("$referer", persistence.UTF8Value(referer)),
@@ -69,14 +72,14 @@ func (s *storageCommon) refChunk(
 	// We use |referer| column to implement `exactly once` update semantics.
 	_, err := s.db.ExecuteRW(ctx, fmt.Sprintf(`
 		--!syntax_v1
-		pragma TablePathPrefix = "%v";
+		pragma TablePathPrefix = "%[1]v";
 		declare $shard_id as Uint64;
 		declare $chunk_id as Utf8;
 		declare $referer as Utf8;
 
 		$existing = (
 			select chunk_id
-			from chunk_blobs
+			from %[2]v
 			where shard_id = $shard_id and
 				chunk_id = $chunk_id and
 				referer = $referer
@@ -88,19 +91,19 @@ func (s *storageCommon) refChunk(
 				chunk_id,
 				referer,
 				refcnt + cast(1 as Uint32) as refcnt,
-			from chunk_blobs
+			from %[2]v
 			where shard_id = $shard_id and
 				chunk_id = $chunk_id and
 				referer = "" and
 				$chunk_id not in $existing
 		);
 
-		update chunk_blobs
+		update %[2]v
 		on select * from $to_update;
 
-		upsert into chunk_blobs (shard_id, chunk_id, referer)
+		upsert into %[2]v (shard_id, chunk_id, referer)
 		values ($shard_id, $chunk_id, $referer);
-	`, s.tablesPath),
+	`, s.tablesPath, s.tableName),
 		persistence.ValueParam("$shard_id", persistence.Uint64Value(makeShardID(chunkID))),
 		persistence.ValueParam("$chunk_id", persistence.UTF8Value(chunkID)),
 		persistence.ValueParam("$referer", persistence.UTF8Value(referer)),
@@ -127,7 +130,7 @@ func (s *storageCommon) unrefChunk(
 	// Chunk with zero ref count is deleted.
 	res, err := s.db.ExecuteRW(ctx, fmt.Sprintf(`
 		--!syntax_v1
-		pragma TablePathPrefix = "%v";
+		pragma TablePathPrefix = "%[1]v";
 		pragma AnsiInForEmptyOrNullableItemsCollections;
 		declare $shard_id as Uint64;
 		declare $chunk_id as Utf8;
@@ -135,7 +138,7 @@ func (s *storageCommon) unrefChunk(
 
 		$existing = (
 			select chunk_id
-			from chunk_blobs
+			from %[2]v
 			where shard_id = $shard_id and
 				chunk_id = $chunk_id and
 				referer = $referer
@@ -147,7 +150,7 @@ func (s *storageCommon) unrefChunk(
 				chunk_id,
 				referer,
 				refcnt - cast(1 as Uint32) as refcnt,
-			from chunk_blobs
+			from %[2]v
 			where shard_id = $shard_id and
 				chunk_id = $chunk_id and
 				referer = "" and
@@ -160,7 +163,7 @@ func (s *storageCommon) unrefChunk(
 				shard_id,
 				chunk_id,
 				referer,
-			from chunk_blobs
+			from %[2]v
 			where shard_id = $shard_id and
 				chunk_id = $chunk_id and
 				referer = "" and
@@ -171,30 +174,30 @@ func (s *storageCommon) unrefChunk(
 				shard_id,
 				chunk_id,
 				referer,
-			from chunk_blobs
+			from %[2]v
 			where shard_id = $shard_id and
 				chunk_id = $chunk_id and
 				referer = $referer
 		);
 
 		select refcnt
-		from chunk_blobs
+		from %[2]v
 		where shard_id = $shard_id and
 			chunk_id = $chunk_id and
 			referer = "";
 
 		select count(*) as refs_to_delete
-		from chunk_blobs
+		from %[2]v
 		where shard_id = $shard_id and
 			chunk_id = $chunk_id and
 			referer = $referer;
 
-		update chunk_blobs
+		update %[2]v
 		on select * from $to_update;
 
-		delete from chunk_blobs
+		delete from %[2]v
 		on select * from $to_delete;
-	`, s.tablesPath),
+	`, s.tablesPath, s.tableName),
 		persistence.ValueParam("$shard_id", persistence.Uint64Value(makeShardID(chunkID))),
 		persistence.ValueParam("$chunk_id", persistence.UTF8Value(chunkID)),
 		persistence.ValueParam("$referer", persistence.UTF8Value(referer)),

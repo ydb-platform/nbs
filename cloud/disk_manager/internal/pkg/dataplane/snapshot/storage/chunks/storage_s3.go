@@ -32,12 +32,13 @@ func NewStorageS3(
 	bucket string,
 	keyPrefix string,
 	tablesPath string,
+	tableName string,
 	metrics metrics.Metrics,
 	probeCompressionPercentage map[string]uint32,
 ) *StorageS3 {
 
 	return &StorageS3{
-		storageCommon:              newStorageCommon(db, tablesPath),
+		storageCommon:              newStorageCommon(db, tablesPath, tableName),
 		s3:                         s3,
 		bucket:                     bucket,
 		keyPrefix:                  keyPrefix,

@@ -29,6 +29,7 @@ func NewStorage(
 			config.GetS3Bucket(),
 			config.GetChunkBlobsS3KeyPrefix(),
 			tablesPath,
+			config.GetChunkBlobsTableName(),
 			metrics.New(metricsRegistry, "s3"),
 			probeCompressionPercentage,
 		)
@@ -46,6 +47,7 @@ func NewStorage(
 		chunkStorageYDB: chunks.NewStorageYDB(
 			db,
 			tablesPath,
+			config.GetChunkBlobsTableName(),
 			ydbMetrics,
 			probeCompressionPercentage,
 		),
