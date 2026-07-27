@@ -146,7 +146,6 @@ void TModifyTagsActionActor::Bootstrap(const TActorContext& ctx)
         }
     }
 
-    VolumeConfig.SetDiskId(Request.GetDiskId());
     if (Request.GetConfigVersion()) {
         VolumeConfig.SetVersion(Request.GetConfigVersion());
     }
@@ -158,14 +157,18 @@ void TModifyTagsActionActor::DescribeVolume(const TActorContext& ctx)
 {
     Become(&TThis::StateDescribeVolume);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
         "Sending describe request for volume %s",
         Request.GetDiskId().Quote().c_str());
 
     NCloud::Send(
         ctx,
         MakeSSProxyServiceId(),
-        std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(Request.GetDiskId()));
+        std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(
+            Request.GetDiskId(),
+            true));
 }
 
 void TModifyTagsActionActor::AlterVolume(

@@ -95,7 +95,6 @@ void TSetVhostDiscardFlagActor::Bootstrap(const TActorContext& ctx)
         return;
     }
 
-    VolumeConfig.SetDiskId(DiskId);
     if (ConfigVersion) {
         VolumeConfig.SetVersion(ConfigVersion);
     }
@@ -103,8 +102,7 @@ void TSetVhostDiscardFlagActor::Bootstrap(const TActorContext& ctx)
     DescribeVolume(ctx);
 }
 
-void TSetVhostDiscardFlagActor::DescribeVolume(
-    const TActorContext& ctx)
+void TSetVhostDiscardFlagActor::DescribeVolume(const TActorContext& ctx)
 {
     Become(&TThis::StateDescribeVolume);
 
@@ -117,7 +115,7 @@ void TSetVhostDiscardFlagActor::DescribeVolume(
     NCloud::Send(
         ctx,
         MakeSSProxyServiceId(),
-        std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(DiskId));
+        std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(DiskId, true));
 }
 
 void TSetVhostDiscardFlagActor::AlterVolume(
