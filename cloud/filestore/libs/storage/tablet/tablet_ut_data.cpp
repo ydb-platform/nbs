@@ -8723,7 +8723,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.DestroyHandle(handle);
     }
 
-    TABLET_TEST(ShouldReturnBackendInfoForIOForOverloadedTabletActor)
+    TABLET_TEST_4K_ONLY(ShouldReturnBackendInfoForIOForOverloadedTabletActor)
     {
         const ui64 wbt = 64 * tabletConfig.BlockSize;
         const ui64 overloadThreshold = 1;
