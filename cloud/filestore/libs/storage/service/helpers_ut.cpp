@@ -10,6 +10,8 @@
 
 #include <contrib/ydb/core/protos/filestore_config.pb.h>
 
+#include <util/generic/string.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 namespace {
@@ -79,6 +81,99 @@ Y_UNIT_TEST_SUITE(THelpers)
 
         Comparator.Compare(TargetFileStore, fileStore);
         UNIT_ASSERT_VALUES_EQUAL("", ReportDiff);
+    }
+
+    Y_UNIT_TEST(ShouldTreatEmptyInplaceBitmapAsAllZeroes)
+    {
+        TString data;
+
+        const TInplaceBitmap bitmap(data);
+
+        UNIT_ASSERT(!bitmap.Get(0));
+        UNIT_ASSERT(!bitmap.Get(1));
+        UNIT_ASSERT(!bitmap.Get(7));
+        UNIT_ASSERT(!bitmap.Get(8));
+        UNIT_ASSERT(!bitmap.Get(63));
+        UNIT_ASSERT(!bitmap.Get(64));
+        UNIT_ASSERT(!bitmap.Get(100'000));
+    }
+
+    Y_UNIT_TEST(ShouldSetAndReadInplaceBitmapBits)
+    {
+        TString data;
+        TMutableInplaceBitmap bitmap(data);
+
+        bitmap.Set(0);
+        UNIT_ASSERT_VALUES_EQUAL(1, data.size());
+        UNIT_ASSERT_VALUES_EQUAL(0x01, static_cast<ui8>(data[0]));
+
+        bitmap.Set(7);
+        UNIT_ASSERT_VALUES_EQUAL(1, data.size());
+        UNIT_ASSERT_VALUES_EQUAL(0x81, static_cast<ui8>(data[0]));
+
+        bitmap.Set(8);
+        UNIT_ASSERT_VALUES_EQUAL(2, data.size());
+        UNIT_ASSERT_VALUES_EQUAL(0x01, static_cast<ui8>(data[1]));
+
+        bitmap.Set(63);
+        UNIT_ASSERT_VALUES_EQUAL(8, data.size());
+        UNIT_ASSERT_VALUES_EQUAL(0x80, static_cast<ui8>(data[7]));
+
+        bitmap.Set(64);
+        bitmap.Set(65);
+        UNIT_ASSERT_VALUES_EQUAL(9, data.size());
+        UNIT_ASSERT_VALUES_EQUAL(0x03, static_cast<ui8>(data[8]));
+
+        UNIT_ASSERT(bitmap.Get(0));
+        UNIT_ASSERT(bitmap.Get(7));
+        UNIT_ASSERT(bitmap.Get(8));
+        UNIT_ASSERT(bitmap.Get(63));
+        UNIT_ASSERT(bitmap.Get(64));
+        UNIT_ASSERT(bitmap.Get(65));
+
+        UNIT_ASSERT(!bitmap.Get(1));
+        UNIT_ASSERT(!bitmap.Get(6));
+        UNIT_ASSERT(!bitmap.Get(9));
+        UNIT_ASSERT(!bitmap.Get(62));
+        UNIT_ASSERT(!bitmap.Get(66));
+    }
+
+    Y_UNIT_TEST(ShouldExposeMutableInplaceBitmapChangesViaReadonlyView)
+    {
+        TString data;
+        const TInplaceBitmap readonlyBitmap(data);
+        TMutableInplaceBitmap mutableBitmap(data);
+
+        UNIT_ASSERT(!readonlyBitmap.Get(25));
+
+        mutableBitmap.Set(25);
+
+        UNIT_ASSERT(readonlyBitmap.Get(25));
+        UNIT_ASSERT(mutableBitmap.Get(25));
+    }
+
+    Y_UNIT_TEST(ShouldClearInplaceBitmap)
+    {
+        TString data;
+        TMutableInplaceBitmap bitmap(data);
+
+        bitmap.Set(3);
+        bitmap.Set(100);
+
+        UNIT_ASSERT(!data.empty());
+        UNIT_ASSERT(bitmap.Get(3));
+        UNIT_ASSERT(bitmap.Get(100));
+
+        bitmap.Clear();
+
+        UNIT_ASSERT(data.empty());
+        UNIT_ASSERT(!bitmap.Get(3));
+        UNIT_ASSERT(!bitmap.Get(100));
+
+        bitmap.Set(5);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, data.size());
+        UNIT_ASSERT(bitmap.Get(5));
     }
 }
 

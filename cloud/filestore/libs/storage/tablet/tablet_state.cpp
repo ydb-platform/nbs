@@ -286,6 +286,14 @@ void TIndexTabletState::SetCompressNodeRef(
     db.WriteFileSystem(FileSystem);
 }
 
+void TIndexTabletState::SetResizeState(
+    TIndexTabletDatabase& db,
+    const NProtoPrivate::TFileSystemResizeState& resizeState)
+{
+    *FileSystem.MutableResizeState() = resizeState;
+    db.WriteFileSystem(FileSystem);
+}
+
 const NProto::TFileStorePerformanceProfile& TIndexTabletState::GetPerformanceProfile() const
 {
     if (FileSystem.HasPerformanceProfile() &&
