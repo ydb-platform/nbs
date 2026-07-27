@@ -1,6 +1,7 @@
 #include "shard.h"
 
 #include "page_store.h"
+#include "persistent_bitmap.h"
 #include "persistent_hash_table.h"
 
 #include <cloud/filestore/libs/service/error.h>
@@ -600,26 +601,25 @@ public:
 class TPageAllocator
 {
 private:
-    //
-    // TODO(#5894) TODO(#5895)
-    // Implement a persistent bitmap, use it here to track allocated clusters.
-    //
-    // Current implementation is a dummy one.
-    //
-
-    ui64 PageClusterNo = 0;
-    ui64 PageClusterCount = 0;
+    std::unique_ptr<TPersistentBitmap> Bitmap;
+    ui64 FirstStoragePageClusterId = 0;
 
 public:
     ui64 Init(ui64 firstPageNo, ui64 pageCount, IPageStorePtr pageStore)
     {
-        PageClusterNo =
-            RoundUp(firstPageNo, PageClusterPageCount) / PageClusterPageCount;
-        PageClusterCount = pageCount / PageClusterPageCount;
+        const ui64 bitsPerPage = TPersistentBitmap::CalcBitsPerPage(PageSize);
+        const ui64 bitmapPageCount =
+            RoundUp(pageCount, bitsPerPage) / bitsPerPage;
+        Bitmap = std::make_unique<TPersistentBitmap>(
+            firstPageNo,
+            bitmapPageCount,
+            PageSize,
+            std::move(pageStore));
+        firstPageNo += bitmapPageCount;
+        FirstStoragePageClusterId =
+            RoundUp(firstPageNo + pageCount, PageClusterPageCount);
 
-        // TODO
-        Y_UNUSED(pageStore);
-        return firstPageNo + pageCount;
+        return bitmapPageCount + pageCount;
     }
 
     NProto::TError Allocate(
@@ -627,17 +627,35 @@ public:
         TVector<ui64>* storagePageClusterIds,
         TWriteContext& writeContext)
     {
-        if (pageClusterCount > PageClusterCount) {
-            return MakeError(E_FS_OUT_OF_SPACE);
-        }
-
         for (ui64 i = 0; i < pageClusterCount; ++i) {
-            storagePageClusterIds->push_back(PageClusterNo++);
-            --PageClusterCount;
+            storagePageClusterIds->push_back(InvalidStoragePageClusterId);
+            auto error = Bitmap->Allocate(
+                writeContext.Lsn,
+                &(*storagePageClusterIds)[i],
+                writeContext.PageGroups);
+            if (HasError(error)) {
+                for (ui64 j = 0; j < i; ++j) {
+                    auto error2 = Bitmap->Reset(
+                        writeContext.Lsn,
+                        (*storagePageClusterIds)[j],
+                        writeContext.PageGroups);
+                    Y_ABORT_UNLESS(
+                        !HasError(error2),
+                        "failed to rollback page allocator bitmap changes"
+                        ", pageClusterId=%lu, error=%s",
+                        (*storagePageClusterIds)[j],
+                        FormatError(error2).c_str());
+                }
+
+                storagePageClusterIds->clear();
+                return error;
+            }
         }
 
-        // TODO
-        Y_UNUSED(writeContext);
+        for (ui64& storagePageClusterId: *storagePageClusterIds) {
+            storagePageClusterId += FirstStoragePageClusterId;
+        }
+
         return {};
     }
 
@@ -645,8 +663,31 @@ public:
         const TVector<ui64>& storagePageClusterIds,
         TWriteContext& writeContext)
     {
-        // TODO
-        Y_UNUSED(storagePageClusterIds, writeContext);
+        for (ui64 i = 0; i < storagePageClusterIds.size(); ++i) {
+            Y_ABORT_UNLESS(
+                storagePageClusterIds[i] >= FirstStoragePageClusterId);
+            auto error = Bitmap->Reset(
+                writeContext.Lsn,
+                storagePageClusterIds[i] - FirstStoragePageClusterId,
+                writeContext.PageGroups);
+            if (HasError(error)) {
+                for (ui64 j = 0; j < i; ++j) {
+                    auto error2 = Bitmap->Set(
+                        writeContext.Lsn,
+                        storagePageClusterIds[j],
+                        writeContext.PageGroups);
+                    Y_ABORT_UNLESS(
+                        !HasError(error2),
+                        "failed to rollback page allocator bitmap changes"
+                        ", pageClusterId=%lu, error=%s",
+                        storagePageClusterIds[j],
+                        FormatError(error2).c_str());
+                }
+
+                return error;
+            }
+        }
+
         return {};
     }
 };
