@@ -8,10 +8,11 @@
 <style>
 :root { color-scheme:light dark; --bg:#fff; --fg:#172033; --muted:#667085;
   --line:#d8dee9; --panel:#f7f8fa; --bar:#6d5ce7; --bad:#d92d20;
-  --selected:#eef2ff; }
+  --selected:#eef2ff; --critical:#b54708; --critical-bg:#fff4e5; }
 @media (prefers-color-scheme:dark) { :root { --bg:#11151c; --fg:#e8edf5;
   --muted:#9ca9bd; --line:#344054; --panel:#1b2230; --bar:#9b8cff;
-  --bad:#ff6b64; --selected:#252d47; } }
+  --bad:#ff6b64; --selected:#252d47; --critical:#fdb022;
+  --critical-bg:#3b2b13; } }
 * { box-sizing:border-box } body { margin:0; background:var(--bg); color:var(--fg);
   font:14px/1.45 system-ui,sans-serif } main { max-width:1800px; margin:auto; padding:1.5rem }
 h1 { margin:.2rem 0 } .muted { color:var(--muted) } .toolbar { position:sticky;
@@ -38,11 +39,17 @@ input,button { color:inherit; background:var(--panel); border:1px solid var(--li
   white-space:nowrap; padding:.35rem .25rem; border:0; background:transparent;
   text-align:left; cursor:default }
 .group-name { cursor:pointer } .group-name:not(:disabled):hover { text-decoration:underline }
+.child-count,.critical-badge { flex:none; margin-left:.3rem; padding:.12rem .45rem;
+  border-radius:999px; font-size:.75rem; white-space:nowrap }
+.child-count { color:var(--muted); background:var(--panel); border:1px solid var(--line) }
+.critical-badge { color:var(--critical); background:var(--critical-bg);
+  border:1px solid currentColor; font-weight:650 }
 .metadata-button { color:var(--muted); font-size:1.05rem; cursor:pointer }
 .duration { text-align:right; font-variant-numeric:tabular-nums }
 .track { position:relative; height:.8rem; background:var(--panel); border-radius:4px }
 .bar { position:absolute; top:0; bottom:0; border-radius:4px; background:var(--bar);
   min-width:2px } .error .bar { background:var(--bad) }
+.critical:not(.error) .bar { background:var(--critical) }
 .error .span-name { color:var(--bad) }
 .more-row { border-top:1px solid var(--line); padding:.35rem .6rem }
 .more-row button { margin-left:var(--indent) }

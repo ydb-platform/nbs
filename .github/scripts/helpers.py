@@ -157,6 +157,7 @@ def find_current_job_url(current_job_name: str, runner_name: str) -> str:
             os.environ["GITHUB_TOKEN"],
             os.environ["GITHUB_REPOSITORY"],
             int(os.environ["GITHUB_RUN_ID"]),
+            base_url=os.environ.get("GITHUB_API_URL", "https://api.github.com"),
         )
     except PYGITHUB_RETRY_EXCEPTIONS:
         return get_run_url()
@@ -844,6 +845,12 @@ def parse_actions_job_url(job_url: str) -> tuple[int, int] | None:
     interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
     retry_exceptions=PYGITHUB_RETRY_EXCEPTIONS,
 )
-def get_jobs_raw(token, repo_full_name, run_id) -> list[WorkflowJob]:
-    repo = github_client(token).get_repo(repo_full_name)
+def get_jobs_raw(
+    token,
+    repo_full_name,
+    run_id,
+    *,
+    base_url: str = "https://api.github.com",
+) -> list[WorkflowJob]:
+    repo = github_client(token, base_url=base_url).get_repo(repo_full_name)
     return list(repo.get_workflow_run(run_id).jobs())

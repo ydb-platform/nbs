@@ -29,10 +29,13 @@ def test_find_current_job_url_falls_back_to_run_url(monkeypatch) -> None:
     monkeypatch.setenv("GITHUB_REPOSITORY", "org/repo")
     monkeypatch.setenv("GITHUB_RUN_ID", "123")
 
-    def fake_get_jobs_raw(token: str, repo: str, run_id: int) -> list[object]:
+    def fake_get_jobs_raw(
+        token: str, repo: str, run_id: int, *, base_url: str
+    ) -> list[object]:
         assert token == "token"
         assert repo == "org/repo"
         assert run_id == 123
+        assert base_url == "https://api.github.com"
         return []
 
     monkeypatch.setattr(h, "get_jobs_raw", fake_get_jobs_raw)
@@ -47,10 +50,13 @@ def test_find_current_job_url_matches_reusable_workflow_job_name(monkeypatch) ->
     monkeypatch.setenv("GITHUB_REPOSITORY", "org/repo")
     monkeypatch.setenv("GITHUB_RUN_ID", "123")
 
-    def fake_get_jobs_raw(token: str, repo: str, run_id: int) -> list[object]:
+    def fake_get_jobs_raw(
+        token: str, repo: str, run_id: int, *, base_url: str
+    ) -> list[object]:
         assert token == "token"
         assert repo == "org/repo"
         assert run_id == 123
+        assert base_url == "https://api.github.com"
         return [
             SimpleNamespace(
                 name=(
@@ -80,10 +86,13 @@ def test_find_current_job_url_prefers_runner_specific_match(monkeypatch) -> None
     monkeypatch.setenv("GITHUB_REPOSITORY", "org/repo")
     monkeypatch.setenv("GITHUB_RUN_ID", "123")
 
-    def fake_get_jobs_raw(token: str, repo: str, run_id: int) -> list[object]:
+    def fake_get_jobs_raw(
+        token: str, repo: str, run_id: int, *, base_url: str
+    ) -> list[object]:
         assert token == "token"
         assert repo == "org/repo"
         assert run_id == 123
+        assert base_url == "https://api.github.com"
         return [
             SimpleNamespace(
                 name="Pooled build and test / Build and test [build_preset=relwithdebinfo component=blockstore]",

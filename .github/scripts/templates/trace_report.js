@@ -46,6 +46,17 @@ function formatDuration(durationNs) {
   return `${hours}h ${minutes - hours * 60}m ${seconds.toFixed(0)}s`;
 }
 
+function childCountLabel(count, scope) {
+  let noun = "item";
+  if (scope === "ya.chunk") noun = "test";
+  else if (scope === "ya.build") noun = "operation";
+  return `${count.toLocaleString()} ${noun}${count === 1 ? "" : "s"}`;
+}
+
+function isCriticalPathTest(span) {
+  return span[ATTRS]["ya.test.critical_path"] === true;
+}
+
 function buildHierarchy(sourceSpans) {
   const sourceChildren = sourceSpans.map(() => []);
   const sourceRoots = [];
@@ -239,8 +250,11 @@ function toggleSpanGroup(index) {
 
 function spanRow(item) {
   const span = spans[item.index];
+  const criticalPathTest = isCriticalPathTest(span);
   const row = document.createElement("div");
   row.className = `span-row${span[STATUS] === 2 ? " error" : ""}${
+    criticalPathTest ? " critical" : ""
+  }${
     selected === item.index ? " selected" : ""
   }`;
   row.dataset.index = String(item.index);
@@ -271,6 +285,21 @@ function spanRow(item) {
   }
   name.textContent = span[NAME];
   name.title = span[NAME];
+  const childCount = document.createElement("span");
+  if (hasChildren) {
+    childCount.className = "child-count";
+    childCount.textContent = childCountLabel(
+      children[item.index].length,
+      model.c[span[SCOPE]],
+    );
+    childCount.title = `${children[item.index].length.toLocaleString()} direct child spans`;
+  }
+  const critical = document.createElement("span");
+  if (criticalPathTest) {
+    critical.className = "critical-badge";
+    critical.textContent = "★ critical";
+    critical.title = "Test is on the ya critical path";
+  }
   const metadata = document.createElement("button");
   metadata.className = "metadata-button";
   metadata.type = "button";
@@ -278,7 +307,10 @@ function spanRow(item) {
   metadata.title = `Show metadata for ${span[NAME]}`;
   metadata.setAttribute("aria-label", metadata.title);
   metadata.addEventListener("click", () => showSpan(item.index));
-  nameCell.append(toggle, name, metadata);
+  nameCell.append(toggle, name);
+  if (hasChildren) nameCell.append(childCount);
+  if (criticalPathTest) nameCell.append(critical);
+  nameCell.append(metadata);
 
   const duration = document.createElement("span");
   duration.className = "duration";
@@ -518,6 +550,8 @@ const traceReportApi = {
   INITIAL_RENDER_LIMIT,
   COLLAPSED_SCOPES,
   formatDuration,
+  childCountLabel,
+  isCriticalPathTest,
   buildHierarchy,
   defaultExpanded,
   spanSearchText,

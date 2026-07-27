@@ -12,8 +12,6 @@ from github.WorkflowJob import WorkflowJob
 
 from scripts.tests.ya_trace_report import (
     build_ya_spans,
-    load_ya_evlog,
-    load_ya_traces,
     resource_attributes,
 )
 from scripts.trace_report import (
@@ -28,6 +26,7 @@ from scripts.trace_report import (
     stable_hex_id,
     write_trace_bundle,
 )
+from scripts.ya_trace import load_ya_evlog, load_ya_traces, ns
 from scripts.workflow_trace_report import (
     build_workflow_spans,
     download_s3_trace_inputs,
@@ -306,8 +305,8 @@ def test_ya_trace_produces_observed_and_inferred_test_spans(
     traces = load_ya_traces(tmp_path / "out")
     spans = build_ya_spans(
         traces,
-        root_start_ns=99_000_000_000,
-        root_end_ns=111_000_000_000,
+        root_start_ns=ns(99_000_000_000),
+        root_end_ns=ns(111_000_000_000),
         exit_code=1,
         resource={"service.name": "test"},
     )
@@ -345,8 +344,8 @@ def test_ya_trace_keeps_started_but_unfinished_test(
     )
     spans = build_ya_spans(
         load_ya_traces(tmp_path),
-        root_start_ns=9_000_000_000,
-        root_end_ns=12_000_000_000,
+        root_start_ns=ns(9_000_000_000),
+        root_end_ns=ns(12_000_000_000),
         exit_code=137,
         resource={},
     )
@@ -417,8 +416,8 @@ def test_ya_trace_preserves_chunks_and_anchors_finish_only_tests(
 
     spans = build_ya_spans(
         load_ya_traces(tmp_path),
-        root_start_ns=99_000_000_000,
-        root_end_ns=121_000_000_000,
+        root_start_ns=ns(99_000_000_000),
+        root_end_ns=ns(121_000_000_000),
         exit_code=0,
         resource={},
     )
@@ -448,21 +447,33 @@ def test_ya_evlog_adds_phases_and_build_nodes(
     )
     trace_path.parent.mkdir(parents=True)
     trace_path.write_text(
-        json.dumps(
-            {
-                "name": "chunk-event",
-                "timestamp": 20,
-                "value": {
-                    "chunk_index": 0,
-                    "nchunks": 1,
-                    "metrics": {
-                        "suite_start_timestamp": 18,
-                        "suite_finish_timestamp": 20,
+        "".join(
+            json.dumps(event) + "\n"
+            for event in (
+                {
+                    "name": "subtest-finished",
+                    "timestamp": 19.5,
+                    "value": {
+                        "class": "Suite",
+                        "subtest": "critical_test",
+                        "status": "good",
+                        "time": 1,
                     },
                 },
-            }
+                {
+                    "name": "chunk-event",
+                    "timestamp": 20,
+                    "value": {
+                        "chunk_index": 0,
+                        "nchunks": 1,
+                        "metrics": {
+                            "suite_start_timestamp": 18,
+                            "suite_finish_timestamp": 20,
+                        },
+                    },
+                },
+            )
         )
-        + "\n"
     )
     evlog_path = tmp_path / "ya_evlog.jsonl"
     evlog_events = [
@@ -589,8 +600,8 @@ def test_ya_evlog_adds_phases_and_build_nodes(
 
     spans = build_ya_spans(
         load_ya_traces(tmp_path / "out"),
-        root_start_ns=9_000_000_000,
-        root_end_ns=31_000_000_000,
+        root_start_ns=ns(9_000_000_000),
+        root_end_ns=ns(31_000_000_000),
         exit_code=0,
         resource={},
         evlog=load_ya_evlog(evlog_path),
@@ -605,6 +616,7 @@ def test_ya_evlog_adds_phases_and_build_nodes(
     build = next(span for span in spans if span.scope_name == "ya.build")
     nodes = [span for span in spans if span.scope_name == "ya.build.node"]
     chunk = next(span for span in spans if span.scope_name == "ya.chunk")
+    test = next(span for span in spans if span.scope_name == "ya.test")
 
     assert set(phases) == {"build_graph_and_tests", "dispatch_build"}
     assert build.parent_span_id == phases["dispatch_build"].span_id
@@ -646,11 +658,19 @@ def test_ya_evlog_adds_phases_and_build_nodes(
     assert compiled.attributes["ya.build.critical_path.reported_seconds"] == 4
     assert root.attributes["ya.build.node.count"] == 4
     assert root.attributes["ya.build.node.span_count"] == 3
+    assert root.attributes["ya.test.critical_path.entry.count"] == 1
+    assert root.attributes["ya.test.critical_path.chunk.count"] == 1
+    assert root.attributes["ya.test.critical_path.span.count"] == 1
+    assert chunk.attributes["ya.test.critical_path"] is True
+    assert chunk.attributes["ya.test.critical_path.granularity"] == "test-chunk"
+    assert test.attributes["ya.test.critical_path"] is True
+    assert test.attributes["ya.test.critical_path.inferred"] is True
+    assert test.attributes["ya.test.critical_path.reported_seconds"] == 2
 
     build_only = build_ya_spans(
         [],
-        root_start_ns=9_000_000_000,
-        root_end_ns=31_000_000_000,
+        root_start_ns=ns(9_000_000_000),
+        root_end_ns=ns(31_000_000_000),
         exit_code=0,
         resource={},
         evlog=load_ya_evlog(evlog_path),

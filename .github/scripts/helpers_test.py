@@ -497,8 +497,9 @@ def test_get_jobs_raw_retries_pygithub_failures(monkeypatch):
             assert repo == "owner/repo"
             return FakeRepo()
 
-    def fake_github_client(token):
+    def fake_github_client(token, *, base_url):
         assert token == "token"
+        assert base_url == "https://api.github.com"
         return FakeGithub()
 
     monkeypatch.setattr(h, "github_client", fake_github_client)

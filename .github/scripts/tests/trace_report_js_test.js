@@ -5,6 +5,8 @@ const {
   FIELDS,
   COLLAPSED_SCOPES,
   formatDuration,
+  childCountLabel,
+  isCriticalPathTest,
   buildHierarchy,
   defaultExpanded,
   matchingVisibility,
@@ -48,6 +50,28 @@ function testDurationFormatting() {
   assert.strictEqual(formatDuration(2_500_000_000), "2.500 s");
   assert.strictEqual(formatDuration(65_000_000_000), "1m 5.0s");
   assert.strictEqual(formatDuration(3_665_000_000_000), "1h 1m 5s");
+}
+
+function testChildCountsAndCriticalPathMarker() {
+  assert.strictEqual(childCountLabel(1, "ya.chunk"), "1 test");
+  assert.strictEqual(childCountLabel(12, "ya.chunk"), "12 tests");
+  assert.strictEqual(childCountLabel(2, "ya.build"), "2 operations");
+  assert.strictEqual(childCountLabel(3, "ya.phase"), "3 items");
+
+  assert.strictEqual(
+    isCriticalPathTest(
+      makeSpan({
+        id: "critical",
+        name: "critical test",
+        attributes: { "ya.test.critical_path": true },
+      }),
+    ),
+    true,
+  );
+  assert.strictEqual(
+    isCriticalPathTest(makeSpan({ id: "regular", name: "regular test" })),
+    false,
+  );
 }
 
 function testCollapsedGroupsAndExpansion() {
@@ -173,6 +197,7 @@ function testCyclesRemainReachable() {
 
 for (const test of [
   testDurationFormatting,
+  testChildCountsAndCriticalPathMarker,
   testCollapsedGroupsAndExpansion,
   testSearchIncludesAttributesAndAncestors,
   testPagingAndGlobalLimit,
