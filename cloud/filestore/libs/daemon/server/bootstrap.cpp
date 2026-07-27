@@ -144,13 +144,13 @@ void TBootstrapServer::InitComponents()
         LongRunningTaskExecutor = CreateLongRunningTaskExecutor("CertRefresh");
     }
 
-    if (certPathList.empty()) {
-        Y_ENSURE(
-            !Configs->ServerConfig->GetSecurePort(),
-            "Secure port is configured without certificates");
-
+    if (!Configs->ServerConfig->GetSecurePort()) {
         CertificateProvider = CreateCertificateProviderStub();
     } else {
+        Y_ENSURE(
+            certPathList,
+            "Secure port is configured without certificates");
+
         CertificateProvider = CreateCertificateProvider(
             Logging,
             GetComponentName(

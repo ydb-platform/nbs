@@ -981,14 +981,14 @@ void TBootstrapYdb::SetupCellManager()
         }};
 
         NCloud::ICertificateProviderPtr cellCertProvider;
-        if (certList.empty() && !grpcConfig.GetRootCertsFile()) {
-            Y_ENSURE(
-                !grpcConfig.GetSecurePort(),
-                "Secure cells port is configured without certificates");
-
+        if (!grpcConfig.GetSecurePort()) {
             cellCertProvider = CreateCertificateProviderStub();
         } else {
-            auto cellCertProvider = CreateCertificateProvider(
+            Y_ENSURE(
+                certList || grpcConfig.GetRootCertsFile(),
+                "Secure cells port is configured without certificates");
+
+            cellCertProvider = CreateCertificateProvider(
                 Logging,
                 GetComponentName(
                     TBlockStoreComponents::TLS_CERTIFICATE_PROVIDER),

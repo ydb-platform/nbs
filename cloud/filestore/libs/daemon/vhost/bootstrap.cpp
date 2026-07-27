@@ -142,13 +142,13 @@ ICertificateProviderPtr CreateClientCertificateProvider(
         }
     };
 
-    if (certPathList.empty() && !config->GetRootCertsFile()) {
-        Y_ENSURE(
-            !config->GetSecurePort(),
-            "Secure client port is configured without certificates");
-
+    if (!config->GetSecurePort()) {
         return CreateCertificateProviderStub();
     }
+
+    Y_ENSURE(
+        certPathList || config->GetRootCertsFile(),
+        "Secure client port is configured without certificates");
 
     return factory.Build(
         endpointName,
@@ -478,14 +478,14 @@ void TBootstrapVhost::InitComponents()
         });
     }
 
-    if (certPathList.empty()) {
-        Y_ENSURE(
-            !Configs->ServerConfig->GetSecurePort(),
-            "Secure port is configured without certificates");
 
-
+    if (!Configs->ServerConfig->GetSecurePort()) {
         CertificateProvider = CreateCertificateProviderStub();
     } else {
+        Y_ENSURE(
+            certPathList,
+            "Secure port is configured without certificates");
+
         CertificateProvider = CreateCertificateProvider(
             Logging,
             GetComponentName(

@@ -315,13 +315,13 @@ void TBootstrapBase::Init()
         });
     }
 
-    if (certPathList.empty()) {
-        Y_ENSURE(
-            !Configs->ServerConfig->GetSecurePort(),
-            "Secure port is configured without certificates");
-
+    if (!Configs->ServerConfig->GetSecurePort()) {
         CertificateProvider = CreateCertificateProviderStub();
     } else {
+        Y_ENSURE(
+            certPathList,
+            "Secure port is configured without certificates");
+
         // Below we use explicit name "BLOCKSTORE_TLS_CERTIFICATE_PROVIDER"
         // because overwise it would break server_lightweight build.
         // GetComponentName() depend on kikimr which is prohibited in
