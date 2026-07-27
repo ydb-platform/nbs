@@ -24,15 +24,17 @@ class TMixedBlocksFilter
     };
 
 private:
+    const ui64 TabletId = 0;
+    const ui64 BlocksPerRange = 0;
+
     TCompressedBitmap Blocks;
     TVector<std::optional<ui64>> CommitIdsPerRange;
 
     std::deque<TCompaction> Compactions;
 
-    ui64 BlocksPerRange = 0;
 
 public:
-    explicit TMixedBlocksFilter(ui64 blocksPerRange, size_t blockCount);
+    TMixedBlocksFilter(ui64 tabletId, ui64 blocksPerRange, size_t blockCount);
 
     [[nodiscard]] bool MayHaveBlocksInMixedIndex(
         TBlockRange32 range,

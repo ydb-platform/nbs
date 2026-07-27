@@ -1,14 +1,22 @@
 #include "mixed_index_blocks_filter.h"
-#include "util/generic/algorithm.h"
 
+#include <cloud/storage/core/libs/common/verify.h>
+
+#include <util/generic/algorithm.h>
 #include <util/generic/ymath.h>
 
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
-TMixedBlocksFilter::TMixedBlocksFilter(ui64 blocksPerRange, size_t blockCount)
-    : Blocks(blockCount)
-    , CommitIdsPerRange(CeilDiv(blockCount, blocksPerRange), std::nullopt)
+////////////////////////////////////////////////////////////////////////////////
+
+TMixedBlocksFilter::TMixedBlocksFilter(
+        ui64 tabletId,
+        ui64 blocksPerRange,
+        size_t blockCount)
+    : TabletId(tabletId)
     , BlocksPerRange(blocksPerRange)
+    , Blocks(blockCount)
+    , CommitIdsPerRange(CeilDiv(blockCount, blocksPerRange), std::nullopt)
 {}
 
 bool TMixedBlocksFilter::MayHaveBlocksInMixedIndex(
@@ -17,9 +25,9 @@ bool TMixedBlocksFilter::MayHaveBlocksInMixedIndex(
 {
     for (size_t blockIndex = range.Start; blockIndex <= range.End; ++blockIndex)
     {
-        size_t rangeIndex = blockIndex / BlocksPerRange;
-        bool hasBlocksInMixedIndex = Blocks.Test(blockIndex);
-        auto rangeCommitId = CommitIdsPerRange[rangeIndex];
+        const size_t rangeIndex = blockIndex / BlocksPerRange;
+        const bool hasBlocksInMixedIndex = Blocks.Test(blockIndex);
+        const auto rangeCommitId = CommitIdsPerRange[rangeIndex];
         if (!rangeCommitId) {
             return true;
         }
@@ -34,9 +42,14 @@ bool TMixedBlocksFilter::MayHaveBlocksInMixedIndex(
 
 void TMixedBlocksFilter::AddBlocksToMixedIndex(ui32 blockIndex, ui64 commitId)
 {
-    ui32 rangeIndex = blockIndex / BlocksPerRange;
+    const ui32 rangeIndex = blockIndex / BlocksPerRange;
 
-    auto startCommitId = CommitIdsPerRange[rangeIndex];
+    STORAGE_VERIFY(
+        rangeIndex < CommitIdsPerRange.size(),
+        TWellKnownEntityTypes::TABLET,
+        TabletId);
+
+    const auto startCommitId = CommitIdsPerRange[rangeIndex];
     if (!startCommitId || *startCommitId <= commitId) {
         Blocks.Set(blockIndex, blockIndex + 1);
     }
@@ -47,7 +60,7 @@ void TMixedBlocksFilter::AddBlocksToMixedIndex(ui32 blockIndex, ui64 commitId)
             break;
         }
 
-        auto hasRangeIndex = BinarySearch(
+        const bool hasRangeIndex = BinarySearch(
             compaction.RangesForCompaction.begin(),
             compaction.RangesForCompaction.end(),
             rangeIndex);
@@ -62,8 +75,11 @@ void TMixedBlocksFilter::StartCompaction(
     TVector<ui32> rangeIndices,
     ui64 commitId)
 {
-    Y_ABORT_UNLESS(
-        Compactions.empty() || Compactions.back().CommitId < commitId);
+    STORAGE_VERIFY(
+        Compactions.empty() || Compactions.back().CommitId < commitId,
+        TWellKnownEntityTypes::TABLET,
+        TabletId);
+
     Sort(rangeIndices);
     Compactions.push_back(
         {.RangesForCompaction = std::move(rangeIndices),
@@ -73,7 +89,11 @@ void TMixedBlocksFilter::StartCompaction(
 
 void TMixedBlocksFilter::CompactionFinished()
 {
-    Y_ABORT_UNLESS(!Compactions.empty());
+    STORAGE_VERIFY(
+        !Compactions.empty(),
+        TWellKnownEntityTypes::TABLET,
+        TabletId);
+
     auto& compaction = Compactions.front();
     for (auto& rangeIndex: compaction.RangesForCompaction) {
         CommitIdsPerRange[rangeIndex] = compaction.CommitId;
@@ -91,7 +111,11 @@ void TMixedBlocksFilter::CompactionFinished()
 
 void TMixedBlocksFilter::CompactionFailed()
 {
-    Y_ABORT_UNLESS(!Compactions.empty());
+    STORAGE_VERIFY(
+        !Compactions.empty(),
+        TWellKnownEntityTypes::TABLET,
+        TabletId);
+
     Compactions.pop_front();
 }
 
@@ -102,6 +126,11 @@ void TMixedBlocksFilter::UpdateChunk(TCompressedBitmap::TSerializedChunk chunk)
 
 void TMixedBlocksFilter::UpdateRangeCommitId(ui32 rangeIndex, ui64 commitId)
 {
+    STORAGE_VERIFY(
+        rangeIndex < CommitIdsPerRange.size(),
+        TWellKnownEntityTypes::TABLET,
+        TabletId);
+
     CommitIdsPerRange[rangeIndex] = commitId;
 }
 
