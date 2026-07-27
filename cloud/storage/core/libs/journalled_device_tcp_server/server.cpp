@@ -21,20 +21,20 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define STORAGE_JD_SERVER(xxx, ...)  \
-    xxx(AcquireDevices, __VA_ARGS__) \
-    xxx(ReleaseDevices, __VA_ARGS__) \
-    xxx(ReadPages, __VA_ARGS__)      \
+#define STORAGE_JOURNALLED_DEVICE_SERVER(xxx, ...) \
+    xxx(AcquireDevices, __VA_ARGS__)               \
+    xxx(ReleaseDevices, __VA_ARGS__)               \
+    xxx(ReadPages, __VA_ARGS__)                    \
     xxx(WriteLogRecord, __VA_ARGS__)
 
-// STORAGE_JD_SERVER
+// STORAGE_JOURNALLED_DEVICE_SERVER
 
 template <
     typename TProtoRequest,
     typename TProtoResponse,
-    TFuture<TProtoResponse> (IServerBackend::*M)(TInstant, TProtoRequest),
-    TProtoRequest* (NProto::TDeviceProtocolRequest::*F1)(),
-    TProtoResponse* (NProto::TDeviceProtocolResponse::*F2)()>
+    TFuture<TProtoResponse> (IServerBackend::*Method)(TInstant, TProtoRequest),
+    TProtoRequest* (NProto::TDeviceProtocolRequest::*mutableRequest)(),
+    TProtoResponse* (NProto::TDeviceProtocolResponse::*mutableResponse)()>
 struct TServerMethod
 {
     using TRequest = TProtoRequest;
@@ -45,19 +45,19 @@ struct TServerMethod
         TInstant now,
         TRequest&& request) -> TFuture<TResponse>
     {
-        return (backend.*M)(now, std::move(request));
+        return (backend.*Method)(now, std::move(request));
     }
 
     static auto MutableProto(NProto::TDeviceProtocolRequest& request)
         -> TRequest&
     {
-        return *(request.*F1)();
+        return *(request.*mutableRequest)();
     }
 
     static auto MutableProto(NProto::TDeviceProtocolResponse& response)
         -> TResponse&
     {
-        return *(response.*F2)();
+        return *(response.*mutableResponse)();
     }
 };
 
@@ -74,7 +74,7 @@ struct TServerMethod
     };                                                         \
     // STORAGE_DECLARE_METHOD
 
-STORAGE_JD_SERVER(STORAGE_DECLARE_METHOD)
+STORAGE_JOURNALLED_DEVICE_SERVER(STORAGE_DECLARE_METHOD)
 
 ////////////////////////////////////////////////////////////////////////////////
 
