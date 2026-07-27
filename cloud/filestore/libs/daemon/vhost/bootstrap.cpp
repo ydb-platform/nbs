@@ -111,15 +111,17 @@ struct TClientCertificateProviderFactory
     {}
 
     ICertificateProviderPtr Build(
+        const TString& endpointName,
         TString rootCertPath,
         TVector<TCertificateFiles> certificates) const
     {
+        auto endpointGroup = ServerGroup->GetSubgroup("endpoint", endpointName);
         return CreateCertificateProvider(
             Logging,
             LogComponent,
             Scheduler,
             LongRunningTaskExecutor,
-            ServerGroup,
+            std::move(endpointGroup),
             std::move(rootCertPath),
             std::move(certificates),
             RefreshInterval);
@@ -129,6 +131,7 @@ struct TClientCertificateProviderFactory
 ////////////////////////////////////////////////////////////////////////////////
 
 ICertificateProviderPtr CreateClientCertificateProvider(
+    const TString& endpointName,
     const NClient::TClientConfigPtr& config,
     const TClientCertificateProviderFactory& factory)
 {
@@ -145,6 +148,7 @@ ICertificateProviderPtr CreateClientCertificateProvider(
     }
 
     return factory.Build(
+        endpointName,
         config->GetRootCertsFile(),
         std::move(certPathList));
 }
@@ -244,6 +248,7 @@ public:
                     fileStore = LocalService;
                 } else {
                     certificateProvider = CreateClientCertificateProvider(
+                        name,
                         clientConfig,
                         CertificateProviderFactory);
                     fileStore = NClient::CreateFileStoreClient(
