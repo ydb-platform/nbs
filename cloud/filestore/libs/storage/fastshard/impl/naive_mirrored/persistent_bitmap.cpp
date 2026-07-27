@@ -25,16 +25,25 @@ bool IsFull(const TString& bitmapPage)
     return true;
 }
 
+bool GetBit(TString& bitmapPage, ui64 bit)
+{
+    Y_ABORT_UNLESS(bitmapPage.size() % sizeof(ui64) == 0);
+
+    ui64* word = reinterpret_cast<ui64*>(bitmapPage.begin())
+        + bit / BitsPerWord;
+    return (*word & (1ULL << (bit % BitsPerWord))) != 0;
+}
+
 void SetBit(TString& bitmapPage, ui64 bit, bool isReset)
 {
     Y_ABORT_UNLESS(bitmapPage.size() % sizeof(ui64) == 0);
 
-    ui64* word =
-        reinterpret_cast<ui64*>(bitmapPage.begin() + bit / BitsPerWord);
+    ui64* word = reinterpret_cast<ui64*>(bitmapPage.begin())
+        + bit / BitsPerWord;
     if (isReset) {
-        *word &= ~(1ULL << bit);
+        *word &= ~(1ULL << (bit % BitsPerWord));
     } else {
-        *word |= 1ULL << bit;
+        *word |= 1ULL << (bit % BitsPerWord);
     }
 }
 
@@ -44,8 +53,8 @@ ui64 FindFirstFreeBit(const TString& bitmapPage)
 
     for (ui64 i = 0; i < bitmapPage.size(); i += sizeof(ui64)) {
         const ui64* word = reinterpret_cast<const ui64*>(bitmapPage.data() + i);
-        if (*word + 1 != 0) {
-            return i * BitsPerWord + std::countr_one(*word);
+        if (~*word != 0) {
+            return i * 8 + std::countr_one(*word);
         }
     }
 
@@ -55,6 +64,18 @@ ui64 FindFirstFreeBit(const TString& bitmapPage)
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
+
+NProto::TError TPersistentBitmap::Get(ui64 bit, bool* result) const
+{
+    auto error = InitIfNeeded();
+    if (HasError(error)) {
+        return error;
+    }
+
+    const ui64 bitmapPageNo = bit / BitsPerPage;
+    *result = GetBit(BitmapPages[bitmapPageNo], bit % BitsPerPage);
+    return {};
+}
 
 NProto::TError TPersistentBitmap::Set(
     ui64 lsn,
@@ -130,7 +151,7 @@ NProto::TError TPersistentBitmap::Allocate(
     return MakeError(E_FS_OUT_OF_SPACE, "bitmap full");
 }
 
-NProto::TError TPersistentBitmap::InitIfNeeded()
+NProto::TError TPersistentBitmap::InitIfNeeded() const
 {
     if (!BitmapPages.empty()) {
         return {};

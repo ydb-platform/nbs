@@ -1,6 +1,7 @@
 GTEST()
 
 SRCS(
+    ../persistent_bitmap_ut.cpp
     ../persistent_hash_table_ut.cpp
     ../shard_ut.cpp
 )

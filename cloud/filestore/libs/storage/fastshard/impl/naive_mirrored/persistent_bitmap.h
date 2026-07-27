@@ -19,8 +19,8 @@ private:
     const ui64 BitsPerPage;
     IPageStorePtr PageStore;
 
-    TVector<TString> BitmapPages;
-    TStack<ui64> BitmapPagesWithFreeBits;
+    mutable TVector<TString> BitmapPages;
+    mutable TStack<ui64> BitmapPagesWithFreeBits;
 
 public:
     TPersistentBitmap(
@@ -37,6 +37,7 @@ public:
     }
 
 public:
+    NProto::TError Get(ui64 bit, bool* result) const;
     NProto::TError Set(ui64 lsn, ui64 bit, TVector<TPageGroup>& pageGroups);
     NProto::TError Reset(ui64 lsn, ui64 bit, TVector<TPageGroup>& pageGroups);
     NProto::TError Allocate(
@@ -50,7 +51,7 @@ public:
     }
 
 private:
-    NProto::TError InitIfNeeded();
+    NProto::TError InitIfNeeded() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard
