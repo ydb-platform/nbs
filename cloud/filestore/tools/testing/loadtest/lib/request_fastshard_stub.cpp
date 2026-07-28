@@ -31,11 +31,13 @@ public:
 IRequestGeneratorPtr CreateFastShardRequestGenerator(
     NProto::TFastShardLoadSpec spec,
     ui32 maxParallelism,
-    ILoggingServicePtr logging)
+    ILoggingServicePtr logging,
+    TCountLimiterPtr countLimiter)
 {
     Y_UNUSED(spec);
     Y_UNUSED(maxParallelism);
     Y_UNUSED(logging);
+    Y_UNUSED(countLimiter);
 
     return std::make_shared<TFastShardRequestGenerator>();
 }

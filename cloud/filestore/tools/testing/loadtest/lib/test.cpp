@@ -534,7 +534,6 @@ private:
         NProto::THeaders headers;
         headers.SetClientId(Config.GetClientId());
         headers.SetSessionId(SessionId);
-
         switch (Config.GetSpecsCase()) {
             case NProto::TLoadTest::kIndexLoadSpec:
                 RequestGenerator = CreateIndexRequestGenerator(
@@ -543,7 +542,8 @@ private:
                     Client,
                     Session,
                     FileSystemId,
-                    headers);
+                    headers,
+                    std::make_shared<TCountLimiter>(Config.GetMaxNodes()));
                 break;
             case NProto::TLoadTest::kDataLoadSpec:
                 RequestGenerator = CreateDataRequestGenerator(
@@ -551,7 +551,8 @@ private:
                     Logging,
                     Session,
                     FileSystemId,
-                    headers);
+                    headers,
+                    std::make_shared<TCountLimiter>(Config.GetMaxNodes()));
                 break;
             case NProto::TLoadTest::kReplayFsSpec:
                 RequestGenerator = CreateReplayRequestGeneratorFs(
@@ -594,14 +595,16 @@ private:
                     Session,
                     ShmClient,
                     FileSystemId,
-                    headers);
+                    headers,
+                    std::make_shared<TCountLimiter>(Config.GetMaxNodes()));
                 break;
             }
             case NProto::TLoadTest::kFastShardLoadSpec:
                 RequestGenerator = CreateFastShardRequestGenerator(
                     Config.GetFastShardLoadSpec(),
                     Config.GetIODepth(),
-                    Logging);
+                    Logging,
+                    std::make_shared<TCountLimiter>(Config.GetMaxNodes()));
                 break;
             default:
                 ythrow yexception()

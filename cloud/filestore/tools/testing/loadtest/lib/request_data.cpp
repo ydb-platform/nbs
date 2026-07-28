@@ -106,6 +106,7 @@ private:
     const NProto::TDataLoadSpec Spec;
     const TString FileSystemId;
     const NProto::THeaders Headers;
+    const TCountLimiterPtr CountLimiter;
 
     TLog Log;
 
@@ -134,10 +135,12 @@ public:
             ILoggingServicePtr logging,
             ISessionPtr session,
             TString filesystemId,
-            NProto::THeaders headers)
+            NProto::THeaders headers,
+            TCountLimiterPtr countLimiter)
         : Spec(std::move(spec))
         , FileSystemId(std::move(filesystemId))
         , Headers(std::move(headers))
+        , CountLimiter(std::move(countLimiter))
         , Session(std::move(session))
     {
         Log = logging->CreateLog(Headers.GetClientId());
@@ -238,6 +241,12 @@ private:
 
         auto started = TInstant::Now();
         TGuard<TMutex> guard(StateLock);
+        if (!CountLimiter->TryReserveHandle()) {
+            return MakeFuture<TCompletedRequest>({
+                NProto::ACTION_CREATE_HANDLE,
+                started,
+                MakeError(S_FALSE)});
+        }
         auto name = GenerateNodeName();
 
         auto request = CreateRequest<NProto::TCreateHandleRequest>();
@@ -301,6 +310,7 @@ private:
                     return HandleResizeAfterCreateHandle(f, name, started);
                 });
         } catch (const TServiceError& e)  {
+            CountLimiter->Release();
             auto error = MakeError(e.GetCode(), TString{e.GetMessage()});
             STORAGE_ERROR("create handle for %s has failed: %s",
                 name.Quote().c_str(),
@@ -646,14 +656,16 @@ IRequestGeneratorPtr CreateDataRequestGenerator(
     ILoggingServicePtr logging,
     ISessionPtr session,
     TString filesystemId,
-    NProto::THeaders headers)
+    NProto::THeaders headers,
+    TCountLimiterPtr countLimiter)
 {
     return std::make_shared<TDataRequestGenerator>(
         std::move(spec),
         std::move(logging),
         std::move(session),
         std::move(filesystemId),
-        std::move(headers));
+        std::move(headers),
+        std::move(countLimiter));
 }
 
 }   // namespace NCloud::NFileStore::NLoadTest
