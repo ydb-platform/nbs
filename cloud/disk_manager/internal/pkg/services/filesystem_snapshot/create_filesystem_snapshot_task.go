@@ -161,9 +161,49 @@ func (t *createFilesystemSnapshotTask) Cancel(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	// TODO: (jkuradobery) Implement cancellation of the snapshot creation task.
-	// See: https://github.com/ydb-platform/nbs/issues/1559
-	return nil
+	selfTaskID := execCtx.GetTaskID()
+
+	snapshotMeta, err := t.storage.DeleteFilesystemSnapshot(
+		ctx,
+		t.request.DstSnapshotId,
+		selfTaskID,
+		time.Now(),
+	)
+	if err != nil {
+		return err
+	}
+
+	if snapshotMeta == nil {
+		// Nothing to do.
+		return nil
+	}
+
+	if snapshotMeta.DeleteTaskID != selfTaskID {
+		return t.scheduler.WaitTaskEnded(ctx, snapshotMeta.DeleteTaskID)
+	}
+
+	taskID, err := t.scheduler.ScheduleTask(
+		headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_cancel"),
+		"dataplane.DeleteFilesystemSnapshot",
+		"",
+		&dataplane_protos.DeleteFilesystemSnapshotRequest{
+			SnapshotId: t.request.DstSnapshotId,
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	_, err = t.scheduler.WaitTask(ctx, execCtx, taskID)
+	if err != nil {
+		return err
+	}
+
+	return t.storage.FilesystemSnapshotDeleted(
+		ctx,
+		t.request.DstSnapshotId,
+		time.Now(),
+	)
 }
 
 func (t *createFilesystemSnapshotTask) GetMetadata(
