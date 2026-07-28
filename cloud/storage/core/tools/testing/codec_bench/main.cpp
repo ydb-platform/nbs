@@ -167,9 +167,7 @@ int Run(const TOptions& opts)
          << originalSize << " bytes)" << Endl;
 
     //
-    // Pre-size compress and decompress destination buffers so no
-    // allocation happens inside the timed loop. TBuffer::Reserve/Resize
-    // does no zero-init, unlike TString::ReserveAndResize.
+    // Prealloc buffers.
     //
 
     const size_t maxCompressed = codec->MaxCompressedLength(input);
