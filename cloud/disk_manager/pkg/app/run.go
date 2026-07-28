@@ -22,6 +22,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/util"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/auth"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/snapshot"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
@@ -36,6 +37,7 @@ func Run(
 	defaultConfigFilePath string,
 	newMetricsRegistry metrics.NewRegistryFunc,
 	newAuthorizer auth.NewAuthorizer,
+	newSnapshotStorageQuotaReporter snapshot.NewSnapshotStorageQuotaReporterFunc,
 ) {
 
 	var configFilePath string
@@ -48,7 +50,12 @@ func Run(
 			return util.ParseProto(configFilePath, config)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return run(config, newMetricsRegistry, newAuthorizer)
+			return run(
+				config,
+				newMetricsRegistry,
+				newAuthorizer,
+				newSnapshotStorageQuotaReporter,
+			)
 		},
 	}
 	rootCmd.Flags().StringVar(
@@ -69,6 +76,7 @@ func run(
 	config *server_config.ServerConfig,
 	newMetricsRegistry metrics.NewRegistryFunc,
 	newAuthorizer auth.NewAuthorizer,
+	newSnapshotStorageQuotaReporter snapshot.NewSnapshotStorageQuotaReporterFunc,
 ) error {
 
 	ignoreSigpipe()
@@ -288,6 +296,8 @@ func run(
 			ctx,
 			config,
 			mon,
+			creds,
+			newSnapshotStorageQuotaReporter,
 			snapshotDB,
 			taskRegistry,
 			taskScheduler,
