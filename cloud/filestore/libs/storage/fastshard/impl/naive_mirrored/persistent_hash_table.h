@@ -29,12 +29,14 @@ template <typename TKey, typename TValue>
 class TPersistentHashTable
 {
 private:
+    static constexpr ui64 InvalidSlotNo = Max<ui64>();
+
     const ui64 FirstPageNo;
     const ui64 PageCount;
     const ui64 PageSize;
-    const ui64 SlotCount;
     const ui64 SlotSize;
     const ui64 SlotsPerPage;
+    const ui64 SlotCount;
     const TValue Tombstone;
     const TKey TombstoneKey;
     IPageStorePtr PageStore;
@@ -149,7 +151,13 @@ private:
         void Write(const char* data)
         {
             const ui64 offsetInPage = (SlotNo % SlotsPerPage) * SlotSize;
-            memcpy(Page.begin() + offsetInPage, data, SlotSize);
+            char* dst = Page.begin() + offsetInPage;
+            memcpy(dst, data, sizeof(TValue));
+            dst += sizeof(TValue);
+            const ui64 tail = SlotSize - sizeof(TValue);
+            if (tail) {
+                memset(dst, 0, tail);
+            }
             Dirty = true;
         }
 
@@ -178,7 +186,6 @@ public:
             ui64 firstPageNo,
             ui64 pageCount,
             ui64 pageSize,
-            ui64 slotCount,
             ui64 slotSize,
             const TValue& tombstone,
             IPageStorePtr pageStore,
@@ -187,20 +194,24 @@ public:
         : FirstPageNo(firstPageNo)
         , PageCount(pageCount)
         , PageSize(pageSize)
-        , SlotCount(slotCount)
         , SlotSize(slotSize)
         , SlotsPerPage(PageSize / SlotSize)
+        , SlotCount(PageCount * SlotsPerPage)
         , Tombstone(tombstone)
         , TombstoneKey(makeKey(tombstone))
         , PageStore(std::move(pageStore))
         , MakeKey(std::move(makeKey))
         , Hash(std::move(hash))
     {
-        Y_ABORT_UNLESS(SlotCount * SlotSize <= PageCount * PageSize);
         Y_ABORT_UNLESS(sizeof(TValue) <= SlotSize);
     }
 
 public:
+    ui64 GetSlotCount() const
+    {
+        return SlotCount;
+    }
+
     NProto::TError Put(
         ui64 lsn,
         const TValue& v,
@@ -354,17 +365,32 @@ private:
             return error;
         }
 
+        ui64 candidateSlotNo = InvalidSlotNo;
         while (true) {
             bool success = LookupSlot(it.GetRaw(), v);
             if (!success) {
+                //
+                // We found an empty slot - now we can stop.
+                //
+
+                if (candidateSlotNo == InvalidSlotNo) {
+                    candidateSlotNo = it.SlotNo;
+                }
+
                 break;
             }
 
             if (TombstoneKey == MakeKey(*v)) {
-                break;
-            }
+                //
+                // This is a candidate slot. But we might have the same key
+                // somewhere after this tombstone. So we can't stop - we can
+                // just memorize this slot.
+                //
 
-            if (k == MakeKey(*v)) {
+                if (candidateSlotNo == InvalidSlotNo) {
+                    candidateSlotNo = it.SlotNo;
+                }
+            } else if (k == MakeKey(*v)) {
                 return MakeError(E_FS_EXIST);
             }
 
@@ -378,7 +404,7 @@ private:
             }
         }
 
-        *slotNo = it.SlotNo;
+        *slotNo = candidateSlotNo;
         return {};
     }
 

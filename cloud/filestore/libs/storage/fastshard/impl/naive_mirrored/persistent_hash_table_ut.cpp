@@ -55,7 +55,6 @@ struct TFixture
     const ui64 FirstPageNo = 10;
     const ui64 PageCount = 1024;
     const ui64 SlotSize = sizeof(TSlot);
-    const ui64 SlotCount = (PageSize / SlotSize) * PageCount;
 
     IPageStorePtr PageStore = CreateMemPageStore(PageSize);
     TPersistentHashTable<ui64, TSlot> Ht;
@@ -65,7 +64,6 @@ struct TFixture
             FirstPageNo,
             PageCount,
             PageSize,
-            SlotCount,
             SlotSize,
             tombstone,
             PageStore,
@@ -230,7 +228,7 @@ TEST(PersistentHashTableTest, PutGetUpdateRandomized)
         };
     };
 
-    for (ui64 i = 0; i < fx.SlotCount; ++i) {
+    for (ui64 i = 0; i < fx.Ht.GetSlotCount(); ++i) {
         //
         // Put.
         //
