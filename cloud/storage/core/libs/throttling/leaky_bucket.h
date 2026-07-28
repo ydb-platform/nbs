@@ -151,6 +151,9 @@ public:
             Min(diff1, Min(Burst, Standard.TimePassed() / 1e6) * Beta);
 
         const auto boostDelaySeconds = Boost.Register(ts, maxBoostableDiff1);
+
+        Y_DEBUG_ABORT_UNLESS(
+            boostDelaySeconds == 0 || maxBoostableDiff1 > Boost.Budget());
         const auto diff2 =
             boostDelaySeconds ? maxBoostableDiff1 - Boost.Budget() : 0;
         // the remaining part of the update

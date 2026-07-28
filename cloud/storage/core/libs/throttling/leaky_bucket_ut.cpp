@@ -49,7 +49,7 @@ Y_UNIT_TEST_SUITE(TLeakyBucketTest)
     {
         TLeakyBucket lb(100, 200, 10);
 
-        REG_AND_CHECK(100, 100'000, 110);       // 10
+        REG_AND_CHECK(1, 100'000, 110);         // 10
         REG_AND_CHECK(0.2, 500'000, 70);        // 10 + 0.4 * 100 = 50
         REG_AND_CHECK(0, 600'000, 40);          // 50 + 0.1 * 100 - 40 = 20
         REG_AND_CHECK(0.2, 800'000, 60);        // 20 + 0.2 * 100 = 40
