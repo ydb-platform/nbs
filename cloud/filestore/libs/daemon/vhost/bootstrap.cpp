@@ -142,10 +142,13 @@ ICertificateProviderPtr CreateClientCertificateProvider(
         }
     };
 
-    if (config->GetSecurePort() && certPathList.empty()) {
-        ythrow yexception()
-            << "Secure client port is configured without certificates";
+    if (!config->GetSecurePort()) {
+        return CreateCertificateProviderStub();
     }
+
+    Y_ENSURE(
+        certPathList || config->GetRootCertsFile(),
+        "Secure client port is configured without certificates");
 
     return factory.Build(
         endpointName,
@@ -191,24 +194,22 @@ public:
 
     void Start() override
     {
-        for (const auto& [name, certificateProvider]: CertificateProviders) {
-            Y_UNUSED(name);
+        for (const auto& [_, certificateProvider]: CertificateProviders) {
             certificateProvider->Start();
         }
 
-        for (const auto& [name, endpoint]: Endpoints) {
+        for (const auto& [_, endpoint]: Endpoints) {
             endpoint->Start();
         }
     }
 
     void Stop() override
     {
-        for (const auto& [name, endpoint]: Endpoints) {
+        for (const auto& [_, endpoint]: Endpoints) {
             endpoint->Stop();
         }
 
-        for (const auto& [name, certificateProvider]: CertificateProviders) {
-            Y_UNUSED(name);
+        for (const auto& [_, certificateProvider]: CertificateProviders) {
             certificateProvider->Stop();
         }
     }
@@ -477,14 +478,14 @@ void TBootstrapVhost::InitComponents()
         });
     }
 
-    if (certPathList.empty()) {
-        if (Configs->ServerConfig->GetSecurePort()) {
-            ythrow yexception()
-                << "Secure port is configured without certificates";
-        }
 
+    if (!Configs->ServerConfig->GetSecurePort()) {
         CertificateProvider = CreateCertificateProviderStub();
     } else {
+        Y_ENSURE(
+            certPathList,
+            "Secure port is configured without certificates");
+
         CertificateProvider = CreateCertificateProvider(
             Logging,
             GetComponentName(

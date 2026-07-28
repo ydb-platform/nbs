@@ -980,23 +980,27 @@ void TBootstrapYdb::SetupCellManager()
             .CertChainPath  = grpcConfig.GetCertFile(),
         }};
 
-        if (grpcConfig.GetSecurePort() && certList.empty()) {
-            ythrow yexception()
-                << "Secure cells port is configured without certificates";
-        }
+        NCloud::ICertificateProviderPtr cellCertProvider;
+        if (!grpcConfig.GetSecurePort()) {
+            cellCertProvider = CreateCertificateProviderStub();
+        } else {
+            Y_ENSURE(
+                certList || grpcConfig.GetRootCertsFile(),
+                "Secure cells port is configured without certificates");
 
-        auto cellCertProvider = CreateCertificateProvider(
-            Logging,
-            GetComponentName(
-                TBlockStoreComponents::TLS_CERTIFICATE_PROVIDER),
-            Scheduler,
-            LongRunningTaskExecutor,
-            Monitoring->GetCounters()
-                ->GetSubgroup("counters", "blockstore")
-                ->GetSubgroup("component", "server"),
-            grpcConfig.GetRootCertsFile(),
-            std::move(certList),
-            Configs->ServerConfig->GetRefreshCertsPeriod());
+            cellCertProvider = CreateCertificateProvider(
+                Logging,
+                GetComponentName(
+                    TBlockStoreComponents::TLS_CERTIFICATE_PROVIDER),
+                Scheduler,
+                LongRunningTaskExecutor,
+                Monitoring->GetCounters()
+                    ->GetSubgroup("counters", "blockstore")
+                    ->GetSubgroup("component", "cells"),
+                grpcConfig.GetRootCertsFile(),
+                std::move(certList),
+                Configs->ServerConfig->GetRefreshCertsPeriod());
+        }
 
         CellManager = CreateCellManager(
             Configs->CellsConfig,
