@@ -113,6 +113,8 @@ TVerifyBlocksMetaResult VerifyMixedBlocksMeta(
             Y_UNUSED(blobOffset);
             Y_UNUSED(compactionRangeCount);
 
+            // The same block may be present in multiple blobs, so we need to
+            // check if the block is present in the original blob.
             if (blobId != OriginalBlobId) {
                 return true;
             }
