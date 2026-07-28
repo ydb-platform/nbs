@@ -95,6 +95,11 @@ func (c collectSnapshotMetricsTask) GetResponse() proto.Message {
 ////////////////////////////////////////////////////////////////////////////////
 
 func (c collectSnapshotMetricsTask) clearMetrics() {
+	// We want to delete metrics from registry when the task is stopped.
+	// Otherwise the service can still report metrics,
+	// even if another instance is collecting metrics now.
+	// Setting metrics to 0 is acceptible, since we usually calculate sum across all instances.
 	// We'd like to delete it from registry completely, but there's no such option.
+	c.storageQuotaReporter.Clear()
 	c.registry.Gauge("snapshots/deletingCount").Set(0)
 }

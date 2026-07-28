@@ -17,6 +17,7 @@ type Config = snapshot_config.SnapshotConfig
 // albeit other implementations may report additional metrics as well.
 type SnapshotStorageQuotaReporter interface {
 	Report(ctx context.Context) error
+	Clear()
 }
 
 type NewSnapshotStorageQuotaReporterFunc = func(
@@ -32,6 +33,8 @@ type emptySnapshotStorageQuotaReporter struct{}
 func (r *emptySnapshotStorageQuotaReporter) Report(_ context.Context) error {
 	return nil
 }
+
+func (r *emptySnapshotStorageQuotaReporter) Clear() {}
 
 func NewEmptySnapshotStorageQuotaReporter(
 	_ metrics.Registry,

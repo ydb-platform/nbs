@@ -21,6 +21,11 @@ func (r *stubSnapshotStorageQuotaReporter) Report(_ context.Context) error {
 	return nil
 }
 
+func (r *stubSnapshotStorageQuotaReporter) Clear() {
+	r.registry.Gauge("snapshots/quotas/usedBytes").Set(0)
+	r.registry.Gauge("snapshots/quotas/limitBytes").Set(0)
+}
+
 func newStubSnapshotStorageQuotaReporter(
 	registry metrics.Registry,
 	config *snapshot.Config,
