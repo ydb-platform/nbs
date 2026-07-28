@@ -25,9 +25,19 @@ private:
         ui64 TotalBlocksCount = 0;
         ui64 UsedNodesCount = 0;
     };
+    struct TNodeRow
+    {
+        TString ShardId;
+        ui64 NodeId = 0;
+        ui64 RequestCount = 0;
+        double AccessScore = 0;
+        ui64 LastAccessedTimestampUs = 0;
+    };
 
     ui32 Top;
     TString SortBy;
+    ui32 TopNodes;
+    TString NodeScope;
 
 public:
     TDiagnoseFilesystemCommand()
@@ -41,6 +51,15 @@ public:
             .Choices({"load"})
             .DefaultValue("load")
             .StoreResult(&SortBy);
+        Opts.AddLongOption("top-nodes", "number of most accessed nodes")
+            .RequiredArgument("NUM")
+            .DefaultValue(10)
+            .StoreResult(&TopNodes);
+        Opts.AddLongOption("node-scope", "how top node statistics are selected")
+            .RequiredArgument("SCOPE")
+            .Choices({"global", "shard"})
+            .DefaultValue("global")
+            .StoreResult(&NodeScope);
     }
 
 private:
@@ -95,6 +114,7 @@ public:
         CheckResponse(response);
 
         TVector<TShardRow> rows;
+        TVector<TNodeRow> nodeRows;
 
         const auto& stats = response.GetStats();
         rows.reserve(stats.ShardStatsSize());
@@ -109,6 +129,25 @@ public:
             row.UsedNodesCount = shardStats.GetUsedNodesCount();
             rows.push_back(std::move(row));
         }
+        for (const auto& nodeStats: stats.GetNodeStats()) {
+            nodeRows.push_back({
+                nodeStats.GetShardId(),
+                nodeStats.GetNodeId(),
+                nodeStats.GetRequestCount(),
+                nodeStats.GetAccessScore(),
+                nodeStats.GetLastAccessedTimestampUs()});
+        }
+        Sort(nodeRows, [] (const TNodeRow& l, const TNodeRow& r) {
+            if (l.AccessScore != r.AccessScore) {
+                return l.AccessScore > r.AccessScore;
+            }
+
+            if (l.ShardId != r.ShardId) {
+                return l.ShardId < r.ShardId;
+            }
+
+            return l.NodeId < r.NodeId;
+        });
 
         Sort(rows, [] (const TShardRow& l, const TShardRow& r) {
             if (l.CurrentLoad != r.CurrentLoad) {
@@ -123,6 +162,7 @@ public:
         });
 
         const size_t limit = Min<size_t>(Top, rows.size());
+        const size_t nodeLimit = Min<size_t>(TopNodes, nodeRows.size());
 
         if (JsonOutput) {
             NJson::TJsonValue resultJson(NJson::JSON_MAP);
@@ -146,6 +186,23 @@ public:
             }
 
             resultJson["shards"] = std::move(shardsJson);
+            NJson::TJsonValue nodesJson(NJson::JSON_ARRAY);
+
+            for (size_t i = 0; i < nodeLimit; ++i) {
+                const auto& node = nodeRows[i];
+
+                NJson::TJsonValue nodeJson(NJson::JSON_MAP);
+                nodeJson["shard_id"] = node.ShardId;
+                nodeJson["node_id"] = node.NodeId;
+                nodeJson["request_count"] = node.RequestCount;
+                nodeJson["access_score"] = node.AccessScore;
+                nodeJson["last_accessed_timestamp_us"] =
+                    node.LastAccessedTimestampUs;
+
+                nodesJson.AppendValue(std::move(nodeJson));
+            }
+
+            resultJson["nodes"] = std::move(nodesJson);
             NJson::WriteJson(&Cout, &resultJson, false, true, true);
 
             return true;

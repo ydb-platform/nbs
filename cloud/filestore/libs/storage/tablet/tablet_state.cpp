@@ -14,6 +14,9 @@ namespace NCloud::NFileStore::NStorage {
 
 namespace {
 
+// move this to config?
+constexpr size_t MaxNodeDiagnosticEntries = 10'000;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 IBlockLocation2RangeIndexPtr CreateHasher(const NProto::TFileSystem& fs)
@@ -65,6 +68,68 @@ ui64 CalculateInMemoryIndexCacheCapacity(
 }
 
 }   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TNodeDiagnosticStatsTracker::Initialise(size_t maxEntries)
+{
+    MaxEntries = maxEntries;
+    NodeId2StatsIter.clear();
+    Score2Stats.clear();
+}
+
+void CalculateDecayedAccessScore(TNodeDiagnosticStats& stats, TInstant now)
+{
+    const auto elapsed =
+      now >= stats.LastAccessed
+          ? now - stats.LastAccessed
+          : TDuration::Zero();
+    stats.AccessScore = 1 + (
+        stats.AccessScore * exp(-log(2.0) * elapsed.GetValue() / TDuration::Minutes(10).MicroSeconds()));
+}
+
+void TNodeDiagnosticStatsTracker::RequestStarted(ui64 nodeId, TInstant now)
+{
+    //auto& stats = NodeId2StatsIter[nodeId];
+    //Score2Stats.erase(stats);
+    auto it = NodeId2StatsIter.find(nodeId);
+    TNodeDiagnosticStats stats;
+
+    if (it != NodeId2StatsIter.end()) {
+        auto oldStatsIt = it->second;
+        stats = oldStatsIt->second;
+        Score2Stats.erase(oldStatsIt);
+
+        // ++stats.RequestCount;
+        // CalculateDecayedAccessScore(stats, now);
+        // stats.LastAccessed = now;
+
+
+        // auto [it, inserted] = Score2Stats.emplace(
+        //     TRankingKey(stats.AccessScore, stats.NodeId),
+        //     stats
+        // );
+    }
+    else {
+        // auto stats = TNodeDiagnosticStats(nodeId, 1, 1, now);
+        // Score2Stats.insert(TRankingKey(stats.AccessScore, stats.NodeId), stats);
+        stats.NodeId = nodeId;
+    }
+    ++stats.RequestCount;
+    CalculateDecayedAccessScore(stats, now);
+    stats.LastAccessed = now;
+
+    auto [newStatsIt, inserted] = Score2Stats.emplace(
+        std::make_pair(stats.AccessScore, stats.NodeId),
+        stats
+    );
+    NodeId2StatsIter[nodeId] = newStatsIt;
+    Y_ABORT_UNLESS(inserted);
+
+    //CalculateDecayedAccessScore(stats, now);
+    //NodeId2StatsIter[nodeId] = Score2Stats.emplace(stats).first;
+    EvictLeastUsedNodes();
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -180,6 +245,7 @@ void TIndexTabletState::LoadState(
     const TVector<NProtoPrivate::TResponseLogEntry>& responseLog,
     const TThrottlerConfig& throttlerConfig)
 {
+    NodeDiagnosticStatsTracker.Initialise(MaxNodeDiagnosticEntries);
     Generation = generation;
     // https://github.com/ydb-platform/nbs/issues/1714
     // because of possible race in vdisks we should not start with 0
@@ -253,6 +319,16 @@ void TIndexTabletState::LoadState(
     }
 
     InitShardBalancer(config);
+}
+
+void TIndexTabletState::NodeRequestStarted(ui64 nodeId, TInstant now)
+{
+    NodeDiagnosticStatsTracker.RequestStarted(nodeId, now);
+}
+
+TVector<TNodeDiagnosticStats> TIndexTabletState::GetNodeDiagnosticStats() const
+{
+    return NodeDiagnosticStatsTracker.GetStats();
 }
 
 void TIndexTabletState::UpdateConfig(

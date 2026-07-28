@@ -251,6 +251,10 @@ void TAggregateStatsActor::HandleGetStorageStatsResponse(
         ss.SetUsedNodesCount(src.GetUsedNodesCount());
     }
 
+    for (const auto& fileStats: src.GetNodeStats()) {
+        *dst.AddNodeStats() = fileStats;
+    }
+
     if (--RemainingResponses == 0) {
         ReplyAndDie(ctx, {});
     }
@@ -798,6 +802,16 @@ void TIndexTabletActor::FillSelfStorageStats(
     stats->SetUnconfirmedDataCount(
         UnconfirmedData.size() + UnconfirmedDataInProgress.size());
     stats->SetConfirmedDataCount(ConfirmedData.size());
+
+    for (const auto& fileStats: GetNodeDiagnosticStats()) {
+        auto* out = stats->AddNodeStats();
+        out->SetShardId(GetFileSystemId());
+        out->SetNodeId(fileStats.NodeId);
+        out->SetRequestCount(fileStats.RequestCount);
+        out->SetAccessScore(fileStats.AccessScore);
+        out->SetLastAccessedTimestampUs(
+            fileStats.LastAccessed.MicroSeconds());
+    }
 }
 
 void TIndexTabletActor::HandleGetStorageStats(

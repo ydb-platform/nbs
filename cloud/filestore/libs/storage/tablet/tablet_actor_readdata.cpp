@@ -960,6 +960,15 @@ bool TIndexTabletActor::PrepareTx_ReadData(
         return false;
     }
 
+    if (!args.DescribeOnly &&
+        args.Node->Attrs.GetType() == NProto::ENodeType::E_REGULAR_NODE &&
+        !args.RequestInfo->NodeDiagnosticStatsStarted)
+    {
+        NodeRequestStarted(
+            args.NodeId,
+            ctx.Now());
+        args.RequestInfo->NodeDiagnosticStatsStarted = true;
+    }
     //
     // NodeId might be missing in the original request but at this stage we
     // have already read the Node and we can properly set NodeId in all request
