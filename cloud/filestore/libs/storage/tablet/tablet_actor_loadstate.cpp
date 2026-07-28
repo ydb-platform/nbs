@@ -4,6 +4,7 @@
 #include "tablet_schema.h"
 
 #include <cloud/filestore/libs/storage/fastshard/impl/mem/memshard.h>
+#include <cloud/filestore/libs/storage/fastshard/impl/naive_mirrored/shard.h>
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/metrics/operations.h>
@@ -271,8 +272,9 @@ void TIndexTabletActor::CompleteAdapterLoadState(
 
     const auto& fastShardConfig = GetFileSystem().GetFastShardConfig();
     if (fastShardConfig.HasPersistentConfig()) {
-        // not supported yet
-        FastShard = NFastShard::CreateFileSystemShardStub();
+        FastShard = NFastShard::CreateNaiveMirroredFileSystemShard(
+            GetFileSystem().GetShardNo(),
+            fastShardConfig.GetPersistentConfig());
     } else {
         FastShard = NFastShard::CreateMemFileSystemShard(
             GetFileSystem().GetShardNo(),
