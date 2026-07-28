@@ -129,7 +129,7 @@ void TFinishFillDiskActionActor::DescribeVolume(const TActorContext& ctx)
         MakeSSProxyServiceId(),
         std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(
             Request.GetDiskId(),
-            true));
+            /*exactDiskIdMatch=*/true));
 }
 
 void TFinishFillDiskActionActor::AlterVolume(

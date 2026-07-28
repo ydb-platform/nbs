@@ -85,7 +85,9 @@ void TUpdateActor::DescribeVolume(
     NCloud::Send(
         ctx,
         MakeSSProxyServiceId(),
-        std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(diskId, true));
+        std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(
+            diskId,
+            /*exactDiskIdMatch=*/true));
 }
 
 void TUpdateActor::HandleDescribeVolumeResponse(

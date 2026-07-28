@@ -221,7 +221,9 @@ void TAlterVolumeActor::DescribeVolume(const TActorContext& ctx)
     NCloud::Send(
         ctx,
         MakeSSProxyServiceId(),
-        std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(DiskId, true));
+        std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(
+            DiskId,
+            /*exactDiskIdMatch=*/true));
 }
 
 void TAlterVolumeActor::AlterVolume(
