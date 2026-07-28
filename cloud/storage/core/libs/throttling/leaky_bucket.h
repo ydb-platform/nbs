@@ -36,7 +36,7 @@ public:
     }
 
 public:
-    // returns time to wait in seconds to be able to spend the update
+    // returns time to wait in seconds to be able to register the update
     double Register(TInstant ts, double update)
     {
         if (Y_LIKELY(State.LastUpdateTs.GetValue())) {
@@ -150,9 +150,9 @@ public:
         auto maxBoostableDiff1 =
             Min(diff1, Min(Burst, Standard.TimePassed() / 1e6) * Beta);
 
-        const auto boostDelay = Boost.Register(ts, maxBoostableDiff1);
+        const auto boostDelaySeconds = Boost.Register(ts, maxBoostableDiff1);
         const auto diff2 =
-            boostDelay ? maxBoostableDiff1 - Boost.Budget() : 0;
+            boostDelaySeconds ? maxBoostableDiff1 - Boost.Budget() : 0;
         // the remaining part of the update
         auto fullDiff = diff2 + diff1 - maxBoostableDiff1;
         if (fullDiff == 0) {
