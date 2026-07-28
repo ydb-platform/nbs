@@ -151,11 +151,11 @@ public:
     }
 
 private:
-    TString DebugMessage(const NProto::TWriteLogRecordRequest& w)
+    static TString DebugMessage(const NProto::TWriteLogRecordRequest& w)
     {
         NProto::TReadPagesRequest r;
         *r.MutableHeaders() = w.GetHeaders();
-        for (auto& pg: w.GetPageGroups()) {
+        for (const auto& pg: w.GetPageGroups()) {
             auto* rpg = r.AddPageGroupRefs();
             rpg->SetPageSize(pg.ContentSize() ? pg.GetContent(0).Size() : 0);
             rpg->SetPageCount(pg.ContentSize());
