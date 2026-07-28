@@ -9,6 +9,7 @@ SRCS(
 PEERDIR(
     cloud/filestore/libs/service
     cloud/filestore/libs/storage/fastshard/iface
+    cloud/filestore/libs/storage/model
 
     cloud/filestore/private/api/unsafe_protos
 )
