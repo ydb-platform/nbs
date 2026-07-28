@@ -14,7 +14,6 @@ namespace NCloud::NFileStore::NStorage {
 
 namespace {
 
-// move this to config?
 constexpr size_t MaxNodeDiagnosticEntries = 10'000;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -84,14 +83,14 @@ void CalculateDecayedAccessScore(TNodeDiagnosticStats& stats, TInstant now)
       now >= stats.LastAccessed
           ? now - stats.LastAccessed
           : TDuration::Zero();
+
+    // Access Score has a half-life of 10 minutes
     stats.AccessScore = 1 + (
         stats.AccessScore * exp(-log(2.0) * elapsed.GetValue() / TDuration::Minutes(10).MicroSeconds()));
 }
 
 void TNodeDiagnosticStatsTracker::RequestStarted(ui64 nodeId, TInstant now)
 {
-    //auto& stats = NodeId2StatsIter[nodeId];
-    //Score2Stats.erase(stats);
     auto it = NodeId2StatsIter.find(nodeId);
     TNodeDiagnosticStats stats;
 
@@ -99,22 +98,11 @@ void TNodeDiagnosticStatsTracker::RequestStarted(ui64 nodeId, TInstant now)
         auto oldStatsIt = it->second;
         stats = oldStatsIt->second;
         Score2Stats.erase(oldStatsIt);
-
-        // ++stats.RequestCount;
-        // CalculateDecayedAccessScore(stats, now);
-        // stats.LastAccessed = now;
-
-
-        // auto [it, inserted] = Score2Stats.emplace(
-        //     TRankingKey(stats.AccessScore, stats.NodeId),
-        //     stats
-        // );
     }
     else {
-        // auto stats = TNodeDiagnosticStats(nodeId, 1, 1, now);
-        // Score2Stats.insert(TRankingKey(stats.AccessScore, stats.NodeId), stats);
         stats.NodeId = nodeId;
     }
+
     ++stats.RequestCount;
     CalculateDecayedAccessScore(stats, now);
     stats.LastAccessed = now;
@@ -124,10 +112,7 @@ void TNodeDiagnosticStatsTracker::RequestStarted(ui64 nodeId, TInstant now)
         stats
     );
     NodeId2StatsIter[nodeId] = newStatsIt;
-    Y_ABORT_UNLESS(inserted);
 
-    //CalculateDecayedAccessScore(stats, now);
-    //NodeId2StatsIter[nodeId] = Score2Stats.emplace(stats).first;
     EvictLeastUsedNodes();
 }
 
