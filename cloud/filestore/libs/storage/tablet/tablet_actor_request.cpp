@@ -26,9 +26,6 @@ TSession* TIndexTabletActor::AcceptRequest(
 
     auto* msg = ev->Get();
     auto& request = msg->Record;
-    //ui64 nodeId = request.getNodeId();
-    // 1. start with read and write
-    // 2.
 
     auto* session = FindSession(
          GetClientId(request),
