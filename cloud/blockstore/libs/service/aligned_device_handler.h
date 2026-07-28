@@ -19,6 +19,8 @@ class TAlignedDeviceHandler final
 private:
     const IStoragePtr Storage;
     const TString DiskId;
+    const TString CloudId;
+    const TString FolderId;
     const TString ClientId;
     const ui32 BlockSize;
     const ui32 MaxBlockCount;

@@ -325,7 +325,10 @@ bool TNonreplicatedPartitionActor::InitRequests(
             NProto::ERequestSplitterPolicy::RSP_ENABLE_WITH_CRIT_EVENT)
     {
         ReportCrossPartitionRequestDetected(
-            {{"disk", PartConfig->GetName()}, {"range", blockRange}});
+            PartConfig->GetName(),
+            PartConfig->GetCloudId(),
+            PartConfig->GetFolderId(),
+            {{"range", blockRange}});
     }
 
     if (deviceRequests->empty()) {

@@ -144,6 +144,8 @@ private:
 
     const ui64 TabletId;
     const TString DiskId;
+    const TString CloudId;
+    const TString FolderId;
     const TActorId Tablet;
     const ui32 BlockSize;
     const ui32 MaxAffectedBlocksPerCompaction;
@@ -200,6 +202,8 @@ public:
         TRequestInfoPtr requestInfo,
         ui64 tabletId,
         TString diskId,
+        TString cloudId,
+        TString folderId,
         const TActorId& tablet,
         ui32 blockSize,
         ui32 maxAffectedBlocksPerCompaction,
@@ -276,6 +280,8 @@ TCompactionActor::TCompactionActor(
         TRequestInfoPtr requestInfo,
         ui64 tabletId,
         TString diskId,
+        TString cloudId,
+        TString folderId,
         const TActorId& tablet,
         ui32 blockSize,
         ui32 maxAffectedBlocksPerCompaction,
@@ -294,6 +300,8 @@ TCompactionActor::TCompactionActor(
     : RequestInfo(std::move(requestInfo))
     , TabletId(tabletId)
     , DiskId(std::move(diskId))
+    , CloudId(std::move(cloudId))
+    , FolderId(std::move(folderId))
     , Tablet(tablet)
     , BlockSize(blockSize)
     , MaxAffectedBlocksPerCompaction(maxAffectedBlocksPerCompaction)
@@ -384,7 +392,9 @@ NProto::TError TCompactionActor::VerifyBlockChecksums()
                 r->BlockIndex,
                 r->BlobOffset,
                 expectedChecksum,
-                DiskId);
+                DiskId,
+                CloudId,
+                FolderId);
 
             if (HasError(error)) {
                 return error;
@@ -2259,6 +2269,8 @@ void TPartitionActor::CompleteCompaction(
         args.RequestInfo,
         TabletID(),
         PartitionConfig.GetDiskId(),
+        PartitionConfig.GetCloudId(),
+        PartitionConfig.GetFolderId(),
         SelfId(),
         State->GetBlockSize(),
         Config->GetMaxAffectedBlocksPerCompaction(),

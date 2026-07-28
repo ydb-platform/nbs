@@ -28,6 +28,8 @@ TLaggingAgentMigrationActor::TLaggingAgentMigrationActor(
           config,
           std::move(diagnosticsConfig),
           partConfig->GetName(),
+          partConfig->GetCloudId(),
+          partConfig->GetFolderId(),
           partConfig->GetBlockCount(),
           partConfig->GetBlockSize(),
           std::move(profileLog),

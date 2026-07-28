@@ -345,8 +345,10 @@ void TPartitionActor::HandleAddConfirmedBlobsCompleted(
             FormatError(msg->GetError()).c_str());
 
         ReportAddConfirmedBlobsError(
-            FormatError(msg->GetError()),
-            {{"disk", PartitionConfig.GetDiskId()}});
+            PartitionConfig.GetDiskId(),
+            PartitionConfig.GetCloudId(),
+            PartitionConfig.GetFolderId(),
+            FormatError(msg->GetError()));
         Suicide(ctx);
         return;
     }

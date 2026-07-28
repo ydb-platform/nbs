@@ -27,6 +27,8 @@ private:
     const ui32 PerGenerationCounter;
     const TVector<ui32> FreshChannels;
     const TString DiskId;
+    const TString CloudId;
+    const TString FolderId;
     const TDuration Timeout;
 
     ui32 RequestsInFlight = 0;
@@ -42,6 +44,8 @@ public:
         ui32 perGenerationCounter,
         TVector<ui32> freshChannels,
         TString diskId,
+        TString cloudId,
+        TString folderId,
         TDuration timeout);
 
     void Bootstrap(const NActors::TActorContext& ctx);

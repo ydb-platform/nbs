@@ -59,6 +59,9 @@ private:
     const bool IsZeroRequest;
     const bool WaitForAddFreshBlocksResponseBeforeResponse;
     const ui64 TabletId;
+    const TString DiskId;
+    const TString CloudId;
+    const TString FolderId;
 
     TPartitionThreadSafeStatePtr SharedState;
 
@@ -85,6 +88,9 @@ public:
         IBlockDigestGeneratorPtr blockDigestGenerator,
         bool waitForAddFreshBlocksResponseBeforeResponse,
         ui64 tabletId,
+        TString diskId,
+        TString cloudId,
+        TString folderId,
         TPartitionThreadSafeStatePtr sharedState);
 
     void Bootstrap(const NActors::TActorContext& ctx);

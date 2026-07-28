@@ -231,8 +231,10 @@ void TPartitionActor::HandleConfirmBlobsCompleted(
             msg->GetStatus(),
             FormatError(msg->GetError()).c_str());
         ReportConfirmBlobsError(
-            FormatError(msg->GetError()),
-            {{"disk", PartitionConfig.GetDiskId()}});
+            PartitionConfig.GetDiskId(),
+            PartitionConfig.GetCloudId(),
+            PartitionConfig.GetFolderId(),
+            FormatError(msg->GetError()));
         Suicide(ctx);
         return;
     }

@@ -38,6 +38,8 @@ private:
 
     const TActorId Tablet;
     const TString DiskId;
+    const TString CloudId;
+    const TString FolderId;
     const TTabletStorageInfoPtr TabletInfo;
     const ui64 LastGCCommitId;
     const ui64 CollectCommitId;
@@ -63,6 +65,8 @@ public:
         TRequestInfoPtr requestInfo,
         const TActorId& tablet,
         TString diskId,
+        TString cloudId,
+        TString folderId,
         TTabletStorageInfoPtr tabletInfo,
         ui64 lastGCCommitId,
         ui64 collectCommitId,
@@ -108,6 +112,8 @@ TCollectGarbageActor::TCollectGarbageActor(
         TRequestInfoPtr requestInfo,
         const TActorId& tablet,
         TString diskId,
+        TString cloudId,
+        TString folderId,
         TTabletStorageInfoPtr tabletInfo,
         ui64 lastGCCommitId,
         ui64 collectCommitId,
@@ -123,6 +129,8 @@ TCollectGarbageActor::TCollectGarbageActor(
     : RequestInfo(std::move(requestInfo))
     , Tablet(tablet)
     , DiskId(std::move(diskId))
+    , CloudId(std::move(cloudId))
+    , FolderId(std::move(folderId))
     , TabletInfo(std::move(tabletInfo))
     , LastGCCommitId(lastGCCommitId)
     , CollectCommitId(collectCommitId)
@@ -248,9 +256,11 @@ void TCollectGarbageActor::HandleError(NProto::TError error)
 {
     if (FAILED(error.GetCode())) {
         ReportCollectGarbageError(
+            DiskId,
+            CloudId,
+            FolderId,
             TStringBuilder()
-                << "Garbage collection error: " << FormatError(error),
-            {{"disk", DiskId}});
+                << "Garbage collection error: " << FormatError(error));
 
         Error = std::move(error);
     }
@@ -346,6 +356,8 @@ private:
 
     const TActorId Tablet;
     const TString DiskId;
+    const TString CloudId;
+    const TString FolderId;
     const TTabletStorageInfoPtr TabletInfo;
     const ui64 CollectCommitId;
     const ui32 RecordGeneration;
@@ -365,6 +377,8 @@ public:
         TRequestInfoPtr requestInfo,
         const TActorId& tablet,
         TString diskId,
+        TString cloudId,
+        TString folderId,
         TTabletStorageInfoPtr tabletInfo,
         ui64 collectCommitId,
         ui32 recordGeneration,
@@ -402,6 +416,8 @@ TCollectGarbageHardActor::TCollectGarbageHardActor(
         TRequestInfoPtr requestInfo,
         const TActorId& tablet,
         TString diskId,
+        TString cloudId,
+        TString folderId,
         TTabletStorageInfoPtr tabletInfo,
         ui64 collectCommitId,
         ui32 recordGeneration,
@@ -413,6 +429,8 @@ TCollectGarbageHardActor::TCollectGarbageHardActor(
     : RequestInfo(std::move(requestInfo))
     , Tablet(tablet)
     , DiskId(std::move(diskId))
+    , CloudId(std::move(cloudId))
+    , FolderId(std::move(folderId))
     , TabletInfo(std::move(tabletInfo))
     , CollectCommitId(collectCommitId)
     , RecordGeneration(recordGeneration)
@@ -499,9 +517,11 @@ void TCollectGarbageHardActor::HandleError(NProto::TError error)
 {
     if (FAILED(error.GetCode())) {
         ReportCollectGarbageError(
+            DiskId,
+            CloudId,
+            FolderId,
             TStringBuilder()
-                << "Hard garbage collection error: " << FormatError(error),
-            {{"disk", DiskId}});
+                << "Hard garbage collection error: " << FormatError(error));
         Error = std::move(error);
     }
 }
@@ -736,6 +756,8 @@ void TPartitionActor::HandleCollectGarbage(
         requestInfo,
         SelfId(),
         PartitionConfig.GetDiskId(),
+        PartitionConfig.GetCloudId(),
+        PartitionConfig.GetFolderId(),
         Info(),
         State->GetLastCollectCommitId(),
         commitId,
@@ -853,6 +875,8 @@ void TPartitionActor::CompleteCollectGarbage(
         args.RequestInfo,
         SelfId(),
         PartitionConfig.GetDiskId(),
+        PartitionConfig.GetCloudId(),
+        PartitionConfig.GetFolderId(),
         Info(),
         args.CollectCommitId,
         Executor()->Generation(),

@@ -41,6 +41,8 @@ struct TDeviceHandlerParams
 {
     IStoragePtr Storage;
     TString DiskId;
+    TString CloudId;
+    TString FolderId;
     TString ClientId;
     ui32 BlockSize = 0;
     ui32 MaxZeroBlocksSubRequestSize = 0;

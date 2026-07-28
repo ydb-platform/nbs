@@ -95,6 +95,8 @@ TAlignedDeviceHandler::TAlignedDeviceHandler(
         ui32 maxSubRequestSize)
     : Storage(std::move(params.Storage))
     , DiskId(std::move(params.DiskId))
+    , CloudId(std::move(params.CloudId))
+    , FolderId(std::move(params.FolderId))
     , ClientId(std::move(params.ClientId))
     , BlockSize(params.BlockSize)
     , MaxBlockCount(maxSubRequestSize / BlockSize)
@@ -467,12 +469,20 @@ void TAlignedDeviceHandler::ReportCriticalError(
     }
 
     auto message = TStringBuilder()
-                   << "disk: " << DiskId.Quote() << ", op: " << operation
+                   << "op: " << operation
                    << ", range: " << range << ", error: " << FormatError(error);
     if (IsReliableMediaKind(StorageMediaKind)) {
-        ReportErrorWasSentToTheGuestForReliableDisk(message);
+        ReportErrorWasSentToTheGuestForReliableDisk(
+            DiskId,
+            CloudId,
+            FolderId,
+            message);
     } else {
-        ReportErrorWasSentToTheGuestForNonReliableDisk(message);
+        ReportErrorWasSentToTheGuestForNonReliableDisk(
+            DiskId,
+            CloudId,
+            FolderId,
+            message);
     }
 }
 

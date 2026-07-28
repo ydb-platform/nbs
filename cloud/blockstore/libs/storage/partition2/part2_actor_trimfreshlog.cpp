@@ -131,7 +131,9 @@ void TPartitionActor::HandleTrimFreshLog(
         ParseCommitId(State->GetLastCommitId()).first,
         nextPerGenerationCounter,
         std::move(freshChannels),
-        "",
+        PartitionConfig.GetDiskId(),
+        PartitionConfig.GetCloudId(),
+        PartitionConfig.GetFolderId(),
         Config->GetTrimFreshLogTimeout());
 
     Actors.insert(actor);

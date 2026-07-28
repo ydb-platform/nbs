@@ -380,6 +380,9 @@ void TPartitionActor::HandleWriteBlobCompleted(
 
     if (FAILED(msg->GetStatus())) {
         ReportTabletBSFailure(
+            PartitionConfig.GetDiskId(),
+            PartitionConfig.GetCloudId(),
+            PartitionConfig.GetFolderId(),
             TStringBuilder()
             << TabletID() << " Stop tablet because of WriteBlob error (actor "
             << ev->Sender.ToString() << " group " << group

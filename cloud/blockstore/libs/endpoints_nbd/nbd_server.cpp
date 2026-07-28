@@ -54,6 +54,8 @@ public:
     {
         NBD::TStorageOptions options;
         options.DiskId = request.GetDiskId();
+        options.CloudId = volume.GetCloudId();
+        options.FolderId = volume.GetFolderId();
         options.ClientId = request.GetClientId();
         options.BlockSize = volume.GetBlockSize();
         options.BlocksCount = volume.GetBlocksCount();

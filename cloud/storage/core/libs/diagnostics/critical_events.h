@@ -40,6 +40,13 @@ TString GetCriticalEventFullName(const TString& name);
 TString GetImpossibleEventFullName(const TString& name);
 
 TString ReportCriticalEvent(
+    NMonitoring::TDynamicCountersPtr root,
+    const TString& sensorName,
+    const TCritEventLabels& labels,
+    const TString& message,
+    bool verifyDebug);
+
+TString ReportCriticalEvent(
     const TString& sensorName,
     const TCritEventLabels& labels,
     const TString& message,
@@ -50,6 +57,10 @@ TString ReportCriticalEvent(
     const TString& message,
     bool verifyDebug);
 
+void ReportCriticalEventWithoutLogging(
+    NMonitoring::TDynamicCountersPtr root,
+    const TString& sensorName,
+    const TCritEventLabels& labels);
 void ReportCriticalEventWithoutLogging(
     const TString& sensorName,
     const TCritEventLabels& labels);

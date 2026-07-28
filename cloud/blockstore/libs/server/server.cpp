@@ -711,6 +711,9 @@ private:
             if (cellId && cellId != AppCtx.CellId) {
                 const auto* msg = "DescribeVolume response cell id mismatch";
                 ReportWrongCellIdInDescribeVolume(
+                    Request->GetDiskId(),
+                    "",   // cloudId — not available at this point
+                    "",   // folderId — not available at this point
                     msg,
                     {{"expected", AppCtx.CellId}, {"actual", cellId}});
 

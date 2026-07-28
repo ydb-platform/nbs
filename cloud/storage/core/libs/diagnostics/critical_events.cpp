@@ -56,6 +56,7 @@ TString GetImpossibleEventFullName(const TString& name)
 }
 
 TString ReportCriticalEvent(
+    NMonitoring::TDynamicCountersPtr root,
     const TString& sensorName,
     const TCritEventLabels& labels,
     const TString& message,
@@ -69,7 +70,7 @@ TString ReportCriticalEvent(
             message.c_str());
     }
 
-    ReportCriticalEventWithoutLogging(sensorName, labels);
+    ReportCriticalEventWithoutLogging(root, sensorName, labels);
 
     TStringBuilder fullMessage;
     fullMessage << "CRITICAL_EVENT:" << sensorName;
@@ -91,6 +92,20 @@ TString ReportCriticalEvent(
 
 TString ReportCriticalEvent(
     const TString& sensorName,
+    const TCritEventLabels& labels,
+    const TString& message,
+    bool verifyDebug)
+{
+    return ReportCriticalEvent(
+        CriticalEvents,
+        sensorName,
+        labels,
+        message,
+        verifyDebug);
+}
+
+TString ReportCriticalEvent(
+    const TString& sensorName,
     const TString& message,
     bool verifyDebug)
 {
@@ -98,26 +113,27 @@ TString ReportCriticalEvent(
 }
 
 void ReportCriticalEventWithoutLogging(
+    NMonitoring::TDynamicCountersPtr root,
     const TString& sensorName,
     const TCritEventLabels& labels)
 {
-    if (!CriticalEvents) {
+    if (!root) {
         return;
     }
 
-    auto subgroup = CriticalEvents;
+    auto subgroup = root;
     for (const auto& label : labels) {
         subgroup = subgroup->GetSubgroup(label.first, label.second);
     }
 
-    bool initialized = !!subgroup->FindCounter(sensorName);
-    auto counter = subgroup->GetCounter(sensorName, true);
-    // TODO: will it work for derivative counter with simultaneous init + increment?
-    if (!initialized) {
-        *counter = 0;
-    }
+    subgroup->GetCounter(sensorName, true)->Inc();
+}
 
-    counter->Inc();
+void ReportCriticalEventWithoutLogging(
+    const TString& sensorName,
+    const TCritEventLabels& labels)
+{
+    ReportCriticalEventWithoutLogging(CriticalEvents, sensorName, labels);
 }
 
 void ReportCriticalEventWithoutLogging(const TString& sensorName)

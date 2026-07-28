@@ -341,8 +341,10 @@ void TPartitionActor::ReassignChannelsIfNeeded(const NActors::TActorContext& ctx
         std::move(channels));
 
     ReportReassignTablet(
-        {{"disk", PartitionConfig.GetDiskId()},
-         {"tablet_id", TabletID()},
+        PartitionConfig.GetDiskId(),
+        PartitionConfig.GetCloudId(),
+        PartitionConfig.GetFolderId(),
+        {{"tablet_id", TabletID()},
          {"channels", sb}});
     ReassignRequestSentTs = ctx.Now();
 }
@@ -1390,7 +1392,9 @@ NProto::TError VerifyBlockChecksum(
     const ui64 blockIndex,
     const ui16 blobOffset,
     const ui32 expectedChecksum,
-    const TString& diskId)
+    const TString& diskId,
+    const TString& cloudId,
+    const TString& folderId)
 {
     if (expectedChecksum == 0) {
         // 0 is a special case - block digest calculation can be
@@ -1404,8 +1408,10 @@ NProto::TError VerifyBlockChecksum(
 
     if (actualChecksum != expectedChecksum) {
         ReportBlockDigestMismatchInBlob(
-            {{"disk", diskId},
-             {"BlockIndex", blockIndex},
+            diskId,
+            cloudId,
+            folderId,
+            {{"BlockIndex", blockIndex},
              {"blobOffset", blobOffset},
              {"blob", blobID.ToString()}});
         // we might read proper data upon retry - let's give it a chance

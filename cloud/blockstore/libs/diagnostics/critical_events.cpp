@@ -14,6 +14,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+NMonitoring::TDynamicCountersPtr VolumeCriticalEvents;
+
 template <typename... Ts>
 TStringBuilder& operator<<(TStringBuilder& sb, const std::variant<Ts...>& v)
 {
@@ -50,6 +52,11 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
 #undef BLOCKSTORE_INIT_CRITICAL_EVENT_COUNTER
 
     NCloud::InitCriticalEventsCounter(std::move(counters));
+}
+
+void InitVolumeCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
+{
+    VolumeCriticalEvents = counters->GetSubgroup("host", "cluster");
 }
 
 #define BLOCKSTORE_DEFINE_CRITICAL_EVENT_ROUTINE(name)                         \
@@ -173,7 +180,7 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
         const TString& message,                                                \
         const TCritEventParams& keyValues)                                     \
     {                                                                          \
-        /* deprecated: keeps existing AppCriticalEvents/ * metrics alive */    \
+        /* deprecated: keeps existing AppCriticalEvents/ metrics alive */      \
         ReportCriticalEvent(                                                   \
             GetDeprecatedCriticalEventFor##name(), message, false);            \
                                                                                \
@@ -208,6 +215,7 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
             {"folder", folderId}};                                             \
                                                                                \
         return ReportCriticalEvent(                                            \
+            VolumeCriticalEvents,                                              \
             GetCriticalEventFor##name(),                                       \
             labels,                                                            \
             msg,                                                               \

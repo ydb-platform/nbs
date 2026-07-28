@@ -156,6 +156,9 @@ void TPartitionActor::CompleteLoadState(
 
     if (tabletChannelCount != configChannelCount) {
         ReportInvalidTabletConfig(
+            args.Meta->GetConfig().GetDiskId(),
+            args.Meta->GetConfig().GetCloudId(),
+            args.Meta->GetConfig().GetFolderId(),
             TStringBuilder()
             << "[" << TabletID() << "] "
             << "tablet info differs from config: "

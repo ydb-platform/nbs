@@ -31,6 +31,9 @@ TWriteFreshBlocksActor::TWriteFreshBlocksActor(
         IBlockDigestGeneratorPtr blockDigestGenerator,
         bool waitForAddFreshBlocksResponseBeforeResponse,
         ui64 tabletId,
+        TString diskId,
+        TString cloudId,
+        TString folderId,
         TPartitionThreadSafeStatePtr sharedState)
     : Owner(owner)
     , ActorToAddFreshBlocks(actorToAddFreshBlocks)
@@ -47,6 +50,9 @@ TWriteFreshBlocksActor::TWriteFreshBlocksActor(
     , WaitForAddFreshBlocksResponseBeforeResponse(
           waitForAddFreshBlocksResponseBeforeResponse)
     , TabletId(tabletId)
+    , DiskId(std::move(diskId))
+    , CloudId(std::move(cloudId))
+    , FolderId(std::move(folderId))
     , SharedState(std::move(sharedState))
 {
     if (!IsZeroRequest) {
@@ -370,6 +376,9 @@ void TWriteFreshBlocksActor::HandleAddFreshBlocksResponse(
         error.GetCode() != E_CANCELLED)
     {
         ReportAddFreshBlocksResultedInError(
+            DiskId,
+            CloudId,
+            FolderId,
             "unexpected error in AddFreshBlocksResponse",
             {{"error", FormatError(ev->Get()->GetError())},
              {"tabletId", TabletId}});

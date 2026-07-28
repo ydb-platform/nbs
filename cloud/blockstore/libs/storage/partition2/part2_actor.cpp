@@ -260,6 +260,9 @@ void TPartitionActor::ReassignChannelsIfNeeded(const NActors::TActorContext& ctx
         std::move(channels));
 
     ReportReassignTablet(
+        PartitionConfig.GetDiskId(),
+        PartitionConfig.GetCloudId(),
+        PartitionConfig.GetFolderId(),
         TStringBuilder() << TabletID()
                          << " Reassign request sent for channels: " << sb);
     ReassignRequestSentTs = ctx.Now();

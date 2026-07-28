@@ -438,6 +438,9 @@ void TPartitionActor::HandleReadBlobCompleted(
                 >= Config->GetMaxReadBlobErrorsBeforeSuicide())
         {
             ReportTabletBSFailure(
+                PartitionConfig.GetDiskId(),
+                PartitionConfig.GetCloudId(),
+                PartitionConfig.GetFolderId(),
                 TStringBuilder()
                 << TabletID()
                 << " Stop tablet because of too many ReadBlob errors (actor "

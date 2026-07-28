@@ -297,6 +297,8 @@ void TBootstrapBase::Init()
         ->GetSubgroup("counters", "blockstore");
 
     auto serverGroup = rootGroup->GetSubgroup("component", "server");
+    auto serviceVolumeGroup =
+        rootGroup->GetSubgroup("component", "service_volume");
     auto revisionGroup = serverGroup->GetSubgroup("revision", GetFullVersionString());
 
     auto versionCounter = revisionGroup->GetCounter(
@@ -305,6 +307,7 @@ void TBootstrapBase::Init()
     *versionCounter = 1;
 
     InitCriticalEventsCounter(serverGroup);
+    InitVolumeCriticalEventsCounter(serviceVolumeGroup);
 
     TVector<TCertificateFiles> certPathList;
     for (const auto& cert: Configs->ServerConfig->GetCertsWithLegacyFallback())
