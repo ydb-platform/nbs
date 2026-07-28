@@ -5,6 +5,7 @@
 #include <gtest/gtest.h>
 
 #include <util/generic/bitmap.h>
+#include <util/generic/hash_set.h>
 #include <util/random/fast.h>
 
 using namespace NCloud;
@@ -34,6 +35,12 @@ TVector<ui64> CollectPages(const TVector<TPageGroup>& groups)
 void Flush(TVector<TPageGroup>& groups, IPageStore& pageStore)
 {
     pageStore.CommitPages(CollectPages(groups));
+    groups.clear();
+}
+
+void Rollback(TVector<TPageGroup>& groups, IPageStore& pageStore)
+{
+    pageStore.RollbackPages(CollectPages(groups));
     groups.clear();
 }
 
@@ -131,6 +138,52 @@ TEST(PersistentBitmapTest, SetResetAllocate)
     Flush(pageGroups, *fx.PageStore);
     ASSERT_TRUE(bit != bit3) << bit;
     ASSERT_TRUE(bit2 != bit3) << bit;
+}
+
+TEST(PersistentBitmapTest, OutOfSpace)
+{
+    TFixture fx;
+
+    TVector<TPageGroup> pageGroups;
+
+    const ui64 cap =
+        TPersistentBitmap::CalcBitsPerPage(PageSize) * fx.PageCount;
+
+    THashSet<ui64> bitSet;
+
+    for (ui64 i = 0; i < cap; ++i) {
+        ui64 bit = 0;
+        auto error = fx.Bitmap->Allocate(
+            fx.PageStore->AllocateLsn(),
+            &bit,
+            pageGroups);
+        ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
+        Flush(pageGroups, *fx.PageStore);
+
+        ASSERT_TRUE(bitSet.insert(bit).second);
+        ASSERT_LT(bit, cap);
+    }
+
+    ui64 bit = 0;
+    auto error = fx.Bitmap->Allocate(
+        fx.PageStore->AllocateLsn(),
+        &bit,
+        pageGroups);
+    ASSERT_EQ(E_FS_OUT_OF_SPACE, error.GetCode()) << FormatError(error);
+    Rollback(pageGroups, *fx.PageStore);
+
+    error = fx.Bitmap->Reset(fx.PageStore->AllocateLsn(), 1000, pageGroups);
+    ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
+    Flush(pageGroups, *fx.PageStore);
+
+    bit = 0;
+    error = fx.Bitmap->Allocate(
+        fx.PageStore->AllocateLsn(),
+        &bit,
+        pageGroups);
+    ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
+    Flush(pageGroups, *fx.PageStore);
+    ASSERT_EQ(1000ULL, bit);
 }
 
 TEST(PersistentBitmapTest, SetResetAllocateRandomized)

@@ -17,7 +17,7 @@ public:
     virtual ui64 AllocateLsn() = 0;
     virtual void CommitPages(const TVector<ui64>& pages) = 0;
     virtual void RollbackPages(const TVector<ui64>& pages) = 0;
-    virtual void WritePage(
+    virtual NProto::TError WritePage(
         ui64 lsn,
         ui64 pageNo,
         TString page,

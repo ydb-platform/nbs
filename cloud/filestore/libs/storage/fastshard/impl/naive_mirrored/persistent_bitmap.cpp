@@ -65,9 +65,25 @@ ui64 FindFirstFreeBit(const TString& bitmapPage)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+bool TPersistentBitmap::Validate(ui64 bit, NProto::TError* error) const
+{
+    if (bit >= PageCount * BitsPerPage) {
+        *error = MakeError(E_ARGUMENT, TStringBuilder() << "out of bounds"
+            " bitmap access: " << bit << " >= " << (PageCount * BitsPerPage));
+        return false;
+    }
+
+    return true;
+}
+
 NProto::TError TPersistentBitmap::Get(ui64 bit, bool* result) const
 {
-    auto error = InitIfNeeded();
+    NProto::TError error;
+    if (!Validate(bit, &error)) {
+        return error;
+    }
+
+    error = InitIfNeeded();
     if (HasError(error)) {
         return error;
     }
@@ -82,7 +98,12 @@ NProto::TError TPersistentBitmap::Set(
     ui64 bit,
     TVector<TPageGroup>& pageGroups)
 {
-    auto error = InitIfNeeded();
+    NProto::TError error;
+    if (!Validate(bit, &error)) {
+        return error;
+    }
+
+    error = InitIfNeeded();
     if (HasError(error)) {
         return error;
     }
@@ -91,8 +112,11 @@ NProto::TError TPersistentBitmap::Set(
     SetBit(BitmapPages[bitmapPageNo], bit % BitsPerPage, false /* isReset */);
 
     const ui64 pageNo = FirstPageNo + bitmapPageNo;
-    PageStore->WritePage(lsn, pageNo, BitmapPages[bitmapPageNo], pageGroups);
-    return {};
+    return PageStore->WritePage(
+        lsn,
+        pageNo,
+        BitmapPages[bitmapPageNo],
+        pageGroups);
 }
 
 NProto::TError TPersistentBitmap::Reset(
@@ -100,17 +124,31 @@ NProto::TError TPersistentBitmap::Reset(
     ui64 bit,
     TVector<TPageGroup>& pageGroups)
 {
-    auto error = InitIfNeeded();
+    NProto::TError error;
+    if (!Validate(bit, &error)) {
+        return error;
+    }
+
+    error = InitIfNeeded();
     if (HasError(error)) {
         return error;
     }
 
     const ui64 bitmapPageNo = bit / BitsPerPage;
-    SetBit(BitmapPages[bitmapPageNo], bit % BitsPerPage, true /* isReset */);
+    auto& page = BitmapPages[bitmapPageNo];
+    const bool wasFull = IsFull(page);
+    SetBit(page, bit % BitsPerPage, true /* isReset */);
+
+    if (wasFull) {
+        BitmapPagesWithFreeBits.push(bitmapPageNo);
+    }
 
     const ui64 pageNo = FirstPageNo + bitmapPageNo;
-    PageStore->WritePage(lsn, pageNo, BitmapPages[bitmapPageNo], pageGroups);
-    return {};
+    return PageStore->WritePage(
+        lsn,
+        pageNo,
+        BitmapPages[bitmapPageNo],
+        pageGroups);
 }
 
 NProto::TError TPersistentBitmap::Allocate(
@@ -144,8 +182,7 @@ NProto::TError TPersistentBitmap::Allocate(
         *bit = bitmapPageNo * BitsPerPage + pageBit;
 
         const ui64 pageNo = FirstPageNo + bitmapPageNo;
-        PageStore->WritePage(lsn, pageNo, page, pageGroups);
-        return {};
+        return PageStore->WritePage(lsn, pageNo, page, pageGroups);
     }
 
     return MakeError(E_FS_OUT_OF_SPACE, "bitmap full");

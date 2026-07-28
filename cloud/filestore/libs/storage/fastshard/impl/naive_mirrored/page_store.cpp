@@ -51,7 +51,7 @@ public:
     ui64 AllocateLsn() override;
     void CommitPages(const TVector<ui64>& pages) override;
     void RollbackPages(const TVector<ui64>& pages) override;
-    void WritePage(
+    NProto::TError WritePage(
         ui64 lsn,
         ui64 pageNo,
         TString page,
@@ -90,7 +90,7 @@ void TPageStore::RollbackPages(const TVector<ui64>& pages)
     }
 }
 
-void TPageStore::WritePage(
+NProto::TError TPageStore::WritePage(
     ui64 lsn,
     ui64 pageNo,
     TString page,
@@ -120,12 +120,31 @@ void TPageStore::WritePage(
 
     std::lock_guard g(Mutex);
     auto& p = PageCache[pageNo];
-    Y_ABORT_UNLESS(p.Lsn <= lsn);
+
+    if (p.Dirty && p.Lsn != 0 && p.Lsn != lsn) {
+        //
+        // Doing it in the simplest way possible - just rejecting concurrent ops
+        // for each page. We can implement tracking different page versions for
+        // different lsns in the future if needed.
+        //
+
+        return MakeError(
+            E_REJECTED,
+            TStringBuilder() << "dirty page (" << pageNo
+                << ") with different lsn (" << p.Lsn << " != " << lsn << ")");
+    }
+
+    if (!p.Dirty) {
+        Y_ABORT_UNLESS(p.Lsn <= lsn);
+    }
+
     p = {
         .Content = std::move(page),
         .Lsn = lsn,
         .Dirty = true
     };
+
+    return {};
 }
 
 NProto::TError TPageStore::ReadPage(
@@ -142,13 +161,15 @@ NProto::TError TPageStore::ReadPage(
         TPageCache::insert_ctx insertCtx;
         cachedPage = PageCache.find(pageNo, insertCtx);
         if (cachedPage != PageCache.end()) {
-            // TODO(#5894): block reader upon dirty page read attempt instead of
-            // erroring
+            //
+            // See the comment for WritePage() E_REJECTED error.
+            //
+
             if (cachedPage->second.Dirty && cachedPage->second.Lsn != lsn) {
                 return MakeError(
                     E_REJECTED,
                     TStringBuilder() << "dirty page (" << pageNo
-                        << ") with non-matching lsn ("
+                        << ") with different lsn ("
                         << cachedPage->second.Lsn << " != " << lsn << ")");
             }
 
@@ -157,7 +178,9 @@ NProto::TError TPageStore::ReadPage(
         }
 
         cachedPage = PageCache.insert_direct(
-            std::make_pair(pageNo, TPage{.Content = {}, .Dirty = true}),
+            std::make_pair(
+                pageNo,
+                TPage{.Content = {}, .Lsn = lsn, .Dirty = true}),
             insertCtx);
     }
 

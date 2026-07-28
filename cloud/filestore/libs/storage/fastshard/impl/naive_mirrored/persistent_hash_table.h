@@ -292,14 +292,14 @@ public:
     }
 
 private:
-    void WritePage(
+    NProto::TError WritePage(
         ui64 lsn,
         ui64 slotNo,
         TString page,
         TVector<TPageGroup>& pageGroups)
     {
         const ui64 pageNo = FirstPageNo + slotNo / SlotsPerPage;
-        PageStore->WritePage(lsn, pageNo, std::move(page), pageGroups);
+        return PageStore->WritePage(lsn, pageNo, std::move(page), pageGroups);
     }
 
     NProto::TError ReadPage(ui64 lsn, ui64 slotNo, TString* page) const
@@ -445,14 +445,12 @@ private:
         char* ptr = page.begin() + relSlotNo * SlotSize;
         memcpy(ptr, &v, sizeof(TValue));
 
-        WritePage(lsn, slotNo, std::move(page), pageGroups);
-
         SILK_DEBUG(
             "pht DoPut: slotNo=%lu, logRecordPGs=%lu",
             slotNo,
             pageGroups.size());
 
-        return {};
+        return WritePage(lsn, slotNo, std::move(page), pageGroups);
     }
 
     ui64 CalcSlotNo(const TKey& k) const
@@ -555,23 +553,31 @@ private:
             it.Write(reinterpret_cast<const char*>(&Tombstone));
         }
 
+        SILK_DEBUG(
+            "pht DoDelete: slotNo=%lu, logRecordPGs=%lu",
+            slotNo,
+            pageGroups.size());
+
         //
         // Writing the changes.
         //
 
         auto toWrite = it.Finish();
         for (auto& dp: toWrite) {
-            PageStore->WritePage(
+            auto error = PageStore->WritePage(
                 lsn,
                 dp.PageNo,
                 std::move(dp.Content),
                 pageGroups);
-        }
 
-        SILK_DEBUG(
-            "pht DoDelete: slotNo=%lu, logRecordPGs=%lu",
-            slotNo,
-            pageGroups.size());
+            if (HasError(error)) {
+                //
+                // The caller is responsible for rolling back the changes.
+                //
+
+                return error;
+            }
+        }
 
         return {};
     }

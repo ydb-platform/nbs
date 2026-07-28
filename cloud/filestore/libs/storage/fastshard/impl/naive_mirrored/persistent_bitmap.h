@@ -51,6 +51,7 @@ public:
     }
 
 private:
+    bool Validate(ui64 bit, NProto::TError* error) const;
     NProto::TError InitIfNeeded() const;
 };
 
