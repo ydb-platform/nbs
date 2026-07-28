@@ -92,6 +92,17 @@ Y_UNIT_TEST_SUITE(TLeakyBucketTest)
         GET_SHARE_AND_CHECK(0.75, 2'500'000);    // share = (200 - (0 + 0.5 * 100)) / 200 = 0.75
     }
 
+    Y_UNIT_TEST(ShouldReturnDelayForPostponingRequest)
+    {
+        TLeakyBucket lb(0.5, 0.5, 0);
+
+        auto now = TInstant::Now();
+        auto delay = lb.Register(now, 42.0);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            lb.Register(now + SecondsToDuration(delay), 42.0));
+    }
+
     Y_UNIT_TEST(ShouldCorrectlyCalculateBoostedTimeBucket)
     {
         TBoostedTimeBucket lb(
