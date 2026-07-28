@@ -1341,7 +1341,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                 switch (event->GetTypeRewrite()) {
                     case TEvDiskRegistryPrivate::EvSecureEraseResponse: {
                         auto* msg = event->Get<TEvDiskRegistryPrivate::TEvSecureEraseResponse>();
-                        cleanDevices += msg->CleanDevices;
+                        cleanDevices += msg->CleanDevices.size();
                         break;
                     }
 

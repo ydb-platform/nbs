@@ -81,7 +81,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
     TABLET_TEST(ShouldStoreFreshBytes)
     {
-        TTestEnv env;
+        TTestEnv env(testEnvConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -140,7 +140,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
     TABLET_TEST(ShouldLoadFreshBytesOnStartup)
     {
-        TTestEnv env;
+        TTestEnv env(testEnvConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -186,7 +186,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
     TABLET_TEST(ShouldFlushFreshBytes)
     {
-        TTestEnv env;
+        TTestEnv env(testEnvConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -329,7 +329,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
     TABLET_TEST(ShouldFlushFreshBytesByLargeOffset)
     {
-        TTestEnv env;
+        TTestEnv env(testEnvConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -369,7 +369,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
     TABLET_TEST(ShouldFlushFreshBytesWithPartialBlobIntersection)
     {
-        TTestEnv env;
+        TTestEnv env(testEnvConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -434,7 +434,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetFlushBytesItemCountThreshold(1000);
         storageConfig.SetFlushBytesByItemCountEnabled(true);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -476,7 +476,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
     {
         const auto block = tabletConfig.BlockSize;
 
-        TTestEnv env;
+        TTestEnv env(testEnvConfig);
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
@@ -654,7 +654,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         const auto block = tabletConfig.BlockSize;
         const auto rangeSize = 3 * block;
 
-        TTestEnv env;
+        TTestEnv env(testEnvConfig);
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
@@ -797,7 +797,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         NProto::TStorageConfig storageConfig;
         storageConfig.SetWriteBlobThreshold(2 * block);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -858,7 +858,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
     TABLET_TEST(ShouldStoreFreshBlocks)
     {
-        TTestEnv env;
+        TTestEnv env(testEnvConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -896,7 +896,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         NProto::TStorageConfig storageConfig;
         storageConfig.SetWriteBlobThreshold(1_GB);  // no direct blob writes
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -956,7 +956,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
     TABLET_TEST(ShouldWriteBlobForLargeWrite)
     {
-        TTestEnv env;
+        TTestEnv env(testEnvConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -1001,7 +1001,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         NProto::TStorageConfig storageConfig;
         storageConfig.SetWriteBlobThreshold(1_GB);  // no direct blob writes
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -1075,7 +1075,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
     {
         const auto block = tabletConfig.BlockSize;
 
-        TTestEnv env;
+        TTestEnv env(testEnvConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -1143,7 +1143,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
     TABLET_TEST(ShouldHandleMultipleBlobsInRangeAndUpdateCompactionMap)
     {
-        TTestEnv env;
+        TTestEnv env(testEnvConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -1202,7 +1202,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
     {
         const auto block = tabletConfig.BlockSize;
 
-        TTestEnv env;
+        TTestEnv env(testEnvConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -1257,7 +1257,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
     TABLET_TEST(ShouldHandleErasedRangeDuringCompaction)
     {
-        TTestEnv env;
+        TTestEnv env(testEnvConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -1308,7 +1308,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetFlushBytesThreshold(1_GB);
         storageConfig.SetFlushThreshold(1_GB);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -1398,7 +1398,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
     {
         const auto block = tabletConfig.BlockSize;
 
-        TTestEnv env;
+        TTestEnv env(testEnvConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -1505,7 +1505,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
     {
         const auto block = tabletConfig.BlockSize;
 
-        TTestEnv env;
+        TTestEnv env(testEnvConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -1549,7 +1549,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
     {
         const auto block = tabletConfig.BlockSize;
 
-        TTestEnv env;
+        TTestEnv env(testEnvConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -1575,7 +1575,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
     {
         const auto block = tabletConfig.BlockSize;
 
-        TTestEnv env;
+        TTestEnv env(testEnvConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -1630,7 +1630,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         constexpr ui64 maxBlocks = 256;
         const auto block = tabletConfig.BlockSize;
 
-        TTestEnv env;
+        TTestEnv env(testEnvConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -1695,7 +1695,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
     {
         const auto block = tabletConfig.BlockSize;
 
-        TTestEnv env;
+        TTestEnv env(testEnvConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -1736,7 +1736,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         NProto::TStorageConfig storageConfig;
         storageConfig.SetWriteBlobThreshold(1_GB);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -1787,7 +1787,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetCleanupThreshold(999'999);
         storageConfig.SetWriteBlobThreshold(2 * block);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -1867,7 +1867,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetCleanupThreshold(999'999);
         storageConfig.SetWriteBlobThreshold(block);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -1950,7 +1950,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetUseMixedBlocksInsteadOfAliveBlocksInCompaction(true);
         storageConfig.SetWriteBlobThreshold(block);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -2147,7 +2147,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetCleanupThreshold(8);
         storageConfig.SetWriteBlobThreshold(2 * block);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -2218,7 +2218,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetCleanupThresholdAverage(3);
         storageConfig.SetWriteBlobThreshold(block);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -2305,7 +2305,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetWriteBlobThreshold(2 * block);
         storageConfig.SetCollectGarbageThreshold(6 * block);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -2355,7 +2355,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetCleanupThreshold(999'999);
         storageConfig.SetWriteBlobThreshold(block);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
 
         ui32 nodeIdx = env.AddDynamicNode();
@@ -2456,7 +2456,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetWriteBlobThreshold(1_GB);
         storageConfig.SetFlushThreshold(1_GB);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
 
         ui32 nodeIdx = env.AddDynamicNode();
@@ -2529,7 +2529,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetFlushBytesThreshold(1_GB);
         storageConfig.SetWriteBlobThreshold(4 * block);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
         auto registry = env.GetRegistry();
 
         ui32 nodeIdx = env.AddDynamicNode();
@@ -2697,7 +2697,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetFlushThreshold(999'999);
         storageConfig.SetWriteBlobThreshold(1_GB);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
 
         ui32 nodeIdx = env.AddDynamicNode();
@@ -2744,7 +2744,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetCleanupThreshold(999'999);
         storageConfig.SetWriteBlobThreshold(block);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
 
         ui32 nodeIdx = env.AddDynamicNode();
@@ -2883,7 +2883,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetCompactionThreshold(999'999);
         storageConfig.SetCollectGarbageThreshold(1_GB);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
 
         ui32 nodeIdx = env.AddDynamicNode();
@@ -2913,6 +2913,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
     void DoTestSoftBackpressureWriteThrottling(
         const TFileSystemConfig& tabletConfig,
+        const TTestEnvConfig& testEnvConfig,
         bool softBackpressureEnabled)
     {
         const ui32 block = tabletConfig.BlockSize;
@@ -2926,7 +2927,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetFlushThresholdForBackpressureSoft(block);
         storageConfig.SetFlushThresholdForBackpressure(3 * block);
 
-        TTestEnv env({}, storageConfig);
+        TTestEnv env(testEnvConfig, storageConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -2992,6 +2993,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
     void DoTestSoftBackpressureThrottlingDefaults(
         const TFileSystemConfig& tabletConfig,
+        const TTestEnvConfig& testEnvConfig,
         bool throttlingEnabled,
         ui32 expectedError,
         bool enableSoftBackpressureViaFeaturesConfig)
@@ -3009,7 +3011,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetFlushThresholdForBackpressureSoft(block);
         storageConfig.SetFlushThresholdForBackpressure(3 * block);
 
-        TTestEnv env({}, storageConfig);
+        TTestEnv env(testEnvConfig, storageConfig);
 
         if (enableSoftBackpressureViaFeaturesConfig) {
             NCloud::NProto::TFeaturesConfig featuresConfigProto;
@@ -3068,18 +3070,25 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
     TABLET_TEST_16K(ShouldNotThrottleWritesDueToSoftBackpressureIfDisabled)
     {
-        DoTestSoftBackpressureWriteThrottling(tabletConfig, false);
+        DoTestSoftBackpressureWriteThrottling(
+            tabletConfig,
+            testEnvConfig,
+            false);
     }
 
     TABLET_TEST_16K(ShouldThrottleWritesDueToSoftBackpressureIfEnabled)
     {
-        DoTestSoftBackpressureWriteThrottling(tabletConfig, true);
+        DoTestSoftBackpressureWriteThrottling(
+            tabletConfig,
+            testEnvConfig,
+            true);
     }
 
     TABLET_TEST_16K(ShouldThrottleWritesDueToSoftBackpressureIfThrottlingDisabled)
     {
         DoTestSoftBackpressureThrottlingDefaults(
             tabletConfig,
+            testEnvConfig,
             false,
             E_FS_THROTTLED,
             false);
@@ -3089,6 +3098,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
     {
         DoTestSoftBackpressureThrottlingDefaults(
             tabletConfig,
+            testEnvConfig,
             true,
             S_OK,
             false);
@@ -3098,6 +3108,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
     {
         DoTestSoftBackpressureThrottlingDefaults(
             tabletConfig,
+            testEnvConfig,
             false,
             E_FS_THROTTLED,
             true);
@@ -3122,7 +3133,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetSoftBackpressureMaxWriteBandwidth(1);
         storageConfig.SetSoftBackpressureMaxWriteIops(1);
 
-        TTestEnv env({}, storageConfig);
+        TTestEnv env(testEnvConfig, storageConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -3209,7 +3220,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetFlushBytesItemCountThresholdForBackpressure(10);
         storageConfig.SetCollectGarbageThresholdForBackpressure(64 * block);
 
-        TTestEnv env({}, storageConfig);
+        TTestEnv env(testEnvConfig, storageConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -3483,7 +3494,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetCleanupThresholdForBackpressure(999);
         storageConfig.SetFlushBytesThresholdForBackpressure(1_GB);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -3575,7 +3586,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetMaxBackpressureErrorsBeforeSuicide(999999);
         storageConfig.SetMaxBackpressurePeriodBeforeSuicide(60'000); // 1m
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -3650,7 +3661,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetFlushThreshold(2 * block);
         storageConfig.SetFlushBytesThreshold(block);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -3714,7 +3725,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
     {
         const auto block = tabletConfig.BlockSize;
 
-        TTestEnv env;
+        TTestEnv env(testEnvConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -3796,7 +3807,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
     {
         const auto block = tabletConfig.BlockSize;
 
-        TTestEnv env;
+        TTestEnv env(testEnvConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -3846,7 +3857,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
     {
         const auto block = tabletConfig.BlockSize;
 
-        TTestEnv env;
+        TTestEnv env(testEnvConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -3884,7 +3895,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
     TABLET_TEST(ShouldDoForcedCompaction)
     {
-        TTestEnv env;
+        TTestEnv env(testEnvConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -3924,7 +3935,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
     TABLET_TEST(ShouldRetryForcedCompaction)
     {
-        TTestEnv env;
+        TTestEnv env(testEnvConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -3978,7 +3989,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
     TABLET_TEST(ShouldEnqueuePendingForcedCompaction)
     {
-        TTestEnv env;
+        TTestEnv env(testEnvConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -4028,7 +4039,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
     TABLET_TEST(ShouldForceCompactAndCleanup)
     {
-        TTestEnv env;
+        TTestEnv env(testEnvConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -4084,7 +4095,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         const auto rangesCount = 13;
         const auto dataSize = BlockGroupSize * block * rangesCount;
 
-        TTestEnv env;
+        TTestEnv env(testEnvConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -4187,7 +4198,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         const auto block = tabletConfig.BlockSize;
         const auto dataSize = 32 * block;
 
-        TTestEnv env;
+        TTestEnv env(testEnvConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -4285,7 +4296,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         NProto::TStorageConfig storageConfig;
         storageConfig.SetMaxZeroCompactionRangesToDeletePerTx(10);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
         ui32 requests = 0;
         ui32 lastCompactionMapRangeId = 0;
@@ -4366,7 +4377,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
     TABLET_TEST(ShouldDumpCompactionRangeBlobs)
     {
-        TTestEnv env;
+        TTestEnv env(testEnvConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -4399,7 +4410,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetLoadedCompactionRangesPerTx(2);
         storageConfig.SetWriteBlobThreshold(block);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
 
         TAutoPtr<IEventHandle> loadChunk;
@@ -4550,7 +4561,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetLoadedCompactionRangesPerTx(2);
         storageConfig.SetWriteBlobThreshold(block);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -4630,7 +4641,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetAddingUnconfirmedDataEnabled(true);
         storageConfig.SetUnconfirmedDataCountHardLimit(10);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -4721,7 +4732,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetAddingUnconfirmedDataEnabled(true);
         storageConfig.SetUnconfirmedDataCountHardLimit(10);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -4799,7 +4810,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetLoadedCompactionRangesPerTx(2);
         storageConfig.SetWriteBlobThreshold(block);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
         TAutoPtr<IEventHandle> loadChunk;
         ui32 loadChunkCount = 0;
@@ -4888,7 +4899,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetLoadedCompactionRangesPerTx(2);
         storageConfig.SetWriteBlobThreshold(block);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
 
         bool intercepted = false;
@@ -5065,7 +5076,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetLoadedCompactionRangesPerTx(2);
         storageConfig.SetWriteBlobThreshold(block);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
 
         TVector<TEvIndexTabletPrivate::TLoadCompactionMapChunkRequest> requests;
@@ -5138,7 +5149,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetLoadedCompactionRangesPerTx(2);
         storageConfig.SetWriteBlobThreshold(2 * block);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
 
         ui32 nodeIdx = env.AddDynamicNode();
@@ -5258,7 +5269,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetFlushBytesThreshold(1);
         storageConfig.SetLoadedCompactionRangesPerTx(2);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
 
         ui32 nodeIdx = env.AddDynamicNode();
@@ -5348,7 +5359,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
     {
         const auto block = tabletConfig.BlockSize;
 
-        TTestEnv env;
+        TTestEnv env(testEnvConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -5490,7 +5501,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
     {
         const auto block = tabletConfig.BlockSize;
 
-        TTestEnv env;
+        TTestEnv env(testEnvConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -5576,7 +5587,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
     {
         const auto block = tabletConfig.BlockSize;
 
-        TTestEnv env;
+        TTestEnv env(testEnvConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -5624,7 +5635,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
     TABLET_TEST(ShouldHandleErrorDuringDescribeData)
     {
-        TTestEnv env;
+        TTestEnv env(testEnvConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -5650,7 +5661,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         NProto::TStorageConfig storageConfig;
         storageConfig.SetReadAheadCacheRangeSize(1_MB);
         storageConfig.SetReadAheadCacheMaxResultsPerNode(32);
-        TTestEnv env({}, storageConfig);
+        TTestEnv env(testEnvConfig, storageConfig);
         auto registry = env.GetRegistry();
 
         ui32 nodeIdx = env.AddDynamicNode();
@@ -5731,6 +5742,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
     void DoTestShouldHandleFakeDescribeData(
         const TFileSystemConfig& tabletConfig,
+        const TTestEnvConfig& testEnvConfig,
         ui32 fakeDescribeDataLatencyUs)
     {
         NProto::TStorageConfig storageConfig;
@@ -5738,7 +5750,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetFakeDescribeDataLatencyUs(
             fakeDescribeDataLatencyUs);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -5772,9 +5784,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
     TABLET_TEST_16K(ShouldHandleFakeDescribeData)
     {
         // Zero is a special value
-        DoTestShouldHandleFakeDescribeData(tabletConfig, 0);
-        DoTestShouldHandleFakeDescribeData(tabletConfig, 100);
-        DoTestShouldHandleFakeDescribeData(tabletConfig, 1000);
+        DoTestShouldHandleFakeDescribeData(tabletConfig, testEnvConfig, 0);
+        DoTestShouldHandleFakeDescribeData(tabletConfig, testEnvConfig, 100);
+        DoTestShouldHandleFakeDescribeData(tabletConfig, testEnvConfig, 1000);
     }
 
     // See #2737 for more details
@@ -5783,7 +5795,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         NProto::TStorageConfig storageConfig;
         storageConfig.SetReadAheadCacheRangeSize(1_MB);
         storageConfig.SetReadAheadCacheMaxResultsPerNode(32);
-        TTestEnv env({}, storageConfig);
+        TTestEnv env(testEnvConfig, storageConfig);
         auto registry = env.GetRegistry();
 
         ui32 nodeIdx = env.AddDynamicNode();
@@ -5875,9 +5887,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
     }
 
     void DoTestWriteRequestCancellationOnTabletReboot(
-        const TFileSystemConfig& tabletConfig)
+        const TFileSystemConfig& tabletConfig,
+        const TTestEnvConfig& testEnvConfig)
     {
-        TTestEnv env;
+        TTestEnv env(testEnvConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -5930,12 +5943,14 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
     TABLET_TEST(ShouldCancelWriteRequestsIfTabletIsRebooted)
     {
-        DoTestWriteRequestCancellationOnTabletReboot(tabletConfig);
+        DoTestWriteRequestCancellationOnTabletReboot(
+            tabletConfig,
+            testEnvConfig);
     }
 
     TABLET_TEST(ShouldCancelReadRequestsIfTabletIsRebooted)
     {
-        TTestEnv env;
+        TTestEnv env(testEnvConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -6021,7 +6036,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
     {
         auto block = tabletConfig.BlockSize;
 
-        TTestEnv env;
+        TTestEnv env(testEnvConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -6068,7 +6083,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
     {
         auto block = tabletConfig.BlockSize;
 
-        TTestEnv env;
+        TTestEnv env(testEnvConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -6229,7 +6244,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetCleanupThreshold(999'999);
         storageConfig.SetWriteBlobThreshold(block);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -6348,7 +6363,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetCleanupThreshold(999'999);
         storageConfig.SetWriteBlobThreshold(block);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -6423,7 +6438,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetCleanupThreshold(999'999);
         storageConfig.SetWriteBlobThreshold(block);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -6540,7 +6555,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetCollectGarbageThreshold(1_GB);
         storageConfig.SetWriteBlobThreshold(2 * block);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
         auto registry = env.GetRegistry();
 
 
@@ -6718,7 +6733,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetWriteBlobThreshold(2 * block);
 
         const auto profileLog = std::make_shared<TTestProfileLog>();
-        TTestEnv env({}, std::move(storageConfig), {}, profileLog);
+        TTestEnv env(testEnvConfig, std::move(storageConfig), {}, profileLog);
         auto registry = env.GetRegistry();
 
 
@@ -6818,7 +6833,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         NProto::TStorageConfig storageConfig;
         storageConfig.SetFlushBytesThreshold(1_GB);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
         auto registry = env.GetRegistry();
 
 
@@ -6892,7 +6907,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         NProto::TStorageConfig storageConfig;
         storageConfig.SetFlushBytesThreshold(100_GB + 1);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
         auto registry = env.GetRegistry();
 
 
@@ -6958,7 +6973,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
     TABLET_TEST(ShouldCountDudCompactions)
     {
-        TTestEnv env;
+        TTestEnv env(testEnvConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -7011,7 +7026,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
         NProto::TStorageConfig storageConfig;
         storageConfig.SetWriteBlobThreshold(2 * block);
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
 
         ui32 nodeIdx = env.AddDynamicNode();
@@ -7129,7 +7144,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetCleanupThreshold(999'999);
         storageConfig.SetCollectGarbageThreshold(1_GB);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
 
         ui32 nodeIdx = env.AddDynamicNode();
@@ -7200,7 +7215,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
     {
         const auto block = tabletConfig.BlockSize;
 
-        TTestEnv env;
+        TTestEnv env(testEnvConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -7283,7 +7298,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
     {
         const auto block = tabletConfig.BlockSize;
 
-        TTestEnv env;
+        TTestEnv env(testEnvConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -7346,9 +7361,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetMinChannelCount(1);
 
         // ensure that all blobs use the same channel
-        TTestEnv env(
-            {.ChannelCount = TIndexTabletSchema::DataChannel + 1},
-            std::move(storageConfig));
+        testEnvConfig.ChannelCount = TIndexTabletSchema::DataChannel + 1;
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
 
         ui32 nodeIdx = env.AddDynamicNode();
@@ -7450,9 +7464,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetMinChannelCount(1);
 
         // ensure that all blobs use the same channel
-        TTestEnv env(
-            {.ChannelCount = TIndexTabletSchema::DataChannel + 1},
-            std::move(storageConfig));
+        testEnvConfig.ChannelCount = TIndexTabletSchema::DataChannel + 1;
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
 
         ui32 nodeIdx = env.AddDynamicNode();
@@ -7546,7 +7559,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetWriteBlobThreshold(block);
         storageConfig.SetCollectGarbageThreshold(block);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -7630,7 +7643,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         const auto blobSize = 2 * block;
         storageConfig.SetWriteBlobThreshold(blobSize);
 
-        TTestEnv env({}, storageConfig);
+        TTestEnv env(testEnvConfig, storageConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -7724,7 +7737,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         const auto blobSize = 2 * block;
         storageConfig.SetWriteBlobThreshold(blobSize);
 
-        TTestEnv env({}, storageConfig);
+        TTestEnv env(testEnvConfig, storageConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -7826,7 +7839,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetCompactionThresholdForBackpressure(50);
         storageConfig.SetCleanupThresholdForBackpressure(100);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -7991,7 +8004,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetCompactRangeGarbagePercentageThreshold(99);
         storageConfig.SetCompactRangeAverageBlobSizeThreshold(256_KB);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -8071,7 +8084,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetUseMixedBlocksInsteadOfAliveBlocksInCompaction(true);
         storageConfig.SetWriteBlobThreshold(block);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -8199,7 +8212,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetUseMixedBlocksInsteadOfAliveBlocksInCompaction(true);
         storageConfig.SetWriteBlobThreshold(block);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -8283,7 +8296,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetWriteBlobThreshold(block);
         storageConfig.SetCalculateCleanupScoreBasedOnUsedBlocksCount(true);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -8410,7 +8423,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetWriteBlobThreshold(block);
         storageConfig.SetCalculateCleanupScoreBasedOnUsedBlocksCount(true);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -8445,7 +8458,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         // checks for handle O_READ or O_WRITE flags is performed.
         storageConfig.SetAllowHandlelessIO(true);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -8537,7 +8550,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         // 5. Flush the fresh bytes.
         // 6. Read and validate the expected data from the tail of the file.
         NProto::TStorageConfig storageConfig;
-        TTestEnv env({}, storageConfig);
+        TTestEnv env(testEnvConfig, storageConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -8599,7 +8612,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetWriteBlobThreshold(2 * tabletConfig.BlockSize);
         storageConfig.SetCpuLackOverloadThreshold(50);
 
-        TTestEnv env({} /* config */, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
         auto systemCounters = env.GetSystemCounters();
 
@@ -8710,19 +8723,30 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.DestroyHandle(handle);
     }
 
-    TABLET_TEST(ShouldReturnBackendInfoForIOForOverloadedTabletActor)
+    TABLET_TEST_4K_ONLY(ShouldReturnBackendInfoForIOForOverloadedTabletActor)
     {
         const ui64 wbt = 64 * tabletConfig.BlockSize;
         const ui64 overloadThreshold = 1;
         const i64 overloadThresholdMicros = 1'000'000 * overloadThreshold / 100;
 
         NProto::TStorageConfig storageConfig;
+        // disabling background ops to have as few activity unrelated to the
+        // test scenario as possible
+        storageConfig.SetCompactionThreshold(999'999);
+        storageConfig.SetCleanupThreshold(999'999);
+        storageConfig.SetCollectGarbageThreshold(1_GB);
+        storageConfig.SetFlushBytesThreshold(1_GB);
+        storageConfig.SetFlushThreshold(1_GB);
+        storageConfig.SetFlushThresholdForBackpressure(1_GB);
+        // setting a proper threshold to make sure that all writes go through
+        // the fresh layer (and thus use tablet actor's cpu time)
         storageConfig.SetWriteBlobThreshold(wbt);
         // setting a tiny value to make sure that we're always "overloaded"
-        storageConfig.SetTabletActorCpuUsageOverloadThreshold(1);
+        storageConfig.SetTabletActorCpuUsageOverloadThreshold(
+            overloadThreshold);
 
         TTestEnv env(
-            {} /* config */,
+            testEnvConfig,
             std::move(storageConfig),
             {} /* cachesConfig */,
             CreateProfileLogStub(),
@@ -8786,6 +8810,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
 
         UNIT_ASSERT_GT(cpuUsageMicros, overloadThresholdMicros);
+        Cdbg << "cpuUsageMicros=" << cpuUsageMicros << Endl;
 
         {
             //
@@ -8829,6 +8854,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             // Blob read - uses separate actor code path.
             //
 
+            tablet.Flush();
+
             auto response =
                 tablet.ReadData(handle, 0, 3 * tabletConfig.BlockSize);
             const auto* buffer = &response->Record.GetBuffer();
@@ -8862,7 +8889,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         NProto::TStorageConfig storageConfig;
         storageConfig.SetMaxTabletStep(maxTabletStep);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
         const ui32 nodeIdx = env.AddDynamicNode();
 
@@ -8928,7 +8955,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         NProto::TStorageConfig storageConfig;
         storageConfig.SetMaxTabletStep(maxTabletStep);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
         const ui32 nodeIdx = env.AddDynamicNode();
 
@@ -9003,7 +9030,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         NProto::TStorageConfig storageConfig;
         storageConfig.SetMaxTabletStep(maxTabletStep);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
         const ui32 nodeIdx = env.AddDynamicNode();
 
@@ -9071,7 +9098,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetExternalReadDataPayload(true);
         storageConfig.SetExternalWriteDataPayloadEnabled(true);
 
-        TTestEnv env({} /* config */, storageConfig);
+        TTestEnv env(testEnvConfig, storageConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);

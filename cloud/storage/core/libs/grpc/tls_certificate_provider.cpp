@@ -2,8 +2,11 @@
 
 #include "tls_utils.h"
 
+#include <cloud/storage/core/libs/common/error.h>
+
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 
+#include <util/folder/dirut.h>
 #include <util/generic/yexception.h>
 #include <util/stream/file.h>
 
@@ -17,14 +20,25 @@ class TStaticCertificateProvider final
     : public ICertificateProvider
 {
 private:
-    const TString RootCert;
+    const NTlsUtils::TRootCaPair RootCaPair;
+    const ILoggingServicePtr Logging;
+    const TString LogComponent;
+    const NMonitoring::TDynamicCountersPtr ServerGroup;
     TVector<NTlsUtils::TCertificatePair> Certificates;
+
+    TLog Log;
 
 public:
     TStaticCertificateProvider(
             TString rootCertPath,
-            TVector<TCertificateFiles> certificates)
-        : RootCert(NTlsUtils::LoadRootCaPair(std::move(rootCertPath)).RootCa)
+            TVector<TCertificateFiles> certificates,
+            ILoggingServicePtr logging,
+            TString logComponent,
+            NMonitoring::TDynamicCountersPtr serverGroup)
+        : RootCaPair(NTlsUtils::LoadRootCaPair(std::move(rootCertPath)))
+        , Logging(std::move(logging))
+        , LogComponent(std::move(logComponent))
+        , ServerGroup(std::move(serverGroup))
         , Certificates(NTlsUtils::LoadCertificatePairs(std::move(certificates)))
     {}
 
@@ -36,10 +50,9 @@ public:
     std::shared_ptr<grpc::ChannelCredentials>
         CreateSecureClientCredentials() override
     {
-        grpc::SslCredentialsOptions sslOptions;
-        if (RootCert) {
-            sslOptions.pem_root_certs = RootCert;
-        }
+        grpc::SslCredentialsOptions sslOptions{
+            .pem_root_certs = RootCaPair.RootCa,
+        };
 
         if (!Certificates.empty()) {
             const auto& cert = Certificates.front();
@@ -54,28 +67,63 @@ public:
         CreateSecureServerCredentials() override
     {
         grpc::SslServerCredentialsOptions sslOptions;
+
         sslOptions.client_certificate_request =
             GRPC_SSL_REQUEST_CLIENT_CERTIFICATE_AND_VERIFY;
 
-        if (RootCert) {
-            sslOptions.pem_root_certs = RootCert;
-        }
+        sslOptions.pem_root_certs = RootCaPair.RootCa;
 
         for (const auto& cert: Certificates) {
-            grpc::SslServerCredentialsOptions::PemKeyCertPair keyCert;
-            keyCert.cert_chain = cert.CertChain;
-            keyCert.private_key = cert.PrivateKey;
-            sslOptions.pem_key_cert_pairs.push_back(std::move(keyCert));
+            sslOptions.pem_key_cert_pairs.push_back({
+                .cert_chain = cert.CertChain,
+                .private_key = cert.PrivateKey,
+            });
         }
 
         return grpc::SslServerCredentials(sslOptions);
     }
 
     void Start() override
-    {}
+    {
+        if (Logging) {
+            Log = Logging->CreateLog(LogComponent);
+        }
+
+        InitCounters();
+    }
 
     void Stop() override
     {}
+
+private:
+    void InitCounters()
+    {
+        if (!ServerGroup || Certificates.empty()) {
+            return;
+        }
+
+        auto tlsMetricsGroup =
+            ServerGroup->GetSubgroup("subsystem", "certificates");
+
+        for (const auto& cert: Certificates) {
+            auto certMetrics = tlsMetricsGroup->GetSubgroup(
+                "cert",
+                GetBaseName(cert.Files.CertChainPath));
+
+            auto expireTs = certMetrics->GetCounter("ExpireTs", false);
+
+            auto [seconds, error] =
+                NTlsUtils::GetCertificateNotAfterTimestampSec(cert.CertChain);
+            if (HasError(error)) {
+                STORAGE_WARN(
+                    "Unable to parse certificate notAfter date for "
+                    << cert.Files.CertChainPath.Quote() << ": "
+                    << FormatError(error));
+            } else {
+                expireTs->Set(static_cast<TAtomicBase>(seconds));
+            }
+        }
+    }
 };
 
 }   // namespace
@@ -84,11 +132,17 @@ public:
 
 ICertificateProviderPtr CreateStaticCertificateProvider(
     TString rootCertPath,
-    TVector<TCertificateFiles> certificates)
+    TVector<TCertificateFiles> certificates,
+    ILoggingServicePtr logging,
+    TString logComponent,
+    NMonitoring::TDynamicCountersPtr serverGroup)
 {
     return std::make_shared<TStaticCertificateProvider>(
         std::move(rootCertPath),
-        std::move(certificates));
+        std::move(certificates),
+        std::move(logging),
+        std::move(logComponent),
+        std::move(serverGroup));
 }
 
 ICertificateProviderPtr CreateCertificateProviderStub()
@@ -109,7 +163,10 @@ ICertificateProviderPtr CreateCertificateProvider(
     if (refreshInterval == TDuration::Zero()) {
         return CreateStaticCertificateProvider(
             std::move(rootCertPath),
-            std::move(certificates));
+            std::move(certificates),
+            std::move(logging),
+            std::move(logComponent),
+            std::move(serverGroup));
     }
 
     auto certs = NTlsUtils::PrepareCertificateFilePairs(std::move(certificates));
@@ -138,6 +195,19 @@ ICertificateProviderPtr CreateCertificateProvider(
         std::move(rootCertPath),
         std::move(certs),
         refreshInterval);
+}
+
+ICertificateProviderPtr CreateStaticCertificateProvider(
+    TString rootCertPath,
+    TVector<TCertificateFiles> certificates)
+{
+    return CreateStaticCertificateProvider(
+        std::move(rootCertPath),
+        std::move(certificates),
+        {},       // logging
+        {},       // logComponent
+        nullptr   // serverGroup
+    );
 }
 
 }   // namespace NCloud

@@ -76,6 +76,10 @@ struct TTestEnvConfig
     NActors::NLog::EPriority LogPriority_NFS = NActors::NLog::PRI_TRACE;
     NActors::NLog::EPriority LogPriority_KiKiMR = NActors::NLog::PRI_WARN;
     NActors::NLog::EPriority LogPriority_Others = NActors::NLog::PRI_WARN;
+
+    // This controls probability that read will be restarted
+    double FakePageFaultsProbability = 0.0;
+    std::optional<ui64> FakePageFaultsRandomSeed = std::nullopt;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -90,7 +94,6 @@ private:
     IProfileLogPtr ProfileLog;
     ITraceSerializerPtr TraceSerializer;
     TSystemCountersPtr SystemCounters;
-    ITxReschedulerPtr TxRescheduler = CreateNoOpTxRescheduler();
 
     NKikimr::TTestBasicRuntime Runtime;
     TVector<ui32> GroupIds;
@@ -118,14 +121,6 @@ public:
     NActors::TTestActorRuntime& GetRuntime()
     {
         return Runtime;
-    }
-
-    // Inject a transaction rescheduler.
-    // Defaults to a no-op stub; tests set a custom one to exercise the
-    // transaction restart/reorder path. Must be set before BootIndexTablet.
-    void SetTxRescheduler(ITxReschedulerPtr txRescheduler)
-    {
-        TxRescheduler = std::move(txRescheduler);
     }
 
     TStorageConfigPtr GetStorageConfig() const
@@ -274,10 +269,17 @@ TStorageConfigPtr CreateTestStorageConfig(NProto::TStorageConfig storageConfig);
 ////////////////////////////////////////////////////////////////////////////////
 
 #define TABLET_TEST_HEAD(name)                                                 \
-    void TestImpl##name(TFileSystemConfig tabletConfig);                       \
+    void TestImpl##name(                                                      \
+        TFileSystemConfig tabletConfig,                                        \
+        TTestEnvConfig testEnvConfig);                                         \
     Y_UNIT_TEST(name)                                                          \
     {                                                                          \
-        TestImpl##name(TFileSystemConfig{.BlockSize = 4_KB});                  \
+        TestImpl##name(TFileSystemConfig{.BlockSize = 4_KB}, {});              \
+    }                                                                          \
+    Y_UNIT_TEST(name##WithEmulatedPageFaults)                                  \
+    {                                                                          \
+        TestImpl##name(TFileSystemConfig{.BlockSize = 4_KB},                   \
+                       TTestEnvConfig{.FakePageFaultsProbability = 0.01});     \
     }                                                                          \
 // TABLET_TEST_HEAD
 
@@ -285,14 +287,18 @@ TStorageConfigPtr CreateTestStorageConfig(NProto::TStorageConfig storageConfig);
     TABLET_TEST_HEAD(name)                                                     \
     Y_UNIT_TEST(name##largeBS)                                                 \
     {                                                                          \
-        TestImpl##name(TFileSystemConfig{.BlockSize = largeBS});               \
+        TestImpl##name(TFileSystemConfig{.BlockSize = largeBS}, {});           \
     }                                                                          \
-    void TestImpl##name(TFileSystemConfig tabletConfig)                        \
+    void TestImpl##name(                                                       \
+        TFileSystemConfig tabletConfig,                                        \
+        TTestEnvConfig testEnvConfig)                                          \
 // TABLET_TEST_IMPL
 
 #define TABLET_TEST_4K_ONLY(name)                                              \
     TABLET_TEST_HEAD(name)                                                     \
-    void TestImpl##name(TFileSystemConfig tabletConfig)                        \
+    void TestImpl##name(                                                       \
+        TFileSystemConfig tabletConfig,                                        \
+        TTestEnvConfig testEnvConfig)                                          \
 // TABLET_TEST_4K_ONLY
 
 #define TABLET_TEST(name)                                                      \

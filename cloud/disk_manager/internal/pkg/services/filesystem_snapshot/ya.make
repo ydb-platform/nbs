@@ -13,8 +13,10 @@ END()
 
 RECURSE_FOR_TESTS(
     mocks
+    ut
 )
 
 RECURSE(
     config
+    protos
 )

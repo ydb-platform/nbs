@@ -2,7 +2,7 @@
 
 #include <cloud/storage/core/protos/media.pb.h>
 
-#include <contrib/libs/opentelemetry-proto/opentelemetry/proto/trace/v1/trace.pb.h>
+#include <contrib/proto/opentelemetry/opentelemetry/proto/trace/v1/trace.pb.h>
 
 #include <library/cpp/lwtrace/log.h>
 

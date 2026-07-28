@@ -42,6 +42,13 @@ struct ICertificateProvider
 
 ICertificateProviderPtr CreateStaticCertificateProvider(
     TString rootCertPath,
+    TVector<TCertificateFiles> certificates,
+    ILoggingServicePtr logging,
+    TString logComponent,
+    NMonitoring::TDynamicCountersPtr serverGroup);
+
+ICertificateProviderPtr CreateStaticCertificateProvider(
+    TString rootCertPath,
     TVector<TCertificateFiles> certificates);
 
 ICertificateProviderPtr CreateCertificateProviderStub();

@@ -505,13 +505,13 @@ bool TIndexTabletActor::PrepareTx_RenameNodeInDestination(
 {
     Y_UNUSED(ctx);
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
     args.CommitId = GetCurrentCommitId();
 
     // validate new parent node exists
     if (!ReadNode(
-            db,
+            *db,
             args.NewParentNodeId,
             args.CommitId,
             args.NewParentNode))
@@ -533,7 +533,7 @@ bool TIndexTabletActor::PrepareTx_RenameNodeInDestination(
 
     // check if new ref exists
     if (!ReadNodeRef(
-            db,
+            *db,
             args.NewParentNodeId,
             args.CommitId,
             args.NewName,
@@ -632,7 +632,7 @@ void TIndexTabletActor::ExecuteTx_RenameNodeInDestination(
         return;
     }
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
@@ -644,7 +644,7 @@ void TIndexTabletActor::ExecuteTx_RenameNodeInDestination(
         if (HasFlag(args.Flags, NProto::TRenameNodeRequest::F_EXCHANGE)) {
             // remove existing target ref
             RemoveNodeRef(
-                db,
+                *db,
                 args.NewParentNodeId,
                 args.NewChildRef->MinCommitId,
                 args.CommitId,
@@ -666,12 +666,12 @@ void TIndexTabletActor::ExecuteTx_RenameNodeInDestination(
             return;
         } else {
             if (args.AbortUnlinkOpLogEntryId) {
-                DeleteOpLogEntry(db, args.AbortUnlinkOpLogEntryId);
+                DeleteOpLogEntry(*db, args.AbortUnlinkOpLogEntryId);
             }
 
             // remove target ref
             UnlinkExternalNode(
-                db,
+                *db,
                 args.NewParentNode->NodeId,
                 args.NewName,
                 args.NewChildRef->ShardId,
@@ -700,13 +700,13 @@ void TIndexTabletActor::ExecuteTx_RenameNodeInDestination(
                     << args.OpLogEntry.ShortUtf8DebugString().Quote());
             }
 
-            WriteOpLogEntry(db, args.OpLogEntry);
+            WriteOpLogEntry(*db, args.OpLogEntry);
         }
     }
 
     // create target ref to source node
     CreateNodeRef(
-        db,
+        *db,
         args.NewParentNodeId,
         args.CommitId,
         args.NewName,
@@ -716,7 +716,7 @@ void TIndexTabletActor::ExecuteTx_RenameNodeInDestination(
 
     auto newParent = CopyAttrs(args.NewParentNode->Attrs, E_CM_CMTIME);
     UpdateNode(
-        db,
+        *db,
         args.NewParentNode->NodeId,
         args.NewParentNode->MinCommitId,
         args.CommitId,
@@ -738,7 +738,7 @@ void TIndexTabletActor::ExecuteTx_RenameNodeInDestination(
     args.ResponseLogEntry.SetTimestampMs(ctx.Now().MilliSeconds());
     *args.ResponseLogEntry.MutableRenameNodeInDestinationResponse() =
         args.Response;
-    WriteResponseLogEntry(db, args.ResponseLogEntry);
+    WriteResponseLogEntry(*db, args.ResponseLogEntry);
 
     EnqueueTruncateIfNeeded(ctx);
 }

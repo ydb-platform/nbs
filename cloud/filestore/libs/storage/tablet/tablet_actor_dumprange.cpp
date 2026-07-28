@@ -44,8 +44,8 @@ bool TIndexTabletActor::PrepareTx_DumpCompactionRange(
 {
     Y_UNUSED(ctx);
 
-    TIndexTabletDatabase db(tx.DB);
-    if (!LoadMixedBlocks(db, args.RangeId)) {
+    auto db = CreateIndexTabletDatabase(tx.DB);
+    if (!LoadMixedBlocks(*db, args.RangeId)) {
         return false;
     }
 

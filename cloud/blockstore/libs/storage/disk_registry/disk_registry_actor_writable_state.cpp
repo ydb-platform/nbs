@@ -105,6 +105,7 @@ void TDiskRegistryActor::CompleteWritableState(
     UsersNotificationInProgress = false;
     DiskStatesPublicationInProgress = false;
     SecureEraseInProgressPerPool.clear();
+    DeviceEraseStartTs.clear();
     StartMigrationInProgress = false;
 }
 

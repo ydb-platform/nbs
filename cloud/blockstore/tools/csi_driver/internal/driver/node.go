@@ -250,45 +250,6 @@ func parseVolumeId(volumeId string) (nbsId string, instanceId string) {
 	return nbsId, instanceId
 }
 
-func nbsVolumeAccessMode(
-	accessMode *csi.VolumeCapability_AccessMode,
-	readonly bool,
-) nbsapi.EVolumeAccessMode {
-	if readOnlyVolumeAccess(accessMode, readonly) {
-		return nbsapi.EVolumeAccessMode_VOLUME_ACCESS_READ_ONLY
-	}
-
-	return nbsapi.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE
-}
-
-func nbsVolumeMountMode(
-	accessMode *csi.VolumeCapability_AccessMode,
-) nbsapi.EVolumeMountMode {
-	if accessMode != nil {
-		switch accessMode.GetMode() {
-		case csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY:
-			return nbsapi.EVolumeMountMode_VOLUME_MOUNT_REMOTE
-		}
-	}
-
-	return nbsapi.EVolumeMountMode_VOLUME_MOUNT_LOCAL
-}
-
-func readOnlyVolumeAccess(
-	accessMode *csi.VolumeCapability_AccessMode,
-	readonly bool,
-) bool {
-	if accessMode != nil {
-		switch accessMode.GetMode() {
-		case csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY,
-			csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY:
-			return true
-		}
-	}
-
-	return readonly
-}
-
 func (s *nodeService) NodeStageVolume(
 	ctx context.Context,
 	req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
@@ -383,7 +344,7 @@ func (s *nodeService) NodeStageVolume(
 						req.VolumeContext,
 						req.VolumeCapability.GetMount(),
 						req.VolumeCapability.AccessMode,
-						nbsVolumeAccessMode(req.VolumeCapability.AccessMode, false),
+						getNbsVolumeAccessMode(req.VolumeCapability.AccessMode, false),
 						vhostSettings,
 						stageData.ClientIndex)
 				}
@@ -698,7 +659,7 @@ func (s *nodeService) nodePublishDiskAsVhostSocket(
 	headers := &nbsapi.THeaders{
 		RequestTimeout: uint32(s.startEndpointRequestTimeout.Milliseconds()),
 	}
-	volumeAccessMode := nbsVolumeAccessMode(
+	volumeAccessMode := getNbsVolumeAccessMode(
 		req.VolumeCapability.AccessMode,
 		req.Readonly)
 	startEndpointRequest := &nbsapi.TStartEndpointRequest{
@@ -711,7 +672,7 @@ func (s *nodeService) nodePublishDiskAsVhostSocket(
 		IpcType:          vhostIpc,
 		VhostQueuesCount: vhostSettings.queuesCount,
 		VolumeAccessMode: volumeAccessMode,
-		VolumeMountMode:  nbsVolumeMountMode(req.VolumeCapability.AccessMode),
+		VolumeMountMode:  getNbsVolumeMountMode(req.VolumeCapability.AccessMode),
 		Persistent:       true,
 		NbdDevice: &nbsapi.TStartEndpointRequest_UseFreeNbdDeviceFile{
 			UseFreeNbdDeviceFile: false,
@@ -824,7 +785,7 @@ func (s *nodeService) nodeStageDiskAsVhostSocket(
 		IpcType:          vhostIpc,
 		VhostQueuesCount: vhostSettings.queuesCount,
 		VolumeAccessMode: volumeAccessMode,
-		VolumeMountMode:  nbsVolumeMountMode(accessMode),
+		VolumeMountMode:  getNbsVolumeMountMode(accessMode),
 		Persistent:       true,
 		NbdDevice: &nbsapi.TStartEndpointRequest_UseFreeNbdDeviceFile{
 			UseFreeNbdDeviceFile: false,
@@ -883,7 +844,7 @@ func (s *nodeService) nodePublishDiskAsFilesystem(
 		}
 	}
 
-	if readOnlyVolumeAccess(req.VolumeCapability.AccessMode, req.Readonly) {
+	if hasReadOnlyVolumeAccess(req.VolumeCapability.AccessMode, req.Readonly) {
 		mountOptions = append(mountOptions, "ro")
 	}
 
@@ -1089,7 +1050,7 @@ func (s *nodeService) nodePublishDiskAsBlockDevice(
 		diskId,
 		devicePath,
 		req.TargetPath,
-		readOnlyVolumeAccess(req.VolumeCapability.AccessMode, req.Readonly))
+		hasReadOnlyVolumeAccess(req.VolumeCapability.AccessMode, req.Readonly))
 }
 
 func (s *nodeService) startNbsEndpointForNBD(
@@ -1119,7 +1080,7 @@ func (s *nodeService) startNbsEndpointForNBD(
 	headers := &nbsapi.THeaders{
 		RequestTimeout: uint32(s.startEndpointRequestTimeout.Milliseconds()),
 	}
-	volumeAccessMode := nbsVolumeAccessMode(accessMode, false)
+	volumeAccessMode := getNbsVolumeAccessMode(accessMode, false)
 	startEndpointRequest := &nbsapi.TStartEndpointRequest{
 		Headers:          headers,
 		UnixSocketPath:   unixSocketPath,
@@ -1130,7 +1091,7 @@ func (s *nodeService) startNbsEndpointForNBD(
 		IpcType:          nbdIpc,
 		VhostQueuesCount: 8,
 		VolumeAccessMode: volumeAccessMode,
-		VolumeMountMode:  nbsVolumeMountMode(accessMode),
+		VolumeMountMode:  getNbsVolumeMountMode(accessMode),
 		Persistent:       true,
 		NbdDevice: &nbsapi.TStartEndpointRequest_UseFreeNbdDeviceFile{
 			UseFreeNbdDeviceFile: true,
@@ -1610,7 +1571,7 @@ func (s *nodeService) mountSocketDir(sourcePath string, req *csi.NodePublishVolu
 			mountOptions = append(mountOptions, flag)
 		}
 	}
-	if readOnlyVolumeAccess(req.VolumeCapability.AccessMode, req.Readonly) {
+	if hasReadOnlyVolumeAccess(req.VolumeCapability.AccessMode, req.Readonly) {
 		mountOptions = append(mountOptions, "ro")
 	}
 

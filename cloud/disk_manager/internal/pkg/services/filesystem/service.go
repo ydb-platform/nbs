@@ -151,22 +151,50 @@ func (s *service) CreateFilesystem(
 		return "", err
 	}
 
+	params := &protos.CreateFilesystemRequest{
+		Filesystem: &protos.FilesystemId{
+			ZoneId:       req.FilesystemId.ZoneId,
+			FilesystemId: req.FilesystemId.FilesystemId,
+		},
+		CloudId:     req.CloudId,
+		FolderId:    req.FolderId,
+		BlockSize:   blockSize,
+		BlocksCount: blocksCount,
+		Kind:        kind,
+		IsExternal:  req.IsExternal,
+	}
+
+	if src, ok := req.Src.(*disk_manager.CreateFilesystemRequest_SrcSnapshotId); ok {
+		if len(src.SrcSnapshotId) == 0 {
+			return "", common.NewInvalidArgumentError(
+				"src snapshot id is empty, req=%v",
+				req,
+			)
+		}
+
+		if params.IsExternal {
+			return "", common.NewInvalidArgumentError(
+				"external filesystem creation from snapshot is not supported, req=%v",
+				req,
+			)
+		}
+
+		return s.scheduler.ScheduleTask(
+			ctx,
+			"filesystem.CreateFilesystemFromSnapshot",
+			"",
+			&protos.CreateFilesystemFromSnapshotRequest{
+				SrcSnapshotId: src.SrcSnapshotId,
+				Params:        params,
+			},
+		)
+	}
+
 	return s.scheduler.ScheduleTask(
 		ctx,
 		"filesystem.CreateFilesystem",
 		"",
-		&protos.CreateFilesystemRequest{
-			Filesystem: &protos.FilesystemId{
-				ZoneId:       req.FilesystemId.ZoneId,
-				FilesystemId: req.FilesystemId.FilesystemId,
-			},
-			CloudId:     req.CloudId,
-			FolderId:    req.FolderId,
-			BlockSize:   blockSize,
-			BlocksCount: blocksCount,
-			Kind:        kind,
-			IsExternal:  req.IsExternal,
-		},
+		params,
 	)
 }
 

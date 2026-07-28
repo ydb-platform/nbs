@@ -66,12 +66,12 @@ bool TIndexTabletActor::PrepareTx_RemoveNodeXAttr(
 
     FILESTORE_VALIDATE_TX_SESSION(RemoveNodeXAttr, args);
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
     args.CommitId = GetCurrentCommitId();
 
     // parse path
-    if (!ReadNode(db, args.NodeId, args.CommitId, args.Node)) {
+    if (!ReadNode(*db, args.NodeId, args.CommitId, args.Node)) {
         return false;   // not ready
     }
 
@@ -82,7 +82,7 @@ bool TIndexTabletActor::PrepareTx_RemoveNodeXAttr(
 
     // TODO: AccessCheck
     TABLET_VERIFY(args.Node);
-    if (!ReadNodeAttr(db, args.NodeId, args.CommitId, args.Name, args.Attr)) {
+    if (!ReadNodeAttr(*db, args.NodeId, args.CommitId, args.Name, args.Attr)) {
         return false;   // not ready
     }
 
@@ -103,7 +103,7 @@ void TIndexTabletActor::ExecuteTx_RemoveNodeXAttr(
         return;
     }
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
@@ -112,7 +112,7 @@ void TIndexTabletActor::ExecuteTx_RemoveNodeXAttr(
     }
 
     RemoveNodeAttr(
-        db,
+        *db,
         args.NodeId,
         args.Attr->MinCommitId,
         args.CommitId,

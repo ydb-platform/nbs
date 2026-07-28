@@ -12,6 +12,7 @@ from contrib.ydb.core.protos.config_pb2 import (
     TLogConfig,
     TActorSystemConfig,
     TDynamicNameserviceConfig,
+    TBlobStorageConfig,
 )
 from contrib.ydb.core.protos.auth_pb2 import TAuthConfig
 import contrib.ydb.tests.library.common.yatest_common as yatest_common
@@ -21,6 +22,7 @@ from cloud.filestore.config.storage_pb2 import TStorageConfig
 
 from cloud.storage.core.protos.media_pb2 import STORAGE_MEDIA_HDD
 from cloud.storage.core.tools.testing.access_service.lib import AccessService
+from cloud.storage.core.tools.common.python.port_reservation import PortManager
 
 logger = logging.getLogger(__name__)
 
@@ -58,11 +60,13 @@ class FilestoreDaemonConfigGenerator:
         restart_flag=None,
         access_service_port=0,
         storage_config=None,
+        diag_config=None,
         use_secure_registration=False,
         secure=False,
         access_service_type=AccessService,
         ic_port=None,
         trace_sampling_rate=None,
+        bs_failure_probability=None,
     ):
         self.__binary_path = binary_path
         self.__working_dir, self.__configs_dir = get_directories()
@@ -75,23 +79,25 @@ class FilestoreDaemonConfigGenerator:
         self.__app_config_file_path = self.__config_file_path(config_file)
         self.__storage_config_file_path = self.__config_file_path(storage_config_file)
         self.__storage_config = storage_config or TStorageConfig()
+        self.__diag_config = diag_config or TDiagnosticsConfig()
+        self.__bs_failure_probability = bs_failure_probability
 
         self.__profile_log_path = self.__profile_file_path(profile_log)
 
         self.__restart_interval = restart_interval
         self.__restart_flag = restart_flag
 
-        self._port_manager = yatest_common.PortManager()
-        self.__port = self._port_manager.get_port()
-        self.__mon_port = self._port_manager.get_port()
-        self.__ic_port = self._port_manager.get_port() if ic_port is None else ic_port
+        self._port_manager = PortManager()
+        self.__port = self._port_manager.reserve_port()
+        self.__mon_port = self._port_manager.reserve_port()
+        self.__ic_port = self._port_manager.reserve_port() if ic_port is None else ic_port
         self.__access_service_type = access_service_type
         self.__access_service_port = access_service_port
 
         self.__use_secure_registration = use_secure_registration
 
         if secure:
-            self.__secure_port = self._port_manager.get_port()
+            self.__secure_port = self._port_manager.reserve_port()
             self.__app_config.ServerConfig.SecurePort = self.__secure_port
 
         with open(self.__app_config_file_path, "w") as config_file:
@@ -247,6 +253,7 @@ class FilestoreDaemonConfigGenerator:
         config.RequestThresholds.add(Default=1000)
         config.RequestThresholds.add(Default=1000, MediaKind=STORAGE_MEDIA_HDD)
         config.LWTraceShuttleCount = 50000
+        config.MergeFrom(self.__diag_config)
 
         return config
 
@@ -265,6 +272,14 @@ class FilestoreDaemonConfigGenerator:
         auth_config.AccessServiceEndpoint = "localhost:{}".format(port)
         auth_config.AccessServiceType = self.__access_service_type.access_service_type
         return auth_config
+
+    def __generate_bs_txt(self, bs_failure_probability):
+        blob_storage_config = TBlobStorageConfig()
+        failure_injection_config = (
+            blob_storage_config.ServiceSet.FailureInjectionConfig
+        )
+        failure_injection_config.FailureProbability = bs_failure_probability
+        return blob_storage_config
 
     def __config_file_path(self, name):
         return os.path.join(self.__configs_dir, name)
@@ -296,6 +311,8 @@ class FilestoreDaemonConfigGenerator:
                     "auth.txt": self.__generate_auth_txt(self.__access_service_port),
                 }
             )
+            if self.__bs_failure_probability:
+                self.__proto_configs["bs.txt"] = self.__generate_bs_txt(self.__bs_failure_probability)
         self.__write_configs()
 
     def generate_aux_params(self):
@@ -351,6 +368,12 @@ class FilestoreDaemonConfigGenerator:
                     self.__config_file_path("auth.txt"),
                 ]
 
+            if self.__bs_failure_probability:
+                command += [
+                    "--bs-file",
+                    self.__config_file_path("bs.txt"),
+                ]
+
         if self.__restart_interval:
             launcher_path = common.binary_path(
                 "cloud/storage/core/tools/testing/unstable-process/storage-unstable-process"
@@ -366,7 +389,21 @@ class FilestoreDaemonConfigGenerator:
                 str(self.__restart_interval),
                 "--cmdline",
                 " ".join(command),
-            ] + (["--allow-restart-flag", self.__restart_flag] if self.__restart_flag else [])
+            ]
+
+            if self.__restart_flag:
+                command += ["--allow-restart-flag", self.__restart_flag]
+
+            # All ports allocated by the PortManager (server, mon, ic, secure,
+            # local-service, ...) are reserved (flocked under PORT_SYNC_PATH)
+            # only until the recipe process exits.
+            #
+            # Pass the full set to the launcher so it re-takes and holds those
+            # flocks across every restart.
+            #
+            # See issue #6518 for details
+            for reserved_port in self._port_manager.list_reserved_ports():
+                command += ["--reserve-port", str(reserved_port)]
 
         return command
 
@@ -396,11 +433,13 @@ class FilestoreServerConfigGenerator(FilestoreDaemonConfigGenerator):
         restart_interval=None,
         access_service_port=0,
         storage_config=None,
+        diag_config=None,
         use_secure_registration=False,
         secure=False,
         access_service_type=AccessService,
         ic_port=None,
         trace_sampling_rate=None,
+        bs_failure_probability=None,
     ):
         super().__init__(
             binary_path,
@@ -416,11 +455,13 @@ class FilestoreServerConfigGenerator(FilestoreDaemonConfigGenerator):
             restart_flag=None,
             access_service_port=access_service_port,
             storage_config=storage_config,
+            diag_config=diag_config,
             use_secure_registration=use_secure_registration,
             secure=secure,
             access_service_type=access_service_type,
             ic_port=ic_port,
             trace_sampling_rate=trace_sampling_rate,
+            bs_failure_probability=bs_failure_probability,
         )
 
 
@@ -442,6 +483,7 @@ class FilestoreVhostConfigGenerator(FilestoreDaemonConfigGenerator):
         access_service_type=AccessService,
         secure=False,
         trace_sampling_rate=None,
+        bs_failure_probability=None,
     ):
         super().__init__(
             binary_path,
@@ -462,9 +504,10 @@ class FilestoreVhostConfigGenerator(FilestoreDaemonConfigGenerator):
             access_service_type=access_service_type,
             secure=secure,
             trace_sampling_rate=trace_sampling_rate,
+            bs_failure_probability=bs_failure_probability,
         )
 
-        self.__local_service_port = self._port_manager.get_port()
+        self.__local_service_port = self._port_manager.reserve_port()
 
     def generate_aux_params(self):
         return ["--local-service-port", str(self.__local_service_port)]

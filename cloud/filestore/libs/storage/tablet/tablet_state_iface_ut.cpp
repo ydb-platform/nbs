@@ -22,8 +22,8 @@ Y_UNIT_TEST_SUITE(IIndexTabletDatabaseTest)
             "_s",
             "nfs_shared"};
 
-        auto cmpNodeRefs = [](const IIndexTabletDatabase::TNodeRef& ref1,
-                              const IIndexTabletDatabase::TNodeRef& ref2)
+        auto cmpNodeRefs = [](const INodeIndexTabletDatabase::TNodeRef& ref1,
+                              const INodeIndexTabletDatabase::TNodeRef& ref2)
         {
             UNIT_ASSERT_EQUAL(ref1.ShardId, ref2.ShardId);
             UNIT_ASSERT_EQUAL(ref1.ShardNodeName, ref2.ShardNodeName);
@@ -37,7 +37,7 @@ Y_UNIT_TEST_SUITE(IIndexTabletDatabaseTest)
                 mainFsId + "_s32",
                 mainFsId + "_s475"};
             for (const auto& shardId: shardIds) {
-                IIndexTabletDatabase::TNodeRef ref = {
+                INodeIndexTabletDatabase::TNodeRef ref = {
                     .NodeId = nodeId,
                     .Name = "some_name",
                     .ChildNodeId = childNodeId,
@@ -47,7 +47,7 @@ Y_UNIT_TEST_SUITE(IIndexTabletDatabaseTest)
                     .MaxCommitId = InvalidCommitId
                 };
 
-                IIndexTabletDatabase::TNodeRef refCopy(ref);
+                INodeIndexTabletDatabase::TNodeRef refCopy(ref);
                 UNIT_ASSERT(refCopy.TryToEncodeShardId(mainFsId));
                 UNIT_ASSERT(refCopy.TryToDecodeShardId(mainFsId));
                 cmpNodeRefs(ref, refCopy);
@@ -64,7 +64,7 @@ Y_UNIT_TEST_SUITE(IIndexTabletDatabaseTest)
                 {"abcd_s123", "not a guid"}};
 
             for (const auto& shardId: malformedShardIds) {
-                IIndexTabletDatabase::TNodeRef ref = {
+                INodeIndexTabletDatabase::TNodeRef ref = {
                     .NodeId = nodeId,
                     .Name = "some_name",
                     .ChildNodeId = childNodeId,
@@ -88,7 +88,7 @@ Y_UNIT_TEST_SUITE(IIndexTabletDatabaseTest)
                 {"\x01\x01\x02", malformedGuid}};
 
             for (const auto& shardId: malformedShardIds) {
-                IIndexTabletDatabase::TNodeRef ref = {
+                INodeIndexTabletDatabase::TNodeRef ref = {
                     .NodeId = nodeId,
                     .Name = "some_name",
                     .ChildNodeId = childNodeId,

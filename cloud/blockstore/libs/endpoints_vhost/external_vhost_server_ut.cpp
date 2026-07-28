@@ -1024,6 +1024,28 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
         }
     }
 
+    Y_UNIT_TEST_F(ShouldMountVolumeAsReadOnly, TFixture)
+    {
+        UNIT_ASSERT_VALUES_EQUAL(0, History.size());
+        const ui64 vhostPteFlushByteThreshold = RandInt<ui64>();
+        NProto::TServerConfig serverConfig;
+        serverConfig.SetVhostPteFlushByteThreshold(vhostPteFlushByteThreshold);
+        Listener = CreateEndpointListener(false, serverConfig);
+        auto request = CreateDefaultStartEndpointRequest();
+        request.SetVolumeAccessMode(NProto::VOLUME_ACCESS_USER_READ_ONLY);
+
+        auto error =
+            Listener->StartEndpoint(request, Volume, Session).GetValueSync();
+        UNIT_ASSERT_C(!HasError(error), error);
+
+        UNIT_ASSERT_VALUES_EQUAL(3, History.size());
+
+        auto* create = std::get_if<TCreateExternalEndpoint>(&History[0]);
+        UNIT_ASSERT_C(create, "actual entry: " << History[0].index());
+
+        UNIT_ASSERT_VALUES_EQUAL(Volume.GetDiskId(), create->DiskId);
+        UNIT_ASSERT(FindPtr(create->CmdArgs, "--read-only"));
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NServer

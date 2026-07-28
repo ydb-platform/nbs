@@ -5,21 +5,19 @@
 #include <silk/util/queue.h>
 #include <silk/util/tsc.h>
 
-// Suppress warnings emitted by librseq headers: volatile assignment in rseq_cs
-// and unused parameters in the asm stubs.
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-volatile"
-#pragma clang diagnostic ignored "-Wunused-parameter"
-#include <rseq/rseq.h>
-#pragma clang diagnostic pop
+#include <silk/util/platform.h>
 
 namespace silk
 {
 
 void initialize() noexcept
 {
-    // Older librseq versions auto-register via constructor; no explicit
-    // rseq_init() call is needed.
+    // Arcadia's librseq neither auto-registers via a constructor nor relies
+    // on glibc doing so (target platforms include glibc < 2.35). Register
+    // rseq for the calling thread here so getCurrentProcessor's TLS read
+    // returns a valid cpu_id. Every other thread that later calls into
+    // silk hits the same guard lazily through getCurrentProcessor().
+    ensureRseqRegistered();
 
     Tsc::initialize();
     Perf::initialize();

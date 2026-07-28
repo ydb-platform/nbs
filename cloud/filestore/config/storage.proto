@@ -848,4 +848,15 @@ message TStorageConfig
 
     // Pass data buffer to the tablet as a message payload
     optional bool ExternalWriteDataPayloadEnabled = 526;
+
+    // Enables injecting of errors in TIndexTabletDatabase. Must be only used in tests!
+    optional double FakeTxPageFaultsProbability = 527;
+
+    // When this flag is enabled, TAggregateStatsActor does not poll all shards.
+    // Instead, it requests aggregate statistics only from the main tablet.
+    optional bool FanoutStatsCollectionInShardsDisabled = 528;
+
+    // Enable silk regardless of other config parameters. Required for
+    // persistent fastshard to work.
+    optional bool FastShardRuntimeEnabled = 529;
 }

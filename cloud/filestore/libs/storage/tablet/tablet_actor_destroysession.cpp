@@ -105,7 +105,7 @@ bool TIndexTabletActor::PrepareTx_DestroySession(
         args.SessionId.c_str(),
         args.SessionSeqNo);
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
     bool ready = true;
     auto commitId = GetCurrentCommitId();
@@ -115,8 +115,8 @@ bool TIndexTabletActor::PrepareTx_DestroySession(
             continue;
         }
 
-        TMaybe<IIndexTabletDatabase::TNode> node;
-        if (!ReadNode(db, handle.GetNodeId(), commitId, node)) {
+        TMaybe<INodeIndexTabletDatabase::TNode> node;
+        if (!ReadNode(*db, handle.GetNodeId(), commitId, node)) {
             ready = false;
         } else {
             TABLET_VERIFY(node);
@@ -135,7 +135,7 @@ void TIndexTabletActor::ExecuteTx_DestroySession(
     TTransactionContext& tx,
     TTxIndexTablet::TDestroySession& args)
 {
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
     auto* session = FindSession(args.SessionId);
     if (!session) {
@@ -145,7 +145,7 @@ void TIndexTabletActor::ExecuteTx_DestroySession(
     if (!CheckSessionForDestroy(session, args.SessionSeqNo) &&
         session->DeleteSubSession(args.SessionSeqNo))
     {
-        db.WriteSession(*session);
+        db->WriteSession(*session);
         return;
     }
 
@@ -158,14 +158,14 @@ void TIndexTabletActor::ExecuteTx_DestroySession(
     auto handle = session->Handles.begin();
     while (handle != session->Handles.end()) {
         auto nodeId = handle->GetNodeId();
-        DestroyHandle(db, &*(handle++));
+        DestroyHandle(*db, &*(handle++));
 
         auto it = args.Nodes.find(nodeId);
         if (it != args.Nodes.end() && !HasOpenHandles(nodeId)) {
-            auto e = RemoveNode(db, *it, it->MinCommitId, args.CommitId);
+            auto e = RemoveNode(*db, *it, it->MinCommitId, args.CommitId);
 
             if (HasError(e)) {
-                WriteOrphanNode(db, TStringBuilder()
+                WriteOrphanNode(*db, TStringBuilder()
                     << "DestroySession: " << args.SessionId
                     << ", RemoveNode: " << nodeId
                     << ", Error: " << FormatError(e), nodeId);
@@ -173,7 +173,7 @@ void TIndexTabletActor::ExecuteTx_DestroySession(
         }
     }
 
-    RemoveSession(db, args.SessionId);
+    RemoveSession(*db, args.SessionId);
 
     EnqueueTruncateIfNeeded(ctx);
 }

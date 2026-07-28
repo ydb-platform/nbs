@@ -170,6 +170,8 @@ void TDiskAgentActor::HandleInitAgentCompleted(
         }
     }
 
+    StartJournalledDeviceTcpServer(ctx);
+
     LOG_INFO(ctx, TBlockStoreComponents::DISK_AGENT, "Ready to work");
 
     Become(&TThis::StateWork);

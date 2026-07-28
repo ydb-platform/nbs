@@ -25,8 +25,32 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TPartitionDatabase
-    : public NKikimr::NIceDb::TNiceDb
+class TNoOpCounter
+{
+public:
+    void operator()(TStringBuf)
+    {}
+};
+
+class TMethodCallCounter
+{
+private:
+    THashMap<TString, ui64> MethodCallCounts;
+
+public:
+    void operator()(TStringBuf methodName)
+    {
+        MethodCallCounts[methodName]++;
+    }
+
+    [[nodiscard]] const THashMap<TString, ui64>& GetMethodCallCounts() const
+    {
+        return MethodCallCounts;
+    }
+};
+
+template <typename TCounters>
+class TPartitionDatabaseImpl: public NKikimr::NIceDb::TNiceDb
 {
 public:
     enum class EBlobIndexScanProgress
@@ -36,10 +60,18 @@ public:
         Partial
     };
 
+private:
+    TCounters Counters;
+
 public:
-    TPartitionDatabase(NKikimr::NTable::TDatabase& database)
+    TPartitionDatabaseImpl(NKikimr::NTable::TDatabase& database)
         : NKikimr::NIceDb::TNiceDb(database)
     {}
+
+    [[nodiscard]] const TCounters& GetCounters() const
+    {
+        return Counters;
+    }
 
     void InitSchema();
 
@@ -150,6 +182,11 @@ public:
         const TPartialBlobId& blobId,
         TMaybe<TBlockMask>& blockMask);
 
+    bool ReadBlobInfo(
+        const TPartialBlobId& blobId,
+        TMaybe<TBlockMask>& blockMask,
+        TMaybe<NProto::TBlobMeta>& blobMeta);
+
     bool FindBlocksInBlobsIndex(
         IExtendedBlocksIndexVisitor& visitor,
         const ui32 maxBlocksInBlob,
@@ -231,5 +268,9 @@ public:
 
     bool ReadUnconfirmedBlobs(TCommitIdToBlobsToConfirm& blobs);
 };
+
+using TPartitionDatabase = TPartitionDatabaseImpl<TNoOpCounter>;
+using TPartitionDatabaseWithCounters =
+    TPartitionDatabaseImpl<TMethodCallCounter>;
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

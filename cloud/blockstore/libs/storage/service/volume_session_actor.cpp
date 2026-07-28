@@ -381,7 +381,7 @@ IActorPtr CreateVolumeSessionActor(
     TStorageConfigPtr config,
     TDiagnosticsConfigPtr diagnosticsConfig,
     IProfileLogPtr profileLog,
-    IBlockDigestGeneratorPtr blockDigestGenerator,
+    IBlockDigestGeneratorFactoryPtr blockDigestGeneratorFactory,
     ITraceSerializerPtr traceSerializer,
     NServer::IEndpointEventHandlerPtr endpointEventHandler,
     NCloud::NStorage::NRdma::IClientPtr rdmaClient,
@@ -396,7 +396,7 @@ IActorPtr CreateVolumeSessionActor(
         std::move(config),
         std::move(diagnosticsConfig),
         std::move(profileLog),
-        std::move(blockDigestGenerator),
+        std::move(blockDigestGeneratorFactory),
         std::move(traceSerializer),
         std::move(endpointEventHandler),
         std::move(rdmaClient),
@@ -406,7 +406,5 @@ IActorPtr CreateVolumeSessionActor(
         std::move(clientId),
         temporaryServer);
 }
-
-////////////////////////////////////////////////////////////////////////////////
 
 }   // namespace NCloud::NBlockStore::NStorage

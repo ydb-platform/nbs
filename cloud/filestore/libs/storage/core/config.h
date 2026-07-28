@@ -420,6 +420,7 @@ public:
     [[nodiscard]] bool GetUseSchemeCache() const;
 
     [[nodiscard]] ui32 GetFastShardServerPort() const;
+    [[nodiscard]] bool GetFastShardRuntimeEnabled() const;
 
     [[nodiscard]] bool GetEnableNodeRefCompression() const;
 
@@ -440,6 +441,10 @@ public:
     ui32 GetSoftBackpressureMaxReadIops() const;
 
     [[nodiscard]] bool GetExternalWriteDataPayloadEnabled() const;
+
+    [[nodiscard]] double GetFakeTxPageFaultsProbability() const;
+
+    [[nodiscard]] bool GetFanoutStatsCollectionInShardsDisabled() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

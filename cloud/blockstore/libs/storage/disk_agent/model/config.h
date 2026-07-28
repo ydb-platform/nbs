@@ -150,6 +150,8 @@ public:
     [[nodiscard]] bool HasChaosConfig() const;
     [[nodiscard]] const NProto::TChaosConfig& GetChaosConfig() const;
 
+    [[nodiscard]] TString GetJournalledDeviceTcpServerListenAddress() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };

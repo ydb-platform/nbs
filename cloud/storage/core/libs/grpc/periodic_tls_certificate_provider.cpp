@@ -43,9 +43,6 @@ public:
             grpc_core::MakeRefCounted<grpc_tls_certificate_distributor>())
     {}
 
-    ~TGrpcTlsCertificateProvider()
-    {}
-
     void PublishCerts(
         const TMaybe<TString>& rootCertificate,
         PemKeyCertPairList identityPairs)

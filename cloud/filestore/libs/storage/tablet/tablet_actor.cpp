@@ -5,7 +5,7 @@
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/metrics/registry.h>
 #include <cloud/filestore/libs/storage/tablet/model/throttler_logger.h>
-
+#include <cloud/filestore/libs/storage/tablet/tablet_database_failure_injection.h>
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/libs/throttling/tablet_throttler.h>
 #include <cloud/storage/core/libs/throttling/tablet_throttler_logger.h>
@@ -1813,6 +1813,38 @@ void TIndexTabletActor::HandleRunRegularTasks(
     Y_UNUSED(ev);
 
     RunRegularTasks(ctx);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Factories
+
+std::unique_ptr<IIndexTabletDatabase>
+TIndexTabletActor::CreateIndexTabletDatabase(
+    NKikimr::NTable::TDatabase& database)
+{
+    std::unique_ptr<IIndexTabletDatabase> db =
+        std::make_unique<TIndexTabletDatabase>(database);
+    if (TxRescheduler) {
+        db = std::make_unique<TIndexTabletDatabaseWithFailureInjection>(
+            std::move(db),
+            TxRescheduler);
+    }
+    return db;
+}
+
+std::unique_ptr<IIndexTabletDatabase>
+TIndexTabletActor::CreateIndexTabletDatabaseProxy(
+    NKikimr::NTable::TDatabase& database,
+    TVector<IInMemoryIndexState::TIndexStateRequest>& nodeUpdates)
+{
+    std::unique_ptr<IIndexTabletDatabase> db =
+        std::make_unique<TIndexTabletDatabaseProxy>(database, nodeUpdates);
+    if (TxRescheduler) {
+        db = std::make_unique<TIndexTabletDatabaseWithFailureInjection>(
+            std::move(db),
+            TxRescheduler);
+    }
+    return db;
 }
 
 }   // namespace NCloud::NFileStore::NStorage

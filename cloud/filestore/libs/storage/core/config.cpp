@@ -363,6 +363,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(UseSchemeCache,                         bool,   false                 )\
                                                                                \
     xxx(FastShardServerPort,                    ui32,   0                     )\
+    xxx(FastShardRuntimeEnabled,                bool,   false                 )\
                                                                                \
     xxx(EnableNodeRefCompression,               bool,   false                 )\
                                                                                \
@@ -384,6 +385,9 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(SoftBackpressureMaxReadIops,                   ui32,    100'000       )\
                                                                                \
     xxx(ExternalWriteDataPayloadEnabled,               bool,    false         )\
+    xxx(FakeTxPageFaultsProbability,                   double,   0            )\
+                                                                               \
+    xxx(FanoutStatsCollectionInShardsDisabled,         bool,    false         )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \

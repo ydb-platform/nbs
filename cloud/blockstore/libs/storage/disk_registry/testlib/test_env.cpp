@@ -222,7 +222,7 @@ void WaitForSecureErase(
             if (event->GetTypeRewrite() == TEvDiskRegistryPrivate::EvSecureEraseResponse) {
                 auto* msg = event->Get<TEvDiskRegistryPrivate::TEvSecureEraseResponse>();
 
-                cleanDevices += msg->CleanDevices;
+                cleanDevices += msg->CleanDevices.size();
             }
 
             return prev(event);
@@ -328,7 +328,7 @@ void RegisterAndWaitForAgent(
                 if (event->GetTypeRewrite() == TEvDiskRegistryPrivate::EvSecureEraseResponse) {
                     auto* msg = event->Get<TEvDiskRegistryPrivate::TEvSecureEraseResponse>();
 
-                    cleanDevices += msg->CleanDevices;
+                    cleanDevices += msg->CleanDevices.size();
                 }
 
                 return prev(event);

@@ -47,8 +47,8 @@ func SelectCellForFilesystem(
 	switch s := state.(type) {
 	case *protos.CreateFilesystemTaskState:
 		s.SelectedCellId = client.ZoneID()
-	// TODO: Implement filesyste creation from snapshot.
-	// See: https://github.com/ydb-platform/nbs/issues/1559
+	case *protos.CreateFilesystemFromSnapshotTaskState:
+		s.SelectedCellId = client.ZoneID()
 	default:
 		return nil, errors.NewNonRetriableErrorf(
 			"unsupported proto type: %T",

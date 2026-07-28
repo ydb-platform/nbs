@@ -637,6 +637,9 @@ Y_UNIT_TEST_SUITE(TServerTest)
                     "test",
                     request->GetHeaders().GetInternal().GetAuthToken()
                 );
+                UNIT_ASSERT(
+                    !request->GetHeaders().GetInternal().GetPeer().empty()
+                );
                 return MakeFuture<NProto::TPingResponse>();
             };
 
@@ -678,6 +681,9 @@ Y_UNIT_TEST_SUITE(TServerTest)
                 UNIT_ASSERT_VALUES_EQUAL(
                     "test",
                     request->GetHeaders().GetInternal().GetAuthToken()
+                );
+                UNIT_ASSERT(
+                    !request->GetHeaders().GetInternal().GetPeer().empty()
                 );
                 return MakeFuture<NProto::TPingResponse>();
             };
@@ -787,6 +793,9 @@ Y_UNIT_TEST_SUITE(TServerTest)
                 UNIT_ASSERT_VALUES_EQUAL(
                     int(NProto::SOURCE_FD_CONTROL_CHANNEL),
                     int(request->GetHeaders().GetInternal().GetRequestSource())
+                );
+                UNIT_ASSERT(
+                    !request->GetHeaders().GetInternal().GetPeer().empty()
                 );
                 return MakeFuture<NProto::TPingResponse>();
             };

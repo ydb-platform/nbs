@@ -99,6 +99,10 @@ TOptionsYdbBase::TOptionsYdbBase()
     Opts.AddLongOption("actor-system-available-cpu-cores-percentage")
         .OptionalArgument("NUM")
         .StoreResult(&ActorSystemAvailableCpuCoresPercentage);
+
+    Opts.AddLongOption("bs-file")
+        .RequiredArgument("FILE")
+        .StoreResult(&BlobStorageConfig);
 }
 
 }   // namespace NCloud::NStorage

@@ -21,12 +21,36 @@
 #define Y_UNUSED(x) (void)x;
 #endif
 
+// Each fuse request comes with an iovec that is split into in and out iovecs.
+// The in iovec is read in iov_iter_to_buf to copy its content to an allocated
+// buffer. The out iovec is written in iov_copy_to_iov to send the data
+// response. Both point into guest memory.
+//
+// Tsan cannot see the synchronization that actually orders these accesses,
+// because it happens in the guest via the virtqueue. The guest reuses the
+// pages of an already completed request as the in iovec of the next one, so
+// tsan shadow memory still thinks the memory is read while it is written.
+//
+// Per-buffer __tsan_acquire/__tsan_release do not help here: the address the
+// response was written at and the address the next request is read from are
+// almost never the same, and these annotations only match when the addresses
+// are equal. Use a single sync token for the whole guest memory instead, taken
+// and released around each copy, and annotate both directions, so that neither
+// ordering is reported.
+//
+// See https://github.com/ydb-platform/nbs/pull/6611
 #if __has_feature(thread_sanitizer)
-#define TSAN_ACQUIRE(x) __tsan_acquire(x)
-#define TSAN_RELEASE(x) __tsan_release(x)
+
+static char guest_memory_sync_token;
+
+void __tsan_acquire(void* addr);
+void __tsan_release(void* addr);
+
+#define TSAN_ACQUIRE_GUEST_MEMORY() __tsan_acquire(&guest_memory_sync_token)
+#define TSAN_RELEASE_GUEST_MEMORY() __tsan_release(&guest_memory_sync_token)
 #else
-#define TSAN_ACQUIRE(x)
-#define TSAN_RELEASE(x)
+#define TSAN_ACQUIRE_GUEST_MEMORY()
+#define TSAN_RELEASE_GUEST_MEMORY()
 #endif
 
 struct fuse_virtio_dev
@@ -115,20 +139,11 @@ static void iov_copy_to_iov(
             if (src_iov[0].iov_base) {
                 void* dst = dst_iov[0].iov_base + dst_offset;
                 void* src = src_iov[0].iov_base + src_offset;
+                // dst points into guest memory, see the comment near
+                // TSAN_ACQUIRE_GUEST_MEMORY
+                TSAN_ACQUIRE_GUEST_MEMORY();
                 memcpy(dst, src, dst_len);
-                // Each fuse requests comes with iovec that is splitted into in
-                // and out iovecs. The in iovec is read in iov_iter_to_buf to
-                // copy it's content to allocated buffer. The out iovec is
-                // written in iov_copy_to_iov to send data response.
-                //
-                // It looks like tsan is not tracking the memory access well
-                // across guest vm. The guest may resend new request with in
-                // iovec containing out iovec address from previously responded
-                // request and tsan shadow memory still thinks that the memory
-                // is read during write.
-                //
-                // See https://github.com/ydb-platform/nbs/pull/4600
-                TSAN_RELEASE(dst);
+                TSAN_RELEASE_GUEST_MEMORY();
             }
             src_len -= dst_len;
             to_copy -= dst_len;
@@ -212,20 +227,11 @@ static size_t iov_iter_to_buf(struct iov_iter *it, void *buf, size_t len)
         size_t cplen = MIN(len, iov->iov_len - it->off);
 
         void* src = iov->iov_base + it->off;
-        // Each fuse requests comes with iovec that is splitted into in
-        // and out iovecs. The in iovec is read in iov_iter_to_buf to
-        // copy it's content to allocated buffer. The out iovec is
-        // written in iov_copy_to_iov to send data response.
-        //
-        // It looks like tsan is not tracking the memory access well
-        // across guest vm. The guest may resend new request with in
-        // iovec containing out iovec address from previously responded
-        // request and tsan shadow memory still thinks that the memory
-        // is read during write.
-        //
-        // See https://github.com/ydb-platform/nbs/pull/4600
-        TSAN_ACQUIRE(src);
+        // src points into guest memory, see the comment near
+        // TSAN_ACQUIRE_GUEST_MEMORY
+        TSAN_ACQUIRE_GUEST_MEMORY();
         memcpy(ptr, src, cplen);
+        TSAN_RELEASE_GUEST_MEMORY();
 
         ptr += cplen;
         len -= cplen;

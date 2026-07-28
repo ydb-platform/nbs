@@ -68,11 +68,8 @@ struct TWriteBackCacheArgs
     // This threshold limits WriteBackCache queue growth to avoid excessive
     // latency for operations that must wait for cached writes to be flushed,
     // such as SetNodeAttr, ReleaseHandle, data requests with O_DIRECT flag.
-    //
-    // The value is compared with a cheap heuristic estimate of the number of
-    // flush batches needed to drain unflushed WriteData requests. The estimate
-    // is not an exact model of flush batching and does not provide a strict
-    // upper bound.
+    // The value is compared with the number of flush batches needed to drain
+    // unflushed WriteData requests.
     ui32 MaxQueuedFlushBatchesPerNode = 0;
 
     // If the flag is enabled, WriteBackCache will generate WriteData requests
@@ -204,25 +201,35 @@ public:
         ui64 nodeId,
         ui64 handle);
 
-    /* Read directly from the underlying storage.
-     * All prior cached WriteData requests are flushed and evicted.
-     * No new WriteData requests will be flushed until the direct read is
-     * completed.
+    /* Read directly from the underlying storage under a barrier.
+     * An acquired barrier ensures that operation will not interfere with cache:
+     * - All cached WriteData requests prior to barrier acquisition are flushed
+     *   and evicted.
+     * - No flush may take place until the barrier is released.
+     * Note: the sequence point is barrier acquisition, not the request itself.
+     * It means that newer WriteData requests may be reordered and flushed while
+     * the barrier is in pending state.
      */
     NThreading::TFuture<NProto::TReadDataResponse> ReadDataDirect(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TReadDataRequest> request);
 
-    /* Write directly to the underlying storage.
-     * All prior cached WriteData requests are flushed and evicted.
-     * No new WriteData requests will be flushed until the direct write is
-     * completed.
+    /* Write directly to the underlying storage under a barrier.
+     * An acquired barrier ensures that operation will not interfere with cache:
+     * - All cached WriteData requests prior to barrier acquisition are flushed
+     *   and evicted.
+     * - No flush may take place until the barrier is released.
+     * Note: the sequence point is barrier acquisition, not the request itself.
+     * It means that newer WriteData requests may be reordered and flushed while
+     * the barrier is in pending state.
      */
     NThreading::TFuture<NProto::TWriteDataResponse> WriteDataDirect(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TWriteDataRequest> request);
 
-    // Execute SetNodeAttr with taking awareness of changing node size
+    /* Execute SetNodeAttr with taking awareness of changing node size under a
+     * barrier.
+     */
     NThreading::TFuture<NProto::TSetNodeAttrResponse> SetNodeAttr(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TSetNodeAttrRequest> request);

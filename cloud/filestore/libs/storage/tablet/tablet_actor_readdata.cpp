@@ -916,7 +916,7 @@ bool TIndexTabletActor::ValidateTx_ReadData(
 
 bool TIndexTabletActor::PrepareTx_ReadData(
     const TActorContext& ctx,
-    IIndexTabletDatabase& db,
+    INodeIndexTabletDatabase& db,
     TTxIndexTablet::TReadData& args)
 {
     Y_UNUSED(ctx);

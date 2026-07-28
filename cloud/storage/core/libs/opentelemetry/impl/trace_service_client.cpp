@@ -10,8 +10,8 @@
 #include <contrib/libs/grpc/include/grpcpp/completion_queue.h>
 #include <contrib/libs/grpc/include/grpcpp/create_channel.h>
 #include <contrib/libs/grpc/include/grpcpp/security/credentials.h>
-#include <contrib/libs/opentelemetry-proto/opentelemetry/proto/collector/trace/v1/trace_service.grpc.pb.h>
-#include <contrib/libs/opentelemetry-proto/opentelemetry/proto/collector/trace/v1/trace_service.pb.h>
+#include <contrib/proto/opentelemetry/opentelemetry/proto/collector/trace/v1/trace_service.grpc.pb.h>
+#include <contrib/proto/opentelemetry/opentelemetry/proto/collector/trace/v1/trace_service.pb.h>
 
 #include <util/string/builder.h>
 #include <util/string/join.h>

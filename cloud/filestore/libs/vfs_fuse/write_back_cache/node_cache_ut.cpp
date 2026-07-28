@@ -58,6 +58,41 @@ IOutputStream& operator<<(
     return PrintValues(out, entries);
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+struct TTestCaseWriteDataEntries
+{
+    TVector<TString> Buffers;
+    TVector<TTestCaseWriteDataEntry> Entries;
+
+    TTestCaseWriteDataEntries(
+        std::initializer_list<TTestCaseWriteDataEntry> testCaseEntries)
+    {
+        for (const auto& e: testCaseEntries) {
+            Buffers.emplace_back(e.Length, 'a');   // dummy buffer
+            Entries.push_back(e);
+        }
+    }
+
+    explicit TTestCaseWriteDataEntries(
+        const TVector<TTestCaseWriteDataEntry>& testCaseEntries)
+    {
+        for (const auto& e: testCaseEntries) {
+            Buffers.emplace_back(e.Length, 'a');   // dummy buffer
+            Entries.push_back(e);
+        }
+    }
+};
+
+IOutputStream& operator<<(
+    IOutputStream& out,
+    const TTestCaseWriteDataEntries& entries)
+{
+    return PrintValues(out, entries.Entries);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TTestCaseWriteDataEntryPart
 {
     // index of TWriteDataEntry which this part refers to
@@ -109,6 +144,7 @@ struct TBootstrap
     TWriteDataRequestManager RequestManager;
     TVector<std::unique_ptr<TCachedWriteDataRequest>> Requests;
     NWriteBackCache::TNodeCache Cache;
+    TFlushBatchLimits FlushBatchLimits;
 
     TBootstrap()
         : Timer(CreateWallClockTimer())
@@ -123,7 +159,9 @@ struct TBootstrap
 
     void PushUnflushed(ui64 offset, TString data)
     {
-        Cache.EnqueueUnflushedRequest(MakeRequest(offset, std::move(data)));
+        Cache.EnqueueUnflushedRequest(
+            FlushBatchLimits,
+            MakeRequest(offset, std::move(data)));
     }
 
     std::unique_ptr<TCachedWriteDataRequest> MakeRequest(
@@ -153,22 +191,6 @@ struct TBootstrap
             }
             out << part.RelativeOffset + offset << ":" << part.Data;
         }
-        return out;
-    }
-
-    TString VisitUnflushedRequests() const
-    {
-        TStringBuilder out;
-        Cache.VisitUnflushedRequests(
-            [&out](const TCachedWriteDataRequest* request)
-            {
-                if (!out.empty()) {
-                    out << ", ";
-                }
-                out << request->GetOffset() << ":" << request->GetBuffer();
-                return true;
-            },
-            Max<ui64>());
         return out;
     }
 };
@@ -282,6 +304,104 @@ void TestShouldCorrectlyCalculateDataPartsToReadWithReferenceImpl(
         "failed for test case with entries: " << testCaseEntries);
 }
 
+size_t CalculateEntriesCountToFlush(
+    const TTestCaseWriteDataEntries& entries,
+    ui32 maxWriteRequestSize,
+    ui32 maxWriteRequestsCount,
+    ui32 maxSumWriteRequestsSize)
+{
+    TBootstrap b;
+    b.FlushBatchLimits = {
+        .MaxWriteRequestSize = maxWriteRequestSize,
+        .MaxWriteRequestsCount = maxWriteRequestsCount,
+        .MaxSumWriteRequestsSize = maxSumWriteRequestsSize};
+
+    size_t requestCount = 0;
+
+    for (size_t i = 0; i < entries.Entries.size(); i++) {
+        const auto& e = entries.Entries[i];
+        const auto& buffer = entries.Buffers[i];
+
+        b.PushUnflushed(e.Offset, buffer);
+
+        if (b.Cache.GetExpectedFlushBatchCount() > 1) {
+            break;
+        }
+        requestCount++;
+    }
+
+    return requestCount;
+}
+
+bool CheckIfCanFlushWithLimits(
+    const TVector<bool>& data,
+    ui32 maxWriteRequestSize,
+    ui32 maxWriteRequestsCount,
+    ui32 maxSumWriteRequestsSize)
+{
+    if (Count(data, true) > maxSumWriteRequestsSize) {
+        return false;
+    }
+
+    ui32 lastRequestSize = 0;
+    size_t requestCount = 0;
+
+    for (bool x: data) {
+        if (x) {
+            lastRequestSize++;
+            if (lastRequestSize > maxWriteRequestSize) {
+                lastRequestSize = 1;
+                requestCount++;
+            }
+        } else if (lastRequestSize > 0) {
+            lastRequestSize = 0;
+            requestCount++;
+        }
+    }
+
+    if (lastRequestSize > 0) {
+        requestCount++;
+    }
+
+    return requestCount <= maxWriteRequestsCount;
+}
+
+size_t CalculateEntriesCountToFlushReferenceImpl(
+    const TTestCaseWriteDataEntries& entries,
+    ui32 maxWriteRequestSize,
+    ui32 maxWriteRequestsCount,
+    ui32 maxSumWriteRequestsSize)
+{
+    auto begin = entries.Entries.front().Offset;
+    auto end = entries.Entries.front().Offset + entries.Entries.front().Length;
+
+    for (const auto& entry: entries.Entries) {
+        begin = Min(begin, entry.Offset);
+        end = Max(end, entry.Offset + entry.Length);
+    }
+
+    TVector<bool> data(end - begin, false);
+
+    for (size_t count = 0; count < entries.Entries.size(); count++) {
+        const auto& entry = entries.Entries[count];
+        for (auto i = entry.Offset; i < entry.Offset + entry.Length; i++) {
+            data[i - begin] = true;
+        }
+
+        if (!CheckIfCanFlushWithLimits(
+                data,
+                maxWriteRequestSize,
+                maxWriteRequestsCount,
+                maxSumWriteRequestsSize) &&
+            count > 0)
+        {
+            return count;
+        }
+    }
+
+    return entries.Entries.size();
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -301,9 +421,6 @@ Y_UNIT_TEST_SUITE(TNodeCacheTest)
         UNIT_ASSERT_VALUES_EQUAL(b.Cache.GetMinUnflushedSequenceId(), 1);
         UNIT_ASSERT(!b.Cache.HasFlushedRequests());
         UNIT_ASSERT_VALUES_EQUAL("2:ef, 4:bc, 7:xy", b.GetCachedData(2, 7));
-        UNIT_ASSERT_VALUES_EQUAL(
-            "3:abc, 1:def, 7:xyz",
-            b.VisitUnflushedRequests());
     }
 
     Y_UNIT_TEST(SimpleWithFlush)
@@ -322,7 +439,6 @@ Y_UNIT_TEST_SUITE(TNodeCacheTest)
         UNIT_ASSERT(b.Cache.HasFlushedRequests());
         UNIT_ASSERT_VALUES_EQUAL(b.Cache.GetMinFlushedSequenceId(), 1);
         UNIT_ASSERT_VALUES_EQUAL("2:ef, 4:bc, 7:xy", b.GetCachedData(2, 7));
-        UNIT_ASSERT_VALUES_EQUAL("1:def, 7:xyz", b.VisitUnflushedRequests());
     }
 
     Y_UNIT_TEST(SimpleWithFlushAndEvict)
@@ -341,7 +457,6 @@ Y_UNIT_TEST_SUITE(TNodeCacheTest)
         UNIT_ASSERT_VALUES_EQUAL(b.Cache.GetMinUnflushedSequenceId(), 2);
         UNIT_ASSERT(!b.Cache.HasFlushedRequests());
         UNIT_ASSERT_VALUES_EQUAL("2:ef, 7:xy", b.GetCachedData(2, 7));
-        UNIT_ASSERT_VALUES_EQUAL("1:def, 7:xyz", b.VisitUnflushedRequests());
     }
 
     Y_UNIT_TEST(SimpleWithFlushAll)
@@ -361,7 +476,6 @@ Y_UNIT_TEST_SUITE(TNodeCacheTest)
         UNIT_ASSERT(b.Cache.HasFlushedRequests());
         UNIT_ASSERT_VALUES_EQUAL(b.Cache.GetMinFlushedSequenceId(), 1);
         UNIT_ASSERT_VALUES_EQUAL("2:ef, 4:bc, 7:xy", b.GetCachedData(2, 7));
-        UNIT_ASSERT_VALUES_EQUAL("", b.VisitUnflushedRequests());
     }
 
     Y_UNIT_TEST(SimpleWithFlushAllAndEvict)
@@ -383,7 +497,6 @@ Y_UNIT_TEST_SUITE(TNodeCacheTest)
         UNIT_ASSERT(b.Cache.HasFlushedRequests());
         UNIT_ASSERT_VALUES_EQUAL(b.Cache.GetMinFlushedSequenceId(), 2);
         UNIT_ASSERT_VALUES_EQUAL("2:ef, 7:xy", b.GetCachedData(2, 7));
-        UNIT_ASSERT_VALUES_EQUAL("", b.VisitUnflushedRequests());
     }
 
     Y_UNIT_TEST(SimpleWithFlushAllAndEvictAll)
@@ -406,7 +519,6 @@ Y_UNIT_TEST_SUITE(TNodeCacheTest)
         UNIT_ASSERT(!b.Cache.HasUnflushedRequests());
         UNIT_ASSERT(!b.Cache.HasFlushedRequests());
         UNIT_ASSERT_VALUES_EQUAL("", b.GetCachedData(2, 7));
-        UNIT_ASSERT_VALUES_EQUAL("", b.VisitUnflushedRequests());
     }
 
     Y_UNIT_TEST(ShouldCorrectlyCalculateDataPartsToRead)
@@ -442,59 +554,48 @@ Y_UNIT_TEST_SUITE(TNodeCacheTest)
         TestShouldCorrectlyCalculateDataPartsToReadWithReferenceImpl(entries);
     }
 
-    Y_UNIT_TEST(ShouldCalculateCachedDataStats)
+    Y_UNIT_TEST(ShouldCalculateExpectedFlushBatchCount)
     {
         TBootstrap b;
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            0,
-            b.Cache.GetCachedDataContiguousIntervalCount());
-        UNIT_ASSERT_VALUES_EQUAL(0, b.Cache.GetCachedDataByteCount());
+        b.FlushBatchLimits = {
+            .MaxWriteRequestSize = 5,
+            .MaxWriteRequestsCount = 1,
+        };
 
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Cache.GetExpectedFlushBatchCount());
+
+        // "abc" goes to an incomplete flush batch
         b.PushUnflushed(3, "abc");
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            1,
-            b.Cache.GetCachedDataContiguousIntervalCount());
-        UNIT_ASSERT_VALUES_EQUAL(3, b.Cache.GetCachedDataByteCount());
+        UNIT_ASSERT_VALUES_EQUAL(1, b.Cache.GetExpectedFlushBatchCount());
 
+        // It is no possible to flush "abc" and "def" in the same batch
+        // "abc" goes to a prepared batch
+        // "def" goes to an incomplete batch
         b.PushUnflushed(7, "def");
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            2,
-            b.Cache.GetCachedDataContiguousIntervalCount());
-        UNIT_ASSERT_VALUES_EQUAL(6, b.Cache.GetCachedDataByteCount());
+        UNIT_ASSERT_VALUES_EQUAL(2, b.Cache.GetExpectedFlushBatchCount());
 
+        // "xyz" is glued with "def" in the same batch
         b.PushUnflushed(5, "xyz");
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            1,
-            b.Cache.GetCachedDataContiguousIntervalCount());
-        UNIT_ASSERT_VALUES_EQUAL(7, b.Cache.GetCachedDataByteCount());
+        UNIT_ASSERT_VALUES_EQUAL(2, b.Cache.GetExpectedFlushBatchCount());
 
         b.Cache.MoveFrontUnflushedRequestToFlushed();
         b.Cache.DequeueFlushedRequest();
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            1,
-            b.Cache.GetCachedDataContiguousIntervalCount());
-        UNIT_ASSERT_VALUES_EQUAL(5, b.Cache.GetCachedDataByteCount());
+        UNIT_ASSERT_VALUES_EQUAL(1, b.Cache.GetExpectedFlushBatchCount());
 
         b.Cache.MoveFrontUnflushedRequestToFlushed();
         b.Cache.DequeueFlushedRequest();
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            1,
-            b.Cache.GetCachedDataContiguousIntervalCount());
-        UNIT_ASSERT_VALUES_EQUAL(3, b.Cache.GetCachedDataByteCount());
+        UNIT_ASSERT_VALUES_EQUAL(1, b.Cache.GetExpectedFlushBatchCount());
 
         b.Cache.MoveFrontUnflushedRequestToFlushed();
         b.Cache.DequeueFlushedRequest();
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            0,
-            b.Cache.GetCachedDataContiguousIntervalCount());
-        UNIT_ASSERT_VALUES_EQUAL(0, b.Cache.GetCachedDataByteCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Cache.GetExpectedFlushBatchCount());
     }
 
     Y_UNIT_TEST(ShouldHandlePinId)
@@ -511,6 +612,150 @@ Y_UNIT_TEST_SUITE(TNodeCacheTest)
         UNIT_ASSERT_VALUES_EQUAL("3:de, 5:xyz", b.GetCachedData(0, 9, 1));
         UNIT_ASSERT_VALUES_EQUAL("5:xyz", b.GetCachedData(0, 9, 2));
         UNIT_ASSERT_VALUES_EQUAL("", b.GetCachedData(0, 9, 3));
+    }
+
+    Y_UNIT_TEST(ShouldCalculateEntriesCountToFlush)
+    {
+        TBootstrap b;
+
+        TTestCaseWriteDataEntries singleEntry{{1, 0, 3}};
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            CalculateEntriesCountToFlush(singleEntry, 100, 100, 1000));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            CalculateEntriesCountToFlush(singleEntry, 1, 2, 1000));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            CalculateEntriesCountToFlush(singleEntry, 100, 100, 2));
+
+        TTestCaseWriteDataEntries twoOverlappingEntries{{1, 0, 3}, {1, 1, 3}};
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            CalculateEntriesCountToFlush(
+                twoOverlappingEntries,
+                100,
+                100,
+                1000));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            CalculateEntriesCountToFlush(twoOverlappingEntries, 100, 100, 4));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            CalculateEntriesCountToFlush(twoOverlappingEntries, 100, 100, 3));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            CalculateEntriesCountToFlush(
+                twoOverlappingEntries,
+                100,
+                1,
+                1000));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            CalculateEntriesCountToFlush(
+                twoOverlappingEntries,
+                3,
+                100,
+                1000));
+
+        TTestCaseWriteDataEntries twoSeparateEntries{{1, 0, 3}, {1, 4, 3}};
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            CalculateEntriesCountToFlush(twoSeparateEntries, 100, 100, 1000));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            CalculateEntriesCountToFlush(twoSeparateEntries, 100, 100, 4));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            CalculateEntriesCountToFlush(twoSeparateEntries, 100, 1, 1000));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            CalculateEntriesCountToFlush(twoSeparateEntries, 3, 100, 1000));
+    }
+
+    void TestCalculateEntriesCountToFlush(
+        const TTestCaseWriteDataEntries& entries,
+        ui32 maxWriteRequestSize,
+        ui32 maxWriteRequestsCount,
+        ui32 maxSumWriteRequestsSize)
+    {
+        TBootstrap b;
+
+        auto actual = CalculateEntriesCountToFlush(
+            entries,
+            maxWriteRequestSize,
+            maxWriteRequestsCount,
+            maxSumWriteRequestsSize);
+
+        auto expected = CalculateEntriesCountToFlushReferenceImpl(
+            entries,
+            maxWriteRequestSize,
+            maxWriteRequestsCount,
+            maxSumWriteRequestsSize);
+
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            expected,
+            actual,
+            "CalculateEntriesCountToFlush failed for " << entries);
+    }
+
+    Y_UNIT_TEST(ShouldCalculateEntriesCountToFlushRandomized)
+    {
+        constexpr size_t IterationCount = 100;
+        constexpr ui32 MaxWriteRequestSize = 5;
+        constexpr ui32 MaxWriteRequestsCount = 3;
+        constexpr ui32 MaxSumWriteRequestsSize = 10;
+        constexpr ui64 MaxLength = 10;
+        constexpr size_t MaxIntervalCount = 10;
+
+        for (size_t iter = 0; iter < IterationCount; iter++) {
+            size_t intervalCount = RandomNumber(MaxIntervalCount) + 1;
+
+            TVector<TTestCaseWriteDataEntry> entries;
+
+            while (intervalCount-- > 0) {
+                ui64 length = RandomNumber(MaxLength) + 1;
+                ui64 offset = RandomNumber(MaxLength - length + 1);
+
+                entries.push_back(
+                    {.NodeId = 1, .Offset = offset, .Length = length});
+            }
+
+            TTestCaseWriteDataEntries testCase(entries);
+
+            for (ui32 maxWriteRequestSize = 1;
+                 maxWriteRequestSize <= MaxWriteRequestSize;
+                 maxWriteRequestSize++)
+            {
+                for (ui32 maxWriteRequestsCount = 1;
+                     maxWriteRequestsCount <= MaxWriteRequestsCount;
+                     maxWriteRequestsCount++)
+                {
+                    for (ui32 maxSumWriteRequestsSize = 1;
+                         maxSumWriteRequestsSize <= MaxSumWriteRequestsSize;
+                         maxSumWriteRequestsSize++)
+                    {
+                        TestCalculateEntriesCountToFlush(
+                            testCase,
+                            maxWriteRequestSize,
+                            maxWriteRequestsCount,
+                            maxSumWriteRequestsSize);
+                    }
+                }
+            }
+        }
     }
 }
 

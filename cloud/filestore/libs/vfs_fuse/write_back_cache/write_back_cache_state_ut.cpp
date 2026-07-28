@@ -117,7 +117,7 @@ struct TBootstrap
             Stats->GetWriteBackCacheStateStats(),
             Stats->GetWriteDataRequestManagerStats(),
             Stats->GetNodeStateHolderStats(),
-            TFlushBackpressureCalculator(FlushBatchLimits),
+            FlushBatchLimits,
             "[test]");
 
         return State->Init(Storage);
@@ -160,10 +160,10 @@ struct TBootstrap
         return out;
     }
 
-    TString VisitUnflushedCachedRequests(ui64 nodeId) const
+    TString GetFrontFlushBatch(ui64 nodeId) const
     {
         TStringBuilder out;
-        State->VisitUnflushedRequests(
+        State->VisitUnflushedRequestsFromFrontFlushBatch(
             nodeId,
             [&out](const TCachedWriteDataRequest* entry)
             {
@@ -219,24 +219,24 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         UNIT_ASSERT_VALUES_EQUAL("1:a, 2:d, 3:xy", b.VisitCachedData(1, 1, 4));
         UNIT_ASSERT_VALUES_EQUAL(
             "1:abc, 2:def, 3:xyz",
-            b.VisitUnflushedCachedRequests(1));
+            b.GetFrontFlushBatch(1));
 
         b.State->AddFlushRequest(1);
         b.State->FlushSucceeded(1, 1);
         UNIT_ASSERT_VALUES_EQUAL("2:d, 3:xy", b.VisitCachedData(1, 1, 4));
         UNIT_ASSERT_VALUES_EQUAL(
             "2:def, 3:xyz",
-            b.VisitUnflushedCachedRequests(1));
+            b.GetFrontFlushBatch(1));
 
         b.State->AddFlushRequest(1);
         b.State->FlushSucceeded(1, 1);
         UNIT_ASSERT_VALUES_EQUAL("3:xy", b.VisitCachedData(1, 1, 4));
-        UNIT_ASSERT_VALUES_EQUAL("3:xyz", b.VisitUnflushedCachedRequests(1));
+        UNIT_ASSERT_VALUES_EQUAL("3:xyz", b.GetFrontFlushBatch(1));
 
         b.State->AddFlushRequest(1);
         b.State->FlushSucceeded(1, 1);
         UNIT_ASSERT_VALUES_EQUAL("", b.VisitCachedData(1, 1, 4));
-        UNIT_ASSERT_VALUES_EQUAL("", b.VisitUnflushedCachedRequests(1));
+        UNIT_ASSERT_VALUES_EQUAL("", b.GetFrontFlushBatch(1));
     }
 
     Y_UNIT_TEST(PinCachedData)
@@ -310,10 +310,8 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
 
         UNIT_ASSERT_VALUES_EQUAL("1:a, 2:def", b.VisitCachedData(1));
         UNIT_ASSERT_VALUES_EQUAL("3:xyz", b.VisitCachedData(2));
-        UNIT_ASSERT_VALUES_EQUAL(
-            "1:abc, 2:def",
-            b.VisitUnflushedCachedRequests(1));
-        UNIT_ASSERT_VALUES_EQUAL("3:xyz", b.VisitUnflushedCachedRequests(2));
+        UNIT_ASSERT_VALUES_EQUAL("1:abc, 2:def", b.GetFrontFlushBatch(1));
+        UNIT_ASSERT_VALUES_EQUAL("3:xyz", b.GetFrontFlushBatch(2));
     }
 
     Y_UNIT_TEST(FullStorage)
@@ -559,17 +557,15 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
 
             UNIT_ASSERT(b.Add(1, 101, 1, "abc").GetValue());
             UNIT_ASSERT_VALUES_EQUAL("", b.DumpEvents());
-            UNIT_ASSERT_VALUES_EQUAL("", b.VisitUnflushedCachedRequests(1));
+            UNIT_ASSERT_VALUES_EQUAL("", b.GetFrontFlushBatch(1));
 
             auto flush = b.State->AddFlushRequest(1);
             UNIT_ASSERT_VALUES_EQUAL("", b.DumpEvents());
-            UNIT_ASSERT_VALUES_EQUAL("", b.VisitUnflushedCachedRequests(1));
+            UNIT_ASSERT_VALUES_EQUAL("", b.GetFrontFlushBatch(1));
 
             b.State->ReleaseBarrier(1, barrier.GetValue().GetResult());
             UNIT_ASSERT_VALUES_EQUAL("1", b.DumpEvents());
-            UNIT_ASSERT_VALUES_EQUAL(
-                "1:abc",
-                b.VisitUnflushedCachedRequests(1));
+            UNIT_ASSERT_VALUES_EQUAL("1:abc", b.GetFrontFlushBatch(1));
         }
 
         {
@@ -581,21 +577,15 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
 
             UNIT_ASSERT(b.Add(1, 101, 1, "abc").GetValue());
             UNIT_ASSERT_VALUES_EQUAL("", b.DumpEvents());
-            UNIT_ASSERT_VALUES_EQUAL(
-                "1:abc",
-                b.VisitUnflushedCachedRequests(1));
+            UNIT_ASSERT_VALUES_EQUAL("1:abc", b.GetFrontFlushBatch(1));
 
             auto flush = b.State->AddFlushRequest(1);
             UNIT_ASSERT_VALUES_EQUAL("1", b.DumpEvents());
-            UNIT_ASSERT_VALUES_EQUAL(
-                "1:abc",
-                b.VisitUnflushedCachedRequests(1));
+            UNIT_ASSERT_VALUES_EQUAL("1:abc", b.GetFrontFlushBatch(1));
 
             b.State->ReleaseBarrier(2, barrier.GetValue().GetResult());
             UNIT_ASSERT_VALUES_EQUAL("", b.DumpEvents());
-            UNIT_ASSERT_VALUES_EQUAL(
-                "1:abc",
-                b.VisitUnflushedCachedRequests(1));
+            UNIT_ASSERT_VALUES_EQUAL("1:abc", b.GetFrontFlushBatch(1));
         }
 
         {
@@ -612,17 +602,15 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
             UNIT_ASSERT(!barrier3.HasValue());
             UNIT_ASSERT(!barrier4.HasValue());
             UNIT_ASSERT_VALUES_EQUAL("", b.DumpEvents());
-            UNIT_ASSERT_VALUES_EQUAL("", b.VisitUnflushedCachedRequests(1));
+            UNIT_ASSERT_VALUES_EQUAL("", b.GetFrontFlushBatch(1));
 
             b.State->ReleaseBarrier(1, barrier1.GetValue().GetResult());
             UNIT_ASSERT_VALUES_EQUAL("", b.DumpEvents());
-            UNIT_ASSERT_VALUES_EQUAL("", b.VisitUnflushedCachedRequests(1));
+            UNIT_ASSERT_VALUES_EQUAL("", b.GetFrontFlushBatch(1));
 
             b.State->ReleaseBarrier(1, barrier2.GetValue().GetResult());
             UNIT_ASSERT_VALUES_EQUAL("1", b.DumpEvents());
-            UNIT_ASSERT_VALUES_EQUAL(
-                "1:abc",
-                b.VisitUnflushedCachedRequests(1));
+            UNIT_ASSERT_VALUES_EQUAL("1:abc", b.GetFrontFlushBatch(1));
 
             b.State->FlushSucceeded(1, 1);
             UNIT_ASSERT(barrier3.HasValue());
@@ -637,18 +625,14 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
             UNIT_ASSERT(b.Add(1, 101, 4, "def").GetValue());
 
             UNIT_ASSERT_VALUES_EQUAL("1", b.DumpEvents());
-            UNIT_ASSERT_VALUES_EQUAL(
-                "1:abc",
-                b.VisitUnflushedCachedRequests(1));
+            UNIT_ASSERT_VALUES_EQUAL("1:abc, 4:def", b.GetFrontFlushBatch(1));
 
             b.State->FlushFailed(1, MakeError(E_FAIL, "Flush failed"));
             UNIT_ASSERT(barrier.HasValue());
             UNIT_ASSERT(HasError(barrier.GetValue().GetError()));
 
             UNIT_ASSERT_VALUES_EQUAL("", b.DumpEvents());
-            UNIT_ASSERT_VALUES_EQUAL(
-                "1:abc, 4:def",
-                b.VisitUnflushedCachedRequests(1));
+            UNIT_ASSERT_VALUES_EQUAL("1:abc, 4:def", b.GetFrontFlushBatch(1));
         }
 
         {
@@ -667,8 +651,8 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
             UNIT_ASSERT(b.Add(1, 101, 7, "ghi").GetValue());
             UNIT_ASSERT_VALUES_EQUAL("1", b.DumpEvents());
             UNIT_ASSERT_VALUES_EQUAL(
-                "1:abc, 4:def",
-                b.VisitUnflushedCachedRequests(1));
+                "1:abc, 4:def, 7:ghi",
+                b.GetFrontFlushBatch(1));
 
             UNIT_ASSERT(!flush.HasValue());
             UNIT_ASSERT(!barrier.HasValue());
@@ -682,9 +666,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
             UNIT_ASSERT(!barrier.HasValue());
             // Flush is requested because of AcquireBarrier
             UNIT_ASSERT_VALUES_EQUAL("1", b.DumpEvents());
-            UNIT_ASSERT_VALUES_EQUAL(
-                "4:def",
-                b.VisitUnflushedCachedRequests(1));
+            UNIT_ASSERT_VALUES_EQUAL("4:def, 7:ghi", b.GetFrontFlushBatch(1));
 
             // flushed: abc def
             // unflushed: ghi
@@ -696,7 +678,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
             UNIT_ASSERT(!barrier.HasValue());
             // Flush is no more requested because of barrier acquisition request
             UNIT_ASSERT_VALUES_EQUAL("", b.DumpEvents());
-            UNIT_ASSERT_VALUES_EQUAL("", b.VisitUnflushedCachedRequests(1));
+            UNIT_ASSERT_VALUES_EQUAL("", b.GetFrontFlushBatch(1));
 
             // unflushed: ghi
             // barrier: def
@@ -704,7 +686,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
             UNIT_ASSERT(barrier.HasValue());
             UNIT_ASSERT(!HasError(barrier.GetValue().GetError()));
             UNIT_ASSERT_VALUES_EQUAL("", b.DumpEvents());
-            UNIT_ASSERT_VALUES_EQUAL("", b.VisitUnflushedCachedRequests(1));
+            UNIT_ASSERT_VALUES_EQUAL("", b.GetFrontFlushBatch(1));
 
             // pending: l
             // unflushed: ghi j k
@@ -713,14 +695,12 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
             UNIT_ASSERT(b.Add(1, 101, 11, "k").GetValue());
             UNIT_ASSERT(!b.Add(1, 101, 12, "l").HasValue());
             UNIT_ASSERT_VALUES_EQUAL("", b.DumpEvents());
-            UNIT_ASSERT_VALUES_EQUAL("", b.VisitUnflushedCachedRequests(1));
+            UNIT_ASSERT_VALUES_EQUAL("", b.GetFrontFlushBatch(1));
 
             // Flush is requested after barrier release
             b.State->ReleaseBarrier(1, barrier.GetValue().GetResult());
             UNIT_ASSERT_VALUES_EQUAL("1", b.DumpEvents());
-            UNIT_ASSERT_VALUES_EQUAL(
-                "7:ghi, 10:j, 11:k",
-                b.VisitUnflushedCachedRequests(1));
+            UNIT_ASSERT_VALUES_EQUAL("7:ghi", b.GetFrontFlushBatch(1));
         }
     }
 
@@ -1342,23 +1322,22 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         auto f1 = b.Add(1, 101, 25, "pqr");
         auto f2 = b.Add(2, 102, 0, "123");
         auto f3 = b.Add(1, 101, 30, "stu");
-        auto f4 = b.Add(1, 101, 30, "vwx");
+        auto f4 = b.Add(1, 101, 35, "vwx");
 
         UNIT_ASSERT(!f1.HasValue());
         UNIT_ASSERT(!f2.HasValue());
         UNIT_ASSERT(!f3.HasValue());
         UNIT_ASSERT(!f4.HasValue());
 
-        b.State->FlushSucceeded(1, 1);
+        b.State->FlushSucceeded(1, 2);
 
         UNIT_ASSERT(f1.GetValue());
         UNIT_ASSERT(f2.GetValue());
-        UNIT_ASSERT(!f3.HasValue());
+        UNIT_ASSERT(f3.HasValue());
         UNIT_ASSERT(!f4.HasValue());
 
         b.State->FlushSucceeded(1, 2);
 
-        UNIT_ASSERT(f3.GetValue());
         UNIT_ASSERT(f4.GetValue());
     }
 

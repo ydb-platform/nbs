@@ -9,15 +9,21 @@ import subprocess
 import sys
 import time
 
+from cloud.storage.core.tools.common.python.port_reservation import PortReservation
+
 
 process = None
+reservation = None
 
 logger = logging.getLogger(__name__)
 
 
 def sighandler(sig, frame):
-    if process is not None:
+    if process:
         process.terminate()
+
+    if reservation:
+        reservation.release()
 
     sys.exit(0)
 
@@ -77,6 +83,14 @@ def main():
     parser.add_argument('--ping-path', help='part of ping endpoint', type=str, default='')
     parser.add_argument('--ping-success-codes', help='', nargs='*')
     parser.add_argument('--allow-restart-flag', help='file to look for before restart', type=str, default=None)
+    parser.add_argument(
+        '--reserve-port',
+        help='re-take the PortManager flock (under $PORT_SYNC_PATH) for this port '
+             'and hold it for the whole lifetime of this launcher; repeat for '
+             'each port',
+        type=int,
+        action='append',
+        default=[])
     parser.add_argument('-v', '--verbose', help='verbose mode', default=0, action='count')
     parser.add_argument('--terminate-check-timeout', help='the timeout in seconds between wait attempts for terminated process', type=int, default=60)
 
@@ -97,20 +111,35 @@ def main():
     interval = datetime.timedelta(seconds=args.restart_interval)
 
     global process
+    global reservation
+
+    if args.reserve_port:
+        reservation = PortReservation(args.reserve_port)
 
     while True:
         now = datetime.datetime.now()
         deadline = start_ts + interval if start_ts is not None else None
         if deadline is None or now >= deadline:
-            if process is not None:
+            if process:
                 while args.allow_restart_flag is not None and not os.path.exists(args.allow_restart_flag):
                     logging.debug("waiting for the allow restart flag")
                     time.sleep(1)
                     continue
 
+                # Hold the port flocks *before* the child's sockets are freed,
+                # so the ports are never observable as both unlocked and unbound.
+                #
+                # Needed to fix a race with unreserved ports (see issue #6518 for details)
+                if reservation:
+                    reservation.reserve_ports()
+
                 if should_kill_process():
                     logging.info(f'killing process {cmdline}')
                     process.kill()
+                    # Reap the killed process before starting the next one:
+                    # its sockets are only guaranteed to be freed once it is
+                    # gone, and the new instance binds the same ports.
+                    process.wait()
                 else:
                     logging.info(f'terminating process {cmdline}')
                     process.terminate()
@@ -118,7 +147,7 @@ def main():
                                             check_timeout=args.terminate_check_timeout)
 
             def start_process():
-                if process is not None and args.downtime > 0:
+                if process and args.downtime > 0:
                     logging.info(f'waiting {args.downtime} seconds before starting process')
                     time.sleep(args.downtime)
 

@@ -43,7 +43,7 @@ private:
     const TStorageConfigPtr Config;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
     const IProfileLogPtr ProfileLog;
-    const IBlockDigestGeneratorPtr BlockDigestGenerator;
+    const IBlockDigestGeneratorFactoryPtr BlockDigestGeneratorFactory;
     const NDiscovery::IDiscoveryServicePtr DiscoveryService;
     const ITraceSerializerPtr TraceSerializer;
     const NServer::IEndpointEventHandlerPtr EndpointEventHandler;
@@ -72,7 +72,7 @@ public:
         TStorageConfigPtr config,
         TDiagnosticsConfigPtr diagnosticsConfig,
         IProfileLogPtr profileLog,
-        IBlockDigestGeneratorPtr blockDigestGenerator,
+        IBlockDigestGeneratorFactoryPtr blockDigestGeneratorFactory,
         NDiscovery::IDiscoveryServicePtr discoveryService,
         ITraceSerializerPtr traceSerializer,
         NServer::IEndpointEventHandlerPtr endpointEventHandler,
@@ -496,7 +496,7 @@ NActors::IActorPtr CreateVolumeSessionActor(
     TStorageConfigPtr config,
     TDiagnosticsConfigPtr diagnosticsConfig,
     IProfileLogPtr profileLog,
-    IBlockDigestGeneratorPtr blockDigestGenerator,
+    IBlockDigestGeneratorFactoryPtr blockDigestGeneratorFactory,
     ITraceSerializerPtr traceSerializer,
     NServer::IEndpointEventHandlerPtr endpointEventHandler,
     NCloud::NStorage::NRdma::IClientPtr rdmaClient,

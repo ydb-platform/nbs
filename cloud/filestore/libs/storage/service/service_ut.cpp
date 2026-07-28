@@ -814,6 +814,36 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.CreateSession(headers);
     }
 
+    Y_UNIT_TEST(ShouldReportDescribeFileStoreErrorOnCreateSession)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = env.AddDynamicNode();
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        TDynamicCountersPtr counters = new TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto describeFileStoreError = counters->GetCounter(
+            "AppCriticalEvents/DescribeFileStoreError",
+            true);
+        UNIT_ASSERT_VALUES_EQUAL(0, describeFileStoreError->Val());
+
+        // external source (e.g. public gRPC API): not-found is expected
+        THeaders headers = {"nonexistent", "client", ""};
+        auto request = service.CreateCreateSessionRequest(headers);
+        request->Record.MutableHeaders()->MutableInternal()->SetRequestOrigin(
+            NProto::THeaders::TInternal::REQUEST_ORIGIN_EXTERNAL);
+        auto response = service.SendAndRecvCreateSession(std::move(request));
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_NOT_FOUND,
+            response->GetError().GetCode(),
+            FormatError(response->GetError()));
+        UNIT_ASSERT_VALUES_EQUAL(0, describeFileStoreError->Val());
+
+        // internal source (default): not-found is unexpected
+        service.AssertCreateSessionFailed(headers);
+        UNIT_ASSERT_VALUES_EQUAL(1, describeFileStoreError->Val());
+    }
+
     Y_UNIT_TEST(ShouldCleanUpIfSessionFailed)
     {
         TTestEnv env;

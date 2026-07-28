@@ -156,7 +156,9 @@ void TCreateFileStoreActor::CreateMainFileStore(const TActorContext& ctx)
     config.SetStorageMediaKind(Request.GetStorageMediaKind());
     config.SetRangeIdHasherType(1);
 
-    if (StorageConfig->GetAutomaticShardCreationEnabled()) {
+    if (StorageConfig->GetAutomaticShardCreationEnabled() ||
+        Request.GetShardCount() > 0)
+    {
         FileStoreConfig = SetupMultiShardFileStorePerformanceAndChannels(
             *StorageConfig,
             config,

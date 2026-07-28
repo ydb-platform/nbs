@@ -1,7 +1,7 @@
 PROTO_LIBRARY()
 
     PEERDIR(
-        contrib/libs/opentelemetry-proto
+        contrib/proto/opentelemetry
     )
 
     EXCLUDE_TAGS(

@@ -101,6 +101,8 @@ message TStorageGroup
 message TPersistentFastShardConfig
 {
     repeated TStorageGroup StorageGroups = 1;
+    uint64 NodesPerGroup = 2;
+    uint64 ExpectedGroupCapacity = 3;
 }
 
 message TMemFastShardConfig

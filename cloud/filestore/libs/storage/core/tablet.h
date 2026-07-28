@@ -143,26 +143,6 @@ protected:
             Generation = tx.Generation;
             Step = tx.Step;
 
-            // Reschedule (restart) the transaction from PrepareTx when the
-            // injected rescheduler asks for it. In production this is a no-op
-            // stub; tests inject an implementation to make the transaction
-            // restart/reorder path.
-            if (Self->TxRescheduler->ShouldReschedule()) {
-                LOG_INFO(
-                    ctx,
-                    T::LogComponent,
-                    "[%lu] Forced reschedule of %s (gen: %u, step: %u)",
-                    Self->TabletID(),
-                    TTx::Name,
-                    Generation,
-                    Step);
-
-                Args.Clear();
-                Args.OnRestart();
-                tx.Reschedule();
-                return false;
-            }
-
             TX_TRACK(TxPrepare);
             LOG_TRACE(ctx, T::LogComponent,
                 "[%lu] PrepareTx %s (gen: %u, step: %u)",
@@ -176,6 +156,27 @@ protected:
 
                 Args.Clear();
                 Args.OnRestart();
+
+                // Reschedules the transaction from PrepareTx assuming the
+                // rescheduler was triggered during PrepareTx() call.
+                if (Y_UNLIKELY(
+                        Self->TxRescheduler &&
+                        Self->TxRescheduler->IsTriggered()))
+                {
+                    Self->TxRescheduler->Reset();
+                    LOG_DEBUG(
+                        ctx,
+                        T::LogComponent,
+                        "[%lu] Forced reschedule of %s (gen: %u, step: %u, "
+                        "random seed=%lu)",
+                        Self->TabletID(),
+                        TTx::Name,
+                        Generation,
+                        Step,
+                        Self->TxRescheduler->GetSeed());
+                    tx.Reschedule();
+                }
+
                 return false;
             }
 
@@ -337,7 +338,7 @@ protected:
 //
 // This macro also provides TryExecuteTx function that will run the whole
 // transaction and call CompleteTx_ if it was successful.
-#define FILESTORE_IMPLEMENT_RO_TRANSACTION(name, ns, dbType, dbIfaceType)      \
+#define FILESTORE_IMPLEMENT_RO_TRANSACTION(name, ns, dbIfaceType)              \
     struct T##name                                                             \
     {                                                                          \
         using TArgs = ns::T##name;                                             \
@@ -355,8 +356,9 @@ protected:
         {                                                                      \
             TCPUUsageTimerGuard t(target.AccessCPUUsageTimer());               \
             if (target.ValidateTx_##name(ctx, args)) {                         \
-                dbType db(tx.DB, args.NodeUpdates);                            \
-                return target.PrepareTx_##name(ctx, db, args);                 \
+                auto db = target.CreateIndexTabletDatabaseProxy(               \
+                    tx.DB, args.NodeUpdates);                                  \
+                return target.PrepareTx_##name(ctx, *db, args);                \
             }                                                                  \
             return true;                                                       \
         }                                                                      \

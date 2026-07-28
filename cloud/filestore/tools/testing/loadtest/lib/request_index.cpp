@@ -48,6 +48,7 @@ private:
     const NProto::TIndexLoadSpec Spec;
     const TString FileSystemId;
     const NProto::THeaders Headers;
+    const TCountLimiterPtr CountLimiter;
     const ui64 OwnerId = RandomNumber(100500u);
 
     TLog Log;
@@ -76,10 +77,12 @@ public:
             IFileStoreServicePtr client,
             ISessionPtr session,
             TString filesystemId,
-            NProto::THeaders headers)
+            NProto::THeaders headers,
+            TCountLimiterPtr countLimiter)
         : Spec(std::move(spec))
         , FileSystemId(std::move(filesystemId))
         , Headers(std::move(headers))
+        , CountLimiter(std::move(countLimiter))
         , Client(std::move(client))
         , Session(std::move(session))
     {
@@ -148,7 +151,7 @@ private:
         TGuard<TMutex> guard(StateLock);
         auto started = TInstant::Now();
 
-        if (Spec.GetMaxNodes() && Nodes.size() >= Spec.GetMaxNodes()) {
+        if (!CountLimiter->TryReserveNode()) {
             return MakeFuture<TCompletedRequest>({
                 NProto::ACTION_CREATE_NODE,
                 started,
@@ -197,6 +200,7 @@ private:
                 name.c_str(),
                 FormatError(error).c_str());
 
+            CountLimiter->Release();
             return {NProto::ACTION_CREATE_NODE, started, error};
         }
     }
@@ -777,7 +781,8 @@ IRequestGeneratorPtr CreateIndexRequestGenerator(
     IFileStoreServicePtr client,
     ISessionPtr session,
     TString filesystemId,
-    NProto::THeaders headers)
+    NProto::THeaders headers,
+    TCountLimiterPtr countLimiter)
 {
     return std::make_shared<TIndexRequestGenerator>(
         std::move(spec),
@@ -785,7 +790,8 @@ IRequestGeneratorPtr CreateIndexRequestGenerator(
         std::move(client),
         std::move(session),
         std::move(filesystemId),
-        std::move(headers));
+        std::move(headers),
+        std::move(countLimiter));
 }
 
 }   // namespace NCloud::NFileStore::NLoadTest

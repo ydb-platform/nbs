@@ -172,7 +172,7 @@ public:
             return MakeFuture(std::move(response));
         }
 
-        auto flags = request.GetFlags();
+        const ui32 flags = request.GetFlags();
         const auto& update = request.GetUpdate();
 
         if (HasFlag(flags, NProto::TSetNodeAttrRequest::F_SET_ATTR_MODE)) {

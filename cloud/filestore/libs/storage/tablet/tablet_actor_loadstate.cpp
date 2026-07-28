@@ -4,6 +4,7 @@
 #include "tablet_schema.h"
 
 #include <cloud/filestore/libs/storage/fastshard/impl/mem/memshard.h>
+#include <cloud/filestore/libs/storage/fastshard/impl/naive_mirrored/shard.h>
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/metrics/operations.h>
@@ -95,30 +96,30 @@ bool TIndexTabletActor::PrepareTx_LoadState(
     LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
         LogTag << " Loading tablet state data");
 
-    TIndexTabletDatabase db(tx.DB);
+    auto db = CreateIndexTabletDatabase(tx.DB);
 
     std::initializer_list<bool> results = {
-        db.ReadFileSystem(args.FileSystem),
-        db.ReadFileSystemStats(args.FileSystemStats),
-        db.ReadTabletStorageInfo(args.TabletStorageInfo),
-        db.ReadNode(RootNodeId, 0, args.RootNode),
-        db.ReadSessions(args.Sessions),
-        db.ReadSessionHandles(args.Handles),
-        db.ReadSessionLocks(args.Locks),
-        db.ReadSessionDupCacheEntries(args.DupCache),
-        db.ReadFreshBytes(args.FreshBytes),
-        db.ReadFreshBlocks(args.FreshBlocks),
-        db.ReadNewBlobs(args.NewBlobs),
-        db.ReadGarbageBlobs(args.GarbageBlobs),
-        db.ReadCheckpoints(args.Checkpoints),
-        db.ReadTruncateQueue(args.TruncateQueue),
-        db.ReadStorageConfig(args.StorageConfig),
-        db.ReadSessionHistoryEntries(args.SessionHistory),
-        db.ReadOpLog(args.OpLog),
-        db.ReadResponseLog(args.ResponseLog),
-        db.ReadLargeDeletionMarkers(args.LargeDeletionMarkers),
-        db.ReadOrphanNodes(args.OrphanNodeIds),
-        db.ReadUnconfirmedData(args.UnconfirmedData),
+        db->ReadFileSystem(args.FileSystem),
+        db->ReadFileSystemStats(args.FileSystemStats),
+        db->ReadTabletStorageInfo(args.TabletStorageInfo),
+        db->ReadNode(RootNodeId, 0, args.RootNode),
+        db->ReadSessions(args.Sessions),
+        db->ReadSessionHandles(args.Handles),
+        db->ReadSessionLocks(args.Locks),
+        db->ReadSessionDupCacheEntries(args.DupCache),
+        db->ReadFreshBytes(args.FreshBytes),
+        db->ReadFreshBlocks(args.FreshBlocks),
+        db->ReadNewBlobs(args.NewBlobs),
+        db->ReadGarbageBlobs(args.GarbageBlobs),
+        db->ReadCheckpoints(args.Checkpoints),
+        db->ReadTruncateQueue(args.TruncateQueue),
+        db->ReadStorageConfig(args.StorageConfig),
+        db->ReadSessionHistoryEntries(args.SessionHistory),
+        db->ReadOpLog(args.OpLog),
+        db->ReadResponseLog(args.ResponseLog),
+        db->ReadLargeDeletionMarkers(args.LargeDeletionMarkers),
+        db->ReadOrphanNodes(args.OrphanNodeIds),
+        db->ReadUnconfirmedData(args.UnconfirmedData),
     };
 
     bool ready = std::accumulate(
@@ -143,12 +144,12 @@ void TIndexTabletActor::ExecuteTx_LoadState(
     LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
         LogTag << " Preparing tablet state");
 
-    TIndexTabletDatabase db(tx.DB);
+    auto db = CreateIndexTabletDatabase(tx.DB);
 
     if (!args.RootNode) {
         args.RootNode.ConstructInPlace();
         args.RootNode->Attrs = CreateDirectoryAttrs(0777, 0, 0);
-        db.WriteNode(RootNodeId, 0, args.RootNode->Attrs);
+        db->WriteNode(RootNodeId, 0, args.RootNode->Attrs);
     }
 
     const auto& oldTabletStorageInfo = args.TabletStorageInfo;
@@ -161,7 +162,7 @@ void TIndexTabletActor::ExecuteTx_LoadState(
 
         TABLET_VERIFY(newTabletStorageInfo.GetTabletId());
         args.TabletStorageInfo.CopyFrom(newTabletStorageInfo);
-        db.WriteTabletStorageInfo(newTabletStorageInfo);
+        db->WriteTabletStorageInfo(newTabletStorageInfo);
 
         // When a new file system is created, there are no XAttrs in it,
         // but if LazyXAttrsEnabled == false, we don't track XAttrs, and for
@@ -172,7 +173,7 @@ void TIndexTabletActor::ExecuteTx_LoadState(
         if (Config->GetLazyXAttrsEnabled()) {
             constexpr ui64 hasXAttrs = static_cast<ui64>(EHasXAttrs::False);
             args.FileSystemStats.SetHasXAttrs(hasXAttrs);
-            db.WriteHasXAttrs(hasXAttrs);
+            db->WriteHasXAttrs(hasXAttrs);
         }
 
         return;
@@ -194,7 +195,7 @@ void TIndexTabletActor::ExecuteTx_LoadState(
             LogTag << " Updating tablet storage info");
 
         args.TabletStorageInfo.CopyFrom(newTabletStorageInfo);
-        db.WriteTabletStorageInfo(newTabletStorageInfo);
+        db->WriteTabletStorageInfo(newTabletStorageInfo);
     }
 
     LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
@@ -271,8 +272,16 @@ void TIndexTabletActor::CompleteAdapterLoadState(
 
     const auto& fastShardConfig = GetFileSystem().GetFastShardConfig();
     if (fastShardConfig.HasPersistentConfig()) {
-        // not supported yet
-        FastShard = NFastShard::CreateFileSystemShardStub();
+        if (Config->GetFastShardRuntimeEnabled()) {
+            FastShard = NFastShard::CreateNaiveMirroredFileSystemShard(
+                GetFileSystem().GetShardNo(),
+                fastShardConfig.GetPersistentConfig());
+        } else {
+            LOG_ERROR_S(ctx, TFileStoreComponents::TABLET,
+                LogTag << " FastShardRuntime not enabled, persistent fastshard"
+                " can't be initialized");
+            FastShard = NFastShard::CreateFileSystemShardStub();
+        }
     } else {
         FastShard = NFastShard::CreateMemFileSystemShard(
             GetFileSystem().GetShardNo(),
@@ -678,9 +687,9 @@ bool TIndexTabletActor::PrepareTx_LoadCompactionMapChunk(
         LogTag << " Loading compaction map chunk "
             << args.FirstRangeId << ", " << args.RangeCount);
 
-    TIndexTabletDatabase db(tx.DB);
+    auto db = CreateIndexTabletDatabase(tx.DB);
 
-    bool ready = db.ReadCompactionMap(
+    bool ready = db->ReadCompactionMap(
         args.CompactionMap,
         args.FirstRangeId,
         args.RangeCount,

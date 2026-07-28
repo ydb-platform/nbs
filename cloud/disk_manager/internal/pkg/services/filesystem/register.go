@@ -47,6 +47,18 @@ func RegisterForExecution(
 		return err
 	}
 
+	err = registry.RegisterForExecution("filesystem.CreateFilesystemFromSnapshot", func() tasks.Task {
+		return &createFilesystemFromSnapshotTask{
+			storage:      storage,
+			factory:      factory,
+			scheduler:    taskScheduler,
+			cellSelector: cellSelector,
+		}
+	})
+	if err != nil {
+		return err
+	}
+
 	err = registry.RegisterForExecution("filesystem.CreateExternalFilesystem", func() tasks.Task {
 		return &createExternalFilesystemTask{
 			storage: storage,

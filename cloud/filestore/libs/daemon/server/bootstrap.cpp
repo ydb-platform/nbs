@@ -17,6 +17,7 @@
 #include <cloud/filestore/libs/service_local/config.h>
 #include <cloud/filestore/libs/service_local/service.h>
 #include <cloud/filestore/libs/service_null/service.h>
+#include <cloud/filestore/libs/storage/api/components.h>
 #include <cloud/filestore/libs/storage/core/config.h>
 #include <cloud/filestore/libs/storage/core/probes.h>
 #include <cloud/filestore/libs/storage/fastshard/bootstrap/core.h>
@@ -68,7 +69,9 @@ TBootstrapServer::~TBootstrapServer()
 
 void TBootstrapServer::StartComponents()
 {
-    if (FastShardServer) {
+    if (FastShardServer
+            || Configs->StorageConfig->GetFastShardRuntimeEnabled())
+    {
         NStorage::NFastShard::Init();
     }
     FILESTORE_LOG_START_COMPONENT(FastShardServer);
@@ -86,7 +89,9 @@ void TBootstrapServer::StopComponents()
     FILESTORE_LOG_STOP_COMPONENT(Service);
     FILESTORE_LOG_STOP_COMPONENT(ThreadPool);
     FILESTORE_LOG_STOP_COMPONENT(FastShardServer);
-    if (FastShardServer) {
+    if (FastShardServer
+            || Configs->StorageConfig->GetFastShardRuntimeEnabled())
+    {
         NStorage::NFastShard::Destroy();
     }
 }
@@ -139,10 +144,27 @@ void TBootstrapServer::InitComponents()
         });
     }
 
-    if (!certPathList.empty()) {
-        CertificateProvider = CreateStaticCertificateProvider(
+    if (Configs->ServerConfig->GetRefreshCertsPeriod()) {
+        LongRunningTaskExecutor = CreateLongRunningTaskExecutor("CertRefresh");
+    }
+
+    if (!Configs->ServerConfig->GetSecurePort()) {
+        CertificateProvider = CreateCertificateProviderStub();
+    } else {
+        Y_ENSURE(
+            certPathList,
+            "Secure port is configured without certificates");
+
+        CertificateProvider = CreateCertificateProvider(
+            Logging,
+            GetComponentName(
+                NStorage::TFileStoreComponents::TLS_CERTIFICATE_PROVIDER),
+            Scheduler,
+            LongRunningTaskExecutor,
+            serverCounters,
             Configs->ServerConfig->GetRootCertsFile(),
-            std::move(certPathList));
+            std::move(certPathList),
+            Configs->ServerConfig->GetRefreshCertsPeriod());
     }
 
     Server = NServer::CreateServer(

@@ -444,6 +444,7 @@ struct TDirtyDeviceEntry
 {
     TString Uuid;
     TInstant StateTs;
+    TInstant EraseStartedAt;
     TString AgentId;
     TString PoolName;
     TString StateMessage;
@@ -507,6 +508,17 @@ TVector<TReplicaHistoryEntry> MergeMirrorDiskHistory(
         });
 
     return result;
+}
+
+TString RenderTime(TInstant ts, TInstant now, bool duration)
+{
+    if (!ts) {
+        return "N/A";
+    }
+    if (duration) {
+        return FormatDuration(now - ts);
+    }
+    return ts.FormatGmTime("%Y-%m-%d %H:%M:%S UTC");
 }
 
 }   // namespace
@@ -2484,12 +2496,9 @@ void TDiskRegistryActor::RenderDirtyDevicesCleanupOverviewDetailed(
     IOutputStream& out) const
 {
     auto dirtyDevices = State->GetDirtyDevices();
-    TVector<TDirtyDeviceEntry> processing;
-    TVector<TDirtyDeviceEntry> cleaning;
-    TVector<TDirtyDeviceEntry> waiting;
-    TVector<TDirtyDeviceEntry> agentDown;
-    TVector<TDirtyDeviceEntry> broken;
-    TVector<TDirtyDeviceEntry> blocked;
+    TMap<ESecureEraseReadiness, TVector<TDirtyDeviceEntry>> classified;
+    TVector<TDirtyDeviceEntry> eraseInProgress;
+
     for (const auto& device: dirtyDevices) {
         TDirtyDeviceEntry entry{
             .Uuid = device.GetDeviceUUID(),
@@ -2498,41 +2507,33 @@ void TDiskRegistryActor::RenderDirtyDevicesCleanupOverviewDetailed(
             .StateMessage = device.GetStateMessage(),
         };
 
-        if (device.GetState() == NProto::DEVICE_STATE_ERROR) {
-            broken.push_back(std::move(entry));
-            continue;
-        }
-
-        if (device.GetState() != NProto::DEVICE_STATE_ONLINE &&
-            device.GetState() != NProto::DEVICE_STATE_WARNING)
+        if (const TInstant* ts =
+                DeviceEraseStartTs.FindPtr(device.GetDeviceUUID()))
         {
-            continue;
+            entry.EraseStartedAt = *ts;
+        }
+        if (const NProto::TAgentConfig* agent =
+                State->FindAgent(device.GetNodeId()))
+        {
+            entry.AgentId = agent->GetAgentId();
         }
 
-        const NProto::TAgentConfig* agent =
-            State->FindAgent(device.GetNodeId());
-        if (!agent) {
-            waiting.push_back(std::move(entry));
-        } else if (agent->GetState() == NProto::AGENT_STATE_UNAVAILABLE) {
-            entry.AgentId = agent->GetAgentId();
-            agentDown.push_back(std::move(entry));
-        } else if (State->CanSecureErase(device)) {
-            entry.AgentId = agent->GetAgentId();
-            if (SecureEraseInProgressPerPool.contains(device.GetPoolName())) {
-                processing.push_back(std::move(entry));
-            } else {
-                cleaning.push_back(std::move(entry));
-            }
+        const ESecureEraseReadiness readiness =
+            State->GetSecureEraseReadiness(device);
+        if (readiness == ESecureEraseReadiness::ReadyToErase &&
+            entry.EraseStartedAt)
+        {
+            eraseInProgress.push_back(std::move(entry));
         } else {
-            entry.AgentId = agent->GetAgentId();
-            blocked.push_back(std::move(entry));
+            classified[readiness].push_back(std::move(entry));
         }
     }
 
     HTML (out) {
+        const auto now = TInstant::Now();
         auto renderTable = [&](const TString& title,
                                const TVector<TDirtyDeviceEntry>& rows,
-                               bool agentRed)
+                               bool showCleanupTime)
         {
             TAG (TH3) {
                 out << title << " (" << rows.size() << ")";
@@ -2560,7 +2561,9 @@ void TDiskRegistryActor::RenderDirtyDevicesCleanupOverviewDetailed(
                             out << "In state since";
                         }
                         TABLEH () {
-                            out << "Time in state";
+                            out
+                                << (showCleanupTime ? "Time in cleanup"
+                                                    : "Time in state");
                         }
                     }
                 }
@@ -2571,13 +2574,7 @@ void TDiskRegistryActor::RenderDirtyDevicesCleanupOverviewDetailed(
                         }
                         TABLED () {
                             if (e.AgentId) {
-                                if (agentRed) {
-                                    out << "<font color='red'>";
-                                    DumpAgentLink(out, TabletID(), e.AgentId);
-                                    out << "</font>";
-                                } else {
-                                    DumpAgentLink(out, TabletID(), e.AgentId);
-                                }
+                                DumpAgentLink(out, TabletID(), e.AgentId);
                             }
                         }
                         TABLED () {
@@ -2587,23 +2584,23 @@ void TDiskRegistryActor::RenderDirtyDevicesCleanupOverviewDetailed(
                             out << e.StateMessage;
                         }
                         TABLED () {
-                            out << e.StateTs.FormatGmTime(
-                                "%Y-%m-%d %H:%M:%S UTC");
+                            out << RenderTime(e.StateTs, now, false);
                         }
                         TABLED () {
-                            out << FormatDuration(TInstant::Now() - e.StateTs);
+                            out << RenderTime(
+                                showCleanupTime ? e.EraseStartedAt : e.StateTs,
+                                now,
+                                true);
                         }
                     }
                 }
             }
         };
 
-        renderTable("Clean up in progress", processing, false);
-        renderTable("Ready for cleanup", cleaning, false);
-        renderTable("Waiting for cleanup", waiting, false);
-        renderTable("Agent unavailable", agentDown, true);
-        renderTable("Cleanup blocked", blocked, false);
-        renderTable("Device broken", broken, false);
+        renderTable("Cleanup in progress", eraseInProgress, true);
+        for (const auto& [ability, devices]: classified) {
+            renderTable(ToString(ability), devices, false);
+        }
     }
 }
 

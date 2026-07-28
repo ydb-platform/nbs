@@ -74,7 +74,7 @@ void TIndexTabletActor::ExecuteTx_ZeroRange(
 {
     Y_UNUSED(ctx);
 
-    TIndexTabletDatabase db(tx.DB);
+    auto db = CreateIndexTabletDatabase(tx.DB);
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
@@ -88,7 +88,7 @@ void TIndexTabletActor::ExecuteTx_ZeroRange(
         args.Range.Length,
         args.ProfileLogRequest);
 
-    args.Error = ZeroRange(db, args.NodeId, args.CommitId, args.Range);
+    args.Error = ZeroRange(*db, args.NodeId, args.CommitId, args.Range);
 }
 
 void TIndexTabletActor::CompleteTx_ZeroRange(

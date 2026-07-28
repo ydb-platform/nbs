@@ -219,7 +219,7 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
         return true;
     }
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
     // There could be two cases:
     // * access by parentId/name
@@ -227,7 +227,7 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
     if (args.Name) {
         // check that parent exists and is the directory;
         // TODO: what if symlink?
-        if (!ReadNode(db, args.NodeId, args.ReadCommitId, args.ParentNode)) {
+        if (!ReadNode(*db, args.NodeId, args.ReadCommitId, args.ParentNode)) {
             return false;
         }
 
@@ -248,8 +248,8 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
         }
 
         // check whether child node exists
-        TMaybe<IIndexTabletDatabase::TNodeRef> ref;
-        if (!ReadNodeRef(db, args.NodeId, args.ReadCommitId, args.Name, ref)) {
+        TMaybe<INodeIndexTabletDatabase::TNodeRef> ref;
+        if (!ReadNodeRef(*db, args.NodeId, args.ReadCommitId, args.Name, ref)) {
             return false;   // not ready
         }
 
@@ -311,7 +311,7 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
     }
 
     if (args.TargetNodeId != InvalidNodeId) {
-        if (!ReadNode(db, args.TargetNodeId, args.ReadCommitId, args.TargetNode)) {
+        if (!ReadNode(*db, args.TargetNodeId, args.ReadCommitId, args.TargetNode)) {
             return false;   // not ready
         }
 
@@ -356,7 +356,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
         return;
     }
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
     if (args.TargetNodeId == InvalidNodeId
             && (args.ShardId.empty() || args.IsNewShardNode))
@@ -379,11 +379,11 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
             NProto::TNode attrs =
                 CreateRegularAttrs(args.Mode, args.Uid, args.Gid);
             args.TargetNodeId = CreateNode(
-                db,
+                *db,
                 args.WriteCommitId,
                 attrs);
 
-            args.TargetNode = IIndexTabletDatabase::TNode {
+            args.TargetNode = INodeIndexTabletDatabase::TNode {
                 args.TargetNodeId,
                 attrs,
                 args.WriteCommitId,
@@ -393,7 +393,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
 
         // TODO: support for O_TMPFILE
         CreateNodeRef(
-            db,
+            *db,
             args.NodeId,
             args.WriteCommitId,
             args.Name,
@@ -404,7 +404,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
         // update parent cmtime as we created a new entry
         auto parent = CopyAttrs(args.ParentNode->Attrs, E_CM_CMTIME);
         UpdateNode(
-            db,
+            *db,
             args.ParentNode->NodeId,
             args.ParentNode->MinCommitId,
             args.WriteCommitId,
@@ -416,7 +416,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
         && HasFlag(args.Flags, NProto::TCreateHandleRequest::E_TRUNCATE))
     {
         auto e = Truncate(
-            db,
+            *db,
             args.TargetNodeId,
             args.WriteCommitId,
             args.TargetNode->Attrs.GetSize(),
@@ -430,7 +430,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
         attrs.SetSize(0);
 
         UpdateNode(
-            db,
+            *db,
             args.TargetNodeId,
             args.TargetNode->MinCommitId,
             args.WriteCommitId,
@@ -441,7 +441,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
 
     if (args.ShardId.empty()) {
         auto* handle = CreateHandle(
-            db,
+            *db,
             session,
             args.TargetNodeId,
             session->GetCheckpointId() ? args.ReadCommitId : InvalidCommitId,
@@ -510,11 +510,11 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
                 << args.OpLogEntry.ShortUtf8DebugString().Quote());
         }
 
-        WriteOpLogEntry(db, args.OpLogEntry);
+        WriteOpLogEntry(*db, args.OpLogEntry);
     }
 
     AddDupCacheEntry(
-        db,
+        *db,
         session,
         args.RequestId,
         args.Response,
