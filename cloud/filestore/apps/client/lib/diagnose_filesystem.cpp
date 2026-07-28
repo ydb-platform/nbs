@@ -37,7 +37,6 @@ private:
     ui32 Top;
     TString SortBy;
     ui32 TopNodes;
-    TString NodeScope;
 
 public:
     TDiagnoseFilesystemCommand()
@@ -55,11 +54,6 @@ public:
             .RequiredArgument("NUM")
             .DefaultValue(10)
             .StoreResult(&TopNodes);
-        Opts.AddLongOption("node-scope", "how top node statistics are selected")
-            .RequiredArgument("SCOPE")
-            .Choices({"global", "shard"})
-            .DefaultValue("global")
-            .StoreResult(&NodeScope);
     }
 
 private:
