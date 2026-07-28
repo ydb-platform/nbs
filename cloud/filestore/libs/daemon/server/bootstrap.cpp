@@ -69,7 +69,9 @@ TBootstrapServer::~TBootstrapServer()
 
 void TBootstrapServer::StartComponents()
 {
-    if (FastShardServer) {
+    if (FastShardServer
+            || Configs->StorageConfig->GetFastShardRuntimeEnabled())
+    {
         NStorage::NFastShard::Init();
     }
     FILESTORE_LOG_START_COMPONENT(FastShardServer);
@@ -87,7 +89,9 @@ void TBootstrapServer::StopComponents()
     FILESTORE_LOG_STOP_COMPONENT(Service);
     FILESTORE_LOG_STOP_COMPONENT(ThreadPool);
     FILESTORE_LOG_STOP_COMPONENT(FastShardServer);
-    if (FastShardServer) {
+    if (FastShardServer
+            || Configs->StorageConfig->GetFastShardRuntimeEnabled())
+    {
         NStorage::NFastShard::Destroy();
     }
 }
