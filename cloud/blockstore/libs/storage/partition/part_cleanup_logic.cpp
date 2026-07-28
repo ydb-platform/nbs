@@ -115,6 +115,10 @@ TVerifyBlocksMetaResult VerifyMixedBlocksMeta(
 
             // The same block may be present in multiple blobs, so we need to
             // check if the block is present in the original blob.
+            // This can happen if the AddBlobs transaction for a flush has
+            // already been committed when the tablet restarts, but the fresh
+            // blobs have not yet been trimmed. After the restart, we load the
+            // same fresh blobs and try to flush them again.
             if (blobId != OriginalBlobId) {
                 return true;
             }
