@@ -138,6 +138,15 @@ message TNodeLatencyStats
     uint64 LastAccessedTimestampUs = 7;
 }
 
+message TNodeStats
+{
+    string ShardId = 1;
+    uint64 NodeId = 2;
+    uint64 RequestCount = 3;
+    double AccessScore = 4;
+    uint64 LastAccessedTimestampUs = 5;
+}
+
 message TStorageStats
 {
     // index stats

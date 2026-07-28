@@ -43,6 +43,7 @@
 #include <util/generic/vector.h>
 
 #include <functional>
+#include <map>
 
 namespace NCloud::NFileStore::NProto {
 
@@ -214,6 +215,50 @@ struct TTrackedUnconfirmedData
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TNodeDiagnosticStats
+{
+    ui64 NodeId = 0;
+    ui64 RequestCount = 0;
+    double AccessScore = 0;
+    TInstant LastAccessed;
+};
+
+class TNodeDiagnosticStatsTracker
+{
+private:
+    using TDiagKey = std::pair<double, ui64>;
+
+    size_t MaxEntries = 0;
+    THashMap<ui64, std::map<TDiagKey, TNodeDiagnosticStats>::iterator> NodeId2StatsIter;
+    std::map<TDiagKey, TNodeDiagnosticStats> Score2Stats;
+    void EvictLeastUsedNodes()
+    {
+        while (Score2Stats.size() > MaxEntries)
+        {
+            auto leastAccessed = Score2Stats.begin();
+            const ui64 nodeId = leastAccessed->second.NodeId;
+
+            NodeId2StatsIter.erase(nodeId);
+            Score2Stats.erase(leastAccessed);
+        }
+    };
+
+public:
+    void Initialise(size_t maxEntries);
+    void RequestStarted(ui64 nodeId, TInstant now);
+    TVector<TNodeDiagnosticStats> GetStats() const
+    {
+        TVector<TNodeDiagnosticStats> result;
+        result.reserve(Score2Stats.size());
+        for (auto it = Score2Stats.rbegin(); it != Score2Stats.rend(); ++it)
+        {
+            result.push_back(it->second);
+        }
+        return result;
+    };
+};
+////////////////////////////////////////////////////////////////////////////////
+
 class TIndexTabletState
 {
 private:
@@ -231,6 +276,7 @@ private:
     NProto::TFileSystemStats FileSystemStats;
     NCloud::NProto::TTabletStorageInfo TabletStorageInfo;
     TNodeToSessionCounters NodeToSessionCounters;
+    TNodeDiagnosticStatsTracker NodeDiagnosticStatsTracker;
     ui64 MinDeletionMarkersCountSinceTabletStart = 0;
 
     /*const*/ ui32 TruncateBlocksThreshold = 0;
@@ -305,6 +351,10 @@ public:
     {
         StateLoaded = true;
     }
+
+    void NodeRequestStarted(ui64 nodeId, TInstant now);
+
+    TVector<TNodeDiagnosticStats> GetNodeDiagnosticStats() const;
 
     void UpdateConfig(
         IIndexTabletDatabase& db,

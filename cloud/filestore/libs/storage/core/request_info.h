@@ -38,6 +38,8 @@ struct TRequestInfo
     // Request processing start ts. Might be empty.
     TInstant StartedTs;
 
+    bool NodeDiagnosticStatsStarted = false;
+
     TRequestInfo() = default;
 
     TRequestInfo(
