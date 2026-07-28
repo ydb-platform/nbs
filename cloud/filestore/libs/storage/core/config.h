@@ -420,6 +420,7 @@ public:
     [[nodiscard]] bool GetUseSchemeCache() const;
 
     [[nodiscard]] ui32 GetFastShardServerPort() const;
+    [[nodiscard]] bool GetFastShardRuntimeEnabled() const;
 
     [[nodiscard]] bool GetEnableNodeRefCompression() const;
 

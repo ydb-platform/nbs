@@ -4,7 +4,7 @@ namespace NCloud::NFileStore::NStorage::NFastShard {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IFileSystemShardPtr CreateMirrorUnsafeFileSystemShard(
+IFileSystemShardPtr CreateNaiveMirroredFileSystemShard(
     ui32 shardNo,
     const NProtoPrivate::TPersistentFastShardConfig& config)
 {

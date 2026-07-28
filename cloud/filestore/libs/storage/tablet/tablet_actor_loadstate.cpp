@@ -272,9 +272,16 @@ void TIndexTabletActor::CompleteAdapterLoadState(
 
     const auto& fastShardConfig = GetFileSystem().GetFastShardConfig();
     if (fastShardConfig.HasPersistentConfig()) {
-        FastShard = NFastShard::CreateNaiveMirroredFileSystemShard(
-            GetFileSystem().GetShardNo(),
-            fastShardConfig.GetPersistentConfig());
+        if (Config->GetFastShardRuntimeEnabled()) {
+            FastShard = NFastShard::CreateNaiveMirroredFileSystemShard(
+                GetFileSystem().GetShardNo(),
+                fastShardConfig.GetPersistentConfig());
+        } else {
+            LOG_ERROR_S(ctx, TFileStoreComponents::TABLET,
+                LogTag << " FastShardRuntime not enabled, persistent fastshard"
+                " can't be initialized");
+            FastShard = NFastShard::CreateFileSystemShardStub();
+        }
     } else {
         FastShard = NFastShard::CreateMemFileSystemShard(
             GetFileSystem().GetShardNo(),

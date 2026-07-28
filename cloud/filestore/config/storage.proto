@@ -855,4 +855,8 @@ message TStorageConfig
     // When this flag is enabled, TAggregateStatsActor does not poll all shards.
     // Instead, it requests aggregate statistics only from the main tablet.
     optional bool FanoutStatsCollectionInShardsDisabled = 528;
+
+    // Enable silk regardless of other config parameters. Required for
+    // persistent fastshard to work.
+    optional bool FastShardRuntimeEnabled = 529;
 }
