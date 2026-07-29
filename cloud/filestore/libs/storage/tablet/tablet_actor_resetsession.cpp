@@ -62,6 +62,8 @@ void TIndexTabletActor::HandleResetSession(
         std::move(requestInfo),
         sessionId,
         seqNo,
+        Config->GetMaxResetSessionHandlesPerTx(),
+        false /* continuation */,
         std::move(msg->Record));
 }
 
@@ -94,8 +96,12 @@ bool TIndexTabletActor::PrepareTx_ResetSession(
 
     bool ready = true;
     auto commitId = GetCurrentCommitId();
-    args.Nodes.reserve(session->Handles.Size());
+    ui32 handleCount = 0;
     for (const auto& handle: session->Handles) {
+        if (args.MaxHandlesPerTx && ++handleCount > args.MaxHandlesPerTx) {
+            break;
+        }
+
         if (args.Nodes.contains(handle.GetNodeId())) {
             continue;
         }
@@ -124,21 +130,39 @@ void TIndexTabletActor::ExecuteTx_ResetSession(
 
     auto* session = FindSession(args.SessionId);
     if (!session) {
+        if (args.Continuation) {
+            args.Error = MakeError(
+                E_REJECTED,
+                "session reset interrupted: session destroyed");
+        }
+        args.Completed = true;
         return;
     }
 
     if (!CheckSessionForDestroy(session, args.SessionSeqNo)) {
+        if (args.Continuation) {
+            args.Error = MakeError(
+                E_REJECTED,
+                "session reset interrupted: session recovered");
+        }
+        args.Completed = true;
         return;
     }
 
     auto commitId = GenerateCommitId();
     if (commitId == InvalidCommitId) {
         args.OnCommitIdOverflow();
+        args.Completed = true;
         return;
     }
 
+    ui32 handleCount = 0;
     auto handle = session->Handles.begin();
     while (handle != session->Handles.end()) {
+        if (args.MaxHandlesPerTx && ++handleCount > args.MaxHandlesPerTx) {
+            break;
+        }
+
         auto nodeId = handle->GetNodeId();
         DestroyHandle(*db, &*(handle++));
 
@@ -172,7 +196,10 @@ void TIndexTabletActor::ExecuteTx_ResetSession(
         }
     }
 
-    ResetSession(*db, session, args.Request.GetSessionState());
+    if (session->Handles.Empty()) {
+        ResetSession(*db, session, args.Request.GetSessionState());
+        args.Completed = true;
+    }
 
     EnqueueTruncateIfNeeded(ctx);
 }
@@ -181,6 +208,24 @@ void TIndexTabletActor::CompleteTx_ResetSession(
     const TActorContext& ctx,
     TTxIndexTablet::TResetSession& args)
 {
+    if (!args.Completed) {
+        LOG_INFO(ctx, TFileStoreComponents::TABLET,
+            "%s Reset session s:%s n:%lu continues in the next tx",
+            LogTag.c_str(),
+            args.SessionId.c_str(),
+            args.SessionSeqNo);
+
+        ExecuteTx<TResetSession>(
+            ctx,
+            std::move(args.RequestInfo),
+            args.SessionId,
+            args.SessionSeqNo,
+            args.MaxHandlesPerTx,
+            true /* continuation */,
+            std::move(args.Request));
+        return;
+    }
+
     RemoveInFlightRequest(*args.RequestInfo);
 
     auto response =
