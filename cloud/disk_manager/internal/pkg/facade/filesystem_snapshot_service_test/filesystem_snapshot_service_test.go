@@ -351,20 +351,9 @@ func TestDeleteFilesystemDuringSnapshotCreationDeletesSnapshot(t *testing.T) {
 		snapshotID,
 	)
 
-	operation, err := client.DeleteFilesystem(
-		testcommon.GetRequestContext(t, ctx),
-		&disk_manager.DeleteFilesystemRequest{
-			FilesystemId: &disk_manager.FilesystemId{
-				ZoneId:       "zone-a",
-				FilesystemId: filesystemID,
-			},
-		},
-	)
+	err = nfsClient.Delete(ctx, filesystemID, true)
 	require.NoError(t, err)
-	require.NotNil(t, operation)
 
-	err = internal_client.WaitOperation(ctx, client, operation.Id)
-	require.NoError(t, err)
 	testcommon.WaitOperationEnded(t, ctx, snapshotOperation.Id, 60*time.Second)
 	waitForFilesystemSnapshotDeleted(t, ctx, snapshotID)
 }
