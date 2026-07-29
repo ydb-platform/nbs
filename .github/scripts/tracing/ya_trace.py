@@ -11,13 +11,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
-from ..otlp import (
+from .otlp import (
     ResourceAttributes,
     Span,
     Trace,
     decode_attributes,
     make_span,
-    ns,
+    Ns,
     set_span_status,
     span_status_code,
     stable_span_id,
@@ -74,7 +74,7 @@ RENDERED_STAGE_NAMES = {
 @dataclass
 class YaEvent:
     name: str
-    timestamp_ns: ns | None
+    timestamp_ns: Ns | None
     value: dict[str, Any]
     order: int
 
@@ -92,7 +92,7 @@ class YaEvent:
             return None
         return cls(
             name=name,
-            timestamp_ns=ns.from_seconds(raw.get("timestamp")),
+            timestamp_ns=Ns.from_s(raw.get("timestamp")),
             value=value,
             order=order,
         )
@@ -255,18 +255,18 @@ class YaTraceFile:
     def _chunk_bounds(
         chunk_event: YaEvent | None,
         events: Sequence[YaEvent],
-        root_start_ns: ns,
-        root_end_ns: ns,
-    ) -> tuple[ns, ns, dict[str, Any]]:
+        root_start_ns: Ns,
+        root_end_ns: Ns,
+    ) -> tuple[Ns, Ns, dict[str, Any]]:
         chunk_value = chunk_event.value if chunk_event is not None else {}
         metrics = chunk_value.get("metrics", {})
         start_ns = None
         end_ns = None
-        wall_time_ns = ns(0)
+        wall_time_ns = Ns(0)
         if isinstance(metrics, Mapping):
-            start_ns = ns.from_seconds(metrics.get("suite_start_timestamp"))
-            end_ns = ns.from_seconds(metrics.get("suite_finish_timestamp"))
-            wall_time_ns = ns.from_seconds_or_zero(metrics.get("wall_time"))
+            start_ns = Ns.from_s(metrics.get("suite_start_timestamp"))
+            end_ns = Ns.from_s(metrics.get("suite_finish_timestamp"))
+            wall_time_ns = Ns.from_s_or_zero(metrics.get("wall_time"))
             if end_ns is not None and wall_time_ns:
                 start_ns = end_ns - wall_time_ns
             elif start_ns is not None and wall_time_ns:
@@ -283,19 +283,19 @@ class YaTraceFile:
                 end_ns = max(timestamps)
             else:
                 end_ns = root_end_ns
-        start_ns = ns(max(root_start_ns, min(start_ns, root_end_ns)))
-        end_ns = ns(max(start_ns, min(end_ns, root_end_ns)))
+        start_ns = Ns(max(root_start_ns, min(start_ns, root_end_ns)))
+        end_ns = Ns(max(start_ns, min(end_ns, root_end_ns)))
         return start_ns, end_ns, chunk_value
 
     @staticmethod
     def _test_spans(
         trace_id: bytes,
         chunk_span_id: bytes,
-        chunk_start_ns: ns,
-        chunk_end_ns: ns,
+        chunk_start_ns: Ns,
+        chunk_end_ns: Ns,
         events: Iterable[YaEvent],
         identity: str,
-        inferred_test_start_ns: ns | None = None,
+        inferred_test_start_ns: Ns | None = None,
     ) -> list[Span]:
         grouped: dict[tuple[str, str], list[YaEvent]] = defaultdict(list)
         for event in events:
@@ -339,7 +339,7 @@ class YaTraceFile:
                     for finish_index, _ in candidates:
                         used_finishes.add(finish_index)
                     _, finish = candidates[-1]
-                    duration_ns = ns.from_seconds_or_zero(finish.value.get("time"))
+                    duration_ns = Ns.from_s_or_zero(finish.value.get("time"))
                     end_ns = finish.timestamp_ns or min(
                         chunk_end_ns, start_ns + duration_ns
                     )
@@ -391,7 +391,7 @@ class YaTraceFile:
             for finish_index, finish in enumerate(finishes):
                 if finish_index in used_finishes:
                     continue
-                duration_ns = ns.from_seconds_or_zero(finish.value.get("time"))
+                duration_ns = Ns.from_s_or_zero(finish.value.get("time"))
                 if inferred_test_start_ns is not None and len(grouped) == 1:
                     start_ns = max(
                         chunk_start_ns,
@@ -440,8 +440,8 @@ class YaTraceFile:
         trace: Trace,
         trace_id: bytes,
         root_span_id: bytes,
-        root_start_ns: ns,
-        root_end_ns: ns,
+        root_start_ns: Ns,
+        root_end_ns: Ns,
         resource: ResourceAttributes,
         trace_index: int,
     ) -> None:
@@ -488,11 +488,11 @@ class YaTraceFile:
             metrics = chunk_value.get("metrics", {})
             test_start_ns = None
             if isinstance(metrics, Mapping):
-                delay_ns = ns.from_seconds_or_zero(
+                delay_ns = Ns.from_s_or_zero(
                     metrics.get("suite_delay_until_first_test_secs")
                 )
                 if delay_ns:
-                    test_start_ns = ns(chunk_start_ns + delay_ns)
+                    test_start_ns = Ns(chunk_start_ns + delay_ns)
             test_spans = self._test_spans(
                 trace_id,
                 chunk_span_id,
@@ -594,8 +594,8 @@ class YaTraceCollection:
 class YaEvlogRecord:
     name: str
     tag: str
-    start_ns: ns
-    end_ns: ns
+    start_ns: Ns
+    end_ns: Ns
     thread_name: str = ""
 
     @classmethod
@@ -617,16 +617,16 @@ class YaEvlogRecord:
         )
 
     @staticmethod
-    def _time_range(value: Any) -> tuple[ns, ns] | None:
+    def _time_range(value: Any) -> tuple[Ns, Ns] | None:
         if not isinstance(value, list) or len(value) != 2:
             return None
-        start_ns = ns.from_seconds(value[0])
-        end_ns = ns.from_seconds(value[1])
+        start_ns = Ns.from_s(value[0])
+        end_ns = Ns.from_s(value[1])
         if start_ns is None or end_ns is None or end_ns < start_ns:
             return None
         return start_ns, end_ns
 
-    def clipped(self, start_ns: ns, end_ns: ns) -> YaEvlogRecord | None:
+    def clipped(self, start_ns: Ns, end_ns: Ns) -> YaEvlogRecord | None:
         clipped_start = max(start_ns, self.start_ns)
         clipped_end = min(end_ns, self.end_ns)
         if clipped_end <= clipped_start:
@@ -634,8 +634,8 @@ class YaEvlogRecord:
         return YaEvlogRecord(
             name=self.name,
             tag=self.tag,
-            start_ns=ns(clipped_start),
-            end_ns=ns(clipped_end),
+            start_ns=Ns(clipped_start),
+            end_ns=Ns(clipped_end),
             thread_name=self.thread_name,
         )
 
@@ -772,8 +772,8 @@ class YaEvlog:
     def _critical_test_node(
         self,
         entry: Mapping[str, Any],
-        start_ns: ns | None,
-        end_ns: ns | None,
+        start_ns: Ns | None,
+        end_ns: Ns | None,
         test_nodes: Sequence[YaEvlogRecord],
     ) -> YaEvlogRecord | None:
         uid = str(entry.get("uid", ""))
@@ -854,8 +854,8 @@ class YaEvlog:
             if isinstance(entry, Mapping) and self._is_test_critical_path_entry(entry)
         ]
         for index, entry in critical_entries:
-            start_ns = ns.from_milliseconds(entry.get("start_ts"))
-            end_ns = ns.from_milliseconds(entry.get("end_ts"))
+            start_ns = Ns.from_ms(entry.get("start_ts"))
+            end_ns = Ns.from_ms(entry.get("end_ts"))
             if start_ns is not None and end_ns is not None and end_ns < start_ns:
                 start_ns = None
                 end_ns = None
@@ -877,8 +877,8 @@ class YaEvlog:
                 if self._overlap_ns(
                     start_ns,
                     end_ns,
-                    ns(chunk.start_time_unix_nano or 0),
-                    ns(chunk.end_time_unix_nano or 0),
+                    Ns(chunk.start_time_unix_nano or 0),
+                    Ns(chunk.end_time_unix_nano or 0),
                 )
             ]
             if not candidates:
@@ -918,8 +918,8 @@ class YaEvlog:
                     self._overlap_ns(
                         start_ns,
                         end_ns,
-                        ns(candidate.start_time_unix_nano or 0),
-                        ns(candidate.end_time_unix_nano or 0),
+                        Ns(candidate.start_time_unix_nano or 0),
+                        Ns(candidate.end_time_unix_nano or 0),
                     ),
                 ),
             )
@@ -1088,12 +1088,12 @@ class YaEvlog:
         trace: Trace,
         trace_id: bytes,
         root_span_id: bytes,
-        root_start_ns: ns,
-        root_end_ns: ns,
+        root_start_ns: Ns,
+        root_end_ns: Ns,
         resource: ResourceAttributes,
     ) -> tuple[bytes | None, dict[str, Any]]:
         dispatch_span_id = None
-        dispatch_bounds: tuple[ns, ns] | None = None
+        dispatch_bounds: tuple[Ns, Ns] | None = None
 
         stages = []
         for record in self.stages:

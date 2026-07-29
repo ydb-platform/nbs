@@ -9,16 +9,16 @@ import os
 from pathlib import Path
 from typing import Sequence
 
-from ..otlp import (
+from .otlp import (
     ResourceAttributes,
     Trace,
     make_span,
-    ns,
+    Ns,
     stable_span_id,
     stable_trace_id,
     update_span_attributes,
 )
-from ..trace_report import write_trace_bundle
+from .trace_report import write_trace_bundle
 from .ya_trace import YaEvlog, YaTraceFile, load_ya_evlog, load_ya_traces
 
 
@@ -41,16 +41,16 @@ def build_resource_attributes(args: argparse.Namespace) -> ResourceAttributes:
 def build_ya_trace(
     traces: Sequence[YaTraceFile],
     *,
-    root_start_ns: ns,
-    root_end_ns: ns,
+    root_start_ns: Ns,
+    root_end_ns: Ns,
     exit_code: int,
     result_code: int | None = None,
     resource: ResourceAttributes,
     evlog: YaEvlog | None = None,
     operation: str = "tests",
 ) -> Trace:
-    root_start_ns = ns(root_start_ns)
-    root_end_ns = ns(root_end_ns)
+    root_start_ns = Ns(root_start_ns)
+    root_end_ns = Ns(root_end_ns)
     if root_end_ns < root_start_ns:
         raise ValueError("root span end precedes start")
 
@@ -121,8 +121,8 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--ya-out", type=Path, required=True)
     parser.add_argument("--evlog", type=Path)
     parser.add_argument("--output-dir", type=Path, required=True)
-    parser.add_argument("--attempt-start-ns", type=ns, required=True)
-    parser.add_argument("--attempt-end-ns", type=ns, required=True)
+    parser.add_argument("--attempt-start-ns", type=Ns, required=True)
+    parser.add_argument("--attempt-end-ns", type=Ns, required=True)
     parser.add_argument("--exit-code", type=int, required=True)
     parser.add_argument("--result-code", type=int)
     parser.add_argument("--component", default="")

@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import pytest
 
-from scripts.otlp import (
+from scripts.tracing.otlp import (
     ResourceAttributes,
     Span,
     Trace,
     make_event,
     make_span,
-    ns,
+    Ns,
     span_duration_ns,
     stable_span_id,
     stable_trace_id,
@@ -16,17 +16,17 @@ from scripts.otlp import (
 
 
 def test_ns_owns_unit_conversion_and_validation() -> None:
-    value = ns.from_seconds(1.5)
-    assert isinstance(value, ns)
+    value = Ns.from_s(1.5)
+    assert isinstance(value, Ns)
     assert value == 1_500_000_000
-    assert ns.from_seconds(None) is None
-    assert ns.from_seconds(-1) is None
-    assert ns.from_seconds(float("nan")) is None
-    assert ns.from_seconds_or_zero("invalid") == 0
-    assert ns.from_milliseconds(1.5) == 1_500_000
-    assert ns.from_milliseconds(-1) is None
+    assert Ns.from_s(None) is None
+    assert Ns.from_s(-1) is None
+    assert Ns.from_s(float("nan")) is None
+    assert Ns.from_s_or_zero("invalid") == 0
+    assert Ns.from_ms(1.5) == 1_500_000
+    assert Ns.from_ms(-1) is None
     with pytest.raises(ValueError, match="non-negative"):
-        ns(-1)
+        Ns(-1)
 
 
 def test_official_span_uses_byte_ids_and_nanosecond_values() -> None:
@@ -45,10 +45,10 @@ def test_official_span_uses_byte_ids_and_nanosecond_values() -> None:
     assert stable_span_id("span") == stable_span_id("span")
     assert len(span.trace_id) == 16
     assert len(span.span_id) == 8
-    assert isinstance(span.start_time_unix_nano, ns)
-    assert isinstance(span.end_time_unix_nano, ns)
-    assert isinstance(span_duration_ns(span), ns)
-    assert isinstance(event.time_unix_nano, ns)
+    assert isinstance(span.start_time_unix_nano, Ns)
+    assert isinstance(span.end_time_unix_nano, Ns)
+    assert isinstance(span_duration_ns(span), Ns)
+    assert isinstance(event.time_unix_nano, Ns)
 
 
 def test_trace_owns_resource_and_scope_hierarchy() -> None:

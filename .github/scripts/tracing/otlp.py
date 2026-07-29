@@ -29,38 +29,36 @@ MAX_ATTRIBUTE_LENGTH = 8_192
 MAX_UINT64 = (1 << 64) - 1
 
 
-class ns(int):
+class Ns(int):
     """A non-negative nanosecond value."""
 
-    def __new__(cls, value: int | float | str) -> ns:
+    def __new__(cls, value: int | float | str) -> Ns:
         nanoseconds = int(value)
         if nanoseconds < 0:
             raise ValueError("nanoseconds must be non-negative")
         return int.__new__(cls, nanoseconds)
 
     @classmethod
-    def from_seconds(cls, value: Any) -> ns | None:
+    def _from_scaled(cls, value: Any, multiplier: int) -> Ns | None:
         try:
-            seconds = float(value)
+            number = float(value)
         except (TypeError, ValueError):
             return None
-        if not math.isfinite(seconds) or seconds < 0:
+        if not math.isfinite(number) or number < 0:
             return None
-        return cls(seconds * 1_000_000_000)
+        return cls(number * multiplier)
 
     @classmethod
-    def from_seconds_or_zero(cls, value: Any) -> ns:
-        return cls.from_seconds(value) or cls(0)
+    def from_s(cls, value: Any) -> Ns | None:
+        return cls._from_scaled(value, 1_000_000_000)
 
     @classmethod
-    def from_milliseconds(cls, value: Any) -> ns | None:
-        try:
-            milliseconds = float(value)
-        except (TypeError, ValueError):
-            return None
-        if not math.isfinite(milliseconds) or milliseconds < 0:
-            return None
-        return cls(milliseconds * 1_000_000)
+    def from_s_or_zero(cls, value: Any) -> Ns:
+        return cls.from_s(value) or cls(0)
+
+    @classmethod
+    def from_ms(cls, value: Any) -> Ns | None:
+        return cls._from_scaled(value, 1_000_000)
 
 
 def _clean_scalar(value: Any) -> str | bool | int | float:
@@ -263,8 +261,8 @@ def stable_span_id(*parts: object) -> bytes:
     return _stable_id(*parts, size=8)
 
 
-def span_duration_ns(span: Span) -> ns:
-    return ns(max(0, (span.end_time_unix_nano or 0) - (span.start_time_unix_nano or 0)))
+def span_duration_ns(span: Span) -> Ns:
+    return Ns(max(0, (span.end_time_unix_nano or 0) - (span.start_time_unix_nano or 0)))
 
 
 def span_status_code(span: Span) -> int:
@@ -284,8 +282,8 @@ def make_span(
     trace_id: bytes,
     span_id: bytes,
     name: str,
-    start_ns: ns | int,
-    end_ns: ns | int,
+    start_ns: Ns | int,
+    end_ns: Ns | int,
     parent_span_id: bytes = b"",
     attributes: Mapping[str, Any] | None = None,
     events: Sequence[Span.Event] = (),
@@ -298,8 +296,8 @@ def make_span(
         parent_span_id=parent_span_id,
         name=name,
         kind=Span.SpanKind.SPAN_KIND_INTERNAL,
-        start_time_unix_nano=ns(start_ns),
-        end_time_unix_nano=ns(end_ns),
+        start_time_unix_nano=Ns(start_ns),
+        end_time_unix_nano=Ns(end_ns),
         attributes=encode_attributes(attributes or {}),
         events=list(events),
         status=Status(
@@ -312,12 +310,12 @@ def make_span(
 def make_event(
     *,
     name: str,
-    time_ns: ns | int,
+    time_ns: Ns | int,
     attributes: Mapping[str, Any] | None = None,
 ) -> Span.Event:
     return Span.Event(
         name=name,
-        time_unix_nano=ns(time_ns),
+        time_unix_nano=Ns(time_ns),
         attributes=encode_attributes(attributes or {}),
     )
 
@@ -334,21 +332,21 @@ def validate_span(span: Span) -> None:
         len(span.parent_span_id) != 8 or span.parent_span_id == b"\0" * 8
     ):
         raise ValueError(f"Invalid parent span ID for {span.name!r}")
-    start_ns = ns(span.start_time_unix_nano or 0)
-    end_ns = ns(span.end_time_unix_nano or 0)
+    start_ns = Ns(span.start_time_unix_nano or 0)
+    end_ns = Ns(span.end_time_unix_nano or 0)
     if end_ns < start_ns or start_ns > MAX_UINT64 or end_ns > MAX_UINT64:
         raise ValueError(f"Invalid timestamps for {span.name!r}")
-    if any(ns(event.time_unix_nano or 0) > MAX_UINT64 for event in span.events):
+    if any(Ns(event.time_unix_nano or 0) > MAX_UINT64 for event in span.events):
         raise ValueError(f"Invalid event timestamp for {span.name!r}")
     if span_status_code(span) not in {0, 1, 2}:
         raise ValueError(f"Invalid status code for {span.name!r}")
 
 
 def normalize_span_times(span: Span) -> None:
-    span.start_time_unix_nano = ns(span.start_time_unix_nano or 0)
-    span.end_time_unix_nano = ns(span.end_time_unix_nano or 0)
+    span.start_time_unix_nano = Ns(span.start_time_unix_nano or 0)
+    span.end_time_unix_nano = Ns(span.end_time_unix_nano or 0)
     for event in span.events:
-        event.time_unix_nano = ns(event.time_unix_nano or 0)
+        event.time_unix_nano = Ns(event.time_unix_nano or 0)
 
 
 class Trace:

@@ -569,7 +569,7 @@ runs:
                 TRACE_OTLP_URL="$S3_REPORTS_WEBSITE_PREFIX/${COMPONENT_DIR}${i}/trace.otlp.jsonl.gz"
             fi
             if PYTHONPATH="$PYTHONPATH:$GITHUB_WORKSPACE/.github" \
-                python3 -m scripts.tests.ya_trace_report \
+                python3 -m scripts.tracing.ya_trace_report \
                 --ya-out "$OUT_DIR" \
                 --evlog "$LOG_DIR/${i}/ya_evlog.jsonl" \
                 --output-dir "$ARTIFACTS_DIR/summary/${COMPONENT_DIR}${i}" \

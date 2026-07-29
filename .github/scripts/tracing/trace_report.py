@@ -17,7 +17,7 @@ from .otlp import (
     Trace,
     clean_attributes,
     decode_attributes,
-    ns,
+    Ns,
     span_duration_ns,
     span_status_code,
     span_status_message,
@@ -104,7 +104,7 @@ def read_otlp_jsonl(
     return trace
 
 
-def _format_duration(duration_ns: ns) -> str:
+def _format_duration(duration_ns: Ns) -> str:
     duration = duration_ns / 1_000_000_000
     if duration < 0.001:
         return f"{duration * 1_000_000:.0f} µs"
@@ -161,11 +161,11 @@ def _trace_model(trace: Trace) -> dict[str, Any]:
         ),
     )
     if ordered:
-        origin_ns = ns(min(span.start_time_unix_nano or 0 for _, _, span in ordered))
-        end_ns = ns(max(span.end_time_unix_nano or 0 for _, _, span in ordered))
+        origin_ns = Ns(min(span.start_time_unix_nano or 0 for _, _, span in ordered))
+        end_ns = Ns(max(span.end_time_unix_nano or 0 for _, _, span in ordered))
     else:
-        origin_ns = ns(0)
-        end_ns = ns(1)
+        origin_ns = Ns(0)
+        end_ns = Ns(1)
 
     trace_ids = list(dict.fromkeys(span.trace_id.hex() for _, _, span in ordered))
     trace_indexes = {value: index for index, value in enumerate(trace_ids)}
@@ -195,7 +195,7 @@ def _trace_model(trace: Trace) -> dict[str, Any]:
             sort_keys=True,
             separators=(",", ":"),
         )
-        start_ns = ns(span.start_time_unix_nano or 0)
+        start_ns = Ns(span.start_time_unix_nano or 0)
         encoded_spans.append(
             [
                 span.span_id.hex(),
@@ -207,7 +207,7 @@ def _trace_model(trace: Trace) -> dict[str, Any]:
                 [
                     [
                         str(event.name or ""),
-                        ns(event.time_unix_nano or 0) - start_ns,
+                        Ns(event.time_unix_nano or 0) - start_ns,
                         decode_attributes(event.attributes),
                     ]
                     for event in span.events
@@ -224,7 +224,7 @@ def _trace_model(trace: Trace) -> dict[str, Any]:
     return {
         "v": 1,
         "o": str(origin_ns),
-        "d": ns(max(1, end_ns - origin_ns)),
+        "d": Ns(max(1, end_ns - origin_ns)),
         "r": resources,
         "t": trace_ids,
         "c": scopes,
@@ -310,13 +310,13 @@ def write_trace_bundle(
         "start_time_unix_nano": str(
             min(
                 (span.start_time_unix_nano or 0 for span in trace),
-                default=ns(0),
+                default=Ns(0),
             )
         ),
         "end_time_unix_nano": str(
             max(
                 (span.end_time_unix_nano or 0 for span in trace),
-                default=ns(0),
+                default=Ns(0),
             )
         ),
         "metadata": clean_attributes(metadata),

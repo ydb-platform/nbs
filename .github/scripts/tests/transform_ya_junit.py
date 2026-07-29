@@ -13,7 +13,7 @@ from typing import Pattern, TextIO, TypeAlias
 from xml.etree import ElementTree as ET
 
 from ..helpers import setup_logger
-from .ya_trace import YaEvent, YaTraceCollection
+from ..tracing.ya_trace import YaEvent, YaTraceCollection
 from .junit_utils import add_junit_link_property, is_faulty_testcase
 from .mute_utils import mute_target, pattern_to_re
 

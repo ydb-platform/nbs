@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from scripts.tests.ya_trace import YaTraceCollection
+from scripts.tracing.ya_trace import YaTraceCollection
 
 
 def test_trace_collection_indexes_tests_and_disambiguates_chunks(

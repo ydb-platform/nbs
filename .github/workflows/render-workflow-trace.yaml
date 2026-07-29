@@ -82,7 +82,7 @@ jobs:
         shell: bash --noprofile --norc -eo pipefail {0}
         run: |
           PYTHONPATH="$GITHUB_WORKSPACE/.github" \
-              python3 -m scripts.workflow_trace_report \
+              python3 -m scripts.tracing.workflow_trace_report \
               --event "$GITHUB_EVENT_PATH" \
               --s3-bucket "$REPORTS_BUCKET" \
               --s3-prefix "$REPORTS_PREFIX" \

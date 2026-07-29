@@ -1,5 +1,6 @@
 "use strict";
 
+// Static trace report browser model.
 const ID = 0;
 const PARENT = 1;
 const NAME = 2;

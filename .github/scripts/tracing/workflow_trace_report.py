@@ -14,7 +14,7 @@ from typing import Any, Iterable, Mapping, Sequence
 
 from github.WorkflowJob import WorkflowJob
 
-from .helpers import get_workflow_jobs, github_client
+from ..helpers import get_workflow_jobs, github_client
 from .otlp import (
     ResourceAttributes,
     Span,
@@ -22,7 +22,7 @@ from .otlp import (
     decode_attributes,
     encode_attributes,
     make_span,
-    ns,
+    Ns,
     span_duration_ns,
     stable_span_id,
     stable_trace_id,
@@ -37,12 +37,12 @@ from .trace_report import (
 MAX_TRACE_INPUTS = 10_000
 
 
-def timestamp_ns(value: Any) -> ns | None:
+def timestamp_ns(value: Any) -> Ns | None:
     if not value:
         return None
     text = str(value).replace("Z", "+00:00")
     try:
-        return ns(datetime.fromisoformat(text).timestamp() * 1_000_000_000)
+        return Ns(datetime.fromisoformat(text).timestamp() * 1_000_000_000)
     except ValueError:
         return None
 
@@ -63,14 +63,14 @@ def _status_code(conclusion: Any) -> int:
 
 
 def _bounded_times(
-    start: ns | None,
-    end: ns | None,
-    default_start: ns,
-    default_end: ns,
-) -> tuple[ns, ns]:
-    start_ns = start or ns(default_start)
-    end_ns = end or ns(default_end)
-    return start_ns, ns(max(start_ns, end_ns))
+    start: Ns | None,
+    end: Ns | None,
+    default_start: Ns,
+    default_end: Ns,
+) -> tuple[Ns, Ns]:
+    start_ns = start or Ns(default_start)
+    end_ns = end or Ns(default_end)
+    return start_ns, Ns(max(start_ns, end_ns))
 
 
 def _job_and_step_spans(
@@ -79,8 +79,8 @@ def _job_and_step_spans(
     trace: Trace,
     trace_id: bytes,
     root_span_id: bytes,
-    workflow_start_ns: ns,
-    workflow_end_ns: ns,
+    workflow_start_ns: Ns,
+    workflow_end_ns: Ns,
     resource: ResourceAttributes,
 ) -> list[Span]:
     job_spans: list[Span] = []
@@ -272,8 +272,8 @@ def build_workflow_trace(
         timestamp_ns(workflow_run.get("created_at"))
         or timestamp_ns(workflow_run.get("run_started_at")),
         timestamp_ns(workflow_run.get("updated_at")),
-        ns(0),
-        ns(0),
+        Ns(0),
+        Ns(0),
     )
     if end_ns == 0:
         raise ValueError("workflow_run is missing usable timestamps")

@@ -11,7 +11,7 @@ const {
   defaultExpanded,
   matchingVisibility,
   flattenTraceRows,
-} = require("../templates/trace_report.js");
+} = require("./templates/trace_report.js");
 
 function makeSpan({
   id,

@@ -11,24 +11,24 @@ import pytest
 from github.WorkflowJob import WorkflowJob
 from opentelemetry.proto_json.trace.v1.trace import TracesData
 
-from scripts.tests.ya_trace_report import (
+from scripts.tracing.ya_trace_report import (
     build_resource_attributes,
     build_ya_trace,
 )
-from scripts.otlp import (
+from scripts.tracing.otlp import (
     ResourceAttributes,
     Span,
     Trace,
     decode_attributes,
     make_event,
     make_span as new_span,
-    ns,
+    Ns,
     span_duration_ns,
     span_status_code,
     stable_span_id,
     stable_trace_id,
 )
-from scripts.trace_report import (
+from scripts.tracing.trace_report import (
     TRACE_HTML_TEMPLATE,
     TRACE_SCRIPT_TEMPLATE,
     _trace_model,
@@ -36,8 +36,8 @@ from scripts.trace_report import (
     render_html,
     write_trace_bundle,
 )
-from scripts.tests.ya_trace import load_ya_evlog, load_ya_traces
-from scripts.workflow_trace_report import (
+from scripts.tracing.ya_trace import load_ya_evlog, load_ya_traces
+from scripts.tracing.workflow_trace_report import (
     build_workflow_trace,
     download_s3_trace_inputs,
 )
@@ -111,8 +111,8 @@ def test_otlp_round_trip_and_static_html_escaping(tmp_path: Path) -> None:
 
     restored = read_otlp_jsonl([tmp_path / manifest["otlp_file"]])
     assert restored.to_dict() == trace.to_dict()
-    assert isinstance(restored[0].start_time_unix_nano, ns)
-    assert isinstance(restored[0].events[0].time_unix_nano, ns)
+    assert isinstance(restored[0].start_time_unix_nano, Ns)
+    assert isinstance(restored[0].events[0].time_unix_nano, Ns)
 
     report = (tmp_path / manifest["html_file"]).read_text()
     assert "<script>alert" not in report
@@ -358,8 +358,8 @@ def test_ya_trace_produces_observed_and_inferred_test_spans(
     traces = load_ya_traces(tmp_path / "out")
     spans = build_ya_trace(
         traces,
-        root_start_ns=ns(99_000_000_000),
-        root_end_ns=ns(111_000_000_000),
+        root_start_ns=Ns(99_000_000_000),
+        root_end_ns=Ns(111_000_000_000),
         exit_code=1,
         resource=ResourceAttributes({"service.name": "test"}),
     )
@@ -397,8 +397,8 @@ def test_ya_trace_keeps_started_but_unfinished_test(
     )
     spans = build_ya_trace(
         load_ya_traces(tmp_path),
-        root_start_ns=ns(9_000_000_000),
-        root_end_ns=ns(12_000_000_000),
+        root_start_ns=Ns(9_000_000_000),
+        root_end_ns=Ns(12_000_000_000),
         exit_code=137,
         resource=ResourceAttributes(),
     )
@@ -469,8 +469,8 @@ def test_ya_trace_preserves_chunks_and_anchors_finish_only_tests(
 
     spans = build_ya_trace(
         load_ya_traces(tmp_path),
-        root_start_ns=ns(99_000_000_000),
-        root_end_ns=ns(121_000_000_000),
+        root_start_ns=Ns(99_000_000_000),
+        root_end_ns=Ns(121_000_000_000),
         exit_code=0,
         resource=ResourceAttributes(),
     )
@@ -653,8 +653,8 @@ def test_ya_evlog_adds_phases_and_build_nodes(
 
     spans = build_ya_trace(
         load_ya_traces(tmp_path / "out"),
-        root_start_ns=ns(9_000_000_000),
-        root_end_ns=ns(31_000_000_000),
+        root_start_ns=Ns(9_000_000_000),
+        root_end_ns=Ns(31_000_000_000),
         exit_code=0,
         resource=ResourceAttributes(),
         evlog=load_ya_evlog(evlog_path),
@@ -724,8 +724,8 @@ def test_ya_evlog_adds_phases_and_build_nodes(
 
     build_only = build_ya_trace(
         [],
-        root_start_ns=ns(9_000_000_000),
-        root_end_ns=ns(31_000_000_000),
+        root_start_ns=Ns(9_000_000_000),
+        root_end_ns=Ns(31_000_000_000),
         exit_code=0,
         resource=ResourceAttributes(),
         evlog=load_ya_evlog(evlog_path),
@@ -819,7 +819,10 @@ def test_s3_trace_discovery_accepts_an_empty_prefix(
         calls.append((command, kwargs))
         return SimpleNamespace(stdout="null\n")
 
-    monkeypatch.setattr("scripts.workflow_trace_report.subprocess.run", fake_run)
+    monkeypatch.setattr(
+        "scripts.tracing.workflow_trace_report.subprocess.run",
+        fake_run,
+    )
     assert (
         download_s3_trace_inputs(
             bucket="reports",

@@ -46,7 +46,7 @@ downloads and parsed OTLP data before rendering PR-produced content.
 To render a saved OTLP bundle locally:
 
 ```bash
-PYTHONPATH=.github python3 -m scripts.trace_report \
+PYTHONPATH=.github python3 -m scripts.tracing.trace_report \
   trace.otlp.jsonl.gz -o trace.html
 ```
 

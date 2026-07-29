@@ -311,7 +311,7 @@ runs:
         BUILD_TARGET=${BUILD_TARGET//\"/}
         TRACE_REPORT_URL="${S3_WEBSITE_PREFIX}/build_logs/${COMPONENT_DIR}trace.html"
         TRACE_OTLP_URL="${S3_WEBSITE_PREFIX}/build_logs/${COMPONENT_DIR}trace.otlp.jsonl.gz"
-        if python3 -m scripts.tests.ya_trace_report \
+        if python3 -m scripts.tracing.ya_trace_report \
             --ya-out "$TMP_DIR" \
             --evlog "$TMP_DIR/ya_evlog.jsonl" \
             --output-dir "$TMP_DIR" \
