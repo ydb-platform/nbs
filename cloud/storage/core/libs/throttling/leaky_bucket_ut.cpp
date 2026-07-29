@@ -10,9 +10,9 @@ namespace NCloud {
 
 Y_UNIT_TEST_SUITE(TLeakyBucketTest)
 {
-#define REG_AND_CHECK(budgetDiff, nowMcs, update)                              \
+#define REG_AND_CHECK(delaySeconds, nowMcs, update)                            \
         UNIT_ASSERT_VALUES_EQUAL(                                              \
-            budgetDiff,                                                        \
+            delaySeconds,                                                      \
             lb.Register(TInstant::MicroSeconds(nowMcs), update)                \
         );                                                                     \
 // REG_AND_CHECK
@@ -37,11 +37,11 @@ Y_UNIT_TEST_SUITE(TLeakyBucketTest)
         REG_AND_CHECK(0, 100'000, 110);         // 200 - 110 = 90
         REG_AND_CHECK(0, 500'000, 70);          // 90 + 0.4 * 100 - 70 = 60
         REG_AND_CHECK(0, 600'000, 40);          // 60 + 0.1 * 100 - 40 = 30
-        REG_AND_CHECK(10, 800'000, 60);         // 30 + 0.2 * 100 = 50
+        REG_AND_CHECK(0.1, 800'000, 60);        // 30 + 0.2 * 100 = 50
         REG_AND_CHECK(0, 900'000, 60);          // 50 + 0.1 * 100 - 60 = 0
         REG_AND_CHECK(0, 10'000'000, 500);      // min(max(0, 200 - 500), 0 + 9.1 * 100 - 500) = 0
         REG_AND_CHECK(0, 20'000'000, 1);        // 0 + min(max(0, 200 - 1), 10 * 100) = 199
-        REG_AND_CHECK(1, 20'000'000, 200);      // 199 + 0 = 199
+        REG_AND_CHECK(0.01, 20'000'000, 200);   // 199 + 0 = 199
         REG_AND_CHECK(0, 20'010'000, 200);      // 199. + 0.01 * 100 - 200 = 0
     }
 
@@ -49,14 +49,14 @@ Y_UNIT_TEST_SUITE(TLeakyBucketTest)
     {
         TLeakyBucket lb(100, 200, 10);
 
-        REG_AND_CHECK(100, 100'000, 110);       // 10
-        REG_AND_CHECK(20, 500'000, 70);         // 10 + 0.4 * 100 = 50
+        REG_AND_CHECK(1, 100'000, 110);         // 10
+        REG_AND_CHECK(0.2, 500'000, 70);        // 10 + 0.4 * 100 = 50
         REG_AND_CHECK(0, 600'000, 40);          // 50 + 0.1 * 100 - 40 = 20
-        REG_AND_CHECK(20, 800'000, 60);         // 20 + 0.2 * 100 = 40
-        REG_AND_CHECK(10, 900'000, 60);         // 40 + 0.1 * 100 = 50
+        REG_AND_CHECK(0.2, 800'000, 60);        // 20 + 0.2 * 100 = 40
+        REG_AND_CHECK(0.1, 900'000, 60);        // 40 + 0.1 * 100 = 50
         REG_AND_CHECK(0, 10'000'000, 500);      // min(max(0, 200 - 500), 40 + 9.1 * 100 - 500) = 0
         REG_AND_CHECK(0, 20'000'000, 1);        // min(max(0, 200 - 1), 0 + 10 * 100 - 1) = 199
-        REG_AND_CHECK(1, 20'000'000, 200);      // 199 + 0 = 199
+        REG_AND_CHECK(0.01, 20'000'000, 200);   // 199 + 0 = 199
         REG_AND_CHECK(0, 20'010'000, 200);      // 199. + 0.01 * 100 - 200 = 0
     }
 
@@ -81,15 +81,26 @@ Y_UNIT_TEST_SUITE(TLeakyBucketTest)
         TLeakyBucket lb(100, 200, 10);
 
         GET_SHARE_AND_CHECK(0.95, 50'000);       // share = (200 - 10) / 200 = 0.95
-        REG_AND_CHECK(100, 100'000, 110);        // budget = 10
+        REG_AND_CHECK(1, 100'000, 110);          // budget = 10
         GET_SHARE_AND_CHECK(0.9, 200'000);       // share = (200 - (10 + 0.1 * 100)) / 200 = 0.9
         GET_SHARE_AND_CHECK(0.875, 250'000);     // share = (200 - (10 + 0.15 * 100)) / 200 = 0.875
-        REG_AND_CHECK(20, 500'000, 70);          // budget = 10 + 0.4 * 100 = 50
+        REG_AND_CHECK(0.2, 500'000, 70);         // budget = 10 + 0.4 * 100 = 50
         GET_SHARE_AND_CHECK(0.625, 750'000);     // share = (200 - (50 + 0.25 * 100)) / 200 = 0.625
         GET_SHARE_AND_CHECK(0.05, 1'900'000);    // share = (200 - (50 + 1.4 * 100)) / 200 = 0.05
         REG_AND_CHECK(0, 2'000'000, 200);        // budget = 50 + 1.5 * 100 - 200 = 0
         GET_SHARE_AND_CHECK(1.0, 2'000'000);     // share = (200 - (0 + 0 * 100)) / 200 = 1
         GET_SHARE_AND_CHECK(0.75, 2'500'000);    // share = (200 - (0 + 0.5 * 100)) / 200 = 0.75
+    }
+
+    Y_UNIT_TEST(ShouldReturnDelayForPostponingRequest)
+    {
+        TLeakyBucket lb(0.5, 0.5, 0);
+
+        auto now = TInstant::Now();
+        auto delay = lb.Register(now, 42.0);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            lb.Register(now + SecondsToDuration(delay), 42.0));
     }
 
     Y_UNIT_TEST(ShouldCorrectlyCalculateBoostedTimeBucket)
