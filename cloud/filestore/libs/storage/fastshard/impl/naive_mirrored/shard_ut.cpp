@@ -111,6 +111,17 @@ struct TStorageFixture
     }
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+TString GenerateValidateData(ui32 size, ui32 seed = 0)
+{
+    TString data(size, 0);
+    for (ui32 i = 0; i < size; ++i) {
+        data[i] = 'A' + ((i + seed) % ('Z' - 'A' + 1));
+    }
+    return data;
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -124,7 +135,10 @@ TEST(NaiveMirroredShardTest, CreatesFiles)
     auto shard = CreateNaiveMirroredFileSystemShard(ShardNo, fx.Config);
 
     const TString file1 = "file1";
+    const TString file2 = "file2";
+    const TString file3 = "file3";
     const ui32 mode = 0644;
+    const ui32 expectedMode = S_IFREG | 0644;
     const ui64 uid = 111;
     const ui64 gid = 222;
 
@@ -142,13 +156,223 @@ TEST(NaiveMirroredShardTest, CreatesFiles)
             << FormatError(response.GetError());
         nodeId = response.GetNode().GetId();
     }
-    Y_UNUSED(nodeId);
+
+    {
+        TGetNodeAttrRequest request;
+        request.SetNodeId(nodeId);
+        auto f = shard->GetNodeAttr(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+        EXPECT_EQ(nodeId, response.GetNode().GetId());
+        EXPECT_EQ(uid, response.GetNode().GetUid());
+        EXPECT_EQ(gid, response.GetNode().GetGid());
+        EXPECT_EQ(
+            static_cast<ui32>(E_REGULAR_NODE),
+            response.GetNode().GetType());
+        EXPECT_EQ(expectedMode, response.GetNode().GetMode());
+    }
 
     {
         TUnlinkNodeRequest request;
         request.SetNodeId(RootNodeId);
         request.SetName(file1);
         auto f = shard->UnlinkNode(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+    }
+
+    {
+        TGetNodeAttrRequest request;
+        request.SetNodeId(nodeId);
+        auto f = shard->GetNodeAttr(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(NCloud::E_FS_NOENT, response.GetError().GetCode())
+            << FormatError(response.GetError());
+    }
+}
+
+TEST(NaiveMirroredShardTest, CreatesHandles)
+{
+    silk::Logger::setLevel(silk::LogLevel::DEBUG);
+
+    TStorageFixture fx;
+
+    auto shard = CreateNaiveMirroredFileSystemShard(ShardNo, fx.Config);
+
+    const TString file1 = "file1";
+    const ui32 mode = 0644;
+    const ui32 expectedMode = S_IFREG | 0644;
+    const ui64 uid = 111;
+    const ui64 gid = 222;
+
+    const ui32 create = ProtoFlag(TCreateHandleRequest::E_CREATE);
+    const ui32 createExcl =
+        create | ProtoFlag(TCreateHandleRequest::E_EXCLUSIVE);
+
+    ui64 nodeId = 0;
+    ui64 handle1 = 0;
+    {
+        TCreateHandleRequest request;
+        request.SetNodeId(RootNodeId);
+        request.SetName(file1);
+        request.SetMode(mode);
+        request.SetUid(uid);
+        request.SetGid(gid);
+        request.SetFlags(createExcl);
+        auto f = shard->CreateHandle(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+        EXPECT_EQ(uid, response.GetNodeAttr().GetUid());
+        EXPECT_EQ(gid, response.GetNodeAttr().GetGid());
+        EXPECT_EQ(
+            static_cast<ui32>(E_REGULAR_NODE),
+            response.GetNodeAttr().GetType());
+        EXPECT_EQ(expectedMode, response.GetNodeAttr().GetMode());
+        nodeId = response.GetNodeAttr().GetId();
+        handle1 = response.GetHandle();
+    }
+
+    {
+        TGetNodeAttrRequest request;
+        request.SetNodeId(nodeId);
+        auto f = shard->GetNodeAttr(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+        EXPECT_EQ(nodeId, response.GetNode().GetId());
+        EXPECT_EQ(uid, response.GetNode().GetUid());
+        EXPECT_EQ(gid, response.GetNode().GetGid());
+        EXPECT_EQ(
+            static_cast<ui32>(E_REGULAR_NODE),
+            response.GetNode().GetType());
+        EXPECT_EQ(expectedMode, response.GetNode().GetMode());
+    }
+
+    ui64 handle2 = 0;
+    {
+        TCreateHandleRequest request;
+        request.SetNodeId(RootNodeId);
+        request.SetName(file1);
+        request.SetMode(mode);
+        request.SetUid(uid);
+        request.SetGid(gid);
+        request.SetFlags(create);
+        auto f = shard->CreateHandle(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+        EXPECT_EQ(nodeId, response.GetNodeAttr().GetId());
+        EXPECT_EQ(uid, response.GetNodeAttr().GetUid());
+        EXPECT_EQ(gid, response.GetNodeAttr().GetGid());
+        EXPECT_EQ(
+            static_cast<ui32>(E_REGULAR_NODE),
+            response.GetNodeAttr().GetType());
+        EXPECT_EQ(expectedMode, response.GetNodeAttr().GetMode());
+        handle2 = response.GetHandle();
+        EXPECT_NE(handle2, handle1);
+    }
+
+    {
+        TDestroyHandleRequest request;
+        request.SetHandle(handle1);
+        auto f = shard->DestroyHandle(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+    }
+
+    {
+        TDestroyHandleRequest request;
+        request.SetHandle(handle1);
+        auto f = shard->DestroyHandle(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(NCloud::E_FS_BADHANDLE, response.GetError().GetCode())
+            << FormatError(response.GetError());
+    }
+
+    {
+        TDestroyHandleRequest request;
+        request.SetHandle(handle2);
+        auto f = shard->DestroyHandle(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+    }
+}
+
+TEST(NaiveMirroredShardTest, WritesAndReadsFiles)
+{
+    TStorageFixture fx;
+
+    auto shard = CreateNaiveMirroredFileSystemShard(ShardNo, fx.Config);
+
+    const TString file1 = "file1";
+    const TString file2 = "file2";
+    const TString file3 = "file3";
+    const ui32 mode = 0644;
+
+    const ui32 createHandleFlags
+        = ProtoFlag(TCreateHandleRequest::E_CREATE)
+        | ProtoFlag(TCreateHandleRequest::E_READ)
+        | ProtoFlag(TCreateHandleRequest::E_WRITE);
+
+    ui64 nodeId = 0;
+    {
+        TCreateNodeRequest request;
+        request.SetNodeId(RootNodeId);
+        request.SetName(file1);
+        request.MutableFile()->SetMode(mode);
+        auto f = shard->CreateNode(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+        nodeId = response.GetNode().GetId();
+    }
+
+    ui64 handle = 0;
+    {
+        TCreateHandleRequest request;
+        request.SetNodeId(nodeId);
+        request.SetFlags(createHandleFlags);
+        auto f = shard->CreateHandle(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+        handle = response.GetHandle();
+        EXPECT_TRUE(handle != 0);
+    }
+
+    const auto expectedData = GenerateValidateData(4_KB);
+    {
+        TWriteDataRequest request;
+        request.SetHandle(handle);
+        request.SetOffset(0);
+        *request.MutableBuffer() = expectedData;
+        auto f = shard->WriteData(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+    }
+
+    {
+        TReadDataRequest request;
+        request.SetHandle(handle);
+        request.SetOffset(0);
+        request.SetLength(4_KB);
+        auto f = shard->ReadData(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+        EXPECT_STREQ(expectedData.c_str(), response.GetBuffer().c_str());
+    }
+
+    {
+        TDestroyHandleRequest request;
+        request.SetHandle(handle);
+        auto f = shard->DestroyHandle(request);
         auto response = f.GetValueSync();
         EXPECT_EQ(S_OK, response.GetError().GetCode())
             << FormatError(response.GetError());
