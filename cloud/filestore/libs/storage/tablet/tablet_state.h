@@ -215,7 +215,7 @@ struct TTrackedUnconfirmedData
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TNodeDiagnosticStats
+struct TNodeAccessStats
 {
     ui64 NodeId = 0;
     ui64 RequestCount = 0;
@@ -223,36 +223,57 @@ struct TNodeDiagnosticStats
     TInstant LastAccessed;
 };
 
-class TNodeDiagnosticStatsTracker
+class TNodeAccessStatsTracker
 {
 private:
-    using TDiagKey = std::pair<double, ui64>;
+    struct TNodeAccessComparator
+    {
+        bool operator()(
+            const TNodeAccessStats& lhs,
+            const TNodeAccessStats& rhs) const
+        {
+            const TInstant now = TInstant::Now();
+            const double lhsScore = DecayedScore(lhs, now);
+            const double rhsScore = DecayedScore(rhs, now);
 
+            if (lhsScore != rhsScore) {
+                return lhsScore < rhsScore;
+            }
+
+            return lhs.NodeId < rhs.NodeId;
+        }
+    };
+
+    using TStatsSet = TSet<TNodeAccessStats, TNodeAccessComparator>;
     size_t MaxEntries = 0;
-    THashMap<ui64, std::map<TDiagKey, TNodeDiagnosticStats>::iterator> NodeId2StatsIter;
-    std::map<TDiagKey, TNodeDiagnosticStats> Score2Stats;
+    THashMap<ui64, TStatsSet::iterator> NodeId2StatsIter;
+    TStatsSet StatsRanking;
+
     void EvictLeastUsedNodes()
     {
-        while (Score2Stats.size() > MaxEntries)
+        while (StatsRanking.size() > MaxEntries)
         {
-            auto leastAccessed = Score2Stats.begin();
-            const ui64 nodeId = leastAccessed->second.NodeId;
+            auto leastAccessed = StatsRanking.begin();
+            const ui64 nodeId = leastAccessed->NodeId;
 
             NodeId2StatsIter.erase(nodeId);
-            Score2Stats.erase(leastAccessed);
+            StatsRanking.erase(leastAccessed);
         }
     };
 
 public:
     void Initialise(size_t maxEntries);
     void RequestStarted(ui64 nodeId, TInstant now);
-    TVector<TNodeDiagnosticStats> GetStats() const
+    static double DecayedScore(const TNodeAccessStats& stats, TInstant now);
+    TVector<TNodeAccessStats> GetStats(TInstant now) const
     {
-        TVector<TNodeDiagnosticStats> result;
-        result.reserve(Score2Stats.size());
-        for (auto it = Score2Stats.rbegin(); it != Score2Stats.rend(); ++it)
+        TVector<TNodeAccessStats> result;
+        result.reserve(StatsRanking.size());
+        for (auto it = StatsRanking.rbegin(); it != StatsRanking.rend(); ++it)
         {
-            result.push_back(it->second);
+            auto stats = *it;
+            stats.AccessScore = DecayedScore(stats, now);
+            result.push_back(stats);
         }
         return result;
     };
@@ -276,7 +297,7 @@ private:
     NProto::TFileSystemStats FileSystemStats;
     NCloud::NProto::TTabletStorageInfo TabletStorageInfo;
     TNodeToSessionCounters NodeToSessionCounters;
-    TNodeDiagnosticStatsTracker NodeDiagnosticStatsTracker;
+    TNodeAccessStatsTracker NodeAccessStatsTracker;
     ui64 MinDeletionMarkersCountSinceTabletStart = 0;
 
     /*const*/ ui32 TruncateBlocksThreshold = 0;
@@ -354,7 +375,7 @@ public:
 
     void NodeRequestStarted(ui64 nodeId, TInstant now);
 
-    TVector<TNodeDiagnosticStats> GetNodeDiagnosticStats() const;
+    TVector<TNodeAccessStats> GetNodeAccessStats(TInstant now) const;
 
     void UpdateConfig(
         IIndexTabletDatabase& db,
