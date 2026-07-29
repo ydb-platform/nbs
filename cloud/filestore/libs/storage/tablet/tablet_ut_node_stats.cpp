@@ -11,30 +11,30 @@ Y_UNIT_TEST_SUITE(TNodeAccessStatsTrackerTest)
     Y_UNIT_TEST(ShouldTrackRequestCountAndScore)
     {
         TNodeAccessStatsTracker tracker;
-        tracker.Initialise(10);
+        tracker.Initialise(1);
 
         const auto now = TInstant::Now();
 
-        tracker.RequestStarted(42, now);
+        tracker.RequestStarted(1, now);
 
         const auto stats = tracker.GetStats(now);
 
         UNIT_ASSERT_VALUES_EQUAL(1, stats.size());
-        UNIT_ASSERT_VALUES_EQUAL(42, stats[0].NodeId);
+        UNIT_ASSERT_VALUES_EQUAL(1, stats[0].NodeId);
         UNIT_ASSERT_VALUES_EQUAL(1, stats[0].RequestCount);
         UNIT_ASSERT_DOUBLES_EQUAL(1.0, stats[0].AccessScore, 1e-9);
         UNIT_ASSERT_VALUES_EQUAL(now, stats[0].LastAccessed);
     }
 
-    Y_UNIT_TEST(ShouldDecayScoreBeforeAddingNewRequest)
+    Y_UNIT_TEST(ShouldDecayScoreBeforeAdding)
     {
         TNodeAccessStatsTracker tracker;
-        tracker.Initialise(10);
+        tracker.Initialise(1);
 
         const auto now = TInstant::Now();
 
-        tracker.RequestStarted(42, now);
-        tracker.RequestStarted(42, now);
+        tracker.RequestStarted(1, now);
+        tracker.RequestStarted(1, now);
 
         const auto stats = tracker.GetStats(now);
 
@@ -53,7 +53,7 @@ Y_UNIT_TEST_SUITE(TNodeAccessStatsTrackerTest)
     Y_UNIT_TEST(ShouldOrderByCurrentDecayedScore)
     {
         TNodeAccessStatsTracker tracker;
-        tracker.Initialise(10);
+        tracker.Initialise(2);
 
         const auto now = TInstant::Now();
         const auto old = now - TDuration::Minutes(10);
@@ -76,7 +76,7 @@ Y_UNIT_TEST_SUITE(TNodeAccessStatsTrackerTest)
     Y_UNIT_TEST(ShouldUseNodeIdAsTieBreaker)
     {
         TNodeAccessStatsTracker tracker;
-        tracker.Initialise(10);
+        tracker.Initialise(2);
 
         const auto now = TInstant::Now();
 
