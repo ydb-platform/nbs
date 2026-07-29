@@ -96,7 +96,12 @@ TVerifyBlocksMetaResult VerifyMixedBlocksMeta(
 
     struct TVisitor final: public IMixedBlocksIndexVisitor
     {
+        TPartialBlobId OriginalBlobId;
         TVector<TBlock> LeakedBlocks;
+
+        TVisitor(TPartialBlobId originalBlobId)
+            : OriginalBlobId(originalBlobId)
+        {}
 
         bool VisitBlock(
             ui32 blockIndex,
@@ -105,9 +110,18 @@ TVerifyBlocksMetaResult VerifyMixedBlocksMeta(
             ui16 blobOffset,
             ui8 compactionRangeCount) override
         {
-            Y_UNUSED(blobId);
             Y_UNUSED(blobOffset);
             Y_UNUSED(compactionRangeCount);
+
+            // The same block may be present in multiple blobs, so we need to
+            // check if the block is present in the original blob.
+            // This can happen if the AddBlobs transaction for a flush has
+            // already been committed when the tablet restarts, but the fresh
+            // blobs have not yet been trimmed. After the restart, we load the
+            // same fresh blobs and try to flush them again.
+            if (blobId != OriginalBlobId) {
+                return true;
+            }
 
             LeakedBlocks.emplace_back(blockIndex, commitId, false);
 
@@ -115,7 +129,7 @@ TVerifyBlocksMetaResult VerifyMixedBlocksMeta(
         }
     };
 
-    TVisitor visitor;
+    TVisitor visitor{originalBlobId};
     bool ready = db.FindMixedBlocks(visitor, missedBlocks);
     if (!ready) {
         return {.Ready = false};
@@ -302,7 +316,8 @@ void ExecuteCleanupTransaction(
                 }
             } else {
                 // each block has its own commitId
-                Y_ABORT_UNLESS(mixedBlocks.BlocksSize() == mixedBlocks.CommitIdsSize());
+                Y_ABORT_UNLESS(
+                    mixedBlocks.BlocksSize() == mixedBlocks.CommitIdsSize());
                 for (size_t j = 0; j < mixedBlocks.BlocksSize(); ++j) {
                     ui32 blockIndex = mixedBlocks.GetBlocks(j);
                     ui64 commitId = mixedBlocks.GetCommitIds(j);
@@ -342,8 +357,8 @@ void ExecuteCleanupTransaction(
 
             ++mergedBlobsCount;
             if (!IsDeletionMarker(item.BlobId)) {
-                // Mins for block counts are needed due to some inconsistencies caused by
-                // NBS-1422
+                // Mins for block counts are needed due to some inconsistencies
+                // caused by NBS-1422
                 ui64 delta = blockRange.Size() - mergedBlocks.GetSkipped();
                 state.DecrementMergedBlocksCount(
                     Min(delta, state.GetMergedBlocksCount()));
@@ -351,7 +366,7 @@ void ExecuteCleanupTransaction(
         }
 
         LOG_DEBUG(
-           *actorSystem,
+            *actorSystem,
             TBlockStoreComponents::PARTITION,
             "%s Delete blob: %s",
             logTitle.GetWithTime().c_str(),
