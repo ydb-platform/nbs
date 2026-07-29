@@ -306,7 +306,7 @@ bool ShouldSkipCleanupDueToCheckpoint(
     } else if (blobMeta.HasMergedBlocks()) {
         blobCommitId = item.BlobId.CommitId();
     } else {
-        // TODO:_ is this valid case?
+        Y_DEBUG_ABORT_UNLESS(false, "Blob meta has neither mixed nor merged blocks");
         return false;
     }
 
@@ -330,24 +330,32 @@ void ExecuteCleanupTransaction(
     size_t mixedBlobsCount = 0;
     size_t mergedBlobsCount = 0;
 
-    TVector<TCleanupQueueItem> cleanedQueue;
-    cleanedQueue.reserve(args.CleanupQueue.size());
+    TVector<TCleanupQueueItem> deletedItems;
+    deletedItems.reserve(args.CleanupQueue.size());
 
     Y_ABORT_UNLESS(args.CleanupQueue.size() == args.BlobsMeta.size());
     for (size_t i = 0; i < args.CleanupQueue.size(); ++i) {
         const auto& item = args.CleanupQueue[i];
         const auto& blobMeta = args.BlobsMeta[i];
-        const bool afterCheckpoint = args.CleanupWithCheckpoint && (item.CommitId > args.MaxCheckpointCommitId);
 
-        if (afterCheckpoint &&
-            // TODO:_ simplify ShouldSkipCleanupDueToCheckpoint
+        LOG_INFO(
+            *actorSystem,
+            TBlockStoreComponents::PARTITION,
+            "%s ExecuteCleanupTransaction: checking blob=%s: deletionCommitId=%lu "
+            "minCheckpointCommitId=%lu maxCheckpointCommitId=%lu",
+            logTitle.GetWithTime().c_str(),
+            ToString(MakeBlobId(tabletId, item.BlobId)).Quote().c_str(),
+            item.CommitId,
+            args.MinCheckpointCommitId,
+            args.MaxCheckpointCommitId);
+        if (args.CleanupWithCheckpoint &&
             ShouldSkipCleanupDueToCheckpoint(
                 item,
                 blobMeta,
                 args.MinCheckpointCommitId,
                 args.MaxCheckpointCommitId))
         {
-            LOG_DEBUG(
+            LOG_INFO(
                 *actorSystem,
                 TBlockStoreComponents::PARTITION,
                 "%s ExecuteCleanupTransaction: skipping blob=%s: deletionCommitId=%lu "
@@ -428,7 +436,8 @@ void ExecuteCleanupTransaction(
             logTitle.GetWithTime().c_str(),
             ToString(MakeBlobId(tabletId, item.BlobId)).Quote().c_str());
 
-        state.RemoveCleanupQueueItem(item, afterCheckpoint);
+        std::cerr << "CHECK: RemoveCleanupQueueItem: " << item.CommitId << std::endl;
+        state.RemoveCleanupQueueItem(item);
 
         db.DeleteBlobMeta(item.BlobId);
         db.DeleteCleanupQueue(item.BlobId, item.CommitId);
@@ -437,11 +446,19 @@ void ExecuteCleanupTransaction(
             db.WriteGarbageBlob(item.BlobId);
         }
 
-        // TODO:_ is it correct? Why do we need it? Is naming ok?
-        cleanedQueue.push_back(item);
+        deletedItems.push_back(item);
     }
 
-    args.CleanupQueue = std::move(cleanedQueue);
+    if (args.CleanupWithCheckpoint) {
+        state.UpdateCleanupMilestone(
+            args.MinCheckpointCommitId,
+            args.MaxCheckpointCommitId,
+            args.CleanupQueue.back().CommitId);
+
+        args.CleanupQueue = std::move(deletedItems);
+    } else {
+        Y_DEBUG_ABORT_UNLESS(deletedItems.size() == args.CleanupQueue.size());
+    }
 
     // Updating counters
     state.DecrementMixedBlobsCount(mixedBlobsCount);

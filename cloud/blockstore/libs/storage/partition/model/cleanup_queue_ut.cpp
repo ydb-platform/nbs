@@ -42,7 +42,9 @@ Y_UNIT_TEST_SUITE(TCleanupQueueTest)
         UNIT_ASSERT_VALUES_EQUAL(queue.GetCount(MakeCommitId(1, 15)), 5);
         UNIT_ASSERT_VALUES_EQUAL(queue.GetCount(MakeCommitId(1, 11)), 1);
 
-        // deletionSteps are 11..20; count items with CommitId in (15, 20]
+        UNIT_ASSERT_VALUES_EQUAL(queue.GetCount(), 10);
+        UNIT_ASSERT_VALUES_EQUAL(queue.GetCount(0, MakeCommitId(1, 15)), 5);
+
         UNIT_ASSERT_VALUES_EQUAL(
             queue.GetCount(MakeCommitId(1, 15), MakeCommitId(1, 20)),
             5);
@@ -57,12 +59,22 @@ Y_UNIT_TEST_SUITE(TCleanupQueueTest)
         EnsureEqual(queue.GetItems(MakeCommitId(1, 15)), {8, 9, 7, 6, 4});
         EnsureEqual(queue.GetItems(MakeCommitId(1, 11)), {8});
 
+        EnsureEqual(queue.GetItems(MakeCommitId(1, 15), 3 /* limit */), {8, 9, 7});
+        EnsureEqual(queue.GetItems(), {8, 9, 7, 6, 4, 2, 10, 5, 1, 3});
+        EnsureEqual(queue.GetItems(0, MakeCommitId(1, 15), 100), {8, 9, 7, 6, 4});
+
         EnsureEqual(
             queue.GetItems(MakeCommitId(1, 15), MakeCommitId(1, 20), 100),
             {2, 10, 5, 1, 3});
         EnsureEqual(
             queue.GetItems(MakeCommitId(1, 11), MakeCommitId(1, 15), 100),
             {9, 7, 6, 4});
+        EnsureEqual(
+            queue.GetItems(MakeCommitId(1, 20), MakeCommitId(1, 20), 100),
+            {});
+        EnsureEqual(
+            queue.GetItems(MakeCommitId(1, 15), MakeCommitId(1, 20), 2 /* limit */),
+            {2, 10});
     }
 
     Y_UNIT_TEST(ShouldTrimQueue)

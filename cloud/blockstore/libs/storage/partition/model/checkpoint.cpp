@@ -125,7 +125,6 @@ const THashMap<TString, ui64>& TCheckpointStore::GetMapping() const
 ui64 TCheckpointStore::GetMinCommitId() const
 {
     if (CommitIds.empty()) {
-        // TODO:_ check all corner cases with min/max commit id.
         return Max();
     }
     return CommitIds.front();
@@ -134,9 +133,8 @@ ui64 TCheckpointStore::GetMinCommitId() const
 ui64 TCheckpointStore::GetMaxCommitId() const
 {
     if (CommitIds.empty()) {
-        return Min();
+        return 0;
     }
-    // TODO:_ is there any guarantee that the last commit id is the max?
     return CommitIds.back();
 }
 

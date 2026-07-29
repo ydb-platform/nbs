@@ -896,21 +896,26 @@ public:
     //
 
 private:
-    struct TCleanupProgressInfo
+    struct TBlobCountToCleanupEstimate
     {
-        ui32 BlobCountToCleanup = 0;
-        ui64 BlobCountToCleanupCommitId = 0;
-        ui32 BlobCountToCleanupAfterCheckpoint = 0;
-        ui64 BlobCountToCleanupAfterCheckpointCommitId = 0;
+        ui64 MilestoneCommitId = 0;
+        ui64 CleanupCommitId = 0;
+        ui32 BlobCount = 0;
+    };
+
+    struct TCleanupMilestone
+    {
+        ui64 MinCheckpointCommitId = 0;
+        ui64 MaxCheckpointCommitId = 0;
+        ui64 NextItemCommitId = 0;
     };
 
     TOperationState CleanupState;
     TCleanupQueue CleanupQueue;
     TTsRingBuffer<ui32> CleanupScoreHistory;
 
-    ui64 CleanupMaxCheckpointCommitId = 0;
-    ui64 CleanupAfterCheckpointCommitId = 0;
-    mutable TCleanupProgressInfo CleanupProgressInfo;
+    TCleanupMilestone CleanupMilestone;
+    mutable TBlobCountToCleanupEstimate BlobCountToCleanupEstimate;
 
     TDuration LastCleanupExecTime;
     TInstant LastCleanupFinishTs;
@@ -932,81 +937,75 @@ public:
         return CleanupQueue;
     }
 
-    ui32 GetBlobCountToCleanup(ui64 commitId, ui32 maxBlobs) const
+    bool IsBlobCountToCleanupBelowThreshold(
+        ui64 milestoneCommitId,
+        ui64 cleanupCommitId,
+        ui32 threshold) const
     {
-        if (commitId < CleanupProgressInfo.BlobCountToCleanupCommitId
-                || CleanupProgressInfo.BlobCountToCleanup < maxBlobs)
-        {
-            CleanupProgressInfo.BlobCountToCleanup = CleanupQueue.GetCount(commitId);
-            CleanupProgressInfo.BlobCountToCleanupCommitId = commitId;
+        auto& estimate = BlobCountToCleanupEstimate;
+
+        if (estimate.BlobCount >= threshold
+                && cleanupCommitId >= estimate.CleanupCommitId
+                && milestoneCommitId <= estimate.MilestoneCommitId) {
+            // No need to recalculate the blob count: it's definitely above the
+            // threshold.
+            return false;
         }
 
-        return CleanupProgressInfo.BlobCountToCleanup;
+        estimate.BlobCount = CleanupQueue.GetCount(
+            milestoneCommitId,
+            cleanupCommitId);
+        estimate.MilestoneCommitId = milestoneCommitId;
+        estimate.CleanupCommitId = cleanupCommitId;
+
+        return estimate.BlobCount < threshold;
     }
 
-    ui32 GetBlobCountToCleanupAfterCheckpoint(ui64 commitId, ui64 checkpointCommitId, ui32 maxBlobs) const
+    ui64 GetCleanupMilestoneCommitId() const
     {
-        if (checkpointCommitId == InvalidCommitId) {
-            CleanupProgressInfo.BlobCountToCleanupAfterCheckpoint = 0;
-            CleanupProgressInfo.BlobCountToCleanupAfterCheckpointCommitId = 0;
-            return 0;
+        return CleanupMilestone.NextItemCommitId;
+    }
+
+    void UpdateCleanupMilestone(
+        ui64 minCheckpointCommitId,
+        ui64 maxCheckpointCommitId,
+        ui64 proposedNextItemCommitId)
+    {
+        ui64 nextItemCommitId = proposedNextItemCommitId;
+
+        if (minCheckpointCommitId != CleanupMilestone.MinCheckpointCommitId
+                || maxCheckpointCommitId != CleanupMilestone.MaxCheckpointCommitId) {
+            // Checkpoints changed, need to reset milestone.
+            nextItemCommitId = 0;
         }
 
-        ui64 fromCommitId = CleanupAfterCheckpointCommitId;
-        if (checkpointCommitId != CleanupMaxCheckpointCommitId) {
-            CleanupProgressInfo.BlobCountToCleanupAfterCheckpoint = 0;
-            CleanupProgressInfo.BlobCountToCleanupAfterCheckpointCommitId = 0;
-            fromCommitId = checkpointCommitId;
+        if (maxCheckpointCommitId == 0 || minCheckpointCommitId == InvalidCommitId || maxCheckpointCommitId == InvalidCommitId) {
+            // No checkpoints, milestone should be zero.
+            nextItemCommitId = 0;
         }
 
-        if (commitId < CleanupProgressInfo.BlobCountToCleanupAfterCheckpointCommitId
-                || CleanupProgressInfo.BlobCountToCleanupAfterCheckpoint < maxBlobs)
-        {
-            CleanupProgressInfo.BlobCountToCleanupAfterCheckpoint =
-                CleanupQueue.GetCount(fromCommitId, commitId);
-            CleanupProgressInfo.BlobCountToCleanupAfterCheckpointCommitId = commitId;
-        }
-
-        return CleanupProgressInfo.BlobCountToCleanupAfterCheckpoint;
+        CleanupMilestone.MinCheckpointCommitId = minCheckpointCommitId;
+        CleanupMilestone.MaxCheckpointCommitId = maxCheckpointCommitId;
+        CleanupMilestone.NextItemCommitId = nextItemCommitId;
     }
 
-    ui64 GetCleanupAfterCheckpointCommitId() const
+    void ResetCleanupMilestoneIfNeeded(
+        ui64 minCheckpointCommitId,
+        ui64 maxCheckpointCommitId)
     {
-        return CleanupAfterCheckpointCommitId;
+        UpdateCleanupMilestone(
+            minCheckpointCommitId,
+            maxCheckpointCommitId,
+            CleanupMilestone.NextItemCommitId);
     }
 
-    void SetCleanupAfterCheckpointCommitId(ui64 commitId)
-    {
-        CleanupAfterCheckpointCommitId = commitId;
-    }
-
-    ui64 GetCleanupMaxCheckpointCommitId() const
-    {
-        return CleanupMaxCheckpointCommitId;
-    }
-
-    void SetCleanupMaxCheckpointCommitId(ui64 commitId)
-    {
-        CleanupMaxCheckpointCommitId = commitId;
-    }
-
-    void RemoveCleanupQueueItem(const TCleanupQueueItem& item, bool afterCheckpoint=false)
+    void RemoveCleanupQueueItem(const TCleanupQueueItem& item)
     {
         bool removed = CleanupQueue.Remove(item);
         Y_ABORT_UNLESS(removed);
 
-        if (!afterCheckpoint) {
-            // BlobCountToCleanup is not perfectly synchronized with CleanupQueue:
-            // it can actually be smaller
-            if (CleanupProgressInfo.BlobCountToCleanup) {
-                --CleanupProgressInfo.BlobCountToCleanup;
-            }
-        } else {
-            // BlobCountToCleanupAfterCheckpoint is not perfectly synchronized with CleanupQueue:
-            // it can actually be smaller
-            if (CleanupProgressInfo.BlobCountToCleanupAfterCheckpoint) {
-                --CleanupProgressInfo.BlobCountToCleanupAfterCheckpoint;
-            }
+        if (BlobCountToCleanupEstimate.BlobCount) {
+            --BlobCountToCleanupEstimate.BlobCount;
         }
     }
 

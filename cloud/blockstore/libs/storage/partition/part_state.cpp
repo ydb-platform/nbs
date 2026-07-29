@@ -136,13 +136,15 @@ ui64 TPartitionState::GetCleanupCommitId(bool cleanupWithCheckpoint) const
     // should not cleanup after any barrier
     commitId = Min(commitId, CleanupQueue.GetMinCommitId() - 1);
 
-    if (!cleanupWithCheckpoint) {
-        // should not cleanup after any checkpoint
-        commitId =
-            Min(commitId, GetCheckpoints().GetMinCommitId() - 1);
-
-        commitId = Min(commitId, GetCheckpointsInFlight()->GetMinCommitId() - 1);
+    if (cleanupWithCheckpoint) {
+        return commitId;
     }
+
+    // should not cleanup after any checkpoint
+    commitId =
+        Min(commitId, GetCheckpoints().GetMinCommitId() - 1);
+
+    commitId = Min(commitId, GetCheckpointsInFlight()->GetMinCommitId() - 1);
 
     return commitId;
 }
