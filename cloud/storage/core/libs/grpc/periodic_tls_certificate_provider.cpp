@@ -13,6 +13,7 @@
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 
+#include <util/digest/city.h>
 #include <util/folder/dirut.h>
 #include <util/generic/yexception.h>
 #include <util/system/mutex.h>
@@ -28,6 +29,15 @@ namespace {
 
 using grpc_core::PemKeyCertPairList;
 using grpc_core::RefCountedPtr;
+
+////////////////////////////////////////////////////////////////////////////////
+
+ui64 RootCaFingerprint(TStringBuf rootCa)
+{
+    // Dynamic counters export gauges as double. Keep only 53 bits to avoid
+    // precision loss while preserving a high-quality fingerprint.
+    return CityHash64(rootCa) & ((1ULL << 53) - 1);
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -123,6 +133,7 @@ class TPeriodicCertificateProvider final
     NTlsUtils::TRootCaPair RootCaPair;
     TVector<NTlsUtils::TCertificatePair> Certificates;
     TVector<NMonitoring::TDynamicCountersPtr> CertificateMetrics;
+    NMonitoring::TDynamicCountersPtr RootCaMetrics;
 
     mutable TMutex UpdateMutex;
     std::atomic<bool> Started = false;
@@ -238,6 +249,11 @@ public:
             CertificateMetrics[i] = std::move(certMetrics);
         }
 
+        if (tlsMetricsGroup && RootCaPair.RootCaPath) {
+            RootCaMetrics = tlsMetricsGroup
+                ->GetSubgroup("cert", GetBaseName(RootCaPair.RootCaPath));
+        }
+
         RefreshCertificates();
 
         ScheduleUpdateAt(TInstant::Now() + RefreshInterval, true);
@@ -335,8 +351,12 @@ private:
         const TString oldRootCa = RootCaPair.RootCa;
         auto result = NTlsUtils::UpdateCertificates(certPairs, RootCaPair, Log);
         RootCaPair.RootCa = result.RootCa.GetOrElse(oldRootCa);
-
         const bool rootChanged = oldRootCa != RootCaPair.RootCa;
+
+        if (RootCaMetrics) {
+            const ui64 fingerprint = RootCaFingerprint(RootCaPair.RootCa);
+            *RootCaMetrics->GetCounter("Fingerprint", false) = fingerprint;
+        }
 
         PemKeyCertPairList identityPairs;
         for (size_t i = 0; i < Certificates.size(); ++i) {
