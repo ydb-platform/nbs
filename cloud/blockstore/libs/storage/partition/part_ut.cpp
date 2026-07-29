@@ -4024,8 +4024,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
-    // TODO:_ distinguish max and min checkpoint id in test?
-    Y_UNIT_TEST(ShouldCleanupAndCompactWithCheckpointWhenCleanupWithCheckpointEnabled)
+    Y_UNIT_TEST(ShouldCleanupWithCheckpointWhenCleanupWithCheckpointEnabled)
     {
         auto config = DefaultConfig();
         config.SetCleanupWithCheckpoint(true);
@@ -4045,15 +4044,13 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         partition.WriteBlocks(TBlockRange32::WithLength(0, MaxBlocksCount), 2);
         partition.Compaction();
 
-        ui64 cleanupQueueBytesAfterFirstCompaction = 0;
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
             UNIT_ASSERT_VALUES_EQUAL(3, stats.GetMergedBlobsCount());
-            UNIT_ASSERT_GT(stats.GetCleanupQueueBytes(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(2 * MaxBlocksCount * DefaultBlockSize, stats.GetCleanupQueueBytes());
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetGarbageQueueSize());
-            cleanupQueueBytesAfterFirstCompaction = stats.GetCleanupQueueBytes();
         }
 
         UNIT_ASSERT_VALUES_EQUAL(
@@ -4063,7 +4060,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         // Advance commit id so blobs enqueued by the first compaction have
         // deletion commit ids strictly below the checkpoint bound used by
         // CleanupWithCheckpoint.
-        // TODO:_ is this comment correct?
         partition.WriteBlocks(0, 2);
 
         // 2. Create a checkpoint that must keep seeing content "2".
@@ -4082,10 +4078,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(5, stats.GetMergedBlobsCount());
             // Cleanup queue grew: pre-checkpoint leftovers remain and new
             // pre/post-checkpoint blobs from the second compaction were added.
-            // TODO:_ check more carefully?
-            UNIT_ASSERT_GT(
-                stats.GetCleanupQueueBytes(),
-                cleanupQueueBytesAfterFirstCompaction);
+            UNIT_ASSERT_VALUES_EQUAL(4 * MaxBlocksCount * DefaultBlockSize, stats.GetCleanupQueueBytes());
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetGarbageQueueSize());
         }
 
@@ -4101,7 +4094,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
             // Current compacted blob + checkpoint-protected blob.
             UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedBlobsCount());
-            UNIT_ASSERT_GT(stats.GetCleanupQueueBytes(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(MaxBlocksCount * DefaultBlockSize, stats.GetCleanupQueueBytes());
             UNIT_ASSERT_VALUES_EQUAL(3, stats.GetGarbageQueueSize());
         }
 

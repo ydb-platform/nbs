@@ -61,14 +61,8 @@ struct TCleanupQueue::TImpl
         if (maxCommitId == InvalidCommitId) {
             return Items.size();
         }
-        size_t result = 0;
-        for (const auto& item: Items) {
-            if (item.CommitId > maxCommitId) {
-                break;
-            }
-            ++result;
-        }
-        return result;
+
+        return GetCount(0, maxCommitId);
     }
 
     size_t GetCount(ui64 minCommitId, ui64 maxCommitId) const
@@ -91,17 +85,7 @@ struct TCleanupQueue::TImpl
 
     TVector<TCleanupQueueItem> GetItems(ui64 maxCommitId, size_t limit) const
     {
-        TVector<TCleanupQueueItem> result;
-        for (const auto& item: Items) {
-            if (item.CommitId > maxCommitId) {
-                break;
-            }
-            result.emplace_back(item);
-            if (result.size() == limit) {
-                break;
-            }
-        }
-        return result;
+        return GetItems(0, maxCommitId, limit);
     }
 
     TVector<TCleanupQueueItem> GetItems(

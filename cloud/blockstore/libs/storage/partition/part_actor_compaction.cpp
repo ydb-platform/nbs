@@ -1459,14 +1459,7 @@ private:
             return std::nullopt;
         }
 
-        const bool cleanupWithCheckpoint =
-            Config->GetCleanupWithCheckpoint() ||
-            Config->IsCleanupWithCheckpointFeatureEnabled(
-                State.GetConfig().GetCloudId(),
-                State.GetConfig().GetFolderId(),
-                State.GetConfig().GetDiskId());
-
-        if (!cleanupWithCheckpoint && !State.GetCheckpoints().IsEmpty())
+        if (!State.GetCheckpoints().IsEmpty())
         {
             // Should not compact. Compaction produces more garbage, but garbage
             // is not collected while a checkpoint exists, and we don't want the
