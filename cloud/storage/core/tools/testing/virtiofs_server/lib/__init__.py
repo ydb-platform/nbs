@@ -31,7 +31,11 @@ class VirtioFsServer:
         return self.virtiofs_server
 
     def start(self, output_path, tag):
-        cmd = [self.virtiofs_server_binary, "--socket-path={}".format(self.socket_path), "-o", "source={}".format(self.fspath)]
+        cmd = [
+            self.virtiofs_server_binary,
+            "--socket-path", self.socket_path,
+            "--shared-dir", self.fspath,
+        ]
 
         self.virtiofs_server = Daemon(
             cmd,
