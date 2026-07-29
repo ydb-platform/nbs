@@ -25,6 +25,7 @@ private:
         ui64 TotalBlocksCount = 0;
         ui64 UsedNodesCount = 0;
     };
+
     struct TNodeRow
     {
         TString ShardId;

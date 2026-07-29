@@ -232,15 +232,11 @@ private:
             const TNodeAccessStats& lhs,
             const TNodeAccessStats& rhs) const
         {
-            const TInstant now = TInstant::Now();
-            const double lhsScore = DecayedScore(lhs, now);
-            const double rhsScore = DecayedScore(rhs, now);
+            const auto comparisonTime = Max(lhs.LastAccessed, rhs.LastAccessed);
+            const double lhsScore = DecayedScore(lhs, comparisonTime);
+            const double rhsScore = DecayedScore(rhs, comparisonTime);
 
-            if (lhsScore != rhsScore) {
-                return lhsScore < rhsScore;
-            }
-
-            return lhs.NodeId < rhs.NodeId;
+            return lhsScore <= rhsScore;
         }
     };
 
