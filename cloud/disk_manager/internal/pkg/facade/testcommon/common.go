@@ -28,6 +28,7 @@ import (
 	nfs_testing "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs/testing"
 	filesystem_scrubbing "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing"
 	filesystem_snapshot "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot"
+	filesystem_snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot/storage"
 	snapshot_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/config"
 	snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/headers"
@@ -657,6 +658,38 @@ func newResourceStorage(ctx context.Context) (resources.Storage, error) {
 	return resourcesStorage, err
 }
 
+func newFilesystemSnapshotStorage(
+	ctx context.Context,
+) (filesystem_snapshot_storage.Storage, error) {
+
+	endpoint := fmt.Sprintf(
+		"localhost:%v",
+		os.Getenv("DISK_MANAGER_RECIPE_YDB_PORT"),
+	)
+	database := "/Root"
+	// Should be in sync with FilesystemConfig.PersistenceConfig in test recipe.
+	rootPath := "disk_manager/recipe/filesystem"
+
+	db, err := persistence.NewYDBClient(
+		ctx,
+		&persistence_config.PersistenceConfig{
+			Endpoint: &endpoint,
+			Database: &database,
+			RootPath: &rootPath,
+		},
+		metrics.NewEmptyRegistry(),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Should be in sync with FilesystemSnapshotConfig.NodesStorageFolder.
+	return filesystem_snapshot_storage.NewStorage(
+		db,
+		"filesystem/snapshot/nodes",
+	), nil
+}
+
 func newPoolStorage(ctx context.Context) (pools_storage.Storage, error) {
 	db, err := newYDB(ctx)
 	if err != nil {
@@ -945,6 +978,32 @@ func GetSnapshotMeta(
 	}
 
 	return storage.GetSnapshotMeta(ctx, snapshotID)
+}
+
+func GetFilesystemSnapshotMeta(
+	ctx context.Context,
+	snapshotID string,
+) (*resources.FilesystemSnapshotMeta, error) {
+
+	storage, err := newResourceStorage(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return storage.GetFilesystemSnapshotMeta(ctx, snapshotID)
+}
+
+func GetDataplaneFilesystemSnapshotMeta(
+	ctx context.Context,
+	snapshotID string,
+) (*filesystem_snapshot_storage.FilesystemSnapshotMeta, error) {
+
+	storage, err := newFilesystemSnapshotStorage(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return storage.GetFilesystemSnapshotMeta(ctx, snapshotID)
 }
 
 func UpdateClusterCapacities(

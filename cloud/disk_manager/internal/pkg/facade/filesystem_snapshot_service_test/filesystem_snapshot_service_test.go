@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
@@ -47,6 +48,69 @@ func createFilesystem(
 	require.NotEmpty(t, operation)
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
+}
+
+func waitForFilesystemSnapshotCreationStarted(
+	t *testing.T,
+	ctx context.Context,
+	snapshotID string,
+) {
+
+	require.Eventually(t, func() bool {
+		meta, err := testcommon.GetFilesystemSnapshotMeta(ctx, snapshotID)
+		if err != nil || meta == nil {
+			return false
+		}
+
+		dataplaneMeta, err :=
+			testcommon.GetDataplaneFilesystemSnapshotMeta(ctx, snapshotID)
+		return err == nil && dataplaneMeta != nil
+	}, 30*time.Second, 100*time.Millisecond)
+}
+
+func waitForFilesystemSnapshotDeleted(
+	t *testing.T,
+	ctx context.Context,
+	snapshotID string,
+) {
+
+	require.Eventually(t, func() bool {
+		meta, err := testcommon.GetFilesystemSnapshotMeta(ctx, snapshotID)
+		if err != nil || meta == nil || meta.Status != "deleted" {
+			return false
+		}
+
+		dataplaneMeta, err :=
+			testcommon.GetDataplaneFilesystemSnapshotMeta(ctx, snapshotID)
+		return err == nil &&
+			dataplaneMeta != nil &&
+			dataplaneMeta.Status == "deleting"
+	}, 60*time.Second, 100*time.Millisecond)
+}
+
+func startFilesystemSnapshotCreation(
+	t *testing.T,
+	ctx context.Context,
+	client sdk_client.Client,
+	filesystemID string,
+	snapshotID string,
+) *disk_manager.Operation {
+
+	operation, err := client.CreateFilesystemSnapshot(
+		testcommon.GetRequestContext(t, ctx),
+		&disk_manager.CreateFilesystemSnapshotRequest{
+			Src: &disk_manager.FilesystemId{
+				ZoneId:       "zone-a",
+				FilesystemId: filesystemID,
+			},
+			FilesystemSnapshotId: snapshotID,
+			FolderId:             "folder",
+		},
+	)
+	require.NoError(t, err)
+	require.NotNil(t, operation)
+	waitForFilesystemSnapshotCreationStarted(t, ctx, snapshotID)
+	return operation
 }
 
 func copyFilesystemThroughSnapshot(
@@ -231,6 +295,81 @@ func TestCreateFilesystemSnapshot(t *testing.T) {
 	require.NotNil(t, operation)
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
+}
+
+func TestCancelFilesystemSnapshotCreationDeletesSnapshot(t *testing.T) {
+	ctx := testcommon.NewContext()
+
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	nfsClient := testcommon.NewNfsTestingClient(t, ctx, "zone-a")
+	defer nfsClient.Close()
+
+	filesystemID := t.Name() + "_filesystem"
+	snapshotID := t.Name() + "_snapshot"
+
+	createFilesystem(t, ctx, client, filesystemID)
+	defer func() {
+		err := nfsClient.Delete(ctx, filesystemID, true)
+		require.NoError(t, err)
+	}()
+
+	nfsClient.FillFilesystemWithDefaultTree(ctx, filesystemID, 5, 1000, 1)
+	operation := startFilesystemSnapshotCreation(
+		t,
+		ctx,
+		client,
+		filesystemID,
+		snapshotID,
+	)
+
+	testcommon.CancelOperation(t, ctx, client, operation.Id)
+	testcommon.WaitOperationEnded(t, ctx, operation.Id, 60*time.Second)
+
+	waitForFilesystemSnapshotDeleted(t, ctx, snapshotID)
+}
+
+func TestDeleteFilesystemDuringSnapshotCreationDeletesSnapshot(t *testing.T) {
+	ctx := testcommon.NewContext()
+
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	nfsClient := testcommon.NewNfsTestingClient(t, ctx, "zone-a")
+	defer nfsClient.Close()
+
+	filesystemID := t.Name() + "_filesystem"
+	snapshotID := t.Name() + "_snapshot"
+
+	createFilesystem(t, ctx, client, filesystemID)
+	nfsClient.FillFilesystemWithDefaultTree(ctx, filesystemID, 5, 1000, 1)
+	snapshotOperation := startFilesystemSnapshotCreation(
+		t,
+		ctx,
+		client,
+		filesystemID,
+		snapshotID,
+	)
+
+	operation, err := client.DeleteFilesystem(
+		testcommon.GetRequestContext(t, ctx),
+		&disk_manager.DeleteFilesystemRequest{
+			FilesystemId: &disk_manager.FilesystemId{
+				ZoneId:       "zone-a",
+				FilesystemId: filesystemID,
+			},
+		},
+	)
+	require.NoError(t, err)
+	require.NotNil(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	testcommon.WaitOperationEnded(t, ctx, snapshotOperation.Id, 60*time.Second)
+	waitForFilesystemSnapshotDeleted(t, ctx, snapshotID)
 }
 
 func TestFilesystemSnapshotLargeDirectoryTree(t *testing.T) {

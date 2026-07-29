@@ -22,6 +22,7 @@ type FilesystemSnapshotMeta struct {
 	LockTaskID  string
 	ChunkCount  uint32
 	Ready       bool
+	Status      string
 }
 
 ////////////////////////////////////////////////////////////////////////////////
