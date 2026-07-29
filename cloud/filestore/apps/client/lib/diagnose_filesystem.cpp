@@ -25,6 +25,7 @@ private:
         ui64 TotalBlocksCount = 0;
         ui64 UsedNodesCount = 0;
     };
+
     struct TNodeRow
     {
         TString ShardId;
@@ -149,24 +150,13 @@ public:
             rows.push_back(std::move(row));
         }
         for (const auto& nodeStats: stats.GetNodeStats()) {
-            nodeRows.push_back({
-                nodeStats.GetShardId(),
-                nodeStats.GetNodeId(),
-                nodeStats.GetRequestCount(),
-                nodeStats.GetAccessScore(),
-                nodeStats.GetLastAccessedTimestampUs()});
+            nodeRows.push_back(
+                {nodeStats.GetShardId(),
+                 nodeStats.GetNodeId(),
+                 nodeStats.GetRequestCount(),
+                 nodeStats.GetAccessScore(),
+                 nodeStats.GetLastAccessedTimestampUs()});
         }
-        Sort(nodeRows, [] (const TNodeRow& l, const TNodeRow& r) {
-            if (l.AccessScore != r.AccessScore) {
-                return l.AccessScore > r.AccessScore;
-            }
-
-            if (l.ShardId != r.ShardId) {
-                return l.ShardId < r.ShardId;
-            }
-
-            return l.NodeId < r.NodeId;
-        });
 
         for (const auto& latencyStats: stats.GetLatencyStats()) {
             NAggregation::TRow<TLatency> row;
@@ -217,6 +207,21 @@ public:
                 const auto rNodeId = FromString<ui64>(r.Labels[0]);
                 return std::tie(rAverage, lNodeId) <
                        std::tie(lAverage, rNodeId);
+            });
+
+        Sort(
+            nodeRows,
+            [](const TNodeRow& l, const TNodeRow& r)
+            {
+                if (l.AccessScore != r.AccessScore) {
+                    return l.AccessScore > r.AccessScore;
+                }
+
+                if (l.ShardId != r.ShardId) {
+                    return l.ShardId < r.ShardId;
+                }
+
+                return l.NodeId < r.NodeId;
             });
 
         auto totalLatencyComparator =
