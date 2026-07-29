@@ -376,8 +376,8 @@ auto InitTestActorRuntime(
 void InitLogSettings(TTestActorRuntime& runtime)
 {
     for (ui32 i = TBlockStoreComponents::START; i < TBlockStoreComponents::END; ++i) {
-        runtime.SetLogPriority(i, NLog::PRI_INFO);
-        // runtime.SetLogPriority(i, NLog::PRI_DEBUG);
+        // runtime.SetLogPriority(i, NLog::PRI_INFO);
+        runtime.SetLogPriority(i, NLog::PRI_DEBUG);
     }
     // runtime.SetLogPriority(NLog::InvalidComponent, NLog::PRI_DEBUG);
     runtime.SetLogPriority(NKikimrServices::BS_NODE, NLog::PRI_ERROR);
@@ -13025,6 +13025,80 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         runtime->DispatchEvents({}, TDuration::Seconds(1));
 
         UNIT_ASSERT_GE(rangesLoaded, rangeCount);
+    }
+
+    Y_UNIT_TEST(ShouldLoadMixedBlocksFilterByCompactionRanges)
+    {
+        constexpr ui32 rangeSize = 1024;
+
+        auto config = DefaultConfig();
+        config.SetMixedIndexBlocksFilterEnabled(true);
+        config.SetMixedIndexBlocksFilterRangesPerTx(2);
+
+        auto runtime = PrepareTestActorRuntime(config, 5 * rangeSize);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 1), 1);
+        partition.WriteBlocks(TBlockRange32::WithLength(4 * rangeSize, 1), 2);
+        partition.Flush();
+
+        TVector<TBlockRange32> ranges;
+        // runtime->SetEventFilter(
+        //     [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+        //     {
+        //         if (event->GetTypeRewrite() ==
+        //             TEvPartitionPrivate::EvLoadMixedBlocksFilterChunkRequest)
+        //         {
+        //             Cerr
+        //                 << "LoadMixedBlocksFilterChunkRequest, range: "
+        //                 << event
+        //                        ->Get<TEvPartitionPrivate::
+        //                                  TEvLoadMixedBlocksFilterChunkRequest>()
+        //                        ->Range.Print()
+        //                 << Endl;
+        //             auto* msg = event->Get<TEvPartitionPrivate::
+        //                 TEvLoadMixedBlocksFilterChunkRequest>();
+        //             ranges.push_back(msg->Range);
+        //         }
+        //         return false;
+        //     });
+
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                Cerr << "Event: " << event->GetTypeName() << Endl;
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionPrivate::EvLoadMixedBlocksFilterChunkRequest)
+                {
+                    Cerr
+                        << "LoadMixedBlocksFilterChunkRequest, range: "
+                        << event
+                               ->Get<TEvPartitionPrivate::
+                                         TEvLoadMixedBlocksFilterChunkRequest>()
+                               ->Range.Print()
+                        << Endl;
+                    auto* msg =
+                        event->Get<TEvPartitionPrivate::
+                                       TEvLoadMixedBlocksFilterChunkRequest>();
+                    ranges.push_back(msg->Range);
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        partition.RebootTablet();
+        partition.WaitReady();
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(3, ranges.size());
+        UNIT_ASSERT_VALUES_EQUAL(0, ranges[0].Start);
+        UNIT_ASSERT_VALUES_EQUAL(2, ranges[0].Size());
+        UNIT_ASSERT_VALUES_EQUAL(2, ranges[1].Start);
+        UNIT_ASSERT_VALUES_EQUAL(2, ranges[1].Size());
+        UNIT_ASSERT_VALUES_EQUAL(4, ranges[2].Start);
+        UNIT_ASSERT_VALUES_EQUAL(2, ranges[2].Size());
     }
 
     Y_UNIT_TEST(ShouldRejectWriteIfCompactionMapIsNotLoaded1)

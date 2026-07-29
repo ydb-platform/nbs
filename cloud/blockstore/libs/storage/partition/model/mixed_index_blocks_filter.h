@@ -53,6 +53,8 @@ public:
     void UpdateRangeCommitId(ui32 rangeIndex, ui64 commitId);
 
     [[nodiscard]] ui64 GetMemoryUsage() const;
+
+    [[nodiscard]] bool IsRangeInitialized(ui32 rangeIndex) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

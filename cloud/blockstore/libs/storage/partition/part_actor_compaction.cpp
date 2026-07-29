@@ -2144,10 +2144,7 @@ bool TPartitionActor::PrepareCompaction(
             ? Config->GetMaxSkippedBlobsDuringCompaction()
             : Config->GetMaxSkippedBlobsDuringCompactionHDD();
     const bool mixedIndexBlocksFilterEnabled =
-            Config->IsMixedIndexBlocksFilterFeatureEnabled(
-                State->GetConfig().GetCloudId(),
-                State->GetConfig().GetFolderId(),
-                State->GetConfig().GetDiskId());
+        IsMixedIndexBlocksFilterEnabled();
 
     bool ready = true;
 

@@ -2,7 +2,6 @@
 
 #include "public.h"
 
-#include "cloud/blockstore/libs/storage/partition/model/mixed_index_blocks_filter.h"
 #include "part_counters.h"
 #include "part_database.h"
 #include "part_schema.h"
@@ -11,6 +10,7 @@
 #include <cloud/blockstore/libs/diagnostics/downtime_history.h>
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/core/bs_group_operation_tracker.h>
+#include <cloud/blockstore/libs/storage/core/channel_permissions.h>
 #include <cloud/blockstore/libs/storage/core/compaction_map.h>
 #include <cloud/blockstore/libs/storage/core/compaction_type.h>
 #include <cloud/blockstore/libs/storage/core/request_buffer.h>
@@ -18,13 +18,14 @@
 #include <cloud/blockstore/libs/storage/core/ts_ring_buffer.h>
 #include <cloud/blockstore/libs/storage/core/write_buffer_request.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
-#include <cloud/blockstore/libs/storage/core/channel_permissions.h>
 #include <cloud/blockstore/libs/storage/partition/model/blob_to_confirm.h>
 #include <cloud/blockstore/libs/storage/partition/model/block_index.h>
 #include <cloud/blockstore/libs/storage/partition/model/checkpoint.h>
 #include <cloud/blockstore/libs/storage/partition/model/cleanup_queue.h>
 #include <cloud/blockstore/libs/storage/partition/model/commit_queue.h>
 #include <cloud/blockstore/libs/storage/partition/model/garbage_queue.h>
+#include <cloud/blockstore/libs/storage/partition/model/mixed_index_blocks_filter.h>
+#include <cloud/blockstore/libs/storage/partition/model/mixed_index_blocks_filter_load_state.h>
 #include <cloud/blockstore/libs/storage/partition/model/mixed_index_cache.h>
 #include <cloud/blockstore/libs/storage/partition/model/operation_status.h>
 #include <cloud/blockstore/libs/storage/partition/model/part_counters_wrapper.h>
@@ -317,7 +318,9 @@ public:
         ui32 maxBlobsPerUnit,
         ui32 maxBLobsPerRange,
         ui32 compactionRangeCountPerRun,
-        TPartitionThreadSafeStatePtr threadSafeState);
+        TPartitionThreadSafeStatePtr threadSafeState,
+        ui32 mixedIndexBlocksFilterRangesPerTx,
+        TDuration mixedIndexBlocksFilterMaxCpuTimeSpentDuringLoad);
 
 private:
     bool LoadStateFinished = false;
@@ -559,6 +562,7 @@ private:
     TProfilingAllocator MixedIndexCacheAllocator;
     TMixedIndexCache MixedIndexCache;
     TMixedBlocksFilter MixedBlocksFilter;
+    TMixedIndexBlocksFilterLoadState MixedIndexBlocksFilterLoadState;
     ui64 FilterFalsePositives = 0;
 
 public:
@@ -591,6 +595,16 @@ public:
     const TMixedBlocksFilter& GetMixedBlocksFilter() const
     {
         return MixedBlocksFilter;
+    }
+
+    TMixedIndexBlocksFilterLoadState& AccessMixedIndexBlocksFilterLoadState()
+    {
+        return MixedIndexBlocksFilterLoadState;
+    }
+
+    const TMixedIndexBlocksFilterLoadState& GetMixedIndexBlocksFilterLoadState() const
+    {
+        return MixedIndexBlocksFilterLoadState;
     }
 
     ui64 TakeMixedBlocksFilterFalsePositives()

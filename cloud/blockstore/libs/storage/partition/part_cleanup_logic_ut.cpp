@@ -81,7 +81,10 @@ TPartitionState MakeState(size_t blockCount = 2048)
         100,           // maxBlobsPerUnit
         10,            // maxBlobsPerRange
         1,             // compactionRangeCountPerRun
-        std::move(threadSafeState));
+        std::move(threadSafeState),
+        1000,                   // mixedIndexBlocksFilterRangesPerTx
+        TDuration::MilliSeconds(
+            50));   // mixedIndexBlocksFilterMaxCpuTimeSpentDuringLoad
 }
 
 NProto::TBlobMeta MakeMixedBlobMeta(

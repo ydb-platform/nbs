@@ -114,4 +114,9 @@ ui64 TMixedBlocksFilter::GetMemoryUsage() const
            (CommitIdsPerRange.size() * sizeof(std::optional<ui64>));
 }
 
+bool TMixedBlocksFilter::IsRangeInitialized(ui32 rangeIndex) const
+{
+    return CommitIdsPerRange[rangeIndex].has_value();
+}
+
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

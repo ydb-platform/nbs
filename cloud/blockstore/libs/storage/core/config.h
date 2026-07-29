@@ -870,6 +870,13 @@ public:
     [[nodiscard]] bool GetUseRecreatedBlobMetasOnCleanup() const;
 
     [[nodiscard]] bool GetAllowGentlePreemptionForRebindVolumesAction() const;
+
+    [[nodiscard]] bool GetMixedIndexBlocksFilterEnabled() const;
+
+    [[nodiscard]] ui32 GetMixedIndexBlocksFilterRangesPerTx() const;
+
+    [[nodiscard]] TDuration
+    GetMixedIndexBlocksFilterMaxCpuTimeSpentDuringLoad() const;
 };
 
 ui64 GetAllocationUnit(

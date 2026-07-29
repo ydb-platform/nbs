@@ -494,6 +494,7 @@ private:
     [[nodiscard]] bool IsVerifyRecreatedBlobMetasOnCleanupEnabled() const;
     [[nodiscard]] bool IsUseRecreatedBlobMetasOnCleanupEnabled() const;
     [[nodiscard]] bool IsDynamicGarbageCompactionThrottlingEnabled() const;
+    [[nodiscard]] bool IsMixedIndexBlocksFilterEnabled() const;
 
     void ProcessStorageStatusFlags(
         const NActors::TActorContext& ctx,
@@ -775,6 +776,13 @@ private:
     void LoadNextCompactionMapChunk(const NActors::TActorContext& ctx);
     void HandleLoadCompactionMapChunk(
         const TEvPartitionPrivate::TEvLoadCompactionMapChunkRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void LoadNextMixedBlocksFilterChunkIfNeeded(
+        const NActors::TActorContext& ctx,
+        TDuration cpuTimeSpentDuringLastTx);
+    void HandleLoadMixedBlocksFilterChunk(
+        const TEvPartitionPrivate::TEvLoadMixedBlocksFilterChunkRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleWakeupOnBoot(

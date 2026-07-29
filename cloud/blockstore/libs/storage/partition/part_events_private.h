@@ -811,6 +811,15 @@ struct TEvPartitionPrivate
     };
 
     //
+    // LoadMixedBlocksFilterChunkRequest
+    //
+
+    struct TLoadMixedBlocksFilterChunkRequest
+    {
+        TBlockRange32 Range;
+    };
+
+    //
     // ZeroBlocksCompleted
     //
 
@@ -860,6 +869,7 @@ struct TEvPartitionPrivate
         EvAddConfirmedBlobsCompleted,
         EvConfirmBlobsCompleted,
         EvLoadCompactionMapChunkRequest,
+        EvLoadMixedBlocksFilterChunkRequest,
         EvUpdateResourceMetrics,
 
         EvEnd
@@ -875,6 +885,7 @@ struct TEvPartitionPrivate
     using TEvSendBackpressureReport = TRequestEvent<TEmpty, EvSendBackpressureReport>;
     using TEvProcessWriteQueue = TRequestEvent<TEmpty, EvProcessWriteQueue>;
     using TEvLoadCompactionMapChunkRequest = TRequestEvent<TLoadCompactionMapChunkRequest, EvLoadCompactionMapChunkRequest>;
+    using TEvLoadMixedBlocksFilterChunkRequest = TRequestEvent<TLoadMixedBlocksFilterChunkRequest, EvLoadMixedBlocksFilterChunkRequest>;
 
     using TEvReadBlocksCompleted = TResponseEvent<TReadBlocksCompleted, EvReadBlocksCompleted>;
     using TEvWriteBlocksCompleted = TResponseEvent<TWriteBlocksCompleted, EvWriteBlocksCompleted>;

@@ -1086,6 +1086,15 @@ bool TPartitionActor::IsDynamicGarbageCompactionThrottlingEnabled() const
                PartitionConfig.GetDiskId());
 }
 
+bool TPartitionActor::IsMixedIndexBlocksFilterEnabled() const
+{
+    return Config->GetMixedIndexBlocksFilterEnabled() ||
+           Config->IsMixedIndexBlocksFilterFeatureEnabled(
+               PartitionConfig.GetCloudId(),
+               PartitionConfig.GetFolderId(),
+               PartitionConfig.GetDiskId());
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 STFUNC(TPartitionActor::StateBoot)
@@ -1145,6 +1154,7 @@ STFUNC(TPartitionActor::StateInit)
             TEvPartitionPrivate::TEvConfirmBlobsCompleted,
             HandleConfirmBlobsCompleted);
         HFunc(TEvPartitionPrivate::TEvLoadCompactionMapChunkRequest, HandleLoadCompactionMapChunk);
+        HFunc(TEvPartitionPrivate::TEvLoadMixedBlocksFilterChunkRequest, HandleLoadMixedBlocksFilterChunk);
 
         HFunc(TEvVolume::TEvGetUsedBlocksResponse, HandleGetUsedBlocksResponse);
 
@@ -1225,6 +1235,7 @@ STFUNC(TPartitionActor::StateWork)
         HFunc(TEvPartitionPrivate::TEvAddConfirmedBlobsCompleted, HandleAddConfirmedBlobsCompleted);
         HFunc(TEvPartitionCommonPrivate::TEvDescribeBlocksCompleted, HandleDescribeBlocksCompleted);
         HFunc(TEvPartitionPrivate::TEvLoadCompactionMapChunkRequest, HandleLoadCompactionMapChunk);
+        HFunc(TEvPartitionPrivate::TEvLoadMixedBlocksFilterChunkRequest, HandleLoadMixedBlocksFilterChunk);
         HFunc(
             TEvPartitionCommonPrivate::TEvGetPartCountersRequest,
             HandleGetPartCountersRequest);
@@ -1313,6 +1324,7 @@ STFUNC(TPartitionActor::StateZombie)
         IgnoreFunc(TEvPartitionPrivate::TEvAddConfirmedBlobsCompleted);
         IgnoreFunc(TEvPartitionCommonPrivate::TEvDescribeBlocksCompleted);
         IgnoreFunc(TEvPartitionPrivate::TEvLoadCompactionMapChunkRequest);
+        IgnoreFunc(TEvPartitionPrivate::TEvLoadMixedBlocksFilterChunkRequest);
 
         IgnoreFunc(TEvPartitionPrivate::TEvCleanupResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvCollectGarbageResponse);

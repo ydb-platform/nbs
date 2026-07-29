@@ -63,7 +63,9 @@ TPartitionState::TPartitionState(
         ui32 maxBlobsPerUnit,
         ui32 maxBlobsPerRange,
         ui32 compactionRangeCountPerRun,
-        TPartitionThreadSafeStatePtr threadSafeState)
+        TPartitionThreadSafeStatePtr threadSafeState,
+        ui32 mixedIndexBlocksFilterRangesPerTx,
+        TDuration mixedIndexBlocksFilterMaxCpuTimeSpentDuringLoad)
     : TPartitionChannelsState(
           meta.GetConfig(),
           freeSpaceConfig,
@@ -84,6 +86,10 @@ TPartitionState::TPartitionState(
     , Config(*Meta.MutableConfig())
     , MixedIndexCache(mixedIndexCacheSize, &MixedIndexCacheAllocator)
     , MixedBlocksFilter(GetMaxBlocksInBlob(), Config.GetBlocksCount())
+    , MixedIndexBlocksFilterLoadState(
+          Config.GetBlocksCount() / GetMaxBlocksInBlob(),
+          mixedIndexBlocksFilterRangesPerTx,
+          mixedIndexBlocksFilterMaxCpuTimeSpentDuringLoad)
     , CompactionMap(GetMaxBlocksInBlob(), std::move(compactionPolicy))
     , CompactionScoreHistory(compactionScoreHistorySize)
     , UsedBlocks(Config.GetBlocksCount())

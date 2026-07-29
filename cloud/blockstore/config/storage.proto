@@ -1651,4 +1651,10 @@ message TStorageServiceConfig
     // Applies when EnableDynamicGarbageCompactionThrottling is enabled and disk
     // usage is below ThrottleGarbageCompactionBelowFillPercentage.
     optional uint32 MinGarbageCompactionExecTimePerSecond = 519;
+
+    optional bool MixedIndexBlocksFilterEnabled = 520;
+
+    optional uint32 MixedIndexBlocksFilterRangesPerTx = 521;
+
+    optional uint32 MixedIndexBlocksFilterMaxCpuTimeSpentDuringLoad = 522;
 }
