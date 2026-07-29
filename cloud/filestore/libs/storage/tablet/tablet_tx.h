@@ -543,7 +543,7 @@ struct TTxIndexTablet
         const TString SessionId;
         const ui64 SessionSeqNo;
         const ui32 MaxHandlesPerTx;
-        const bool Continuation;
+        const bool IsContinuation;
         /* const */ NProto::TResetSessionRequest Request;
 
         TNodeSet Nodes;
@@ -554,13 +554,13 @@ struct TTxIndexTablet
                 TString sessionId,
                 ui64 sessionSeqNo,
                 ui32 maxHandlesPerTx,
-                bool continuation,
+                bool isContinuation,
                 NProto::TResetSessionRequest request)
             : RequestInfo(std::move(requestInfo))
             , SessionId(std::move(sessionId))
             , SessionSeqNo(sessionSeqNo)
             , MaxHandlesPerTx(maxHandlesPerTx)
-            , Continuation(continuation)
+            , IsContinuation(isContinuation)
             , Request(std::move(request))
         {}
 

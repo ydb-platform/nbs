@@ -1,5 +1,6 @@
 #include "tablet.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
 
@@ -592,6 +593,14 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
             NActors::TDispatchOptions{
                 .CustomFinalCondition = [&] { return !heldCommits.empty(); }});
 
+        NMonitoring::TDynamicCountersPtr counters =
+            new NMonitoring::TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto resetSessionInterrupted = counters->GetCounter(
+            "AppCriticalEvents/ResetSessionInterrupted",
+            true);
+        UNIT_ASSERT_VALUES_EQUAL(0, resetSessionInterrupted->Val());
+
         // migration: the session is recovered with a newer seq no while
         // the reset is frozen mid-chain
         tablet.SendCreateSessionRequest("client", "session", "", 1, false);
@@ -614,6 +623,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         UNIT_ASSERT_VALUES_EQUAL(
             E_REJECTED,
             response->Record.GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(1, resetSessionInterrupted->Val());
 
         // batches 1-4 committed => 4 of 10 handles destroyed
         UNIT_ASSERT_VALUES_EQUAL(
@@ -679,6 +689,14 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
             NActors::TDispatchOptions{
                 .CustomFinalCondition = [&] { return !heldCommits.empty(); }});
 
+        NMonitoring::TDynamicCountersPtr counters =
+            new NMonitoring::TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto resetSessionInterrupted = counters->GetCounter(
+            "AppCriticalEvents/ResetSessionInterrupted",
+            true);
+        UNIT_ASSERT_VALUES_EQUAL(0, resetSessionInterrupted->Val());
+
         // the session is destroyed while the reset is frozen mid-chain
         tablet.SendDestroySessionRequest();
         env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
@@ -700,6 +718,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         UNIT_ASSERT_VALUES_EQUAL(
             E_REJECTED,
             response->Record.GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(1, resetSessionInterrupted->Val());
 
         UNIT_ASSERT_VALUES_EQUAL(
             0,

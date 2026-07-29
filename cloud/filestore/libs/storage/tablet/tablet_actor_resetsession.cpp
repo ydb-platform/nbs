@@ -1,6 +1,8 @@
 #include "tablet_actor.h"
 #include "shard_request_actor.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
@@ -63,7 +65,7 @@ void TIndexTabletActor::HandleResetSession(
         sessionId,
         seqNo,
         Config->GetMaxResetSessionHandlesPerTx(),
-        false /* continuation */,
+        false /* isContinuation */,
         std::move(msg->Record));
 }
 
@@ -130,20 +132,28 @@ void TIndexTabletActor::ExecuteTx_ResetSession(
 
     auto* session = FindSession(args.SessionId);
     if (!session) {
-        if (args.Continuation) {
+        if (args.IsContinuation) {
             args.Error = MakeError(
                 E_REJECTED,
                 "session reset interrupted: session destroyed");
+            ReportResetSessionInterrupted(TStringBuilder()
+                << LogTag << " ResetSession s:" << args.SessionId
+                << " n:" << args.SessionSeqNo
+                << " interrupted: session destroyed");
         }
         args.Completed = true;
         return;
     }
 
     if (!CheckSessionForDestroy(session, args.SessionSeqNo)) {
-        if (args.Continuation) {
+        if (args.IsContinuation) {
             args.Error = MakeError(
                 E_REJECTED,
                 "session reset interrupted: session recovered");
+            ReportResetSessionInterrupted(TStringBuilder()
+                << LogTag << " ResetSession s:" << args.SessionId
+                << " n:" << args.SessionSeqNo
+                << " interrupted: session recovered");
         }
         args.Completed = true;
         return;
@@ -221,7 +231,7 @@ void TIndexTabletActor::CompleteTx_ResetSession(
             args.SessionId,
             args.SessionSeqNo,
             args.MaxHandlesPerTx,
-            true /* continuation */,
+            true /* isContinuation */,
             std::move(args.Request));
         return;
     }
