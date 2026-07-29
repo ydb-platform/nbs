@@ -82,7 +82,7 @@ def build_ya_trace(
             "process.exit.code": exit_code,
             "ci.result.code": effective_result_code,
             "ya.trace.file_count": len(traces),
-            "ya.chunk.count": sum(trace.chunk_count for trace in traces),
+            "ya.chunk.count": 0,
         },
         status_code=1 if effective_result_code == 0 else 2,
         status_message=(
@@ -94,8 +94,9 @@ def build_ya_trace(
     result = Trace()
     result.add_span(root, resource=resource, scope_name="ya")
 
+    chunk_count = 0
     for trace_index, ya_trace in enumerate(traces):
-        ya_trace.build_spans(
+        chunk_count += ya_trace.build_spans(
             trace=result,
             trace_id=trace_id,
             root_span_id=root_span_id,
@@ -104,6 +105,7 @@ def build_ya_trace(
             resource=resource,
             trace_index=trace_index,
         )
+    update_span_attributes(root, {"ya.chunk.count": chunk_count})
     if evlog is not None:
         dispatch_span_id, metadata = evlog.build_spans(
             trace=result,
@@ -116,9 +118,10 @@ def build_ya_trace(
         metadata.update(evlog.mark_critical_test_spans(result))
         update_span_attributes(root, metadata)
         if dispatch_span_id:
-            for span in result.spans("ya.chunk"):
-                if span.parent_span_id == root_span_id:
-                    span.parent_span_id = dispatch_span_id
+            for scope_name in ("ya.chunk", "ya.suite"):
+                for span in result.spans(scope_name):
+                    if span.parent_span_id == root_span_id:
+                        span.parent_span_id = dispatch_span_id
     return result
 
 

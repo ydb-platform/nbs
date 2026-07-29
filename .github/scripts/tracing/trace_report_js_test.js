@@ -4,8 +4,8 @@ const assert = require("assert");
 const {
   FIELDS,
   COLLAPSED_SCOPES,
-  RENDER_LIMIT_OPTIONS,
-  INITIAL_RENDER_LIMIT,
+  LOAD_SIZE_OPTIONS,
+  INITIAL_ROW_BUDGET,
   formatDuration,
   childCountLabel,
   isCriticalPathTest,
@@ -13,7 +13,10 @@ const {
   defaultExpanded,
   matchingVisibility,
   flattenTraceRows,
-  renderLimitFromValue,
+  loadSizeFromValue,
+  nextRowLimit,
+  groupLoadPlan,
+  initialGroupLimit,
 } = require("./templates/trace_report.js");
 
 function makeSpan({
@@ -55,17 +58,34 @@ function testDurationFormatting() {
   assert.strictEqual(formatDuration(3_665_000_000_000), "1h 1m 5s");
 }
 
-function testRenderLimitOptions() {
-  assert.deepStrictEqual(RENDER_LIMIT_OPTIONS, [200, 1000, 5000]);
-  assert.strictEqual(INITIAL_RENDER_LIMIT, 200);
-  assert.strictEqual(renderLimitFromValue("200"), 200);
-  assert.strictEqual(renderLimitFromValue("1000"), 1000);
-  assert.strictEqual(renderLimitFromValue("5000"), 5000);
-  assert.strictEqual(
-    renderLimitFromValue("all"),
-    Number.POSITIVE_INFINITY,
-  );
-  assert.strictEqual(renderLimitFromValue("invalid"), 200);
+function testLoadSizesAreProgressiveIncrements() {
+  assert.deepStrictEqual(LOAD_SIZE_OPTIONS, [200, 1000, 5000]);
+  assert.strictEqual(INITIAL_ROW_BUDGET, 200);
+  assert.strictEqual(loadSizeFromValue("200"), 200);
+  assert.strictEqual(loadSizeFromValue("1000"), 1000);
+  assert.strictEqual(loadSizeFromValue("5000"), 5000);
+  assert.strictEqual(loadSizeFromValue("invalid"), 200);
+
+  let rowBudget = INITIAL_ROW_BUDGET;
+  const selectedLoadSize = loadSizeFromValue("1000");
+  assert.strictEqual(rowBudget, 200);
+  rowBudget = nextRowLimit(rowBudget, selectedLoadSize);
+  assert.strictEqual(rowBudget, 1200);
+  rowBudget = nextRowLimit(rowBudget, selectedLoadSize);
+  assert.strictEqual(rowBudget, 2200);
+  rowBudget = nextRowLimit(rowBudget, 5000);
+  assert.strictEqual(rowBudget, 7200);
+  assert.strictEqual(nextRowLimit(6400, 5000, 6500), 6500);
+  assert.deepStrictEqual(groupLoadPlan(200, 6505, 1000), {
+    count: 1000,
+    nextLimit: 1200,
+    remaining: 6305,
+  });
+  assert.deepStrictEqual(groupLoadPlan(6200, 6505, 5000), {
+    count: 305,
+    nextLimit: 6505,
+    remaining: 305,
+  });
 }
 
 function testChildCountsAndCriticalPathMarker() {
@@ -156,9 +176,9 @@ function testSearchIncludesAttributesAndAncestors() {
   assert.deepStrictEqual(spanIndexes(filtered), [0, 1, 2]);
 }
 
-function testPagingAndGlobalLimit() {
+function testGroupEntriesAreLoadedProgressively() {
   const spans = [makeSpan({ id: "root", name: "root" })];
-  for (let index = 0; index < 205; index += 1) {
+  for (let index = 0; index < 6505; index += 1) {
     spans.push(
       makeSpan({
         id: `child-${index}`,
@@ -168,32 +188,120 @@ function testPagingAndGlobalLimit() {
     );
   }
   const hierarchy = buildHierarchy(spans);
-  const paged = flattenTraceRows({
-    sourceSpans: spans,
-    sourceChildren: hierarchy.children,
-    sourceRoots: hierarchy.roots,
-    sourceExpanded: new Set([0]),
-    pageSize: 200,
-    maximumRows: 1000,
-  });
-  assert.strictEqual(spanIndexes(paged).length, 201);
-  assert.deepStrictEqual(paged.items.at(-1), {
-    kind: "more",
-    index: 0,
-    depth: 1,
-    total: 205,
-    shown: 200,
-  });
+  const limits = new Map();
+  let groupLimit = 200;
+  for (const [loadSize, expectedChildren, hasMore] of [
+    [0, 200, true],
+    [1000, 1200, true],
+    [5000, 6200, true],
+    [5000, 6505, false],
+  ]) {
+    if (loadSize) {
+      groupLimit = nextRowLimit(groupLimit, loadSize, 6505);
+      limits.set(0, groupLimit);
+    }
+    const rows = flattenTraceRows({
+      sourceSpans: spans,
+      sourceChildren: hierarchy.children,
+      sourceRoots: hierarchy.roots,
+      sourceExpanded: new Set([0]),
+      sourceLimits: limits,
+      pageSize: 200,
+      maximumRows: 7000,
+    });
+    assert.strictEqual(spanIndexes(rows).length, expectedChildren + 1);
+    assert.strictEqual(
+      rows.items.some((item) => item.kind === "more"),
+      hasMore,
+    );
+  }
+}
 
-  const limited = flattenTraceRows({
+function testExpandedGroupUsesRemainingBudgetAndPreservesSuffix() {
+  const spans = [
+    makeSpan({ id: "workflow", name: "workflow" }),
+    makeSpan({ id: "build", parent: 0, name: "ya make build" }),
+    makeSpan({
+      id: "build-operations",
+      parent: 1,
+      name: "build operations",
+    }),
+  ];
+  const groupIndex = 2;
+  for (let index = 0; index < 6505; index += 1) {
+    spans.push(
+      makeSpan({
+        id: `operation-${index}`,
+        parent: groupIndex,
+        name: `operation ${index}`,
+      }),
+    );
+  }
+  const suffixIndexes = [];
+  for (let index = 0; index < 79; index += 1) {
+    suffixIndexes.push(spans.length);
+    spans.push(
+      makeSpan({
+        id: `next-step-${index}`,
+        parent: 0,
+        name: `next GitHub step ${index}`,
+      }),
+    );
+  }
+
+  const hierarchy = buildHierarchy(spans);
+  const collapsedExpanded = new Set([0, 1]);
+  const collapsed = flattenTraceRows({
     sourceSpans: spans,
     sourceChildren: hierarchy.children,
     sourceRoots: hierarchy.roots,
-    sourceExpanded: new Set([0]),
-    maximumRows: 10,
+    sourceExpanded: collapsedExpanded,
+    maximumRows: INITIAL_ROW_BUDGET,
   });
-  assert.strictEqual(limited.truncated, true);
-  assert.strictEqual(limited.items.length, 10);
+  assert.strictEqual(collapsed.spanRows, 82);
+  assert.strictEqual(collapsed.truncated, false);
+  assert.strictEqual(spanIndexes(collapsed).at(-1), suffixIndexes.at(-1));
+
+  const groupLimit = initialGroupLimit(
+    INITIAL_ROW_BUDGET,
+    collapsed.spanRows,
+    hierarchy.children[groupIndex].length,
+  );
+  assert.strictEqual(groupLimit, 118);
+  const expanded = new Set([...collapsedExpanded, groupIndex]);
+  const initial = flattenTraceRows({
+    sourceSpans: spans,
+    sourceChildren: hierarchy.children,
+    sourceRoots: hierarchy.roots,
+    sourceExpanded: expanded,
+    sourceLimits: new Map([[groupIndex, groupLimit]]),
+    maximumRows: INITIAL_ROW_BUDGET,
+  });
+  assert.strictEqual(initial.spanRows, 200);
+  assert.strictEqual(initial.truncated, false);
+  assert.strictEqual(spanIndexes(initial).at(-1), suffixIndexes.at(-1));
+  assert.strictEqual(
+    initial.items.find((item) => item.kind === "more").shown,
+    118,
+  );
+
+  const load = groupLoadPlan(groupLimit, 6505, 5000);
+  const loaded = flattenTraceRows({
+    sourceSpans: spans,
+    sourceChildren: hierarchy.children,
+    sourceRoots: hierarchy.roots,
+    sourceExpanded: expanded,
+    sourceLimits: new Map([[groupIndex, load.nextLimit]]),
+    maximumRows: nextRowLimit(INITIAL_ROW_BUDGET, load.count),
+  });
+  assert.strictEqual(loaded.spanRows, 5200);
+  assert.strictEqual(loaded.spanRows - initial.spanRows, 5000);
+  assert.strictEqual(loaded.truncated, false);
+  assert.strictEqual(spanIndexes(loaded).at(-1), suffixIndexes.at(-1));
+  assert.strictEqual(
+    loaded.items.find((item) => item.kind === "more").shown,
+    5118,
+  );
 }
 
 function testRenderLimitPreservesSiblingGroups() {
@@ -250,31 +358,33 @@ function testRenderLimitPreservesSiblingGroups() {
   );
 }
 
-function testConfiguredGlobalRowCaps() {
+function testGlobalEntriesAreLoadedProgressively() {
   const spans = [];
   for (let index = 0; index < 6001; index += 1) {
     spans.push(makeSpan({ id: `root-${index}`, name: `root ${index}` }));
   }
   const hierarchy = buildHierarchy(spans);
-  for (const [limit, expected, truncated] of [
-    [200, 200, true],
-    [1000, 1000, true],
-    [5000, 5000, true],
-    [Number.POSITIVE_INFINITY, 6001, false],
+  let rowBudget = INITIAL_ROW_BUDGET;
+  for (const [loadSize, expected, truncated] of [
+    [0, 200, true],
+    [200, 400, true],
+    [1000, 1400, true],
+    [5000, 6001, false],
   ]) {
+    if (loadSize) rowBudget = nextRowLimit(rowBudget, loadSize);
     const rows = flattenTraceRows({
       sourceSpans: spans,
       sourceChildren: hierarchy.children,
       sourceRoots: hierarchy.roots,
       sourceExpanded: new Set(),
-      maximumRows: limit,
+      maximumRows: rowBudget,
     });
     assert.strictEqual(spanIndexes(rows).length, expected);
     assert.strictEqual(rows.truncated, truncated);
   }
 }
 
-function testGlobalLimitIncludesPagingControls() {
+function testPagingControlsDoNotConsumeTheRowBudget() {
   const spans = [makeSpan({ id: "root", name: "root" })];
   for (let index = 0; index < 201; index += 1) {
     spans.push(
@@ -294,8 +404,10 @@ function testGlobalLimitIncludesPagingControls() {
     pageSize: 199,
     maximumRows: 200,
   });
-  assert.strictEqual(rows.items.length, 200);
-  assert.strictEqual(rows.truncated, true);
+  assert.strictEqual(spanIndexes(rows).length, 200);
+  assert.strictEqual(rows.items.length, 201);
+  assert.strictEqual(rows.items.at(-1).kind, "more");
+  assert.strictEqual(rows.truncated, false);
 }
 
 function testCyclesRemainReachable() {
@@ -316,14 +428,15 @@ function testCyclesRemainReachable() {
 
 for (const test of [
   testDurationFormatting,
-  testRenderLimitOptions,
+  testLoadSizesAreProgressiveIncrements,
   testChildCountsAndCriticalPathMarker,
   testCollapsedGroupsAndExpansion,
   testSearchIncludesAttributesAndAncestors,
-  testPagingAndGlobalLimit,
+  testGroupEntriesAreLoadedProgressively,
+  testExpandedGroupUsesRemainingBudgetAndPreservesSuffix,
   testRenderLimitPreservesSiblingGroups,
-  testConfiguredGlobalRowCaps,
-  testGlobalLimitIncludesPagingControls,
+  testGlobalEntriesAreLoadedProgressively,
+  testPagingControlsDoNotConsumeTheRowBudget,
   testCyclesRemainReachable,
 ]) {
   test();

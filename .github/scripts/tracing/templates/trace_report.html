@@ -21,7 +21,7 @@ h1 { margin:.2rem 0 } .muted { color:var(--muted) } .toolbar { position:sticky;
   background:var(--bg) }
 input,button,select { color:inherit; background:var(--panel); border:1px solid var(--line);
   border-radius:6px; padding:.45rem .7rem } input { min-width:20rem }
-.row-limit-control { display:flex; align-items:center; gap:.35rem; color:var(--muted);
+.row-load-control { display:flex; align-items:center; gap:.35rem; color:var(--muted);
   white-space:nowrap }
 .trace { border:1px solid var(--line); border-radius:8px; overflow:hidden }
 .trace-head,.span-row { display:grid; grid-template-columns:minmax(20rem,38%) 7rem 1fr;
@@ -56,6 +56,8 @@ input,button,select { color:inherit; background:var(--panel); border:1px solid v
 .error .span-name { color:var(--bad) }
 .more-row { border-top:1px solid var(--line); padding:.35rem .6rem }
 .more-row button { margin-left:var(--indent) }
+.global-loader { display:flex; align-items:center; gap:.6rem }
+.row-status { min-height:1.5rem; margin:.35rem .6rem }
 .detail-panel { margin:.3rem 0 .8rem; padding:1rem; border:1px solid var(--line);
   border-radius:8px; background:var(--panel); overflow:auto }
 .detail-head { display:flex; align-items:start; justify-content:space-between; gap:1rem }
@@ -95,12 +97,11 @@ th,td { border-bottom:1px solid var(--line); padding:.25rem .5rem; text-align:le
 </details>
 <div class="toolbar">
   <input id="filter" type="search" placeholder="Filter spans or attributes" disabled>
-  <label class="row-limit-control" for="row-limit">Visible rows
-    <select id="row-limit" disabled>
+  <label class="row-load-control" for="row-load-size">Rows per load
+    <select id="row-load-size" disabled>
       <option value="200" selected>200</option>
       <option value="1000">1,000</option>
       <option value="5000">5,000</option>
-      <option value="all">All (may be slow)</option>
     </select>
   </label>
   <button id="expand" type="button" disabled>Expand all</button>
@@ -117,6 +118,11 @@ th,td { border-bottom:1px solid var(--line); padding:.25rem .5rem; text-align:le
 <section class="trace">
   <div class="trace-head"><span>Name</span><span>Duration</span><span>Waterfall</span></div>
   <div id="rows"><p id="loading" class="muted">Loading compressed trace data…</p></div>
+  <div id="row-loader" class="global-loader more-row" hidden>
+    <span class="muted">More rows are available.</span>
+    <button id="load-rows" type="button" aria-controls="rows" disabled>Load next 200 rows</button>
+  </div>
+  <p id="row-status" class="row-status muted" role="status" aria-live="polite"></p>
 </section>
 </main>
 <script id="trace-data" type="application/octet-stream">{{ payload }}</script>

@@ -143,11 +143,16 @@ def test_renderer_marks_error_spans_and_supports_empty_input() -> None:
     assert _trace_model(trace)["s"][0][7] == 2
     report = render_html(trace)
     assert 'id="trace-data"' in report
-    assert '<select id="row-limit" disabled>' in report
+    assert "Rows per load" in report
+    assert '<select id="row-load-size" disabled>' in report
     assert '<option value="200" selected>200</option>' in report
     assert '<option value="1000">1,000</option>' in report
     assert '<option value="5000">5,000</option>' in report
-    assert '<option value="all">All (may be slow)</option>' in report
+    assert 'id="load-rows"' in report
+    assert "Load next 200 rows" in report
+    assert 'id="row-status"' in report
+    assert 'role="status" aria-live="polite"' in report
+    assert "All (may be slow)" not in report
     assert "No spans found" in render_html(Trace())
 
 
@@ -369,7 +374,7 @@ def test_ya_trace_produces_observed_and_inferred_test_spans(
             "value": {
                 "chunk_index": 0,
                 "nchunks": 1,
-                "status": "fail",
+                "errors": [["fail", "one or more tests failed"]],
                 "metrics": {
                     "suite_start_timestamp": 100,
                     "suite_finish_timestamp": 110,
@@ -694,6 +699,7 @@ def test_ya_evlog_adds_phases_and_build_nodes(
     chunk = next(spans.spans("ya.chunk"))
     test = next(spans.spans("ya.test"))
     build_attributes = attributes(build)
+    dispatch_attributes = attributes(phases["dispatch_build"])
     root_attributes = attributes(root)
     chunk_attributes = attributes(chunk)
     test_attributes = attributes(test)
@@ -705,19 +711,17 @@ def test_ya_evlog_adds_phases_and_build_nodes(
     assert build_attributes["ya.build.node.count"] == 4
     assert build_attributes["ya.build.node.cache_store.count"] == 1
     assert build_attributes["ya.build.first_test_node_offset_seconds"] == 5.5
-    assert build_attributes["ya.build.cache.considered_task.hit.ratio"] == 0.75
-    assert build_attributes["ya.build.cache.considered_task.hit.count"] == 3
-    assert build_attributes["ya.build.cache.considered_task.miss.count"] == 1
-    assert build_attributes["ya.build.task.avoided.ratio"] == 0.96
-    assert build_attributes["ya.build.task.reused_or_avoided.ratio"] == 0.99
-    assert build_attributes["ya.build.cache.worker_node.hit.ratio"] == 2 / 3
-    assert build_attributes["ya.build.task.avoided.count"] == 96
-    assert build_attributes["ya.build.dist_cache.get.bytes"] == 1_024
-    assert build_attributes["ya.build.execution.stage.build_only.seconds"] == 3.5
-    assert build_attributes["ya.build.execution.total.seconds"] == 5.5
-    assert build_attributes["ya.build.cache.tool.ar.hit.ratio"] == 1
-    assert build_attributes["ya.build.cache.tool.ar.hit.count"] == 2
-    assert build_attributes["ya.build.cache.tool.cc.hit.ratio"] == 0
+    assert dispatch_attributes["ya.build.cache.considered_task.hit.ratio"] == 0.75
+    assert dispatch_attributes["ya.build.cache.considered_task.hit.count"] == 3
+    assert dispatch_attributes["ya.build.cache.considered_task.miss.count"] == 1
+    assert dispatch_attributes["ya.build.task.avoided.ratio"] == 0.96
+    assert dispatch_attributes["ya.build.task.reused_or_avoided.ratio"] == 0.99
+    assert dispatch_attributes["ya.build.task.avoided.count"] == 96
+    assert dispatch_attributes["ya.build.dist_cache.get.bytes"] == 1_024
+    assert dispatch_attributes["ya.build.execution.stage.build_only.seconds"] == 3.5
+    assert dispatch_attributes["ya.build.execution.total.seconds"] == 5.5
+    assert build_attributes["ya.build.worker.tool.ar.cache_restore.count"] == 2
+    assert build_attributes["ya.build.worker.tool.cc.execute.count"] == 1
     assert build_attributes["ya.build.critical_path.node.count"] == 1
     assert build_attributes["ya.build.critical_path.work.seconds"] == 4
     assert len(nodes) == 3
@@ -728,7 +732,8 @@ def test_ya_evlog_adds_phases_and_build_nodes(
     cached = next(
         span for span in nodes if attributes(span)["ya.build.kind"] == "cache_restore"
     )
-    assert attributes(cached)["ya.build.cache.hit"] is True
+    assert "ya.build.cache.hit" not in attributes(cached)
+    assert attributes(cached)["ya.build.cache.source"] == "local"
     assert attributes(cached)["ya.build.outputs"] == ["library/cached.a"]
     compiled = next(
         span for span in nodes if attributes(span)["ya.build.kind"] == "execute"

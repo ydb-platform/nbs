@@ -238,8 +238,12 @@ def decode_attributes(values: Iterable[KeyValue]) -> dict[str, Any]:
 
 def update_span_attributes(span: Span, values: Mapping[str, Any]) -> None:
     attributes = decode_attributes(span.attributes)
-    attributes.update(values)
-    span.attributes = encode_attributes(attributes)
+    updates = clean_attributes(values)
+    for key in updates:
+        attributes.pop(key, None)
+    retained = dict(list(attributes.items())[: max(0, MAX_ATTRIBUTES - len(updates))])
+    retained.update(updates)
+    span.attributes = encode_attributes(retained)
 
 
 def span_attribute(span: Span, key: str, default: Any = None) -> Any:

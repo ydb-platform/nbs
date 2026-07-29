@@ -45,21 +45,26 @@ MAX_YA_EVLOG_BYTES = 512 * 1024 * 1024
 MAX_YA_EVLOG_LINE_CHARACTERS = 16 * 1024 * 1024
 MAX_YA_EVLOG_EVENTS = 2_000_000
 MAX_BUILD_NODE_SPANS = 50_000
-MAX_CACHE_TOOL_STATS = 24
+MAX_WORKER_TOOL_STATS = 24
 SAFE_METRIC_RE = re.compile(r"[^a-zA-Z0-9_.-]+")
 SAFE_TOOL_RE = re.compile(r"^[a-zA-Z0-9_.+-]{1,32}$")
 BUILD_ROOT_RE = re.compile(r"\$\(BUILD_ROOT\)/([^\s)]+)")
 NODE_UID_RE = re.compile(r"^[^(]+\(([^$()\s]+)\$\(BUILD_ROOT\)")
+OUTPUTLESS_NODE_UID_RE = re.compile(r"^[^(]+\(([^$()\s]+)\)$")
 TAG_WRAPPER_RE = re.compile(
-    r"^(restore|result|put_in_cache|write_through_caches)\[([^\]]+)\]$"
+    r"^(restore|restore_from_dist_cache|result|put_in_cache|"
+    r"put_in_dist_cache|write_through_caches)\[([^\]]+)\]$"
 )
 PASS_STATUSES = {"good", "pass", "passed", "success"}
 ERROR_STATUSES = {
     "crashed",
+    "diff",
     "error",
     "fail",
     "failed",
+    "flaky",
     "internal",
+    "missing",
     "not_launched",
     "timeout",
 }
@@ -74,7 +79,7 @@ RENDERED_STAGE_NAMES = {
 }
 
 
-@dataclass
+@dataclass(slots=True)
 class YaEvent:
     name: str
     timestamp_ns: Ns | None
@@ -85,10 +90,11 @@ class YaEvent:
     def from_raw(cls, raw: Any, order: int) -> YaEvent | None:
         if not isinstance(raw, Mapping):
             return None
-        name = str(raw.get("name", ""))
+        name = str(raw.get("name", "")).replace("_", "-")
         value = raw.get("value", {})
         if name not in {
             "chunk-event",
+            "suite-event",
             "subtest-finished",
             "subtest-started",
         } or not isinstance(value, dict):
@@ -116,10 +122,32 @@ class YaEvent:
         return self.parse_chunk_key(self.value)
 
     @property
+    def chunk_filename(self) -> str:
+        value = self.value.get("chunk_filename")
+        return str(value) if value is not None else ""
+
+    @property
+    def chunk_identity(self) -> tuple[int, int, str] | None:
+        key = self.chunk_key
+        if key is None:
+            return None
+        return key[0], key[1], self.chunk_filename
+
+    @property
     def test_key(self) -> tuple[str, str]:
         test_class = str(self.value.get("class", "unknown")).replace("::", ".")
         subtest = str(self.value.get("subtest", "unknown"))
         return test_class, subtest
+
+    @property
+    def logical_test_key(self) -> tuple[str, str, str, str]:
+        test_class, subtest = self.test_key
+        return (
+            test_class,
+            subtest,
+            str(self.value.get("type") or ""),
+            str(self.value.get("path") or ""),
+        )
 
     @property
     def status(self) -> tuple[str, int]:
@@ -129,6 +157,82 @@ class YaEvent:
         if status in ERROR_STATUSES:
             return status, 2
         return status, 0
+
+    @property
+    def errors(self) -> list[tuple[str, str]]:
+        raw_errors = self.value.get("errors")
+        if not isinstance(raw_errors, list):
+            return []
+        result = []
+        for raw_error in raw_errors:
+            if not isinstance(raw_error, (list, tuple)) or not raw_error:
+                continue
+            status = str(raw_error[0]).lower()
+            message = str(raw_error[1]) if len(raw_error) > 1 else ""
+            result.append((status, message))
+        return result
+
+    @property
+    def failing_errors(self) -> list[tuple[str, str]]:
+        return [
+            (status, message)
+            for status, message in self.errors
+            if status in ERROR_STATUSES
+        ]
+
+    def error_attributes(self, prefix: str) -> dict[str, Any]:
+        errors = self.errors
+        if not errors:
+            return {}
+        return {
+            f"{prefix}.error.count": len(errors),
+            f"{prefix}.error.statuses": [status for status, _ in errors],
+            f"{prefix}.error.messages": [message for _, message in errors],
+        }
+
+    @classmethod
+    def merged(cls, events: Sequence[YaEvent]) -> YaEvent:
+        if not events:
+            raise ValueError("cannot merge an empty event sequence")
+        ordered = sorted(events, key=lambda event: event.order)
+        value: dict[str, Any] = {}
+        merged_mappings: dict[str, dict[str, Any]] = {
+            "logs": {},
+            "metrics": {},
+        }
+        errors: list[list[str]] = []
+        seen_errors: set[tuple[str, str]] = set()
+        for event in ordered:
+            for key, item in event.value.items():
+                if key in merged_mappings and isinstance(item, Mapping):
+                    merged_mappings[key].update(item)
+                elif key == "errors" and isinstance(item, list):
+                    for status, message in event.errors:
+                        error = (status, message)
+                        if error not in seen_errors:
+                            seen_errors.add(error)
+                            errors.append([status, message])
+                else:
+                    value[key] = item
+        for key, item in merged_mappings.items():
+            if item:
+                value[key] = item
+        if errors:
+            value["errors"] = errors
+        timestamp_ns = next(
+            (
+                event.timestamp_ns
+                for event in reversed(ordered)
+                if event.timestamp_ns is not None
+            ),
+            None,
+        )
+        return cls(
+            name=ordered[-1].name,
+            timestamp_ns=timestamp_ns,
+            value=value,
+            order=ordered[-1].order,
+        )
 
     def test_attributes(
         self,
@@ -146,13 +250,24 @@ class YaEvent:
             "test.name": subtest,
             "test.status": status,
         }
+        test_type = str(self.value.get("type") or "")
+        if test_type:
+            attributes["test.type"] = test_type
+        test_path = str(self.value.get("path") or "")
+        if test_path:
+            attributes["test.path"] = test_path
         if inferred:
             attributes["test.timing.inferred"] = True
         if timing_source:
             attributes["test.timing.source"] = timing_source
         if incomplete:
             attributes["test.incomplete"] = True
-        attributes.update(_metric_attributes(self.value.get("metrics")))
+        attributes.update(
+            _metric_attributes(
+                self.value.get("metrics"),
+                prefix="ya.test.metric",
+            )
+        )
         return attributes
 
     @property
@@ -178,7 +293,7 @@ class YaEvent:
         return logs_directory.replace("$(BUILD_ROOT)", "").lstrip("/")
 
 
-@dataclass
+@dataclass(slots=True)
 class YaTraceFile:
     path: Path
     suite: str
@@ -205,27 +320,39 @@ class YaTraceFile:
             if event.name in {"subtest-started", "subtest-finished"}
         ]
         if not chunk_events:
-            return [(None, test_events)]
-        if len(chunk_events) == 1:
-            return [(chunk_events[0], test_events)]
+            return [(None, test_events)] if test_events else []
 
-        records = []
-        assigned_orders = set()
-        for chunk_event in chunk_events:
-            matching = [
-                event
-                for event in test_events
-                if event.chunk_key == chunk_event.chunk_key
-            ]
-            assigned_orders.update(event.order for event in matching)
+        grouped_chunks: dict[
+            tuple[int, int, str] | None,
+            list[YaEvent],
+        ] = {}
+        for event in chunk_events:
+            grouped_chunks.setdefault(event.chunk_identity, []).append(event)
+        grouped_tests: dict[
+            tuple[int, int, str] | None,
+            list[YaEvent],
+        ] = defaultdict(list)
+        for event in test_events:
+            grouped_tests[event.chunk_identity].append(event)
+
+        records: list[tuple[YaEvent | None, list[YaEvent]]] = []
+        for chunk_identity, snapshots in grouped_chunks.items():
+            chunk_event = YaEvent.merged(snapshots)
+            matching = grouped_tests.pop(chunk_identity, [])
+            if len(grouped_chunks) == 1 and chunk_identity is not None:
+                matching.extend(grouped_tests.pop(None, []))
+                matching.sort(key=lambda event: event.order)
             records.append((chunk_event, matching))
 
-        unassigned = [
-            event for event in test_events if event.order not in assigned_orders
-        ]
+        unassigned = [event for events in grouped_tests.values() for event in events]
         if unassigned:
+            unassigned.sort(key=lambda event: event.order)
             records.append((None, unassigned))
         return records
+
+    def suite_event(self) -> YaEvent | None:
+        events = [event for event in self.events if event.name == "suite-event"]
+        return YaEvent.merged(events) if events else None
 
     def finished_test(
         self,
@@ -244,11 +371,15 @@ class YaTraceFile:
 
     def chunk_events(self, chunk_index: int, chunks_total: int) -> list[YaEvent]:
         key = (chunk_index, chunks_total)
-        return [
+        matching = [
             event
             for event in self.events
             if event.name == "chunk-event" and event.chunk_key == key
         ]
+        grouped: dict[str, list[YaEvent]] = {}
+        for event in matching:
+            grouped.setdefault(event.chunk_filename, []).append(event)
+        return [YaEvent.merged(events) for events in grouped.values()]
 
     @property
     def chunk_count(self) -> int:
@@ -270,15 +401,37 @@ class YaTraceFile:
             start_ns = Ns.from_s(metrics.get("suite_start_timestamp"))
             end_ns = Ns.from_s(metrics.get("suite_finish_timestamp"))
             wall_time_ns = Ns.from_s_or_zero(metrics.get("wall_time"))
-            if end_ns is not None and wall_time_ns:
+            if (
+                start_ns is not None
+                and end_ns is not None
+                and wall_time_ns
+                and start_ns % 1_000_000_000 == 0
+                and end_ns % 1_000_000_000 == 0
+                and chunk_event is not None
+                and chunk_event.timestamp_ns is not None
+            ):
+                precise_end_ns = chunk_event.timestamp_ns
+                earliest_end_ns = max(end_ns, start_ns + wall_time_ns)
+                latest_end_ns = min(
+                    end_ns + 1_000_000_000,
+                    start_ns + 1_000_000_000 + wall_time_ns,
+                )
+                if earliest_end_ns < latest_end_ns:
+                    if earliest_end_ns <= precise_end_ns < latest_end_ns:
+                        end_ns = precise_end_ns
+                    else:
+                        end_ns = Ns(earliest_end_ns)
+                    start_ns = Ns(end_ns - wall_time_ns)
+            elif end_ns is not None and start_ns is None and wall_time_ns:
                 start_ns = end_ns - wall_time_ns
-            elif start_ns is not None and wall_time_ns:
+            elif start_ns is not None and end_ns is None and wall_time_ns:
                 end_ns = start_ns + wall_time_ns
 
         timestamps = [
             event.timestamp_ns for event in events if event.timestamp_ns is not None
         ]
-        start_ns = start_ns or (min(timestamps) if timestamps else root_start_ns)
+        if start_ns is None:
+            start_ns = min(timestamps) if timestamps else root_start_ns
         if end_ns is None:
             if chunk_event is not None and chunk_event.timestamp_ns is not None:
                 end_ns = chunk_event.timestamp_ns
@@ -300,53 +453,55 @@ class YaTraceFile:
         identity: str,
         inferred_test_start_ns: Ns | None = None,
     ) -> list[Span]:
-        grouped: dict[tuple[str, str], list[YaEvent]] = defaultdict(list)
+        grouped: dict[tuple[str, str, str, str], list[YaEvent]] = defaultdict(list)
         for event in events:
             if event.name in {"subtest-started", "subtest-finished"}:
-                grouped[event.test_key].append(event)
+                grouped[event.logical_test_key].append(event)
 
         result: list[Span] = []
-        for (test_class, subtest), test_events in sorted(grouped.items()):
-            test_events.sort(
-                key=lambda event: (
-                    event.timestamp_ns is None,
-                    event.timestamp_ns or 0,
-                    event.order,
-                )
+        for (
+            test_class,
+            subtest,
+            test_type,
+            test_path,
+        ), test_events in sorted(grouped.items()):
+            starts = sorted(
+                (event for event in test_events if event.name == "subtest-started"),
+                key=lambda event: event.order,
             )
-            starts = [event for event in test_events if event.name == "subtest-started"]
             finishes = [
                 event for event in test_events if event.name == "subtest-finished"
             ]
-            used_finishes: set[int] = set()
+            finishes.sort(key=lambda event: event.order)
+            start = starts[0] if starts else None
+            finish = None
+            for candidate in finishes:
+                if (
+                    finish is None
+                    or finish.status[0] in {"crashed", "deselected", "not_launched"}
+                    or candidate.status[0] != "deselected"
+                ):
+                    finish = candidate
+            if finish is not None and finish.status[0] in {
+                "deselected",
+                "not_launched",
+            }:
+                start = None
 
-            for start_index, start in enumerate(starts):
-                start_ns = start.timestamp_ns or chunk_start_ns
-                next_start_ns = (
-                    starts[start_index + 1].timestamp_ns
-                    if start_index + 1 < len(starts)
-                    else None
-                )
-                candidates = [
-                    (finish_index, finish)
-                    for finish_index, finish in enumerate(finishes)
-                    if finish_index not in used_finishes
-                    and (finish.timestamp_ns is None or finish.timestamp_ns >= start_ns)
-                    and (
-                        next_start_ns is None
-                        or finish.timestamp_ns is None
-                        or finish.timestamp_ns < next_start_ns
+            if start is not None:
+                start_ns = Ns(
+                    max(
+                        chunk_start_ns,
+                        min(start.timestamp_ns or chunk_start_ns, chunk_end_ns),
                     )
-                ]
-                if candidates:
-                    for finish_index, _ in candidates:
-                        used_finishes.add(finish_index)
-                    _, finish = candidates[-1]
+                )
+                source_order = start.order
+                if finish is not None:
                     duration_ns = Ns.from_s_or_zero(finish.value.get("time"))
                     end_ns = finish.timestamp_ns or min(
                         chunk_end_ns, start_ns + duration_ns
                     )
-                    end_ns = max(start_ns, min(end_ns, chunk_end_ns))
+                    end_ns = Ns(max(start_ns, min(end_ns, chunk_end_ns)))
                     status, status_code = finish.status
                     attributes = finish.test_attributes(
                         test_class,
@@ -356,10 +511,8 @@ class YaTraceFile:
                         ),
                         timing_source="subtest-events",
                     )
-                    source_order = start.order
                 else:
-                    finish = start
-                    end_ns = max(start_ns, chunk_end_ns)
+                    end_ns = chunk_end_ns
                     status = "incomplete"
                     status_code = 2
                     attributes = start.test_attributes(
@@ -369,72 +522,70 @@ class YaTraceFile:
                         timing_source="subtest-start-and-chunk-end",
                         incomplete=True,
                     )
-                    source_order = start.order
-
-                result.append(
-                    make_span(
-                        trace_id=trace_id,
-                        span_id=stable_span_id(
-                            trace_id,
-                            identity,
-                            test_class,
-                            subtest,
-                            source_order,
-                        ),
-                        parent_span_id=chunk_span_id,
-                        name=f"{test_class}::{subtest}",
-                        start_ns=start_ns,
-                        end_ns=end_ns,
-                        attributes=attributes,
-                        status_code=status_code,
-                        status_message=status if status_code == 2 else "",
-                    )
-                )
-
-            for finish_index, finish in enumerate(finishes):
-                if finish_index in used_finishes:
-                    continue
+            elif finish is not None:
                 duration_ns = Ns.from_s_or_zero(finish.value.get("time"))
-                if inferred_test_start_ns is not None and len(grouped) == 1:
-                    start_ns = max(
-                        chunk_start_ns,
-                        min(inferred_test_start_ns, chunk_end_ns),
+                if (
+                    inferred_test_start_ns is not None
+                    and len(grouped) == 1
+                    and finish.status[0] not in {"deselected", "not_launched"}
+                ):
+                    start_ns = Ns(
+                        max(
+                            chunk_start_ns,
+                            min(inferred_test_start_ns, chunk_end_ns),
+                        )
                     )
-                    end_ns = max(
-                        start_ns,
-                        min(start_ns + duration_ns, chunk_end_ns),
+                    end_ns = Ns(
+                        max(
+                            start_ns,
+                            min(start_ns + duration_ns, chunk_end_ns),
+                        )
                     )
                     timing_source = "chunk-delay-and-test-duration"
                 else:
-                    end_ns = finish.timestamp_ns or chunk_end_ns
-                    start_ns = max(chunk_start_ns, end_ns - duration_ns)
-                    end_ns = max(start_ns, min(end_ns, chunk_end_ns))
+                    end_ns = Ns(
+                        max(
+                            chunk_start_ns,
+                            min(
+                                finish.timestamp_ns or chunk_end_ns,
+                                chunk_end_ns,
+                            ),
+                        )
+                    )
+                    start_ns = Ns(max(chunk_start_ns, end_ns - duration_ns))
                     timing_source = "finish-event-and-test-duration"
                 status, status_code = finish.status
-                result.append(
-                    make_span(
-                        trace_id=trace_id,
-                        span_id=stable_span_id(
-                            trace_id,
-                            identity,
-                            test_class,
-                            subtest,
-                            finish.order,
-                        ),
-                        parent_span_id=chunk_span_id,
-                        name=f"{test_class}::{subtest}",
-                        start_ns=start_ns,
-                        end_ns=end_ns,
-                        attributes=finish.test_attributes(
-                            test_class,
-                            subtest,
-                            inferred=True,
-                            timing_source=timing_source,
-                        ),
-                        status_code=status_code,
-                        status_message=status if status_code == 2 else "",
-                    )
+                attributes = finish.test_attributes(
+                    test_class,
+                    subtest,
+                    inferred=True,
+                    timing_source=timing_source,
                 )
+                source_order = finish.order
+            else:
+                continue
+
+            result.append(
+                make_span(
+                    trace_id=trace_id,
+                    span_id=stable_span_id(
+                        trace_id,
+                        identity,
+                        test_class,
+                        subtest,
+                        test_type,
+                        test_path,
+                        source_order,
+                    ),
+                    parent_span_id=chunk_span_id,
+                    name=f"{test_class}::{subtest}",
+                    start_ns=start_ns,
+                    end_ns=end_ns,
+                    attributes=attributes,
+                    status_code=status_code,
+                    status_message=status if status_code == 2 else "",
+                )
+            )
         return result
 
     def build_spans(
@@ -447,10 +598,66 @@ class YaTraceFile:
         root_end_ns: Ns,
         resource: ResourceAttributes,
         trace_index: int,
-    ) -> None:
-        for record_index, (chunk_event, chunk_events) in enumerate(
-            self.chunk_records()
-        ):
+    ) -> int:
+        suite_event = self.suite_event()
+        if suite_event is not None:
+            timestamps = [
+                event.timestamp_ns
+                for event in self.events
+                if event.name == "suite-event" and event.timestamp_ns is not None
+            ]
+            suite_start_ns = Ns(
+                max(
+                    root_start_ns,
+                    min(min(timestamps) if timestamps else root_start_ns, root_end_ns),
+                )
+            )
+            suite_end_ns = Ns(
+                max(
+                    suite_start_ns,
+                    min(max(timestamps) if timestamps else suite_start_ns, root_end_ns),
+                )
+            )
+            suite_status = ""
+            suite_status_code = 0
+            if suite_event.failing_errors:
+                suite_status_code = 2
+                suite_status = suite_event.failing_errors[0][0] or "error"
+            suite_attributes: dict[str, Any] = {
+                "test.suite": self.suite,
+                "ya.test_results.folder": self.result_folder,
+            }
+            suite_attributes.update(suite_event.error_attributes("ya.suite"))
+            suite_attributes.update(
+                _metric_attributes(
+                    suite_event.value.get("metrics"),
+                    prefix="ya.suite.metric",
+                )
+            )
+            trace.add_span(
+                make_span(
+                    trace_id=trace_id,
+                    span_id=stable_span_id(
+                        trace_id,
+                        "ya.suite",
+                        self.suite,
+                        self.result_folder,
+                        trace_index,
+                    ),
+                    parent_span_id=root_span_id,
+                    name=f"{self.suite} [{self.result_folder} suite]",
+                    start_ns=suite_start_ns,
+                    end_ns=suite_end_ns,
+                    attributes=suite_attributes,
+                    status_code=suite_status_code,
+                    status_message=suite_status if suite_status_code == 2 else "",
+                ),
+                resource=resource,
+                scope_name="ya.suite",
+            )
+
+        chunk_records = self.chunk_records()
+        for record_index, (chunk_event, chunk_events) in enumerate(chunk_records):
             chunk_start_ns, chunk_end_ns, chunk_value = self._chunk_bounds(
                 chunk_event,
                 chunk_events,
@@ -460,19 +667,31 @@ class YaTraceFile:
             chunk_key = YaEvent.parse_chunk_key(chunk_value)
             identity = (
                 f"{self.suite}:{self.result_folder}:{trace_index}:"
-                f"{chunk_key or record_index}"
+                f"{chunk_key or record_index}:{chunk_event.chunk_filename if chunk_event else ''}"
             )
             chunk_span_id = stable_span_id(trace_id, identity)
             attributes = {
                 "test.suite": self.suite,
                 "ya.test_results.folder": self.result_folder,
             }
-            for field_name in ("chunk_index", "nchunks", "status"):
+            for field_name in ("chunk_index", "nchunks"):
                 if field_name in chunk_value:
                     attributes[f"ya.chunk.{field_name}"] = chunk_value[field_name]
-            attributes.update(_metric_attributes(chunk_value.get("metrics")))
-            chunk_status = str(chunk_value.get("status", "")).lower()
-            chunk_status_code = 2 if chunk_status in ERROR_STATUSES else 0
+            if chunk_event is not None and chunk_event.chunk_filename:
+                attributes["ya.chunk.filename"] = chunk_event.chunk_filename
+            if chunk_event is not None:
+                attributes.update(chunk_event.error_attributes("ya.chunk"))
+            attributes.update(
+                _metric_attributes(
+                    chunk_value.get("metrics"),
+                    prefix="ya.chunk.metric",
+                )
+            )
+            chunk_status = ""
+            chunk_status_code = 0
+            if chunk_event is not None and chunk_event.failing_errors:
+                chunk_status_code = 2
+                chunk_status = chunk_event.failing_errors[0][0] or "error"
             if chunk_key is None:
                 chunk_label = f"record {record_index + 1}"
             else:
@@ -494,8 +713,10 @@ class YaTraceFile:
                 delay_ns = Ns.from_s_or_zero(
                     metrics.get("suite_delay_until_first_test_secs")
                 )
-                if delay_ns:
-                    test_start_ns = Ns(chunk_start_ns + delay_ns)
+                startup_ns = Ns.from_s_or_zero(metrics.get("suite_binary_startup_secs"))
+                first_test_offset_ns = max(0, delay_ns - startup_ns)
+                if delay_ns or startup_ns:
+                    test_start_ns = Ns(chunk_start_ns + first_test_offset_ns)
             test_spans = self._test_spans(
                 trace_id,
                 chunk_span_id,
@@ -518,6 +739,7 @@ class YaTraceFile:
                     resource=resource,
                     scope_name="ya.test",
                 )
+        return len(chunk_records)
 
 
 @dataclass
@@ -682,13 +904,14 @@ class YaTraceCollection:
         return None
 
 
-@dataclass
+@dataclass(slots=True)
 class YaEvlogRecord:
     name: str
     tag: str
     start_ns: Ns
     end_ns: Ns
     thread_name: str = ""
+    node_uid: str = ""
 
     @classmethod
     def from_raw(
@@ -706,6 +929,7 @@ class YaEvlogRecord:
             start_ns=time_range[0],
             end_ns=time_range[1],
             thread_name=thread_name,
+            node_uid=str(value.get("uid") or ""),
         )
 
     @staticmethod
@@ -729,6 +953,7 @@ class YaEvlogRecord:
             start_ns=Ns(clipped_start),
             end_ns=Ns(clipped_end),
             thread_name=self.thread_name,
+            node_uid=self.node_uid,
         )
 
     @property
@@ -743,8 +968,10 @@ class YaEvlogRecord:
                 return "test", tool
             return {
                 "restore": "cache_restore",
+                "restore_from_dist_cache": "cache_restore",
                 "result": "materialize",
                 "put_in_cache": "cache_store",
+                "put_in_dist_cache": "cache_store",
                 "write_through_caches": "cache_store",
             }[wrapper], tool
         if self.tag == "TM":
@@ -759,8 +986,18 @@ class YaEvlogRecord:
 
     @property
     def uid(self) -> str:
-        match = NODE_UID_RE.match(self.name)
+        if self.node_uid:
+            return self.node_uid
+        match = NODE_UID_RE.match(self.name) or OUTPUTLESS_NODE_UID_RE.match(self.name)
         return match.group(1) if match else ""
+
+    @property
+    def cache_source(self) -> str:
+        if self.tag.startswith(("restore_from_dist_cache[", "put_in_dist_cache[")):
+            return "distributed"
+        if self.tag.startswith(("restore[", "put_in_cache[")):
+            return "local"
+        return ""
 
     @property
     def test_result_identity(self) -> tuple[str, str] | None:
@@ -795,7 +1032,9 @@ class YaEvlogRecord:
         kind: str,
         tool: str,
         index: int,
-        critical_by_uid: Mapping[str, tuple[int, Mapping[str, Any]]],
+        critical_entry: tuple[int, Mapping[str, Any]] | None,
+        failed: bool,
+        exit_code: int | None,
     ) -> Span:
         attributes: dict[str, Any] = {
             "ya.build.kind": kind,
@@ -808,17 +1047,21 @@ class YaEvlogRecord:
             attributes["ya.build.outputs"] = self.outputs
         if self.thread_name:
             attributes["ya.worker.thread"] = self.thread_name
-        if kind == "cache_restore":
-            attributes["ya.build.cache.hit"] = True
+        if self.cache_source:
+            attributes["ya.build.cache.source"] = self.cache_source
         if self.uid:
             attributes["ya.build.node.uid"] = self.uid
-        if kind in {"cache_restore", "execute"} and self.uid in critical_by_uid:
-            critical_index, critical_entry = critical_by_uid[self.uid]
+        if critical_entry is not None:
+            critical_index, entry = critical_entry
             attributes["ya.build.critical_path"] = True
             attributes["ya.build.critical_path.index"] = critical_index
-            elapsed = _number(critical_entry.get("elapsed"))
+            elapsed = _number(entry.get("elapsed"))
             if elapsed is not None:
                 attributes["ya.build.critical_path.reported_seconds"] = elapsed / 1_000
+        if failed:
+            attributes["ya.build.failed"] = True
+            if exit_code is not None:
+                attributes["process.exit.code"] = exit_code
         return make_span(
             trace_id=trace_id,
             span_id=stable_span_id(
@@ -834,6 +1077,8 @@ class YaEvlogRecord:
             start_ns=self.start_ns,
             end_ns=self.end_ns,
             attributes=attributes,
+            status_code=2 if failed else 0,
+            status_message="build node failed" if failed else "",
         )
 
 
@@ -842,12 +1087,13 @@ class YaEvlog:
     stages: list[YaEvlogRecord]
     nodes: list[YaEvlogRecord]
     statistics: dict[str, Any] = field(default_factory=dict)
+    failures: dict[str, int | None] = field(default_factory=dict)
 
     @staticmethod
     def _is_test_critical_path_entry(entry: Mapping[str, Any]) -> bool:
-        task_type = str(entry.get("type", ""))
+        task_type = YaEvlog._base_task_type(entry.get("type", ""))
         text = str(entry.get("text", ""))
-        return task_type in {"TA", "TM", "TS"} or "/test-results/" in text
+        return task_type in {"TA", "TL", "TM", "TS"} or "/test-results/" in text
 
     @staticmethod
     def _overlap_ns(
@@ -861,17 +1107,116 @@ class YaEvlog:
             min(left_end_ns, right_end_ns) - max(left_start_ns, right_start_ns),
         )
 
+    @staticmethod
+    def _base_task_type(value: Any) -> str:
+        return re.sub(
+            r"(?:(?:-CACHED|-DYN_UID_CACHE))+$",
+            "",
+            str(value),
+        )
+
+    def _critical_record_score(
+        self,
+        record: YaEvlogRecord,
+        tool: str,
+        entry: Mapping[str, Any],
+    ) -> tuple[int, int, int, int] | None:
+        start_ns = Ns.from_ms(entry.get("start_ts"))
+        end_ns = Ns.from_ms(entry.get("end_ts"))
+        if start_ns is None or end_ns is None or end_ns < start_ns:
+            return None
+        overlap_ns = self._overlap_ns(
+            start_ns,
+            end_ns,
+            record.start_ns,
+            record.end_ns,
+        )
+        distance_ns = abs(start_ns - record.start_ns) + abs(end_ns - record.end_ns)
+        entry_type = self._base_task_type(entry.get("type", ""))
+        return (
+            int(entry_type in {tool, record.tag}),
+            overlap_ns,
+            -distance_ns,
+            record.end_ns - record.start_ns,
+        )
+
+    def _match_build_critical_path(
+        self,
+        build_records: Sequence[tuple[YaEvlogRecord, str, str]],
+        critical_entries: Sequence[tuple[int, Mapping[str, Any]]],
+    ) -> dict[int, tuple[int, Mapping[str, Any]]]:
+        available = {
+            index
+            for index, (_, kind, _) in enumerate(build_records)
+            if kind != "cache_store"
+        }
+        records_by_uid: dict[str, list[int]] = defaultdict(list)
+        for index in available:
+            uid = build_records[index][0].uid
+            if uid:
+                records_by_uid[uid].append(index)
+
+        matches: dict[int, tuple[int, Mapping[str, Any]]] = {}
+        for critical_entry in critical_entries:
+            _, entry = critical_entry
+            uid = str(entry.get("uid", ""))
+            if uid:
+                candidate_indices = [
+                    index for index in records_by_uid.get(uid, ()) if index in available
+                ]
+            else:
+                candidate_indices = list(available)
+            scored = [
+                (
+                    self._critical_record_score(
+                        build_records[index][0],
+                        build_records[index][2],
+                        entry,
+                    ),
+                    index,
+                )
+                for index in candidate_indices
+            ]
+            scored = [
+                (score, index)
+                for score, index in scored
+                if score is not None and (uid or score[1] > 0)
+            ]
+            if not scored:
+                continue
+            _, record_index = max(scored)
+            matches[record_index] = critical_entry
+            available.remove(record_index)
+        return matches
+
     def _critical_test_node(
         self,
         entry: Mapping[str, Any],
         start_ns: Ns | None,
         end_ns: Ns | None,
         test_nodes: Sequence[YaEvlogRecord],
+        test_nodes_by_uid: Mapping[str, Sequence[YaEvlogRecord]],
     ) -> YaEvlogRecord | None:
         uid = str(entry.get("uid", ""))
         if uid:
-            matching_uid = [record for record in test_nodes if record.uid == uid]
+            matching_uid = test_nodes_by_uid.get(uid, ())
             if matching_uid:
+                if start_ns is not None and end_ns is not None:
+                    return max(
+                        matching_uid,
+                        key=lambda record: (
+                            self._overlap_ns(
+                                start_ns,
+                                end_ns,
+                                record.start_ns,
+                                record.end_ns,
+                            ),
+                            -(
+                                abs(start_ns - record.start_ns)
+                                + abs(end_ns - record.end_ns)
+                            ),
+                        ),
+                    )
                 return max(
                     matching_uid,
                     key=lambda record: record.end_ns - record.start_ns,
@@ -930,10 +1275,30 @@ class YaEvlog:
         return attributes
 
     def mark_critical_test_spans(self, trace: Trace) -> dict[str, int]:
-        chunks = list(trace.spans("ya.chunk"))
+        chunks = []
+        chunks_by_identity: dict[tuple[str, str], list[tuple[Span, dict[str, Any]]]] = (
+            defaultdict(list)
+        )
+        chunks_by_suite: dict[str, list[tuple[Span, dict[str, Any]]]] = defaultdict(
+            list
+        )
+        for span in trace.spans("ya.chunk"):
+            attributes = decode_attributes(span.attributes)
+            item = (span, attributes)
+            chunks.append(item)
+            suite = str(attributes.get("test.suite", ""))
+            result_folder = str(attributes.get("ya.test_results.folder", ""))
+            if suite:
+                chunks_by_suite[suite].append(item)
+                if result_folder:
+                    chunks_by_identity[(suite, result_folder)].append(item)
         test_nodes = [
             record for record in self.nodes if record.kind_and_tool[0] == "test"
         ]
+        test_nodes_by_uid: dict[str, list[YaEvlogRecord]] = defaultdict(list)
+        for record in test_nodes:
+            if record.uid:
+                test_nodes_by_uid[record.uid].append(record)
         tests_by_parent: dict[bytes, list[Span]] = defaultdict(list)
         for span in trace.spans("ya.test"):
             tests_by_parent[span.parent_span_id].append(span)
@@ -956,6 +1321,7 @@ class YaEvlog:
                 start_ns,
                 end_ns,
                 test_nodes,
+                test_nodes_by_uid,
             )
             if node is not None:
                 start_ns = node.start_ns
@@ -963,55 +1329,38 @@ class YaEvlog:
             if start_ns is None or end_ns is None:
                 continue
 
+            identity = node.test_result_identity if node is not None else None
+            candidate_pool = chunks
+            if identity is not None:
+                candidate_pool = (
+                    chunks_by_identity.get(identity)
+                    or chunks_by_suite.get(identity[0])
+                    or chunks
+                )
             candidates = [
-                chunk
-                for chunk in chunks
+                item
+                for item in candidate_pool
                 if self._overlap_ns(
                     start_ns,
                     end_ns,
-                    Ns(chunk.start_time_unix_nano or 0),
-                    Ns(chunk.end_time_unix_nano or 0),
+                    Ns(item[0].start_time_unix_nano or 0),
+                    Ns(item[0].end_time_unix_nano or 0),
                 )
             ]
             if not candidates:
                 continue
-            identity = node.test_result_identity if node is not None else None
-            if identity is not None:
-                exact = [
-                    chunk
-                    for chunk in candidates
-                    if (
-                        decode_attributes(chunk.attributes).get("test.suite"),
-                        decode_attributes(chunk.attributes).get(
-                            "ya.test_results.folder"
-                        ),
-                    )
-                    == identity
-                ]
-                if exact:
-                    candidates = exact
-                else:
-                    matching_suite = [
-                        chunk
-                        for chunk in candidates
-                        if decode_attributes(chunk.attributes).get("test.suite")
-                        == identity[0]
-                    ]
-                    if matching_suite:
-                        candidates = matching_suite
 
             text = str(entry.get("text", ""))
-            chunk = max(
+            chunk, _ = max(
                 candidates,
-                key=lambda candidate: (
-                    bool(decode_attributes(candidate.attributes).get("test.suite"))
-                    and str(decode_attributes(candidate.attributes)["test.suite"])
-                    in text,
+                key=lambda item: (
+                    bool(item[1].get("test.suite"))
+                    and str(item[1]["test.suite"]) in text,
                     self._overlap_ns(
                         start_ns,
                         end_ns,
-                        Ns(candidate.start_time_unix_nano or 0),
-                        Ns(candidate.end_time_unix_nano or 0),
+                        Ns(item[0].start_time_unix_nano or 0),
+                        Ns(item[0].end_time_unix_nano or 0),
                     ),
                 ),
             )
@@ -1028,10 +1377,7 @@ class YaEvlog:
             "ya.test.critical_path.span.count": len(marked_tests),
         }
 
-    def statistics_attributes(
-        self,
-        build_records: Sequence[tuple[YaEvlogRecord, str, str]],
-    ) -> tuple[dict[str, Any], dict[str, tuple[int, Mapping[str, Any]]]]:
+    def graph_statistics_attributes(self) -> dict[str, Any]:
         attributes: dict[str, Any] = {}
         cache = self.statistics.get("cache_hit")
         if isinstance(cache, Mapping):
@@ -1048,9 +1394,9 @@ class YaEvlog:
                     "ya.build.cache.considered_task.dynamic_hit.count"
                 ),
                 "not_cached_tasks": "ya.build.cache.considered_task.miss.count",
-                "tests_tasks": "ya.build.task.test.count",
+                "tests_tasks": "ya.build.task.uncached_test.count",
                 "failed_tasks": "ya.build.task.failed.count",
-                "ok_tasks": "ya.build.task.ok.count",
+                "ok_tasks": "ya.build.task.uncached_non_test.count",
                 "avoided_tasks": "ya.build.task.avoided.count",
             }
             for source, destination in cache_fields.items():
@@ -1103,59 +1449,53 @@ class YaEvlog:
             attributes["ya.build.graph.languages"] = sorted(
                 str(language) for language in languages
             )[:128]
+        return attributes
 
+    def build_statistics_attributes(
+        self,
+        build_records: Sequence[tuple[YaEvlogRecord, str, str]],
+    ) -> tuple[
+        dict[str, Any],
+        list[tuple[int, Mapping[str, Any]]],
+    ]:
+        attributes: dict[str, Any] = {}
         tool_counts: dict[str, Counter[str]] = defaultdict(Counter)
         for _, kind, tool in build_records:
             if kind in {"cache_restore", "execute"} and SAFE_TOOL_RE.fullmatch(tool):
                 tool_counts[_metric_name(tool)][kind] += 1
-        observed_hits = sum(counts["cache_restore"] for counts in tool_counts.values())
-        observed_misses = sum(counts["execute"] for counts in tool_counts.values())
-        observed_total = observed_hits + observed_misses
-        attributes["ya.build.cache.worker_node.hit.count"] = observed_hits
-        attributes["ya.build.cache.worker_node.miss.count"] = observed_misses
-        if observed_total:
-            attributes["ya.build.cache.worker_node.hit.ratio"] = (
-                observed_hits / observed_total
-            )
         ranked_tools = sorted(
             tool_counts,
             key=lambda tool: (
                 -(tool_counts[tool]["cache_restore"] + tool_counts[tool]["execute"]),
                 tool,
             ),
-        )[:MAX_CACHE_TOOL_STATS]
+        )[:MAX_WORKER_TOOL_STATS]
         for normalized in ranked_tools:
-            hits = tool_counts[normalized]["cache_restore"]
-            misses = tool_counts[normalized]["execute"]
-            total = hits + misses
-            prefix = f"ya.build.cache.tool.{normalized}"
-            attributes[f"{prefix}.hit.count"] = hits
-            attributes[f"{prefix}.miss.count"] = misses
-            attributes[f"{prefix}.hit.ratio"] = hits / total
+            for kind in ("cache_restore", "execute"):
+                count = tool_counts[normalized][kind]
+                if count:
+                    attributes[f"ya.build.worker.tool.{normalized}.{kind}.count"] = (
+                        count
+                    )
 
         critical_entries = [
-            entry
-            for entry in self.statistics.get("critical_path", [])
+            (index, entry)
+            for index, entry in enumerate(self.statistics.get("critical_path", []))
             if isinstance(entry, Mapping)
             and not self._is_test_critical_path_entry(entry)
         ]
-        critical_by_uid = {
-            str(entry["uid"]): (index, entry)
-            for index, entry in enumerate(critical_entries)
-            if entry.get("uid")
-        }
         if critical_entries:
             work_msec = sum(
-                _number(entry.get("elapsed")) or 0 for entry in critical_entries
+                _number(entry.get("elapsed")) or 0 for _, entry in critical_entries
             )
             start_times = [
                 number
-                for entry in critical_entries
+                for _, entry in critical_entries
                 if (number := _number(entry.get("start_ts"))) is not None
             ]
             end_times = [
                 number
-                for entry in critical_entries
+                for _, entry in critical_entries
                 if (number := _number(entry.get("end_ts"))) is not None
             ]
             attributes["ya.build.critical_path.node.count"] = len(critical_entries)
@@ -1170,9 +1510,9 @@ class YaEvlog:
                     f"{entry.get('text', 'unknown')} "
                     f"({(_number(entry.get('elapsed')) or 0) / 1_000:.3f}s)"
                 )
-                for entry in critical_entries[:128]
+                for _, entry in critical_entries[:128]
             ]
-        return attributes, critical_by_uid
+        return attributes, critical_entries
 
     def build_spans(
         self,
@@ -1185,6 +1525,7 @@ class YaEvlog:
         resource: ResourceAttributes,
     ) -> tuple[bytes | None, dict[str, Any]]:
         dispatch_span_id = None
+        dispatch_span: Span | None = None
         dispatch_bounds: tuple[Ns, Ns] | None = None
 
         stages = []
@@ -1204,22 +1545,24 @@ class YaEvlog:
                 record.start_ns,
                 index,
             )
+            stage_span = make_span(
+                trace_id=trace_id,
+                span_id=span_id,
+                parent_span_id=root_span_id,
+                name=f"ya phase: {RENDERED_STAGE_NAMES[record.name]}",
+                start_ns=record.start_ns,
+                end_ns=record.end_ns,
+                attributes={
+                    "ya.stage.name": record.name,
+                    "ya.stage.tag": record.tag,
+                },
+            )
             if record.name == "dispatch_build":
                 dispatch_span_id = span_id
+                dispatch_span = stage_span
                 dispatch_bounds = (record.start_ns, record.end_ns)
             trace.add_span(
-                make_span(
-                    trace_id=trace_id,
-                    span_id=span_id,
-                    parent_span_id=root_span_id,
-                    name=f"ya phase: {RENDERED_STAGE_NAMES[record.name]}",
-                    start_ns=record.start_ns,
-                    end_ns=record.end_ns,
-                    attributes={
-                        "ya.stage.name": record.name,
-                        "ya.stage.tag": record.tag,
-                    },
-                ),
+                stage_span,
                 resource=resource,
                 scope_name="ya.phase",
             )
@@ -1246,6 +1589,11 @@ class YaEvlog:
             "ya.phase.count": len(stages),
             "ya.build.node.count": 0,
         }
+        graph_attributes = self.graph_statistics_attributes()
+        if dispatch_span is not None:
+            update_span_attributes(dispatch_span, graph_attributes)
+        else:
+            metadata.update(graph_attributes)
         timed_records = [
             (record, kind, tool)
             for record, kind, tool in unbounded_build_records
@@ -1283,30 +1631,110 @@ class YaEvlog:
             attributes["ya.build.first_test_node_offset_seconds"] = (
                 max(0, min(test_starts) - build_start_ns) / 1_000_000_000
             )
-        statistics_attributes, critical_by_uid = self.statistics_attributes(
+        statistics_attributes, critical_entries = self.build_statistics_attributes(
             build_records
         )
         attributes.update(statistics_attributes)
+        critical_matches = self._match_build_critical_path(
+            build_records,
+            critical_entries,
+        )
+        failed_uids = {
+            record.uid
+            for record, _, _ in build_records
+            if record.uid and record.uid in self.failures
+        }
+        if failed_uids:
+            attributes["ya.build.failed_node.count"] = len(failed_uids)
+        failed_representatives = {
+            max(
+                (
+                    index
+                    for index, (record, _, _) in enumerate(build_records)
+                    if record.uid == uid
+                ),
+                key=lambda index: (
+                    build_records[index][1] == "execute",
+                    build_records[index][0].end_ns - build_records[index][0].start_ns,
+                    build_records[index][0].end_ns,
+                ),
+            )
+            for uid in failed_uids
+        }
 
         candidates = [
-            (record, kind, tool)
-            for record, kind, tool in build_records
-            if kind != "cache_store"
+            (
+                record_index,
+                record,
+                kind,
+                tool,
+                critical_matches.get(record_index),
+                record_index in failed_representatives,
+            )
+            for record_index, (record, kind, tool) in enumerate(build_records)
+            if kind != "cache_store" or record_index in failed_representatives
         ]
         dropped = max(0, len(candidates) - MAX_BUILD_NODE_SPANS)
         if dropped:
-            candidates = sorted(
-                candidates,
-                key=lambda item: item[0].end_ns - item[0].start_ns,
-                reverse=True,
-            )[:MAX_BUILD_NODE_SPANS]
+            protected_candidates = [
+                candidate
+                for candidate in candidates
+                if candidate[4] is not None or candidate[0] in failed_representatives
+            ]
+            other_candidates = [
+                candidate
+                for candidate in candidates
+                if candidate[4] is None and candidate[0] not in failed_representatives
+            ]
+            protected_candidates.sort(
+                key=lambda item: (
+                    not item[5],
+                    item[4][0] if item[4] is not None else math.inf,
+                    item[1].start_ns,
+                    item[1].end_ns,
+                )
+            )
+            selected_protected = protected_candidates[:MAX_BUILD_NODE_SPANS]
+            remaining = max(
+                0,
+                MAX_BUILD_NODE_SPANS - len(selected_protected),
+            )
+            candidates = (
+                selected_protected
+                + sorted(
+                    other_candidates,
+                    key=lambda item: item[1].end_ns - item[1].start_ns,
+                    reverse=True,
+                )[:remaining]
+            )
+            dropped = (
+                len(protected_candidates) + len(other_candidates) - len(candidates)
+            )
             attributes["ya.build.node_spans.dropped"] = dropped
+            rendered_critical_count = sum(
+                candidate[4] is not None for candidate in candidates
+            )
+            critical_dropped = (
+                sum(candidate[4] is not None for candidate in protected_candidates)
+                - rendered_critical_count
+            )
+            if critical_dropped:
+                attributes["ya.build.critical_path.node_spans.dropped"] = (
+                    critical_dropped
+                )
+            failed_representatives_dropped = len(
+                failed_representatives - {candidate[0] for candidate in candidates}
+            )
+            if failed_representatives_dropped:
+                attributes["ya.build.failed_node_spans.dropped"] = (
+                    failed_representatives_dropped
+                )
         candidates.sort(
             key=lambda item: (
-                item[0].start_ns,
-                item[0].end_ns,
-                item[0].name,
-                item[0].tag,
+                item[1].start_ns,
+                item[1].end_ns,
+                item[1].name,
+                item[1].tag,
             )
         )
         attributes["ya.build.node_spans.rendered"] = len(candidates)
@@ -1319,12 +1747,23 @@ class YaEvlog:
                 start_ns=build_start_ns,
                 end_ns=build_end_ns,
                 attributes=attributes,
+                status_code=2 if failed_uids else 0,
+                status_message=(
+                    "one or more build nodes failed" if failed_uids else ""
+                ),
             ),
             resource=resource,
             scope_name="ya.build",
         )
 
-        for index, (record, kind, tool) in enumerate(candidates):
+        for index, (
+            _,
+            record,
+            kind,
+            tool,
+            critical_entry,
+            failed,
+        ) in enumerate(candidates):
             trace.add_span(
                 record.build_node_span(
                     trace_id=trace_id,
@@ -1332,7 +1771,9 @@ class YaEvlog:
                     kind=kind,
                     tool=tool,
                     index=index,
-                    critical_by_uid=critical_by_uid,
+                    critical_entry=critical_entry,
+                    failed=failed,
+                    exit_code=self.failures.get(record.uid) if failed else None,
                 ),
                 resource=resource,
                 scope_name="ya.build.node",
@@ -1434,7 +1875,7 @@ def _selected_evlog_statistics(value: Any) -> dict[str, Any]:
 
     critical_path = []
     if isinstance(value.get("critical_path"), list):
-        for item in value["critical_path"][:128]:
+        for item in value["critical_path"]:
             if not isinstance(item, Mapping):
                 continue
             selected = _safe_statistics_mapping(
@@ -1503,6 +1944,22 @@ def load_ya_evlog(path: Path | None) -> YaEvlog:
             ):
                 result.statistics = _selected_evlog_statistics(raw_value.get("value"))
                 continue
+            if (
+                namespace == "devtools.ya.build.reports.failed_node_info"
+                and event == "node-failed"
+                and isinstance(raw_value, Mapping)
+            ):
+                uid = str(raw_value.get("uid", ""))
+                raw_exit_code = raw_value.get("exit_code")
+                exit_code = (
+                    raw_exit_code
+                    if isinstance(raw_exit_code, int)
+                    and not isinstance(raw_exit_code, bool)
+                    else None
+                )
+                if uid:
+                    result.failures[uid] = exit_code
+                continue
             if (namespace, event) not in {
                 ("stages", "stage-finished"),
                 ("worker_threads", "node-finished"),
@@ -1526,7 +1983,7 @@ def _metric_name(name: object) -> str:
     return re.sub(r"_+", "_", normalized)[:200]
 
 
-def _metric_attributes(metrics: Any) -> dict[str, Any]:
+def _metric_attributes(metrics: Any, *, prefix: str) -> dict[str, Any]:
     if not isinstance(metrics, Mapping):
         return {}
     attributes = {}
@@ -1537,7 +1994,7 @@ def _metric_attributes(metrics: Any) -> dict[str, Any]:
             continue
         normalized = _metric_name(key)
         if normalized:
-            attributes[f"ya.chunk.metric.{normalized}"] = value
+            attributes[f"{prefix}.{normalized}"] = value
     return attributes
 
 

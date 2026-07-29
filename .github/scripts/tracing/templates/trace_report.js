@@ -15,14 +15,17 @@ const SCOPE = 10;
 const TRACE = 11;
 const ORPHAN_PARENT = 12;
 const PAGE_SIZE = 200;
-const RENDER_LIMIT_OPTIONS = Object.freeze([200, 1000, 5000]);
-const INITIAL_RENDER_LIMIT = RENDER_LIMIT_OPTIONS[0];
+const LOAD_SIZE_OPTIONS = Object.freeze([200, 1000, 5000]);
+const INITIAL_ROW_BUDGET = PAGE_SIZE;
 const COLLAPSED_SCOPES = new Set(["ya.build", "ya.chunk"]);
 
 let rowsElement;
 let filterElement;
 let filterStatus;
-let rowLimitElement;
+let rowLoadSizeElement;
+let rowLoader;
+let rowLoadButton;
+let rowStatus;
 let detailPanel;
 let detailTitle;
 let detailContent;
@@ -35,18 +38,36 @@ let limits;
 let visible;
 let selected = null;
 let searchCache = [];
-let renderLimit = INITIAL_RENDER_LIMIT;
+let rowBudget = INITIAL_ROW_BUDGET;
 
-function renderLimitFromValue(value) {
-  if (value === "all") return Number.POSITIVE_INFINITY;
+function loadSizeFromValue(value) {
   const parsed = Number(value);
-  return RENDER_LIMIT_OPTIONS.includes(parsed)
-    ? parsed
-    : INITIAL_RENDER_LIMIT;
+  return LOAD_SIZE_OPTIONS.includes(parsed) ? parsed : LOAD_SIZE_OPTIONS[0];
 }
 
-function selectedRenderLimit() {
-  return renderLimitFromValue(rowLimitElement?.value || "");
+function selectedLoadSize() {
+  return loadSizeFromValue(rowLoadSizeElement?.value || "");
+}
+
+function nextRowLimit(current, increment, maximum = Number.POSITIVE_INFINITY) {
+  const currentValue = Math.max(0, Number(current) || 0);
+  const incrementValue = Math.max(0, Number(increment) || 0);
+  return Math.min(currentValue + incrementValue, maximum);
+}
+
+function groupLoadPlan(current, total, requested) {
+  const remaining = Math.max(0, total - current);
+  const count = Math.min(loadSizeFromValue(requested), remaining);
+  return {
+    count,
+    nextLimit: nextRowLimit(current, count, total),
+    remaining,
+  };
+}
+
+function initialGroupLimit(rowLimit, renderedRows, childCount) {
+  const availableRows = Math.max(0, rowLimit - renderedRows);
+  return Math.min(PAGE_SIZE, childCount, availableRows);
 }
 
 function formatDuration(durationNs) {
@@ -158,10 +179,11 @@ function flattenTraceRows({
   sourceLimits = new Map(),
   sourceVisible = null,
   pageSize = PAGE_SIZE,
-  maximumRows = INITIAL_RENDER_LIMIT,
+  maximumRows = INITIAL_ROW_BUDGET,
 }) {
   const result = [];
   const seen = new Set();
+  let spanRows = 0;
   let truncated = false;
 
   function addSpan(index, depth) {
@@ -172,12 +194,13 @@ function flattenTraceRows({
     ) {
       return;
     }
-    if (result.length >= maximumRows) {
+    if (spanRows >= maximumRows) {
       truncated = true;
       return;
     }
     seen.add(index);
     result.push({ kind: "span", index, depth });
+    spanRows += 1;
     const candidates = sourceVisible
       ? sourceChildren[index].filter((child) => sourceVisible.has(child))
       : sourceChildren[index];
@@ -187,13 +210,11 @@ function flattenTraceRows({
     ) {
       return;
     }
-    const limit = sourceLimits.get(index) || pageSize;
+    const limit = sourceLimits.has(index)
+      ? sourceLimits.get(index)
+      : pageSize;
     candidates.slice(0, limit).forEach((child) => addSpan(child, depth + 1));
     if (!truncated && candidates.length > limit) {
-      if (result.length >= maximumRows) {
-        truncated = true;
-        return;
-      }
       result.push({
         kind: "more",
         index,
@@ -205,7 +226,7 @@ function flattenTraceRows({
   }
 
   sourceRoots.forEach((index) => addSpan(index, 0));
-  return { items: result, truncated };
+  return { items: result, spanRows, truncated };
 }
 
 async function decodeModel() {
@@ -229,7 +250,7 @@ async function decodeModel() {
 function resetDefaults() {
   expanded = defaultExpanded(spans, children, model.c);
   limits = new Map();
-  renderLimit = selectedRenderLimit();
+  rowBudget = INITIAL_ROW_BUDGET;
 }
 
 function applyFilter() {
@@ -241,7 +262,7 @@ function applyFilter() {
     renderRows();
     return;
   }
-  renderLimit = selectedRenderLimit();
+  rowBudget = INITIAL_ROW_BUDGET;
   const result = matchingVisibility(spans, query, searchCache);
   visible = result.visible;
   filterStatus.textContent = `${result.matches.toLocaleString()} matching spans`;
@@ -256,14 +277,27 @@ function flattenRows() {
     sourceExpanded: expanded,
     sourceLimits: limits,
     sourceVisible: visible,
-    maximumRows: renderLimit,
+    maximumRows: rowBudget,
   });
 }
 
 function toggleSpanGroup(index) {
   if (visible || !children[index].length) return;
   if (expanded.has(index)) expanded.delete(index);
-  else expanded.add(index);
+  else {
+    if (!limits.has(index)) {
+      const flattened = flattenRows();
+      limits.set(
+        index,
+        initialGroupLimit(
+          rowBudget,
+          flattened.spanRows,
+          children[index].length,
+        ),
+      );
+    }
+    expanded.add(index);
+  }
   renderRows();
 }
 
@@ -356,14 +390,16 @@ function moreRow(item) {
     `${Math.min(item.depth, 20) * 1.1 + 2.25}rem`,
   );
   const button = document.createElement("button");
-  const remaining = item.total - item.shown;
+  const load = groupLoadPlan(
+    item.shown,
+    item.total,
+    selectedLoadSize(),
+  );
   button.type = "button";
-  button.textContent = `Load ${Math.min(
-    PAGE_SIZE,
-    remaining,
-  ).toLocaleString()} more (${remaining.toLocaleString()} remaining)`;
+  button.textContent = `Load ${load.count.toLocaleString()} more in this group (${load.remaining.toLocaleString()} remaining)`;
   button.addEventListener("click", () => {
-    limits.set(item.index, item.shown + PAGE_SIZE);
+    limits.set(item.index, load.nextLimit);
+    rowBudget = nextRowLimit(rowBudget, load.count);
     renderRows();
   });
   row.append(button);
@@ -383,17 +419,14 @@ function renderRows() {
     flattened.items.forEach((item) =>
       fragment.append(item.kind === "span" ? spanRow(item) : moreRow(item)),
     );
-    if (flattened.truncated) {
-      const limitRow = document.createElement("div");
-      limitRow.className = "more-row";
-      const message = document.createElement("span");
-      message.className = "muted";
-      message.textContent = `Showing the first ${renderLimit.toLocaleString()} visible rows. Choose a larger limit above to render more.`;
-      limitRow.append(message);
-      fragment.append(limitRow);
-    }
   }
   rowsElement.replaceChildren(fragment);
+  rowLoader.hidden = !flattened.truncated;
+  rowLoadButton.disabled = !flattened.truncated;
+  rowLoadButton.textContent = `Load next ${selectedLoadSize().toLocaleString()} rows`;
+  rowStatus.textContent = `${flattened.spanRows.toLocaleString()} rows rendered${
+    flattened.truncated ? "; more available" : ""
+  }.`;
 }
 
 function valueText(value) {
@@ -500,7 +533,7 @@ function initialize(decoded) {
   ({ children, roots } = buildHierarchy(spans));
   resetDefaults();
   filterElement.disabled = false;
-  rowLimitElement.disabled = false;
+  rowLoadSizeElement.disabled = false;
   document.getElementById("expand").disabled = false;
   document.getElementById("collapse").disabled = false;
   renderRows();
@@ -510,7 +543,10 @@ function startTraceReport() {
   rowsElement = document.getElementById("rows");
   filterElement = document.getElementById("filter");
   filterStatus = document.getElementById("filter-status");
-  rowLimitElement = document.getElementById("row-limit");
+  rowLoadSizeElement = document.getElementById("row-load-size");
+  rowLoader = document.getElementById("row-loader");
+  rowLoadButton = document.getElementById("load-rows");
+  rowStatus = document.getElementById("row-status");
   detailPanel = document.getElementById("detail-panel");
   detailTitle = document.getElementById("detail-title");
   detailContent = document.getElementById("detail-content");
@@ -520,8 +556,11 @@ function startTraceReport() {
     clearTimeout(filterTimer);
     filterTimer = setTimeout(applyFilter, 120);
   });
-  rowLimitElement.addEventListener("change", () => {
-    renderLimit = selectedRenderLimit();
+  rowLoadSizeElement.addEventListener("change", () => {
+    renderRows();
+  });
+  rowLoadButton.addEventListener("click", () => {
+    rowBudget = nextRowLimit(rowBudget, selectedLoadSize());
     renderRows();
   });
   document.getElementById("expand").addEventListener("click", () => {
@@ -566,8 +605,8 @@ const traceReportApi = {
     ORPHAN_PARENT,
   },
   PAGE_SIZE,
-  RENDER_LIMIT_OPTIONS,
-  INITIAL_RENDER_LIMIT,
+  LOAD_SIZE_OPTIONS,
+  INITIAL_ROW_BUDGET,
   COLLAPSED_SCOPES,
   formatDuration,
   childCountLabel,
@@ -577,7 +616,10 @@ const traceReportApi = {
   spanSearchText,
   matchingVisibility,
   flattenTraceRows,
-  renderLimitFromValue,
+  loadSizeFromValue,
+  nextRowLimit,
+  groupLoadPlan,
+  initialGroupLimit,
 };
 
 if (typeof module === "object" && module.exports) {

@@ -6,12 +6,14 @@ from scripts.tracing.otlp import (
     ResourceAttributes,
     Span,
     Trace,
+    decode_attributes,
     make_event,
     make_span,
     Ns,
     span_duration_ns,
     stable_span_id,
     stable_trace_id,
+    update_span_attributes,
 )
 
 
@@ -93,3 +95,20 @@ def test_resource_attributes_clean_and_extend_github_metadata() -> None:
     assert attributes["github.commit.url"] == (
         "https://github.example/example/repo/commit/abc123"
     )
+
+
+def test_span_attribute_updates_take_priority_at_otlp_limit() -> None:
+    span = make_span(
+        trace_id=stable_trace_id("trace"),
+        span_id=stable_span_id("span"),
+        name="operation",
+        start_ns=1_000,
+        end_ns=2_000,
+        attributes={f"metric.{index}": index for index in range(256)},
+    )
+
+    update_span_attributes(span, {"critical": True})
+
+    attributes = decode_attributes(span.attributes)
+    assert len(attributes) == 256
+    assert attributes["critical"] is True
