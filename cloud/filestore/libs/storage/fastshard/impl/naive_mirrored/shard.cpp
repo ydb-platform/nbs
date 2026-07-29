@@ -1201,7 +1201,9 @@ public:
         TWriteContextGuard wcg(writeContext, *PageStore);
 
         //
-        // The allocation of all page clusters must happen as a single call.
+        // The allocation of all page clusters should happen as a single call.
+        // If we do it this way, in the future we can attempt consecutive page
+        // allocation for each large write request.
         //
 
         TVector<ui64> newStoragePageClusterIds;
