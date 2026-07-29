@@ -1,8 +1,8 @@
 #include "command.h"
 
-#include <library/cpp/json/json_writer.h>
-
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
+
+#include <library/cpp/json/json_writer.h>
 
 #include <google/protobuf/util/json_util.h>
 
@@ -12,8 +12,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDiagnoseFilesystemCommand final
-    : public TFileStoreCommand
+class TDiagnoseFilesystemCommand final: public TFileStoreCommand
 {
 private:
     struct TShardRow
@@ -25,6 +24,7 @@ private:
         ui64 TotalBlocksCount = 0;
         ui64 UsedNodesCount = 0;
     };
+
     struct TNodeRow
     {
         TString ShardId;
@@ -85,14 +85,15 @@ private:
         }
 
         auto parsed = google::protobuf::util::JsonStringToMessage(
-            result.GetOutput(),
-            responseProto).ok();
+                          result.GetOutput(),
+                          responseProto)
+                          .ok();
 
         if (!parsed) {
             responseProto->MutableError()->CopyFrom(MakeError(
                 E_BADMSG,
                 TStringBuilder() << "failed to parse response json: "
-                    << result.GetOutput()));
+                                 << result.GetOutput()));
         }
     }
 
@@ -101,7 +102,7 @@ public:
     {
         NProtoPrivate::TGetStorageStatsRequest request;
         request.SetFileSystemId(FileSystemId);
-        request.SetCacheTTL(0); // disable caching
+        request.SetCacheTTL(0);   // disable caching
         request.SetMode(NProtoPrivate::STATS_REQUEST_MODE_FORCE_FETCH_SHARDS);
         NProtoPrivate::TGetStorageStatsResponse response;
         ExecuteAction("getstoragestats", request, &response);
@@ -124,36 +125,42 @@ public:
             rows.push_back(std::move(row));
         }
         for (const auto& nodeStats: stats.GetNodeStats()) {
-            nodeRows.push_back({
-                nodeStats.GetShardId(),
-                nodeStats.GetNodeId(),
-                nodeStats.GetRequestCount(),
-                nodeStats.GetAccessScore(),
-                nodeStats.GetLastAccessedTimestampUs()});
+            nodeRows.push_back(
+                {nodeStats.GetShardId(),
+                 nodeStats.GetNodeId(),
+                 nodeStats.GetRequestCount(),
+                 nodeStats.GetAccessScore(),
+                 nodeStats.GetLastAccessedTimestampUs()});
         }
-        Sort(nodeRows, [] (const TNodeRow& l, const TNodeRow& r) {
-            if (l.AccessScore != r.AccessScore) {
-                return l.AccessScore > r.AccessScore;
-            }
+        Sort(
+            nodeRows,
+            [](const TNodeRow& l, const TNodeRow& r)
+            {
+                if (l.AccessScore != r.AccessScore) {
+                    return l.AccessScore > r.AccessScore;
+                }
 
-            if (l.ShardId != r.ShardId) {
+                if (l.ShardId != r.ShardId) {
+                    return l.ShardId < r.ShardId;
+                }
+
+                return l.NodeId < r.NodeId;
+            });
+
+        Sort(
+            rows,
+            [](const TShardRow& l, const TShardRow& r)
+            {
+                if (l.CurrentLoad != r.CurrentLoad) {
+                    return l.CurrentLoad > r.CurrentLoad;
+                }
+
+                if (l.Suffer != r.Suffer) {
+                    return l.Suffer > r.Suffer;
+                }
+
                 return l.ShardId < r.ShardId;
-            }
-
-            return l.NodeId < r.NodeId;
-        });
-
-        Sort(rows, [] (const TShardRow& l, const TShardRow& r) {
-            if (l.CurrentLoad != r.CurrentLoad) {
-                return l.CurrentLoad > r.CurrentLoad;
-            }
-
-            if (l.Suffer != r.Suffer) {
-                return l.Suffer > r.Suffer;
-            }
-
-            return l.ShardId < r.ShardId;
-        });
+            });
 
         const size_t limit = Min<size_t>(Top, rows.size());
         const size_t nodeLimit = Min<size_t>(TopNodes, nodeRows.size());
@@ -208,14 +215,11 @@ public:
 
         for (size_t i = 0; i < limit; ++i) {
             const auto& row = rows[i];
-            Cout << i + 1 << ". "
-                << row.ShardId
-                << "  load=" << row.CurrentLoad
-                << "  suffer=" << row.Suffer
-                << "  blocks=" << row.UsedBlocksCount
-                << "/" << row.TotalBlocksCount
-                << "  nodes=" << row.UsedNodesCount
-                << Endl;
+            Cout << i + 1 << ". " << row.ShardId << "  load=" << row.CurrentLoad
+                 << "  suffer=" << row.Suffer
+                 << "  blocks=" << row.UsedBlocksCount << "/"
+                 << row.TotalBlocksCount << "  nodes=" << row.UsedNodesCount
+                 << Endl;
         }
 
         return true;
