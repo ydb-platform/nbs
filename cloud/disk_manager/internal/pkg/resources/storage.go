@@ -104,7 +104,6 @@ type FilesystemSnapshotMeta struct {
 	Size          uint64            `json:"size"`
 	StorageSize   uint64            `json:"storage_size"`
 	Ready         bool              `json:"ready"`
-	Status        string            `json:"status"`
 }
 
 type PlacementGroupMeta struct {

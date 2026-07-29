@@ -84,7 +84,6 @@ func (s *filesystemSnapshotState) toFilesystemSnapshotMeta() *FilesystemSnapshot
 		Size:         s.size,
 		StorageSize:  s.storageSize,
 		Ready:        s.status == filesystemSnapshotStatusReady,
-		Status:       filesystemSnapshotStatusToString(s.status),
 	}
 }
 

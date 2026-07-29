@@ -76,15 +76,13 @@ func waitForFilesystemSnapshotDeleted(
 
 	require.Eventually(t, func() bool {
 		meta, err := testcommon.GetFilesystemSnapshotMeta(ctx, snapshotID)
-		if err != nil || meta == nil || meta.Status != "deleted" {
+		if err != nil || meta != nil {
 			return false
 		}
 
 		dataplaneMeta, err :=
 			testcommon.GetDataplaneFilesystemSnapshotMeta(ctx, snapshotID)
-		return err == nil &&
-			dataplaneMeta != nil &&
-			dataplaneMeta.Status == "deleting"
+		return err == nil && dataplaneMeta == nil
 	}, 60*time.Second, 100*time.Millisecond)
 }
 
@@ -316,7 +314,7 @@ func TestCancelFilesystemSnapshotCreationDeletesSnapshot(t *testing.T) {
 		require.NoError(t, err)
 	}()
 
-	nfsClient.FillFilesystemWithDefaultTree(ctx, filesystemID, 5, 1000, 1)
+	nfsClient.FillFilesystemWithDefaultTree(ctx, filesystemID, 100, 100, 2)
 	operation := startFilesystemSnapshotCreation(
 		t,
 		ctx,
@@ -327,7 +325,6 @@ func TestCancelFilesystemSnapshotCreationDeletesSnapshot(t *testing.T) {
 
 	testcommon.CancelOperation(t, ctx, client, operation.Id)
 	testcommon.WaitOperationEnded(t, ctx, operation.Id, 60*time.Second)
-
 	waitForFilesystemSnapshotDeleted(t, ctx, snapshotID)
 }
 
@@ -345,7 +342,7 @@ func TestDeleteFilesystemDuringSnapshotCreationDeletesSnapshot(t *testing.T) {
 	snapshotID := t.Name() + "_snapshot"
 
 	createFilesystem(t, ctx, client, filesystemID)
-	nfsClient.FillFilesystemWithDefaultTree(ctx, filesystemID, 5, 1000, 1)
+	nfsClient.FillFilesystemWithDefaultTree(ctx, filesystemID, 100, 100, 2)
 	snapshotOperation := startFilesystemSnapshotCreation(
 		t,
 		ctx,
@@ -365,9 +362,9 @@ func TestDeleteFilesystemDuringSnapshotCreationDeletesSnapshot(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.NotNil(t, operation)
+
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
-
 	testcommon.WaitOperationEnded(t, ctx, snapshotOperation.Id, 60*time.Second)
 	waitForFilesystemSnapshotDeleted(t, ctx, snapshotID)
 }

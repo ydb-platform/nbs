@@ -455,6 +455,8 @@ FILESYSTEM_DATAPLANE_CONFIG_TEMPLATE = """
                 TraversalWorkersCount: 100
             >
             ListNodesMaxBytes: {snapshot_list_nodes_max_bytes}
+            SnapshotCollectionTimeout: "1s"
+            CollectSnapshotsTaskScheduleInterval: "1s"
         >
     >
 """

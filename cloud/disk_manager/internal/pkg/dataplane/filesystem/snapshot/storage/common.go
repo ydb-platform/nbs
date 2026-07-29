@@ -76,7 +76,6 @@ func (s *filesystemSnapshotState) toFilesystemSnapshotMeta() *FilesystemSnapshot
 		LockTaskID:   s.lockTaskID,
 		ChunkCount:   s.chunkCount,
 		Ready:        s.status == filesystemSnapshotStatusReady,
-		Status:       filesystemSnapshotStatusToString(s.status),
 	}
 }
 
