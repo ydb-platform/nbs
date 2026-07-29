@@ -61,6 +61,9 @@ outputs:
   trace_otlp_url:
     description: "URL to the raw ya build OTLP bundle"
     value: ${{ steps.build-trace.outputs.otlp_url }}
+  trace_inputs_url:
+    description: "URL to the archived raw ya build trace inputs"
+    value: ${{ steps.build-trace.outputs.inputs_url }}
 
 runs:
   using: composite
@@ -311,6 +314,13 @@ runs:
         BUILD_TARGET=${BUILD_TARGET//\"/}
         TRACE_REPORT_URL="${S3_WEBSITE_PREFIX}/build_logs/${COMPONENT_DIR}trace.html"
         TRACE_OTLP_URL="${S3_WEBSITE_PREFIX}/build_logs/${COMPONENT_DIR}trace.otlp.jsonl.gz"
+        TRACE_INPUTS_URL="${S3_WEBSITE_PREFIX}/build_logs/${COMPONENT_DIR}trace-inputs.tar.gz"
+        if [ -n "${S3_REPORTS_WEBSITE_PREFIX:-}" ]; then
+            TRACE_REPORT_URL="${S3_REPORTS_WEBSITE_PREFIX}/${COMPONENT_DIR}build/trace.html"
+            TRACE_OTLP_URL="${S3_REPORTS_WEBSITE_PREFIX}/${COMPONENT_DIR}build/trace.otlp.jsonl.gz"
+            TRACE_INPUTS_URL="${S3_REPORTS_WEBSITE_PREFIX}/${COMPONENT_DIR}build/trace-inputs.tar.gz"
+        fi
+        TRACE_REPORT_AVAILABLE=0
         if python3 -m scripts.tracing.ya_trace_report \
             --ya-out "$TMP_DIR" \
             --evlog "$TMP_DIR/ya_evlog.jsonl" \
@@ -324,17 +334,42 @@ runs:
             --build-target "$BUILD_TARGET" \
             --retry "$YA_BUILD_ATTEMPT" \
             --operation build; then
+            TRACE_REPORT_AVAILABLE=1
             {
                 echo "html_url=$TRACE_REPORT_URL"
                 echo "otlp_url=$TRACE_OTLP_URL"
             } >> "$GITHUB_OUTPUT"
+        else
+            echo "::warning title=Build trace::Unable to generate the ya build OTLP trace bundle"
+        fi
+
+        TRACE_INPUT_ARCHIVE="$TMP_DIR/trace-inputs.tar.gz"
+        if ! bash "$GITHUB_WORKSPACE/.github/scripts/tracing/pack_ya_trace_inputs.sh" \
+            "$TMP_DIR" \
+            "$TMP_DIR" \
+            "$TMP_DIR/ya_evlog.jsonl"; then
+            echo "::warning title=Build trace::Unable to archive the raw ya trace inputs"
+        fi
+
+        if [ -f "$TRACE_INPUT_ARCHIVE" ]; then
+            echo "inputs_url=$TRACE_INPUTS_URL" >> "$GITHUB_OUTPUT"
+        fi
+        if [ "$TRACE_REPORT_AVAILABLE" -eq 1 ]; then
             {
                 echo "### Build trace"
                 echo
-                echo "[Execution trace]($TRACE_REPORT_URL) ([raw OTLP JSONL]($TRACE_OTLP_URL))"
+                if [ -f "$TRACE_INPUT_ARCHIVE" ]; then
+                    echo "[Execution trace]($TRACE_REPORT_URL) ([raw OTLP JSONL]($TRACE_OTLP_URL), [raw trace inputs]($TRACE_INPUTS_URL))"
+                else
+                    echo "[Execution trace]($TRACE_REPORT_URL) ([raw OTLP JSONL]($TRACE_OTLP_URL))"
+                fi
             } >> "$GITHUB_STEP_SUMMARY"
-        else
-            echo "::warning title=Build trace::Unable to generate the ya build OTLP trace bundle"
+        elif [ -f "$TRACE_INPUT_ARCHIVE" ]; then
+            {
+                echo "### Build trace"
+                echo
+                echo "[Raw trace inputs]($TRACE_INPUTS_URL)"
+            } >> "$GITHUB_STEP_SUMMARY"
         fi
     - name: Summarize build errors
       id: build-errors
@@ -367,13 +402,19 @@ runs:
       shell: bash
       run: |
         echo "::group::s3-sync"
-        aws s3 sync --acl public-read --no-progress "$TMP_DIR/" "$S3_BUCKET_PATH/build_logs/${COMPONENT_DIR}"
-        if [ -n "${S3_REPORTS_BUCKET_PATH:-}" ] && [ -f "$TMP_DIR/trace.otlp.jsonl.gz" ]; then
+        aws s3 sync --acl public-read --no-progress \
+            --exclude ".trace-inputs.*.tar.gz.tmp" \
+            --exclude "trace-inputs.files" \
+            --exclude "trace-inputs.manifest.json" \
+            "$TMP_DIR/" \
+            "$S3_BUCKET_PATH/build_logs/${COMPONENT_DIR}"
+        if [ -n "${S3_REPORTS_BUCKET_PATH:-}" ]; then
             aws s3 sync --acl public-read --follow-symlinks --no-progress \
                 --exclude "*" \
                 --include "trace.html" \
                 --include "trace.manifest.json" \
                 --include "trace.otlp.jsonl.gz" \
+                --include "trace-inputs.tar.gz" \
                 "$TMP_DIR/" \
                 "$S3_REPORTS_BUCKET_PATH/${COMPONENT_DIR}build/"
         fi

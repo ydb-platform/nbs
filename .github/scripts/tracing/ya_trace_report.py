@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 from pathlib import Path
@@ -19,7 +20,12 @@ from .otlp import (
     update_span_attributes,
 )
 from .trace_report import write_trace_bundle
-from .ya_trace import YaEvlog, YaTraceFile, load_ya_evlog, load_ya_traces
+from .ya_trace import (
+    YaEvlog,
+    YaTraceFile,
+    YaTraceInputs,
+    load_ya_evlog,
+)
 
 
 def build_resource_attributes(args: argparse.Namespace) -> ResourceAttributes:
@@ -146,10 +152,35 @@ def main() -> None:
     if args.attempt_end_ns < args.attempt_start_ns:
         raise ValueError("attempt end precedes attempt start")
     resource = build_resource_attributes(args)
-    traces = load_ya_traces(
+    modified_since = args.attempt_start_ns / 1_000_000_000 - 5
+    trace_inputs = YaTraceInputs.discover(
         args.ya_out,
-        modified_since=args.attempt_start_ns / 1_000_000_000 - 5,
+        evlog_path=args.evlog,
+        modified_since=modified_since,
     )
+    input_manifest = trace_inputs.bundle_manifest(
+        resource.with_attributes(
+            {
+                "ci.ya.attempt.start_ns": int(args.attempt_start_ns),
+                "ci.ya.attempt.end_ns": int(args.attempt_end_ns),
+                "process.exit.code": args.exit_code,
+                "ci.result.code": (
+                    args.exit_code if args.result_code is None else args.result_code
+                ),
+            }
+        ),
+    )
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+    input_manifest_path = args.output_dir / "trace-inputs.manifest.json"
+    input_manifest_path.write_text(
+        json.dumps(input_manifest, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    input_manifest_path.chmod(0o644)
+    os.utime(input_manifest_path, ns=(0, 0))
+    (args.output_dir / "trace-inputs.files").write_bytes(trace_inputs.tar_file_list())
+    trace_collection = trace_inputs.parse()
+    traces = trace_collection.traces
     trace = build_ya_trace(
         traces,
         root_start_ns=args.attempt_start_ns,
@@ -169,6 +200,7 @@ def main() -> None:
     )
     print(
         f"Wrote {manifest['span_count']} spans from {len(traces)} ya trace files "
+        f"and listed {input_manifest['ya_trace_file_count']} raw ya trace files "
         f"to {args.output_dir}"
     )
 

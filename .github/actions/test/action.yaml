@@ -562,17 +562,20 @@ runs:
                 fi
             fi
 
+            REPORT_DIR="$ARTIFACTS_DIR/summary/${COMPONENT_DIR}${i}"
             TRACE_REPORT_URL="$S3_WEBSITE_PREFIX/summary/${COMPONENT_DIR}${i}/trace.html"
             TRACE_OTLP_URL="$S3_WEBSITE_PREFIX/summary/${COMPONENT_DIR}${i}/trace.otlp.jsonl.gz"
+            TRACE_INPUTS_URL="$S3_WEBSITE_PREFIX/summary/${COMPONENT_DIR}${i}/trace-inputs.tar.gz"
             if [ -n "${S3_REPORTS_WEBSITE_PREFIX:-}" ]; then
                 TRACE_REPORT_URL="$S3_REPORTS_WEBSITE_PREFIX/${COMPONENT_DIR}${i}/trace.html"
                 TRACE_OTLP_URL="$S3_REPORTS_WEBSITE_PREFIX/${COMPONENT_DIR}${i}/trace.otlp.jsonl.gz"
+                TRACE_INPUTS_URL="$S3_REPORTS_WEBSITE_PREFIX/${COMPONENT_DIR}${i}/trace-inputs.tar.gz"
             fi
             if PYTHONPATH="$PYTHONPATH:$GITHUB_WORKSPACE/.github" \
                 python3 -m scripts.tracing.ya_trace_report \
                 --ya-out "$OUT_DIR" \
                 --evlog "$LOG_DIR/${i}/ya_evlog.jsonl" \
-                --output-dir "$ARTIFACTS_DIR/summary/${COMPONENT_DIR}${i}" \
+                --output-dir "$REPORT_DIR" \
                 --attempt-start-ns "$TRACE_START_TIME_NS" \
                 --attempt-end-ns "$TRACE_END_TIME_NS" \
                 --exit-code "$RC" \
@@ -587,6 +590,14 @@ runs:
             else
                 TRACE_REPORT_AVAILABLE=0
                 echo "::warning title=Trace report::Unable to generate the ya OTLP trace bundle"
+            fi
+
+            TRACE_INPUT_ARCHIVE="$REPORT_DIR/trace-inputs.tar.gz"
+            if ! bash "$GITHUB_WORKSPACE/.github/scripts/tracing/pack_ya_trace_inputs.sh" \
+                "$REPORT_DIR" \
+                "$OUT_DIR" \
+                "$LOG_DIR/${i}/ya_evlog.jsonl"; then
+                echo "::warning title=Trace report::Unable to archive the raw ya trace inputs"
             fi
 
             export SUMMARY_OUT_ENV_PATH=$(mktemp -p /home/github)
@@ -612,7 +623,16 @@ runs:
             if [ "$TRACE_REPORT_AVAILABLE" -eq 1 ]; then
                 {
                     echo
-                    echo "[Execution trace]($TRACE_REPORT_URL) ([raw OTLP JSONL]($TRACE_OTLP_URL))"
+                    if [ -f "$TRACE_INPUT_ARCHIVE" ]; then
+                        echo "[Execution trace]($TRACE_REPORT_URL) ([raw OTLP JSONL]($TRACE_OTLP_URL), [raw trace inputs]($TRACE_INPUTS_URL))"
+                    else
+                        echo "[Execution trace]($TRACE_REPORT_URL) ([raw OTLP JSONL]($TRACE_OTLP_URL))"
+                    fi
+                } >> "$SUMMARY_OUT_ENV_PATH"
+            elif [ -f "$TRACE_INPUT_ARCHIVE" ]; then
+                {
+                    echo
+                    echo "[Raw trace inputs]($TRACE_INPUTS_URL)"
                 } >> "$SUMMARY_OUT_ENV_PATH"
             fi
             cat $SUMMARY_OUT_ENV_PATH | tee -a $GITHUB_STEP_SUMMARY
@@ -630,15 +650,20 @@ runs:
             fi
 
             echo "::group::s3-sync"
-            aws s3 sync --acl public-read --follow-symlinks --no-progress "$ARTIFACTS_DIR/" "$S3_BUCKET_PATH/"
-            REPORT_DIR="$ARTIFACTS_DIR/summary/${COMPONENT_DIR}${i}"
-            if [ -n "${S3_REPORTS_BUCKET_PATH:-}" ] && [ -f "$REPORT_DIR/summary.json" ]; then
+            aws s3 sync --acl public-read --follow-symlinks --no-progress \
+                --exclude "*.trace-inputs.*.tar.gz.tmp" \
+                --exclude "*trace-inputs.files" \
+                --exclude "*trace-inputs.manifest.json" \
+                "$ARTIFACTS_DIR/" \
+                "$S3_BUCKET_PATH/"
+            if [ -n "${S3_REPORTS_BUCKET_PATH:-}" ]; then
                 aws s3 sync --acl public-read --follow-symlinks --no-progress \
                     --exclude "*" \
                     --include "summary.json" \
                     --include "trace.html" \
                     --include "trace.manifest.json" \
                     --include "trace.otlp.jsonl.gz" \
+                    --include "trace-inputs.tar.gz" \
                     "$REPORT_DIR/" \
                     "$S3_REPORTS_BUCKET_PATH/${COMPONENT_DIR}${i}/"
             fi

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from scripts.tracing.ya_trace import YaTraceCollection
+from scripts.tracing.ya_trace import YaTraceCollection, YaTraceInputs
 
 
 def test_trace_collection_indexes_tests_and_disambiguates_chunks(
@@ -69,3 +69,84 @@ def test_trace_collection_indexes_tests_and_disambiguates_chunks(
     )
     assert chunk_event is not None
     assert "flake8" in chunk_event.log_paths["log"]
+
+
+def test_trace_inputs_produce_manifest_and_file_list(
+    tmp_path: Path,
+) -> None:
+    ya_out = tmp_path / "out"
+    trace_path = (
+        ya_out
+        / "cloud/example/tests"
+        / "test-results"
+        / "unittest"
+        / "ytest.report.trace"
+    )
+    trace_path.parent.mkdir(parents=True)
+    trace_path.write_text('{"name":"chunk-event","value":{}}\n')
+    evlog_path = tmp_path / "ya_evlog.jsonl"
+    evlog_path.write_text('{"namespace":"stages","event":"stage-finished"}\n')
+
+    inputs = YaTraceInputs.discover(
+        ya_out,
+        evlog_path=evlog_path,
+    )
+    manifest = inputs.bundle_manifest({"github.run.id": "123"})
+
+    assert manifest == {
+        "schema": "nbs-ya-trace-input-bundle",
+        "schema_version": 1,
+        "evlog_file": "ya_evlog.jsonl",
+        "ya_out_dir": "ya-out",
+        "ya_trace_file_count": 1,
+        "metadata": {"github.run.id": "123"},
+    }
+    assert inputs.tar_file_list() == (
+        b"./cloud/example/tests/test-results/unittest/ytest.report.trace\0"
+    )
+    assert len(inputs.parse().traces) == 1
+
+
+def test_trace_inputs_skip_symlinks(tmp_path: Path) -> None:
+    ya_out = tmp_path / "out"
+    trace_path = (
+        ya_out
+        / "cloud/example/tests"
+        / "test-results"
+        / "unittest"
+        / "ytest.report.trace"
+    )
+    trace_path.parent.mkdir(parents=True)
+    outside = tmp_path / "outside"
+    outside.write_text("must not be archived")
+    trace_path.symlink_to(outside)
+    evlog_path = tmp_path / "ya_evlog.jsonl"
+    evlog_path.symlink_to(outside)
+
+    inputs = YaTraceInputs.discover(ya_out, evlog_path=evlog_path)
+    manifest = inputs.bundle_manifest()
+
+    assert manifest["evlog_file"] is None
+    assert manifest["ya_trace_file_count"] == 0
+    assert inputs.tar_file_list() == b""
+
+
+def test_trace_inputs_tar_file_list_handles_unusual_names(
+    tmp_path: Path,
+) -> None:
+    ya_out = tmp_path / "out"
+    trace_path = (
+        ya_out
+        / "-suite\nwith-newline"
+        / "test-results"
+        / "unittest"
+        / "ytest.report.trace"
+    )
+    trace_path.parent.mkdir(parents=True)
+    trace_path.write_text('{"name":"chunk-event","value":{}}\n')
+
+    inputs = YaTraceInputs.discover(ya_out)
+
+    assert inputs.tar_file_list() == (
+        b"./-suite\nwith-newline/test-results/unittest/ytest.report.trace\0"
+    )

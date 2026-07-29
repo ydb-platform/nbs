@@ -4,6 +4,8 @@ const assert = require("assert");
 const {
   FIELDS,
   COLLAPSED_SCOPES,
+  RENDER_LIMIT_OPTIONS,
+  INITIAL_RENDER_LIMIT,
   formatDuration,
   childCountLabel,
   isCriticalPathTest,
@@ -11,6 +13,7 @@ const {
   defaultExpanded,
   matchingVisibility,
   flattenTraceRows,
+  renderLimitFromValue,
 } = require("./templates/trace_report.js");
 
 function makeSpan({
@@ -50,6 +53,19 @@ function testDurationFormatting() {
   assert.strictEqual(formatDuration(2_500_000_000), "2.500 s");
   assert.strictEqual(formatDuration(65_000_000_000), "1m 5.0s");
   assert.strictEqual(formatDuration(3_665_000_000_000), "1h 1m 5s");
+}
+
+function testRenderLimitOptions() {
+  assert.deepStrictEqual(RENDER_LIMIT_OPTIONS, [200, 1000, 5000]);
+  assert.strictEqual(INITIAL_RENDER_LIMIT, 200);
+  assert.strictEqual(renderLimitFromValue("200"), 200);
+  assert.strictEqual(renderLimitFromValue("1000"), 1000);
+  assert.strictEqual(renderLimitFromValue("5000"), 5000);
+  assert.strictEqual(
+    renderLimitFromValue("all"),
+    Number.POSITIVE_INFINITY,
+  );
+  assert.strictEqual(renderLimitFromValue("invalid"), 200);
 }
 
 function testChildCountsAndCriticalPathMarker() {
@@ -158,6 +174,7 @@ function testPagingAndGlobalLimit() {
     sourceRoots: hierarchy.roots,
     sourceExpanded: new Set([0]),
     pageSize: 200,
+    maximumRows: 1000,
   });
   assert.strictEqual(spanIndexes(paged).length, 201);
   assert.deepStrictEqual(paged.items.at(-1), {
@@ -179,6 +196,108 @@ function testPagingAndGlobalLimit() {
   assert.strictEqual(limited.items.length, 10);
 }
 
+function testRenderLimitPreservesSiblingGroups() {
+  const spans = [
+    makeSpan({ id: "root", name: "root" }),
+    makeSpan({ id: "large", parent: 0, name: "large group" }),
+  ];
+  for (let index = 0; index < 1001; index += 1) {
+    spans.push(
+      makeSpan({
+        id: `large-child-${index}`,
+        parent: 1,
+        name: `large child ${index}`,
+      }),
+    );
+  }
+  const siblingIndex = spans.length;
+  spans.push(
+    makeSpan({
+      id: "sibling",
+      parent: 0,
+      name: "sibling group",
+    }),
+  );
+  const siblingChildIndex = spans.length;
+  spans.push(
+    makeSpan({
+      id: "sibling-child",
+      parent: siblingIndex,
+      name: "sibling child",
+    }),
+  );
+
+  const hierarchy = buildHierarchy(spans);
+  const rows = flattenTraceRows({
+    sourceSpans: spans,
+    sourceChildren: hierarchy.children,
+    sourceRoots: hierarchy.roots,
+    sourceExpanded: new Set([0, 1, siblingIndex]),
+    pageSize: 200,
+    maximumRows: 1000,
+  });
+  assert.strictEqual(rows.truncated, false);
+  assert(spanIndexes(rows).includes(siblingIndex));
+  assert(spanIndexes(rows).includes(siblingChildIndex));
+  assert(
+    rows.items.some(
+      (item) =>
+        item.kind === "more" &&
+        item.index === 1 &&
+        item.shown === 200 &&
+        item.total === 1001,
+    ),
+  );
+}
+
+function testConfiguredGlobalRowCaps() {
+  const spans = [];
+  for (let index = 0; index < 6001; index += 1) {
+    spans.push(makeSpan({ id: `root-${index}`, name: `root ${index}` }));
+  }
+  const hierarchy = buildHierarchy(spans);
+  for (const [limit, expected, truncated] of [
+    [200, 200, true],
+    [1000, 1000, true],
+    [5000, 5000, true],
+    [Number.POSITIVE_INFINITY, 6001, false],
+  ]) {
+    const rows = flattenTraceRows({
+      sourceSpans: spans,
+      sourceChildren: hierarchy.children,
+      sourceRoots: hierarchy.roots,
+      sourceExpanded: new Set(),
+      maximumRows: limit,
+    });
+    assert.strictEqual(spanIndexes(rows).length, expected);
+    assert.strictEqual(rows.truncated, truncated);
+  }
+}
+
+function testGlobalLimitIncludesPagingControls() {
+  const spans = [makeSpan({ id: "root", name: "root" })];
+  for (let index = 0; index < 201; index += 1) {
+    spans.push(
+      makeSpan({
+        id: `child-${index}`,
+        parent: 0,
+        name: `child ${index}`,
+      }),
+    );
+  }
+  const hierarchy = buildHierarchy(spans);
+  const rows = flattenTraceRows({
+    sourceSpans: spans,
+    sourceChildren: hierarchy.children,
+    sourceRoots: hierarchy.roots,
+    sourceExpanded: new Set([0]),
+    pageSize: 199,
+    maximumRows: 200,
+  });
+  assert.strictEqual(rows.items.length, 200);
+  assert.strictEqual(rows.truncated, true);
+}
+
 function testCyclesRemainReachable() {
   const spans = [
     makeSpan({ id: "left", parent: 1, name: "left" }),
@@ -197,10 +316,14 @@ function testCyclesRemainReachable() {
 
 for (const test of [
   testDurationFormatting,
+  testRenderLimitOptions,
   testChildCountsAndCriticalPathMarker,
   testCollapsedGroupsAndExpansion,
   testSearchIncludesAttributesAndAncestors,
   testPagingAndGlobalLimit,
+  testRenderLimitPreservesSiblingGroups,
+  testConfiguredGlobalRowCaps,
+  testGlobalLimitIncludesPagingControls,
   testCyclesRemainReachable,
 ]) {
   test();

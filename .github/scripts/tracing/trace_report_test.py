@@ -141,7 +141,13 @@ def test_otlp_round_trip_and_static_html_escaping(tmp_path: Path) -> None:
 def test_renderer_marks_error_spans_and_supports_empty_input() -> None:
     trace = make_trace(make_span(status_code=2))
     assert _trace_model(trace)["s"][0][7] == 2
-    assert 'id="trace-data"' in render_html(trace)
+    report = render_html(trace)
+    assert 'id="trace-data"' in report
+    assert '<select id="row-limit" disabled>' in report
+    assert '<option value="200" selected>200</option>' in report
+    assert '<option value="1000">1,000</option>' in report
+    assert '<option value="5000">5,000</option>' in report
+    assert '<option value="all">All (may be slow)</option>' in report
     assert "No spans found" in render_html(Trace())
 
 

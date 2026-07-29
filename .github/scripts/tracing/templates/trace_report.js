@@ -15,12 +15,14 @@ const SCOPE = 10;
 const TRACE = 11;
 const ORPHAN_PARENT = 12;
 const PAGE_SIZE = 200;
-const INITIAL_RENDER_LIMIT = 2000;
+const RENDER_LIMIT_OPTIONS = Object.freeze([200, 1000, 5000]);
+const INITIAL_RENDER_LIMIT = RENDER_LIMIT_OPTIONS[0];
 const COLLAPSED_SCOPES = new Set(["ya.build", "ya.chunk"]);
 
 let rowsElement;
 let filterElement;
 let filterStatus;
+let rowLimitElement;
 let detailPanel;
 let detailTitle;
 let detailContent;
@@ -34,6 +36,18 @@ let visible;
 let selected = null;
 let searchCache = [];
 let renderLimit = INITIAL_RENDER_LIMIT;
+
+function renderLimitFromValue(value) {
+  if (value === "all") return Number.POSITIVE_INFINITY;
+  const parsed = Number(value);
+  return RENDER_LIMIT_OPTIONS.includes(parsed)
+    ? parsed
+    : INITIAL_RENDER_LIMIT;
+}
+
+function selectedRenderLimit() {
+  return renderLimitFromValue(rowLimitElement?.value || "");
+}
 
 function formatDuration(durationNs) {
   const duration = durationNs / 1e9;
@@ -176,6 +190,10 @@ function flattenTraceRows({
     const limit = sourceLimits.get(index) || pageSize;
     candidates.slice(0, limit).forEach((child) => addSpan(child, depth + 1));
     if (!truncated && candidates.length > limit) {
+      if (result.length >= maximumRows) {
+        truncated = true;
+        return;
+      }
       result.push({
         kind: "more",
         index,
@@ -211,7 +229,7 @@ async function decodeModel() {
 function resetDefaults() {
   expanded = defaultExpanded(spans, children, model.c);
   limits = new Map();
-  renderLimit = INITIAL_RENDER_LIMIT;
+  renderLimit = selectedRenderLimit();
 }
 
 function applyFilter() {
@@ -223,7 +241,7 @@ function applyFilter() {
     renderRows();
     return;
   }
-  renderLimit = INITIAL_RENDER_LIMIT;
+  renderLimit = selectedRenderLimit();
   const result = matchingVisibility(spans, query, searchCache);
   visible = result.visible;
   filterStatus.textContent = `${result.matches.toLocaleString()} matching spans`;
@@ -368,16 +386,10 @@ function renderRows() {
     if (flattened.truncated) {
       const limitRow = document.createElement("div");
       limitRow.className = "more-row";
-      const button = document.createElement("button");
-      button.type = "button";
-      button.textContent = `Render up to ${(
-        renderLimit + INITIAL_RENDER_LIMIT
-      ).toLocaleString()} visible rows`;
-      button.addEventListener("click", () => {
-        renderLimit += INITIAL_RENDER_LIMIT;
-        renderRows();
-      });
-      limitRow.append(button);
+      const message = document.createElement("span");
+      message.className = "muted";
+      message.textContent = `Showing the first ${renderLimit.toLocaleString()} visible rows. Choose a larger limit above to render more.`;
+      limitRow.append(message);
       fragment.append(limitRow);
     }
   }
@@ -488,6 +500,7 @@ function initialize(decoded) {
   ({ children, roots } = buildHierarchy(spans));
   resetDefaults();
   filterElement.disabled = false;
+  rowLimitElement.disabled = false;
   document.getElementById("expand").disabled = false;
   document.getElementById("collapse").disabled = false;
   renderRows();
@@ -497,6 +510,7 @@ function startTraceReport() {
   rowsElement = document.getElementById("rows");
   filterElement = document.getElementById("filter");
   filterStatus = document.getElementById("filter-status");
+  rowLimitElement = document.getElementById("row-limit");
   detailPanel = document.getElementById("detail-panel");
   detailTitle = document.getElementById("detail-title");
   detailContent = document.getElementById("detail-content");
@@ -505,6 +519,10 @@ function startTraceReport() {
   filterElement.addEventListener("input", () => {
     clearTimeout(filterTimer);
     filterTimer = setTimeout(applyFilter, 120);
+  });
+  rowLimitElement.addEventListener("change", () => {
+    renderLimit = selectedRenderLimit();
+    renderRows();
   });
   document.getElementById("expand").addEventListener("click", () => {
     spans.forEach((span, index) => {
@@ -548,6 +566,7 @@ const traceReportApi = {
     ORPHAN_PARENT,
   },
   PAGE_SIZE,
+  RENDER_LIMIT_OPTIONS,
   INITIAL_RENDER_LIMIT,
   COLLAPSED_SCOPES,
   formatDuration,
@@ -558,6 +577,7 @@ const traceReportApi = {
   spanSearchText,
   matchingVisibility,
   flattenTraceRows,
+  renderLimitFromValue,
 };
 
 if (typeof module === "object" && module.exports) {
