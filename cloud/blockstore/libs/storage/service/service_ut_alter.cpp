@@ -972,6 +972,45 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
             UNIT_ASSERT(response->Record.GetVolume().GetAlterTs() > 0);
         }
     }
+
+    Y_UNIT_TEST(ShouldUseExactDiskIdMatchOnAlterVolume)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        config.SetAllowVersionInModifyScheme(true);
+        ui32 nodeIdx = SetupTestEnv(env, std::move(config));
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+        service.CreateVolume(
+            DefaultDiskId,
+            512,
+            DefaultBlockSize,
+            "test_folder",
+            "test_cloud");
+
+        bool exactDiskIdMatch = false;
+
+        runtime.SetEventFilter(
+            [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvSSProxy::EvDescribeVolumeRequest: {
+                        auto& msg =
+                            *event->Get<TEvSSProxy::TEvDescribeVolumeRequest>();
+                        exactDiskIdMatch = msg.ExactDiskIdMatch;
+                        break;
+                    }
+                }
+
+                return false;
+            });
+
+        service.AlterVolume(DefaultDiskId, "project", "folder", "cloud");
+
+        UNIT_ASSERT_VALUES_EQUAL(true, exactDiskIdMatch);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -36,6 +36,7 @@ public:
     }
 
 public:
+    // returns time to wait in seconds to be able to register the update
     double Register(TInstant ts, double update)
     {
         if (Y_LIKELY(State.LastUpdateTs.GetValue())) {
@@ -54,7 +55,7 @@ public:
             return 0;
         }
 
-        return update - State.Budget;
+        return (update - State.Budget) / (Rate * 1e6);
     }
 
     void Flush()
@@ -149,7 +150,12 @@ public:
         auto maxBoostableDiff1 =
             Min(diff1, Min(Burst, Standard.TimePassed() / 1e6) * Beta);
 
-        auto diff2 = Boost.Register(ts, maxBoostableDiff1);
+        const auto boostDelaySeconds = Boost.Register(ts, maxBoostableDiff1);
+
+        Y_DEBUG_ABORT_UNLESS(
+            boostDelaySeconds == 0 || maxBoostableDiff1 > Boost.Budget());
+        const auto diff2 =
+            boostDelaySeconds ? maxBoostableDiff1 - Boost.Budget() : 0;
         // the remaining part of the update
         auto fullDiff = diff2 + diff1 - maxBoostableDiff1;
         if (fullDiff == 0) {

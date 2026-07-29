@@ -542,18 +542,25 @@ struct TTxIndexTablet
         /* const */ TRequestInfoPtr RequestInfo;
         const TString SessionId;
         const ui64 SessionSeqNo;
+        const ui32 MaxHandlesPerTx;
+        const bool IsContinuation;
         /* const */ NProto::TResetSessionRequest Request;
 
         TNodeSet Nodes;
+        bool Completed = false;
 
         TResetSession(
                 TRequestInfoPtr requestInfo,
                 TString sessionId,
                 ui64 sessionSeqNo,
+                ui32 maxHandlesPerTx,
+                bool isContinuation,
                 NProto::TResetSessionRequest request)
             : RequestInfo(std::move(requestInfo))
             , SessionId(std::move(sessionId))
             , SessionSeqNo(sessionSeqNo)
+            , MaxHandlesPerTx(maxHandlesPerTx)
+            , IsContinuation(isContinuation)
             , Request(std::move(request))
         {}
 
@@ -563,6 +570,7 @@ struct TTxIndexTablet
             TIndexStateNodeUpdates::Clear();
 
             Nodes.clear();
+            Completed = false;
         }
     };
 

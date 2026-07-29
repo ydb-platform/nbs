@@ -1020,6 +1020,63 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         UNIT_ASSERT_VALUES_EQUAL(0, unknownDevices->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, dirtyDevices->Val());
     }
+
+    Y_UNIT_TEST(ShouldUseExactDiskIdMatchOnUpdateVolumeConfig)
+    {
+        const auto agent1 = CreateAgentConfig(
+            "agent-1",
+            {Device("dev-1", "uuid-1", "rack-1", 10_GB),
+             Device("dev-2", "uuid-2", "rack-1", 10_GB)});
+
+        auto runtime = TTestRuntimeBuilder().WithAgents({agent1}).Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, {agent1}));
+
+        RegisterAgents(*runtime, 1);
+        WaitForAgents(*runtime, 1);
+        WaitForSecureErase(*runtime, {agent1});
+
+        TSSProxyClient ssProxy(*runtime);
+        ssProxy.CreateVolume("disk-1");
+
+        diskRegistry.AllocateDisk("disk-1", 10_GB);
+
+        bool exactDiskIdMatch = false;
+
+        runtime->SetEventFilter(
+            [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvSSProxy::EvDescribeVolumeRequest: {
+                        auto& msg =
+                            *event->Get<TEvSSProxy::TEvDescribeVolumeRequest>();
+                        exactDiskIdMatch = msg.ExactDiskIdMatch;
+                        break;
+                    }
+                }
+
+                return false;
+            });
+
+        diskRegistry.CreatePlacementGroup(
+            "group-1",
+            NProto::PLACEMENT_STRATEGY_SPREAD,
+            0);
+        diskRegistry.AlterPlacementGroupMembership(
+            "group-1",
+            1,   // version
+            TVector<TString>{"disk-1"},
+            TVector<TString>());
+
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+
+        UNIT_ASSERT_VALUES_EQUAL(true, exactDiskIdMatch);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
