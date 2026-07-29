@@ -115,7 +115,6 @@ void TRebaseVolumeActionActor::Bootstrap(const TActorContext& ctx)
         return;
     }
 
-    VolumeConfig.SetDiskId(Request.GetDiskId());
     VolumeConfig.SetBaseDiskId(Request.GetTargetBaseDiskId());
     VolumeConfig.SetVersion(Request.GetConfigVersion());
     DescribeBaseVolume(ctx);
@@ -141,14 +140,18 @@ void TRebaseVolumeActionActor::DescribeVolume(const TActorContext& ctx)
 {
     Become(&TThis::StateDescribeVolume);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
         "Sending describe request for volume %s",
         Request.GetDiskId().Quote().c_str());
 
     NCloud::Send(
         ctx,
         MakeSSProxyServiceId(),
-        std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(Request.GetDiskId()));
+        std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(
+            Request.GetDiskId(),
+            /*exactDiskIdMatch=*/true));
 }
 
 void TRebaseVolumeActionActor::AlterVolume(
