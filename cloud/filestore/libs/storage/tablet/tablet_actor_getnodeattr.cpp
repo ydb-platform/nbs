@@ -169,11 +169,8 @@ bool TIndexTabletActor::PrepareTx_GetNodeAttr(
         return true;
     }
 
-    if (!args.RequestInfo->NodeDiagnosticStatsStarted)
-    {
-        NodeRequestStarted(
-            args.NodeId,
-            ctx.Now());
+    if (!args.RequestInfo->NodeDiagnosticStatsStarted) {
+        NodeRequestStarted(args.NodeId, ctx.Now());
         args.RequestInfo->NodeDiagnosticStatsStarted = true;
     }
 
