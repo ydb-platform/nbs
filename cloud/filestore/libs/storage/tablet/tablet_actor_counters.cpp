@@ -722,7 +722,7 @@ void TIndexTabletActor::HandleUpdateCounters(
         // If shardIds isn't empty and the current tablet is a shard, it will
         // collect self stats via TAggregateStatsActor
         if (shardIds.empty() || IsMainTablet()) {
-            FillSelfStorageStats(stats);
+            FillSelfStorageStats(stats, ctx.Now());
         }
         if (shardIds.empty()) {
             CachedAggregateStats = std::move(*stats);
@@ -761,7 +761,7 @@ void TIndexTabletActor::HandleUpdateCounters(
 ////////////////////////////////////////////////////////////////////////////////
 
 void TIndexTabletActor::FillSelfStorageStats(
-    NProtoPrivate::TStorageStats* stats)
+    NProtoPrivate::TStorageStats* stats, TInstant now)
 {
 #define FILESTORE_TABLET_UPDATE_COUNTER(name, ...)                             \
     stats->Set##name(Get##name());                                             \
@@ -803,7 +803,7 @@ void TIndexTabletActor::FillSelfStorageStats(
         UnconfirmedData.size() + UnconfirmedDataInProgress.size());
     stats->SetConfirmedDataCount(ConfirmedData.size());
 
-    for (const auto& fileStats: GetNodeDiagnosticStats()) {
+    for (const auto& fileStats: GetNodeAccessStats(now)) {
         auto* out = stats->AddNodeStats();
         out->SetShardId(GetFileSystemId());
         out->SetNodeId(fileStats.NodeId);
@@ -852,7 +852,7 @@ void TIndexTabletActor::HandleGetStorageStats(
     if (allowCache && pollShards) {
         *stats = CachedAggregateStats;
     } else {
-        FillSelfStorageStats(stats);
+        FillSelfStorageStats(stats, ctx.Now());
     }
 
     TVector<TCompactionRangeInfo> topRanges;
