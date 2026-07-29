@@ -1,17 +1,25 @@
 import os
 
+import pytest
+
 from google.protobuf import text_format
 
 from cloud.filestore.config.server_pb2 import TServerAppConfig
 from cloud.filestore.tests.python.lib.daemon_config import (
     FilestoreServerConfigGenerator,
     FilestoreVhostConfigGenerator,
+    is_blob_storage_failure_injection_supported,
 )
 
 from contrib.ydb.core.protos import config_pb2
 
 
 def test_blob_storage_config():
+    if not is_blob_storage_failure_injection_supported():
+        pytest.skip(
+            "BlobStorage failure injection is not supported by this YDB version"
+        )
+
     for generator_type in (
         FilestoreServerConfigGenerator,
         FilestoreVhostConfigGenerator,

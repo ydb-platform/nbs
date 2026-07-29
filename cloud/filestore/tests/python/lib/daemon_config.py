@@ -26,6 +26,19 @@ from cloud.storage.core.tools.common.python.port_reservation import PortManager
 
 logger = logging.getLogger(__name__)
 
+
+def is_blob_storage_failure_injection_supported():
+    return hasattr(TBlobStorageConfig().ServiceSet, "FailureInjectionConfig")
+
+
+def ensure_blob_storage_failure_injection_supported():
+    if not is_blob_storage_failure_injection_supported():
+        raise RuntimeError(
+            "BlobStorage failure injection is not supported by this "
+            "YDB version"
+        )
+
+
 LOG_WARN = 4
 LOG_NOTICE = 5
 LOG_INFO = 6
@@ -274,6 +287,7 @@ class FilestoreDaemonConfigGenerator:
         return auth_config
 
     def __generate_bs_txt(self, bs_failure_probability):
+        ensure_blob_storage_failure_injection_supported()
         blob_storage_config = TBlobStorageConfig()
         failure_injection_config = (
             blob_storage_config.ServiceSet.FailureInjectionConfig
@@ -369,6 +383,7 @@ class FilestoreDaemonConfigGenerator:
                 ]
 
             if self.__bs_failure_probability:
+                ensure_blob_storage_failure_injection_supported()
                 command += [
                     "--bs-file",
                     self.__config_file_path("bs.txt"),
