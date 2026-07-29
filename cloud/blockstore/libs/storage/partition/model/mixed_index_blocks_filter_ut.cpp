@@ -4,6 +4,8 @@
 
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
+////////////////////////////////////////////////////////////////////////////////
+
 namespace {
 
 constexpr ui64 BlocksPerRange = TCompressedBitmap::CHUNK_SIZE;
@@ -20,13 +22,13 @@ bool MayHaveBlock(
         commitId);
 }
 
-void LoadBitmap(TMixedBlocksFilter& filter, const TCompressedBitmap& bitmap)
+void InitializeRanges(
+    TMixedBlocksFilter& filter,
+    TVector<ui32> rangeIndices,
+    ui64 commitId)
 {
-    auto serializer = bitmap.RangeSerializer(0, bitmap.Capacity());
-    TCompressedBitmap::TSerializedChunk chunk;
-    while (serializer.Next(&chunk)) {
-        filter.UpdateChunk(chunk);
-    }
+    filter.CompactionStarted(std::move(rangeIndices), commitId);
+    filter.CompactionFinished();
 }
 
 }   // namespace
@@ -46,7 +48,7 @@ Y_UNIT_TEST_SUITE(TMixedIndexBlocksFilterTest)
         const ui32 rangeIndex = 1;
         const ui32 blockIndex = rangeIndex * BlocksPerRange;
         const ui64 rangeCommitId = 10;
-        filter.UpdateRangeCommitId(rangeIndex, rangeCommitId);
+        InitializeRanges(filter, {rangeIndex}, rangeCommitId);
 
         UNIT_ASSERT(MayHaveBlock(filter, blockIndex, rangeCommitId - 1));
         UNIT_ASSERT(!MayHaveBlock(filter, blockIndex, rangeCommitId));
@@ -57,44 +59,15 @@ Y_UNIT_TEST_SUITE(TMixedIndexBlocksFilterTest)
             rangeCommitId));
     }
 
-    Y_UNIT_TEST(ShouldLoadSerializedBlocks)
-    {
-        TMixedBlocksFilter filter(0, BlocksPerRange, BlockCount);
-        TCompressedBitmap bitmap(BlockCount);
-
-        bitmap.Set(0, 1);
-        bitmap.Set(BlocksPerRange - 1, BlocksPerRange);
-        bitmap.Set(BlocksPerRange + 7, BlocksPerRange + 8);
-        bitmap.Set(BlockCount - 1, BlockCount);
-
-        LoadBitmap(filter, bitmap);
-        for (ui32 rangeIndex = 0; rangeIndex < RangeCount; ++rangeIndex) {
-            filter.UpdateRangeCommitId(rangeIndex, 0);
-        }
-
-        for (ui32 blockIndex = 0; blockIndex < BlockCount; ++blockIndex) {
-            UNIT_ASSERT_VALUES_EQUAL(
-                bitmap.Test(blockIndex),
-                MayHaveBlock(filter, blockIndex));
-        }
-
-        UNIT_ASSERT(filter.MayHaveBlocksInMixedIndex(
-            TBlockRange32::MakeClosedInterval(1, BlocksPerRange - 1),
-            Max<ui64>()));
-        UNIT_ASSERT(!filter.MayHaveBlocksInMixedIndex(
-            TBlockRange32::MakeClosedInterval(1, BlocksPerRange - 2),
-            Max<ui64>()));
-    }
-
     Y_UNIT_TEST(ShouldOnlyAddBlocksVisibleAtRangeCommitId)
     {
         TMixedBlocksFilter filter(0, BlocksPerRange, BlockCount);
         const ui64 rangeCommitId = 10;
-        filter.UpdateRangeCommitId(0, rangeCommitId);
+        InitializeRanges(filter, {0}, rangeCommitId);
 
-        filter.AddBlocksToMixedIndex(0, rangeCommitId - 1);
-        filter.AddBlocksToMixedIndex(1, rangeCommitId);
-        filter.AddBlocksToMixedIndex(2, rangeCommitId + 1);
+        filter.BlocksAddedToMixedIndex(0, 1, rangeCommitId - 1);
+        filter.BlocksAddedToMixedIndex(1, 1, rangeCommitId);
+        filter.BlocksAddedToMixedIndex(2, 1, rangeCommitId + 1);
 
         UNIT_ASSERT(!MayHaveBlock(filter, 0, rangeCommitId));
         UNIT_ASSERT(MayHaveBlock(filter, 1, rangeCommitId));
@@ -107,13 +80,13 @@ Y_UNIT_TEST_SUITE(TMixedIndexBlocksFilterTest)
     Y_UNIT_TEST(ShouldReplaceCompactedRangeWithConcurrentWrites)
     {
         TMixedBlocksFilter filter(0, BlocksPerRange, BlockCount);
-        filter.UpdateRangeCommitId(0, 1);
+        InitializeRanges(filter, {0}, 1);
 
-        filter.AddBlocksToMixedIndex(0, 2);
-        filter.StartCompaction({0}, 10);
-        filter.AddBlocksToMixedIndex(1, 9);
-        filter.AddBlocksToMixedIndex(2, 10);
-        filter.AddBlocksToMixedIndex(3, 11);
+        filter.BlocksAddedToMixedIndex(0, 1, 2);
+        filter.CompactionStarted({0}, 10);
+        filter.BlocksAddedToMixedIndex(1, 1, 9);
+        filter.BlocksAddedToMixedIndex(2, 1, 10);
+        filter.BlocksAddedToMixedIndex(3, 1, 11);
 
         filter.CompactionFinished();
 
@@ -129,10 +102,10 @@ Y_UNIT_TEST_SUITE(TMixedIndexBlocksFilterTest)
     Y_UNIT_TEST(ShouldClearRangeWhenCompactionHasNoConcurrentWrites)
     {
         TMixedBlocksFilter filter(0, BlocksPerRange, BlockCount);
-        filter.UpdateRangeCommitId(0, 1);
-        filter.AddBlocksToMixedIndex(17, 2);
+        InitializeRanges(filter, {0}, 1);
+        filter.BlocksAddedToMixedIndex(17, 1, 2);
 
-        filter.StartCompaction({0}, 10);
+        filter.CompactionStarted({0}, 10);
         filter.CompactionFinished();
 
         UNIT_ASSERT(!MayHaveBlock(filter, 17));
@@ -142,11 +115,11 @@ Y_UNIT_TEST_SUITE(TMixedIndexBlocksFilterTest)
     Y_UNIT_TEST(ShouldLeaveRangeUnchangedWhenCompactionFails)
     {
         TMixedBlocksFilter filter(0, BlocksPerRange, BlockCount);
-        filter.UpdateRangeCommitId(0, 1);
-        filter.AddBlocksToMixedIndex(0, 2);
+        InitializeRanges(filter, {0}, 1);
+        filter.BlocksAddedToMixedIndex(0, 1, 2);
 
-        filter.StartCompaction({0}, 10);
-        filter.AddBlocksToMixedIndex(1, 10);
+        filter.CompactionStarted({0}, 10);
+        filter.BlocksAddedToMixedIndex(1, 1, 10);
         filter.CompactionFailed();
 
         UNIT_ASSERT(MayHaveBlock(filter, 0));
@@ -158,13 +131,13 @@ Y_UNIT_TEST_SUITE(TMixedIndexBlocksFilterTest)
     Y_UNIT_TEST(ShouldHandleQueuedCompactionsInCommitOrder)
     {
         TMixedBlocksFilter filter(0, BlocksPerRange, BlockCount);
-        filter.UpdateRangeCommitId(0, 1);
-        filter.AddBlocksToMixedIndex(0, 2);
+        InitializeRanges(filter, {0}, 1);
+        filter.BlocksAddedToMixedIndex(0, 1, 2);
 
-        filter.StartCompaction({0}, 10);
-        filter.AddBlocksToMixedIndex(1, 15);
-        filter.StartCompaction({0}, 20);
-        filter.AddBlocksToMixedIndex(2, 25);
+        filter.CompactionStarted({0}, 10);
+        filter.BlocksAddedToMixedIndex(1, 1, 15);
+        filter.CompactionStarted({0}, 20);
+        filter.BlocksAddedToMixedIndex(2, 1, 25);
 
         filter.CompactionFinished();
 
@@ -183,21 +156,59 @@ Y_UNIT_TEST_SUITE(TMixedIndexBlocksFilterTest)
     Y_UNIT_TEST(ShouldUpdateOnlyTheCompactedRange)
     {
         TMixedBlocksFilter filter(0, BlocksPerRange, BlockCount);
-        filter.UpdateRangeCommitId(0, 1);
-        filter.UpdateRangeCommitId(1, 1);
+        InitializeRanges(filter, {0, 1}, 1);
 
         const ui32 blockInFirstRange = 7;
         const ui32 blockInSecondRange = BlocksPerRange + 7;
-        filter.AddBlocksToMixedIndex(blockInFirstRange, 2);
-        filter.AddBlocksToMixedIndex(blockInSecondRange, 2);
+        filter.BlocksAddedToMixedIndex(blockInFirstRange, 1, 2);
+        filter.BlocksAddedToMixedIndex(blockInSecondRange, 1, 2);
 
-        filter.StartCompaction({1}, 10);
-        filter.AddBlocksToMixedIndex(blockInSecondRange + 1, 10);
+        filter.CompactionStarted({1}, 10);
+        filter.BlocksAddedToMixedIndex(blockInSecondRange + 1, 1, 10);
         filter.CompactionFinished();
 
         UNIT_ASSERT(MayHaveBlock(filter, blockInFirstRange));
         UNIT_ASSERT(!MayHaveBlock(filter, blockInSecondRange));
         UNIT_ASSERT(MayHaveBlock(filter, blockInSecondRange + 1));
+    }
+
+    Y_UNIT_TEST(ShouldAddBlockRangesAcrossCompactionRanges)
+    {
+        TMixedBlocksFilter filter(0, BlocksPerRange, BlockCount);
+        InitializeRanges(filter, {0}, 10);
+        InitializeRanges(filter, {1}, 20);
+
+        filter.BlocksAddedToMixedIndex(BlocksPerRange - 1, 3, 15);
+
+        UNIT_ASSERT(MayHaveBlock(filter, BlocksPerRange - 1));
+        UNIT_ASSERT(!MayHaveBlock(filter, BlocksPerRange));
+        UNIT_ASSERT(!MayHaveBlock(filter, BlocksPerRange + 1));
+
+        filter.CompactionStarted({0, 1}, 30);
+        filter.BlocksAddedToMixedIndex(BlocksPerRange - 1, 3, 30);
+        filter.CompactionFinished();
+
+        UNIT_ASSERT(MayHaveBlock(filter, BlocksPerRange - 1));
+        UNIT_ASSERT(MayHaveBlock(filter, BlocksPerRange));
+        UNIT_ASSERT(MayHaveBlock(filter, BlocksPerRange + 1));
+    }
+
+    Y_UNIT_TEST(ShouldHandlePartialLastRange)
+    {
+        constexpr ui32 PartialBlockCount = BlocksPerRange + 7;
+        TMixedBlocksFilter filter(0, BlocksPerRange, PartialBlockCount);
+
+        InitializeRanges(filter, {1}, 10);
+        filter.BlocksAddedToMixedIndex(PartialBlockCount - 2, 2, 10);
+
+        UNIT_ASSERT(MayHaveBlock(filter, PartialBlockCount - 2));
+        UNIT_ASSERT(MayHaveBlock(filter, PartialBlockCount - 1));
+
+        filter.CompactionStarted({1}, 20);
+        filter.CompactionFinished();
+
+        UNIT_ASSERT(!MayHaveBlock(filter, PartialBlockCount - 2));
+        UNIT_ASSERT(!MayHaveBlock(filter, PartialBlockCount - 1));
     }
 }
 

@@ -10,11 +10,12 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 ////////////////////////////////////////////////////////////////////////////////
 
 TMixedBlocksFilter::TMixedBlocksFilter(
-        ui64 tabletId,
-        ui64 blocksPerRange,
-        size_t blockCount)
+    ui64 tabletId,
+    ui64 blocksPerRange,
+    size_t blockCount)
     : TabletId(tabletId)
     , BlocksPerRange(blocksPerRange)
+    , BlockCount(blockCount)
     , Blocks(blockCount)
     , CommitIdsPerRange(CeilDiv(blockCount, blocksPerRange), std::nullopt)
 {}
@@ -23,6 +24,11 @@ bool TMixedBlocksFilter::MayHaveBlocksInMixedIndex(
     TBlockRange32 range,
     ui64 commitId) const
 {
+    STORAGE_VERIFY(
+        range.End < BlockCount,
+        TWellKnownEntityTypes::TABLET,
+        TabletId);
+
     for (size_t blockIndex = range.Start; blockIndex <= range.End; ++blockIndex)
     {
         const size_t rangeIndex = blockIndex / BlocksPerRange;
@@ -40,18 +46,28 @@ bool TMixedBlocksFilter::MayHaveBlocksInMixedIndex(
     return false;
 }
 
-void TMixedBlocksFilter::AddBlocksToMixedIndex(ui32 blockIndex, ui64 commitId)
+void TMixedBlocksFilter::BlocksAddedToMixedIndex(
+    ui32 blockIndex,
+    ui32 blockCount,
+    ui64 commitId)
 {
-    const ui32 rangeIndex = blockIndex / BlocksPerRange;
-
     STORAGE_VERIFY(
-        rangeIndex < CommitIdsPerRange.size(),
+        static_cast<ui64>(blockIndex) + blockCount <= BlockCount,
         TWellKnownEntityTypes::TABLET,
         TabletId);
 
-    const auto startCommitId = CommitIdsPerRange[rangeIndex];
-    if (!startCommitId || *startCommitId <= commitId) {
-        Blocks.Set(blockIndex, blockIndex + 1);
+    const ui64 endBlockIndex = static_cast<ui64>(blockIndex) + blockCount;
+    for (ui64 rangeStart = blockIndex; rangeStart < endBlockIndex;) {
+        const ui32 rangeIndex = rangeStart / BlocksPerRange;
+        const ui64 rangeEnd =
+            Min(endBlockIndex, (rangeIndex + 1) * BlocksPerRange);
+        const auto rangeCommitId = CommitIdsPerRange[rangeIndex];
+
+        if (!rangeCommitId || *rangeCommitId <= commitId) {
+            Blocks.Set(rangeStart, rangeEnd);
+        }
+
+        rangeStart = rangeEnd;
     }
 
     for (auto& compaction: Compactions) {
@@ -60,18 +76,28 @@ void TMixedBlocksFilter::AddBlocksToMixedIndex(ui32 blockIndex, ui64 commitId)
             break;
         }
 
-        const bool hasRangeIndex = BinarySearch(
-            compaction.RangesForCompaction.begin(),
-            compaction.RangesForCompaction.end(),
-            rangeIndex);
+        for (ui64 rangeStart = blockIndex; rangeStart < endBlockIndex;) {
+            const ui32 rangeIndex = rangeStart / BlocksPerRange;
+            const ui64 rangeEnd =
+                Min(endBlockIndex, (rangeIndex + 1) * BlocksPerRange);
+            const bool hasRangeIndex = BinarySearch(
+                compaction.RangeIndices.begin(),
+                compaction.RangeIndices.end(),
+                rangeIndex);
 
-        if (hasRangeIndex) {
-            compaction.MixedBlocksWrittenAfterCompaction.insert(blockIndex);
+            if (hasRangeIndex) {
+                for (ui64 i = rangeStart; i < rangeEnd; ++i) {
+                    compaction.MixedBlocksAddedDuringCompaction.insert(
+                        static_cast<ui32>(i));
+                }
+            }
+
+            rangeStart = rangeEnd;
         }
     }
 }
 
-void TMixedBlocksFilter::StartCompaction(
+void TMixedBlocksFilter::CompactionStarted(
     TVector<ui32> rangeIndices,
     ui64 commitId)
 {
@@ -81,10 +107,17 @@ void TMixedBlocksFilter::StartCompaction(
         TabletId);
 
     Sort(rangeIndices);
+    for (ui32 rangeIndex: rangeIndices) {
+        STORAGE_VERIFY(
+            rangeIndex < CommitIdsPerRange.size(),
+            TWellKnownEntityTypes::TABLET,
+            TabletId);
+    }
+
     Compactions.push_back(
-        {.RangesForCompaction = std::move(rangeIndices),
+        {.RangeIndices = std::move(rangeIndices),
          .CommitId = commitId,
-         .MixedBlocksWrittenAfterCompaction = {}});
+         .MixedBlocksAddedDuringCompaction = {}});
 }
 
 void TMixedBlocksFilter::CompactionFinished()
@@ -95,14 +128,14 @@ void TMixedBlocksFilter::CompactionFinished()
         TabletId);
 
     auto& compaction = Compactions.front();
-    for (auto& rangeIndex: compaction.RangesForCompaction) {
+    for (ui32 rangeIndex: compaction.RangeIndices) {
         CommitIdsPerRange[rangeIndex] = compaction.CommitId;
         Blocks.Unset(
             rangeIndex * BlocksPerRange,
-            (rangeIndex + 1) * BlocksPerRange);
+            Min((rangeIndex + 1) * BlocksPerRange, BlockCount));
     }
 
-    for (size_t blockIndex: compaction.MixedBlocksWrittenAfterCompaction) {
+    for (ui32 blockIndex: compaction.MixedBlocksAddedDuringCompaction) {
         Blocks.Set(blockIndex, blockIndex + 1);
     }
 
@@ -119,28 +152,10 @@ void TMixedBlocksFilter::CompactionFailed()
     Compactions.pop_front();
 }
 
-void TMixedBlocksFilter::UpdateChunk(TCompressedBitmap::TSerializedChunk chunk)
-{
-    Blocks.Update(chunk);
-}
-
-void TMixedBlocksFilter::UpdateRangeCommitId(ui32 rangeIndex, ui64 commitId)
-{
-    STORAGE_VERIFY(
-        rangeIndex < CommitIdsPerRange.size(),
-        TWellKnownEntityTypes::TABLET,
-        TabletId);
-
-    CommitIdsPerRange[rangeIndex] = commitId;
-}
-
 ui64 TMixedBlocksFilter::GetMemoryUsage() const
 {
-    // RangeIndexToCompactionRangeInfos is not included in the memory usage
-    // because it usualy takes small amount of memory, because maximum number of
-    // ranges during compaction is bounded.
     return Blocks.MemSize() +
-           (CommitIdsPerRange.size() * sizeof(std::optional<ui64>));
+           (CommitIdsPerRange.capacity() * sizeof(std::optional<ui64>));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition
