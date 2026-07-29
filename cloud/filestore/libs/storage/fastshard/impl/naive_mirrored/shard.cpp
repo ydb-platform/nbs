@@ -306,7 +306,15 @@ public:
             slot.Size = update.GetSize();
         }
 
-        Slots->Update(writeContext.Lsn, slot, slotNo, writeContext.PageGroups);
+        error = Slots->Update(
+            writeContext.Lsn,
+            slot,
+            slotNo,
+            writeContext.PageGroups);
+        if (HasError(error)) {
+            return error;
+        }
+
         *attr = Convert(slot);
         return {};
     }

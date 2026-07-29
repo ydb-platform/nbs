@@ -45,14 +45,14 @@ public:
         ui64* bit,
         TVector<TPageGroup>& pageGroups);
 
-    static ui64 CalcBitsPerPage(ui64 pageSize)
+    [[nodiscard]] static ui64 CalcBitsPerPage(ui64 pageSize)
     {
         return pageSize * 8;
     }
 
 private:
-    bool Validate(ui64 bit, NProto::TError* error) const;
-    NProto::TError InitIfNeeded() const;
+    [[nodiscard]] bool Validate(ui64 bit, NProto::TError* error) const;
+    [[nodiscard]] NProto::TError InitIfNeeded() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard
