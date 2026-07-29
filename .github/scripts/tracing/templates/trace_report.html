@@ -5,7 +5,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
-<title>@@TRACE_TITLE@@</title>
+<title>{{ title }}</title>
 <style>
 :root { color-scheme:light dark; --bg:#fff; --fg:#172033; --muted:#667085;
   --line:#d8dee9; --panel:#f7f8fa; --bar:#6d5ce7; --bad:#d92d20;
@@ -70,9 +70,27 @@ th,td { border-bottom:1px solid var(--line); padding:.25rem .5rem; text-align:le
 </style>
 </head>
 <body><main>
-<h1>@@TRACE_TITLE@@</h1>
-<p class="muted">@@TRACE_SUMMARY@@</p>
-<details><summary>Run metadata</summary>@@TRACE_METADATA@@</details>
+<h1>{{ title }}</h1>
+<p class="muted">{{ summary }}</p>
+<details><summary>Run metadata</summary>
+{% if metadata %}
+<table class="attributes">
+{% for key, value in metadata | dictsort %}
+  <tr><th>{{ key }}</th><td>
+  {% if value is string and (value.startswith("https://") or value.startswith("http://")) %}
+    <a rel="noopener noreferrer" href="{{ value }}">{{ value }}</a>
+  {% elif value is string %}
+    {{ value }}
+  {% else %}
+    {{ value | tojson }}
+  {% endif %}
+  </td></tr>
+{% endfor %}
+</table>
+{% else %}
+<p class="muted">No attributes</p>
+{% endif %}
+</details>
 <div class="toolbar">
   <input id="filter" type="search" placeholder="Filter spans or attributes" disabled>
   <button id="expand" type="button" disabled>Expand all</button>
@@ -91,8 +109,8 @@ th,td { border-bottom:1px solid var(--line); padding:.25rem .5rem; text-align:le
   <div id="rows"><p id="loading" class="muted">Loading compressed trace data…</p></div>
 </section>
 </main>
-<script id="trace-data" type="application/octet-stream">@@TRACE_PAYLOAD@@</script>
+<script id="trace-data" type="application/octet-stream">{{ payload }}</script>
 <script>
-@@TRACE_SCRIPT@@
+{% include "trace_report.js" %}
 </script>
 </body></html>

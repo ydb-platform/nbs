@@ -9,6 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 from github.WorkflowJob import WorkflowJob
+from jinja2 import UndefinedError
 from opentelemetry.proto_json.trace.v1.trace import TracesData
 
 from scripts.tracing.ya_trace_report import (
@@ -31,6 +32,7 @@ from scripts.tracing.otlp import (
 from scripts.tracing.trace_report import (
     TRACE_HTML_TEMPLATE,
     TRACE_SCRIPT_TEMPLATE,
+    TRACE_TEMPLATE_ENV,
     _trace_model,
     read_otlp_jsonl,
     render_html,
@@ -106,7 +108,10 @@ def test_otlp_round_trip_and_static_html_escaping(tmp_path: Path) -> None:
         tmp_path,
         trace,
         title="<trace>",
-        metadata={"github.sha": "<sha>"},
+        metadata={
+            "github.sha": "<sha>",
+            "github.run.url": "https://github.example/run?name=<trace>",
+        },
     )
 
     restored = read_otlp_jsonl([tmp_path / manifest["otlp_file"]])
@@ -117,6 +122,10 @@ def test_otlp_round_trip_and_static_html_escaping(tmp_path: Path) -> None:
     report = (tmp_path / manifest["html_file"]).read_text()
     assert "<script>alert" not in report
     assert "&lt;sha&gt;" in report
+    assert (
+        'href="https://github.example/run?name=&lt;trace&gt;"'
+        ">https://github.example/run?name=&lt;trace&gt;</a>"
+    ) in report
     assert "<h1>&lt;trace&gt;</h1>" in report
     assert "default-src &#x27;none&#x27;" not in report
     payload = re.search(
@@ -134,6 +143,16 @@ def test_renderer_marks_error_spans_and_supports_empty_input() -> None:
     assert _trace_model(trace)["s"][0][7] == 2
     assert 'id="trace-data"' in render_html(trace)
     assert "No spans found" in render_html(Trace())
+
+
+def test_trace_template_rejects_missing_context() -> None:
+    template = TRACE_TEMPLATE_ENV.get_template(TRACE_HTML_TEMPLATE.name)
+    with pytest.raises(UndefinedError):
+        template.render()
+
+
+def test_trace_script_is_safe_to_embed() -> None:
+    assert "</script" not in TRACE_SCRIPT_TEMPLATE.read_text().lower()
 
 
 def test_resource_attributes_support_environment_and_workflow_run() -> None:
@@ -249,9 +268,9 @@ def test_renderer_collapses_build_and_test_groups_by_default() -> None:
     )
     template = TRACE_HTML_TEMPLATE.read_text()
     script = TRACE_SCRIPT_TEMPLATE.read_text()
-    assert "@@TRACE_SCRIPT@@" in template
+    assert '{% include "trace_report.js" %}' in template
     assert script in report
-    assert "@@TRACE_" not in report
+    assert '{% include "trace_report.js" %}' not in report
     assert "compile target" not in report
 
 

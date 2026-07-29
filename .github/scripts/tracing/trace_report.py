@@ -6,12 +6,11 @@ from __future__ import annotations
 import argparse
 import base64
 import gzip
-import html
 import json
-import re
-import urllib.parse
 from pathlib import Path
 from typing import Any, Iterable, Mapping
+
+from jinja2 import Environment, FileSystemLoader, StrictUndefined, select_autoescape
 
 from .otlp import (
     Trace,
@@ -33,7 +32,15 @@ OTLP_SPANS_PER_LINE = 5_000
 TEMPLATE_DIR = Path(__file__).with_name("templates")
 TRACE_HTML_TEMPLATE = TEMPLATE_DIR / "trace_report.html"
 TRACE_SCRIPT_TEMPLATE = TEMPLATE_DIR / "trace_report.js"
-TRACE_PLACEHOLDER_RE = re.compile(r"@@TRACE_[A-Z_]+@@")
+TRACE_TEMPLATE_ENV = Environment(
+    loader=FileSystemLoader(str(TEMPLATE_DIR)),
+    autoescape=select_autoescape(["html"]),
+    undefined=StrictUndefined,
+)
+TRACE_TEMPLATE_ENV.policies["json.dumps_kwargs"] = {
+    "ensure_ascii": False,
+    "sort_keys": True,
+}
 
 
 def _open_text(path: Path, mode: str):
@@ -117,37 +124,6 @@ def _format_duration(duration_ns: Ns) -> str:
         return f"{int(minutes)}m {seconds:.1f}s"
     hours, minutes = divmod(minutes, 60)
     return f"{int(hours)}h {int(minutes)}m {seconds:.0f}s"
-
-
-def _attribute_rows(values: Mapping[str, Any]) -> str:
-    if not values:
-        return '<p class="muted">No attributes</p>'
-    rows = []
-    for key, value in sorted(values.items()):
-        rendered = (
-            json.dumps(value, ensure_ascii=False)
-            if not isinstance(value, str)
-            else value
-        )
-        parsed = urllib.parse.urlparse(rendered)
-        if (
-            isinstance(value, str)
-            and parsed.scheme in {"http", "https"}
-            and parsed.netloc
-        ):
-            rendered_value = (
-                '<a rel="noopener noreferrer" href="'
-                + html.escape(rendered, quote=True)
-                + '">'
-                + html.escape(rendered)
-                + "</a>"
-            )
-        else:
-            rendered_value = html.escape(rendered)
-        rows.append(
-            "<tr><th>" + html.escape(key) + "</th><td>" + rendered_value + "</td></tr>"
-        )
-    return '<table class="attributes">' + "".join(rows) + "</table>"
 
 
 def _trace_model(trace: Trace) -> dict[str, Any]:
@@ -242,18 +218,6 @@ def _trace_payload(model: Mapping[str, Any]) -> str:
     return base64.b64encode(gzip.compress(encoded, compresslevel=9, mtime=0)).decode()
 
 
-def _render_trace_template(values: Mapping[str, str]) -> str:
-    template = TRACE_HTML_TEMPLATE.read_text(encoding="utf-8")
-    placeholders = set(TRACE_PLACEHOLDER_RE.findall(template))
-    if placeholders != set(values):
-        missing = sorted(placeholders - set(values))
-        unused = sorted(set(values) - placeholders)
-        raise ValueError(
-            f"Trace template placeholder mismatch: missing={missing}, unused={unused}"
-        )
-    return TRACE_PLACEHOLDER_RE.sub(lambda match: values[match.group()], template)
-
-
 def render_html(
     trace: Trace,
     *,
@@ -261,23 +225,15 @@ def render_html(
     metadata: Mapping[str, Any] | None = None,
 ) -> str:
     model = _trace_model(trace)
-    script = TRACE_SCRIPT_TEMPLATE.read_text(encoding="utf-8")
-    if "</script" in script.lower():
-        raise ValueError(
-            "Trace report JavaScript must not contain a closing script tag"
-        )
     failures = sum(span_status_code(span) == 2 for span in trace)
-    return _render_trace_template(
-        {
-            "@@TRACE_TITLE@@": html.escape(title),
-            "@@TRACE_SUMMARY@@": (
-                f"{len(trace):,} spans · {failures:,} errors · "
-                f"{_format_duration(model['d'])}"
-            ),
-            "@@TRACE_METADATA@@": _attribute_rows(clean_attributes(metadata)),
-            "@@TRACE_PAYLOAD@@": _trace_payload(model),
-            "@@TRACE_SCRIPT@@": script,
-        }
+    return TRACE_TEMPLATE_ENV.get_template(TRACE_HTML_TEMPLATE.name).render(
+        title=title,
+        summary=(
+            f"{len(trace):,} spans · {failures:,} errors · "
+            f"{_format_duration(model['d'])}"
+        ),
+        metadata=clean_attributes(metadata),
+        payload=_trace_payload(model),
     )
 
 
