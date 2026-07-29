@@ -247,33 +247,33 @@ private:
 
     void EvictLeastUsedNodes()
     {
-        while (StatsRanking.size() > MaxEntries)
-        {
+        while (StatsRanking.size() > MaxEntries) {
             auto leastAccessed = StatsRanking.begin();
             const ui64 nodeId = leastAccessed->NodeId;
 
             NodeId2StatsIter.erase(nodeId);
             StatsRanking.erase(leastAccessed);
         }
-    };
+    }
 
 public:
     void Initialise(size_t maxEntries);
     void RequestStarted(ui64 nodeId, TInstant now);
     static double DecayedScore(const TNodeAccessStats& stats, TInstant now);
+
     TVector<TNodeAccessStats> GetStats(TInstant now) const
     {
         TVector<TNodeAccessStats> result;
         result.reserve(StatsRanking.size());
-        for (auto it = StatsRanking.rbegin(); it != StatsRanking.rend(); ++it)
-        {
+        for (auto it = StatsRanking.rbegin(); it != StatsRanking.rend(); ++it) {
             auto stats = *it;
             stats.AccessScore = DecayedScore(stats, now);
             result.push_back(stats);
         }
         return result;
-    };
+    }
 };
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TIndexTabletState
