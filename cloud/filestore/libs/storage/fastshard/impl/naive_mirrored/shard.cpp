@@ -397,8 +397,11 @@ public:
         ui64 nodeId,
         TWriteContext& writeContext)
     {
+        if (name.size() >= NameCapacity) {
+            return ErrorNameTooLong(name);
+        }
+
         TNameTableSlot slot{};
-        Y_ABORT_UNLESS(name.size() < NameCapacity);
         memcpy(slot.Name, name.data(), name.size());
         memset(slot.Name + name.size(), 0, NameCapacity - name.size());
         slot.NodeId = nodeId;
@@ -795,6 +798,7 @@ public:
             *response.MutableError() = ErrorInvalidParent(request.GetNodeId());
             return response;
         }
+
         for (const auto& name: request.GetNames()) {
             NProto::TNodeAttr attr;
             auto error = GetNodeAttr(request.GetNodeId(), name, &attr);
@@ -828,9 +832,14 @@ public:
     NProto::TGetNodeAttrResponse
     GetNodeAttr(NProto::TGetNodeAttrRequest request)
     {
+        NProto::TGetNodeAttrResponse response;
+        if (request.GetNodeId() != RootNodeId && !request.GetName().empty()) {
+            *response.MutableError() = ErrorInvalidParent(request.GetNodeId());
+            return response;
+        }
+
         NProto::TNodeAttr attr;
         auto error = GetNodeAttr(request.GetNodeId(), request.GetName(), &attr);
-        NProto::TGetNodeAttrResponse response;
         if (HasError(error)) {
             *response.MutableError() = std::move(error);
         } else {
@@ -1194,9 +1203,10 @@ public:
                 error = {};
             } else if (HasError(error)) {
                 break;
+            } else {
+                storagePageClusterIdsToWrite.push_back(storagePageClusterId);
             }
 
-            storagePageClusterIdsToWrite.push_back(storagePageClusterId);
             bufferOffset += PageClusterSize;
         }
 
@@ -1256,15 +1266,15 @@ public:
                     != newStoragePageClusterIds.end());
                 *storagePageClusterIdIt = *newStoragePageClusterIdIt;
                 ++newStoragePageClusterIdIt;
-            }
 
-            TNodePageClusterSlot slot;
-            slot.Key.NodeId = nodeId;
-            slot.Key.PageClusterId = pageClusterId;
-            slot.StoragePageClusterId = *storagePageClusterIdIt;
-            error = PageIndex.Put(slot, writeContext);
-            if (HasError(error)) {
-                break;
+                TNodePageClusterSlot slot;
+                slot.Key.NodeId = nodeId;
+                slot.Key.PageClusterId = pageClusterId;
+                slot.StoragePageClusterId = *storagePageClusterIdIt;
+                error = PageIndex.Put(slot, writeContext);
+                if (HasError(error)) {
+                    break;
+                }
             }
 
             //

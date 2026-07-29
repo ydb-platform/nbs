@@ -135,8 +135,6 @@ TEST(NaiveMirroredShardTest, CreatesFiles)
     auto shard = CreateNaiveMirroredFileSystemShard(ShardNo, fx.Config);
 
     const TString file1 = "file1";
-    const TString file2 = "file2";
-    const TString file3 = "file3";
     const ui32 mode = 0644;
     const ui32 expectedMode = S_IFREG | 0644;
     const ui64 uid = 111;
@@ -186,6 +184,75 @@ TEST(NaiveMirroredShardTest, CreatesFiles)
     {
         TGetNodeAttrRequest request;
         request.SetNodeId(nodeId);
+        auto f = shard->GetNodeAttr(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(NCloud::E_FS_NOENT, response.GetError().GetCode())
+            << FormatError(response.GetError());
+    }
+}
+
+TEST(NaiveMirroredShardTest, ValidatesRequests)
+{
+    silk::Logger::setLevel(silk::LogLevel::DEBUG);
+
+    TStorageFixture fx;
+
+    auto shard = CreateNaiveMirroredFileSystemShard(ShardNo, fx.Config);
+
+    const ui32 mode = 0644;
+    const ui32 expectedMode = S_IFREG | 0644;
+    const ui64 uid = 111;
+    const ui64 gid = 222;
+
+    {
+        TCreateNodeRequest request;
+        request.SetNodeId(RootNodeId);
+        request.SetName("a-very-very-very-very-long-name-for-this-impl");
+        request.SetUid(uid);
+        request.SetGid(gid);
+        request.MutableFile()->SetMode(mode);
+        auto f = shard->CreateNode(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(NCloud::E_FS_NAMETOOLONG, response.GetError().GetCode())
+            << FormatError(response.GetError());
+    }
+
+    ui64 nodeId = 0;
+    {
+        TCreateNodeRequest request;
+        request.SetNodeId(RootNodeId);
+        request.SetName("a-normal-name");
+        request.SetUid(uid);
+        request.SetGid(gid);
+        request.MutableFile()->SetMode(mode);
+        auto f = shard->CreateNode(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+        nodeId = response.GetNode().GetId();
+    }
+
+    {
+        TGetNodeAttrRequest request;
+        request.SetNodeId(RootNodeId);
+        request.SetName("a-normal-name");
+        auto f = shard->GetNodeAttr(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+        EXPECT_EQ(nodeId, response.GetNode().GetId());
+        EXPECT_EQ(uid, response.GetNode().GetUid());
+        EXPECT_EQ(gid, response.GetNode().GetGid());
+        EXPECT_EQ(
+            static_cast<ui32>(E_REGULAR_NODE),
+            response.GetNode().GetType());
+        EXPECT_EQ(expectedMode, response.GetNode().GetMode());
+    }
+
+    {
+        TGetNodeAttrRequest request;
+        request.SetNodeId(RootNodeId + 1);
+        request.SetName("a-normal-name");
         auto f = shard->GetNodeAttr(request);
         auto response = f.GetValueSync();
         EXPECT_EQ(NCloud::E_FS_NOENT, response.GetError().GetCode())
