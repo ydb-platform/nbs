@@ -131,6 +131,16 @@ struct TTabletSetupT
 
         if (ReadAheadRangeSize) {
             storageConfig.SetReadAheadCacheRangeSize(ReadAheadRangeSize);
+
+            // Keep only the most recent widened window. The benchmarks scan
+            // the same file over and over, and with the default of 32 retained
+            // results the cache would hold every window of the file after the
+            // first pass, so every later pass would be served entirely from
+            // the cache and nothing would be described again. Retaining one
+            // window makes wrapping around behave like moving forward into a
+            // not yet described region, so the steady state stays at one
+            // describe per window.
+            storageConfig.SetReadAheadCacheMaxResultsPerNode(1);
         }
 
         Env.UpdateStorageConfig(std::move(storageConfig));
