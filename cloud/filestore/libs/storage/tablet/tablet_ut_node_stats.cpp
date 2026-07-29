@@ -42,10 +42,9 @@ Y_UNIT_TEST_SUITE(TNodeAccessStatsTrackerTest)
         UNIT_ASSERT_VALUES_EQUAL(2, stats[0].RequestCount);
         UNIT_ASSERT_DOUBLES_EQUAL(2.0, stats[0].AccessScore, 1e-9);
 
-        const auto decayed =
-            TNodeAccessStatsTracker::DecayedScore(
-                stats[0],
-                now + TDuration::Minutes(10));
+        const auto decayed = TNodeAccessStatsTracker::DecayedScore(
+            stats[0],
+            now + TDuration::Minutes(10));
 
         UNIT_ASSERT_DOUBLES_EQUAL(1.0, decayed, 1e-9);
     }
@@ -71,7 +70,7 @@ Y_UNIT_TEST_SUITE(TNodeAccessStatsTrackerTest)
 
         UNIT_ASSERT_VALUES_EQUAL(2, stats[0].NodeId);
         UNIT_ASSERT_VALUES_EQUAL(1, stats[1].NodeId);
-        }
+    }
 
     Y_UNIT_TEST(ShouldUseNodeIdAsTieBreaker)
     {
@@ -112,4 +111,4 @@ Y_UNIT_TEST_SUITE(TNodeAccessStatsTrackerTest)
         UNIT_ASSERT_VALUES_EQUAL(3, stats[1].NodeId);
     }
 }
-} // namespace NCloud::NFileStore::NStorage
+}   // namespace NCloud::NFileStore::NStorage

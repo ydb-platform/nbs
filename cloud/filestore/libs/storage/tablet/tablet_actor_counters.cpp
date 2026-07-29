@@ -821,8 +821,7 @@ void TIndexTabletActor::FillSelfStorageStats(
         out->SetNodeId(fileStats.NodeId);
         out->SetRequestCount(fileStats.RequestCount);
         out->SetAccessScore(fileStats.AccessScore);
-        out->SetLastAccessedTimestampUs(
-            fileStats.LastAccessed.MicroSeconds());
+        out->SetLastAccessedTimestampUs(fileStats.LastAccessed.MicroSeconds());
     }
 }
 

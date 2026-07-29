@@ -77,16 +77,16 @@ void TNodeAccessStatsTracker::Initialise(size_t maxEntries)
     StatsRanking.clear();
 }
 
-double TNodeAccessStatsTracker::DecayedScore(const TNodeAccessStats& stats, TInstant now)
+double TNodeAccessStatsTracker::DecayedScore(
+    const TNodeAccessStats& stats,
+    TInstant now)
 {
-    const auto elapsed =
-      now >= stats.LastAccessed
-          ? now - stats.LastAccessed
-          : TDuration::Zero();
+    const auto elapsed = now >= stats.LastAccessed ? now - stats.LastAccessed
+                                                   : TDuration::Zero();
 
     // Access Score has a half-life of 10 minutes
-    return stats.AccessScore
-             * exp(-log(2.0) * elapsed.GetValue() / TDuration::Minutes(10).MicroSeconds());
+    return stats.AccessScore * exp(-log(2.0) * elapsed.GetValue() /
+                                   TDuration::Minutes(10).MicroSeconds());
 }
 
 void TNodeAccessStatsTracker::RequestStarted(ui64 nodeId, TInstant now)
@@ -94,13 +94,10 @@ void TNodeAccessStatsTracker::RequestStarted(ui64 nodeId, TInstant now)
     auto it = NodeId2StatsIter.find(nodeId);
     TNodeAccessStats stats;
 
-    if (it != NodeId2StatsIter.end())
-    {
+    if (it != NodeId2StatsIter.end()) {
         stats = *it->second;
         StatsRanking.erase(it->second);
-    }
-    else
-    {
+    } else {
         stats.NodeId = nodeId;
     }
 
@@ -310,7 +307,8 @@ void TIndexTabletState::NodeRequestStarted(ui64 nodeId, TInstant now)
     NodeAccessStatsTracker.RequestStarted(nodeId, now);
 }
 
-TVector<TNodeAccessStats> TIndexTabletState::GetNodeAccessStats(TInstant now) const
+TVector<TNodeAccessStats> TIndexTabletState::GetNodeAccessStats(
+    TInstant now) const
 {
     return NodeAccessStatsTracker.GetStats(now);
 }
