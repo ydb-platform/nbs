@@ -752,3 +752,81 @@ func TestUnsafeCreateNodeRestoreShardAfterDeletion(t *testing.T) {
 	restoredNodes := model.ListAllNodesRecursively(true)
 	model.RequireNodesEqual(restoredNodes, true)
 }
+
+func TestFreezeAndUnfreezeTablet(t *testing.T) {
+	ctx := nfs_testing.NewContext()
+	client := nfs_testing.NewClient(t, ctx)
+
+	filesystemID := t.Name()
+	err := client.Create(ctx, filesystemID, nfs.CreateFilesystemParams{
+		FolderID:    "folder",
+		CloudID:     "cloud",
+		BlocksCount: 1024,
+		BlockSize:   4096,
+		Kind:        types.FilesystemKind_FILESYSTEM_KIND_SSD,
+	})
+	require.NoError(t, err)
+	defer client.Delete(ctx, filesystemID, true /* force */)
+
+	session, err := client.CreateSession(ctx, filesystemID, "", false)
+	require.NoError(t, err)
+	defer session.Close(ctx)
+
+	err = client.FreezeTablet(ctx, filesystemID)
+	require.NoError(t, err)
+
+	_, err = session.CreateNode(ctx, nfs.Node{
+		ParentNodeID: nfs.RootNodeID,
+		Name:         "regular-while-frozen",
+		Type:         nfs.NODE_KIND_FILE,
+		Mode:         0644,
+	})
+	require.Error(t, err)
+
+	const unsafeNodeID = uint64(100)
+	err = client.UnsafeCreateNode(ctx, filesystemID, nfs.Node{
+		NodeID: unsafeNodeID,
+		Type:   nfs.NODE_KIND_FILE,
+		Mode:   0644,
+		Links:  1,
+	})
+	require.NoError(t, err)
+
+	err = client.UnsafeCreateNodeRef(
+		ctx,
+		filesystemID,
+		nfs.RootNodeID,
+		"unsafe-while-frozen",
+		unsafeNodeID,
+		"",
+		"",
+	)
+	require.NoError(t, err)
+
+	err = client.UnfreezeTablet(ctx, filesystemID)
+	require.NoError(t, err)
+
+	unsafeNode, err := session.GetNodeAttr(
+		ctx,
+		nfs.RootNodeID,
+		"unsafe-while-frozen",
+	)
+	require.NoError(t, err)
+	require.Equal(t, unsafeNodeID, unsafeNode.NodeID)
+
+	regularNodeID, err := session.CreateNode(ctx, nfs.Node{
+		ParentNodeID: nfs.RootNodeID,
+		Name:         "regular-after-unfreeze",
+		Type:         nfs.NODE_KIND_FILE,
+		Mode:         0644,
+	})
+	require.NoError(t, err)
+
+	regularNode, err := session.GetNodeAttr(
+		ctx,
+		nfs.RootNodeID,
+		"regular-after-unfreeze",
+	)
+	require.NoError(t, err)
+	require.Equal(t, regularNodeID, regularNode.NodeID)
+}
