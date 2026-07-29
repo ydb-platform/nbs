@@ -1210,10 +1210,21 @@ func TestTasksShouldFailRunningAfterRetriableErrorCountExceeded(t *testing.T) {
 	require.NoError(t, err)
 
 	reqCtx := getRequestContext(t, ctx)
+	// NOTE: the task must never succeed on its own, it has to be terminated by
+	// the retry limit.
+	//
+	// TaskState.RetriableErrorCount is a best-effort counter: it can lag behind
+	// the real number of failed runs, because the task persists its own state
+	// (via execCtx.SaveState) and the runner increments RetriableErrorCount in
+	// two separate transactions. If the run context is cancelled in between
+	// (e.g. by a failed ping), the increment is skipped while the task state is
+	// already persisted.
+	// failed runs, see the comment in
+	// TestTasksShouldFailRunningAfterRetriableErrorCountForTaskTypeExceeded.
 	id, err := scheduleUnstableTask(
 		reqCtx,
 		s.scheduler,
-		newDefaultConfig().GetMaxRetriableErrorCount()+1,
+		10*newDefaultConfig().GetMaxRetriableErrorCount(), // failuresUntilSuccess
 	)
 	require.NoError(t, err)
 
@@ -1264,10 +1275,19 @@ func TestTasksShouldFailRunningAfterRetriableErrorCountForTaskTypeExceeded(
 	require.NoError(t, err)
 
 	reqCtx := getRequestContext(t, ctx)
+	// NOTE: the task must never succeed on its own, it has to be terminated by
+	// the retry limit.
+	//
+	// TaskState.RetriableErrorCount is a best-effort counter: it can lag behind
+	// the real number of failed runs, because the task persists its own state
+	// (via execCtx.SaveState) and the runner increments RetriableErrorCount in
+	// two separate transactions. If the run context is cancelled in between
+	// (e.g. by a failed ping), the increment is skipped while the task state is
+	// already persisted.
 	id, err := scheduleUnstableTask(
 		reqCtx,
 		s.scheduler,
-		unstableTaskMaxRetriesCount+1, // failuresUntilSuccess
+		defaultMaxRetriesCount+1, // failuresUntilSuccess
 	)
 	require.NoError(t, err)
 
@@ -1282,7 +1302,11 @@ func TestTasksShouldFailRunningAfterRetriableErrorCountForTaskTypeExceeded(
 
 	failsCount, err := getTaskMetadata(ctx, s.scheduler, id)
 	require.NoError(t, err)
-	require.EqualValues(t, unstableTaskMaxRetriesCount+1, failsCount)
+	// The task type limit must be the one in effect, not the (much bigger)
+	// default one. The exact number of runs is not deterministic, see the note
+	// above.
+	require.GreaterOrEqual(t, failsCount, unstableTaskMaxRetriesCount+1)
+	require.Less(t, failsCount, defaultMaxRetriesCount)
 }
 
 func TestTasksShouldNotRestoreRunningAfterNonRetriableError(t *testing.T) {
