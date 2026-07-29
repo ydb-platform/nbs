@@ -455,6 +455,22 @@ private:
 
     bool CheckSessionForDestroy(const TSession* session, ui64 seqNo);
 
+    bool ReadNodesForSessionHandles(
+        IIndexTabletDatabase& db,
+        const TSession& session,
+        ui32 maxHandlesPerTx,
+        TNodeSet& nodes);
+
+    void DestroySessionHandles(
+        IIndexTabletDatabase& db,
+        const NActors::TActorContext& ctx,
+        TSession* session,
+        ui64 commitId,
+        ui32 maxHandlesPerTx,
+        bool isContinuation,
+        const TNodeSet& nodes,
+        const char* operation);
+
     //
     // Helper actor factory funcs.
     //

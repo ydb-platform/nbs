@@ -64,7 +64,7 @@ void TIndexTabletActor::HandleResetSession(
         std::move(requestInfo),
         sessionId,
         seqNo,
-        Config->GetMaxResetSessionHandlesPerTx(),
+        Config->GetMaxDeleteSessionHandlesPerTx(),
         false /* isContinuation */,
         std::move(msg->Record));
 }
@@ -96,31 +96,11 @@ bool TIndexTabletActor::PrepareTx_ResetSession(
 
     auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
-    bool ready = true;
-    auto commitId = GetCurrentCommitId();
-    ui32 handleCount = 0;
-    for (const auto& handle: session->Handles) {
-        if (args.MaxHandlesPerTx && ++handleCount > args.MaxHandlesPerTx) {
-            break;
-        }
-
-        if (args.Nodes.contains(handle.GetNodeId())) {
-            continue;
-        }
-
-        TMaybe<INodeIndexTabletDatabase::TNode> node;
-        if (!ReadNode(*db, handle.GetNodeId(), commitId, node)) {
-            ready = false;
-        } else {
-            TABLET_VERIFY(node);
-            if (node->Attrs.GetLinks() == 0) {
-                // candidate to be removed
-                args.Nodes.insert(*node);
-            }
-        }
-    }
-
-    return ready;
+    return ReadNodesForSessionHandles(
+        *db,
+        *session,
+        args.MaxHandlesPerTx,
+        args.Nodes);
 }
 
 void TIndexTabletActor::ExecuteTx_ResetSession(
@@ -166,45 +146,15 @@ void TIndexTabletActor::ExecuteTx_ResetSession(
         return;
     }
 
-    ui32 handleCount = 0;
-    auto handle = session->Handles.begin();
-    while (handle != session->Handles.end()) {
-        if (args.MaxHandlesPerTx && ++handleCount > args.MaxHandlesPerTx) {
-            break;
-        }
-
-        auto nodeId = handle->GetNodeId();
-        DestroyHandle(*db, &*(handle++));
-
-        LOG_INFO(ctx, TFileStoreComponents::TABLET,
-            "%s Removing handle upon session reset s:%s n:%lu",
-            LogTag.c_str(),
-            args.SessionId.c_str(),
-            nodeId);
-
-        auto it = args.Nodes.find(nodeId);
-        if (it != args.Nodes.end() && !HasOpenHandles(nodeId)) {
-            LOG_INFO(ctx, TFileStoreComponents::TABLET,
-                "%s Removing node upon session reset s:%s n:%lu (size %lu)",
-                LogTag.c_str(),
-                args.SessionId.c_str(),
-                nodeId,
-                it->Attrs.GetSize());
-
-            auto e = RemoveNode(
-                *db,
-                *it,
-                it->MinCommitId,
-                commitId);
-
-            if (HasError(e)) {
-                WriteOrphanNode(*db, TStringBuilder()
-                    << "DestroySession: " << args.SessionId
-                    << ", RemoveNode: " << nodeId
-                    << ", Error: " << FormatError(e), nodeId);
-            }
-        }
-    }
+    DestroySessionHandles(
+        *db,
+        ctx,
+        session,
+        commitId,
+        args.MaxHandlesPerTx,
+        args.IsContinuation,
+        args.Nodes,
+        "session reset");
 
     if (session->Handles.Empty()) {
         ResetSession(*db, session, args.Request.GetSessionState());

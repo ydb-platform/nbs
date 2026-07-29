@@ -238,6 +238,106 @@ bool TIndexTabletActor::CheckSessionForDestroy(const TSession* session, ui64 seq
         session->GetSessionRwSeqNo() == seqNo;
 }
 
+bool TIndexTabletActor::ReadNodesForSessionHandles(
+    IIndexTabletDatabase& db,
+    const TSession& session,
+    ui32 maxHandlesPerTx,
+    TNodeSet& nodes)
+{
+    bool ready = true;
+    auto commitId = GetCurrentCommitId();
+    ui32 handleCount = 0;
+    for (const auto& handle: session.Handles) {
+        if (maxHandlesPerTx && ++handleCount > maxHandlesPerTx) {
+            break;
+        }
+
+        if (nodes.contains(handle.GetNodeId())) {
+            continue;
+        }
+
+        TMaybe<INodeIndexTabletDatabase::TNode> node;
+        if (!ReadNode(db, handle.GetNodeId(), commitId, node)) {
+            ready = false;
+        } else {
+            TABLET_VERIFY(node);
+            if (node->Attrs.GetLinks() == 0) {
+                // candidate to be removed
+                nodes.insert(*node);
+            }
+        }
+    }
+
+    return ready;
+}
+
+void TIndexTabletActor::DestroySessionHandles(
+    IIndexTabletDatabase& db,
+    const TActorContext& ctx,
+    TSession* session,
+    ui64 commitId,
+    ui32 maxHandlesPerTx,
+    bool isContinuation,
+    const TNodeSet& nodes,
+    const char* operation)
+{
+    ui64 destroyedHandleCount = 0;
+    ui64 removedNodeCount = 0;
+    auto handle = session->Handles.begin();
+    while (handle != session->Handles.end()) {
+        if (maxHandlesPerTx && destroyedHandleCount >= maxHandlesPerTx) {
+            break;
+        }
+
+        auto nodeId = handle->GetNodeId();
+        DestroyHandle(db, &*(handle++));
+        ++destroyedHandleCount;
+
+        LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+            "%s Removing handle upon %s s:%s n:%lu",
+            LogTag.c_str(),
+            operation,
+            session->GetSessionId().c_str(),
+            nodeId);
+
+        auto it = nodes.find(nodeId);
+        if (it != nodes.end() && !HasOpenHandles(nodeId)) {
+            LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+                "%s Removing node upon %s s:%s n:%lu (size %lu)",
+                LogTag.c_str(),
+                operation,
+                session->GetSessionId().c_str(),
+                nodeId,
+                it->Attrs.GetSize());
+
+            auto e = RemoveNode(
+                db,
+                *it,
+                it->MinCommitId,
+                commitId);
+
+            if (HasError(e)) {
+                WriteOrphanNode(db, TStringBuilder()
+                    << "DestroySession: " << session->GetSessionId()
+                    << ", RemoveNode: " << nodeId
+                    << ", Error: " << FormatError(e), nodeId);
+            } else {
+                ++removedNodeCount;
+            }
+        }
+    }
+
+    LOG_INFO(ctx, TFileStoreComponents::TABLET,
+        "%s Destroyed %lu handles, removed %lu nodes upon %s s:%s"
+        " (continuation: %u)",
+        LogTag.c_str(),
+        destroyedHandleCount,
+        removedNodeCount,
+        operation,
+        session->GetSessionId().c_str(),
+        isContinuation);
+}
+
 bool TIndexTabletActor::OnRenderAppHtmlPage(
     NMon::TEvRemoteHttpInfo::TPtr ev,
     const TActorContext& ctx)

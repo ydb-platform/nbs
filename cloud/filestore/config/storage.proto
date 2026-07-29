@@ -861,7 +861,7 @@ message TStorageConfig
     optional bool FastShardRuntimeEnabled = 529;
 
     // Limits the number of session handles destroyed by a single ResetSession
-    // transaction. Sessions with more handles are reset by a chain of
-    // transactions. 0 means no limit.
-    optional uint32 MaxResetSessionHandlesPerTx = 530;
+    // or DestroySession transaction. Sessions with more handles are cleaned
+    // up by a chain of transactions. 0 means no limit.
+    optional uint32 MaxDeleteSessionHandlesPerTx = 530;
 }
