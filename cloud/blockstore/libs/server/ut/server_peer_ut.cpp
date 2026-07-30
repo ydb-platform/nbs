@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/service/service_test.h>
 
 #include <library/cpp/testing/unittest/registar.h>
+#include <library/cpp/testing/unittest/tests_data.h>
 
 namespace NCloud::NBlockStore::NServer {
 
