@@ -78,7 +78,6 @@ void TPartitionActor::WriteFreshBlocks(
             PartitionConfig.GetDiskId());
 
     if (freshChannelWriteRequestsEnabled && State->GetFreshChannelCount() > 0) {
-
         TVector<TWriteFreshBlocksActor::TRequest> requests;
         requests.reserve(requestsInBuffer.size());
 
@@ -108,7 +107,7 @@ void TPartitionActor::WriteFreshBlocks(
             writeHandlers.push_back(r.Data.Handler);
         }
 
-        const auto commitId = SharedState->StartFreshWrite(blockCount);
+        const ui64 commitId = SharedState->StartFreshWrite(blockCount);
 
         if (commitId == InvalidCommitId) {
             for (auto& r: requestsInBuffer) {
@@ -140,8 +139,7 @@ void TPartitionActor::WriteFreshBlocks(
 
         Actors.Insert(actor);
     } else {
-
-        const auto commitId = State->GenerateCommitId();
+        const ui64 commitId = State->GenerateCommitId();
 
         if (commitId == InvalidCommitId) {
             for (auto& r: requestsInBuffer) {
@@ -478,7 +476,6 @@ void TPartitionActor::ZeroFreshBlocks(
 
     SharedState->WriteAndZeroRequestsInProgress.fetch_add(1);
 
-
     const bool freshChannelZeroRequestsEnabled =
         Config->GetFreshChannelZeroRequestsEnabled();
 
@@ -492,7 +489,7 @@ void TPartitionActor::ZeroFreshBlocks(
         requests.emplace_back(requestInfo, EFreshRequestType::ZeroBlocks);
         blockRanges.emplace_back(writeRange);
 
-        auto commitId = SharedState->StartFreshWrite(blockCount);
+        const ui64 commitId = SharedState->StartFreshWrite(blockCount);
         if (commitId == InvalidCommitId) {
             requestInfo->CancelRequest(ctx);
             RebootPartitionOnCommitIdOverflow(ctx, "ZeroFreshBlocks");
@@ -528,7 +525,7 @@ void TPartitionActor::ZeroFreshBlocks(
 
         Actors.Insert(actor);
     } else {
-        auto commitId = State->GenerateCommitId();
+        const ui64 commitId = State->GenerateCommitId();
         if (commitId == InvalidCommitId) {
             requestInfo->CancelRequest(ctx);
             RebootPartitionOnCommitIdOverflow(ctx, "ZeroFreshBlocks");

@@ -290,14 +290,12 @@ void TPartitionActor::HandleZeroBlocks(
         return;
     }
 
-
     ui64 commitId = State->GenerateCommitId();
     if (commitId == InvalidCommitId) {
         requestInfo->CancelRequest(ctx);
         RebootPartitionOnCommitIdOverflow(ctx, "ZeroBlocks");
         return;
     }
-
 
     // all small zero requests should be handled by TFreshBlocksWriter
     STORAGE_VERIFY(!isFreshRequest, TWellKnownEntityTypes::TABLET, TabletID());
