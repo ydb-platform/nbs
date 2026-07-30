@@ -9,13 +9,15 @@ import shutil
 import sys
 import urllib.parse
 from pathlib import Path
-from typing import Pattern, TextIO, TypeAlias
+from typing import TYPE_CHECKING, Pattern, TextIO, TypeAlias
 from xml.etree import ElementTree as ET
 
 from ..helpers import setup_logger
-from ..tracing.ya_trace import YaEvent, YaTraceCollection
 from .junit_utils import add_junit_link_property, is_faulty_testcase
 from .mute_utils import mute_target, pattern_to_re
+
+if TYPE_CHECKING:
+    from ..tracing.ya_trace import YaEvent, YaTraceCollection
 
 LOGGER = logging.getLogger(__name__)
 
@@ -200,6 +202,21 @@ def save_log(
     return f"{log_url_prefix}{quoted_fpath}"
 
 
+def _load_ya_traces(ya_out: Path) -> YaTraceCollection | None:
+    try:
+        # Trace enrichment is optional: keep JUnit processing usable even when
+        # tracing dependencies could not be installed on the runner.
+        from ..tracing.ya_trace import YaTraceCollection
+
+        return YaTraceCollection.load(ya_out)
+    except Exception as error:
+        emit_transform_warning(
+            f"Ya trace enrichment is unavailable: {error}; "
+            "continuing without trace-derived log links"
+        )
+        return None
+
+
 def transform(
     fp: TextIO,
     ya_mute_check: YaMuteCheck,
@@ -213,7 +230,8 @@ def transform(
 ) -> None:
     tree = ET.parse(fp)
     root = tree.getroot()
-    traces = YaTraceCollection.load(Path(ya_out_dir))
+    ya_out = Path(ya_out_dir)
+    traces = _load_ya_traces(ya_out)
 
     for suite in root.findall("testsuite"):
         suite_name = suite.get("name")
@@ -235,6 +253,8 @@ def transform(
                 is_mute = True
 
             if not is_fail:
+                continue
+            if traces is None:
                 continue
 
             if "." in test_name:

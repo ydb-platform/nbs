@@ -10,8 +10,8 @@ report_dir=$1
 ya_out=$2
 evlog=${3:-}
 
-if [ ! -d "$report_dir" ]; then
-    echo "Trace report directory does not exist: $report_dir" >&2
+if [ -e "$report_dir" ] && [ ! -d "$report_dir" ]; then
+    echo "Trace report path is not a directory: $report_dir" >&2
     exit 2
 fi
 if [ ! -d "$ya_out" ]; then
@@ -19,6 +19,7 @@ if [ ! -d "$ya_out" ]; then
     exit 2
 fi
 
+mkdir -p -- "$report_dir"
 report_dir=$(realpath -- "$report_dir")
 ya_out=$(realpath -- "$ya_out")
 file_list="$report_dir/trace-inputs.files"
@@ -40,29 +41,41 @@ trap cleanup EXIT
 
 rm -f -- "$output"
 
-file_list_exists=0
 manifest_exists=0
-if [ -e "$file_list" ] || [ -L "$file_list" ]; then
-    file_list_exists=1
-fi
 if [ -e "$manifest" ] || [ -L "$manifest" ]; then
+    if [ ! -f "$manifest" ] || [ -L "$manifest" ]; then
+        echo "Trace input manifest is unsafe: $manifest" >&2
+        exit 2
+    fi
     manifest_exists=1
 fi
 
-if [ "$file_list_exists" -eq 0 ] && [ "$manifest_exists" -eq 0 ]; then
+if [ -e "$file_list" ] || [ -L "$file_list" ]; then
+    if [ ! -f "$file_list" ] || [ -L "$file_list" ]; then
+        echo "Trace input file list is unsafe: $file_list" >&2
+        exit 2
+    fi
+else
+    # Trace report startup may fail before Python can write its selected file
+    # list (for example, when an optional tracing dependency is unavailable).
+    # Fall back to the same exact filename search so the raw inputs survive.
+    if ! (
+        cd "$ya_out"
+        find . -type f -name ytest.report.trace -print0
+    ) > "$file_list"; then
+        echo "Unable to discover raw ya trace inputs" >&2
+        exit 2
+    fi
+fi
+
+include_evlog=0
+if [ -n "$evlog" ] && [ -f "$evlog" ] && [ ! -L "$evlog" ]; then
+    include_evlog=1
+fi
+if [ ! -s "$file_list" ] &&
+    [ "$manifest_exists" -eq 0 ] &&
+    [ "$include_evlog" -eq 0 ]; then
     exit 0
-fi
-if [ "$file_list_exists" -ne "$manifest_exists" ]; then
-    echo "Trace input file list and manifest must either both exist or both be absent" >&2
-    exit 2
-fi
-if [ ! -f "$file_list" ] || [ -L "$file_list" ]; then
-    echo "Trace input file list is unsafe: $file_list" >&2
-    exit 2
-fi
-if [ ! -f "$manifest" ] || [ -L "$manifest" ]; then
-    echo "Trace input manifest is unsafe: $manifest" >&2
-    exit 2
 fi
 
 temporary=$(mktemp "$report_dir/.trace-inputs.XXXXXX.tar.gz.tmp")
@@ -85,10 +98,13 @@ tar_args=(
     # changing the explicitly added manifest or event log.
     '--transform=s|^\./|ya-out/|'
     "--directory=$report_dir"
-    --add-file=trace-inputs.manifest.json
 )
 
-if [ -n "$evlog" ] && [ -f "$evlog" ] && [ ! -L "$evlog" ]; then
+if [ "$manifest_exists" -eq 1 ]; then
+    tar_args+=(--add-file=trace-inputs.manifest.json)
+fi
+
+if [ "$include_evlog" -eq 1 ]; then
     evlog=$(realpath -- "$evlog")
     tar_args+=(
         "--directory=$(dirname "$evlog")"

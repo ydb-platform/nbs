@@ -86,11 +86,60 @@ def _stage(name: str, start: float, end: float) -> dict:
     }
 
 
-def _worker(name: str, tag: str, start: float, end: float) -> dict:
-    return {
+def _worker(
+    name: str,
+    tag: str,
+    start: float,
+    end: float,
+    *,
+    thread_name: str = "",
+) -> dict:
+    event = {
         "namespace": "worker_threads",
         "event": "node-finished",
         "value": {"name": name, "tag": tag, "time": [start, end]},
+    }
+    if thread_name:
+        event["thread_name"] = thread_name
+    return event
+
+
+def _worker_detail(
+    tag: str,
+    start: float,
+    end: float,
+    thread_name: str,
+) -> dict:
+    return {
+        "thread_name": thread_name,
+        "namespace": "worker_threads",
+        "event": "node-detailed",
+        "value": {"name": tag, "tag": tag, "time": [start, end]},
+    }
+
+
+def _run_worker(
+    uid: str,
+    output: str,
+    start: float,
+    end: float,
+    thread_name: str = "",
+) -> dict:
+    return _worker(
+        f"Run({uid}$(BUILD_ROOT)/{output})",
+        "CC",
+        start,
+        end,
+        thread_name=thread_name,
+    )
+
+
+def _node_started(thread_name: str, name: str) -> dict:
+    return {
+        "thread_name": thread_name,
+        "namespace": "worker_threads",
+        "event": "node-started",
+        "value": {"name": name},
     }
 
 
@@ -204,6 +253,118 @@ def test_trace_collection_indexes_tests_and_disambiguates_chunks(
     assert "flake8" in chunk_event.log_paths["log"]
 
 
+def test_raw_test_class_names_do_not_collapse_into_one_test(tmp_path: Path) -> None:
+    trace = _render_ya_trace(
+        tmp_path,
+        [
+            {
+                "name": "subtest-finished",
+                "timestamp": 5,
+                "value": {
+                    "class": test_class,
+                    "subtest": "same-name",
+                    "status": "good",
+                    "time": 1,
+                },
+            }
+            for test_class in ("A::B", "A.B")
+        ],
+        root_end_s=10,
+    )
+
+    tests = list(trace.spans("ya.test"))
+    assert len(tests) == 2
+    assert {_attributes(test)["test.suite"] for test in tests} == {"A::B", "A.B"}
+
+
+def test_finished_test_prefers_raw_class_then_uses_unique_normalized_fallback(
+    tmp_path: Path,
+) -> None:
+    ya_out = tmp_path / "out"
+    suite = "cloud/example/tests"
+    _write_jsonl(
+        ya_out / suite / "test-results" / "unittest" / "ytest.report.trace",
+        [
+            {
+                "name": "subtest-finished",
+                "value": {
+                    "class": test_class,
+                    "subtest": "same-name",
+                    "marker": marker,
+                },
+            }
+            for test_class, marker in (
+                ("A.B", "dot"),
+                ("A::B", "colon"),
+                ("C::D", "fallback"),
+                ("E::F.G", "ambiguous-one"),
+                ("E.F::G", "ambiguous-two"),
+            )
+        ],
+    )
+    traces = YaTraceCollection.load(ya_out)
+
+    exact = traces.finished_test(suite, "A.B", "same-name")
+    fallback = traces.finished_test(suite, "C.D", "same-name")
+    ambiguous = traces.finished_test(suite, "E.F.G", "same-name")
+    assert exact is not None and exact.value["marker"] == "dot"
+    assert fallback is not None and fallback.value["marker"] == "fallback"
+    assert ambiguous is None
+
+
+def test_yatool_nul_padding_is_accepted(tmp_path: Path) -> None:
+    ya_out = tmp_path / "out"
+    trace_path = ya_out / "suite" / "test-results" / "unittest" / "ytest.report.trace"
+    trace_path.parent.mkdir(parents=True)
+    event = {
+        "name": "subtest-finished",
+        "timestamp": 5,
+        "value": {
+            "class": "Suite",
+            "subtest": "nul-padded",
+            "status": "good",
+            "time": 1,
+        },
+    }
+    trace_path.write_bytes(b"\0 " + json.dumps(event).encode() + b"\0\r\n")
+
+    trace = build_ya_trace(
+        YaTraceCollection.load(ya_out).traces,
+        root_start_ns=Ns(0),
+        root_end_ns=Ns.from_s(10),
+        exit_code=0,
+        resource=ResourceAttributes(),
+    )
+
+    assert [span.name for span in trace.spans("ya.test")] == ["Suite::nul-padded"]
+
+
+def test_malformed_json_is_counted_and_marks_input_incomplete(
+    tmp_path: Path,
+) -> None:
+    ya_out = tmp_path / "out"
+    trace_path = ya_out / "suite" / "test-results" / "unittest" / "ytest.report.trace"
+    trace_path.parent.mkdir(parents=True)
+    trace_path.write_text(
+        '{"name":"subtest-finished","timestamp":5,'
+        '"value":{"class":"Suite","subtest":"valid","status":"good","time":1}}\n'
+        '{"name":"subtest-finished",broken-json}\n'
+    )
+
+    trace = build_ya_trace(
+        YaTraceCollection.load(ya_out).traces,
+        root_start_ns=Ns(0),
+        root_end_ns=Ns.from_s(10),
+        exit_code=0,
+        resource=ResourceAttributes(),
+    )
+
+    assert [span.name for span in trace.spans("ya.test")] == ["Suite::valid"]
+    attributes = _attributes(next(trace.spans("ya")))
+    assert attributes["ya.trace.malformed_json_record.count"] == 1
+    assert attributes["ya.trace.input.incomplete"] is True
+
+
 def test_trace_inputs_produce_manifest_and_file_list(
     tmp_path: Path,
 ) -> None:
@@ -260,6 +421,100 @@ def test_trace_inputs_exclude_files_older_than_attempt(
     inputs = YaTraceInputs.discover(ya_out, modified_since=150)
 
     assert inputs.trace_paths == [current_trace]
+
+
+def test_oversized_trace_collection_is_rejected_before_opening_files(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ya_out = tmp_path / "out"
+    for suite in ("one", "two"):
+        trace_path = ya_out / suite / "test-results" / "unittest" / "ytest.report.trace"
+        trace_path.parent.mkdir(parents=True)
+        trace_path.write_text("{}\n")
+
+    inputs = YaTraceInputs.discover(ya_out)
+    monkeypatch.setattr(ya_trace_module, "MAX_YA_TRACE_BYTES", 5)
+
+    def reject_open(*args, **kwargs):
+        raise AssertionError(
+            f"oversized trace files must not be opened: {args!r}, {kwargs!r}"
+        )
+
+    monkeypatch.setattr(Path, "open", reject_open)
+    with pytest.raises(ValueError, match="Ya traces exceed 5 bytes"):
+        inputs.parse()
+
+
+def test_trace_collection_above_old_512_mib_limit_is_parsed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ya_out = tmp_path / "out"
+    trace_path = ya_out / "suite" / "test-results" / "unittest" / "ytest.report.trace"
+    trace_path.parent.mkdir(parents=True)
+    trace_path.write_text('{"name":"chunk-event","value":{}}\n')
+    inputs = YaTraceInputs.discover(ya_out)
+    actual_stat = Path.stat
+
+    def inflated_stat(path: Path, *args, **kwargs):
+        result = actual_stat(path, *args, **kwargs)
+        if path == trace_path:
+            return type(
+                "InflatedStat",
+                (),
+                {"st_size": 512 * 1024**2 + 1},
+            )()
+        return result
+
+    monkeypatch.setattr(Path, "stat", inflated_stat)
+
+    assert len(inputs.parse().traces) == 1
+
+
+def test_report_preserves_raw_input_list_when_trace_parsing_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ya_out = tmp_path / "out"
+    trace_path = (
+        ya_out
+        / "cloud/example/tests"
+        / "test-results"
+        / "unittest"
+        / "ytest.report.trace"
+    )
+    trace_path.parent.mkdir(parents=True)
+    trace_path.write_text("{}\n")
+    output_dir = tmp_path / "summary"
+
+    monkeypatch.setattr(ya_trace_module, "MAX_YA_TRACE_BYTES", 1)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "ya_trace_report",
+            "--ya-out",
+            str(ya_out),
+            "--output-dir",
+            str(output_dir),
+            "--attempt-start-ns",
+            "0",
+            "--attempt-end-ns",
+            "1",
+            "--exit-code",
+            "0",
+        ],
+    )
+
+    with pytest.raises(ValueError, match="Ya traces exceed 1 bytes"):
+        ya_trace_report_module.main()
+
+    manifest = json.loads((output_dir / "trace-inputs.manifest.json").read_text())
+    assert manifest["ya_trace_file_count"] == 1
+    assert (output_dir / "trace-inputs.files").read_bytes() == (
+        b"./cloud/example/tests/test-results/unittest/ytest.report.trace\0"
+    )
 
 
 def test_trace_inputs_skip_symlinks(tmp_path: Path) -> None:
@@ -644,6 +899,56 @@ def test_yatool_failure_status_marks_test_and_chunk_failed(
     assert span_status_code(next(trace.spans("ya.chunk"))) == 2
 
 
+@pytest.mark.parametrize("status", ["xfail", "xpass"])
+def test_yatool_expected_status_marks_test_ok(
+    tmp_path: Path,
+    status: str,
+) -> None:
+    trace = _render_ya_trace(
+        tmp_path,
+        [
+            {
+                "name": "subtest-finished",
+                "timestamp": 5,
+                "value": {
+                    "class": "Suite",
+                    "subtest": status,
+                    "status": status,
+                    "time": 1,
+                },
+            }
+        ],
+        root_end_s=10,
+    )
+
+    assert span_status_code(next(trace.spans("ya.test"))) == 1
+
+
+def test_yatool_internal_xfaildiff_status_marks_test_failed(
+    tmp_path: Path,
+) -> None:
+    trace = _render_ya_trace(
+        tmp_path,
+        [
+            {
+                "name": "subtest-finished",
+                "timestamp": 5,
+                "value": {
+                    "class": "Suite",
+                    "subtest": "xfaildiff",
+                    "status": "xfaildiff",
+                    "time": 1,
+                },
+            }
+        ],
+        root_end_s=10,
+        exit_code=1,
+    )
+
+    assert span_status_code(next(trace.spans("ya.test"))) == 2
+    assert span_status_code(next(trace.spans("ya.chunk"))) == 2
+
+
 def test_worker_operations_do_not_claim_cache_hit_or_miss(
     tmp_path: Path,
 ) -> None:
@@ -785,6 +1090,7 @@ def test_failed_node_count_uses_unique_uids(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("task_type", "base_type"),
     [
+        ("TA", "TA"),
         ("TL", "TL"),
         ("TL-CACHED", "TL"),
         ("TS-DYN_UID_CACHE", "TS"),
@@ -1386,6 +1692,175 @@ def test_distributed_cache_wrapper_tags_are_classified(
     )
     assert record.kind_and_tool == (expected_kind, "CC")
     assert record.cache_source == "distributed"
+
+
+@pytest.mark.parametrize(
+    "test_tag",
+    ["TS", "TM", "TL", "TA"],
+)
+@pytest.mark.parametrize(
+    "wrapper",
+    ["", "restore", "result"],
+)
+def test_all_yatool_test_node_tags_are_classified(
+    test_tag: str,
+    wrapper: str,
+) -> None:
+    tag = f"{wrapper}[{test_tag}]" if wrapper else test_tag
+    record = YaEvlogRecord(
+        name="Run(testuid)",
+        tag=tag,
+        start_ns=Ns(1),
+        end_ns=Ns(2),
+    )
+
+    assert record.kind_and_tool == ("test", test_tag)
+
+
+def test_non_object_evlog_record_is_ignored(tmp_path: Path) -> None:
+    evlog_path = tmp_path / "ya_evlog.jsonl"
+    evlog_path.write_text(
+        "[]\n" + json.dumps(_run_worker("uid", "output.o", 2, 3)) + "\n"
+    )
+
+    evlog = load_ya_evlog(evlog_path)
+    assert [record.uid for record in evlog.nodes] == ["uid"]
+
+
+def test_exec_cmd_interval_is_child_of_its_worker_node_with_interleaving(
+    tmp_path: Path,
+) -> None:
+    trace = _render_ya_trace(
+        tmp_path,
+        [],
+        evlog_events=[
+            _stage("dispatch_build", 1, 10),
+            _run_worker("firstuid", "first.o", 2, 6, "Worker-1"),
+            _run_worker("seconduid", "second.o", 3, 7, "Worker-2"),
+            _worker_detail("exec_cmd", 4, 5, "Worker-1"),
+            _worker_detail("post_cmd", 5, 5.5, "Worker-1"),
+        ],
+        root_end_s=11,
+    )
+
+    nodes = list(trace.spans("ya.build.node"))
+    nodes_by_id = {node.span_id: _attributes(node) for node in nodes}
+    commands = list(trace.spans("ya.build.command"))
+    assert len(commands) == 1
+    command = commands[0]
+    assert nodes_by_id[command.parent_span_id]["ya.build.node.uid"] == "firstuid"
+    assert span_duration_ns(
+        next(
+            node
+            for node in nodes
+            if _attributes(node)["ya.build.node.uid"] == "firstuid"
+        )
+    ) == Ns.from_s(4)
+    assert span_duration_ns(command) == Ns.from_s(1)
+    assert _attributes(command)["ya.build.timing.scope"] == "command"
+    assert (
+        _attributes(next(trace.spans("ya.build")))[
+            "ya.build.cumulative_command_seconds"
+        ]
+        == 1
+    )
+
+
+def test_node_started_clears_stale_command_detail_parent(tmp_path: Path) -> None:
+    trace = _render_ya_trace(
+        tmp_path,
+        [],
+        evlog_events=[
+            _run_worker("firstuid", "first.o", 2, 6, "Worker-1"),
+            _node_started(
+                "Worker-1",
+                "Run(seconduid$(BUILD_ROOT)/second.o)",
+            ),
+            _worker_detail("exec_cmd", 4, 5, "Worker-1"),
+        ],
+        root_end_s=11,
+    )
+
+    assert not any(trace.spans("ya.build.command"))
+
+
+def test_null_worker_thread_does_not_associate_command_detail(
+    tmp_path: Path,
+) -> None:
+    worker = _run_worker("firstuid", "first.o", 2, 6)
+    worker["thread_name"] = None
+    detail = _worker_detail("exec_cmd", 3, 4, "unused")
+    detail["thread_name"] = None
+
+    trace = _render_ya_trace(
+        tmp_path,
+        [],
+        evlog_events=[worker, detail],
+        root_end_s=11,
+    )
+
+    assert not any(trace.spans("ya.build.command"))
+
+
+def test_failed_worker_does_not_imply_failed_command(
+    tmp_path: Path,
+) -> None:
+    trace = _render_ya_trace(
+        tmp_path,
+        [],
+        evlog_events=[
+            _run_worker("faileduid", "failed.o", 2, 6, "Worker-1"),
+            _worker_detail("exec_cmd", 3, 4, "Worker-1"),
+            _failed_node("faileduid", 1),
+        ],
+        root_end_s=11,
+        exit_code=1,
+    )
+
+    assert span_status_code(next(trace.spans("ya.build.node"))) == 2
+    command = next(trace.spans("ya.build.command"))
+    assert span_status_code(command) == 0
+    assert _attributes(command)["ya.build.node.failed"] is True
+
+
+def test_build_command_span_limit_prefers_critical_parent(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(ya_trace_module, "MAX_BUILD_COMMAND_SPANS", 1)
+    trace = _render_ya_trace(
+        tmp_path,
+        [],
+        evlog_events=[
+            _run_worker("firstuid", "first.o", 2, 6, "Worker-1"),
+            _worker_detail("exec_cmd", 3, 4, "Worker-1"),
+            _run_worker("criticaluid", "critical.o", 4, 8, "Worker-2"),
+            _worker_detail("exec_cmd", 5, 6, "Worker-2"),
+            _statistics(
+                {
+                    "critical_path": [
+                        {
+                            "type": "CC",
+                            "uid": "criticaluid",
+                            "elapsed": 4_000,
+                            "start_ts": 4_000,
+                            "end_ts": 8_000,
+                        }
+                    ]
+                }
+            ),
+        ],
+        root_end_s=11,
+    )
+
+    nodes_by_id = {
+        node.span_id: _attributes(node) for node in trace.spans("ya.build.node")
+    }
+    command = next(trace.spans("ya.build.command"))
+    assert nodes_by_id[command.parent_span_id]["ya.build.node.uid"] == "criticaluid"
+    build_attributes = _attributes(next(trace.spans("ya.build")))
+    assert build_attributes["ya.build.command_spans.rendered"] == 1
+    assert build_attributes["ya.build.command_spans.dropped"] == 1
 
 
 def test_incremental_snapshots_merge_chunks_and_tests(

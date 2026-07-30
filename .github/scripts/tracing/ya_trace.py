@@ -40,13 +40,14 @@ __all__ = [
 ]
 
 LOGGER = logging.getLogger(__name__)
-MAX_YA_TRACE_BYTES = 512 * 1024 * 1024
-MAX_YA_TRACE_FILES = 20_000
-MAX_YA_EVENTS = 2_000_000
-MAX_YA_EVLOG_BYTES = 512 * 1024 * 1024
-MAX_YA_EVLOG_LINE_CHARACTERS = 16 * 1024 * 1024
-MAX_YA_EVLOG_EVENTS = 2_000_000
-MAX_BUILD_NODE_SPANS = 50_000
+MAX_YA_TRACE_BYTES = 32 * 1024**3
+MAX_YA_TRACE_FILES = 128_000
+MAX_YA_EVENTS = 10_240_000
+MAX_YA_EVLOG_BYTES = 32 * 1024**3
+MAX_YA_EVLOG_LINE_CHARACTERS = 64 * 1024**2
+MAX_YA_EVLOG_EVENTS = 5_120_000
+MAX_BUILD_NODE_SPANS = 51_200
+MAX_BUILD_COMMAND_SPANS = 12_400
 MAX_WORKER_TOOL_STATS = 24
 SAFE_METRIC_RE = re.compile(r"[^a-zA-Z0-9_.-]+")
 SAFE_TOOL_RE = re.compile(r"^[a-zA-Z0-9_.+-]{1,32}$")
@@ -58,7 +59,8 @@ TAG_WRAPPER_RE = re.compile(
     r"put_in_dist_cache|write_through_caches)\[([^\]]+)\]$"
 )
 CRITICAL_TASK_SUFFIX_RE = re.compile(r"(?:(?:-CACHED|-DYN_UID_CACHE))+$")
-PASS_STATUSES = {"good", "pass", "passed", "success"}
+TEST_NODE_MARKERS = frozenset({"TA", "TL", "TM", "TS"})
+PASS_STATUSES = {"good", "pass", "passed", "success", "xfail", "xpass"}
 ERROR_STATUSES = {
     "crashed",
     "diff",
@@ -70,6 +72,7 @@ ERROR_STATUSES = {
     "missing",
     "not_launched",
     "timeout",
+    "xfaildiff",
 }
 RENDERED_STAGE_NAMES = {
     "get-tools": "prepare tools",
@@ -139,9 +142,14 @@ class YaEvent:
 
     @property
     def test_key(self) -> tuple[str, str]:
-        test_class = str(self.value.get("class", "unknown")).replace("::", ".")
+        test_class = str(self.value.get("class", "unknown"))
         subtest = str(self.value.get("subtest", "unknown"))
         return test_class, subtest
+
+    @property
+    def normalized_test_key(self) -> tuple[str, str]:
+        test_class, subtest = self.test_key
+        return test_class.replace("::", "."), subtest
 
     @property
     def logical_test_key(self) -> tuple[str, str, str, str]:
@@ -394,6 +402,7 @@ class YaTraceFile:
     suite: str
     result_folder: str
     events: list[YaEvent]
+    malformed_json_record_count: int = 0
 
     @staticmethod
     def identity(ya_out: Path, trace_path: Path) -> tuple[str, str]:
@@ -455,14 +464,23 @@ class YaTraceFile:
         subtest: str,
     ) -> YaEvent | None:
         key = (test_class, subtest)
-        return next(
-            (
-                event
-                for event in reversed(self.events)
-                if event.name == "subtest-finished" and event.test_key == key
-            ),
+        candidates = [
+            event for event in reversed(self.events) if event.name == "subtest-finished"
+        ]
+        exact = next(
+            (event for event in candidates if event.test_key == key),
             None,
         )
+        if exact is not None:
+            return exact
+
+        normalized_key = (test_class.replace("::", "."), subtest)
+        fallback = [
+            event for event in candidates if event.normalized_test_key == normalized_key
+        ]
+        if len({event.test_key for event in fallback}) == 1:
+            return fallback[0]
+        return None
 
     def chunk_events(self, chunk_index: int, chunks_total: int) -> list[YaEvent]:
         key = (chunk_index, chunks_total)
@@ -1011,6 +1029,7 @@ class YaEvlogRecord:
     end_ns: Ns
     thread_name: str = ""
     node_uid: str = ""
+    details: list[YaEvlogRecord] = field(default_factory=list)
 
     @classmethod
     def from_raw(
@@ -1049,6 +1068,11 @@ class YaEvlogRecord:
         clipped = self.interval.intersection(bounds)
         if clipped is None:
             return None
+        details = []
+        for detail in self.details:
+            clipped_detail = detail.clipped(clipped)
+            if clipped_detail is not None:
+                details.append(clipped_detail)
         return YaEvlogRecord(
             name=self.name,
             tag=self.tag,
@@ -1056,6 +1080,7 @@ class YaEvlogRecord:
             end_ns=clipped.end,
             thread_name=self.thread_name,
             node_uid=self.node_uid,
+            details=details,
         )
 
     @property
@@ -1066,7 +1091,7 @@ class YaEvlogRecord:
         match = TAG_WRAPPER_RE.fullmatch(self.tag)
         if match:
             wrapper, tool = match.groups()
-            if tool == "TM":
+            if tool in TEST_NODE_MARKERS:
                 return "test", tool
             return {
                 "restore": "cache_restore",
@@ -1076,7 +1101,7 @@ class YaEvlogRecord:
                 "put_in_dist_cache": "cache_store",
                 "write_through_caches": "cache_store",
             }[wrapper], tool
-        if self.tag == "TM":
+        if self.tag in TEST_NODE_MARKERS:
             return "test", self.tag
         if self.name.startswith("Run("):
             return "execute", self.tag
@@ -1142,6 +1167,7 @@ class YaEvlogRecord:
             "ya.build.kind": kind,
             "ya.build.tag": self.tag,
             "ya.build.node.name": self.name,
+            "ya.build.timing.scope": "worker-node",
         }
         if tool:
             attributes["ya.build.tool"] = tool
@@ -1176,6 +1202,49 @@ class YaEvlogRecord:
             attributes=attributes,
             status_code=2 if failed else 0,
             status_message="build node failed" if failed else "",
+        )
+
+    def build_command_span(
+        self,
+        detail: YaEvlogRecord,
+        *,
+        trace_id: bytes,
+        parent_span_id: bytes,
+        tool: str,
+        index: int,
+        failed: bool,
+    ) -> Span:
+        output = next(iter(self.outputs), "")
+        label = f"{tool} command" if tool else "exec command"
+        attributes: dict[str, Any] = {
+            "ya.build.detail.stage": "exec_cmd",
+            "ya.build.timing.scope": "command",
+        }
+        if tool:
+            attributes["ya.build.tool"] = tool
+        if self.uid:
+            attributes["ya.build.node.uid"] = self.uid
+        if self.outputs:
+            attributes["ya.build.outputs"] = self.outputs
+        if self.thread_name:
+            attributes["ya.worker.thread"] = self.thread_name
+        if failed:
+            attributes["ya.build.node.failed"] = True
+        return make_span(
+            trace_id=trace_id,
+            span_id=stable_span_id(
+                trace_id,
+                "ya.build.command",
+                parent_span_id,
+                detail.start_ns,
+                detail.end_ns,
+                index,
+            ),
+            parent_span_id=parent_span_id,
+            name=f"{label}: {output}" if output else label,
+            start_ns=detail.start_ns,
+            end_ns=detail.end_ns,
+            attributes=attributes,
         )
 
 
@@ -1614,6 +1683,17 @@ class YaEvlog:
             "ya.build.node.count": len(build_records),
             "ya.build.cumulative_node_seconds": cumulative_ns.to_s(),
         }
+        command_details = [
+            detail
+            for record, _, _ in build_records
+            for detail in record.details
+            if detail.tag == "exec_cmd"
+        ]
+        if command_details:
+            attributes["ya.build.command.count"] = len(command_details)
+            attributes["ya.build.cumulative_command_seconds"] = Ns(
+                sum(len(detail.interval) for detail in command_details)
+            ).to_s()
         for kind, count in sorted(counts.items()):
             attributes[f"ya.build.node.{kind}.count"] = count
         if test_starts:
@@ -1727,6 +1807,50 @@ class YaEvlog:
             )
         )
         attributes["ya.build.node_spans.rendered"] = len(candidates)
+
+        node_spans = []
+        command_candidates = []
+        for index, candidate in enumerate(candidates):
+            _, record, kind, tool, critical_entry, failed = candidate
+            node_span = record.build_node_span(
+                trace_id=trace_id,
+                parent_span_id=build_span_id,
+                kind=kind,
+                tool=tool,
+                index=index,
+                critical_entry=critical_entry,
+                failed=failed,
+                exit_code=self.failures.get(record.uid) if failed else None,
+            )
+            node_spans.append(node_span)
+            command_candidates.extend(
+                (candidate, node_span, detail, detail_index)
+                for detail_index, detail in enumerate(record.details)
+                if detail.tag == "exec_cmd"
+            )
+
+        command_candidates.sort(
+            key=lambda item: (
+                not item[0][5],
+                item[0][4] is None,
+                -len(item[2].interval),
+                item[2].start_ns,
+            )
+        )
+        selected_commands = command_candidates[:MAX_BUILD_COMMAND_SPANS]
+        selected_commands.sort(
+            key=lambda item: (
+                item[2].start_ns,
+                item[2].end_ns,
+                item[0][1].name,
+            )
+        )
+        command_dropped = len(command_details) - len(selected_commands)
+        if command_details:
+            attributes["ya.build.command_spans.rendered"] = len(selected_commands)
+        if command_dropped:
+            attributes["ya.build.command_spans.dropped"] = command_dropped
+
         trace.add_span(
             make_span(
                 trace_id=trace_id,
@@ -1745,31 +1869,31 @@ class YaEvlog:
             scope_name="ya.build",
         )
 
-        for index, (
-            _,
-            record,
-            kind,
-            tool,
-            critical_entry,
-            failed,
-        ) in enumerate(candidates):
+        for node_span in node_spans:
             trace.add_span(
-                record.build_node_span(
-                    trace_id=trace_id,
-                    parent_span_id=build_span_id,
-                    kind=kind,
-                    tool=tool,
-                    index=index,
-                    critical_entry=critical_entry,
-                    failed=failed,
-                    exit_code=self.failures.get(record.uid) if failed else None,
-                ),
+                node_span,
                 resource=resource,
                 scope_name="ya.build.node",
+            )
+        for candidate, node_span, detail, detail_index in selected_commands:
+            _, record, _, tool, _, failed = candidate
+            trace.add_span(
+                record.build_command_span(
+                    detail,
+                    trace_id=trace_id,
+                    parent_span_id=node_span.span_id,
+                    tool=tool,
+                    index=detail_index,
+                    failed=failed,
+                ),
+                resource=resource,
+                scope_name="ya.build.command",
             )
 
         metadata["ya.build.node.span_count"] = len(candidates)
         metadata["ya.build.node.span_dropped_count"] = dropped
+        metadata["ya.build.command.span_count"] = len(selected_commands)
+        metadata["ya.build.command.span_dropped_count"] = command_dropped
         return dispatch_span_id, metadata
 
 
@@ -1778,25 +1902,27 @@ def _load_ya_trace_files(
     paths: Sequence[Path],
 ) -> list[YaTraceFile]:
     traces: list[YaTraceFile] = []
-    total_bytes = 0
     event_count = 0
     if len(paths) > MAX_YA_TRACE_FILES:
         raise ValueError(f"Found more than {MAX_YA_TRACE_FILES} ya trace files")
 
-    for path in paths:
-        path_stat = path.stat()
-        total_bytes += path_stat.st_size
-        if total_bytes > MAX_YA_TRACE_BYTES:
-            raise ValueError(f"Ya traces exceed {MAX_YA_TRACE_BYTES} bytes")
+    path_stats = [(path, path.stat()) for path in paths]
+    if sum(path_stat.st_size for _, path_stat in path_stats) > MAX_YA_TRACE_BYTES:
+        raise ValueError(f"Ya traces exceed {MAX_YA_TRACE_BYTES} bytes")
+
+    for path, _ in path_stats:
         suite, result_folder = YaTraceFile.identity(ya_out, path)
         events = []
+        malformed_json_record_count = 0
         with path.open(encoding="utf-8", errors="replace") as stream:
             for line_number, line in enumerate(stream, 1):
-                if not line.strip():
+                line = line.strip("\r\t\n\x00 ")
+                if not line:
                     continue
                 try:
                     raw = json.loads(line)
                 except json.JSONDecodeError as error:
+                    malformed_json_record_count += 1
                     LOGGER.warning("Skipping %s:%s: %s", path, line_number, error)
                     continue
                 event = YaEvent.from_raw(raw, event_count)
@@ -1812,6 +1938,7 @@ def _load_ya_trace_files(
                 suite=suite,
                 result_folder=result_folder,
                 events=events,
+                malformed_json_record_count=malformed_json_record_count,
             )
         )
     return traces
@@ -1885,6 +2012,7 @@ def load_ya_evlog(path: Path | None) -> YaEvlog:
         raise ValueError(f"Ya event log exceeds {MAX_YA_EVLOG_BYTES} bytes")
 
     event_count = 0
+    last_finished_by_thread: dict[str, YaEvlogRecord] = {}
     with path.open(encoding="utf-8", errors="replace") as stream:
         line_number = 0
         while True:
@@ -1907,6 +2035,9 @@ def load_ya_evlog(path: Path | None) -> YaEvlog:
                 raw = json.loads(line)
             except json.JSONDecodeError as error:
                 LOGGER.warning("Skipping %s:%s: %s", path, line_number, error)
+                continue
+            if not isinstance(raw, Mapping):
+                LOGGER.warning("Skipping non-object event in %s:%s", path, line_number)
                 continue
             namespace = raw.get("namespace")
             event = raw.get("event")
@@ -1935,6 +2066,31 @@ def load_ya_evlog(path: Path | None) -> YaEvlog:
                 if uid:
                     result.failures[uid] = exit_code
                 continue
+            raw_thread_name = raw.get("thread_name")
+            thread_name = raw_thread_name if isinstance(raw_thread_name, str) else ""
+            if namespace == "worker_threads" and event == "node-started":
+                if thread_name:
+                    last_finished_by_thread.pop(thread_name, None)
+                continue
+            if (
+                namespace == "worker_threads"
+                and event == "node-detailed"
+                and isinstance(raw_value, Mapping)
+            ):
+                parent = last_finished_by_thread.get(thread_name)
+                if parent is None or raw_value.get("tag") != "exec_cmd":
+                    continue
+                detail = YaEvlogRecord.from_raw(
+                    raw_value,
+                    thread_name=thread_name,
+                )
+                if (
+                    detail is not None
+                    and parent.start_ns <= detail.start_ns
+                    and detail.end_ns <= parent.end_ns
+                ):
+                    parent.details.append(detail)
+                continue
             if (namespace, event) not in {
                 ("stages", "stage-finished"),
                 ("worker_threads", "node-finished"),
@@ -1942,7 +2098,7 @@ def load_ya_evlog(path: Path | None) -> YaEvlog:
                 continue
             record = YaEvlogRecord.from_raw(
                 raw_value,
-                thread_name=str(raw.get("thread_name", "")),
+                thread_name=thread_name,
             )
             if record is None:
                 continue
@@ -1950,6 +2106,8 @@ def load_ya_evlog(path: Path | None) -> YaEvlog:
                 result.stages.append(record)
             else:
                 result.nodes.append(record)
+                if thread_name:
+                    last_finished_by_thread[thread_name] = record
     return result
 
 

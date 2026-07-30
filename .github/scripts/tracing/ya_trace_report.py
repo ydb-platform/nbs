@@ -72,6 +72,9 @@ def build_ya_trace(
         root_start_ns,
     )
     root_span_id = stable_span_id(trace_id, "ya make")
+    malformed_json_record_count = sum(
+        trace.malformed_json_record_count for trace in traces
+    )
     root = make_span(
         trace_id=trace_id,
         span_id=root_span_id,
@@ -82,6 +85,8 @@ def build_ya_trace(
             "process.exit.code": exit_code,
             "ci.result.code": effective_result_code,
             "ya.trace.file_count": len(traces),
+            "ya.trace.malformed_json_record.count": malformed_json_record_count,
+            "ya.trace.input.incomplete": malformed_json_record_count > 0,
             "ya.chunk.count": 0,
         },
         status_code=1 if effective_result_code == 0 else 2,
