@@ -41,10 +41,24 @@ public:
         return actorId;
     }
 
+    TActorId AllocateEdgeActor()
+    {
+        return Runtime.AllocateEdgeActor();
+    }
+
     void Send(const TActorId& recipient, IEventBasePtr event, ui64 cookie)
     {
+        Send(Sender, recipient, std::move(event), cookie);
+    }
+
+    void Send(
+        const TActorId& sender,
+        const TActorId& recipient,
+        IEventBasePtr event,
+        ui64 cookie)
+    {
         Runtime.Send(
-            new IEventHandle(recipient, Sender, event.release(), 0, cookie));
+            new IEventHandle(recipient, sender, event.release(), 0, cookie));
     }
 
     void DispatchEvents(TDuration timeout)
@@ -59,6 +73,15 @@ public:
         return handle;
     }
 
+    TEvents::TEvPoisonTaken::TPtr GrabPoisonTakenEvent(
+        const TActorId& recipient,
+        TDuration timeout)
+    {
+        return Runtime.GrabEdgeEventRethrow<TEvents::TEvPoisonTaken>(
+            recipient,
+            timeout);
+    }
+
     TTestActorRuntimeBase& AccessRuntime()
     {
         return Runtime;
@@ -69,9 +92,15 @@ public:
 
 class TChildActor: public TActor<TChildActor>
 {
+private:
+    const bool WaitForWakeup;
+    TActorId Poisoner;
+    ui64 PoisonCookie = 0;
+
 public:
-    TChildActor()
+    explicit TChildActor(bool waitForWakeup = false)
         : TActor(&TThis::Main)
+        , WaitForWakeup(waitForWakeup)
     {}
 
 private:
@@ -79,6 +108,7 @@ private:
     {
         switch (ev->GetTypeRewrite()) {
             HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+            HFunc(TEvents::TEvWakeup, HandleWakeup);
         }
     }
 
@@ -86,11 +116,35 @@ private:
         const TEvents::TEvPoisonPill::TPtr& ev,
         const TActorContext& ctx)
     {
+        if (WaitForWakeup) {
+            if (!Poisoner) {
+                Poisoner = ev->Sender;
+                PoisonCookie = ev->Cookie;
+            }
+            return;
+        }
+
         ctx.Send(
             ev->Sender,
             std::make_unique<TEvents::TEvPoisonTaken>(),
             0,
             ev->Cookie);
+        Die(ctx);
+    }
+
+    void HandleWakeup(
+        const TEvents::TEvWakeup::TPtr& ev,
+        const TActorContext& ctx)
+    {
+        Y_UNUSED(ev);
+
+        UNIT_ASSERT(Poisoner);
+
+        ctx.Send(
+            Poisoner,
+            std::make_unique<TEvents::TEvPoisonTaken>(),
+            0,
+            PoisonCookie);
         Die(ctx);
     }
 };
@@ -105,13 +159,15 @@ private:
     using TBase = TActor<TParentActor>;
     TPoisonPillHelper PoisonPillHelper;
     ui32 ChildCount;
+    bool WaitForChildWakeup;
     TVector<TActorId> Children;
 
 public:
-    TParentActor(ui32 childCount)
+    TParentActor(ui32 childCount, bool waitForChildWakeup = false)
         : TActor(&TThis::Main)
         , PoisonPillHelper(this)
         , ChildCount(childCount)
+        , WaitForChildWakeup(waitForChildWakeup)
     {}
 
     void Poison(const NActors::TActorContext& ctx) override
@@ -150,7 +206,8 @@ private:
 
         // Give ownership for long time.
         for (ui32 i = 0; i < ChildCount; ++i) {
-            Children.push_back(ctx.Register(new TChildActor()));
+            Children.push_back(
+                ctx.Register(new TChildActor(WaitForChildWakeup)));
             PoisonPillHelper.TakeOwnership(ctx, Children.back());
         }
     }
@@ -192,6 +249,47 @@ Y_UNIT_TEST_SUITE(TPoisonPillHelperTest)
             testEnv.GrabPoisonTakenEvent(TDuration::Seconds(1));
         UNIT_ASSERT_VALUES_UNEQUAL(nullptr, poisonTakenEvent);
         UNIT_ASSERT_VALUES_EQUAL(1000, poisonTakenEvent->Cookie);
+    }
+
+    Y_UNIT_TEST(ShouldReplyToAllPoisoners)
+    {
+        TMyTestEnv testEnv;
+
+        auto actorId =
+            testEnv.Register(std::make_unique<TParentActor>(1, true));
+
+        testEnv.Send(actorId, std::make_unique<TEvents::TEvBootstrap>(), 0);
+        testEnv.DispatchEvents(10ms);
+
+        auto* actorHandle = dynamic_cast<TParentActor*>(
+            testEnv.AccessRuntime().FindActor(actorId));
+        const auto children = actorHandle->GetChildren();
+
+        UNIT_ASSERT_VALUES_EQUAL(1, children.size());
+
+        TVector<std::pair<TActorId, ui64>> poisoners;
+        for (ui64 cookie: {1000, 2000, 3000}) {
+            poisoners.emplace_back(testEnv.AllocateEdgeActor(), cookie);
+            testEnv.Send(
+                poisoners.back().first,
+                actorId,
+                std::make_unique<TEvents::TEvPoisonPill>(),
+                cookie);
+        }
+
+        testEnv.DispatchEvents(10ms);
+        testEnv.Send(
+            children.front(),
+            std::make_unique<TEvents::TEvWakeup>(),
+            0);
+
+        for (const auto& [poisoner, cookie]: poisoners) {
+            auto poisonTakenEvent = testEnv.GrabPoisonTakenEvent(
+                poisoner,
+                TDuration::Seconds(1));
+            UNIT_ASSERT_VALUES_UNEQUAL(nullptr, poisonTakenEvent);
+            UNIT_ASSERT_VALUES_EQUAL(cookie, poisonTakenEvent->Cookie);
+        }
     }
 
     Y_UNIT_TEST(ReleaseOwnershipWhenChildIsDead)
