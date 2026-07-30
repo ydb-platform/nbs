@@ -87,18 +87,18 @@ private:
         {
         }
 
-        NProto::TError Init()
+        [[nodiscard]] NProto::TError Init()
         {
             const ui64 pageNo = FirstPageNo + SlotNo / SlotsPerPage;
             return PageStore.ReadPage(Lsn, pageNo, &Page);
         }
 
-        ui64 CurrentPageNo() const
+        [[nodiscard]] ui64 CurrentPageNo() const
         {
             return FirstPageNo + SlotNo / SlotsPerPage;
         }
 
-        NProto::TError ReloadPageIfNeeded(
+        [[nodiscard]] NProto::TError ReloadPageIfNeeded(
             const ui64 pageNo,
             const ui64 newPageNo)
         {
@@ -117,7 +117,7 @@ private:
             return PageStore.ReadPage(Lsn, newPageNo, &Page);
         }
 
-        NProto::TError ToPrevSlot()
+        [[nodiscard]] NProto::TError ToPrevSlot()
         {
             const ui64 pageNo = CurrentPageNo();
             if (SlotNo == 0) {
@@ -129,7 +129,7 @@ private:
             return ReloadPageIfNeeded(pageNo, newPageNo);
         }
 
-        NProto::TError ToNextSlot()
+        [[nodiscard]] NProto::TError ToNextSlot()
         {
             const ui64 pageNo = CurrentPageNo();
             SlotNo = (SlotNo + 1) % SlotCount;
@@ -137,13 +137,13 @@ private:
             return ReloadPageIfNeeded(pageNo, newPageNo);
         }
 
-        const char* GetRaw() const
+        [[nodiscard]] const char* GetRaw() const
         {
             const ui64 offsetInPage = (SlotNo % SlotsPerPage) * SlotSize;
             return Page.data() + offsetInPage;
         }
 
-        const TValue& Get() const
+        [[nodiscard]] const TValue& Get() const
         {
             return *reinterpret_cast<const TValue*>(GetRaw());
         }
@@ -168,7 +168,7 @@ private:
             Dirty = true;
         }
 
-        TVector<TDirtyPage> Finish()
+        [[nodiscard]] TVector<TDirtyPage> Finish()
         {
             if (Dirty) {
                 DirtyPages.push_back({
@@ -207,12 +207,12 @@ public:
     }
 
 public:
-    ui64 GetSlotCount() const
+    [[nodiscard]] ui64 GetSlotCount() const
     {
         return SlotCount;
     }
 
-    NProto::TError Put(
+    [[nodiscard]] NProto::TError Put(
         ui64 lsn,
         const TValue& v,
         TVector<TPageGroup>& pageGroups)
@@ -228,7 +228,7 @@ public:
         return DoPut(lsn, v, slotNo, pageGroups);
     }
 
-    NProto::TError Update(
+    [[nodiscard]] NProto::TError Update(
         ui64 lsn,
         const TValue& v,
         const ui64 slotNo,
@@ -238,12 +238,16 @@ public:
         return DoPut(lsn, v, slotNo, pageGroups);
     }
 
-    NProto::TError Get(ui64 lsn, const TKey& k, TValue* v, ui64* slotNo) const
+    [[nodiscard]] NProto::TError Get(
+        ui64 lsn,
+        const TKey& k,
+        TValue* v,
+        ui64* slotNo) const
     {
         return FindSlot(lsn, k, v, slotNo);
     }
 
-    NProto::TError Delete(
+    [[nodiscard]] NProto::TError Delete(
         ui64 lsn,
         const TKey& k,
         TValue* v,
@@ -258,7 +262,8 @@ public:
         return DoDelete(lsn, slotNo, pageGroups);
     }
 
-    NProto::TError CollectStats(TPersistentHashTableStats* stats) const
+    [[nodiscard]] NProto::TError CollectStats(
+        TPersistentHashTableStats* stats) const
     {
         TSlotIterator it(
             *PageStore,
@@ -303,7 +308,7 @@ public:
     }
 
 private:
-    NProto::TError WritePage(
+    [[nodiscard]] NProto::TError WritePage(
         ui64 lsn,
         ui64 slotNo,
         TString page,
@@ -313,13 +318,13 @@ private:
         return PageStore->WritePage(lsn, pageNo, std::move(page), pageGroups);
     }
 
-    NProto::TError ReadPage(ui64 lsn, ui64 slotNo, TString* page) const
+    [[nodiscard]] NProto::TError ReadPage(ui64 lsn, ui64 slotNo, TString* page) const
     {
         const ui64 pageNo = FirstPageNo + slotNo / SlotsPerPage;
         return PageStore->ReadPage(lsn, pageNo, page);
     }
 
-    bool LookupSlot(const char* slotData, TValue* v) const
+    [[nodiscard]] bool LookupSlot(const char* slotData, TValue* v) const
     {
         if (IsEmpty(slotData)) {
             return false;
@@ -329,7 +334,10 @@ private:
         return true;
     }
 
-    NProto::TError LookupSlot(ui64 lsn, ui64 slotNo, TValue* v) const
+    [[nodiscard]] NProto::TError LookupSlot(
+        ui64 lsn,
+        ui64 slotNo,
+        TValue* v) const
     {
         TString page;
         auto error = ReadPage(lsn, slotNo, &page);
@@ -342,7 +350,7 @@ private:
         return LookupSlot(ptr, v) ? MakeError(S_OK) : MakeError(S_FALSE);
     }
 
-    NProto::TError AllocateSlot(
+    [[nodiscard]] NProto::TError AllocateSlot(
         ui64 lsn,
         const TKey& k,
         TValue* v,
@@ -408,7 +416,7 @@ private:
         return {};
     }
 
-    NProto::TError FindSlot(
+    [[nodiscard]] NProto::TError FindSlot(
         ui64 lsn,
         const TKey& k,
         TValue* v,
@@ -455,7 +463,7 @@ private:
         return MakeError(E_FS_NOENT);
     }
 
-    NProto::TError DoPut(
+    [[nodiscard]] NProto::TError DoPut(
         ui64 lsn,
         const TValue& v,
         ui64 slotNo,
@@ -471,31 +479,33 @@ private:
         char* ptr = page.begin() + relSlotNo * SlotSize;
         memcpy(ptr, &v, sizeof(TValue));
 
+        error = WritePage(lsn, slotNo, std::move(page), pageGroups);
+
         SILK_DEBUG(
             "pht DoPut: slotNo=%lu, logRecordPGs=%lu",
             slotNo,
             pageGroups.size());
 
-        return WritePage(lsn, slotNo, std::move(page), pageGroups);
+        return error;
     }
 
-    ui64 CalcSlotNo(const TKey& k) const
+    [[nodiscard]] ui64 CalcSlotNo(const TKey& k) const
     {
         return Hash(k) % SlotCount;
     }
 
-    ui64 CalcSlotNo(const TValue& v) const
+    [[nodiscard]] ui64 CalcSlotNo(const TValue& v) const
     {
         return CalcSlotNo(MakeKey(v));
     }
 
-    bool IsEmpty(const char* slotData) const
+    [[nodiscard]] bool IsEmpty(const char* slotData) const
     {
         return slotData[0] == 0
             && memcmp(slotData, slotData + 1, SlotSize - 1) == 0;
     }
 
-    NProto::TError DoDelete(
+    [[nodiscard]] NProto::TError DoDelete(
         ui64 lsn,
         ui64 slotNo,
         TVector<TPageGroup>& pageGroups)
@@ -579,18 +589,13 @@ private:
             it.Write(reinterpret_cast<const char*>(&Tombstone));
         }
 
-        SILK_DEBUG(
-            "pht DoDelete: slotNo=%lu, logRecordPGs=%lu",
-            slotNo,
-            pageGroups.size());
-
         //
         // Writing the changes.
         //
 
         auto toWrite = it.Finish();
         for (auto& dp: toWrite) {
-            auto error = PageStore->WritePage(
+            error = PageStore->WritePage(
                 lsn,
                 dp.PageNo,
                 std::move(dp.Content),
@@ -601,11 +606,16 @@ private:
                 // The caller is responsible for rolling back the changes.
                 //
 
-                return error;
+                break;
             }
         }
 
-        return {};
+        SILK_DEBUG(
+            "pht DoDelete: slotNo=%lu, logRecordPGs=%lu",
+            slotNo,
+            pageGroups.size());
+
+        return error;
     }
 };
 

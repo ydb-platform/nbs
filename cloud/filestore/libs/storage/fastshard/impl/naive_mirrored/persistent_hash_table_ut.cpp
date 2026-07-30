@@ -109,7 +109,12 @@ TEST(PersistentHashTableTest, PutGetUpdate)
     EXPECT_EQ(100U, slot.B);
     EXPECT_EQ(3U, slot.C);
 
-    fx.Ht.Update(lsn, TSlot{.A = 2, .B = 100, .C = 10}, slotNo, pageGroups);
+    error = fx.Ht.Update(
+        lsn,
+        TSlot{.A = 2, .B = 100, .C = 10},
+        slotNo,
+        pageGroups);
+    EXPECT_EQ(S_OK, error.GetCode()) << FormatError(error);
 
     error = fx.Ht.Get(0 /* lsn */, 100, &slot, &slotNo);
     EXPECT_EQ(E_REJECTED, error.GetCode()) << FormatError(error);
