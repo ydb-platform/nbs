@@ -143,6 +143,7 @@ public:
             .MaxTag = MaxTag,
             .Alignment = 1,
             .EntryHeaderIsCoveredByChecksum = false,
+            .EntryHeaderIsProcessedAtomically = false,
         };
     }
 
@@ -228,6 +229,7 @@ public:
             .MaxTag = MaxTag,
             .Alignment = sizeof(ui64),
             .EntryHeaderIsCoveredByChecksum = true,
+            .EntryHeaderIsProcessedAtomically = true,
         };
     }
 
