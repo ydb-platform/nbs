@@ -154,6 +154,10 @@ type Client interface {
 		readonly bool,
 	) (Session, error)
 
+	FreezeTablet(ctx context.Context, filesystemID string) error
+
+	UnfreezeTablet(ctx context.Context, filesystemID string) error
+
 	UnsafeCreateNode(
 		ctx context.Context,
 		filesystemID string,
