@@ -5751,6 +5751,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             fakeDescribeDataLatencyUs);
 
         TTestEnv env(testEnvConfig, std::move(storageConfig));
+        auto registry = env.GetRegistry();
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -5779,6 +5780,39 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         UNIT_ASSERT_VALUES_EQUAL(4, blobPieces.size());
 
         UNIT_ASSERT_VALUES_EQUAL(1, fakeDescribeDataHappened->Val());
+
+        // an unaligned request - RequestBytes should report the requested
+        // length, not the block-aligned one
+        tablet.DescribeData(0, 1, 100);
+
+        UNIT_ASSERT_VALUES_EQUAL(2, fakeDescribeDataHappened->Val());
+
+        tablet.SendRequest(tablet.CreateUpdateCounters());
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+
+        {
+            TTestRegistryVisitor visitor;
+            // clang-format off
+            registry->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters({
+                {{
+                    {"sensor", "Count"},
+                    {"request", "DescribeData"},
+                    {"filesystem", "test"}
+                }, 2},
+                {{
+                    {"sensor", "RequestBytes"},
+                    {"request", "DescribeData"},
+                    {"filesystem", "test"}
+                }, static_cast<i64>(256_KB + 100)},
+                // fake responses are not served from the read-ahead cache
+                {{
+                    {"sensor", "ReadAheadCacheHitCount"},
+                    {"filesystem", "test"}
+                }, 0},
+            });
+            // clang-format on
+        }
     }
 
     TABLET_TEST_16K(ShouldHandleFakeDescribeData)
