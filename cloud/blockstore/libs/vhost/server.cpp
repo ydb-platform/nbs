@@ -13,6 +13,7 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/generic/hash.h>
+#include <util/generic/map.h>
 #include <util/generic/vector.h>
 #include <util/string/builder.h>
 #include <util/system/mutex.h>
@@ -69,13 +70,9 @@ public:
 private:
     void InitExecutors();
 
-    // Picks the executor with the smallest number of vhost queues assigned to
-    // it. Must be called under Lock.
-    TExecutor* PickExecutor() const;
-
-    // Number of vhost queues of the endpoints assigned to the given executor.
-    // Must be called under Lock.
-    ui32 GetVhostQueuesCount(const TExecutor* executor) const;
+    // Picks |count| distinct executors with the lowest number of assigned
+    // endpoints. Must be called under Lock.
+    TVector<TExecutor*> PickExecutors(ui32 count);
 
     void StopAllEndpoints();
 
@@ -83,6 +80,10 @@ private:
         const TString& socketPath,
         const NProto::TError& error);
 
+    // Creates a single device handler shared by all executors of the endpoint.
+    // The whole storage-wrapper chain (aligned device handler, unaligned
+    // read-modify-write guard, etc.) is built once per endpoint and is safe to
+    // use from several threads at once.
     IDeviceHandlerPtr CreateDeviceHandler(
         const TStorageOptions& options,
         IStoragePtr storage);
@@ -163,7 +164,20 @@ TFuture<NProto::TError> TServer::StartEndpoint(
         return MakeFuture(error);
     }
 
-    TExecutor* executor;
+    // Number of virtqueues exposed to the guest.
+    const ui32 vhostQueuesCount = Max<ui32>(1, options.VhostQueuesCount);
+    // Number of executors that will serve the endpoint. libvhost spreads the
+    // guest's virtqueues over their request queues, so the endpoint is not
+    // limited by a single thread anymore. There is no point in taking more
+    // executors than there are virtqueues (and libvhost forbids it).
+    const ui32 executorsCount = Min<ui32>(vhostQueuesCount, Executors.size());
+
+    // Single device handler shared by all executors of this endpoint. The
+    // whole storage-wrapper chain is built once per endpoint.
+    auto deviceHandler = CreateDeviceHandler(options, std::move(storage));
+
+    TEndpointPtr endpoint;
+    TVector<IVhostQueuePtr> queues;
 
     with_lock (Lock) {
         auto it = Endpoints.find(socketPath);
@@ -176,27 +190,39 @@ TFuture<NProto::TError> TServer::StartEndpoint(
             return MakeFuture(error);
         }
 
-        executor = PickExecutor();
-        Y_ABORT_UNLESS(executor);
+        auto executors = PickExecutors(executorsCount);
+        Y_ABORT_UNLESS(executors.size() == executorsCount);
+
+        queues.reserve(executors.size());
+        for (auto* executor: executors) {
+            queues.push_back(executor->GetQueue());
+        }
+
+        // The ctor bumps the assignment counters of the picked executors, so
+        // it has to run under Lock together with PickExecutors.
+        endpoint = std::make_shared<TEndpoint>(
+            *this,
+            std::move(deviceHandler),
+            socketPath,
+            options,
+            Config.SocketAccessMode,
+            std::move(executors));
     }
 
-    auto endpoint = std::make_shared<TEndpoint>(
-        *this,
-        CreateDeviceHandler(options, std::move(storage)),
-        socketPath,
-        options,
-        Config.SocketAccessMode,
-        executor);
+    STORAGE_INFO("Start endpoint " << socketPath.Quote()
+        << " with " << vhostQueuesCount << " vhost queues"
+        << " served by " << executorsCount << " executors");
 
-    auto vhostDevice = executor->GetQueue()->CreateDevice(
+    auto vhostDevice = VhostQueueFactory->CreateDevice(
         socketPath,
         options.DeviceName.empty() ? options.DiskId : options.DeviceName,
         options.BlockSize,
         options.BlocksCount,
-        options.VhostQueuesCount,
+        vhostQueuesCount,
         options.DiscardEnabled,
         options.WriteZeroesEnabled,
         options.OptimalIoSize,
+        std::move(queues),
         endpoint->GetCookie(),
         Callbacks);
     endpoint->SetVhostDevice(std::move(vhostDevice));
@@ -348,33 +374,30 @@ void TServer::InitExecutors()
     }
 }
 
-TExecutor* TServer::PickExecutor() const
+TVector<TExecutor*> TServer::PickExecutors(ui32 count)
 {
-    TExecutor* result = nullptr;
-    ui32 resultQueuesCount = 0;
+    Y_ABORT_UNLESS(count > 0);
+    Y_ABORT_UNLESS(count <= Executors.size());
 
+    // Snapshot the assignment counters into a multimap so that the ordering is
+    // computed against a stable set of values. The multimap sorts by key
+    // ascending, so the first |count| entries are the least loaded executors.
+    TMultiMap<ui32, TExecutor*> byLoad;
     for (const auto& executor: Executors) {
-        const ui32 queuesCount = GetVhostQueuesCount(executor.get());
-        if (result == nullptr || queuesCount < resultQueuesCount) {
-            result = executor.get();
-            resultQueuesCount = queuesCount;
-        }
+        byLoad.emplace(executor->GetAssignedEndpointsCount(), executor.get());
     }
 
-    return result;
-}
-
-ui32 TServer::GetVhostQueuesCount(const TExecutor* executor) const
-{
-    ui32 queuesCount = 0;
-
-    for (const auto& it: Endpoints) {
-        if (it.second->GetExecutor() == executor) {
-            queuesCount += it.second->GetVhostQueuesCount();
+    TVector<TExecutor*> picked;
+    picked.reserve(count);
+    for (const auto& [load, executor]: byLoad) {
+        if (picked.size() == count) {
+            break;
         }
+        picked.push_back(executor);
     }
 
-    return queuesCount;
+    Y_ABORT_UNLESS(picked.size() == count);
+    return picked;
 }
 
 IDeviceHandlerPtr TServer::CreateDeviceHandler(

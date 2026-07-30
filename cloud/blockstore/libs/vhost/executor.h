@@ -10,6 +10,7 @@
 #include <util/generic/string.h>
 #include <util/system/thread.h>
 
+#include <atomic>
 #include <memory>
 
 namespace NCloud::NBlockStore::NVhost {
@@ -17,8 +18,8 @@ namespace NCloud::NBlockStore::NVhost {
 ////////////////////////////////////////////////////////////////////////////////
 
 // Implemented by TEndpoint. A pointer to it is used as the vhost device
-// cookie, so that an executor can dispatch a request dequeued from its request
-// queue to the endpoint the request belongs to.
+// cookie, so that an executor can dispatch a request dequeued from a shared
+// request queue to the endpoint the request belongs to.
 struct IRequestProcessor
 {
     virtual ~IRequestProcessor() = default;
@@ -28,8 +29,9 @@ struct IRequestProcessor
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Owns a single vhost request queue and the thread that runs it. The queue is
-// shared by all endpoints assigned to this executor.
+// Owns a single vhost request queue and the thread that runs it. A queue is
+// shared by all endpoints assigned to this executor, and a single endpoint may
+// be assigned to several executors at once - see TServer::PickExecutors.
 class TExecutor final
     : public ISimpleThread
 {
@@ -38,6 +40,10 @@ private:
     TExecutorCounters::TExecutorScope ExecutorScope;
     const IVhostQueuePtr VhostQueue;
     TAffinity Affinity;
+
+    // Number of endpoints currently assigned to this executor. Maintained by
+    // TEndpoint's ctor/dtor and used for load-balanced executor selection.
+    std::atomic<ui32> AssignedEndpointsCount = 0;
 
 public:
     TExecutor(
@@ -51,6 +57,21 @@ public:
     const IVhostQueuePtr& GetQueue() const
     {
         return VhostQueue;
+    }
+
+    void OnEndpointAssigned()
+    {
+        AssignedEndpointsCount.fetch_add(1, std::memory_order_relaxed);
+    }
+
+    void OnEndpointReleased()
+    {
+        AssignedEndpointsCount.fetch_sub(1, std::memory_order_relaxed);
+    }
+
+    ui32 GetAssignedEndpointsCount() const
+    {
+        return AssignedEndpointsCount.load(std::memory_order_relaxed);
     }
 
 private:

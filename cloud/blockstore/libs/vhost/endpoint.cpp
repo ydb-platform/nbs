@@ -78,16 +78,27 @@ TEndpoint::TEndpoint(
         TString socketPath,
         const TStorageOptions& options,
         ui32 socketAccessMode,
-        TExecutor* executor)
+        TVector<TExecutor*> executors)
     : AppCtx(appCtx)
     , DeviceHandler(std::move(deviceHandler))
     , SocketPath(std::move(socketPath))
     , Options(options)
     , SocketAccessMode(socketAccessMode)
-    , Executor(executor)
+    , Executors(std::move(executors))
 {
     Y_ABORT_UNLESS(DeviceHandler);
-    Y_ABORT_UNLESS(Executor);
+    Y_ABORT_UNLESS(!Executors.empty());
+
+    for (auto* executor: Executors) {
+        executor->OnEndpointAssigned();
+    }
+}
+
+TEndpoint::~TEndpoint()
+{
+    for (auto* executor: Executors) {
+        executor->OnEndpointReleased();
+    }
 }
 
 void TEndpoint::SetVhostDevice(IVhostDevicePtr vhostDevice)

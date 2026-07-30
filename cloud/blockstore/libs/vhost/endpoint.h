@@ -16,6 +16,7 @@
 
 #include <util/generic/intrlist.h>
 #include <util/generic/string.h>
+#include <util/generic/vector.h>
 #include <util/system/spinlock.h>
 
 #include <atomic>
@@ -49,19 +50,29 @@ using TRequestPtr = TIntrusivePtr<TRequest>;
 ////////////////////////////////////////////////////////////////////////////////
 
 // A single vhost block device exposed to the guest. Translates the vhost
-// requests dispatched to it by its executor into the IDeviceHandler API and
+// requests dispatched to it by its executors into the IDeviceHandler API and
 // keeps track of the requests in flight.
+//
+// The endpoint exposes VhostQueuesCount virtqueues to the guest. These are
+// spread over the executors assigned to the endpoint (their number is capped
+// by the executor pool size), so requests of a single endpoint are processed
+// by several threads simultaneously. All of them share one IDeviceHandler and
+// therefore the same storage-wrapper chain, which is safe to call from
+// multiple threads at once.
 class TEndpoint final
     : public IRequestProcessor
     , public std::enable_shared_from_this<TEndpoint>
 {
 private:
     TAppContext& AppCtx;
+    // Single device handler shared by all executors of this endpoint.
     const IDeviceHandlerPtr DeviceHandler;
     const TString SocketPath;
     const TStorageOptions Options;
     const ui32 SocketAccessMode;
-    TExecutor* const Executor;
+    // Executors serving this endpoint. Kept here so that the endpoint's
+    // lifetime governs the per-executor assignment counter.
+    const TVector<TExecutor*> Executors;
     IVhostDevicePtr VhostDevice;
 
     TIntrusiveList<TRequest> RequestsInFlight;
@@ -76,18 +87,15 @@ public:
         TString socketPath,
         const TStorageOptions& options,
         ui32 socketAccessMode,
-        TExecutor* executor);
+        TVector<TExecutor*> executors);
+
+    ~TEndpoint() override;
 
     // The cookie attached to every request dispatched through this endpoint's
     // vhost device.
     void* GetCookie()
     {
         return static_cast<IRequestProcessor*>(this);
-    }
-
-    TExecutor* GetExecutor() const
-    {
-        return Executor;
     }
 
     void SetVhostDevice(IVhostDevicePtr vhostDevice);
@@ -98,13 +106,10 @@ public:
 
     void Update(ui64 blocksCount);
 
-    ui32 GetVhostQueuesCount() const
-    {
-        return Options.VhostQueuesCount;
-    }
-
     size_t CollectRequests(const TIncompleteRequestsCollector& collector);
 
+    // Processes a request dequeued from any of the endpoint's request queues,
+    // i.e. this may be called concurrently from several executor threads.
     void ProcessRequest(TVhostRequestPtr vhostRequest) override;
 
 private:

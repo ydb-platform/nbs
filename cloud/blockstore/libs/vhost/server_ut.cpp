@@ -1158,6 +1158,150 @@ Y_UNIT_TEST_SUITE(TServerTest)
             UNIT_ASSERT(!environment.DequeueRequest(request));
         }
     }
+
+    Y_UNIT_TEST(ShouldServeSingleEndpointByMultipleExecutors)
+    {
+        const ui32 blockSize = 4096;
+        const ui32 vhostQueuesCount = 4;
+        const TString unixSocketPath = "testSocket";
+        TTempFile tempFile(unixSocketPath);
+
+        // Every request blocks its executor thread until all of them have
+        // arrived. This can only be completed if the endpoint is served by
+        // |vhostQueuesCount| executors simultaneously.
+        std::atomic<ui32> arrivedCount = 0;
+        TManualEvent allArrived;
+
+        auto testStorage = std::make_shared<TTestStorage>();
+        testStorage->ReadBlocksLocalHandler = [&] (
+            TCallContextPtr ctx,
+            std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+        {
+            Y_UNUSED(ctx);
+            Y_UNUSED(request);
+
+            if (arrivedCount.fetch_add(1) + 1 == vhostQueuesCount) {
+                allArrived.Signal();
+            }
+            UNIT_ASSERT(allArrived.WaitT(TDuration::Seconds(30)));
+
+            return MakeFuture(NProto::TReadBlocksLocalResponse());
+        };
+
+        auto queueFactory = std::make_shared<TTestVhostQueueFactory>();
+
+        TServerConfig serverConfig;
+        serverConfig.ThreadsCount = vhostQueuesCount;
+
+        auto server = CreateServer(
+            CreateLoggingService("console"),
+            std::make_shared<TTestServerStats>(),
+            queueFactory,
+            CreateDefaultDeviceHandlerFactory(),
+            serverConfig,
+            TVhostCallbacks());
+
+        server->Start();
+        Y_DEFER {
+            server->Stop();
+        };
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            serverConfig.ThreadsCount,
+            queueFactory->Queues.size());
+
+        TStorageOptions options;
+        options.DiskId = "testDiskId";
+        options.BlockSize = blockSize;
+        options.BlocksCount = 256;
+        options.VhostQueuesCount = vhostQueuesCount;
+
+        {
+            auto future = server->StartEndpoint(
+                unixSocketPath,
+                testStorage,
+                options);
+            const auto& error = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_C(!HasError(error), error);
+        }
+
+        // The device has to be registered in every queue, otherwise its
+        // virtqueues would all be served by a single executor.
+        for (const auto& queue: queueFactory->Queues) {
+            UNIT_ASSERT_VALUES_EQUAL(1, queue->GetDevices().size());
+        }
+        auto device = queueFactory->Queues.at(0)->GetDevices().at(0);
+
+        TVector<TString> blocks;
+        auto sgList = ResizeBlocks(blocks, 1, TString(blockSize, 'f'));
+
+        TVector<TFuture<TVhostRequest::EResult>> futures;
+        for (ui32 i = 0; i < vhostQueuesCount; ++i) {
+            // Non-overlapping ranges, so that the requests aren't serialized
+            // by the device handler.
+            futures.push_back(device->SendTestRequest(
+                EBlockStoreRequest::ReadBlocks,
+                i * blockSize,
+                blockSize,
+                sgList));
+        }
+
+        for (auto& future: futures) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<int>(TVhostRequest::SUCCESS),
+                static_cast<int>(future.GetValue(TDuration::Seconds(30))));
+        }
+
+        {
+            auto future = server->StopEndpoint(unixSocketPath);
+            const auto& error = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_C(!HasError(error), error);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldNotUseMoreExecutorsThanVhostQueues)
+    {
+        const ui32 vhostQueuesCount = 2;
+        const TString unixSocketPath = "testSocket";
+        TTempFile tempFile(unixSocketPath);
+
+        auto queueFactory = std::make_shared<TTestVhostQueueFactory>();
+
+        TServerConfig serverConfig;
+        serverConfig.ThreadsCount = 2 * vhostQueuesCount;
+
+        auto server = CreateServer(
+            CreateLoggingService("console"),
+            std::make_shared<TTestServerStats>(),
+            queueFactory,
+            CreateDefaultDeviceHandlerFactory(),
+            serverConfig,
+            TVhostCallbacks());
+
+        server->Start();
+        Y_DEFER {
+            server->Stop();
+        };
+
+        TStorageOptions options;
+        options.DiskId = "testDiskId";
+        options.BlockSize = 4096;
+        options.BlocksCount = 256;
+        options.VhostQueuesCount = vhostQueuesCount;
+
+        auto future = server->StartEndpoint(
+            unixSocketPath,
+            std::make_shared<TTestStorage>(),
+            options);
+        const auto& error = future.GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(!HasError(error), error);
+
+        ui32 queuesWithDevice = 0;
+        for (const auto& queue: queueFactory->Queues) {
+            queuesWithDevice += queue->GetDevices().size();
+        }
+        UNIT_ASSERT_VALUES_EQUAL(vhostQueuesCount, queuesWithDevice);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NVhost

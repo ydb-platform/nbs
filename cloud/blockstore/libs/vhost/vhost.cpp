@@ -118,11 +118,17 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// TVhostDevice owns a vhost block device that may be served by several
+// request queues simultaneously. libvhost distributes the guest's virtqueues
+// over the registered request queues (vring index % request queue count), so
+// the number of request queues must not exceed the number of virtqueues
+// advertised to the guest via vhd_bdev_info::num_queues.
 class TVhostDevice final
     : public IVhostDevice
 {
 private:
-    vhd_request_queue* const VhdQueue;
+    // Native request queues registered with vhd_register_blockdev().
+    TVector<vhd_request_queue*> VhdQueues;
     const TString SocketPath;
     const TString DeviceName;
     void* const Cookie;
@@ -134,7 +140,7 @@ private:
 
 public:
     TVhostDevice(
-            vhd_request_queue* vhdQueue,
+            TVector<vhd_request_queue*> vhdQueues,
             TString socketPath,
             TString deviceName,
             ui32 blockSize,
@@ -145,11 +151,14 @@ public:
             ui32 optimalIoSize,
             void* cookie,
             const TVhostCallbacks& callbacks)
-        : VhdQueue(vhdQueue)
+        : VhdQueues(std::move(vhdQueues))
         , SocketPath(std::move(socketPath))
         , DeviceName(std::move(deviceName))
         , Cookie(cookie)
     {
+        Y_ABORT_UNLESS(!VhdQueues.empty());
+        Y_ABORT_UNLESS(VhdQueues.size() <= queuesCount);
+
         Zero(VhdBdevInfo);
         VhdBdevInfo.serial = DeviceName.c_str();
         VhdBdevInfo.socket_path = SocketPath.c_str();
@@ -174,11 +183,10 @@ public:
 
     bool Start() override
     {
-        vhd_request_queue* queues[1] = { VhdQueue };
-
         VhdVdev = vhd_register_blockdev(
             &VhdBdevInfo,
-            queues, 1,
+            VhdQueues.data(),
+            static_cast<int>(VhdQueues.size()),
             Cookie);
 
         return VhdVdev != nullptr;
@@ -255,32 +263,6 @@ public:
         vhd_stop_queue(VhdRequestQueue);
     }
 
-    IVhostDevicePtr CreateDevice(
-        TString socketPath,
-        TString deviceName,
-        ui32 blockSize,
-        ui64 blocksCount,
-        ui32 queuesCount,
-        bool discardEnabled,
-        bool writeZeroesEnabled,
-        ui32 optimalIoSize,
-        void* cookie,
-        const TVhostCallbacks& callbacks) override
-    {
-        return std::make_shared<TVhostDevice>(
-            VhdRequestQueue,
-            std::move(socketPath),
-            std::move(deviceName),
-            blockSize,
-            blocksCount,
-            queuesCount,
-            discardEnabled,
-            writeZeroesEnabled,
-            optimalIoSize,
-            cookie,
-            callbacks);
-    }
-
     TVhostRequestPtr DequeueRequest() override
     {
         vhd_request vhdRequest;
@@ -296,6 +278,11 @@ public:
         }
 
         return nullptr;
+    }
+
+    vhd_request_queue* GetNativeQueue() const
+    {
+        return VhdRequestQueue;
     }
 
 private:
@@ -369,6 +356,42 @@ public:
     IVhostQueuePtr CreateQueue() override
     {
         return std::make_shared<TVhostQueue>();
+    }
+
+    IVhostDevicePtr CreateDevice(
+        TString socketPath,
+        TString deviceName,
+        ui32 blockSize,
+        ui64 blocksCount,
+        ui32 queuesCount,
+        bool discardEnabled,
+        bool writeZeroesEnabled,
+        ui32 optimalIoSize,
+        TVector<IVhostQueuePtr> queues,
+        void* cookie,
+        const TVhostCallbacks& callbacks) override
+    {
+        Y_ABORT_UNLESS(!queues.empty());
+
+        TVector<vhd_request_queue*> vhdQueues;
+        vhdQueues.reserve(queues.size());
+        for (const auto& queue: queues) {
+            vhdQueues.push_back(
+                static_cast<TVhostQueue*>(queue.get())->GetNativeQueue());
+        }
+
+        return std::make_shared<TVhostDevice>(
+            std::move(vhdQueues),
+            std::move(socketPath),
+            std::move(deviceName),
+            blockSize,
+            blocksCount,
+            queuesCount,
+            discardEnabled,
+            writeZeroesEnabled,
+            optimalIoSize,
+            cookie,
+            callbacks);
     }
 };
 
