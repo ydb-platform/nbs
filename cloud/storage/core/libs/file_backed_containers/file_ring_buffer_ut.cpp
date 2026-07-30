@@ -748,7 +748,9 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT(rb->SetMetadata("1234"));
 
         {
-            // Corrupt metadata
+            // Corrupt metadata contents
+            // Header validation will pass - it will be possible to change
+            // metadata
             TFileMap m(f.GetName(), TMemoryMapCommon::oRdWr);
             m.Map(0, 256);
             char* data = static_cast<char*>(m.Ptr());
@@ -771,7 +773,9 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT(rb->SetMetadata("1234"));
 
         {
-            // Corrupt metadata Length
+            // Corrupt metadata length (set length > capacity)
+            // Header validation will fail - setting metadata will not be
+            // possible
             TFileMap m(f.GetName(), TMemoryMapCommon::oRdWr);
             m.Map(0, 256);
             char* data = static_cast<char*>(m.Ptr());
