@@ -764,7 +764,11 @@ void TVolumeActor::HandleGetServiceStatistics(
     StatisticRequestInfo =
         CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext);
 
-    if (GetVolumeStatus() == EStatus::STATUS_INACTIVE) {
+    if (!CanRequestStatisticsFromPartitions())
+    {
+        // The partitions are not running: either they have not been started
+        // yet, or they have already been stopped. Reply with the cached
+        // counters.
         UpdateCounters(ctx);
         return;
     }
