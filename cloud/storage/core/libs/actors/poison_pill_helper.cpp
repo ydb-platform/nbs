@@ -26,7 +26,7 @@ void TPoisonPillHelper::TakeOwnership(
         return;
     }
     OwnedActors.insert(actor);
-    if (Poisoner) {
+    if (Poisoners) {
         NCloud::Send<TEvents::TEvPoisonPill>(ctx, actor);
     }
 }
@@ -52,9 +52,7 @@ void TPoisonPillHelper::HandlePoisonPill(
         return;
     }
 
-    Y_DEBUG_ABORT_UNLESS(!Poisoner);
-
-    Poisoner = TPoisoner{ev->Sender, ev->Cookie};
+    Poisoners.emplace_back(ev->Sender, ev->Cookie);
     KillActors(ctx);
     ReplyAndDie(ctx);
 }
@@ -84,15 +82,18 @@ void TPoisonPillHelper::KillActors(const TActorContext& ctx)
 
 void TPoisonPillHelper::ReplyAndDie(const TActorContext& ctx)
 {
-    if (!Poisoner || !OwnedActors.empty()) {
+    if (!Poisoners || !OwnedActors.empty()) {
         return;
     }
 
-    ctx.Send(
-        Poisoner->Sender,
-        std::make_unique<TEvents::TEvPoisonTaken>(),
-        0,   // flags
-        Poisoner->Cookie);
+    for (auto& poisoner: Poisoners) {
+        ctx.Send(
+            poisoner.Sender,
+            std::make_unique<TEvents::TEvPoisonTaken>(),
+            0,   // flags
+            poisoner.Cookie);
+    }
+
     Owner->Poison(ctx);
 }
 
