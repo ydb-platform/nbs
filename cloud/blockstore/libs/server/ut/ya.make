@@ -8,6 +8,7 @@ ELSE()
 ENDIF()
 
 SRCS(
+    server_peer_ut.cpp
     server_ut.cpp
 )
 
