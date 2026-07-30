@@ -1,4 +1,5 @@
 import os
+import pathlib
 import psutil
 import pytest
 import requests
@@ -32,6 +33,13 @@ KNOWN_DEVICE_POOLS = {
         {"Name": "1Mb", "Kind": "DEVICE_POOL_KIND_LOCAL",
             "AllocationUnit": DEVICE_SIZE},
     ]}
+
+
+# Use a short temporary directory to keep Unix socket paths within the length limit
+@pytest.fixture
+def short_tmp_path():
+    with tempfile.TemporaryDirectory(dir="/tmp", prefix="vh-") as tmp_dir:
+        yield pathlib.Path(tmp_dir)
 
 
 @pytest.fixture(name='data_path')
@@ -153,7 +161,7 @@ def setup_env(nbs, disk_agent, data_path):
         time.sleep(1)
 
 
-def test_multiple_endpoints(nbs):
+def test_multiple_endpoints(nbs, short_tmp_path):
     client = CreateClient(f"localhost:{nbs.port}")
 
     test_disk_id = "vol0-multiple_endpoints"
@@ -190,16 +198,21 @@ def test_multiple_endpoints(nbs):
 
     # Start a lot of blockstore-vhost-server processes.
     SOCKET_COUNT = 15
+    futures = []
     for i in range(0, SOCKET_COUNT):
-        socket = tempfile.NamedTemporaryFile()
-        client.start_endpoint_async(
-            unix_socket_path=socket.name,
+        socket_path = str(short_tmp_path / f"{test_disk_id}.{i+1}.vhost")
+        futures.append(client.start_endpoint_async(
+            unix_socket_path=socket_path,
             disk_id=test_disk_id,
             ipc_type=IPC_VHOST,
             access_mode=VOLUME_ACCESS_READ_ONLY,
-            client_id=f"{socket.name}-id",
+            client_id=f"{socket_path}-id",
             seq_number=i+1
-        )
+        ))
+
+    for future in futures:
+        response = future.result()
+        assert test_disk_id == response["Volume"].DiskId
 
     wait_for_vhost_servers(nbs, SOCKET_COUNT)
 
@@ -213,7 +226,7 @@ def test_multiple_endpoints(nbs):
     assert crit['value'] == 0  # Vhost servers should not have restarted.
 
 
-def test_switch_multiple_endpoints(nbs):
+def test_switch_multiple_endpoints(nbs, short_tmp_path):
     client = CreateClient(f"localhost:{nbs.port}")
 
     @retry(max_times=10, exception=ClientError)
@@ -240,45 +253,47 @@ def test_switch_multiple_endpoints(nbs):
 
             if process_name == "blockstore-vhost-server" and process_parent.pid == nbs.pid:
                 count += 1
-        if count != expected_count:
-            raise RuntimeError(
-                f"vhost count expected {expected_count}, actual {count}")
+        assert count == expected_count, \
+            f"vhost count expected {expected_count}, actual {count}"
 
     # Create disks and start an endpoint for each one.
     DISK_COUNT = 6
-    disks = []
-    for i in range(DISK_COUNT):
-        disks.append(f"local-{i+1}")
+    disks = [f"local-{i+1}" for i in range(DISK_COUNT)]
     sockets = []
-    for disk in disks:
-        create_vol(disk)
-        socket = tempfile.NamedTemporaryFile()
-        sockets.append(socket)
+    for disk_id in disks:
+        create_vol(disk_id)
+        socket_path = str(short_tmp_path / f"{disk_id}.vhost")
+        sockets.append(socket_path)
         client.start_endpoint(
-            unix_socket_path=socket.name,
-            disk_id=disk,
+            unix_socket_path=socket_path,
+            disk_id=disk_id,
             ipc_type=IPC_VHOST,
-            client_id=f"{socket.name}-id",
+            client_id=f"{socket_path}-id",
             seq_number=1
         )
 
     wait_for_vhost_servers(nbs, DISK_COUNT)
 
+    # Wait until all vhost-server processes are ready and have created their sockets
+    while not all([os.path.exists(s) for s in sockets]):
+        time.sleep(1)
+
     # Switch the endpoints. This will restart all vhost servers.
-    for i in range(0, DISK_COUNT):
-        idx = i % DISK_COUNT
-        disk = disks[idx]
-        socket = sockets[idx]
-
-        client.start_endpoint_async(
-            unix_socket_path=socket.name,
-            disk_id=disk,
+    futures = []
+    for disk_id, socket_path in zip(disks, sockets):
+        futures.append(client.start_endpoint_async(
+            unix_socket_path=socket_path,
+            disk_id=disk_id,
             ipc_type=IPC_VHOST,
-            client_id=f"{socket.name}-id",
+            client_id=f"{socket_path}-id",
             seq_number=2
-        )
+        ))
 
-    wait_for_vhost_servers(nbs, len(disks))
+    for disk_id, future in zip(disks, futures):
+        response = future.result()
+        assert disk_id == response["Volume"].DiskId
+
+    wait_for_vhost_servers(nbs, DISK_COUNT)
 
     # Wait for the counters to be updated
     time.sleep(15)
