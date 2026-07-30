@@ -65,7 +65,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(SetHasXAttrs,               __VA_ARGS__)                               \
     xxx(MarkNodeRefsExhaustive,     __VA_ARGS__)                               \
                                                                                \
-    xxx(CreateQuota,                __VA_ARGS__)                               \
+    xxx(SetQuota,                   __VA_ARGS__)                               \
     xxx(DeleteQuota,                __VA_ARGS__)                               \
     xxx(ListQuotas,                 __VA_ARGS__)                               \
                                                                                \
@@ -230,8 +230,8 @@ struct TEvIndexTablet
         EvListNodesInternalRequest = EvBegin + 83,
         EvListNodesInternalResponse,
 
-        EvCreateQuotaRequest = EvBegin + 85,
-        EvCreateQuotaResponse,
+        EvSetQuotaRequest = EvBegin + 85,
+        EvSetQuotaResponse,
 
         EvDeleteQuotaRequest = EvBegin + 87,
         EvDeleteQuotaResponse,

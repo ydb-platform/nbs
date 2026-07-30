@@ -21,19 +21,21 @@ const NProto::TQuota* TIndexTabletState::FindQuota(ui32 quotaId) const
     return Impl->Quotas.FindQuota(quotaId);
 }
 
-const NProto::TQuota& TIndexTabletState::CreateQuota(
+const NProto::TQuota& TIndexTabletState::SetQuota(
     IIndexTabletDatabase& db,
+    ui32 quotaId,
     ui64 maxBytes,
     ui64 maxNodes,
-    TInstant creationTimestamp)
+    TInstant now)
 {
-    const ui32 quotaId = Impl->Quotas.GenerateQuotaId();
+    const auto* existing = Impl->Quotas.FindQuota(quotaId);
 
     NProto::TQuota quota;
     quota.SetQuotaId(quotaId);
     quota.SetMaxBytes(maxBytes);
     quota.SetMaxNodes(maxNodes);
-    quota.SetCreationTimestampUs(creationTimestamp.MicroSeconds());
+    quota.SetCreationTimestampUs(
+        existing ? existing->GetCreationTimestampUs() : now.MicroSeconds());
 
     db.WriteQuota(quota);
     Impl->Quotas.UpdateQuota(quota);

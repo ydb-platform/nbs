@@ -1239,7 +1239,7 @@ message TListNodesInternalResponse
 ////////////////////////////////////////////////////////////////////////////////
 // Quota management requests/responses
 
-message TCreateQuotaRequest
+message TSetQuotaRequest
 {
     // Optional request headers.
     NProto.THeaders Headers = 1;
@@ -1247,17 +1247,20 @@ message TCreateQuotaRequest
     // FileSystem identifier.
     string FileSystemId = 2;
 
+    // Quota identifier, chosen by the caller.
+    uint32 QuotaId = 3;
+
     // Byte and node limits, 0 means unlimited.
-    uint64 MaxBytes = 3;
-    uint64 MaxNodes = 4;
+    uint64 MaxBytes = 4;
+    uint64 MaxNodes = 5;
 }
 
-message TCreateQuotaResponse
+message TSetQuotaResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 
-    // Created quota.
+    // Resulting quota.
     NProto.TQuota Quota = 2;
 }
 

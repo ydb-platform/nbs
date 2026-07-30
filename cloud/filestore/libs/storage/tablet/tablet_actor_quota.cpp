@@ -9,8 +9,8 @@ using namespace NKikimr::NTabletFlatExecutor;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TIndexTabletActor::HandleCreateQuota(
-    const TEvIndexTablet::TEvCreateQuotaRequest::TPtr& ev,
+void TIndexTabletActor::HandleSetQuota(
+    const TEvIndexTablet::TEvSetQuotaRequest::TPtr& ev,
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
@@ -18,8 +18,9 @@ void TIndexTabletActor::HandleCreateQuota(
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::TABLET,
-        "%s CreateQuota started (maxBytes: %lu, maxNodes: %lu)",
+        "%s SetQuota started (quotaId: %u, maxBytes: %lu, maxNodes: %lu)",
         LogTag.c_str(),
+        msg->Record.GetQuotaId(),
         msg->Record.GetMaxBytes(),
         msg->Record.GetMaxNodes());
 
@@ -32,56 +33,62 @@ void TIndexTabletActor::HandleCreateQuota(
     if (!IsMainTablet()) {
         // TODO(6608): propagate knowledge of the quota to all shards
         auto response =
-            std::make_unique<TEvIndexTablet::TEvCreateQuotaResponse>(MakeError(
+            std::make_unique<TEvIndexTablet::TEvSetQuotaResponse>(MakeError(
                 E_ARGUMENT,
-                "quotas can only be created on the main tablet"));
+                "quotas can only be set on the main tablet"));
         NCloud::Reply(ctx, *requestInfo, std::move(response));
         return;
     }
 
-    AddInFlightRequest<TEvIndexTablet::TCreateQuotaMethod>(*requestInfo);
+    AddInFlightRequest<TEvIndexTablet::TSetQuotaMethod>(*requestInfo);
 
-    ExecuteTx<TCreateQuota>(
+    ExecuteTx<TSetQuota>(
         ctx,
         std::move(requestInfo),
+        msg->Record.GetQuotaId(),
         msg->Record.GetMaxBytes(),
         msg->Record.GetMaxNodes());
 }
 
-bool TIndexTabletActor::PrepareTx_CreateQuota(
+bool TIndexTabletActor::PrepareTx_SetQuota(
     const TActorContext& ctx,
     TTransactionContext& tx,
-    TTxIndexTablet::TCreateQuota& args)
+    TTxIndexTablet::TSetQuota& args)
 {
     Y_UNUSED(ctx, tx, args);
 
     return true;
 }
 
-void TIndexTabletActor::ExecuteTx_CreateQuota(
+void TIndexTabletActor::ExecuteTx_SetQuota(
     const TActorContext& ctx,
     TTransactionContext& tx,
-    TTxIndexTablet::TCreateQuota& args)
+    TTxIndexTablet::TSetQuota& args)
 {
     auto db = CreateIndexTabletDatabase(tx.DB);
-    args.Quota = CreateQuota(*db, args.MaxBytes, args.MaxNodes, ctx.Now());
+    args.Quota = SetQuota(
+        *db,
+        args.QuotaId,
+        args.MaxBytes,
+        args.MaxNodes,
+        ctx.Now());
 }
 
-void TIndexTabletActor::CompleteTx_CreateQuota(
+void TIndexTabletActor::CompleteTx_SetQuota(
     const TActorContext& ctx,
-    TTxIndexTablet::TCreateQuota& args)
+    TTxIndexTablet::TSetQuota& args)
 {
     RemoveInFlightRequest(*args.RequestInfo);
 
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::TABLET,
-        "%s CreateQuota completed (%s)",
+        "%s SetQuota completed (%s)",
         LogTag.c_str(),
         FormatError(args.Error).c_str());
 
     auto response =
-        std::make_unique<TEvIndexTablet::TEvCreateQuotaResponse>(args.Error);
+        std::make_unique<TEvIndexTablet::TEvSetQuotaResponse>(args.Error);
     if (!HasError(args.Error)) {
         *response->Record.MutableQuota() = args.Quota;
     }

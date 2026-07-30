@@ -30,14 +30,4 @@ TVector<NProto::TQuota> TQuotaStore::GetQuotas() const
     return quotas;
 }
 
-ui32 TQuotaStore::GenerateQuotaId() const
-{
-    ui32 quotaId = 1;
-    for (const auto& [id, quota]: QuotaById) {
-        quotaId = Max(quotaId, id + 1);
-    }
-
-    return quotaId;
-}
-
 }   // namespace NCloud::NFileStore::NStorage

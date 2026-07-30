@@ -14,7 +14,7 @@ namespace NCloud::NFileStore::NStorage {
 
 Y_UNIT_TEST_SUITE(TIndexTabletTest_Quotas)
 {
-    Y_UNIT_TEST(ShouldCreateQuota)
+    Y_UNIT_TEST(ShouldSetAndListQuotas)
     {
         TTestEnv env;
 
@@ -23,41 +23,13 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Quotas)
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
 
-        auto response = tablet.CreateQuota(1_GB, 100);
-        const auto& quota = response->Record.GetQuota();
+        auto quota1 = tablet.SetQuota(1, 1_GB, 10)->Record.GetQuota();
+        UNIT_ASSERT_VALUES_EQUAL(1u, quota1.GetQuotaId());
+        UNIT_ASSERT_VALUES_EQUAL(1_GB, quota1.GetMaxBytes());
+        UNIT_ASSERT_VALUES_EQUAL(10u, quota1.GetMaxNodes());
+        UNIT_ASSERT(quota1.GetCreationTimestampUs() != 0);
 
-        UNIT_ASSERT(quota.GetQuotaId() != 0);
-        UNIT_ASSERT_VALUES_EQUAL(1_GB, quota.GetMaxBytes());
-        UNIT_ASSERT_VALUES_EQUAL(100u, quota.GetMaxNodes());
-        UNIT_ASSERT(quota.GetCreationTimestampUs() != 0);
-    }
-
-    Y_UNIT_TEST(ShouldAllocateUniqueQuotaIds)
-    {
-        TTestEnv env;
-
-        ui32 nodeIdx = env.AddDynamicNode();
-        ui64 tabletId = env.BootIndexTablet(nodeIdx);
-
-        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
-
-        auto quota1 = tablet.CreateQuota(1_GB)->Record.GetQuota();
-        auto quota2 = tablet.CreateQuota(2_GB)->Record.GetQuota();
-
-        UNIT_ASSERT(quota1.GetQuotaId() != quota2.GetQuotaId());
-    }
-
-    Y_UNIT_TEST(ShouldListQuotas)
-    {
-        TTestEnv env;
-
-        ui32 nodeIdx = env.AddDynamicNode();
-        ui64 tabletId = env.BootIndexTablet(nodeIdx);
-
-        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
-
-        auto quota1 = tablet.CreateQuota(1_GB, 10)->Record.GetQuota();
-        auto quota2 = tablet.CreateQuota(2_GB, 20)->Record.GetQuota();
+        tablet.SetQuota(2, 2_GB, 20);
 
         auto response = tablet.ListQuotas();
         UNIT_ASSERT_VALUES_EQUAL(2, response->Record.QuotasSize());
@@ -67,24 +39,13 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Quotas)
             quotaById[quota.GetQuotaId()] = quota;
         }
 
-        UNIT_ASSERT(quotaById.contains(quota1.GetQuotaId()));
-        UNIT_ASSERT_VALUES_EQUAL(
-            1_GB,
-            quotaById[quota1.GetQuotaId()].GetMaxBytes());
-        UNIT_ASSERT_VALUES_EQUAL(
-            10u,
-            quotaById[quota1.GetQuotaId()].GetMaxNodes());
-
-        UNIT_ASSERT(quotaById.contains(quota2.GetQuotaId()));
-        UNIT_ASSERT_VALUES_EQUAL(
-            2_GB,
-            quotaById[quota2.GetQuotaId()].GetMaxBytes());
-        UNIT_ASSERT_VALUES_EQUAL(
-            20u,
-            quotaById[quota2.GetQuotaId()].GetMaxNodes());
+        UNIT_ASSERT_VALUES_EQUAL(1_GB, quotaById[1].GetMaxBytes());
+        UNIT_ASSERT_VALUES_EQUAL(10u, quotaById[1].GetMaxNodes());
+        UNIT_ASSERT_VALUES_EQUAL(2_GB, quotaById[2].GetMaxBytes());
+        UNIT_ASSERT_VALUES_EQUAL(20u, quotaById[2].GetMaxNodes());
     }
 
-    Y_UNIT_TEST(ShouldDeleteQuota)
+    Y_UNIT_TEST(ShouldUpsertQuotaPreservingCreationTimestamp)
     {
         TTestEnv env;
 
@@ -93,15 +54,23 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Quotas)
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
 
-        auto quota = tablet.CreateQuota(1_GB)->Record.GetQuota();
+        auto created = tablet.SetQuota(1, 1_GB, 100)->Record.GetQuota();
+        auto resetSame = tablet.SetQuota(1, 1_GB, 100)->Record.GetQuota();
+        auto updated = tablet.SetQuota(1, 2_GB, 200)->Record.GetQuota();
 
-        tablet.DeleteQuota(quota.GetQuotaId());
+        UNIT_ASSERT_VALUES_EQUAL(1_GB, resetSame.GetMaxBytes());
+        UNIT_ASSERT_VALUES_EQUAL(2_GB, updated.GetMaxBytes());
+        UNIT_ASSERT_VALUES_EQUAL(200u, updated.GetMaxNodes());
 
-        auto response = tablet.ListQuotas();
-        UNIT_ASSERT_VALUES_EQUAL(0, response->Record.QuotasSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            created.GetCreationTimestampUs(),
+            resetSame.GetCreationTimestampUs());
+        UNIT_ASSERT_VALUES_EQUAL(
+            created.GetCreationTimestampUs(),
+            updated.GetCreationTimestampUs());
     }
 
-    Y_UNIT_TEST(ShouldDeleteUnknownQuotaAsNoop)
+    Y_UNIT_TEST(ShouldDeleteAndReuseQuotaId)
     {
         TTestEnv env;
 
@@ -110,7 +79,15 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Quotas)
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
 
-        tablet.DeleteQuota(42);
+        tablet.DeleteQuota(1);   // noop, nothing exists yet
+
+        tablet.SetQuota(1, 1_GB, 100);
+        tablet.DeleteQuota(1);
+        UNIT_ASSERT_VALUES_EQUAL(0, tablet.ListQuotas()->Record.QuotasSize());
+
+        auto quota = tablet.SetQuota(1, 2_GB, 200)->Record.GetQuota();
+        UNIT_ASSERT_VALUES_EQUAL(2_GB, quota.GetMaxBytes());
+        UNIT_ASSERT_VALUES_EQUAL(200u, quota.GetMaxNodes());
     }
 
     Y_UNIT_TEST(ShouldPersistQuotasAcrossReboot)
@@ -122,7 +99,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Quotas)
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
 
-        auto quota = tablet.CreateQuota(1_GB, 100)->Record.GetQuota();
+        auto quota = tablet.SetQuota(1, 1_GB, 100)->Record.GetQuota();
 
         tablet.RebootTablet();
 

@@ -299,10 +299,11 @@ public:
         return request;
     }
 
-    auto CreateCreateQuotaRequest(ui64 maxBytes, ui64 maxNodes = 0)
+    auto CreateSetQuotaRequest(ui32 quotaId, ui64 maxBytes, ui64 maxNodes = 0)
     {
         auto request =
-            std::make_unique<TEvIndexTablet::TEvCreateQuotaRequest>();
+            std::make_unique<TEvIndexTablet::TEvSetQuotaRequest>();
+        request->Record.SetQuotaId(quotaId);
         request->Record.SetMaxBytes(maxBytes);
         request->Record.SetMaxNodes(maxNodes);
         return request;

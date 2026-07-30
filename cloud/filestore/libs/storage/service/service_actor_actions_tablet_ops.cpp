@@ -311,14 +311,14 @@ IActorPtr TStorageServiceActor::CreateListNodesInternalActor(
 ////////////////////////////////////////////////////////////////////////////////
 // Quotas
 
-IActorPtr TStorageServiceActor::CreateCreateQuotaActionActor(
+IActorPtr TStorageServiceActor::CreateSetQuotaActionActor(
     TRequestInfoPtr requestInfo,
     TString input)
 {
-    using TCreateQuotaActor = TTabletActionActor<
-        TEvIndexTablet::TEvCreateQuotaRequest,
-        TEvIndexTablet::TEvCreateQuotaResponse>;
-    return std::make_unique<TCreateQuotaActor>(
+    using TSetQuotaActor = TTabletActionActor<
+        TEvIndexTablet::TEvSetQuotaRequest,
+        TEvIndexTablet::TEvSetQuotaResponse>;
+    return std::make_unique<TSetQuotaActor>(
         std::move(requestInfo),
         std::move(input));
 }

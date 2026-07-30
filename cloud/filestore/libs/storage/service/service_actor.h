@@ -343,7 +343,7 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
-    NActors::IActorPtr CreateCreateQuotaActionActor(
+    NActors::IActorPtr CreateSetQuotaActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
 

@@ -161,8 +161,8 @@ void TStorageServiceActor::HandleExecuteAction(
             &TStorageServiceActor::CreateListNodesInternalActor
         },
         {
-            "createquota",
-            &TStorageServiceActor::CreateCreateQuotaActionActor
+            "setquota",
+            &TStorageServiceActor::CreateSetQuotaActionActor
         },
         {
             "deletequota",

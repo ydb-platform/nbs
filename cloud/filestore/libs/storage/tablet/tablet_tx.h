@@ -105,7 +105,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(CreateCheckpoint,                   __VA_ARGS__)                       \
     xxx(DeleteCheckpoint,                   __VA_ARGS__)                       \
                                                                                \
-    xxx(CreateQuota,                        __VA_ARGS__)                       \
+    xxx(SetQuota,                           __VA_ARGS__)                       \
     xxx(DeleteQuota,                        __VA_ARGS__)                       \
                                                                                \
     xxx(CreateNode,                         __VA_ARGS__)                       \
@@ -705,24 +705,27 @@ struct TTxIndexTablet
     };
 
     //
-    // CreateQuota
+    // SetQuota
     //
 
-    struct TCreateQuota
+    struct TSetQuota
         : TTxIndexTabletBase
         , TErrorAware
     {
         const TRequestInfoPtr RequestInfo;
+        const ui32 QuotaId;
         const ui64 MaxBytes;
         const ui64 MaxNodes;
 
         NProto::TQuota Quota;
 
-        TCreateQuota(
+        TSetQuota(
                 TRequestInfoPtr requestInfo,
+                ui32 quotaId,
                 ui64 maxBytes,
                 ui64 maxNodes)
             : RequestInfo(std::move(requestInfo))
+            , QuotaId(quotaId)
             , MaxBytes(maxBytes)
             , MaxNodes(maxNodes)
         {}

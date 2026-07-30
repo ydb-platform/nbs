@@ -131,23 +131,6 @@ Y_UNIT_TEST_SUITE(TQuotaStoreTest)
         UNIT_ASSERT(quotaIds.contains(2));
         UNIT_ASSERT(quotaIds.contains(3));
     }
-
-    Y_UNIT_TEST(ShouldGenerateQuotaIds)
-    {
-        TQuotaStore store;
-
-        UNIT_ASSERT_VALUES_EQUAL(1u, store.GenerateQuotaId());
-
-        store.UpdateQuota(MakeQuota(1, 100, 1_GB));
-        store.UpdateQuota(MakeQuota(5, 200, 2_GB));
-        store.UpdateQuota(MakeQuota(3, 300, 3_GB));
-
-        UNIT_ASSERT_VALUES_EQUAL(6u, store.GenerateQuotaId());
-
-        store.RemoveQuota(5);
-
-        UNIT_ASSERT_VALUES_EQUAL(4u, store.GenerateQuotaId());
-    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

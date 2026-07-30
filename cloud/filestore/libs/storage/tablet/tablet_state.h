@@ -1312,11 +1312,12 @@ public:
 
     const NProto::TQuota* FindQuota(ui32 quotaId) const;
 
-    const NProto::TQuota& CreateQuota(
+    const NProto::TQuota& SetQuota(
         IIndexTabletDatabase& db,
+        ui32 quotaId,
         ui64 maxBytes,
         ui64 maxNodes,
-        TInstant creationTimestamp);
+        TInstant now);
 
     void DeleteQuota(IIndexTabletDatabase& db, ui32 quotaId);
 
