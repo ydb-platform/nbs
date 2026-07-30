@@ -354,7 +354,9 @@ public:
                 nodeJson["access_score"] = node.AccessScore;
                 nodeJson["last_accessed_timestamp_us"] =
                     node.LastAccessedTimestampUs;
-
+                nodeJson["last_accessed"] =
+                    TInstant::MicroSeconds(node.LastAccessedTimestampUs)
+                        .ToStringUpToSeconds();
                 nodesJson.AppendValue(std::move(nodeJson));
             }
 
