@@ -1,6 +1,6 @@
-#include "../server.h"
+#include "server.h"
 
-#include "../server_test.h"
+#include "server_test.h"
 
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/service/service_test.h>
