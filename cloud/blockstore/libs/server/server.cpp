@@ -40,6 +40,8 @@
 
 #include <contrib/ydb/library/actors/prof/tag.h>
 
+#include <library/cpp/string_utils/quote/quote.h>
+
 #include <util/datetime/cputimer.h>
 #include <util/folder/path.h>
 #include <util/generic/hash_set.h>
@@ -80,6 +82,11 @@ const TRequestSourceKinds RequestSourceKinds = {
     { "FD_DATA_CHANNEL",          NProto::SOURCE_FD_DATA_CHANNEL },
     { "FD_CONTROL_CHANNEL",       NProto::SOURCE_FD_CONTROL_CHANNEL },
 };
+
+TString GetNormalizedPeer(const grpc::ServerContext& context)
+{
+    return UrlUnescapeRet(TString(context.peer()));
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -699,7 +706,7 @@ private:
         auto& internal = *Request->MutableHeaders()->MutableInternal();
         internal.Clear();
         internal.SetRequestSource(*source);
-        internal.SetPeer(TString(Context->peer()));
+        internal.SetPeer(GetNormalizedPeer(*Context));
 
         // we will only get token from secure control channel
         if (source == NProto::SOURCE_SECURE_CONTROL_CHANNEL) {
@@ -737,7 +744,7 @@ private:
             message = TStringBuilder() << *Request;
         }
 
-        MetricRequest.Peer = TString(Context->peer());
+        MetricRequest.Peer = GetNormalizedPeer(*Context);
 
         AppCtx.ServerStats->RequestStarted(
             AppCtx.Log,
