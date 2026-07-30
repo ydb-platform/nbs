@@ -1,11 +1,10 @@
 import atexit
-import logging
 import os
 import time
 
 import yatest.common as common
 
-from cloud.storage.core.tools.testing.virtiofs_server.lib import VirtioFsServer
+from cloud.storage.core.tools.testing.virtiofs_server.lib import VirtioFsServerSet
 
 from .common import (
     env_with_guest_index,
@@ -19,12 +18,8 @@ from .common import (
 from .qemu import Qemu
 from .recipe import recipe_get_env
 
-EMU_NET = "10.0.2.0/24"
-QEMU_HOST = "10.0.2.2"
 VIRTIOFS_SERVER_BINARY = (
     "cloud/storage/core/tools/testing/virtiofs_server/bin/virtiofs-server")
-
-logger = logging.getLogger(__name__)
 
 
 class QemuWithMigration:
@@ -48,8 +43,12 @@ class QemuWithMigration:
             virtiofs_migration=get_virtiofs_migration())
 
         self.socket_generator = socket_generator
-        self.virtiofs_servers = {}
-        atexit.register(self._stop_restarted_virtiofs_servers)
+        self.virtiofs_servers = VirtioFsServerSet(
+            common.binary_path(VIRTIOFS_SERVER_BINARY),
+            common.output_path(),
+            env_get=self._get_env,
+            env_set=self._set_env)
+        atexit.register(self.virtiofs_servers.stop_all)
 
     def start(self):
         self.socket = self.socket_generator(0, False)
@@ -68,42 +67,10 @@ class QemuWithMigration:
             time.sleep(timeout)
 
     def _restart_virtiofs_servers(self):
-        for tag, path, socket_path in self.qemu.mount_paths:
-            if not socket_path:
-                continue
+        self.virtiofs_servers.restart(self.qemu.mount_paths, self.qemu.seqno)
 
-            self._stop_virtiofs_server(tag)
-            VirtioFsServer.cleanup_socket_files(socket_path)
+    def _get_env(self, key):
+        return recipe_get_env(key, self.qemu.inst_index)
 
-            logger.info("restart virtiofs-server %s on %s", tag, socket_path)
-            virtiofs = VirtioFsServer(
-                common.binary_path(VIRTIOFS_SERVER_BINARY),
-                socket_path,
-                path)
-            virtiofs.start(
-                common.output_path(),
-                "{}-migration-{}".format(tag, self.qemu.seqno))
-            virtiofs.wait_for_socket(tag)
-
-            self.virtiofs_servers[tag] = virtiofs
-            os.environ[env_with_guest_index(
-                "VIRTIOFS_PID_{}".format(tag),
-                self.qemu.inst_index)] = str(virtiofs.pid)
-
-    def _stop_virtiofs_server(self, tag):
-        virtiofs = self.virtiofs_servers.pop(tag, None)
-        if virtiofs:
-            virtiofs.stop(tag)
-            return
-
-        pid = recipe_get_env(
-            "VIRTIOFS_PID_{}".format(tag),
-            self.qemu.inst_index)
-        if not pid:
-            return
-
-        VirtioFsServer.stop_pid(tag, pid)
-
-    def _stop_restarted_virtiofs_servers(self):
-        for tag in list(self.virtiofs_servers):
-            self._stop_virtiofs_server(tag)
+    def _set_env(self, key, value):
+        os.environ[env_with_guest_index(key, self.qemu.inst_index)] = value

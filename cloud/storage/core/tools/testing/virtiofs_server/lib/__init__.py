@@ -153,3 +153,47 @@ class VirtioFsServer:
         except OSError as e:
             if e.errno != errno.ENOENT:
                 raise
+
+
+class VirtioFsServerSet:
+    def __init__(self, virtiofs_server_binary, output_path, env_get, env_set):
+        self.virtiofs_server_binary = virtiofs_server_binary
+        self.output_path = output_path
+        self.env_get = env_get
+        self.env_set = env_set
+        self.servers = {}
+
+    def restart(self, mount_paths, seqno):
+        for tag, path, socket_path in mount_paths:
+            if not socket_path:
+                continue
+
+            self.stop(tag)
+            VirtioFsServer.cleanup_socket_files(socket_path)
+
+            logger.info("restart virtiofs-server %s on %s", tag, socket_path)
+            virtiofs = VirtioFsServer(
+                self.virtiofs_server_binary,
+                socket_path,
+                path)
+            virtiofs.start(
+                self.output_path,
+                "{}-migration-{}".format(tag, seqno))
+            virtiofs.wait_for_socket(tag)
+
+            self.servers[tag] = virtiofs
+            self.env_set("VIRTIOFS_PID_{}".format(tag), str(virtiofs.pid))
+
+    def stop(self, tag):
+        virtiofs = self.servers.pop(tag, None)
+        if virtiofs:
+            virtiofs.stop(tag)
+            return
+
+        pid = self.env_get("VIRTIOFS_PID_{}".format(tag))
+        if pid:
+            VirtioFsServer.stop_pid(tag, pid)
+
+    def stop_all(self):
+        for tag in list(self.servers):
+            self.stop(tag)
