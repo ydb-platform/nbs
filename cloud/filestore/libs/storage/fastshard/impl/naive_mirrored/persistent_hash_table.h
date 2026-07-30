@@ -204,6 +204,10 @@ public:
         , Hash(std::move(hash))
     {
         Y_ABORT_UNLESS(sizeof(TValue) <= SlotSize);
+
+        TValue emptySlot;
+        memset(reinterpret_cast<char*>(&emptySlot), 0, SlotSize);
+        Y_ABORT_UNLESS(TombstoneKey != MakeKey(emptySlot));
     }
 
 public:

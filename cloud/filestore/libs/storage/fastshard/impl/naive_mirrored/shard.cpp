@@ -393,6 +393,8 @@ public:
             RoundUp(config.GetNodesPerGroup(), SlotsPerPage),
             (NodeTableSize / PageSize) * SlotsPerPage) / SlotsPerPage;
         TNameTableSlot tombstone{};
+        // tombstone key needs to be different from an empty slot key
+        memset(tombstone.Name, 1, NameCapacity - 1);
         tombstone.NodeId = Max<ui64>();
         Slots = std::make_unique<THt>(
             firstPageNo,
