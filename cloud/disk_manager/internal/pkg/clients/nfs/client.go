@@ -452,6 +452,49 @@ func checkActionError(errorProto *coreprotos.TError) error {
 	return nil
 }
 
+func (c *client) changeTabletState(
+	ctx context.Context,
+	filesystemID string,
+	frozen bool,
+) error {
+
+	response := &private_protos.TUnsafeChangeTabletStateResponse{}
+	err := c.executeAction(
+		ctx,
+		"unsafechangetabletstate",
+		&private_protos.TUnsafeChangeTabletStateRequest{
+			FileSystemId: filesystemID,
+			Frozen:       proto.Bool(frozen),
+		},
+		response,
+	)
+	if err != nil {
+		return err
+	}
+
+	return checkActionError(response.Error)
+}
+
+func (c *client) FreezeTablet(
+	ctx context.Context,
+	filesystemID string,
+) (err error) {
+
+	defer c.metrics.StatRequest("FreezeTablet")(&err)
+
+	return c.changeTabletState(ctx, filesystemID, true)
+}
+
+func (c *client) UnfreezeTablet(
+	ctx context.Context,
+	filesystemID string,
+) (err error) {
+
+	defer c.metrics.StatRequest("UnfreezeTablet")(&err)
+
+	return c.changeTabletState(ctx, filesystemID, false)
+}
+
 func getUnsafeCreateNodeType(nodeType nfs_client.NodeType) uint32 {
 	if nodeType == NODE_KIND_SYMLINK {
 		return uint32(NODE_KIND_LINK)

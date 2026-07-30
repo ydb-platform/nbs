@@ -40,6 +40,27 @@ message TUnsafeCreateNodeRefResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// UnsafeChangeTabletState request/response.
+
+message TUnsafeChangeTabletStateRequest
+{
+    // FileSystem identifier.
+    string FileSystemId = 1;
+
+    // If set, only unsafe ops will be allowed.
+    optional bool Frozen = 2;
+
+    // Compress ShardId and ShardNodeName when we write them to NodeRefs table.
+    optional bool CompressNodeRef = 3;
+}
+
+message TUnsafeChangeTabletStateResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // ConfigureShards request/response.
 
 message TConfigureShardsRequest

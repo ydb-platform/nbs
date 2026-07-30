@@ -10,6 +10,7 @@
 #include <library/cpp/resource/resource.h>
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/digest/city.h>
 #include <util/datetime/base.h>
 #include <util/folder/dirut.h>
 #include <util/folder/tempdir.h>
@@ -34,6 +35,11 @@ TString ReadCertResource(TStringBuf relativePath)
 {
     return NResource::Find(
         TStringBuilder() << "grpc/ut/certs/" << relativePath);
+}
+
+ui64 RootCaFingerprint(TStringBuf rootCa)
+{
+    return CityHash64(rootCa) & ((1ULL << 53) - 1);
 }
 
 void WriteTextFile(const TString& path, const TString& content)
@@ -239,6 +245,14 @@ struct TManualProviderContext
             ->GetSubgroup("cert", GetBaseName(certPath))
             ->GetCounter("ExpireTs", false)
             ->Val();
+    }
+
+    ui64 GetRootCaFingerprint() const
+    {
+        auto rootGroup = ServerGroup
+            ->GetSubgroup("subsystem", "certificates")
+            ->GetSubgroup("cert", GetBaseName(RootPath));
+        return rootGroup->GetCounter("Fingerprint", false)->Val();
     }
 };
 
@@ -499,7 +513,25 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
         UNIT_ASSERT_VALUES_EQUAL(initialPending + 1, scheduler->PendingCount());
     }
 
-    Y_UNIT_TEST(ShouldReportExpireTsCounters)
+    Y_UNIT_TEST(ShouldReportRootCaFingerprint)
+    {
+        TManualProviderContext context;
+        context.Provider->Start();
+        Y_DEFER {
+            context.Provider->Stop();
+        };
+
+        const auto beforeFingerprint = context.GetRootCaFingerprint();
+
+        WriteTextFile(context.RootPath, ReadCertResource("server2.crt"));
+        context.Scheduler->RunPending();
+
+        const auto afterFingerprint = context.GetRootCaFingerprint();
+
+        UNIT_ASSERT_VALUES_UNEQUAL(beforeFingerprint, afterFingerprint);
+    }
+
+    Y_UNIT_TEST(ShouldReportExpireTsCountersForStaticProvider)
     {
         TTempDir tempDir;
         const TString rootPath = tempDir.Path() / "ca.crt";
@@ -528,6 +560,13 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
                     ->GetSubgroup("cert", GetBaseName(cert.CertChainPath));
             return certGroup->GetCounter("ExpireTs", false)->Val();
         };
+        auto rootFingerprint = [&]
+        {
+            auto rootGroup =
+                serverGroup->GetSubgroup("subsystem", "certificates")
+                    ->GetSubgroup("cert", GetBaseName(rootPath));
+            return rootGroup->GetCounter("Fingerprint", false)->Val();
+        };
 
         auto provider = CreateStaticCertificateProvider(
             rootPath,
@@ -541,6 +580,9 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
 
         UNIT_ASSERT(expireTs(certs[0]) > 0);
         UNIT_ASSERT(expireTs(certs[1]) > 0);
+        UNIT_ASSERT_VALUES_EQUAL(
+            rootFingerprint(),
+            RootCaFingerprint(ReadCertResource("ca.crt")));
 
         UNIT_ASSERT(provider->CreateSecureServerCredentials());
         UNIT_ASSERT(provider->CreateSecureClientCredentials());

@@ -126,6 +126,18 @@ message TNode
 
 ////////////////////////////////////////////////////////////////////////////////
 
+message TQuota
+{
+    uint32 QuotaId = 1;
+    uint64 MaxBytes = 2;
+    uint64 MaxNodes = 3;
+
+    repeated uint64 NodeId = 4;
+    uint64 CreationTimestampUs = 5;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 message TCheckpoint
 {
     string CheckpointId = 1;

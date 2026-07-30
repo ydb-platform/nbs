@@ -1194,6 +1194,12 @@ void TIndexTabletActor::HandleFakeDescribeData(
 
     ReportFakeDescribeDataHappened();
 
+    const TByteRange byteRange(
+        msg->Record.GetOffset(),
+        msg->Record.GetLength(),
+        GetBlockSize()
+    );
+
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
@@ -1237,11 +1243,6 @@ void TIndexTabletActor::HandleFakeDescribeData(
         std::make_unique<TEvIndexTablet::TEvDescribeDataResponse>();
     response->Record = std::move(result);
 
-    CompleteResponse<TEvIndexTablet::TDescribeDataMethod>(
-        response->Record,
-        requestInfo->CallContext,
-        ctx);
-
     constexpr ui32 MaxLatencyUs = 100;
     const ui32 latencyUs = ClampVal(
         Config->GetFakeDescribeDataLatencyUs(),
@@ -1254,7 +1255,17 @@ void TIndexTabletActor::HandleFakeDescribeData(
     // Spin until deadline
     while (GetCycleCount() < deadlineCycles) {}
 
+    CompleteResponse<TEvIndexTablet::TDescribeDataMethod>(
+        response->Record,
+        requestInfo->CallContext,
+        ctx);
+
     NCloud::Reply(ctx, *requestInfo, std::move(response));
+
+    Metrics.DescribeData.Update(
+        1,
+        byteRange.Length,
+        ctx.Now() - requestInfo->StartedTs);
 }
 
 }   // namespace NCloud::NFileStore::NStorage
