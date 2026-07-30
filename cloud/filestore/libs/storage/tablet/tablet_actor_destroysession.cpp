@@ -111,7 +111,7 @@ bool TIndexTabletActor::PrepareTx_DestroySession(
 
     auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
-    return ReadNodesForSessionHandles(
+    return ReadNodesToRemoveForSessionHandles(
         *db,
         *session,
         args.MaxHandlesPerTx,
@@ -167,7 +167,7 @@ void TIndexTabletActor::ExecuteTx_DestroySession(
         return;
     }
 
-    DestroySessionHandles(
+    DestroySessionHandlesAndRemoveNodes(
         *db,
         ctx,
         session,

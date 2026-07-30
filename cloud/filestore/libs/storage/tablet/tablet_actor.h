@@ -455,20 +455,20 @@ private:
 
     bool CheckSessionForDestroy(const TSession* session, ui64 seqNo);
 
-    bool ReadNodesForSessionHandles(
+    bool ReadNodesToRemoveForSessionHandles(
         IIndexTabletDatabase& db,
         const TSession& session,
         ui32 maxHandlesPerTx,
-        TNodeSet& nodes);
+        TNodeSet& nodesToRemove);
 
-    void DestroySessionHandles(
+    void DestroySessionHandlesAndRemoveNodes(
         IIndexTabletDatabase& db,
         const NActors::TActorContext& ctx,
         TSession* session,
         ui64 commitId,
         ui32 maxHandlesPerTx,
         bool isContinuation,
-        const TNodeSet& nodes,
+        const TNodeSet& nodesToRemove,
         const char* operation);
 
     //

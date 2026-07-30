@@ -238,11 +238,11 @@ bool TIndexTabletActor::CheckSessionForDestroy(const TSession* session, ui64 seq
         session->GetSessionRwSeqNo() == seqNo;
 }
 
-bool TIndexTabletActor::ReadNodesForSessionHandles(
+bool TIndexTabletActor::ReadNodesToRemoveForSessionHandles(
     IIndexTabletDatabase& db,
     const TSession& session,
     ui32 maxHandlesPerTx,
-    TNodeSet& nodes)
+    TNodeSet& nodesToRemove)
 {
     bool ready = true;
     auto commitId = GetCurrentCommitId();
@@ -252,7 +252,7 @@ bool TIndexTabletActor::ReadNodesForSessionHandles(
             break;
         }
 
-        if (nodes.contains(handle.GetNodeId())) {
+        if (nodesToRemove.contains(handle.GetNodeId())) {
             continue;
         }
 
@@ -263,7 +263,7 @@ bool TIndexTabletActor::ReadNodesForSessionHandles(
             TABLET_VERIFY(node);
             if (node->Attrs.GetLinks() == 0) {
                 // candidate to be removed
-                nodes.insert(*node);
+                nodesToRemove.insert(*node);
             }
         }
     }
@@ -271,14 +271,14 @@ bool TIndexTabletActor::ReadNodesForSessionHandles(
     return ready;
 }
 
-void TIndexTabletActor::DestroySessionHandles(
+void TIndexTabletActor::DestroySessionHandlesAndRemoveNodes(
     IIndexTabletDatabase& db,
     const TActorContext& ctx,
     TSession* session,
     ui64 commitId,
     ui32 maxHandlesPerTx,
     bool isContinuation,
-    const TNodeSet& nodes,
+    const TNodeSet& nodesToRemove,
     const char* operation)
 {
     ui64 destroyedHandleCount = 0;
@@ -300,8 +300,8 @@ void TIndexTabletActor::DestroySessionHandles(
             session->GetSessionId().c_str(),
             nodeId);
 
-        auto it = nodes.find(nodeId);
-        if (it != nodes.end() && !HasOpenHandles(nodeId)) {
+        auto it = nodesToRemove.find(nodeId);
+        if (it != nodesToRemove.end() && !HasOpenHandles(nodeId)) {
             LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
                 "%s Removing node upon %s s:%s n:%lu (size %lu)",
                 LogTag.c_str(),
