@@ -1,9 +1,6 @@
 import atexit
-import errno
 import logging
 import os
-import signal
-import stat
 import time
 
 import yatest.common as common
@@ -76,7 +73,7 @@ class QemuWithMigration:
                 continue
 
             self._stop_virtiofs_server(tag)
-            self._unlink_virtiofs_files(socket_path)
+            VirtioFsServer.cleanup_socket_files(socket_path)
 
             logger.info("restart virtiofs-server %s on %s", tag, socket_path)
             virtiofs = VirtioFsServer(
@@ -86,17 +83,17 @@ class QemuWithMigration:
             virtiofs.start(
                 common.output_path(),
                 "{}-migration-{}".format(tag, self.qemu.seqno))
-            self._wait_virtiofs_socket(tag, socket_path, virtiofs)
+            virtiofs.wait_for_socket(tag)
 
             self.virtiofs_servers[tag] = virtiofs
             os.environ[env_with_guest_index(
                 "VIRTIOFS_PID_{}".format(tag),
-                self.qemu.inst_index)] = str(virtiofs.daemon.daemon.process.pid)
+                self.qemu.inst_index)] = str(virtiofs.pid)
 
     def _stop_virtiofs_server(self, tag):
         virtiofs = self.virtiofs_servers.pop(tag, None)
         if virtiofs:
-            self._stop_virtiofs_daemon(tag, virtiofs)
+            virtiofs.stop(tag)
             return
 
         pid = recipe_get_env(
@@ -105,99 +102,8 @@ class QemuWithMigration:
         if not pid:
             return
 
-        self._stop_virtiofs_pid(tag, pid)
+        VirtioFsServer.stop_pid(tag, pid)
 
     def _stop_restarted_virtiofs_servers(self):
         for tag in list(self.virtiofs_servers):
             self._stop_virtiofs_server(tag)
-
-    def _stop_virtiofs_daemon(self, tag, virtiofs):
-        daemon = virtiofs.daemon.daemon
-        if daemon is None:
-            return
-
-        self._stop_virtiofs_pid(
-            tag,
-            daemon.process.pid,
-            is_alive=virtiofs.daemon.is_alive)
-
-    def _stop_virtiofs_pid(self, tag, pid, is_alive=None, timeout=10):
-        logger.info("stop virtiofs-server %s with pid %s", tag, pid)
-        try:
-            pid = int(pid)
-            os.kill(pid, signal.SIGTERM)
-        except ProcessLookupError:
-            logger.info("virtiofs-server %s pid %s already exited", tag, pid)
-            return
-        except ValueError:
-            logger.warning("invalid virtiofs-server %s pid %s", tag, pid)
-            return
-
-        if self._wait_virtiofs_stopped(tag, pid, is_alive, timeout):
-            return
-
-        logger.warning(
-            "virtiofs-server %s pid %s did not stop after SIGTERM", tag, pid)
-        try:
-            os.kill(pid, signal.SIGKILL)
-        except ProcessLookupError:
-            return
-
-        self._wait_virtiofs_stopped(tag, pid, is_alive, timeout)
-
-    def _wait_virtiofs_stopped(self, tag, pid, is_alive, timeout):
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            if not self._virtiofs_pid_alive(pid, is_alive):
-                return True
-
-            time.sleep(0.1)
-
-        logger.warning("virtiofs-server %s pid %s is still alive", tag, pid)
-        return False
-
-    def _virtiofs_pid_alive(self, pid, is_alive):
-        if is_alive:
-            return is_alive()
-
-        try:
-            os.kill(pid, 0)
-        except ProcessLookupError:
-            return False
-
-        return True
-
-    def _unlink_virtiofs_files(self, socket_path):
-        self._unlink_path(socket_path)
-        self._unlink_path("{}.pid".format(socket_path))
-
-    def _unlink_path(self, path):
-        try:
-            os.unlink(path)
-        except OSError as e:
-            if e.errno != errno.ENOENT:
-                raise
-
-    def _wait_virtiofs_socket(self, tag, socket_path, virtiofs, timeout=10):
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            if not virtiofs.daemon.is_alive():
-                raise RuntimeError(
-                    "virtiofs-server {} exited before creating socket {}".format(
-                        tag,
-                        socket_path))
-
-            try:
-                mode = os.stat(socket_path).st_mode
-                if stat.S_ISSOCK(mode):
-                    return
-            except OSError:
-                pass
-
-            time.sleep(0.1)
-
-        raise RuntimeError(
-            "virtiofs-server {} did not create socket {} in {} seconds".format(
-                tag,
-                socket_path,
-                timeout))
