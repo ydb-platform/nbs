@@ -49,6 +49,7 @@ def start(argv):
     parser.add_argument("--local-service-config-patch", action="append", default=[])
     parser.add_argument("--use-unix-socket", action="store_true", default=False)
     parser.add_argument("--trace-sampling-rate", action="store", default=None, type=int)
+    parser.add_argument("--bs-failure-probability", action="store", default=None, type=float)
 
     args = parser.parse_args(argv)
 
@@ -172,6 +173,7 @@ def start(argv):
         storage_config=storage_config,
         access_service_type=access_service_type,
         trace_sampling_rate=args.trace_sampling_rate,
+        bs_failure_probability=args.bs_failure_probability,
     )
 
     filestore_vhost = FilestoreVhost(vhost_configurator)

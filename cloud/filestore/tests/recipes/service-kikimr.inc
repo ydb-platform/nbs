@@ -49,6 +49,10 @@ IF (USE_FAST_SHARD_PORT)
     SET_APPEND(RECIPE_ARGS --use-fast-shard-port)
 ENDIF()
 
+IF (NFS_BS_FAILURE_PROBABILITY)
+    SET_APPEND(RECIPE_ARGS --bs-failure-probability $NFS_BS_FAILURE_PROBABILITY)
+ENDIF()
+
 USE_RECIPE(
     cloud/filestore/tests/recipes/service-kikimr/service-kikimr-recipe
     ${RECIPE_ARGS}
