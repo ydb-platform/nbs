@@ -155,6 +155,10 @@ def main() -> None:
     if args.attempt_end_ns < args.attempt_start_ns:
         raise ValueError("attempt end precedes attempt start")
     resource = build_resource_attributes(args)
+    # Test retries reuse the same ya output directory, while -X reruns only
+    # failed suites. Exclude trace files left by earlier attempts so they are
+    # not reported as work performed by the current retry. Keep a small margin
+    # for filesystem timestamp granularity.
     modified_since = args.attempt_start_ns / 1_000_000_000 - 5
     trace_inputs = YaTraceInputs.discover(
         args.ya_out,

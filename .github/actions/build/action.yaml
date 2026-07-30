@@ -301,9 +301,16 @@ runs:
             echo "TRACE_END_TIME_NS=$TRACE_END_TIME_NS"
         } >> "$GITHUB_ENV"
         date
+    - name: Install trace dependencies
+      if: always() && env.YA_MAKE_EXIT_CODE != ''
+      continue-on-error: true
+      shell: bash
+      run: |
+        pip install -r .github/scripts/requirements.txt
     - name: Render build trace
       id: build-trace
       if: always() && env.YA_MAKE_EXIT_CODE != ''
+      continue-on-error: true
       shell: bash
       env:
         BUILD_PRESET: ${{ inputs.build_preset }}

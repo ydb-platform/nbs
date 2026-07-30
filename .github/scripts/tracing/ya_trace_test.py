@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -161,6 +162,28 @@ def test_trace_inputs_produce_manifest_and_file_list(
         b"./cloud/example/tests/test-results/unittest/ytest.report.trace\0"
     )
     assert len(inputs.parse().traces) == 1
+
+
+def test_trace_inputs_exclude_files_older_than_attempt(
+    tmp_path: Path,
+) -> None:
+    ya_out = tmp_path / "out"
+    old_trace = (
+        ya_out / "old-suite" / "test-results" / "unittest" / "ytest.report.trace"
+    )
+    current_trace = (
+        ya_out / "current-suite" / "test-results" / "unittest" / "ytest.report.trace"
+    )
+    for trace_path in (old_trace, current_trace):
+        trace_path.parent.mkdir(parents=True)
+        trace_path.write_text('{"name":"chunk-event","value":{}}\n')
+
+    os.utime(old_trace, (100, 100))
+    os.utime(current_trace, (200, 200))
+
+    inputs = YaTraceInputs.discover(ya_out, modified_since=150)
+
+    assert inputs.trace_paths == [current_trace]
 
 
 def test_trace_inputs_skip_symlinks(tmp_path: Path) -> None:
