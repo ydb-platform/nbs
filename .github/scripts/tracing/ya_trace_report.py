@@ -195,7 +195,7 @@ def main() -> None:
         exit_code=args.exit_code,
         result_code=args.result_code,
         resource=resource,
-        evlog=load_ya_evlog(args.evlog),
+        evlog=load_ya_evlog(trace_inputs.evlog_path),
         operation=args.operation,
     )
     title_component = args.component or "all"

@@ -25,7 +25,6 @@ from scripts.tracing.otlp import (
     make_span as new_span,
     Ns,
     span_duration_ns,
-    span_status_code,
     stable_span_id,
     stable_trace_id,
 )
@@ -38,7 +37,7 @@ from scripts.tracing.trace_report import (
     render_html,
     write_trace_bundle,
 )
-from scripts.tracing.ya_trace import load_ya_evlog, load_ya_traces
+from scripts.tracing.ya_trace import YaTraceCollection, load_ya_evlog
 from scripts.tracing.workflow_trace_report import (
     build_workflow_trace,
     download_s3_trace_inputs,
@@ -223,66 +222,112 @@ def test_ya_resource_attributes_extend_common_github_attributes(
     assert attributes["ci.test.target"] == "cloud/tasks"
 
 
-def test_renderer_collapses_build_and_test_groups_by_default() -> None:
-    trace = Trace()
-    for span, scope_name in (
-        (make_span(), "ya.run"),
-        (
-            make_span(
-                span_id=bytes.fromhex("3" * 16),
-                parent_span_id=bytes.fromhex("2" * 16),
-                name="build operations",
-            ),
-            "ya.build",
-        ),
-        (
-            make_span(
-                span_id=bytes.fromhex("4" * 16),
-                parent_span_id=bytes.fromhex("3" * 16),
-                name="compile target",
-            ),
-            "ya.build.node",
-        ),
-        (
-            make_span(
-                span_id=bytes.fromhex("5" * 16),
-                parent_span_id=bytes.fromhex("2" * 16),
-                name="cloud/tasks/storage/tests [tests chunk 1/1]",
-            ),
-            "ya.chunk",
-        ),
-        (
-            make_span(
-                span_id=bytes.fromhex("6" * 16),
-                parent_span_id=bytes.fromhex("5" * 16),
-                name="TestSuite::test_case",
-            ),
-            "ya.test",
-        ),
-    ):
-        trace.add_span(
-            span,
-            resource=ResourceAttributes(),
-            scope_name=scope_name,
+def test_renderer_collapses_generated_ya_groups_by_default(tmp_path: Path) -> None:
+    trace_path = (
+        tmp_path
+        / "out"
+        / "cloud/tasks/storage/tests"
+        / "test-results"
+        / "unittest"
+        / "ytest.report.trace"
+    )
+    trace_path.parent.mkdir(parents=True)
+    trace_path.write_text(
+        "".join(
+            json.dumps(event) + "\n"
+            for event in (
+                {
+                    "name": "subtest-finished",
+                    "timestamp": 6,
+                    "value": {
+                        "class": "TestSuite",
+                        "subtest": "test_case",
+                        "status": "good",
+                        "time": 1,
+                    },
+                },
+                {
+                    "name": "subtest-started",
+                    "timestamp": 6.5,
+                    "value": {
+                        "class": "TestSuite",
+                        "subtest": "unfinished",
+                    },
+                },
+                {
+                    "name": "chunk-event",
+                    "timestamp": 7,
+                    "value": {
+                        "chunk_index": 0,
+                        "nchunks": 1,
+                        "metrics": {
+                            "suite_start_timestamp": 4,
+                            "suite_finish_timestamp": 7,
+                            "suite_prepare_recipes_(seconds)": 0.25,
+                        },
+                    },
+                },
+            )
         )
+    )
+    evlog_path = tmp_path / "ya_evlog.jsonl"
+    evlog_path.write_text(
+        "".join(
+            json.dumps(event) + "\n"
+            for event in (
+                {
+                    "namespace": "stages",
+                    "event": "stage-finished",
+                    "value": {
+                        "name": "dispatch_build",
+                        "tag": "dispatch_build",
+                        "time": [1, 8],
+                    },
+                },
+                {
+                    "namespace": "worker_threads",
+                    "event": "node-finished",
+                    "value": {
+                        "name": "Run(uid$(BUILD_ROOT)/output.o)",
+                        "tag": "CC",
+                        "time": [2, 3],
+                    },
+                },
+            )
+        )
+    )
+    trace = build_ya_trace(
+        YaTraceCollection.load(tmp_path / "out").traces,
+        root_start_ns=Ns(0),
+        root_end_ns=Ns.from_s(9),
+        exit_code=0,
+        resource=ResourceAttributes(),
+        evlog=load_ya_evlog(evlog_path),
+    )
 
     model = _trace_model(trace)
     encoded = {span[2]: span for span in model["s"]}
     indexes = {span[2]: index for index, span in enumerate(model["s"])}
     report = render_html(trace)
-    assert encoded["build operations"][1] == indexes["root"]
-    assert encoded["compile target"][1] == indexes["build operations"]
-    assert encoded["cloud/tasks/storage/tests [tests chunk 1/1]"][1] == indexes["root"]
+    chunk_name = "cloud/tasks/storage/tests [unittest chunk 1/1]"
+    phase_name = next(trace.spans("ya.phase")).name
+    assert encoded["build operations"][1] == indexes[phase_name]
+    assert encoded["CC: output.o"][1] == indexes["build operations"]
+    assert encoded[chunk_name][1] == indexes[phase_name]
+    assert encoded["TestSuite::test_case"][1] == indexes[chunk_name]
+    assert encoded["TestSuite::unfinished"][1] == indexes[chunk_name]
+    assert encoded["TestSuite::test_case"][5]["test.timing.inferred"] is True
+    assert encoded["TestSuite::unfinished"][5]["test.incomplete"] is True
     assert (
-        encoded["TestSuite::test_case"][1]
-        == indexes["cloud/tasks/storage/tests [tests chunk 1/1]"]
+        encoded[chunk_name][5]["ya.chunk.metric.suite_prepare_recipes_seconds"] == 0.25
     )
+    assert {"ya.build", "ya.build.node", "ya.chunk", "ya.test"} <= set(model["c"])
     template = TRACE_HTML_TEMPLATE.read_text()
     script = TRACE_SCRIPT_TEMPLATE.read_text()
     assert '{% include "trace_report.js" %}' in template
     assert script in report
     assert '{% include "trace_report.js" %}' not in report
-    assert "compile target" not in report
+    assert "CC: output.o" not in report
 
 
 def test_reader_rejects_invalid_ids(tmp_path: Path) -> None:
@@ -328,442 +373,6 @@ def test_span_ids_are_stable_and_have_otlp_lengths() -> None:
     assert stable_span_id("run", 1) == stable_span_id("run", 1)
     assert len(stable_span_id("run")) == 8
     assert len(stable_trace_id("run")) == 16
-
-
-def test_ya_trace_produces_observed_and_inferred_test_spans(
-    tmp_path: Path,
-) -> None:
-    trace_path = (
-        tmp_path
-        / "out"
-        / "cloud/test/suite"
-        / "test-results"
-        / "py3test"
-        / "ytest.report.trace"
-    )
-    trace_path.parent.mkdir(parents=True)
-    events = [
-        {
-            "name": "subtest-started",
-            "timestamp": 101.0,
-            "value": {"class": "Suite", "subtest": "test_ok"},
-        },
-        {
-            "name": "subtest-finished",
-            "timestamp": 102.5,
-            "value": {
-                "class": "Suite",
-                "subtest": "test_ok",
-                "status": "good",
-                "time": 1.5,
-            },
-        },
-        {
-            "name": "subtest-finished",
-            "timestamp": 106.0,
-            "value": {
-                "class": "Suite",
-                "subtest": "test_failed",
-                "status": "fail",
-                "time": 0.5,
-            },
-        },
-        {
-            "name": "chunk-event",
-            "timestamp": 109.0,
-            "value": {
-                "chunk_index": 0,
-                "nchunks": 1,
-                "errors": [["fail", "one or more tests failed"]],
-                "metrics": {
-                    "suite_start_timestamp": 100,
-                    "suite_finish_timestamp": 110,
-                    "suite_prepare_recipes_(seconds)": 2.25,
-                },
-            },
-        },
-    ]
-    trace_path.write_text("".join(json.dumps(event) + "\n" for event in events))
-
-    traces = load_ya_traces(tmp_path / "out")
-    spans = build_ya_trace(
-        traces,
-        root_start_ns=Ns(99_000_000_000),
-        root_end_ns=Ns(111_000_000_000),
-        exit_code=1,
-        resource=ResourceAttributes({"service.name": "test"}),
-    )
-
-    root, chunk = spans[:2]
-    tests = {span.name: span for span in spans[2:]}
-    observed = tests["Suite::test_ok"]
-    inferred = tests["Suite::test_failed"]
-    assert root.name == "ya make tests"
-    assert span_status_code(root) == 2
-    assert chunk.start_time_unix_nano == 100_000_000_000
-    assert chunk.end_time_unix_nano == 110_000_000_000
-    assert attributes(chunk)["ya.chunk.metric.suite_prepare_recipes_seconds"] == 2.25
-    assert span_duration_ns(observed) == 1_500_000_000
-    assert "test.timing.inferred" not in attributes(observed)
-    assert span_duration_ns(inferred) == 500_000_000
-    assert attributes(inferred)["test.timing.inferred"] is True
-    assert span_status_code(inferred) == 2
-
-
-def test_ya_trace_keeps_started_but_unfinished_test(
-    tmp_path: Path,
-) -> None:
-    trace_path = tmp_path / "suite" / "test-results" / "runner" / "ytest.report.trace"
-    trace_path.parent.mkdir(parents=True)
-    trace_path.write_text(
-        json.dumps(
-            {
-                "name": "subtest-started",
-                "timestamp": 10,
-                "value": {"class": "Suite", "subtest": "crashed"},
-            }
-        )
-        + "\n"
-    )
-    spans = build_ya_trace(
-        load_ya_traces(tmp_path),
-        root_start_ns=Ns(9_000_000_000),
-        root_end_ns=Ns(12_000_000_000),
-        exit_code=137,
-        resource=ResourceAttributes(),
-    )
-    test_span = spans[-1]
-    assert test_span.end_time_unix_nano == 12_000_000_000
-    assert span_status_code(test_span) == 2
-    assert attributes(test_span)["test.incomplete"] is True
-
-
-def test_ya_trace_preserves_chunks_and_anchors_finish_only_tests(
-    tmp_path: Path,
-) -> None:
-    trace_path = tmp_path / "suite" / "test-results" / "unittest" / "ytest.report.trace"
-    trace_path.parent.mkdir(parents=True)
-    events = [
-        {
-            "name": "chunk-event",
-            "timestamp": 120,
-            "value": {
-                "chunk_index": 0,
-                "nchunks": 2,
-                "metrics": {
-                    "suite_finish_timestamp": 110,
-                    "wall_time": 10,
-                    "suite_delay_until_first_test_secs": 2,
-                },
-            },
-        },
-        {
-            "name": "subtest-finished",
-            "timestamp": 120,
-            "value": {
-                "class": "Suite",
-                "subtest": "first",
-                "status": "good",
-                "time": 3,
-                "chunk_index": 0,
-                "nchunks": 2,
-            },
-        },
-        {
-            "name": "chunk-event",
-            "timestamp": 120,
-            "value": {
-                "chunk_index": 1,
-                "nchunks": 2,
-                "metrics": {
-                    "suite_finish_timestamp": 112,
-                    "wall_time": 5,
-                    "suite_delay_until_first_test_secs": 1,
-                },
-            },
-        },
-        {
-            "name": "subtest-finished",
-            "timestamp": 120,
-            "value": {
-                "class": "Suite",
-                "subtest": "second",
-                "status": "good",
-                "time": 1,
-                "chunk_index": 1,
-                "nchunks": 2,
-            },
-        },
-    ]
-    trace_path.write_text("".join(json.dumps(event) + "\n" for event in events))
-
-    spans = build_ya_trace(
-        load_ya_traces(tmp_path),
-        root_start_ns=Ns(99_000_000_000),
-        root_end_ns=Ns(121_000_000_000),
-        exit_code=0,
-        resource=ResourceAttributes(),
-    )
-
-    chunks = list(spans.spans("ya.chunk"))
-    tests = {span.name: span for span in spans.spans("ya.test")}
-    assert len(chunks) == 2
-    assert attributes(spans[0])["ya.chunk.count"] == 2
-    assert tests["Suite::first"].start_time_unix_nano == 102_000_000_000
-    assert span_duration_ns(tests["Suite::first"]) == 3_000_000_000
-    assert tests["Suite::second"].start_time_unix_nano == 108_000_000_000
-    assert span_duration_ns(tests["Suite::second"]) == 1_000_000_000
-    assert (
-        attributes(tests["Suite::first"])["test.timing.source"]
-        == "chunk-delay-and-test-duration"
-    )
-    assert {test.parent_span_id for test in tests.values()} == {
-        chunk.span_id for chunk in chunks
-    }
-
-
-def test_ya_evlog_adds_phases_and_build_nodes(
-    tmp_path: Path,
-) -> None:
-    trace_path = (
-        tmp_path / "out" / "suite" / "test-results" / "tests" / "ytest.report.trace"
-    )
-    trace_path.parent.mkdir(parents=True)
-    trace_path.write_text(
-        "".join(
-            json.dumps(event) + "\n"
-            for event in (
-                {
-                    "name": "subtest-finished",
-                    "timestamp": 19.5,
-                    "value": {
-                        "class": "Suite",
-                        "subtest": "critical_test",
-                        "status": "good",
-                        "time": 1,
-                    },
-                },
-                {
-                    "name": "chunk-event",
-                    "timestamp": 20,
-                    "value": {
-                        "chunk_index": 0,
-                        "nchunks": 1,
-                        "metrics": {
-                            "suite_start_timestamp": 18,
-                            "suite_finish_timestamp": 20,
-                        },
-                    },
-                },
-            )
-        )
-    )
-    evlog_path = tmp_path / "ya_evlog.jsonl"
-    evlog_events = [
-        {
-            "namespace": "stages",
-            "event": "stage-finished",
-            "value": {
-                "name": "build_graph_and_tests",
-                "tag": "build_graph_and_tests",
-                "time": [10, 12],
-            },
-        },
-        {
-            "namespace": "stages",
-            "event": "stage-finished",
-            "value": {
-                "name": "dispatch_build",
-                "tag": "dispatch_build",
-                "time": [12, 30],
-            },
-        },
-        {
-            "namespace": "worker_threads",
-            "event": "node-finished",
-            "thread_name": "Worker-001",
-            "value": {
-                "name": ("FromCache(cacheuid$(BUILD_ROOT)/library/cached.a)"),
-                "tag": "restore[AR]",
-                "time": [12.5, 13],
-            },
-        },
-        {
-            "namespace": "worker_threads",
-            "event": "node-finished",
-            "thread_name": "Worker-002",
-            "value": {
-                "name": ("FromCache(loweruid$(BUILD_ROOT)/library/lower.a)"),
-                "tag": "restore[ar]",
-                "time": [12.6, 12.9],
-            },
-        },
-        {
-            "namespace": "worker_threads",
-            "event": "node-finished",
-            "thread_name": "Worker-003",
-            "value": {
-                "name": "Run(compileuid$(BUILD_ROOT)/suite/main.cpp.o)",
-                "tag": "CC",
-                "time": [13, 17],
-            },
-        },
-        {
-            "namespace": "worker_threads",
-            "event": "node-finished",
-            "value": {
-                "name": "PutInCache(uid)",
-                "tag": "put_in_cache[CC]",
-                "time": [16.9, 17],
-            },
-        },
-        {
-            "namespace": "worker_threads",
-            "event": "node-finished",
-            "value": {
-                "name": ("Run(uid$(BUILD_ROOT)/suite/test-results/tests/meta.json)"),
-                "tag": "TM",
-                "time": [18, 20],
-            },
-        },
-        {
-            "namespace": "dump_debug",
-            "event": "log",
-            "value": {
-                "key": "stats",
-                "value_type": "dict",
-                "value": {
-                    "cache_hit": {
-                        "cache_hit": 75,
-                        "run_tasks": 100,
-                        "executed_tasks": 4,
-                        "cached_tasks": 3,
-                        "dyn_cached_tasks": 1,
-                        "not_cached_tasks": 1,
-                        "tests_tasks": 1,
-                        "failed_tasks": 0,
-                        "ok_tasks": 1,
-                        "avoided_tasks": 96,
-                    },
-                    "dist_cache_stat": {
-                        "get_count": 2,
-                        "get_data_size": 1_024,
-                        "put_count": 1,
-                        "put_data_size": 512,
-                    },
-                    "execution_stages_msec": {
-                        "build_only": 3_500,
-                        "tests_only": 2_000,
-                    },
-                    "task_execution_msec": 5_500,
-                    "graph_lang_usage": {"cpp": 1},
-                    "critical_path": [
-                        {
-                            "type": "CC",
-                            "elapsed": 4_000,
-                            "start_ts": 13_000,
-                            "end_ts": 17_000,
-                            "text": "$(SOURCE_ROOT)/suite/main.cpp",
-                            "uid": "compileuid",
-                        },
-                        {
-                            "type": "TM",
-                            "elapsed": 2_000,
-                            "start_ts": 18_000,
-                            "end_ts": 20_000,
-                            "text": "suite/tests",
-                            "uid": "testuid",
-                        },
-                    ],
-                },
-            },
-        },
-    ]
-    evlog_path.write_text("".join(json.dumps(event) + "\n" for event in evlog_events))
-
-    spans = build_ya_trace(
-        load_ya_traces(tmp_path / "out"),
-        root_start_ns=Ns(9_000_000_000),
-        root_end_ns=Ns(31_000_000_000),
-        exit_code=0,
-        resource=ResourceAttributes(),
-        evlog=load_ya_evlog(evlog_path),
-    )
-
-    root = spans[0]
-    phases = {
-        attributes(span)["ya.stage.name"]: span for span in spans.spans("ya.phase")
-    }
-    build = next(spans.spans("ya.build"))
-    nodes = list(spans.spans("ya.build.node"))
-    chunk = next(spans.spans("ya.chunk"))
-    test = next(spans.spans("ya.test"))
-    build_attributes = attributes(build)
-    dispatch_attributes = attributes(phases["dispatch_build"])
-    root_attributes = attributes(root)
-    chunk_attributes = attributes(chunk)
-    test_attributes = attributes(test)
-
-    assert set(phases) == {"build_graph_and_tests", "dispatch_build"}
-    assert build.parent_span_id == phases["dispatch_build"].span_id
-    assert chunk.parent_span_id == phases["dispatch_build"].span_id
-    assert span_duration_ns(build) == 4_500_000_000
-    assert build_attributes["ya.build.node.count"] == 4
-    assert build_attributes["ya.build.node.cache_store.count"] == 1
-    assert build_attributes["ya.build.first_test_node_offset_seconds"] == 5.5
-    assert dispatch_attributes["ya.build.cache.considered_task.hit.ratio"] == 0.75
-    assert dispatch_attributes["ya.build.cache.considered_task.hit.count"] == 3
-    assert dispatch_attributes["ya.build.cache.considered_task.miss.count"] == 1
-    assert dispatch_attributes["ya.build.task.avoided.ratio"] == 0.96
-    assert dispatch_attributes["ya.build.task.reused_or_avoided.ratio"] == 0.99
-    assert dispatch_attributes["ya.build.task.avoided.count"] == 96
-    assert dispatch_attributes["ya.build.dist_cache.get.bytes"] == 1_024
-    assert dispatch_attributes["ya.build.execution.stage.build_only.seconds"] == 3.5
-    assert dispatch_attributes["ya.build.execution.total.seconds"] == 5.5
-    assert build_attributes["ya.build.worker.tool.ar.cache_restore.count"] == 2
-    assert build_attributes["ya.build.worker.tool.cc.execute.count"] == 1
-    assert build_attributes["ya.build.critical_path.node.count"] == 1
-    assert build_attributes["ya.build.critical_path.work.seconds"] == 4
-    assert len(nodes) == 3
-    assert {attributes(span)["ya.build.kind"] for span in nodes} == {
-        "cache_restore",
-        "execute",
-    }
-    cached = next(
-        span for span in nodes if attributes(span)["ya.build.kind"] == "cache_restore"
-    )
-    assert "ya.build.cache.hit" not in attributes(cached)
-    assert attributes(cached)["ya.build.cache.source"] == "local"
-    assert attributes(cached)["ya.build.outputs"] == ["library/cached.a"]
-    compiled = next(
-        span for span in nodes if attributes(span)["ya.build.kind"] == "execute"
-    )
-    assert attributes(compiled)["ya.build.critical_path"] is True
-    assert attributes(compiled)["ya.build.critical_path.index"] == 0
-    assert attributes(compiled)["ya.build.critical_path.reported_seconds"] == 4
-    assert root_attributes["ya.build.node.count"] == 4
-    assert root_attributes["ya.build.node.span_count"] == 3
-    assert root_attributes["ya.test.critical_path.entry.count"] == 1
-    assert root_attributes["ya.test.critical_path.chunk.count"] == 1
-    assert root_attributes["ya.test.critical_path.span.count"] == 1
-    assert chunk_attributes["ya.test.critical_path"] is True
-    assert chunk_attributes["ya.test.critical_path.granularity"] == "test-chunk"
-    assert test_attributes["ya.test.critical_path"] is True
-    assert test_attributes["ya.test.critical_path.inferred"] is True
-    assert test_attributes["ya.test.critical_path.reported_seconds"] == 2
-
-    build_only = build_ya_trace(
-        [],
-        root_start_ns=Ns(9_000_000_000),
-        root_end_ns=Ns(31_000_000_000),
-        exit_code=0,
-        resource=ResourceAttributes(),
-        evlog=load_ya_evlog(evlog_path),
-        operation="build",
-    )
-    assert build_only[0].name == "ya make build"
-    assert not any(build_only.spans("ya.chunk"))
-    assert any(build_only.spans("ya.build"))
 
 
 def test_workflow_trace_adds_queue_job_step_and_imported_ya_spans() -> None:

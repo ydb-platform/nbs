@@ -29,6 +29,7 @@ from .otlp import (
 )
 
 __all__ = [
+    "YaCriticalPathEntry",
     "YaEvent",
     "YaEvlog",
     "YaEvlogRecord",
@@ -36,7 +37,6 @@ __all__ = [
     "YaTraceCollection",
     "YaTraceFile",
     "load_ya_evlog",
-    "load_ya_traces",
 ]
 
 LOGGER = logging.getLogger(__name__)
@@ -57,6 +57,7 @@ TAG_WRAPPER_RE = re.compile(
     r"^(restore|restore_from_dist_cache|result|put_in_cache|"
     r"put_in_dist_cache|write_through_caches)\[([^\]]+)\]$"
 )
+CRITICAL_TASK_SUFFIX_RE = re.compile(r"(?:(?:-CACHED|-DYN_UID_CACHE))+$")
 PASS_STATUSES = {"good", "pass", "passed", "success"}
 ERROR_STATUSES = {
     "crashed",
@@ -79,6 +80,7 @@ RENDERED_STAGE_NAMES = {
     "finalize-reports": "finalize reports",
     "dump_results": "dump results",
 }
+_ChunkSpan = tuple[Span, dict[str, Any], Interval]
 
 
 @dataclass(slots=True)
@@ -295,6 +297,97 @@ class YaEvent:
         return logs_directory.replace("$(BUILD_ROOT)", "").lstrip("/")
 
 
+@dataclass(frozen=True, slots=True)
+class _YaTestTiming:
+    interval: Interval
+    event: YaEvent
+    order: int
+    source: str
+    inferred: bool
+    incomplete: bool = False
+
+    @classmethod
+    def resolve(
+        cls,
+        start: YaEvent | None,
+        finish: YaEvent | None,
+        *,
+        chunk: Interval,
+        inferred_start: Ns | None,
+        only_test: bool,
+    ) -> _YaTestTiming | None:
+        if start is not None:
+            start_ns = chunk.clamp(start.timestamp_ns or chunk.start)
+            if finish is None:
+                return cls(
+                    interval=Interval(start_ns, chunk.end),
+                    event=start,
+                    order=start.order,
+                    source="subtest-start-and-chunk-end",
+                    inferred=start.timestamp_ns is None,
+                    incomplete=True,
+                )
+
+            duration_ns = Ns.from_s_or_zero(finish.value.get("time"))
+            end_ns = Ns(
+                max(
+                    start_ns,
+                    chunk.clamp(
+                        finish.timestamp_ns or Ns(start_ns + duration_ns),
+                    ),
+                )
+            )
+            return cls(
+                interval=Interval(start_ns, end_ns),
+                event=finish,
+                order=start.order,
+                source="subtest-events",
+                inferred=start.timestamp_ns is None or finish.timestamp_ns is None,
+            )
+
+        if finish is None:
+            return None
+
+        duration_ns = Ns.from_s_or_zero(finish.value.get("time"))
+        if (
+            inferred_start is not None
+            and only_test
+            and finish.status[0] not in {"deselected", "not_launched"}
+        ):
+            start_ns = chunk.clamp(inferred_start)
+            end_ns = Ns(
+                max(
+                    start_ns,
+                    chunk.clamp(Ns(start_ns + duration_ns)),
+                )
+            )
+            source = "chunk-delay-and-test-duration"
+        else:
+            end_ns = chunk.clamp(finish.timestamp_ns or chunk.end)
+            start_ns = Ns(max(chunk.start, end_ns - duration_ns))
+            source = "finish-event-and-test-duration"
+        return cls(
+            interval=Interval(start_ns, end_ns),
+            event=finish,
+            order=finish.order,
+            source=source,
+            inferred=True,
+        )
+
+    @property
+    def status(self) -> tuple[str, int]:
+        return ("incomplete", 2) if self.incomplete else self.event.status
+
+    def attributes(self, test_class: str, subtest: str) -> dict[str, Any]:
+        return self.event.test_attributes(
+            test_class,
+            subtest,
+            inferred=self.inferred,
+            timing_source=self.source,
+            incomplete=self.incomplete,
+        )
+
+
 @dataclass(slots=True)
 class YaTraceFile:
     path: Path
@@ -388,12 +481,11 @@ class YaTraceFile:
         return len(self.chunk_records())
 
     @staticmethod
-    def _chunk_bounds(
+    def _chunk_interval(
         chunk_event: YaEvent | None,
         events: Sequence[YaEvent],
-        root_start_ns: Ns,
-        root_end_ns: Ns,
-    ) -> tuple[Ns, Ns, dict[str, Any]]:
+        root: Interval,
+    ) -> tuple[Interval, dict[str, Any]]:
         chunk_value = chunk_event.value if chunk_event is not None else {}
         metrics = chunk_value.get("metrics", {})
         start_ns = None
@@ -433,24 +525,23 @@ class YaTraceFile:
             event.timestamp_ns for event in events if event.timestamp_ns is not None
         ]
         if start_ns is None:
-            start_ns = min(timestamps) if timestamps else root_start_ns
+            start_ns = min(timestamps) if timestamps else root.start
         if end_ns is None:
             if chunk_event is not None and chunk_event.timestamp_ns is not None:
                 end_ns = chunk_event.timestamp_ns
             elif chunk_event is not None and timestamps:
                 end_ns = max(timestamps)
             else:
-                end_ns = root_end_ns
-        start_ns = Ns(max(root_start_ns, min(start_ns, root_end_ns)))
-        end_ns = Ns(max(start_ns, min(end_ns, root_end_ns)))
-        return start_ns, end_ns, chunk_value
+                end_ns = root.end
+        start_ns = root.clamp(start_ns)
+        end_ns = Ns(max(start_ns, root.clamp(end_ns)))
+        return Interval(start_ns, end_ns), chunk_value
 
     @staticmethod
     def _test_spans(
         trace_id: bytes,
         chunk_span_id: bytes,
-        chunk_start_ns: Ns,
-        chunk_end_ns: Ns,
+        chunk: Interval,
         events: Iterable[YaEvent],
         identity: str,
         inferred_test_start_ns: Ns | None = None,
@@ -490,82 +581,16 @@ class YaTraceFile:
             }:
                 start = None
 
-            if start is not None:
-                start_ns = Ns(
-                    max(
-                        chunk_start_ns,
-                        min(start.timestamp_ns or chunk_start_ns, chunk_end_ns),
-                    )
-                )
-                source_order = start.order
-                if finish is not None:
-                    duration_ns = Ns.from_s_or_zero(finish.value.get("time"))
-                    end_ns = finish.timestamp_ns or min(
-                        chunk_end_ns, start_ns + duration_ns
-                    )
-                    end_ns = Ns(max(start_ns, min(end_ns, chunk_end_ns)))
-                    status, status_code = finish.status
-                    attributes = finish.test_attributes(
-                        test_class,
-                        subtest,
-                        inferred=(
-                            start.timestamp_ns is None or finish.timestamp_ns is None
-                        ),
-                        timing_source="subtest-events",
-                    )
-                else:
-                    end_ns = chunk_end_ns
-                    status = "incomplete"
-                    status_code = 2
-                    attributes = start.test_attributes(
-                        test_class,
-                        subtest,
-                        inferred=start.timestamp_ns is None,
-                        timing_source="subtest-start-and-chunk-end",
-                        incomplete=True,
-                    )
-            elif finish is not None:
-                duration_ns = Ns.from_s_or_zero(finish.value.get("time"))
-                if (
-                    inferred_test_start_ns is not None
-                    and len(grouped) == 1
-                    and finish.status[0] not in {"deselected", "not_launched"}
-                ):
-                    start_ns = Ns(
-                        max(
-                            chunk_start_ns,
-                            min(inferred_test_start_ns, chunk_end_ns),
-                        )
-                    )
-                    end_ns = Ns(
-                        max(
-                            start_ns,
-                            min(start_ns + duration_ns, chunk_end_ns),
-                        )
-                    )
-                    timing_source = "chunk-delay-and-test-duration"
-                else:
-                    end_ns = Ns(
-                        max(
-                            chunk_start_ns,
-                            min(
-                                finish.timestamp_ns or chunk_end_ns,
-                                chunk_end_ns,
-                            ),
-                        )
-                    )
-                    start_ns = Ns(max(chunk_start_ns, end_ns - duration_ns))
-                    timing_source = "finish-event-and-test-duration"
-                status, status_code = finish.status
-                attributes = finish.test_attributes(
-                    test_class,
-                    subtest,
-                    inferred=True,
-                    timing_source=timing_source,
-                )
-                source_order = finish.order
-            else:
+            timing = _YaTestTiming.resolve(
+                start,
+                finish,
+                chunk=chunk,
+                inferred_start=inferred_test_start_ns,
+                only_test=len(grouped) == 1,
+            )
+            if timing is None:
                 continue
+            status, status_code = timing.status
 
             result.append(
                 make_span(
@@ -577,13 +602,13 @@ class YaTraceFile:
                         subtest,
                         test_type,
                         test_path,
-                        source_order,
+                        timing.order,
                     ),
                     parent_span_id=chunk_span_id,
                     name=f"{test_class}::{subtest}",
-                    start_ns=start_ns,
-                    end_ns=end_ns,
-                    attributes=attributes,
+                    start_ns=timing.interval.start,
+                    end_ns=timing.interval.end,
+                    attributes=timing.attributes(test_class, subtest),
                     status_code=status_code,
                     status_message=status if status_code == 2 else "",
                 )
@@ -601,6 +626,7 @@ class YaTraceFile:
         resource: ResourceAttributes,
         trace_index: int,
     ) -> int:
+        root = Interval(root_start_ns, root_end_ns)
         suite_event = self.suite_event()
         if suite_event is not None:
             timestamps = [
@@ -608,16 +634,13 @@ class YaTraceFile:
                 for event in self.events
                 if event.name == "suite-event" and event.timestamp_ns is not None
             ]
-            suite_start_ns = Ns(
-                max(
-                    root_start_ns,
-                    min(min(timestamps) if timestamps else root_start_ns, root_end_ns),
-                )
-            )
+            suite_start_ns = root.clamp(min(timestamps) if timestamps else root.start)
             suite_end_ns = Ns(
                 max(
                     suite_start_ns,
-                    min(max(timestamps) if timestamps else suite_start_ns, root_end_ns),
+                    root.clamp(
+                        max(timestamps) if timestamps else suite_start_ns,
+                    ),
                 )
             )
             suite_status = ""
@@ -660,11 +683,10 @@ class YaTraceFile:
 
         chunk_records = self.chunk_records()
         for record_index, (chunk_event, chunk_events) in enumerate(chunk_records):
-            chunk_start_ns, chunk_end_ns, chunk_value = self._chunk_bounds(
+            chunk_interval, chunk_value = self._chunk_interval(
                 chunk_event,
                 chunk_events,
-                root_start_ns,
-                root_end_ns,
+                root,
             )
             chunk_key = YaEvent.parse_chunk_key(chunk_value)
             identity = (
@@ -703,8 +725,8 @@ class YaTraceFile:
                 span_id=chunk_span_id,
                 parent_span_id=root_span_id,
                 name=(f"{self.suite} " f"[{self.result_folder} {chunk_label}]"),
-                start_ns=chunk_start_ns,
-                end_ns=chunk_end_ns,
+                start_ns=chunk_interval.start,
+                end_ns=chunk_interval.end,
                 attributes=attributes,
                 status_code=chunk_status_code,
                 status_message=chunk_status if chunk_status_code == 2 else "",
@@ -718,12 +740,11 @@ class YaTraceFile:
                 startup_ns = Ns.from_s_or_zero(metrics.get("suite_binary_startup_secs"))
                 first_test_offset_ns = max(0, delay_ns - startup_ns)
                 if delay_ns or startup_ns:
-                    test_start_ns = Ns(chunk_start_ns + first_test_offset_ns)
+                    test_start_ns = Ns(chunk_interval.start + first_test_offset_ns)
             test_spans = self._test_spans(
                 trace_id,
                 chunk_span_id,
-                chunk_start_ns,
-                chunk_end_ns,
+                chunk_interval,
                 chunk_events,
                 identity,
                 inferred_test_start_ns=test_start_ns,
@@ -906,6 +927,82 @@ class YaTraceCollection:
         return None
 
 
+@dataclass(frozen=True, slots=True)
+class YaCriticalPathEntry:
+    index: int
+    base_type: str
+    raw_type: str
+    text: str
+    uid: str
+    elapsed_ms: int | float | None
+    start_ms: int | float | None
+    end_ms: int | float | None
+    interval: Interval | None
+    is_test: bool
+
+    @classmethod
+    def from_raw(
+        cls,
+        index: int,
+        value: Mapping[str, Any],
+    ) -> YaCriticalPathEntry:
+        raw_type = str(value.get("type", ""))
+        base_type = CRITICAL_TASK_SUFFIX_RE.sub("", raw_type)
+        text = str(value.get("text", ""))
+        start_ns = Ns.from_ms(value.get("start_ts"))
+        end_ns = Ns.from_ms(value.get("end_ts"))
+        interval = (
+            Interval(start_ns, end_ns)
+            if start_ns is not None and end_ns is not None and end_ns >= start_ns
+            else None
+        )
+        return cls(
+            index=index,
+            base_type=base_type,
+            raw_type=raw_type,
+            text=text,
+            uid=str(value.get("uid", "")),
+            elapsed_ms=_number(value.get("elapsed")),
+            start_ms=_number(value.get("start_ts")),
+            end_ms=_number(value.get("end_ts")),
+            interval=interval,
+            is_test=base_type in {"TA", "TL", "TM", "TS"} or "/test-results/" in text,
+        )
+
+    @property
+    def reported_seconds(self) -> float | None:
+        return self.elapsed_ms / 1_000 if self.elapsed_ms is not None else None
+
+    def span_attributes(self, *, test: bool) -> dict[str, Any]:
+        scope = "test" if test else "build"
+        prefix = f"ya.{scope}.critical_path"
+        attributes: dict[str, Any] = {
+            prefix: True,
+            f"{prefix}.index": self.index,
+        }
+        if test:
+            attributes.update(
+                {
+                    f"{prefix}.inferred": True,
+                    f"{prefix}.granularity": "test-chunk",
+                }
+            )
+            if self.raw_type:
+                attributes[f"{prefix}.type"] = self.raw_type
+            if self.text:
+                attributes[f"{prefix}.text"] = self.text
+        if self.reported_seconds is not None:
+            attributes[f"{prefix}.reported_seconds"] = self.reported_seconds
+        return attributes
+
+    @property
+    def summary(self) -> str:
+        return (
+            f"{self.raw_type or 'unknown'}: {self.text or 'unknown'} "
+            f"({self.reported_seconds or 0:.3f}s)"
+        )
+
+
 @dataclass(slots=True)
 class YaEvlogRecord:
     name: str
@@ -948,8 +1045,8 @@ class YaEvlogRecord:
     def interval(self) -> Interval:
         return Interval(self.start_ns, self.end_ns)
 
-    def clipped(self, start_ns: Ns, end_ns: Ns) -> YaEvlogRecord | None:
-        clipped = self.interval.intersection(Interval(start_ns, end_ns))
+    def clipped(self, bounds: Interval) -> YaEvlogRecord | None:
+        clipped = self.interval.intersection(bounds)
         if clipped is None:
             return None
         return YaEvlogRecord(
@@ -1037,7 +1134,7 @@ class YaEvlogRecord:
         kind: str,
         tool: str,
         index: int,
-        critical_entry: tuple[int, Mapping[str, Any]] | None,
+        critical_entry: YaCriticalPathEntry | None,
         failed: bool,
         exit_code: int | None,
     ) -> Span:
@@ -1057,12 +1154,7 @@ class YaEvlogRecord:
         if self.uid:
             attributes["ya.build.node.uid"] = self.uid
         if critical_entry is not None:
-            critical_index, entry = critical_entry
-            attributes["ya.build.critical_path"] = True
-            attributes["ya.build.critical_path.index"] = critical_index
-            elapsed = _number(entry.get("elapsed"))
-            if elapsed is not None:
-                attributes["ya.build.critical_path.reported_seconds"] = elapsed / 1_000
+            attributes.update(critical_entry.span_attributes(test=False))
         if failed:
             attributes["ya.build.failed"] = True
             if exit_code is not None:
@@ -1094,36 +1186,26 @@ class YaEvlog:
     statistics: dict[str, Any] = field(default_factory=dict)
     failures: dict[str, int | None] = field(default_factory=dict)
 
-    @staticmethod
-    def _is_test_critical_path_entry(entry: Mapping[str, Any]) -> bool:
-        task_type = YaEvlog._base_task_type(entry.get("type", ""))
-        text = str(entry.get("text", ""))
-        return task_type in {"TA", "TL", "TM", "TS"} or "/test-results/" in text
-
-    @staticmethod
-    def _base_task_type(value: Any) -> str:
-        return re.sub(
-            r"(?:(?:-CACHED|-DYN_UID_CACHE))+$",
-            "",
-            str(value),
+    @property
+    def critical_path_entries(self) -> tuple[YaCriticalPathEntry, ...]:
+        return tuple(
+            YaCriticalPathEntry.from_raw(index, entry)
+            for index, entry in enumerate(self.statistics.get("critical_path", []))
+            if isinstance(entry, Mapping)
         )
 
     def _critical_record_score(
         self,
         record: YaEvlogRecord,
         tool: str,
-        entry: Mapping[str, Any],
+        entry: YaCriticalPathEntry,
     ) -> tuple[int, int, int, int] | None:
-        start_ns = Ns.from_ms(entry.get("start_ts"))
-        end_ns = Ns.from_ms(entry.get("end_ts"))
-        if start_ns is None or end_ns is None or end_ns < start_ns:
+        if entry.interval is None:
             return None
-        interval = Interval(start_ns, end_ns)
-        overlap_ns = interval.overlap(record.interval)
-        distance_ns = interval.boundary_distance(record.interval)
-        entry_type = self._base_task_type(entry.get("type", ""))
+        overlap_ns = entry.interval.overlap(record.interval)
+        distance_ns = entry.interval.boundary_distance(record.interval)
         return (
-            int(entry_type in {tool, record.tag}),
+            int(entry.base_type in {tool, record.tag}),
             overlap_ns,
             -distance_ns,
             len(record.interval),
@@ -1132,8 +1214,8 @@ class YaEvlog:
     def _match_build_critical_path(
         self,
         build_records: Sequence[tuple[YaEvlogRecord, str, str]],
-        critical_entries: Sequence[tuple[int, Mapping[str, Any]]],
-    ) -> dict[int, tuple[int, Mapping[str, Any]]]:
+        critical_entries: Sequence[YaCriticalPathEntry],
+    ) -> dict[int, YaCriticalPathEntry]:
         available = {
             index
             for index, (_, kind, _) in enumerate(build_records)
@@ -1145,10 +1227,9 @@ class YaEvlog:
             if uid:
                 records_by_uid[uid].append(index)
 
-        matches: dict[int, tuple[int, Mapping[str, Any]]] = {}
-        for critical_entry in critical_entries:
-            _, entry = critical_entry
-            uid = str(entry.get("uid", ""))
+        matches: dict[int, YaCriticalPathEntry] = {}
+        for entry in critical_entries:
+            uid = entry.uid
             if uid:
                 candidate_indices = [
                     index for index in records_by_uid.get(uid, ()) if index in available
@@ -1174,20 +1255,19 @@ class YaEvlog:
             if not scored:
                 continue
             _, record_index = max(scored)
-            matches[record_index] = critical_entry
+            matches[record_index] = entry
             available.remove(record_index)
         return matches
 
     def _critical_test_node(
         self,
-        entry: Mapping[str, Any],
-        interval: Interval | None,
+        entry: YaCriticalPathEntry,
         test_nodes: Sequence[YaEvlogRecord],
         test_nodes_by_uid: Mapping[str, Sequence[YaEvlogRecord]],
     ) -> YaEvlogRecord | None:
-        uid = str(entry.get("uid", ""))
-        if uid:
-            matching_uid = test_nodes_by_uid.get(uid, ())
+        interval = entry.interval
+        if entry.uid:
+            matching_uid = test_nodes_by_uid.get(entry.uid, ())
             if matching_uid:
                 if interval is not None:
                     return max(
@@ -1208,51 +1288,31 @@ class YaEvlog:
         ]
         if not overlapping:
             return None
-        text = str(entry.get("text", ""))
         return max(
             overlapping,
             key=lambda record: (
                 bool(
                     record.test_result_identity
-                    and record.test_result_identity[0] in text
+                    and record.test_result_identity[0] in entry.text
                 ),
                 interval.overlap(record.interval),
             ),
         )
 
-    @staticmethod
-    def _critical_test_attributes(
-        index: int,
-        entry: Mapping[str, Any],
-    ) -> dict[str, Any]:
-        attributes: dict[str, Any] = {
-            "ya.test.critical_path": True,
-            "ya.test.critical_path.index": index,
-            "ya.test.critical_path.inferred": True,
-            "ya.test.critical_path.granularity": "test-chunk",
-        }
-        task_type = str(entry.get("type", ""))
-        if task_type:
-            attributes["ya.test.critical_path.type"] = task_type
-        text = str(entry.get("text", ""))
-        if text:
-            attributes["ya.test.critical_path.text"] = text
-        elapsed_msec = _number(entry.get("elapsed"))
-        if elapsed_msec is not None:
-            attributes["ya.test.critical_path.reported_seconds"] = elapsed_msec / 1_000
-        return attributes
-
     def mark_critical_test_spans(self, trace: Trace) -> dict[str, int]:
-        chunks = []
-        chunks_by_identity: dict[tuple[str, str], list[tuple[Span, dict[str, Any]]]] = (
-            defaultdict(list)
-        )
-        chunks_by_suite: dict[str, list[tuple[Span, dict[str, Any]]]] = defaultdict(
-            list
-        )
+        chunks: list[_ChunkSpan] = []
+        chunks_by_identity: dict[tuple[str, str], list[_ChunkSpan]] = defaultdict(list)
+        chunks_by_suite: dict[str, list[_ChunkSpan]] = defaultdict(list)
         for span in trace.spans("ya.chunk"):
             attributes = decode_attributes(span.attributes)
-            item = (span, attributes)
+            item = (
+                span,
+                attributes,
+                Interval(
+                    Ns(span.start_time_unix_nano or 0),
+                    Ns(span.end_time_unix_nano or 0),
+                ),
+            )
             chunks.append(item)
             suite = str(attributes.get("test.suite", ""))
             result_folder = str(attributes.get("ya.test_results.folder", ""))
@@ -1274,26 +1334,15 @@ class YaEvlog:
         marked_chunks: set[bytes] = set()
         marked_tests: set[bytes] = set()
         critical_entries = [
-            (index, entry)
-            for index, entry in enumerate(self.statistics.get("critical_path", []))
-            if isinstance(entry, Mapping) and self._is_test_critical_path_entry(entry)
+            entry for entry in self.critical_path_entries if entry.is_test
         ]
-        for index, entry in critical_entries:
-            start_ns = Ns.from_ms(entry.get("start_ts"))
-            end_ns = Ns.from_ms(entry.get("end_ts"))
-            interval = (
-                Interval(start_ns, end_ns)
-                if start_ns is not None and end_ns is not None and end_ns >= start_ns
-                else None
-            )
+        for entry in critical_entries:
             node = self._critical_test_node(
                 entry,
-                interval,
                 test_nodes,
                 test_nodes_by_uid,
             )
-            if node is not None:
-                interval = node.interval
+            interval = node.interval if node is not None else entry.interval
             if interval is None:
                 continue
 
@@ -1305,34 +1354,19 @@ class YaEvlog:
                     or chunks_by_suite.get(identity[0])
                     or chunks
                 )
-            candidates = [
-                item
-                for item in candidate_pool
-                if interval.overlap(
-                    Interval(
-                        Ns(item[0].start_time_unix_nano or 0),
-                        Ns(item[0].end_time_unix_nano or 0),
-                    )
-                )
-            ]
+            candidates = [item for item in candidate_pool if interval.overlap(item[2])]
             if not candidates:
                 continue
 
-            text = str(entry.get("text", ""))
-            chunk, _ = max(
+            chunk, _, _ = max(
                 candidates,
                 key=lambda item: (
                     bool(item[1].get("test.suite"))
-                    and str(item[1]["test.suite"]) in text,
-                    interval.overlap(
-                        Interval(
-                            Ns(item[0].start_time_unix_nano or 0),
-                            Ns(item[0].end_time_unix_nano or 0),
-                        )
-                    ),
+                    and str(item[1]["test.suite"]) in entry.text,
+                    interval.overlap(item[2]),
                 ),
             )
-            attributes = self._critical_test_attributes(index, entry)
+            attributes = entry.span_attributes(test=True)
             update_span_attributes(chunk, attributes)
             marked_chunks.add(chunk.span_id)
             for test_span in tests_by_parent.get(chunk.span_id, []):
@@ -1424,7 +1458,7 @@ class YaEvlog:
         build_records: Sequence[tuple[YaEvlogRecord, str, str]],
     ) -> tuple[
         dict[str, Any],
-        list[tuple[int, Mapping[str, Any]]],
+        list[YaCriticalPathEntry],
     ]:
         attributes: dict[str, Any] = {}
         tool_counts: dict[str, Counter[str]] = defaultdict(Counter)
@@ -1447,24 +1481,17 @@ class YaEvlog:
                     )
 
         critical_entries = [
-            (index, entry)
-            for index, entry in enumerate(self.statistics.get("critical_path", []))
-            if isinstance(entry, Mapping)
-            and not self._is_test_critical_path_entry(entry)
+            entry for entry in self.critical_path_entries if not entry.is_test
         ]
         if critical_entries:
-            work_msec = sum(
-                _number(entry.get("elapsed")) or 0 for _, entry in critical_entries
-            )
+            work_msec = sum(entry.elapsed_ms or 0 for entry in critical_entries)
             start_times = [
-                number
-                for _, entry in critical_entries
-                if (number := _number(entry.get("start_ts"))) is not None
+                entry.start_ms
+                for entry in critical_entries
+                if entry.start_ms is not None
             ]
             end_times = [
-                number
-                for _, entry in critical_entries
-                if (number := _number(entry.get("end_ts"))) is not None
+                entry.end_ms for entry in critical_entries if entry.end_ms is not None
             ]
             attributes["ya.build.critical_path.node.count"] = len(critical_entries)
             attributes["ya.build.critical_path.work.seconds"] = work_msec / 1_000
@@ -1473,12 +1500,7 @@ class YaEvlog:
                     max(end_times) - min(start_times)
                 ) / 1_000
             attributes["ya.build.critical_path.summary"] = [
-                (
-                    f"{entry.get('type', 'unknown')}: "
-                    f"{entry.get('text', 'unknown')} "
-                    f"({(_number(entry.get('elapsed')) or 0) / 1_000:.3f}s)"
-                )
-                for _, entry in critical_entries[:128]
+                entry.summary for entry in critical_entries[:128]
             ]
         return attributes, critical_entries
 
@@ -1492,15 +1514,16 @@ class YaEvlog:
         root_end_ns: Ns,
         resource: ResourceAttributes,
     ) -> tuple[bytes | None, dict[str, Any]]:
+        root = Interval(root_start_ns, root_end_ns)
         dispatch_span_id = None
         dispatch_span: Span | None = None
-        dispatch_bounds: tuple[Ns, Ns] | None = None
+        dispatch_interval: Interval | None = None
 
         stages = []
         for record in self.stages:
             if record.name not in RENDERED_STAGE_NAMES:
                 continue
-            clipped = record.clipped(root_start_ns, root_end_ns)
+            clipped = record.clipped(root)
             if clipped is not None:
                 stages.append(clipped)
         stages.sort(key=lambda record: (record.start_ns, record.end_ns, record.name))
@@ -1528,7 +1551,7 @@ class YaEvlog:
             if record.name == "dispatch_build":
                 dispatch_span_id = span_id
                 dispatch_span = stage_span
-                dispatch_bounds = (record.start_ns, record.end_ns)
+                dispatch_interval = record.interval
             trace.add_span(
                 stage_span,
                 resource=resource,
@@ -1540,8 +1563,7 @@ class YaEvlog:
             for record in self.nodes
             if (
                 clipped := record.clipped(
-                    dispatch_bounds[0] if dispatch_bounds else root_start_ns,
-                    dispatch_bounds[1] if dispatch_bounds else root_end_ns,
+                    dispatch_interval if dispatch_interval is not None else root
                 )
             )
             is not None
@@ -1572,9 +1594,10 @@ class YaEvlog:
 
         build_start_ns = min(record.start_ns for record, _, _ in timed_records)
         build_end_ns = max(record.end_ns for record, _, _ in timed_records)
+        build_interval = Interval(build_start_ns, build_end_ns)
         build_records = []
         for record, kind, tool in unbounded_build_records:
-            clipped = record.clipped(build_start_ns, build_end_ns)
+            clipped = record.clipped(build_interval)
             if clipped is not None:
                 build_records.append((clipped, kind, tool))
         metadata["ya.build.node.count"] = len(build_records)
@@ -1655,7 +1678,7 @@ class YaEvlog:
             protected_candidates.sort(
                 key=lambda item: (
                     not item[5],
-                    item[4][0] if item[4] is not None else math.inf,
+                    item[4].index if item[4] is not None else math.inf,
                     item[1].start_ns,
                     item[1].end_ns,
                 )
@@ -1750,15 +1773,6 @@ class YaEvlog:
         return dispatch_span_id, metadata
 
 
-def load_ya_traces(
-    ya_out: Path, *, modified_since: float | None = None
-) -> list[YaTraceFile]:
-    return YaTraceCollection.load(
-        ya_out,
-        modified_since=modified_since,
-    ).traces
-
-
 def _load_ya_trace_files(
     ya_out: Path,
     paths: Sequence[Path],
@@ -1830,13 +1844,8 @@ def _selected_evlog_statistics(value: Any) -> dict[str, Any]:
         selected = _safe_statistics_mapping(value.get(key))
         if selected:
             result[key] = selected
-    task_execution_msec = value.get("task_execution_msec")
-    if (
-        isinstance(task_execution_msec, int)
-        and not isinstance(task_execution_msec, bool)
-    ) or (
-        isinstance(task_execution_msec, float) and math.isfinite(task_execution_msec)
-    ):
+    task_execution_msec = _number(value.get("task_execution_msec"))
+    if task_execution_msec is not None:
         result["task_execution_msec"] = task_execution_msec
 
     critical_path = []

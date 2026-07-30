@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from pathlib import Path
 
 import pytest
 
 import scripts.tracing.ya_trace as ya_trace_module
+import scripts.tracing.ya_trace_report as ya_trace_report_module
 from scripts.tracing.otlp import (
+    Interval,
     ResourceAttributes,
     Ns,
     decode_attributes,
@@ -15,12 +18,12 @@ from scripts.tracing.otlp import (
     span_status_code,
 )
 from scripts.tracing.ya_trace import (
+    YaCriticalPathEntry,
     YaEvlog,
     YaEvlogRecord,
     YaTraceCollection,
     YaTraceInputs,
     load_ya_evlog,
-    load_ya_traces,
 )
 from scripts.tracing.ya_trace_report import build_ya_trace
 
@@ -32,6 +35,79 @@ def _attributes(span) -> dict:
 def _write_jsonl(path: Path, events: list[dict]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("".join(json.dumps(event) + "\n" for event in events))
+
+
+def _subtest(
+    name: str,
+    *,
+    timestamp: float,
+    chunk: tuple[int, int] | None = None,
+    started: bool = False,
+    status: str = "good",
+    duration: float | None = None,
+) -> dict:
+    value = {"class": "Suite", "subtest": name}
+    if chunk is not None:
+        value.update({"chunk_index": chunk[0], "nchunks": chunk[1]})
+    if not started:
+        value["status"] = status
+    if duration is not None:
+        value["time"] = duration
+    return {
+        "name": "subtest-started" if started else "subtest-finished",
+        "timestamp": timestamp,
+        "value": value,
+    }
+
+
+def _chunk(
+    index: int,
+    total: int,
+    *,
+    timestamp: float,
+    metrics: dict[str, int | float] | None = None,
+) -> dict:
+    return {
+        "name": "chunk-event",
+        "timestamp": timestamp,
+        "value": {
+            "chunk_index": index,
+            "nchunks": total,
+            "metrics": metrics or {},
+        },
+    }
+
+
+def _stage(name: str, start: float, end: float) -> dict:
+    return {
+        "namespace": "stages",
+        "event": "stage-finished",
+        "value": {"name": name, "tag": name, "time": [start, end]},
+    }
+
+
+def _worker(name: str, tag: str, start: float, end: float) -> dict:
+    return {
+        "namespace": "worker_threads",
+        "event": "node-finished",
+        "value": {"name": name, "tag": tag, "time": [start, end]},
+    }
+
+
+def _statistics(value: dict) -> dict:
+    return {
+        "namespace": "dump_debug",
+        "event": "log",
+        "value": {"key": "stats", "value": value},
+    }
+
+
+def _failed_node(uid: str, exit_code: int) -> dict:
+    return {
+        "namespace": "devtools.ya.build.reports.failed_node_info",
+        "event": "node-failed",
+        "value": {"uid": uid, "exit_code": exit_code},
+    }
 
 
 def _render_ya_trace(
@@ -54,7 +130,7 @@ def _render_ya_trace(
         _write_jsonl(evlog_path, evlog_events)
         evlog = load_ya_evlog(evlog_path)
     return build_ya_trace(
-        load_ya_traces(ya_out),
+        YaTraceCollection.load(ya_out).traces,
         root_start_ns=Ns(round(root_start_s * 1_000_000_000)),
         root_end_ns=Ns(round(root_end_s * 1_000_000_000)),
         exit_code=exit_code,
@@ -210,6 +286,58 @@ def test_trace_inputs_skip_symlinks(tmp_path: Path) -> None:
     assert inputs.tar_file_list() == b""
 
 
+def test_report_loads_only_discovered_evlog(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ya_out = tmp_path / "out"
+    ya_out.mkdir()
+    evlog_target = tmp_path / "outside.jsonl"
+    evlog_target.write_text("{}\n")
+    evlog_path = tmp_path / "ya_evlog.jsonl"
+    evlog_path.symlink_to(evlog_target)
+    loaded_paths = []
+
+    def load_evlog(path):
+        loaded_paths.append(path)
+        return YaEvlog(stages=[], nodes=[])
+
+    def write_bundle(output_dir, trace, **kwargs):
+        assert output_dir == tmp_path / "summary"
+        assert kwargs["title"]
+        return {"span_count": len(trace)}
+
+    monkeypatch.setattr(ya_trace_report_module, "load_ya_evlog", load_evlog)
+    monkeypatch.setattr(
+        ya_trace_report_module,
+        "write_trace_bundle",
+        write_bundle,
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "ya_trace_report",
+            "--ya-out",
+            str(ya_out),
+            "--evlog",
+            str(evlog_path),
+            "--output-dir",
+            str(tmp_path / "summary"),
+            "--attempt-start-ns",
+            "0",
+            "--attempt-end-ns",
+            "1",
+            "--exit-code",
+            "0",
+        ],
+    )
+
+    ya_trace_report_module.main()
+
+    assert loaded_paths == [None]
+
+
 def test_trace_inputs_tar_file_list_handles_unusual_names(
     tmp_path: Path,
 ) -> None:
@@ -270,6 +398,86 @@ def test_finish_only_test_clamps_end_before_applying_duration(
     assert test.start_time_unix_nano == 109_500_000_000
     assert test.end_time_unix_nano == 110_000_000_000
     assert span_duration_ns(test) == 500_000_000
+
+
+def test_test_timing_preserves_observed_inferred_and_incomplete_chunks(
+    tmp_path: Path,
+) -> None:
+    trace = _render_ya_trace(
+        tmp_path,
+        [
+            _subtest("observed", timestamp=101, chunk=(0, 4), started=True),
+            _subtest("observed", timestamp=102.5, chunk=(0, 4), duration=1.5),
+            _chunk(
+                0,
+                4,
+                timestamp=105,
+                metrics={
+                    "suite_start_timestamp": 100,
+                    "suite_finish_timestamp": 105,
+                },
+            ),
+            _subtest("inferred", timestamp=120, chunk=(1, 4), duration=1),
+            _chunk(
+                1,
+                4,
+                timestamp=120,
+                metrics={
+                    "suite_finish_timestamp": 112,
+                    "wall_time": 5,
+                    "suite_delay_until_first_test_secs": 1,
+                },
+            ),
+            _subtest("inferred_other", timestamp=120, chunk=(2, 4), duration=3),
+            _chunk(
+                2,
+                4,
+                timestamp=120,
+                metrics={
+                    "suite_finish_timestamp": 110,
+                    "wall_time": 10,
+                    "suite_delay_until_first_test_secs": 2,
+                },
+            ),
+            _subtest("incomplete", timestamp=115, chunk=(3, 4), started=True),
+        ],
+        root_start_s=99,
+        root_end_s=121,
+        exit_code=1,
+    )
+
+    root = next(trace.spans("ya"))
+    chunk_spans = list(trace.spans("ya.chunk"))
+    chunks = {
+        attributes["ya.chunk.chunk_index"]: span
+        for span in chunk_spans
+        if "ya.chunk.chunk_index" in (attributes := _attributes(span))
+    }
+    tests = {span.name: span for span in trace.spans("ya.test")}
+    observed = tests["Suite::observed"]
+    inferred = tests["Suite::inferred"]
+    inferred_other = tests["Suite::inferred_other"]
+    incomplete = tests["Suite::incomplete"]
+
+    assert root.name == "ya make tests"
+    assert span_status_code(root) == 2
+    assert _attributes(root)["ya.chunk.count"] == 4
+    assert span_duration_ns(observed) == Ns.from_s(1.5)
+    assert "test.timing.inferred" not in _attributes(observed)
+    assert inferred.start_time_unix_nano == Ns.from_s(108)
+    assert span_duration_ns(inferred) == Ns.from_s(1)
+    assert (
+        _attributes(inferred)["test.timing.source"] == "chunk-delay-and-test-duration"
+    )
+    assert inferred_other.start_time_unix_nano == Ns.from_s(102)
+    assert span_duration_ns(inferred_other) == Ns.from_s(3)
+    assert incomplete.end_time_unix_nano == Ns.from_s(121)
+    assert span_status_code(incomplete) == 2
+    assert _attributes(incomplete)["test.incomplete"] is True
+    assert observed.parent_span_id == chunks[0].span_id
+    assert inferred.parent_span_id == chunks[1].span_id
+    assert inferred_other.parent_span_id == chunks[2].span_id
+    assert incomplete.parent_span_id in {span.span_id for span in chunk_spans}
 
 
 def test_chunk_event_alias_and_real_error_schema_mark_chunk_failed(
@@ -443,49 +651,25 @@ def test_worker_operations_do_not_claim_cache_hit_or_miss(
         tmp_path,
         [],
         evlog_events=[
-            {
-                "namespace": "stages",
-                "event": "stage-finished",
-                "value": {
-                    "name": "dispatch_build",
-                    "tag": "dispatch_build",
-                    "time": [1, 10],
-                },
-            },
-            {
-                "namespace": "worker_threads",
-                "event": "node-finished",
-                "value": {
-                    "name": "FromCache(uid$(BUILD_ROOT)/result.o)",
-                    "tag": "restore[CC]",
-                    "time": [2, 3],
-                },
-            },
-            {
-                "namespace": "worker_threads",
-                "event": "node-finished",
-                "value": {
-                    "name": "Run(uid$(BUILD_ROOT)/result.o)",
-                    "tag": "CC",
-                    "time": [3, 5],
-                },
-            },
-            {
-                "namespace": "dump_debug",
-                "event": "log",
-                "value": {
-                    "key": "stats",
-                    "value": {
-                        "cache_hit": {
-                            "cache_hit": 75,
-                            "run_tasks": 4,
-                            "executed_tasks": 4,
-                            "cached_tasks": 3,
-                            "not_cached_tasks": 1,
-                        }
-                    },
-                },
-            },
+            _stage("dispatch_build", 1, 10),
+            _worker(
+                "FromCache(uid$(BUILD_ROOT)/result.o)",
+                "restore[CC]",
+                2,
+                3,
+            ),
+            _worker("Run(uid$(BUILD_ROOT)/result.o)", "CC", 3, 5),
+            _statistics(
+                {
+                    "cache_hit": {
+                        "cache_hit": 75,
+                        "run_tasks": 4,
+                        "executed_tasks": 4,
+                        "cached_tasks": 3,
+                        "not_cached_tasks": 1,
+                    }
+                }
+            ),
         ],
         root_end_s=11,
     )
@@ -510,32 +694,14 @@ def test_failed_node_record_marks_matching_build_span_failed(
         tmp_path,
         [],
         evlog_events=[
-            {
-                "namespace": "stages",
-                "event": "stage-finished",
-                "value": {
-                    "name": "dispatch_build",
-                    "tag": "dispatch_build",
-                    "time": [1, 10],
-                },
-            },
-            {
-                "namespace": "worker_threads",
-                "event": "node-finished",
-                "value": {
-                    "name": "Run(failed-uid$(BUILD_ROOT)/result.o)",
-                    "tag": "CC",
-                    "time": [2, 5],
-                },
-            },
-            {
-                "namespace": "devtools.ya.build.reports.failed_node_info",
-                "event": "node-failed",
-                "value": {
-                    "uid": "failed-uid",
-                    "exit_code": 42,
-                },
-            },
+            _stage("dispatch_build", 1, 10),
+            _worker(
+                "Run(failed-uid$(BUILD_ROOT)/result.o)",
+                "CC",
+                2,
+                5,
+            ),
+            _failed_node("failed-uid", 42),
         ],
         root_end_s=11,
         exit_code=1,
@@ -554,32 +720,9 @@ def test_outputless_failed_node_is_joined_by_uid(tmp_path: Path) -> None:
         tmp_path,
         [],
         evlog_events=[
-            {
-                "namespace": "stages",
-                "event": "stage-finished",
-                "value": {
-                    "name": "dispatch_build",
-                    "tag": "dispatch_build",
-                    "time": [1, 10],
-                },
-            },
-            {
-                "namespace": "worker_threads",
-                "event": "node-finished",
-                "value": {
-                    "name": "Run(failed-uid)",
-                    "tag": "CC",
-                    "time": [2, 5],
-                },
-            },
-            {
-                "namespace": "devtools.ya.build.reports.failed_node_info",
-                "event": "node-failed",
-                "value": {
-                    "uid": "failed-uid",
-                    "exit_code": 17,
-                },
-            },
+            _stage("dispatch_build", 1, 10),
+            _worker("Run(failed-uid)", "CC", 2, 5),
+            _failed_node("failed-uid", 17),
         ],
         root_end_s=11,
         exit_code=1,
@@ -599,41 +742,10 @@ def test_failed_node_is_protected_from_span_cap(
         tmp_path,
         [],
         evlog_events=[
-            {
-                "namespace": "stages",
-                "event": "stage-finished",
-                "value": {
-                    "name": "dispatch_build",
-                    "tag": "dispatch_build",
-                    "time": [1, 10],
-                },
-            },
-            {
-                "namespace": "worker_threads",
-                "event": "node-finished",
-                "value": {
-                    "name": "Run(failed$(BUILD_ROOT)/failed.o)",
-                    "tag": "CC",
-                    "time": [2, 2.1],
-                },
-            },
-            {
-                "namespace": "worker_threads",
-                "event": "node-finished",
-                "value": {
-                    "name": "Run(long$(BUILD_ROOT)/long.o)",
-                    "tag": "CC",
-                    "time": [3, 9],
-                },
-            },
-            {
-                "namespace": "devtools.ya.build.reports.failed_node_info",
-                "event": "node-failed",
-                "value": {
-                    "uid": "failed",
-                    "exit_code": 1,
-                },
-            },
+            _stage("dispatch_build", 1, 10),
+            _worker("Run(failed$(BUILD_ROOT)/failed.o)", "CC", 2, 2.1),
+            _worker("Run(long$(BUILD_ROOT)/long.o)", "CC", 3, 9),
+            _failed_node("failed", 1),
         ],
         root_end_s=11,
         exit_code=1,
@@ -649,41 +761,15 @@ def test_failed_node_count_uses_unique_uids(tmp_path: Path) -> None:
         tmp_path,
         [],
         evlog_events=[
-            {
-                "namespace": "stages",
-                "event": "stage-finished",
-                "value": {
-                    "name": "dispatch_build",
-                    "tag": "dispatch_build",
-                    "time": [1, 10],
-                },
-            },
-            {
-                "namespace": "worker_threads",
-                "event": "node-finished",
-                "value": {
-                    "name": "FromCache(failed$(BUILD_ROOT)/cached.o)",
-                    "tag": "restore[CC]",
-                    "time": [2, 3],
-                },
-            },
-            {
-                "namespace": "worker_threads",
-                "event": "node-finished",
-                "value": {
-                    "name": "Run(failed$(BUILD_ROOT)/built.o)",
-                    "tag": "CC",
-                    "time": [3, 5],
-                },
-            },
-            {
-                "namespace": "devtools.ya.build.reports.failed_node_info",
-                "event": "node-failed",
-                "value": {
-                    "uid": "failed",
-                    "exit_code": 1,
-                },
-            },
+            _stage("dispatch_build", 1, 10),
+            _worker(
+                "FromCache(failed$(BUILD_ROOT)/cached.o)",
+                "restore[CC]",
+                2,
+                3,
+            ),
+            _worker("Run(failed$(BUILD_ROOT)/built.o)", "CC", 3, 5),
+            _failed_node("failed", 1),
         ],
         root_end_s=11,
         exit_code=1,
@@ -697,13 +783,103 @@ def test_failed_node_count_uses_unique_uids(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    "task_type",
-    ["TL", "TL-CACHED", "TS-DYN_UID_CACHE", "TM-CACHED-DYN_UID_CACHE"],
+    ("task_type", "base_type"),
+    [
+        ("TL", "TL"),
+        ("TL-CACHED", "TL"),
+        ("TS-DYN_UID_CACHE", "TS"),
+        ("TM-CACHED-DYN_UID_CACHE", "TM"),
+    ],
 )
 def test_all_yatool_test_types_are_recognized_on_critical_path(
     task_type: str,
+    base_type: str,
 ) -> None:
-    assert YaEvlog._is_test_critical_path_entry({"type": task_type})
+    entry = YaCriticalPathEntry.from_raw(3, {"type": task_type})
+
+    assert entry.index == 3
+    assert entry.raw_type == task_type
+    assert entry.base_type == base_type
+    assert entry.is_test
+
+
+def test_critical_path_entry_parses_timing_and_attributes() -> None:
+    entry = YaCriticalPathEntry.from_raw(
+        7,
+        {
+            "type": "CC-CACHED",
+            "text": "compile source.cpp",
+            "uid": "compile",
+            "elapsed": 1_500,
+            "start_ts": 2_000,
+            "end_ts": 3_500,
+        },
+    )
+
+    assert entry.base_type == "CC"
+    assert entry.text == "compile source.cpp"
+    assert entry.uid == "compile"
+    assert entry.elapsed_ms == 1_500
+    assert entry.start_ms == 2_000
+    assert entry.end_ms == 3_500
+    assert entry.interval == Interval(
+        Ns(2_000_000_000),
+        Ns(3_500_000_000),
+    )
+    assert entry.span_attributes(test=False) == {
+        "ya.build.critical_path": True,
+        "ya.build.critical_path.index": 7,
+        "ya.build.critical_path.reported_seconds": 1.5,
+    }
+
+
+def test_critical_path_entries_follow_mutable_statistics() -> None:
+    evlog = YaEvlog(
+        stages=[],
+        nodes=[],
+        statistics={"critical_path": [{"type": "CC"}]},
+    )
+
+    assert evlog.critical_path_entries[0].raw_type == "CC"
+
+    evlog.statistics["critical_path"] = [{"type": "LD"}]
+
+    assert evlog.critical_path_entries[0].raw_type == "LD"
+
+
+def test_test_critical_path_uid_matches_when_interval_is_malformed() -> None:
+    short = YaEvlogRecord(
+        name="Run(shared$(BUILD_ROOT)/suite/test-results/unit/short)",
+        tag="TM",
+        start_ns=Ns(1),
+        end_ns=Ns(2),
+    )
+    long = YaEvlogRecord(
+        name="Run(shared$(BUILD_ROOT)/suite/test-results/unit/long)",
+        tag="TM",
+        start_ns=Ns(3),
+        end_ns=Ns(6),
+    )
+    entry = YaCriticalPathEntry.from_raw(
+        0,
+        {
+            "type": "TM",
+            "uid": "shared",
+            "start_ts": 2,
+            "end_ts": 1,
+        },
+    )
+    evlog = YaEvlog(stages=[], nodes=[short, long])
+
+    assert entry.interval is None
+    assert (
+        evlog._critical_test_node(
+            entry,
+            [short, long],
+            {"shared": [short, long]},
+        )
+        is long
+    )
 
 
 def test_critical_path_keeps_all_entries_from_evlog(tmp_path: Path) -> None:
@@ -729,18 +905,7 @@ def test_critical_path_keeps_all_entries_from_evlog(tmp_path: Path) -> None:
     )
     _write_jsonl(
         evlog_path,
-        [
-            {
-                "namespace": "dump_debug",
-                "event": "log",
-                "value": {
-                    "key": "stats",
-                    "value": {
-                        "critical_path": critical_path,
-                    },
-                },
-            }
-        ],
+        [_statistics({"critical_path": critical_path})],
     )
 
     assert len(load_ya_evlog(evlog_path).statistics["critical_path"]) == 130
@@ -770,34 +935,14 @@ def test_critical_path_entry_after_128_is_rendered(tmp_path: Path) -> None:
         tmp_path,
         [],
         evlog_events=[
-            {
-                "namespace": "stages",
-                "event": "stage-finished",
-                "value": {
-                    "name": "dispatch_build",
-                    "tag": "dispatch_build",
-                    "time": [1, 5],
-                },
-            },
-            {
-                "namespace": "worker_threads",
-                "event": "node-finished",
-                "value": {
-                    "name": "Run(terminal-build$(BUILD_ROOT)/terminal.o)",
-                    "tag": "CC",
-                    "time": [2, 3],
-                },
-            },
-            {
-                "namespace": "dump_debug",
-                "event": "log",
-                "value": {
-                    "key": "stats",
-                    "value": {
-                        "critical_path": critical_path,
-                    },
-                },
-            },
+            _stage("dispatch_build", 1, 5),
+            _worker(
+                "Run(terminal-build$(BUILD_ROOT)/terminal.o)",
+                "CC",
+                2,
+                3,
+            ),
+            _statistics({"critical_path": critical_path}),
         ],
         root_end_s=6,
     )
@@ -814,65 +959,36 @@ def test_critical_path_preserves_indices_and_matches_duplicate_uids(
         tmp_path,
         [],
         evlog_events=[
-            {
-                "namespace": "stages",
-                "event": "stage-finished",
-                "value": {
-                    "name": "dispatch_build",
-                    "tag": "dispatch_build",
-                    "time": [0, 10],
-                },
-            },
-            {
-                "namespace": "worker_threads",
-                "event": "node-finished",
-                "value": {
-                    "name": "Run(shared$(BUILD_ROOT)/first.o)",
-                    "tag": "CC",
-                    "time": [1, 2],
-                },
-            },
-            {
-                "namespace": "worker_threads",
-                "event": "node-finished",
-                "value": {
-                    "name": "Run(shared$(BUILD_ROOT)/second.o)",
-                    "tag": "LD",
-                    "time": [3, 5],
-                },
-            },
-            {
-                "namespace": "dump_debug",
-                "event": "log",
-                "value": {
-                    "key": "stats",
-                    "value": {
-                        "critical_path": [
-                            {
-                                "type": "TM",
-                                "uid": "test",
-                                "elapsed": 1_000,
-                                "start_ts": 0,
-                                "end_ts": 1_000,
-                            },
-                            {
-                                "type": "CC",
-                                "uid": "shared",
-                                "elapsed": 1_000,
-                                "start_ts": 1_000,
-                                "end_ts": 2_000,
-                            },
-                            {
-                                "type": "LD",
-                                "uid": "shared",
-                                "elapsed": 2_000,
-                                "start_ts": 3_000,
-                                "end_ts": 5_000,
-                            },
-                        ]
-                    },
-                },
-            },
+            _stage("dispatch_build", 0, 10),
+            _worker("Run(shared$(BUILD_ROOT)/first.o)", "CC", 1, 2),
+            _worker("Run(shared$(BUILD_ROOT)/second.o)", "LD", 3, 5),
+            _statistics(
+                {
+                    "critical_path": [
+                        {
+                            "type": "TM",
+                            "uid": "test",
+                            "elapsed": 1_000,
+                            "start_ts": 0,
+                            "end_ts": 1_000,
+                        },
+                        {
+                            "type": "CC",
+                            "uid": "shared",
+                            "elapsed": 1_000,
+                            "start_ts": 1_000,
+                            "end_ts": 2_000,
+                        },
+                        {
+                            "type": "LD",
+                            "uid": "shared",
+                            "elapsed": 2_000,
+                            "start_ts": 3_000,
+                            "end_ts": 5_000,
+                        },
+                    ]
+                }
+            ),
         ],
         root_end_s=11,
     )
@@ -896,51 +1012,22 @@ def test_critical_path_node_is_protected_from_span_cap(
         tmp_path,
         [],
         evlog_events=[
-            {
-                "namespace": "stages",
-                "event": "stage-finished",
-                "value": {
-                    "name": "dispatch_build",
-                    "tag": "dispatch_build",
-                    "time": [0, 10],
-                },
-            },
-            {
-                "namespace": "worker_threads",
-                "event": "node-finished",
-                "value": {
-                    "name": "Run(critical$(BUILD_ROOT)/critical.o)",
-                    "tag": "CC",
-                    "time": [1, 1.1],
-                },
-            },
-            {
-                "namespace": "worker_threads",
-                "event": "node-finished",
-                "value": {
-                    "name": "Run(long$(BUILD_ROOT)/long.o)",
-                    "tag": "CC",
-                    "time": [2, 8],
-                },
-            },
-            {
-                "namespace": "dump_debug",
-                "event": "log",
-                "value": {
-                    "key": "stats",
-                    "value": {
-                        "critical_path": [
-                            {
-                                "type": "CC",
-                                "uid": "critical",
-                                "elapsed": 100,
-                                "start_ts": 1_000,
-                                "end_ts": 1_100,
-                            }
-                        ]
-                    },
-                },
-            },
+            _stage("dispatch_build", 0, 10),
+            _worker("Run(critical$(BUILD_ROOT)/critical.o)", "CC", 1, 1.1),
+            _worker("Run(long$(BUILD_ROOT)/long.o)", "CC", 2, 8),
+            _statistics(
+                {
+                    "critical_path": [
+                        {
+                            "type": "CC",
+                            "uid": "critical",
+                            "elapsed": 100,
+                            "start_ts": 1_000,
+                            "end_ts": 1_100,
+                        }
+                    ]
+                }
+            ),
         ],
         root_end_s=11,
     )
@@ -957,51 +1044,27 @@ def test_one_critical_entry_marks_only_one_matching_worker_operation(
         tmp_path,
         [],
         evlog_events=[
-            {
-                "namespace": "stages",
-                "event": "stage-finished",
-                "value": {
-                    "name": "dispatch_build",
-                    "tag": "dispatch_build",
-                    "time": [0, 10],
-                },
-            },
-            {
-                "namespace": "worker_threads",
-                "event": "node-finished",
-                "value": {
-                    "name": "FromCache(shared$(BUILD_ROOT)/cached.o)",
-                    "tag": "restore[CC]",
-                    "time": [1, 2],
-                },
-            },
-            {
-                "namespace": "worker_threads",
-                "event": "node-finished",
-                "value": {
-                    "name": "Run(shared$(BUILD_ROOT)/built.o)",
-                    "tag": "CC",
-                    "time": [3, 5],
-                },
-            },
-            {
-                "namespace": "dump_debug",
-                "event": "log",
-                "value": {
-                    "key": "stats",
-                    "value": {
-                        "critical_path": [
-                            {
-                                "type": "CC",
-                                "uid": "shared",
-                                "elapsed": 2_000,
-                                "start_ts": 3_000,
-                                "end_ts": 5_000,
-                            }
-                        ]
-                    },
-                },
-            },
+            _stage("dispatch_build", 0, 10),
+            _worker(
+                "FromCache(shared$(BUILD_ROOT)/cached.o)",
+                "restore[CC]",
+                1,
+                2,
+            ),
+            _worker("Run(shared$(BUILD_ROOT)/built.o)", "CC", 3, 5),
+            _statistics(
+                {
+                    "critical_path": [
+                        {
+                            "type": "CC",
+                            "uid": "shared",
+                            "elapsed": 2_000,
+                            "start_ts": 3_000,
+                            "end_ts": 5_000,
+                        }
+                    ]
+                }
+            ),
         ],
         root_end_s=11,
     )
@@ -1022,41 +1085,20 @@ def test_critical_entry_without_uid_matches_worker_by_time_and_type(
         tmp_path,
         [],
         evlog_events=[
-            {
-                "namespace": "stages",
-                "event": "stage-finished",
-                "value": {
-                    "name": "dispatch_build",
-                    "tag": "dispatch_build",
-                    "time": [0, 10],
-                },
-            },
-            {
-                "namespace": "worker_threads",
-                "event": "node-finished",
-                "value": {
-                    "name": "Run(worker$(BUILD_ROOT)/built.o)",
-                    "tag": "CC",
-                    "time": [3, 5],
-                },
-            },
-            {
-                "namespace": "dump_debug",
-                "event": "log",
-                "value": {
-                    "key": "stats",
-                    "value": {
-                        "critical_path": [
-                            {
-                                "type": "CC",
-                                "elapsed": 2_000,
-                                "start_ts": 3_000,
-                                "end_ts": 5_000,
-                            }
-                        ]
-                    },
-                },
-            },
+            _stage("dispatch_build", 0, 10),
+            _worker("Run(worker$(BUILD_ROOT)/built.o)", "CC", 3, 5),
+            _statistics(
+                {
+                    "critical_path": [
+                        {
+                            "type": "CC",
+                            "elapsed": 2_000,
+                            "start_ts": 3_000,
+                            "end_ts": 5_000,
+                        }
+                    ]
+                }
+            ),
         ],
         root_end_s=11,
     )
@@ -1070,49 +1112,31 @@ def test_build_node_span_limit_is_hard_for_critical_nodes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(ya_trace_module, "MAX_BUILD_NODE_SPANS", 1)
-    evlog_events = [
-        {
-            "namespace": "stages",
-            "event": "stage-finished",
-            "value": {
-                "name": "dispatch_build",
-                "tag": "dispatch_build",
-                "time": [0, 10],
-            },
-        }
-    ]
+    evlog_events = [_stage("dispatch_build", 0, 10)]
     for index in range(2):
         evlog_events.append(
-            {
-                "namespace": "worker_threads",
-                "event": "node-finished",
-                "value": {
-                    "name": f"Run(uid-{index}$(BUILD_ROOT)/{index}.o)",
-                    "tag": "CC",
-                    "time": [index + 1, index + 2],
-                },
-            }
+            _worker(
+                f"Run(uid-{index}$(BUILD_ROOT)/{index}.o)",
+                "CC",
+                index + 1,
+                index + 2,
+            )
         )
     evlog_events.append(
-        {
-            "namespace": "dump_debug",
-            "event": "log",
-            "value": {
-                "key": "stats",
-                "value": {
-                    "critical_path": [
-                        {
-                            "type": "CC",
-                            "uid": f"uid-{index}",
-                            "elapsed": 1_000,
-                            "start_ts": (index + 1) * 1_000,
-                            "end_ts": (index + 2) * 1_000,
-                        }
-                        for index in range(2)
-                    ]
-                },
-            },
-        }
+        _statistics(
+            {
+                "critical_path": [
+                    {
+                        "type": "CC",
+                        "uid": f"uid-{index}",
+                        "elapsed": 1_000,
+                        "start_ts": (index + 1) * 1_000,
+                        "end_ts": (index + 2) * 1_000,
+                    }
+                    for index in range(2)
+                ]
+            }
+        )
     )
 
     trace = _render_ya_trace(
@@ -1134,43 +1158,22 @@ def test_graph_statistics_are_attached_to_dispatch_not_build_envelope(
         tmp_path,
         [],
         evlog_events=[
-            {
-                "namespace": "stages",
-                "event": "stage-finished",
-                "value": {
-                    "name": "dispatch_build",
-                    "tag": "dispatch_build",
-                    "time": [1, 10],
-                },
-            },
-            {
-                "namespace": "worker_threads",
-                "event": "node-finished",
-                "value": {
-                    "name": "Run(build$(BUILD_ROOT)/build.o)",
-                    "tag": "CC",
-                    "time": [2, 5],
-                },
-            },
-            {
-                "namespace": "dump_debug",
-                "event": "log",
-                "value": {
-                    "key": "stats",
-                    "value": {
-                        "cache_hit": {
-                            "tests_tasks": 2,
-                            "ok_tasks": 3,
-                        },
-                        "execution_stages_msec": {
-                            "build_only": 3_000,
-                            "tests_only": 2_000,
-                            "tests_with_other": 1_000,
-                        },
-                        "task_execution_msec": 6_000,
+            _stage("dispatch_build", 1, 10),
+            _worker("Run(build$(BUILD_ROOT)/build.o)", "CC", 2, 5),
+            _statistics(
+                {
+                    "cache_hit": {
+                        "tests_tasks": 2,
+                        "ok_tasks": 3,
                     },
-                },
-            },
+                    "execution_stages_msec": {
+                        "build_only": 3_000,
+                        "tests_only": 2_000,
+                        "tests_with_other": 1_000,
+                    },
+                    "task_execution_msec": 6_000,
+                }
+            ),
         ],
         root_end_s=11,
     )
@@ -1193,6 +1196,175 @@ def test_graph_statistics_are_attached_to_dispatch_not_build_envelope(
     assert "ya.build.task.ok.count" not in dispatch_attributes
     assert "ya.build.task.test.count" not in build_attributes
     assert "ya.build.task.ok.count" not in build_attributes
+
+
+def test_build_statistics_and_test_critical_path_are_preserved(
+    tmp_path: Path,
+) -> None:
+    statistics = {
+        "cache_hit": {
+            "cache_hit": 75,
+            "run_tasks": 100,
+            "executed_tasks": 4,
+            "cached_tasks": 3,
+            "dyn_cached_tasks": 1,
+            "not_cached_tasks": 1,
+            "tests_tasks": 1,
+            "failed_tasks": 0,
+            "ok_tasks": 1,
+            "avoided_tasks": 96,
+        },
+        "dist_cache_stat": {
+            "get_count": 2,
+            "get_data_size": 1_024,
+            "put_count": 1,
+            "put_data_size": 512,
+        },
+        "execution_stages_msec": {"build_only": 3_500, "tests_only": 2_000},
+        "task_execution_msec": 5_500,
+        "graph_lang_usage": {"cpp": 1},
+        "critical_path": [
+            {
+                "type": "CC",
+                "elapsed": 4_000,
+                "start_ts": 13_000,
+                "end_ts": 17_000,
+                "text": "$(SOURCE_ROOT)/suite/main.cpp",
+                "uid": "compileuid",
+            },
+            {
+                "type": "TM",
+                "elapsed": 2_000,
+                "start_ts": 18_000,
+                "end_ts": 20_000,
+                "text": "suite/tests",
+                "uid": "testuid",
+            },
+        ],
+    }
+    evlog_events = [
+        _stage("build_graph_and_tests", 10, 12),
+        _stage("dispatch_build", 12, 30),
+        _worker(
+            "FromCache(cacheuid$(BUILD_ROOT)/library/cached.a)",
+            "restore[AR]",
+            12.5,
+            13,
+        ),
+        _worker(
+            "FromCache(loweruid$(BUILD_ROOT)/library/lower.a)",
+            "restore[ar]",
+            12.6,
+            12.9,
+        ),
+        _worker(
+            "Run(compileuid$(BUILD_ROOT)/suite/main.cpp.o)",
+            "CC",
+            13,
+            17,
+        ),
+        _worker("PutInCache(uid)", "put_in_cache[CC]", 16.9, 17),
+        _worker(
+            "Run(actual-test$(BUILD_ROOT)/suite/test-results/unittest/meta.json)",
+            "TM",
+            18,
+            20,
+        ),
+        _statistics(statistics),
+    ]
+    trace = _render_ya_trace(
+        tmp_path,
+        [
+            _subtest("critical", timestamp=19.5, duration=1),
+            _chunk(
+                0,
+                1,
+                timestamp=20,
+                metrics={
+                    "suite_start_timestamp": 18,
+                    "suite_finish_timestamp": 20,
+                },
+            ),
+        ],
+        evlog_events=evlog_events,
+        root_start_s=9,
+        root_end_s=31,
+    )
+
+    root = next(trace.spans("ya"))
+    phases = {
+        _attributes(span)["ya.stage.name"]: span for span in trace.spans("ya.phase")
+    }
+    build = next(trace.spans("ya.build"))
+    nodes = list(trace.spans("ya.build.node"))
+    chunk = next(trace.spans("ya.chunk"))
+    test = next(trace.spans("ya.test"))
+    dispatch_attributes = _attributes(phases["dispatch_build"])
+    build_attributes = _attributes(build)
+    root_attributes = _attributes(root)
+
+    assert set(phases) == {"build_graph_and_tests", "dispatch_build"}
+    assert build.parent_span_id == phases["dispatch_build"].span_id
+    assert chunk.parent_span_id == phases["dispatch_build"].span_id
+    assert span_duration_ns(build) == Ns.from_s(4.5)
+    assert build_attributes["ya.build.node.count"] == 4
+    assert build_attributes["ya.build.node.cache_store.count"] == 1
+    assert build_attributes["ya.build.first_test_node_offset_seconds"] == 5.5
+    assert build_attributes["ya.build.worker.tool.ar.cache_restore.count"] == 2
+    assert build_attributes["ya.build.worker.tool.cc.execute.count"] == 1
+    assert build_attributes["ya.build.critical_path.node.count"] == 1
+    assert build_attributes["ya.build.critical_path.work.seconds"] == 4
+    assert len(nodes) == 3
+
+    expected_dispatch = {
+        "ya.build.cache.considered_task.hit.ratio": 0.75,
+        "ya.build.cache.considered_task.hit.count": 3,
+        "ya.build.cache.considered_task.miss.count": 1,
+        "ya.build.task.avoided.ratio": 0.96,
+        "ya.build.task.reused_or_avoided.ratio": 0.99,
+        "ya.build.task.avoided.count": 96,
+        "ya.build.dist_cache.get.bytes": 1_024,
+        "ya.build.execution.stage.build_only.seconds": 3.5,
+        "ya.build.execution.total.seconds": 5.5,
+    }
+    assert {
+        key: dispatch_attributes[key] for key in expected_dispatch
+    } == expected_dispatch
+
+    cached = next(
+        node for node in nodes if _attributes(node)["ya.build.kind"] == "cache_restore"
+    )
+    compiled = next(
+        node for node in nodes if _attributes(node)["ya.build.kind"] == "execute"
+    )
+    assert _attributes(cached)["ya.build.cache.source"] == "local"
+    assert _attributes(cached)["ya.build.outputs"] == ["library/cached.a"]
+    assert _attributes(compiled)["ya.build.critical_path"] is True
+    assert _attributes(compiled)["ya.build.critical_path.index"] == 0
+    assert _attributes(compiled)["ya.build.critical_path.reported_seconds"] == 4
+    assert root_attributes["ya.build.node.count"] == 4
+    assert root_attributes["ya.build.node.span_count"] == 3
+    assert root_attributes["ya.test.critical_path.entry.count"] == 1
+    assert root_attributes["ya.test.critical_path.chunk.count"] == 1
+    assert root_attributes["ya.test.critical_path.span.count"] == 1
+    assert _attributes(chunk)["ya.test.critical_path"] is True
+    assert _attributes(chunk)["ya.test.critical_path.granularity"] == "test-chunk"
+    assert _attributes(test)["ya.test.critical_path"] is True
+    assert _attributes(test)["ya.test.critical_path.inferred"] is True
+    assert _attributes(test)["ya.test.critical_path.reported_seconds"] == 2
+
+    build_only = build_ya_trace(
+        [],
+        root_start_ns=Ns.from_s(9),
+        root_end_ns=Ns.from_s(31),
+        exit_code=0,
+        resource=ResourceAttributes(),
+        evlog=load_ya_evlog(tmp_path / "ya_evlog.jsonl"),
+        operation="build",
+    )
+    assert build_only[0].name == "ya make build"
+    assert not any(build_only.spans("ya.chunk"))
+    assert any(build_only.spans("ya.build"))
 
 
 @pytest.mark.parametrize(

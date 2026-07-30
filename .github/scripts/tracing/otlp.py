@@ -43,11 +43,12 @@ class Ns(int):
     def _from_scaled(cls, value: Any, multiplier: int) -> Ns | None:
         try:
             number = float(value)
-        except (TypeError, ValueError):
+            scaled = number * multiplier
+        except (TypeError, ValueError, OverflowError):
             return None
-        if not math.isfinite(number) or number < 0:
+        if not math.isfinite(scaled) or scaled < 0:
             return None
-        return cls(number * multiplier)
+        return cls(scaled)
 
     @classmethod
     def from_s(cls, value: Any) -> Ns | None:
@@ -75,21 +76,22 @@ MILLISECOND = Ns(1_000_000)
 SECOND = Ns(1_000_000_000)
 
 
-@dataclass(frozen=True, slots=True, init=False)
+@dataclass(frozen=True, slots=True)
 class Interval:
     start: Ns
     end: Ns
 
-    def __init__(self, start: Ns | int, end: Ns | int) -> None:
-        start_ns = Ns(start)
-        end_ns = Ns(end)
-        if end_ns < start_ns:
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "start", Ns(self.start))
+        object.__setattr__(self, "end", Ns(self.end))
+        if self.end < self.start:
             raise ValueError("interval end precedes start")
-        object.__setattr__(self, "start", start_ns)
-        object.__setattr__(self, "end", end_ns)
 
     def __len__(self) -> int:
         return self.end - self.start
+
+    def clamp(self, value: Ns) -> Ns:
+        return Ns(max(self.start, min(value, self.end)))
 
     def overlap(self, other: Interval) -> Ns:
         return Ns(max(0, min(self.end, other.end) - max(self.start, other.start)))
