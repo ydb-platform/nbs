@@ -16,29 +16,41 @@ TMixedBlocksFilter::TMixedBlocksFilter(
     : TabletId(tabletId)
     , BlocksPerRange(blocksPerRange)
     , BlockCount(blockCount)
-    , Blocks(blockCount)
-    , CommitIdsPerRange(CeilDiv(blockCount, blocksPerRange), std::nullopt)
+    , BlocksFilter(blockCount)
+    , CompactionRangeCommitIds(
+          CeilDiv(blockCount, blocksPerRange),
+          std::nullopt)
 {}
 
 bool TMixedBlocksFilter::MayHaveBlocksInMixedIndex(
-    TBlockRange32 range,
+    TBlockRange32 blockRange,
     ui64 commitId) const
 {
     STORAGE_VERIFY(
-        range.End < BlockCount,
+        blockRange.End < BlockCount,
         TWellKnownEntityTypes::TABLET,
         TabletId);
 
-    for (size_t blockIndex = range.Start; blockIndex <= range.End; ++blockIndex)
+    for (size_t blockIndex = blockRange.Start; blockIndex <= blockRange.End;
+         ++blockIndex)
     {
-        const size_t rangeIndex = blockIndex / BlocksPerRange;
-        const bool hasBlocksInMixedIndex = Blocks.Test(blockIndex);
-        const auto rangeCommitId = CommitIdsPerRange[rangeIndex];
-        if (!rangeCommitId) {
+        const size_t compactionRangeIndex = blockIndex / BlocksPerRange;
+        STORAGE_VERIFY(
+            compactionRangeIndex < CompactionRangeCommitIds.size(),
+            TWellKnownEntityTypes::TABLET,
+            TabletId);
+
+        const bool hasBlocksInMixedIndex = BlocksFilter.Test(blockIndex);
+        const auto compactionRangeCommitId =
+            CompactionRangeCommitIds[compactionRangeIndex];
+        if (!compactionRangeCommitId) {
             return true;
         }
 
-        if (hasBlocksInMixedIndex || *rangeCommitId > commitId) {
+        // We don't know anything about the mixed blocks with commitId older
+        // than the compaction range commitId. So in this case we assume that
+        // the mixed blocks are present.
+        if (hasBlocksInMixedIndex || *compactionRangeCommitId > commitId) {
             return true;
         }
     }
@@ -47,24 +59,32 @@ bool TMixedBlocksFilter::MayHaveBlocksInMixedIndex(
 }
 
 void TMixedBlocksFilter::BlocksAddedToMixedIndex(
-    ui32 blockIndex,
-    ui32 blockCount,
+    TBlockRange32 blockRange,
     ui64 commitId)
 {
     STORAGE_VERIFY(
-        static_cast<ui64>(blockIndex) + blockCount <= BlockCount,
+        blockRange.End < BlockCount,
         TWellKnownEntityTypes::TABLET,
         TabletId);
 
-    const ui64 endBlockIndex = static_cast<ui64>(blockIndex) + blockCount;
-    for (ui64 rangeStart = blockIndex; rangeStart < endBlockIndex;) {
-        const ui32 rangeIndex = rangeStart / BlocksPerRange;
+    const ui64 endBlockIndex = static_cast<ui64>(blockRange.End) + 1;
+    for (ui64 rangeStart = blockRange.Start; rangeStart < endBlockIndex;) {
+        const ui32 compactionRangeIndex = rangeStart / BlocksPerRange;
         const ui64 rangeEnd =
-            Min(endBlockIndex, (rangeIndex + 1) * BlocksPerRange);
-        const auto rangeCommitId = CommitIdsPerRange[rangeIndex];
+            Min(endBlockIndex, (compactionRangeIndex + 1) * BlocksPerRange);
+        STORAGE_VERIFY(
+            compactionRangeIndex < CompactionRangeCommitIds.size(),
+            TWellKnownEntityTypes::TABLET,
+            TabletId);
 
-        if (!rangeCommitId || *rangeCommitId <= commitId) {
-            Blocks.Set(rangeStart, rangeEnd);
+        const auto compactionRangeCommitId =
+            CompactionRangeCommitIds[compactionRangeIndex];
+
+        // Blocks older than the compaction baseline are not visible at or
+        // after that baseline. Tracking them would only introduce false
+        // positives in MayHaveBlocksInMixedIndex.
+        if (!compactionRangeCommitId || *compactionRangeCommitId <= commitId) {
+            BlocksFilter.Set(rangeStart, rangeEnd);
         }
 
         rangeStart = rangeEnd;
@@ -76,14 +96,14 @@ void TMixedBlocksFilter::BlocksAddedToMixedIndex(
             break;
         }
 
-        for (ui64 rangeStart = blockIndex; rangeStart < endBlockIndex;) {
-            const ui32 rangeIndex = rangeStart / BlocksPerRange;
+        for (ui64 rangeStart = blockRange.Start; rangeStart < endBlockIndex;) {
+            const ui32 compactionRangeIndex = rangeStart / BlocksPerRange;
             const ui64 rangeEnd =
-                Min(endBlockIndex, (rangeIndex + 1) * BlocksPerRange);
+                Min(endBlockIndex, (compactionRangeIndex + 1) * BlocksPerRange);
             const bool hasRangeIndex = BinarySearch(
                 compaction.RangeIndices.begin(),
                 compaction.RangeIndices.end(),
-                rangeIndex);
+                compactionRangeIndex);
 
             if (hasRangeIndex) {
                 for (ui64 i = rangeStart; i < rangeEnd; ++i) {
@@ -107,9 +127,9 @@ void TMixedBlocksFilter::CompactionStarted(
         TabletId);
 
     Sort(rangeIndices);
-    for (ui32 rangeIndex: rangeIndices) {
+    for (ui32 compactionRangeIndex: rangeIndices) {
         STORAGE_VERIFY(
-            rangeIndex < CommitIdsPerRange.size(),
+            compactionRangeIndex < CompactionRangeCommitIds.size(),
             TWellKnownEntityTypes::TABLET,
             TabletId);
     }
@@ -128,15 +148,23 @@ void TMixedBlocksFilter::CompactionFinished()
         TabletId);
 
     auto& compaction = Compactions.front();
-    for (ui32 rangeIndex: compaction.RangeIndices) {
-        CommitIdsPerRange[rangeIndex] = compaction.CommitId;
-        Blocks.Unset(
-            rangeIndex * BlocksPerRange,
-            Min((rangeIndex + 1) * BlocksPerRange, BlockCount));
+    for (ui32 compactionRangeIndex: compaction.RangeIndices) {
+        STORAGE_VERIFY(
+            compactionRangeIndex < CompactionRangeCommitIds.size(),
+            TWellKnownEntityTypes::TABLET,
+            TabletId);
+
+        CompactionRangeCommitIds[compactionRangeIndex] = compaction.CommitId;
+        // All mixed blocks in the compaction range should be compacted. So we
+        // can clear its filter and restore only blocks added at or after the
+        // compaction commit ID.
+        BlocksFilter.Unset(
+            compactionRangeIndex * BlocksPerRange,
+            Min((compactionRangeIndex + 1) * BlocksPerRange, BlockCount));
     }
 
     for (ui32 blockIndex: compaction.MixedBlocksAddedDuringCompaction) {
-        Blocks.Set(blockIndex, blockIndex + 1);
+        BlocksFilter.Set(blockIndex, blockIndex + 1);
     }
 
     Compactions.pop_front();
@@ -154,8 +182,8 @@ void TMixedBlocksFilter::CompactionFailed()
 
 ui64 TMixedBlocksFilter::GetMemoryUsage() const
 {
-    return Blocks.MemSize() +
-           (CommitIdsPerRange.capacity() * sizeof(std::optional<ui64>));
+    return BlocksFilter.MemSize() +
+           (CompactionRangeCommitIds.capacity() * sizeof(std::optional<ui64>));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

@@ -47,16 +47,16 @@ private:
     // Number of logical blocks in one compaction range.
     const ui64 BlocksPerRange = 0;
 
-    // Number of logical blocks tracked by this filter.
+    // Number of logical blocks in the partition tracked by this filter.
     const ui64 BlockCount = 0;
 
     // A set bit means that the block may have a mixed-index entry at or after
     // the baseline commit ID of its range.
-    TCompressedBitmap Blocks;
+    TCompressedBitmap BlocksFilter;
 
     // Baseline commit ID for every range. An empty value means that the range
     // has not been initialized and must be treated conservatively.
-    TVector<std::optional<ui64>> CommitIdsPerRange;
+    TVector<std::optional<ui64>> CompactionRangeCommitIds;
 
     // In-flight compactions, ordered by strictly increasing commit ID.
     std::deque<TCompaction> Compactions;
@@ -88,12 +88,10 @@ public:
     /**
      * Records consecutive blocks added to the mixed index.
      *
-     * @param blockIndex - First added block.
-     * @param blockCount - Number of added blocks.
+     * @param blockRange - Closed logical block range that was added.
      * @param commitId - Commit ID at which the blocks were added.
      */
-    void
-    BlocksAddedToMixedIndex(ui32 blockIndex, ui32 blockCount, ui64 commitId);
+    void BlocksAddedToMixedIndex(TBlockRange32 blockRange, ui64 commitId);
 
     /**
      * Registers an in-flight compaction. Compactions must be registered in
