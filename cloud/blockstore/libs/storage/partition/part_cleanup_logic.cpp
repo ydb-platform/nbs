@@ -287,6 +287,44 @@ bool PrepareCleanupTransaction(
     return ready;
 }
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool ShouldSkipCleanupDueToCheckpoint(
+    const TCleanupQueueItem& item,
+    const NProto::TBlobMeta& blobMeta,
+    ui64 minCheckpointCommitId,
+    ui64 maxCheckpointCommitId)
+{
+    if (item.CommitId < minCheckpointCommitId) {
+        // Blob was added to the cleanup queue before any checkpoint.
+        return false;
+    }
+
+    ui64 minCommitIdInBlob = Max<ui64>();
+    if (blobMeta.HasMixedBlocks()) {
+        const auto& mixedBlocks = blobMeta.GetMixedBlocks();
+        if (mixedBlocks.CommitIdsSize() == 0) {
+            // Every block shares the same commitId.
+            minCommitIdInBlob = item.BlobId.CommitId();
+        } else {
+            // Each block has its own commitId.
+            for (ui64 commitId: mixedBlocks.GetCommitIds()) {
+                minCommitIdInBlob = Min(minCommitIdInBlob, commitId);
+            }
+        }
+    } else if (blobMeta.HasMergedBlocks()) {
+        minCommitIdInBlob = item.BlobId.CommitId();
+    }
+
+    return minCommitIdInBlob <= maxCheckpointCommitId;
+}
+
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
 void ExecuteCleanupTransaction(
     const NActors::TActorSystem* actorSystem,
     const TLogTitle& logTitle,
@@ -300,10 +338,33 @@ void ExecuteCleanupTransaction(
     size_t mixedBlobsCount = 0;
     size_t mergedBlobsCount = 0;
 
+    TVector<TCleanupQueueItem> deletedItems;
+    deletedItems.reserve(args.CleanupQueue.size());
+
     Y_ABORT_UNLESS(args.CleanupQueue.size() == args.BlobsMeta.size());
     for (size_t i = 0; i < args.CleanupQueue.size(); ++i) {
         const auto& item = args.CleanupQueue[i];
         const auto& blobMeta = args.BlobsMeta[i];
+
+        if (args.WithCheckpoint &&
+            ShouldSkipCleanupDueToCheckpoint(
+                item,
+                blobMeta,
+                args.MinCheckpointCommitId,
+                args.MaxCheckpointCommitId))
+        {
+            LOG_DEBUG(
+                *actorSystem,
+                TBlockStoreComponents::PARTITION,
+                "%s ExecuteCleanupTransaction: skipping blob=%s: deletionCommitId=%lu "
+                "minCheckpointCommitId=%lu maxCheckpointCommitId=%lu",
+                logTitle.GetWithTime().c_str(),
+                ToString(MakeBlobId(tabletId, item.BlobId)).Quote().c_str(),
+                item.CommitId,
+                args.MinCheckpointCommitId,
+                args.MaxCheckpointCommitId);
+            continue;
+        }
 
         if (blobMeta.HasMixedBlocks()) {
             const auto& mixedBlocks = blobMeta.GetMixedBlocks();
@@ -380,6 +441,14 @@ void ExecuteCleanupTransaction(
         if (!IsDeletionMarker(item.BlobId)) {
             db.WriteGarbageBlob(item.BlobId);
         }
+
+        deletedItems.push_back(item);
+    }
+
+    if (args.WithCheckpoint) {
+        args.CleanupQueue = std::move(deletedItems);
+    } else {
+        Y_DEBUG_ABORT_UNLESS(deletedItems.size() == args.CleanupQueue.size());
     }
 
     // Updating counters

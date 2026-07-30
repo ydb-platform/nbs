@@ -642,6 +642,10 @@ struct TTxPartition
 
         TVector<TCleanupQueueItem> CleanupQueue;
 
+        const bool WithCheckpoint;
+        const ui64 MinCheckpointCommitId;
+        const ui64 MaxCheckpointCommitId;
+
         TVector<NProto::TBlobMeta> BlobsMeta;
 
         ui64 ReadBlobMetasCount = 0;
@@ -651,12 +655,18 @@ struct TTxPartition
                 ui64 commitId,
                 bool useRecreatedBlobMeta,
                 bool verifyRecreatedBlobMetasOnCleanup,
-                TVector<TCleanupQueueItem> cleanupQueue)
+                TVector<TCleanupQueueItem> cleanupQueue,
+                bool withCheckpoint = false,
+                ui64 minCheckpointCommitId = InvalidCommitId,
+                ui64 maxCheckpointCommitId = InvalidCommitId)
             : RequestInfo(std::move(requestInfo))
             , CommitId(commitId)
             , UseRecreatedBlobMeta(useRecreatedBlobMeta)
             , VerifyRecreatedBlobMetasOnCleanup(verifyRecreatedBlobMetasOnCleanup)
             , CleanupQueue(std::move(cleanupQueue))
+            , WithCheckpoint(withCheckpoint)
+            , MinCheckpointCommitId(minCheckpointCommitId)
+            , MaxCheckpointCommitId(maxCheckpointCommitId)
         {}
 
         void Clear()
