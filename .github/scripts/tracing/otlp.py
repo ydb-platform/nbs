@@ -7,6 +7,7 @@ import json
 import math
 import urllib.parse
 from collections.abc import Iterable, Iterator, Mapping, Sequence
+from dataclasses import dataclass
 from typing import Any
 
 from opentelemetry.proto_json.common.v1.common import (
@@ -50,7 +51,7 @@ class Ns(int):
 
     @classmethod
     def from_s(cls, value: Any) -> Ns | None:
-        return cls._from_scaled(value, 1_000_000_000)
+        return cls._from_scaled(value, SECOND)
 
     @classmethod
     def from_s_or_zero(cls, value: Any) -> Ns:
@@ -58,7 +59,48 @@ class Ns(int):
 
     @classmethod
     def from_ms(cls, value: Any) -> Ns | None:
-        return cls._from_scaled(value, 1_000_000)
+        return cls._from_scaled(value, MILLISECOND)
+
+    def to_s(self) -> float:
+        return self / SECOND
+
+    def to_ms(self) -> float:
+        return self / MILLISECOND
+
+    def is_second_aligned(self) -> bool:
+        return self % SECOND == 0
+
+
+MILLISECOND = Ns(1_000_000)
+SECOND = Ns(1_000_000_000)
+
+
+@dataclass(frozen=True, slots=True, init=False)
+class Interval:
+    start: Ns
+    end: Ns
+
+    def __init__(self, start: Ns | int, end: Ns | int) -> None:
+        start_ns = Ns(start)
+        end_ns = Ns(end)
+        if end_ns < start_ns:
+            raise ValueError("interval end precedes start")
+        object.__setattr__(self, "start", start_ns)
+        object.__setattr__(self, "end", end_ns)
+
+    def __len__(self) -> int:
+        return self.end - self.start
+
+    def overlap(self, other: Interval) -> Ns:
+        return Ns(max(0, min(self.end, other.end) - max(self.start, other.start)))
+
+    def boundary_distance(self, other: Interval) -> Ns:
+        return Ns(abs(self.start - other.start) + abs(self.end - other.end))
+
+    def intersection(self, other: Interval) -> Interval | None:
+        start = max(self.start, other.start)
+        end = min(self.end, other.end)
+        return Interval(start, end) if start < end else None
 
 
 def _clean_scalar(value: Any) -> str | bool | int | float:

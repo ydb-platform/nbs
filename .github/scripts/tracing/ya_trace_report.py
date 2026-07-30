@@ -159,7 +159,7 @@ def main() -> None:
     # failed suites. Exclude trace files left by earlier attempts so they are
     # not reported as work performed by the current retry. Keep a small margin
     # for filesystem timestamp granularity.
-    modified_since = args.attempt_start_ns / 1_000_000_000 - 5
+    modified_since = args.attempt_start_ns.to_s() - 5
     trace_inputs = YaTraceInputs.discover(
         args.ya_out,
         evlog_path=args.evlog,

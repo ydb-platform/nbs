@@ -3,13 +3,16 @@ from __future__ import annotations
 import pytest
 
 from scripts.tracing.otlp import (
+    Interval,
     ResourceAttributes,
     Span,
     Trace,
     decode_attributes,
     make_event,
     make_span,
+    MILLISECOND,
     Ns,
+    SECOND,
     span_duration_ns,
     stable_span_id,
     stable_trace_id,
@@ -18,6 +21,10 @@ from scripts.tracing.otlp import (
 
 
 def test_ns_owns_unit_conversion_and_validation() -> None:
+    assert isinstance(MILLISECOND, Ns)
+    assert isinstance(SECOND, Ns)
+    assert MILLISECOND == 1_000_000
+    assert SECOND == 1_000_000_000
     value = Ns.from_s(1.5)
     assert isinstance(value, Ns)
     assert value == 1_500_000_000
@@ -27,8 +34,27 @@ def test_ns_owns_unit_conversion_and_validation() -> None:
     assert Ns.from_s_or_zero("invalid") == 0
     assert Ns.from_ms(1.5) == 1_500_000
     assert Ns.from_ms(-1) is None
+    assert Ns(1_500_000_000).to_s() == 1.5
+    assert Ns(1_500_000).to_ms() == 1.5
+    assert Ns(2_000_000_000).is_second_aligned()
+    assert not Ns(2_000_000_001).is_second_aligned()
     with pytest.raises(ValueError, match="non-negative"):
         Ns(-1)
+
+
+def test_interval_owns_duration_overlap_and_intersection() -> None:
+    interval = Interval(Ns(1_000), Ns(5_000))
+    overlapping = Interval(Ns(3_000), Ns(7_000))
+    disjoint = Interval(Ns(8_000), Ns(9_000))
+
+    assert len(interval) == 4_000
+    assert interval.overlap(overlapping) == Ns(2_000)
+    assert interval.overlap(disjoint) == Ns(0)
+    assert interval.boundary_distance(overlapping) == Ns(4_000)
+    assert interval.intersection(overlapping) == Interval(Ns(3_000), Ns(5_000))
+    assert interval.intersection(disjoint) is None
+    with pytest.raises(ValueError, match="end precedes start"):
+        Interval(Ns(2_000), Ns(1_000))
 
 
 def test_official_span_uses_byte_ids_and_nanosecond_values() -> None:

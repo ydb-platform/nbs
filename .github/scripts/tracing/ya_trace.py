@@ -14,12 +14,14 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
 from .otlp import (
+    Interval,
     ResourceAttributes,
     Span,
     Trace,
     decode_attributes,
     make_span,
     Ns,
+    SECOND,
     set_span_status,
     span_status_code,
     stable_span_id,
@@ -405,16 +407,16 @@ class YaTraceFile:
                 start_ns is not None
                 and end_ns is not None
                 and wall_time_ns
-                and start_ns % 1_000_000_000 == 0
-                and end_ns % 1_000_000_000 == 0
+                and start_ns.is_second_aligned()
+                and end_ns.is_second_aligned()
                 and chunk_event is not None
                 and chunk_event.timestamp_ns is not None
             ):
                 precise_end_ns = chunk_event.timestamp_ns
                 earliest_end_ns = max(end_ns, start_ns + wall_time_ns)
                 latest_end_ns = min(
-                    end_ns + 1_000_000_000,
-                    start_ns + 1_000_000_000 + wall_time_ns,
+                    end_ns + SECOND,
+                    start_ns + SECOND + wall_time_ns,
                 )
                 if earliest_end_ns < latest_end_ns:
                     if earliest_end_ns <= precise_end_ns < latest_end_ns:
@@ -920,38 +922,41 @@ class YaEvlogRecord:
         *,
         thread_name: str = "",
     ) -> YaEvlogRecord | None:
-        time_range = cls._time_range(value.get("time"))
-        if time_range is None:
+        interval = cls._time_range(value.get("time"))
+        if interval is None:
             return None
         return cls(
             name=str(value.get("name", "unknown")),
             tag=str(value.get("tag", "")),
-            start_ns=time_range[0],
-            end_ns=time_range[1],
+            start_ns=interval.start,
+            end_ns=interval.end,
             thread_name=thread_name,
             node_uid=str(value.get("uid") or ""),
         )
 
     @staticmethod
-    def _time_range(value: Any) -> tuple[Ns, Ns] | None:
+    def _time_range(value: Any) -> Interval | None:
         if not isinstance(value, list) or len(value) != 2:
             return None
         start_ns = Ns.from_s(value[0])
         end_ns = Ns.from_s(value[1])
         if start_ns is None or end_ns is None or end_ns < start_ns:
             return None
-        return start_ns, end_ns
+        return Interval(start_ns, end_ns)
+
+    @property
+    def interval(self) -> Interval:
+        return Interval(self.start_ns, self.end_ns)
 
     def clipped(self, start_ns: Ns, end_ns: Ns) -> YaEvlogRecord | None:
-        clipped_start = max(start_ns, self.start_ns)
-        clipped_end = min(end_ns, self.end_ns)
-        if clipped_end <= clipped_start:
+        clipped = self.interval.intersection(Interval(start_ns, end_ns))
+        if clipped is None:
             return None
         return YaEvlogRecord(
             name=self.name,
             tag=self.tag,
-            start_ns=Ns(clipped_start),
-            end_ns=Ns(clipped_end),
+            start_ns=clipped.start,
+            end_ns=clipped.end,
             thread_name=self.thread_name,
             node_uid=self.node_uid,
         )
@@ -1096,18 +1101,6 @@ class YaEvlog:
         return task_type in {"TA", "TL", "TM", "TS"} or "/test-results/" in text
 
     @staticmethod
-    def _overlap_ns(
-        left_start_ns: int,
-        left_end_ns: int,
-        right_start_ns: int,
-        right_end_ns: int,
-    ) -> int:
-        return max(
-            0,
-            min(left_end_ns, right_end_ns) - max(left_start_ns, right_start_ns),
-        )
-
-    @staticmethod
     def _base_task_type(value: Any) -> str:
         return re.sub(
             r"(?:(?:-CACHED|-DYN_UID_CACHE))+$",
@@ -1125,19 +1118,15 @@ class YaEvlog:
         end_ns = Ns.from_ms(entry.get("end_ts"))
         if start_ns is None or end_ns is None or end_ns < start_ns:
             return None
-        overlap_ns = self._overlap_ns(
-            start_ns,
-            end_ns,
-            record.start_ns,
-            record.end_ns,
-        )
-        distance_ns = abs(start_ns - record.start_ns) + abs(end_ns - record.end_ns)
+        interval = Interval(start_ns, end_ns)
+        overlap_ns = interval.overlap(record.interval)
+        distance_ns = interval.boundary_distance(record.interval)
         entry_type = self._base_task_type(entry.get("type", ""))
         return (
             int(entry_type in {tool, record.tag}),
             overlap_ns,
             -distance_ns,
-            record.end_ns - record.start_ns,
+            len(record.interval),
         )
 
     def _match_build_critical_path(
@@ -1192,8 +1181,7 @@ class YaEvlog:
     def _critical_test_node(
         self,
         entry: Mapping[str, Any],
-        start_ns: Ns | None,
-        end_ns: Ns | None,
+        interval: Interval | None,
         test_nodes: Sequence[YaEvlogRecord],
         test_nodes_by_uid: Mapping[str, Sequence[YaEvlogRecord]],
     ) -> YaEvlogRecord | None:
@@ -1201,37 +1189,22 @@ class YaEvlog:
         if uid:
             matching_uid = test_nodes_by_uid.get(uid, ())
             if matching_uid:
-                if start_ns is not None and end_ns is not None:
+                if interval is not None:
                     return max(
                         matching_uid,
                         key=lambda record: (
-                            self._overlap_ns(
-                                start_ns,
-                                end_ns,
-                                record.start_ns,
-                                record.end_ns,
-                            ),
-                            -(
-                                abs(start_ns - record.start_ns)
-                                + abs(end_ns - record.end_ns)
-                            ),
+                            interval.overlap(record.interval),
+                            -interval.boundary_distance(record.interval),
                         ),
                     )
                 return max(
                     matching_uid,
-                    key=lambda record: record.end_ns - record.start_ns,
+                    key=lambda record: len(record.interval),
                 )
-        if start_ns is None or end_ns is None:
+        if interval is None:
             return None
         overlapping = [
-            record
-            for record in test_nodes
-            if self._overlap_ns(
-                start_ns,
-                end_ns,
-                record.start_ns,
-                record.end_ns,
-            )
+            record for record in test_nodes if interval.overlap(record.interval)
         ]
         if not overlapping:
             return None
@@ -1243,12 +1216,7 @@ class YaEvlog:
                     record.test_result_identity
                     and record.test_result_identity[0] in text
                 ),
-                self._overlap_ns(
-                    start_ns,
-                    end_ns,
-                    record.start_ns,
-                    record.end_ns,
-                ),
+                interval.overlap(record.interval),
             ),
         )
 
@@ -1313,20 +1281,20 @@ class YaEvlog:
         for index, entry in critical_entries:
             start_ns = Ns.from_ms(entry.get("start_ts"))
             end_ns = Ns.from_ms(entry.get("end_ts"))
-            if start_ns is not None and end_ns is not None and end_ns < start_ns:
-                start_ns = None
-                end_ns = None
+            interval = (
+                Interval(start_ns, end_ns)
+                if start_ns is not None and end_ns is not None and end_ns >= start_ns
+                else None
+            )
             node = self._critical_test_node(
                 entry,
-                start_ns,
-                end_ns,
+                interval,
                 test_nodes,
                 test_nodes_by_uid,
             )
             if node is not None:
-                start_ns = node.start_ns
-                end_ns = node.end_ns
-            if start_ns is None or end_ns is None:
+                interval = node.interval
+            if interval is None:
                 continue
 
             identity = node.test_result_identity if node is not None else None
@@ -1340,11 +1308,11 @@ class YaEvlog:
             candidates = [
                 item
                 for item in candidate_pool
-                if self._overlap_ns(
-                    start_ns,
-                    end_ns,
-                    Ns(item[0].start_time_unix_nano or 0),
-                    Ns(item[0].end_time_unix_nano or 0),
+                if interval.overlap(
+                    Interval(
+                        Ns(item[0].start_time_unix_nano or 0),
+                        Ns(item[0].end_time_unix_nano or 0),
+                    )
                 )
             ]
             if not candidates:
@@ -1356,11 +1324,11 @@ class YaEvlog:
                 key=lambda item: (
                     bool(item[1].get("test.suite"))
                     and str(item[1]["test.suite"]) in text,
-                    self._overlap_ns(
-                        start_ns,
-                        end_ns,
-                        Ns(item[0].start_time_unix_nano or 0),
-                        Ns(item[0].end_time_unix_nano or 0),
+                    interval.overlap(
+                        Interval(
+                            Ns(item[0].start_time_unix_nano or 0),
+                            Ns(item[0].end_time_unix_nano or 0),
+                        )
                     ),
                 ),
             )
@@ -1611,9 +1579,7 @@ class YaEvlog:
                 build_records.append((clipped, kind, tool))
         metadata["ya.build.node.count"] = len(build_records)
         counts = Counter(kind for _, kind, _ in build_records)
-        cumulative_ns = sum(
-            record.end_ns - record.start_ns for record, _, _ in build_records
-        )
+        cumulative_ns = Ns(sum(len(record.interval) for record, _, _ in build_records))
         build_span_id = stable_span_id(
             trace_id,
             "ya.build",
@@ -1623,14 +1589,14 @@ class YaEvlog:
         attributes: dict[str, Any] = {
             "ya.build.wall_time.kind": "worker-node-execution-envelope",
             "ya.build.node.count": len(build_records),
-            "ya.build.cumulative_node_seconds": (cumulative_ns / 1_000_000_000),
+            "ya.build.cumulative_node_seconds": cumulative_ns.to_s(),
         }
         for kind, count in sorted(counts.items()):
             attributes[f"ya.build.node.{kind}.count"] = count
         if test_starts:
-            attributes["ya.build.first_test_node_offset_seconds"] = (
-                max(0, min(test_starts) - build_start_ns) / 1_000_000_000
-            )
+            attributes["ya.build.first_test_node_offset_seconds"] = Ns(
+                max(0, min(test_starts) - build_start_ns)
+            ).to_s()
         statistics_attributes, critical_entries = self.build_statistics_attributes(
             build_records
         )
@@ -1655,7 +1621,7 @@ class YaEvlog:
                 ),
                 key=lambda index: (
                     build_records[index][1] == "execute",
-                    build_records[index][0].end_ns - build_records[index][0].start_ns,
+                    len(build_records[index][0].interval),
                     build_records[index][0].end_ns,
                 ),
             )
@@ -1703,7 +1669,7 @@ class YaEvlog:
                 selected_protected
                 + sorted(
                     other_candidates,
-                    key=lambda item: item[1].end_ns - item[1].start_ns,
+                    key=lambda item: len(item[1].interval),
                     reverse=True,
                 )[:remaining]
             )

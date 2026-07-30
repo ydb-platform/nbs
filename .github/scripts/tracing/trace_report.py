@@ -112,7 +112,7 @@ def read_otlp_jsonl(
 
 
 def _format_duration(duration_ns: Ns) -> str:
-    duration = duration_ns / 1_000_000_000
+    duration = duration_ns.to_s()
     if duration < 0.001:
         return f"{duration * 1_000_000:.0f} µs"
     if duration < 1:
