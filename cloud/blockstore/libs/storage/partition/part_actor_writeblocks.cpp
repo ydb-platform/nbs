@@ -416,6 +416,16 @@ void TPartitionActor::HandleWriteBlocksCompletedImpl(
             TabletID());
         // commit & garbage queue barriers will be released when confirmed
         // blobs are added or when obsolete blobs are deleted
+    } else if (writeBlocksCompleted.IsFreshBlocksRequest) {
+        LOG_TRACE(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s Releasing commit queue barrier, commit id @%lu",
+            LogTitle.GetWithTime().c_str(),
+            commitId);
+
+        SharedState
+            ->FinishFreshWrite(ctx, commitId, blocksCount, HasError(error));
     } else {
         LOG_TRACE(
             ctx,
@@ -427,12 +437,6 @@ void TPartitionActor::HandleWriteBlocksCompletedImpl(
         State->AccessCommitQueue()->ReleaseBarrier(commitId);
         if (writeBlocksCompleted.CollectGarbageBarrierAcquired) {
             State->GetGarbageQueue().ReleaseBarrier(commitId);
-        }
-
-        if (writeBlocksCompleted.IsFreshBlocksRequest && HasError(error)) {
-            State->AccessTrimFreshLogBarriers()->ReleaseBarrierN(
-                commitId,
-                blocksCount);
         }
     }
 
