@@ -348,6 +348,11 @@ public:
         return Meta;
     }
 
+    NProto::TPartitionMeta& AccessMeta()
+    {
+        return Meta;
+    }
+
     const NProto::TPartitionConfig& GetConfig() const
     {
         return Config;
@@ -1085,10 +1090,11 @@ public:
     //
 
 public:
-
     void UpdateTrimFreshLogToCommitIdInMeta()
     {
-        Meta.SetTrimFreshLogToCommitId(GetTrimFreshLogToCommitId());
+        auto commitId =
+            Max(GetTrimFreshLogToCommitId(), Meta.GetTrimFreshLogToCommitId());
+        Meta.SetTrimFreshLogToCommitId(commitId);
     }
 
     //
