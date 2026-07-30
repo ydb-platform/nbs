@@ -205,8 +205,7 @@ public:
     {
         Y_ABORT_UNLESS(sizeof(TValue) <= SlotSize);
 
-        TValue emptySlot;
-        memset(reinterpret_cast<char*>(&emptySlot), 0, SlotSize);
+        const TValue emptySlot{};
         Y_ABORT_UNLESS(TombstoneKey != MakeKey(emptySlot));
     }
 
@@ -222,6 +221,10 @@ public:
         TVector<TPageGroup>& pageGroups)
     {
         auto k = MakeKey(v);
+        if (k == TombstoneKey) {
+            return MakeError(E_ARGUMENT, "attempt to put a tombstone");
+        }
+
         TValue existing{};
         ui64 slotNo = 0;
         auto error = AllocateSlot(lsn, k, &existing, &slotNo);
