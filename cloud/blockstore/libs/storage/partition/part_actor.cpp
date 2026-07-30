@@ -1243,6 +1243,8 @@ STFUNC(TPartitionActor::StateWork)
             TEvPartitionCommonPrivate::TEvReassignChannelsIfNeeded,
             HandleReassignChannelsIfNeeded);
 
+        HFunc(TEvPartitionPrivate::TEvResumeFlush, HandleResumeFlush);
+
         IgnoreFunc(TEvPartitionPrivate::TEvCleanupResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvCollectGarbageResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvCompactionResponse);
@@ -1332,6 +1334,8 @@ STFUNC(TPartitionActor::StateZombie)
         IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
 
         IgnoreFunc(TEvPartitionCommonPrivate::TEvExecuteTransactions);
+
+        IgnoreFunc(TEvPartitionPrivate::TEvResumeFlush);
 
         // Wakeup function should handle wakeup event taking into account that
         // there is wakeup event scheduled during boot stage with

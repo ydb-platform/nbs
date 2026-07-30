@@ -19,10 +19,63 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TFlushOperationState: private NPartition::TOperationState
+{
+private:
+    ui64 FlushCommitId = 0;
+    TRequestInfoPtr RequestInfo;
+
+public:
+    ui64 GetFlushCommitId() const
+    {
+        return FlushCommitId;
+    }
+
+    TRequestInfoPtr GetRequestInfo() const
+    {
+        return RequestInfo;
+    }
+
+    void SetStarted(
+        ui64 flushCommitId,
+        TRequestInfoPtr requestInfo,
+        TInstant timestamp)
+    {
+        Y_ABORT_UNLESS(Status == NPartition::EOperationStatus::Enqueued || Status == NPartition::EOperationStatus::Idle);
+        FlushCommitId = flushCommitId;
+        RequestInfo = std::move(requestInfo);
+        TOperationState::SetStatus(
+            NPartition::EOperationStatus::Started,
+            timestamp);
+    }
+
+    void SetEnqueued(TInstant timestamp)
+    {
+        Y_ABORT_UNLESS(Status == NPartition::EOperationStatus::Idle);
+        TOperationState::SetStatus(
+            NPartition::EOperationStatus::Enqueued,
+            timestamp);
+    }
+
+    void SetIdle(TInstant timestamp)
+    {
+        FlushCommitId = 0;
+        RequestInfo = nullptr;
+        TOperationState::SetStatus(
+            NPartition::EOperationStatus::Idle,
+            timestamp);
+    }
+
+    [[nodiscard]] const NPartition::TOperationState& GetOperationState() const
+    {
+        return *this;
+    }
+};
+
 class TPartitionFlushState
 {
 private:
-    NPartition::TOperationState FlushState;
+    TFlushOperationState FlushState;
     TRequestBuffer<TWriteBufferRequestData> WriteBuffer;
     ui32 UnflushedFreshBlobCount = 0;
     ui64 UnflushedFreshBlobByteCount = 0;
@@ -30,12 +83,12 @@ private:
     THashSet<ui64> FlushedCommitIdsInProgress;
 
 public:
-    NPartition::TOperationState& AccessFlushState()
+    TFlushOperationState& AccessFlushState()
     {
         return FlushState;
     }
 
-    [[nodiscard]] const NPartition::TOperationState& GetFlushState() const
+    [[nodiscard]] const TFlushOperationState& GetFlushState() const
     {
         return FlushState;
     }

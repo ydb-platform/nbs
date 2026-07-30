@@ -829,6 +829,10 @@ struct TEvPartitionPrivate
     {
     };
 
+    struct TResumeFlush
+    {
+    };
+
     //
     // Events declaration
     //
@@ -859,6 +863,7 @@ struct TEvPartitionPrivate
         EvConfirmBlobsCompleted,
         EvLoadCompactionMapChunkRequest,
         EvUpdateResourceMetrics,
+        EvResumeFlush,
 
         EvEnd
     };
@@ -889,6 +894,8 @@ struct TEvPartitionPrivate
     using TEvConfirmBlobsCompleted = TResponseEvent<TConfirmBlobsCompleted, EvConfirmBlobsCompleted>;
     using TEvUpdateResourceMetrics =
         TResponseEvent<TUpdateResourceMetrics, EvUpdateResourceMetrics>;
+
+    using TEvResumeFlush = TResponseEvent<TResumeFlush, EvResumeFlush>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

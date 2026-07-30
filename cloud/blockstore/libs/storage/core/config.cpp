@@ -724,6 +724,9 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(UseRecreatedBlobMetasOnCleanup,             bool,       false         )\
                                                                                \
     xxx(AllowGentlePreemptionForRebindVolumesAction,    bool,   false         )\
+                                                                               \
+    xxx(WaitForFreshWritesBeforeFlushEnabled,       bool,       false         )\
+
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 // clang-format on

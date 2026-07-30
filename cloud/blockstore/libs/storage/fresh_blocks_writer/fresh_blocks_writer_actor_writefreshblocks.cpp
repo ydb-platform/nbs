@@ -105,7 +105,7 @@ void TFreshBlocksWriterActor::WriteFreshBlocks(
         writeHandlers.push_back(r.Data.Handler);
     }
 
-    const auto commitId = SharedState->StartFreshWrite(blockCount);
+    const auto commitId = SharedState->StartFreshWrite(ctx, blockCount);
 
     if (commitId == InvalidCommitId) {
         for (auto& r: requestsInBuffer) {
@@ -171,7 +171,7 @@ void TFreshBlocksWriterActor::ZeroFreshBlocks(
     const ui32 blockCount = writeRange.Size();
     SharedState->IncrementFreshBlocksInFlight(blockCount);
 
-    const auto commitId = SharedState->StartFreshWrite(blockCount);
+    const auto commitId = SharedState->StartFreshWrite(ctx, blockCount);
 
     if (commitId == InvalidCommitId) {
         requestInfo->CancelRequest(ctx);

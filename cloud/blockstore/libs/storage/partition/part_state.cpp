@@ -720,7 +720,9 @@ void TPartitionState::DumpHtml(IOutputStream& out) const
                 TABLER() {
                     TABLED() { out << "Flush"; }
                     TABLED () {
-                        DumpOperationState(out, GetFlushState());
+                        DumpOperationState(
+                            out,
+                            GetFlushState().GetOperationState());
                     }
                 }                TABLER() {
                     TABLED() { out << "Compaction"; }
@@ -761,7 +763,7 @@ TJsonValue TPartitionState::AsJson() const
         state["FreshBlocksInFlight"] = GetFreshBlocksInFlight();
         state["FreshBlocksQueued"] = GetFreshBlocksQueued();
         state["FreshBlobUntrimmedBytes"] = GetUntrimmedFreshBlobByteCount();
-        state["FlushState"] = ToJson(GetFlushState());
+        state["FlushState"] = ToJson(GetFlushState().GetOperationState());
         state["Compaction"] = ToJson(CompactionState);
         state["Cleanup"] = ToJson(CleanupState);
         state["CollectGarbage"] = ToJson(CollectGarbageState);

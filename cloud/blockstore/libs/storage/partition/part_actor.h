@@ -242,6 +242,7 @@ private:
     void BlobsConfirmed(const NActors::TActorContext& ctx);
 
     void EnqueueFlushIfNeeded(const NActors::TActorContext& ctx);
+    void StartFlush(const NActors::TActorContext& ctx);
     void EnqueueCompactionIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueCleanupIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueCollectGarbageIfNeeded(const NActors::TActorContext& ctx);
@@ -807,6 +808,10 @@ private:
 
     void HandleReassignChannelsIfNeeded(
         const TEvPartitionCommonPrivate::TEvReassignChannelsIfNeeded::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleResumeFlush(
+        const TEvPartitionPrivate::TEvResumeFlush::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     BLOCKSTORE_PARTITION_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvPartition)

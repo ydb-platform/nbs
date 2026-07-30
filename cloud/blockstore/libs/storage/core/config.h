@@ -865,6 +865,8 @@ public:
     [[nodiscard]] bool GetUseRecreatedBlobMetasOnCleanup() const;
 
     [[nodiscard]] bool GetAllowGentlePreemptionForRebindVolumesAction() const;
+
+    [[nodiscard]] bool GetWaitForFreshWritesBeforeFlushEnabled() const;
 };
 
 ui64 GetAllocationUnit(

@@ -445,7 +445,7 @@ TFlushedCommitIds BuildFlushedCommitIdsFromChannel(
 
 void TPartitionActor::EnqueueFlushIfNeeded(const TActorContext& ctx)
 {
-    if (State->GetFlushState().Status != EOperationStatus::Idle) {
+    if (State->GetFlushState().GetOperationState().Status != EOperationStatus::Idle) {
         // already enqueued
         return;
     }
@@ -465,7 +465,7 @@ void TPartitionActor::EnqueueFlushIfNeeded(const TActorContext& ctx)
         return;
     }
 
-    State->AccessFlushState().SetStatus(EOperationStatus::Enqueued, ctx.Now());
+    State->AccessFlushState().SetEnqueued(ctx.Now());
 
     auto request = std::make_unique<TEvPartitionPrivate::TEvFlushRequest>(
         MakeIntrusive<TCallContext>(CreateRequestId()));
@@ -497,7 +497,9 @@ void TPartitionActor::HandleFlush(
         requestInfo->CallContext->RequestId,
         PartitionConfig.GetDiskId());
 
-    if (State->GetFlushState().Status == EOperationStatus::Started) {
+    if (State->GetFlushState().GetOperationState().Status ==
+        EOperationStatus::Started)
+    {
         auto response = std::make_unique<TEvPartitionPrivate::TEvFlushResponse>(
             MakeError(E_TRY_AGAIN, "flush already in progress"));
 
@@ -515,7 +517,7 @@ void TPartitionActor::HandleFlush(
 
     ui64 blocksCount = State->GetUnflushedFreshBlocksCount();
     if (!blocksCount) {
-        State->AccessFlushState().SetStatus(EOperationStatus::Idle, ctx.Now());
+        State->AccessFlushState().SetIdle(ctx.Now());
 
         auto response = std::make_unique<TEvPartitionPrivate::TEvFlushResponse>(
             MakeError(S_ALREADY, "nothing to flush"));
@@ -539,6 +541,8 @@ void TPartitionActor::HandleFlush(
         return;
     }
 
+    State->AccessFlushState().SetStarted(commitId, requestInfo, ctx.Now());
+
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
@@ -547,7 +551,39 @@ void TPartitionActor::HandleFlush(
         commitId,
         blocksCount);
 
-    State->AccessFlushState().SetStatus(EOperationStatus::Started, ctx.Now());
+    if (!Config->GetFlushToDevNull()) {
+        State->AccessCommitQueue()->AcquireBarrier(commitId);
+        State->GetGarbageQueue().AcquireBarrier(commitId);
+    }
+
+    if (Config->GetWaitForFreshWritesBeforeFlushEnabled()) {
+        SharedState->WaitFreshWritesToComplete(
+            [partActorId = ctx.SelfID](
+                const NActors::TActorSystem* actorSystem)
+            {
+                auto ev =
+                    std::make_unique<TEvPartitionPrivate::TEvResumeFlush>();
+                actorSystem->Send(partActorId, ev.release());
+            },
+            commitId);
+    } else {
+        StartFlush(ctx);
+    }
+}
+
+void TPartitionActor::HandleResumeFlush(
+    const TEvPartitionPrivate::TEvResumeFlush::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+
+    StartFlush(ctx);
+}
+
+void TPartitionActor::StartFlush(const TActorContext& ctx)
+{
+    auto commitId = State->AccessFlushState().GetFlushCommitId();
+    auto requestInfo = State->AccessFlushState().GetRequestInfo();
 
     TVector<TFlushBlocksVisitor::TBlob> blobs;
     {
@@ -626,9 +662,6 @@ void TPartitionActor::HandleFlush(
             ctx,
             CreateTx<TFlushToDevNull>(requestInfo, std::move(freshBlocks)));
     } else {
-        State->AccessCommitQueue()->AcquireBarrier(commitId);
-        State->GetGarbageQueue().AcquireBarrier(commitId);
-
         auto actor = NCloud::Register<TFlushActor>(
             ctx,
             requestInfo,
@@ -684,7 +717,7 @@ void TPartitionActor::CompleteFlushToDevNull(
 {
     Y_UNUSED(args);
 
-    State->AccessFlushState().SetStatus(EOperationStatus::Idle, ctx.Now());
+    State->AccessFlushState().SetIdle(ctx.Now());
 }
 
 void TPartitionActor::HandleFlushCompleted(
@@ -726,7 +759,7 @@ void TPartitionActor::HandleFlushCompleted(
 
     State->AccessFlushedCommitIdsInProgress().clear();
 
-    State->AccessFlushState().SetStatus(EOperationStatus::Idle, ctx.Now());
+    State->AccessFlushState().SetIdle(ctx.Now());
 
     Actors.Erase(ev->Sender);
 

@@ -108,7 +108,7 @@ void TPartitionActor::WriteFreshBlocks(
             writeHandlers.push_back(r.Data.Handler);
         }
 
-        const auto commitId = SharedState->StartFreshWrite(blockCount);
+        const auto commitId = SharedState->StartFreshWrite(ctx, blockCount);
 
         if (commitId == InvalidCommitId) {
             for (auto& r: requestsInBuffer) {
@@ -492,7 +492,7 @@ void TPartitionActor::ZeroFreshBlocks(
         requests.emplace_back(requestInfo, EFreshRequestType::ZeroBlocks);
         blockRanges.emplace_back(writeRange);
 
-        auto commitId = SharedState->StartFreshWrite(blockCount);
+        auto commitId = SharedState->StartFreshWrite(ctx, blockCount);
         if (commitId == InvalidCommitId) {
             requestInfo->CancelRequest(ctx);
             RebootPartitionOnCommitIdOverflow(ctx, "ZeroFreshBlocks");
