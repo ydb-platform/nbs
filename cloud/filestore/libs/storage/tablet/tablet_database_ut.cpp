@@ -963,6 +963,113 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
                     entries[1].Data.GetUnalignedDataRanges(1).GetContent());
             });
     }
+
+    Y_UNIT_TEST(ShouldStoreQuotas)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&] (TIndexTabletDatabase db) {
+            db.InitSchema();
+        });
+
+        auto makeQuota = [&] (ui32 quotaId, ui64 nodeId, ui64 maxBytes) {
+            NProto::TQuota quota;
+            quota.SetQuotaId(quotaId);
+            quota.SetMaxBytes(maxBytes);
+            quota.AddNodeId(nodeId);
+            return quota;
+        };
+
+        executor.WriteTx([&] (TIndexTabletDatabase db) {
+            db.WriteQuota(makeQuota(1, 100, 1'000'000));
+            db.WriteQuota(makeQuota(2, 200, 2'000'000));
+            db.WriteQuota(makeQuota(3, 300, 3'000'000));
+        });
+
+        executor.ReadTx([&] (TIndexTabletDatabase db) {
+            TVector<NProto::TQuota> quotas;
+            UNIT_ASSERT(db.ReadQuotas(quotas));
+            UNIT_ASSERT_VALUES_EQUAL(3, quotas.size());
+        });
+
+        executor.WriteTx([&] (TIndexTabletDatabase db) {
+            db.WriteQuota(makeQuota(1, 100, 5'000'000));
+        });
+
+        executor.ReadTx([&] (TIndexTabletDatabase db) {
+            TVector<NProto::TQuota> quotas;
+            UNIT_ASSERT(db.ReadQuotas(quotas));
+            UNIT_ASSERT_VALUES_EQUAL(3, quotas.size());
+
+            for (const auto& quota: quotas) {
+                if (quota.GetQuotaId() == 1) {
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        5'000'000,
+                        quota.GetMaxBytes());
+                }
+            }
+        });
+
+        executor.WriteTx([&] (TIndexTabletDatabase db) {
+            db.DeleteQuota(2);
+        });
+
+        executor.ReadTx([&] (TIndexTabletDatabase db) {
+            TVector<NProto::TQuota> quotas;
+            UNIT_ASSERT(db.ReadQuotas(quotas));
+            UNIT_ASSERT_VALUES_EQUAL(2, quotas.size());
+
+            for (const auto& quota: quotas) {
+                UNIT_ASSERT_UNEQUAL(2, quota.GetQuotaId());
+            }
+        });
+    }
+
+    Y_UNIT_TEST(ShouldStoreQuotaUsage)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&] (TIndexTabletDatabase db) {
+            db.InitSchema();
+        });
+
+        executor.WriteTx([&] (TIndexTabletDatabase db) {
+            db.WriteQuotaUsage(1, 1'000'000, 10);
+            db.WriteQuotaUsage(2, 2'000'000, 20);
+        });
+
+        executor.ReadTx([&] (TIndexTabletDatabase db) {
+            TVector<TQuotaUsage> usages;
+            UNIT_ASSERT(db.ReadQuotaUsages(usages));
+            UNIT_ASSERT_VALUES_EQUAL(2, usages.size());
+        });
+
+        executor.WriteTx([&] (TIndexTabletDatabase db) {
+            db.WriteQuotaUsage(1, 5'000'000, 50);
+        });
+
+        executor.ReadTx([&] (TIndexTabletDatabase db) {
+            TVector<TQuotaUsage> usages;
+            UNIT_ASSERT(db.ReadQuotaUsages(usages));
+            UNIT_ASSERT_VALUES_EQUAL(2, usages.size());
+
+            for (const auto& usage: usages) {
+                if (usage.QuotaId == 1) {
+                    UNIT_ASSERT_VALUES_EQUAL(5'000'000, usage.UsedBytes);
+                    UNIT_ASSERT_VALUES_EQUAL(50, usage.UsedNodes);
+                }
+            }
+        });
+
+        executor.WriteTx([&] (TIndexTabletDatabase db) {
+            db.DeleteQuotaUsage(2);
+        });
+
+        executor.ReadTx([&] (TIndexTabletDatabase db) {
+            TVector<TQuotaUsage> usages;
+            UNIT_ASSERT(db.ReadQuotaUsages(usages));
+            UNIT_ASSERT_VALUES_EQUAL(1, usages.size());
+            UNIT_ASSERT_VALUES_EQUAL(1, usages[0].QuotaId);
+        });
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

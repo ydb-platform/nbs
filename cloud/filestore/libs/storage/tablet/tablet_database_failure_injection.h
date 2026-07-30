@@ -392,6 +392,25 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
         TVector<NProto::TCheckpoint>& checkpoints) override;
 
     //
+    // Quotas
+    //
+
+    void WriteQuota(const NProto::TQuota& quota) override;
+    void DeleteQuota(ui32 quotaId) override;
+    bool ReadQuotas(TVector<NProto::TQuota>& quotas) override;
+
+    //
+    // QuotaUsage
+    //
+
+    void WriteQuotaUsage(
+        ui32 quotaId,
+        ui64 usedBytes,
+        ui64 usedNodes) override;
+    void DeleteQuotaUsage(ui32 quotaId) override;
+    bool ReadQuotaUsages(TVector<TQuotaUsage>& usages) override;
+
+    //
     // CheckpointNodes
     //
 

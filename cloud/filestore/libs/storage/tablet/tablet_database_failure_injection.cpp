@@ -813,6 +813,50 @@ bool TIndexTabletDatabaseWithFailureInjection::ReadCheckpoints(
     return Real->ReadCheckpoints(checkpoints);
 }
 
+void TIndexTabletDatabaseWithFailureInjection::WriteQuota(
+    const NProto::TQuota& quota)
+{
+    Real->WriteQuota(quota);
+}
+
+void TIndexTabletDatabaseWithFailureInjection::DeleteQuota(ui32 quotaId)
+{
+    Real->DeleteQuota(quotaId);
+}
+
+bool TIndexTabletDatabaseWithFailureInjection::ReadQuotas(
+    TVector<NProto::TQuota>& quotas)
+{
+    if (Y_UNLIKELY(ShouldFailReadInTest())) {
+        return false;
+    }
+
+    return Real->ReadQuotas(quotas);
+}
+
+void TIndexTabletDatabaseWithFailureInjection::WriteQuotaUsage(
+    ui32 quotaId,
+    ui64 usedBytes,
+    ui64 usedNodes)
+{
+    Real->WriteQuotaUsage(quotaId, usedBytes, usedNodes);
+}
+
+void TIndexTabletDatabaseWithFailureInjection::DeleteQuotaUsage(ui32 quotaId)
+{
+    Real->DeleteQuotaUsage(quotaId);
+}
+
+bool TIndexTabletDatabaseWithFailureInjection::ReadQuotaUsages(
+    TVector<TQuotaUsage>& usages)
+{
+    if (Y_UNLIKELY(ShouldFailReadInTest())) {
+        return false;
+    }
+
+    return Real->ReadQuotaUsages(usages);
+}
+
 void TIndexTabletDatabaseWithFailureInjection::WriteCheckpointNode(
     ui64 checkpointId,
     ui64 nodeId)

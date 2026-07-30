@@ -3,6 +3,7 @@
 #include <cloud/filestore/libs/storage/tablet/model/block_list.h>
 #include <cloud/filestore/libs/storage/tablet/model/compaction_map.h>
 #include <cloud/filestore/libs/storage/tablet/model/deletion_markers.h>
+#include <cloud/filestore/libs/storage/tablet/model/quota.h>
 #include <cloud/filestore/libs/storage/tablet/protos/tablet.pb.h>
 #include <cloud/filestore/public/api/protos/node.pb.h>
 
@@ -554,6 +555,25 @@ public:
     virtual void WriteCheckpoint(const NProto::TCheckpoint& checkpoint) = 0;
     virtual void DeleteCheckpoint(const TString& checkpointId) = 0;
     virtual bool ReadCheckpoints(TVector<NProto::TCheckpoint>& checkpoints) = 0;
+
+    //
+    // Quotas
+    //
+
+    virtual void WriteQuota(const NProto::TQuota& quota) = 0;
+    virtual void DeleteQuota(ui32 quotaId) = 0;
+    virtual bool ReadQuotas(TVector<NProto::TQuota>& quotas) = 0;
+
+    //
+    // QuotaUsage
+    //
+
+    virtual void WriteQuotaUsage(
+        ui32 quotaId,
+        ui64 usedBytes,
+        ui64 usedNodes) = 0;
+    virtual void DeleteQuotaUsage(ui32 quotaId) = 0;
+    virtual bool ReadQuotaUsages(TVector<TQuotaUsage>& usages) = 0;
 
     //
     // CheckpointNodes

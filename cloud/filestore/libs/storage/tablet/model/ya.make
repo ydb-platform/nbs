@@ -32,6 +32,7 @@ SRCS(
     node_session_stat.cpp
     operation.cpp
     profile_log_events.cpp
+    quota.cpp
     range_locks.cpp
     read_ahead.cpp
     request_metrics.cpp
