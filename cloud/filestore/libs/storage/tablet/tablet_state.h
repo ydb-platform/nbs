@@ -236,7 +236,10 @@ private:
             const double lhsScore = DecayedScore(lhs, comparisonTime);
             const double rhsScore = DecayedScore(rhs, comparisonTime);
 
-            return lhsScore <= rhsScore;
+            if (lhsScore == rhsScore) {
+                return lhs.NodeId < rhs.NodeId;
+            }
+            return lhsScore < rhsScore;
         }
     };
 
