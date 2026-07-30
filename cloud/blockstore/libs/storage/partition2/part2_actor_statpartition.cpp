@@ -27,13 +27,11 @@ template <typename T1, typename T2>
 void CopyPartitionStats(T1& l, const T2& r)
 {
     COPY_FIELD(l, r, MixedBlobsCount);
-    COPY_FIELD(l, r, MixedBlocksCount);
     COPY_FIELD(l, r, MergedBlobsCount);
+    COPY_FIELD(l, r, MixedBlocksCount);
     COPY_FIELD(l, r, MergedBlocksCount);
-    COPY_FIELD(l, r, GarbageBlocksCount);
     COPY_FIELD(l, r, UsedBlocksCount);
     COPY_FIELD(l, r, LogicalUsedBlocksCount);
-    COPY_FIELD(l, r, CheckpointBlocksCount);
 }
 
 #undef COPY_FIELD
@@ -74,10 +72,44 @@ void TPartitionActor::HandleStatPartition(
         State->GetStats());
 
     response->Record.MutableStats()->SetFreshBlocksCount(
-        State->GetFreshBlockCount());
+        State->GetUnflushedFreshBlocksCount());
+
+    response->Record.MutableStats()->SetFreshBlobsCount(
+        State->GetUnflushedFreshBlobCount());
+
+    response->Record.MutableStats()->SetCompactionGarbageScore(
+        State->GetCompactionGarbageScore());
+    response->Record.MutableStats()->SetCompactionIgnoringZeroedScore(
+        State->GetCompactionIgnoringZeroedScore());
 
     response->Record.MutableStats()->SetNonEmptyRangeCount(
         State->GetCompactionMap().GetNonEmptyRangeCount());
+
+    response->Record.MutableStats()->SetGarbageQueueSize(
+        State->GetGarbageQueue().GetGarbageBlobsCount(Max<ui64>()));
+
+    response->Record.MutableStats()->SetCompactionDelay(
+        State->GetCompactionDelay().MilliSeconds());
+    response->Record.MutableStats()->SetCleanupDelay(
+        State->GetCleanupDelay().MilliSeconds());
+
+    response->Record.MutableStats()->SetCleanupQueueBytes(
+        State->GetCleanupQueue().GetQueueBytes());
+
+    response->Record.MutableStats()->SetUnconfirmedBlobCount(
+        State->GetUnconfirmedBlobCount());
+
+    response->Record.MutableStats()->SetConfirmedBlobCount(
+        State->GetConfirmedBlobCount());
+
+    response->Record.MutableStats()->SetTrimFreshLogToCommitId(
+        State->GetTrimFreshLogToCommitId());
+
+    response->Record.MutableStats()->SetBlobsProcessedDuringCompaction(
+        State->GetBlobsProcessedDuringCompaction());
+
+    response->Record.MutableStats()->SetBlockMaskReadDuringCompaction(
+        State->GetBlockMaskReadDuringCompaction());
 
     LWTRACK(
         ResponseSent_Partition,

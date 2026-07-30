@@ -92,6 +92,7 @@ public:
     NProto::ECompactionType GetSSDCompactionType() const;
     NProto::ECompactionType GetHDDCompactionType() const;
     bool GetV1GarbageCompactionEnabled() const;
+    bool GetV2GarbageCompactionEnabled() const;
     bool GetIgnoringZeroedCompactionEnabled() const;
     ui32 GetCompactionGarbageThreshold() const;
     ui32 GetCompactionGarbageBlobLimit() const;
@@ -359,6 +360,10 @@ public:
         const TString& cloudId,
         const TString& folderId,
         const TString& diskId) const;
+    bool IsMixedIndexCacheV2FeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
     bool IsBatchCompactionFeatureEnabled(
         const TString& cloudId,
         const TString& folderId,
@@ -574,6 +579,8 @@ public:
 
     bool GetMixedIndexCacheV1Enabled() const;
     ui32 GetMixedIndexCacheV1SizeSSD() const;
+    bool GetMixedIndexCacheV2Enabled() const;
+    ui32 GetMixedIndexCacheV2SizeSSD() const;
 
     ui32 GetMaxReadBlobErrorsBeforeSuicide() const;
     ui32 GetMaxWriteBlobErrorsBeforeSuicide() const;

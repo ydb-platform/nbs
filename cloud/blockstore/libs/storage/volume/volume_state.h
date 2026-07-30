@@ -247,7 +247,7 @@ private:
     bool AcceptInvalidDiskAllocationResponse = false;
     bool RejectWrite = false;
 
-    TCheckpointStore CheckpointStore;
+    TVolumeCheckpointStore CheckpointStore;
     std::unique_ptr<TCheckpointLight> CheckpointLight;
 
     std::unique_ptr<TCompressedBitmap> UsedBlocks;
@@ -744,12 +744,12 @@ public:
     // Checkpoint request history
     //
 
-    TCheckpointStore& GetCheckpointStore()
+    TVolumeCheckpointStore& GetCheckpointStore()
     {
         return CheckpointStore;
     }
 
-    const TCheckpointStore& GetCheckpointStore() const
+    const TVolumeCheckpointStore& GetCheckpointStore() const
     {
         return CheckpointStore;
     }

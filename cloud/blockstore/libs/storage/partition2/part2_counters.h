@@ -6,8 +6,6 @@
 #include "part2_tx.h"
 
 #include <cloud/blockstore/libs/storage/api/partition2.h>
-#include <cloud/blockstore/libs/storage/api/service.h>
-#include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/tablet_counters.h>
 
 #include <contrib/ydb/core/tablet/tablet_counters_protobuf.h>
@@ -16,28 +14,30 @@ namespace NCloud::NBlockStore::NStorage::NPartition2 {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_PARTITION2_IO_COUNTERS_(xxx, ...)                           \
+#define BLOCKSTORE_PARTITION2_IO_COUNTERS_(xxx, ...)                            \
     xxx(RequestsCount,                  __VA_ARGS__)                           \
     xxx(BlocksCount,                    __VA_ARGS__)                           \
     xxx(ExecTime,                       __VA_ARGS__)                           \
     xxx(WaitTime,                       __VA_ARGS__)                           \
 // BLOCKSTORE_PARTITION2_IO_COUNTERS_
 
-#define BLOCKSTORE_PARTITION2_IO_COUNTERS(xxx)                                 \
-    BLOCKSTORE_PARTITION2_IO_COUNTERS_(xxx, UserRead)                          \
-    BLOCKSTORE_PARTITION2_IO_COUNTERS_(xxx, UserWrite)                         \
-    BLOCKSTORE_PARTITION2_IO_COUNTERS_(xxx, SysRead)                           \
-    BLOCKSTORE_PARTITION2_IO_COUNTERS_(xxx, SysWrite)                          \
+#define BLOCKSTORE_PARTITION2_IO_COUNTERS(xxx)                                  \
+    BLOCKSTORE_PARTITION2_IO_COUNTERS_(xxx, UserRead)                           \
+    BLOCKSTORE_PARTITION2_IO_COUNTERS_(xxx, UserWrite)                          \
+    BLOCKSTORE_PARTITION2_IO_COUNTERS_(xxx, SysRead)                            \
+    BLOCKSTORE_PARTITION2_IO_COUNTERS_(xxx, SysWrite)                           \
+    BLOCKSTORE_PARTITION2_IO_COUNTERS_(xxx, RealSysRead)                        \
+    BLOCKSTORE_PARTITION2_IO_COUNTERS_(xxx, RealSysWrite)                       \
 // BLOCKSTORE_PARTITION2_IO_COUNTERS
 
-#define BLOCKSTORE_PARTITION2_SIMPLE_COUNTERS(xxx)                             \
+#define BLOCKSTORE_PARTITION2_SIMPLE_COUNTERS(xxx)                              \
 // BLOCKSTORE_PARTITION2_SIMPLE_COUNTERS
 
-#define BLOCKSTORE_PARTITION2_CUMULATIVE_COUNTERS(xxx)                         \
-    BLOCKSTORE_PARTITION2_IO_COUNTERS(xxx)                                     \
+#define BLOCKSTORE_PARTITION2_CUMULATIVE_COUNTERS(xxx)                          \
+    BLOCKSTORE_PARTITION2_IO_COUNTERS(xxx)                                      \
 // BLOCKSTORE_PARTITION2_CUMULATIVE_COUNTERS
 
-#define BLOCKSTORE_PARTITION2_PERCENTILE_COUNTERS(xxx)                         \
+#define BLOCKSTORE_PARTITION2_PERCENTILE_COUNTERS(xxx)                          \
 // BLOCKSTORE_PARTITION2_PERCENTILE_COUNTERS
 
 ////////////////////////////////////////////////////////////////////////////////

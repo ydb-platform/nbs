@@ -1,4 +1,4 @@
-#include "checkpoint.h"
+#include <cloud/blockstore/libs/storage/partition_common/model/checkpoint.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 

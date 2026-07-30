@@ -1,5 +1,4 @@
 #include "part2_actor.h"
-
 namespace NCloud::NBlockStore::NStorage::NPartition2 {
 
 using namespace NActors;
@@ -29,7 +28,9 @@ void TPartitionActor::ExecuteInitSchema(
     Y_UNUSED(ctx);
     Y_UNUSED(args);
 
+    // TRequestScope timer(*args.RequestInfo);
     TPartitionDatabase db(tx.DB);
+
     db.InitSchema();
 }
 
@@ -39,11 +40,13 @@ void TPartitionActor::CompleteInitSchema(
 {
     Y_UNUSED(args);
 
-    LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Schema initialized",
-        TabletID());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Schema initialized",
+        LogTitle.GetWithTime().c_str());
 
-    ExecuteTx<TLoadState>(ctx);
+    ExecuteTx(ctx, CreateTx<TLoadState>(args.BlocksCount));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition2

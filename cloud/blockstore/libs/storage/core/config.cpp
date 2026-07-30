@@ -202,6 +202,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(CompactionRangeGarbageThreshold,    ui32,      200                    )\
     xxx(MaxAffectedBlocksPerCompaction,     ui32,      8192                   )\
     xxx(V1GarbageCompactionEnabled,         bool,      false                  )\
+    xxx(V2GarbageCompactionEnabled,         bool,      false                  )\
     xxx(IgnoringZeroedCompactionEnabled,    bool,      false                  )\
     xxx(OptimizeForShortRanges,             bool,      false                  )\
     xxx(MaxCompactionDelay,                 TDuration, TDuration::Zero()      )\
@@ -243,7 +244,6 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(MaxBlobsToCleanup,                      ui32,      100                )\
                                                                                \
     xxx(CollectGarbageThreshold,       ui32,      10                          )\
-    xxx(RunV2SoftGcAtStartup,                   bool,      false              )\
     xxx(DontEnqueueCollectGarbageUponPartitionStartup,  bool,      false      )\
     xxx(HiveLockExpireTimeout,         TDuration, Seconds(30)                 )\
     xxx(TabletRebootCoolDownIncrement, TDuration, MSeconds(500)               )\
@@ -297,7 +297,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
      * CompactionRangeSize / (MaxBandwidth / BlockSize / 8000) = 70            \
      */                                                                        \
     xxx(SSDMaxBlobsPerRange,                ui32,      70                     )\
-    xxx(SSDV2MaxBlobsPerRange,              ui32,      20                     )\
+    xxx(SSDV2MaxBlobsPerRange,              ui32,      70                     )\
                                                                                \
     xxx(AllocationUnitHDD,                  ui32,      256                    )\
     xxx(HDDUnitReadBandwidth,               ui32,      30                     )\
@@ -315,7 +315,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     /* TODO: properly calculate def value for this param for network-hdd disks \
      */                                                                        \
     xxx(HDDMaxBlobsPerRange,                ui32,      70                     )\
-    xxx(HDDV2MaxBlobsPerRange,              ui32,      20                     )\
+    xxx(HDDV2MaxBlobsPerRange,              ui32,      70                     )\
                                                                                \
     xxx(SSDMaxBlobsPerUnit,                 ui32,      0                      )\
     xxx(HDDMaxBlobsPerUnit,                 ui32,      0                      )\
@@ -498,9 +498,6 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(DumpBlockCommitIdsIntoProfileLog,          bool,      false           )\
     xxx(DumpBlobUpdatesIntoProfileLog,             bool,      false           )\
                                                                                \
-    /* NBS-2451 */                                                             \
-    xxx(EnableConversionIntoMixedIndexV2,          bool,      false           )\
-                                                                               \
     xxx(StatsUploadDiskCount,                      ui32,      1000            )\
     xxx(StatsUploadMaxRowsPerTx,                   ui32,      10000           )\
     xxx(StatsUploadRetryTimeout,                   TDuration, Seconds(5)      )\
@@ -522,6 +519,8 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(MixedIndexCacheV1Enabled,                  bool,      false           )\
     xxx(MixedIndexCacheV1SizeSSD,                  ui32,      32 * 1024       )\
                                                                                \
+    xxx(MixedIndexCacheV2Enabled,                  bool,      false           )\
+    xxx(MixedIndexCacheV2SizeSSD,                  ui32,      32 * 1024       )\
     xxx(MaxReadBlobErrorsBeforeSuicide,            ui32,      5               )\
     xxx(MaxWriteBlobErrorsBeforeSuicide,           ui32,      1               )\
     xxx(RejectMountOnAddClientTimeout,             bool,      false           )\
@@ -747,6 +746,7 @@ BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_STORAGE_DECLARE_CONFIG)
     xxx(MultipartitionVolumes)                                                 \
     xxx(FreshChannelWriteRequests)                                             \
     xxx(MixedIndexCacheV1)                                                     \
+    xxx(MixedIndexCacheV2)                                                     \
     xxx(BatchCompaction)                                                       \
     xxx(BlobPatching)                                                          \
     xxx(UseRdma)                                                               \

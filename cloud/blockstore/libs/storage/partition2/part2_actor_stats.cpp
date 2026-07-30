@@ -33,6 +33,12 @@ void TPartitionActor::UpdateStats(const NProto::TPartitionStats& update)
     PartCounters->Cumulative.SysBytesRead.Increment(
         update.GetSysReadCounters().GetBlocksCount() * blockSize);
 
+    PartCounters->Cumulative.RealSysBytesWritten.Increment(
+        update.GetRealSysWriteCounters().GetBlocksCount() * blockSize);
+
+    PartCounters->Cumulative.RealSysBytesRead.Increment(
+        update.GetRealSysReadCounters().GetBlocksCount() * blockSize);
+
     PartCounters->Cumulative.BatchCount.Increment(
         update.GetUserWriteCounters().GetBatchCount());
 }
@@ -52,44 +58,70 @@ void TPartitionActor::UpdateActorStats(const TActorContext& ctx)
 TPartitionStatisticsCounters TPartitionActor::ExtractPartCounters(
     const TActorContext& ctx)
 {
+    PartCounters->Simple.StoredBytesCountToDiskSizeRatio.Set(
+        std::round(State->GetStoredBytesCountToDiskSizeRatio() * 100.0));
+
     PartCounters->Simple.MixedBytesCount.Set(
-        State->GetMixedBlockCount() * State->GetBlockSize());
+        State->GetMixedBlocksCount() * State->GetBlockSize());
 
     PartCounters->Simple.MergedBytesCount.Set(
-        State->GetMergedBlockCount() * State->GetBlockSize());
+        State->GetMergedBlocksCount() * State->GetBlockSize());
 
     PartCounters->Simple.FreshBytesCount.Set(
-        State->GetFreshBlockCount() * State->GetBlockSize());
+        State->GetUnflushedFreshBlocksCount() * State->GetBlockSize());
+
+    PartCounters->Simple.UntrimmedFreshBlobBytesCount.Set(
+        State->GetUntrimmedFreshBlobByteCount());
 
     PartCounters->Simple.UsedBytesCount.Set(
-        State->GetUsedBlockCount() * State->GetBlockSize());
+        State->GetUsedBlocksCount() * State->GetBlockSize());
 
-    // TODO(NBS-2364): calculate logical used bytes count for partition2
     PartCounters->Simple.LogicalUsedBytesCount.Set(
-        State->GetUsedBlockCount() * State->GetBlockSize());
+        State->GetLogicalUsedBlocksCount() * State->GetBlockSize());
 
     // TODO: output new compaction score via another counter
     PartCounters->Simple.CompactionScore.Set(State->GetLegacyCompactionScore());
 
+    PartCounters->Simple.CompactionGarbageScore.Set(
+        State->GetCompactionGarbageScore());
+
+    PartCounters->Simple.CompactionIgnoringZeroedScore.Set(
+        State->GetCompactionIgnoringZeroedScore());
+
+    PartCounters->Simple.CompactionRangeCountPerRun.Set(
+        State->GetCompactionRangeCountPerRun());
+
+    PartCounters->Simple.NewlyZeroedBlocks.Set(
+        State->GetNewlyZeroedBlocks());
+
     PartCounters->Simple.BytesCount.Set(
-        State->GetBlockCount() * State->GetBlockSize());
+        State->GetBlocksCount() * State->GetBlockSize());
 
     PartCounters->Simple.IORequestsInFlight.Set(State->GetIORequestsInFlight());
 
     PartCounters->Simple.IORequestsQueued.Set(State->GetIORequestsQueued());
 
+    PartCounters->Simple.UsedBlocksMapMemSize.Set(
+        State->GetUsedBlocks().MemSize());
+
+    PartCounters->Simple.MixedIndexCacheMemSize.Set(
+        State->GetMixedIndexCacheMemSize());
+
     PartCounters->Simple.AlmostFullChannelCount.Set(
         State->GetAlmostFullChannelCount());
 
-    PartCounters->Simple.CleanupQueueBytes.Set(0);
+    PartCounters->Simple.CleanupQueueBytes.Set(
+        State->GetCleanupQueue().GetQueueBytes());
     PartCounters->Simple.GarbageQueueBytes.Set(
         State->GetGarbageQueue().GetGarbageQueueBytes());
 
-    PartCounters->Simple.CheckpointBytes.Set(
-        State->GetBlockSize() *
-        State->GetCheckpoints().GetCheckpointBlockCount());
-
     PartCounters->Simple.ChannelHistorySize.Set(ChannelHistorySize);
+
+    PartCounters->Simple.CheckpointBytes.Set(State->CalculateCheckpointBytes());
+
+    PartCounters->Simple.UnconfirmedBlobCount.Set(
+        State->GetUnconfirmedBlobCount());
+    PartCounters->Simple.ConfirmedBlobCount.Set(State->GetConfirmedBlobCount());
 
     ui64 sysCpuConsumption = 0;
     for (ui32 tx = 0; tx < TPartitionCounters::ETransactionType::TX_SIZE; ++tx)
@@ -102,21 +134,27 @@ TPartitionStatisticsCounters TPartitionActor::ExtractPartCounters(
                 .Get();
     }
 
-    auto* resourceMetrics = Executor()->GetResourceMetrics();
     NBlobMetrics::TBlobLoadMetrics blobLoadMetrics =
         NBlobMetrics::MakeBlobLoadMetrics(
             State->GetConfig().GetExplicitChannelProfiles(),
-            *resourceMetrics);
+            *Executor()->GetResourceMetrics());
     NBlobMetrics::TBlobLoadMetrics offsetLoadMetrics =
         NBlobMetrics::TakeDelta(PrevMetrics, blobLoadMetrics);
     offsetLoadMetrics += OverlayMetrics;
 
     NKikimrTabletBase::TMetrics metrics;
-    resourceMetrics->FillChanged(
+    GetResourceMetrics()->FillChanged(
         metrics,
         ctx.Now(),
         true   // forceAll
     );
+
+    auto ioCounters =
+        SharedState->PartCounters.Swap(CreatePartitionDiskCounters(
+            EPublishingPolicy::Repl,
+            DiagnosticsConfig->GetHistogramCounterOptions()));
+
+    PartCounters->AggregateWith(*ioCounters);
 
     TPartitionStatisticsCounters counters(
         sysCpuConsumption - SysCPUConsumption,
@@ -189,6 +227,17 @@ void TPartitionActor::HandleGetPartCountersRequest(
             std::move(metrics));
 
     NCloud::Reply(ctx, *ev, std::move(response));
+}
+
+void TPartitionActor::RejectGetPartCountersRequest(
+    const TEvPartitionCommonPrivate::TEvGetPartCountersRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    NCloud::Reply(
+        ctx,
+        *ev,
+        std::make_unique<TEvPartitionCommonPrivate::TEvGetPartCountersResponse>(
+            MakeError(E_REJECTED)));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition2

@@ -3,17 +3,16 @@
 #include "public.h"
 
 #include "part2_counters.h"
-#include "part2_database.h"
 #include "part2_events_private.h"
 #include "part2_state.h"
 #include "part2_tx.h"
 
-#include <cloud/blockstore/libs/diagnostics/profile_log.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 #include <cloud/blockstore/libs/storage/api/partition2.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
+#include <cloud/blockstore/libs/storage/core/bs_group_operation_tracker.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
 #include <cloud/blockstore/libs/storage/core/metrics.h>
@@ -24,9 +23,16 @@
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/core/tablet.h>
+#include <cloud/blockstore/libs/storage/core/transaction_time_tracker.h>
 #include <cloud/blockstore/libs/storage/model/log_title.h>
+#include <cloud/blockstore/libs/storage/partition2/model/compaction_map_load_state.h>
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
+#include <cloud/blockstore/libs/storage/partition_common/fresh_blocks_companion.h>
+#include <cloud/blockstore/libs/storage/partition_common/io_companion.h>
+#include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/part_counters_wrapper.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/resource_metrics_updates_queue.h>
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/libs/tablet/blob_id.h>
@@ -43,14 +49,26 @@
 #include <util/generic/hash_set.h>
 #include <util/generic/intrlist.h>
 
+namespace NBlockCodecs {
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct ICodec;
+
+}   // namespace NBlockCodecs
+
 namespace NCloud::NBlockStore::NStorage::NPartition2 {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TFreshBlocksCompanionClient;
+
+struct TIOCompanionClient;
+
+////////////////////////////////////////////////////////////////////////////////
 class TPartitionActor final
     : public NActors::TActor<TPartitionActor>
     , public TTabletBase<TPartitionActor>
-    , private IRequestsInProgress
 {
     enum EState
     {
@@ -95,6 +113,10 @@ class TPartitionActor final
 
     static constexpr ui64 BootWakeupEventTag = 1;
 
+    friend TFreshBlocksCompanionClient;
+
+    friend TIOCompanionClient;
+
 private:
     const ui64 StartTime = GetCycleCount();
     const TStorageConfigPtr Config;
@@ -106,11 +128,12 @@ private:
     const ui32 SiblingCount;
     const NActors::TActorId VolumeActorId;
     const ui64 ChannelHistorySize;
+    const NBlockCodecs::ICodec* BlobCodec;
     const ui64 VolumeTabletId;
-
     TLogTitle LogTitle;
 
     std::unique_ptr<TPartitionState> State;
+    std::unique_ptr<TCompactionMapLoadState> CompactionMapLoadState;
 
     static const TStateInfo States[];
     EState CurrentState = STATE_BOOT;
@@ -121,18 +144,12 @@ private:
     bool UpdateYellowStateScheduled = false;
     TInstant ReassignRequestSentTs;
 
-    TInstant LastUpdateIndexStructuresTs;
-
-    // Pending WaitReady requests
+    // Pending requests
     TDeque<TPendingRequest> PendingRequests;
 
     // Requests in-progress
-    THashSet<NActors::TActorId> Actors;
+    TRunningActors Actors;
     TIntrusiveList<TRequestInfo> ActiveTransactions;
-    TDrainActorCompanion DrainActorCompanion{
-        *this,
-        PartitionConfig.GetDiskId()};
-    ui32 WriteAndZeroRequestsInProgress = 0;
 
     TPartitionDiskCountersPtr PartCounters;
 
@@ -146,6 +163,27 @@ private:
     NBlobMetrics::TBlobLoadMetrics PrevMetrics;
     NBlobMetrics::TBlobLoadMetrics OverlayMetrics;
 
+    bool FirstGarbageCollectionCompleted = false;
+    bool IsGarbageCompactionThrottlingMisconfigured = false;
+
+    TTransactionTimeTracker TransactionTimeTracker;
+    TBSGroupOperationTimeTracker BSGroupOperationTimeTracker;
+    ui64 BSGroupOperationId = 0;
+
+    std::unique_ptr<TFreshBlocksCompanion> FreshBlocksCompanion;
+    std::unique_ptr<TFreshBlocksCompanionClient> FreshBlocksCompanionClient;
+
+    std::unique_ptr<TIOCompanionClient> IOCompanionClient;
+    std::unique_ptr<TIOCompanion> IOCompanion;
+
+    NActors::TActorId FreshBlocksWriter;
+
+    NActors::TActorId BaseDiskKeepAliveActorId;
+
+    TPartitionThreadSafeStatePtr SharedState;
+
+    TVector<TRequestInfoPtr> PendingPoisonPills;
+
 public:
     TPartitionActor(
         const NActors::TActorId& owner,
@@ -156,8 +194,9 @@ public:
         IBlockDigestGeneratorPtr blockDigestGenerator,
         NProto::TPartitionConfig partitionConfig,
         EStorageAccessMode storageAccessMode,
+        ui32 partitionIndex,
         ui32 siblingCount,
-        const NActors::TActorId& VolumeActorId,
+        const NActors::TActorId& volumeActorId,
         ui64 volumeTabletId);
     ~TPartitionActor() override;
 
@@ -171,6 +210,8 @@ protected:
     void DefaultSignalTabletActive(const NActors::TActorContext& ctx) override;
 
 private:
+    void Activate(const NActors::TActorContext& ctx);
+    void Suicide(const NActors::TActorContext& ctx);
     void BecomeAux(const NActors::TActorContext& ctx, EState state);
     void ReportTabletState(const NActors::TActorContext& ctx);
 
@@ -184,11 +225,6 @@ private:
         NActors::NMon::TEvRemoteHttpInfo::TPtr ev,
         const NActors::TActorContext& ctx) override;
 
-    void Activate(const NActors::TActorContext& ctx);
-    void Suicide(const NActors::TActorContext& ctx);
-
-    void StartBaseDiskKeepAliveActorIfNeeded(const NActors::TActorContext& ctx);
-
     void OnDetach(const NActors::TActorContext& ctx) override;
 
     void OnTabletDead(
@@ -197,49 +233,21 @@ private:
 
     void BeforeDie(const NActors::TActorContext& ctx);
 
-    void KillActors(const NActors::TActorContext& ctx);
-    void AddTransaction(
-        TRequestInfo& transaction,
-        TRequestInfo::TCancelRoutine cancelRoutine);
+    void SendGetUsedBlocksFromBaseDisk(const NActors::TActorContext& ctx);
+    void FinalizeLoadState(const NActors::TActorContext& ctx);
 
-    template <typename TMethod>
-    void AddTransaction(TRequestInfo& transaction)
-    {
-        auto cancelRoutine = [] (
-            const NActors::TActorContext& ctx,
-            TRequestInfo& requestInfo)
-        {
-            auto response = std::make_unique<typename TMethod::TResponse>(
-                MakeError(E_REJECTED, "tablet is shutting down"));
+    void FreshBlobsLoaded(const NActors::TActorContext& ctx);
 
-            NCloud::Reply(ctx, requestInfo, std::move(response));
-        };
-
-        AddTransaction(transaction, cancelRoutine);
-    }
-    void RemoveTransaction(TRequestInfo& transaction);
-    void TerminateTransactions(const NActors::TActorContext& ctx);
-    void ReleaseTransactions();
-
-    ui64 CalcChannelHistorySize() const;
-
-    void LoadFreshBlobs(const NActors::TActorContext& ctx);
+    void ConfirmBlobs(const NActors::TActorContext& ctx);
+    void BlobsConfirmed(const NActors::TActorContext& ctx);
 
     void EnqueueFlushIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueCompactionIfNeeded(const NActors::TActorContext& ctx);
+    void EnqueueCleanupIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueCollectGarbageIfNeeded(const NActors::TActorContext& ctx);
-    void EnqueueUpdateIndexStructuresIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueProcessWriteQueueIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueTrimFreshLogIfNeeded(const NActors::TActorContext& ctx);
-
-    void ResumeDelayedFlushIfNeeded(const NActors::TActorContext& ctx);
-
-    void StartFlush(const NActors::TActorContext& ctx);
-
-    void CollectGarbageHard(
-        const NActors::TActorContext& ctx,
-        TVector<TPartialBlobId> blobs,
-        TVector<TPartialBlobId> garbageBlobs);
+    void EnqueueAddConfirmedBlobsIfNeeded(const NActors::TActorContext& ctx);
 
     void UpdateStats(const NProto::TPartitionStats& update);
     void UpdateActorStats(const NActors::TActorContext& ctx);
@@ -256,28 +264,6 @@ private:
         const NActors::TActorContext& ctx);
 
     void SendStatsToService(const NActors::TActorContext& ctx);
-
-    // IRequestsInProgress implementation:
-    bool WriteRequestInProgress() const override
-    {
-        return WriteAndZeroRequestsInProgress != 0;
-    }
-
-    bool OverlapsWithWrites(TBlockRange64 range) const override
-    {
-        Y_UNUSED(range);
-        Y_ABORT("Unimplemented");
-    }
-
-    void WaitForInFlightWrites() override
-    {
-        Y_ABORT("Unimplemented");
-    }
-
-    bool IsWaitingForInFlightWrites() const override
-    {
-        Y_ABORT("Unimplemented");
-    }
 
     template <typename TMethod>
     void HandleWriteBlocksRequest(
@@ -298,48 +284,10 @@ private:
         TRequestInfo& requestInfo,
         bool replyLocal);
 
-    void UpdateNetworkStats(const NActors::TActorContext& ctx, ui64 value);
-    void UpdateStorageStats(const NActors::TActorContext& ctx, i64 value);
-    void UpdateCPUUsageStat(
+    TMaybe<ui64> VerifyDescribeBlocksCheckpoint(
         const NActors::TActorContext& ctx,
-        ui64 execCycles);
-
-    void UpdateWriteThroughput(
-        const NActors::TActorContext& ctx,
-        const NKikimr::NMetrics::TChannel& channel,
-        const NKikimr::NMetrics::TGroupId& group,
-        ui64 value);
-
-    void UpdateReadThroughput(
-        const NActors::TActorContext& ctx,
-        const NKikimr::NMetrics::TChannel& channel,
-        const NKikimr::NMetrics::TGroupId& group,
-        ui64 value,
-        bool isOverlayDisk);
-
-    void ScheduleYellowStateUpdate(const NActors::TActorContext& ctx);
-    void UpdateYellowState(const NActors::TActorContext& ctx);
-    void ReassignChannelsIfNeeded(const NActors::TActorContext& ctx);
-
-    void ReadBlocks(
-        const NActors::TActorContext& ctx,
-        TRequestInfoPtr requestInfo,
-        ui64 commitId,
-        const TBlockRange32& readRange,
-        IReadBlocksHandlerPtr readHandler,
-        bool replyLocal,
-        bool shouldReportBlobIdsOnFailure);
-
-    void DescribeBlocks(
-        const NActors::TActorContext& ctx,
-        TRequestInfoPtr requestInfo,
-        ui64 commitId,
-        const TBlockRange32& describeRange,
-        bool indexOnly);
-
-    void FillDescribeBlocksResponse(
-        TTxPartition::TDescribeBlocks& args,
-        TEvVolume::TEvDescribeBlocksResponse* response);
+        const TString& checkpointId,
+        TRequestInfo& requestInfo);
 
     void WriteBlocks(
         const NActors::TActorContext& ctx,
@@ -364,11 +312,99 @@ private:
         const NActors::TActorContext& ctx,
         TRequestInBuffer<TWriteBufferRequestData> requestInBuffer);
 
+    void ReadBlocks(
+        const NActors::TActorContext& ctx,
+        TRequestInfoPtr requestInfo,
+        ui64 commitId,
+        const TBlockRange32& readRange,
+        IReadBlocksHandlerPtr readHandler,
+        bool replyLocal,
+        bool shouldReportBlobIdsOnFailure);
+
+    void DescribeBlocks(
+        const NActors::TActorContext& ctx,
+        TRequestInfoPtr requestInfo,
+        ui64 commitId,
+        const TBlockRange32& describeRange,
+        bool indexOnly);
+
+    void FillDescribeBlocksResponse(
+        TTxPartition::TDescribeBlocks& args,
+        TEvVolume::TEvDescribeBlocksResponse* response);
+
+    void ZeroFreshBlocks(
+        const NActors::TActorContext& ctx,
+        TRequestInfoPtr requestInfo,
+        TBlockRange32 writeRange,
+        ui64 commitId);
+
     void ClearWriteQueue(const NActors::TActorContext& ctx);
+    void ProcessCommitQueue(const NActors::TActorContext& ctx);
+    void ProcessCheckpointQueue(const NActors::TActorContext& ctx);
 
-    void ProcessIOQueue(const NActors::TActorContext& ctx, ui32 channel);
+    template <typename TMethod>
+    void DeleteCheckpoint(
+        const typename TMethod::TRequest::TPtr& ev,
+        const NActors::TActorContext& ctx,
+        bool deleteOnlyData);
 
-    void ProcessCCCRequestQueue(const NActors::TActorContext& ctx);
+    void KillActors(const NActors::TActorContext& ctx);
+    void AddTransaction(
+        TRequestInfo& requestInfo,
+        TRequestInfo::TCancelRoutine cancelRoutine);
+
+    template <typename TMethod>
+    void AddTransaction(TRequestInfo& requestInfo)
+    {
+        auto cancelRoutine = [] (
+            const NActors::TActorContext& ctx,
+            TRequestInfo& requestInfo)
+        {
+            auto response = std::make_unique<typename TMethod::TResponse>(
+                MakeError(E_REJECTED, "tablet is shutting down"));
+
+            NCloud::Reply(ctx, requestInfo, std::move(response));
+        };
+
+        AddTransaction(requestInfo, cancelRoutine);
+    }
+    void RemoveTransaction(TRequestInfo& requestInfo);
+    void TerminateTransactions(const NActors::TActorContext& ctx);
+    void ReleaseTransactions();
+
+    ui64 CalcChannelHistorySize() const;
+
+    NKikimr::NMetrics::TResourceMetrics* GetResourceMetrics();
+
+    void UpdateWriteThroughput(
+        const TInstant& now,
+        const NKikimr::NMetrics::TChannel& channel,
+        const NKikimr::NMetrics::TGroupId& group,
+        ui64 value);
+
+    void UpdateReadThroughput(
+        const TInstant& now,
+        const NKikimr::NMetrics::TChannel& channel,
+        const NKikimr::NMetrics::TGroupId& group,
+        ui64 value,
+        bool isOverlayDisk);
+
+    void UpdateNetworkStat(
+        const TInstant& now,
+        ui64 value);
+
+    void UpdateStorageStat(i64 value);
+    void UpdateCPUUsageStat(TInstant now, ui64 value);
+
+    void UpdateResourceMetrics(TUpdateWriteThroughput& writeThroughput);
+    void UpdateResourceMetrics(TUpdateReadThroughput& readThroughput);
+    void UpdateResourceMetrics(TUpdateNetworkStat& networkStat);
+    void UpdateResourceMetrics(TUpdateStorageStat& storageStat);
+    void UpdateResourceMetrics(TUpdateCPUUsageStat& cpuUsageStat);
+
+    void ScheduleYellowStateUpdate(const NActors::TActorContext& ctx);
+    void UpdateYellowState(const NActors::TActorContext& ctx);
+    void ReassignChannelsIfNeeded(const NActors::TActorContext& ctx);
 
     bool InitReadWriteBlockRange(
         ui64 blockIndex,
@@ -380,25 +416,14 @@ private:
         ui32 blockCount,
         TBlockRange64* range) const;
 
-    void UpdateChannelPermissions(
+    bool UpdateChannelPermissions(
         const NActors::TActorContext& ctx,
         ui32 channel,
         EChannelPermissions permissions);
 
     void SendBackpressureReport(const NActors::TActorContext& ctx) const;
 
-    template <typename TRequestType>
-    void LogBlockInfos(
-        const NActors::TActorContext& ctx,
-        TRequestType requestType,
-        TVector<IProfileLog::TBlockInfo> blockInfos,
-        ui64 commitId);
-
-    void LogBlockCommitIds(
-        const NActors::TActorContext& ctx,
-        ESysRequestType requestType,
-        TVector<IProfileLog::TBlockCommitId> blockCommitIds,
-        ui64 commitId);
+    void SendGarbageCollectorCompleted(const NActors::TActorContext& ctx) const;
 
     void RebootPartitionOnCommitIdOverflow(
         const NActors::TActorContext& ctx,
@@ -415,20 +440,68 @@ private:
 
     void EnqueueForcedCompaction(const NActors::TActorContext& ctx);
 
-    void EnqueueCleanup(
-        const NActors::TActorContext& ctx,
-        TEvPartitionPrivate::ECleanupMode mode);
-
     bool GetCompletedForcedCompactionRanges(
         const TString& operationId,
         TInstant now,
         ui32& ranges);
 
+    void ChangeRangeCountPerRunIfNeeded(
+        ui64 rangeRealCount,
+        ui64 rangeThreshold,
+        ui64 diskRealCount,
+        ui64 diskThreshold,
+        const NActors::TActorContext& ctx);
+
+    TDuration ComputeGarbageCompactionExecTime(
+        const NActors::TActorContext& ctx,
+        bool throttlingAllowed);
+
     bool IsCompactRangePending(
         const TString& operationId,
         ui32& ranges) const;
 
+    NActors::IActorPtr CreateMetadataRebuildUsedBlocksActor(
+        NActors::TActorId tablet,
+        ui64 blocksPerBatch,
+        ui64 blockCount,
+        TDuration retryTimeout);
+
+    NActors::IActorPtr CreateMetadataRebuildBlockCountActor(
+        NActors::TActorId tablet,
+        ui64 blobsPerBatch,
+        ui64 finalCommitId,
+        ui64 mixedBlocksCount,
+        ui64 mergedBlocksCount,
+        TDuration retryTimeout);
+
+    TBlockBuffer CreateScanDiskBlockBuffer(ui32 blobsPerBatch);
+
+    NActors::IActorPtr CreateScanDiskActor(
+        NActors::TActorId tablet,
+        ui64 blobsPerBatch,
+        ui64 finalCommitId,
+        TDuration retryTimeout,
+        TBlockBuffer blockBuffer);
+
     [[nodiscard]] TDuration GetBlobStorageAsyncRequestTimeout() const;
+
+    void CreateFreshBlocksCompanionClient();
+
+    void CreateIOCompanionClient();
+
+    [[nodiscard]] bool IsFreshBlocksWriterEnabled() const;
+    [[nodiscard]] bool IsReadBlockMaskOnCompactionOptimizationEnabled() const;
+    [[nodiscard]] bool IsVerifyRecreatedBlobMetasOnCleanupEnabled() const;
+    [[nodiscard]] bool IsUseRecreatedBlobMetasOnCleanupEnabled() const;
+    [[nodiscard]] bool IsDynamicGarbageCompactionThrottlingEnabled() const;
+
+    void ProcessStorageStatusFlags(
+        const NActors::TActorContext& ctx,
+        NKikimr::TStorageStatusFlags flags,
+        ui32 channel,
+        ui32 generation,
+        double approximateFreeSpaceShare,
+        bool notifyFreshBlocksWriter);
 
 private:
     STFUNC(StateBoot);
@@ -462,6 +535,11 @@ private:
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);
 
+    void HandleHttpInfo_Check(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
     void HandleHttpInfo_View(
         const NActors::TActorContext& ctx,
         const TCgiParameters& params,
@@ -482,17 +560,52 @@ private:
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);
 
-    void HandleHttpInfo_ForceCleanup(
+    void HandleHttpInfo_AddGarbage(
         const NActors::TActorContext& ctx,
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);
 
-    void HandleHttpInfo_AddGarbage(
+    void HandleHttpInfo_CollectGarbage(
         const NActors::TActorContext& ctx,
-        const TCgiParameters& paramsm,
+        const TCgiParameters& params,
         TRequestInfoPtr requestInfo);
 
-    void HandleHttpInfo_CollectGarbage(
+    void HandleHttpInfo_RebuildMetadata(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
+    void HandleHttpInfo_ScanDisk(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
+    void HandleHttpInfo_GetTransactionsLatency(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
+    void HandleHttpInfo_GetTransactionsInflight(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
+    void HandleHttpInfo_GetBSGroupOperationsInflight(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
+    void HandleHttpInfo_GetGroupLatencies(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
+    void HandleHttpInfo_ResetTransactionLatencyStats(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
+    void HandleHttpInfo_ResetBSGroupLatencyStats(
         const NActors::TActorContext& ctx,
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);
@@ -513,6 +626,10 @@ private:
         TRequestInfo& requestInfo,
         TString message);
 
+    void HandleGetUsedBlocksResponse(
+        const TEvVolume::TEvGetUsedBlocksResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleUpdateCounters(
         const TEvPartitionPrivate::TEvUpdateCounters::TPtr& ev,
         const NActors::TActorContext& ctx);
@@ -529,8 +646,8 @@ private:
         const TEvPartitionCommonPrivate::TEvLoadFreshBlobsCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleInitFreshZonesCompleted(
-        const TEvPartitionPrivate::TEvInitFreshZonesCompleted::TPtr& ev,
+    void HandleConfirmBlobsCompleted(
+        const TEvPartitionPrivate::TEvConfirmBlobsCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleProcessWriteQueue(
@@ -538,11 +655,11 @@ private:
         const NActors::TActorContext& ctx);
 
     void HandleReadBlobCompleted(
-        const TEvPartitionPrivate::TEvReadBlobCompleted::TPtr& ev,
+        const TEvPartitionCommonPrivate::TEvReadBlobCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleWriteBlobCompleted(
-        const TEvPartitionPrivate::TEvWriteBlobCompleted::TPtr& ev,
+    void HandlePatchBlobCompleted(
+        const TEvPartitionCommonPrivate::TEvPatchBlobCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleReadBlocksCompleted(
@@ -557,9 +674,39 @@ private:
         const TEvPartitionPrivate::TEvWriteBlocksCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleWriteFreshBlocksCompleted(
+        const TEvPartitionCommonPrivate::TEvWriteFreshBlocksCompleted::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    struct TWriteBlocksCompleted
+    {
+        bool CollectGarbageBarrierAcquired;
+        bool AddingUnconfirmedBlobsRequested;
+        bool IsFreshBlocksRequest;
+        TVector<TBlobToConfirm> BlobsToConfirm;
+    };
+
+    void HandleWriteBlocksCompletedImpl(
+        const NActors::TActorContext& ctx,
+        NActors::TActorId sender,
+        NProto::TError error,
+        const TEvPartitionCommonPrivate::TOperationCompleted& opCompleted,
+        TWriteBlocksCompleted writeBlocksCompleted);
+
     void HandleZeroBlocksCompleted(
         const TEvPartitionPrivate::TEvZeroBlocksCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
+
+    void HandleZeroFreshBlocksCompleted(
+        const TEvPartitionCommonPrivate::TEvZeroFreshBlocksCompleted::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleZeroBlocksCompletedImpl(
+        const NActors::TActorContext& ctx,
+        NActors::TActorId sender,
+        NProto::TError error,
+        const TEvPartitionCommonPrivate::TOperationCompleted& opCompleted,
+        bool freshBlocksRequest);
 
     void HandleFlushCompleted(
         const TEvPartitionPrivate::TEvFlushCompleted::TPtr& ev,
@@ -569,16 +716,20 @@ private:
         const TEvPartitionPrivate::TEvCompactionCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleMetadataRebuildCompleted(
+        const TEvPartitionPrivate::TEvMetadataRebuildCompleted::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleScanDiskCompleted(
+        const TEvPartitionPrivate::TEvScanDiskCompleted::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleCollectGarbageCompleted(
         const TEvPartitionPrivate::TEvCollectGarbageCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleForcedCompactionCompleted(
         const TEvPartitionPrivate::TEvForcedCompactionCompleted::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    void HandleForcedCleanupCompleted(
-        const TEvPartitionPrivate::TEvForcedCleanupCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleTrimFreshLogCompleted(
@@ -593,15 +744,70 @@ private:
         const NActors::TActorContext& ctx,
         TEvPartitionPrivate::TOperationCompleted operation);
 
-    void HandleWakeupOnBoot(
-        const NActors::TEvents::TEvWakeup::TPtr& ev,
+    void HandleAddConfirmedBlobsCompleted(
+        const TEvPartitionPrivate::TEvAddConfirmedBlobsCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
+
+    void HandleDescribeBlocksCompleted(
+        const TEvPartitionCommonPrivate::TEvDescribeBlocksCompleted::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    NProto::TError DoHandleMetadataRebuildBatch(
+        const NActors::TActorContext& ctx,
+        NProto::ERebuildMetadataType type,
+        ui32 rangesPerBatch);
+
+    NProto::TError DoHandleScanDisk(
+        const NActors::TActorContext& ctx,
+        ui32 blobsPerBatch);
+
+    void MapBaseDiskIdToTabletId(const NActors::TActorContext& ctx);
+    void ClearBaseDiskIdToTabletIdMapping(const NActors::TActorContext& ctx);
+
+    void StartBaseDiskKeepAliveActorIfNeeded(const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);
     bool RejectRequests(STFUNC_SIG);
 
+    void SetFirstGarbageCollectionCompleted();
+    bool IsFirstGarbageCollectionCompleted() const;
+
+    void LoadNextCompactionMapChunk(const NActors::TActorContext& ctx);
+    void HandleLoadCompactionMapChunk(
+        const TEvPartitionPrivate::TEvLoadCompactionMapChunkRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleWakeupOnBoot(
+        const NActors::TEvents::TEvWakeup::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    THashSet<ui32> GetRangeIndices(
+        const TVector<TAddFreshBlob>& freshBlobs,
+        const TVector<TAddMixedBlob>& mixedBlobs,
+        const TVector<TAddMergedBlob>& mergedBlobs) const;
+
     void HandleGetPartCountersRequest(
         const TEvPartitionCommonPrivate::TEvGetPartCountersRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void RejectGetPartCountersRequest(
+        const TEvPartitionCommonPrivate::TEvGetPartCountersRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleUpdateResourceMetrics(
+        const TEvPartitionPrivate::TEvUpdateResourceMetrics::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleExecuteTransactions(
+        const TEvPartitionCommonPrivate::TEvExecuteTransactions::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleProcessStorageStatusFlags(
+        const TEvPartitionCommonPrivate::TEvProcessStorageStatusFlags::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleReassignChannelsIfNeeded(
+        const TEvPartitionCommonPrivate::TEvReassignChannelsIfNeeded::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     BLOCKSTORE_PARTITION_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvPartition)
@@ -609,7 +815,26 @@ private:
     BLOCKSTORE_PARTITION_COMMON_REQUESTS_PRIVATE(BLOCKSTORE_IMPLEMENT_REQUEST, TEvPartitionCommonPrivate)
     BLOCKSTORE_PARTITION_REQUESTS_FWD_SERVICE(BLOCKSTORE_IMPLEMENT_REQUEST, TEvService)
     BLOCKSTORE_PARTITION_REQUESTS_FWD_VOLUME(BLOCKSTORE_IMPLEMENT_REQUEST, TEvVolume)
+
     BLOCKSTORE_PARTITION2_TRANSACTIONS(BLOCKSTORE_IMPLEMENT_TRANSACTION, TTxPartition)
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+void SetCounters(
+    NProto::TIOCounters& counters,
+    const TDuration execTime,
+    const TDuration waitTime,
+    ui64 blocksCount);
+
+////////////////////////////////////////////////////////////////////////////////
+
+NProto::TError VerifyBlockChecksum(
+    const ui32 actualChecksum,
+    const NKikimr::TLogoBlobID& blobID,
+    const ui64 blockIndex,
+    const ui16 blobOffset,
+    const ui32 expectedChecksum,
+    const TString& diskId);
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition2

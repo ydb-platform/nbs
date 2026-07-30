@@ -2,63 +2,90 @@
 
 #include "public.h"
 
-#include "part2_database.h" // XXX
+#include "part2_events_private.h"
 
 #include <cloud/blockstore/libs/common/block_range.h>
-#include <cloud/blockstore/libs/diagnostics/profile_log.h>
+#include <cloud/blockstore/libs/storage/api/partition2.h>
 #include <cloud/blockstore/libs/storage/core/block_handler.h>
+#include <cloud/blockstore/libs/storage/core/compaction_map.h>
 #include <cloud/blockstore/libs/storage/core/compaction_options.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
-#include <cloud/blockstore/libs/storage/partition2/model/blob.h>
-#include <cloud/blockstore/libs/storage/partition2/model/blob_index.h>
-#include <cloud/blockstore/libs/storage/partition2/model/block.h>
-#include <cloud/blockstore/libs/storage/partition2/model/block_list.h>
+#include <cloud/blockstore/libs/storage/partition2/model/blob_to_confirm.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/block.h>
+#include <cloud/blockstore/libs/storage/partition2/model/block_mask.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/checkpoint.h>
+#include <cloud/blockstore/libs/storage/partition2/model/cleanup_queue.h>
+#include <cloud/blockstore/libs/storage/partition2/model/garbage_queue.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/blob_markers.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
 
-#include <cloud/storage/core/libs/tablet/model/commit.h>
+#include <cloud/storage/core/libs/common/block_buffer.h>
+#include <cloud/storage/core/libs/common/compressed_bitmap.h>
 #include <cloud/storage/core/libs/tablet/model/partial_blob_id.h>
 
+#include <util/generic/algorithm.h>
+#include <util/generic/hash.h>
+#include <util/generic/map.h>
 #include <util/generic/maybe.h>
-#include <util/generic/set.h>
 #include <util/generic/string.h>
+#include <util/generic/variant.h>
 #include <util/generic/vector.h>
 
 namespace NCloud::NBlockStore::NStorage::NPartition2 {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_PARTITION2_TRANSACTIONS(xxx, ...)                           \
-    xxx(InitSchema,             __VA_ARGS__)                                   \
-    xxx(LoadState,              __VA_ARGS__)                                   \
-    xxx(ZeroBlocks,             __VA_ARGS__)                                   \
-    xxx(InitIndex,              __VA_ARGS__)                                   \
-    xxx(ReadBlocks,             __VA_ARGS__)                                   \
-    xxx(AddBlobs,               __VA_ARGS__)                                   \
-    xxx(Compaction,             __VA_ARGS__)                                   \
-    xxx(Cleanup,                __VA_ARGS__)                                   \
-    xxx(UpdateIndexStructures,  __VA_ARGS__)                                   \
-    xxx(CollectGarbage,         __VA_ARGS__)                                   \
-    xxx(AddGarbage,             __VA_ARGS__)                                   \
-    xxx(DeleteGarbage,          __VA_ARGS__)                                   \
-    xxx(CreateCheckpoint,       __VA_ARGS__)                                   \
-    xxx(DeleteCheckpoint,       __VA_ARGS__)                                   \
-    xxx(DescribeRange,          __VA_ARGS__)                                   \
-    xxx(DescribeBlob,           __VA_ARGS__)                                   \
-    xxx(GetChangedBlocks,       __VA_ARGS__)                                   \
-    xxx(DescribeBlocks,         __VA_ARGS__)                                   \
+#define BLOCKSTORE_PARTITION2_TRANSACTIONS(xxx, ...)                            \
+    xxx(InitSchema,                 __VA_ARGS__)                               \
+    xxx(LoadState,                  __VA_ARGS__)                               \
+    xxx(WriteBlocks,                __VA_ARGS__)                               \
+    xxx(ZeroBlocks,                 __VA_ARGS__)                               \
+    xxx(ReadBlocks,                 __VA_ARGS__)                               \
+    xxx(AddBlobs,                   __VA_ARGS__)                               \
+    xxx(Compaction,                 __VA_ARGS__)                               \
+    xxx(CompactionReadBlobInfo,     __VA_ARGS__)                               \
+    xxx(Cleanup,                    __VA_ARGS__)                               \
+    xxx(CollectGarbage,             __VA_ARGS__)                               \
+    xxx(AddGarbage,                 __VA_ARGS__)                               \
+    xxx(DeleteGarbage,              __VA_ARGS__)                               \
+    xxx(CreateCheckpoint,           __VA_ARGS__)                               \
+    xxx(DeleteCheckpoint,           __VA_ARGS__)                               \
+    xxx(DescribeRange,              __VA_ARGS__)                               \
+    xxx(DescribeBlob,               __VA_ARGS__)                               \
+    xxx(CheckIndex,                 __VA_ARGS__)                               \
+    xxx(GetChangedBlocks,           __VA_ARGS__)                               \
+    xxx(DescribeBlocks,             __VA_ARGS__)                               \
+    xxx(FlushToDevNull,             __VA_ARGS__)                               \
+    xxx(GetUsedBlocks,              __VA_ARGS__)                               \
+    xxx(UpdateLogicalUsedBlocks,    __VA_ARGS__)                               \
+    xxx(MetadataRebuildUsedBlocks,  __VA_ARGS__)                               \
+    xxx(MetadataRebuildBlockCount,  __VA_ARGS__)                               \
+    xxx(ScanDiskBatch,              __VA_ARGS__)                               \
+    xxx(AddUnconfirmedBlobs,        __VA_ARGS__)                               \
+    xxx(ConfirmBlobs,               __VA_ARGS__)                               \
+    xxx(DeleteUnconfirmedBlobs,     __VA_ARGS__)                               \
+    xxx(LoadCompactionMapChunk,     __VA_ARGS__)                               \
 // BLOCKSTORE_PARTITION2_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TTxPartition
 {
+    using TBlockMark = NBlobMarkers::TBlockMark;
+    using TBlockMarks = NBlobMarkers::TBlockMarks;
+
     //
     // InitSchema
     //
 
     struct TInitSchema
     {
+        ui64 BlocksCount;
         const TRequestInfoPtr RequestInfo;
+
+        explicit TInitSchema(ui64 blocksCount)
+            : BlocksCount(blocksCount)
+        {}
 
         void Clear()
         {
@@ -75,28 +102,97 @@ struct TTxPartition
         const TRequestInfoPtr RequestInfo;
 
         TMaybe<NProto::TPartitionMeta> Meta;
-        TFreshBlockUpdates FreshBlockUpdates;
-        TVector<TPartitionDatabase::TBlobMeta> Blobs;
-        TVector<TBlobUpdate> BlobUpdates;
-        TVector<TPartitionDatabase::TBlobGarbage> BlobGarbage;
-        TVector<NProto::TCheckpointMeta> Checkpoints;
-        TVector<TVector<TPartialBlobId>> DeletedCheckpointBlobIds;
+
+        TVector<TOwningFreshBlock> FreshBlocks;
         TVector<TCompactionCounter> CompactionMap;
+        TCompressedBitmap UsedBlocks;
+        TCompressedBitmap LogicalUsedBlocks;
+        bool ReadLogicalUsedBlocks = false;
+        TVector<TCheckpoint> Checkpoints;
+        THashMap<TString, ui64> CheckpointId2CommitId;
+        TVector<TCleanupQueueItem> CleanupQueue;
+        TVector<TPartialBlobId> NewBlobs;
         TVector<TPartialBlobId> GarbageBlobs;
-        TVector<TPartialBlobId> ZoneBlobIds;
+        TCommitIdToBlobsToConfirm UnconfirmedBlobs;
+
+        explicit TLoadState(ui64 blocksCount)
+            : UsedBlocks(blocksCount)
+            , LogicalUsedBlocks(blocksCount)
+        {}
 
         void Clear()
         {
             Meta.Clear();
-            FreshBlockUpdates.clear();
-            Blobs.clear();
-            BlobUpdates.clear();
-            BlobGarbage.clear();
-            Checkpoints.clear();
-            DeletedCheckpointBlobIds.clear();
+
+            FreshBlocks.clear();
             CompactionMap.clear();
+            UsedBlocks.Clear();
+            LogicalUsedBlocks.Clear();
+            ReadLogicalUsedBlocks = false;
+            Checkpoints.clear();
+            CheckpointId2CommitId.clear();
+            CleanupQueue.clear();
+            NewBlobs.clear();
             GarbageBlobs.clear();
-            ZoneBlobIds.clear();
+            UnconfirmedBlobs.clear();
+        }
+    };
+
+    //
+    // WriteBlocks
+    //
+
+    struct TWriteBlocks
+    {
+        struct TSubRequestInfo
+        {
+            TRequestInfoPtr RequestInfo;
+            TBlockRange32 Range;
+            const IWriteBlocksHandlerPtr WriteHandler;
+            bool Empty = false;
+            bool ReplyLocal = false;
+
+            TSubRequestInfo() = default;
+
+            TSubRequestInfo(
+                    TRequestInfoPtr requestInfo,
+                    TBlockRange32 range,
+                    IWriteBlocksHandlerPtr writeHandler,
+                    bool empty,
+                    bool replyLocal)
+                : RequestInfo(std::move(requestInfo))
+                , Range(range)
+                , WriteHandler(std::move(writeHandler))
+                , Empty(empty)
+                , ReplyLocal(replyLocal)
+            {
+            }
+        };
+
+        const ui64 CommitId = 0;
+        bool Interrupted = false;
+
+        const TVector<TSubRequestInfo> Requests;
+
+        TVector<IProfileLog::TBlockInfo> AffectedBlockInfos;
+
+        TWriteBlocks(
+                ui64 commitId,
+                TSubRequestInfo request)
+            : CommitId(commitId)
+            , Requests(1, std::move(request))
+        {}
+
+        TWriteBlocks(
+                ui64 commitId,
+                TVector<TSubRequestInfo> requests)
+            : CommitId(commitId)
+            , Requests(std::move(requests))
+        {}
+
+        void Clear()
+        {
+            // nothing to do
         }
     };
 
@@ -107,39 +203,22 @@ struct TTxPartition
     struct TZeroBlocks
     {
         const TRequestInfoPtr RequestInfo;
-        const TBlockRange32 WriteRange;
 
-        ui64 CommitId = 0;
+        const ui64 CommitId;
+        const TBlockRange32 WriteRange;
 
         TZeroBlocks(
                 TRequestInfoPtr requestInfo,
+                ui64 commitId,
                 const TBlockRange32& writeRange)
             : RequestInfo(std::move(requestInfo))
+            , CommitId(commitId)
             , WriteRange(writeRange)
         {}
 
         void Clear()
         {
-            CommitId = 0;
-        }
-    };
-
-    struct TInitIndex
-    {
-        const TRequestInfoPtr RequestInfo;
-        const NActors::TActorId ActorId;
-        const TVector<TBlockRange32> BlockRanges;
-
-        TInitIndex(
-                const NActors::TActorId& actorId,
-                TVector<TBlockRange32> blockRanges)
-            : ActorId(actorId)
-            , BlockRanges(std::move(blockRanges))
-        {
-        }
-
-        void Clear()
-        {
+            // nothing to do
         }
     };
 
@@ -150,51 +229,72 @@ struct TTxPartition
     struct TReadBlocks
     {
         const TRequestInfoPtr RequestInfo;
-        const ui64 CheckpointId;
+
+        const ui64 CommitId;
         const TBlockRange32 ReadRange;
         const IReadBlocksHandlerPtr ReadHandler;
         const bool ReplyLocal;
         const bool ShouldReportBlobIdsOnFailure;
+        bool ChecksumsEnabled = false;
+        bool Interrupted = false;
 
-        struct TBlockMark
-        {
-            ui64 MinCommitId = 0;
-            ui64 MaxCommitId = 0;
-            NKikimr::TLogoBlobID BlobId;
-            ui32 BSGroupId = 0;
-            ui16 BlobOffset = 0;
-            bool Empty = true;
-        };
-
-        ui64 CommitId = 0;
-        size_t BlocksToRead = 0;
-        TVector<TBlockMark> Blocks;
+        TBlockMarks BlockMarks;
+        TVector<ui64> BlockMarkCommitIds;
+        THashMap<TPartialBlobId, NProto::TBlobMeta, TPartialBlobIdHash> BlobId2Meta;
 
         TVector<IProfileLog::TBlockInfo> BlockInfos;
 
         TReadBlocks(
                 TRequestInfoPtr requestInfo,
-                ui64 checkpointId,
+                ui64 commitId,
                 const TBlockRange32& readRange,
                 IReadBlocksHandlerPtr readHandler,
                 bool replyLocal,
                 bool shouldReportBlobIdsOnFailure)
             : RequestInfo(std::move(requestInfo))
-            , CheckpointId(checkpointId)
+            , CommitId(commitId)
             , ReadRange(readRange)
             , ReadHandler(std::move(readHandler))
             , ReplyLocal(replyLocal)
             , ShouldReportBlobIdsOnFailure(shouldReportBlobIdsOnFailure)
-            , Blocks(ReadRange.Size())
+            , BlockMarks(ReadRange.Size())
+            , BlockMarkCommitIds(ReadRange.Size(), 0)
         {}
 
         void Clear()
         {
-            CommitId = 0;
-            BlocksToRead = 0;
-            std::fill(Blocks.begin(), Blocks.end(), TBlockMark());
             ReadHandler->Clear();
+            ChecksumsEnabled = false;
+            std::fill(BlockMarks.begin(), BlockMarks.end(), NBlobMarkers::TEmptyMark());
+            std::fill(BlockMarkCommitIds.begin(), BlockMarkCommitIds.end(), 0);
+            BlobId2Meta.clear();
             BlockInfos.clear();
+        }
+
+        ui64& GetBlockMarkCommitId(ui32 blockIndex)
+        {
+            Y_DEBUG_ABORT_UNLESS(ReadRange.Contains(blockIndex));
+            return BlockMarkCommitIds[blockIndex - ReadRange.Start];
+        }
+
+        TBlockMark& GetBlockMark(ui32 blockIndex)
+        {
+            Y_DEBUG_ABORT_UNLESS(ReadRange.Contains(blockIndex));
+            return BlockMarks[blockIndex - ReadRange.Start];
+        }
+
+        bool MarkBlock(ui32 blockIndex, ui64 commitId, TBlockMark mark)
+        {
+            auto& outputMark = GetBlockMark(blockIndex);
+            auto& outputMarkCommitId = GetBlockMarkCommitId(blockIndex);
+
+            if (outputMarkCommitId < commitId) {
+                outputMarkCommitId = commitId;
+                outputMark = std::move(mark);
+                return true;
+            }
+
+            return false;
         }
     };
 
@@ -205,31 +305,42 @@ struct TTxPartition
     struct TAddBlobs
     {
         const TRequestInfoPtr RequestInfo;
-        const EAddBlobMode Mode;
-        TVector<TAddBlob> NewBlobs;
-        const TGarbageInfo GarbageInfo;
-        TAffectedBlobInfos AffectedBlobInfos;
-        const ui32 BlobsSkippedByCompaction;
-        const ui32 BlocksSkippedByCompaction;
-        TVector<IProfileLog::TBlockCommitId> BlockCommitIds;
 
-        bool Success = true;
+        const ui64 CommitId;
+        const TVector<TAddMixedBlob> MixedBlobs;
+        const TVector<TAddMergedBlob> MergedBlobs;
+        const TVector<TAddFreshBlob> FreshBlobs;
+        const EAddBlobMode Mode;
+
+        // compaction
+        const TAffectedBlobs AffectedBlobs;
+        const TAffectedBlocks AffectedBlocks;
+        const TVector<TBlobCompactionInfo> MixedBlobCompactionInfos;
+        const TVector<TBlobCompactionInfo> MergedBlobCompactionInfos;
+
+        ui64 DeletionCommitId = 0;
 
         TAddBlobs(
                 TRequestInfoPtr requestInfo,
+                ui64 commitId,
+                TVector<TAddMixedBlob> mixedBlobs,
+                TVector<TAddMergedBlob> mergedBlobs,
+                TVector<TAddFreshBlob> freshBlobs,
                 EAddBlobMode mode,
-                TVector<TAddBlob> newBlobs,
-                TGarbageInfo garbageInfo,
-                TAffectedBlobInfos affectedBlobInfos,
-                ui32 blobsSkippedByCompaction,
-                ui32 blocksSkippedByCompaction)
+                TAffectedBlobs affectedBlobs,
+                TAffectedBlocks affectedBlocks,
+                TVector<TBlobCompactionInfo> mixedBlobCompactionInfos,
+                TVector<TBlobCompactionInfo> mergedBlobCompactionInfos)
             : RequestInfo(std::move(requestInfo))
+            , CommitId(commitId)
+            , MixedBlobs(std::move(mixedBlobs))
+            , MergedBlobs(std::move(mergedBlobs))
+            , FreshBlobs(std::move(freshBlobs))
             , Mode(mode)
-            , NewBlobs(std::move(newBlobs))
-            , GarbageInfo(std::move(garbageInfo))
-            , AffectedBlobInfos(std::move(affectedBlobInfos))
-            , BlobsSkippedByCompaction(blobsSkippedByCompaction)
-            , BlocksSkippedByCompaction(blocksSkippedByCompaction)
+            , AffectedBlobs(std::move(affectedBlobs))
+            , AffectedBlocks(std::move(affectedBlocks))
+            , MixedBlobCompactionInfos(std::move(mixedBlobCompactionInfos))
+            , MergedBlobCompactionInfos(std::move(mergedBlobCompactionInfos))
         {}
 
         void Clear()
@@ -242,42 +353,278 @@ struct TTxPartition
     // Compaction
     //
 
-    struct TCompaction
+    struct TRangeCompaction
     {
-        const TRequestInfoPtr RequestInfo;
+        const ui32 RangeIdx;
         const TBlockRange32 BlockRange;
-        const TCompactionOptions CompactionOptions;
-        TGarbageInfo GarbageInfo;
 
-        ui64 CommitId = 0;
-        TBlobRefsList Blobs;
-        TAffectedBlobInfos AffectedBlobInfos;
+        struct TBlockMark
+        {
+            TPartialBlobId BlobId;
+            ui64 CommitId = 0;
+            ui16 BlobOffset = 0;
+            TString BlockContent;
+        };
+
+        TVector<TBlockMark> BlockMarks;
+        TAffectedBlobs AffectedBlobs;
+        TAffectedBlocks AffectedBlocks;
         ui32 BlobsSkipped = 0;
         ui32 BlocksSkipped = 0;
+        bool ChecksumsEnabled = false;
 
-        TCompaction(
-                TRequestInfoPtr requestInfo,
-                const TBlockRange32& blockRange,
-                TCompactionOptions compactionOptions)
-            : RequestInfo(std::move(requestInfo))
+        TRangeCompaction(ui32 rangeIdx, const TBlockRange32& blockRange)
+            : RangeIdx(rangeIdx)
             , BlockRange(blockRange)
-            , CompactionOptions(compactionOptions)
-        {}
-
-        TCompaction(
-                TRequestInfoPtr requestInfo,
-                TGarbageInfo garbageInfo)
-            : RequestInfo(std::move(requestInfo))
-            , GarbageInfo(std::move(garbageInfo))
+            , BlockMarks(blockRange.Size())
         {}
 
         void Clear()
         {
-            CommitId = 0;
-            Blobs.clear();
-            AffectedBlobInfos.clear();
+            std::fill(BlockMarks.begin(), BlockMarks.end(), TBlockMark());
+            AffectedBlobs.clear();
+            AffectedBlocks.clear();
             BlobsSkipped = 0;
             BlocksSkipped = 0;
+            ChecksumsEnabled = false;
+        }
+
+        TBlockMark& GetBlockMark(ui32 blockIndex)
+        {
+            Y_DEBUG_ABORT_UNLESS(BlockRange.Contains(blockIndex));
+            return BlockMarks[blockIndex - BlockRange.Start];
+        }
+
+        void MarkBlock(
+            ui32 blockIndex,
+            ui64 commitId,
+            const TPartialBlobId& blobId,
+            ui16 blobOffset,
+            bool keepTrackOfAffectedBlocks)
+        {
+            auto& mark = GetBlockMark(blockIndex);
+            if (mark.CommitId < commitId) {
+                mark.CommitId = commitId;
+                mark.BlobId = blobId;
+                mark.BlobOffset = blobOffset;
+                mark.BlockContent.clear();
+            }
+
+            auto& ab = AffectedBlobs[blobId];
+            ab.Offsets.push_back(blobOffset);
+
+            if (keepTrackOfAffectedBlocks) {
+                ab.AffectedBlocks.push_back({ blockIndex, commitId });
+                AffectedBlocks.push_back({ blockIndex, commitId });
+            }
+        }
+
+        void MarkBlock(
+            ui32 blockIndex,
+            ui64 commitId,
+            TStringBuf blockContent)
+        {
+            auto& mark = GetBlockMark(blockIndex);
+            if (mark.CommitId < commitId) {
+                mark.CommitId = commitId;
+                mark.BlobId = {};
+                mark.BlobOffset = 0;
+                mark.BlockContent.assign(blockContent);
+            }
+        }
+    };
+
+    struct TCompaction
+    {
+        const TRequestInfoPtr RequestInfo;
+        const ui64 CommitId;
+        const TCompactionOptions CompactionOptions;
+        const bool SplitCompactionTxEnabled;
+
+        TVector<TRangeCompaction> RangeCompactions;
+        TInstant TxStarted;
+
+        THashSet<TPartialBlobId, TPartialBlobIdHash> BlobsToReadBlockMasks;
+        THashSet<TPartialBlobId, TPartialBlobIdHash> BlobsToReadBlobMetas;
+
+        TCompaction(
+                TRequestInfoPtr requestInfo,
+                ui64 commitId,
+                TCompactionOptions compactionOptions,
+                bool splitCompactionTxEnabled,
+                const TVector<std::pair<ui32, TBlockRange32>>& ranges,
+                TInstant txStarted)
+            : RequestInfo(std::move(requestInfo))
+            , CommitId(commitId)
+            , CompactionOptions(compactionOptions)
+            , SplitCompactionTxEnabled(splitCompactionTxEnabled)
+            , TxStarted(txStarted)
+        {
+            RangeCompactions.reserve(ranges.size());
+            for (const auto& range: ranges) {
+                RangeCompactions.emplace_back(range.first, range.second);
+            }
+        }
+
+        void Clear()
+        {
+            for (auto& range: RangeCompactions) {
+                range.Clear();
+            }
+            BlobsToReadBlockMasks.clear();
+            BlobsToReadBlobMetas.clear();
+        }
+    };
+
+    //
+    // CompactionReadBlobInfo
+    //
+
+    struct TCompactionReadBlobInfo
+    {
+        struct TOutputIndex
+        {
+            std::optional<ui32> BlockMaskIndex;
+            std::optional<ui32> BlobMetaIndex;
+        };
+
+        const TRequestInfoPtr RequestInfo;
+        const THashMap<TPartialBlobId, TOutputIndex, TPartialBlobIdHash>
+            BlobsToOutputIndices;
+        const size_t BlockMaskCount;
+        const size_t BlobMetaCount;
+
+        TVector<TBlockMask> BlockMasks;
+        TVector<NProto::TBlobMeta> BlobMetas;
+
+        TCompactionReadBlobInfo(
+                TRequestInfoPtr requestInfo,
+                THashMap<TPartialBlobId, TOutputIndex, TPartialBlobIdHash>
+                    blobsToOutputIndices,
+                size_t blockMaskCount,
+                size_t blobMetaCount)
+            : RequestInfo(std::move(requestInfo))
+            , BlobsToOutputIndices(std::move(blobsToOutputIndices))
+            , BlockMaskCount(blockMaskCount)
+            , BlobMetaCount(blobMetaCount)
+        {}
+
+        void Clear()
+        {
+            BlockMasks.clear();
+            BlobMetas.clear();
+        }
+    };
+
+    //
+    // MetadataRebuildUsedBlocks
+    //
+
+    struct TMetadataRebuildUsedBlocks
+    {
+        const TRequestInfoPtr RequestInfo;
+
+        const TBlockRange32 BlockRange;
+        struct TBlockInfo
+        {
+            bool Filled = false;
+            ui64 MaxCommitId = 0;
+        };
+
+        TVector<TBlockInfo> BlockInfos;
+        ui32 FilledBlockCount = 0;
+
+        TMetadataRebuildUsedBlocks(
+                TRequestInfoPtr requestInfo,
+                const TBlockRange32& blockRange)
+            : RequestInfo(std::move(requestInfo))
+            , BlockRange(blockRange)
+            , BlockInfos(BlockRange.Size())
+        {}
+
+        void Clear()
+        {
+            std::fill(BlockInfos.begin(), BlockInfos.end(), TBlockInfo());
+            FilledBlockCount = 0;
+        }
+    };
+
+    //
+    // MetadataRebuildBlockCount
+    //
+
+    struct TMetadataRebuildBlockCount
+    {
+        const TRequestInfoPtr RequestInfo;
+        const TPartialBlobId StartBlobId;
+        const ui32 BlobCountToRead;
+        const TPartialBlobId FinalBlobId;
+
+        ui32 ReadCount = 0;
+
+        ui64 MixedBlockCount = 0;
+        ui64 MergedBlockCount = 0;
+
+        TPartialBlobId LastReadBlobId;
+
+        TBlockCountRebuildState RebuildState;
+
+        TMetadataRebuildBlockCount(
+                TRequestInfoPtr requestInfo,
+                TPartialBlobId startBlobId,
+                ui32 blobCountToRead,
+                TPartialBlobId finalBlobId,
+                const TBlockCountRebuildState& rebuildState)
+            : RequestInfo(std::move(requestInfo))
+            , StartBlobId(startBlobId)
+            , BlobCountToRead(blobCountToRead)
+            , FinalBlobId(finalBlobId)
+            , RebuildState(rebuildState)
+        {}
+
+        void Clear()
+        {
+            ReadCount = 0;
+            MixedBlockCount = 0;
+            MergedBlockCount = 0;
+            LastReadBlobId = {};
+        }
+    };
+
+    //
+    // ScanDiskBatch
+    //
+
+    struct TScanDiskBatch
+    {
+        const TRequestInfoPtr RequestInfo;
+        const TPartialBlobId StartBlobId;
+        const ui32 BlobCountToVisit = 0;
+        const TPartialBlobId FinalBlobId;
+
+        using TBlobMark =
+            TEvPartitionPrivate::TScanDiskBatchResponse::TBlobMark;
+
+        TVector<TBlobMark> BlobsToReadInCurrentBatch;
+        ui32 VisitCount = 0;
+        TPartialBlobId LastVisitedBlobId;
+
+        TScanDiskBatch(
+                TRequestInfoPtr requestInfo,
+                TPartialBlobId startBlobId,
+                ui32 blobCountToRead,
+                TPartialBlobId finalBlobId)
+            : RequestInfo(std::move(requestInfo))
+            , StartBlobId(startBlobId)
+            , BlobCountToVisit(blobCountToRead)
+            , FinalBlobId(finalBlobId)
+        {}
+
+        void Clear()
+        {
+            BlobsToReadInCurrentBatch.clear();
+            VisitCount = 0;
+            LastVisitedBlobId = TPartialBlobId();
         }
     };
 
@@ -288,57 +635,34 @@ struct TTxPartition
     struct TCleanup
     {
         const TRequestInfoPtr RequestInfo;
+
         const ui64 CommitId;
-        const TEvPartitionPrivate::ECleanupMode Mode;
+        const bool UseRecreatedBlobMeta;
+        const bool VerifyRecreatedBlobMetasOnCleanup;
 
-        using TBlockList = TVector<TBlock>;
+        TVector<TCleanupQueueItem> CleanupQueue;
 
-        ui64 CollectBarrierCommitId = 0;
+        TVector<NProto::TBlobMeta> BlobsMeta;
 
-        TVector<TPartialBlobId> ExistingBlobIds;
-        TVector<TBlockList> BlockLists;
-        TVector<IProfileLog::TBlockCommitId> BlockCommitIds;
-        TVector<TBlobUpdate> BlobUpdates;
+        ui64 ReadBlobMetasCount = 0;
 
         TCleanup(
                 TRequestInfoPtr requestInfo,
                 ui64 commitId,
-                TEvPartitionPrivate::ECleanupMode mode)
+                bool useRecreatedBlobMeta,
+                bool verifyRecreatedBlobMetasOnCleanup,
+                TVector<TCleanupQueueItem> cleanupQueue)
             : RequestInfo(std::move(requestInfo))
             , CommitId(commitId)
-            , Mode(mode)
+            , UseRecreatedBlobMeta(useRecreatedBlobMeta)
+            , VerifyRecreatedBlobMetasOnCleanup(verifyRecreatedBlobMetasOnCleanup)
+            , CleanupQueue(std::move(cleanupQueue))
         {}
 
         void Clear()
         {
-            ExistingBlobIds.clear();
-            BlockLists.clear();
-        }
-    };
-
-    //
-    // UpdateIndexStructures
-    //
-
-    struct TUpdateIndexStructures
-    {
-        const TRequestInfoPtr RequestInfo;
-        const TBlockRange32 BlockRange;
-
-        TVector<TBlockRange64> ConvertedToMixedIndex;
-        TVector<TBlockRange64> ConvertedToRangeMap;
-
-        TUpdateIndexStructures(
-                TRequestInfoPtr requestInfo,
-                const TBlockRange32& blockRange)
-            : RequestInfo(std::move(requestInfo))
-            , BlockRange(blockRange)
-        {}
-
-        void Clear()
-        {
-            ConvertedToMixedIndex.clear();
-            ConvertedToRangeMap.clear();
+            ReadBlobMetasCount = 0;
+            BlobsMeta.clear();
         }
     };
 
@@ -419,21 +743,48 @@ struct TTxPartition
     };
 
     //
+    // DeleteUnconfirmedBlobs
+    //
+
+    struct TDeleteUnconfirmedBlobs
+    {
+        const TRequestInfoPtr RequestInfo;
+        const ui64 CommitId;
+
+        TDeleteUnconfirmedBlobs(
+            TRequestInfoPtr requestInfo,
+            ui64 commitId)
+            : RequestInfo(std::move(requestInfo))
+            , CommitId(commitId)
+        {}
+
+        void Clear()
+        {
+            // nothing to do
+        }
+    };
+
+    //
     // CreateCheckpoint
     //
 
     struct TCreateCheckpoint
     {
         const TRequestInfoPtr RequestInfo;
-        NProto::TCheckpointMeta Meta;
 
-        ui64 CommitId = 0;
+        const TCheckpoint Checkpoint;
+
+        bool WithoutData;
+
+        NProto::TError Error;
 
         TCreateCheckpoint(
                 TRequestInfoPtr requestInfo,
-                NProto::TCheckpointMeta meta)
+                TCheckpoint checkpoint,
+                bool withoutData)
             : RequestInfo(std::move(requestInfo))
-            , Meta(std::move(meta))
+            , Checkpoint(std::move(checkpoint))
+            , WithoutData(withoutData)
         {}
 
         void Clear()
@@ -448,24 +799,35 @@ struct TTxPartition
 
     struct TDeleteCheckpoint
     {
+        using TReplyCallback = std::function<void(
+            const NActors::TActorContext& ctx,
+            TRequestInfoPtr requestInfo,
+            const NProto::TError& error)>;
+
         const TRequestInfoPtr RequestInfo;
-        const ui64 CommitId;
+
         const TString CheckpointId;
+
+        const TReplyCallback ReplyCallback;
+
+        const bool DeleteOnlyData;
+
         NProto::TError Error;
-        TVector<TPartialBlobId> BlobIds;
 
         TDeleteCheckpoint(
                 TRequestInfoPtr requestInfo,
-                ui64 commitId,
-                TString checkpointId)
+                TString checkpointId,
+                TReplyCallback replyCallback,
+                bool deleteOnlyData)
             : RequestInfo(std::move(requestInfo))
-            , CommitId(commitId)
             , CheckpointId(std::move(checkpointId))
+            , ReplyCallback(std::move(replyCallback))
+            , DeleteOnlyData(deleteOnlyData)
         {}
 
         void Clear()
         {
-            BlobIds.clear();
+            // nothing to do
         }
     };
 
@@ -476,20 +838,47 @@ struct TTxPartition
     struct TDescribeRange
     {
         const TRequestInfoPtr RequestInfo;
-        const TBlockRange32 BlockRange;
 
-        TVector<TBlockRef> Blocks;
+        const TBlockRange32 BlockRange;
+        const TString BlockFilter;
+
+        struct TBlockMark
+        {
+            TPartialBlobId BlobId;
+            ui64 CommitId = 0;
+            ui32 BlockIndex = 0;
+            ui16 BlobOffset = 0;
+        };
+
+        TVector<TBlockMark> BlockMarks;
 
         TDescribeRange(
                 TRequestInfoPtr requestInfo,
-                const TBlockRange32& blockRange)
+                const TBlockRange32& blockRange,
+                TString blockFilter)
             : RequestInfo(std::move(requestInfo))
             , BlockRange(blockRange)
+            , BlockFilter(std::move(blockFilter))
         {}
 
         void Clear()
         {
-            Blocks.clear();
+            BlockMarks.clear();
+        }
+
+        void MarkBlock(
+            ui32 blockIndex,
+            ui64 commitId,
+            const TPartialBlobId& blobId,
+            ui16 blobOffset)
+        {
+            Y_DEBUG_ABORT_UNLESS(BlockRange.Contains(blockIndex));
+            BlockMarks.push_back({
+                blobId,
+                commitId,
+                blockIndex,
+                blobOffset,
+            });
         }
     };
 
@@ -501,9 +890,18 @@ struct TTxPartition
     {
         const TRequestInfoPtr RequestInfo;
         const bool HttpInfo;
+
         const TPartialBlobId BlobId;
 
-        TVector<TBlockRef> Blocks;
+        struct TBlockMark
+        {
+            ui64 CommitId = 0;
+            ui32 BlockIndex = 0;
+            ui16 BlobOffset = 0;
+            ui32 Checksum = 0;
+        };
+
+        TVector<TBlockMark> BlockMarks;
 
         TDescribeBlob(
                 TRequestInfoPtr requestInfo,
@@ -516,30 +914,94 @@ struct TTxPartition
 
         void Clear()
         {
-            Blocks.clear();
+            BlockMarks.clear();
+        }
+
+        void MarkBlock(
+            ui32 blockIndex,
+            ui64 commitId,
+            ui16 blobOffset,
+            ui32 checksum)
+        {
+            BlockMarks.push_back({
+                commitId,
+                blockIndex,
+                blobOffset,
+                checksum,
+            });
         }
     };
 
     //
-    // GetChangedBlocks
+    // CheckIndex
+    //
+
+    struct TCheckIndex
+    {
+        const TRequestInfoPtr RequestInfo;
+
+        const TBlockRange32 BlockRange;
+
+        struct TBlockMark
+        {
+            TPartialBlobId BlobId;
+            ui64 CommitId = 0;
+            ui32 BlockIndex = 0;
+            ui16 BlobOffset = 0;
+        };
+
+        TVector<TBlockMark> BlockMarks_Index;
+        TVector<TBlockMark> BlockMarks_Blobs;
+
+        TCheckIndex(
+                TRequestInfoPtr requestInfo,
+                const TBlockRange32& blockRange)
+            : RequestInfo(std::move(requestInfo))
+            , BlockRange(blockRange)
+        {}
+
+        void Clear()
+        {
+            BlockMarks_Index.clear();
+            BlockMarks_Blobs.clear();
+        }
+
+        void MarkBlock_Index(
+            ui32 blockIndex,
+            ui64 commitId,
+            const TPartialBlobId& blobId,
+            ui16 blobOffset)
+        {
+            Y_DEBUG_ABORT_UNLESS(BlockRange.Contains(blockIndex));
+            BlockMarks_Index.push_back({ blobId, commitId, blockIndex, blobOffset });
+        }
+
+        void MarkBlock_Blobs(
+            ui32 blockIndex,
+            ui64 commitId,
+            const TPartialBlobId& blobId,
+            ui16 blobOffset)
+        {
+            Y_DEBUG_ABORT_UNLESS(BlockRange.Contains(blockIndex));
+            BlockMarks_Blobs.push_back({ blobId, commitId, blockIndex, blobOffset });
+        }
+    };
+
+    //
+    // ChanedBlocks
     //
 
     struct TGetChangedBlocks
     {
         const TRequestInfoPtr RequestInfo;
+
         const TBlockRange32 ReadRange;
         const ui64 LowCommitId;
         const ui64 HighCommitId;
         const bool IgnoreBaseDisk;
 
-        struct TBlockMeta
-        {
-            ui64 LowCommitId = InvalidCommitId;
-            ui64 HighCommitId = InvalidCommitId;
-        };
-        TVector<TBlockMeta> Blocks;
-
         TVector<ui8> ChangedBlocks;
+        bool Interrupted = false;
 
         TGetChangedBlocks(
                 TRequestInfoPtr requestInfo,
@@ -552,7 +1014,6 @@ struct TTxPartition
             , LowCommitId(lowCommitId)
             , HighCommitId(highCommitId)
             , IgnoreBaseDisk(ignoreBaseDisk)
-            , Blocks(ReadRange.Size())
             , ChangedBlocks(GetArraySize(ReadRange.Size()))
         {}
 
@@ -566,22 +1027,17 @@ struct TTxPartition
             return (count + 7) >> 3;
         }
 
-        void MarkBlock(const TBlock& block, bool low)
+        std::pair<ui32, ui32> GetBitPosition(ui32 blockIndex)
         {
-            const auto i = block.BlockIndex - ReadRange.Start;
-            if (low) {
-                Blocks[i].LowCommitId = block.MinCommitId;
-            } else {
-                Blocks[i].HighCommitId = block.MinCommitId;
-            }
+            auto blockOffset = blockIndex - ReadRange.Start;
+            return {blockOffset / 8, blockOffset % 8};
         }
 
-        void Finish()
+        void MarkBlock(ui32 blockIndex, ui64 commitId)
         {
-            for (ui32 i = 0; i < Blocks.size(); ++i) {
-                if (Blocks[i].LowCommitId != Blocks[i].HighCommitId) {
-                    ChangedBlocks[i / 8] |= 1 << (i % 8);
-                }
+            if (commitId > LowCommitId) {
+                auto p = GetBitPosition(blockIndex);
+                ChangedBlocks[p.first] |= 1 << p.second;
             }
         }
     };
@@ -593,7 +1049,7 @@ struct TTxPartition
     struct TDescribeBlocks
     {
         const TRequestInfoPtr RequestInfo;
-        ui64 CommitId;
+        const ui64 CommitId;
         const TBlockRange32 DescribeRange;
         const bool IndexOnly;
 
@@ -603,22 +1059,22 @@ struct TTxPartition
 
             TBlockMark(
                     ui32 blockIndex,
-                    ui64 minCommitId,
+                    ui64 commitId,
                     TString content,
                     TPartialBlobId blobId)
                 : BlockIndex(blockIndex)
-                , MinCommitId(minCommitId)
+                , CommitId(commitId)
                 , BlobId(blobId)
                 , Content(std::move(content))
             {}
 
             TBlockMark(
                     ui32 blockIndex,
-                    ui64 minCommitId,
+                    ui64 commitId,
                     const TPartialBlobId& blobId,
                     ui16 blobOffset)
                 : BlockIndex(blockIndex)
-                , MinCommitId(minCommitId)
+                , CommitId(commitId)
                 , BlobId(blobId)
                 , BlobOffset(blobOffset)
             {}
@@ -630,13 +1086,14 @@ struct TTxPartition
             }
 
             ui32 BlockIndex = 0;
-            ui64 MinCommitId = 0;
+            ui64 CommitId = 0;
             TPartialBlobId BlobId;
             ui16 BlobOffset = 0;
             TString Content;
         };
 
         TVector<TBlockMark> Marks;
+        bool Interrupted = false;
 
         TDescribeBlocks(
                 TRequestInfoPtr requestInfo,
@@ -663,28 +1120,154 @@ struct TTxPartition
 
         void MarkBlock(
             ui32 blockIndex,
-            ui64 minCommitId,
+            ui64 commitId,
             TStringBuf content,
             TPartialBlobId blobId)
         {
             auto& mark = Marks[GetBlockMarkIndex(blockIndex)];
 
-            if (mark.MinCommitId < minCommitId) {
-                mark = TBlockMark(blockIndex, minCommitId, TString{content}, blobId);
+            if (mark.CommitId < commitId) {
+                mark = TBlockMark(blockIndex, commitId, TString{content}, blobId);
             }
         }
 
         void MarkBlock(
             ui32 blockIndex,
-            ui64 minCommitId,
+            ui64 commitId,
             const TPartialBlobId& blobId,
             ui16 blobOffset)
         {
             auto& mark = Marks[GetBlockMarkIndex(blockIndex)];
 
-            if (mark.MinCommitId < minCommitId) {
-                mark = TBlockMark(blockIndex, minCommitId, blobId, blobOffset);
+            if (mark.CommitId < commitId) {
+                mark = TBlockMark(blockIndex, commitId, blobId, blobOffset);
             }
+        }
+    };
+
+    //
+    // FlushToDevNull
+    //
+
+    struct TFlushToDevNull
+    {
+        const TRequestInfoPtr RequestInfo;
+        TVector<TBlock> FreshBlocks;
+
+        TFlushToDevNull(
+                TRequestInfoPtr requestInfo,
+                TVector<TBlock> freshBlocks)
+            : RequestInfo(std::move(requestInfo))
+            , FreshBlocks(std::move(freshBlocks))
+        {
+        }
+
+        void Clear()
+        {
+            // nothing to do
+        }
+    };
+
+    //
+    // GetUsedBlocks
+    //
+
+    struct TGetUsedBlocks
+    {
+        const TRequestInfoPtr RequestInfo;
+        google::protobuf::RepeatedPtrField<NProto::TUsedBlockData> UsedBlocks;
+
+        TGetUsedBlocks(TRequestInfoPtr requestInfo)
+            : RequestInfo(std::move(requestInfo))
+        {}
+
+        void Clear()
+        {
+            UsedBlocks.Clear();
+        }
+    };
+
+    //
+    // UpdateLogicalUsedBlocks
+    //
+
+    struct TUpdateLogicalUsedBlocks
+    {
+        const TRequestInfoPtr RequestInfo;
+        const ui64 UpdateFromIdx = 0;
+
+        ui64 UpdatedToIdx = 0;
+
+        TUpdateLogicalUsedBlocks(ui32 updateFromIdx)
+            : UpdateFromIdx(updateFromIdx)
+        {}
+
+        void Clear()
+        {
+            UpdatedToIdx = 0;
+        }
+    };
+
+    //
+    // AddUnconfirmedBlobs
+    //
+
+    struct TAddUnconfirmedBlobs
+    {
+        const TRequestInfoPtr RequestInfo;
+        ui64 CommitId = 0;
+        TVector<TBlobToConfirm> Blobs;
+
+        TAddUnconfirmedBlobs(
+                TRequestInfoPtr requestInfo,
+                ui64 commitId,
+                TVector<TBlobToConfirm> blobs)
+            : RequestInfo(std::move(requestInfo))
+            , CommitId(commitId)
+            , Blobs(std::move(blobs))
+        {}
+
+        void Clear()
+        {
+            // Nothing to do.
+        }
+    };
+
+    //
+    // ConfirmBlobs
+    //
+
+    struct TConfirmBlobs
+    {
+        const TRequestInfoPtr RequestInfo;
+        const ui64 StartCycleCount;
+        TVector<TPartialBlobId> UnrecoverableBlobs;
+
+        TConfirmBlobs(
+                ui64 startCycleCount,
+                TVector<TPartialBlobId> unrecoverableBlobs)
+            : StartCycleCount(startCycleCount)
+            , UnrecoverableBlobs(std::move(unrecoverableBlobs))
+        {}
+
+        void Clear()
+        {
+            // Nothing to do.
+        }
+    };
+
+    //
+    // LoadCompactionMapChunk
+    //
+
+    struct TLoadCompactionMapChunk
+    {
+        TBlockRange32 Range;
+        TVector<TCompactionCounter> Counters;
+
+        void Clear()
+        {
+            Counters.clear();
         }
     };
 };

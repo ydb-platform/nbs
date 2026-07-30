@@ -618,8 +618,7 @@ message TStorageServiceConfig
     // Run GC barriers for all channels in tablet history.
     // optional bool CleanupPartitionChannelsAtStartup = 184; // obsolete
 
-    // Run GC soft barriers for all channels in tablet history (v2 only).
-    optional bool RunV2SoftGcAtStartup = 185;
+    reserved 185;
 
     // Lifetime of deleted checkpoint in checkpoints history.
     optional uint32 DeletedCheckpointHistoryLifetime = 186;
@@ -682,8 +681,7 @@ message TStorageServiceConfig
     // Uses the first 4 bytes of the block as its digest.
     optional bool UseTestBlockDigestGenerator = 204;
 
-    // Enables conversion of rangeMap into mixedIndex for partition v2.
-    optional bool EnableConversionIntoMixedIndexV2 = 205;
+    reserved 205;
 
     // Number of disks to be reported to YDB in a single request.
     optional uint32 StatsUploadDiskCount = 206;
@@ -1651,4 +1649,14 @@ message TStorageServiceConfig
     // Applies when EnableDynamicGarbageCompactionThrottling is enabled and disk
     // usage is below ThrottleGarbageCompactionBelowFillPercentage.
     optional uint32 MinGarbageCompactionExecTimePerSecond = 519;
+
+    // Enables mixed index cache for partition v2.
+    optional bool MixedIndexCacheV2Enabled = 520;
+
+    // Maximum number of compaction ranges to cache for partition v2 network-ssd.
+    optional uint32 MixedIndexCacheV2SizeSSD = 521;
+
+    // Enables approximate garbage compaction for partition v2.
+    optional bool V2GarbageCompactionEnabled = 522;
+
 }

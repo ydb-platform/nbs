@@ -1,3 +1,7 @@
 #pragma once
 
-#include <cloud/blockstore/libs/storage/model/public.h>
+namespace NCloud::NBlockStore::NStorage::NPartition2 {
+
+////////////////////////////////////////////////////////////////////////////////
+
+}   // namespace NCloud::NBlockStore::NStorage::NPartition2

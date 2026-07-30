@@ -6,9 +6,9 @@
 #include <cloud/blockstore/libs/storage/core/compaction_map.h>
 #include <cloud/blockstore/libs/storage/partition/model/blob_index.h>
 #include <cloud/blockstore/libs/storage/partition/model/blob_to_confirm.h>
-#include <cloud/blockstore/libs/storage/partition/model/block.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/block.h>
 #include <cloud/blockstore/libs/storage/partition/model/block_mask.h>
-#include <cloud/blockstore/libs/storage/partition/model/checkpoint.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/checkpoint.h>
 #include <cloud/blockstore/libs/storage/partition/model/cleanup_queue.h>
 #include <cloud/blockstore/libs/storage/partition/model/mixed_index_cache.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>

@@ -29,7 +29,7 @@ bool TActiveCheckpointInfo::ShouldBlockWrites() const
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TCheckpointStore::TCheckpointStore(
+TVolumeCheckpointStore::TVolumeCheckpointStore(
     TVector<TCheckpointRequest> checkpointRequests,
     const TString& diskID)
     : DiskID(diskID)
@@ -43,7 +43,7 @@ TCheckpointStore::TCheckpointStore(
     }
 }
 
-const TCheckpointRequest& TCheckpointStore::MakeCreateCheckpointRequest(
+const TCheckpointRequest& TVolumeCheckpointStore::MakeCreateCheckpointRequest(
     TString checkpointId,
     TInstant timestamp,
     ECheckpointRequestType reqType,
@@ -60,7 +60,7 @@ const TCheckpointRequest& TCheckpointStore::MakeCreateCheckpointRequest(
         useShadowDisk));
 }
 
-const TCheckpointRequest& TCheckpointStore::MakeDeleteCheckpointRequest(
+const TCheckpointRequest& TVolumeCheckpointStore::MakeDeleteCheckpointRequest(
     const TString& checkpointId,
     TInstant timestamp)
 {
@@ -76,7 +76,7 @@ const TCheckpointRequest& TCheckpointStore::MakeDeleteCheckpointRequest(
         checkpointInfo ? checkpointInfo->IsShadowDiskBased() : false));
 }
 
-const TCheckpointRequest& TCheckpointStore::MakeDeleteCheckpointDataRequest(
+const TCheckpointRequest& TVolumeCheckpointStore::MakeDeleteCheckpointDataRequest(
     const TString& checkpointId,
     TInstant timestamp)
 {
@@ -92,7 +92,7 @@ const TCheckpointRequest& TCheckpointStore::MakeDeleteCheckpointDataRequest(
         checkpointInfo ? checkpointInfo->IsShadowDiskBased() : false));
 }
 
-void TCheckpointStore::RemoveCheckpointRequest(ui64 requestId)
+void TVolumeCheckpointStore::RemoveCheckpointRequest(ui64 requestId)
 {
     Y_DEBUG_ABORT_UNLESS(
         CheckpointRequests.FindPtr(requestId) &&
@@ -101,7 +101,7 @@ void TCheckpointStore::RemoveCheckpointRequest(ui64 requestId)
     CheckpointRequests.erase(requestId);
 }
 
-void TCheckpointStore::SetCheckpointRequestInProgress(ui64 requestId)
+void TVolumeCheckpointStore::SetCheckpointRequestInProgress(ui64 requestId)
 {
     auto& checkpointRequest = GetRequest(requestId);
     Y_DEBUG_ABORT_UNLESS(
@@ -118,7 +118,7 @@ void TCheckpointStore::SetCheckpointRequestInProgress(ui64 requestId)
         checkpointRequest.ShadowDiskState == EShadowDiskState::None;
 }
 
-void TCheckpointStore::SetCheckpointRequestSaved(ui64 requestId)
+void TVolumeCheckpointStore::SetCheckpointRequestSaved(ui64 requestId)
 {
     auto& checkpointRequest = GetRequest(requestId);
     Y_DEBUG_ABORT_UNLESS(
@@ -126,7 +126,7 @@ void TCheckpointStore::SetCheckpointRequestSaved(ui64 requestId)
     checkpointRequest.State = ECheckpointRequestState::Saved;
 }
 
-void TCheckpointStore::SetCheckpointRequestFinished(
+void TVolumeCheckpointStore::SetCheckpointRequestFinished(
     ui64 requestId,
     bool completed,
     TString shadowDiskId,
@@ -152,7 +152,7 @@ void TCheckpointStore::SetCheckpointRequestFinished(
     CheckpointBlockingWritesBeingCreated = false;
 }
 
-void TCheckpointStore::SetShadowDiskState(
+void TVolumeCheckpointStore::SetShadowDiskState(
     const TString& checkpointId,
     EShadowDiskState shadowDiskState,
     ui64 processedBlockCount)
@@ -173,21 +173,21 @@ void TCheckpointStore::SetShadowDiskState(
     }
 }
 
-void TCheckpointStore::ShadowActorCreated(const TString& checkpointId)
+void TVolumeCheckpointStore::ShadowActorCreated(const TString& checkpointId)
 {
     if (auto* checkpointData = ActiveCheckpoints.FindPtr(checkpointId)) {
         checkpointData->HasShadowActor = true;
     }
 }
 
-void TCheckpointStore::ShadowActorDestroyed(const TString& checkpointId)
+void TVolumeCheckpointStore::ShadowActorDestroyed(const TString& checkpointId)
 {
     if (auto* checkpointData = ActiveCheckpoints.FindPtr(checkpointId)) {
         checkpointData->HasShadowActor = false;
     }
 }
 
-bool TCheckpointStore::HasShadowActor(const TString& checkpointId) const
+bool TVolumeCheckpointStore::HasShadowActor(const TString& checkpointId) const
 {
     if (const auto* checkpointData = ActiveCheckpoints.FindPtr(checkpointId)) {
         return checkpointData->HasShadowActor;
@@ -195,7 +195,7 @@ bool TCheckpointStore::HasShadowActor(const TString& checkpointId) const
     return false;
 }
 
-bool TCheckpointStore::NeedShadowActor(const TString& checkpointId) const
+bool TVolumeCheckpointStore::NeedShadowActor(const TString& checkpointId) const
 {
     const auto* checkpointData = ActiveCheckpoints.FindPtr(checkpointId);
     if (!checkpointData || checkpointData->Type != ECheckpointType::Normal ||
@@ -222,28 +222,28 @@ bool TCheckpointStore::NeedShadowActor(const TString& checkpointId) const
     return true;
 }
 
-bool TCheckpointStore::IsRequestInProgress() const
+bool TVolumeCheckpointStore::IsRequestInProgress() const
 {
     return CheckpointRequestInProgress != 0;
 }
 
-bool TCheckpointStore::IsCheckpointBeingCreated() const
+bool TVolumeCheckpointStore::IsCheckpointBeingCreated() const
 {
     return CheckpointBeingCreated;
 }
 
-bool TCheckpointStore::DoesCheckpointBlockingWritesExist() const
+bool TVolumeCheckpointStore::DoesCheckpointBlockingWritesExist() const
 {
     return CheckpointBlockingWritesBeingCreated ||
            CheckpointBlockingWritesExists;
 }
 
-bool TCheckpointStore::IsCheckpointDeleted(const TString& checkpointId) const
+bool TVolumeCheckpointStore::IsCheckpointDeleted(const TString& checkpointId) const
 {
     return DeletedCheckpoints.contains(checkpointId);
 }
 
-bool TCheckpointStore::DoesCheckpointHaveData(const TString& checkpointId) const
+bool TVolumeCheckpointStore::DoesCheckpointHaveData(const TString& checkpointId) const
 {
     if (const auto* data = ActiveCheckpoints.FindPtr(checkpointId)) {
         return data->Data == ECheckpointData::DataPresent;
@@ -251,7 +251,7 @@ bool TCheckpointStore::DoesCheckpointHaveData(const TString& checkpointId) const
     return false;
 }
 
-TVector<ui64> TCheckpointStore::GetRequestIdsToProcess() const
+TVector<ui64> TVolumeCheckpointStore::GetRequestIdsToProcess() const
 {
     TVector<ui64> requestIds(Reserve(CheckpointRequests.size()));
 
@@ -267,21 +267,21 @@ TVector<ui64> TCheckpointStore::GetRequestIdsToProcess() const
     return requestIds;
 }
 
-std::optional<ECheckpointType> TCheckpointStore::GetCheckpointType(
+std::optional<ECheckpointType> TVolumeCheckpointStore::GetCheckpointType(
     const TString& checkpointId) const
 {
     const auto* ptr = ActiveCheckpoints.FindPtr(checkpointId);
     return ptr ? ptr->Type : std::optional<ECheckpointType>{};
 }
 
-std::optional<TActiveCheckpointInfo> TCheckpointStore::GetCheckpoint(
+std::optional<TActiveCheckpointInfo> TVolumeCheckpointStore::GetCheckpoint(
     const TString& checkpointId) const
 {
     const auto* ptr = ActiveCheckpoints.FindPtr(checkpointId);
     return ptr ? *ptr : std::optional<TActiveCheckpointInfo>{};
 }
 
-TVector<TString> TCheckpointStore::GetLightCheckpoints() const
+TVector<TString> TVolumeCheckpointStore::GetLightCheckpoints() const
 {
     TVector<TString> checkpoints(Reserve(ActiveCheckpoints.size()));
     for (const auto& [checkpoint, checkpointData]: ActiveCheckpoints) {
@@ -292,7 +292,7 @@ TVector<TString> TCheckpointStore::GetLightCheckpoints() const
     return checkpoints;
 }
 
-TVector<TString> TCheckpointStore::GetCheckpointsWithData() const
+TVector<TString> TVolumeCheckpointStore::GetCheckpointsWithData() const
 {
     TVector<TString> checkpoints(Reserve(ActiveCheckpoints.size()));
     for (const auto& [checkpoint, checkpointData]: ActiveCheckpoints) {
@@ -303,12 +303,12 @@ TVector<TString> TCheckpointStore::GetCheckpointsWithData() const
     return checkpoints;
 }
 
-const TActiveCheckpointsMap& TCheckpointStore::GetActiveCheckpoints() const
+const TActiveCheckpointsMap& TVolumeCheckpointStore::GetActiveCheckpoints() const
 {
     return ActiveCheckpoints;
 }
 
-const TCheckpointRequest& TCheckpointStore::GetRequestById(ui64 requestId) const
+const TCheckpointRequest& TVolumeCheckpointStore::GetRequestById(ui64 requestId) const
 {
     if (const TCheckpointRequest* checkpointRequest =
             CheckpointRequests.FindPtr(requestId))
@@ -319,7 +319,7 @@ const TCheckpointRequest& TCheckpointStore::GetRequestById(ui64 requestId) const
     STORAGE_VERIFY(0, TWellKnownEntityTypes::DISK, DiskID);
 }
 
-TVector<TCheckpointRequest> TCheckpointStore::GetCheckpointRequests() const
+TVector<TCheckpointRequest> TVolumeCheckpointStore::GetCheckpointRequests() const
 {
     TVector<TCheckpointRequest> result;
     result.reserve(CheckpointRequests.size());
@@ -329,7 +329,7 @@ TVector<TCheckpointRequest> TCheckpointStore::GetCheckpointRequests() const
     return result;
 }
 
-TCheckpointRequest& TCheckpointStore::GetRequest(ui64 requestId)
+TCheckpointRequest& TVolumeCheckpointStore::GetRequest(ui64 requestId)
 {
     if (TCheckpointRequest* checkpointRequest =
             CheckpointRequests.FindPtr(requestId))
@@ -340,7 +340,7 @@ TCheckpointRequest& TCheckpointStore::GetRequest(ui64 requestId)
     STORAGE_VERIFY(0, TWellKnownEntityTypes::DISK, DiskID);
 }
 
-TCheckpointRequest& TCheckpointStore::AddCheckpointRequest(
+TCheckpointRequest& TVolumeCheckpointStore::AddCheckpointRequest(
     TCheckpointRequest checkpointRequest)
 {
     LastCheckpointRequestId =
@@ -353,7 +353,7 @@ TCheckpointRequest& TCheckpointStore::AddCheckpointRequest(
     return it->second;
 }
 
-void TCheckpointStore::AddCheckpoint(
+void TVolumeCheckpointStore::AddCheckpoint(
     const TCheckpointRequest& checkpointRequest,
     bool forceDataDeleted)
 {
@@ -376,7 +376,7 @@ void TCheckpointStore::AddCheckpoint(
     CalcCheckpointsState();
 }
 
-void TCheckpointStore::DeleteCheckpointData(const TString& checkpointId)
+void TVolumeCheckpointStore::DeleteCheckpointData(const TString& checkpointId)
 {
     if (auto* checkpointData = ActiveCheckpoints.FindPtr(checkpointId)) {
         checkpointData->Data = ECheckpointData::DataDeleted;
@@ -384,21 +384,21 @@ void TCheckpointStore::DeleteCheckpointData(const TString& checkpointId)
     CalcCheckpointsState();
 }
 
-void TCheckpointStore::DeleteCheckpoint(const TString& checkpointId)
+void TVolumeCheckpointStore::DeleteCheckpoint(const TString& checkpointId)
 {
     ActiveCheckpoints.erase(checkpointId);
     DeletedCheckpoints.insert(checkpointId);
     CalcCheckpointsState();
 }
 
-void TCheckpointStore::CalcCheckpointsState()
+void TVolumeCheckpointStore::CalcCheckpointsState()
 {
     CheckpointBlockingWritesExists = AnyOf(
         ActiveCheckpoints,
         [](const auto& it) { return it.second.ShouldBlockWrites(); });
 }
 
-void TCheckpointStore::Apply(const TCheckpointRequest& checkpointRequest)
+void TVolumeCheckpointStore::Apply(const TCheckpointRequest& checkpointRequest)
 {
     if (checkpointRequest.State != ECheckpointRequestState::Completed) {
         return;
@@ -423,7 +423,7 @@ void TCheckpointStore::Apply(const TCheckpointRequest& checkpointRequest)
     }
 }
 
-TInstant TCheckpointStore::GetCorrectedTimestamp(TInstant timestamp) const
+TInstant TVolumeCheckpointStore::GetCorrectedTimestamp(TInstant timestamp) const
 {
     if (!CheckpointRequests.empty()) {
         const auto& lastReq = CheckpointRequests.rbegin()->second;
@@ -433,7 +433,7 @@ TInstant TCheckpointStore::GetCorrectedTimestamp(TInstant timestamp) const
     return timestamp;
 }
 
-std::optional<NProto::TError> TCheckpointStore::ValidateCheckpointRequest(
+std::optional<NProto::TError> TVolumeCheckpointStore::ValidateCheckpointRequest(
     const TString& checkpointId,
     ECheckpointRequestType requestType,
     ECheckpointType checkpointType) const

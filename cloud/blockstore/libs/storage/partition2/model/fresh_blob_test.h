@@ -6,7 +6,7 @@ namespace NCloud::NBlockStore::NStorage::NPartition2 {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr ui64 FirstRequestDeletionId = 4321;
+const auto ZeroFreshBlocksRange = TBlockRange32::WithLength(0, 5);
 
 TVector<TVector<TString>> GetBuffers(ui32 bs)
 {

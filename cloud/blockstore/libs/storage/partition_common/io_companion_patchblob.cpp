@@ -4,7 +4,7 @@
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
-#include <cloud/blockstore/libs/storage/partition/model/fresh_blob.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/fresh_blob.h>
 
 #include <cloud/storage/core/libs/diagnostics/wilson_trace_compatibility.h>
 
@@ -364,14 +364,14 @@ void TIOCompanion::HandlePatchBlobCompleted(
             "HandlePatchBlobCompleted: invalid blob id received");
     } else {
         ResourceMetricsQueue->Push(
-            NPartition::TUpdateWriteThroughput(
+            TUpdateWriteThroughput(
                 ctx.Now(),
                 patchedChannel,
                 patchedGroup,
                 msg->PatchedBlobId.BlobSize()));
     }
     ResourceMetricsQueue->Push(
-        NPartition::TUpdateNetworkStat(
+        TUpdateNetworkStat(
             ctx.Now(),
             msg->PatchedBlobId.BlobSize()));
 

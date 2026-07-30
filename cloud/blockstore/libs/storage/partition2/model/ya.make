@@ -1,40 +1,37 @@
 LIBRARY()
 
-INCLUDE(${ARCADIA_ROOT}/cloud/storage/deny_ydb_dependency.inc)
+#INCLUDE(${ARCADIA_ROOT}/cloud/storage/deny_ydb_dependency.inc)
 
-GENERATE_ENUM_SERIALIZATION(alloc.h)
-GENERATE_ENUM_SERIALIZATION(operation_status.h)
+GENERATE_ENUM_SERIALIZATION(mixed_index_cache.h)
 
 SRCS(
-    alloc.cpp
-    blob.cpp
+    background_ops_throttling.cpp
     blob_index.cpp
-    block.cpp
-    block_index.cpp
-    block_list.cpp
-    checkpoint.cpp
-    disjoint_range_map.cpp
+    blob_to_confirm.cpp
+    block_mask.cpp
+    cleanup_queue.cpp
+    commit_queue.cpp
+    compaction_map_load_state.cpp
+    flush_blocks_visitor.cpp
     fresh_blob.cpp
-    fresh_blocks_inflight.cpp
-    lfu_list.cpp
-    mixed_index.cpp
-    rebase_logic.cpp
+    garbage_queue.cpp
+    mixed_index_cache.cpp
 )
 
 PEERDIR(
     cloud/blockstore/libs/common
-    cloud/blockstore/libs/storage/model
+    cloud/blockstore/libs/diagnostics
+    cloud/blockstore/libs/storage/core
     cloud/blockstore/libs/storage/protos
 
     cloud/storage/core/libs/common
+    cloud/storage/core/libs/tablet
 
-    library/cpp/containers/intrusive_rb_tree
-    library/cpp/containers/stack_vector
     library/cpp/protobuf/json
-
-    contrib/libs/sparsehash
 )
 
 END()
 
-RECURSE_FOR_TESTS(ut)
+RECURSE_FOR_TESTS(
+    ut
+)

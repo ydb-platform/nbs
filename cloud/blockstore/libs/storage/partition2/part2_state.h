@@ -2,37 +2,44 @@
 
 #include "public.h"
 
-#include "garbage_queue.h"
+#include "part2_counters.h"
 #include "part2_database.h"
 #include "part2_schema.h"
 
-#include <cloud/blockstore/config/storage.pb.h>
 #include <cloud/blockstore/libs/common/block_range.h>
+#include <cloud/blockstore/libs/diagnostics/downtime_history.h>
 #include <cloud/blockstore/libs/storage/api/partition2.h>
+#include <cloud/blockstore/libs/storage/core/bs_group_operation_tracker.h>
+#include <cloud/blockstore/libs/storage/core/channel_permissions.h>
 #include <cloud/blockstore/libs/storage/core/compaction_map.h>
 #include <cloud/blockstore/libs/storage/core/compaction_type.h>
 #include <cloud/blockstore/libs/storage/core/request_buffer.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
-#include <cloud/blockstore/libs/storage/core/tablet.h>
+#include <cloud/blockstore/libs/storage/core/ts_ring_buffer.h>
 #include <cloud/blockstore/libs/storage/core/write_buffer_request.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
-#include <cloud/blockstore/libs/storage/core/channel_permissions.h>
-#include <cloud/blockstore/libs/storage/partition2/model/blob_index.h>
-#include <cloud/blockstore/libs/storage/partition2/model/block_index.h>
-#include <cloud/blockstore/libs/storage/partition2/model/checkpoint.h>
-#include <cloud/blockstore/libs/storage/partition2/model/fresh_blocks_inflight.h>
-#include <cloud/blockstore/libs/storage/partition2/model/operation_status.h>
+#include <cloud/blockstore/libs/storage/partition2/model/blob_to_confirm.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/checkpoint.h>
+#include <cloud/blockstore/libs/storage/partition2/model/cleanup_queue.h>
+#include <cloud/blockstore/libs/storage/partition2/model/commit_queue.h>
+#include <cloud/blockstore/libs/storage/partition2/model/garbage_queue.h>
+#include <cloud/blockstore/libs/storage/partition2/model/mixed_index_cache.h>
+#include <cloud/blockstore/libs/storage/partition_common/commit_ids_state.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/block_index.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/operation_status.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/part_counters_wrapper.h>
+#include <cloud/blockstore/libs/storage/partition_common/part_channels_state.h>
+#include <cloud/blockstore/libs/storage/partition_common/part_fresh_blocks_state.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
 
-#include <cloud/storage/core/libs/common/alloc.h>
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
-#include <cloud/storage/core/libs/tablet/blob_id.h>
-#include <cloud/storage/core/libs/tablet/model/commit.h>
-#include <cloud/storage/core/libs/tablet/model/partial_blob_id.h>
+#include <cloud/storage/core/libs/common/compressed_bitmap.h>
+#include <cloud/storage/core/libs/tablet/gc_logic.h>
+
+#include <library/cpp/json/json_value.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/maybe.h>
-#include <util/generic/set.h>
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 #include <util/stream/output.h>
@@ -42,62 +49,23 @@
 
 namespace NCloud::NBlockStore::NStorage::NPartition2 {
 
-////////////////////////////////////////////////////////////////////////////////
-
-struct IFreshBlockVisitor
-{
-    virtual ~IFreshBlockVisitor() = default;
-
-    virtual void Visit(
-        const TBlock& block,
-        TStringBuf blockContent,
-        const TPartialBlobId& blobId) = 0;
-};
+using ::NCloud::NBlockStore::NStorage::TPartitionThreadSafeState;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IMergedBlockVisitor
-{
-    virtual ~IMergedBlockVisitor() = default;
+// There is also FreshBlocksCount proto counter. We have to split it into
+// FreshBlocksFromDb (we call it FreshBlocks for compatibility) and
+// FreshBlocksFromChannel to support fresh channel
+// write requests, since there is no Tx on WriteFreshBlock to channel.
 
-    virtual void Visit(
-        const TBlock& block,
-        const TPartialBlobId& blobId,
-        ui16 blobOffset) = 0;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-class TOperationState
-{
-private:
-    EOperationStatus Status = EOperationStatus::Idle;
-    TInstant Timestamp;
-    ui64 Count = 0;
-
-public:
-    TInstant GetTimestamp() const
-    {
-        return Timestamp;
-    }
-
-    EOperationStatus GetStatus() const
-    {
-        return Status;
-    }
-
-    void SetStatus(EOperationStatus status)
-    {
-        Status = status;
-        Timestamp = TInstant::Now();
-
-        if (Status == EOperationStatus::Started) {
-            ++Count;
-        }
-    }
-
-    void Dump(IOutputStream& out) const;
-};
+#define BLOCKSTORE_PARTITION2_PROTO_COUNTERS(xxx)                               \
+    xxx(MixedBlocksCount)                                                      \
+    xxx(MergedBlocksCount)                                                     \
+    xxx(MixedBlobsCount)                                                       \
+    xxx(MergedBlobsCount)                                                      \
+    xxx(UsedBlocksCount)                                                       \
+    xxx(LogicalUsedBlocksCount)                                                \
+// BLOCKSTORE_PARTITION2_PROTO_COUNTERS
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -105,31 +73,194 @@ struct TForcedCompactionState
 {
     bool IsRunning = false;
     ui32 Progress = 0;
-    ui32 RangeCount = 0;
+    ui32 RangesCount = 0;
     TString OperationId;
     TOperationState State;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TForcedCleanupState
+enum class EMetadataRebuildType
 {
-    bool IsRunning = false;
+    NoOperation,
+    UsedBlocks,
+    BlockCount
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TChannelState
+struct TUsedBlocksProgress
 {
-    EChannelPermissions Permissions = EChannelPermission::UserWritesAllowed
-        | EChannelPermission::SystemWritesAllowed;
-    double ApproximateFreeSpaceShare = 0;
-    double FreeSpaceScore = 0;
-    bool ReassignRequestedByBlobStorage = false;
+    ui64 BlocksProcessed = 0;
+    ui64 BlockCount = 0;
+};
 
-    std::list<NActors::IActorPtr> IORequests;
-    size_t IORequestsInFlight = 0;
-    size_t IORequestsQueued = 0;
+////////////////////////////////////////////////////////////////////////////////
+
+struct TBlockCountProgress
+{
+    ui64 TotalBlobs = 0;
+    ui32 BlobsProcessed = 0;
+
+    ui64 MixedBlocks = 0;
+    ui64 MergedBlocks = 0;
+
+    ui64 LastCommitId = 0;
+
+    TBlockCountProgress() = default;
+
+    TBlockCountProgress(ui64 totalBlobs)
+        : TotalBlobs(totalBlobs)
+    {
+    }
+
+    void UpdateProgress(ui32 blobsRead, ui64 mixedBlocks, ui64 mergedBlocks)
+    {
+        BlobsProcessed += blobsRead;
+
+        MixedBlocks += mixedBlocks;
+        MergedBlocks += mergedBlocks;
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TMedatadataRebuildProgress
+{
+    ui64 Processed = 0;
+    ui64 Total = 0;
+    bool IsCompleted = false;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TMetadataRebuildState
+{
+    bool Started = false;
+    EMetadataRebuildType MetadataType = EMetadataRebuildType::NoOperation;
+
+    ui64 Total = 0;
+    ui64 Processed = 0;
+
+    bool IsStarted() const
+    {
+        return Started;
+    }
+
+    EMetadataRebuildType GetType() const
+    {
+        return MetadataType;
+    }
+
+    void StartRebuildUsedBlocks(ui64 totalBlocks)
+    {
+        Started = true;
+        MetadataType = EMetadataRebuildType::UsedBlocks;
+        Total = totalBlocks;
+        Processed = 0;
+    }
+
+    void StartRebuildBlockCount(ui64 totalMixedBlobs, ui64 totalMergedBlobs)
+    {
+        Started = true;
+        MetadataType = EMetadataRebuildType::BlockCount;
+        Total = totalMixedBlobs + totalMergedBlobs;
+        Processed = 0;
+    }
+
+    TMedatadataRebuildProgress GetProgress() const
+    {
+        return {Processed, Total, !Started};
+    }
+
+    void UpdateProgress(ui64 processed)
+    {
+        Processed += processed;
+    }
+
+    void Complete()
+    {
+        Started = false;
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TScanDiskProgress
+{
+    ui64 ProcessedBlobs = 0;
+    ui64 TotalBlobs = 0;
+    bool IsCompleted = false;
+    TVector<NKikimr::TLogoBlobID> BrokenBlobs;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TScanDiskState
+{
+    bool Started = false;
+    bool EverStarted = false;
+
+    TVector<NKikimr::TLogoBlobID> BrokenBlobs;
+    ui64 ProcessedBlobs = 0;
+    ui64 TotalBlobs = 0;
+
+    ui64 BlobsToBeProcessed = 0;
+
+    bool IsStarted() const
+    {
+        return Started;
+    }
+
+    bool HasProgress() const
+    {
+        return EverStarted;
+    }
+
+    void Start(ui64 totalMixedBlobs, ui64 totalMergedBlobs)
+    {
+        Started = true;
+        EverStarted = true;
+        BrokenBlobs.clear();
+        ProcessedBlobs = 0;
+        TotalBlobs = totalMixedBlobs + totalMergedBlobs;
+        BlobsToBeProcessed = 0;
+    }
+
+    TScanDiskProgress GetProgress() const
+    {
+        return {ProcessedBlobs, TotalBlobs, !Started, BrokenBlobs};
+    }
+
+    void UpdateProcessedBlobs()
+    {
+        ProcessedBlobs += BlobsToBeProcessed;
+        BlobsToBeProcessed = 0;
+    }
+
+    void UpdateBlobsToBeProcessed(ui64 toBeProcessed)
+    {
+        BlobsToBeProcessed = toBeProcessed;
+    }
+
+    void SetBrokenBlobs(TVector<NKikimr::TLogoBlobID> blobIds)
+    {
+        BrokenBlobs = std::move(blobIds);
+    }
+
+    void Complete()
+    {
+        Started = false;
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TCompactionScores
+{
+    float Score = 0;
+    ui32 GarbageScore = 0;
+    ui32 IgnoringZeroedScore = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -150,64 +281,42 @@ struct TBackpressureFeaturesConfig
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TFreeSpaceConfig
-{
-    double ChannelFreeSpaceThreshold = 0;
-    double ChannelMinFreeSpace = 0;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TIndexCachingConfig
-{
-    // if zone request share becomes this factor times greater than average
-    // zone request share, this zone's block lists should be loaded into memory
-    // and this zone's index should be converted into TMixedIndex
-    ui32 ConvertToMixedIndexFactor = 0;
-    // if zone request share becomes lower than this factor times average
-    // zone request share, this zone's block lists should be discarded from
-    // memory and this zone's index should be converted into TRangeMap
-    ui32 ConvertToRangeMapFactor = 0;
-    // Approximate share of disk space covered by the blobs whose block lists
-    // are cached
-    double BlockListCacheSizeShare = 0;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 class TPartitionState
+    : public TPartitionChannelsState
+    , public TCommitIdsState
+    , public TPartitionFreshBlobState
+    , public TPartitionTrimFreshLogState
+    , public TPartitionFlushState
+    , public TPartitionFreshBlocksState
 {
 private:
     NProto::TPartitionMeta Meta;
-
-    const ui64 TabletId;
-    const ui32 Generation;
-    const ui32 MaxBlobSize;
-    const ui32 MaxRangesPerBlob;
     const ICompactionPolicyPtr CompactionPolicy;
     const TBackpressureFeaturesConfig BPConfig;
     const TFreeSpaceConfig FreeSpaceConfig;
-    const TIndexCachingConfig IndexCachingConfig;
+
+    TPartitionThreadSafeStatePtr ThreadSafeState;
 
 public:
     TPartitionState(
         NProto::TPartitionMeta meta,
-        ui64 tabletId,
-        ui32 generation,
-        ui32 channelCount,
-        ui32 maxBlobSize,
-        ui32 maxRangesPerBlob,
-        EOptimizationMode optimizationMode,
         ICompactionPolicyPtr compactionPolicy,
-        TBackpressureFeaturesConfig bpConfig,
-        TFreeSpaceConfig freeSpaceConfig,
-        TIndexCachingConfig indexCachingConfig,
-        ui32 maxIORequestsInFlight = Max(),
-        ui32 reassignChannelsPercentageThreshold = 0,
-        ui32 reassignFreshChannelsPercentageThreshold = 100,
-        ui32 reassignMixedChannelsPercentageThreshold = 100,
-        bool reassignSystemChannelsImmediately = false,
-        ui32 lastStep = 0);
+        ui32 compactionScoreHistorySize,
+        ui32 cleanupScoreHistorySize,
+        const TBackpressureFeaturesConfig& bpConfig,
+        const TFreeSpaceConfig& freeSpaceConfig,
+        ui32 maxIORequestsInFlight,
+        ui32 reassignChannelsPercentageThreshold,
+        ui32 reassignFreshChannelsPercentageThreshold,
+        ui32 reassignMixedChannelsPercentageThreshold,
+        bool reassignSystemChannelsImmediately,
+        ui32 channelCount,
+        ui32 mixedIndexCacheSize,
+        ui64 allocationUnit,
+        ui32 maxBlobsPerUnit,
+        ui32 maxBLobsPerRange,
+        ui32 compactionRangeCountPerRun,
+        TPartitionThreadSafeStatePtr threadSafeState);
 
 private:
     bool LoadStateFinished = false;
@@ -231,6 +340,11 @@ private:
     NProto::TPartitionConfig& Config;
 
 public:
+    const NProto::TPartitionMeta& GetMeta() const
+    {
+        return Meta;
+    }
+
     const NProto::TPartitionConfig& GetConfig() const
     {
         return Config;
@@ -239,6 +353,11 @@ public:
     const TString& GetBaseDiskId() const
     {
         return Config.GetBaseDiskId();
+    }
+
+    ui64 GetBaseDiskTabletId() const
+    {
+        return Config.GetBaseDiskTabletId();
     }
 
     const TString& GetBaseDiskCheckpointId() const
@@ -253,10 +372,12 @@ public:
 
     ui32 GetMaxBlocksInBlob() const
     {
-        return CalculateMaxBlocksInBlob(MaxBlobSize, Config.GetBlockSize());
+        return Config.GetMaxBlocksInBlob()
+            ? Config.GetMaxBlocksInBlob()
+            : MaxBlocksCount;
     }
 
-    ui64 GetBlockCount() const
+    ui64 GetBlocksCount() const
     {
         return Config.GetBlocksCount();
     }
@@ -267,650 +388,197 @@ public:
     // Commits
     //
 
-private:
-    ui32 LastStep = 0;
-    ui64 LastDeletionId = 0;
-
 public:
+
     ui64 GetLastCommitId() const
     {
-        return MakeCommitId(Generation, LastStep);
+        return ThreadSafeState->GetLastCommitId();
     }
 
-    ui64 GenerateCommitId()
+    ui64 GenerateCommitId() const
     {
-        if (LastStep == Max<ui32>()) {
-            return InvalidCommitId;
-        }
-        return MakeCommitId(Generation, ++LastStep);
+        return ThreadSafeState->GenerateCommitId();
     }
 
-    ui64 NextDeletionId()
+    auto GetCommitQueue()
     {
-        return ++LastDeletionId;
+        return ThreadSafeState->GetCommitQueue();
+    }
+
+    auto AccessCommitQueue()
+    {
+        return ThreadSafeState->AccessCommitQueue();
     }
 
     //
     // Channels
     //
 
-private:
-    const ui32 MaxIORequestsInFlight;
-    const ui32 ReassignChannelsPercentageThreshold;
-    const ui32 ReassignFreshChannelsPercentageThreshold;
-    const ui32 ReassignMixedChannelsPercentageThreshold;
-    const bool ReassignSystemChannelsImmediately;
-
-    TVector<TChannelState> Channels;
-    TVector<ui32> FreshChannels;
-    ui32 FreshChannelSelector = -1;
-    TVector<ui32> MixedChannels;
-    bool HaveSeparateMixedChannels = false;
-    ui32 MixedChannelSelector = -1;
-    TVector<ui32> MergedChannels;
-    ui32 MergedChannelSelector = -1;
-    double SystemChannelSpaceScoreSum = 0;
-    double DataChannelSpaceScoreSum = 0;
-    double FreshChannelSpaceScoreSum = 0;
-    double BackpressureDiskSpaceScore = 1;
-    ui32 ChannelCount = 0;
-    ui32 DataChannelCount = 0;
-    ui32 FreshChannelCount = 0;
-    ui32 AlmostFullChannelCount = 0;
-
 public:
-    ui32 GetChannelCount() const
-    {
-        return ChannelCount;
-    }
-
-    EChannelDataKind GetChannelDataKind(ui32 channel) const;
-    TVector<ui32> GetChannelsByKind(
-        std::function<bool(EChannelDataKind)> predicate) const;
-
-    bool UpdatePermissions(ui32 channel, EChannelPermissions permissions);
-    bool CheckPermissions(ui32 channel, EChannelPermissions permissions) const;
-    bool UpdateChannelFreeSpaceShare(ui32 channel, double share);
-    bool CheckChannelFreeSpaceShare(ui32 channel) const;
-    bool IsCompactionAllowed() const;
-    bool IsWriteAllowed(EChannelPermissions permissions) const;
-    void RegisterReassignRequestFromBlobStorage(ui32 channel);
-    TVector<ui32> GetChannelsToReassign() const;
     TBackpressureReport CalculateCurrentBackpressure() const;
-    ui32 GetAlmostFullChannelCount() const;
 
-    void EnqueueIORequest(ui32 channel, NActors::IActorPtr requestActor);
-    NActors::IActorPtr DequeueIORequest(ui32 channel);
-    void CompleteIORequest(ui32 channel);
-    ui32 GetIORequestsInFlight() const;
-    ui32 GetIORequestsQueued() const;
+    //
+    // Fresh blobs
+    //
 
-    TPartialBlobId GenerateBlobId(
-        EChannelDataKind kind,
-        EChannelPermissions permissions,
+public:
+    void AddFreshBlob(TFreshBlobMeta freshBlobMeta);
+
+    //
+    // Fresh Blocks
+    //
+
+private:
+    void WriteFreshBlocksImpl(
+        TPartitionDatabase& db,
+        const TBlockRange32& writeRange,
         ui64 commitId,
-        ui32 blobSize,
-        ui32 blobIndex = 0);
+        auto getBlockContent)
+    {
+        TVector<ui64> checkpoints;
+        GetCheckpoints().GetCommitIds(checkpoints);
+        ThreadSafeState->GetCheckpointsInFlight()->GetCommitIds(checkpoints);
+        SortUnique(checkpoints, TGreater<ui64>());
 
-    ui32 PickNextChannel(
-        EChannelDataKind kind,
-        EChannelPermissions permissions);
+        TVector<ui64> existingCommitIds;
+        TVector<ui64> garbage;
 
-private:
-    void InitChannels();
+        for (ui32 blockIndex: xrange(writeRange)) {
+            ui32 index = blockIndex - writeRange.Start;
+            const auto& blockContent = getBlockContent(index);
 
-    TChannelState& GetChannel(ui32 channel);
-    const TChannelState* GetChannel(ui32 channel) const;
+            Blocks.GetCommitIds(blockIndex, existingCommitIds);
 
-    bool UpdateChannelFreeSpaceScore(TChannelState& channelState, ui32 channel);
+            NCloud::NStorage::FindGarbageVersions(checkpoints, existingCommitIds, garbage);
+            for (auto garbageCommitId: garbage) {
+                // This block is being flushed; we'll remove it on AddBlobs
+                // and we'll release barrier on FlushCompleted
+                if (GetFlushedCommitIdsInProgress().contains(garbageCommitId)) {
+                    continue;
+                }
 
-    //
-    // Fresh blocks
-    //
+                // if block is stored in fresh channel, we'll not remove it,
+                // It will be flushed on the next FlushRequest.
+                // There will be no more blocks in fresh channel after that
+                bool removed = Blocks.RemoveBlock(
+                    blockIndex,
+                    garbageCommitId,
+                    true);  // isStoredInDb
 
-private:
-    TBlockIndex FreshBlocks;
-    TRequestBuffer<TWriteBufferRequestData> WriteBuffer;
+                if (removed) {
+                    db.DeleteFreshBlock(blockIndex, garbageCommitId);
+                    DecrementUnflushedFreshBlocksFromDbCount(1);
+                }
+            }
+
+            Blocks.AddBlock(
+                blockIndex,
+                commitId,
+                true,  // isStoredInDb
+                blockContent.AsStringBuf(),
+                {}  // blobId
+            );
+
+            db.WriteFreshBlock(blockIndex, commitId, blockContent);
+
+            existingCommitIds.clear();
+            garbage.clear();
+        }
+
+        IncrementUnflushedFreshBlocksFromDbCount(writeRange.Size());
+    }
 
 public:
-    TBlockIndex& GetFreshBlocks()
-    {
-        return FreshBlocks;
-    }
-
-    TRequestBuffer<TWriteBufferRequestData>& GetWriteBuffer()
-    {
-        return WriteBuffer;
-    }
-
-    size_t GetFreshBlocksQueued() const
-    {
-        return WriteBuffer.GetWeight();
-    }
-
-    size_t GetFreshBlockCount() const
-    {
-        return FreshBlocks.GetBlockCount();
-    }
-
-    void InitFreshBlocks(const TVector<TOwningFreshBlock>& freshBlocks);
-
-    void WriteFreshBlock(
-        const TBlock& block,
-        TBlockDataRef blockContent,
-        TPartialBlobId blobId);
-
-    void WriteFreshBlock(
-        const TBlock& block,
-        TBlockDataRef blockContent)
-    {
-        WriteFreshBlock(
-            block,
-            blockContent,
-            {}  // blobId
-        );
-    }
-
-    bool DeleteFreshBlock(ui32 blockIndex, ui64 commitId);
-
-    const TFreshBlock* FindFreshBlock(ui32 blockIndex, ui64 commitId) const;
-
-    void FindFreshBlocks(
+    void WriteFreshBlocksToDb(
+        TPartitionDatabase& db,
+        const TBlockRange32& writeRange,
         ui64 commitId,
-        const TBlockRange32& blockRange,
-        IFreshBlockVisitor& visitor) const;
+        TSgList sglist);
 
-    void FindFreshBlocks(
-        const TBlockRange32& blockRange,
-        IFreshBlockVisitor& visitor) const;
+    void ZeroFreshBlocksToDb(
+        TPartitionDatabase& db,
+        const TBlockRange32& zeroRange,
+        ui64 commitId);
 
-    void FindFreshBlocks(IFreshBlockVisitor& visitor) const;
+    void DeleteFreshBlockFromDb(
+        TPartitionDatabase& db,
+        ui32 blockIndex,
+        ui64 commitId);
 
-private:
-    void FindFreshBlocks(
-        const TVector<TFreshBlock>& blocks,
-        IFreshBlockVisitor& visitor) const;
-
-    //
-    // Fresh blocks inflight
-    //
-
-private:
-    TFreshBlocksInFlight FreshBlocksInFlight;
-
-public:
-    void AddFreshBlocksInFlight(TBlockRange32 blockRange, ui64 commitId)
+    ui32 GetUnflushedFreshBlocksCount() const
     {
-        FreshBlocksInFlight.AddBlockRange(blockRange, commitId);
+        return GetStats().GetFreshBlocksCount() +
+               GetUnflushedFreshBlocksCountFromChannel();
     }
 
-    void RemoveFreshBlocksInFlight(TBlockRange32 blockRange, ui64 commitId)
+    ui32 IncrementUnflushedFreshBlocksFromDbCount(size_t value);
+    ui32 DecrementUnflushedFreshBlocksFromDbCount(size_t value);
+
+    void IncrementFreshBlocksInFlight(size_t value)
     {
-        FreshBlocksInFlight.RemoveBlockRange(blockRange, commitId);
+        ThreadSafeState->IncrementFreshBlocksInFlight(value);
     }
 
-    size_t GetFreshBlockCountInFlight() const
+    void DecrementFreshBlocksInFlight(size_t value)
     {
-        return FreshBlocksInFlight.Size();
+        ThreadSafeState->DecrementFreshBlocksInFlight(value);
     }
 
-    bool HasFreshBlocksInFlightUntil(ui64 commitId) const
+    ui64 GetFreshBlocksInFlight() const
     {
-        return FreshBlocksInFlight.HasBlocksUntil(commitId);
-    }
-
-    //
-    // Fresh block updates
-    //
-
-private:
-    TFreshBlockUpdates FreshBlockUpdates;
-
-public:
-    void SetFreshBlockUpdates(TFreshBlockUpdates updates);
-    void ApplyFreshBlockUpdates();
-
-    size_t GetFreshBlockUpdateCount() const;
-
-    void AddFreshBlockUpdate(TPartitionDatabase& db, TFreshBlockUpdate update);
-    void TrimFreshBlockUpdates(TPartitionDatabase& db);
-
-    //
-    // Flush
-    //
-
-private:
-    struct TFlushContext
-    {
-        TRequestInfoPtr RequestInfo;
-        const ui64 CommitId;
-
-        TFlushContext(
-                TRequestInfoPtr requestInfo,
-                ui64 commitId)
-            : RequestInfo(std::move(requestInfo))
-            , CommitId(commitId)
-        {}
-    };
-
-    TMaybe<TFlushContext> FlushContext;
-    TOperationState FlushState;
-
-public:
-    TFlushContext& GetFlushContext()
-    {
-        Y_ABORT_UNLESS(FlushContext);
-        return *FlushContext;
-    }
-
-    template <typename ...TArgs>
-    void ConstructFlushContext(TArgs&& ...args)
-    {
-        Y_ABORT_UNLESS(!FlushContext);
-        FlushContext.ConstructInPlace(std::forward<TArgs>(args)...);
-    }
-
-    void ResetFlushContext()
-    {
-        Y_ABORT_UNLESS(FlushContext);
-        FlushContext.Clear();
-    }
-
-    EOperationStatus GetFlushStatus() const
-    {
-        return FlushState.GetStatus();
-    }
-
-    void SetFlushStatus(EOperationStatus status)
-    {
-        FlushState.SetStatus(status);
-    }
-
-    ui64 GetLastFlushCommitId() const
-    {
-        return Meta.GetLastFlushCommitId();
-    }
-
-    void SetLastFlushCommitId(ui64 commitId)
-    {
-        Meta.SetLastFlushCommitId(commitId);
+        return ThreadSafeState->GetFreshBlocksInFlight();
     }
 
     //
     // TrimFreshLog
     //
 
-private:
-    TOperationState TrimFreshLogState;
-    // Declare separate variable TrimFreshLogToCommitId instead of reusing
-    // LastFlushCommitId, since LastFlushCommitId is updated
-    // at TxAddBlobsExecute (tx has not been committed yet).
-    // There is possible data loss if tablet restarts before
-    // TxComplete and blocks got trimmed.
-    ui64 TrimFreshLogToCommitId = 0;
-    ui64 LastTrimFreshLogToCommitId = 0;
-    TBackoffDelayProvider TrimFreshLogBackoffDelayProvider{
-        TDuration::Zero(),
-        TDuration::MilliSeconds(100),
-        TDuration::Seconds(5)};
-
 public:
-    EOperationStatus GetTrimFreshLogStatus() const
+
+    auto GetTrimFreshLogBarriers()
     {
-        return TrimFreshLogState.GetStatus();
+        return ThreadSafeState->GetTrimFreshLogBarriers();
     }
 
-    TOperationState& GetTrimFreshLogState()
+    auto AccessTrimFreshLogBarriers()
     {
-        return TrimFreshLogState;
-    }
-
-    TDuration GetTrimFreshLogBackoffDelay()
-    {
-        return TrimFreshLogBackoffDelayProvider.GetDelay();
-    }
-
-    void RegisterTrimFreshLogError()
-    {
-        TrimFreshLogBackoffDelayProvider.IncreaseDelay();
-    }
-
-    void RegisterTrimFreshLogSuccess()
-    {
-        TrimFreshLogBackoffDelayProvider.Reset();
+        return ThreadSafeState->AccessTrimFreshLogBarriers();
     }
 
     ui64 GetTrimFreshLogToCommitId() const
     {
-        return TrimFreshLogToCommitId;
+        return ThreadSafeState->GetTrimFreshLogToCommitId();
     }
-
-    void SetTrimFreshLogToCommitId(ui64 commitId)
-    {
-        TrimFreshLogToCommitId = commitId;
-    }
-
-    ui64 GetLastTrimFreshLogToCommitId() const
-    {
-        return LastTrimFreshLogToCommitId;
-    }
-
-    void SetLastTrimFreshLogToCommitId(ui64 commitId)
-    {
-        LastTrimFreshLogToCommitId = commitId;
-    }
-
 
     //
-    // Merged blobs
+    // Mixed blocks
     //
 
 private:
-    mutable TBlobIndex Blobs;
+    TProfilingAllocator MixedIndexCacheAllocator;
+    TMixedIndexCache MixedIndexCache;
 
 public:
-    TBlobIndex& GetBlobs()
-    {
-        return Blobs;
-    }
-
-    size_t GetMixedBlobCount() const
-    {
-        return 0;
-    }
-
-    size_t GetMergedBlobCount() const
-    {
-        return Blobs.GetGlobalBlobCount() + Blobs.GetZoneBlobCount();
-    }
-
-    void WriteBlob(
+    void WriteMixedBlock(TPartitionDatabase& db, TMixedBlock block);
+    void WriteMixedBlocks(
         TPartitionDatabase& db,
         const TPartialBlobId& blobId,
-        TVector<TBlock>& blocks);
+        const TVector<ui32>& blockIndices,
+        ui8 compactionRangeCount);
 
-    bool UpdateBlob(
+    void DeleteMixedBlock(
         TPartitionDatabase& db,
-        const TPartialBlobId& blobId,
-        bool fastPathAllowed,
-        TVector<TBlock>& blocks);
-
-    bool DeleteBlob(
-        TPartitionDatabase& db,
-        const TPartialBlobId& blobId);
-
-    bool FindBlockList(
-        TPartitionDatabase& db,
-        ui32 zoneHint,
-        const TPartialBlobId& blobId,
-        TMaybe<TBlockList>& blocks) const;
-
-    bool UpdateIndexStructures(
-        TPartitionDatabase& db,
-        TInstant now,
-        const TBlockRange32& blockRange,
-        TVector<TBlockRange64>* convertedToMixedIndex = nullptr,
-        TVector<TBlockRange64>* convertedToRangeMap = nullptr);
-
-    void UpdateIndex(
-        const TVector<TPartitionDatabase::TBlobMeta>& blobs,
-        const TVector<TBlobUpdate>& blobUpdates,
-        const TVector<TPartitionDatabase::TBlobGarbage>& blobGarbage);
-
-    void UpdateIndex(
-        ui32 z,
-        const TVector<TPartitionDatabase::TBlobMeta>& blobs,
-        const TVector<TBlobUpdate>& blobUpdates,
-        const TVector<TPartitionDatabase::TBlobGarbage>& blobGarbage);
-
-    bool InitIndex(
-        TPartitionDatabase& db,
-        const TBlockRange32& blockRange);
-
-    bool IsIndexInitialized(const TBlockRange32& blockRange);
-
-    //
-    // Blob updates by fresh
-    //
-
-private:
-    TBlobUpdatesByFresh BlobUpdatesByFresh;
-
-public:
-    void SetBlobUpdatesByFresh(TBlobUpdatesByFresh blobUpdatesByFresh);
-    void ApplyBlobUpdatesByFresh();
-    void AddBlobUpdateByFresh(TBlobUpdate blobUpdate);
-    void MoveBlobUpdatesByFreshToDb(TPartitionDatabase& db);
-
-    //
-    // Merged blocks
-    //
-
-public:
-    size_t GetMixedBlockCount() const
-    {
-        return 0;
-    }
-
-    size_t GetMergedBlockCount() const
-    {
-        return Blobs.GetBlockCount();
-    }
-
-    size_t GetGarbageBlockCount() const
-    {
-        return Blobs.GetGarbageBlockCount();
-    }
-
-    size_t GetUsedBlockCount() const
-    {
-        return GetMixedBlockCount()
-            + GetFreshBlockCount()
-            + GetMergedBlockCount()
-            - GetGarbageBlockCount();
-    }
-
-    ui32 GetMixedZoneCount() const
-    {
-        return Blobs.GetMixedZoneCount();
-    }
-
-    void MarkMergedBlocksDeleted(
-        TPartitionDatabase& db,
-        const TBlockRange32& blockRange,
+        ui32 blockIndex,
         ui64 commitId);
 
-    bool FindMergedBlocks(
+    bool FindMixedBlocksForCompaction(
         TPartitionDatabase& db,
-        ui64 commitId,
-        const TBlockRange32& blockRange,
-        IMergedBlockVisitor& visitor) const;
+        IMixedBlocksIndexVisitor& visitor,
+        ui32 rangeIndex);
 
-    bool FindMergedBlocks(
-        TPartitionDatabase& db,
-        const TBlockRange32& blockRange,
-        IMergedBlockVisitor& visitor) const;
+    void RaiseRangeTemperature(ui32 rangeIndex);
 
-    bool FindMergedBlocks(
-        TPartitionDatabase& db,
-        const TGarbageInfo& blobIds,
-        IMergedBlockVisitor& visitor) const;
-
-    // XXX abstraction leakage
-    bool ContainsMixedZones(const TBlockRange32& range) const;
-
-    ui32 GetZoneBlockCount() const
-    {
-        return Config.GetZoneBlockCount();
-    }
-
-    //
-    // Cleanup/Compaction/Checkpoint request queue
-    //
-
-private:
-    struct TCCCRequest
-    {
-        const ui64 CommitId;
-        std::unique_ptr<ITransactionBase> Tx;
-        std::function<void(const NActors::TActorContext&)> OnStartProcessing = {};
-    };
-
-    TDeque<TCCCRequest> CCCRequestQueue;
-    bool CCCRequestInProgress = false;
-
-public:
-    auto& GetCCCRequestQueue()
-    {
-        return CCCRequestQueue;
-    }
-
-    bool HasCCCRequestInProgress() const
-    {
-        return CCCRequestInProgress;
-    }
-
-    void StartProcessingCCCRequest()
-    {
-        Y_ABORT_UNLESS(!CCCRequestInProgress);
-        CCCRequestInProgress = true;
-    }
-
-    void StopProcessingCCCRequest()
-    {
-        Y_ABORT_UNLESS(CCCRequestInProgress);
-        CCCRequestInProgress = false;
-    }
-
-    //
-    // Checkpoints
-    //
-
-private:
-    TCheckpointStorage Checkpoints;
-    TCheckpointsToDelete CheckpointsToDelete;
-
-public:
-    TCheckpointStorage& GetCheckpoints()
-    {
-        return Checkpoints;
-    }
-
-    bool HasCheckpointsToDelete() const
-    {
-        return !CheckpointsToDelete.IsEmpty();
-    }
-
-    void InitCheckpoints(
-        const TVector<NProto::TCheckpointMeta>& checkpoints,
-        const TVector<TVector<TPartialBlobId>>& deletedCheckpointBlobIds);
-
-    void WriteCheckpoint(const NProto::TCheckpointMeta& meta);
-
-    bool MarkCheckpointDeleted(
-        TPartitionDatabase& db,
-        TInstant now,
-        ui64 commitId,
-        const TString& checkpointId,
-        TVector<TPartialBlobId> blobIds);
-
-    void SubtractCheckpointBlocks(ui32 erasedCheckpointBlocks);
-
-    //
-    // Cleanup
-    //
-
-private:
-    TOperationState CleanupState;
-
-public:
-    EOperationStatus GetCleanupStatus() const
-    {
-        return CleanupState.GetStatus();
-    }
-
-    void SetCleanupStatus(EOperationStatus status)
-    {
-        CleanupState.SetStatus(status);
-    }
-
-    //
-    // Dirty Blob Cleanup
-    //
-
-private:
-    TVector<TPartialBlobId> PendingChunkToCleanup;
-    TVector<TPartialBlobId> PendingBlobsToCleanup;
-    ui32 PendingCleanupZoneId = InvalidZoneId;
-
-public:
-    size_t GetPendingUpdates() const
-    {
-        return Blobs.GetPendingUpdates();
-    }
-
-    bool HasPendingChunkToCleanup() const
-    {
-        return !PendingChunkToCleanup.empty();
-    }
-
-    const TVector<TPartialBlobId>& GetPendingBlobsToCleanup() const
-    {
-        return PendingBlobsToCleanup;
-    }
-
-    ui32 GetPendingCleanupZoneId() const
-    {
-        return PendingCleanupZoneId;
-    }
-
-    bool TrySelectZoneToCleanup()
-    {
-        Y_ABORT_UNLESS(PendingChunkToCleanup.empty());
-        Y_ABORT_UNLESS(PendingBlobsToCleanup.empty());
-
-        PendingCleanupZoneId = Blobs.SelectZoneToCleanup();
-        return PendingCleanupZoneId != InvalidZoneId;
-    }
-
-    void SeparateChunkForCleanup(ui64 commitId)
-    {
-        Y_ABORT_UNLESS(PendingCleanupZoneId != InvalidZoneId);
-        Blobs.SeparateChunkForCleanup(commitId);
-    }
-
-    void ExtractChunkToCleanup()
-    {
-        Y_ABORT_UNLESS(PendingCleanupZoneId != InvalidZoneId);
-        PendingChunkToCleanup = Blobs.ExtractDirtyBlobs();
-    }
-
-    void ExtractBlobsFromChunkToCleanup(size_t limit);
-
-    TVector<TBlobUpdate> FinishDirtyBlobCleanup(TPartitionDatabase& db);
-
-    //
-    // Checkpoint Blob Cleanup
-    //
-
-private:
-    TVector<TPartialBlobId> PendingCheckpointBlobsToCleanup;
-    ui64 CleanupCheckpointCommitId = 0;
-
-public:
-    const TVector<TPartialBlobId>& GetPendingCheckpointBlobsToCleanup() const
-    {
-        return PendingCheckpointBlobsToCleanup;
-    }
-
-    ui64 GetCleanupCheckpointCommitId() const
-    {
-        return CleanupCheckpointCommitId;
-    }
-
-    void ExtractCheckpointBlobsToCleanup(size_t limit);
-
-    void FinishCheckpointBlobCleanup(TPartitionDatabase& db);
+    ui64 GetMixedIndexCacheMemSize() const;
 
     //
     // Compaction
@@ -918,16 +586,59 @@ public:
 
 private:
     TOperationState CompactionState;
-
     TCompactionMap CompactionMap;
+    TTsRingBuffer<TCompactionScores> CompactionScoreHistory;
+    TCompressedBitmap UsedBlocks;
+    TCompressedBitmap LogicalUsedBlocks;
+    TDuration LastCompactionExecTime;
+    TInstant LastCompactionFinishTs;
+    TDuration CompactionDelay;
+    const ui32 MaxBlobsPerDisk;
+    const ui32 MaxBlobsPerRange;
+    ui32 CompactionRangeCountPerRun;
+    TInstant LastCompactionRangeCountPerRunTs;
+    ui64 BlobsProcessedDuringCompaction = 0;
+    ui64 BlockMaskReadDuringCompaction = 0;
+    ui32 NewlyZeroedBlocks = 0;
 
 public:
-    EOperationStatus GetCompactionStatus(ECompactionType type) const;
-    void SetCompactionStatus(ECompactionType type, EOperationStatus status);
+    TOperationState& GetCompactionState(ECompactionType type);
 
     TCompactionMap& GetCompactionMap()
     {
         return CompactionMap;
+    }
+
+    TTsRingBuffer<TCompactionScores>& GetCompactionScoreHistory()
+    {
+        return CompactionScoreHistory;
+    }
+
+    void SetLastCompactionExecTime(const TDuration d, const TInstant finishTs)
+    {
+        LastCompactionExecTime = d;
+        LastCompactionFinishTs = finishTs;
+    }
+
+    TDuration GetCompactionExecTimeForLastSecond(const TInstant now) const
+    {
+        // we are interested only in the last compaction's exec time, not the
+        // total time spent by all compaction requests that happened in the
+        // last second
+        return Min(
+            LastCompactionExecTime,
+            TDuration::Seconds(1) - (now - LastCompactionFinishTs)
+        );
+    }
+
+    void SetCompactionDelay(const TDuration d)
+    {
+        CompactionDelay = d;
+    }
+
+    TDuration GetCompactionDelay() const
+    {
+        return CompactionDelay;
     }
 
     ui32 GetLegacyCompactionScore() const
@@ -935,22 +646,110 @@ public:
         return CompactionMap.GetTop().Stat.BlobCount;
     }
 
+    ui32 GetCompactionGarbageScore() const
+    {
+        return CompactionMap.GetTopByGarbageBlockCount().Stat.GarbageBlockCount();
+    }
+
+    ui32 GetCompactionIgnoringZeroedScore() const
+    {
+        return CompactionMap.GetTopByGarbageIgnoringZeroed()
+            .Stat.GarbageIgnoringZeroed();
+    }
+
     float GetCompactionScore() const
     {
         return CompactionMap.GetTop().Stat.CompactionScore.Score;
     }
 
-    void InitCompactionMap(const TVector<TCompactionCounter>& compactionMap);
+    TCompressedBitmap& GetUsedBlocks()
+    {
+        return UsedBlocks;
+    }
 
-    void UpdateCompactionMap(
-        TPartitionDatabase& db,
-        const TVector<TBlock>& blocks);
+    TCompressedBitmap& GetLogicalUsedBlocks()
+    {
+        return LogicalUsedBlocks;
+    }
 
-    void ResetCompactionMap(
-        TPartitionDatabase& db,
-        const TVector<TBlock>& blocks,
-        const ui32 blobsSkipped,
-        const ui32 blocksSkipped);
+    ui32 GetMaxBlobsPerDisk() const
+    {
+        return MaxBlobsPerDisk;
+    }
+
+    ui32 GetCompactionRangeCountPerRun() const
+    {
+        return CompactionRangeCountPerRun;
+    }
+
+    void IncrementCompactionRangeCountPerRun()
+    {
+        ++CompactionRangeCountPerRun;
+    }
+
+    void DecrementCompactionRangeCountPerRun()
+    {
+        --CompactionRangeCountPerRun;
+    }
+
+    ui32 GetMaxBlobsPerRange() const {
+        return MaxBlobsPerRange;
+    }
+
+    void SetLastCompactionRangeCountPerRunTime(const TInstant now)
+    {
+        LastCompactionRangeCountPerRunTs = now;
+    }
+
+    TInstant GetLastCompactionRangeCountPerRunTime() const
+    {
+        return LastCompactionRangeCountPerRunTs;
+    }
+
+    void SetNewlyZeroedBlocks(ui32 value)
+    {
+        NewlyZeroedBlocks = value;
+    }
+
+    ui32 GetNewlyZeroedBlocks() const
+    {
+        return NewlyZeroedBlocks;
+    }
+
+    ui64 GetUsedBlocksIgnoringZeroed() const
+    {
+        return GetUsedBlocksCount() + GetNewlyZeroedBlocks();
+    }
+
+    void SetUsedBlocks(TPartitionDatabase& db, const TBlockRange32& range, ui32 skipCount);
+    void SetUsedBlocks(TPartitionDatabase& db, const TVector<ui32>& blocks);
+    void UnsetUsedBlocks(TPartitionDatabase& db, const TBlockRange32& range);
+    void UnsetUsedBlocks(TPartitionDatabase& db, const TVector<ui32>& blocks);
+
+    void IncrementBlobsProcessedDuringCompaction(ui64 value)
+    {
+        BlobsProcessedDuringCompaction += value;
+    }
+
+    void IncrementBlockMaskReadDuringCompaction(ui64 value)
+    {
+        BlockMaskReadDuringCompaction += value;
+    }
+
+    ui64 GetBlobsProcessedDuringCompaction() const
+    {
+        return BlobsProcessedDuringCompaction;
+    }
+
+    ui64 GetBlockMaskReadDuringCompaction() const
+    {
+        return BlockMaskReadDuringCompaction;
+    }
+
+    ui32 CalculateNewlyZeroedBlocks(ui32 blockIndex, ui64 usedBlockCount) const;
+
+private:
+    void WriteUsedBlocksToDB(TPartitionDatabase& db, ui32 begin, ui32 end);
 
     //
     // Forced Compaction
@@ -969,20 +768,20 @@ public:
     {
         ForcedCompactionState.IsRunning = true;
         ForcedCompactionState.Progress = 0;
-        ForcedCompactionState.RangeCount = blocksCount;
+        ForcedCompactionState.RangesCount = blocksCount;
         ForcedCompactionState.OperationId = operationId;
     }
 
-    void OnNewCompactionRange()
+    void OnNewCompactionRange(ui32 rangesCount)
     {
-        ++ForcedCompactionState.Progress;
+        ForcedCompactionState.Progress += rangesCount;
     }
 
     void ResetForcedCompaction()
     {
         ForcedCompactionState.IsRunning = false;
         ForcedCompactionState.Progress = 0;
-        ForcedCompactionState.RangeCount = 0;
+        ForcedCompactionState.RangesCount = 0;
         ForcedCompactionState.OperationId.clear();
     }
 
@@ -992,54 +791,224 @@ public:
     }
 
     //
-    // Forced Cleanup
+    // Metadata Rebuild
     //
 
 private:
-    TForcedCleanupState ForcedCleanupState;
+    TMetadataRebuildState RebuildState;
 
 public:
-    const TForcedCleanupState& GetForcedCleanupState() const
+    bool IsMetadataRebuildStarted() const
     {
-        return ForcedCleanupState;
+        return RebuildState.IsStarted();
     }
 
-    bool IsForcedCleanupRunning() const
+    EMetadataRebuildType GetMetadataRebuildType() const
     {
-        return ForcedCleanupState.IsRunning;
+        return RebuildState.GetType();
     }
 
-    void StartForcedCleanup()
+    void StartRebuildUsedBlocks()
     {
-        ForcedCleanupState.IsRunning = true;
+        RebuildState.StartRebuildUsedBlocks(
+            GetBlocksCount());
     }
 
-    void ResetForcedCleanup()
+    void StartRebuildBlockCount()
     {
-        ForcedCleanupState.IsRunning = false;
+        RebuildState.StartRebuildBlockCount(
+            GetMixedBlobsCount(),
+            GetMergedBlobsCount());
+    }
+
+    TMedatadataRebuildProgress GetMetadataRebuildProgress() const
+    {
+        return RebuildState.GetProgress();
+    }
+
+    void UpdateRebuildMetadataProgress(ui64 processed)
+    {
+        RebuildState.UpdateProgress(processed);
+    }
+
+    void CompleteMetadataRebuild()
+    {
+        RebuildState.Complete();
+    }
+
+    void UpdateBlocksCountersAfterMetadataRebuild(ui64 mixed, ui64 merged)
+    {
+        AccessStats().SetMixedBlocksCount(mixed);
+        AccessStats().SetMergedBlocksCount(merged);
     }
 
     //
-    // Garbage
+    // Scan Disk
+    //
+
+private:
+    TScanDiskState ScanDiskState;
+
+public:
+    bool IsScanDiskStarted() const
+    {
+        return ScanDiskState.IsStarted();
+    }
+
+    bool HasScanDiskProgress() const
+    {
+        return ScanDiskState.HasProgress();
+    }
+
+    void StartScanDisk()
+    {
+        ScanDiskState.Start(
+            GetMixedBlobsCount(),
+            GetMergedBlobsCount());
+    }
+
+    TScanDiskProgress GetScanDiskProgress() const
+    {
+        return ScanDiskState.GetProgress();
+    }
+
+    void UpdateScanDiskProgress()
+    {
+        ScanDiskState.UpdateProcessedBlobs();
+    }
+
+    void UpdateScanDiskBlobsToBeProcessed(ui64 toBeProcessed)
+    {
+        ScanDiskState.UpdateBlobsToBeProcessed(toBeProcessed);
+    }
+
+    void SetBrokenBlobs(TVector<NKikimr::TLogoBlobID> blobIds) {
+        ScanDiskState.SetBrokenBlobs(std::move(blobIds));
+    }
+
+    void CompleteScanDisk()
+    {
+        ScanDiskState.Complete();
+    }
+
+    //
+    // Cleanup
+    //
+
+private:
+    TOperationState CleanupState;
+    TCleanupQueue CleanupQueue;
+    TTsRingBuffer<ui32> CleanupScoreHistory;
+
+    mutable ui32 BlobCountToCleanup = 0;
+    mutable ui64 BlobCountToCleanupCommitId = 0;
+
+    TDuration LastCleanupExecTime;
+    TInstant LastCleanupFinishTs;
+    TDuration CleanupDelay;
+
+public:
+    TOperationState& GetCleanupState()
+    {
+        return CleanupState;
+    }
+
+    TCleanupQueue& GetCleanupQueue()
+    {
+        return CleanupQueue;
+    }
+
+    const TCleanupQueue& GetCleanupQueue() const
+    {
+        return CleanupQueue;
+    }
+
+    ui32 GetBlobCountToCleanup(ui64 commitId, ui32 maxBlobs) const
+    {
+        if (commitId < BlobCountToCleanupCommitId
+                || BlobCountToCleanup < maxBlobs)
+        {
+            BlobCountToCleanup = CleanupQueue.GetCount(commitId);
+            BlobCountToCleanupCommitId = commitId;
+        }
+
+        return BlobCountToCleanup;
+    }
+
+    void RemoveCleanupQueueItem(const TCleanupQueueItem& item)
+    {
+        bool removed = CleanupQueue.Remove(item);
+        Y_ABORT_UNLESS(removed);
+
+        // BlobCountToCleanup is not perfectly synchronized with CleanupQueue:
+        // it can actually be smaller
+        if (BlobCountToCleanup) {
+            --BlobCountToCleanup;
+        }
+    }
+
+    TTsRingBuffer<ui32>& GetCleanupScoreHistory()
+    {
+        return CleanupScoreHistory;
+    }
+
+    void SetLastCleanupExecTime(const TDuration d, const TInstant finishTs)
+    {
+        LastCleanupExecTime = d;
+        LastCleanupFinishTs = finishTs;
+    }
+
+    TDuration GetCleanupExecTimeForLastSecond(const TInstant now) const
+    {
+        // TODO: unify this code and compaction delay-related code
+        // we are interested only in the last cleanup's exec time, not the
+        // total time spent by all cleanup requests that happened in the
+        // last second
+        return Min(
+            LastCleanupExecTime,
+            TDuration::Seconds(1) - (now - LastCleanupFinishTs)
+        );
+    }
+
+    void SetCleanupDelay(const TDuration d)
+    {
+        CleanupDelay = d;
+    }
+
+    TDuration GetCleanupDelay() const
+    {
+        return CleanupDelay;
+    }
+
+    auto GetCheckpointsInFlight() const
+    {
+        return ThreadSafeState->GetCheckpointsInFlight();
+    }
+
+    auto AccessCheckpointsInFlight()
+    {
+        return ThreadSafeState->AccessCheckpointsInFlight();
+    }
+
+    ui64 GetCleanupCommitId() const;
+
+    ui64 CalculateCheckpointBytes() const;
+
+    //
+    // Garbage collection
     //
 
 private:
     TOperationState CollectGarbageState;
-
     TGarbageQueue GarbageQueue;
     ui32 LastCollectPerGenerationCounter = 0;
     TDuration CollectTimeout;
     bool StartupGcExecuted = false;
 
 public:
-    EOperationStatus GetCollectGarbageStatus() const
+    TOperationState& GetCollectGarbageState()
     {
-        return CollectGarbageState.GetStatus();
-    }
-
-    void SetCollectGarbageStatus(EOperationStatus status)
-    {
-        CollectGarbageState.SetStatus(status);
+        return CollectGarbageState;
     }
 
     TGarbageQueue& GetGarbageQueue()
@@ -1077,32 +1046,13 @@ public:
 
     ui32 NextCollectPerGenerationCounter()
     {
+        if (LastCollectPerGenerationCounter == InvalidCollectPerGenerationCounter) {
+            return InvalidCollectPerGenerationCounter;
+        }
         return ++LastCollectPerGenerationCounter;
     }
 
-    void InitGarbage(
-        const TVector<TPartialBlobId>& newBlobs,
-        const TVector<TPartialBlobId>& garbageBlobs)
-    {
-        Y_ABORT_UNLESS(GarbageQueue.AddNewBlobs(newBlobs));
-        Y_ABORT_UNLESS(GarbageQueue.AddGarbageBlobs(garbageBlobs));
-    }
-
-    void AcquireCollectBarrier(ui64 commitId)
-    {
-        GarbageQueue.AcquireCollectBarrier(commitId);
-    }
-
-    void ReleaseCollectBarrier(ui64 commitId)
-    {
-        GarbageQueue.ReleaseCollectBarrier(commitId);
-    }
-
-    ui64 GetCollectCommitId() const
-    {
-        // should not collect after any barrier
-        return Min(GetLastCommitId(), GarbageQueue.GetCollectCommitId());
-    }
+    ui64 GetCollectCommitId() const;
 
     bool GetStartupGcExecuted() const
     {
@@ -1117,6 +1067,17 @@ public:
     bool CollectGarbageHardRequested = false;
 
     //
+    // TrimFreshLog
+    //
+
+public:
+
+    void UpdateTrimFreshLogToCommitIdInMeta()
+    {
+        Meta.SetTrimFreshLogToCommitId(GetTrimFreshLogToCommitId());
+    }
+
+    //
     // ReadBlob
     //
 
@@ -1129,29 +1090,156 @@ public:
         return ++ReadBlobErrorCount;
     }
 
+private:
+    TCommitIdToBlobsToConfirm UnconfirmedBlobs;
+    ui32 UnconfirmedBlobCount = 0;
+    // contains entries from UnconfirmedBlobs that have been confirmed but have
+    // not yet been added to the index
+    TCommitIdToBlobsToConfirm ConfirmedBlobs;
+    ui32 ConfirmedBlobCount = 0;
+
+public:
+    const TCommitIdToBlobsToConfirm& GetUnconfirmedBlobs() const
+    {
+        return UnconfirmedBlobs;
+    }
+
+    ui32 GetUnconfirmedBlobCount() const
+    {
+        return UnconfirmedBlobCount;
+    }
+
+    const TCommitIdToBlobsToConfirm& GetConfirmedBlobs() const
+    {
+        return ConfirmedBlobs;
+    }
+
+    ui32 GetConfirmedBlobCount() const
+    {
+        return ConfirmedBlobCount;
+    }
+
+    bool OverlapsUnconfirmedBlobs(
+        ui64 lowCommitId,
+        ui64 highCommitId,
+        const TBlockRange32& blockRange) const;
+
+    bool OverlapsConfirmedBlobs(
+        ui64 lowCommitId,
+        ui64 highCommitId,
+        const TBlockRange32& blockRange) const;
+
+    void InitUnconfirmedBlobs(TCommitIdToBlobsToConfirm blobs);
+
+    void WriteUnconfirmedBlob(
+        TPartitionDatabase& db,
+        ui64 commitId,
+        const TBlobToConfirm& blob);
+
+    void DeleteUnconfirmedBlobs(
+        TPartitionDatabase& db,
+        ui64 commitId);
+
+    void ConfirmedBlobsAdded(TPartitionDatabase& db, ui64 commitId);
+
+    void BlobsConfirmed(ui64 commitId, TVector<TBlobToConfirm> blobs);
+
+   //
+   // WriteBlob
+   //
+
+private:
+    ui32 WriteBlobErrorCount = 0;
+
+public:
+    ui32 IncrementWriteBlobErrorCount()
+    {
+        return ++WriteBlobErrorCount;
+    }
+
+    //
+    // AddConfirmedBlobs
+    //
+
+private:
+    TOperationState AddConfirmedBlobsState;
+
+public:
+    TOperationState& GetAddConfirmedBlobsState()
+    {
+        return AddConfirmedBlobsState;
+    }
+
+    //
+    // ConfirmBlobs
+    //
+
+    void ConfirmBlobs(
+        TPartitionDatabase& db,
+        const TVector<TPartialBlobId>& unrecoverableBlobs);
+
     //
     // Stats
     //
 
-private:
-    NProto::TPartitionStats& Stats;
-
 public:
     const NProto::TPartitionStats& GetStats() const
     {
-        return Stats;
+        return Meta.GetStats();
     }
+
+    NProto::TPartitionStats& AccessStats()
+    {
+        return *Meta.MutableStats();
+    }
+
+#define BLOCKSTORE_PARTITION2_DECLARE_COUNTER(name)                             \
+    ui64 Get##name() const                                                     \
+    {                                                                          \
+        return GetStats().Get##name();                                         \
+    }                                                                          \
+                                                                               \
+    ui64 Increment##name(size_t value);                                        \
+    ui64 Decrement##name(size_t value);                                        \
+// BLOCKSTORE_PARTITION2_DECLARE_COUNTER
+
+    BLOCKSTORE_PARTITION2_PROTO_COUNTERS(BLOCKSTORE_PARTITION2_DECLARE_COUNTER)
+
+#undef BLOCKSTORE_PARTITION2_DECLARE_COUNTER
 
     template <typename T>
     void UpdateStats(T&& update)
     {
-        update(Stats);
+        update(AccessStats());
     }
-
-    void WriteStats(TPartitionDatabase& db);
 
     void DumpHtml(IOutputStream& out) const;
     NJson::TJsonValue AsJson() const;
+
+    void UpdateWithThreadSafeStats(TThreadSafePartStats& stats)
+    {
+        auto statsToAdd = stats.Swap({});
+        UpdatePartitionCounters(*Meta.MutableStats(), statsToAdd);
+    }
+
+    double GetStoredBytesCountToDiskSizeRatio() const
+    {
+        const auto mixedBytesCount = GetMixedBlocksCount() * GetBlockSize();
+        const auto freshBytesCount =
+            static_cast<ui64>(GetUnflushedFreshBlocksCount()) * GetBlockSize();
+        const auto mergedBytesCount = GetMergedBlocksCount() * GetBlockSize();
+        const auto bytesCount = GetBlocksCount() * GetBlockSize();
+
+        STORAGE_VERIFY_C(
+            bytesCount != 0,
+            TWellKnownEntityTypes::DISK,
+            Config.GetDiskId(),
+            "bytesCount is zero");
+
+        return static_cast<double>(
+                   mixedBytesCount + freshBytesCount + mergedBytesCount) /
+               static_cast<double>(bytesCount);
+    }
 };
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition2

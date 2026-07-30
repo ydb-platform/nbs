@@ -14,81 +14,16 @@ using TFreshBlobFormatVersion = ui8;
 using TProtobufSize = ui32;
 
 static constexpr TFreshBlobFormatVersion FreshBlobFormatVersion = 1;
+static constexpr bool IsStoredInDb = false;
+
+namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
-
-NProto::TError ParseFreshBlobContent(
-    ui64 commitId,
-    TPartialBlobId blobId,
-    ui32 blockSize,
-    const TString& buffer,
-    TVector<TOwningFreshBlock>& blocks,
-    TBlobUpdatesByFresh& updates)
-{
-    TStringInput si(buffer);
-
-    TFreshBlobFormatVersion version = 0;
-    Load(&si, version);
-    if (version != FreshBlobFormatVersion) {
-        return MakeError(E_FAIL, "wrong fresh blob version");
-    }
-
-    TProtobufSize protoSize = 0;
-    Load(&si, protoSize);
-
-    size_t offset = sizeof(version) + sizeof(protoSize);
-
-    NProto::TFreshBlobMeta2 meta;
-    if (!meta.ParseFromArray(buffer.data() + offset, protoSize)) {
-        return MakeError(E_FAIL, "failed to parse fresh blob meta protobuf");
-    }
-    if (meta.StartIndicesSize() != meta.EndIndicesSize()) {
-        return MakeError(E_FAIL, "StartIndicesSize != EndIndicesSize");
-    }
-    if (meta.StartIndicesSize() != meta.DeletionIdsSize()) {
-        return MakeError(E_FAIL, "StartIndicesSize != DeletionIdsSize");
-    }
-
-    offset += protoSize;
-
-    for (ui32 i = 0; i < meta.StartIndicesSize(); ++i) {
-        auto start = meta.GetStartIndices(i);
-        auto end = meta.GetEndIndices(i);
-        auto deletionId = meta.GetDeletionIds(i);
-
-        auto blockRange = TBlockRange32::MakeClosedInterval(start, end);
-
-        for (auto blockIndex: xrange(blockRange)) {
-            auto block = TBlock(blockIndex, commitId, InvalidCommitId, false);
-
-            if (offset + blockSize > buffer.size()) {
-                return MakeError(
-                    E_FAIL, TStringBuilder() <<
-                        "not enough blocks in fresh blob; #offset=" << offset <<
-                        " #blockSize=" << blockSize <<
-                        " #buffer.size()=" << buffer.size());
-            }
-
-            TString content(buffer.data() + offset, blockSize);
-            blocks.emplace_back(block, std::move(content), blobId);
-
-            offset += blockSize;
-        }
-
-        if (!updates.emplace(blockRange, commitId, deletionId).second) {
-            return MakeError(E_FAIL, "multiple deletions found");
-        }
-    }
-
-    Y_DEBUG_ABORT_UNLESS(offset == buffer.size());
-
-    return {};
-}
 
 TString BuildFreshBlobContent(
     const TVector<TBlockRange32>& blockRanges,
     const TVector<TGuardHolder>& guardHolders,
-    ui64 firstRequestDeletionId)
+    bool isZero)
 {
     TString result;
     TStringOutput so(result);
@@ -101,13 +36,12 @@ TString BuildFreshBlobContent(
         contentSize += SgListGetSize(guardHolder.GetSgList());
     }
 
-    NProto::TFreshBlobMeta2 meta;
-    ui64 deletionId = firstRequestDeletionId;
-    for (const auto& blockRange: blockRanges) {
+    NProto::TFreshBlobMeta meta;
+    for (const auto blockRange: blockRanges) {
         meta.AddStartIndices(blockRange.Start);
         meta.AddEndIndices(blockRange.End);
-        meta.AddDeletionIds(deletionId++);
     }
+    meta.SetIsZero(isZero);
 
     const TProtobufSize protoSize = meta.ByteSize();
     Save(&so, protoSize);
@@ -127,6 +61,86 @@ TString BuildFreshBlobContent(
     }
 
     return result;
+}
+
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+TString BuildWriteFreshBlocksBlobContent(
+    const TVector<TBlockRange32>& blockRanges,
+    const TVector<TGuardHolder>& guardHolders)
+{
+    return BuildFreshBlobContent(blockRanges, guardHolders, false);
+}
+
+TString BuildZeroFreshBlocksBlobContent(TBlockRange32 blockRange)
+{
+    return BuildFreshBlobContent({ blockRange }, {}, true);
+}
+
+NProto::TError ParseFreshBlobContent(
+    ui64 commitId,
+    TPartialBlobId blobId,
+    ui32 blockSize,
+    const TString& buffer,
+    TVector<TOwningFreshBlock>& result)
+{
+    TStringInput si(buffer);
+
+    TFreshBlobFormatVersion version = 0;
+    Load(&si, version);
+    if (version != FreshBlobFormatVersion) {
+        return MakeError(E_FAIL, "wrong fresh blob version");
+    }
+
+    TProtobufSize protoSize = 0;
+    Load(&si, protoSize);
+
+    size_t offset = sizeof(version) + sizeof(protoSize);
+
+    NProto::TFreshBlobMeta meta;
+    if (!meta.ParseFromArray(buffer.data() + offset, protoSize)) {
+        return MakeError(E_FAIL, "failed to parse fresh blob meta protobuf");
+    }
+    if (meta.StartIndicesSize() != meta.EndIndicesSize()) {
+        return MakeError(E_FAIL, "StartIndicesSize != EndIndicesSize");
+    }
+
+    offset += protoSize;
+
+    for (ui32 i = 0; i < meta.StartIndicesSize(); ++i) {
+        auto start = meta.GetStartIndices(i);
+        auto end = meta.GetEndIndices(i);
+
+        for (auto blockIndex:
+             xrange(TBlockRange32::MakeClosedInterval(start, end)))
+        {
+            auto block = TBlock(blockIndex, commitId, IsStoredInDb);
+
+            if (meta.GetIsZero()) {
+                result.emplace_back(block, TString(), blobId);
+                continue;
+            }
+
+            if (offset + blockSize > buffer.size()) {
+                return MakeError(
+                    E_FAIL, TStringBuilder() <<
+                        "not enough blocks in fresh blob; #offset=" << offset <<
+                        " #blockSize=" << blockSize <<
+                        " #buffer.size()=" << buffer.size());
+            }
+
+            TString content(buffer.data() + offset, blockSize);
+            result.emplace_back(block, std::move(content), blobId);
+
+            offset += blockSize;
+        }
+    }
+
+    Y_DEBUG_ABORT_UNLESS(offset == buffer.size());
+
+    return {};
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition2

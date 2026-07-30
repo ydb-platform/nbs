@@ -2,7 +2,7 @@
 
 #include "public.h"
 
-#include "block.h"
+#include <cloud/blockstore/libs/storage/partition_common/model/block.h>
 
 #include <cloud/storage/core/libs/tablet/model/partial_blob_id.h>
 

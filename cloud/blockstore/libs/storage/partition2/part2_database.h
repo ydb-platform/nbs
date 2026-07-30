@@ -4,12 +4,16 @@
 
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/storage/core/compaction_map.h>
-#include <cloud/blockstore/libs/storage/partition2/model/blob.h>
-#include <cloud/blockstore/libs/storage/partition2/model/block_list.h>
+#include <cloud/blockstore/libs/storage/partition2/model/blob_index.h>
+#include <cloud/blockstore/libs/storage/partition2/model/blob_to_confirm.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/block.h>
+#include <cloud/blockstore/libs/storage/partition2/model/block_mask.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/checkpoint.h>
+#include <cloud/blockstore/libs/storage/partition2/model/cleanup_queue.h>
+#include <cloud/blockstore/libs/storage/partition2/model/mixed_index_cache.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
 
-#include <cloud/storage/core/libs/common/block_data_ref.h>
-#include <cloud/storage/core/libs/tablet/model/partial_blob_id.h>
+#include <cloud/storage/core/libs/common/compressed_bitmap.h>
 
 #include <contrib/ydb/core/tablet_flat/flat_cxx_database.h>
 
@@ -21,13 +25,53 @@ namespace NCloud::NBlockStore::NStorage::NPartition2 {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TPartitionDatabase
-    : public NKikimr::NIceDb::TNiceDb
+class TNoOpCounter
 {
 public:
-    TPartitionDatabase(NKikimr::NTable::TDatabase& database)
+    void operator()(TStringBuf)
+    {}
+};
+
+class TMethodCallCounter
+{
+private:
+    THashMap<TString, ui64> MethodCallCounts;
+
+public:
+    void operator()(TStringBuf methodName)
+    {
+        MethodCallCounts[methodName]++;
+    }
+
+    [[nodiscard]] const THashMap<TString, ui64>& GetMethodCallCounts() const
+    {
+        return MethodCallCounts;
+    }
+};
+
+template <typename TCounters>
+class TPartitionDatabaseImpl: public NKikimr::NIceDb::TNiceDb
+{
+public:
+    enum class EBlobIndexScanProgress
+    {
+        NotReady,
+        Completed,
+        Partial
+    };
+
+private:
+    TCounters Counters;
+
+public:
+    TPartitionDatabaseImpl(NKikimr::NTable::TDatabase& database)
         : NKikimr::NIceDb::TNiceDb(database)
     {}
+
+    [[nodiscard]] const TCounters& GetCounters() const
+    {
+        return Counters;
+    }
 
     void InitSchema();
 
@@ -39,136 +83,125 @@ public:
     bool ReadMeta(TMaybe<NProto::TPartitionMeta>& meta);
 
     //
-    // FreshBlockUpdates
+    // FreshBlocksIndex
     //
 
-    bool ReadFreshBlockUpdates(TFreshBlockUpdates& updates);
-    void AddFreshBlockUpdate(TFreshBlockUpdate update);
-    void TrimFreshBlockUpdates(
-        TFreshBlockUpdates::const_iterator first,
-        TFreshBlockUpdates::const_iterator last);
+    void WriteFreshBlock(
+        ui32 blockIndex,
+        ui64 commitId,
+        TBlockDataRef blockContent);
+
+    void DeleteFreshBlock(ui32 blockIndex, ui64 commitId);
+
+    bool ReadFreshBlocks(TVector<TOwningFreshBlock>& blocks);
 
     //
-    // Blobs
+    // MixedBlocksIndex
     //
 
-    struct TBlobMeta
-    {
-        TPartialBlobId BlobId;
-        NProto::TBlobMeta2 BlobMeta;
+    void WriteMixedBlock(TMixedBlock block);
 
-        TBlobMeta() = default;
-
-        TBlobMeta(TPartialBlobId blobId, NProto::TBlobMeta2 blobMeta)
-            : BlobId(std::move(blobId))
-            , BlobMeta(std::move(blobMeta))
-        {
-        }
-    };
-
-    void WriteGlobalBlob(
+    void WriteMixedBlocks(
         const TPartialBlobId& blobId,
-        const NProto::TBlobMeta2& meta);
-    void DeleteGlobalBlob(const TPartialBlobId& blobId);
-    void WriteZoneBlob(
-        ui32 zoneId,
+        const TVector<ui32>& blocks,
+        ui8 compactionRangeCount);
+
+    void DeleteMixedBlock(ui32 blockIndex, ui64 commitId);
+
+    bool FindMixedBlocks(
+        IMixedBlocksIndexVisitor& visitor,
+        const TBlockRange32& readRange,
+        bool precharge,
+        ui64 maxCommitId = Max());
+
+    bool FindMixedBlocks(
+        IMixedBlocksIndexVisitor& visitor,
+        const TVector<ui32>& blocks,
+        ui64 maxCommitId = Max());
+
+    bool FindMixedBlocks(
+        IMixedBlocksIndexVisitor& visitor,
+        const TVector<TBlock>& blocks);
+    //
+    // MergedBlocksIndex
+    //
+
+    void WriteMergedBlocks(
         const TPartialBlobId& blobId,
-        const NProto::TBlobMeta2& meta);
-    void DeleteZoneBlob(
-        ui32 zoneId,
+        const TBlockRange32& blockRange,
+        const TBlockMask& skipMask);
+
+    void DeleteMergedBlocks(
+        const TPartialBlobId& blobId,
+        const TBlockRange32& blockRange);
+
+    bool FindMergedBlocks(
+        IBlocksIndexVisitor& visitor,
+        IBlobsVisitor& blobsVisitor,
+        const TBlockRange32& readRange,
+        bool precharge,
+        ui32 maxBlocksInBlob,
+        ui64 maxCommitId = Max());
+
+    bool FindMergedBlocks(
+        IBlocksIndexVisitor& visitor,
+        const TBlockRange32& readRange,
+        bool precharge,
+        ui32 maxBlocksInBlob,
+        ui64 maxCommitId = Max());
+
+    bool FindMergedBlocks(
+        IBlocksIndexVisitor& visitor,
+        const TVector<ui32>& blocks,
+        ui32 maxBlocksInBlob,
+        ui64 maxCommitId = Max());
+
+    //
+    // BlobsIndex
+    //
+
+    void WriteBlobMeta(
+        const TPartialBlobId& blobId,
+        const NProto::TBlobMeta& blobMeta);
+
+    void DeleteBlobMeta(const TPartialBlobId& blobId);
+
+    bool ReadBlobMeta(
+        const TPartialBlobId& blobId,
+        TMaybe<NProto::TBlobMeta>& blobMeta);
+
+    bool ReadNewBlobs(
+        TVector<TPartialBlobId>& blobIds,
+        ui64 minCommitId = 0);
+
+    void WriteBlockMask(
+        const TPartialBlobId& blobId,
+        const TBlockMask& blockMask);
+
+    bool ReadBlockMask(
+        const TPartialBlobId& blobId,
+        TMaybe<TBlockMask>& blockMask);
+
+    bool ReadBlobInfo(
+        const TPartialBlobId& blobId,
+        TMaybe<TBlockMask>& blockMask,
+        TMaybe<NProto::TBlobMeta>& blobMeta);
+
+    bool FindBlocksInBlobsIndex(
+        IExtendedBlocksIndexVisitor& visitor,
+        const ui32 maxBlocksInBlob,
+        const TBlockRange32& blockRange);
+
+    bool FindBlocksInBlobsIndex(
+        IExtendedBlocksIndexVisitor& visitor,
+        const ui32 maxBlocksInBlob,
         const TPartialBlobId& blobId);
 
-    bool ReadGlobalBlobs(TVector<TBlobMeta>& blobs);
-    bool ReadZoneBlobs(ui32 zoneId, TVector<TBlobMeta>& blobs);
-
-    bool ReadKnownBlobIds(TVector<TPartialBlobId>& blobIds);
-    bool ReadAllZoneBlobIds(TVector<TPartialBlobId>& blobIds, ui64 commitId);
-
-    //
-    // BlockLists
-    //
-
-    void WriteBlockList(const TPartialBlobId& blobId, const TBlockList& blockList);
-    void DeleteBlockList(const TPartialBlobId& blobId);
-
-    bool ReadBlockList(const TPartialBlobId& blobId, TMaybe<TBlockList>& blockList);
-
-    //
-    // BlobUpdates
-    //
-
-    void WriteGlobalBlobUpdate(
-        ui64 deletionId,
-        ui64 commitId,
-        const TBlockRange32& blockRange);
-    void DeleteGlobalBlobUpdate(ui64 deletionId);
-    void WriteZoneBlobUpdate(
-        ui32 zoneId,
-        ui64 deletionId,
-        ui64 commitId,
-        const TBlockRange32& blockRange);
-    void DeleteZoneBlobUpdate(
-        ui32 zoneId,
-        ui64 deletionId);
-
-    bool ReadGlobalBlobUpdates(TVector<TBlobUpdate>& updates);
-    bool ReadZoneBlobUpdates(ui32 zoneId, TVector<TBlobUpdate>& updates);
-
-    //
-    // BlobGarbage
-    //
-
-    struct TBlobGarbage
-    {
-        TPartialBlobId BlobId;
-        ui16 BlockCount = 0;
-
-        TBlobGarbage() = default;
-
-        TBlobGarbage(TPartialBlobId blobId, ui16 blockCount)
-            : BlobId(std::move(blobId))
-            , BlockCount(blockCount)
-        {
-        }
-    };
-
-    void WriteGlobalBlobGarbage(const TBlobGarbage& garbage);
-    void DeleteGlobalBlobGarbage(const TPartialBlobId& blobId);
-    void WriteZoneBlobGarbage(
-        ui32 zoneId,
-        const TBlobGarbage& garbage);
-    void DeleteZoneBlobGarbage(
-        ui32 zoneId,
-        const TPartialBlobId& blobId);
-
-    bool ReadGlobalBlobGarbage(TVector<TBlobGarbage>& garbage);
-    bool ReadZoneBlobGarbage(ui32 zoneId, TVector<TBlobGarbage>& garbage);
-
-    //
-    // Checkpoints
-    //
-
-    void WriteCheckpoint(const NProto::TCheckpointMeta& meta);
-    void DeleteCheckpoint(ui64 commitId);
-
-    bool ReadCheckpoint(ui64 commitId, TMaybe<NProto::TCheckpointMeta>& meta);
-    bool ReadCheckpoints(TVector<NProto::TCheckpointMeta>& checkpoints);
-
-    //
-    // CheckpointBlobs
-    //
-
-    struct TCheckpointBlob
-    {
-        ui64 CommitId;
-        TPartialBlobId BlobId;
-    };
-
-    void WriteCheckpointBlob(ui64 commitId, const TPartialBlobId& blobId);
-    void DeleteCheckpointBlob(ui64 commitId, const TPartialBlobId& blobId);
-
-    bool ReadCheckpointBlobs(TVector<TCheckpointBlob>& blobs);
-    bool ReadCheckpointBlobs(ui64 commitId, TVector<TPartialBlobId>& blobIds);
+    EBlobIndexScanProgress FindBlocksInBlobsIndex(
+        IBlobsIndexVisitor& visitor,
+        TPartialBlobId startBlobId,
+        TPartialBlobId finalBlobId,
+        ui64 prechargeRowCount);
 
     //
     // CompactionMap
@@ -178,6 +211,42 @@ public:
     void DeleteCompactionMap(ui32 blockIndex);
 
     bool ReadCompactionMap(TVector<TCompactionCounter>& compactionMap);
+    bool ReadCompactionMap(
+        TBlockRange32 rangeBlockIndices,
+        TVector<TCompactionCounter>& compactionMap);
+
+    //
+    // UsedBlocks
+    //
+
+    void WriteUsedBlocks(const TCompressedBitmap::TSerializedChunk& chunk);
+    void WriteLogicalUsedBlocks(const TCompressedBitmap::TSerializedChunk& chunk);
+
+    bool ReadUsedBlocks(TCompressedBitmap& usedBlocks);
+    bool ReadLogicalUsedBlocks(TCompressedBitmap& usedBlocks, bool& read);
+
+    bool ReadUsedBlocksRaw(std::function<void(TCompressedBitmap::TSerializedChunk)> onChunk);
+
+    //
+    // Checkpoints
+    //
+
+    void WriteCheckpoint(const TCheckpoint& checkpoint, bool withoutData);
+
+    void DeleteCheckpoint(const TString& checkpointId, bool deleteOnlyData);
+
+    bool ReadCheckpoints(
+        TVector<TCheckpoint>& checkpoints,
+        THashMap<TString, ui64>& checkpointId2CommitId);
+
+    //
+    // CleanupQueue
+    //
+
+    void WriteCleanupQueue(const TPartialBlobId& blobId, ui64 commitId);
+    void DeleteCleanupQueue(const TPartialBlobId& blobId, ui64 commitId);
+
+    bool ReadCleanupQueue(TVector<TCleanupQueueItem>& items);
 
     //
     // GarbageBlobs
@@ -187,6 +256,21 @@ public:
     void DeleteGarbageBlob(const TPartialBlobId& blobId);
 
     bool ReadGarbageBlobs(TVector<TPartialBlobId>& blobIds);
+
+    //
+    // UnconfirmedBlobs
+    //
+
+    void WriteUnconfirmedBlob(
+        const TPartialBlobId& blobId,
+        const TBlobToConfirm& blob);
+    void DeleteUnconfirmedBlob(const TPartialBlobId& blobId);
+
+    bool ReadUnconfirmedBlobs(TCommitIdToBlobsToConfirm& blobs);
 };
+
+using TPartitionDatabase = TPartitionDatabaseImpl<TNoOpCounter>;
+using TPartitionDatabaseWithCounters =
+    TPartitionDatabaseImpl<TMethodCallCounter>;
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition2

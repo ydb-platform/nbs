@@ -37,14 +37,16 @@ private:
     const TActorId Tablet;
     const TVector<ui32> RangesToCompact;
     const TDuration RetryTimeout;
+    const ui32 RangeCountPerRun;
 
-    size_t CurrentBlock = 0;
+    size_t CurrentRangeIndex = 0;
 
 public:
     TForcedCompactionActor(
         const TActorId& tablet,
         TVector<ui32> rangesToCompact,
-        TDuration retryTimeout);
+        TDuration retryTimeout,
+        ui32 rangeCountPerRun);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -74,12 +76,14 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TForcedCompactionActor::TForcedCompactionActor(
-    const TActorId& tablet,
-    TVector<ui32> rangesToCompact,
-    TDuration retryTimeout)
+        const TActorId& tablet,
+        TVector<ui32> rangesToCompact,
+        TDuration retryTimeout,
+        ui32 rangeCountPerRun)
     : Tablet(tablet)
     , RangesToCompact(std::move(rangesToCompact))
     , RetryTimeout(retryTimeout)
+    , RangeCountPerRun(rangeCountPerRun)
 {}
 
 void TForcedCompactionActor::Bootstrap(const TActorContext& ctx)
@@ -90,12 +94,18 @@ void TForcedCompactionActor::Bootstrap(const TActorContext& ctx)
 
 void TForcedCompactionActor::SendCompactionRequest(const TActorContext& ctx)
 {
+    TVector<ui32> ranges(Reserve(RangeCountPerRun));
+    ranges.assign(
+        RangesToCompact.begin() + CurrentRangeIndex,
+        RangesToCompact.begin() +
+            Min(CurrentRangeIndex + RangeCountPerRun, RangesToCompact.size()));
+
     auto request = std::make_unique<TEvPartitionPrivate::TEvCompactionRequest>(
         MakeIntrusive<TCallContext>(),
-        RangesToCompact[CurrentBlock],
+        std::move(ranges),
         TCompactionOptions().
-            set(ToBit(ECompactionOption::Full)).
-            set(ToBit(ECompactionOption::Forced)));
+            set(ToBit(ECompactionOption::Forced)).
+            set(ToBit(ECompactionOption::Full)));
 
     NCloud::Send(ctx, Tablet, std::move(request));
 }
@@ -104,8 +114,11 @@ void TForcedCompactionActor::ReplyAndDie(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    auto response = std::make_unique<TEvPartitionPrivate::TEvForcedCompactionCompleted>(error);
-    NCloud::Send(ctx, Tablet, std::move(response));
+    {
+        auto response = std::make_unique<TEvPartitionPrivate::TEvForcedCompactionCompleted>(error);
+        NCloud::Send(ctx, Tablet, std::move(response));
+    }
+
     Die(ctx);
 }
 
@@ -114,8 +127,8 @@ void TForcedCompactionActor::ReplyAndDie(
 STFUNC(TForcedCompactionActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvents::TEvWakeup, HandleWakeup);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+        HFunc(TEvents::TEvWakeup, HandleWakeup);
 
         HFunc(TEvPartitionPrivate::TEvCompactionResponse, HandleCompactionResponse);
 
@@ -153,8 +166,8 @@ void TForcedCompactionActor::HandleCompactionResponse(
         return;
     }
 
-    ++CurrentBlock;
-    if (CurrentBlock < RangesToCompact.size()) {
+    CurrentRangeIndex += RangeCountPerRun;
+    if (CurrentRangeIndex < RangesToCompact.size()) {
         SendCompactionRequest(ctx);
     } else {
         ReplyAndDie(ctx);
@@ -192,7 +205,7 @@ void TPartitionActor::HandleGetCompactionStatus(
 
     if (operationId == stateRunning.OperationId) {
         progress = stateRunning.Progress;
-        total = stateRunning.RangeCount;
+        total = stateRunning.RangesCount;
     }  else if (GetCompletedForcedCompactionRanges(operationId, ctx.Now(), total)) {
         progress = total;
         isCompleted = true;
@@ -219,9 +232,9 @@ void TPartitionActor::HandleForcedCompactionCompleted(
     const auto& state = State->GetForcedCompactionState();
     CompletedForcedCompactionRequests.emplace(
         state.OperationId,
-        TForcedCompactionResult(state.RangeCount, ctx.Now()));
+        TForcedCompactionResult(state.RangesCount, ctx.Now()));
     State->ResetForcedCompaction();
-    Actors.erase(ev->Sender);
+    Actors.Erase(ev->Sender);
     EnqueueForcedCompaction(ctx);
 }
 
@@ -252,11 +265,11 @@ void TPartitionActor::HandleCompactRange(
     TVector<ui32> rangesToCompact;
     if (msg->Record.GetStartIndex() || msg->Record.GetBlocksCount()) {
         auto startIndex = Min(
-            State->GetBlockCount(),
+            State->GetBlocksCount(),
             msg->Record.GetStartIndex());
 
         auto endIndex = Min(
-            State->GetBlockCount(),
+            State->GetBlocksCount(),
             msg->Record.GetStartIndex() + msg->Record.GetBlocksCount());
 
         rangesToCompact = TVector<ui32>(
@@ -297,8 +310,7 @@ void TPartitionActor::AddForcedCompaction(
         std::move(rangesToCompact),
         std::move(operationId));
 
-    for (
-        auto i = CompletedForcedCompactionRequests.begin();
+    for (auto i = CompletedForcedCompactionRequests.begin();
         i != CompletedForcedCompactionRequests.end();)
     {
         auto prev = i++;
@@ -310,29 +322,47 @@ void TPartitionActor::AddForcedCompaction(
 
 void TPartitionActor::EnqueueForcedCompaction(const TActorContext& ctx)
 {
-    if (State && State->IsLoadStateFinished()) {
-        if (State->GetForcedCompactionState().IsRunning ||
-            PendingForcedCompactionRequests.empty())
-        {
-            return;
-        }
-
-        auto& compactInfo = PendingForcedCompactionRequests.front();
-
-        State->StartForcedCompaction(
-            compactInfo.OperationId,
-            compactInfo.RangesToCompact.size());
-
-        auto actorId = NCloud::Register<TForcedCompactionActor>(
-            ctx,
-            SelfId(),
-            std::move(compactInfo.RangesToCompact),
-            Config->GetCompactionRetryTimeout());
-
-        Actors.insert(actorId);
-
-        PendingForcedCompactionRequests.pop_front();
+    if (!State || !State->IsLoadStateFinished()) {
+        return;
     }
+
+    if (CompactionMapLoadState) {
+        return;
+    }
+
+    if (State->GetForcedCompactionState().IsRunning ||
+        PendingForcedCompactionRequests.empty())
+    {
+        return;
+    }
+
+    auto& compactInfo = PendingForcedCompactionRequests.front();
+
+    State->StartForcedCompaction(
+        compactInfo.OperationId,
+        compactInfo.RangesToCompact.size());
+
+    const bool batchCompactionEnabledForCloud =
+        Config->IsBatchCompactionFeatureEnabled(
+            PartitionConfig.GetCloudId(),
+            PartitionConfig.GetFolderId(),
+            PartitionConfig.GetDiskId());
+    const bool batchCompactionEnabled =
+        Config->GetBatchCompactionEnabled() ||
+        batchCompactionEnabledForCloud;
+
+    auto actorId = NCloud::Register<TForcedCompactionActor>(
+        ctx,
+        SelfId(),
+        std::move(compactInfo.RangesToCompact),
+        Config->GetCompactionRetryTimeout(),
+        batchCompactionEnabled
+            ? Config->GetForcedCompactionRangeCountPerRun()
+            : 1);
+
+    PendingForcedCompactionRequests.pop_front();
+
+    Actors.Insert(actorId);
 }
 
 bool TPartitionActor::GetCompletedForcedCompactionRanges(
@@ -351,9 +381,9 @@ bool TPartitionActor::GetCompletedForcedCompactionRanges(
     }
 
     ranges = it->second.NumRanges;
+
     return true;
 }
-
 
 bool TPartitionActor::IsCompactRangePending(
         const TString& operationId,

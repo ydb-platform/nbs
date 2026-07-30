@@ -12,7 +12,7 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
 {
     Y_UNIT_TEST(EmptyPersistentState)
     {
-        TCheckpointStore store({}, "disk-1");
+        TVolumeCheckpointStore store({}, "disk-1");
 
         UNIT_ASSERT_VALUES_EQUAL(false, store.DoesCheckpointBlockingWritesExist());
         UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointBeingCreated());
@@ -151,7 +151,7 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
                 0,
                 "disk-error"},
         };
-        TCheckpointStore store(
+        TVolumeCheckpointStore store(
             TVector<TCheckpointRequest>{
                 std::begin(initialState),
                 std::end(initialState)},
@@ -215,7 +215,7 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
 
     Y_UNIT_TEST(CreateFail)
     {
-        TCheckpointStore store({}, "disk-1");
+        TVolumeCheckpointStore store({}, "disk-1");
 
         const auto& request = store.MakeCreateCheckpointRequest(
             "checkpoint",
@@ -265,7 +265,7 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
 
     Y_UNIT_TEST(CreateSuccess)
     {
-        TCheckpointStore store({}, "disk-1");
+        TVolumeCheckpointStore store({}, "disk-1");
 
         UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointDeleted("checkpoint"));
 
@@ -300,7 +300,7 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
 
     Y_UNIT_TEST(CreateWithShadowDisk)
     {
-        TCheckpointStore store({}, "disk-1");
+        TVolumeCheckpointStore store({}, "disk-1");
         const TString checkpointId = "checkpoint";
 
         const auto& request = store.MakeCreateCheckpointRequest(
@@ -377,7 +377,7 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
 
     Y_UNIT_TEST(SetInProgressBeforeSave)
     {
-        TCheckpointStore store({}, "disk-1");
+        TVolumeCheckpointStore store({}, "disk-1");
 
         const auto& request = store.MakeCreateCheckpointRequest(
             "checkpoint",
@@ -426,7 +426,7 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
 
     Y_UNIT_TEST(RemoveCheckpointRequest)
     {
-        TCheckpointStore store({}, "disk-1");
+        TVolumeCheckpointStore store({}, "disk-1");
 
         const auto& request = store.MakeCreateCheckpointRequest(
             "checkpoint",
@@ -453,7 +453,7 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
 
     Y_UNIT_TEST(RepeatRequests)
     {
-        TCheckpointStore store({}, "disk-1");
+        TVolumeCheckpointStore store({}, "disk-1");
 
         // repeat create checkpoint.
         for (int i = 0; i < 10; ++i) {
@@ -566,7 +566,7 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
 
     Y_UNIT_TEST(MultiCheckpoint)
     {
-        TCheckpointStore store({}, "disk-1");
+        TVolumeCheckpointStore store({}, "disk-1");
 
         auto createCheckpoint = [&](TString checkpointId)
         {
@@ -790,7 +790,7 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
 
     Y_UNIT_TEST(CheckpointRequestValidation)
     {
-        TCheckpointStore store({}, "disk-1");
+        TVolumeCheckpointStore store({}, "disk-1");
 
         auto makeCheckpointRequest =
             [&] (const TString& checkpointId,

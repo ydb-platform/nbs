@@ -4,6 +4,8 @@
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/partition_common/actor_trimfreshlog.h>
 
+#include <cloud/storage/core/libs/common/format.h>
+
 namespace NCloud::NBlockStore::NStorage::NPartition2 {
 
 using namespace NActors;
@@ -16,18 +18,21 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 void TPartitionActor::EnqueueTrimFreshLogIfNeeded(const TActorContext& ctx)
 {
-    if (State->GetTrimFreshLogStatus() != EOperationStatus::Idle) {
+    if (State->GetTrimFreshLogState().Status != EOperationStatus::Idle) {
         // already enqueued
         return;
     }
 
-    const ui64 trimFreshLogToCommitId = State->GetTrimFreshLogToCommitId();
+    ui64 trimFreshLogToCommitId = State->GetTrimFreshLogToCommitId();
+
     if (trimFreshLogToCommitId == State->GetLastTrimFreshLogToCommitId()) {
-        // nothing to trim
+        // not ready
         return;
     }
 
-    State->GetTrimFreshLogState().SetStatus(EOperationStatus::Enqueued);
+    State->AccessTrimFreshLogState().SetStatus(
+        EOperationStatus::Enqueued,
+        ctx.Now());
 
     using TRequest = TEvPartitionCommonPrivate::TEvTrimFreshLogRequest;
     auto request = std::make_unique<TRequest>(
@@ -35,17 +40,21 @@ void TPartitionActor::EnqueueTrimFreshLogIfNeeded(const TActorContext& ctx)
     );
 
     if (State->GetTrimFreshLogBackoffDelay()) {
-        LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu] TrimFreshLog request scheduled: %lu, %s",
-            TabletID(),
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s TrimFreshLog request scheduled: %lu, %s",
+            LogTitle.GetWithTime().c_str(),
             request->CallContext->RequestId,
-            State->GetTrimFreshLogBackoffDelay().ToString().c_str());
+            FormatDuration(State->GetTrimFreshLogBackoffDelay()).c_str());
 
         ctx.Schedule(State->GetTrimFreshLogBackoffDelay(), request.release());
     } else {
-        LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu] TrimFreshLog request sent: %lu",
-            TabletID(),
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s TrimFreshLog request sent: %lu",
+            LogTitle.GetWithTime().c_str(),
             request->CallContext->RequestId);
 
         NCloud::Send(
@@ -97,12 +106,12 @@ void TPartitionActor::HandleTrimFreshLog(
         NCloud::Reply(ctx, requestInfo, std::move(response));
     };
 
-    if (State->GetTrimFreshLogStatus() == EOperationStatus::Started) {
+    if (State->GetTrimFreshLogState().Status == EOperationStatus::Started) {
         replyError(ctx, *requestInfo, E_TRY_AGAIN, "trim already started");
         return;
     }
 
-    const ui64 trimFreshLogToCommitId = State->GetTrimFreshLogToCommitId();
+    ui64 trimFreshLogToCommitId = State->GetTrimFreshLogToCommitId();
 
     auto nextPerGenerationCounter = State->NextCollectPerGenerationCounter();
     if (nextPerGenerationCounter == InvalidCollectPerGenerationCounter) {
@@ -110,13 +119,17 @@ void TPartitionActor::HandleTrimFreshLog(
         return;
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Start TrimFreshLog @%lu @%lu",
-        TabletID(),
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Start TrimFreshLog @%lu @%lu",
+        LogTitle.GetWithTime().c_str(),
         trimFreshLogToCommitId,
         nextPerGenerationCounter);
 
-    State->GetTrimFreshLogState().SetStatus(EOperationStatus::Started);
+    State->AccessTrimFreshLogState().SetStatus(
+        EOperationStatus::Started,
+        ctx.Now());
 
     TVector<ui32> freshChannels = State->GetChannelsByKind([](auto kind) {
         return kind == EChannelDataKind::Fresh;
@@ -128,13 +141,13 @@ void TPartitionActor::HandleTrimFreshLog(
         SelfId(),
         Info(),
         trimFreshLogToCommitId,
-        ParseCommitId(State->GetLastCommitId()).first,
+        Executor()->Generation(),
         nextPerGenerationCounter,
         std::move(freshChannels),
-        "",
+        PartitionConfig.GetDiskId(),
         Config->GetTrimFreshLogTimeout());
 
-    Actors.insert(actor);
+    Actors.Insert(actor);
 }
 
 void TPartitionActor::HandleTrimFreshLogCompleted(
@@ -144,26 +157,34 @@ void TPartitionActor::HandleTrimFreshLogCompleted(
     const auto* msg = ev->Get();
 
     if (FAILED(msg->GetStatus())) {
-        LOG_ERROR_S(ctx, TBlockStoreComponents::PARTITION,
-            "[" << TabletID() << "]"
-                << " TrimFreshLog failed: " << msg->GetStatus()
-                << " reason: " << msg->GetError().GetMessage().Quote());
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s TrimFreshLog failed: %u reason: %s",
+            LogTitle.GetWithTime().c_str(),
+            msg->GetStatus(),
+            FormatError(msg->GetError()).c_str());
 
         State->RegisterTrimFreshLogError();
     } else {
-        LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu] TrimFreshLog completed",
-            TabletID());
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s TrimFreshLog completed",
+            LogTitle.GetWithTime().c_str());
 
         State->RegisterTrimFreshLogSuccess();
+        State->SetLastTrimFreshLogToCommitId(msg->CommitId);
+        State->TrimFreshBlobs(msg->CommitId);
     }
 
-    State->SetLastTrimFreshLogToCommitId(msg->CommitId);
-    State->GetTrimFreshLogState().SetStatus(EOperationStatus::Idle);
+    State->AccessTrimFreshLogState().SetStatus(
+        EOperationStatus::Idle,
+        ctx.Now());
 
-    Actors.erase(ev->Sender);
+    Actors.Erase(ev->Sender);
 
-    UpdateCPUUsageStat(ctx, msg->ExecCycles);
+    UpdateCPUUsageStat(ctx.Now(), msg->ExecCycles);
 
     EnqueueTrimFreshLogIfNeeded(ctx);
 

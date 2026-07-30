@@ -6,7 +6,7 @@
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
-#include <cloud/blockstore/libs/storage/partition/model/block.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/block.h>
 #include <cloud/blockstore/libs/storage/partition/model/flush_blocks_visitor.h>
 
 #include <cloud/storage/core/libs/common/alloc.h>

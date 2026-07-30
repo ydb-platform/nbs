@@ -2,10 +2,12 @@
 
 #include "public.h"
 
-#include "blob.h"
-#include "block.h"
+#include <cloud/blockstore/libs/storage/partition_common/model/block.h>
+
+#include <cloud/blockstore/libs/common/block_range.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/guarded_sglist.h>
 
 namespace NCloud::NBlockStore::NStorage::NPartition2 {
 
@@ -43,17 +45,19 @@ public:
     }
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+TString BuildWriteFreshBlocksBlobContent(
+    const TVector<TBlockRange32>& blockRanges,
+    const TVector<TGuardHolder>& guardHolders);
+
+TString BuildZeroFreshBlocksBlobContent(TBlockRange32 blockRange);
+
 NProto::TError ParseFreshBlobContent(
     ui64 commitId,
     TPartialBlobId blobId,
     ui32 blockSize,
     const TString& buffer,
-    TVector<TOwningFreshBlock>& blocks,
-    TBlobUpdatesByFresh& updates);
-
-TString BuildFreshBlobContent(
-    const TVector<TBlockRange32>& blockRanges,
-    const TVector<TGuardHolder>& guardHolders,
-    ui64 firstRequestDeletionId);
+    TVector<TOwningFreshBlock>& result);
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition2

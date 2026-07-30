@@ -12,7 +12,7 @@
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
 #include <cloud/blockstore/libs/storage/core/channel_permissions.h>
 #include <cloud/blockstore/libs/storage/partition/model/blob_to_confirm.h>
-#include <cloud/blockstore/libs/storage/partition/model/block.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/block.h>
 #include <cloud/blockstore/libs/storage/partition/model/block_mask.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>

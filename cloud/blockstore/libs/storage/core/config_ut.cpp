@@ -58,6 +58,20 @@ Y_UNIT_TEST_SUITE(TConfigTest)
         UNIT_ASSERT_VALUES_EQUAL("/Root", config->GetSchemeShardDir());
     }
 
+    Y_UNIT_TEST(ShouldUseV1MaxBlobsPerRangeDefaultsForPartition2)
+    {
+        TStorageConfig config(
+            {},
+            std::make_shared<NFeatures::TFeaturesConfig>());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            config.GetSSDMaxBlobsPerRange(),
+            config.GetSSDV2MaxBlobsPerRange());
+        UNIT_ASSERT_VALUES_EQUAL(
+            config.GetHDDMaxBlobsPerRange(),
+            config.GetHDDV2MaxBlobsPerRange());
+    }
+
     Y_UNIT_TEST(ShouldOverrideConfigsViaImmediateControlBoard)
     {
         const auto defaultConfig = std::make_shared<TStorageConfig>(

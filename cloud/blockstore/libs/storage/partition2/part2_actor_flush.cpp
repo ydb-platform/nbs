@@ -4,6 +4,10 @@
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
+#include <cloud/blockstore/libs/storage/partition2/model/flush_blocks_visitor.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/block.h>
 
 #include <cloud/storage/core/libs/common/alloc.h>
 
@@ -25,35 +29,66 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr size_t FreshBlockUpdatesSizeThreshold = 32 * 1024;
-
-////////////////////////////////////////////////////////////////////////////////
-
 class TFlushActor final
     : public TActorBootstrapped<TFlushActor>
 {
+public:
+    struct TRequest
+    {
+        TPartialBlobId BlobId;
+        TGuardedBuffer<TBlockBuffer> BlobContent;
+        TVector<TBlock> Blocks;
+        TVector<ui32> Checksums;
+        ui8 CompactionRangeCount = 0;
+
+        TRequest(
+                const TPartialBlobId& blobId,
+                TBlockBuffer blobContent,
+                TVector<TBlock> blocks,
+                TVector<ui32> checksums,
+                ui8 compactionRangeCount)
+            : BlobId(blobId)
+            , BlobContent(std::move(blobContent))
+            , Blocks(std::move(blocks))
+            , Checksums(std::move(checksums))
+            , CompactionRangeCount(compactionRangeCount)
+        {}
+    };
+
 private:
     const TRequestInfoPtr RequestInfo;
+    const ui32 BlockSize;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
+
     const TActorId Tablet;
+    const ui64 CommitId;
+    TFlushedCommitIds FlushedCommitIdsFromChannel;
+    const ui32 FlushedFreshBlobCount;
+    const ui64 FlushedFreshBlobByteCount;
     const TDuration BlobStorageAsyncRequestTimeout;
 
-    TVector<TWriteBlob> Requests;
+    TVector<TRequest> Requests;
     TVector<TBlockRange64> AffectedRanges;
     TVector<IProfileLog::TBlockInfo> AffectedBlockInfos;
-
     size_t RequestsCompleted = 0;
-    size_t BlockCount = 0;
+    size_t BlocksCount = 0;
 
     TVector<TCallContextPtr> ForkedCallContexts;
+
+    ui64 MaxExecCyclesFromWrite = 0;
 
 public:
     TFlushActor(
         TRequestInfoPtr requestInfo,
+        ui32 blockSize,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         const TActorId& tablet,
+        ui64 commitId,
+        TFlushedCommitIds flushedCommitIdsFromChannel,
+        ui32 flushedFreshBlobCount,
+        ui64 flushedFreshBlobByteCount,
         TDuration blobStorageAsyncRequestTimeout,
-        TVector<TWriteBlob> requests);
+        TVector<TRequest> requests);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -88,13 +123,23 @@ private:
 
 TFlushActor::TFlushActor(
         TRequestInfoPtr requestInfo,
+        ui32 blockSize,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         const TActorId& tablet,
+        ui64 commitId,
+        TFlushedCommitIds flushedCommitIdsFromChannel,
+        ui32 flushedFreshBlobCount,
+        ui64 flushedFreshBlobByteCount,
         TDuration blobStorageAsyncRequestTimeout,
-        TVector<TWriteBlob> requests)
+        TVector<TRequest> requests)
     : RequestInfo(std::move(requestInfo))
-    , BlockDigestGenerator(blockDigestGenerator)
+    , BlockSize(blockSize)
+    , BlockDigestGenerator(std::move(blockDigestGenerator))
     , Tablet(tablet)
+    , CommitId(commitId)
+    , FlushedCommitIdsFromChannel(std::move(flushedCommitIdsFromChannel))
+    , FlushedFreshBlobCount(flushedFreshBlobCount)
+    , FlushedFreshBlobByteCount(flushedFreshBlobByteCount)
     , BlobStorageAsyncRequestTimeout(blobStorageAsyncRequestTimeout)
     , Requests(std::move(requests))
 {}
@@ -115,31 +160,46 @@ void TFlushActor::Bootstrap(const TActorContext& ctx)
     for (const auto& request: Requests) {
         auto blockContent = request.BlobContent.Get().GetBlocks().begin();
 
-        Y_DEBUG_ABORT_UNLESS(request.BlobContent.Get().GetBlocks().size()
-            == request.Blocks.size());
+        if (request.BlobContent.Get()) {
+            // BlobContent is empty only for zero blocks
+            Y_DEBUG_ABORT_UNLESS(request.BlobContent.Get().GetBlocks().size()
+                == request.Blocks.size());
+        }
 
         for (const auto& block: request.Blocks) {
             rangeBuilder.OnBlock(block.BlockIndex);
 
             auto digest = BlockDigestGenerator->ComputeDigest(
                 block.BlockIndex,
-                *blockContent);
+                request.BlobContent.Get()
+                    ? *blockContent
+                    : TBlockDataRef::CreateZeroBlock(BlockSize)
+            );
 
             if (digest.Defined()) {
                 AffectedBlockInfos.push_back({block.BlockIndex, *digest});
             }
 
-            ++blockContent;
+            if (request.BlobContent.Get()) {
+                ++blockContent;
+            }
         }
     }
 
     WriteBlobs(ctx);
+
+    if (RequestsCompleted == Requests.size()) {
+        AddBlobs(ctx);
+    }
 }
 
 void TFlushActor::WriteBlobs(const TActorContext& ctx)
 {
     for (auto& req: Requests) {
-        BlockCount += req.Blocks.size();
+        if (!req.BlobContent.Get()) {
+            ++RequestsCompleted;
+            continue;
+        }
 
         auto request =
             std::make_unique<TEvPartitionCommonPrivate::TEvWriteBlobRequest>(
@@ -172,15 +232,25 @@ void TFlushActor::WriteBlobs(const TActorContext& ctx)
 
 void TFlushActor::AddBlobs(const TActorContext& ctx)
 {
-    TVector<TAddBlob> blobs(Reserve(Requests.size()));
+    TVector<TAddFreshBlob> freshBlobs(Reserve(Requests.size()));
+
     for (auto& req: Requests) {
-        blobs.emplace_back(req.BlobId, std::move(req.Blocks));
+        BlocksCount += req.Blocks.size();
+        freshBlobs.emplace_back(
+            req.BlobId,
+            std::move(req.Blocks),
+            std::move(req.Checksums),
+            req.CompactionRangeCount);
     }
 
     auto request = std::make_unique<TEvPartitionPrivate::TEvAddBlobsRequest>(
         RequestInfo->CallContext,
-        ADD_FLUSH_RESULT,
-        std::move(blobs));
+        CommitId,
+        TVector<TAddMixedBlob>(),
+        TVector<TAddMergedBlob>(),
+        freshBlobs,
+        ADD_FLUSH_RESULT
+    );
 
     NCloud::Send(
         ctx,
@@ -192,25 +262,33 @@ void TFlushActor::NotifyCompleted(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    auto request = std::make_unique<TEvPartitionPrivate::TEvFlushCompleted>(error);
-    request->ExecCycles = RequestInfo->GetExecCycles();
-    request->TotalCycles = RequestInfo->GetTotalCycles();
+    using TEvent = TEvPartitionPrivate::TEvFlushCompleted;
+    auto ev = std::make_unique<TEvent>(
+        error,
+        FlushedFreshBlobCount,
+        FlushedFreshBlobByteCount,
+        std::move(FlushedCommitIdsFromChannel));
+
+    ev->ExecCycles = RequestInfo->GetExecCycles();
+    ev->TotalCycles = RequestInfo->GetTotalCycles();
+
+    ev->CommitId = CommitId;
 
     {
         auto execTime = CyclesToDurationSafe(RequestInfo->GetExecCycles());
         auto waitTime = CyclesToDurationSafe(RequestInfo->GetWaitCycles());
 
-        auto& counters = *request->Stats.MutableSysWriteCounters();
-        counters.SetRequestsCount(Requests.size());
-        counters.SetBlocksCount(BlockCount);
-        counters.SetExecTime(execTime.MicroSeconds());
-        counters.SetWaitTime(waitTime.MicroSeconds());
+        auto& counters = *ev->Stats.MutableSysWriteCounters();
+        SetCounters(counters, execTime, waitTime, BlocksCount);
+
+        auto& realCounters = *ev->Stats.MutableRealSysWriteCounters();
+        SetCounters(realCounters, execTime, waitTime, BlocksCount);
     }
 
-    request->AffectedRanges = std::move(AffectedRanges);
-    request->AffectedBlockInfos = std::move(AffectedBlockInfos);
+    ev->AffectedRanges = std::move(AffectedRanges);
+    ev->AffectedBlockInfos = std::move(AffectedBlockInfos);
 
-    NCloud::Send(ctx, Tablet, std::move(request));
+    NCloud::Send(ctx, Tablet, std::move(ev));
 }
 
 bool TFlushActor::HandleError(
@@ -220,7 +298,10 @@ bool TFlushActor::HandleError(
     if (FAILED(error.GetCode())) {
         ReplyAndDie(
             ctx,
-            std::make_unique<TEvPartitionPrivate::TEvFlushResponse>(error));
+            std::make_unique<TEvPartitionPrivate::TEvFlushResponse>(
+                error
+            )
+        );
         return true;
     }
     return false;
@@ -248,9 +329,9 @@ void TFlushActor::HandleWriteBlobResponse(
     const TEvPartitionCommonPrivate::TEvWriteBlobResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    const auto* msg = ev->Get();
+    auto* msg = ev->Get();
 
-    RequestInfo->AddExecCycles(msg->ExecCycles);
+    MaxExecCyclesFromWrite = Max(MaxExecCyclesFromWrite, msg->ExecCycles);
 
     if (HandleError(ctx, msg->GetError())) {
         return;
@@ -260,6 +341,8 @@ void TFlushActor::HandleWriteBlobResponse(
     if (++RequestsCompleted < Requests.size()) {
         return;
     }
+
+    RequestInfo->AddExecCycles(MaxExecCyclesFromWrite);
 
     for (auto context: ForkedCallContexts) {
         RequestInfo->CallContext->LWOrbit.Join(context->LWOrbit);
@@ -292,7 +375,10 @@ void TFlushActor::HandleAddBlobsResponse(
         return;
     }
 
-    ReplyAndDie(ctx, std::make_unique<TEvPartitionPrivate::TEvFlushResponse>());
+    ReplyAndDie(
+        ctx,
+        std::make_unique<TEvPartitionPrivate::TEvFlushResponse>()
+    );
 }
 
 STFUNC(TFlushActor::StateWork)
@@ -301,7 +387,6 @@ STFUNC(TFlushActor::StateWork)
 
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
-
         HFunc(TEvPartitionCommonPrivate::TEvWriteBlobResponse, HandleWriteBlobResponse);
         HFunc(TEvPartitionPrivate::TEvAddBlobsResponse, HandleAddBlobsResponse);
 
@@ -316,78 +401,43 @@ STFUNC(TFlushActor::StateWork)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TFlushBlocksVisitor final
-    : public IFreshBlockVisitor
+TFlushedCommitIds BuildFlushedCommitIdsFromChannel(
+    const TVector<TFlushBlocksVisitor::TBlob>& blobs)
 {
-private:
-    const ui32 BlockSize;
-    const ui32 MaxBlobRangeSize;
-    const ui32 MaxBlocksInBlob;
-    const ui64 MaxCommitId;
+    TFlushedCommitIds result;
+    TVector<ui64> commitIds;
 
-    TVector<TWriteBlob> Blobs;
-    TVector<TBlock> Blocks;
-    TBlockBuffer BlobContent { TProfilingAllocator::Instance() };
-
-public:
-    TFlushBlocksVisitor(
-            ui32 blockSize,
-            ui32 maxBlobRangeSize,
-            ui32 maxBlocksInBlob,
-            ui64 maxCommitId)
-        : BlockSize(blockSize)
-        , MaxBlobRangeSize(maxBlobRangeSize)
-        , MaxBlocksInBlob(maxBlocksInBlob)
-        , MaxCommitId(maxCommitId)
-    {}
-
-    void Visit(
-        const TBlock& block,
-        TStringBuf blockContent,
-        const TPartialBlobId& blobId) override
-    {
-        Y_UNUSED(blobId);
-
-        if (block.MinCommitId > MaxCommitId) {
-            return;
-        }
-
-        if (Blocks) {
-            // NBS-299: we do not want to mix blocks that are too far from each other
-            ui32 firstBlockIndex = Blocks.front().BlockIndex;
-            Y_ABORT_UNLESS(firstBlockIndex <= block.BlockIndex);
-            if (block.BlockIndex - firstBlockIndex
-                    > MaxBlobRangeSize / BlockSize)
-            {
-                Flush();
+    for (const auto& blob: blobs) {
+        for (const auto& block: blob.Blocks) {
+            if (!block.IsStoredInDb) {
+                commitIds.push_back(block.CommitId);
             }
         }
+    }
 
-        Blocks.push_back(block);
-        BlobContent.AddBlock({blockContent.data(), blockContent.size()});
+    if (!commitIds) {
+        return {};
+    }
 
-        if (Blocks.size() == MaxBlocksInBlob) {
-            Flush();
+    Sort(commitIds);
+
+    ui64 cur = commitIds.front();
+    ui32 cnt = 0;
+
+    for (const auto commitId: commitIds) {
+        if (commitId == cur) {
+            ++cnt;
+        } else {
+            result.emplace_back(cur, cnt);
+            cur = commitId;
+            cnt = 1;
         }
     }
 
-    TVector<TWriteBlob> Finish()
-    {
-        if (Blocks) {
-            Flush();
-        }
-        return std::move(Blobs);
-    }
+    result.emplace_back(cur, cnt);
 
-private:
-    void Flush()
-    {
-        Blobs.emplace_back(
-            TPartialBlobId(), // to be filled later
-            std::move(Blocks),
-            std::move(BlobContent));
-    }
-};
+    return result;
+}
 
 }   // namespace
 
@@ -395,22 +445,27 @@ private:
 
 void TPartitionActor::EnqueueFlushIfNeeded(const TActorContext& ctx)
 {
-    if (State->GetFlushStatus() != EOperationStatus::Idle) {
+    if (State->GetFlushState().Status != EOperationStatus::Idle) {
         // already enqueued
         return;
     }
 
-    const auto freshBlockUpdatesSize = State->GetFreshBlockUpdateCount();
-    const auto dataSize = State->GetFreshBlockCount() * State->GetBlockSize();
-    const bool shouldFlush = !State->IsLoadStateFinished()
-        || dataSize >= Config->GetFlushThreshold()
-        || freshBlockUpdatesSize >= FreshBlockUpdatesSizeThreshold;
+    const auto freshBlockByteCount =
+        State->GetUnflushedFreshBlocksCount() * State->GetBlockSize();
+    const auto freshBlobCount = State->GetUnflushedFreshBlobCount();
+    const auto freshBlobByteCount = State->GetUnflushedFreshBlobByteCount();
+
+    const bool shouldFlush =
+        !State->IsLoadStateFinished() ||
+        freshBlockByteCount >= Config->GetFlushThreshold() ||
+        freshBlobCount >= Config->GetFreshBlobCountFlushThreshold() ||
+        freshBlobByteCount >= Config->GetFreshBlobByteCountFlushThreshold();
 
     if (!shouldFlush) {
         return;
     }
 
-    State->SetFlushStatus(EOperationStatus::Enqueued);
+    State->AccessFlushState().SetStatus(EOperationStatus::Enqueued, ctx.Now());
 
     auto request = std::make_unique<TEvPartitionPrivate::TEvFlushRequest>(
         MakeIntrusive<TCallContext>(CreateRequestId()));
@@ -442,128 +497,194 @@ void TPartitionActor::HandleFlush(
         requestInfo->CallContext->RequestId,
         PartitionConfig.GetDiskId());
 
-    auto replyError = [=] (
-        const TActorContext& ctx,
-        TRequestInfo& requestInfo,
-        ui32 errorCode,
-        TString errorReason)
-    {
+    if (State->GetFlushState().Status == EOperationStatus::Started) {
         auto response = std::make_unique<TEvPartitionPrivate::TEvFlushResponse>(
-            MakeError(errorCode, std::move(errorReason)));
+            MakeError(E_TRY_AGAIN, "flush already in progress"));
 
         LWTRACK(
             ResponseSent_Partition,
-            requestInfo.CallContext->LWOrbit,
+            requestInfo->CallContext->LWOrbit,
             "Flush",
-            requestInfo.CallContext->RequestId);
+            requestInfo->CallContext->RequestId);
 
-        NCloud::Reply(ctx, requestInfo, std::move(response));
-    };
+        UpdateCPUUsageStat(ctx.Now(), requestInfo->GetExecCycles());
 
-    if (State->GetFlushStatus() == EOperationStatus::Started ||
-        State->GetFlushStatus() == EOperationStatus::Delayed)
-    {
-        replyError(ctx, *requestInfo, E_TRY_AGAIN, "flush already in progress");
+        NCloud::Reply(ctx, *requestInfo, std::move(response));
         return;
     }
 
-    ui64 blockCount = State->GetFreshBlockCount();
-    if (!blockCount) {
-        State->SetFlushStatus(EOperationStatus::Idle);
+    ui64 blocksCount = State->GetUnflushedFreshBlocksCount();
+    if (!blocksCount) {
+        State->AccessFlushState().SetStatus(EOperationStatus::Idle, ctx.Now());
 
-        replyError(ctx, *requestInfo, S_ALREADY, "nothing to flush");
+        auto response = std::make_unique<TEvPartitionPrivate::TEvFlushResponse>(
+            MakeError(S_ALREADY, "nothing to flush"));
+
+        LWTRACK(
+            ResponseSent_Partition,
+            requestInfo->CallContext->LWOrbit,
+            "Flush",
+            requestInfo->CallContext->RequestId);
+
+        UpdateCPUUsageStat(ctx.Now(), requestInfo->GetExecCycles());
+
+        NCloud::Reply(ctx, *requestInfo, std::move(response));
         return;
     }
 
-    const ui64 commitId = State->GenerateCommitId();
+    ui64 commitId = State->GenerateCommitId();
     if (commitId == InvalidCommitId) {
         requestInfo->CancelRequest(ctx);
         RebootPartitionOnCommitIdOverflow(ctx, "Flush");
         return;
     }
 
-    State->AcquireCollectBarrier(commitId);
-    State->ConstructFlushContext(std::move(requestInfo), commitId);
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Start flush @%lu (blocks: %lu)",
+        LogTitle.GetWithTime().c_str(),
+        commitId,
+        blocksCount);
 
-    if (State->HasFreshBlocksInFlightUntil(commitId)) {
-        LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu] Delaying flush @%lu",
-            TabletID(),
-            commitId);
+    State->AccessFlushState().SetStatus(EOperationStatus::Started, ctx.Now());
 
-        State->SetFlushStatus(EOperationStatus::Delayed);
-        return;
-    }
-
-    StartFlush(ctx);
-}
-
-void TPartitionActor::ResumeDelayedFlushIfNeeded(const TActorContext& ctx)
-{
-    if (State->GetFlushStatus() != EOperationStatus::Delayed) {
-        // no delayed flush is present
-        return;
-    }
-
-    if (const auto& flushCtx = State->GetFlushContext();
-        State->HasFreshBlocksInFlightUntil(flushCtx.CommitId))
+    TVector<TFlushBlocksVisitor::TBlob> blobs;
     {
-        // we still have to wait
-        return;
-    }
+        auto flushBlobSizeThreshold = Config->GetFlushBlobSizeThreshold();
+        if (State->GetUnflushedFreshBlobCount() > 0) {
+            // ignore flushBlobSizeThreshold when there are any fresh blobs
+            // to prevent situation, when some blocks were not flushed
+            // but get trimmed in the future
+            flushBlobSizeThreshold = 0;
+        }
 
-    StartFlush(ctx);
-}
-
-void TPartitionActor::StartFlush(const TActorContext& ctx)
-{
-    auto& flushCtx = State->GetFlushContext();
-
-    const ui64 commitId = flushCtx.CommitId;
-    Y_DEBUG_ABORT_UNLESS(!State->HasFreshBlocksInFlightUntil(commitId));
-
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Starting flush @%lu",
-        TabletID(),
-        commitId);
-
-    State->SetFlushStatus(EOperationStatus::Started);
-
-    auto blobs = [&] {
         TFlushBlocksVisitor visitor(
             State->GetBlockSize(),
+            flushBlobSizeThreshold,
             Config->GetMaxBlobRangeSize(),
             State->GetMaxBlocksInBlob(),
-            commitId);
+            Config->GetDiskPrefixLengthWithBlockChecksumsInBlobs(),
+            State->GetCompactionMap(),
+            IsReadBlockMaskOnCompactionOptimizationEnabled(),
+            Config->GetSplitByCompactionRangeMaxBlobCount(),
+            TabletID(),
+            GetWriteBlobThreshold(
+                *Config,
+                PartitionConfig.GetStorageMediaKind()),
+            blobs);
 
-        State->FindFreshBlocks(visitor);
+        State->FindFreshBlocks(visitor, TBlockRange32::Max(), commitId);
 
-        return visitor.Finish();
-    }();
+        visitor.Finish();
+    }
 
-    Y_ABORT_UNLESS(blobs);
+    auto flushedCommitIdsFromChannel = BuildFlushedCommitIdsFromChannel(blobs);
+
+    {
+        auto& flushedCommitIdsInProgress =
+            State->AccessFlushedCommitIdsInProgress();
+        Y_ABORT_UNLESS(flushedCommitIdsInProgress.empty());
+
+        for (const auto& blob: blobs) {
+            for (const auto& block: blob.Blocks) {
+                flushedCommitIdsInProgress.insert(block.CommitId);
+            }
+        }
+    }
+
+    TVector<TFlushActor::TRequest> requests(Reserve(blobs.size()));
 
     ui32 blobIndex = 0;
     for (auto& blob: blobs) {
-        Y_ABORT_UNLESS(IsSorted(blob.Blocks.begin(), blob.Blocks.end()));
-
-        blob.BlobId = State->GenerateBlobId(
+        auto blobId = State->GenerateBlobId(
             EChannelDataKind::Mixed,
             EChannelPermission::UserWritesAllowed,
             commitId,
-            blob.BlobContent.Get().GetBytesCount(),
+            blob.BlobContent.GetBytesCount(),
             blobIndex++);
+
+        requests.emplace_back(
+            blobId,
+            std::move(blob.BlobContent),
+            std::move(blob.Blocks),
+            std::move(blob.Checksums),
+            blob.CompactionRangeCount);
     }
 
-    auto actor = NCloud::Register<TFlushActor>(
-        ctx,
-        std::move(flushCtx.RequestInfo),
-        BlockDigestGenerator,
-        SelfId(),
-        GetBlobStorageAsyncRequestTimeout(),
-        std::move(blobs));
+    Y_ABORT_UNLESS(requests);
 
-    Actors.insert(actor);
+    if (Config->GetFlushToDevNull()) {
+        TVector<TBlock> freshBlocks;
+        for (const auto& request: requests) {
+            for (const auto& block: request.Blocks) {
+                freshBlocks.push_back(block);
+            }
+        }
+
+        ExecuteTx(
+            ctx,
+            CreateTx<TFlushToDevNull>(requestInfo, std::move(freshBlocks)));
+    } else {
+        State->AccessCommitQueue()->AcquireBarrier(commitId);
+        State->GetGarbageQueue().AcquireBarrier(commitId);
+
+        auto actor = NCloud::Register<TFlushActor>(
+            ctx,
+            requestInfo,
+            State->GetBlockSize(),
+            BlockDigestGenerator,
+            SelfId(),
+            commitId,
+            std::move(flushedCommitIdsFromChannel),
+            State->GetUnflushedFreshBlobCount(),
+            State->GetUnflushedFreshBlobByteCount(),
+            GetBlobStorageAsyncRequestTimeout(),
+            std::move(requests));
+
+        Actors.Insert(actor);
+    }
+}
+
+bool TPartitionActor::PrepareFlushToDevNull(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxPartition::TFlushToDevNull& args)
+{
+    Y_UNUSED(ctx);
+    Y_UNUSED(tx);
+    Y_UNUSED(args);
+
+    return true;
+}
+
+void TPartitionActor::ExecuteFlushToDevNull(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxPartition::TFlushToDevNull& args)
+{
+    Y_UNUSED(ctx);
+
+    TPartitionDatabase db(tx.DB);
+
+    for (const auto& block: args.FreshBlocks) {
+        if (block.IsStoredInDb) {
+            State->DeleteFreshBlockFromDb(db, block.BlockIndex, block.CommitId);
+        } else {
+            State->DeleteFreshBlock(block.BlockIndex, block.CommitId);
+        }
+    }
+
+    db.WriteMeta(State->GetMeta());
+}
+
+void TPartitionActor::CompleteFlushToDevNull(
+    const TActorContext& ctx,
+    TTxPartition::TFlushToDevNull& args)
+{
+    Y_UNUSED(args);
+
+    State->AccessFlushState().SetStatus(EOperationStatus::Idle, ctx.Now());
 }
 
 void TPartitionActor::HandleFlushCompleted(
@@ -572,30 +693,51 @@ void TPartitionActor::HandleFlushCompleted(
 {
     auto* msg = ev->Get();
 
-    const ui64 commitId = State->GetFlushContext().CommitId;
-
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Flush completed @%lu",
-        TabletID(),
+    ui64 commitId = msg->CommitId;
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Complete flush @%lu",
+        LogTitle.GetWithTime().c_str(),
         commitId);
 
     UpdateStats(msg->Stats);
 
-    UpdateCPUUsageStat(ctx, msg->ExecCycles);
+    UpdateCPUUsageStat(ctx.Now(), msg->ExecCycles);
+
+    State->AccessCommitQueue()->ReleaseBarrier(commitId);
+    State->GetGarbageQueue().ReleaseBarrier(commitId);
+
+    if (!HasError(msg->Error)) {
+        for (const auto& i: msg->FlushedCommitIdsFromChannel) {
+            State->AccessTrimFreshLogBarriers()->ReleaseBarrierN(
+                i.CommitId,
+                i.BlockCount);
+        }
+
+        State->DecrementUnflushedFreshBlobCount(msg->FlushedFreshBlobCount);
+        State->DecrementUnflushedFreshBlobByteCount(msg->FlushedFreshBlobByteCount);
+
+        if (FreshBlocksWriter) {
+            SharedState->UnflushedFreshBlobByteCount.fetch_sub(
+                msg->FlushedFreshBlobByteCount);
+        }
+    }
+
+    State->AccessFlushedCommitIdsInProgress().clear();
+
+    State->AccessFlushState().SetStatus(EOperationStatus::Idle, ctx.Now());
+
+    Actors.Erase(ev->Sender);
 
     const auto d = CyclesToDurationSafe(msg->TotalCycles);
+    Y_DEBUG_ABORT_UNLESS(msg->Stats.GetSysReadCounters().GetBlocksCount() == 0);
+    ui32 blocks = msg->Stats.GetSysWriteCounters().GetBlocksCount();
+    PartCounters->RequestCounters.Flush.AddRequest(
+        d.MicroSeconds(),
+        blocks * State->GetBlockSize());
+
     const auto ts = ctx.Now() - d;
-    PartCounters->RequestCounters.Flush.AddRequest(d.MicroSeconds());
-
-    State->ResetFlushContext();
-    State->ReleaseCollectBarrier(commitId);
-    State->SetFlushStatus(EOperationStatus::Idle);
-    State->SetTrimFreshLogToCommitId(commitId);
-
-    Actors.erase(ev->Sender);
-
-    EnqueueFlushIfNeeded(ctx);
-    EnqueueTrimFreshLogIfNeeded(ctx);
 
     {
         IProfileLog::TSysReadWriteRequest request;
@@ -611,11 +753,24 @@ void TPartitionActor::HandleFlushCompleted(
         ProfileLog->Write(std::move(record));
     }
 
-    LogBlockInfos(
-        ctx,
-        ESysRequestType::Flush,
-        std::move(msg->AffectedBlockInfos),
-        commitId);
+    if (msg->AffectedBlockInfos) {
+        IProfileLog::TSysReadWriteRequestBlockInfos request;
+        request.RequestType = ESysRequestType::Flush;
+        request.BlockInfos = std::move(msg->AffectedBlockInfos);
+        request.CommitId = commitId;
+
+        IProfileLog::TRecord record;
+        record.DiskId = State->GetConfig().GetDiskId();
+        record.Ts = ts;
+        record.Request = std::move(request);
+
+        ProfileLog->Write(std::move(record));
+    }
+
+    EnqueueTrimFreshLogIfNeeded(ctx);
+    EnqueueFlushIfNeeded(ctx);
+    EnqueueCleanupIfNeeded(ctx);
+    ProcessCommitQueue(ctx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition2

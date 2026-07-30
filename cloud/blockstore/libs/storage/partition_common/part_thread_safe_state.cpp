@@ -11,7 +11,6 @@
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
-using namespace NPartition;
 
 ////////////////////////////////////////////////////////////////////////////////
 

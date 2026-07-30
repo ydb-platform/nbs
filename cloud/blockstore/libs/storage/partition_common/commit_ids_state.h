@@ -1,7 +1,7 @@
 #pragma once
 
-#include <cloud/blockstore/libs/storage/partition/model/checkpoint.h>
-#include <cloud/blockstore/libs/storage/partition/model/commit_queue.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/checkpoint.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/commit_queue.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -10,8 +10,8 @@ namespace NCloud::NBlockStore::NStorage {
 class TCommitIdsState
 {
 private:
-    NPartition::TCheckpointStore Checkpoints;
-    NPartition::TCheckpointsInFlight CheckpointsInFlight;
+    TCheckpointStore Checkpoints;
+    TCheckpointsInFlight CheckpointsInFlight;
 
 public:
     [[nodiscard]] auto& AccessCheckpoints()

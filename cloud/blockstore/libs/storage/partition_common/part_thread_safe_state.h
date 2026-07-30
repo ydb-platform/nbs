@@ -1,10 +1,10 @@
 #pragma once
 
-#include <cloud/blockstore/libs/storage/partition/model/checkpoint.h>
-#include <cloud/blockstore/libs/storage/partition/model/commit_queue.h>
-#include <cloud/blockstore/libs/storage/partition/model/group_downtimes.h>
-#include <cloud/blockstore/libs/storage/partition/model/part_counters_wrapper.h>
-#include <cloud/blockstore/libs/storage/partition/model/resource_metrics_updates_queue.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/checkpoint.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/commit_queue.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/group_downtimes.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/part_counters_wrapper.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/resource_metrics_updates_queue.h>
 #include <cloud/blockstore/libs/storage/model/requests_in_progress.h>
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
 
@@ -70,10 +70,10 @@ class TPartitionThreadSafeState
     using TTxPtr = std::unique_ptr<ITransactionBase>;
 
 public:
-    NPartition::TResourceMetricsQueue ResourceMetricsQueue;
-    NPartition::TThreadSafePartCounters PartCounters;
-    NPartition::TThreadSafePartStats PartStats;
-    NPartition::TGroupDowntimes GroupDowntimes;
+    TResourceMetricsQueue ResourceMetricsQueue;
+    TThreadSafePartCounters PartCounters;
+    TThreadSafePartStats PartStats;
+    TGroupDowntimes GroupDowntimes;
 
     std::atomic<ui64> UnflushedFreshBlobByteCount = 0;
 
@@ -90,10 +90,10 @@ private:
     ui32 Generation = 0;
     ui32 LastCommitId = 0;
 
-    NPartition::TBarriers TrimFreshLogBarriers;
-    NPartition::TCommitQueue CommitQueue;
+    TBarriers TrimFreshLogBarriers;
+    TCommitQueue CommitQueue;
 
-    NPartition::TCheckpointsInFlight CheckpointsInFlight;
+    TCheckpointsInFlight CheckpointsInFlight;
 
     std::atomic<ui64> FreshBlocksInFlight = 0;
 
@@ -115,17 +115,17 @@ public:
         ui32 generation,
         ui32 lastCommitId);
 
-    NPartition::TResourceMetricsQueuePtr GetResourceMetricsQueue()
+    TResourceMetricsQueuePtr GetResourceMetricsQueue()
     {
         return {shared_from_this(), &ResourceMetricsQueue};
     }
 
-    NPartition::TThreadSafePartCountersPtr GetPartCounters()
+    TThreadSafePartCountersPtr GetPartCounters()
     {
         return {shared_from_this(), &PartCounters};
     }
 
-    NPartition::TGroupDowntimesPtr GetGroupDowntimes()
+    TGroupDowntimesPtr GetGroupDowntimes()
     {
         return {shared_from_this(), &GroupDowntimes};
     }
@@ -147,14 +147,14 @@ public:
 
     auto GetTrimFreshLogBarriers()
     {
-        return TConstObjectGuard<NPartition::TBarriers, TAdaptiveLock>(
+        return TConstObjectGuard<TBarriers, TAdaptiveLock>(
             StateLock,
             TrimFreshLogBarriers);
     }
 
     auto AccessTrimFreshLogBarriers()
     {
-        return TObjectGuard<NPartition::TBarriers, TAdaptiveLock>(
+        return TObjectGuard<TBarriers, TAdaptiveLock>(
             StateLock,
             TrimFreshLogBarriers);
     }
@@ -163,28 +163,28 @@ public:
 
     auto GetCommitQueue()
     {
-        return TConstObjectGuard<NPartition::TCommitQueue, TAdaptiveLock>(
+        return TConstObjectGuard<TCommitQueue, TAdaptiveLock>(
             StateLock,
             CommitQueue);
     }
 
     auto AccessCommitQueue()
     {
-        return TObjectGuard<NPartition::TCommitQueue, TAdaptiveLock>(
+        return TObjectGuard<TCommitQueue, TAdaptiveLock>(
             StateLock,
             CommitQueue);
     }
 
     auto GetCheckpointsInFlight()
     {
-        return TConstObjectGuard<
-            NPartition::TCheckpointsInFlight,
-            TAdaptiveLock>(StateLock, CheckpointsInFlight);
+        return TConstObjectGuard<TCheckpointsInFlight, TAdaptiveLock>(
+            StateLock,
+            CheckpointsInFlight);
     }
 
     auto AccessCheckpointsInFlight()
     {
-        return TObjectGuard<NPartition::TCheckpointsInFlight, TAdaptiveLock>(
+        return TObjectGuard<TCheckpointsInFlight, TAdaptiveLock>(
             StateLock,
             CheckpointsInFlight);
     }

@@ -3,10 +3,10 @@
 #include "part_thread_safe_state.h"
 
 #include <cloud/blockstore/libs/storage/core/write_buffer_request.h>
-#include <cloud/blockstore/libs/storage/partition/model/barrier.h>
-#include <cloud/blockstore/libs/storage/partition/model/block_index.h>
-#include <cloud/blockstore/libs/storage/partition/model/checkpoint.h>
-#include <cloud/blockstore/libs/storage/partition/model/operation_status.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/barrier.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/block_index.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/checkpoint.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/operation_status.h>
 #include <cloud/blockstore/libs/storage/partition_common/commit_ids_state.h>
 
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
@@ -22,7 +22,7 @@ namespace NCloud::NBlockStore::NStorage {
 class TPartitionFlushState
 {
 private:
-    NPartition::TOperationState FlushState;
+    TOperationState FlushState;
     TRequestBuffer<TWriteBufferRequestData> WriteBuffer;
     ui32 UnflushedFreshBlobCount = 0;
     ui64 UnflushedFreshBlobByteCount = 0;
@@ -30,12 +30,12 @@ private:
     THashSet<ui64> FlushedCommitIdsInProgress;
 
 public:
-    NPartition::TOperationState& AccessFlushState()
+    TOperationState& AccessFlushState()
     {
         return FlushState;
     }
 
-    [[nodiscard]] const NPartition::TOperationState& GetFlushState() const
+    [[nodiscard]] const TOperationState& GetFlushState() const
     {
         return FlushState;
     }
@@ -113,7 +113,7 @@ public:
 class TPartitionTrimFreshLogState
 {
 private:
-    NPartition::TOperationState TrimFreshLogState;
+    TOperationState TrimFreshLogState;
     ui64 LastTrimFreshLogToCommitId = 0;
     TBackoffDelayProvider TrimFreshLogBackoffDelayProvider{
         TDuration::Zero(),
@@ -121,12 +121,12 @@ private:
         TDuration::Seconds(5)};
 
 public:
-    [[nodiscard]] NPartition::TOperationState& AccessTrimFreshLogState()
+    [[nodiscard]] TOperationState& AccessTrimFreshLogState()
     {
         return TrimFreshLogState;
     }
 
-    [[nodiscard]] const NPartition::TOperationState& GetTrimFreshLogState() const
+    [[nodiscard]] const TOperationState& GetTrimFreshLogState() const
     {
         return TrimFreshLogState;
     }
@@ -167,7 +167,7 @@ private:
     ui32 UnflushedFreshBlocksFromChannelCount = 0;
 
 protected:
-    NPartition::TBlockIndex Blocks;
+    TBlockIndex Blocks;
 
 public:
     TPartitionFreshBlocksState(
@@ -175,11 +175,10 @@ public:
         const TPartitionFlushState& flushState,
         TPartitionThreadSafeStatePtr threadSafeState);
 
-    void InitFreshBlocks(
-        const TVector<NPartition::TOwningFreshBlock>& freshBlocks);
+    void InitFreshBlocks(const TVector<TOwningFreshBlock>& freshBlocks);
 
     void FindFreshBlocks(
-        NPartition::IFreshBlocksIndexVisitor& visitor,
+        IFreshBlocksIndexVisitor& visitor,
         const TBlockRange32& readRange,
         ui64 maxCommitId);
 

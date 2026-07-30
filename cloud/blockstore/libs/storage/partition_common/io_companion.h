@@ -5,9 +5,9 @@
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
 #include <cloud/blockstore/libs/storage/model/log_title.h>
-#include <cloud/blockstore/libs/storage/partition/model/group_downtimes.h>
-#include <cloud/blockstore/libs/storage/partition/model/part_counters_wrapper.h>
-#include <cloud/blockstore/libs/storage/partition/model/resource_metrics_updates_queue.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/group_downtimes.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/part_counters_wrapper.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/resource_metrics_updates_queue.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
 #include <cloud/blockstore/libs/storage/partition_common/part_channels_state.h>
@@ -62,9 +62,9 @@ private:
 
     TRunningActors Actors;
 
-    std::shared_ptr<NPartition::TResourceMetricsQueue> ResourceMetricsQueue;
-    std::shared_ptr<NPartition::TGroupDowntimes> GroupDowntimes;
-    std::shared_ptr<NPartition::TThreadSafePartCounters> PartCounters;
+    std::shared_ptr<TResourceMetricsQueue> ResourceMetricsQueue;
+    std::shared_ptr<TGroupDowntimes> GroupDowntimes;
+    std::shared_ptr<TThreadSafePartCounters> PartCounters;
 
 public:
     TIOCompanion(
@@ -81,9 +81,9 @@ public:
         IIOCompanionClient& client,
         TPartitionChannelsState& channelsState,
         TLogTitle& logTitle,
-        std::shared_ptr<NPartition::TResourceMetricsQueue> resourceMetricsQueue,
-        std::shared_ptr<NPartition::TGroupDowntimes> groupDowntimes,
-        std::shared_ptr<NPartition::TThreadSafePartCounters> partCounters);
+        std::shared_ptr<TResourceMetricsQueue> resourceMetricsQueue,
+        std::shared_ptr<TGroupDowntimes> groupDowntimes,
+        std::shared_ptr<TThreadSafePartCounters> partCounters);
 
     void HandleWriteBlobCompleted(
         const TEvPartitionCommonPrivate::TEvWriteBlobCompleted::TPtr& ev,

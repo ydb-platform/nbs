@@ -1,5 +1,13 @@
 #include "part2_actor.h"
 
+#include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
+#include <cloud/blockstore/libs/storage/partition2/model/fresh_blob.h>
+
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+
+#include <util/generic/algorithm.h>
 #include <util/string/builder.h>
 
 namespace NCloud::NBlockStore::NStorage::NPartition2 {
@@ -11,6 +19,8 @@ using namespace NKikimr::NTabletFlatExecutor;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
+namespace {
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TZeroBlocksActor final
@@ -21,8 +31,8 @@ private:
 
     const TActorId Tablet;
     const ui64 CommitId;
-    TVector<TAddBlob> Blobs;
 
+    TVector<TAddMergedBlob> MergedBlobs;
     ui32 BlocksCount = 0;
 
     bool SafeToUseOrbit = true;
@@ -32,7 +42,7 @@ public:
         TRequestInfoPtr requestInfo,
         const TActorId& tablet,
         ui64 commitId,
-        TVector<TAddBlob> blobs);
+        TVector<TAddMergedBlob> mergedBlobs);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -64,11 +74,11 @@ TZeroBlocksActor::TZeroBlocksActor(
         TRequestInfoPtr requestInfo,
         const TActorId& tablet,
         ui64 commitId,
-        TVector<TAddBlob> blobs)
+        TVector<TAddMergedBlob> mergedBlobs)
     : RequestInfo(std::move(requestInfo))
     , Tablet(tablet)
     , CommitId(commitId)
-    , Blobs(std::move(blobs))
+    , MergedBlobs(std::move(mergedBlobs))
 {}
 
 void TZeroBlocksActor::Bootstrap(const TActorContext& ctx)
@@ -88,14 +98,18 @@ void TZeroBlocksActor::Bootstrap(const TActorContext& ctx)
 
 void TZeroBlocksActor::AddBlobs(const TActorContext& ctx)
 {
-    for (const auto& blob: Blobs) {
-        BlocksCount += blob.Blocks.size();
+    for (const auto& blob: MergedBlobs) {
+        BlocksCount += blob.BlockRange.Size();
     }
 
     auto request = std::make_unique<TEvPartitionPrivate::TEvAddBlobsRequest>(
         RequestInfo->CallContext,
-        ADD_ZERO_RESULT,
-        std::move(Blobs));
+        CommitId,
+        TVector<TAddMixedBlob>(),
+        std::move(MergedBlobs),
+        TVector<TAddFreshBlob>(),
+        ADD_WRITE_RESULT
+    );
 
     SafeToUseOrbit = false;
 
@@ -109,12 +123,16 @@ void TZeroBlocksActor::NotifyCompleted(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    auto request = std::make_unique<TEvPartitionPrivate::TEvZeroBlocksCompleted>(error);
-
-    request->CommitId = CommitId;
+    auto request =
+        std::make_unique<TEvPartitionPrivate::TEvZeroBlocksCompleted>(
+            error,
+            false   // trimFreshLogBarrierAcquired
+        );
 
     request->ExecCycles = RequestInfo->GetExecCycles();
     request->TotalCycles = RequestInfo->GetTotalCycles();
+
+    request->CommitId = CommitId;
 
     {
         auto execTime = CyclesToDurationSafe(RequestInfo->GetExecCycles());
@@ -163,22 +181,6 @@ void TZeroBlocksActor::ReplyAndDie(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TZeroBlocksActor::HandleAddBlobsResponse(
-    const TEvPartitionPrivate::TEvAddBlobsResponse::TPtr& ev,
-    const TActorContext& ctx)
-{
-    const auto* msg = ev->Get();
-
-    SafeToUseOrbit = true;
-
-    const auto& error = msg->GetError();
-    if (HandleError(ctx, error)) {
-        return;
-    }
-
-    ReplyAndDie(ctx, std::make_unique<TEvService::TEvZeroBlocksResponse>());
-}
-
 void TZeroBlocksActor::HandlePoisonPill(
     const TEvents::TEvPoisonPill::TPtr& ev,
     const TActorContext& ctx)
@@ -189,6 +191,21 @@ void TZeroBlocksActor::HandlePoisonPill(
         MakeError(E_REJECTED, "tablet is shutting down"));
 
     ReplyAndDie(ctx, std::move(respose));
+}
+
+void TZeroBlocksActor::HandleAddBlobsResponse(
+    const TEvPartitionPrivate::TEvAddBlobsResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+
+    SafeToUseOrbit = true;
+
+    if (HandleError(ctx, msg->GetError())) {
+        return;
+    }
+
+    ReplyAndDie(ctx, std::make_unique<TEvService::TEvZeroBlocksResponse>());
 }
 
 STFUNC(TZeroBlocksActor::StateWork)
@@ -208,6 +225,8 @@ STFUNC(TZeroBlocksActor::StateWork)
             break;
     }
 }
+
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -230,24 +249,6 @@ void TPartitionActor::HandleZeroBlocks(
         "ZeroBlocks",
         requestInfo->CallContext->RequestId);
 
-    auto replyError = [=] (
-        const TActorContext& ctx,
-        TRequestInfo& requestInfo,
-        ui32 errorCode,
-        TString errorReason)
-    {
-        auto response = std::make_unique<TEvService::TEvZeroBlocksResponse>(
-            MakeError(errorCode, std::move(errorReason)));
-
-        LWTRACK(
-            ResponseSent_Partition,
-            requestInfo.CallContext->LWOrbit,
-            "ZeroBlocks",
-            requestInfo.CallContext->RequestId);
-
-        NCloud::Reply(ctx, requestInfo, std::move(response));
-    };
-
     TBlockRange64 writeRange;
 
     auto ok = InitReadWriteBlockRange(
@@ -257,122 +258,164 @@ void TPartitionActor::HandleZeroBlocks(
     );
 
     if (!ok) {
-        replyError(ctx, *requestInfo, E_ARGUMENT, TStringBuilder()
-            << "invalid block range ["
-            << "index: " << msg->Record.GetStartIndex()
-            << ", count: " << msg->Record.GetBlocksCount()
-            << "]");
+        auto response = std::make_unique<TEvService::TEvZeroBlocksResponse>(
+            MakeError(E_ARGUMENT, TStringBuilder()
+                << "invalid block range ["
+                << "index: " << msg->Record.GetStartIndex()
+                << ", count: " << msg->Record.GetBlocksCount()
+                << "]"));
+
+        LWTRACK(
+            ResponseSent_Partition,
+            requestInfo->CallContext->LWOrbit,
+            "ZeroBlocks",
+            requestInfo->CallContext->RequestId);
+
+        NCloud::Reply(ctx, *requestInfo, std::move(response));
         return;
     }
 
-    if (State->GetBaseDiskId()) {
-        ui64 commitId = State->GenerateCommitId();
-        if (commitId == InvalidCommitId) {
-            requestInfo->CancelRequest(ctx);
-            RebootPartitionOnCommitIdOverflow(ctx, "WriteBlocks");
-            return;
-        }
+    ui64 commitId = State->GenerateCommitId();
+    if (commitId == InvalidCommitId) {
+        requestInfo->CancelRequest(ctx);
+        RebootPartitionOnCommitIdOverflow(ctx, "ZeroBlocks");
+        return;
+    }
 
-        LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu] Start zero blocks @%lu (range: %s)",
-            TabletID(),
-            commitId,
-            DescribeRange(writeRange).data()
-        );
+    const auto requestSize = writeRange.Size() * State->GetBlockSize();
+    const bool isFreshRequest = IsFreshRequest(
+        *Config,
+        PartitionConfig.GetStorageMediaKind(),
+        requestSize);
 
-        ++WriteAndZeroRequestsInProgress;
-
-        // needed to prevent the blobs updated during the AddBlobs stage from
-        // being deleted before AddBlobs tx completes
-        State->AcquireCollectBarrier(commitId);
-
-        TVector<TAddBlob> requests(
-            Reserve(std::ceil(double(writeRange.Size()) / State->GetMaxBlocksInBlob())));
-
-        ui32 blobIndex = 0;
-        for (ui64 blockIndex: xrange(writeRange, State->GetMaxBlocksInBlob())) {
-            auto blobId = State->GenerateBlobId(
-                EChannelDataKind::Merged,  // does not matter
-                EChannelPermission::UserWritesAllowed,
-                commitId,
-                0,  // deletion marker
-                blobIndex++);
-
-            auto range = TBlockRange32::MakeClosedIntervalWithLimit(
-                blockIndex,
-                blockIndex + State->GetMaxBlocksInBlob() - 1,
-                writeRange.End);
-
-            TVector<TBlock> blocks(Reserve(range.Size()));
-            for (ui32 blockIndex: xrange(range)) {
-                // actual MinCommitId will be generated later
-                blocks.emplace_back(
-                    blockIndex,
-                    InvalidCommitId,
-                    InvalidCommitId,
-                    true);  // zeroed
-            }
-
-            requests.emplace_back(blobId, std::move(blocks));
-        }
-
-        Y_ABORT_UNLESS(requests);
-        auto actor = NCloud::Register<TZeroBlocksActor>(
+    if (!IsFreshBlocksWriterEnabled() && isFreshRequest) {
+        // small writes will be accumulated in FreshBlocks table
+        ZeroFreshBlocks(
             ctx,
             requestInfo,
-            SelfId(),
-            commitId,
-            std::move(requests));
-
-        Actors.insert(actor);
+            ConvertRangeSafe(writeRange),
+            commitId);
         return;
     }
 
-    ++WriteAndZeroRequestsInProgress;
+    // all small zero requests should be handled by TFreshBlocksWriter
+    STORAGE_VERIFY(!isFreshRequest, TWellKnownEntityTypes::TABLET, TabletID());
 
-    LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Start zero blocks (range: %s)",
-        TabletID(),
-        DescribeRange(writeRange).data());
+    SharedState->WriteAndZeroRequestsInProgress.fetch_add(1);
 
-    AddTransaction<TEvService::TZeroBlocksMethod>(*requestInfo);
+    LOG_TRACE(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Start zero blocks @%lu (range: %s)",
+        LogTitle.GetWithTime().c_str(),
+        commitId,
+        DescribeRange(writeRange).c_str());
 
-    ExecuteTx<TZeroBlocks>(
+    State->AccessCommitQueue()->AcquireBarrier(commitId);
+
+    // large writes could skip FreshBlocks table completely
+    TVector<TAddMergedBlob> requests(
+        Reserve(1 + writeRange.Size() / State->GetMaxBlocksInBlob()));
+
+    ui32 blobIndex = 0;
+    for (ui64 blockIndex: xrange(writeRange, State->GetMaxBlocksInBlob())) {
+        auto range = TBlockRange32::MakeClosedIntervalWithLimit(
+            blockIndex,
+            blockIndex + State->GetMaxBlocksInBlob() - 1,
+            writeRange.End);
+
+        auto blobId = State->GenerateBlobId(
+            EChannelDataKind::Merged,
+            EChannelPermission::UserWritesAllowed,
+            commitId,
+            0,   // deletion marker
+            blobIndex++);
+
+        requests.emplace_back(
+            blobId,
+            range,
+            TBlockMask(),       // skipMask
+            TVector<ui32>());   // checksums
+    }
+
+    STORAGE_VERIFY(requests, TWellKnownEntityTypes::TABLET, TabletID());
+
+    auto actor = NCloud::Register<TZeroBlocksActor>(
         ctx,
         requestInfo,
-        ConvertRangeSafe(writeRange)
-    );
+        SelfId(),
+        commitId,
+        std::move(requests));
+
+    Actors.Insert(actor);
 }
 
 void TPartitionActor::HandleZeroBlocksCompleted(
     const TEvPartitionPrivate::TEvZeroBlocksCompleted::TPtr& ev,
     const TActorContext& ctx)
 {
-    const auto* msg = ev->Get();
+    auto* msg = ev->Get();
+    HandleZeroBlocksCompletedImpl(
+        ctx,
+        ev->Sender,
+        msg->GetError(),
+        *msg,
+        false);   // freshBlocksRequest
+}
 
-    LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Complete zero blocks @%lu",
-        TabletID(),
-        msg->CommitId);
+void TPartitionActor::HandleZeroFreshBlocksCompleted(
+    const TEvPartitionCommonPrivate::TEvZeroFreshBlocksCompleted::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+    HandleZeroBlocksCompletedImpl(
+        ctx,
+        ev->Sender,
+        msg->GetError(),
+        *msg,
+        true);   // freshBlocksRequest
+}
 
-    UpdateStats(msg->Stats);
+void TPartitionActor::HandleZeroBlocksCompletedImpl(
+    const NActors::TActorContext& ctx,
+    NActors::TActorId sender,
+    NProto::TError error,
+    const TEvPartitionCommonPrivate::TOperationCompleted& opCompleted,
+    bool freshBlocksRequest)
+{
+    ui64 commitId = opCompleted.CommitId;
+    LOG_TRACE(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Complete zero blocks @%lu",
+        LogTitle.GetWithTime().c_str(),
+        commitId);
 
-    ui64 blocksCount = msg->Stats.GetUserWriteCounters().GetBlocksCount();
+    UpdateStats(opCompleted.Stats);
+
+    ui64 blocksCount = opCompleted.Stats.GetUserWriteCounters().GetBlocksCount();
     ui64 requestBytes = blocksCount * State->GetBlockSize();
 
-    UpdateCPUUsageStat(ctx, msg->ExecCycles);
+    UpdateCPUUsageStat(ctx.Now(), opCompleted.ExecCycles);
 
-    auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
+    auto time = CyclesToDurationSafe(opCompleted.TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.ZeroBlocks.AddRequest(time, requestBytes);
 
-    State->ReleaseCollectBarrier(msg->CommitId);
+    State->AccessCommitQueue()->ReleaseBarrier(commitId);
 
-    Actors.erase(ev->Sender);
+    if (freshBlocksRequest && HasError(error)) {
+        State->AccessTrimFreshLogBarriers()->ReleaseBarrierN(
+            commitId,
+            blocksCount);
+    }
 
-    Y_DEBUG_ABORT_UNLESS(WriteAndZeroRequestsInProgress > 0);
-    --WriteAndZeroRequestsInProgress;
+    Actors.Erase(sender);
 
-    DrainActorCompanion.ProcessDrainRequests(ctx);
+    Y_DEBUG_ABORT_UNLESS(SharedState->WriteAndZeroRequestsInProgress.load() > 0);
+    SharedState->WriteAndZeroRequestsInProgress.fetch_sub(1);
+
+    SharedState->AccessDrainActorCompanion()->ProcessDrainRequests(ctx);
+    ProcessCommitQueue(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -383,14 +426,10 @@ bool TPartitionActor::PrepareZeroBlocks(
     TTxPartition::TZeroBlocks& args)
 {
     Y_UNUSED(ctx);
+    Y_UNUSED(tx);
+    Y_UNUSED(args);
 
-    // writes are usually blind but we still need our index structures to be
-    // properly initialized
-    TPartitionDatabase db(tx.DB);
-    if (!State->InitIndex(db, args.WriteRange)) {
-        return false;
-    }
-
+    // we really want to keep the writes blind
     return true;
 }
 
@@ -404,34 +443,33 @@ void TPartitionActor::ExecuteZeroBlocks(
     TRequestScope timer(*args.RequestInfo);
     TPartitionDatabase db(tx.DB);
 
-    args.CommitId = State->GenerateCommitId();
-    if (args.CommitId == InvalidCommitId) {
-        return;
-    }
+    ui64 commitId = args.CommitId;
 
-    // mark overwritten blocks
-    State->AddFreshBlockUpdate(db, {args.CommitId, args.WriteRange});
-    State->MarkMergedBlocksDeleted(db, args.WriteRange, args.CommitId);
+    State->ZeroFreshBlocksToDb(db, args.WriteRange, commitId);
+
+    // update counters
+    State->DecrementFreshBlocksInFlight(args.WriteRange.Size());
+
+    db.WriteMeta(State->GetMeta());
+
+    State->UnsetUsedBlocks(db, args.WriteRange);
 }
 
 void TPartitionActor::CompleteZeroBlocks(
     const TActorContext& ctx,
     TTxPartition::TZeroBlocks& args)
 {
-    if (args.CommitId == InvalidCommitId) {
-        RebootPartitionOnCommitIdOverflow(ctx, "ZeroBlocks");
-        Y_DEBUG_ABORT_UNLESS(WriteAndZeroRequestsInProgress > 0);
-        --WriteAndZeroRequestsInProgress;
-        return;
-    }
-
     TRequestScope timer(*args.RequestInfo);
+
     RemoveTransaction(*args.RequestInfo);
 
-    LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Complete zero blocks @%lu",
-        TabletID(),
-        args.CommitId);
+    ui64 commitId = args.CommitId;
+    LOG_TRACE(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Complete ZeroBlocks transaction @%lu",
+        LogTitle.GetWithTime().c_str(),
+        commitId);
 
     auto response = std::make_unique<TEvService::TEvZeroBlocksResponse>();
 
@@ -456,21 +494,21 @@ void TPartitionActor::CompleteZeroBlocks(
     }
     UpdateStats(stats);
 
-    UpdateCPUUsageStat(ctx, timer.Finish());
+    ui64 requestBytes = static_cast<ui64>(args.WriteRange.Size()) * State->GetBlockSize();
+
+    UpdateCPUUsageStat(ctx.Now(), args.RequestInfo->GetExecCycles());
 
     auto time = CyclesToDurationSafe(args.RequestInfo->GetTotalCycles()).MicroSeconds();
-    ui64 requestBytes = static_cast<ui64>(State->GetBlockSize()) * args.WriteRange.Size();
     PartCounters->RequestCounters.ZeroBlocks.AddRequest(time, requestBytes);
 
-    if (Executor()->GetStats().IsAnyChannelYellowMove) {
-        ScheduleYellowStateUpdate(ctx);
-    }
+    State->AccessCommitQueue()->ReleaseBarrier(args.CommitId);
 
-    Y_DEBUG_ABORT_UNLESS(WriteAndZeroRequestsInProgress > 0);
-    --WriteAndZeroRequestsInProgress;
+    Y_DEBUG_ABORT_UNLESS(SharedState->WriteAndZeroRequestsInProgress.load() > 0);
+    SharedState->WriteAndZeroRequestsInProgress.fetch_sub(1);
 
-    DrainActorCompanion.ProcessDrainRequests(ctx);
-    EnqueueCompactionIfNeeded(ctx);
+    EnqueueFlushIfNeeded(ctx);
+    SharedState->AccessDrainActorCompanion()->ProcessDrainRequests(ctx);
+    ProcessCommitQueue(ctx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition2
