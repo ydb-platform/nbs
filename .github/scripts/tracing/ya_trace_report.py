@@ -20,7 +20,7 @@ from .otlp import (
     update_span_attributes,
 )
 from .trace_report import write_trace_bundle
-from .ya_trace import (
+from .yatrace import (
     YaEvlog,
     YaTraceFile,
     YaTraceInputs,

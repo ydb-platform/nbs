@@ -9,7 +9,7 @@ import xml.etree.ElementTree as ET
 import pytest
 
 from scripts.tests import transform_ya_junit as tyj
-from scripts.tracing import ya_trace as ya_trace_module
+import scripts.tracing.yatrace.limits as yatrace_limits
 
 
 def _write_junit(path: Path) -> None:
@@ -197,7 +197,7 @@ def test_transform_continues_when_ya_traces_exceed_limit(
     ya_out = tmp_path / "ya-out"
     _write_junit(report)
     _write_trace(ya_out)
-    monkeypatch.setattr(ya_trace_module, "MAX_YA_TRACE_BYTES", 1)
+    monkeypatch.setattr(yatrace_limits, "MAX_YA_TRACE_BYTES", 1)
     with report.open("r") as fp:
         tyj.transform(
             fp,
@@ -223,7 +223,7 @@ def test_load_ya_traces_handles_missing_optional_dependency(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    monkeypatch.setitem(sys.modules, "scripts.tracing.ya_trace", None)
+    monkeypatch.setitem(sys.modules, "scripts.tracing.yatrace", None)
 
     assert tyj._load_ya_traces(tmp_path) is None
     assert "Ya trace enrichment is unavailable" in capsys.readouterr().err

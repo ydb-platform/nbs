@@ -17,7 +17,7 @@ from .junit_utils import add_junit_link_property, is_faulty_testcase
 from .mute_utils import mute_target, pattern_to_re
 
 if TYPE_CHECKING:
-    from ..tracing.ya_trace import YaEvent, YaTraceCollection
+    from ..tracing.yatrace import YaEvent, YaTraceCollection
 
 LOGGER = logging.getLogger(__name__)
 
@@ -206,7 +206,7 @@ def _load_ya_traces(ya_out: Path) -> YaTraceCollection | None:
     try:
         # Trace enrichment is optional: keep JUnit processing usable even when
         # tracing dependencies could not be installed on the runner.
-        from ..tracing.ya_trace import YaTraceCollection
+        from ..tracing.yatrace import YaTraceCollection
 
         return YaTraceCollection.load(ya_out)
     except Exception as error:

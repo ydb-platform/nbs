@@ -37,7 +37,7 @@ from scripts.tracing.trace_report import (
     render_html,
     write_trace_bundle,
 )
-from scripts.tracing.ya_trace import YaTraceCollection, load_ya_evlog
+from scripts.tracing.yatrace import YaTraceCollection, load_ya_evlog
 from scripts.tracing.workflow_trace_report import (
     build_workflow_trace,
     download_s3_trace_inputs,

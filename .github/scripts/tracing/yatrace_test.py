@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-import scripts.tracing.ya_trace as ya_trace_module
 import scripts.tracing.ya_trace_report as ya_trace_report_module
+import scripts.tracing.yatrace.limits as yatrace_limits
 from scripts.tracing.otlp import (
     Interval,
     ResourceAttributes,
@@ -17,7 +17,7 @@ from scripts.tracing.otlp import (
     span_duration_ns,
     span_status_code,
 )
-from scripts.tracing.ya_trace import (
+from scripts.tracing.yatrace import (
     YaCriticalPathEntry,
     YaEvlog,
     YaEvlogRecord,
@@ -434,7 +434,7 @@ def test_oversized_trace_collection_is_rejected_before_opening_files(
         trace_path.write_text("{}\n")
 
     inputs = YaTraceInputs.discover(ya_out)
-    monkeypatch.setattr(ya_trace_module, "MAX_YA_TRACE_BYTES", 5)
+    monkeypatch.setattr(yatrace_limits, "MAX_YA_TRACE_BYTES", 5)
 
     def reject_open(*args, **kwargs):
         raise AssertionError(
@@ -488,7 +488,7 @@ def test_report_preserves_raw_input_list_when_trace_parsing_fails(
     trace_path.write_text("{}\n")
     output_dir = tmp_path / "summary"
 
-    monkeypatch.setattr(ya_trace_module, "MAX_YA_TRACE_BYTES", 1)
+    monkeypatch.setattr(yatrace_limits, "MAX_YA_TRACE_BYTES", 1)
     monkeypatch.setattr(
         sys,
         "argv",
@@ -1042,7 +1042,7 @@ def test_failed_node_is_protected_from_span_cap(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(ya_trace_module, "MAX_BUILD_NODE_SPANS", 1)
+    monkeypatch.setattr(yatrace_limits, "MAX_BUILD_NODE_SPANS", 1)
     trace = _render_ya_trace(
         tmp_path,
         [],
@@ -1313,7 +1313,7 @@ def test_critical_path_node_is_protected_from_span_cap(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(ya_trace_module, "MAX_BUILD_NODE_SPANS", 1)
+    monkeypatch.setattr(yatrace_limits, "MAX_BUILD_NODE_SPANS", 1)
     trace = _render_ya_trace(
         tmp_path,
         [],
@@ -1417,7 +1417,7 @@ def test_build_node_span_limit_is_hard_for_critical_nodes(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(ya_trace_module, "MAX_BUILD_NODE_SPANS", 1)
+    monkeypatch.setattr(yatrace_limits, "MAX_BUILD_NODE_SPANS", 1)
     evlog_events = [_stage("dispatch_build", 0, 10)]
     for index in range(2):
         evlog_events.append(
@@ -1827,7 +1827,7 @@ def test_build_command_span_limit_prefers_critical_parent(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    monkeypatch.setattr(ya_trace_module, "MAX_BUILD_COMMAND_SPANS", 1)
+    monkeypatch.setattr(yatrace_limits, "MAX_BUILD_COMMAND_SPANS", 1)
     trace = _render_ya_trace(
         tmp_path,
         [],
