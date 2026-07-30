@@ -65,6 +65,10 @@ namespace NCloud::NFileStore::NStorage {
     xxx(SetHasXAttrs,               __VA_ARGS__)                               \
     xxx(MarkNodeRefsExhaustive,     __VA_ARGS__)                               \
                                                                                \
+    xxx(CreateQuota,                __VA_ARGS__)                               \
+    xxx(DeleteQuota,                __VA_ARGS__)                               \
+    xxx(ListQuotas,                 __VA_ARGS__)                               \
+                                                                               \
     FILESTORE_UNSAFE_TABLET_REQUESTS(xxx, __VA_ARGS__)                         \
 // FILESTORE_TABLET_REQUESTS
 
@@ -225,6 +229,15 @@ struct TEvIndexTablet
 
         EvListNodesInternalRequest = EvBegin + 83,
         EvListNodesInternalResponse,
+
+        EvCreateQuotaRequest = EvBegin + 85,
+        EvCreateQuotaResponse,
+
+        EvDeleteQuotaRequest = EvBegin + 87,
+        EvDeleteQuotaResponse,
+
+        EvListQuotasRequest = EvBegin + 89,
+        EvListQuotasResponse,
 
         // After the TABLET sub-namespace we have TABLET_WORKER and TABLET_PROXY
         // sub-namespaces which don't have any non-local events so if we run out

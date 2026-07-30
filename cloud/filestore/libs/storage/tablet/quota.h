@@ -2,9 +2,10 @@
 
 #include "public.h"
 
-#include <cloud/filestore/libs/storage/tablet/protos/tablet.pb.h>
+#include <cloud/filestore/public/api/protos/quota.pb.h>
 
 #include <util/generic/hash.h>
+#include <util/generic/vector.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -20,6 +21,9 @@ public:
     void RemoveQuota(ui32 quotaId);
 
     [[nodiscard]] const NProto::TQuota* FindQuota(ui32 quotaId) const;
+    [[nodiscard]] TVector<NProto::TQuota> GetQuotas() const;
+
+    [[nodiscard]] ui32 GenerateQuotaId() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage
