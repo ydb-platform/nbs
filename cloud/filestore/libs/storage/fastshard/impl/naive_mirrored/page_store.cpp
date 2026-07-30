@@ -96,12 +96,28 @@ NProto::TError TPageStore::WritePage(
     TString page,
     TVector<TPageGroup>& logRecord)
 {
-    bool found = false;
+    std::lock_guard g(Mutex);
+    auto& p = PageCache[pageNo];
+
+    if (p.Dirty && p.Lsn != 0 && p.Lsn != lsn) {
+        //
+        // Doing it in the simplest way possible - just rejecting concurrent ops
+        // for each page. We can implement tracking different page versions for
+        // different lsns in the future if needed.
+        //
+
+        return MakeError(
+            E_REJECTED,
+            TStringBuilder() << "dirty page (" << pageNo
+                << ") with different lsn (" << p.Lsn << " != " << lsn << ")");
+    }
 
     //
     // Linear search is ok because we don't expect to have more than a couple
     // page groups in log-record.
     //
+
+    bool found = false;
 
     for (auto& pg: logRecord) {
         const ui64 endPageNo = pg.FirstPageNo + pg.Content.size();
@@ -118,21 +134,9 @@ NProto::TError TPageStore::WritePage(
         });
     }
 
-    std::lock_guard g(Mutex);
-    auto& p = PageCache[pageNo];
-
-    if (p.Dirty && p.Lsn != 0 && p.Lsn != lsn) {
-        //
-        // Doing it in the simplest way possible - just rejecting concurrent ops
-        // for each page. We can implement tracking different page versions for
-        // different lsns in the future if needed.
-        //
-
-        return MakeError(
-            E_REJECTED,
-            TStringBuilder() << "dirty page (" << pageNo
-                << ") with different lsn (" << p.Lsn << " != " << lsn << ")");
-    }
+    //
+    // Updating page cache.
+    //
 
     if (!p.Dirty) {
         Y_ABORT_UNLESS(p.Lsn <= lsn);

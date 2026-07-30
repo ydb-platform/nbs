@@ -377,8 +377,6 @@ TEST(NaiveMirroredShardTest, WritesAndReadsFiles)
     auto shard = CreateNaiveMirroredFileSystemShard(ShardNo, fx.Config);
 
     const TString file1 = "file1";
-    const TString file2 = "file2";
-    const TString file3 = "file3";
     const ui32 mode = 0644;
 
     const ui32 createHandleFlags
@@ -433,7 +431,208 @@ TEST(NaiveMirroredShardTest, WritesAndReadsFiles)
         auto response = f.GetValueSync();
         EXPECT_EQ(S_OK, response.GetError().GetCode())
             << FormatError(response.GetError());
-        EXPECT_STREQ(expectedData.c_str(), response.GetBuffer().c_str());
+        EXPECT_EQ(expectedData, response.GetBuffer());
+    }
+
+    {
+        TDestroyHandleRequest request;
+        request.SetHandle(handle);
+        auto f = shard->DestroyHandle(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+    }
+}
+
+TEST(NaiveMirroredShardTest, WritesAndReadsLongUnalignedRangesWithHoles)
+{
+    TStorageFixture fx;
+
+    auto shard = CreateNaiveMirroredFileSystemShard(ShardNo, fx.Config);
+
+    const TString file1 = "file1";
+    const ui32 mode = 0644;
+    const ui32 expectedMode = S_IFREG | 0644;
+    const ui64 uid = 111;
+    const ui64 gid = 222;
+
+    const ui32 createHandleFlags
+        = ProtoFlag(TCreateHandleRequest::E_CREATE)
+        | ProtoFlag(TCreateHandleRequest::E_READ)
+        | ProtoFlag(TCreateHandleRequest::E_WRITE);
+
+    ui64 nodeId = 0;
+    ui64 handle = 0;
+    {
+        TCreateHandleRequest request;
+        request.SetNodeId(RootNodeId);
+        request.SetName(file1);
+        request.SetFlags(createHandleFlags);
+        request.SetMode(mode);
+        request.SetUid(uid);
+        request.SetGid(gid);
+        auto f = shard->CreateHandle(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+        handle = response.GetHandle();
+        EXPECT_TRUE(handle != 0);
+        nodeId = response.GetNodeAttr().GetId();
+        EXPECT_TRUE(nodeId != 0);
+
+        //
+        // A little bit of node validation - because why not.
+        //
+
+        EXPECT_EQ(uid, response.GetNodeAttr().GetUid());
+        EXPECT_EQ(gid, response.GetNodeAttr().GetGid());
+        EXPECT_EQ(
+            static_cast<ui32>(E_REGULAR_NODE),
+            response.GetNodeAttr().GetType());
+        EXPECT_EQ(expectedMode, response.GetNodeAttr().GetMode());
+    }
+
+    // page cluster 0
+    const auto dataChunk1 = GenerateValidateData(11_KB, 1 /* seed */);
+    const ui64 offset1 = 3_KB;
+    // page cluster 2
+    const auto dataChunk2 = GenerateValidateData(7_KB, 2 /* seed */);
+    const ui64 offset2 = 66_KB;
+
+    {
+        TWriteDataRequest request;
+        request.SetHandle(handle);
+        request.SetOffset(offset1);
+        *request.MutableBuffer() = dataChunk1;
+        auto f = shard->WriteData(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+    }
+
+    {
+        TWriteDataRequest request;
+        request.SetHandle(handle);
+        request.SetOffset(offset2);
+        *request.MutableBuffer() = dataChunk2;
+        auto f = shard->WriteData(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+    }
+
+    //
+    // Making a large cross-cluster read.
+    //
+
+    {
+        // covers 4 page clusters
+        const ui64 readOffset = 1_KB;
+        const ui64 readLength = 96_KB;
+
+        TString expectedData(readLength, 0);
+
+        memcpy(
+            expectedData.begin() + (offset1 - readOffset),
+            dataChunk1.data(),
+            dataChunk1.size());
+
+        memcpy(
+            expectedData.begin() + (offset2 - readOffset),
+            dataChunk2.data(),
+            dataChunk2.size());
+
+        TReadDataRequest request;
+        request.SetHandle(handle);
+        request.SetOffset(readOffset);
+        request.SetLength(readLength);
+        auto f = shard->ReadData(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+        EXPECT_EQ(expectedData, response.GetBuffer());
+    }
+
+    //
+    // A read which starts at a non-allocated cluster.
+    //
+
+    {
+        // covers 4 page clusters
+        const ui64 readOffset = 48_KB; // mid-cluster
+        const ui64 readLength = 32_KB; // cross-cluster read
+
+        TString expectedData(readLength, 0);
+
+        memcpy(
+            expectedData.begin() + (offset2 - readOffset),
+            dataChunk2.data(),
+            dataChunk2.size());
+
+        TReadDataRequest request;
+        request.SetHandle(handle);
+        request.SetOffset(readOffset);
+        request.SetLength(readLength);
+        auto f = shard->ReadData(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+        EXPECT_EQ(expectedData, response.GetBuffer());
+    }
+
+    //
+    // A write and a read beginning at non-cluster-aligned offsets.
+    //
+
+    {
+        auto page1 = GenerateValidateData(PageSize, 3 /* seed */);
+        auto page2 = GenerateValidateData(PageSize, 4 /* seed */);
+
+        {
+            TWriteDataRequest request;
+            request.SetHandle(handle);
+            request.SetOffset(0);
+            *request.MutableBuffer() = page1;
+            auto f = shard->WriteData(request);
+            auto response = f.GetValueSync();
+            EXPECT_EQ(S_OK, response.GetError().GetCode())
+                << FormatError(response.GetError());
+        }
+
+        {
+            TWriteDataRequest request;
+            request.SetHandle(handle);
+            request.SetOffset(page1.Size());
+            *request.MutableBuffer() = page2;
+            auto f = shard->WriteData(request);
+            auto response = f.GetValueSync();
+            EXPECT_EQ(S_OK, response.GetError().GetCode())
+                << FormatError(response.GetError());
+        }
+
+        {
+            TReadDataRequest request;
+            request.SetHandle(handle);
+            request.SetOffset(0);
+            request.SetLength(page1.size());
+            auto f = shard->ReadData(request);
+            auto response = f.GetValueSync();
+            EXPECT_EQ(S_OK, response.GetError().GetCode())
+                << FormatError(response.GetError());
+            EXPECT_EQ(page1, response.GetBuffer());
+        }
+
+        {
+            TReadDataRequest request;
+            request.SetHandle(handle);
+            request.SetOffset(page1.size());
+            request.SetLength(page2.size());
+            auto f = shard->ReadData(request);
+            auto response = f.GetValueSync();
+            EXPECT_EQ(S_OK, response.GetError().GetCode())
+                << FormatError(response.GetError());
+            EXPECT_EQ(page2, response.GetBuffer());
+        }
     }
 
     {

@@ -480,8 +480,11 @@ public:
     {
         while (true) {
             *handle = ShardedId(RandomNumber<ui64>(), 0 /* shardNo */);
-            ui64 nodeId = 0;
-            auto error = Get(*handle, &nodeId);
+
+            ui64 slotNo = 0;
+            THandleSlot slot{};
+            auto error = Slots->Get(0 /* lsn */, *handle, &slot, &slotNo);
+
             if (!HasError(error)) {
                 continue;
             }
@@ -502,11 +505,17 @@ public:
     NProto::TError Delete(ui64 handle, TWriteContext& writeContext)
     {
         THandleSlot slot{};
-        return Slots->Delete(
+        auto error = Slots->Delete(
             writeContext.Lsn,
             handle,
             &slot,
             writeContext.PageGroups);
+
+        if (error.GetCode() == E_FS_NOENT) {
+            error = ErrorInvalidHandle(handle);
+        }
+
+        return error;
     }
 
     NProto::TError Get(ui64 handle, ui64* nodeId) const
@@ -514,6 +523,10 @@ public:
         ui64 slotNo = 0;
         THandleSlot slot{};
         auto error = Slots->Get(0 /* lsn */, handle, &slot, &slotNo);
+        if (error.GetCode() == E_FS_NOENT) {
+            return ErrorInvalidHandle(handle);
+        }
+
         if (HasError(error)) {
             return error;
         }
@@ -524,6 +537,15 @@ public:
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+
+ui64 CalcPageClusterCount(
+    const NProtoPrivate::TPersistentFastShardConfig& config)
+{
+    const ui64 dataPageCount = Min(
+        config.GetExpectedGroupCapacity() / PageSize,
+        MaxNodePageClusterTableSize / PageSize);
+    return RoundUp(dataPageCount, PageClusterPageCount) / PageClusterPageCount;
+}
 
 class TPageIndex
 {
@@ -540,14 +562,14 @@ public:
         ui64 firstPageNo,
         IPageStorePtr pageStore)
     {
-        const ui64 pageCount = Min(
-            config.GetExpectedGroupCapacity() / PageSize,
-            MaxNodePageClusterTableSize / PageSize);
+        const ui64 pageClusterCount = CalcPageClusterCount(config);
+        const ui64 indexPageCount =
+            RoundUp(pageClusterCount, SlotsPerPage) / SlotsPerPage;
         TNodePageClusterSlot tombstone{};
         tombstone.Key.NodeId = Max<ui64>();
         Slots = std::make_unique<THt>(
             firstPageNo,
-            pageCount,
+            indexPageCount,
             PageSize,
             NodePageClusterSlotSize,
             tombstone,
@@ -563,7 +585,7 @@ public:
                     sizeof(TNodePageClusterKey));
             });
 
-        return pageCount;
+        return indexPageCount;
     }
 
     NProto::TError Put(TNodePageClusterSlot v, TWriteContext& writeContext)
@@ -608,11 +630,15 @@ private:
     ui64 FirstStoragePageClusterId = 0;
 
 public:
-    ui64 Init(ui64 firstPageNo, ui64 pageCount, IPageStorePtr pageStore)
+    ui64 Init(
+        const NProtoPrivate::TPersistentFastShardConfig& config,
+        ui64 firstPageNo,
+        IPageStorePtr pageStore)
     {
+        const ui64 pageClusterCount = CalcPageClusterCount(config);
         const ui64 bitsPerPage = TPersistentBitmap::CalcBitsPerPage(PageSize);
         const ui64 bitmapPageCount =
-            RoundUp(pageCount, bitsPerPage) / bitsPerPage;
+            RoundUp(pageClusterCount, bitsPerPage) / bitsPerPage;
         Bitmap = std::make_unique<TPersistentBitmap>(
             firstPageNo,
             bitmapPageCount,
@@ -620,9 +646,10 @@ public:
             std::move(pageStore));
         firstPageNo += bitmapPageCount;
         FirstStoragePageClusterId =
-            RoundUp(firstPageNo + pageCount, PageClusterPageCount);
+            RoundUp(firstPageNo + bitmapPageCount, PageClusterPageCount)
+            / PageClusterPageCount;
 
-        return bitmapPageCount + pageCount;
+        return bitmapPageCount + pageClusterCount * PageClusterPageCount;
     }
 
     NProto::TError Allocate(
@@ -693,6 +720,26 @@ public:
 
         return {};
     }
+
+    void RollbackAllocation(
+        const TVector<ui64>& storagePageClusterIds,
+        const TWriteContext& writeContext)
+    {
+        TVector<TPageGroup> pageGroups;
+        for (const ui64 clusterId: storagePageClusterIds) {
+            Y_ABORT_UNLESS(clusterId >= FirstStoragePageClusterId);
+            auto error = Bitmap->Reset(
+                writeContext.Lsn,
+                clusterId - FirstStoragePageClusterId,
+                pageGroups);
+
+            //
+            // Errors aren't expected if allocation has already happened.
+            //
+
+            Y_ABORT_UNLESS(!HasError(error));
+        }
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -762,31 +809,42 @@ public:
         PageStore = CreatePageStore(Storage, PageSize);
 
         ui64 firstPageNo = 0;
+        SILK_INFO("node table offset=%lu", firstPageNo * PageSize);
         const ui64 nodeTablePageCount = Nodes.Init(
             Config,
             firstPageNo,
             PageStore);
         firstPageNo += nodeTablePageCount;
+
+        SILK_INFO("name table offset=%lu", firstPageNo * PageSize);
         const ui64 nameTablePageCount = Names.Init(
             Config,
             firstPageNo,
             PageStore);
         firstPageNo += nameTablePageCount;
+
+        SILK_INFO("handle table offset=%lu", firstPageNo * PageSize);
         const ui64 handleTablePageCount = Handles.Init(
             Config,
             firstPageNo,
             PageStore);
         firstPageNo += handleTablePageCount;
+
+        SILK_INFO("page index offset=%lu", firstPageNo * PageSize);
         const ui64 pageIndexPageCount = PageIndex.Init(
             Config,
             firstPageNo,
             PageStore);
         firstPageNo += pageIndexPageCount;
+
+        SILK_INFO("page allocator offset=%lu", firstPageNo * PageSize);
         const ui64 pageAllocatorPageCount = PageAllocator.Init(
+            Config,
             firstPageNo,
-            Config.GetExpectedGroupCapacity() / PageSize,
             PageStore);
         firstPageNo += pageAllocatorPageCount;
+
+        SILK_INFO("slack space offset=%lu", firstPageNo * PageSize);
     }
 
 public:
@@ -1136,9 +1194,6 @@ public:
 
             auto error = Handles.Delete(request.GetHandle(), writeContext);
             if (HasError(error)) {
-                if (error.GetCode() == E_FS_NOENT) {
-                    error = ErrorInvalidHandle(request.GetHandle());
-                }
                 *response.MutableError() = std::move(error);
             }
 
@@ -1284,14 +1339,17 @@ public:
             const ui64 firstPageInCluster =
                 *storagePageClusterIdIt * PageClusterPageCount;
 
-            ui32 pageNoInCluster = 0;
+            const ui64 pageClusterOffset = fileOffset % PageClusterSize;
+            const ui32 pageNoOffsetInCluster = pageClusterOffset / PageSize;
+            ui32 pageNoInCluster = pageNoOffsetInCluster;
             while (pageNoInCluster < PageClusterPageCount) {
                 const ui64 storagePageNo = firstPageInCluster + pageNoInCluster;
                 const ui64 pageStart = RoundDown(fileOffset, PageSize)
-                    + pageNoInCluster * PageSize;
+                    + (pageNoInCluster - pageNoOffsetInCluster) * PageSize;
                 const ui64 pageEnd = pageStart + PageSize;
                 const bool isUnalignedHead =
-                    pageNoInCluster == 0 && pageStart != fileOffset;
+                    pageNoInCluster == pageNoOffsetInCluster
+                    && pageStart != fileOffset;
                 const bool isUnalignedTail = pageEnd > endOffset;
 
                 if (pageStart >= endOffset) {
@@ -1313,7 +1371,8 @@ public:
                 }
 
                 const ui64 offsetInPage =
-                    pageNoInCluster == 0 ? fileOffset - pageStart : 0;
+                    pageNoInCluster == pageNoOffsetInCluster
+                    ? fileOffset - pageStart : 0;
                 const ui64 toCopy =
                     Min(pageEnd, endOffset) - (pageStart + offsetInPage);
                 memcpy(
@@ -1359,7 +1418,18 @@ public:
             std::move(writeContext.PageGroups));
         if (HasError(error)) {
             *response.MutableError() = std::move(error);
+
+            //
+            // We should first rollback the allocation - we should do it while
+            // the bitmap pages are still marked as dirty at our lsn. And only
+            // after that we can rollback the pages.
+            //
+
+            PageAllocator.RollbackAllocation(
+                newStoragePageClusterIds,
+                writeContext);
             PageStore->RollbackPages(pages);
+
             return response;
         }
 
@@ -1394,6 +1464,7 @@ public:
 
             const ui64 fileOffset = bufferOffset + request.GetOffset();
             const ui64 pageClusterId = fileOffset / PageClusterSize;
+            const ui64 pageClusterOffset = fileOffset % PageClusterSize;
 
             ui64 storagePageClusterId = 0;
             error = PageIndex.Get(
@@ -1405,8 +1476,9 @@ public:
                 // part of the buffer with zeroes.
                 //
 
-                const ui64 toSet =
-                    Min(PageClusterSize, buffer.size() - bufferOffset);
+                const ui64 toSet = Min(
+                    PageClusterSize - pageClusterOffset,
+                    buffer.size() - bufferOffset);
                 memset(buffer.begin() + bufferOffset, 0, toSet);
                 bufferOffset += toSet;
                 error = {};
@@ -1424,11 +1496,12 @@ public:
             const ui64 firstPageInCluster =
                 storagePageClusterId * PageClusterPageCount;
 
-            ui32 pageNoInCluster = 0;
+            const ui32 pageNoOffsetInCluster = pageClusterOffset / PageSize;
+            ui32 pageNoInCluster = pageNoOffsetInCluster;
             while (pageNoInCluster < PageClusterPageCount) {
                 const ui64 storagePageNo = firstPageInCluster + pageNoInCluster;
                 const ui64 pageStart = RoundDown(fileOffset, PageSize)
-                    + pageNoInCluster * PageSize;
+                    + (pageNoInCluster - pageNoOffsetInCluster) * PageSize;
                 const ui64 pageEnd = pageStart + PageSize;
 
                 if (pageStart >= endOffset) {
@@ -1443,7 +1516,8 @@ public:
                 }
 
                 const ui64 offsetInPage =
-                    pageNoInCluster == 0 ? fileOffset - pageStart : 0;
+                    pageNoInCluster == pageNoOffsetInCluster
+                    ? fileOffset - pageStart : 0;
                 const ui64 toCopy =
                     Min(pageEnd, endOffset) - (pageStart + offsetInPage);
                 memcpy(
