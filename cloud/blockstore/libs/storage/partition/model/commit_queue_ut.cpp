@@ -1,4 +1,4 @@
-#include "commit_queue.h"
+#include <cloud/blockstore/libs/storage/partition_common/model/commit_queue.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 

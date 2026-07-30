@@ -1,21 +1,24 @@
 #include "part2_actor.h"
 
 #include <cloud/blockstore/libs/diagnostics/config.h>
+#include <cloud/blockstore/libs/diagnostics/diag_down_graph.h>
 #include <cloud/blockstore/libs/diagnostics/hostname.h>
-#include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
-#include <cloud/blockstore/libs/storage/core/monitoring_utils.h>
+#include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/tenant.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
 
 #include <cloud/storage/core/libs/common/format.h>
-
-#include <contrib/ydb/core/base/appdata.h>
+#include <cloud/storage/core/libs/viewer/tablet_monitoring.h>
 
 #include <library/cpp/cgiparam/cgiparam.h>
 #include <library/cpp/monlib/service/pages/templates.h>
 
 #include <util/stream/str.h>
+
+#include <contrib/ydb/core/base/appdata.h>
+
+#include <ranges>
 
 namespace NCloud::NBlockStore::NStorage::NPartition2 {
 
@@ -29,6 +32,87 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void DumpDownGroups(
+    IOutputStream& out,
+    TInstant now,
+    const TPartitionState& state,
+    const TTabletStorageInfo& storage,
+    const TDiagnosticsConfig& config,
+    const TGroupDowntimes& groupDowntimes)
+{
+    HTML(out)
+    {
+        TABLE_SORTABLE_CLASS("table table-bordered")
+        {
+            TABLEHEAD()
+            {
+                TABLER()
+                {
+                    TABLEH() { out << "Group"; }
+                    TABLEH() { out << "Downtime"; }
+
+                }
+            }
+
+            auto addGroupRow = [&](
+                const ui32 groupId,
+                const TDowntimeHistory& history)
+            {
+                TABLER() {
+                    TABLEH()
+                    {
+                        auto groupIdFinder =
+                            [groupId](const TTabletChannelInfo& channelInfo)
+                        {
+                            const auto* entry = channelInfo.LatestEntry();
+                            if (!entry) {
+                                return false;
+                            }
+                            return entry->GroupID == groupId;
+                        };
+                        auto matchedInfos = storage.Channels |
+                                            std::views::filter(groupIdFinder);
+                        if (matchedInfos.empty()) {
+                            out << groupId;
+                        } else {
+                            for (const TTabletChannelInfo& channelInfo:
+                                 matchedInfos)
+                            {
+                                TString channelKind = TStringBuilder()
+                                                   << state.GetChannelDataKind(
+                                                          channelInfo.Channel);
+                                out << groupId << "&nbsp;<a href='"
+                                    << GetMonitoringYDBGroupUrl(
+                                           config,
+                                           groupId,
+                                           channelInfo.StoragePool,
+                                           channelKind)
+                                    << "'>Graphs&nbsp;"
+                                    << "(Channel=" << channelInfo.Channel
+                                    << ")</a><br/>";
+                            }
+                        }
+                    }
+                    TABLEH() {
+                        TSvgWithDownGraph svg(out);
+                        for (const auto& [time, state]: history) {
+                            svg.AddEvent(
+                                time,
+                                state == EDowntimeStateChange::DOWN);
+                        }
+                    }
+                }
+            };
+
+            for (const auto& [groupId, history]:
+                 groupDowntimes.GetGroupId2Downtimes())
+            {
+                addGroupRow(groupId, history.RecentEvents(now));
+            }
+        }
+    }
+}
+
 void DumpChannels(
     IOutputStream& out,
     const TPartitionState& state,
@@ -36,123 +120,56 @@ void DumpChannels(
     const TDiagnosticsConfig& config,
     ui64 hiveTabletId)
 {
-    HTML(out) {
-        DIV() {
-            out << "<a href='app?TabletID=" << hiveTabletId
-                << "&page=Groups"
-                << "&tablet_id=" << storage.TabletID
-                << "'>Channel history</a>";
-        }
-
-        TABLE_CLASS("table table-condensed") {
-            TABLEBODY() {
-                for (const auto& channel: storage.Channels) {
-                    TABLER() {
-                        TABLED() { out << "Channel: " << channel.Channel; }
-                        TABLED() { out << "StoragePool: " << channel.StoragePool; }
-
-                        if (auto latestEntry = channel.LatestEntry()) {
-                            TABLED() { out << "Id: " << latestEntry->GroupID; }
-                            TABLED() { out << "Gen: " << latestEntry->FromGeneration; }
-                            const auto& cps =
-                                state.GetConfig().GetExplicitChannelProfiles();
-                            if (cps.size()) {
-                                // we need this check for legacy volumes
-                                // see NBS-752
-                                if (channel.Channel < static_cast<ui32>(cps.size())) {
-                                    const auto channelKind = static_cast<EChannelDataKind>(
-                                        cps[channel.Channel].GetDataKind());
-                                    const auto& poolKind =
-                                        cps[channel.Channel].GetPoolKind();
-                                    TABLED() { out << "PoolKind: " << poolKind; }
-                                    TABLED() { out << "DataKind: " << channelKind; }
-                                } else {
-                                    // we need to output 2 cells, otherwise table
-                                    // markup will be a bit broken
-                                    TABLED() { out << "Ghost"; }
-                                    TABLED() { out << "Channel"; }
-                                }
-                            }
-                            TABLED() {
-                                TStringBuf label;
-                                TStringBuf color;
-                                if (state.CheckPermissions(channel.Channel, EChannelPermission::SystemWritesAllowed)) {
-                                    if (state.CheckPermissions(channel.Channel, EChannelPermission::UserWritesAllowed)) {
-                                        color = "green";
-                                        label = "Writable";
-                                    } else {
-                                        color = "yellow";
-                                        label = "SystemWritable";
-                                    }
-                                } else {
-                                    if (state.CheckPermissions(channel.Channel, EChannelPermission::UserWritesAllowed)) {
-                                        color = "pink";
-                                        label = "WeirdState";
-                                    } else {
-                                        color = "orange";
-                                        label = "Readonly";
-                                    }
-                                }
-
-                                SPAN_CLASS_STYLE("label", TStringBuilder() << "background-color: " << color) {
-                                    out << label;
-                                }
-                            }
-                            TABLED() {
-                                out << "<a href='"
-                                    << "../actors/blobstorageproxies/blobstorageproxy"
-                                    << latestEntry->GroupID
-                                    << "'>Status</a>";
-                            }
-                            TABLED() {
-                                TString channelKind;
-                                if (channel.Channel <
-                                    static_cast<ui32>(cps.size()))
-                                {
-                                    channelKind =
-                                        TStringBuilder()
-                                        << static_cast<EChannelDataKind>(
-                                               cps[channel.Channel]
-                                                   .GetDataKind());
-                                }
-                                out << "<a href='"
-                                    << GetMonitoringYDBGroupUrl(
-                                           config,
-                                           latestEntry->GroupID,
-                                           channel.StoragePool,
-                                           channelKind)
-                                    << "'>Graphs</a>";
-                                auto monitoringDashboardUrl =
-                                    GetMonitoringDashboardYDBGroupUrl(
-                                        config,
-                                        latestEntry->GroupID);
-                                if (!monitoringDashboardUrl.empty()) {
-                                    out << "<br>" << "<a href='"
-                                        << monitoringDashboardUrl
-                                        << "'>Group dashboard</a>";
-                                }
-                            }
-                            TABLED() {
-                                BuildReassignChannelButton(
-                                    out,
-                                    hiveTabletId,
-                                    storage.TabletID,
-                                    channel.Channel);
-                            }
-                        }
-                    }
-                }
-            }
-        }
+    TVector<NCloud::NStorage::TChannelMonInfo> channelInfos;
+    const auto& cps = state.GetConfig().GetExplicitChannelProfiles();
+    for (int c = 0; c < cps.size(); ++c) {
+        const auto& cp = cps[c];
+        const auto channelKind =
+            static_cast<EChannelDataKind>(cps[c].GetDataKind());
+        channelInfos.push_back({
+            cp.GetPoolKind(),
+            TStringBuilder() << channelKind,
+            state.CheckPermissions(c, EChannelPermission::UserWritesAllowed),
+            state.CheckPermissions(c, EChannelPermission::SystemWritesAllowed),
+            state.GetFreeSpaceShare(c),
+        });
     }
+    NCloud::NStorage::DumpChannels(
+        out,
+        channelInfos,
+        storage,
+        [&](ui32 groupId,
+            const TString& storagePool,
+            const TString& channelKind)
+        {
+            return GetMonitoringYDBGroupUrl(
+                config,
+                groupId,
+                storagePool,
+                channelKind);
+        },
+        [&](ui32 groupId)
+        { return GetMonitoringDashboardYDBGroupUrl(config, groupId); },
+        [&] (IOutputStream& out, ui64 hiveTabletId, ui64 tabletId, ui32 c) {
+            BuildReassignChannelButton(
+                out,
+                hiveTabletId,
+                tabletId,
+                c);
+        },
+        hiveTabletId);
 }
 
 void DumpCheckpoints(
     IOutputStream& out,
-    ui32 freshBlockCount,
+    const TTabletStorageInfo& storage,
+    ui32 freshBlocksCount,
     ui32 blockSize,
-    const TVector<NProto::TCheckpointMeta>& items)
+    const TVector<TCheckpoint>& checkpoints,
+    const THashMap<TString, ui64>& checkpointId2CommitId)
 {
+    Y_UNUSED(storage);
+
     HTML(out) {
         TABLE_SORTABLE() {
             TABLEHEAD() {
@@ -162,23 +179,37 @@ void DumpCheckpoints(
                     TABLED() { out << "IdempotenceId"; }
                     TABLED() { out << "Time"; }
                     TABLED() { out << "Size"; }
+                    TABLED() { out << "DataDeleted"; }
                 }
             }
             TABLEBODY() {
-                for (const auto& item: items) {
+                for (const auto& mapping: checkpointId2CommitId) {
+                    const auto& checkpointId = mapping.first;
+                    const auto& commitId = mapping.second;
+
+                    const auto* checkpoint = FindIfPtr(
+                        checkpoints,
+                        [&](const auto& ckp) {
+                            return ckp.CheckpointId == checkpointId;
+                    });
+
                     TABLER() {
-                        TABLED() { out << item.GetCheckpointId(); }
-                        TABLED() { out << item.GetCommitId(); }
-                        TABLED() { out << item.GetIdempotenceId(); }
+                        TABLED() { out << checkpointId; }
+                        TABLED() { out << commitId; }
+                        TABLED() { out << (checkpoint ? checkpoint->IdempotenceId : ""); }
+                        TABLED() { out << FormatTimestamp(checkpoint ? checkpoint->DateCreated : TInstant::Zero()); }
                         TABLED() {
-                            auto ts = TInstant::MicroSeconds(item.GetDateCreated());
-                            out << FormatTimestamp(ts);
+                            ui64 byteSize = 0;
+                            if (checkpoint) {
+                                auto blocksCount = freshBlocksCount;
+                                blocksCount += checkpoint->Stats.GetMixedBlocksCount();
+                                blocksCount += checkpoint->Stats.GetMergedBlocksCount();
+                                byteSize = static_cast<ui64>(blocksCount) * blockSize;
+                            }
+
+                            out << FormatByteSize(byteSize);
                         }
-                        TABLED() {
-                            auto blockCount = freshBlockCount
-                                            + item.GetStats().GetMergedBlocksCount();
-                            out << FormatByteSize(blockCount * blockSize);
-                        }
+                        TABLED() { out << (checkpoint ? "" : "true"); }
                     }
                 }
             }
@@ -186,26 +217,133 @@ void DumpCheckpoints(
     }
 }
 
-void DumpGarbageQueue(
+void DumpCleanupQueue(
     IOutputStream& out,
     const TTabletStorageInfo& storage,
-    const TVector<TBlobCounter>& items)
+    const TCleanupQueue& cleanupQueue)
 {
     HTML(out) {
+        TAG(TH3) { out << "CleanupQueueItems"; }
+
         TABLE_SORTABLE() {
             TABLEHEAD() {
                 TABLER() {
                     TABLED() { out << "CommitId"; }
                     TABLED() { out << "BlobId"; }
-                    TABLED() { out << "GarbageBlocks"; }
+                    TABLED() { out << "Deleted"; }
                 }
             }
             TABLEBODY() {
-                for (const auto& kv: items) {
+                for (const auto& item: cleanupQueue.GetItems()) {
                     TABLER() {
-                        TABLED() { DumpCommitId(out, kv.first.CommitId()); }
-                        TABLED_CLASS("view") { DumpBlobId(out, storage, kv.first); }
-                        TABLED() { out << kv.second; }
+                        TABLED() { DumpCommitId(out, item.BlobId.CommitId()); }
+                        TABLED_CLASS("view") {
+                            DumpBlobId(out, storage, item.BlobId);
+                        }
+                        TABLED() { DumpCommitId(out, item.CommitId); }
+                    }
+                }
+            }
+        }
+
+        TAG(TH3) { out << "CleanupQueueBarriers"; }
+
+        TABLE_SORTABLE() {
+            TABLEHEAD() {
+                TABLER() {
+                    TABLED() { out << "CommitId"; }
+                }
+            }
+            TABLEBODY() {
+                TVector<ui64> commitIds;
+                cleanupQueue.GetCommitIds(commitIds);
+
+                for (const auto commitId: commitIds) {
+                    TABLER() {
+                        TABLED() { DumpCommitId(out, commitId); }
+                    }
+                }
+            }
+        }
+
+        TAG(TH3) { out << "CleanupQueueCounters"; }
+
+        TABLE_SORTABLE() {
+            TABLEHEAD() {
+                TABLER() {
+                    TABLED() { out << "Name"; }
+                    TABLED() { out << "Value"; }
+                }
+            }
+            TABLEBODY() {
+                TABLER() {
+                    TABLED() { out << "Count"; }
+                    TABLED() { out << cleanupQueue.GetCount(); }
+                }
+                TABLER() {
+                    TABLED() { out << "QueueBytes"; }
+                    TABLED() { out << cleanupQueue.GetQueueBytes(); }
+                }
+            }
+        }
+    }
+}
+
+void DumpProgress(IOutputStream& out, ui64 progress, ui64 total)
+{
+    HTML(out) {
+        DIV_CLASS("progress") {
+            ui32 percents = (progress * 100 / total);
+            out << "<div class='progress-bar' role='progressbar' aria-valuemin='0'"
+                << " style='width: " << percents << "%'"
+                << " aria-valuenow='" << progress
+                << "' aria-valuemax='" << total << "'>"
+                << percents << "%</div>";
+        }
+        out << progress << " of " << total;
+    }
+}
+
+void DumpCompactionInfo(IOutputStream& out, const TForcedCompactionState& state)
+{
+    if (state.IsRunning && (state.OperationId == "partition-monitoring-compaction")) {
+        DumpProgress(out, state.Progress, state.RangesCount);
+    }
+}
+
+void DumpMetadataRebuildInfo(IOutputStream& out, ui64 current, ui64 total)
+{
+    DumpProgress(out, current, total);
+}
+
+void DumpScanDiskInfo(IOutputStream& out, ui64 current, ui64 total)
+{
+    DumpProgress(out, current, total);
+}
+
+void DumpCompactionScoreHistory(
+    IOutputStream& out,
+    const TTsRingBuffer<TCompactionScores>& scoreHistory)
+{
+    HTML(out) {
+        TABLE_SORTABLE() {
+            TABLEHEAD() {
+                TABLER() {
+                    TABLED() { out << "Ts"; }
+                    TABLED() { out << "Score"; }
+                    TABLED() { out << "GarbageScore"; }
+                    TABLED() { out << "IgnoringZeroedScore"; }
+                }
+            }
+            TABLEBODY() {
+                for (ui32 i = 0; i < scoreHistory.Size(); ++i) {
+                    const auto s = scoreHistory.Get(i);
+
+                    TABLER() {
+                        TABLED() { out << s.Ts; }
+                        TABLED() { out << s.Value.Score; }
+                        TABLED() { out << s.Value.GarbageScore; }
+                        TABLED() { out << s.Value.IgnoringZeroedScore; }
                     }
                 }
             }
@@ -213,40 +351,29 @@ void DumpGarbageQueue(
     }
 }
 
-void DumpCompactionInfo(
+void DumpCleanupScoreHistory(
     IOutputStream& out,
-    const TForcedCompactionState& state)
+    const TTsRingBuffer<ui32>& scoreHistory)
 {
-    if (state.IsRunning && (state.OperationId == "partition-monitoring-compaction")) {
-        HTML(out) {
-            DIV_CLASS("progress") {
-                ui32 percents = (state.Progress * 100 / state.RangeCount);
-                out << "<div class='progress-bar' role='progressbar' aria-valuemin='0'"
-                    << " style='width: " << percents << "%'"
-                    << " aria-valuenow='" << state.Progress
-                    << "' aria-valuemax='" << state.RangeCount << "'>"
-                    << percents << "%</div>";
-            }
-            out << state.Progress << " of " << state.RangeCount;
-        }
-    }
-}
-
-void DumpCleanupInfo(
-    IOutputStream& out,
-    const TForcedCleanupState& state)
-{
-    Y_UNUSED(state);
-
     HTML(out) {
-        DIV_CLASS("progress") {
-            out << "<div class='progress-bar' role='progressbar' aria-valuemin='0'"
-                << " style='width: 0%'"
-                << " aria-valuenow='0'"
-                << " aria-valuemax='100'>"
-                << "0%</div>";
+        TABLE_SORTABLE() {
+            TABLEHEAD() {
+                TABLER() {
+                    TABLED() { out << "Ts"; }
+                    TABLED() { out << "QueueSize"; }
+                }
+            }
+            TABLEBODY() {
+                for (ui32 i = 0; i < scoreHistory.Size(); ++i) {
+                    const auto s = scoreHistory.Get(i);
+
+                    TABLER() {
+                        TABLED() { out << s.Ts; }
+                        TABLED() { out << s.Value; }
+                    }
+                }
+            }
         }
-        out << "Cleanup in progress";
     }
 }
 
@@ -265,16 +392,31 @@ void TPartitionActor::HandleHttpInfo(
 
     using THttpHandlers = THashMap<TString, THttpHandler>;
 
-    static const THttpHandlers postActions {{
-        {"compactAll",       &TPartitionActor::HandleHttpInfo_ForceCompaction },
-        {"compact",          &TPartitionActor::HandleHttpInfo_ForceCompaction },
-        {"addGarbage",       &TPartitionActor::HandleHttpInfo_AddGarbage      },
-        {"collectGarbage",   &TPartitionActor::HandleHttpInfo_CollectGarbage  }
+    static const THttpHandlers postActions{{
+        {"addGarbage", &TPartitionActor::HandleHttpInfo_AddGarbage},
+        {"collectGarbage", &TPartitionActor::HandleHttpInfo_CollectGarbage},
+        {"compact", &TPartitionActor::HandleHttpInfo_ForceCompaction},
+        {"compactAll", &TPartitionActor::HandleHttpInfo_ForceCompaction},
+        {"rebuildMetadata", &TPartitionActor::HandleHttpInfo_RebuildMetadata},
+        {"scanDisk", &TPartitionActor::HandleHttpInfo_ScanDisk},
+        {"resetTransactionLatencyStats",
+         &TPartitionActor::HandleHttpInfo_ResetTransactionLatencyStats},
+        {"resetBSGroupLatencyStats",
+         &TPartitionActor::HandleHttpInfo_ResetBSGroupLatencyStats},
     }};
 
-    static const THttpHandlers getActions  {{
-        {"describe",           &TPartitionActor::HandleHttpInfo_Describe      },
-        {"view",               &TPartitionActor::HandleHttpInfo_View          }
+    static const THttpHandlers getActions{{
+        {"check", &TPartitionActor::HandleHttpInfo_Check},
+        {"describe", &TPartitionActor::HandleHttpInfo_Describe},
+        {"view", &TPartitionActor::HandleHttpInfo_View},
+        {"getTransactionsLatency",
+         &TPartitionActor::HandleHttpInfo_GetTransactionsLatency},
+        {"getGroupLatencies",
+         &TPartitionActor::HandleHttpInfo_GetGroupLatencies},
+        {"getTransactionsInflight",
+         &TPartitionActor::HandleHttpInfo_GetTransactionsInflight},
+        {"getBSGroupOperationsInflight",
+         &TPartitionActor::HandleHttpInfo_GetBSGroupOperationsInflight},
     }};
 
     const auto* msg = ev->Get();
@@ -290,34 +432,34 @@ void TPartitionActor::HandleHttpInfo(
         "HttpInfo",
         requestInfo->CallContext->RequestId);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] HTTP request: %s",
-        TabletID(),
-        msg->Query.Quote().data());
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s HTTP request: %s",
+        LogTitle.GetWithTime().c_str(),
+        msg->Query.Quote().c_str());
 
     if (State && State->IsLoadStateFinished()) {
         auto methodType = GetHttpMethodType(*msg);
         auto params = GatherHttpParameters(*msg);
         const auto& action = params.Get("action");
 
-        if (auto* handler = postActions.FindPtr(action))
-        {
+        if (auto* handler = postActions.FindPtr(action)) {
             if (methodType != HTTP_METHOD_POST) {
                 RejectHttpRequest(ctx, *requestInfo, "Wrong HTTP method");
                 return;
             }
 
-            std::invoke(*handler, this, ctx, params, std::move(requestInfo));
+            std::invoke(*handler, this, ctx, params, requestInfo);
             return;
         }
 
-        if (auto* handler = getActions.FindPtr(action))
-        {
-            std::invoke(*handler, this, ctx, params, std::move(requestInfo));
+        if (auto* handler = getActions.FindPtr(action)) {
+            std::invoke(*handler, this, ctx, params, requestInfo);
             return;
         }
 
-        HandleHttpInfo_Default(ctx, params, std::move(requestInfo));
+        HandleHttpInfo_Default(ctx, params, requestInfo);
         return;
     }
 
@@ -345,6 +487,8 @@ void TPartitionActor::HandleHttpInfo_Default(
 
     TStringStream out;
     HTML(out) {
+        AddLatencyCSS(out);
+
         DIV_CLASS_ID("container-fluid", "tabs") {
             BuildPartitionTabs(out);
 
@@ -365,7 +509,7 @@ void TPartitionActor::HandleHttpInfo_Default(
                     State->DumpHtml(out);
 
                     TAG(TH3) { out << "Partition Statistics"; }
-                    DumpPartitionStats(out, State->GetConfig(), State->GetStats(), State->GetFreshBlockCount());
+                    DumpPartitionStats(out, State->GetConfig(), State->GetStats(), State->GetUnflushedFreshBlocksCount());
 
                     TAG(TH3) { out << "Partition Counters"; }
                     DumpPartitionCounters(out, State->GetStats());
@@ -380,6 +524,10 @@ void TPartitionActor::HandleHttpInfo_Default(
                                 TABLED() { out << "Executor Reject Probability"; }
                                 TABLED() { out << Executor()->GetRejectProbability(); }
                             }
+                            TABLER() {
+                                TABLED() { out << "Write and zero requests in progress"; }
+                                TABLED() { out << SharedState->WriteAndZeroRequestsInProgress.load(); }
+                            }
                         }
                     }
                 }
@@ -391,9 +539,11 @@ void TPartitionActor::HandleHttpInfo_Default(
 
                     DumpCheckpoints(
                         out,
-                        State->GetFreshBlockCount(),
+                        *Info(),
+                        State->GetUnflushedFreshBlocksCount(),
                         State->GetBlockSize(),
-                        State->GetCheckpoints().Get());
+                        State->GetCheckpoints().Get(),
+                        State->GetCheckpoints().GetMapping());
 
                     TAG(TH3) {
                         if (!State->IsForcedCompactionRunning()) {
@@ -410,6 +560,10 @@ void TPartitionActor::HandleHttpInfo_Default(
                         out << "</div>";
                     }
 
+                    TAG(TH3) {
+                        out << "ByScore";
+                    }
+
                     DumpCompactionMap(
                         out,
                         *Info(),
@@ -417,14 +571,35 @@ void TPartitionActor::HandleHttpInfo_Default(
                         State->GetCompactionMap().GetRangeSize()
                     );
 
-                    TAG(TH3) { out << "GarbageQueue"; }
-                    DumpGarbageQueue(
+                    TAG(TH3) {
+                        out << "ByGarbageScore";
+                    }
+
+                    DumpCompactionMap(
                         out,
                         *Info(),
-                        State->GetBlobs().GetTopGarbage(
-                            10,
-                            Max<size_t>()
-                        ).BlobCounters
+                        State->GetCompactionMap().GetTopByGarbageBlockCount(10),
+                        State->GetCompactionMap().GetRangeSize()
+                    );
+
+                    TAG(TH3) {
+                        out << "CompactionScoreHistory";
+                    }
+
+                    DumpCompactionScoreHistory(
+                        out,
+                        State->GetCompactionScoreHistory()
+                    );
+
+                    DumpCleanupQueue(out, *Info(), State->GetCleanupQueue());
+
+                    TAG(TH3) {
+                        out << "CleanupScoreHistory";
+                    }
+
+                    DumpCleanupScoreHistory(
+                        out,
+                        State->GetCleanupScoreHistory()
                     );
 
                     TAG(TH3) { out << "NewBlobs"; }
@@ -450,22 +625,50 @@ void TPartitionActor::HandleHttpInfo_Default(
                     DumpBlobs(out, *Info(), State->GetGarbageQueue().GetGarbageBlobs());
 
                     TAG(TH3) {
-                        if (!State->IsForcedCleanupRunning()) {
-                            BuildMenuButton(out, "cleanup-all");
-                        }
-                        out << "CleanupQueue";
+                        BuildMenuButton(out, "metadata-rebuild");
+                        out << "Rebuild metadata";
                     }
 
-                    if (State->IsForcedCleanupRunning()) {
-                        DumpCleanupInfo(out, State->GetForcedCleanupState());
+                    if (State->IsMetadataRebuildStarted()) {
+                        const auto progress = State->GetMetadataRebuildProgress();
+                        DumpMetadataRebuildInfo(out, progress.Processed, progress.Total);
                     } else {
-                        out << "<div class='collapse form-group' id='cleanup-all'>";
-                        BuildForceCleanupButton(out, TabletID());
+                        out << "<div class='collapse form-group' id='metadata-rebuild'>";
+                        for (const auto rangesPerBatch : {1, 10, 100}) {
+                            BuildRebuildMetadataButton(out, TabletID(), rangesPerBatch);
+                        }
+                        out << "</div>";
+                    }
+
+                    TAG(TH3) {
+                        BuildMenuButton(out, "scan-disk");
+                        out << "Scan disk";
+                    }
+
+                    if (State->IsScanDiskStarted()) {
+                        const auto progress = State->GetScanDiskProgress();
+                        DumpScanDiskInfo(
+                            out,
+                            progress.ProcessedBlobs,
+                            progress.TotalBlobs);
+                    } else {
+                        out << "<div class='collapse form-group' id='scan-disk'>";
+                        for (const auto blobsPerBatch : {1, 10, 100}) {
+                            BuildScanDiskButton(out, TabletID(), blobsPerBatch);
+                        }
                         out << "</div>";
                     }
                 }
 
                 DIV_CLASS_ID("tab-pane", "Channels") {
+                    DumpDownGroups(
+                        out,
+                        ctx.Now(),
+                        *State,
+                        *Info(),
+                        *DiagnosticsConfig,
+                        SharedState->GroupDowntimes);
+
                     TAG(TH3) {
                         BuildMenuButton(out, "reassign-all");
                         out << "Channels";
@@ -484,8 +687,25 @@ void TPartitionActor::HandleHttpInfo_Default(
                         GetHiveTabletId(Config, ctx));
                 }
 
+                DIV_CLASS_ID("tab-pane", "Latency") {
+                    DumpLatency(
+                        out,
+                        Info()->TabletID,
+                        TransactionTimeTracker,
+                        8   // columnCount
+                    );
+                }
+
                 DIV_CLASS_ID("tab-pane", "Index") {
                     DumpDescribeHeader(out, *Info());
+                    DumpCheckHeader(out, *Info());
+                }
+
+                DIV_CLASS_ID("tab-pane", "BSGroupLatency"){
+                    DumpGroupLatencyTab(
+                        out,
+                        Info()->TabletID,
+                        BSGroupOperationTimeTracker);
                 }
             }
         }
@@ -494,8 +714,7 @@ void TPartitionActor::HandleHttpInfo_Default(
         GenerateBlobviewJS(out);
         GenerateActionsJS(out);
     }
-
-    SendHttpResponse(ctx, *requestInfo, std::move(out.Str()));
+    SendHttpResponse(ctx, *requestInfo, out.Str());
 }
 
 void TPartitionActor::RejectHttpRequest(
@@ -503,7 +722,12 @@ void TPartitionActor::RejectHttpRequest(
     TRequestInfo& requestInfo,
     TString message)
 {
-    LOG_ERROR_S(ctx, TBlockStoreComponents::PARTITION, message);
+    LOG_ERROR(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s %s",
+        LogTitle.GetWithTime().c_str(),
+        message.c_str());
 
     SendHttpResponse(ctx, requestInfo, std::move(message), EAlertLevel::DANGER);
 }

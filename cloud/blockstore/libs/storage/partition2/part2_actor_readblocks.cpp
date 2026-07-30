@@ -1,8 +1,12 @@
 #include "part2_actor.h"
 
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
+#include <cloud/blockstore/libs/diagnostics/profile_log.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/block_handler.h>
+#include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/libs/storage/partition_common/actor_describe_base_disk_blocks.h>
 
 #include <cloud/storage/core/libs/common/helpers.h>
 
@@ -17,10 +21,11 @@ namespace NCloud::NBlockStore::NStorage::NPartition2 {
 
 using namespace NActors;
 
+using namespace NBlobMarkers;
+
 using namespace NKikimr;
 using namespace NKikimr::NTabletFlatExecutor;
-
-using TBlockMarks = TVector<TTxPartition::TReadBlocks::TBlockMark>;
+using namespace NTabletFlatExecutor::NFlatExecutorSetup;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
@@ -71,6 +76,17 @@ void FillReadStats(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+ui64 GetCommitId(const NProto::TReadBlocksRequest& request)
+{
+    Y_UNUSED(request);
+    return 0;
+}
+
+ui64 GetCommitId(const NProto::TReadBlocksLocalRequest& request)
+{
+    return request.CommitId;
+}
 
 IReadBlocksHandlerPtr CreateReadHandler(
     const TBlockRange64& readRange,
@@ -171,6 +187,10 @@ void FillOperationCompleted(
     ui32 blocksCount,
     TVector<IProfileLog::TBlockInfo> blockInfos)
 {
+    operation.ExecCycles = requestInfo->GetExecCycles();
+    operation.TotalCycles = requestInfo->GetTotalCycles();
+    operation.CommitId = commitId;
+
     auto execTime = CyclesToDurationSafe(requestInfo->GetExecCycles());
     auto waitTime = CyclesToDurationSafe(requestInfo->GetWaitCycles());
 
@@ -179,10 +199,6 @@ void FillOperationCompleted(
     counters.SetBlocksCount(blocksCount);
     counters.SetExecTime(execTime.MicroSeconds());
     counters.SetWaitTime(waitTime.MicroSeconds());
-
-    operation.CommitId = commitId;
-    operation.ExecCycles = requestInfo->GetExecCycles();
-    operation.TotalCycles = requestInfo->GetTotalCycles();
 
     operation.AffectedBlockInfos = std::move(blockInfos);
 }
@@ -221,87 +237,85 @@ class TReadBlocksActor final
 public:
     struct TBatchRequest
     {
-        TLogoBlobID BlobId;
+        NKikimr::TLogoBlobID BlobId;
         TActorId Proxy;
         TVector<ui16> BlobOffsets;
-        TVector<ui64> Requests;
+        TVector<ui32> Checksums;
+        TVector<ui64> Requests; // block indices, ui64 needed for integration
+                                // with sglist-related code
         ui32 GroupId = 0;
 
         TBatchRequest() = default;
 
         TBatchRequest(
-                const TLogoBlobID& blobId,
+                const NKikimr::TLogoBlobID& blobId,
                 TActorId proxy,
                 TVector<ui16> blobOffsets,
+                TVector<ui32> checksums,
                 TVector<ui64> requests,
                 ui32 groupId)
             : BlobId(blobId)
             , Proxy(proxy)
             , BlobOffsets(std::move(blobOffsets))
+            , Checksums(std::move(checksums))
             , Requests(std::move(requests))
             , GroupId(groupId)
         {}
     };
 
 private:
+    const TString DiskId;
+
     const TRequestInfoPtr RequestInfo;
 
-    const ui32 CompactionRangeSize;
-    const ui32 BlockSize;
-    const TString BaseDiskId;
-    const TString BaseDiskCheckpointId;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
+    const ui32 BlockSize;
+    const ui32 CompactionRangeSize;
 
     const TActorId Tablet;
-    const ui64 CommitId;
-
-    const TMaybe<TBlockRange32> DescribeBlocksRange;
 
     const IReadBlocksHandlerPtr ReadHandler;
     const TBlockRange32 ReadRange;
     const bool ReplyLocal;
+    const bool ChecksumsEnabled;
     const bool ReportBlobIdsOnFailure;
 
-    TBlockMarks BlockMarks;
+    const ui64 CommitId;
+
+    TVector<TCallContextPtr> ForkedCallContexts;
 
     TReadBlocksRequests OwnRequests;
     TStackVec<TRangeReadStats, 2> ReadStats;
     TVector<IProfileLog::TBlockInfo> BlockInfos;
-
     TVector<TBatchRequest> BatchRequests;
     size_t RequestsScheduled = 0;
     size_t RequestsCompleted = 0;
 
-    bool DescribeBlocksInProgress = false;
+    bool WaitBaseDiskRequests = false;
 
-    TVector<TCallContextPtr> ForkedCallContexts;
     TVector<TString> FailedBlobs;
 
 public:
     TReadBlocksActor(
+        TString diskId,
         TRequestInfoPtr requestInfo,
-        ui32 compactionRangeSize,
-        ui32 blockSize,
-        const TString& baseDiskId,
-        const TString& baseDiskCheckpointId,
         IBlockDigestGeneratorPtr blockDigestGenerator,
+        ui32 blockSize,
+        ui32 compactionRangeSize,
         const TActorId& tablet,
-        ui64 commitId,
-        const TMaybe<TBlockRange32>& describeBlocksRange,
         IReadBlocksHandlerPtr readHandler,
         const TBlockRange32& readRange,
         bool replyLocal,
+        bool checksumsEnabled,
         bool reportBlobIdsOnFailure,
-        TBlockMarks blockMarks,
+        ui64 commitId,
         TReadBlocksRequests ownRequests,
-        TVector<IProfileLog::TBlockInfo> blockInfos);
+        TVector<IProfileLog::TBlockInfo> blockInfos,
+        bool waitBaseDiskRequests);
 
     void Bootstrap(const TActorContext& ctx);
 
 private:
-    void DescribeBlocks(const TActorContext& ctx);
-    TMaybe<TReadBlocksRequests> ProcessDescribeBlocksResponse(
-        const TEvVolume::TEvDescribeBlocksResponse& response);
     void ReadBlocks(
         const TActorContext& ctx,
         TReadBlocksRequests requests,
@@ -323,15 +337,20 @@ private:
         IEventBasePtr response,
         const NProto::TError& error);
 
+    bool VerifyChecksums(
+        const TActorContext& ctx,
+        const TVector<ui32>& actualChecksums,
+        const TBatchRequest& batch);
+
 private:
     STFUNC(StateWork);
 
-    void HandleDescribeBlocksResponse(
-        const TEvVolume::TEvDescribeBlocksResponse::TPtr& ev,
-        const TActorContext& ctx);
-
     void HandleReadBlobResponse(
         const TEvPartitionCommonPrivate::TEvReadBlobResponse::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandleDescribeBlocksCompleted(
+        const TEvPartitionCommonPrivate::TEvDescribeBlocksCompleted::TPtr& ev,
         const TActorContext& ctx);
 
     void HandlePoisonPill(
@@ -342,38 +361,36 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TReadBlocksActor::TReadBlocksActor(
+        TString diskId,
         TRequestInfoPtr requestInfo,
-        ui32 compactionRangeSize,
-        ui32 blockSize,
-        const TString& baseDiskId,
-        const TString& baseDiskCheckpointId,
         IBlockDigestGeneratorPtr blockDigestGenerator,
+        ui32 blockSize,
+        ui32 compactionRangeSize,
         const TActorId& tablet,
-        ui64 commitId,
-        const TMaybe<TBlockRange32>& describeBlocksRange,
         IReadBlocksHandlerPtr readHandler,
         const TBlockRange32& readRange,
         bool replyLocal,
+        bool checksumsEnabled,
         bool reportBlobIdsOnFailure,
-        TBlockMarks blockMarks,
+        ui64 commitId,
         TReadBlocksRequests ownRequests,
-        TVector<IProfileLog::TBlockInfo> blockInfos)
-    : RequestInfo(std::move(requestInfo))
-    , CompactionRangeSize(compactionRangeSize)
+        TVector<IProfileLog::TBlockInfo> blockInfos,
+        bool waitBaseDiskRequests)
+    : DiskId(std::move(diskId))
+    , RequestInfo(std::move(requestInfo))
+    , BlockDigestGenerator(blockDigestGenerator)
     , BlockSize(blockSize)
-    , BaseDiskId(baseDiskId)
-    , BaseDiskCheckpointId(baseDiskCheckpointId)
-    , BlockDigestGenerator(std::move(blockDigestGenerator))
+    , CompactionRangeSize(compactionRangeSize)
     , Tablet(tablet)
-    , CommitId(commitId)
-    , DescribeBlocksRange(describeBlocksRange)
     , ReadHandler(std::move(readHandler))
     , ReadRange(readRange)
     , ReplyLocal(replyLocal)
+    , ChecksumsEnabled(checksumsEnabled)
     , ReportBlobIdsOnFailure(reportBlobIdsOnFailure)
-    , BlockMarks(std::move(blockMarks))
+    , CommitId(commitId)
     , OwnRequests(std::move(ownRequests))
     , BlockInfos(std::move(blockInfos))
+    , WaitBaseDiskRequests(waitBaseDiskRequests)
 {}
 
 void TReadBlocksActor::Bootstrap(const TActorContext& ctx)
@@ -388,102 +405,9 @@ void TReadBlocksActor::Bootstrap(const TActorContext& ctx)
         "ReadBlocks",
         RequestInfo->CallContext->RequestId);
 
-    if (DescribeBlocksRange.Defined()) {
-        DescribeBlocks(ctx);
-    }
-
     Sort(OwnRequests, TCompareByBlobIdAndOffset());
     FillReadStats(OwnRequests, CompactionRangeSize, &ReadStats);
     ReadBlocks(ctx, std::move(OwnRequests), false);
-}
-
-void TReadBlocksActor::DescribeBlocks(const TActorContext& ctx)
-{
-    Y_DEBUG_ABORT_UNLESS(DescribeBlocksRange);
-    Y_DEBUG_ABORT_UNLESS(DescribeBlocksRange->Size());
-    Y_DEBUG_ABORT_UNLESS(BaseDiskId);
-    Y_DEBUG_ABORT_UNLESS(BaseDiskCheckpointId);
-    Y_DEBUG_ABORT_UNLESS(ReadRange.Size());
-    Y_DEBUG_ABORT_UNLESS(BlockMarks.size() == ReadRange.Size());
-    Y_DEBUG_ABORT_UNLESS(ReadRange.Contains(*DescribeBlocksRange));
-
-    DescribeBlocksInProgress = true;
-
-    auto request = std::make_unique<TEvVolume::TEvDescribeBlocksRequest>();
-
-    request->Record.SetStartIndex(DescribeBlocksRange->Start);
-    request->Record.SetBlocksCount(DescribeBlocksRange->Size());
-    request->Record.SetDiskId(BaseDiskId);
-    request->Record.SetCheckpointId(BaseDiskCheckpointId);
-
-    const auto blockCountToRead = CountIf(
-        BlockMarks,
-        [] (const auto& m) {
-            return m.Empty;
-        }
-    );
-    request->Record.SetBlocksCountToRead(blockCountToRead);
-
-    auto self = SelfId();
-
-    TAutoPtr<IEventHandle> event = new IEventHandle(
-        MakeVolumeProxyServiceId(),
-        self,
-        request.release());
-
-    ctx.Send(event);
-}
-
-TMaybe<TReadBlocksRequests> TReadBlocksActor::ProcessDescribeBlocksResponse(
-    const TEvVolume::TEvDescribeBlocksResponse& response)
-{
-    Y_ABORT_UNLESS(DescribeBlocksRange);
-
-    auto& handler = *ReadHandler;
-    const auto& record = response.Record;
-
-    for (const auto& r : record.GetFreshBlockRanges()) {
-        for (size_t i = 0; i < r.GetBlocksCount(); ++i) {
-            const auto blockIndex = r.GetStartIndex() + i;
-            Y_ABORT_UNLESS(DescribeBlocksRange->Contains(blockIndex));
-            auto& mark = BlockMarks[blockIndex - ReadRange.Start];
-
-            if (mark.Empty) {
-                TBlockDataRef blockContent(
-                    r.GetBlocksContent().data() + i * BlockSize,
-                    BlockSize);
-                if (!handler.SetBlock(blockIndex, blockContent, true)) {
-                    return {};
-                }
-            }
-        }
-    }
-
-    TReadBlocksRequests requests;
-
-    for (const auto& p : record.GetBlobPieces()) {
-        const auto& blobId = LogoBlobIDFromLogoBlobID(p.GetBlobId());
-        const auto group = p.GetBSGroupId();
-
-        for (const auto& r : p.GetRanges()) {
-            for (size_t i = 0; i < r.GetBlocksCount(); ++i) {
-                const auto blockIndex = r.GetBlockIndex() + i;
-                Y_ABORT_UNLESS(DescribeBlocksRange->Contains(blockIndex));
-                auto& mark = BlockMarks[blockIndex - ReadRange.Start];
-
-                if (mark.Empty) {
-                    requests.emplace_back(
-                        blobId,
-                        MakeBlobStorageProxyID(group),
-                        r.GetBlobOffset() + i,
-                        blockIndex,
-                        group);
-                }
-            }
-        }
-    }
-
-    return requests;
 }
 
 void TReadBlocksActor::ReadBlocks(
@@ -499,23 +423,25 @@ void TReadBlocksActor::ReadBlocks(
     ));
 
     TBatchRequest current;
-    for (auto& req: requests) {
-        if (current.BlobId != req.BlobId) {
+    for (auto& r: requests) {
+        if (current.BlobId != r.BlobId) {
             if (current.BlobOffsets) {
                 BatchRequests.emplace_back(
                     current.BlobId,
                     current.Proxy,
                     std::move(current.BlobOffsets),
+                    std::move(current.Checksums),
                     std::move(current.Requests),
                     current.GroupId);
             }
-            current.GroupId = req.GroupId;
-            current.BlobId = req.BlobId;
-            current.Proxy = req.BSProxy;
+            current.BlobId = r.BlobId;
+            current.Proxy = r.BSProxy;
+            current.GroupId = r.GroupId;
         }
 
-        current.BlobOffsets.push_back(req.BlobOffset);
-        current.Requests.push_back(req.BlockIndex);
+        current.BlobOffsets.push_back(r.BlobOffset);
+        current.Checksums.push_back(r.BlockChecksum);
+        current.Requests.push_back(r.BlockIndex);
     }
 
     if (current.BlobOffsets) {
@@ -523,6 +449,7 @@ void TReadBlocksActor::ReadBlocks(
             current.BlobId,
             current.Proxy,
             std::move(current.BlobOffsets),
+            std::move(current.Checksums),
             std::move(current.Requests),
             current.GroupId);
     }
@@ -534,17 +461,15 @@ void TReadBlocksActor::ReadBlocks(
 
         RequestsScheduled += batch.Requests.size();
 
-        auto request =
-            std::make_unique<TEvPartitionCommonPrivate::TEvReadBlobRequest>(
-                batch.BlobId,
-                batch.Proxy,
-                std::move(batch.BlobOffsets),
-                ReadHandler->GetGuardedSgList(batch.Requests, baseDisk),
-                batch.GroupId,
-                false,             // async
-                TInstant::Max(),   // deadline
-                false              // shouldCalculateChecksums
-            );
+        auto request = std::make_unique<TEvPartitionCommonPrivate::TEvReadBlobRequest>(
+            batch.BlobId,
+            batch.Proxy,
+            batch.BlobOffsets,
+            ReadHandler->GetGuardedSgList(batch.Requests, baseDisk),
+            batch.GroupId,
+            false,           // async
+            TInstant::Max(), // deadline
+            ChecksumsEnabled);
 
         if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
             LWTRACK(
@@ -569,13 +494,15 @@ void TReadBlocksActor::NotifyCompleted(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    auto request = std::make_unique<TEvPartitionPrivate::TEvReadBlocksCompleted>(error);
+    auto request =
+        std::make_unique<TEvPartitionPrivate::TEvReadBlocksCompleted>(error);
     FillOperationCompleted(
         *request,
         RequestInfo,
         CommitId,
         RequestsCompleted,
-        std::move(BlockInfos));
+        std::move(BlockInfos)
+    );
     request->ReadStats = ReadStats;
 
     NCloud::Send(ctx, Tablet, std::move(request));
@@ -592,8 +519,9 @@ bool TReadBlocksActor::HandleError(
 
     if (ReportBlobIdsOnFailure && ReplyLocal) {
         FailedBlobs.emplace_back(batch.BlobId.ToString());
+
         // check range should try to read all the data and report broken blobs
-        if (RequestsCompleted < RequestsScheduled || DescribeBlocksInProgress) {
+        if (RequestsCompleted < RequestsScheduled || WaitBaseDiskRequests) {
             return false;
         }
     }
@@ -637,48 +565,37 @@ void TReadBlocksActor::ReplyAndDie(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TReadBlocksActor::HandleDescribeBlocksResponse(
-    const TEvVolume::TEvDescribeBlocksResponse::TPtr& ev,
-    const TActorContext& ctx)
+bool TReadBlocksActor::VerifyChecksums(
+    const TActorContext& ctx,
+    const TVector<ui32>& actualChecksums,
+    const TBatchRequest& batch)
 {
-    DescribeBlocksInProgress = false;
+    const auto n = Min(batch.Requests.size(), actualChecksums.size());
+    for (ui32 i = 0; i < n; ++i) {
+        auto error = VerifyBlockChecksum(
+            actualChecksums[i],
+            batch.BlobId,
+            batch.Requests[i],
+            batch.BlobOffsets[i],
+            batch.Checksums[i],
+            DiskId);
 
-    const auto* msg = ev->Get();
-
-    if (HandleError(ctx, msg->GetError())) {
-        return;
-    }
-
-    auto requests = ProcessDescribeBlocksResponse(msg->Record);
-    if (!requests) {
-        HandleError(ctx, MakeError(E_REJECTED, "DescribeBlocks response processing failed"));
-        return;
-    }
-
-    if (requests->empty()) {
-        if (RequestsCompleted == RequestsScheduled) {
-            auto response = CreateReadBlocksResponse(
-                ReadRange,
-                *BlockDigestGenerator,
-                BlockSize,
-                ReplyLocal,
-                BlockInfos,
-                *ReadHandler
-            );
-            ReplyAndDie(ctx, std::move(response), {});
+        if (HasError(error)) {
+            HandleError(ctx, error);
+            return false;
         }
-        return;
     }
 
-    Sort(*requests, TCompareByBlobIdAndOffset());
-    ReadBlocks(ctx, std::move(*requests), true);
+    return true;
 }
+
+////////////////////////////////////////////////////////////////////////////////
 
 void TReadBlocksActor::HandleReadBlobResponse(
     const TEvPartitionCommonPrivate::TEvReadBlobResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    const auto* msg = ev->Get();
+    auto* msg = ev->Get();
 
     RequestInfo->AddExecCycles(msg->ExecCycles);
 
@@ -689,8 +606,13 @@ void TReadBlocksActor::HandleReadBlobResponse(
 
     RequestsCompleted += batch.Requests.size();
     Y_ABORT_UNLESS(RequestsCompleted <= RequestsScheduled);
+
     const auto& error = msg->GetError();
     if (HandleError(ctx, error, batch)) {
+        return;
+    }
+
+    if (!VerifyChecksums(ctx, msg->BlockChecksums, batch)) {
         return;
     }
 
@@ -698,7 +620,7 @@ void TReadBlocksActor::HandleReadBlobResponse(
         return;
     }
 
-    if (DescribeBlocksInProgress) {
+    if (WaitBaseDiskRequests) {
         return;
     }
 
@@ -715,6 +637,59 @@ void TReadBlocksActor::HandleReadBlobResponse(
         *ReadHandler
     );
     ReplyAndDie(ctx, std::move(response), {});
+}
+
+void TReadBlocksActor::HandleDescribeBlocksCompleted(
+    const TEvPartitionCommonPrivate::TEvDescribeBlocksCompleted::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+    const auto& error = msg->GetError();
+
+    if (HandleError(ctx, error)) {
+        return;
+    }
+
+    WaitBaseDiskRequests = false;
+
+    TReadBlocksRequests requests;
+    for (auto&& blockMark: std::move(msg->BlockMarks)) {
+        if (std::holds_alternative<TFreshMarkOnBaseDisk>(blockMark)) {
+            auto& value = std::get<TFreshMarkOnBaseDisk>(blockMark);
+            ReadHandler->SetBlock(
+                value.BlockIndex,
+                std::move(value.RefToData),
+                true);
+        }
+        if (std::holds_alternative<TBlobMarkOnBaseDisk>(blockMark)) {
+            auto& value = std::get<TBlobMarkOnBaseDisk>(blockMark);
+            requests.emplace_back(
+                value.BlobId,
+                MakeBlobStorageProxyID(value.BSGroupId),
+                value.BlobOffset,
+                value.BlockIndex,
+                value.BSGroupId,
+                0 /* checksum */);
+        }
+    }
+
+    if (requests.empty()) {
+        if (RequestsCompleted == RequestsScheduled) {
+            auto response = CreateReadBlocksResponse(
+                ReadRange,
+                *BlockDigestGenerator,
+                BlockSize,
+                ReplyLocal,
+                BlockInfos,
+                *ReadHandler
+            );
+            ReplyAndDie(ctx, std::move(response), {});
+        }
+        return;
+    }
+
+    Sort(requests, TCompareByBlobIdAndOffset());
+    ReadBlocks(ctx, std::move(requests), true);
 }
 
 void TReadBlocksActor::HandlePoisonPill(
@@ -736,9 +711,10 @@ STFUNC(TReadBlocksActor::StateWork)
 
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
-
-        HFunc(TEvVolume::TEvDescribeBlocksResponse, HandleDescribeBlocksResponse);
-        HFunc(TEvPartitionCommonPrivate::TEvReadBlobResponse, HandleReadBlobResponse);
+        HFunc(TEvPartitionCommonPrivate::TEvReadBlobResponse,
+            HandleReadBlobResponse);
+        HFunc(TEvPartitionCommonPrivate::TEvDescribeBlocksCompleted,
+            HandleDescribeBlocksCompleted);
 
         default:
             HandleUnexpectedEvent(
@@ -752,8 +728,9 @@ STFUNC(TReadBlocksActor::StateWork)
 ////////////////////////////////////////////////////////////////////////////////
 
 class TReadBlocksVisitor final
-    : public IFreshBlockVisitor
-    , public IMergedBlockVisitor
+    : public IFreshBlocksIndexVisitor
+    , public IBlocksIndexVisitor
+    , public IMixedBlocksIndexVisitor
 {
 private:
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
@@ -767,119 +744,118 @@ public:
             ui32 blockSize,
             TTabletStorageInfo& tabletInfo,
             TTxPartition::TReadBlocks& args)
-        : BlockDigestGenerator(blockDigestGenerator)
+        : BlockDigestGenerator(std::move(blockDigestGenerator))
         , BlockSize(blockSize)
         , TabletInfo(tabletInfo)
         , Args(args)
     {}
 
-    void Visit(
-        const TBlock& block,
-        TStringBuf blockContent,
-        const TPartialBlobId& blobId) override
+    bool Visit(const TFreshBlock& block) override
     {
-        Y_UNUSED(blobId);
+        if (Args.Interrupted) {
+            return false;
+        }
 
-        if (AddBlock(block, {}, 0, 0)) {
+        if (Args.MarkBlock(block.Meta.BlockIndex, block.Meta.CommitId, TFreshMark())) {
             TBlockDataRef blockData = TBlockDataRef::CreateZeroBlock(BlockSize);
-            if (!blockContent.empty()) {
-                blockData = TBlockDataRef(blockContent.data(), blockContent.size());
+            if (!block.Content.empty()) {
+                blockData = TBlockDataRef(block.Content.data(), block.Content.size());
             }
-            Args.ReadHandler->SetBlock(
-                block.BlockIndex,
-                blockData,
-                false);
+            if (!Args.ReadHandler->SetBlock(
+                    block.Meta.BlockIndex,
+                    blockData,
+                    false))
+            {
+                Args.Interrupted = true;
+                return false;
+            }
 
             const auto digest = BlockDigestGenerator->ComputeDigest(
-                block.BlockIndex,
-                blockData);
+                block.Meta.BlockIndex,
+                blockData
+            );
 
             if (digest.Defined()) {
-                Args.BlockInfos.push_back({block.BlockIndex, *digest});
+                Args.BlockInfos.push_back({block.Meta.BlockIndex, *digest});
             }
         }
+
+        return true;
     }
 
-    void Visit(
-        const TBlock& block,
+    bool Visit(
+        ui32 blockIndex,
+        ui64 commitId,
         const TPartialBlobId& blobId,
         ui16 blobOffset) override
     {
-        TLogoBlobID logoBlobId;
-        ui32 group = 0;
+        if (Args.Interrupted) {
+            return false;
+        }
 
-        if (!block.Zeroed) {
-            Y_ABORT_UNLESS(!IsDeletionMarker(blobId));
-            logoBlobId = MakeBlobId(TabletInfo.TabletID, blobId);
-            group = TabletInfo.GroupFor(
+        TBlockMark blockMark = TZeroMark();
+
+        if (!IsDeletionMarker(blobId)) {
+            const auto group = TabletInfo.GroupFor(
                 blobId.Channel(), blobId.Generation());
-        } else {
-            Y_ABORT_UNLESS(blobOffset == ZeroBlobOffset);
+            const auto logoBlobId = MakeBlobId(TabletInfo.TabletID, blobId);
+            blockMark = TBlobMark(logoBlobId, group, blobOffset);
         }
 
-        if (AddBlock(block, logoBlobId, group, blobOffset)) {
-            // will read from BS later
-            Args.ReadHandler->SetBlock(block.BlockIndex, {}, false);
-            ++Args.BlocksToRead;
+        if (Args.MarkBlock(blockIndex, commitId, std::move(blockMark))) {
+            // Will read from BS later.
+            if (!Args.ReadHandler->SetBlock(blockIndex, {}, false)) {
+                Args.Interrupted = true;
+                return false;
+            }
         }
+
+        return true;
     }
 
-private:
-    bool AddBlock(
-        const TBlock& block,
-        const TLogoBlobID& blobId,
-        ui32 group,
-        ui16 blobOffset)
+    bool VisitBlock(
+        ui32 blockIndex,
+        ui64 commitId,
+        const TPartialBlobId& blobId,
+        ui16 blobOffset,
+        ui8 compactionRangeCount) override
     {
-        Y_ABORT_UNLESS(block.MinCommitId <= Args.CommitId
-              && block.MaxCommitId > Args.CommitId);
+        Y_UNUSED(compactionRangeCount);
 
-        Y_ABORT_UNLESS(Args.ReadRange.Contains(block.BlockIndex));
-        auto& mark = Args.Blocks[block.BlockIndex - Args.ReadRange.Start];
-
-        // merge different versions
-        if (mark.MinCommitId < block.MinCommitId) {
-            mark.MinCommitId = block.MinCommitId;
-            mark.MaxCommitId = block.MaxCommitId;
-            mark.BlobId = blobId;
-            mark.BSGroupId = group;
-            mark.BlobOffset = blobOffset;
-            mark.Empty = false;
-            return true;
-        }
-
-        return false;
+        return Visit(blockIndex, commitId, blobId, blobOffset);
     }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TMaybe<TBlockRange32> ComputeDescribeBlocksRange(
+TMaybe<TBlockRange64> ComputeDescribeBlocksRange(
     const TBlockRange32& readRange,
-    const TBlockMarks& blocks)
+    const TBlockMarks& marks)
 {
-    Y_DEBUG_ABORT_UNLESS(readRange.Size() == blocks.size());
+    Y_DEBUG_ABORT_UNLESS(readRange.Size() == marks.size());
 
-    const auto firstEmptyIt = FindIf(blocks, [](const auto& b) { return b.Empty; });
-    if (firstEmptyIt == blocks.end()) {
+    const auto empty = [] (const auto& mark) {
+        return std::holds_alternative<TEmptyMark>(mark);
+    };
+
+    const auto firstEmptyIter = FindIf(marks, empty);
+
+    if (firstEmptyIter == marks.end()) {
         return {};
     }
 
-    const auto firstEmptyIndex = std::distance(blocks.begin(), firstEmptyIt);
-    const auto firstEmptyBlockIndex = readRange.Start + firstEmptyIndex;
+    const auto lastEmptyReverseIter =
+        FindIf(marks.rbegin(), marks.rend(), empty);
+    const auto lastEmptyIndexFromEnd = lastEmptyReverseIter - marks.rbegin();
+    const auto lastEmptyIndexFromBegin =
+        marks.size() - 1 - lastEmptyIndexFromEnd;
 
-    const auto lastEmptyRit = FindIf(
-        blocks.rbegin(),
-        blocks.rend(),
-        [](const auto& b) {
-            return b.Empty;
-        }
-    );
-    const auto lastEmptyIndexFromEnd = std::distance(blocks.rbegin(), lastEmptyRit);
-    const auto lastEmptyIndex = blocks.size() - 1 - lastEmptyIndexFromEnd;
-    const auto lastEmptyBlockIndex = readRange.Start + lastEmptyIndex;
+    const auto startBlockIndex = readRange.Start;
+    const auto firstEmptyIndexFromBegin = firstEmptyIter - marks.begin();
+    const auto firstEmptyBlockIndex = startBlockIndex + firstEmptyIndexFromBegin;
+    const auto lastEmptyBlockIndex = startBlockIndex + lastEmptyIndexFromBegin;
 
-    return TBlockRange32::MakeClosedInterval(
+    return TBlockRange64::MakeClosedInterval(
         firstEmptyBlockIndex,
         lastEmptyBlockIndex);
 }
@@ -887,6 +863,15 @@ TMaybe<TBlockRange32> ComputeDescribeBlocksRange(
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
+
+void TPartitionActor::HandleDescribeBlocksCompleted(
+    const TEvPartitionCommonPrivate::TEvDescribeBlocksCompleted::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ctx);
+
+    Actors.Erase(ev->Sender);
+}
 
 void TPartitionActor::HandleReadBlocks(
     const TEvService::TEvReadBlocksRequest::TPtr& ev,
@@ -896,7 +881,7 @@ void TPartitionActor::HandleReadBlocks(
         ev,
         ctx,
         false,    // replyLocal
-        false);   // shouldReportBlobIdsOnFailure
+        false);   // shouldReportFailedRangesOnFailure
 }
 
 void TPartitionActor::HandleReadBlocksLocal(
@@ -919,7 +904,7 @@ void TPartitionActor::HandleReadBlocksRequest(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo<TEvService::TReadBlocksMethod>(
+    auto requestInfo = CreateRequestInfo<TMethod>(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
@@ -932,24 +917,6 @@ void TPartitionActor::HandleReadBlocksRequest(
         "ReadBlocks",
         requestInfo->CallContext->RequestId);
 
-    auto replyError = [=](const TActorContext& ctx,
-                          TRequestInfo& requestInfo,
-                          ui32 errorCode,
-                          TString errorReason,
-                          ui32 flags = 0)
-    {
-        auto response = std::make_unique<typename TMethod::TResponse>(
-            MakeError(errorCode, std::move(errorReason), flags));
-
-        LWTRACK(
-            ResponseSent_Partition,
-            requestInfo.CallContext->LWOrbit,
-            "ReadBlocks",
-            requestInfo.CallContext->RequestId);
-
-        NCloud::Reply(ctx, requestInfo, std::move(response));
-    };
-
     TBlockRange64 readRange;
 
     auto ok = InitReadWriteBlockRange(
@@ -959,32 +926,34 @@ void TPartitionActor::HandleReadBlocksRequest(
     );
 
     if (!ok) {
-        replyError(
-            ctx,
-            *requestInfo,
-            E_ARGUMENT,
-            TStringBuilder()
+        auto response = std::make_unique<typename TMethod::TResponse>(
+            MakeError(E_ARGUMENT, TStringBuilder()
                 << "invalid block range ["
                 << "index: " << msg->Record.GetStartIndex()
-                << ", count: " << msg->Record.GetBlocksCount() << "]");
+                << ", count: " << msg->Record.GetBlocksCount()
+                << "]"));
+
+        LWTRACK(
+            ResponseSent_Partition,
+            requestInfo->CallContext->LWOrbit,
+            "ReadBlocks",
+            requestInfo->CallContext->RequestId);
+
+        NCloud::Reply(ctx, *requestInfo, std::move(response));
         return;
     }
 
-    ui64 commitId = 0;
-    if (const auto& checkpointId = msg->Record.GetCheckpointId()) {
-        commitId = State->GetCheckpoints().GetCommitId(checkpointId);
-        if (!commitId) {
-            ui32 flags = 0;
-            SetProtoFlag(flags, NProto::EF_SILENT);
-            replyError(
-                ctx,
-                *requestInfo,
-                E_NOT_FOUND,
-                TStringBuilder()
-                    << "checkpoint not found: " << checkpointId.Quote(),
-                flags);
+    auto commitId = GetCommitId(msg->Record);
+
+    if (!commitId) {
+        auto result = VerifyReadBlocksCheckpoint(
+            ctx, msg->Record.GetCheckpointId(), *requestInfo, replyLocal);
+
+        if (!result.Defined()) {
             return;
         }
+
+        commitId = *result;
     }
 
     auto readHandler = CreateReadHandler(
@@ -1003,6 +972,42 @@ void TPartitionActor::HandleReadBlocksRequest(
         shouldReportBlobIdsOnFailure);
 }
 
+TMaybe<ui64> TPartitionActor::VerifyReadBlocksCheckpoint(
+    const TActorContext& ctx,
+    const TString& checkpointId,
+    TRequestInfo& requestInfo,
+    bool replyLocal)
+{
+    ui64 commitId = State->GetLastCommitId();
+
+    if (checkpointId) {
+        commitId = State->GetCheckpoints().GetCommitId(checkpointId, false);
+        if (!commitId) {
+            ui32 flags = 0;
+            SetProtoFlag(flags, NProto::EF_SILENT);
+            auto response = CreateReadBlocksResponse(
+                replyLocal,
+                MakeError(
+                    E_NOT_FOUND,
+                    TStringBuilder()
+                        << "checkpoint not found: " << checkpointId.Quote(),
+                    flags),
+                {});   // failedBlobs
+
+            LWTRACK(
+                ResponseSent_Partition,
+                requestInfo.CallContext->LWOrbit,
+                "ReadBlocks",
+                requestInfo.CallContext->RequestId);
+
+            NCloud::Reply(ctx, requestInfo, std::move(response));
+            return {};
+        }
+    }
+
+    return TMaybe<ui64>(commitId);
+}
+
 void TPartitionActor::ReadBlocks(
     const TActorContext& ctx,
     TRequestInfoPtr requestInfo,
@@ -1012,11 +1017,15 @@ void TPartitionActor::ReadBlocks(
     bool replyLocal,
     bool shouldReportBlobIdsOnFailure)
 {
-    LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Start read blocks @%lu (range: %s)",
-        TabletID(),
+    State->GetCleanupQueue().AcquireBarrier(commitId);
+
+    LOG_TRACE(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Start read blocks @%lu (range: %s)",
+        LogTitle.GetWithTime().c_str(),
         commitId,
-        DescribeRange(readRange).data());
+        DescribeRange(readRange).c_str());
 
     AddTransaction(*requestInfo, requestInfo->CancelRoutine);
 
@@ -1035,8 +1044,8 @@ void TPartitionActor::HandleReadBlocksCompleted(
     const TEvPartitionPrivate::TEvReadBlocksCompleted::TPtr& ev,
     const TActorContext& ctx)
 {
-    Actors.erase(ev->Sender);
-    State->ReleaseCollectBarrier(ev->Get()->CommitId);
+    Actors.Erase(ev->Sender);
+
     FinalizeReadBlocks(ctx, std::move(*ev->Get()));
 }
 
@@ -1052,14 +1061,18 @@ bool TPartitionActor::PrepareReadBlocks(
     TRequestScope timer(*args.RequestInfo);
     TPartitionDatabase db(tx.DB);
 
-    args.CommitId = args.CheckpointId;
-    if (!args.CommitId) {
-        // will read latest state
-        args.CommitId = State->GetLastCommitId();
+    ui64 commitId = args.CommitId;
+
+    if (State->OverlapsUnconfirmedBlobs(0, commitId, args.ReadRange)) {
+        args.Interrupted = true;
+        return true;
     }
 
-    if (!State->InitIndex(db, args.ReadRange)) {
-        return false;
+    // NOTE: we should also look in confirmed blobs because they are not added
+    // yet
+    if (State->OverlapsConfirmedBlobs(0, commitId, args.ReadRange)) {
+        args.Interrupted = true;
+        return true;
     }
 
     TReadBlocksVisitor visitor(
@@ -1068,9 +1081,51 @@ bool TPartitionActor::PrepareReadBlocks(
         *Info(),
         args
     );
-    State->FindFreshBlocks(args.CommitId, args.ReadRange, visitor);
+    State->FindFreshBlocks(visitor, args.ReadRange, commitId);
+    auto ready = db.FindMixedBlocks(
+        visitor,
+        args.ReadRange,
+        false,   // precharge
+        commitId);
+    ready &= db.FindMergedBlocks(
+        visitor,
+        args.ReadRange,
+        false,  // precharge
+        State->GetMaxBlocksInBlob(),
+        commitId
+    );
 
-    return State->FindMergedBlocks(db, args.CommitId, args.ReadRange, visitor);
+    const ui32 checksumBoundary =
+        Config->GetDiskPrefixLengthWithBlockChecksumsInBlobs()
+        / State->GetBlockSize();
+    args.ChecksumsEnabled = args.ReadRange.Start < checksumBoundary
+        && Config->GetCheckBlockChecksumsInBlobsUponRead();
+
+    if (args.ChecksumsEnabled) {
+        for (auto& mark: args.BlockMarks) {
+            if (!std::holds_alternative<TBlobMark>(mark)) {
+                continue;
+            }
+
+            const auto& value = std::get<TBlobMark>(mark);
+
+            TMaybe<NProto::TBlobMeta> meta;
+            auto blobId = MakePartialBlobId(value.BlobId);
+            if (db.ReadBlobMeta(blobId, meta)) {
+                Y_ABORT_UNLESS(meta.Defined(),
+                    "Could not read blob meta for blob: %s",
+                    ToString(value.BlobId).data());
+            } else {
+                ready = false;
+            }
+
+            if (ready) {
+                args.BlobId2Meta[blobId] = std::move(meta.GetRef());
+            }
+        }
+    }
+
+    return ready;
 }
 
 void TPartitionActor::ExecuteReadBlocks(
@@ -1088,57 +1143,119 @@ void TPartitionActor::CompleteReadBlocks(
     TTxPartition::TReadBlocks& args)
 {
     TRequestScope timer(*args.RequestInfo);
+
     RemoveTransaction(*args.RequestInfo);
 
-    TReadBlocksRequests requests(Reserve(args.BlocksToRead));
+    if (args.Interrupted) {
+        ui32 flags = 0;
+        SetProtoFlag(flags, NProto::EF_SILENT);
+        auto error = MakeError(
+            E_REJECTED,
+            "ReadBlocks transaction was interrupted",
+            flags);
+        auto response = CreateReadBlocksResponse(
+            args.ReplyLocal,
+            error,
+            {});   // failedBlobs
+
+        LWTRACK(
+            ResponseSent_Partition,
+            args.RequestInfo->CallContext->LWOrbit,
+            "ReadBlocks",
+            args.RequestInfo->CallContext->RequestId);
+
+        NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+
+        FinalizeReadBlocks(
+            ctx,
+            CreateOperationCompleted(
+                args.RequestInfo,
+                args.CommitId,
+                args.ReadRange.Size(),
+                {}
+            )
+        );
+        return;
+    }
+
+    TReadBlocksRequests requests(Reserve(args.BlockMarks.size()));
 
     ui32 blockIndex = args.ReadRange.Start;
-    for (const auto& mark: args.Blocks) {
-        if (mark.BlobId) {
+    for (const auto& mark: args.BlockMarks) {
+        if (std::holds_alternative<TBlobMark>(mark)) {
+            const auto& value = std::get<TBlobMark>(mark);
+
+            ui32 checksum = 0;
+
+            if (args.ChecksumsEnabled) {
+                const auto* meta =
+                    args.BlobId2Meta.FindPtr(MakePartialBlobId(value.BlobId));
+                Y_DEBUG_ABORT_UNLESS(meta);
+
+                if (meta && value.BlobOffset < meta->BlockChecksumsSize()) {
+                    checksum = meta->GetBlockChecksums(value.BlobOffset);
+                }
+            }
+
             requests.emplace_back(
-                mark.BlobId,
-                MakeBlobStorageProxyID(mark.BSGroupId),
-                mark.BlobOffset,
+                value.BlobId,
+                MakeBlobStorageProxyID(value.BSGroupId),
+                value.BlobOffset,
                 blockIndex,
-                mark.BSGroupId);
+                value.BSGroupId,
+                checksum);
         }
         ++blockIndex;
     }
 
-    TMaybe<TBlockRange32> describeBlocksRange;
+    TMaybe<TBlockRange64> describeBlocksRange;
 
     if (State->GetBaseDiskId()) {
-        describeBlocksRange = ComputeDescribeBlocksRange(args.ReadRange, args.Blocks);
+        describeBlocksRange =
+            ComputeDescribeBlocksRange(args.ReadRange, args.BlockMarks);
     }
 
     if (describeBlocksRange.Defined() || requests) {
-        State->AcquireCollectBarrier(args.CommitId);
-
-        TBlockMarks blocks;
-        if (describeBlocksRange.Defined()) {
-            blocks = std::move(args.Blocks);
-        }
-
-        auto actor = NCloud::Register<TReadBlocksActor>(
+        const auto readBlocksActorId = NCloud::Register<TReadBlocksActor>(
             ctx,
+            PartitionConfig.diskid(),
             args.RequestInfo,
-            State->GetCompactionMap().GetRangeSize(),
-            State->GetBlockSize(),
-            State->GetBaseDiskId(),
-            State->GetBaseDiskCheckpointId(),
             BlockDigestGenerator,
+            State->GetBlockSize(),
+            State->GetCompactionMap().GetRangeSize(),
             SelfId(),
-            args.CommitId,
-            describeBlocksRange,
             args.ReadHandler,
             args.ReadRange,
             args.ReplyLocal,
+            args.ChecksumsEnabled,
             args.ShouldReportBlobIdsOnFailure,
-            std::move(blocks),
+            args.CommitId,
             std::move(requests),
-            std::move(args.BlockInfos));
+            std::move(args.BlockInfos),
+            describeBlocksRange.Defined());
+        Actors.Insert(readBlocksActorId);
 
-        Actors.insert(actor);
+        if (describeBlocksRange.Defined()) {
+            auto requestInfo = CreateRequestInfo(
+                readBlocksActorId,
+                args.RequestInfo->Cookie,
+                args.RequestInfo->CallContext);
+
+            const auto describeBlocksActorId =
+                NCloud::Register<TDescribeBaseDiskBlocksActor>(
+                    ctx,
+                    requestInfo,
+                    State->GetBaseDiskId(),
+                    State->GetBaseDiskCheckpointId(),
+                    ConvertRangeSafe(args.ReadRange),
+                    *describeBlocksRange,
+                    std::move(args.BlockMarks),
+                    State->GetBlockSize(),
+                    SelfId());
+
+            Actors.Insert(describeBlocksActorId);
+        }
+
         return;
     }
 
@@ -1150,6 +1267,7 @@ void TPartitionActor::CompleteReadBlocks(
         args.BlockInfos,
         *args.ReadHandler
     );
+
     LWTRACK(
         ResponseSent_Partition,
         args.RequestInfo->CallContext->LWOrbit,
@@ -1173,27 +1291,42 @@ void TPartitionActor::FinalizeReadBlocks(
     const TActorContext& ctx,
     TEvPartitionPrivate::TReadBlocksCompleted operation)
 {
-    LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Complete read blocks @%lu",
-        TabletID(),
-        operation.CommitId);
+    ui64 commitId = operation.CommitId;
+    LOG_TRACE(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Finalizing ReadBlocks @%lu",
+        LogTitle.GetWithTime().c_str(),
+        commitId);
 
-    UpdateStats(operation.Stats);
+    const auto& stats = operation.Stats;
+    const auto& counters = stats.GetUserReadCounters();
+    const auto blocksCount = counters.GetBlocksCount();
 
-    ui64 blocksCount = operation.Stats.GetUserReadCounters().GetBlocksCount();
-    ui64 requestBytes = blocksCount * State->GetBlockSize();
+    UpdateStats(stats);
 
-    UpdateCPUUsageStat(ctx, operation.ExecCycles);
+    const ui64 requestBytes = State->GetBlockSize() * blocksCount;
+
+    UpdateCPUUsageStat(ctx.Now(), operation.ExecCycles);
+
+    State->GetCleanupQueue().ReleaseBarrier(commitId);
 
     auto time = CyclesToDurationSafe(operation.TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.ReadBlocks.AddRequest(time, requestBytes);
 
-    LogBlockInfos(
-        ctx,
-        EBlockStoreRequest::ReadBlocks,
-        std::move(operation.AffectedBlockInfos),
-        operation.CommitId
-    );
+    if (operation.AffectedBlockInfos) {
+        IProfileLog::TReadWriteRequestBlockInfos request;
+        request.RequestType = EBlockStoreRequest::ReadBlocks;
+        request.BlockInfos = std::move(operation.AffectedBlockInfos);
+        request.CommitId = commitId;
+
+        IProfileLog::TRecord record;
+        record.DiskId = State->GetConfig().GetDiskId();
+        record.Ts = ctx.Now();
+        record.Request = std::move(request);
+
+        ProfileLog->Write(std::move(record));
+    }
 
     for (const auto& stat: operation.ReadStats) {
         State->GetCompactionMap().RegisterRead(
@@ -1202,8 +1335,6 @@ void TPartitionActor::FinalizeReadBlocks(
             stat.BlockCount
         );
     }
-
-    EnqueueUpdateIndexStructuresIfNeeded(ctx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition2

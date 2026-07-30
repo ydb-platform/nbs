@@ -9,7 +9,7 @@
 
 #include <util/generic/size_literals.h>
 
-namespace NCloud::NBlockStore::NStorage::NPartition {
+namespace NCloud::NBlockStore::NStorage {
 
 namespace {
 
@@ -815,4 +815,4 @@ Y_UNIT_TEST_SUITE(TPartitionChannelsStateTest)
     }
 }
 
-}   // namespace NCloud::NBlockStore::NStorage::NPartition
+}   // namespace NCloud::NBlockStore::NStorage

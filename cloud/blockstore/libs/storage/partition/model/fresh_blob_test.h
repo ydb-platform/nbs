@@ -1,6 +1,6 @@
 #pragma once
 
-#include "fresh_blob.h"
+#include <cloud/blockstore/libs/storage/partition_common/model/fresh_blob.h>
 
 namespace NCloud::NBlockStore::NStorage::NPartition {
 

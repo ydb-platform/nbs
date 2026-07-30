@@ -1,4 +1,4 @@
-#include "barrier.h"
+#include <cloud/blockstore/libs/storage/partition_common/model/barrier.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 

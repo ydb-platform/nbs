@@ -4,15 +4,13 @@
 
 #include <contrib/ydb/core/base/logoblob.h>
 
-#include <library/cpp/cgiparam/cgiparam.h>
 #include <library/cpp/monlib/service/pages/templates.h>
 
+#include <library/cpp/cgiparam/cgiparam.h>
 #include <util/generic/string.h>
 #include <util/stream/str.h>
 
 namespace NCloud::NBlockStore::NStorage::NPartition2 {
-
-using namespace NCloud::NStorage;
 
 using namespace NKikimr;
 using namespace NKikimr::NTabletFlatExecutor;
@@ -26,8 +24,9 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 class TDescribeRangeVisitor final
-    : public IFreshBlockVisitor
-    , public IMergedBlockVisitor
+    : public IFreshBlocksIndexVisitor
+    , public IBlocksIndexVisitor
+    , public IMixedBlocksIndexVisitor
 {
 private:
     TTxPartition::TDescribeRange& Args;
@@ -37,40 +36,47 @@ public:
         : Args(args)
     {}
 
-    void Visit(
-        const TBlock& block,
-        TStringBuf blockContent,
-        const TPartialBlobId& blobId) override
+    bool Visit(const TFreshBlock& block) override
     {
-        Y_UNUSED(blockContent);
-        Y_UNUSED(blobId);
-        AddBlock(block, {}, 0);
+        Args.MarkBlock(
+            block.Meta.BlockIndex,
+            block.Meta.CommitId,
+            {},
+            block.Content ? 0 : InvalidBlobOffset
+        );
+
+        return true;
     }
 
-    void Visit(
-        const TBlock& block,
+    bool Visit(
+        ui32 blockIndex,
+        ui64 commitId,
         const TPartialBlobId& blobId,
         ui16 blobOffset) override
     {
-        AddBlock(block, blobId, blobOffset);
+        Args.MarkBlock(blockIndex, commitId, blobId, blobOffset);
+        return true;
     }
 
-private:
-    void AddBlock(
-        const TBlock& block,
+    bool VisitBlock(
+        ui32 blockIndex,
+        ui64 commitId,
         const TPartialBlobId& blobId,
-        ui16 blobOffset)
+        ui16 blobOffset,
+        ui8 compactionRangeCount) override
     {
-        Y_ABORT_UNLESS(Args.BlockRange.Contains(block.BlockIndex));
-        Args.Blocks.emplace_back(block, blobId, blobOffset);
+        Y_UNUSED(compactionRangeCount);
+
+        Args.MarkBlock(blockIndex, commitId, blobId, blobOffset);
+        return true;
     }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 class TDescribeBlobVisitor final
-    : public IFreshBlockVisitor
-    , public IMergedBlockVisitor
+    : public IFreshBlocksIndexVisitor
+    , public IExtendedBlocksIndexVisitor
 {
 private:
     TTxPartition::TDescribeBlob& Args;
@@ -80,25 +86,34 @@ public:
         : Args(args)
     {}
 
-    void Visit(
-        const TBlock& block,
-        TStringBuf blockContent,
-        const TPartialBlobId& blobId) override
+    bool Visit(const TFreshBlock& block) override
     {
-        Y_UNUSED(blockContent);
-        if (blobId == Args.BlobId) {
-            Args.Blocks.emplace_back(block, blobId, 0);
+        if (block.BlobId != Args.BlobId) {
+            return true;
         }
+
+        Args.MarkBlock(
+            block.Meta.BlockIndex,
+            block.Meta.CommitId,
+            0, // blobOffset
+            0  // checksum
+        );
+        return true;
     }
 
-    void Visit(
-        const TBlock& block,
+    bool Visit(
+        ui32 blockIndex,
+        ui64 commitId,
         const TPartialBlobId& blobId,
-        ui16 blobOffset) override
+        ui16 blobOffset,
+        ui32 checksum) override
     {
-        if (blobId == Args.BlobId) {
-            Args.Blocks.emplace_back(block, blobId, blobOffset);
+        if (blobId != Args.BlobId) {
+            return true;
         }
+
+        Args.MarkBlock(blockIndex, commitId, blobOffset, checksum);
+        return true;
     }
 };
 
@@ -113,17 +128,35 @@ bool TPartitionActor::PrepareDescribeRange(
 {
     Y_UNUSED(ctx);
 
+    TRequestScope timer(*args.RequestInfo);
     TPartitionDatabase db(tx.DB);
 
-    TDescribeRangeVisitor visitor(args);
+    bool ready = true;
 
-    if (!State->InitIndex(db, args.BlockRange)) {
-        return false;
+    TDescribeRangeVisitor visitor(args);
+    if (!args.BlockFilter || args.BlockFilter.find('f') != TString::npos) {
+        State->FindFreshBlocks(
+            visitor,
+            args.BlockRange,
+            /*maxCommitId=*/Max<ui64>());
+    }
+    if (!args.BlockFilter || args.BlockFilter.find('m') != TString::npos) {
+        ready &= db.FindMixedBlocks(
+            visitor,
+            args.BlockRange,
+            true    // precharge
+        );
+    }
+    if (!args.BlockFilter || args.BlockFilter.find('M') != TString::npos) {
+        ready &= db.FindMergedBlocks(
+            visitor,
+            args.BlockRange,
+            true,   // precharge
+            State->GetMaxBlocksInBlob()
+        );
     }
 
-    State->FindFreshBlocks(args.BlockRange, visitor);
-
-    return State->FindMergedBlocks(db, args.BlockRange, visitor);
+    return ready;
 }
 
 void TPartitionActor::ExecuteDescribeRange(
@@ -140,50 +173,119 @@ void TPartitionActor::CompleteDescribeRange(
     const TActorContext& ctx,
     TTxPartition::TDescribeRange& args)
 {
-    Sort(args.Blocks, [] (const auto& l, const auto& r) {
-        // order by (BlockIndex ASC, MinCommitId DESC, BlobOffset ASC)
-        return l.Block.BlockIndex < r.Block.BlockIndex
-            || (l.Block.BlockIndex == r.Block.BlockIndex
-            && (l.Block.MinCommitId > r.Block.MinCommitId
-            || (l.Block.MinCommitId == r.Block.MinCommitId
-            && l.BlobOffset < r.BlobOffset)));
-    });
+    using namespace NMonitoringUtils;
+
+    auto cmp = [] (
+        const TTxPartition::TDescribeRange::TBlockMark& l,
+        const TTxPartition::TDescribeRange::TBlockMark& r)
+    {
+        if (l.BlockIndex != r.BlockIndex) {
+            return l.BlockIndex < r.BlockIndex;
+        }
+
+        if (l.CommitId != r.CommitId) {
+            // last entries go first
+            return l.CommitId > r.CommitId;
+        }
+
+        return l.BlobOffset < r.BlobOffset;
+    };
+
+    Sort(args.BlockMarks, cmp);
 
     TStringStream out;
     DumpDefaultHeader(out, *Info(), SelfId().NodeId(), *DiagnosticsConfig);
     DumpDescribeHeader(out, *Info());
 
     HTML(out) {
+        const auto& cm = State->GetCompactionMap();
+        const auto groupStart =
+            cm.GetGroupStart(args.BlockRange.Start, State->GetBlockSize());
+
+        TABLE_CLASS("table table-condensed") {
+            TABLEBODY() {
+                TABLER() {
+                    TABLED() { out << "GroupStart"; }
+                    TABLED() {
+                        out << groupStart;
+                    }
+                }
+            }
+        }
+
+        auto outputStat = [&] (const auto& rangeStat, ui32 blockIndex) {
+            TABLE_CLASS("table table-condensed") {
+                TABLEBODY() {
+                    TABLER() {
+                        TABLED() { out << "BlockIndex"; }
+                        TABLED() {
+                            out << blockIndex;
+                        }
+                    }
+                    TABLER() {
+                        TABLED() { out << "BlobCount"; }
+                        TABLED() { out << rangeStat.BlobCount; }
+                    }
+                    TABLER() {
+                        TABLED() { out << "BlockCount"; }
+                        TABLED() { out << rangeStat.BlockCount; }
+                    }
+                    TABLER() {
+                        TABLED() { out << "UsedBlockCount"; }
+                        TABLED() { out << rangeStat.UsedBlockCount; }
+                    }
+                    TABLER() {
+                        TABLED() { out << "ReadRequestCount"; }
+                        TABLED() { out << rangeStat.ReadRequestCount; }
+                    }
+                    TABLER() {
+                        TABLED() { out << "ReadRequestBlobCount"; }
+                        TABLED() { out << rangeStat.ReadRequestBlobCount; }
+                    }
+                    TABLER() {
+                        TABLED() { out << "ReadRequestBlockCount"; }
+                        TABLED() { out << rangeStat.ReadRequestBlockCount; }
+                    }
+                    TABLER() {
+                        TABLED() { out << "Compacted"; }
+                        TABLED() { out << rangeStat.Compacted; }
+                    }
+                    TABLER() {
+                        TABLED() { out << "Score"; }
+                        TABLED() { out << rangeStat.CompactionScore.Score; }
+                    }
+                }
+            }
+        };
+
+        TAG(TH3) { out << "RangeStat (current)"; }
+        outputStat(cm.Get(args.BlockRange.Start), args.BlockRange.Start);
+        TAG(TH3) { out << "RangeStat (top by garbage)"; }
+        const auto& topByGarbage = cm.GetTopByGarbageBlockCount();
+        outputStat(topByGarbage.Stat, topByGarbage.BlockIndex);
+
         TABLE_SORTABLE() {
             TABLEHEAD() {
                 TABLER() {
                     TABLED() { out << "# Block"; }
-                    TABLED() { out << "MinCommitId"; }
-                    TABLED() { out << "MaxCommitId"; }
+                    TABLED() { out << "CommitId"; }
                     TABLED() { out << "BlobId"; }
                     TABLED() { out << "Offset"; }
                 }
             }
             TABLEBODY() {
-                auto dump = [&] (const auto& ref) {
+                auto dump = [&] (const TTxPartition::TDescribeRange::TBlockMark& mark) {
                     TABLER() {
-                        TABLED_CLASS("view") {
-                            DumpBlockIndex(
-                                out,
-                                *Info(),
-                                ref.Block.BlockIndex,
-                                ref.Block.MinCommitId);
-                        }
-                        TABLED() { DumpCommitId(out, ref.Block.MinCommitId); }
-                        TABLED() { DumpCommitId(out, ref.Block.MaxCommitId); }
-                        TABLED_CLASS("view") { DumpBlobId(out, *Info(), ref.BlobId); }
-                        TABLED() { DumpBlobOffset(out, ref.BlobOffset); }
+                        TABLED_CLASS("view") { DumpBlockIndex(out, *Info(), mark.BlockIndex, mark.CommitId); }
+                        TABLED() { DumpCommitId(out, mark.CommitId); }
+                        TABLED_CLASS("view") { DumpBlobId(out, *Info(), mark.BlobId); }
+                        TABLED() { DumpBlobOffset(out, mark.BlobOffset); }
                     }
                 };
 
                 size_t count = 0;
-                for (const auto& ref: args.Blocks) {
-                    dump(ref);
+                for (const auto& mark: args.BlockMarks) {
+                    dump(mark);
                     if (++count == State->GetMaxBlocksInBlob()) {
                         break;
                     }
@@ -206,33 +308,24 @@ bool TPartitionActor::PrepareDescribeBlob(
 {
     Y_UNUSED(ctx);
 
+    TRequestScope timer(*args.RequestInfo);
     TPartitionDatabase db(tx.DB);
+
     TDescribeBlobVisitor visitor(args);
+    State->FindFreshBlocks(
+        visitor,
+        TBlockRange32::Max(),
+        Max<ui64>()  // maxCommitId
+    );
 
-    State->FindFreshBlocks(visitor);
-
-    if (!args.Blocks.empty()) {
+    if (!args.BlockMarks.empty()) {
         return true;
     }
 
-    TMaybe<TBlockList> blockList;
-    if (!db.ReadBlockList(args.BlobId, blockList)) {
-        return false;
-    }
-
-    if (!blockList) {
-        return true;
-    }
-
-    auto blocks = blockList->GetBlocks();
-    auto blobRange = TBlockRange32::MakeClosedInterval(
-        blocks.front().BlockIndex,
-        blocks.back().BlockIndex);
-    if (!State->InitIndex(db, blobRange)) {
-        return false;
-    }
-
-    return State->FindMergedBlocks(db, {{{args.BlobId, 0}}, 0}, visitor);
+    return db.FindBlocksInBlobsIndex(
+        visitor,
+        State->GetMaxBlocksInBlob(),
+        args.BlobId);
 }
 
 void TPartitionActor::ExecuteDescribeBlob(
@@ -251,14 +344,13 @@ void TPartitionActor::CompleteDescribeBlob(
 {
     if (!args.HttpInfo) {
         auto response = std::make_unique<TEvVolume::TEvDescribeBlobResponse>();
-        for (const auto& ref: args.Blocks) {
+        for (const auto& mark: args.BlockMarks) {
             auto* block = response->Record.AddBlocks();
-            block->SetBlockIndex(ref.Block.BlockIndex);
-            block->SetCommitId(ref.Block.MinCommitId);
-            block->SetBlobOffset(ref.BlobOffset);
-            block->SetChecksum(0);
+            block->SetBlockIndex(mark.BlockIndex);
+            block->SetCommitId(mark.CommitId);
+            block->SetBlobOffset(mark.BlobOffset);
+            block->SetChecksum(mark.Checksum);
         }
-
         NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
         return;
     }
@@ -274,28 +366,33 @@ void TPartitionActor::CompleteDescribeBlob(
             TABLEHEAD() {
                 TABLER() {
                     TABLED() { out << "# Block"; }
-                    TABLED() { out << "MinCommitId"; }
-                    TABLED() { out << "MaxCommitId"; }
                     TABLED() { out << "Offset"; }
+                    TABLED() { out << "Checksum"; }
                 }
             }
             TABLEBODY() {
-                auto dump = [&] (const auto& ref) {
+                using TMark = TTxPartition::TDescribeBlob::TBlockMark;
+                auto dump = [&] (const TMark& mark) {
                     TABLER() {
-                        TABLED_CLASS("view") { DumpBlockIndex(
-                            out,
-                            *Info(),
-                            ref.Block.BlockIndex,
-                            ref.Block.MinCommitId); }
-                        TABLED() { DumpCommitId(out, ref.Block.MinCommitId); }
-                        TABLED() { DumpCommitId(out, ref.Block.MaxCommitId); }
-                        TABLED() { DumpBlobOffset(out, ref.BlobOffset); }
+                        TABLED_CLASS("view") {
+                            DumpBlockIndex(
+                                out,
+                                *Info(),
+                                mark.BlockIndex,
+                                mark.CommitId);
+                        }
+                        TABLED() {
+                            DumpBlobOffset(out, mark.BlobOffset);
+                        }
+                        TABLED() {
+                            out << mark.Checksum;
+                        }
                     }
                 };
 
                 size_t count = 0;
-                for (const auto& ref: args.Blocks) {
-                    dump(ref);
+                for (const auto& mark: args.BlockMarks) {
+                    dump(mark);
                     if (++count == State->GetMaxBlocksInBlob()) {
                         break;
                     }
@@ -337,12 +434,13 @@ void TPartitionActor::HandleDescribeBlob(
         return;
     }
 
-    ExecuteTx<TDescribeBlob>(
+    ExecuteTx(
         ctx,
-        requestInfo,
-        MakePartialBlobId(blobId),
-        false  // httpInfo
-    );
+        CreateTx<TDescribeBlob>(
+            requestInfo,
+            MakePartialBlobId(blobId),
+            false  // httpInfo
+        ));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -355,10 +453,12 @@ void TPartitionActor::HandleHttpInfo_Describe(
     if (const auto& range = params.Get("range")) {
         TBlockRange32 blockRange;
         if (TBlockRange32::TryParse(range, blockRange)) {
-            ExecuteTx<TDescribeRange>(
+            ExecuteTx(
                 ctx,
-                std::move(requestInfo),
-                blockRange);
+                CreateTx<TDescribeRange>(
+                    std::move(requestInfo),
+                    blockRange,
+                    params.Get("blockfilter")));
         } else {
             TString message = "invalid range specified: " + range.Quote();
             RejectHttpRequest(
@@ -373,20 +473,22 @@ void TPartitionActor::HandleHttpInfo_Describe(
         TLogoBlobID blobId;
         TString errorExplanation;
         if (TLogoBlobID::Parse(blobId, blob, errorExplanation)) {
-            ExecuteTx<TDescribeBlob>(
+            ExecuteTx(
                 ctx,
-                std::move(requestInfo),
-                MakePartialBlobId(blobId),
-                true  // httpInfo
+                CreateTx<TDescribeBlob>(
+                    std::move(requestInfo),
+                    MakePartialBlobId(blobId),
+                    true  // httpInfo
+                )
             );
         } else {
-            TStringStream out;
-            out << "invalid blob specified: " << blob.Quote() <<
+            TStringBuilder message;
+            message << "invalid blob specified: " + blob.Quote() +
                 "(" + errorExplanation + ")";
             RejectHttpRequest(
                 ctx,
                 *requestInfo,
-                std::move(out.Str()));
+                std::move(message));
         }
         return;
     }

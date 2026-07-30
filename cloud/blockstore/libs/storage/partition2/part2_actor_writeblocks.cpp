@@ -1,12 +1,13 @@
 #include "part2_actor.h"
 
+#include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/common/iovector.h>
-#include <cloud/blockstore/libs/common/request_checksum_helpers.h>
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
 #include <cloud/blockstore/libs/storage/core/block_handler.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/core/write_buffer_request.h>
 
@@ -16,7 +17,8 @@
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
-#include <util/generic/string.h>
+#include <cloud/blockstore/libs/common/request_checksum_helpers.h>
+
 #include <util/generic/vector.h>
 #include <util/string/builder.h>
 
@@ -116,32 +118,24 @@ void TPartitionActor::HandleWriteBlocksRequest(
 
     TRequestScope timer(*requestInfo);
 
+    auto replyError = [&](NProto::TError error)
+    {
+        LWTRACK(
+            RequestReceived_Partition,
+            requestInfo->CallContext->LWOrbit,
+            "WriteBlocks",
+            requestInfo->CallContext->RequestId);
+
+        auto response =
+            std::make_unique<typename TMethod::TResponse>(std::move(error));
+        NCloud::Reply(ctx, *requestInfo, std::move(response));
+    };
+
     LWTRACK(
         RequestReceived_Partition,
         requestInfo->CallContext->LWOrbit,
         "WriteBlocks",
         requestInfo->CallContext->RequestId);
-
-    auto replyError = [&](NProto::TError error)
-    {
-        auto response =
-            std::make_unique<typename TMethod::TResponse>(std::move(error));
-
-        LOG_DEBUG(
-            ctx,
-            TBlockStoreComponents::PARTITION,
-            "[%lu] WriteBlocks error: %s",
-            TabletID(),
-            response->GetError().GetMessage().c_str());
-
-        LWTRACK(
-            ResponseSent_Partition,
-            requestInfo->CallContext->LWOrbit,
-            "WriteBlocks",
-            requestInfo->CallContext->RequestId);
-
-        NCloud::Reply(ctx, *requestInfo, std::move(response));
-    };
 
     auto sglist = GetSglist(msg->Record);
 
@@ -203,8 +197,7 @@ void TPartitionActor::HandleWriteBlocksRequest(
     auto ok = InitReadWriteBlockRange(
         msg->Record.GetStartIndex(),
         blocksCount,
-        &writeRange
-    );
+        &writeRange);
 
     if (!ok) {
         replyError(MakeError(
@@ -216,24 +209,6 @@ void TPartitionActor::HandleWriteBlocksRequest(
                                     .Print()));
         return;
     }
-
-    if (!State->IsWriteAllowed(EChannelPermission::UserWritesAllowed)) {
-        replyError(MakeError(E_BS_OUT_OF_SPACE, "insufficient disk space"));
-
-        ReassignChannelsIfNeeded(ctx);
-
-        return;
-    }
-
-    if (Config->GetTabletExecutorRejectionThreshold() &&
-        Executor()->GetRejectProbability() * 100 >
-            Config->GetTabletExecutorRejectionThreshold())
-    {
-        replyError(MakeError(E_REJECTED, "rejected by tablet executor"));
-        return;
-    }
-
-    ++WriteAndZeroRequestsInProgress;
 
     auto writeHandler = CreateWriteHandler(
         writeRange,
@@ -256,6 +231,44 @@ void TPartitionActor::WriteBlocks(
     IWriteBlocksHandlerPtr writeHandler,
     bool replyLocal)
 {
+    auto replyError = [=, this](const TActorContext& ctx, NProto::TError error)
+    {
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s WriteBlocks error: %s",
+            LogTitle.GetWithTime().c_str(),
+            FormatError(error).c_str());
+
+        auto response = CreateWriteBlocksResponse(replyLocal, std::move(error));
+
+        LWTRACK(
+            ResponseSent_Partition,
+            requestInfo->CallContext->LWOrbit,
+            "WriteBlocks",
+            requestInfo->CallContext->RequestId);
+
+        NCloud::Reply(ctx, *requestInfo, std::move(response));
+    };
+
+    if (!State->IsWriteAllowed(EChannelPermission::UserWritesAllowed)) {
+        replyError(ctx, MakeError(E_BS_OUT_OF_SPACE, "insufficient disk space"));
+
+        ReassignChannelsIfNeeded(ctx);
+
+        return;
+    }
+
+    if (Config->GetTabletExecutorRejectionThreshold() &&
+        Executor()->GetRejectProbability() * 100 >
+            Config->GetTabletExecutorRejectionThreshold())
+    {
+        replyError(ctx, MakeError(E_REJECTED, "rejected by tablet executor"));
+        return;
+    }
+
+    SharedState->WriteAndZeroRequestsInProgress.fetch_add(1);
+
     TRequestInBuffer<TWriteBufferRequestData> requestInBuffer{
         writeRange.Size(),
         {
@@ -267,29 +280,36 @@ void TPartitionActor::WriteBlocks(
     };
 
     const auto requestSize = writeRange.Size() * State->GetBlockSize();
+    bool isFreshRequest = IsFreshRequest(
+        *Config,
+        PartitionConfig.GetStorageMediaKind(),
+        requestSize);
 
-    if (IsFreshRequest(
-            *Config,
-            PartitionConfig.GetStorageMediaKind(),
-            requestSize))
-    {
+    if (!IsFreshBlocksWriterEnabled() && isFreshRequest) {
         if (Config->GetWriteRequestBatchingEnabled()) {
             // we will try to batch small writes and, if batching fails,
             // we will accumulate these writes in FreshBlocks table
             EnqueueProcessWriteQueueIfNeeded(ctx);
 
-            LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
-                "[%lu] Enqueueing fresh blocks (range: %s)",
-                TabletID(),
-                DescribeRange(writeRange).data()
-            );
-            State->GetWriteBuffer().Put(std::move(requestInBuffer));
+            LOG_TRACE(
+                ctx,
+                TBlockStoreComponents::PARTITION,
+                "%s Enqueueing fresh blocks (range: %s)",
+                LogTitle.GetWithTime().c_str(),
+                DescribeRange(writeRange).c_str());
+            State->AccessWriteBuffer().Put(std::move(requestInBuffer));
         } else {
             WriteFreshBlocks(ctx, std::move(requestInBuffer));
         }
-    } else {
-        WriteMergedBlocks(ctx, std::move(requestInBuffer));
+
+        return;
     }
+
+    // all small zero requests should be handled by TFreshBlocksWriter
+    STORAGE_VERIFY(!isFreshRequest, TWellKnownEntityTypes::TABLET, TabletID());
+
+    // large writes could skip FreshBlocks table completely
+    WriteMergedBlocks(ctx, std::move(requestInBuffer));
 }
 
 void TPartitionActor::HandleWriteBlocksCompleted(
@@ -298,55 +318,138 @@ void TPartitionActor::HandleWriteBlocksCompleted(
 {
     auto* msg = ev->Get();
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Complete write blocks @%lu",
-        TabletID(),
-        msg->CommitId);
+    HandleWriteBlocksCompletedImpl(
+        ctx,
+        ev->Sender,
+        msg->GetError(),
+        *msg,
+        {
+            .CollectGarbageBarrierAcquired = msg->CollectGarbageBarrierAcquired,
+            .AddingUnconfirmedBlobsRequested =
+                msg->AddingUnconfirmedBlobsRequested,
+            .IsFreshBlocksRequest = false,
+            .BlobsToConfirm = std::move(msg->BlobsToConfirm),
+        });
+}
 
-    UpdateStats(msg->Stats);
+void TPartitionActor::HandleWriteFreshBlocksCompleted(
+    const TEvPartitionCommonPrivate::TEvWriteFreshBlocksCompleted::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    auto* msg = ev->Get();
 
-    ui64 blocksCount = msg->Stats.GetUserWriteCounters().GetBlocksCount();
+    HandleWriteBlocksCompletedImpl(
+        ctx,
+        ev->Sender,
+        msg->GetError(),
+        *msg,
+        {
+            .IsFreshBlocksRequest = true,
+        });
+}
+
+void TPartitionActor::HandleWriteBlocksCompletedImpl(
+    const NActors::TActorContext& ctx,
+    NActors::TActorId sender,
+    NProto::TError error,
+    const TEvPartitionCommonPrivate::TOperationCompleted& opCompleted,
+    TWriteBlocksCompleted writeBlocksCompleted)
+{
+    ui64 commitId = opCompleted.CommitId;
+    LOG_TRACE(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Complete write blocks @%lu",
+        LogTitle.GetWithTime().c_str(),
+        commitId);
+
+    UpdateStats(opCompleted.Stats);
+
+    ui64 blocksCount = opCompleted.Stats.GetUserWriteCounters().GetBlocksCount();
     ui64 requestBytes = blocksCount * State->GetBlockSize();
 
-    UpdateCPUUsageStat(ctx, msg->ExecCycles);
+    UpdateCPUUsageStat(ctx.Now(), opCompleted.ExecCycles);
 
-    auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
+    auto time = CyclesToDurationSafe(opCompleted.TotalCycles).MicroSeconds();
     const auto requestCount =
-        msg->Stats.GetUserWriteCounters().GetRequestsCount();
+        opCompleted.Stats.GetUserWriteCounters().GetRequestsCount();
     PartCounters->RequestCounters.WriteBlocks.AddRequest(
         time,
         requestBytes,
         requestCount
     );
 
-    LogBlockInfos(
-        ctx,
-        EBlockStoreRequest::WriteBlocks,
-        std::move(msg->AffectedBlockInfos),
-        msg->CommitId
-    );
+    if (opCompleted.AffectedBlockInfos) {
+        IProfileLog::TReadWriteRequestBlockInfos request;
+        request.RequestType = EBlockStoreRequest::WriteBlocks;
+        request.BlockInfos = std::move(opCompleted.AffectedBlockInfos);
+        request.CommitId = commitId;
+
+        IProfileLog::TRecord record;
+        record.DiskId = State->GetConfig().GetDiskId();
+        record.Ts = ctx.Now();
+        record.Request = std::move(request);
+
+        ProfileLog->Write(std::move(record));
+    }
+
+    if (writeBlocksCompleted.AddingUnconfirmedBlobsRequested) {
+        if (HasError(error)) {
+            // blobs are obsolete, delete them directly
+            auto request = std::make_unique<
+                TEvPartitionPrivate::TEvDeleteUnconfirmedBlobsRequest>(
+                MakeIntrusive<TCallContext>(CreateRequestId()),
+                commitId);
+            NCloud::Send(ctx, SelfId(), std::move(request));
+        } else {
+            // blobs are confirmed, but AddBlobs request will be executed
+            // (for this commit) later
+            State->BlobsConfirmed(commitId, std::move(writeBlocksCompleted.BlobsToConfirm));
+        }
+        STORAGE_VERIFY(
+            writeBlocksCompleted.CollectGarbageBarrierAcquired,
+            TWellKnownEntityTypes::TABLET,
+            TabletID());
+        STORAGE_VERIFY(
+            !writeBlocksCompleted.IsFreshBlocksRequest,
+            TWellKnownEntityTypes::TABLET,
+            TabletID());
+        // commit & garbage queue barriers will be released when confirmed
+        // blobs are added or when obsolete blobs are deleted
+    } else {
+        LOG_TRACE(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s Releasing commit queue barrier, commit id @%lu",
+            LogTitle.GetWithTime().c_str(),
+            commitId);
+
+        State->AccessCommitQueue()->ReleaseBarrier(commitId);
+        if (writeBlocksCompleted.CollectGarbageBarrierAcquired) {
+            State->GetGarbageQueue().ReleaseBarrier(commitId);
+        }
+
+        if (writeBlocksCompleted.IsFreshBlocksRequest && HasError(error)) {
+            State->AccessTrimFreshLogBarriers()->ReleaseBarrierN(
+                commitId,
+                blocksCount);
+        }
+    }
+
+    Actors.Erase(sender);
 
     if (Executor()->GetStats().IsAnyChannelYellowMove) {
         ScheduleYellowStateUpdate(ctx);
     }
 
-    if (msg->CollectBarrierAcquired) {
-        State->ReleaseCollectBarrier(msg->CommitId);
-    }
+    Y_DEBUG_ABORT_UNLESS(
+        SharedState->WriteAndZeroRequestsInProgress.load() >= requestCount);
+    SharedState->WriteAndZeroRequestsInProgress.fetch_sub(requestCount);
 
-    Actors.erase(ev->Sender);
-
-    Y_DEBUG_ABORT_UNLESS(WriteAndZeroRequestsInProgress >= requestCount);
-    WriteAndZeroRequestsInProgress -= requestCount;
-
-    DrainActorCompanion.ProcessDrainRequests(ctx);
-    EnqueueCompactionIfNeeded(ctx);
+    SharedState->AccessDrainActorCompanion()->ProcessDrainRequests(ctx);
+    ProcessCommitQueue(ctx);
     EnqueueFlushIfNeeded(ctx);
-    EnqueueUpdateIndexStructuresIfNeeded(ctx);
-    ResumeDelayedFlushIfNeeded(ctx);
-    ProcessCCCRequestQueue(ctx);
+    EnqueueAddConfirmedBlobsIfNeeded(ctx);
 }
-
-////////////////////////////////////////////////////////////////////////////////
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition2

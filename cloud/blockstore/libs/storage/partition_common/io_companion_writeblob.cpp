@@ -4,7 +4,7 @@
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
-#include <cloud/blockstore/libs/storage/partition/model/fresh_blob.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/fresh_blob.h>
 #include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
 
 #include <cloud/storage/core/libs/common/verify.h>
@@ -426,14 +426,14 @@ void TIOCompanion::HandleWriteBlobCompleted(
     ui32 channel = msg->BlobId.Channel();
     ui32 groupId = Info()->GroupFor(channel, msg->BlobId.Generation());
     ResourceMetricsQueue->Push(
-        NPartition::TUpdateNetworkStat(ctx.Now(), msg->BlobId.BlobSize()));
+        TUpdateNetworkStat(ctx.Now(), msg->BlobId.BlobSize()));
     if (groupId == Max<ui32>()) {
         Y_DEBUG_ABORT_UNLESS(
             0,
             "HandleWriteBlobCompleted: invalid blob id received");
     } else {
         ResourceMetricsQueue->Push(
-            NPartition::TUpdateWriteThroughput(
+            TUpdateWriteThroughput(
                 ctx.Now(),
                 channel,
                 groupId,

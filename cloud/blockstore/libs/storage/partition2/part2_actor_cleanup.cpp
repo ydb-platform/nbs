@@ -1,41 +1,91 @@
 #include "part2_actor.h"
 
+#include "part2_cleanup_logic.h"
+
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
-#include <cloud/blockstore/libs/storage/partition2/part2_diagnostics.h>
+#include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/libs/storage/partition2/model/background_ops_throttling.h>
+
+#include <util/generic/size_literals.h>
 
 namespace NCloud::NBlockStore::NStorage::NPartition2 {
 
 using namespace NActors;
+
+using namespace NProto;
 
 using namespace NKikimr;
 using namespace NKikimr::NTabletFlatExecutor;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
-////////////////////////////////////////////////////////////////////////////////
-
-using EMode = TEvPartitionPrivate::ECleanupMode;
-
-////////////////////////////////////////////////////////////////////////////////
-
-void TPartitionActor::EnqueueCleanup(
-    const TActorContext& ctx,
-    TEvPartitionPrivate::ECleanupMode mode)
+void TPartitionActor::EnqueueCleanupIfNeeded(const TActorContext& ctx)
 {
-    State->SetCleanupStatus(EOperationStatus::Enqueued);
+    if (State->GetCleanupState().Status != EOperationStatus::Idle) {
+        // already enqueued
+        return;
+    }
+
+    if (State->IsMetadataRebuildStarted() &&
+        State->GetMetadataRebuildType() == EMetadataRebuildType::BlockCount)
+    {
+        return;
+    }
+
+    if (State->IsScanDiskStarted()) {
+        return;
+    }
+
+    auto& scoreHistory = State->GetCleanupScoreHistory();
+    const auto now = ctx.Now();
+    if (scoreHistory.LastTs() + Config->GetMaxCleanupDelay() <= now) {
+        scoreHistory.Register({
+            now,
+            static_cast<ui32>(State->GetCleanupQueue().GetQueueBytes() / 1_MB)
+        });
+    }
+
+    ui64 commitId = State->GetCleanupCommitId();
+
+    ui32 pendingBlobs = State->GetBlobCountToCleanup(
+        commitId,
+        Config->GetCleanupThreshold()
+    );
+
+    if (pendingBlobs < Config->GetCleanupThreshold()) {
+        // not ready
+        return;
+    }
+
+    State->GetCleanupState().SetStatus(EOperationStatus::Enqueued, ctx.Now());
 
     auto request = std::make_unique<TEvPartitionPrivate::TEvCleanupRequest>(
-        MakeIntrusive<TCallContext>(CreateRequestId()),
-        mode);
+        MakeIntrusive<TCallContext>(CreateRequestId()));
 
-    NCloud::Send(
-        ctx,
-        SelfId(),
-        std::move(request));
+    const auto throttlingAllowed = State->GetCleanupQueue().GetQueueBytes()
+        < Config->GetCleanupQueueBytesLimitForThrottling();
+
+    if (throttlingAllowed) {
+        State->SetCleanupDelay(CalculateBackgroundOpThrottleDelay(
+            State->GetCleanupExecTimeForLastSecond(ctx.Now()),
+            Config->GetMaxCleanupExecTimePerSecond(),
+            Config->GetMinCleanupDelay(),
+            Config->GetMaxCleanupDelay()));
+    } else {
+        State->SetCleanupDelay({});
+    }
+
+    if (State->GetCleanupDelay()) {
+        ctx.Schedule(State->GetCleanupDelay(), request.release());
+    } else {
+        NCloud::Send(
+            ctx,
+            SelfId(),
+            std::move(request));
+    }
 }
-
-////////////////////////////////////////////////////////////////////////////////
 
 void TPartitionActor::HandleCleanup(
     const TEvPartitionPrivate::TEvCleanupRequest::TPtr& ev,
@@ -53,9 +103,7 @@ void TPartitionActor::HandleCleanup(
     LWTRACK(
         BackgroundTaskStarted_Partition,
         requestInfo->CallContext->LWOrbit,
-        msg->Mode == TEvPartitionPrivate::ECleanupMode::DirtyBlobCleanup
-            ? "DirtyBlobCleanup"
-            : "CheckpointBlobCleanup",
+        "Cleanup",
         static_cast<ui32>(PartitionConfig.GetStorageMediaKind()),
         requestInfo->CallContext->RequestId,
         PartitionConfig.GetDiskId());
@@ -78,96 +126,64 @@ void TPartitionActor::HandleCleanup(
         NCloud::Reply(ctx, requestInfo, std::move(response));
     };
 
-    if (State->GetCleanupStatus() == EOperationStatus::Delayed ||
-        State->GetCleanupStatus() == EOperationStatus::Started)
-    {
+    if (State->GetCleanupState().Status == EOperationStatus::Started) {
         replyError(ctx, *requestInfo, E_TRY_AGAIN, "cleanup already started");
         return;
     }
 
-    auto createTxAndEnqueueIntoCCCQueue = [&] (ui64 commitId, auto onStartProcessing) {
-        State->SetCleanupStatus(EOperationStatus::Delayed);
+    if (State->IsMetadataRebuildStarted() &&
+        State->GetMetadataRebuildType() == EMetadataRebuildType::BlockCount)
+    {
+        State->GetCleanupState().SetStatus(EOperationStatus::Idle, ctx.Now());
 
-        AddTransaction<TEvPartitionPrivate::TCleanupMethod>(*requestInfo);
-        auto tx = CreateTx<TCleanup>(requestInfo, commitId, msg->Mode);
-
-        auto& queue = State->GetCCCRequestQueue();
-        queue.push_back({ commitId, std::move(tx), std::move(onStartProcessing) });
-
-        ProcessCCCRequestQueue(ctx);
-    };
-
-    const auto limit = static_cast<size_t>(Config->GetMaxBlobsToCleanup());
-
-    if (msg->Mode == EMode::CheckpointBlobCleanup) {
-        LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu] Extracting checkpoint blobs for cleanup @%lu",
-            TabletID());
-
-        State->ExtractCheckpointBlobsToCleanup(limit);
-
-        // don't wait for inflight fresh to complete
-        createTxAndEnqueueIntoCCCQueue(0, [this] (const TActorContext& ctx) {
-            LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-                "[%lu] Starting checkpoint blob cleanup @%lu",
-                TabletID(),
-                State->GetCleanupCheckpointCommitId());
-
-            State->SetCleanupStatus(EOperationStatus::Started);
-        });
+        replyError(
+            ctx,
+            *requestInfo,
+            E_TRY_AGAIN,
+            "Metadata rebuild is running");
         return;
     }
 
-    if (State->HasPendingChunkToCleanup()) {
-        LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu] Extracting dirty blobs from pending chunk to cleanup",
-            TabletID());
+    if (State->IsScanDiskStarted()) {
+        State->GetCleanupState().SetStatus(EOperationStatus::Idle, ctx.Now());
 
-        State->ExtractBlobsFromChunkToCleanup(limit);
-
-        // don't wait for inflight fresh to complete
-        createTxAndEnqueueIntoCCCQueue(0, [this] (const TActorContext& ctx) {
-            LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-                "[%lu] Resuming dirty blob cleanup for pending chunk",
-                TabletID());
-
-            State->SetCleanupStatus(EOperationStatus::Started);
-        });
+        replyError(ctx, *requestInfo, E_TRY_AGAIN, "Scan disk is running");
         return;
     }
 
-    if (!State->TrySelectZoneToCleanup()) {
-        State->SetCleanupStatus(EOperationStatus::Idle);
+    ui64 commitId = State->GetCleanupCommitId();
+
+    auto cleanupQueue = State->GetCleanupQueue().GetItems(
+        commitId,
+        Config->GetMaxBlobsToCleanup());
+
+    if (!cleanupQueue) {
+        State->GetCleanupState().SetStatus(EOperationStatus::Idle, ctx.Now());
+
         replyError(ctx, *requestInfo, S_ALREADY, "nothing to cleanup");
         return;
     }
 
-    const ui64 commitId = State->GenerateCommitId();
-    if (commitId == InvalidCommitId) {
-        requestInfo->CancelRequest(ctx);
-        RebootPartitionOnCommitIdOverflow(ctx, "Cleanup");
-        return;
-    }
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Start cleanup @%lu (queue: %u)",
+        LogTitle.GetWithTime().c_str(),
+        commitId,
+        static_cast<ui32>(cleanupQueue.size()));
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Separating chunk for dirty blob cleanup @%lu",
-        TabletID(),
-        commitId);
+    State->GetCleanupState().SetStatus(EOperationStatus::Started, ctx.Now());
 
-    State->SeparateChunkForCleanup(commitId);
+    AddTransaction<TEvPartitionPrivate::TCleanupMethod>(*requestInfo);
 
-    createTxAndEnqueueIntoCCCQueue(
-        commitId, [this, commitId, limit] (const TActorContext& ctx) {
-            LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-                "[%lu] Starting dirty blob cleanup @%lu",
-                TabletID(),
-                commitId);
+    auto tx = CreateTx<TCleanup>(
+        requestInfo,
+        commitId,
+        IsUseRecreatedBlobMetasOnCleanupEnabled(),
+        IsVerifyRecreatedBlobMetasOnCleanupEnabled(),
+        std::move(cleanupQueue));
 
-            State->SetCleanupStatus(EOperationStatus::Started);
-            State->ExtractChunkToCleanup();
-            State->ExtractBlobsFromChunkToCleanup(limit);
-        }
-    );
+    ExecuteTx(ctx, std::move(tx));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -179,46 +195,12 @@ bool TPartitionActor::PrepareCleanup(
 {
     Y_UNUSED(ctx);
 
-    TRequestScope timer(*args.RequestInfo);
     TPartitionDatabase db(tx.DB);
-
-    const ui32 zoneId = State->GetPendingCleanupZoneId();
-
-    const auto& index = State->GetBlobs();
-    const auto& blobs = args.Mode == EMode::DirtyBlobCleanup
-        ? State->GetPendingBlobsToCleanup()
-        : State->GetPendingCheckpointBlobsToCleanup();
-
-    // some blobs could be already deleted
-    for (const auto& blobId: blobs) {
-        if (index.FindBlob(zoneId, blobId).Blob) {
-            args.ExistingBlobIds.push_back(blobId);
-        }
-    }
-
-    bool ready = true;
-
-    for (const auto& blobId: args.ExistingBlobIds) {
-        TMaybe<TBlockList> list;
-        if (!State->FindBlockList(db, zoneId, blobId, list)) {
-            ready = false;
-        }
-
-        if (ready) {
-            Y_ABORT_UNLESS(list);
-            args.BlockLists.emplace_back(list->GetBlocks());
-        }
-    }
-
-    for (const auto& blocklist: args.BlockLists) {
-        const auto blobRange = TBlockRange32::MakeClosedInterval(
-            blocklist.front().BlockIndex,
-            blocklist.back().BlockIndex);
-
-        ready &= State->InitIndex(db, blobRange);
-    }
-
-    return ready;
+    return PrepareCleanupTransaction(
+        TabletID(),
+        PartitionConfig.GetDiskId(),
+        db,
+        args);
 }
 
 void TPartitionActor::ExecuteCleanup(
@@ -228,44 +210,14 @@ void TPartitionActor::ExecuteCleanup(
 {
     Y_UNUSED(ctx);
 
-    // needed to prevent the blobs updated during this tx from being deleted
-    // before this tx completes
-    args.CollectBarrierCommitId = State->GetLastCommitId();
-    State->AcquireCollectBarrier(args.CollectBarrierCommitId);
-
-    TRequestScope timer(*args.RequestInfo);
     TPartitionDatabase db(tx.DB);
-
-    Y_ABORT_UNLESS(args.ExistingBlobIds.size() == args.BlockLists.size());
-    size_t i = 0;
-
-    for (const auto& blobId: args.ExistingBlobIds) {
-        auto& blocks = args.BlockLists[i++];
-
-        // extra diagnostics
-        TDumpBlockCommitIds dumpBlockCommitIds(
-            blocks,
-            args.BlockCommitIds,
-            Config->GetDumpBlockCommitIdsIntoProfileLog());
-
-        bool updated = State->UpdateBlob(
-            db,
-            blobId,
-            args.Mode == EMode::DirtyBlobCleanup,  // fast path allowed
-            blocks
-        );
-
-        Y_ABORT_UNLESS(updated, "Missing blob detected: %s",
-            DumpBlobIds(TabletID(), blobId).data());
-    }
-
-    if (args.Mode == EMode::DirtyBlobCleanup) {
-        args.BlobUpdates = State->FinishDirtyBlobCleanup(db);
-    } else {
-        State->FinishCheckpointBlobCleanup(db);
-    }
-
-    State->WriteStats(db);
+    ExecuteCleanupTransaction(
+        TActorContext::ActorSystem(),
+        LogTitle,
+        TabletID(),
+        db,
+        args,
+        *State);
 }
 
 void TPartitionActor::CompleteCleanup(
@@ -273,14 +225,12 @@ void TPartitionActor::CompleteCleanup(
     TTxPartition::TCleanup& args)
 {
     TRequestScope timer(*args.RequestInfo);
-    RemoveTransaction(*args.RequestInfo);
 
-    State->StopProcessingCCCRequest();
-
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] %s cleanup completed @%lu",
-        TabletID(),
-        args.Mode == EMode::DirtyBlobCleanup ? "dirty blob" : "checkpoint blob",
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Complete Cleanup transaction @%lu",
+        LogTitle.GetWithTime().c_str(),
         args.CommitId);
 
     auto response = std::make_unique<TEvPartitionPrivate::TEvCleanupResponse>();
@@ -292,75 +242,37 @@ void TPartitionActor::CompleteCleanup(
         args.RequestInfo->CallContext->RequestId);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+    RemoveTransaction(*args.RequestInfo);
 
-    UpdateCPUUsageStat(ctx, timer.Finish());
+    State->GetCleanupState().SetStatus(EOperationStatus::Idle, ctx.Now());
 
-    const auto d = CyclesToDurationSafe(args.RequestInfo->GetTotalCycles());
-    PartCounters->RequestCounters.Cleanup.AddRequest(d.MicroSeconds());
+    // Addition to GarbageQueue is postponed till CompleteCleanup
+    // to avoid race between Cleanup and CollectGarbage (see NBS-239)
+    // This seems to be safe because CollectGarbage only processes
+    // blobs added to GarbageQueue.
+    for (const auto& item: args.CleanupQueue) {
+        if (!IsDeletionMarker(item.BlobId)) {
+            LOG_DEBUG(
+                ctx,
+                TBlockStoreComponents::PARTITION,
+                "%s Add garbage blob: %s",
+                LogTitle.GetWithTime().c_str(),
+                ToString(MakeBlobId(TabletID(), item.BlobId)).Quote().c_str());
 
-    State->ReleaseCollectBarrier(args.CollectBarrierCommitId);
-    State->SetCleanupStatus(EOperationStatus::Idle);
+            bool added = State->GetGarbageQueue().AddGarbageBlob(item.BlobId);
+            Y_ABORT_UNLESS(added);
+        }
+    }
 
-    EnqueueCompactionIfNeeded(ctx);
+    const auto d = CyclesToDurationSafe(args.RequestInfo->GetExecCycles());
+    State->SetLastCleanupExecTime(d, ctx.Now());
+    UpdateCPUUsageStat(ctx.Now(), args.RequestInfo->GetExecCycles());
+
+    EnqueueCleanupIfNeeded(ctx);
     EnqueueCollectGarbageIfNeeded(ctx);
 
-    ProcessCCCRequestQueue(ctx);
-
-    {
-        IProfileLog::TSysReadWriteRequest request;
-        request.RequestType = ESysRequestType::Cleanup;
-        request.Duration = d;
-
-        TVector<ui32> blockIndices;
-        ui32 blockCount = 0;
-        for (const auto& l: args.BlockLists) {
-            Y_ABORT_UNLESS(l.size());
-            blockCount += l.size();
-        }
-        blockIndices.reserve(blockCount);
-        for (const auto& l: args.BlockLists) {
-            for (const auto& b: l) {
-                blockIndices.push_back(b.BlockIndex);
-            }
-        }
-        SortUnique(blockIndices);
-
-        TBlockRange64Builder rangeBuilder(request.Ranges);
-        for (const auto b: blockIndices) {
-            rangeBuilder.OnBlock(b);
-        }
-
-        IProfileLog::TRecord record;
-        record.DiskId = State->GetConfig().GetDiskId();
-        record.Ts = ctx.Now() - d;
-        record.Request = std::move(request);
-
-        ProfileLog->Write(std::move(record));
-    }
-
-    LogBlockCommitIds(
-        ctx,
-        ESysRequestType::Cleanup,
-        std::move(args.BlockCommitIds),
-        args.CommitId);
-
-    if (Config->GetDumpBlobUpdatesIntoProfileLog()) {
-        IProfileLog::TCleanupRequestBlobUpdates request;
-        TVector<IProfileLog::TBlobUpdate> blobUpdates;
-        blobUpdates.reserve(args.BlobUpdates.size());
-        for (const auto& blobUpdate: args.BlobUpdates) {
-            blobUpdates.push_back({blobUpdate.BlockRange, blobUpdate.CommitId});
-        }
-        request.BlobUpdates = std::move(blobUpdates);
-        request.CleanupCommitId = args.CommitId;
-
-        IProfileLog::TRecord record;
-        record.DiskId = State->GetConfig().GetDiskId();
-        record.Ts = ctx.Now();
-        record.Request = std::move(request);
-
-        ProfileLog->Write(std::move(record));
-    }
+    auto time = CyclesToDurationSafe(args.RequestInfo->GetTotalCycles()).MicroSeconds();
+    PartCounters->RequestCounters.Cleanup.AddRequest(time);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition2

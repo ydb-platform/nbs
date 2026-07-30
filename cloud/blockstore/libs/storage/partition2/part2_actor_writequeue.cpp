@@ -25,17 +25,23 @@ void TPartitionActor::HandleProcessWriteQueue(
 {
     Y_UNUSED(ev);
 
-    const auto totalWeight = State->GetWriteBuffer().GetWeight();
+    const auto totalWeight = State->AccessWriteBuffer().GetWeight();
     if (!totalWeight) {
         return;
     }
 
-    auto guard = State->GetWriteBuffer().Flush();
+    auto guard = State->AccessWriteBuffer().Flush();
     auto& requests = guard.Get();
 
     // building mixed blob requests
-    const auto writeBlobThreshold =
-        GetWriteBlobThreshold(*Config, PartitionConfig.GetStorageMediaKind());
+    const auto mediaKind = PartitionConfig.GetStorageMediaKind();
+    const auto writeMixedBlobThreshold =
+        GetWriteMixedBlobThreshold(*Config, mediaKind);
+    auto writeBlobThreshold = GetWriteBlobThreshold(*Config, mediaKind);
+    if (writeMixedBlobThreshold && writeMixedBlobThreshold < writeBlobThreshold)
+    {
+        writeBlobThreshold = writeMixedBlobThreshold;
+    }
 
     auto g = GroupRequests(
         requests,
@@ -52,13 +58,14 @@ void TPartitionActor::HandleProcessWriteQueue(
         RebootPartitionOnCommitIdOverflow(ctx, "Write queue");
         return;
     }
+
     WriteFreshBlocks(ctx, MakeArrayRef(g.FirstUngrouped, requests.end()));
 }
 
 void TPartitionActor::ClearWriteQueue(const TActorContext& ctx)
 {
     if (State) {
-        auto guard = State->GetWriteBuffer().Flush();
+        auto guard = State->AccessWriteBuffer().Flush();
         auto& requests = guard.Get();
         for (auto& request: requests) {
             request.Data.RequestInfo->CancelRequest(ctx);

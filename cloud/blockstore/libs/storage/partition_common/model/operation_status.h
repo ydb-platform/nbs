@@ -1,0 +1,38 @@
+#pragma once
+
+#include <cloud/blockstore/libs/storage/partition_common/model/public.h>
+
+#include <library/cpp/protobuf/json/proto2json.h>
+
+#include <util/datetime/base.h>
+
+namespace NCloud::NBlockStore::NStorage {
+
+////////////////////////////////////////////////////////////////////////////////
+
+enum class EOperationStatus
+{
+    Idle,
+    Enqueued,
+    Started,
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TOperationState
+{
+    EOperationStatus Status = EOperationStatus::Idle;
+    TInstant Timestamp;
+
+    void SetStatus(EOperationStatus status, TInstant timestamp)
+    {
+        Status = status;
+        Timestamp = timestamp;
+    }
+};
+
+NJson::TJsonValue ToJson(const TOperationState& op);
+
+void DumpOperationState(IOutputStream& out, const TOperationState& op);
+
+}   // namespace NCloud::NBlockStore::NStorage

@@ -1,6 +1,6 @@
 #include "part_fresh_blocks_state.h"
 
-#include <cloud/blockstore/libs/storage/partition/model/operation_status.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/operation_status.h>
 
 #include <cloud/storage/core/libs/tablet/model/channels.h>
 

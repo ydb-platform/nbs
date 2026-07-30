@@ -4,20 +4,14 @@
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
-
-#include <util/datetime/base.h>
-#include <util/generic/algorithm.h>
-#include <util/generic/string.h>
 #include <util/generic/vector.h>
-#include <util/stream/str.h>
+#include <util/generic/xrange.h>
 
 namespace NCloud::NBlockStore::NStorage::NPartition2 {
 
 using namespace NActors;
 
 using namespace NKikimr;
-using namespace NKikimr::NTabletFlatExecutor;
 
 using namespace NMonitoringUtils;
 
@@ -59,8 +53,8 @@ void TPartitionActor::HandleHttpInfo_ForceCompaction(
 
     TVector<ui32> rangesToCompact;
     if (blockIndex || blocksCount) {
-        auto startIndex = Min(State->GetBlockCount(), blockIndex);
-        auto endIndex = Min(State->GetBlockCount(), blockIndex + blocksCount);
+        auto startIndex = Min(State->GetBlocksCount(), blockIndex);
+        auto endIndex = Min(State->GetBlocksCount(), blockIndex + blocksCount);
 
         rangesToCompact = TVector<ui32>(
             ::xrange(

@@ -1,7 +1,5 @@
 #include "fresh_blob_test.h"
 
-#include <cloud/storage/core/libs/tablet/model/commit.h>
-
 #include <library/cpp/resource/resource.h>
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -14,6 +12,7 @@ Y_UNIT_TEST_SUITE(TFreshBlob)
     Y_UNIT_TEST(ShouldRestoreFreshBlocks)
     {
         constexpr ui64 commitId = 1234;
+        constexpr bool isStoredInDb = false;
 
         for (const ui32 blockSize: { 4096, 4096 * 4, 4096 * 16 }) {
             const auto buffers = GetBuffers(blockSize);
@@ -21,22 +20,18 @@ Y_UNIT_TEST_SUITE(TFreshBlob)
             const auto blockIndices = GetBlockIndices(blockRanges);
             const auto holders = GetHolders(buffers);
 
-            const auto blobContent = BuildFreshBlobContent(
+            const auto blobContent = BuildWriteFreshBlocksBlobContent(
                 blockRanges,
-                holders,
-                FirstRequestDeletionId
+                holders
             );
 
             TVector<TOwningFreshBlock> result;
-            TBlobUpdatesByFresh blobUpdatesByFresh;
-
             auto error = ParseFreshBlobContent(
                 commitId,
                 {},  // BlobId
                 blockSize,
                 blobContent,
-                result,
-                blobUpdatesByFresh);
+                result);
 
             UNIT_ASSERT(SUCCEEDED(error.GetCode()));
             UNIT_ASSERT_VALUES_EQUAL(15, result.size());
@@ -50,8 +45,9 @@ Y_UNIT_TEST_SUITE(TFreshBlob)
 
                 const auto& block = result[i].Meta;
                 UNIT_ASSERT_VALUES_EQUAL(*blockIndex, block.BlockIndex);
-                UNIT_ASSERT_VALUES_EQUAL(commitId, block.MinCommitId);
-                UNIT_ASSERT_VALUES_EQUAL(InvalidCommitId, block.MaxCommitId);
+                UNIT_ASSERT_VALUES_EQUAL(commitId, block.CommitId);
+
+                UNIT_ASSERT_VALUES_EQUAL(isStoredInDb, block.IsStoredInDb);
 
                 if (++buffer == subBuffer->end()) {
                     if (++subBuffer != buffers.end()) {
@@ -61,51 +57,60 @@ Y_UNIT_TEST_SUITE(TFreshBlob)
 
                 ++blockIndex;
             }
-
-            TVector<TBlobUpdate> updates;
-            updates.assign(blobUpdatesByFresh.begin(), blobUpdatesByFresh.end());
-            Sort(updates, [] (const auto& lhs, const auto& rhs) {
-                return lhs.DeletionId < rhs.DeletionId;
-            });
-
-            UNIT_ASSERT_VALUES_EQUAL(4, updates.size());
-
-            auto deletionId = FirstRequestDeletionId;
-            auto blockRange = blockRanges.begin();
-
-            for (const auto update: updates) {
-                UNIT_ASSERT_VALUES_EQUAL(deletionId, update.DeletionId);
-                UNIT_ASSERT_VALUES_EQUAL(commitId, update.CommitId);
-                UNIT_ASSERT_VALUES_EQUAL(*blockRange, update.BlockRange);
-
-                ++deletionId;
-                ++blockRange;
-            }
         }
     }
 
-    Y_UNIT_TEST(SerializationShouldBeForwardAndBackwardCompatible)
+    Y_UNIT_TEST(ShouldRestoreZeroedFreshBlocks)
+    {
+        constexpr ui64 commitId = 1234;
+        constexpr bool isStoredInDb = false;
+        constexpr ui32 blockSize = 4;
+
+        const TString blobContent = BuildZeroFreshBlocksBlobContent(
+            ZeroFreshBlocksRange
+        );
+
+        TVector<TOwningFreshBlock> result;
+        auto error = ParseFreshBlobContent(
+            commitId,
+            {},  // BlobId
+            blockSize,
+            blobContent,
+            result);
+
+        UNIT_ASSERT(SUCCEEDED(error.GetCode()));
+        UNIT_ASSERT_VALUES_EQUAL(5, result.size());
+
+        for (ui32 i = 0; i < result.size(); ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(TString{}, result[i].Content);
+
+            const auto& block = result[i].Meta;
+            UNIT_ASSERT_VALUES_EQUAL(i, block.BlockIndex);
+            UNIT_ASSERT_VALUES_EQUAL(commitId, block.CommitId);
+            UNIT_ASSERT_VALUES_EQUAL(isStoredInDb, block.IsStoredInDb);
+        }
+    }
+
+    Y_UNIT_TEST(SerializationShouldBeForwardAndBackwardCompatibleWrite)
     {
         constexpr ui64 commitId = 1234;
         constexpr ui32 blockSize = 4096;
+        constexpr bool isStoredInDb = false;
 
         const auto buffers = GetBuffers(blockSize);
         const auto blockRanges = GetBlockRanges();
         const auto blockIndices = GetBlockIndices(blockRanges);
         const auto holders = GetHolders(buffers);
 
-        auto oldBlobContent = NResource::Find("fresh.blob");
+        auto oldBlobContent = NResource::Find("fresh_write.blob");
 
         TVector<TOwningFreshBlock> result;
-        TBlobUpdatesByFresh blobUpdatesByFresh;
-
         auto error = ParseFreshBlobContent(
             commitId,
             {},  // BlobId
             blockSize,
             oldBlobContent,
-            result,
-            blobUpdatesByFresh);
+            result);
 
         UNIT_ASSERT(SUCCEEDED(error.GetCode()));
         UNIT_ASSERT_VALUES_EQUAL(15, result.size());
@@ -119,8 +124,9 @@ Y_UNIT_TEST_SUITE(TFreshBlob)
 
             const auto& block = result[i].Meta;
             UNIT_ASSERT_VALUES_EQUAL(*blockIndex, block.BlockIndex);
-            UNIT_ASSERT_VALUES_EQUAL(commitId, block.MinCommitId);
-            UNIT_ASSERT_VALUES_EQUAL(InvalidCommitId, block.MaxCommitId);
+            UNIT_ASSERT_VALUES_EQUAL(commitId, block.CommitId);
+
+            UNIT_ASSERT_VALUES_EQUAL(isStoredInDb, block.IsStoredInDb);
 
             if (++buffer == subBuffer->end()) {
                 if (++subBuffer != buffers.end()) {
@@ -131,30 +137,47 @@ Y_UNIT_TEST_SUITE(TFreshBlob)
             ++blockIndex;
         }
 
-        TVector<TBlobUpdate> updates;
-        updates.assign(blobUpdatesByFresh.begin(), blobUpdatesByFresh.end());
-        Sort(updates, [] (const auto& lhs, const auto& rhs) {
-            return lhs.DeletionId < rhs.DeletionId;
-        });
+        auto newBlobContent = BuildWriteFreshBlocksBlobContent(
+            blockRanges,
+            holders);
 
-        UNIT_ASSERT_VALUES_EQUAL(4, updates.size());
+        UNIT_ASSERT_VALUES_EQUAL(oldBlobContent.size(), newBlobContent.size());
+        for (size_t i = 0; i < oldBlobContent.size(); ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(oldBlobContent[i], newBlobContent[i]);
+        }
+    }
 
-        auto deletionId = FirstRequestDeletionId;
-        auto blockRange = blockRanges.begin();
+    Y_UNIT_TEST(SerializationShouldBeForwardAndBackwardCompatibleZero)
+    {
+        constexpr ui64 commitId = 1234;
+        constexpr bool isStoredInDb = false;
+        constexpr ui32 blockSize = 4;
 
-        for (const auto update: updates) {
-            UNIT_ASSERT_VALUES_EQUAL(deletionId, update.DeletionId);
-            UNIT_ASSERT_VALUES_EQUAL(commitId, update.CommitId);
-            UNIT_ASSERT_VALUES_EQUAL(*blockRange, update.BlockRange);
+        auto oldBlobContent = NResource::Find("fresh_zero.blob");
 
-            ++deletionId;
-            ++blockRange;
+        TVector<TOwningFreshBlock> result;
+        auto error = ParseFreshBlobContent(
+            commitId,
+            {},  // BlobId
+            blockSize,
+            oldBlobContent,
+            result);
+
+        UNIT_ASSERT(SUCCEEDED(error.GetCode()));
+        UNIT_ASSERT_VALUES_EQUAL(5, result.size());
+
+        for (ui32 i = 0; i < result.size(); ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(TString{}, result[i].Content);
+
+            const auto& block = result[i].Meta;
+            UNIT_ASSERT_VALUES_EQUAL(i, block.BlockIndex);
+            UNIT_ASSERT_VALUES_EQUAL(commitId, block.CommitId);
+            UNIT_ASSERT_VALUES_EQUAL(isStoredInDb, block.IsStoredInDb);
         }
 
-        auto newBlobContent = BuildFreshBlobContent(
-            blockRanges,
-            holders,
-            FirstRequestDeletionId);
+        auto newBlobContent = BuildZeroFreshBlocksBlobContent(
+            ZeroFreshBlocksRange
+        );
 
         UNIT_ASSERT_VALUES_EQUAL(oldBlobContent.size(), newBlobContent.size());
         for (size_t i = 0; i < oldBlobContent.size(); ++i) {
@@ -164,11 +187,3 @@ Y_UNIT_TEST_SUITE(TFreshBlob)
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition2
-
-template <>
-inline void Out<NCloud::NBlockStore::TBlockRange32>(
-    IOutputStream& out,
-    const NCloud::NBlockStore::TBlockRange32& range)
-{
-    out << "[" << range.Start << ", " << range.End << "]";
-}

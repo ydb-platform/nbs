@@ -15,8 +15,6 @@ namespace NCloud::NBlockStore::NStorage::NPartition2 {
 
 using namespace NActors;
 
-using namespace NCloud::NStorage;
-
 using namespace NKikimr;
 using namespace NKikimr::NTabletFlatExecutor;
 
@@ -27,8 +25,9 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 class TDescribeBlocksVisitor final
-    : public IFreshBlockVisitor
-    , public IMergedBlockVisitor
+    : public IFreshBlocksIndexVisitor
+    , public IBlocksIndexVisitor
+    , public IMixedBlocksIndexVisitor
 {
 private:
     TTxPartition::TDescribeBlocks& Args;
@@ -38,26 +37,76 @@ public:
         : Args(args)
     {}
 
-    void Visit(
-        const TBlock& block,
-        TStringBuf blockContent,
-        const TPartialBlobId& blobId) override
+    bool Visit(const TFreshBlock& block) override
     {
-        Args.MarkBlock(block.BlockIndex, block.MinCommitId, blockContent, blobId);
+        Args.MarkBlock(
+            block.Meta.BlockIndex,
+            block.Meta.CommitId,
+            block.Content,
+            block.BlobId);
+        return true;
     }
 
-    void Visit(
-        const TBlock& block,
+    bool Visit(
+        ui32 blockIndex,
+        ui64 commitId,
         const TPartialBlobId& blobId,
         ui16 blobOffset) override
     {
-        Args.MarkBlock(block.BlockIndex, block.MinCommitId, blobId, blobOffset);
+        Args.MarkBlock(blockIndex, commitId, blobId, blobOffset);
+        return true;
+    }
+
+    bool VisitBlock(
+        ui32 blockIndex,
+        ui64 commitId,
+        const TPartialBlobId& blobId,
+        ui16 blobOffset,
+        ui8 compactionRangeCount) override
+    {
+        Y_UNUSED(compactionRangeCount);
+        Args.MarkBlock(blockIndex, commitId, blobId, blobOffset);
+        return true;
     }
 };
 
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
+
+TMaybe<ui64> TPartitionActor::VerifyDescribeBlocksCheckpoint(
+    const TActorContext& ctx,
+    const TString& checkpointId,
+    TRequestInfo& requestInfo)
+{
+    if (!checkpointId) {
+        return State->GetLastCommitId();
+    }
+
+    const ui64 commitId =
+        State->GetCheckpoints().GetCommitId(checkpointId, false);
+    if (commitId) {
+        return commitId;
+    }
+
+    ui32 flags = 0;
+    SetProtoFlag(flags, NProto::EF_SILENT);
+    auto response = std::make_unique<TEvVolume::TEvDescribeBlocksResponse>(
+        MakeError(
+            E_NOT_FOUND,
+            TStringBuilder()
+                << "checkpoint not found: " << checkpointId.Quote(),
+            flags));
+
+    LWTRACK(
+        ResponseSent_Partition,
+        requestInfo.CallContext->LWOrbit,
+        "DescribeBlocks",
+        requestInfo.CallContext->RequestId);
+
+    NCloud::Reply(ctx, requestInfo, std::move(response));
+    return {};
+}
 
 void TPartitionActor::DescribeBlocks(
     const TActorContext& ctx,
@@ -66,20 +115,21 @@ void TPartitionActor::DescribeBlocks(
     const TBlockRange32& describeRange,
     bool indexOnly)
 {
-    LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Start describe blocks @%lu (range: %s)",
-        TabletID(),
+    State->GetCleanupQueue().AcquireBarrier(commitId);
+
+    LOG_TRACE(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Start describe blocks @%lu (range: %s)",
+        LogTitle.GetWithTime().c_str(),
         commitId,
-        DescribeRange(describeRange).data());
+        DescribeRange(describeRange).c_str());
 
     AddTransaction<TEvVolume::TDescribeBlocksMethod>(*requestInfo);
 
-    ExecuteTx<TDescribeBlocks>(
+    ExecuteTx(
         ctx,
-        requestInfo,
-        commitId,
-        describeRange,
-        indexOnly);
+        CreateTx<TDescribeBlocks>(requestInfo, commitId, describeRange, indexOnly));
 }
 
 void TPartitionActor::HandleDescribeBlocks(
@@ -147,28 +197,10 @@ void TPartitionActor::HandleDescribeBlocks(
 
     range = bounds.Intersect(range);
 
-    const auto& checkpointId = msg->Record.GetCheckpointId();
-    TMaybe<ui64> commitId;
+    const auto commitId = VerifyDescribeBlocksCheckpoint(
+        ctx, msg->Record.GetCheckpointId(), *requestInfo);
 
-    if (checkpointId) {
-        ui64 value = State->GetCheckpoints().GetCommitId(checkpointId);
-        if (value) {
-            commitId = value;
-        }
-    } else {
-        commitId = State->GetLastCommitId();
-    }
-
-    if (!commitId) {
-        ui32 flags = 0;
-        SetProtoFlag(flags, NProto::EF_SILENT);
-        auto response = std::make_unique<TEvVolume::TEvDescribeBlocksResponse>(
-            MakeError(
-                E_NOT_FOUND,
-                TStringBuilder()
-                    << "checkpoint not found: " << checkpointId.Quote(),
-                flags));
-        reply(std::move(response));
+    if (!commitId.Defined()) {
         return;
     }
 
@@ -187,18 +219,37 @@ bool TPartitionActor::PrepareDescribeBlocks(
     TRequestScope timer(*args.RequestInfo);
     TPartitionDatabase db(tx.DB);
 
-    if (!args.CommitId) {
-        // Will read latest state.
-        args.CommitId = State->GetLastCommitId();
+    ui64 commitId = args.CommitId;
+
+    if (State->OverlapsUnconfirmedBlobs(0, commitId, args.DescribeRange)) {
+        args.Interrupted = true;
+        return true;
     }
 
-    if (!State->InitIndex(db, args.DescribeRange)) {
-        return false;
+    // NOTE: we should also look in confirmed blobs because they are not added
+    // yet
+    if (State->OverlapsConfirmedBlobs(0, commitId, args.DescribeRange)) {
+        args.Interrupted = true;
+        return true;
     }
 
     TDescribeBlocksVisitor visitor(args);
-    State->FindFreshBlocks(args.CommitId, args.DescribeRange, visitor);
-    return State->FindMergedBlocks(db, args.CommitId, args.DescribeRange, visitor);
+    State->FindFreshBlocks(visitor, args.DescribeRange, commitId);
+    auto ready = db.FindMixedBlocks(
+        visitor,
+        args.DescribeRange,
+        false,  // precharge
+        commitId
+    );
+    ready &= db.FindMergedBlocks(
+        visitor,
+        args.DescribeRange,
+        false,  // precharge
+        State->GetMaxBlocksInBlob(),
+        commitId
+    );
+
+    return ready;
 }
 
 void TPartitionActor::ExecuteDescribeBlocks(
@@ -217,15 +268,15 @@ void TPartitionActor::CompleteDescribeBlocks(
 {
     TRequestScope timer(*args.RequestInfo);
 
-    auto response = std::make_unique<TEvVolume::TEvDescribeBlocksResponse>();
-    FillDescribeBlocksResponse(args, response.get());
-
     RemoveTransaction(*args.RequestInfo);
 
-    LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Complete describe blocks @%lu",
-        TabletID(),
-        args.CommitId);
+    const ui64 commitId = args.CommitId;
+    LOG_TRACE(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Complete DescribeBlocks transaction @%lu",
+        LogTitle.GetWithTime().c_str(),
+        commitId);
 
     LWTRACK(
         ResponseSent_Partition,
@@ -233,12 +284,25 @@ void TPartitionActor::CompleteDescribeBlocks(
         "DescribeBlocks",
         args.RequestInfo->CallContext->RequestId);
 
+    State->GetCleanupQueue().ReleaseBarrier(commitId);
+
+    if (args.Interrupted) {
+        auto response = std::make_unique<TEvVolume::TEvDescribeBlocksResponse>(
+            MakeError(E_REJECTED, "DescribeBlocks transaction was interrupted")
+        );
+        NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+        return;
+    }
+
+    auto response = std::make_unique<TEvVolume::TEvDescribeBlocksResponse>();
+    FillDescribeBlocksResponse(args, response.get());
+
     const ui64 responseBytes = response->Record.ByteSizeLong();
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
-    UpdateNetworkStats(ctx, responseBytes);
-    UpdateCPUUsageStat(ctx, args.RequestInfo->GetExecCycles());
+    UpdateNetworkStat(ctx.Now(), responseBytes);
+    UpdateCPUUsageStat(ctx.Now(), args.RequestInfo->GetExecCycles());
 
     const auto duration = CyclesToDurationSafe(args.RequestInfo->GetTotalCycles());
     const auto time = duration.MicroSeconds();
@@ -261,7 +325,7 @@ void TPartitionActor::FillDescribeBlocksResponse(
     TTxPartition::TDescribeBlocks& args,
     TEvVolume::TEvDescribeBlocksResponse* response)
 {
-    for (auto& mark : args.Marks) {
+    for (auto& mark: args.Marks) {
         if (!mark.Content) {
             continue;
         }
@@ -283,21 +347,18 @@ void TPartitionActor::FillDescribeBlocksResponse(
         }
     }
 
-    EraseIf(
-        args.Marks,
-        [] (const auto& m) {
-            return IsDeletionMarker(m.BlobId) || m.BlobOffset == ZeroBlobOffset;
-        });
+    EraseIf(args.Marks, [] (const auto& m) { return IsDeletionMarker(m.BlobId); });
     Sort(args.Marks);
 
     auto iter = args.Marks.begin();
     while (iter != args.Marks.end()) {
-        const auto blobId = iter->BlobId;
+        const auto& blobId = iter->BlobId;
         auto* blobPiece = response->Record.AddBlobPieces();
 
         LogoBlobIDFromLogoBlobID(
             MakeBlobId(TabletID(), blobId),
             blobPiece->MutableBlobId());
+
         blobPiece->SetBSGroupId(
             Info()->GroupFor(blobId.Channel(), blobId.Generation()));
 

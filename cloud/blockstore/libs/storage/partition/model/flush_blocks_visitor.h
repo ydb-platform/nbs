@@ -1,6 +1,6 @@
 #pragma once
 
-#include "block_index.h"
+#include <cloud/blockstore/libs/storage/partition_common/model/block_index.h>
 
 #include <cloud/blockstore/libs/storage/core/compaction_map.h>
 

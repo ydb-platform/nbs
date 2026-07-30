@@ -131,7 +131,7 @@ struct TActiveCheckpointInfo
 
 using TActiveCheckpointsMap = TMap<TString, TActiveCheckpointInfo>;
 
-class TCheckpointStore
+class TVolumeCheckpointStore
 {
 private:
     TMap<ui64, TCheckpointRequest> CheckpointRequests;
@@ -145,10 +145,10 @@ private:
     const TString DiskID;
 
 public:
-    TCheckpointStore(
+    TVolumeCheckpointStore(
         TVector<TCheckpointRequest> checkpointRequests,
         const TString& diskID);
-    ~TCheckpointStore() = default;
+    ~TVolumeCheckpointStore() = default;
 
     const TCheckpointRequest& MakeCreateCheckpointRequest(
         TString checkpointId,

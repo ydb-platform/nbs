@@ -1,10 +1,16 @@
 #include "part2_actor.h"
 
-#include <cloud/blockstore/libs/storage/partition2/part2_diagnostics.h>
+#include <cloud/blockstore/libs/storage/core/probes.h>
+
+#include <cloud/storage/core/libs/tablet/gc_logic.h>
+
+#include <library/cpp/containers/dense_hash/dense_hash.h>
 
 #include <util/generic/algorithm.h>
-
-#include <tuple>
+#include <util/generic/hash.h>
+#include <util/generic/string.h>
+#include <util/generic/vector.h>
+#include <util/string/builder.h>
 
 namespace NCloud::NBlockStore::NStorage::NPartition2 {
 
@@ -17,6 +23,669 @@ using namespace NKikimr::NTabletFlatExecutor;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+TString DescribeFreshRange(const TVector<TBlock>& blocks)
+{
+    if (blocks) {
+        return TStringBuilder()
+            << "[" << blocks.front().BlockIndex << ".." << blocks.back().BlockIndex << "]";
+    }
+    return "<none>";
+}
+
+bool HasDuplicates(const TVector<ui32>& items)
+{
+    if (items.size() > 1) {
+        for (size_t i = 1; i < items.size(); ++i) {
+            Y_DEBUG_ABORT_UNLESS(items[i - 1] <= items[i]);
+            if (items[i - 1] == items[i]) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TAddBlobsExecutor
+{
+private:
+    TPartitionState& State;
+    TTxPartition::TAddBlobs& Args;
+
+    const ui64 TabletId;
+    const TString DiskId;
+    const ui64 DeletionCommitId;
+    const ui32 MaxBlocksInBlob;
+    TChildLogTitle LogTitle;
+
+    struct TRangeInfo
+    {
+        TRangeStat Stat;
+        ui32 BlobsSkippedByCompaction = 0;
+        ui32 BlocksSkippedByCompaction = 0;
+    };
+
+    TDenseHash<ui32, TRangeInfo> CompactionCounters{
+        std::numeric_limits<ui32>::max()};
+    TDenseHash<ui32, ui64> OverwrittenBlocks{std::numeric_limits<ui32>::max()};
+
+public:
+    TAddBlobsExecutor(
+            TPartitionState& state,
+            TTxPartition::TAddBlobs& args,
+            ui64 tabletId,
+            TString diskId,
+            ui64 deletionCommitId,
+            ui32 maxBlocksInBlob,
+            TChildLogTitle logTitle)
+        : State(state)
+        , Args(args)
+        , TabletId(tabletId)
+        , DiskId(std::move(diskId))
+        , DeletionCommitId(deletionCommitId)
+        , MaxBlocksInBlob(maxBlocksInBlob)
+        , LogTitle(std::move(logTitle))
+    {}
+
+    void Execute(const TActorContext& ctx, TPartitionDatabase& db)
+    {
+        if (Args.Mode == ADD_COMPACTION_RESULT) {
+            Y_ABORT_UNLESS(
+                Args.MixedBlobs.size() ==
+                Args.MixedBlobCompactionInfos.size());
+        }
+
+        for (ui32 i = 0; i < Args.MixedBlobs.size(); ++i) {
+            const auto& blob = Args.MixedBlobs[i];
+            ProcessNewBlob(ctx, db, blob);
+            UpdateCompactionCounters(blob);
+            if (Args.Mode == EAddBlobMode::ADD_WRITE_RESULT) {
+                UpdateUsedBlocks(db, blob);
+            }
+
+            if (Args.Mode == ADD_COMPACTION_RESULT) {
+                const auto& cm = State.GetCompactionMap();
+                const auto blockIndex = cm.GetRangeStart(BlockIndex(blob, 0));
+                auto& rangeInfo = CompactionCounters[blockIndex];
+                rangeInfo.BlobsSkippedByCompaction =
+                    Args.MixedBlobCompactionInfos[i].BlobsSkippedByCompaction;
+                rangeInfo.BlocksSkippedByCompaction =
+                    Args.MixedBlobCompactionInfos[i].BlocksSkippedByCompaction;
+            }
+        }
+
+        if (Args.Mode == ADD_COMPACTION_RESULT) {
+            Y_ABORT_UNLESS(
+                Args.MergedBlobs.size() ==
+                Args.MergedBlobCompactionInfos.size());
+        }
+
+        for (ui32 i = 0; i < Args.MergedBlobs.size(); ++i) {
+            const auto& blob = Args.MergedBlobs[i];
+            ProcessNewBlob(ctx, db, blob);
+            UpdateCompactionCounters(blob);
+            if (Args.Mode == EAddBlobMode::ADD_WRITE_RESULT) {
+                UpdateUsedBlocks(db, blob);
+            }
+
+            if (Args.Mode == ADD_COMPACTION_RESULT) {
+                const auto& cm = State.GetCompactionMap();
+                const auto blockIndex = cm.GetRangeStart(blob.BlockRange.Start);
+                Y_DEBUG_ABORT_UNLESS(
+                    blockIndex == cm.GetRangeStart(blob.BlockRange.End));
+                auto& rangeInfo = CompactionCounters[blockIndex];
+                rangeInfo.BlobsSkippedByCompaction =
+                    Args.MergedBlobCompactionInfos[i].BlobsSkippedByCompaction;
+                rangeInfo.BlocksSkippedByCompaction =
+                    Args.MergedBlobCompactionInfos[i].BlocksSkippedByCompaction;
+            }
+        }
+
+        for (const auto& blob: Args.FreshBlobs) {
+            ProcessOverwrittenBlocks(blob);
+        }
+        UpdateUsedFreshBlocks(db);
+
+        for (const auto& blob: Args.FreshBlobs) {
+            ProcessNewBlob(ctx, db, blob);
+            UpdateCompactionCounters(blob);
+        }
+
+        if (Args.Mode == ADD_COMPACTION_RESULT) {
+            ProcessAffectedBlobs(db);
+            ProcessAffectedBlocks(db);
+        }
+
+        UpdateCompactionMap(db);
+        State.UpdateTrimFreshLogToCommitIdInMeta();
+
+        db.WriteMeta(State.GetMeta());
+    }
+
+private:
+    void ProcessNewBlob(
+        const TActorContext& ctx,
+        TPartitionDatabase& db,
+        const TAddMixedBlob& blob)
+    {
+        Y_DEBUG_ABORT_UNLESS(blob.BlobId.CommitId() == Args.CommitId);
+        Y_DEBUG_ABORT_UNLESS(!HasDuplicates(blob.Blocks));
+
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            IsDeletionMarker(blob.BlobId)
+                ? "%s Add MixedBlob (zero blocks) @%lu (blob: %s, range: %s)"
+                : "%s Add MixedBlob @%lu (blob: %s, range: %s)",
+            LogTitle.GetWithTime().c_str(),
+            Args.CommitId,
+            ToString(MakeBlobId(TabletId, blob.BlobId)).c_str(),
+            DescribeRange(blob.Blocks).c_str());
+
+        // write blob meta
+        NProto::TBlobMeta blobMeta;
+
+        auto& mixedBlocks = *blobMeta.MutableMixedBlocks();
+        mixedBlocks.MutableBlocks()->Reserve(blob.Blocks.size());
+
+        for (ui32 blockIndex: blob.Blocks) {
+            mixedBlocks.AddBlocks(blockIndex);
+        }
+
+        for (ui32 checksum: blob.Checksums) {
+            blobMeta.AddBlockChecksums(checksum);
+        }
+
+        db.WriteBlobMeta(blob.BlobId, blobMeta);
+
+        if (!IsDeletionMarker(blob.BlobId)) {
+            bool added = State.GetGarbageQueue().AddNewBlob(blob.BlobId);
+            Y_ABORT_UNLESS(added);
+        }
+
+        // write blocks mask
+        TBlockMask blockMask;
+
+        for (ui16 blobOffset = blob.Blocks.size();
+            blobOffset < MaxBlocksInBlob;
+            ++blobOffset)
+        {
+            blockMask.Set(blobOffset);
+        }
+
+        Y_ABORT_UNLESS(!IsBlockMaskFull(blockMask, MaxBlocksInBlob));
+        db.WriteBlockMask(blob.BlobId, blockMask);
+
+        // write blocks
+        State.WriteMixedBlocks(
+            db,
+            blob.BlobId,
+            blob.Blocks,
+            blob.CompactionRangeCount);
+
+        // update counters
+        State.IncrementMixedBlobsCount(1);
+        if (!IsDeletionMarker(blob.BlobId)) {
+            State.IncrementMixedBlocksCount(blob.Blocks.size());
+        }
+    }
+
+    void ProcessNewBlob(
+        const TActorContext& ctx,
+        TPartitionDatabase& db,
+        const TAddMergedBlob& blob)
+    {
+        Y_DEBUG_ABORT_UNLESS(blob.BlobId.CommitId() == Args.CommitId);
+
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            IsDeletionMarker(blob.BlobId)
+                ? "%s Add MergedBlob (zero blocks) @%lu (blob: %s, range: %s)"
+                : "%s Add MergedBlob @%lu (blob: %s, range: %s)",
+            LogTitle.GetWithTime().c_str(),
+            Args.CommitId,
+            ToString(MakeBlobId(TabletId, blob.BlobId)).c_str(),
+            DescribeRange(blob.BlockRange).c_str());
+
+        const auto skipped = blob.SkipMask.Count();
+        Y_ABORT_UNLESS(skipped < blob.BlockRange.Size());
+
+        // write blob meta
+        NProto::TBlobMeta blobMeta;
+
+        auto& mergedBlocks = *blobMeta.MutableMergedBlocks();
+        mergedBlocks.SetStart(blob.BlockRange.Start);
+        mergedBlocks.SetEnd(blob.BlockRange.End);
+        mergedBlocks.SetSkipped(skipped);
+
+        for (ui32 checksum: blob.Checksums) {
+            blobMeta.AddBlockChecksums(checksum);
+        }
+
+        db.WriteBlobMeta(blob.BlobId, blobMeta);
+
+        if (!IsDeletionMarker(blob.BlobId)) {
+            bool added = State.GetGarbageQueue().AddNewBlob(blob.BlobId);
+            Y_ABORT_UNLESS(added);
+        }
+
+        // write blocks mask
+        TBlockMask blockMask;
+
+        for (ui16 blobOffset = blob.BlockRange.Size() - skipped;
+            blobOffset < MaxBlocksInBlob;
+            ++blobOffset)
+        {
+            blockMask.Set(blobOffset);
+        }
+
+        Y_ABORT_UNLESS(!IsBlockMaskFull(blockMask, MaxBlocksInBlob));
+        db.WriteBlockMask(blob.BlobId, blockMask);
+
+        // write blocks
+        db.WriteMergedBlocks(blob.BlobId, blob.BlockRange, blob.SkipMask);
+
+        // update counters
+        State.IncrementMergedBlobsCount(1);
+        if (!IsDeletionMarker(blob.BlobId)) {
+            State.IncrementMergedBlocksCount(blob.BlockRange.Size() - skipped);
+        }
+
+        State.ConfirmedBlobsAdded(db, Args.CommitId);
+    }
+
+    void ProcessNewBlob(
+        const TActorContext& ctx,
+        TPartitionDatabase& db,
+        const TAddFreshBlob& blob)
+    {
+        Y_DEBUG_ABORT_UNLESS(blob.BlobId.CommitId() == Args.CommitId);
+
+        // duplicates are allowed
+        Y_DEBUG_ABORT_UNLESS(IsSorted(blob.Blocks.begin(), blob.Blocks.end()));
+
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            IsDeletionMarker(blob.BlobId)
+                ? "%s Add FreshBlob (zero blocks) @%lu (blob: %s, range: %s)"
+                : "%s Add FreshBlob @%lu (blob: %s, range: %s)",
+            LogTitle.GetWithTime().c_str(),
+            Args.CommitId,
+            ToString(MakeBlobId(TabletId, blob.BlobId)).c_str(),
+            DescribeFreshRange(blob.Blocks).c_str());
+
+        // write blob meta
+        NProto::TBlobMeta blobMeta;
+
+        auto& mixedBlocks = *blobMeta.MutableMixedBlocks();
+        mixedBlocks.MutableBlocks()->Reserve(blob.Blocks.size());
+        mixedBlocks.MutableCommitIds()->Reserve(blob.Blocks.size());
+
+        for (const auto& block: blob.Blocks) {
+            mixedBlocks.AddBlocks(block.BlockIndex);
+            mixedBlocks.AddCommitIds(block.CommitId);
+        }
+
+        for (ui32 checksum: blob.Checksums) {
+            blobMeta.AddBlockChecksums(checksum);
+        }
+
+        db.WriteBlobMeta(blob.BlobId, blobMeta);
+
+        if (!IsDeletionMarker(blob.BlobId)) {
+            bool added = State.GetGarbageQueue().AddNewBlob(blob.BlobId);
+            Y_ABORT_UNLESS(added);
+        }
+
+        // write blocks mask
+        TBlockMask blockMask;
+
+        for (ui16 blobOffset = blob.Blocks.size();
+            blobOffset < MaxBlocksInBlob;
+            ++blobOffset)
+        {
+            blockMask.Set(blobOffset);
+        }
+
+        // mask overwritten blocks (there could be multiple block versions)
+        ui16 blobOffset = 0;
+        for (const auto& block: blob.Blocks) {
+            ui64 lastCommitId = OverwrittenBlocks[block.BlockIndex];
+            if (lastCommitId > block.CommitId) {
+                blockMask.Set(blobOffset);
+            }
+            ++blobOffset;
+        }
+
+        db.WriteBlockMask(blob.BlobId, blockMask);
+
+        if (IsBlockMaskFull(blockMask, MaxBlocksInBlob)) {
+            // blob already could be garbage, but we should keep it
+            // as there could be active readers (or even checkpoint)
+            db.WriteCleanupQueue(blob.BlobId, DeletionCommitId);
+            State.GetCleanupQueue().Add(
+                {blob.BlobId, DeletionCommitId, blobMeta});
+        }
+
+        // move blocks from FreshBlocks to MixedBlocks
+        blobOffset = 0;
+        for (const auto& block: blob.Blocks) {
+            State.WriteMixedBlock(
+                db,
+                {blob.BlobId,
+                 block.CommitId,
+                 block.BlockIndex,
+                 blobOffset++,
+                 blob.CompactionRangeCount});
+
+            if (block.IsStoredInDb) {
+                State.DeleteFreshBlockFromDb(
+                    db,
+                    block.BlockIndex,
+                    block.CommitId);
+            } else {
+                State.DeleteFreshBlock(block.BlockIndex, block.CommitId);
+            }
+        }
+
+        // update counters
+        State.IncrementMixedBlobsCount(1);
+        if (!IsDeletionMarker(blob.BlobId)) {
+            State.IncrementMixedBlocksCount(blob.Blocks.size());
+        }
+    }
+
+    void ProcessOverwrittenBlocks(const TAddFreshBlob& blob)
+    {
+        // blocks in each blob are ordered by BlockIndex and CommitId,
+        // but such total order is not guaranteed across set of
+        // fresh blobs which could contain both zero and non-zero
+        // blobs mixed
+        for (const auto& block: blob.Blocks) {
+            ui64& lastCommitId = OverwrittenBlocks[block.BlockIndex];
+            if (lastCommitId < block.CommitId) {
+                lastCommitId = block.CommitId;
+            }
+        }
+    }
+
+    auto& AccessRangeStat(ui32 blockIndex)
+    {
+        const auto& cm = State.GetCompactionMap();
+        auto& rangeInfo = CompactionCounters[blockIndex];
+
+        if (!rangeInfo.Stat.BlobCount && Args.Mode != ADD_COMPACTION_RESULT) {
+            rangeInfo.Stat = cm.Get(blockIndex);
+        }
+
+        return rangeInfo.Stat;
+    };
+
+    void UpdateCompactionCounters(const TAddMergedBlob& blob)
+    {
+        const auto& cm = State.GetCompactionMap();
+
+        auto range = TBlockRange32::MakeClosedInterval(
+            cm.GetRangeStart(blob.BlockRange.Start),
+            cm.GetRangeStart(blob.BlockRange.End));
+
+        for (const ui64 blockIndex: xrange(range, cm.GetRangeSize())) {
+            auto& rangeStat = AccessRangeStat(blockIndex);
+
+            TCompactionMap::UpdateCompactionCounter(
+                rangeStat.BlobCount + 1,
+                &rangeStat.BlobCount
+            );
+
+            if (IsDeletionMarker(blob.BlobId)) {
+                continue;
+            }
+
+            const auto firstBlock = Max<ui64>(blockIndex, blob.BlockRange.Start);
+            const auto lastBlock =
+                Min<ui64>(blockIndex + cm.GetRangeSize() - 1, blob.BlockRange.End);
+            ui32 skipped = 0;
+            for (ui64 b = firstBlock; b <= lastBlock; ++b) {
+                auto pos = b - blob.BlockRange.Start;
+                if (blob.SkipMask.Get(pos)) {
+                    ++skipped;
+                }
+            }
+            TCompactionMap::UpdateCompactionCounter(
+                rangeStat.BlockCount + (lastBlock - firstBlock + 1 - skipped),
+                &rangeStat.BlockCount
+            );
+        }
+    }
+
+    static ui32 BlockIndex(const TAddMixedBlob& blob, ui32 i)
+    {
+        return blob.Blocks[i];
+    }
+
+    static ui32 BlockIndex(const TAddFreshBlob& blob, ui32 i)
+    {
+        return blob.Blocks[i].BlockIndex;
+    }
+
+    template <class TAddSparseBlob>
+    void UpdateCompactionCounters(const TAddSparseBlob& blob)
+    {
+        const auto& cm = State.GetCompactionMap();
+
+        ui32 prevBlockIndex = 0;
+        TRangeStat* rangeStat = nullptr;
+
+        for (size_t i = 0; i < blob.Blocks.size(); ++i) {
+            ui32 blockIndex = cm.GetRangeStart(BlockIndex(blob, i));
+            Y_DEBUG_ABORT_UNLESS(prevBlockIndex <= blockIndex);
+
+            if (i == 0 || prevBlockIndex != blockIndex) {
+                prevBlockIndex = blockIndex;
+
+                rangeStat = &AccessRangeStat(blockIndex);
+                TCompactionMap::UpdateCompactionCounter(
+                    rangeStat->BlobCount + 1,
+                    &rangeStat->BlobCount
+                );
+            }
+
+            if (!IsDeletionMarker(blob.BlobId)) {
+                TCompactionMap::UpdateCompactionCounter(
+                    rangeStat->BlockCount + 1,
+                    &rangeStat->BlockCount
+                );
+            }
+        }
+    }
+
+    void UpdateCompactionMap(TPartitionDatabase& db)
+    {
+        for (const auto& kv: CompactionCounters) {
+            const auto usedBlockCount = State.GetUsedBlocks().Count(
+                kv.first,
+                Min(static_cast<ui64>(
+                        kv.first + State.GetCompactionMap().GetRangeSize()),
+                    State.GetUsedBlocks().Capacity()));
+
+            ui32 newlyZeroedBlocks = 0;
+
+            if (Args.Mode != ADD_COMPACTION_RESULT) {
+                newlyZeroedBlocks =
+                    State.CalculateNewlyZeroedBlocks(kv.first, usedBlockCount);
+            }
+
+            const ui32 prevNewlyZeroedBlocks =
+                State.GetCompactionMap().Get(kv.first).NewlyZeroedBlocks;
+            const i64 newlyZeroedBlocksDiff =
+                static_cast<i64>(newlyZeroedBlocks) - prevNewlyZeroedBlocks;
+            State.SetNewlyZeroedBlocks(static_cast<ui32>(std::max(
+                static_cast<i64>(State.GetNewlyZeroedBlocks()) +
+                    newlyZeroedBlocksDiff,
+                0L)));
+
+            db.WriteCompactionMap(
+                kv.first,
+                kv.second.Stat.BlobCount + kv.second.BlobsSkippedByCompaction,
+                kv.second.Stat.BlockCount +
+                    kv.second.BlocksSkippedByCompaction);
+            State.GetCompactionMap().Update(
+                kv.first,
+                kv.second.Stat.BlobCount + kv.second.BlobsSkippedByCompaction,
+                kv.second.Stat.BlockCount + kv.second.BlocksSkippedByCompaction,
+                usedBlockCount,
+                newlyZeroedBlocks,
+                Args.Mode == ADD_COMPACTION_RESULT);
+        }
+    }
+
+    void UpdateUsedFreshBlocks(TPartitionDatabase& db)
+    {
+        TVector<ui32> setBlocks;
+        TVector<ui32> unsetBlocks;
+
+        // TODO(NBS-1976): make used blocks map more consistent in
+        // terms of fresh blocks from channel
+        for (const auto& blob: Args.FreshBlobs) {
+            for (const auto& block: blob.Blocks) {
+                if (OverwrittenBlocks[block.BlockIndex] != block.CommitId) {
+                    continue;
+                }
+
+                if (IsDeletionMarker(blob.BlobId)) {
+                    unsetBlocks.push_back(block.BlockIndex);
+                } else {
+                    setBlocks.push_back(block.BlockIndex);
+                }
+            }
+        }
+
+        State.SetUsedBlocks(db, setBlocks);
+        State.UnsetUsedBlocks(db, unsetBlocks);
+    }
+
+    void UpdateUsedBlocks(TPartitionDatabase& db, const TAddMixedBlob& blob)
+    {
+        if (IsDeletionMarker(blob.BlobId)) {
+            State.UnsetUsedBlocks(db, blob.Blocks);
+        } else {
+            State.SetUsedBlocks(db, blob.Blocks);
+        }
+    }
+
+    void UpdateUsedBlocks(TPartitionDatabase& db, const TAddMergedBlob& blob)
+    {
+        if (IsDeletionMarker(blob.BlobId)) {
+            State.UnsetUsedBlocks(db, blob.BlockRange);
+        } else {
+            State.SetUsedBlocks(db, blob.BlockRange, blob.SkipMask.Count());
+        }
+    }
+
+    void ProcessAffectedBlobs(TPartitionDatabase& db)
+    {
+        for (const auto& kv: Args.AffectedBlobs) {
+            STORAGE_VERIFY_C(
+                kv.second.BlockMask.Defined(),
+                TWellKnownEntityTypes::TABLET,
+                TabletId,
+                "unknown block mask for blob "
+                    << MakeBlobId(TabletId, kv.first));
+
+            const auto& blockMask = kv.second.BlockMask.GetRef();
+            db.WriteBlockMask(kv.first, blockMask);
+
+            if (IsBlockMaskFull(blockMask, MaxBlocksInBlob)) {
+                NProto::TBlobMeta blobMeta;
+                if (kv.second.BlobMeta) {
+                    blobMeta = kv.second.BlobMeta.GetRef();
+                } else if (kv.second.RecreatedBlobMeta) {
+                    blobMeta = kv.second.RecreatedBlobMeta.GetRef();
+                }
+
+                bool inserted = State.GetCleanupQueue().Add(
+                    {kv.first, DeletionCommitId, std::move(blobMeta)});
+
+                STORAGE_VERIFY_DEBUG_C(
+                    inserted,
+                    TWellKnownEntityTypes::TABLET,
+                    TabletId,
+                    "Cleanup queue: blob already in cleanup queue");
+                if (inserted) {
+                    db.WriteCleanupQueue(kv.first, DeletionCommitId);
+                }
+            }
+        }
+    }
+
+    // NBS-301: remove blocks from index as soon as possible
+    void ProcessAffectedBlocks(TPartitionDatabase& db)
+    {
+        if (!Args.AffectedBlocks) {
+            return;
+        }
+
+        TVector<ui64> checkpoints;
+        State.GetCheckpoints().GetCommitIds(checkpoints);
+        // XXX affected blocks are only supplied via the requests sent by
+        // compaction and compaction takes care of building correct affected
+        // block lists itself: blocks not overwritten by compaction should not
+        // be added to AffectedBlocks
+        // But at the same time compaction acquires a cleanup barrier => most of
+        // the affected blocks won't be deleted because of this barrier
+        State.GetCleanupQueue().GetCommitIds(checkpoints);
+
+        if (!checkpoints) {
+            // fast path
+            for (const auto& block: Args.AffectedBlocks) {
+                State.DeleteMixedBlock(db, block.BlockIndex, block.CommitId);
+            }
+            return;
+        }
+
+        SortUnique(checkpoints, TGreater<ui64>());
+
+        ui32 blockIndex = 0;
+        TVector<ui64> commitIds;
+        TVector<ui64> garbage;
+
+        auto processGroup = [&] {
+            FindGarbageVersions(checkpoints, commitIds, garbage);
+
+            for (ui64 commitId: garbage) {
+                State.DeleteMixedBlock(db, blockIndex, commitId);
+            }
+
+            commitIds.clear();
+            garbage.clear();
+        };
+
+        for (const auto& block: Args.AffectedBlocks) {
+            if (blockIndex != block.BlockIndex) {
+                if (commitIds) {
+                    processGroup();
+                }
+                blockIndex = block.BlockIndex;
+            }
+
+            commitIds.push_back(block.CommitId);
+        }
+
+        if (commitIds) {
+            processGroup();
+        }
+    }
+};
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TPartitionActor::HandleAddBlobs(
@@ -24,6 +693,26 @@ void TPartitionActor::HandleAddBlobs(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
+
+    if (CompactionMapLoadState) {
+        const THashSet<ui32> rangeIndices =
+            GetRangeIndices(msg->FreshBlobs, msg->MixedBlobs, msg->MergedBlobs);
+
+        const auto ranges =
+            CompactionMapLoadState->GetNotLoadedRanges(rangeIndices);
+
+        if (!ranges.empty()) {
+            CompactionMapLoadState->EnqueueOutOfOrderRanges(ranges);
+
+            const auto error =
+                MakeError(E_REJECTED, "compaction map not loaded yet");
+            auto response =
+                std::make_unique<TEvPartitionPrivate::TEvAddBlobsResponse>(
+                    error);
+            NCloud::Reply(ctx, *ev, std::move(response));
+            return;
+        }
+    }
 
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
@@ -38,24 +727,22 @@ void TPartitionActor::HandleAddBlobs(
         "AddBlobs",
         requestInfo->CallContext->RequestId);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Start adding blobs",
-        TabletID());
-
     AddTransaction<TEvPartitionPrivate::TAddBlobsMethod>(*requestInfo);
 
-    ExecuteTx<TAddBlobs>(
+    ExecuteTx(
         ctx,
-        requestInfo,
-        msg->Mode,
-        std::move(msg->NewBlobs),
-        std::move(msg->GarbageInfo),
-        std::move(msg->AffectedBlobInfos),
-        msg->BlobsSkippedByCompaction,
-        msg->BlocksSkippedByCompaction);
+        CreateTx<TAddBlobs>(
+            requestInfo,
+            msg->CommitId,
+            std::move(msg->MixedBlobs),
+            std::move(msg->MergedBlobs),
+            std::move(msg->FreshBlobs),
+            msg->Mode,
+            std::move(msg->AffectedBlobs),
+            std::move(msg->AffectedBlocks),
+            std::move(msg->MixedBlobCompactionInfos),
+            std::move(msg->MergedBlobCompactionInfos)));
 }
-
-////////////////////////////////////////////////////////////////////////////////
 
 bool TPartitionActor::PrepareAddBlobs(
     const TActorContext& ctx,
@@ -63,21 +750,11 @@ bool TPartitionActor::PrepareAddBlobs(
     TTxPartition::TAddBlobs& args)
 {
     Y_UNUSED(ctx);
+    Y_UNUSED(tx);
+    Y_UNUSED(args);
 
-    // writes are usually blind but we still need our index structures to be
-    // properly initialized
-    bool ready = true;
-    TPartitionDatabase db(tx.DB);
-    for (const auto& blob: args.NewBlobs) {
-        Y_DEBUG_ABORT_UNLESS(IsSorted(blob.Blocks.begin(), blob.Blocks.end()));
-        ready &= State->InitIndex(
-            db,
-            TBlockRange32::MakeClosedInterval(
-                blob.Blocks.front().BlockIndex,
-                blob.Blocks.back().BlockIndex));
-    }
-
-    return ready;
+    // we really want to keep the writes blind
+    return true;
 }
 
 void TPartitionActor::ExecuteAddBlobs(
@@ -85,172 +762,37 @@ void TPartitionActor::ExecuteAddBlobs(
     TTransactionContext& tx,
     TTxPartition::TAddBlobs& args)
 {
-    Y_UNUSED(ctx);
-
     TRequestScope timer(*args.RequestInfo);
     TPartitionDatabase db(tx.DB);
 
-    if (args.Mode == ADD_WRITE_RESULT) {
-        // first check if we have enough free commit ids for this operation
-        ui32 step;
-        std::tie(std::ignore, step) = ParseCommitId(State->GetLastCommitId());
-        ui64 futureStep = step + args.NewBlobs.size();
-        if (futureStep > Max<ui32>()) {
-            args.Success = false;
-            return;
-        }
-    }
+    // NBS-415: we should keep garbage blobs until all readers gone,
+    // but Args.CommitId is from past and could not be used for that.
+    // ui64 deletionCommitId = args.CommitId;
+    args.DeletionCommitId = State->GetLastCommitId();
 
-    for (auto& blobInfo: args.AffectedBlobInfos) {
-        // extra diagnostics
-        TDumpBlockCommitIds dumpBlockCommitIds(
-            blobInfo.Blocks,
-            args.BlockCommitIds,
-            Config->GetDumpBlockCommitIdsIntoProfileLog());
+    // need this barrier to prevent dirty reads from concurrent Cleanup
+    State->GetCleanupQueue().AcquireBarrier(args.DeletionCommitId);
 
-        // TODO: re-encode only deleted blocks
-        // right now the code produces a correct result
-        // but in an inefficient manner
-        // see corresponding todo in part2_actor_compaction.cpp
-        State->UpdateBlob(
-            db,
-            blobInfo.BlobId,
-            false,  // fastPathAllowed
-            blobInfo.Blocks
-        );
-        // TODO: update Ranges map as well? delete these blobs from the corresponding ranges?
-    }
-
-    for (auto& blob: args.NewBlobs) {
-        Y_ABORT_UNLESS(blob.Blocks.size());
-        Y_ABORT_UNLESS(IsSorted(blob.Blocks.begin(), blob.Blocks.end()));
-
-        auto blockRange = TBlockRange32::MakeClosedInterval(
-            blob.Blocks.front().BlockIndex,
-            blob.Blocks.back().BlockIndex);
-
-        LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu] Add blob (blob: %s, range: %s)",
-            TabletID(),
-            DumpBlobIds(TabletID(), blob.BlobId).data(),
-            DescribeRange(blockRange).data());
-
-        // extra diagnostics
-        TDumpBlockCommitIds dumpBlockCommitIds(
-            blob.Blocks,
-            args.BlockCommitIds,
-            Config->GetDumpBlockCommitIdsIntoProfileLog());
-
-        if (args.Mode == ADD_WRITE_RESULT || args.Mode == ADD_ZERO_RESULT) {
-            // Flush/Compaction just transfers blocks from one place to another,
-            // but WriteBlocks and ZeroBlocks are different: we need to generate
-            // MinCommitId now
-            ui64 commitId = State->GenerateCommitId();
-
-            for (auto& block: blob.Blocks) {
-                Y_ABORT_UNLESS(block.MinCommitId == InvalidCommitId
-                      && block.MaxCommitId == InvalidCommitId);
-                block.MinCommitId = commitId;
-            }
-
-            auto currentRange =
-                TBlockRange32::MakeOneBlock(blob.Blocks.front().BlockIndex);
-
-            for (ui32 i = 1; i < blob.Blocks.size(); ++i) {
-                const auto& block = blob.Blocks[i];
-                if (block.BlockIndex == currentRange.End + 1) {
-                    ++currentRange.End;
-                } else {
-                    // mark overwritten blocks
-                    State->AddFreshBlockUpdate(db, {commitId, currentRange});
-                    State->MarkMergedBlocksDeleted(db, currentRange, commitId);
-
-                    currentRange =
-                        TBlockRange32::MakeOneBlock(block.BlockIndex);
-                }
-            }
-
-            // mark overwritten blocks
-            State->AddFreshBlockUpdate(db, {commitId, currentRange});
-            State->MarkMergedBlocksDeleted(db, currentRange, commitId);
-        }
-
-        if (args.Mode == ADD_FLUSH_RESULT) {
-            // delete fresh blocks
-            for (auto& block: blob.Blocks) {
-                const auto* freshBlock =
-                    State->FindFreshBlock(block.BlockIndex, block.MinCommitId);
-                if (freshBlock) {
-                    block.MaxCommitId = freshBlock->Meta.MaxCommitId;
-                }
-
-                bool deleted = State->DeleteFreshBlock(
-                    block.BlockIndex,
-                    block.MinCommitId);
-
-                Y_ABORT_UNLESS(deleted);
-            }
-        }
-
-        if (args.Mode == ADD_COMPACTION_RESULT) {
-            if (!args.GarbageInfo.BlobCounters) {
-                State->ResetCompactionMap(
-                    db,
-                    blob.Blocks,
-                    args.BlobsSkippedByCompaction,
-                    args.BlocksSkippedByCompaction);
-            }
-        } else {
-            State->UpdateCompactionMap(db, blob.Blocks);
-        }
-
-        State->WriteBlob(db, blob.BlobId, blob.Blocks);
-    }
-
-    // delete source blobs
-    // TODO: test that we delete blobs
-    if (args.Mode == ADD_COMPACTION_RESULT) {
-        for (const auto& x: args.GarbageInfo.BlobCounters) {
-            const auto& blobId = x.first;
-            bool deleted = State->DeleteBlob(db, blobId);
-            // blob could be deleted already
-            // Y_ABORT_UNLESS(deleted, "Missing blob detected: %s",
-            //     DumpBlobIds(TabletID(), blobId).data());
-            Y_UNUSED(deleted);
-        }
-    }
-
-    if (args.Mode == ADD_FLUSH_RESULT) {
-        const ui64 commitId = State->GetFlushContext().CommitId;
-        State->SetLastFlushCommitId(commitId);
-
-        State->MoveBlobUpdatesByFreshToDb(db);
-        State->TrimFreshBlockUpdates(db);
-    }
-
-    State->WriteStats(db);
+    TAddBlobsExecutor executor(
+        *State,
+        args,
+        TabletID(),
+        PartitionConfig.GetDiskId(),
+        args.DeletionCommitId,
+        State->GetMaxBlocksInBlob(),
+        LogTitle.GetChild(GetCycleCount())
+    );
+    executor.Execute(ctx, db);
 }
 
 void TPartitionActor::CompleteAddBlobs(
     const TActorContext& ctx,
     TTxPartition::TAddBlobs& args)
 {
-    if (!args.Success) {
-        RebootPartitionOnCommitIdOverflow(ctx, "AddBlobs");
-        return;
-    }
-
     TRequestScope timer(*args.RequestInfo);
-    RemoveTransaction(*args.RequestInfo);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Complete add blobs",
-        TabletID());
-
-    auto response =
-        std::make_unique<TEvPartitionPrivate::TEvAddBlobsResponse>();
+    auto response = std::make_unique<TEvPartitionPrivate::TEvAddBlobsResponse>();
     response->ExecCycles = args.RequestInfo->GetExecCycles();
-    response->BlockCommitIds = std::move(args.BlockCommitIds);
 
     LWTRACK(
         ResponseSent_Partition,
@@ -259,12 +801,46 @@ void TPartitionActor::CompleteAddBlobs(
         args.RequestInfo->CallContext->RequestId);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+    RemoveTransaction(*args.RequestInfo);
 
-    auto time = CyclesToDurationSafe(args.RequestInfo->GetTotalCycles()).MicroSeconds();
-    PartCounters->RequestCounters.AddBlobs.AddRequest(time);
+    State->GetCleanupQueue().ReleaseBarrier(args.DeletionCommitId);
 
     EnqueueCompactionIfNeeded(ctx);
     EnqueueCollectGarbageIfNeeded(ctx);
+
+    auto time = CyclesToDurationSafe(args.RequestInfo->GetTotalCycles()).MicroSeconds();
+    PartCounters->RequestCounters.AddBlobs.AddRequest(time);
+}
+
+THashSet<ui32> TPartitionActor::GetRangeIndices(
+    const TVector<TAddFreshBlob>& freshBlobs,
+    const TVector<TAddMixedBlob>& mixedBlobs,
+    const TVector<TAddMergedBlob>& mergedBlobs) const
+{
+    const auto& compactionMap = State->GetCompactionMap();
+
+    THashSet<ui32> rangeIndices;
+
+    for (const auto& blob: freshBlobs) {
+        if (!blob.Blocks.empty()) {
+            rangeIndices.emplace(
+                compactionMap.GetRangeIndex(blob.Blocks.front().BlockIndex));
+        }
+    }
+
+    for (const auto& blob: mixedBlobs) {
+        for (const auto& block: blob.Blocks) {
+            rangeIndices.emplace(compactionMap.GetRangeIndex(block));
+        }
+    }
+
+    for (const auto& blob: mergedBlobs) {
+        const auto rangeStart =
+            compactionMap.GetRangeStart(blob.BlockRange.Start);
+        rangeIndices.emplace(compactionMap.GetRangeIndex(rangeStart));
+    }
+
+    return rangeIndices;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition2

@@ -321,7 +321,7 @@ void TFreshBlocksWriterActor::HandleWriteBlocksCompleted(
     ui64 requestBytes = blocksCount * PartitionConfig.GetBlockSize();
 
     SharedState->ResourceMetricsQueue.Push(
-        NPartition::TUpdateCPUUsageStat{ctx.Now(), msg->ExecCycles});
+        TUpdateCPUUsageStat{ctx.Now(), msg->ExecCycles});
 
     auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
     const auto requestCount =

@@ -2,7 +2,7 @@
 
 #include "public.h"
 
-#include "block.h"
+#include <cloud/blockstore/libs/storage/partition_common/model/block.h>
 
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>

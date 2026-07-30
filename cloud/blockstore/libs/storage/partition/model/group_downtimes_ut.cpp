@@ -1,4 +1,4 @@
-#include "group_downtimes.h"
+#include <cloud/blockstore/libs/storage/partition_common/model/group_downtimes.h>
 
 #include <cloud/blockstore/libs/diagnostics/downtime_history.h>
 
