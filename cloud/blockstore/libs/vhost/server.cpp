@@ -8,12 +8,13 @@
 #include <cloud/blockstore/libs/service/device_handler.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/storage.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/folder/path.h>
-#include <util/generic/map.h>
+#include <util/generic/hash.h>
 #include <util/generic/vector.h>
 #include <util/string/builder.h>
 #include <util/system/mutex.h>
@@ -118,8 +119,102 @@ struct TAppContext
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Implemented by TEndpoint. A pointer to it is used as the vhost device
+// cookie, so that an executor can dispatch a request dequeued from its request
+// queue to the endpoint the request belongs to.
+struct IRequestProcessor
+{
+    virtual ~IRequestProcessor() = default;
+
+    virtual void ProcessRequest(TVhostRequestPtr vhostRequest) = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Owns a single vhost request queue and the thread that runs it. The queue is
+// shared by all endpoints assigned to this executor.
+class TExecutor final
+    : public ISimpleThread
+{
+private:
+    TAppContext& AppCtx;
+    const TString Name;
+    TExecutorCounters::TExecutorScope ExecutorScope;
+    const IVhostQueuePtr VhostQueue;
+    TAffinity Affinity;
+
+public:
+    TExecutor(
+            TAppContext& appCtx,
+            TString name,
+            IVhostQueuePtr vhostQueue,
+            const TAffinity& affinity)
+        : AppCtx(appCtx)
+        , Name(std::move(name))
+        , ExecutorScope(AppCtx.ServerStats->StartExecutor())
+        , VhostQueue(std::move(vhostQueue))
+        , Affinity(affinity)
+    {}
+
+    void Shutdown()
+    {
+        VhostQueue->Stop();
+        Join();
+    }
+
+    const IVhostQueuePtr& GetQueue() const
+    {
+        return VhostQueue;
+    }
+
+private:
+    void* ThreadProc() override
+    {
+        TAffinityGuard affinityGuard(Affinity);
+
+        ::NCloud::SetCurrentThreadName(Name);
+
+        while (true) {
+            int res = RunRequestQueue();
+            if (res != -EAGAIN) {
+                if (res < 0) {
+                    ReportVhostQueueRunningError({{"return_code", -res}});
+                }
+                break;
+            }
+
+            while (auto req = VhostQueue->DequeueRequest()) {
+                ProcessRequest(std::move(req));
+            }
+        }
+
+        return nullptr;
+    }
+
+    int RunRequestQueue()
+    {
+        auto activity = ExecutorScope.StartWait();
+
+        return VhostQueue->Run();
+    }
+
+    void ProcessRequest(TVhostRequestPtr vhostRequest)
+    {
+        auto activity = ExecutorScope.StartExecute();
+
+        auto* processor = static_cast<IRequestProcessor*>(vhostRequest->Cookie);
+        Y_ABORT_UNLESS(processor);
+        processor->ProcessRequest(std::move(vhostRequest));
+    }
+};
+
+using TExecutorPtr = std::unique_ptr<TExecutor>;
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TEndpoint final
-    : public std::enable_shared_from_this<TEndpoint>
+    : public IRequestProcessor
+    , public std::enable_shared_from_this<TEndpoint>
 {
 private:
     TAppContext& AppCtx;
@@ -127,6 +222,7 @@ private:
     const TString SocketPath;
     const TStorageOptions Options;
     const ui32 SocketAccessMode;
+    TExecutor* const Executor;
     IVhostDevicePtr VhostDevice;
 
     TIntrusiveList<TRequest> RequestsInFlight;
@@ -140,13 +236,30 @@ public:
             IDeviceHandlerPtr deviceHandler,
             TString socketPath,
             const TStorageOptions& options,
-            ui32 socketAccessMode)
+            ui32 socketAccessMode,
+            TExecutor* executor)
         : AppCtx(appCtx)
         , DeviceHandler(std::move(deviceHandler))
         , SocketPath(std::move(socketPath))
         , Options(options)
         , SocketAccessMode(socketAccessMode)
-    {}
+        , Executor(executor)
+    {
+        Y_ABORT_UNLESS(DeviceHandler);
+        Y_ABORT_UNLESS(Executor);
+    }
+
+    // The cookie attached to every request dispatched through this endpoint's
+    // vhost device.
+    void* GetCookie()
+    {
+        return static_cast<IRequestProcessor*>(this);
+    }
+
+    TExecutor* GetExecutor() const
+    {
+        return Executor;
+    }
 
     void SetVhostDevice(IVhostDevicePtr vhostDevice)
     {
@@ -254,7 +367,7 @@ public:
         return count;
     }
 
-    void ProcessRequest(TVhostRequestPtr vhostRequest)
+    void ProcessRequest(TVhostRequestPtr vhostRequest) override
     {
         const auto requestType = vhostRequest->Type;
         auto request = RegisterRequest(std::move(vhostRequest));
@@ -404,171 +517,6 @@ using TEndpointPtr = std::shared_ptr<TEndpoint>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TExecutor final
-    : public ISimpleThread
-{
-private:
-    TAppContext& AppCtx;
-    const TString Name;
-    TExecutorCounters::TExecutorScope ExecutorScope;
-    const IVhostQueuePtr VhostQueue;
-    const ui32 SocketAccessMode;
-    TAffinity Affinity;
-
-    TMap<TString, TEndpointPtr> Endpoints;
-
-public:
-    TExecutor(
-            TAppContext& appCtx,
-            TString name,
-            IVhostQueuePtr vhostQueue,
-            ui32 socketAccessMode,
-            const TAffinity& affinity)
-        : AppCtx(appCtx)
-        , Name(std::move(name))
-        , ExecutorScope(AppCtx.ServerStats->StartExecutor())
-        , VhostQueue(std::move(vhostQueue))
-        , SocketAccessMode(socketAccessMode)
-        , Affinity(affinity)
-    {}
-
-    void Shutdown()
-    {
-        VhostQueue->Stop();
-        Join();
-    }
-
-    size_t CollectRequests(const TIncompleteRequestsCollector& collector)
-    {
-        size_t count = 0;
-        for (auto& it: Endpoints) {
-            count += it.second->CollectRequests(collector);
-        }
-        return count;
-    }
-
-    TEndpointPtr CreateEndpoint(
-        const TString& socketPath,
-        const TStorageOptions& options,
-        IStoragePtr storage)
-    {
-        TDeviceHandlerParams params{
-            .Storage = std::move(storage),
-            .DiskId = options.DiskId,
-            .ClientId = options.ClientId,
-            .BlockSize = options.BlockSize,
-            .MaxZeroBlocksSubRequestSize = options.MaxZeroBlocksSubRequestSize,
-            .UnalignedRequestsDisabled = options.UnalignedRequestsDisabled,
-            .StorageMediaKind = options.StorageMediaKind};
-
-        auto deviceHandler =
-            AppCtx.DeviceHandlerFactory->CreateDeviceHandler(std::move(params));
-
-        auto endpoint = std::make_shared<TEndpoint>(
-            AppCtx,
-            std::move(deviceHandler),
-            socketPath,
-            options,
-            SocketAccessMode);
-
-        auto vhostDevice = VhostQueue->CreateDevice(
-            socketPath,
-            options.DeviceName.empty() ? options.DiskId : options.DeviceName,
-            options.BlockSize,
-            options.BlocksCount,
-            options.VhostQueuesCount,
-            options.DiscardEnabled,
-            options.WriteZeroesEnabled,
-            options.OptimalIoSize,
-            endpoint.get(),
-            AppCtx.Callbacks);
-        endpoint->SetVhostDevice(std::move(vhostDevice));
-
-        return endpoint;
-    }
-
-    void AddEndpoint(const TString& socketPath, TEndpointPtr endpoint)
-    {
-        auto [it, inserted] = Endpoints.emplace(
-            socketPath,
-            std::move(endpoint));
-        Y_ABORT_UNLESS(inserted);
-    }
-
-    TEndpointPtr RemoveEndpoint(const TString& socketPath)
-    {
-        auto it = Endpoints.find(socketPath);
-        Y_ABORT_UNLESS(it != Endpoints.end());
-
-        auto endpoint = std::move(it->second);
-        Endpoints.erase(it);
-
-        return endpoint;
-    }
-
-    TEndpointPtr GetEndpoint(const TString& socketPath)
-    {
-        auto it = Endpoints.find(socketPath);
-        if (it == Endpoints.end()) {
-            return nullptr;
-        }
-
-        return it->second;
-    }
-
-    ui32 GetVhostQueuesCount() const
-    {
-        ui32 queuesCount = 0;
-        for (const auto& it: Endpoints) {
-            queuesCount += it.second->GetVhostQueuesCount();
-        }
-        return queuesCount;
-    }
-
-private:
-    void* ThreadProc() override
-    {
-        TAffinityGuard affinityGuard(Affinity);
-
-        ::NCloud::SetCurrentThreadName(Name);
-
-        while (true) {
-            int res = RunRequestQueue();
-            if (res != -EAGAIN) {
-                if (res < 0) {
-                    ReportVhostQueueRunningError({{"return_code", -res}});
-                }
-                break;
-            }
-
-            while (auto req = VhostQueue->DequeueRequest()) {
-                ProcessRequest(std::move(req));
-            }
-        }
-
-        return nullptr;
-    }
-
-    int RunRequestQueue()
-    {
-        auto activity = ExecutorScope.StartWait();
-
-        return VhostQueue->Run();
-    }
-
-    void ProcessRequest(TVhostRequestPtr vhostRequest)
-    {
-        auto activity = ExecutorScope.StartExecute();
-
-        auto* endpoint = reinterpret_cast<TEndpoint*>(vhostRequest->Cookie);
-        endpoint->ProcessRequest(std::move(vhostRequest));
-    }
-};
-
-using TExecutorPtr = std::unique_ptr<TExecutor>;
-
-////////////////////////////////////////////////////////////////////////////////
-
 class TServer final
     : public TAppContext
     , public IServer
@@ -579,9 +527,8 @@ private:
 
     TVector<TExecutorPtr> Executors;
 
-    TMap<TString, TExecutor*> EndpointMap;
-
-    TMap<TString, TEndpointPtr> StoppingEndpoints;
+    THashMap<TString, TEndpointPtr> Endpoints;
+    THashMap<TString, TEndpointPtr> StoppingEndpoints;
 
 public:
     TServer(
@@ -614,13 +561,23 @@ public:
 private:
     void InitExecutors();
 
+    // Picks the executor with the smallest number of vhost queues assigned to
+    // it. Must be called under Lock.
     TExecutor* PickExecutor() const;
+
+    // Number of vhost queues of the endpoints assigned to the given executor.
+    // Must be called under Lock.
+    ui32 GetVhostQueuesCount(const TExecutor* executor) const;
 
     void StopAllEndpoints();
 
     void HandleStoppedEndpoint(
         const TString& socketPath,
         const NProto::TError& error);
+
+    IDeviceHandlerPtr CreateDeviceHandler(
+        const TStorageOptions& options,
+        IStoragePtr storage);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -676,8 +633,8 @@ size_t TServer::CollectRequests(const TIncompleteRequestsCollector& collector)
 {
     size_t count = 0;
     with_lock (Lock) {
-        for (auto& executor: Executors) {
-            count += executor->CollectRequests(collector);
+        for (auto& it: Endpoints) {
+            count += it.second->CollectRequests(collector);
         }
         for (auto& it: StoppingEndpoints) {
             count += it.second->CollectRequests(collector);
@@ -701,8 +658,8 @@ TFuture<NProto::TError> TServer::StartEndpoint(
     TExecutor* executor;
 
     with_lock (Lock) {
-        auto it = EndpointMap.find(socketPath);
-        if (it != EndpointMap.end()) {
+        auto it = Endpoints.find(socketPath);
+        if (it != Endpoints.end()) {
             NProto::TError error;
             error.SetCode(S_ALREADY);
             error.SetMessage(TStringBuilder()
@@ -715,10 +672,26 @@ TFuture<NProto::TError> TServer::StartEndpoint(
         Y_ABORT_UNLESS(executor);
     }
 
-    auto endpoint = executor->CreateEndpoint(
+    auto endpoint = std::make_shared<TEndpoint>(
+        *this,
+        CreateDeviceHandler(options, std::move(storage)),
         socketPath,
         options,
-        std::move(storage));
+        Config.SocketAccessMode,
+        executor);
+
+    auto vhostDevice = executor->GetQueue()->CreateDevice(
+        socketPath,
+        options.DeviceName.empty() ? options.DiskId : options.DeviceName,
+        options.BlockSize,
+        options.BlocksCount,
+        options.VhostQueuesCount,
+        options.DiscardEnabled,
+        options.WriteZeroesEnabled,
+        options.OptimalIoSize,
+        endpoint->GetCookie(),
+        Callbacks);
+    endpoint->SetVhostDevice(std::move(vhostDevice));
 
     auto error = SafeExecute<NProto::TError>([&] {
         return endpoint->Start();
@@ -728,11 +701,8 @@ TFuture<NProto::TError> TServer::StartEndpoint(
     }
 
     with_lock (Lock) {
-        executor->AddEndpoint(socketPath, std::move(endpoint));
-
-        auto [it, inserted] = EndpointMap.emplace(
-            std::move(socketPath),
-            executor);
+        auto [it, inserted] =
+            Endpoints.emplace(std::move(socketPath), std::move(endpoint));
         Y_ABORT_UNLESS(inserted);
     }
 
@@ -751,8 +721,8 @@ TFuture<NProto::TError> TServer::StopEndpoint(const TString& socketPath)
     TEndpointPtr endpoint;
 
     with_lock (Lock) {
-        auto it = EndpointMap.find(socketPath);
-        if (it == EndpointMap.end()) {
+        auto it = Endpoints.find(socketPath);
+        if (it == Endpoints.end()) {
             NProto::TError error;
             error.SetCode(S_ALREADY);
             error.SetMessage(TStringBuilder()
@@ -761,10 +731,9 @@ TFuture<NProto::TError> TServer::StopEndpoint(const TString& socketPath)
             return MakeFuture(error);
         }
 
-        auto* executor = it->second;
-        EndpointMap.erase(it);
+        endpoint = std::move(it->second);
+        Endpoints.erase(it);
 
-        endpoint = executor->RemoveEndpoint(socketPath);
         StoppingEndpoints.emplace(socketPath, endpoint);
     }
 
@@ -791,8 +760,8 @@ NProto::TError TServer::UpdateEndpoint(
     TEndpointPtr endpoint;
 
     with_lock (Lock) {
-        auto it = EndpointMap.find(socketPath);
-        if (it == EndpointMap.end()) {
+        auto it = Endpoints.find(socketPath);
+        if (it == Endpoints.end()) {
             NProto::TError error;
             error.SetCode(S_FALSE);
             error.SetMessage(TStringBuilder()
@@ -801,8 +770,7 @@ NProto::TError TServer::UpdateEndpoint(
             return error;
         }
 
-        auto* executor = it->second;
-        endpoint = executor->GetEndpoint(socketPath);
+        endpoint = it->second;
     }
 
     if (endpoint) {
@@ -817,19 +785,17 @@ void TServer::StopAllEndpoints()
     TVector<TFuture<NProto::TError>> futures;
 
     with_lock (Lock) {
-        for (const auto& it: EndpointMap) {
+        for (auto& it: Endpoints) {
             const auto& socketPath = it.first;
-            auto* executor = it.second;
+            auto endpoint = std::move(it.second);
 
-            auto endpoint = executor->RemoveEndpoint(socketPath);
             StoppingEndpoints.emplace(socketPath, endpoint);
 
-            auto future = endpoint->Stop(false);
             sockets.push_back(socketPath);
-            futures.push_back(future);
+            futures.push_back(endpoint->Stop(false));
         }
 
-        EndpointMap.clear();
+        Endpoints.clear();
     }
 
     WaitAll(futures).Wait();
@@ -868,7 +834,6 @@ void TServer::InitExecutors()
             *this,
             TStringBuilder() << "VHOST" << i,
             std::move(vhostQueue),
-            Config.SocketAccessMode,
             Config.Affinity);
 
         Executors.push_back(std::move(executor));
@@ -878,16 +843,46 @@ void TServer::InitExecutors()
 TExecutor* TServer::PickExecutor() const
 {
     TExecutor* result = nullptr;
+    ui32 resultQueuesCount = 0;
 
     for (const auto& executor: Executors) {
-        if (result == nullptr ||
-            executor->GetVhostQueuesCount() < result->GetVhostQueuesCount())
-        {
+        const ui32 queuesCount = GetVhostQueuesCount(executor.get());
+        if (result == nullptr || queuesCount < resultQueuesCount) {
             result = executor.get();
+            resultQueuesCount = queuesCount;
         }
     }
 
     return result;
+}
+
+ui32 TServer::GetVhostQueuesCount(const TExecutor* executor) const
+{
+    ui32 queuesCount = 0;
+
+    for (const auto& it: Endpoints) {
+        if (it.second->GetExecutor() == executor) {
+            queuesCount += it.second->GetVhostQueuesCount();
+        }
+    }
+
+    return queuesCount;
+}
+
+IDeviceHandlerPtr TServer::CreateDeviceHandler(
+    const TStorageOptions& options,
+    IStoragePtr storage)
+{
+    TDeviceHandlerParams params{
+        .Storage = std::move(storage),
+        .DiskId = options.DiskId,
+        .ClientId = options.ClientId,
+        .BlockSize = options.BlockSize,
+        .MaxZeroBlocksSubRequestSize = options.MaxZeroBlocksSubRequestSize,
+        .UnalignedRequestsDisabled = options.UnalignedRequestsDisabled,
+        .StorageMediaKind = options.StorageMediaKind};
+
+    return DeviceHandlerFactory->CreateDeviceHandler(std::move(params));
 }
 
 }   // namespace
