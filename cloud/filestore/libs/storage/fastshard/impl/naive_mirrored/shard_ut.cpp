@@ -490,6 +490,7 @@ TEST(NaiveMirroredShardTest, WritesAndReadsLongUnalignedRangesWithHoles)
             static_cast<ui32>(E_REGULAR_NODE),
             response.GetNodeAttr().GetType());
         EXPECT_EQ(expectedMode, response.GetNodeAttr().GetMode());
+        EXPECT_EQ(0ULL, response.GetNodeAttr().GetSize());
     }
 
     // page cluster 0
@@ -634,6 +635,31 @@ TEST(NaiveMirroredShardTest, WritesAndReadsLongUnalignedRangesWithHoles)
             EXPECT_EQ(page2, response.GetBuffer());
         }
     }
+
+    //
+    // Checking that file size is correct.
+    //
+
+    {
+        TGetNodeAttrRequest request;
+        request.SetNodeId(nodeId);
+        auto f = shard->GetNodeAttr(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+        EXPECT_EQ(nodeId, response.GetNode().GetId());
+        EXPECT_EQ(uid, response.GetNode().GetUid());
+        EXPECT_EQ(gid, response.GetNode().GetGid());
+        EXPECT_EQ(
+            static_cast<ui32>(E_REGULAR_NODE),
+            response.GetNode().GetType());
+        EXPECT_EQ(expectedMode, response.GetNode().GetMode());
+        EXPECT_EQ(73_KB, response.GetNode().GetSize());
+    }
+
+    //
+    // Cleanup.
+    //
 
     {
         TDestroyHandleRequest request;

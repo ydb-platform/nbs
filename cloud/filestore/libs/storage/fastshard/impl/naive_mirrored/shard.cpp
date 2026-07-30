@@ -270,6 +270,27 @@ public:
         }
     }
 
+    NProto::TError ResizeNode(
+        ui64 nodeId,
+        ui64 newSize,
+        TWriteContext& writeContext)
+    {
+        TNodeTableSlot slot{};
+        ui64 slotNo = 0;
+        auto error = Slots->Get(writeContext.Lsn, nodeId, &slot, &slotNo);
+        if (HasError(error)) {
+            return error;
+        }
+
+        slot.Size = Max(slot.Size, newSize);
+
+        return Slots->Update(
+            writeContext.Lsn,
+            slot,
+            slotNo,
+            writeContext.PageGroups);
+    }
+
     NProto::TError UpdateNode(
         ui64 nodeId,
         ui32 flags,
@@ -1401,12 +1422,24 @@ public:
             ++storagePageClusterIdIt;
         }
 
-        l.unlock();
+        if (HasError(error)) {
+            *response.MutableError() = std::move(error);
+            return response;
+        }
+
+        //
+        // Write operation is done at this point (but not committed). We should
+        // update file size.
+        //
+
+        error = Nodes.ResizeNode(nodeId, endOffset, writeContext);
 
         if (HasError(error)) {
             *response.MutableError() = std::move(error);
             return response;
         }
+
+        l.unlock();
 
         //
         // Everything's fine, time to commit the result.
