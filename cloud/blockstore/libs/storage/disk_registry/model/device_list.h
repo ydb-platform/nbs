@@ -86,6 +86,8 @@ public:
         TString PoolName;
         NProto::EDevicePoolKind PoolKind = NProto::DEVICE_POOL_KIND_DEFAULT;
         THashSet<ui32> NodeIds;
+        // Nodes whose devices must not be selected for allocation.
+        THashSet<ui32> ForbiddenNodeIds;
 
         ui64 GetTotalByteCount() const
         {

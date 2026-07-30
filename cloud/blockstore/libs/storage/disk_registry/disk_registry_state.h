@@ -719,14 +719,16 @@ public:
         TInstant now,
         TDiskRegistryDatabase& db,
         const TDiskId& sourceDiskId,
-        const TDeviceId& sourceDeviceId);
+        const TDeviceId& sourceDeviceId,
+        const THashSet<ui32>& forbiddenNodeIds = {});
 
     TResultOrError<NProto::TDeviceConfig> StartDeviceMigration(
         TInstant now,
         TDiskRegistryDatabase& db,
         const TDiskId& sourceDiskId,
         const TDeviceId& sourceDeviceId,
-        const TDeviceId& targetDeviceId);
+        const TDeviceId& targetDeviceId,
+        const THashSet<ui32>& forbiddenNodeIds = {});
 
     NProto::TError FinishDeviceMigration(
         TDiskRegistryDatabase& db,
@@ -1300,7 +1302,8 @@ private:
 
     TDeviceList::TAllocationQuery MakeMigrationQuery(
         const TDiskId& sourceDiskId,
-        const NProto::TDeviceConfig& sourceDevice);
+        const NProto::TDeviceConfig& sourceDevice,
+        const THashSet<ui32>& forbiddenNodeIds);
 
     NProto::TError ValidateStartDeviceMigration(
         const TDiskId& sourceDiskId,

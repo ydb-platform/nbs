@@ -1897,6 +1897,103 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             }
         }
     }
+
+    Y_UNIT_TEST(ShouldNotStartMigrationToUnregisteredAgentAfterReboot)
+    {
+        // agent-1 is the migration source, agent-2 is the only possible target.
+        const TVector agents{
+            CreateAgentConfig(
+                "agent-1",
+                {Device("dev-1", "uuid-1.1", "rack-1", 10_GB),
+                 Device("dev-2", "uuid-1.2", "rack-1", 10_GB)}),
+            CreateAgentConfig(
+                "agent-2",
+                {Device("dev-1", "uuid-2.1", "rack-2", 10_GB),
+                 Device("dev-2", "uuid-2.2", "rack-2", 10_GB)})};
+
+        auto runtime = TTestRuntimeBuilder().WithAgents(agents).Build();
+
+        // Don't drop EvStartMigrationRequest
+        runtime->SetScheduledEventFilter(
+            [](auto& runtime, auto& event, auto delay, auto& deadline)
+            {
+                return event->GetTypeRewrite() !=
+                           TEvDiskRegistryPrivate::EvStartMigrationRequest &&
+                       TTestActorRuntime::DefaultScheduledFilterFunc(
+                           runtime,
+                           event,
+                           delay,
+                           deadline);
+            });
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+        diskRegistry.UpdateConfig(CreateRegistryConfig(agents));
+
+        RegisterAgents(*runtime, 2);
+        WaitForAgents(*runtime, 2);
+        WaitForSecureErase(*runtime, agents);
+
+        // Allocate a disk that occupies both devices of agent-1 so that the
+        // only possible migration target is agent-2.
+        const TString sourceDevice = [&]
+        {
+            auto response = diskRegistry.AllocateDisk("disk-1", 20_GB);
+            const auto& msg = response->Record;
+            UNIT_ASSERT_VALUES_EQUAL(2, msg.DevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(0, msg.MigrationsSize());
+            UNIT_ASSERT_VALUES_EQUAL("agent-1", msg.GetDevices(0).GetAgentId());
+            UNIT_ASSERT_VALUES_EQUAL("agent-1", msg.GetDevices(1).GetAgentId());
+
+            return msg.GetDevices(0).GetDeviceUUID();
+        }();
+
+        auto getMigration = [&]
+        {
+            auto response = diskRegistry.AllocateDisk("disk-1", 20_GB);
+            const auto& msg = response->Record;
+            UNIT_ASSERT_VALUES_EQUAL(2, msg.DevicesSize());
+            return msg;
+        };
+
+        // Reboot the tablet. After the restart both agents are ONLINE in the
+        // persisted state, but only agent-1 (the migration source) is
+        // registered again, so AgentRegInfo["agent-2"].Connected stays false.
+        diskRegistry.RebootTablet();
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+
+        RegisterAgent(*runtime, 0);
+        WaitForAgent(*runtime, 0);
+
+        // Request migration of the first device in the new generation. The
+        // only possible target lives on agent-2 which has NOT finished its registration yet
+        diskRegistry.ChangeDeviceState(
+            sourceDevice,
+            NProto::DEVICE_STATE_WARNING);
+        runtime->DispatchEvents({}, 10ms);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, getMigration().MigrationsSize());
+
+        // Sanity check: once the target agent finishes its registration the
+        // migration is started normally and its target lives on agent-2.
+        RegisterAgent(*runtime, 1);
+        WaitForAgent(*runtime, 1);
+
+        NProto::TAllocateDiskResponse msg;
+        for (int i = 0; i != 5 && !msg.MigrationsSize(); ++i) {
+            runtime->AdvanceCurrentTime(5s);
+            runtime->DispatchEvents({}, 10ms);
+
+            msg = getMigration();
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(1, msg.MigrationsSize());
+        const auto& m = msg.GetMigrations(0);
+        UNIT_ASSERT_VALUES_EQUAL(sourceDevice, m.GetSourceDeviceId());
+        UNIT_ASSERT_VALUES_EQUAL("agent-2", m.GetTargetDevice().GetAgentId());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

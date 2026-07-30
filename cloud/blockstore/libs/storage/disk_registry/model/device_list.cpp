@@ -400,6 +400,10 @@ bool TDeviceList::ValidateAllocationQuery(
         return false;
     }
 
+    if (query.ForbiddenNodeIds.contains(node)) {
+        return false;
+    }
+
     const auto nodeItr = NodeDevices.find(node);
     if (nodeItr == NodeDevices.end()) {
         return false;
@@ -445,6 +449,10 @@ auto TDeviceList::SelectRacks(
 
     auto appendNode = [&] (auto& currentRack, ui32 nodeId) {
         if (query.ForbiddenRacks.contains(currentRack)) {
+            return;
+        }
+
+        if (query.ForbiddenNodeIds.contains(nodeId)) {
             return;
         }
 

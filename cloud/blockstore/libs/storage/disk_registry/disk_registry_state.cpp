@@ -1722,7 +1722,8 @@ bool TDiskRegistryState::UpdatePlacementGroup(
 
 TDeviceList::TAllocationQuery TDiskRegistryState::MakeMigrationQuery(
     const TDiskId& sourceDiskId,
-    const NProto::TDeviceConfig& sourceDevice)
+    const NProto::TDeviceConfig& sourceDevice,
+    const THashSet<ui32>& forbiddenNodeIds)
 {
     TDiskState& disk = Disks[sourceDiskId];
 
@@ -1738,7 +1739,8 @@ TDeviceList::TAllocationQuery TDiskRegistryState::MakeMigrationQuery(
         .LogicalBlockSize = disk.LogicalBlockSize,
         .BlockCount = logicalBlockCount,
         .PoolName = sourceDevice.GetPoolName(),
-        .PoolKind = GetDevicePoolKind(sourceDevice.GetPoolName())
+        .PoolKind = GetDevicePoolKind(sourceDevice.GetPoolName()),
+        .ForbiddenNodeIds = forbiddenNodeIds
     };
 
     if (query.PoolKind == NProto::DEVICE_POOL_KIND_LOCAL) {
@@ -1878,7 +1880,8 @@ TResultOrError<NProto::TDeviceConfig> TDiskRegistryState::StartDeviceMigration(
     TInstant now,
     TDiskRegistryDatabase& db,
     const TDiskId& sourceDiskId,
-    const TDeviceId& sourceDeviceId)
+    const TDeviceId& sourceDeviceId,
+    const THashSet<ui32>& forbiddenNodeIds)
 {
     try {
         if (auto error = ValidateStartDeviceMigration(
@@ -1891,7 +1894,8 @@ TResultOrError<NProto::TDeviceConfig> TDiskRegistryState::StartDeviceMigration(
         TDeviceList::TAllocationQuery query =
             MakeMigrationQuery(
                 sourceDiskId,
-                *DeviceList.FindDevice(sourceDeviceId));
+                *DeviceList.FindDevice(sourceDeviceId),
+                forbiddenNodeIds);
 
         NProto::TDeviceConfig targetDevice
             = DeviceList.AllocateDevice(sourceDiskId, query);
@@ -1913,7 +1917,8 @@ TResultOrError<NProto::TDeviceConfig> TDiskRegistryState::StartDeviceMigration(
     TDiskRegistryDatabase& db,
     const TDiskId& sourceDiskId,
     const TDeviceId& sourceDeviceId,
-    const TDeviceId& targetDeviceId)
+    const TDeviceId& targetDeviceId,
+    const THashSet<ui32>& forbiddenNodeIds)
 {
     try {
         if (auto error = ValidateStartDeviceMigration(
@@ -1926,7 +1931,8 @@ TResultOrError<NProto::TDeviceConfig> TDiskRegistryState::StartDeviceMigration(
         TDeviceList::TAllocationQuery query =
             MakeMigrationQuery(
                 sourceDiskId,
-                *DeviceList.FindDevice(sourceDeviceId));
+                *DeviceList.FindDevice(sourceDeviceId),
+                forbiddenNodeIds);
 
         const NProto::TDeviceConfig* targetDevice =
             DeviceList.FindDevice(targetDeviceId);
