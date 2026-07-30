@@ -60,6 +60,13 @@ namespace NCloud::NBlockStore::NServer {
 using namespace NMonitoring;
 using namespace NThreading;
 
+////////////////////////////////////////////////////////////////////////////////
+
+TString NormalizePeer(TString peer)
+{
+    return UrlUnescapeRet(peer);
+}
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -85,7 +92,7 @@ const TRequestSourceKinds RequestSourceKinds = {
 
 TString GetNormalizedPeer(const grpc::ServerContext& context)
 {
-    return UrlUnescapeRet(TString(context.peer()));
+    return NormalizePeer(TString(context.peer()));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

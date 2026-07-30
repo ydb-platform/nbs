@@ -27,6 +27,8 @@ struct TServerOptions
     TString CellId;
 };
 
+TString NormalizePeer(TString peer);
+
 ////////////////////////////////////////////////////////////////////////////////
 
 IServerPtr CreateServer(

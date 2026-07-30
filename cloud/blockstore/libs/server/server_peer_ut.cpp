@@ -17,6 +17,17 @@ using namespace NCloud::NBlockStore::NClient;
 
 Y_UNIT_TEST_SUITE(TServerPeerTest)
 {
+    Y_UNIT_TEST(ShouldNormalizeEscapedIpv6PeerAddress)
+    {
+        UNIT_ASSERT_VALUES_EQUAL(
+            "ipv6:[2a02:6b8:c0e:501::1]:9766",
+            NormalizePeer("ipv6:%5B2a02:6b8:c0e:501::1%5D:9766"));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "ipv6:[::1]:12345",
+            NormalizePeer("ipv6:%5B::1%5D:12345"));
+    }
+
     Y_UNIT_TEST(ShouldNormalizeIpv6PeerAddress)
     {
         TPortManager portManager;
