@@ -2204,6 +2204,76 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(true, trimCompletedSeen);
     }
 
+    Y_UNIT_TEST(ShouldNotReloadFlushedFreshBlobsAfterRestartBeforeTrim)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        config.SetWaitForFreshWritesBeforeFlushEnabled(true);
+        config.SetMaxCompactionRangesLoadingPerTx(1);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(1, 1);
+        partition.WriteBlocks(2, 2);
+        partition.WriteBlocks(3, 3);
+
+        TAutoPtr<IEventHandle> trimFreshLogRequest;
+        bool interceptTrimFreshLogRequest = true;
+        bool trimFreshLogCompleted = false;
+
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                        TEvPartitionCommonPrivate::EvTrimFreshLogRequest &&
+                    interceptTrimFreshLogRequest)
+                {
+                    trimFreshLogRequest = event.Release();
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+
+                trimFreshLogCompleted |=
+                    event->GetTypeRewrite() ==
+                    TEvPartitionCommonPrivate::EvTrimFreshLogCompleted;
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        partition.Flush();
+
+        TDispatchOptions options;
+        options.CustomFinalCondition = [&]
+        {
+            return !!trimFreshLogRequest;
+        };
+        runtime->DispatchEvents(options);
+
+        UNIT_ASSERT(trimFreshLogRequest);
+        UNIT_ASSERT(!trimFreshLogCompleted);
+        interceptTrimFreshLogRequest = false;
+
+        partition.RebootTablet();
+        partition.WaitReady();
+
+        auto flushResponse = partition.Flush();
+        UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, flushResponse->GetStatus());
+
+        // wait for compaction map loading to complete
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        partition.Compaction(0);
+        partition.Cleanup();
+
+        auto response = partition.StatPartition();
+        const auto& stats = response->Record.GetStats();
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedBlobsCount());
+    }
+
     Y_UNIT_TEST(ShouldAutomaticallyTrimFreshBlobsFromPreviousGeneration)
     {
         auto config = DefaultConfig();

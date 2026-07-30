@@ -345,6 +345,11 @@ public:
         return Meta;
     }
 
+    NProto::TPartitionMeta& AccessMeta()
+    {
+        return Meta;
+    }
+
     const NProto::TPartitionConfig& GetConfig() const
     {
         return Config;
