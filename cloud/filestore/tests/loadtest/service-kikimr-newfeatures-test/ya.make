@@ -24,7 +24,7 @@ SET(
     NFS_STORAGE_CONFIG_PATCH
     cloud/filestore/tests/common_configs/nfs-storage-newfeatures-patch.txt
 )
-SET(NFS_BS_FAILURE_PROBABILITY 0.0001)
+SET(NFS_BS_FAILURE_PROBABILITY 0.01)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/service-kikimr.inc)
 

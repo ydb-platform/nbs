@@ -22,7 +22,7 @@ SET(
     NFS_STORAGE_CONFIG_PATCH
     cloud/filestore/tests/common_configs/nfs-storage-newfeatures-patch.txt
 )
-SET(NFS_BS_FAILURE_PROBABILITY 0.001)
+SET(NFS_BS_FAILURE_PROBABILITY 0.01)
 
 SET(QEMU_VIRTIO fs)
 SET(QEMU_INSTANCE_COUNT 1)
