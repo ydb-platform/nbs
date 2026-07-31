@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from typing import Any, Sequence
+from dataclasses import dataclass
+from typing import Any, Mapping, Sequence
 
 from ..otlp import (
     Interval,
     Ns,
-    ResourceAttributes,
     Span,
+    SpanWriter,
     Trace,
     decode_attributes,
     make_span,
@@ -20,7 +21,11 @@ from .evlog_record import YaEvlogRecord
 _ChunkSpan = tuple[Span, dict[str, Any], Interval]
 
 
-class _YaTestOperations:
+@dataclass(frozen=True, slots=True)
+class YaTestOperations:
+    classified: Sequence[tuple[YaEvlogRecord, str, str]]
+    failures: Mapping[str, int | None]
+
     @staticmethod
     def _test_chunk_spans(trace: Trace) -> list[_ChunkSpan]:
         return [
@@ -75,15 +80,60 @@ class _YaTestOperations:
             -record.interval.boundary_distance(interval),
         )
 
-    def _build_test_operations(
-        self,
+    @staticmethod
+    def _add_worker_phases(
+        writer: SpanWriter,
+        record: YaEvlogRecord,
         *,
-        trace: Trace,
         trace_id: bytes,
         parent_span_id: bytes,
-        classified: Sequence[tuple[YaEvlogRecord, str, str]],
-        resource: ResourceAttributes,
+    ) -> None:
+        for index, detail in enumerate(record.details):
+            writer.add(
+                record.test_worker_phase_span(
+                    detail,
+                    trace_id=trace_id,
+                    parent_span_id=parent_span_id,
+                    index=index,
+                ),
+                scope_name="ya.test.worker.phase",
+            )
+
+    def _add_test_node(
+        self,
+        writer: SpanWriter,
+        record: YaEvlogRecord,
+        *,
+        trace_id: bytes,
+        parent_span_id: bytes,
+        index: int,
+        unmatched: bool,
+    ) -> None:
+        failed = bool(record.uid and record.uid in self.failures)
+        node_span = record.test_node_span(
+            trace_id=trace_id,
+            parent_span_id=parent_span_id,
+            index=index,
+            unmatched=unmatched,
+            failed=failed,
+            exit_code=self.failures.get(record.uid) if failed else None,
+        )
+        writer.add(node_span, scope_name="ya.test.node")
+        self._add_worker_phases(
+            writer,
+            record,
+            trace_id=trace_id,
+            parent_span_id=node_span.span_id,
+        )
+
+    def build(
+        self,
+        *,
+        writer: SpanWriter,
+        trace_id: bytes,
+        parent_span_id: bytes,
     ) -> dict[str, Any]:
+        trace = writer.trace
         chunks = self._test_chunk_spans(trace)
         chunks_by_identity: dict[tuple[str, str], list[int]] = defaultdict(list)
         chunks_by_identity_and_index: dict[tuple[str, str, int], list[int]] = (
@@ -105,7 +155,9 @@ class _YaTestOperations:
                     chunk_index
                 )
         graph_records = [
-            (record, kind) for record, kind, _ in classified if kind.startswith("test_")
+            (record, kind)
+            for record, kind, _ in self.classified
+            if kind.startswith("test_")
         ]
         test_records = [
             record for record, kind in graph_records if kind == "test_execute"
@@ -195,22 +247,13 @@ class _YaTestOperations:
                 ),
             )
             chunk_span.parent_span_id = worker_span.span_id
-            trace.add_span(
-                worker_span,
-                resource=resource,
-                scope_name="ya.test.worker",
+            writer.add(worker_span, scope_name="ya.test.worker")
+            self._add_worker_phases(
+                writer,
+                record,
+                trace_id=trace_id,
+                parent_span_id=worker_span.span_id,
             )
-            for detail_index, detail in enumerate(record.details):
-                trace.add_span(
-                    record.test_worker_phase_span(
-                        detail,
-                        trace_id=trace_id,
-                        parent_span_id=worker_span.span_id,
-                        index=detail_index,
-                    ),
-                    resource=resource,
-                    scope_name="ya.test.worker.phase",
-                )
 
         for chunk_index in available_chunks:
             chunks[chunk_index][0].parent_span_id = operations_span_id
@@ -223,31 +266,14 @@ class _YaTestOperations:
             if record_index not in matches
         ]
         for record_index, record in unmatched_records:
-            failed = bool(record.uid and record.uid in self.failures)
-            node_span = record.test_node_span(
+            self._add_test_node(
+                writer,
+                record,
                 trace_id=trace_id,
                 parent_span_id=operations_span_id,
                 index=record_index,
                 unmatched=True,
-                failed=failed,
-                exit_code=self.failures.get(record.uid) if failed else None,
             )
-            trace.add_span(
-                node_span,
-                resource=resource,
-                scope_name="ya.test.node",
-            )
-            for detail_index, detail in enumerate(record.details):
-                trace.add_span(
-                    record.test_worker_phase_span(
-                        detail,
-                        trace_id=trace_id,
-                        parent_span_id=node_span.span_id,
-                        index=detail_index,
-                    ),
-                    resource=resource,
-                    scope_name="ya.test.worker.phase",
-                )
 
         processing_records = [
             (record, kind) for record, kind in graph_records if kind != "test_execute"
@@ -256,31 +282,14 @@ class _YaTestOperations:
             processing_records,
             start=len(test_records),
         ):
-            failed = bool(record.uid and record.uid in self.failures)
-            node_span = record.test_node_span(
+            self._add_test_node(
+                writer,
+                record,
                 trace_id=trace_id,
                 parent_span_id=operations_span_id,
                 index=record_index,
                 unmatched=False,
-                failed=failed,
-                exit_code=self.failures.get(record.uid) if failed else None,
             )
-            trace.add_span(
-                node_span,
-                resource=resource,
-                scope_name="ya.test.node",
-            )
-            for detail_index, detail in enumerate(record.details):
-                trace.add_span(
-                    record.test_worker_phase_span(
-                        detail,
-                        trace_id=trace_id,
-                        parent_span_id=node_span.span_id,
-                        index=detail_index,
-                    ),
-                    resource=resource,
-                    scope_name="ya.test.worker.phase",
-                )
 
         failed_chunks = sum(
             span_status_code(chunk_span) == 2 for chunk_span, _, _ in chunks
@@ -299,7 +308,7 @@ class _YaTestOperations:
         )
         for kind, count in sorted(processing_counts.items()):
             attributes[f"ya.test.graph_node.{kind}.count"] = count
-        trace.add_span(
+        writer.add(
             make_span(
                 trace_id=trace_id,
                 span_id=operations_span_id,
@@ -315,7 +324,6 @@ class _YaTestOperations:
                     else ""
                 ),
             ),
-            resource=resource,
             scope_name="ya.test.operations",
         )
         return {

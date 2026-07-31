@@ -13,6 +13,7 @@ from .otlp import (
     Ns,
     ResourceAttributes,
     Span,
+    SpanWriter,
     Trace,
     decode_attributes,
     encode_attributes,
@@ -20,6 +21,10 @@ from .otlp import (
     span_duration_ns,
     stable_span_id,
     stable_trace_id,
+)
+
+ERROR_CONCLUSIONS = frozenset(
+    {"action_required", "cancelled", "failure", "startup_failure", "timed_out"}
 )
 
 
@@ -35,17 +40,9 @@ def timestamp_ns(value: Any) -> Ns | None:
 
 def _status_code(conclusion: Any) -> int:
     value = str(conclusion or "").lower()
-    if value in {"success", "neutral", "skipped"}:
-        return 1 if value == "success" else 0
-    if value in {
-        "action_required",
-        "cancelled",
-        "failure",
-        "startup_failure",
-        "timed_out",
-    }:
-        return 2
-    return 0
+    if value == "success":
+        return 1
+    return 2 if value in ERROR_CONCLUSIONS else 0
 
 
 def _bounded_times(
@@ -62,12 +59,11 @@ def _bounded_times(
 def _job_and_step_spans(
     jobs: Sequence[WorkflowJob],
     *,
-    trace: Trace,
+    writer: SpanWriter,
     trace_id: bytes,
     root_span_id: bytes,
     workflow_start_ns: Ns,
     workflow_end_ns: Ns,
-    resource: ResourceAttributes,
 ) -> list[Span]:
     job_spans: list[Span] = []
     for job_index, job in enumerate(jobs):
@@ -83,6 +79,7 @@ def _job_and_step_spans(
         job_id = job.id if job.id is not None else job_index
         job_span_id = stable_span_id(trace_id, "job", job_id)
         conclusion = str(job.conclusion or "")
+        status_code = _status_code(conclusion)
         job_span = make_span(
             trace_id=trace_id,
             span_id=job_span_id,
@@ -100,18 +97,14 @@ def _job_and_step_spans(
                 "github.job.labels": job.labels or [],
                 "github.job.url": job.html_url or "",
             },
-            status_code=_status_code(conclusion),
-            status_message=conclusion if _status_code(conclusion) == 2 else "",
+            status_code=status_code,
+            status_message=conclusion if status_code == 2 else "",
         )
-        trace.add_span(
-            job_span,
-            resource=resource,
-            scope_name="github.actions",
-        )
+        writer.add(job_span, scope_name="github.actions")
         job_spans.append(job_span)
 
         if started_ns and job_start_ns < started_ns:
-            trace.add_span(
+            writer.add(
                 make_span(
                     trace_id=trace_id,
                     span_id=stable_span_id(trace_id, "job-queue", job_id),
@@ -128,7 +121,6 @@ def _job_and_step_spans(
                         ),
                     },
                 ),
-                resource=resource,
                 scope_name="github.actions",
             )
 
@@ -140,8 +132,9 @@ def _job_and_step_spans(
                 job_end_ns,
             )
             step_conclusion = str(step.conclusion or "")
+            step_status_code = _status_code(step_conclusion)
             step_number = step.number if step.number is not None else step_index
-            trace.add_span(
+            writer.add(
                 make_span(
                     trace_id=trace_id,
                     span_id=stable_span_id(
@@ -161,12 +154,9 @@ def _job_and_step_spans(
                         "github.step.status": step.status or "",
                         "github.step.conclusion": step_conclusion,
                     },
-                    status_code=_status_code(step_conclusion),
-                    status_message=(
-                        step_conclusion if _status_code(step_conclusion) == 2 else ""
-                    ),
+                    status_code=step_status_code,
+                    status_message=(step_conclusion if step_status_code == 2 else ""),
                 ),
-                resource=resource,
                 scope_name="github.actions",
             )
     return job_spans
@@ -271,6 +261,7 @@ def build_workflow_trace(
     )
     root_span_id = stable_span_id(trace_id, "workflow")
     conclusion = str(workflow_run.get("conclusion") or "")
+    status_code = _status_code(conclusion)
     resource = metadata.with_attributes({"service.name": "github-actions"})
     root = make_span(
         trace_id=trace_id,
@@ -283,15 +274,16 @@ def build_workflow_trace(
             "github.run.conclusion": conclusion,
             "ci.imported_ya_span_count": len(imported),
         },
-        status_code=_status_code(conclusion),
-        status_message=conclusion if _status_code(conclusion) == 2 else "",
+        status_code=status_code,
+        status_message=conclusion if status_code == 2 else "",
     )
     trace = Trace()
-    trace.add_span(root, resource=resource, scope_name="github.actions")
+    writer = trace.writer(resource)
+    writer.add(root, scope_name="github.actions")
 
     run_started_ns = timestamp_ns(workflow_run.get("run_started_at"))
     if run_started_ns and start_ns < run_started_ns:
-        trace.add_span(
+        writer.add(
             make_span(
                 trace_id=trace_id,
                 span_id=stable_span_id(trace_id, "workflow-queue"),
@@ -304,18 +296,16 @@ def build_workflow_trace(
                     "ci.queue.timing_source": "workflow_run.created_at",
                 },
             ),
-            resource=resource,
             scope_name="github.actions",
         )
 
     job_spans = _job_and_step_spans(
         jobs,
-        trace=trace,
+        writer=writer,
         trace_id=trace_id,
         root_span_id=root_span_id,
         workflow_start_ns=start_ns,
         workflow_end_ns=end_ns,
-        resource=resource,
     )
     _merge_imported_spans(
         imported,

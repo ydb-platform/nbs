@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Any, Iterable, Mapping
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Iterable, Mapping
 
 from ..otlp import (
     Interval,
@@ -19,8 +20,14 @@ from .event import YaEvent
 from .metrics import _metric_attributes
 from .test_timing import YaTestTiming
 
+if TYPE_CHECKING:
+    from .trace_file import YaTraceFile
 
-class _YaTraceSpanBuilder:
+
+@dataclass(frozen=True, slots=True)
+class YaTraceSpanBuilder:
+    source: YaTraceFile
+
     @staticmethod
     def _stage_spans(
         trace_id: bytes,
@@ -151,7 +158,7 @@ class _YaTraceSpanBuilder:
             )
         return result
 
-    def build_spans(
+    def build(
         self,
         *,
         trace: Trace,
@@ -162,12 +169,14 @@ class _YaTraceSpanBuilder:
         resource: ResourceAttributes,
         trace_index: int,
     ) -> int:
+        source = self.source
+        writer = trace.writer(resource)
         root = Interval(root_start_ns, root_end_ns)
-        suite_event = self.suite_event()
+        suite_event = source.suite_event()
         if suite_event is not None:
             timestamps = [
                 event.timestamp_ns
-                for event in self.events
+                for event in source.events
                 if event.name == "suite-event" and event.timestamp_ns is not None
             ]
             suite_start_ns = root.clamp(min(timestamps) if timestamps else root.start)
@@ -185,8 +194,8 @@ class _YaTraceSpanBuilder:
                 suite_status_code = 2
                 suite_status = suite_event.failing_errors[0][0] or "error"
             suite_attributes: dict[str, Any] = {
-                "test.suite": self.suite,
-                "ya.test_results.folder": self.result_folder,
+                "test.suite": source.suite,
+                "ya.test_results.folder": source.result_folder,
             }
             suite_attributes.update(suite_event.error_attributes("ya.suite"))
             suite_attributes.update(
@@ -195,44 +204,43 @@ class _YaTraceSpanBuilder:
                     prefix="ya.suite.metric",
                 )
             )
-            trace.add_span(
+            writer.add(
                 make_span(
                     trace_id=trace_id,
                     span_id=stable_span_id(
                         trace_id,
                         "ya.suite",
-                        self.suite,
-                        self.result_folder,
+                        source.suite,
+                        source.result_folder,
                         trace_index,
                     ),
                     parent_span_id=root_span_id,
-                    name=f"{self.suite} [{self.result_folder} suite]",
+                    name=f"{source.suite} [{source.result_folder} suite]",
                     start_ns=suite_start_ns,
                     end_ns=suite_end_ns,
                     attributes=suite_attributes,
                     status_code=suite_status_code,
                     status_message=suite_status if suite_status_code == 2 else "",
                 ),
-                resource=resource,
                 scope_name="ya.suite",
             )
 
-        chunk_records = self.chunk_records()
+        chunk_records = source.chunk_records()
         for record_index, (chunk_event, chunk_events) in enumerate(chunk_records):
-            chunk_interval, chunk_value = self._chunk_interval(
+            chunk_interval, chunk_value = source._chunk_interval(
                 chunk_event,
                 chunk_events,
                 root,
             )
             chunk_key = YaEvent.parse_chunk_key(chunk_value)
             identity = (
-                f"{self.suite}:{self.result_folder}:{trace_index}:"
+                f"{source.suite}:{source.result_folder}:{trace_index}:"
                 f"{chunk_key or record_index}:{chunk_event.chunk_filename if chunk_event else ''}"
             )
             chunk_span_id = stable_span_id(trace_id, identity)
             attributes = {
-                "test.suite": self.suite,
-                "ya.test_results.folder": self.result_folder,
+                "test.suite": source.suite,
+                "ya.test_results.folder": source.result_folder,
             }
             for field_name in ("chunk_index", "nchunks"):
                 if field_name in chunk_value:
@@ -261,7 +269,7 @@ class _YaTraceSpanBuilder:
                 trace_id=trace_id,
                 span_id=chunk_span_id,
                 parent_span_id=root_span_id,
-                name=(f"{self.suite} " f"[{self.result_folder} {chunk_label}]"),
+                name=f"{source.suite} [{source.result_folder} {chunk_label}]",
                 start_ns=chunk_interval.start,
                 end_ns=chunk_interval.end,
                 attributes=attributes,
@@ -311,21 +319,9 @@ class _YaTraceSpanBuilder:
                     )
             if any(span_status_code(span) == 2 for span in test_spans):
                 set_span_status(chunk, 2, "one or more tests failed")
-            trace.add_span(
-                chunk,
-                resource=resource,
-                scope_name="ya.chunk",
-            )
+            writer.add(chunk, scope_name="ya.chunk")
             for stage_span in stage_spans:
-                trace.add_span(
-                    stage_span,
-                    resource=resource,
-                    scope_name="ya.test.stage",
-                )
+                writer.add(stage_span, scope_name="ya.test.stage")
             for test_span in test_spans:
-                trace.add_span(
-                    test_span,
-                    resource=resource,
-                    scope_name="ya.test",
-                )
+                writer.add(test_span, scope_name="ya.test")
         return len(chunk_records)

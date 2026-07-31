@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator
+from dataclasses import dataclass
 from typing import Any
 
 from opentelemetry.proto_json.common.v1.common import InstrumentationScope
@@ -88,6 +89,9 @@ class Trace:
             self._scopes[scope_key] = scope_spans
         scope_spans.spans.append(span)
 
+    def writer(self, resource: ResourceAttributes | Resource) -> SpanWriter:
+        return SpanWriter(self, resource)
+
     def walk(self) -> Iterator[tuple[Resource, InstrumentationScope, Span]]:
         for resource_spans in self.data.resource_spans:
             resource = resource_spans.resource or Resource()
@@ -142,3 +146,24 @@ class Trace:
 
     def __bool__(self) -> bool:
         return any(True for _ in self.spans())
+
+
+@dataclass(frozen=True, slots=True)
+class SpanWriter:
+    trace: Trace
+    resource: ResourceAttributes | Resource
+
+    def add(
+        self,
+        span: Span,
+        *,
+        scope_name: str,
+        scope_version: str = "1",
+    ) -> Span:
+        self.trace.add_span(
+            span,
+            resource=self.resource,
+            scope_name=scope_name,
+            scope_version=scope_version,
+        )
+        return span

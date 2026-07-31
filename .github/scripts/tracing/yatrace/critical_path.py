@@ -99,14 +99,31 @@ class YaCriticalPathEntry:
         )
 
 
-class _YaEvlogCriticalPath:
-    @property
-    def critical_path_entries(self) -> tuple[YaCriticalPathEntry, ...]:
-        return tuple(
+@dataclass(frozen=True, slots=True)
+class YaCriticalPath:
+    entries: tuple[YaCriticalPathEntry, ...]
+    nodes: Sequence[YaEvlogRecord]
+
+    @classmethod
+    def from_evlog(
+        cls,
+        statistics: Mapping[str, Any],
+        nodes: Sequence[YaEvlogRecord],
+    ) -> YaCriticalPath:
+        entries = tuple(
             YaCriticalPathEntry.from_raw(index, entry)
-            for index, entry in enumerate(self.statistics.get("critical_path", []))
+            for index, entry in enumerate(statistics.get("critical_path", []))
             if isinstance(entry, Mapping)
         )
+        return cls(entries, nodes)
+
+    @property
+    def build_entries(self) -> tuple[YaCriticalPathEntry, ...]:
+        return tuple(entry for entry in self.entries if not entry.is_test)
+
+    @property
+    def test_entries(self) -> tuple[YaCriticalPathEntry, ...]:
+        return tuple(entry for entry in self.entries if entry.is_test)
 
     def _critical_record_score(
         self,
@@ -125,7 +142,7 @@ class _YaEvlogCriticalPath:
             len(record.interval),
         )
 
-    def _match_build_critical_path(
+    def match_build(
         self,
         build_records: Sequence[tuple[YaEvlogRecord, str, str]],
         critical_entries: Sequence[YaCriticalPathEntry],
@@ -150,30 +167,27 @@ class _YaEvlogCriticalPath:
                 ]
             else:
                 candidate_indices = list(available)
-            scored = [
-                (
-                    self._critical_record_score(
+            scored = (
+                (score, index)
+                for index in candidate_indices
+                if (
+                    score := self._critical_record_score(
                         build_records[index][0],
                         build_records[index][2],
                         entry,
-                    ),
-                    index,
+                    )
                 )
-                for index in candidate_indices
-            ]
-            scored = [
-                (score, index)
-                for score, index in scored
                 if score is not None and (uid or score[1] > 0)
-            ]
-            if not scored:
+            )
+            match = max(scored, default=None)
+            if match is None:
                 continue
-            _, record_index = max(scored)
+            _, record_index = match
             matches[record_index] = entry
             available.remove(record_index)
         return matches
 
-    def _critical_test_node(
+    def match_test_node(
         self,
         entry: YaCriticalPathEntry,
         test_nodes: Sequence[YaEvlogRecord],
@@ -213,7 +227,7 @@ class _YaEvlogCriticalPath:
             ),
         )
 
-    def mark_critical_test_spans(self, trace: Trace) -> dict[str, int]:
+    def mark_test_spans(self, trace: Trace) -> dict[str, int]:
         chunks: list[_ChunkSpan] = []
         chunks_by_identity: dict[tuple[str, str], list[_ChunkSpan]] = defaultdict(list)
         chunks_by_suite: dict[str, list[_ChunkSpan]] = defaultdict(list)
@@ -247,11 +261,9 @@ class _YaEvlogCriticalPath:
 
         marked_chunks: set[bytes] = set()
         marked_tests: set[bytes] = set()
-        critical_entries = [
-            entry for entry in self.critical_path_entries if entry.is_test
-        ]
+        critical_entries = self.test_entries
         for entry in critical_entries:
-            node = self._critical_test_node(
+            node = self.match_test_node(
                 entry,
                 test_nodes,
                 test_nodes_by_uid,

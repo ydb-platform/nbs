@@ -145,7 +145,7 @@ def build_ya_trace(
             root_end_ns=root_end_ns,
             resource=resource,
         )
-        metadata.update(evlog.mark_critical_test_spans(result))
+        metadata.update(evlog.critical_path.mark_test_spans(result))
         update_span_attributes(root, metadata)
         if dispatch_span_id:
             for scope_name in ("ya.chunk", "ya.suite"):

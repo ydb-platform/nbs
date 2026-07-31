@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter, defaultdict
+from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
 from . import limits
@@ -12,10 +13,13 @@ from .metrics import _metric_name, _number
 SAFE_TOOL_RE = re.compile(r"^[a-zA-Z0-9_.+-]{1,32}$")
 
 
-class _YaEvlogStatistics:
-    def graph_statistics_attributes(self) -> dict[str, Any]:
+@dataclass(frozen=True, slots=True)
+class YaBuildStatistics:
+    values: Mapping[str, Any]
+
+    def graph_attributes(self) -> dict[str, Any]:
         attributes: dict[str, Any] = {}
-        cache = self.statistics.get("cache_hit")
+        cache = self.values.get("cache_hit")
         if isinstance(cache, Mapping):
             cache_hit_percent = _number(cache.get("cache_hit"))
             if cache_hit_percent is not None:
@@ -54,7 +58,7 @@ class _YaEvlogStatistics:
                 ) / total_tasks
             attributes["ya.build.cache.statistics.source"] = "ya"
 
-        dist_cache = self.statistics.get("dist_cache_stat")
+        dist_cache = self.values.get("dist_cache_stat")
         if isinstance(dist_cache, Mapping):
             dist_cache_fields = {
                 "get_count": "ya.build.dist_cache.get.count",
@@ -67,7 +71,7 @@ class _YaEvlogStatistics:
                 if value is not None:
                     attributes[destination] = value
 
-        execution_stages = self.statistics.get("execution_stages_msec")
+        execution_stages = self.values.get("execution_stages_msec")
         if isinstance(execution_stages, Mapping):
             for name, value in execution_stages.items():
                 milliseconds = _number(value)
@@ -76,23 +80,24 @@ class _YaEvlogStatistics:
                     attributes[f"ya.build.execution.stage.{normalized}.seconds"] = (
                         milliseconds / 1_000
                     )
-        task_execution_msec = _number(self.statistics.get("task_execution_msec"))
+        task_execution_msec = _number(self.values.get("task_execution_msec"))
         if task_execution_msec is not None:
             attributes["ya.build.execution.total.seconds"] = task_execution_msec / 1_000
 
-        languages = self.statistics.get("graph_lang_usage")
+        languages = self.values.get("graph_lang_usage")
         if isinstance(languages, Mapping):
             attributes["ya.build.graph.languages"] = sorted(
                 str(language) for language in languages
             )[:128]
         return attributes
 
-    def build_statistics_attributes(
+    def build_attributes(
         self,
         build_records: Sequence[tuple[YaEvlogRecord, str, str]],
+        critical_entries: Sequence[YaCriticalPathEntry],
     ) -> tuple[
         dict[str, Any],
-        list[YaCriticalPathEntry],
+        Sequence[YaCriticalPathEntry],
     ]:
         attributes: dict[str, Any] = {}
         tool_counts: dict[str, Counter[str]] = defaultdict(Counter)
@@ -114,9 +119,6 @@ class _YaEvlogStatistics:
                         count
                     )
 
-        critical_entries = [
-            entry for entry in self.critical_path_entries if not entry.is_test
-        ]
         if critical_entries:
             work_msec = sum(entry.elapsed_ms or 0 for entry in critical_entries)
             start_times = [

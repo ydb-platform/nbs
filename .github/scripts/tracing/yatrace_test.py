@@ -1488,11 +1488,11 @@ def test_critical_path_entries_follow_mutable_statistics() -> None:
         statistics={"critical_path": [{"type": "CC"}]},
     )
 
-    assert evlog.critical_path_entries[0].raw_type == "CC"
+    assert evlog.critical_path.entries[0].raw_type == "CC"
 
     evlog.statistics["critical_path"] = [{"type": "LD"}]
 
-    assert evlog.critical_path_entries[0].raw_type == "LD"
+    assert evlog.critical_path.entries[0].raw_type == "LD"
 
 
 def test_test_critical_path_uid_matches_when_interval_is_malformed() -> None:
@@ -1521,7 +1521,7 @@ def test_test_critical_path_uid_matches_when_interval_is_malformed() -> None:
 
     assert entry.interval is None
     assert (
-        evlog._critical_test_node(
+        evlog.critical_path.match_test_node(
             entry,
             [short, long],
             {"shared": [short, long]},

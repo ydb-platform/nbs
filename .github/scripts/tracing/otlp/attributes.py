@@ -37,6 +37,14 @@ def clean_attributes(values: Mapping[str, Any] | None) -> dict[str, Any]:
     return result
 
 
+def _without_empty(values: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        key: value
+        for key, value in values.items()
+        if value is not None and value != "" and value != []
+    }
+
+
 class ResourceAttributes(dict[str, Any]):
     """Normalized OTLP resource attributes with common construction helpers."""
 
@@ -48,13 +56,7 @@ class ResourceAttributes(dict[str, Any]):
         values: Mapping[str, Any],
     ) -> ResourceAttributes:
         merged = dict(self)
-        merged.update(
-            {
-                key: value
-                for key, value in values.items()
-                if value is not None and value != "" and value != []
-            }
-        )
+        merged.update(_without_empty(values))
         return type(self)(merged)
 
     @classmethod
@@ -131,13 +133,7 @@ class ResourceAttributes(dict[str, Any]):
                 f"{urllib.parse.quote(sha, safe='')}"
             )
 
-        return cls(
-            {
-                key: value
-                for key, value in values.items()
-                if value is not None and value != "" and value != []
-            }
-        )
+        return cls(_without_empty(values))
 
 
 def any_value(value: Any) -> AnyValue:

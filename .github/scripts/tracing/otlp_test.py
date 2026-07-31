@@ -91,17 +91,16 @@ def test_official_span_uses_byte_ids_and_nanosecond_values() -> None:
 
 def test_trace_owns_resource_and_scope_hierarchy() -> None:
     trace = Trace()
-    trace.add_span(
-        make_span(
-            trace_id=stable_trace_id("trace"),
-            span_id=stable_span_id("span"),
-            name="operation",
-            start_ns=1_000,
-            end_ns=2_000,
-        ),
-        resource=ResourceAttributes({"service.name": "test"}),
-        scope_name="tests",
+    span = make_span(
+        trace_id=stable_trace_id("trace"),
+        span_id=stable_span_id("span"),
+        name="operation",
+        start_ns=1_000,
+        end_ns=2_000,
     )
+    writer = trace.writer(ResourceAttributes({"service.name": "test"}))
+
+    assert writer.add(span, scope_name="tests") is span
 
     resource_spans = trace.data.resource_spans[0]
     assert resource_spans.scope_spans[0].scope.name == "tests"
