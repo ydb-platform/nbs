@@ -38,13 +38,10 @@ struct TTestBackend: public IServerBackend
         std::function<TFuture<NProto::TWriteLogRecordResponse>(
             NProto::TWriteLogRecordRequest)>;
 
-    TPromise<TAcquireDevicesFunc> AcquireDevicesImpl =
-        NewPromise<TAcquireDevicesFunc>();
-    TPromise<TReleaseDevicesFunc> ReleaseDevicesImpl =
-        NewPromise<TReleaseDevicesFunc>();
-    TPromise<TReadPagesFunc> ReadPagesImpl = NewPromise<TReadPagesFunc>();
-    TPromise<TWriteLogRecordFunc> WriteLogRecordImpl =
-        NewPromise<TWriteLogRecordFunc>();
+    TAcquireDevicesFunc AcquireDevicesImpl;
+    TReleaseDevicesFunc ReleaseDevicesImpl;
+    TReadPagesFunc ReadPagesImpl;
+    TWriteLogRecordFunc WriteLogRecordImpl;
 
     [[nodiscard]] auto AcquireDevices(
         TInstant now,
@@ -53,9 +50,7 @@ struct TTestBackend: public IServerBackend
     {
         Y_UNUSED(now);
 
-        return AcquireDevicesImpl.GetFuture().Apply(
-            [request](const auto& future)
-            { return future.GetValue()(request); });
+        return AcquireDevicesImpl(std::move(request));
     }
 
     [[nodiscard]] auto ReleaseDevices(
@@ -65,9 +60,7 @@ struct TTestBackend: public IServerBackend
     {
         Y_UNUSED(now);
 
-        return ReleaseDevicesImpl.GetFuture().Apply(
-            [request](const auto& future)
-            { return future.GetValue()(request); });
+        return ReleaseDevicesImpl(std::move(request));
     }
 
     [[nodiscard]] auto ReadPages(
@@ -77,9 +70,7 @@ struct TTestBackend: public IServerBackend
     {
         Y_UNUSED(now);
 
-        return ReadPagesImpl.GetFuture().Apply(
-            [request](const auto& future)
-            { return future.GetValue()(request); });
+        return ReadPagesImpl(std::move(request));
     }
 
     [[nodiscard]] auto WriteLogRecord(
@@ -89,9 +80,7 @@ struct TTestBackend: public IServerBackend
     {
         Y_UNUSED(now);
 
-        return WriteLogRecordImpl.GetFuture().Apply(
-            [request](const auto& future)
-            { return future.GetValue()(request); });
+        return WriteLogRecordImpl(std::move(request));
     }
 };
 
@@ -361,6 +350,40 @@ Y_UNIT_TEST_SUITE(TDeviceTCPServerTest)
             return proto;
         }();
 
+        std::mutex mutex;
+        std::optional<NProto::TAcquireDevicesRequest> acquireDevicesRequest;
+        std::optional<NProto::TReleaseDevicesRequest> releaseDevicesRequest;
+        std::optional<NProto::TReadPagesRequest> readPagesRequest;
+        std::optional<NProto::TWriteLogRecordRequest> writeLogRecordRequest;
+
+        Backend->AcquireDevicesImpl = [&](auto request)
+        {
+            std::unique_lock lock(mutex);
+            acquireDevicesRequest = std::move(request);
+            return MakeFuture(expectedAcquireDevicesResponse);
+        };
+
+        Backend->ReleaseDevicesImpl = [&](auto request)
+        {
+            std::unique_lock lock(mutex);
+            releaseDevicesRequest = std::move(request);
+            return MakeFuture(expectedReleaseDevicesResponse);
+        };
+
+        Backend->ReadPagesImpl = [&](auto request)
+        {
+            std::unique_lock lock(mutex);
+            readPagesRequest = std::move(request);
+            return MakeFuture(expectedReadPagesResponse);
+        };
+
+        Backend->WriteLogRecordImpl = [&](auto request)
+        {
+            std::unique_lock lock(mutex);
+            writeLogRecordRequest = std::move(request);
+            return MakeFuture(expectedWriteLogRecordResponse);
+        };
+
         TTestClient client{Port};
 
         {
@@ -393,44 +416,6 @@ Y_UNIT_TEST_SUITE(TDeviceTCPServerTest)
                 expectedWriteLogRecordRequest);
             client.Send(request);
         }
-
-        std::mutex mutex;
-        std::optional<NProto::TAcquireDevicesRequest> acquireDevicesRequest;
-        std::optional<NProto::TReleaseDevicesRequest> releaseDevicesRequest;
-        std::optional<NProto::TReadPagesRequest> readPagesRequest;
-        std::optional<NProto::TWriteLogRecordRequest> writeLogRecordRequest;
-
-        Backend->AcquireDevicesImpl.SetValue(
-            [&](auto request)
-            {
-                std::unique_lock lock(mutex);
-                acquireDevicesRequest = std::move(request);
-                return MakeFuture(expectedAcquireDevicesResponse);
-            });
-
-        Backend->ReleaseDevicesImpl.SetValue(
-            [&](auto request)
-            {
-                std::unique_lock lock(mutex);
-                releaseDevicesRequest = std::move(request);
-                return MakeFuture(expectedReleaseDevicesResponse);
-            });
-
-        Backend->ReadPagesImpl.SetValue(
-            [&](auto request)
-            {
-                std::unique_lock lock(mutex);
-                readPagesRequest = std::move(request);
-                return MakeFuture(expectedReadPagesResponse);
-            });
-
-        Backend->WriteLogRecordImpl.SetValue(
-            [&](auto request)
-            {
-                std::unique_lock lock(mutex);
-                writeLogRecordRequest = std::move(request);
-                return MakeFuture(expectedWriteLogRecordResponse);
-            });
 
         TVector<NProto::TDeviceProtocolResponse> responses;
 
@@ -500,9 +485,10 @@ Y_UNIT_TEST_SUITE(TDeviceTCPServerTest)
     {
         const ui32 requestCount = 100;
 
-        Backend->AcquireDevicesImpl.SetValue(
-            [&](auto)
-            { return MakeFuture(NProto::TAcquireDevicesResponse()); });
+        Backend->AcquireDevicesImpl = [&](auto)
+        {
+            return MakeFuture(NProto::TAcquireDevicesResponse());
+        };
 
         TTestClient client1{Port};
         TTestClient client2{Port};
@@ -556,6 +542,175 @@ Y_UNIT_TEST_SUITE(TDeviceTCPServerTest)
         UNIT_ASSERT_EQUAL(expectedIds, ids2);
 
         queue.Stop();
+    }
+
+    Y_UNIT_TEST_F(ShouldHandleBackendExecptions, TFixture)
+    {
+        const ui64 requestId = 42;
+
+        TTestClient client{Port};
+
+        auto acquire = [&]
+        {
+            NProto::TDeviceProtocolRequest request;
+            request.SetRequestId(requestId);
+            request.MutableAcquireDevices();
+            client.Send(request);
+
+            auto response = client.Receive();
+
+            UNIT_ASSERT_VALUES_EQUAL(requestId, response.GetRequestId());
+            return response.GetAcquireDevices().GetError();
+        };
+
+        auto release = [&]
+        {
+            NProto::TDeviceProtocolRequest request;
+            request.SetRequestId(requestId);
+            request.MutableReleaseDevices();
+            client.Send(request);
+
+            auto response = client.Receive();
+
+            UNIT_ASSERT_VALUES_EQUAL(requestId, response.GetRequestId());
+            return response.GetReleaseDevices().GetError();
+        };
+
+        auto readPages = [&]
+        {
+            NProto::TDeviceProtocolRequest request;
+            request.SetRequestId(requestId);
+            request.MutableReadPages();
+            client.Send(request);
+
+            auto response = client.Receive();
+
+            UNIT_ASSERT_VALUES_EQUAL(requestId, response.GetRequestId());
+            return response.GetReadPages().GetError();
+        };
+
+        auto writeLogRecord = [&]
+        {
+            NProto::TDeviceProtocolRequest request;
+            request.SetRequestId(requestId);
+            request.MutableWriteLogRecord();
+            client.Send(request);
+
+            auto response = client.Receive();
+
+            UNIT_ASSERT_VALUES_EQUAL(requestId, response.GetRequestId());
+            return response.GetWriteLogRecord().GetError();
+        };
+
+        Backend->AcquireDevicesImpl =
+            [](auto) -> TFuture<NProto::TAcquireDevicesResponse>
+        {
+            throw TServiceError(E_FAIL) << "acquire-inline-error";
+        };
+
+        Backend->ReleaseDevicesImpl =
+            [](auto) -> TFuture<NProto::TReleaseDevicesResponse>
+        {
+            throw TServiceError(E_FAIL) << "release-inline-error";
+        };
+
+        Backend->ReadPagesImpl = [](auto) -> TFuture<NProto::TReadPagesResponse>
+        {
+            throw TServiceError(E_FAIL) << "readPages-inline-error";
+        };
+        Backend->WriteLogRecordImpl =
+            [](auto) -> TFuture<NProto::TWriteLogRecordResponse>
+        {
+            throw TServiceError(E_FAIL) << "writeLogRecord-inline-error";
+        };
+
+        {
+            auto error = acquire();
+            UNIT_ASSERT_VALUES_EQUAL(E_FAIL, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "acquire-inline-error",
+                error.GetMessage());
+        }
+
+        {
+            auto error = release();
+            UNIT_ASSERT_VALUES_EQUAL(E_FAIL, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "release-inline-error",
+                error.GetMessage());
+        }
+
+        {
+            auto error = readPages();
+            UNIT_ASSERT_VALUES_EQUAL(E_FAIL, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "readPages-inline-error",
+                error.GetMessage());
+        }
+
+        {
+            auto error = writeLogRecord();
+            UNIT_ASSERT_VALUES_EQUAL(E_FAIL, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "writeLogRecord-inline-error",
+                error.GetMessage());
+        }
+
+        Backend->AcquireDevicesImpl = [](auto)
+        {
+            return MakeErrorFuture<NProto::TAcquireDevicesResponse>(
+                std::make_exception_ptr(
+                    TServiceError{E_ARGUMENT} << "acquire-async-error"));
+        };
+
+        Backend->ReleaseDevicesImpl = [](auto)
+        {
+            return MakeErrorFuture<NProto::TReleaseDevicesResponse>(
+                std::make_exception_ptr(
+                    TServiceError{E_ARGUMENT} << "release-async-error"));
+        };
+
+        Backend->ReadPagesImpl = [](auto)
+        {
+            return MakeErrorFuture<NProto::TReadPagesResponse>(
+                std::make_exception_ptr(
+                    TServiceError{E_ARGUMENT} << "readPages-async-error"));
+        };
+
+        Backend->WriteLogRecordImpl = [](auto)
+        {
+            return MakeErrorFuture<NProto::TWriteLogRecordResponse>(
+                std::make_exception_ptr(
+                    TServiceError{E_ARGUMENT} << "writeLogRecord-async-error"));
+        };
+
+        {
+            auto error = acquire();
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL("acquire-async-error", error.GetMessage());
+        }
+
+        {
+            auto error = release();
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL("release-async-error", error.GetMessage());
+        }
+
+        {
+            auto error = readPages();
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "readPages-async-error",
+                error.GetMessage());
+        }
+
+        {
+            auto error = writeLogRecord();
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "writeLogRecord-async-error",
+                error.GetMessage());
+        }
     }
 }
 
