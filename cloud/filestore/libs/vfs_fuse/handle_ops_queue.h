@@ -23,6 +23,7 @@ public:
         Ok,
         QueueOverflow,
         SerializationError,
+        QueueIsCorrupted,
     };
 
     explicit THandleOpsQueue(const TString& filePath, ui32 size);
@@ -34,6 +35,7 @@ public:
     void PopFront();
     ui64 Size() const;
     bool Empty() const;
+    bool IsCorrupted() const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
