@@ -17,18 +17,46 @@ const ORPHAN_PARENT = 12;
 const PAGE_SIZE = 200;
 const LOAD_SIZE_OPTIONS = Object.freeze([200, 1000, 5000]);
 const INITIAL_ROW_BUDGET = PAGE_SIZE;
-const COLLAPSED_SCOPES = new Set(["ya.build", "ya.chunk"]);
+const NAME_COLUMN_STORAGE_KEY = "trace-report.name-column-width";
+const MIN_NAME_COLUMN_WIDTH_PX = 240;
+const MIN_OTHER_COLUMNS_WIDTH_PX = 400;
+const NAME_COLUMN_KEYBOARD_STEP_PX = 24;
+const COLLAPSED_SCOPES = new Set([
+  "ya.build",
+  "ya.chunk",
+  "ya.test.operations",
+  "ya.test.node",
+  "ya.test.worker",
+]);
+const TEST_SIZES = Object.freeze(["small", "medium", "large"]);
+const TEST_WORKER_PHASE_BAR_CLASSES = Object.freeze({
+  setup: "bar-worker-setup",
+  exec_cmd: "bar-worker-exec-cmd",
+  post_cmd: "bar-worker-post-cmd",
+  node_result: "bar-worker-node-result",
+  finalize: "bar-worker-finalize",
+});
+const TEST_STAGE_BAR_CLASSES = Object.freeze({
+  prepare_recipes: "bar-stage-prepare-recipes",
+  wrapper_execution: "bar-stage-wrapper-execution",
+  stop_recipes: "bar-stage-stop-recipes",
+});
 
 let rowsElement;
 let filterElement;
 let filterStatus;
+let failedOnlyElement;
+let topTestsOnlyElement;
+let minimumDurationElement;
+let testSizeElements;
 let rowLoadSizeElement;
 let rowLoader;
 let rowLoadButton;
 let rowStatus;
-let detailPanel;
-let detailTitle;
-let detailContent;
+let traceElement;
+let traceHeadElement;
+let columnResizerElement;
+let columnResizeState = null;
 let model;
 let spans;
 let children;
@@ -39,6 +67,39 @@ let visible;
 let selected = null;
 let searchCache = [];
 let rowBudget = INITIAL_ROW_BUDGET;
+
+function clampNameColumnWidth(width, containerWidth) {
+  const availableWidth = Number(containerWidth);
+  const maximum = Math.max(
+    MIN_NAME_COLUMN_WIDTH_PX,
+    (Number.isFinite(availableWidth) ? Math.floor(availableWidth) : 0) -
+      MIN_OTHER_COLUMNS_WIDTH_PX,
+  );
+  const requestedWidth = Number(width);
+  if (!Number.isFinite(requestedWidth)) return MIN_NAME_COLUMN_WIDTH_PX;
+  return Math.round(
+    Math.min(maximum, Math.max(MIN_NAME_COLUMN_WIDTH_PX, requestedWidth)),
+  );
+}
+
+function readStoredNameColumnWidth(storage) {
+  try {
+    const width = Number(storage?.getItem(NAME_COLUMN_STORAGE_KEY));
+    return Number.isFinite(width) && width > 0 ? width : null;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function writeStoredNameColumnWidth(storage, width) {
+  try {
+    if (!storage || !Number.isFinite(width)) return false;
+    storage.setItem(NAME_COLUMN_STORAGE_KEY, String(Math.round(width)));
+    return true;
+  } catch (_error) {
+    return false;
+  }
+}
 
 function loadSizeFromValue(value) {
   const parsed = Number(value);
@@ -86,11 +147,100 @@ function childCountLabel(count, scope) {
   let noun = "item";
   if (scope === "ya.chunk") noun = "test";
   else if (scope === "ya.build") noun = "operation";
+  else if (scope === "ya.test.operations") noun = "chunk";
   return `${count.toLocaleString()} ${noun}${count === 1 ? "" : "s"}`;
+}
+
+function directChildCountLabel(index, sourceSpans, sourceChildren, scopes) {
+  const scope = scopes[sourceSpans[index][SCOPE]];
+  const directChildren = sourceChildren[index] || [];
+  let count = directChildren.length;
+  if (scope === "ya.chunk") {
+    count = directChildren.filter(
+      (child) => scopes[sourceSpans[child][SCOPE]] === "ya.test",
+    ).length;
+  } else if (scope === "ya.test.operations") {
+    const chunkCount = directChildren.filter(
+      (child) =>
+        scopes[sourceSpans[child][SCOPE]] === "ya.chunk" ||
+        scopes[sourceSpans[child][SCOPE]] === "ya.test.worker",
+    ).length;
+    const operationCount = directChildren.filter(
+      (child) => scopes[sourceSpans[child][SCOPE]] === "ya.test.node",
+    ).length;
+    const chunks = childCountLabel(chunkCount, scope);
+    if (!operationCount) return chunks;
+    return `${chunks} · ${operationCount.toLocaleString()} other operation${
+      operationCount === 1 ? "" : "s"
+    }`;
+  } else if (scope === "ya.test.worker") {
+    const chunkChildren = directChildren.filter(
+      (child) => scopes[sourceSpans[child][SCOPE]] === "ya.chunk",
+    );
+    const testCount = chunkChildren.reduce(
+      (total, chunk) =>
+        total +
+        (sourceChildren[chunk] || []).filter(
+          (child) => scopes[sourceSpans[child][SCOPE]] === "ya.test",
+        ).length,
+      0,
+    );
+    const phaseCount = directChildren.filter(
+      (child) => scopes[sourceSpans[child][SCOPE]] === "ya.test.worker.phase",
+    ).length;
+    const tests = childCountLabel(testCount, "ya.chunk");
+    if (!phaseCount) return tests;
+    return `${tests} · ${phaseCount.toLocaleString()} phase${
+      phaseCount === 1 ? "" : "s"
+    }`;
+  } else if (scope === "ya.test.node") {
+    const phaseCount = directChildren.filter(
+      (child) => scopes[sourceSpans[child][SCOPE]] === "ya.test.worker.phase",
+    ).length;
+    if (phaseCount) {
+      return `${phaseCount.toLocaleString()} phase${
+        phaseCount === 1 ? "" : "s"
+      }`;
+    }
+  }
+  return childCountLabel(count, scope);
 }
 
 function isCriticalPathTest(span) {
   return span[ATTRS]["ya.test.critical_path"] === true;
+}
+
+function longestTestRank(span) {
+  const rank = Number(span[ATTRS]["ya.test.duration.rank"]);
+  return Number.isInteger(rank) && rank >= 1 && rank <= 10 ? rank : null;
+}
+
+function parseMinimumDurationNs(value) {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const seconds = Number(value);
+  if (!Number.isFinite(seconds) || seconds < 0) return null;
+  return Math.round(seconds * 1e9);
+}
+
+function timelineBarClass(scope, attributes) {
+  const values =
+    attributes && typeof attributes === "object" ? attributes : {};
+  if (scope === "ya.test.worker.phase") {
+    const phase = values["ya.test.worker.phase"];
+    return Object.prototype.hasOwnProperty.call(
+      TEST_WORKER_PHASE_BAR_CLASSES,
+      phase,
+    )
+      ? TEST_WORKER_PHASE_BAR_CLASSES[phase]
+      : "bar-default";
+  }
+  if (scope === "ya.test.stage") {
+    const stage = values["ya.test.stage.name"];
+    return Object.prototype.hasOwnProperty.call(TEST_STAGE_BAR_CLASSES, stage)
+      ? TEST_STAGE_BAR_CLASSES[stage]
+      : "bar-stage-other";
+  }
+  return "bar-default";
 }
 
 function buildHierarchy(sourceSpans) {
@@ -153,21 +303,81 @@ function spanSearchText(span) {
 }
 
 function matchingVisibility(sourceSpans, query, cache = []) {
-  const normalized = query.trim().toLowerCase();
-  if (!normalized) return { visible: null, matches: 0 };
+  return filterVisibility(sourceSpans, { query }, cache);
+}
+
+function filterVisibility(
+  sourceSpans,
+  {
+    query = "",
+    failedOnly = false,
+    topTestsOnly = false,
+    minimumDurationNs = null,
+    testSizes = new Set(),
+  } = {},
+  cache = [],
+) {
+  const normalizedQuery = query.trim().toLowerCase();
+  const normalizedSizes = new Set(
+    [...testSizes]
+      .map((size) => String(size).toLowerCase())
+      .filter((size) => TEST_SIZES.includes(size)),
+  );
+  const hasMinimumDuration =
+    Number.isFinite(minimumDurationNs) && minimumDurationNs >= 0;
+  const hasSelectionFilter = Boolean(
+    failedOnly || topTestsOnly || hasMinimumDuration || normalizedSizes.size,
+  );
+  const active = Boolean(normalizedQuery || hasSelectionFilter);
+  if (!active) return { visible: null, matches: 0 };
 
   const result = new Set();
+  const directMatches = [];
   let matches = 0;
   sourceSpans.forEach((span, index) => {
-    if (!cache[index]) cache[index] = spanSearchText(span);
-    if (!cache[index].includes(normalized)) return;
+    if (normalizedQuery) {
+      if (!cache[index]) cache[index] = spanSearchText(span);
+      if (!cache[index].includes(normalizedQuery)) return;
+    }
+    if (failedOnly && span[STATUS] !== 2) return;
+    if (topTestsOnly && longestTestRank(span) === null) return;
+    if (hasMinimumDuration && span[DURATION] < minimumDurationNs) return;
+    if (normalizedSizes.size) {
+      const size = String(span[ATTRS]["test.size"] || "").toLowerCase();
+      if (!normalizedSizes.has(size)) return;
+    }
     matches += 1;
+    directMatches.push(index);
     let current = index;
-    while (current >= 0 && !result.has(current)) {
+    while (
+      current >= 0 &&
+      current < sourceSpans.length &&
+      !result.has(current)
+    ) {
       result.add(current);
       current = sourceSpans[current][PARENT];
     }
   });
+  if (normalizedQuery && !hasSelectionFilter) {
+    const sourceChildren = sourceSpans.map(() => []);
+    sourceSpans.forEach((span, index) => {
+      const parent = span[PARENT];
+      if (parent >= 0 && parent < sourceSpans.length) {
+        sourceChildren[parent].push(index);
+      }
+    });
+    const seen = new Set(directMatches);
+    const pending = [...directMatches];
+    while (pending.length) {
+      const index = pending.pop();
+      sourceChildren[index].forEach((child) => {
+        if (seen.has(child)) return;
+        seen.add(child);
+        result.add(child);
+        pending.push(child);
+      });
+    }
+  }
   return { visible: result, matches };
 }
 
@@ -229,6 +439,27 @@ function flattenTraceRows({
   return { items: result, spanRows, truncated };
 }
 
+function nextSelectedSpan(currentIndex, clickedIndex) {
+  return currentIndex === clickedIndex ? null : clickedIndex;
+}
+
+function inlineDetailRows(sourceRows, selectedIndex) {
+  const result = [];
+  let inserted = false;
+  sourceRows.forEach((row) => {
+    result.push(row);
+    if (!inserted && row.kind === "span" && row.index === selectedIndex) {
+      result.push({
+        kind: "detail",
+        index: row.index,
+        depth: row.depth,
+      });
+      inserted = true;
+    }
+  });
+  return result;
+}
+
 async function decodeModel() {
   if (!("DecompressionStream" in window)) {
     throw new Error(
@@ -253,9 +484,31 @@ function resetDefaults() {
   rowBudget = INITIAL_ROW_BUDGET;
 }
 
+function isPressed(element) {
+  return element.getAttribute("aria-pressed") === "true";
+}
+
+function selectedTestSizes() {
+  return new Set(
+    [...testSizeElements]
+      .filter((element) => isPressed(element))
+      .map((element) => element.dataset.testSize),
+  );
+}
+
+function currentFilters() {
+  return {
+    query: filterElement.value,
+    failedOnly: isPressed(failedOnlyElement),
+    topTestsOnly: isPressed(topTestsOnlyElement),
+    minimumDurationNs: parseMinimumDurationNs(minimumDurationElement.value),
+    testSizes: selectedTestSizes(),
+  };
+}
+
 function applyFilter() {
-  const query = filterElement.value.trim();
-  if (!query) {
+  const result = filterVisibility(spans, currentFilters(), searchCache);
+  if (result.visible === null) {
     visible = null;
     filterStatus.textContent = "";
     resetDefaults();
@@ -263,10 +516,17 @@ function applyFilter() {
     return;
   }
   rowBudget = INITIAL_ROW_BUDGET;
-  const result = matchingVisibility(spans, query, searchCache);
+  limits = new Map();
   visible = result.visible;
-  filterStatus.textContent = `${result.matches.toLocaleString()} matching spans`;
+  filterStatus.textContent = `${result.matches.toLocaleString()} matching span${
+    result.matches === 1 ? "" : "s"
+  }`;
   renderRows();
+}
+
+function toggleFilter(element) {
+  element.setAttribute("aria-pressed", String(!isPressed(element)));
+  applyFilter();
 }
 
 function flattenRows() {
@@ -304,6 +564,7 @@ function toggleSpanGroup(index) {
 function spanRow(item) {
   const span = spans[item.index];
   const criticalPathTest = isCriticalPathTest(span);
+  const durationRank = longestTestRank(span);
   const row = document.createElement("div");
   row.className = `span-row${span[STATUS] === 2 ? " error" : ""}${
     criticalPathTest ? " critical" : ""
@@ -341,11 +602,13 @@ function spanRow(item) {
   const childCount = document.createElement("span");
   if (hasChildren) {
     childCount.className = "child-count";
-    childCount.textContent = childCountLabel(
-      children[item.index].length,
-      model.c[span[SCOPE]],
+    childCount.textContent = directChildCountLabel(
+      item.index,
+      spans,
+      children,
+      model.c,
     );
-    childCount.title = `${children[item.index].length.toLocaleString()} direct child spans`;
+    childCount.title = `${children[item.index].length.toLocaleString()} direct child spans; badge summarizes contained work`;
   }
   const critical = document.createElement("span");
   if (criticalPathTest) {
@@ -353,16 +616,28 @@ function spanRow(item) {
     critical.textContent = "★ critical";
     critical.title = "Test is on the ya critical path";
   }
+  const longest = document.createElement("span");
+  if (durationRank !== null) {
+    longest.className = "longest-badge";
+    longest.textContent = `#${durationRank} longest`;
+    longest.title = `Ranked #${durationRank} among the ten longest tests in this ya make tests invocation`;
+  }
   const metadata = document.createElement("button");
   metadata.className = "metadata-button";
   metadata.type = "button";
   metadata.textContent = "ⓘ";
-  metadata.title = `Show metadata for ${span[NAME]}`;
+  const metadataOpen = selected === item.index;
+  metadata.title = `${metadataOpen ? "Hide" : "Show"} metadata for ${
+    span[NAME]
+  }`;
   metadata.setAttribute("aria-label", metadata.title);
-  metadata.addEventListener("click", () => showSpan(item.index));
+  metadata.setAttribute("aria-expanded", String(metadataOpen));
+  metadata.setAttribute("aria-controls", detailElementId(item.index));
+  metadata.addEventListener("click", () => toggleSpanDetails(item.index));
   nameCell.append(toggle, name);
   if (hasChildren) nameCell.append(childCount);
   if (criticalPathTest) nameCell.append(critical);
+  if (durationRank !== null) nameCell.append(longest);
   nameCell.append(metadata);
 
   const duration = document.createElement("span");
@@ -371,7 +646,10 @@ function spanRow(item) {
   const track = document.createElement("span");
   track.className = "track";
   const bar = document.createElement("span");
-  bar.className = "bar";
+  bar.className = `bar ${timelineBarClass(
+    model.c[span[SCOPE]],
+    span[ATTRS],
+  )}`;
   bar.style.left = `${(100 * Math.max(0, span[START])) / model.d}%`;
   bar.style.width = `${Math.max(
     0.15,
@@ -416,9 +694,12 @@ function renderRows() {
     empty.textContent = visible ? "No matching spans." : "No spans found.";
     fragment.append(empty);
   } else {
-    flattened.items.forEach((item) =>
-      fragment.append(item.kind === "span" ? spanRow(item) : moreRow(item)),
-    );
+    inlineDetailRows(flattened.items, selected).forEach((item) => {
+      if (item.kind === "span") fragment.append(spanRow(item));
+      else if (item.kind === "detail") {
+        fragment.append(spanDetailPanel(item.index));
+      } else fragment.append(moreRow(item));
+    });
   }
   rowsElement.replaceChildren(fragment);
   rowLoader.hidden = !flattened.truncated;
@@ -433,7 +714,81 @@ function valueText(value) {
   return typeof value === "string" ? value : JSON.stringify(value);
 }
 
-function attributeTable(values) {
+function linkableHttpUrl(value) {
+  if (typeof value !== "string") return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:"
+      ? value
+      : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function safeHttpUrlPrefix(value) {
+  const link = linkableHttpUrl(value);
+  if (link === null) return null;
+  try {
+    const url = new URL(link);
+    if (url.username || url.password || url.search || url.hash) return null;
+    if (!url.pathname.endsWith("/")) url.pathname += "/";
+    return url.toString();
+  } catch (error) {
+    return null;
+  }
+}
+
+function safeArtifactPath(value) {
+  if (
+    typeof value !== "string" ||
+    !value ||
+    value.startsWith("/") ||
+    value.includes("\\") ||
+    value.includes("\u0000") ||
+    value.includes("?") ||
+    value.includes("#")
+  ) {
+    return null;
+  }
+  const segments = value.split("/");
+  if (
+    segments.some(
+      (segment) => !segment || segment === "." || segment === "..",
+    )
+  ) {
+    return null;
+  }
+  return segments
+    .map((segment) =>
+      encodeURIComponent(segment).replace(
+        /[!'()*]/g,
+        (character) =>
+          `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+      ),
+    )
+    .join("/");
+}
+
+function artifactLinkForAttribute(span, key, value, links = {}) {
+  if (!span || span[STATUS] !== 2) return null;
+  let prefix = null;
+  let suffix = "";
+  if (/^ya\.(test|chunk)\.log\.[a-z0-9_]+\.path$/.test(key)) {
+    prefix = links.testLog;
+  } else if (/^ya\.(test|chunk)\.logs_directory\.path$/.test(key)) {
+    prefix = links.testData;
+    suffix = "/index.html";
+  } else {
+    return null;
+  }
+  const base = safeHttpUrlPrefix(prefix);
+  const path = safeArtifactPath(value);
+  if (base === null || path === null) return null;
+  return new URL(`${path}${suffix}`, base).toString();
+}
+
+function attributeTable(values, sourceSpan = null) {
   if (!Object.keys(values).length) {
     const empty = document.createElement("p");
     empty.className = "muted";
@@ -450,23 +805,20 @@ function attributeTable(values) {
       heading.textContent = key;
       const cell = document.createElement("td");
       const rendered = valueText(value);
-      let linked = false;
-      if (typeof value === "string") {
-        try {
-          const url = new URL(value);
-          if (url.protocol === "http:" || url.protocol === "https:") {
-            const link = document.createElement("a");
-            link.href = value;
-            link.rel = "noopener noreferrer";
-            link.textContent = value;
-            cell.append(link);
-            linked = true;
-          }
-        } catch (error) {
-          // Non-URL attributes are rendered as plain text.
-        }
+      const absoluteLink = linkableHttpUrl(value);
+      const linkTarget =
+        absoluteLink ||
+        artifactLinkForAttribute(sourceSpan, key, value, model?.u || {});
+      if (linkTarget !== null) {
+        const link = document.createElement("a");
+        link.href = linkTarget;
+        link.rel = "noopener noreferrer";
+        link.textContent = absoluteLink === null ? `${rendered} ↗` : linkTarget;
+        if (absoluteLink === null) link.title = linkTarget;
+        cell.append(link);
+      } else {
+        cell.textContent = rendered;
       }
-      if (!linked) cell.textContent = rendered;
       row.append(heading, cell);
       table.append(row);
     });
@@ -479,10 +831,29 @@ function heading(text, level = 3) {
   return element;
 }
 
-function showSpan(index) {
-  selected = index;
+function detailElementId(index) {
+  return `span-detail-${index}`;
+}
+
+function spanDetailPanel(index) {
   const span = spans[index];
-  detailTitle.textContent = span[NAME];
+  const panel = document.createElement("section");
+  panel.className = "inline-detail";
+  panel.id = detailElementId(index);
+  panel.dataset.detailFor = String(index);
+  panel.setAttribute("aria-label", `Metadata for ${span[NAME]}`);
+
+  const head = document.createElement("div");
+  head.className = "detail-head";
+  const title = document.createElement("h2");
+  title.textContent = span[NAME];
+  const close = document.createElement("button");
+  close.type = "button";
+  close.textContent = "Close";
+  close.setAttribute("aria-label", `Close metadata for ${span[NAME]}`);
+  close.addEventListener("click", () => toggleSpanDetails(index));
+  head.append(title, close);
+
   const facts = document.createElement("p");
   facts.className = "detail-facts";
   const parent =
@@ -499,7 +870,11 @@ function showSpan(index) {
     } · Parent: ${parent}`,
   );
   const content = document.createDocumentFragment();
-  content.append(facts, heading("Attributes"), attributeTable(span[ATTRS]));
+  content.append(
+    facts,
+    heading("Attributes"),
+    attributeTable(span[ATTRS], span),
+  );
   if (span[EVENTS].length) {
     content.append(heading("Events"));
     const events = document.createElement("ul");
@@ -522,9 +897,140 @@ function showSpan(index) {
     attributeTable(model.r[span[RESOURCE]]),
   );
   content.append(resources);
-  detailContent.replaceChildren(content);
-  detailPanel.hidden = false;
-  renderRows();
+  panel.append(head, content);
+  return panel;
+}
+
+function updateMetadataRow(index, open) {
+  const row = rowsElement.querySelector(`.span-row[data-index="${index}"]`);
+  if (!row) return null;
+  row.classList.toggle("selected", open);
+  const button = row.querySelector(".metadata-button");
+  if (button) {
+    const action = open ? "Hide" : "Show";
+    const spanName = spans[index][NAME];
+    button.title = `${action} metadata for ${spanName}`;
+    button.setAttribute("aria-label", button.title);
+    button.setAttribute("aria-expanded", String(open));
+  }
+  return row;
+}
+
+function toggleSpanDetails(index) {
+  const previous = selected;
+  const next = nextSelectedSpan(previous, index);
+  if (previous !== null) {
+    document.getElementById(detailElementId(previous))?.remove();
+    updateMetadataRow(previous, false);
+  }
+
+  selected = next;
+  if (next === null) return;
+  const row = updateMetadataRow(next, true);
+  if (!row) return;
+  row.after(spanDetailPanel(next));
+}
+
+function browserLocalStorage() {
+  try {
+    return window.localStorage;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function currentNameColumnWidth() {
+  return traceHeadElement.firstElementChild.getBoundingClientRect().width;
+}
+
+function setNameColumnWidth(width, persist = false) {
+  const containerWidth = traceHeadElement.getBoundingClientRect().width;
+  const clamped = clampNameColumnWidth(width, containerWidth);
+  const maximum = clampNameColumnWidth(Number.MAX_SAFE_INTEGER, containerWidth);
+  traceElement.style.setProperty("--name-column-width", `${clamped}px`);
+  columnResizerElement.setAttribute("aria-valuemin", String(MIN_NAME_COLUMN_WIDTH_PX));
+  columnResizerElement.setAttribute("aria-valuemax", String(maximum));
+  columnResizerElement.setAttribute("aria-valuenow", String(clamped));
+  columnResizerElement.setAttribute(
+    "aria-valuetext",
+    `${clamped} pixel name column`,
+  );
+  if (persist) writeStoredNameColumnWidth(browserLocalStorage(), clamped);
+  return clamped;
+}
+
+function resizeNameColumnWithPointer(event) {
+  if (!columnResizeState || event.pointerId !== columnResizeState.pointerId) {
+    return;
+  }
+  const requested =
+    columnResizeState.startWidth + event.clientX - columnResizeState.startX;
+  columnResizeState.currentWidth = setNameColumnWidth(requested);
+  event.preventDefault();
+}
+
+function finishNameColumnResize(event) {
+  if (!columnResizeState || event.pointerId !== columnResizeState.pointerId) {
+    return;
+  }
+  writeStoredNameColumnWidth(
+    browserLocalStorage(),
+    columnResizeState.currentWidth,
+  );
+  columnResizeState = null;
+  document.body.classList.remove("resizing-columns");
+}
+
+function startNameColumnResize(event) {
+  if (event.button !== 0) return;
+  const width = currentNameColumnWidth();
+  columnResizeState = {
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startWidth: width,
+    currentWidth: width,
+  };
+  document.body.classList.add("resizing-columns");
+  event.preventDefault();
+}
+
+function resizeNameColumnWithKeyboard(event) {
+  const direction = { ArrowLeft: -1, ArrowRight: 1 }[event.key];
+  let requested;
+  if (direction) {
+    const step = event.shiftKey
+      ? NAME_COLUMN_KEYBOARD_STEP_PX * 4
+      : NAME_COLUMN_KEYBOARD_STEP_PX;
+    requested = currentNameColumnWidth() + direction * step;
+  } else if (event.key === "Home") {
+    requested = MIN_NAME_COLUMN_WIDTH_PX;
+  } else if (event.key === "End") {
+    requested = Number.MAX_SAFE_INTEGER;
+  } else {
+    return;
+  }
+  setNameColumnWidth(requested, true);
+  event.preventDefault();
+}
+
+function initializeColumnResizer() {
+  const storedWidth = readStoredNameColumnWidth(browserLocalStorage());
+  const mobile = window.matchMedia("(max-width:850px)").matches;
+  if (storedWidth !== null) {
+    setNameColumnWidth(storedWidth);
+  } else if (!mobile) {
+    setNameColumnWidth(currentNameColumnWidth());
+  }
+
+  columnResizerElement.addEventListener("pointerdown", startNameColumnResize);
+  columnResizerElement.addEventListener("keydown", resizeNameColumnWithKeyboard);
+  window.addEventListener("pointermove", resizeNameColumnWithPointer);
+  window.addEventListener("pointerup", finishNameColumnResize);
+  window.addEventListener("pointercancel", finishNameColumnResize);
+  window.addEventListener("resize", () => {
+    if (window.matchMedia("(max-width:850px)").matches) return;
+    setNameColumnWidth(currentNameColumnWidth());
+  });
 }
 
 function initialize(decoded) {
@@ -533,6 +1039,12 @@ function initialize(decoded) {
   ({ children, roots } = buildHierarchy(spans));
   resetDefaults();
   filterElement.disabled = false;
+  failedOnlyElement.disabled = false;
+  topTestsOnlyElement.disabled = false;
+  minimumDurationElement.disabled = false;
+  testSizeElements.forEach((element) => {
+    element.disabled = false;
+  });
   rowLoadSizeElement.disabled = false;
   document.getElementById("expand").disabled = false;
   document.getElementById("collapse").disabled = false;
@@ -540,21 +1052,39 @@ function initialize(decoded) {
 }
 
 function startTraceReport() {
+  traceElement = document.getElementById("trace");
+  traceHeadElement = document.getElementById("trace-head");
+  columnResizerElement = document.getElementById("column-resizer");
   rowsElement = document.getElementById("rows");
   filterElement = document.getElementById("filter");
   filterStatus = document.getElementById("filter-status");
+  failedOnlyElement = document.getElementById("failed-only");
+  topTestsOnlyElement = document.getElementById("top-tests-only");
+  minimumDurationElement = document.getElementById("minimum-duration");
+  testSizeElements = document.querySelectorAll("[data-test-size]");
   rowLoadSizeElement = document.getElementById("row-load-size");
   rowLoader = document.getElementById("row-loader");
   rowLoadButton = document.getElementById("load-rows");
   rowStatus = document.getElementById("row-status");
-  detailPanel = document.getElementById("detail-panel");
-  detailTitle = document.getElementById("detail-title");
-  detailContent = document.getElementById("detail-content");
+  initializeColumnResizer();
 
   let filterTimer;
   filterElement.addEventListener("input", () => {
     clearTimeout(filterTimer);
     filterTimer = setTimeout(applyFilter, 120);
+  });
+  minimumDurationElement.addEventListener("input", () => {
+    clearTimeout(filterTimer);
+    filterTimer = setTimeout(applyFilter, 120);
+  });
+  failedOnlyElement.addEventListener("click", () => {
+    toggleFilter(failedOnlyElement);
+  });
+  topTestsOnlyElement.addEventListener("click", () => {
+    toggleFilter(topTestsOnlyElement);
+  });
+  testSizeElements.forEach((element) => {
+    element.addEventListener("click", () => toggleFilter(element));
   });
   rowLoadSizeElement.addEventListener("change", () => {
     renderRows();
@@ -573,12 +1103,6 @@ function startTraceReport() {
     expanded.clear();
     renderRows();
   });
-  document.getElementById("detail-close").addEventListener("click", () => {
-    selected = null;
-    detailPanel.hidden = true;
-    renderRows();
-  });
-
   decodeModel()
     .then(initialize)
     .catch((error) => {
@@ -607,19 +1131,34 @@ const traceReportApi = {
   PAGE_SIZE,
   LOAD_SIZE_OPTIONS,
   INITIAL_ROW_BUDGET,
+  NAME_COLUMN_STORAGE_KEY,
   COLLAPSED_SCOPES,
+  TEST_SIZES,
   formatDuration,
   childCountLabel,
+  directChildCountLabel,
   isCriticalPathTest,
+  longestTestRank,
+  parseMinimumDurationNs,
+  timelineBarClass,
   buildHierarchy,
   defaultExpanded,
   spanSearchText,
   matchingVisibility,
+  filterVisibility,
   flattenTraceRows,
   loadSizeFromValue,
   nextRowLimit,
   groupLoadPlan,
   initialGroupLimit,
+  clampNameColumnWidth,
+  readStoredNameColumnWidth,
+  writeStoredNameColumnWidth,
+  inlineDetailRows,
+  safeArtifactPath,
+  artifactLinkForAttribute,
+  linkableHttpUrl,
+  nextSelectedSpan,
 };
 
 if (typeof module === "object" && module.exports) {

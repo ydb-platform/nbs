@@ -9,6 +9,7 @@ import gzip
 import json
 from pathlib import Path
 from typing import Any, Iterable, Mapping
+from urllib.parse import urlsplit, urlunsplit
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined, select_autoescape
 
@@ -25,8 +26,8 @@ from .otlp import (
 OTLP_FILE_NAME = "trace.otlp.jsonl.gz"
 HTML_FILE_NAME = "trace.html"
 MANIFEST_FILE_NAME = "trace.manifest.json"
-MAX_INPUT_BYTES = 128 * 1024 * 1024
-MAX_SPANS = 100_000
+MAX_INPUT_BYTES = 512 * 1024 * 1024
+MAX_SPANS = 500_000
 MAX_JSON_LINE_CHARACTERS = 16 * 1024 * 1024
 OTLP_SPANS_PER_LINE = 5_000
 TEMPLATE_DIR = Path(__file__).with_name("templates")
@@ -49,18 +50,33 @@ def _open_text(path: Path, mode: str):
     return path.open(mode, encoding="utf-8")
 
 
+def _write_otlp_batch(stream, trace: Trace) -> None:
+    encoded = json.dumps(
+        trace.to_dict(),
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+    if len(encoded) + 1 <= MAX_JSON_LINE_CHARACTERS:
+        stream.write(encoded)
+        stream.write("\n")
+        return
+
+    span_count = len(trace)
+    if span_count <= 1:
+        raise ValueError(
+            "A single OTLP span exceeds "
+            f"{MAX_JSON_LINE_CHARACTERS} JSON line characters"
+        )
+    for batch in trace.batches((span_count + 1) // 2):
+        _write_otlp_batch(stream, batch)
+
+
 def write_otlp_jsonl(path: Path, trace: Trace) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with _open_text(path, "wt") as stream:
         wrote_batch = False
         for batch in trace.batches(OTLP_SPANS_PER_LINE):
-            json.dump(
-                batch.to_dict(),
-                stream,
-                separators=(",", ":"),
-                allow_nan=False,
-            )
-            stream.write("\n")
+            _write_otlp_batch(stream, batch)
             wrote_batch = True
         if not wrote_batch:
             stream.write('{"resourceSpans":[]}\n')
@@ -126,7 +142,34 @@ def _format_duration(duration_ns: Ns) -> str:
     return f"{int(hours)}h {int(minutes)}m {seconds:.0f}s"
 
 
-def _trace_model(trace: Trace) -> dict[str, Any]:
+def _http_url_prefix(value: str) -> str:
+    if not value or "\x00" in value:
+        return ""
+    try:
+        parsed = urlsplit(value)
+        if (
+            parsed.scheme.lower() not in {"http", "https"}
+            or not parsed.netloc
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.query
+            or parsed.fragment
+        ):
+            return ""
+        path = parsed.path
+        if not path.endswith("/"):
+            path += "/"
+        return urlunsplit((parsed.scheme.lower(), parsed.netloc, path, "", ""))
+    except ValueError:
+        return ""
+
+
+def _trace_model(
+    trace: Trace,
+    *,
+    test_log_url_prefix: str = "",
+    test_data_url_prefix: str = "",
+) -> dict[str, Any]:
     """Build the compact, browser-side model used by the static renderer."""
     ordered = sorted(
         trace.walk(),
@@ -197,6 +240,14 @@ def _trace_model(trace: Trace) -> dict[str, Any]:
             ]
         )
 
+    artifact_urls = {
+        key: prefix
+        for key, prefix in (
+            ("testLog", _http_url_prefix(test_log_url_prefix)),
+            ("testData", _http_url_prefix(test_data_url_prefix)),
+        )
+        if prefix
+    }
     return {
         "v": 1,
         "o": str(origin_ns),
@@ -205,6 +256,7 @@ def _trace_model(trace: Trace) -> dict[str, Any]:
         "t": trace_ids,
         "c": scopes,
         "s": encoded_spans,
+        "u": artifact_urls,
     }
 
 
@@ -223,8 +275,14 @@ def render_html(
     *,
     title: str = "CI execution trace",
     metadata: Mapping[str, Any] | None = None,
+    test_log_url_prefix: str = "",
+    test_data_url_prefix: str = "",
 ) -> str:
-    model = _trace_model(trace)
+    model = _trace_model(
+        trace,
+        test_log_url_prefix=test_log_url_prefix,
+        test_data_url_prefix=test_data_url_prefix,
+    )
     failures = sum(span_status_code(span) == 2 for span in trace)
     return TRACE_TEMPLATE_ENV.get_template(TRACE_HTML_TEMPLATE.name).render(
         title=title,
@@ -244,6 +302,8 @@ def write_trace_bundle(
     title: str,
     metadata: Mapping[str, Any] | None = None,
     file_prefix: str = "trace",
+    test_log_url_prefix: str = "",
+    test_data_url_prefix: str = "",
 ) -> dict[str, Any]:
     output_dir.mkdir(parents=True, exist_ok=True)
     otlp_name = f"{file_prefix}.otlp.jsonl.gz"
@@ -251,7 +311,13 @@ def write_trace_bundle(
     manifest_name = f"{file_prefix}.manifest.json"
     write_otlp_jsonl(output_dir / otlp_name, trace)
     (output_dir / html_name).write_text(
-        render_html(trace, title=title, metadata=metadata),
+        render_html(
+            trace,
+            title=title,
+            metadata=metadata,
+            test_log_url_prefix=test_log_url_prefix,
+            test_data_url_prefix=test_data_url_prefix,
+        ),
         encoding="utf-8",
     )
 
@@ -284,15 +350,35 @@ def write_trace_bundle(
     return manifest
 
 
+def add_artifact_url_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--test-log-url-prefix",
+        default="",
+        help="HTML-only base URL for failed ya test and chunk log files",
+    )
+    parser.add_argument(
+        "--test-data-url-prefix",
+        default="",
+        help="HTML-only base URL for failed ya test and chunk data directories",
+    )
+
+
 def _main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("input", nargs="+", type=Path, help="OTLP JSONL[.gz] file")
     parser.add_argument("-o", "--output", required=True, type=Path)
     parser.add_argument("--title", default="CI execution trace")
+    add_artifact_url_arguments(parser)
     args = parser.parse_args()
     trace = read_otlp_jsonl(args.input)
     args.output.write_text(
-        render_html(trace, title=args.title, metadata={"source": args.input}),
+        render_html(
+            trace,
+            title=args.title,
+            metadata={"source": args.input},
+            test_log_url_prefix=args.test_log_url_prefix,
+            test_data_url_prefix=args.test_data_url_prefix,
+        ),
         encoding="utf-8",
     )
 

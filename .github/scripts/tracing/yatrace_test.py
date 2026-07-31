@@ -19,6 +19,7 @@ from scripts.tracing.otlp import (
 )
 from scripts.tracing.yatrace import (
     YaCriticalPathEntry,
+    YaEvent,
     YaEvlog,
     YaEvlogRecord,
     YaTraceCollection,
@@ -45,6 +46,7 @@ def _subtest(
     started: bool = False,
     status: str = "good",
     duration: float | None = None,
+    logs: dict[str, str] | None = None,
 ) -> dict:
     value = {"class": "Suite", "subtest": name}
     if chunk is not None:
@@ -53,6 +55,8 @@ def _subtest(
         value["status"] = status
     if duration is not None:
         value["time"] = duration
+    if logs is not None:
+        value["logs"] = logs
     return {
         "name": "subtest-started" if started else "subtest-finished",
         "timestamp": timestamp,
@@ -66,6 +70,7 @@ def _chunk(
     *,
     timestamp: float,
     metrics: dict[str, int | float] | None = None,
+    logs: dict[str, str] | None = None,
 ) -> dict:
     return {
         "name": "chunk-event",
@@ -74,6 +79,7 @@ def _chunk(
             "chunk_index": index,
             "nchunks": total,
             "metrics": metrics or {},
+            **({"logs": logs} if logs is not None else {}),
         },
     }
 
@@ -253,6 +259,27 @@ def test_trace_collection_indexes_tests_and_disambiguates_chunks(
     assert "flake8" in chunk_event.log_paths["log"]
 
 
+def test_log_attributes_keep_only_safe_build_root_relative_paths() -> None:
+    event = YaEvent(
+        name="subtest-finished",
+        timestamp_ns=Ns(1),
+        order=0,
+        value={
+            "logs": {
+                "stdout": "$(BUILD_ROOT)/suite/output.log",
+                "stderr": "$(BUILD_ROOT)/suite/../secret.log",
+                "absolute": "$(BUILD_ROOT)//etc/passwd",
+                "nul": "$(BUILD_ROOT)/suite/bad\x00name",
+                "runner": "/home/runner/output.log",
+            }
+        },
+    )
+
+    assert event.log_attributes("ya.test") == {
+        "ya.test.log.stdout.path": "suite/output.log"
+    }
+
+
 def test_raw_test_class_names_do_not_collapse_into_one_test(tmp_path: Path) -> None:
     trace = _render_ya_trace(
         tmp_path,
@@ -275,6 +302,313 @@ def test_raw_test_class_names_do_not_collapse_into_one_test(tmp_path: Path) -> N
     tests = list(trace.spans("ya.test"))
     assert len(tests) == 2
     assert {_attributes(test)["test.suite"] for test in tests} == {"A::B", "A.B"}
+
+
+def test_test_operations_group_enriches_chunks_and_renders_inferred_stages(
+    tmp_path: Path,
+) -> None:
+    trace = _render_ya_trace(
+        tmp_path,
+        [
+            _subtest(
+                "case",
+                timestamp=8,
+                duration=4,
+                logs={
+                    "stdout": (
+                        "$(BUILD_ROOT)/suite/test-results/unittest/"
+                        "testing_out_stuff/case.out"
+                    ),
+                    "logsdir": (
+                        "$(BUILD_ROOT)/suite/test-results/unittest/" "testing_out_stuff"
+                    ),
+                },
+            ),
+            _chunk(
+                0,
+                1,
+                timestamp=10,
+                metrics={
+                    "suite_start_timestamp": 2,
+                    "suite_finish_timestamp": 10,
+                    "suite_initial_(seconds)": 1,
+                    "suite_prepare_recipes_(seconds)": 2,
+                    "suite_wrapper_execution_(seconds)": 4,
+                    "suite_stop_recipes_(seconds)": 1,
+                },
+                logs={
+                    "log": "$(BUILD_ROOT)/suite/test-results/unittest/run_test.log",
+                    "logsdir": (
+                        "$(BUILD_ROOT)/suite/test-results/unittest/" "testing_out_stuff"
+                    ),
+                },
+            ),
+        ],
+        evlog_events=[
+            _stage("dispatch_build", 1, 11),
+            _worker(
+                "Run(testuid$(BUILD_ROOT)/suite/test-results/unittest/meta.json)",
+                "TM",
+                2,
+                10,
+                thread_name="Worker-1",
+            ),
+        ],
+        root_end_s=12,
+    )
+
+    dispatch = next(trace.spans("ya.phase"))
+    operations = next(trace.spans("ya.test.operations"))
+    worker = next(trace.spans("ya.test.worker"))
+    chunk = next(trace.spans("ya.chunk"))
+    test = next(trace.spans("ya.test"))
+    stages = list(trace.spans("ya.test.stage"))
+
+    assert operations.parent_span_id == dispatch.span_id
+    assert worker.parent_span_id == operations.span_id
+    assert chunk.parent_span_id == worker.span_id
+    assert span_duration_ns(operations) == Ns.from_s(8)
+    assert _attributes(operations) == {
+        "ya.test.wall_time.kind": "worker-node-execution-envelope",
+        "ya.test.worker.execute.count": 1,
+        "ya.test.worker.unmatched.count": 0,
+        "ya.test.worker.cumulative_seconds": 8,
+        "ya.test.chunk.count": 1,
+    }
+    assert _attributes(chunk)["test.size"] == "medium"
+    assert _attributes(chunk)["ya.test.worker.uid"] == "testuid"
+    assert _attributes(chunk)["ya.test.worker.thread"] == "Worker-1"
+    assert _attributes(test)["test.size"] == "medium"
+    assert _attributes(test)["ya.test.log.stdout.path"] == (
+        "suite/test-results/unittest/testing_out_stuff/case.out"
+    )
+    assert _attributes(test)["ya.test.logs_directory.path"] == (
+        "suite/test-results/unittest/testing_out_stuff"
+    )
+    assert _attributes(chunk)["ya.chunk.log.log.path"] == (
+        "suite/test-results/unittest/run_test.log"
+    )
+    assert _attributes(chunk)["ya.chunk.logs_directory.path"] == (
+        "suite/test-results/unittest/testing_out_stuff"
+    )
+
+    assert [stage.name for stage in stages] == [
+        "test stage: initial",
+        "test stage: prepare recipes",
+        "test stage: wrapper execution",
+        "test stage: stop recipes",
+    ]
+    assert [span_duration_ns(stage) for stage in stages] == [
+        Ns.from_s(1),
+        Ns.from_s(2),
+        Ns.from_s(4),
+        Ns.from_s(1),
+    ]
+    assert all(stage.parent_span_id == chunk.span_id for stage in stages)
+    assert all(_attributes(stage)["test.timing.inferred"] is True for stage in stages)
+
+
+def test_unmatched_failed_test_worker_is_preserved(tmp_path: Path) -> None:
+    trace = _render_ya_trace(
+        tmp_path,
+        [],
+        evlog_events=[
+            _stage("dispatch_build", 1, 8),
+            _worker(
+                "Run(missing$(BUILD_ROOT)/suite/test-results/unittest/meta.json)",
+                "TS",
+                2,
+                7,
+                thread_name="Worker-1",
+            ),
+            _worker_detail("setup", 2, 3, "Worker-1"),
+            _worker_detail("exec_cmd", 3, 7, "Worker-1"),
+            _failed_node("missing", 17),
+        ],
+        root_end_s=9,
+        exit_code=1,
+    )
+
+    operations = next(trace.spans("ya.test.operations"))
+    node = next(trace.spans("ya.test.node"))
+    assert node.parent_span_id == operations.span_id
+    assert span_status_code(node) == 2
+    assert _attributes(node)["test.size"] == "small"
+    assert _attributes(node)["ya.test.worker.uid"] == "missing"
+    assert _attributes(node)["process.exit.code"] == 17
+    assert _attributes(operations)["ya.test.worker.unmatched.count"] == 1
+    phases = list(trace.spans("ya.test.worker.phase"))
+    assert [phase.name for phase in phases] == [
+        "worker phase: setup",
+        "worker phase: exec command",
+    ]
+    assert all(phase.parent_span_id == node.span_id for phase in phases)
+
+
+def test_exact_test_worker_phases_are_children_of_the_matching_chunk(
+    tmp_path: Path,
+) -> None:
+    trace = _render_ya_trace(
+        tmp_path,
+        [
+            _chunk(
+                0,
+                1,
+                timestamp=8.5,
+                metrics={
+                    "suite_start_timestamp": 1.5,
+                    "suite_finish_timestamp": 8.5,
+                },
+            )
+        ],
+        evlog_events=[
+            _stage("dispatch_build", 1, 9),
+            _worker(
+                "Run(testuid$(BUILD_ROOT)/suite/test-results/unittest/meta.json)",
+                "TS",
+                2,
+                8,
+                thread_name="Worker-1",
+            ),
+            _worker_detail("setup", 2, 2.5, "Worker-1"),
+            _worker_detail("exec_cmd", 2.5, 7, "Worker-1"),
+            _worker_detail("post_cmd", 7, 7.2, "Worker-1"),
+            _worker_detail("node_result", 7.2, 7.5, "Worker-1"),
+            _worker_detail("finalize", 7.5, 8, "Worker-1"),
+        ],
+        root_end_s=10,
+    )
+
+    chunk = next(trace.spans("ya.chunk"))
+    worker = next(trace.spans("ya.test.worker"))
+    phases = list(trace.spans("ya.test.worker.phase"))
+    assert [phase.name for phase in phases] == [
+        "worker phase: setup",
+        "worker phase: exec command",
+        "worker phase: post command",
+        "worker phase: node result",
+        "worker phase: finalize",
+    ]
+    assert chunk.parent_span_id == worker.span_id
+    assert worker.start_time_unix_nano == Ns.from_s(1.5)
+    assert worker.end_time_unix_nano == Ns.from_s(8.5)
+    assert _attributes(worker)["ya.test.worker.reported_seconds"] == 6
+    assert _attributes(worker)["ya.test.worker.timeline.adjusted"] is True
+    assert all(phase.parent_span_id == worker.span_id for phase in phases)
+    assert [_attributes(phase)["ya.test.worker.phase"] for phase in phases] == [
+        "setup",
+        "exec_cmd",
+        "post_cmd",
+        "node_result",
+        "finalize",
+    ]
+    assert all(
+        _attributes(phase)["ya.test.worker.timing.source"] == "ya-evlog"
+        for phase in phases
+    )
+
+
+def test_test_result_processing_nodes_are_preserved_as_test_operations(
+    tmp_path: Path,
+) -> None:
+    trace = _render_ya_trace(
+        tmp_path,
+        [],
+        evlog_events=[
+            _stage("dispatch_build", 1, 9),
+            _worker(
+                "Run(aggregate$(BUILD_ROOT)/suite/test-results/unittest/meta.json)",
+                "TA",
+                2,
+                4,
+            ),
+            _worker(
+                "Run(merge$(BUILD_ROOT)/suite/test-results/unittest/meta.json)",
+                "TR",
+                4,
+                6,
+            ),
+            _worker(
+                "Result(materialize$(BUILD_ROOT)/suite/test-results/unittest/meta.json)",
+                "result[TM]",
+                6,
+                7,
+            ),
+            _worker(
+                "Put(store$(BUILD_ROOT)/suite/test-results/unittest/meta.json)",
+                "put_in_cache[TM]",
+                7,
+                8,
+            ),
+        ],
+        root_end_s=10,
+    )
+
+    operations = next(trace.spans("ya.test.operations"))
+    nodes = list(trace.spans("ya.test.node"))
+    assert span_duration_ns(operations) == Ns.from_s(6)
+    assert [_attributes(node)["ya.test.graph_node.kind"] for node in nodes] == [
+        "test_aggregate",
+        "test_merge",
+        "test_materialize",
+        "test_cache_store",
+    ]
+    assert [node.name for node in nodes] == [
+        "test results aggregation: suite [unittest]",
+        "test results merge: suite [unittest]",
+        "test result materialization: suite [unittest]",
+        "test result cache store: suite [unittest]",
+    ]
+    assert all(_attributes(node)["test.suite"] == "suite" for node in nodes)
+    assert all(
+        _attributes(node)["ya.test_results.folder"] == "unittest" for node in nodes
+    )
+    assert all(node.parent_span_id == operations.span_id for node in nodes)
+    assert not any(trace.spans("ya.build"))
+    assert _attributes(operations)["ya.test.graph_node.aggregate.count"] == 1
+    assert _attributes(operations)["ya.test.graph_node.merge.count"] == 1
+    assert _attributes(operations)["ya.test.graph_node.materialize.count"] == 1
+    assert _attributes(operations)["ya.test.graph_node.cache_store.count"] == 1
+
+
+def test_ten_longest_completed_tests_are_ranked_per_ya_trace(tmp_path: Path) -> None:
+    trace = _render_ya_trace(
+        tmp_path,
+        [
+            *[
+                _subtest(
+                    f"case-{duration}",
+                    timestamp=20,
+                    duration=duration,
+                )
+                for duration in range(1, 13)
+            ],
+            _subtest(
+                "not-launched",
+                timestamp=20,
+                duration=100,
+                status="not_launched",
+            ),
+            _chunk(
+                0,
+                1,
+                timestamp=21,
+                metrics={
+                    "suite_start_timestamp": 0,
+                    "suite_finish_timestamp": 21,
+                },
+            ),
+        ],
+        root_end_s=22,
+        exit_code=1,
+    )
+
+    tests = {span.name: _attributes(span) for span in trace.spans("ya.test")}
+    assert tests["Suite::case-12"]["ya.test.duration.rank"] == 1
+    assert tests["Suite::case-3"]["ya.test.duration.rank"] == 10
+    assert "ya.test.duration.rank" not in tests["Suite::case-2"]
+    assert "ya.test.duration.rank" not in tests["Suite::case-1"]
+    assert "ya.test.duration.rank" not in tests["Suite::not-launched"]
 
 
 def test_finished_test_prefers_raw_class_then_uses_unique_normalized_fallback(
@@ -560,6 +894,10 @@ def test_report_loads_only_discovered_evlog(
     def write_bundle(output_dir, trace, **kwargs):
         assert output_dir == tmp_path / "summary"
         assert kwargs["title"]
+        assert kwargs["test_log_url_prefix"] == "https://example.test/logs/1/"
+        assert kwargs["test_data_url_prefix"] == (
+            "https://example.test/test_data/1/workspace/"
+        )
         return {"span_count": len(trace)}
 
     monkeypatch.setattr(ya_trace_report_module, "load_ya_evlog", load_evlog)
@@ -585,6 +923,10 @@ def test_report_loads_only_discovered_evlog(
             "1",
             "--exit-code",
             "0",
+            "--test-log-url-prefix",
+            "https://example.test/logs/1/",
+            "--test-data-url-prefix",
+            "https://example.test/test_data/1/workspace/",
         ],
     )
 
@@ -1603,6 +1945,8 @@ def test_build_statistics_and_test_critical_path_are_preserved(
     }
     build = next(trace.spans("ya.build"))
     nodes = list(trace.spans("ya.build.node"))
+    operations = next(trace.spans("ya.test.operations"))
+    worker = next(trace.spans("ya.test.worker"))
     chunk = next(trace.spans("ya.chunk"))
     test = next(trace.spans("ya.test"))
     dispatch_attributes = _attributes(phases["dispatch_build"])
@@ -1611,7 +1955,9 @@ def test_build_statistics_and_test_critical_path_are_preserved(
 
     assert set(phases) == {"build_graph_and_tests", "dispatch_build"}
     assert build.parent_span_id == phases["dispatch_build"].span_id
-    assert chunk.parent_span_id == phases["dispatch_build"].span_id
+    assert operations.parent_span_id == phases["dispatch_build"].span_id
+    assert worker.parent_span_id == operations.span_id
+    assert chunk.parent_span_id == worker.span_id
     assert span_duration_ns(build) == Ns.from_s(4.5)
     assert build_attributes["ya.build.node.count"] == 4
     assert build_attributes["ya.build.node.cache_store.count"] == 1
@@ -1695,18 +2041,26 @@ def test_distributed_cache_wrapper_tags_are_classified(
 
 
 @pytest.mark.parametrize(
-    "test_tag",
-    ["TS", "TM", "TL", "TA"],
-)
-@pytest.mark.parametrize(
-    "wrapper",
-    ["", "restore", "result"],
+    ("tag", "expected_kind", "expected_tool"),
+    [
+        ("TS", "test_execute", "TS"),
+        ("TM", "test_execute", "TM"),
+        ("TL", "test_list", "TL"),
+        ("YT", "test_execute", "YT"),
+        ("TA", "test_aggregate", "TA"),
+        ("TR", "test_merge", "TR"),
+        ("restore[TS]", "test_cache_restore", "TS"),
+        ("restore_from_dist_cache[TM]", "test_cache_restore", "TM"),
+        ("result[TL]", "test_materialize", "TL"),
+        ("put_in_cache[TS]", "test_cache_store", "TS"),
+        ("put_in_dist_cache[TM]", "test_cache_store", "TM"),
+    ],
 )
 def test_all_yatool_test_node_tags_are_classified(
-    test_tag: str,
-    wrapper: str,
+    tag: str,
+    expected_kind: str,
+    expected_tool: str,
 ) -> None:
-    tag = f"{wrapper}[{test_tag}]" if wrapper else test_tag
     record = YaEvlogRecord(
         name="Run(testuid)",
         tag=tag,
@@ -1714,7 +2068,30 @@ def test_all_yatool_test_node_tags_are_classified(
         end_ns=Ns(2),
     )
 
-    assert record.kind_and_tool == ("test", test_tag)
+    assert record.kind_and_tool == (expected_kind, expected_tool)
+
+
+def test_large_test_runner_is_distinguished_from_test_list_node() -> None:
+    record = YaEvlogRecord(
+        name="Run(testuid$(BUILD_ROOT)/suite/test-results/unit/meta.json)",
+        tag="TL",
+        start_ns=Ns(1),
+        end_ns=Ns(2),
+    )
+
+    assert record.kind_and_tool == ("test_execute", "TL")
+    assert record.test_size == "large"
+
+
+def test_test_result_path_does_not_override_a_worker_wrapper_kind() -> None:
+    record = YaEvlogRecord(
+        name="Result(uid$(BUILD_ROOT)/suite/test-results/unit/meta.json)",
+        tag="result[CC]",
+        start_ns=Ns(1),
+        end_ns=Ns(2),
+    )
+
+    assert record.kind_and_tool == ("materialize", "CC")
 
 
 def test_non_object_evlog_record_is_ignored(tmp_path: Path) -> None:

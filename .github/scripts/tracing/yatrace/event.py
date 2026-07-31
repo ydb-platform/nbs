@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Mapping, Sequence
 
 from ..otlp import Ns
-from .metrics import _metric_attributes
+from .metrics import _metric_attributes, _metric_name
 
 PASS_STATUSES = {"good", "pass", "passed", "success", "xfail", "xpass"}
 ERROR_STATUSES = {
@@ -219,6 +219,8 @@ class YaEvent:
                 prefix="ya.test.metric",
             )
         )
+        attributes.update(self.error_attributes("ya.test"))
+        attributes.update(self.log_attributes("ya.test"))
         return attributes
 
     @property
@@ -236,9 +238,40 @@ class YaEvent:
             if name != "logsdir"
         }
 
+    @staticmethod
+    def _relative_build_path(path: str) -> str | None:
+        prefix = "$(BUILD_ROOT)/"
+        if "\x00" in path or not path.startswith(prefix):
+            return None
+        relative = path[len(prefix) :]
+        parsed = PurePosixPath(relative)
+        if (
+            not relative
+            or parsed.is_absolute()
+            or any(part == ".." for part in parsed.parts)
+        ):
+            return None
+        normalized = parsed.as_posix()
+        return normalized if normalized not in {"", "."} else None
+
+    def log_attributes(self, prefix: str) -> dict[str, str]:
+        """Return portable build-root-relative paths, never runner-local URLs."""
+        attributes: dict[str, str] = {}
+        for name, path in list(self.log_paths.items())[:32]:
+            relative = self._relative_build_path(path)
+            if relative is None:
+                continue
+            if name == "logsdir":
+                attributes[f"{prefix}.logs_directory.path"] = relative
+                continue
+            normalized = _metric_name(name)
+            if normalized:
+                attributes[f"{prefix}.log.{normalized}.path"] = relative
+        return attributes
+
     @property
     def logs_directory(self) -> str | None:
         logs_directory = self.log_paths.get("logsdir")
         if logs_directory is None:
             return None
-        return logs_directory.replace("$(BUILD_ROOT)", "").lstrip("/")
+        return self._relative_build_path(logs_directory)

@@ -18,6 +18,7 @@ from ..otlp import (
     set_span_status,
     span_status_code,
     stable_span_id,
+    update_span_attributes,
 )
 from .event import YaEvent
 from .metrics import _metric_attributes
@@ -182,6 +183,58 @@ class YaTraceFile:
         start_ns = root.clamp(start_ns)
         end_ns = Ns(max(start_ns, root.clamp(end_ns)))
         return Interval(start_ns, end_ns), chunk_value
+
+    @staticmethod
+    def _stage_spans(
+        trace_id: bytes,
+        chunk_span_id: bytes,
+        chunk: Interval,
+        metrics: Mapping[str, Any],
+        identity: str,
+    ) -> tuple[list[Span], Ns]:
+        prefix = "suite_"
+        suffix = "_(seconds)"
+        cursor = chunk.start
+        reported_total = Ns(0)
+        result: list[Span] = []
+        for metric_name, raw_duration in metrics.items():
+            name = str(metric_name)
+            if not name.startswith(prefix) or not name.endswith(suffix):
+                continue
+            stage_name = name[len(prefix) : -len(suffix)]
+            duration = Ns.from_s(raw_duration)
+            if duration is None or not duration or not stage_name:
+                continue
+            reported_total = Ns(reported_total + duration)
+            end = chunk.clamp(Ns(cursor + duration))
+            if end <= cursor:
+                continue
+            result.append(
+                make_span(
+                    trace_id=trace_id,
+                    span_id=stable_span_id(
+                        trace_id,
+                        identity,
+                        "ya.test.stage",
+                        stage_name,
+                        len(result),
+                    ),
+                    parent_span_id=chunk_span_id,
+                    name=f"test stage: {stage_name.replace('_', ' ')}",
+                    start_ns=cursor,
+                    end_ns=end,
+                    attributes={
+                        "ya.test.stage.name": stage_name,
+                        "ya.test.stage.reported_seconds": duration.to_s(),
+                        "ya.test.stage.timing.source": (
+                            "ya-chunk-cumulative-stage-duration"
+                        ),
+                        "test.timing.inferred": True,
+                    },
+                )
+            )
+            cursor = end
+        return result, reported_total
 
     @staticmethod
     def _test_spans(
@@ -351,6 +404,7 @@ class YaTraceFile:
                 attributes["ya.chunk.filename"] = chunk_event.chunk_filename
             if chunk_event is not None:
                 attributes.update(chunk_event.error_attributes("ya.chunk"))
+                attributes.update(chunk_event.log_attributes("ya.chunk"))
             attributes.update(
                 _metric_attributes(
                     chunk_value.get("metrics"),
@@ -395,6 +449,29 @@ class YaTraceFile:
                 identity,
                 inferred_test_start_ns=test_start_ns,
             )
+            stage_spans: list[Span] = []
+            if isinstance(metrics, Mapping):
+                stage_spans, reported_stage_total = self._stage_spans(
+                    trace_id,
+                    chunk_span_id,
+                    chunk_interval,
+                    metrics,
+                    identity,
+                )
+                if stage_spans:
+                    update_span_attributes(
+                        chunk,
+                        {
+                            "ya.test.stage.count": len(stage_spans),
+                            "ya.test.stage.reported_total_seconds": (
+                                reported_stage_total.to_s()
+                            ),
+                            "ya.test.stage.timeline.inferred": True,
+                            "ya.test.stage.timeline.residual_seconds": Ns(
+                                abs(len(chunk_interval) - reported_stage_total)
+                            ).to_s(),
+                        },
+                    )
             if any(span_status_code(span) == 2 for span in test_spans):
                 set_span_status(chunk, 2, "one or more tests failed")
             trace.add_span(
@@ -402,6 +479,12 @@ class YaTraceFile:
                 resource=resource,
                 scope_name="ya.chunk",
             )
+            for stage_span in stage_spans:
+                trace.add_span(
+                    stage_span,
+                    resource=resource,
+                    scope_name="ya.test.stage",
+                )
             for test_span in test_spans:
                 trace.add_span(
                     test_span,

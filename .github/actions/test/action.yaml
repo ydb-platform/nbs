@@ -590,7 +590,9 @@ runs:
                 --test-target "$TEST_TARGET" \
                 --test-type "$TEST_TYPE" \
                 --test-size "$TEST_SIZE" \
-                --retry "$i"; then
+                --retry "$i" \
+                --test-log-url-prefix "$S3_WEBSITE_PREFIX/logs/${COMPONENT_DIR}${i}/" \
+                --test-data-url-prefix "$S3_WEBSITE_PREFIX/test_data/${COMPONENT_DIR}${i}$GITHUB_WORKSPACE/"; then
                 TRACE_REPORT_AVAILABLE=1
             else
                 TRACE_REPORT_AVAILABLE=0

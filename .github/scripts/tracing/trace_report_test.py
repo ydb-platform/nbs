@@ -12,6 +12,8 @@ from github.WorkflowJob import WorkflowJob
 from jinja2 import UndefinedError
 from opentelemetry.proto_json.trace.v1.trace import TracesData
 
+import scripts.tracing.trace_report as trace_report_module
+
 from scripts.tracing.ya_trace_report import (
     build_resource_attributes,
     build_ya_trace,
@@ -29,6 +31,8 @@ from scripts.tracing.otlp import (
     stable_trace_id,
 )
 from scripts.tracing.trace_report import (
+    MAX_INPUT_BYTES,
+    MAX_SPANS,
     TRACE_HTML_TEMPLATE,
     TRACE_SCRIPT_TEMPLATE,
     TRACE_TEMPLATE_ENV,
@@ -54,6 +58,40 @@ def make_span(**kwargs) -> Span:
     }
     values.update(kwargs)
     return new_span(**values)
+
+
+def test_renderer_limits_allow_merging_detailed_nightly_traces() -> None:
+    # One observed test artifact is already ~87k spans / ~90M decoded bytes;
+    # the workflow report must still be able to merge build and job traces.
+    assert MAX_SPANS >= 500_000
+    assert MAX_INPUT_BYTES >= 512 * 1024 * 1024
+
+
+def test_otlp_writer_splits_batches_to_respect_reader_line_limit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(trace_report_module, "MAX_JSON_LINE_CHARACTERS", 1_200)
+    trace = Trace()
+    for index in range(12):
+        trace.add_span(
+            make_span(
+                span_id=(index + 1).to_bytes(8, "big"),
+                name=f"span-{index}",
+                attributes={"payload": "x" * 300},
+            ),
+            resource=ResourceAttributes(),
+            scope_name="test",
+        )
+    path = tmp_path / "trace.otlp.jsonl.gz"
+
+    trace_report_module.write_otlp_jsonl(path, trace)
+
+    with gzip.open(path, "rt", encoding="utf-8") as stream:
+        lines = stream.readlines()
+    assert len(lines) > 1
+    assert max(map(len, lines)) <= 1_200
+    assert len(read_otlp_jsonl([path])) == len(trace)
 
 
 def make_trace(
@@ -135,6 +173,52 @@ def test_otlp_round_trip_and_static_html_escaping(tmp_path: Path) -> None:
     model = json.loads(gzip.decompress(base64.b64decode(payload.group(1))))
     assert model["s"][0][5]["string"] == '<script>alert("attribute")</script>'
     assert manifest["span_count"] == 1
+
+
+def test_artifact_url_prefixes_are_html_only_and_validated(tmp_path: Path) -> None:
+    trace = make_trace(
+        make_span(
+            status_code=2,
+            attributes={
+                "ya.test.log.stdout.path": "suite/output.log",
+                "ya.test.logs_directory.path": "suite/testing_out_stuff",
+            },
+        )
+    )
+    log_prefix = "https://artifacts.example.test/logs/1"
+    data_prefix = "https://artifacts.example.test/test_data/1/workspace/"
+
+    manifest = write_trace_bundle(
+        tmp_path,
+        trace,
+        title="trace with links",
+        test_log_url_prefix=log_prefix,
+        test_data_url_prefix=data_prefix,
+    )
+
+    payload = re.search(
+        r'<script id="trace-data"[^>]*>([^<]+)</script>',
+        (tmp_path / manifest["html_file"]).read_text(),
+    )
+    assert payload
+    model = json.loads(gzip.decompress(base64.b64decode(payload.group(1))))
+    assert model["u"] == {
+        "testLog": f"{log_prefix}/",
+        "testData": data_prefix,
+    }
+    with gzip.open(tmp_path / manifest["otlp_file"], "rt", encoding="utf-8") as f:
+        otlp = f.read()
+    assert log_prefix not in otlp
+    assert data_prefix not in otlp
+    assert "testLog" not in manifest
+    assert "testData" not in manifest
+
+    invalid_model = _trace_model(
+        trace,
+        test_log_url_prefix="javascript:alert(1)",
+        test_data_url_prefix="https://artifacts.example.test/data?unsafe=1",
+    )
+    assert invalid_model["u"] == {}
 
 
 def test_renderer_marks_error_spans_and_supports_empty_input() -> None:
@@ -313,7 +397,8 @@ def test_renderer_collapses_generated_ya_groups_by_default(tmp_path: Path) -> No
     phase_name = next(trace.spans("ya.phase")).name
     assert encoded["build operations"][1] == indexes[phase_name]
     assert encoded["CC: output.o"][1] == indexes["build operations"]
-    assert encoded[chunk_name][1] == indexes[phase_name]
+    assert encoded["test operations"][1] == indexes[phase_name]
+    assert encoded[chunk_name][1] == indexes["test operations"]
     assert encoded["TestSuite::test_case"][1] == indexes[chunk_name]
     assert encoded["TestSuite::unfinished"][1] == indexes[chunk_name]
     assert encoded["TestSuite::test_case"][5]["test.timing.inferred"] is True
@@ -321,7 +406,14 @@ def test_renderer_collapses_generated_ya_groups_by_default(tmp_path: Path) -> No
     assert (
         encoded[chunk_name][5]["ya.chunk.metric.suite_prepare_recipes_seconds"] == 0.25
     )
-    assert {"ya.build", "ya.build.node", "ya.chunk", "ya.test"} <= set(model["c"])
+    assert {
+        "ya.build",
+        "ya.build.node",
+        "ya.chunk",
+        "ya.test",
+        "ya.test.operations",
+        "ya.test.stage",
+    } <= set(model["c"])
     template = TRACE_HTML_TEMPLATE.read_text()
     script = TRACE_SCRIPT_TEMPLATE.read_text()
     assert '{% include "trace_report.js" %}' in template

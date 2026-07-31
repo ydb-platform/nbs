@@ -14,6 +14,21 @@ TAG_WRAPPER_RE = re.compile(
     r"^(restore|restore_from_dist_cache|result|put_in_cache|"
     r"put_in_dist_cache|write_through_caches)\[([^\]]+)\]$"
 )
+TEST_SIZE_BY_TAG = {"TS": "small", "TM": "medium", "TL": "large"}
+TEST_EXECUTE_TAGS = frozenset({"TS", "TM", "TL", "YT"})
+TEST_GRAPH_NODE_MARKERS = TEST_NODE_MARKERS | frozenset({"TR", "YT"})
+TEST_PROCESSING_KINDS = {
+    "TA": "test_aggregate",
+    "TR": "test_merge",
+}
+TEST_WRAPPER_KINDS = {
+    "restore": "test_cache_restore",
+    "restore_from_dist_cache": "test_cache_restore",
+    "result": "test_materialize",
+    "put_in_cache": "test_cache_store",
+    "put_in_dist_cache": "test_cache_store",
+    "write_through_caches": "test_cache_store",
+}
 
 
 @dataclass(slots=True)
@@ -80,14 +95,11 @@ class YaEvlogRecord:
 
     @property
     def kind_and_tool(self) -> tuple[str, str]:
-        if "/test-results/" in self.name:
-            match = TAG_WRAPPER_RE.fullmatch(self.tag)
-            return "test", match.group(2) if match else self.tag
         match = TAG_WRAPPER_RE.fullmatch(self.tag)
         if match:
             wrapper, tool = match.groups()
-            if tool in TEST_NODE_MARKERS:
-                return "test", tool
+            if tool in TEST_GRAPH_NODE_MARKERS:
+                return TEST_WRAPPER_KINDS[wrapper], tool
             return {
                 "restore": "cache_restore",
                 "restore_from_dist_cache": "cache_restore",
@@ -96,11 +108,26 @@ class YaEvlogRecord:
                 "put_in_dist_cache": "cache_store",
                 "write_through_caches": "cache_store",
             }[wrapper], tool
-        if self.tag in TEST_NODE_MARKERS:
-            return "test", self.tag
+        if self.tag in TEST_GRAPH_NODE_MARKERS:
+            if self.tag in TEST_EXECUTE_TAGS:
+                if self.tag == "TL" and self.test_result_identity is None:
+                    return "test_list", self.tag
+                return "test_execute", self.tag
+            return TEST_PROCESSING_KINDS[self.tag], self.tag
+        if "/test-results/" in self.name:
+            return "test_orchestration", self.tag
         if self.name.startswith("Run("):
             return "execute", self.tag
         return "orchestration", self.tag
+
+    @property
+    def is_test(self) -> bool:
+        return self.kind_and_tool[0].startswith("test_")
+
+    @property
+    def test_size(self) -> str:
+        kind, tool = self.kind_and_tool
+        return TEST_SIZE_BY_TAG.get(tool, "") if kind == "test_execute" else ""
 
     @property
     def outputs(self) -> list[str]:
@@ -131,6 +158,176 @@ class YaEvlogRecord:
             if result_folder:
                 return suite, result_folder
         return None
+
+    @property
+    def test_result_chunk_index(self) -> int | None:
+        for output in self.outputs:
+            _, marker, relative = output.partition("/test-results/")
+            if not marker:
+                continue
+            parts = relative.split("/")
+            if len(parts) < 2:
+                continue
+            match = re.fullmatch(r"chunk(\d+)", parts[1])
+            if match:
+                return int(match.group(1))
+        return None
+
+    def test_worker_attributes(self) -> dict[str, Any]:
+        kind, tool = self.kind_and_tool
+        attributes: dict[str, Any] = {
+            "ya.test.worker.kind": kind,
+            "ya.test.worker.tag": self.tag,
+        }
+        if tool:
+            attributes["ya.test.worker.tool"] = tool
+        if self.test_size:
+            attributes["test.size"] = self.test_size
+        if self.uid:
+            attributes["ya.test.worker.uid"] = self.uid
+        if self.thread_name:
+            attributes["ya.test.worker.thread"] = self.thread_name
+        if self.outputs:
+            attributes["ya.test.worker.outputs"] = self.outputs
+        identity = self.test_result_identity
+        if identity is not None:
+            attributes["test.suite"] = identity[0]
+            attributes["ya.test_results.folder"] = identity[1]
+        return attributes
+
+    def test_node_span(
+        self,
+        *,
+        trace_id: bytes,
+        parent_span_id: bytes,
+        index: int,
+        unmatched: bool,
+        failed: bool,
+        exit_code: int | None,
+    ) -> Span:
+        kind, _ = self.kind_and_tool
+        identity = self.test_result_identity
+        labels = {
+            "test_aggregate": "test results aggregation",
+            "test_merge": "test results merge",
+            "test_list": "test list result",
+            "test_cache_restore": "test result cache restore",
+            "test_materialize": "test result materialization",
+            "test_cache_store": "test result cache store",
+            "test_orchestration": "test support operation",
+        }
+        label = labels.get(kind, "test worker")
+        if identity is not None:
+            if kind == "test_execute":
+                label = f"{identity[0]} [{identity[1]} test worker]"
+            else:
+                label = f"{label}: {identity[0]} [{identity[1]}]"
+        attributes = self.test_worker_attributes()
+        attributes["ya.test.graph_node.kind"] = kind
+        if unmatched:
+            attributes["ya.test.worker.unmatched"] = True
+        if failed and exit_code is not None:
+            attributes["process.exit.code"] = exit_code
+        return make_span(
+            trace_id=trace_id,
+            span_id=stable_span_id(
+                trace_id,
+                "ya.test.node",
+                self.name,
+                self.tag,
+                self.start_ns,
+                index,
+            ),
+            parent_span_id=parent_span_id,
+            name=label,
+            start_ns=self.start_ns,
+            end_ns=self.end_ns,
+            attributes=attributes,
+            status_code=2 if failed else 0,
+            status_message="test graph node failed" if failed else "",
+        )
+
+    def matched_test_worker_span(
+        self,
+        *,
+        trace_id: bytes,
+        parent_span_id: bytes,
+        chunk_span: Span,
+        index: int,
+        failed: bool,
+        exit_code: int | None,
+    ) -> Span:
+        chunk = Interval(
+            Ns(chunk_span.start_time_unix_nano or 0),
+            Ns(chunk_span.end_time_unix_nano or 0),
+        )
+        envelope = Interval(
+            min(self.start_ns, chunk.start),
+            max(self.end_ns, chunk.end),
+        )
+        attributes = self.test_worker_attributes()
+        attributes.update(
+            {
+                "ya.test.worker.reported_seconds": Ns(len(self.interval)).to_s(),
+                "ya.test.worker.timing.source": "ya-evlog",
+                "ya.test.worker.timeline.adjusted": envelope != self.interval,
+            }
+        )
+        if failed and exit_code is not None:
+            attributes["process.exit.code"] = exit_code
+        return make_span(
+            trace_id=trace_id,
+            span_id=stable_span_id(
+                trace_id,
+                "ya.test.worker",
+                self.uid,
+                self.start_ns,
+                chunk_span.span_id,
+                index,
+            ),
+            parent_span_id=parent_span_id,
+            name=f"test worker: {chunk_span.name}",
+            start_ns=envelope.start,
+            end_ns=envelope.end,
+            attributes=attributes,
+            status_code=2 if failed else 0,
+            status_message="test worker or reported chunk failed" if failed else "",
+        )
+
+    def test_worker_phase_span(
+        self,
+        detail: YaEvlogRecord,
+        *,
+        trace_id: bytes,
+        parent_span_id: bytes,
+        index: int,
+    ) -> Span:
+        labels = {
+            "exec_cmd": "exec command",
+            "post_cmd": "post command",
+            "node_result": "node result",
+        }
+        label = labels.get(detail.tag, detail.tag.replace("_", " "))
+        return make_span(
+            trace_id=trace_id,
+            span_id=stable_span_id(
+                trace_id,
+                "ya.test.worker.phase",
+                self.uid,
+                detail.tag,
+                detail.start_ns,
+                index,
+            ),
+            parent_span_id=parent_span_id,
+            name=f"worker phase: {label}",
+            start_ns=detail.start_ns,
+            end_ns=detail.end_ns,
+            attributes={
+                "ya.test.worker.phase": detail.tag,
+                "ya.test.worker.timing.source": "ya-evlog",
+                **({"ya.test.worker.uid": self.uid} if self.uid else {}),
+            },
+        )
 
     def span_name(self, kind: str, tool: str) -> str:
         output = next(iter(self.outputs), "")

@@ -12,6 +12,9 @@ from .evlog_record import YaEvlogRecord
 from .metrics import _number
 
 LOGGER = logging.getLogger(__name__)
+WORKER_DETAIL_TAGS = frozenset(
+    {"setup", "exec_cmd", "post_cmd", "node_result", "finalize"}
+)
 
 
 def _safe_statistics_mapping(value: Any) -> dict[str, Any]:
@@ -150,7 +153,7 @@ def load_ya_evlog(path: Path | None) -> YaEvlog:
                 and isinstance(raw_value, Mapping)
             ):
                 parent = last_finished_by_thread.get(thread_name)
-                if parent is None or raw_value.get("tag") != "exec_cmd":
+                if parent is None or raw_value.get("tag") not in WORKER_DETAIL_TAGS:
                     continue
                 detail = YaEvlogRecord.from_raw(
                     raw_value,

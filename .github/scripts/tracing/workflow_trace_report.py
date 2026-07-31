@@ -30,6 +30,7 @@ from .otlp import (
 from .trace_report import (
     MAX_INPUT_BYTES,
     MAX_SPANS,
+    add_artifact_url_arguments,
     read_otlp_jsonl,
     write_trace_bundle,
 )
@@ -440,6 +441,7 @@ def _parser() -> argparse.ArgumentParser:
         "--github-api-url",
         default=os.environ.get("GITHUB_API_URL", "https://api.github.com"),
     )
+    add_artifact_url_arguments(parser)
     return parser
 
 
@@ -489,6 +491,8 @@ def main() -> None:
         title=f"Workflow trace · {workflow_run.get('name', 'unknown')}",
         metadata=metadata,
         file_prefix="workflow-trace",
+        test_log_url_prefix=args.test_log_url_prefix,
+        test_data_url_prefix=args.test_data_url_prefix,
     )
     print(
         f"Wrote {manifest['span_count']} spans, including {len(imported)} "

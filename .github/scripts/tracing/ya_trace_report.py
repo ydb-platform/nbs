@@ -13,13 +13,15 @@ from typing import Sequence
 from .otlp import (
     ResourceAttributes,
     Trace,
+    decode_attributes,
     make_span,
     Ns,
+    span_duration_ns,
     stable_span_id,
     stable_trace_id,
     update_span_attributes,
 )
-from .trace_report import write_trace_bundle
+from .trace_report import add_artifact_url_arguments, write_trace_bundle
 from .yatrace import (
     YaEvlog,
     YaTraceFile,
@@ -42,6 +44,29 @@ def build_resource_attributes(args: argparse.Namespace) -> ResourceAttributes:
             "ci.ya.operation": args.operation,
         }
     )
+
+
+def _mark_longest_tests(trace: Trace, *, limit: int = 10) -> int:
+    candidates = []
+    for span in trace.spans("ya.test"):
+        attributes = decode_attributes(span.attributes)
+        if attributes.get("test.status") in {"deselected", "not_launched"}:
+            continue
+        if attributes.get("test.incomplete") is True or not span_duration_ns(span):
+            continue
+        candidates.append(span)
+    candidates.sort(
+        key=lambda span: (
+            -span_duration_ns(span),
+            span.start_time_unix_nano or 0,
+            span.name or "",
+            span.span_id,
+        )
+    )
+    ranked = candidates[:limit]
+    for rank, span in enumerate(ranked, start=1):
+        update_span_attributes(span, {"ya.test.duration.rank": rank})
+    return len(ranked)
 
 
 def build_ya_trace(
@@ -127,6 +152,11 @@ def build_ya_trace(
                 for span in result.spans(scope_name):
                     if span.parent_span_id == root_span_id:
                         span.parent_span_id = dispatch_span_id
+    ranked_test_count = _mark_longest_tests(result)
+    if ranked_test_count:
+        update_span_attributes(
+            root, {"ya.test.duration.ranked.count": ranked_test_count}
+        )
     return result
 
 
@@ -151,6 +181,7 @@ def _parser() -> argparse.ArgumentParser:
         choices=("build", "tests"),
         default="tests",
     )
+    add_artifact_url_arguments(parser)
     return parser
 
 
@@ -209,6 +240,8 @@ def main() -> None:
         trace,
         title=f"ya make trace · {title_component} · attempt {args.retry}",
         metadata=resource,
+        test_log_url_prefix=args.test_log_url_prefix,
+        test_data_url_prefix=args.test_data_url_prefix,
     )
     print(
         f"Wrote {manifest['span_count']} spans from {len(traces)} ya trace files "
