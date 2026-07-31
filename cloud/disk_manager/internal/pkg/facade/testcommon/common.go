@@ -635,25 +635,20 @@ func newYDB(t *testing.T, ctx context.Context) *persistence.YDBClient {
 	return db
 }
 
-type storageWithDB[T any] struct {
-	storage T
-	db      *persistence.YDBClient
-}
-
-func (s *storageWithDB[T]) close(ctx context.Context) {
-	s.db.Close(ctx)
-}
-
-func newResourceStorage(
+func NewResourceStorage(
 	t *testing.T,
 	ctx context.Context,
-) *storageWithDB[resources.Storage] {
+) (resources.Storage, func()) {
 
 	db := newYDB(t, ctx)
 
+	closeFunc := func() {
+		_ = db.Close(ctx)
+	}
+
 	endedMigrationExpirationTimeout := 30 * time.Minute
 
-	resourcesStorage, err := resources.NewStorage(
+	storage, err := resources.NewStorage(
 		"disks",
 		"images",
 		"snapshot",
@@ -665,16 +660,13 @@ func newResourceStorage(
 	)
 	require.NoError(t, err)
 
-	return &storageWithDB[resources.Storage]{
-		storage: resourcesStorage,
-		db:      db,
-	}
+	return storage, closeFunc
 }
 
-func newFilesystemSnapshotStorage(
+func NewFilesystemSnapshotStorage(
 	t *testing.T,
 	ctx context.Context,
-) *storageWithDB[filesystem_snapshot_storage.Storage] {
+) (filesystem_snapshot_storage.Storage, func()) {
 
 	endpoint := fmt.Sprintf(
 		"localhost:%v",
@@ -695,22 +687,29 @@ func newFilesystemSnapshotStorage(
 	)
 	require.NoError(t, err)
 
-	// Should be in sync with FilesystemSnapshotConfig.NodesStorageFolder.
-	return &storageWithDB[filesystem_snapshot_storage.Storage]{
-		storage: filesystem_snapshot_storage.NewStorage(
-			db,
-			"filesystem/snapshot/nodes",
-		),
-		db: db,
+	closeFunc := func() {
+		_ = db.Close(ctx)
 	}
+
+	// Should be in sync with FilesystemSnapshotConfig.NodesStorageFolder.
+	storage := filesystem_snapshot_storage.NewStorage(
+		db,
+		"filesystem/snapshot/nodes",
+	)
+
+	return storage, closeFunc
 }
 
 func newPoolStorage(
 	t *testing.T,
 	ctx context.Context,
-) *storageWithDB[pools_storage.Storage] {
+) (pools_storage.Storage, func()) {
 
 	db := newYDB(t, ctx)
+
+	closeFunc := func() {
+		_ = db.Close(ctx)
+	}
 
 	// Should be in sync with settings from PoolsConfig in test recipe.
 	cloudID := "cloud"
@@ -722,29 +721,29 @@ func newPoolStorage(
 	}, db, metrics.NewEmptyRegistry())
 	require.NoError(t, err)
 
-	return &storageWithDB[pools_storage.Storage]{
-		storage: storage,
-		db:      db,
-	}
+	return storage, closeFunc
 }
 
 func newCellStorage(
 	t *testing.T,
 	ctx context.Context,
-) *storageWithDB[cells_storage.Storage] {
+) (cells_storage.Storage, func()) {
 
 	db := newYDB(t, ctx)
 
-	return &storageWithDB[cells_storage.Storage]{
-		storage: cells_storage.NewStorage(&cells_config.CellsConfig{}, db),
-		db:      db,
+	closeFunc := func() {
+		_ = db.Close(ctx)
 	}
+
+	storage := cells_storage.NewStorage(&cells_config.CellsConfig{}, db)
+
+	return storage, closeFunc
 }
 
 func newSnapshotStorage(
 	t *testing.T,
 	ctx context.Context,
-) *storageWithDB[snapshot_storage.Storage] {
+) (snapshot_storage.Storage, func()) {
 
 	// Should be in sync with settings from SnapshotConfig in test recipe.
 	endpoint := fmt.Sprintf(
@@ -766,6 +765,10 @@ func newSnapshotStorage(
 	)
 	require.NoError(t, err)
 
+	closeFunc := func() {
+		_ = db.Close(ctx)
+	}
+
 	storage, err := snapshot_storage.NewStorage(
 		config,
 		metrics.NewEmptyRegistry(),
@@ -774,10 +777,7 @@ func newSnapshotStorage(
 	)
 	require.NoError(t, err)
 
-	return &storageWithDB[snapshot_storage.Storage]{
-		storage: storage,
-		db:      db,
-	}
+	return storage, closeFunc
 }
 
 func NewTaskStorage(
@@ -896,10 +896,10 @@ func CheckBaseDiskSlotReleased(
 	overlayDiskID string,
 ) {
 
-	poolStorage := newPoolStorage(t, ctx)
-	defer poolStorage.close(ctx)
+	poolStorage, closeFunc := newPoolStorage(t, ctx)
+	defer closeFunc()
 
-	err := poolStorage.storage.CheckBaseDiskSlotReleased(ctx, overlayDiskID)
+	err := poolStorage.CheckBaseDiskSlotReleased(ctx, overlayDiskID)
 	require.NoError(t, err)
 }
 
@@ -944,10 +944,10 @@ func CheckConsistency(t *testing.T, ctx context.Context) {
 		time.Sleep(time.Second)
 	}
 
-	poolStorage := newPoolStorage(t, ctx)
-	defer poolStorage.close(ctx)
+	poolStorage, closeFunc := newPoolStorage(t, ctx)
+	defer closeFunc()
 
-	err := poolStorage.storage.CheckConsistency(ctx)
+	err := poolStorage.CheckConsistency(ctx)
 	require.NoError(t, err)
 
 	// TODO: validate internal YDB tables (tasks, pools etc.) consistency.
@@ -961,10 +961,10 @@ func GetIncremental(
 	disk *types.Disk,
 ) (string, string, error) {
 
-	storage := newSnapshotStorage(t, ctx)
-	defer storage.close(ctx)
+	storage, closeFunc := newSnapshotStorage(t, ctx)
+	defer closeFunc()
 
-	return storage.storage.GetIncremental(ctx, disk)
+	return storage.GetIncremental(ctx, disk)
 }
 
 func GetDiskMeta(
@@ -973,10 +973,10 @@ func GetDiskMeta(
 	diskID string,
 ) (*resources.DiskMeta, error) {
 
-	storage := newResourceStorage(t, ctx)
-	defer storage.close(ctx)
+	storage, closeFunc := NewResourceStorage(t, ctx)
+	defer closeFunc()
 
-	return storage.storage.GetDiskMeta(ctx, diskID)
+	return storage.GetDiskMeta(ctx, diskID)
 }
 
 func GetEncryptionKeyHash(encryptionDesc *types.EncryptionDesc) ([]byte, error) {
@@ -996,34 +996,10 @@ func GetSnapshotMeta(
 	snapshotID string,
 ) (*snapshot_storage.SnapshotMeta, error) {
 
-	storage := newSnapshotStorage(t, ctx)
-	defer storage.close(ctx)
+	storage, closeFunc := newSnapshotStorage(t, ctx)
+	defer closeFunc()
 
-	return storage.storage.GetSnapshotMeta(ctx, snapshotID)
-}
-
-func GetFilesystemSnapshotMeta(
-	t *testing.T,
-	ctx context.Context,
-	snapshotID string,
-) (*resources.FilesystemSnapshotMeta, error) {
-
-	storage := newResourceStorage(t, ctx)
-	defer storage.close(ctx)
-
-	return storage.storage.GetFilesystemSnapshotMeta(ctx, snapshotID)
-}
-
-func GetDataplaneFilesystemSnapshotMeta(
-	t *testing.T,
-	ctx context.Context,
-	snapshotID string,
-) (*filesystem_snapshot_storage.FilesystemSnapshotMeta, error) {
-
-	storage := newFilesystemSnapshotStorage(t, ctx)
-	defer storage.close(ctx)
-
-	return storage.storage.GetFilesystemSnapshotMeta(ctx, snapshotID)
+	return storage.GetSnapshotMeta(ctx, snapshotID)
 }
 
 func UpdateClusterCapacities(
@@ -1033,10 +1009,10 @@ func UpdateClusterCapacities(
 	deleteOlderThan time.Time,
 ) error {
 
-	cellStorage := newCellStorage(t, ctx)
-	defer cellStorage.close(ctx)
+	cellStorage, closeFunc := newCellStorage(t, ctx)
+	defer closeFunc()
 
-	return cellStorage.storage.UpdateClusterCapacities(
+	return cellStorage.UpdateClusterCapacities(
 		ctx,
 		capacities,
 		deleteOlderThan,
