@@ -25,7 +25,7 @@ TVector<NProto::TQuota> TQuotaStore::GetQuotas() const
 {
     TVector<NProto::TQuota> quotas;
     quotas.reserve(QuotaById.size());
-    for (const auto& [quotaId, quota]: QuotaById) {
+    for (const auto& [_, quota]: QuotaById) {
         quotas.push_back(quota);
     }
     // Make sure the quotas are returned in a deterministic order
