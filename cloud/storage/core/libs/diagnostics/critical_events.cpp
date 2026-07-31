@@ -72,22 +72,7 @@ TString ReportCriticalEvent(
 
     ReportCriticalEventWithoutLogging(root, sensorName, labels);
 
-    TStringBuilder fullMessage;
-    fullMessage << "CRITICAL_EVENT:" << sensorName;
-    if (message) {
-        fullMessage << ": " << message;
-    }
-
-    if (Log.IsNotNullLog()) {
-        Log.AddLog("%s", fullMessage.c_str());
-    } else {
-        // Write message and \n in one call. This will reduce the chance of
-        // shuffling with writings of other threads.
-        Cerr << fullMessage + '\n';
-        Cerr.Flush();
-    }
-
-    return fullMessage;
+    return LogCriticalEvent(sensorName, message);
 }
 
 TString ReportCriticalEvent(
@@ -139,6 +124,26 @@ void ReportCriticalEventWithoutLogging(
 void ReportCriticalEventWithoutLogging(const TString& sensorName)
 {
     ReportCriticalEventWithoutLogging(sensorName, {});
+}
+
+TString LogCriticalEvent(const TString& sensorName, const TString& message)
+{
+    TStringBuilder fullMessage;
+    fullMessage << "CRITICAL_EVENT:" << sensorName;
+    if (message) {
+        fullMessage << ": " << message;
+    }
+
+    if (Log.IsNotNullLog()) {
+        Log.AddLog("%s", fullMessage.c_str());
+    } else {
+        // Write message and \n in one call. This will reduce the chance of
+        // shuffling with writings of other threads.
+        Cerr << fullMessage + '\n';
+        Cerr.Flush();
+    }
+
+    return fullMessage;
 }
 
 #define STORAGE_DEFINE_CRITICAL_EVENT_ROUTINE(name)                            \

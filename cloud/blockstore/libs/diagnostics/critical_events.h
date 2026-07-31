@@ -143,6 +143,8 @@ using TCritEventParams =
 void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters);
 void InitVolumeCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters);
 
+NCloud::IStatsHandlerPtr CreateCriticalEventsStatsHandler();
+
 #define BLOCKSTORE_DECLARE_CRITICAL_EVENT_ROUTINE(name)                        \
     TString Report##name(const TString& message = "");                         \
     TString Report##name(                                                      \

@@ -309,6 +309,15 @@ void TBootstrapBase::Init()
     InitCriticalEventsCounter(serverGroup);
     InitVolumeCriticalEventsCounter(serviceVolumeGroup);
 
+    STORAGE_INFO("CriticalEvents counters initialized");
+
+    CriticalEventsStatsUpdater = CreateStatsUpdater(
+        Timer,
+        BackgroundScheduler,
+        CreateCriticalEventsStatsHandler());
+
+    STORAGE_INFO("CriticalEventsStatsUpdater initialized");
+
     TVector<TCertificateFiles> certPathList;
     for (const auto& cert: Configs->ServerConfig->GetCertsWithLegacyFallback())
     {

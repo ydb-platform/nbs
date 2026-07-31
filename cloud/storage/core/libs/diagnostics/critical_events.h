@@ -66,6 +66,8 @@ void ReportCriticalEventWithoutLogging(
     const TCritEventLabels& labels);
 void ReportCriticalEventWithoutLogging(const TString& sensorName);
 
+TString LogCriticalEvent(const TString& sensorName, const TString& message);
+
 #define STORAGE_DECLARE_CRITICAL_EVENT_ROUTINE(name)                           \
     TString Report##name(const TString& message = "");                         \
     const TString GetCriticalEventFor##name();                                 \
