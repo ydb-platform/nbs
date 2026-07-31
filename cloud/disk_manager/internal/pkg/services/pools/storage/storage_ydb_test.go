@@ -2728,3 +2728,207 @@ func TestStorageYDBBaseDisksShouldHavePrefix(t *testing.T) {
 	require.Equal(t, 1, len(baseDisks))
 	require.True(t, strings.HasPrefix(baseDisks[0].ID, prefix))
 }
+
+func TestStorageYDBGetIdleBaseDisksEmpty(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	storage := newStorage(t, ctx, db)
+
+	idleDisks, err := storage.GetIdleBaseDisks(ctx, time.Hour, 100)
+	require.NoError(t, err)
+	require.Empty(t, idleDisks)
+}
+
+func TestStorageYDBGetIdleBaseDisksAndEject(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	storage := newStorage(t, ctx, db)
+
+	err = storage.ConfigurePool(ctx, "image", "zone", 1, 0)
+	require.NoError(t, err)
+
+	baseDisks, err := storage.TakeBaseDisksToSchedule(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(baseDisks))
+
+	baseDisks[0].CreateTaskID = "create"
+	err = storage.BaseDisksScheduled(ctx, baseDisks)
+	require.NoError(t, err)
+	err = storage.BaseDiskCreated(ctx, baseDisks[0])
+	require.NoError(t, err)
+
+	// Ready base disk without any overlays should not be idle yet (lastUnusedAt
+	// was never set because no overlay was acquired and released).
+	idleDisks, err := storage.GetIdleBaseDisks(ctx, 0, 100)
+	require.NoError(t, err)
+	require.Empty(t, idleDisks)
+
+	// Acquire and release a slot to trigger lastUnusedAt.
+	overlay := &types.Disk{ZoneId: "zone", DiskId: "overlay"}
+	_, err = storage.AcquireBaseDiskSlot(ctx, "image", Slot{OverlayDisk: overlay})
+	require.NoError(t, err)
+
+	_, err = storage.ReleaseBaseDiskSlot(ctx, overlay)
+	require.NoError(t, err)
+
+	// Now the base disk should be idle with idleDuration=0.
+	idleDisks, err = storage.GetIdleBaseDisks(ctx, 0, 100)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(idleDisks))
+	require.Equal(t, baseDisks[0].ID, idleDisks[0].ID)
+	require.Equal(t, "image", idleDisks[0].ImageID)
+	require.Equal(t, "zone", idleDisks[0].ZoneID)
+
+	// With large idleDuration, the disk should not be returned.
+	idleDisks, err = storage.GetIdleBaseDisks(ctx, 24*time.Hour, 100)
+	require.NoError(t, err)
+	require.Empty(t, idleDisks)
+
+	// Eject the idle disk.
+	idleDisks, err = storage.GetIdleBaseDisks(ctx, 0, 100)
+	require.NoError(t, err)
+
+	var ids []string
+	for _, d := range idleDisks {
+		ids = append(ids, d.ID)
+	}
+	err = storage.EjectIdleBaseDisksFromPool(ctx, ids, time.Now())
+	require.NoError(t, err)
+
+	// After ejection the disk should be scheduled for deletion.
+	require.True(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, baseDisks[0]))
+
+	// No more idle disks.
+	idleDisks, err = storage.GetIdleBaseDisks(ctx, 0, 100)
+	require.NoError(t, err)
+	require.Empty(t, idleDisks)
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
+}
+
+func TestStorageYDBEjectIdleBaseDisksSkipsActiveDisk(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	storage := newStorage(t, ctx, db)
+
+	err = storage.ConfigurePool(ctx, "image", "zone", 1, 0)
+	require.NoError(t, err)
+
+	baseDisks, err := storage.TakeBaseDisksToSchedule(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(baseDisks))
+
+	baseDisks[0].CreateTaskID = "create"
+	err = storage.BaseDisksScheduled(ctx, baseDisks)
+	require.NoError(t, err)
+	err = storage.BaseDiskCreated(ctx, baseDisks[0])
+	require.NoError(t, err)
+
+	overlay := &types.Disk{ZoneId: "zone", DiskId: "overlay"}
+	_, err = storage.AcquireBaseDiskSlot(ctx, "image", Slot{OverlayDisk: overlay})
+	require.NoError(t, err)
+
+	// Disk has an active overlay — eject should not affect it.
+	err = storage.EjectIdleBaseDisksFromPool(ctx, []string{baseDisks[0].ID}, time.Now())
+	require.NoError(t, err)
+
+	require.False(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, baseDisks[0]))
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
+}
+
+func TestStorageYDBIdleDiskReacquired(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	storage := newStorage(t, ctx, db)
+
+	err = storage.ConfigurePool(ctx, "image", "zone", 1, 0)
+	require.NoError(t, err)
+
+	baseDisks, err := storage.TakeBaseDisksToSchedule(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(baseDisks))
+
+	baseDisks[0].CreateTaskID = "create"
+	err = storage.BaseDisksScheduled(ctx, baseDisks)
+	require.NoError(t, err)
+	err = storage.BaseDiskCreated(ctx, baseDisks[0])
+	require.NoError(t, err)
+
+	overlay1 := &types.Disk{ZoneId: "zone", DiskId: "overlay1"}
+	_, err = storage.AcquireBaseDiskSlot(ctx, "image", Slot{OverlayDisk: overlay1})
+	require.NoError(t, err)
+
+	_, err = storage.ReleaseBaseDiskSlot(ctx, overlay1)
+	require.NoError(t, err)
+
+	// Disk is idle now.
+	idleDisks, err := storage.GetIdleBaseDisks(ctx, 0, 100)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(idleDisks))
+
+	// Re-acquire resets lastUnusedAt, disk should no longer be idle.
+	overlay2 := &types.Disk{ZoneId: "zone", DiskId: "overlay2"}
+	_, err = storage.AcquireBaseDiskSlot(ctx, "image", Slot{OverlayDisk: overlay2})
+	require.NoError(t, err)
+
+	idleDisks, err = storage.GetIdleBaseDisks(ctx, 0, 100)
+	require.NoError(t, err)
+	require.Empty(t, idleDisks)
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
+}
+
+func TestStorageYDBEjectEmptyList(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	storage := newStorage(t, ctx, db)
+
+	err = storage.EjectIdleBaseDisksFromPool(ctx, []string{}, time.Now())
+	require.NoError(t, err)
+
+	err = storage.EjectIdleBaseDisksFromPool(ctx, nil, time.Now())
+	require.NoError(t, err)
+}
+
+func TestStorageYDBEjectNonexistentDisk(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	storage := newStorage(t, ctx, db)
+
+	err = storage.EjectIdleBaseDisksFromPool(ctx, []string{"nonexistent"}, time.Now())
+	require.NoError(t, err)
+}

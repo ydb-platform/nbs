@@ -280,6 +280,31 @@ func (s *StorageMock) CheckConsistency(ctx context.Context) error {
 	return args.Error(0)
 }
 
+func (s *StorageMock) GetIdleBaseDisks(
+	ctx context.Context,
+	idleDuration time.Duration,
+	limit uint64,
+) ([]storage.BaseDisk, error) {
+
+	args := s.Called(ctx, idleDuration, limit)
+	return args.Get(0).([]storage.BaseDisk), args.Error(1)
+}
+
+func (s *StorageMock) EjectIdleBaseDisksFromPool(
+	ctx context.Context,
+	baseDiskIDs []string,
+	idleBefore time.Time,
+) error {
+
+	args := s.Called(ctx, baseDiskIDs, idleBefore)
+	return args.Error(0)
+}
+
+func (s *StorageMock) InitializeIdleTimestamps(ctx context.Context) error {
+	args := s.Called(ctx)
+	return args.Error(0)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewStorageMock() *StorageMock {
