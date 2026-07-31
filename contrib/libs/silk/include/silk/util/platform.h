@@ -43,12 +43,17 @@ extern "C" int rseq_register_current_thread(void);
 namespace silk
 {
 
-/** System page size in bytes. */
-#if defined(PAGE_SIZE)
-static constexpr uint64_t kPageSize = PAGE_SIZE;
-#else
-static constexpr uint64_t kPageSize = 4096;
-#endif
+/** Return the runtime system page size in bytes. */
+static inline uint64_t getPageSize() noexcept
+{
+    static const uint64_t pageSize = []() noexcept {
+        const long value = ::sysconf(_SC_PAGESIZE);
+        SILK_ASSERT(value > 0);
+        return static_cast<uint64_t>(value);
+    }();
+
+    return pageSize;
+}
 
 /** Cache line size in bytes. */
 #if defined(CACHE_LINESIZE)
