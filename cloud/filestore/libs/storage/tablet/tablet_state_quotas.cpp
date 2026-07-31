@@ -34,8 +34,14 @@ const NProto::TQuota& TIndexTabletState::SetQuota(
     quota.SetQuotaId(quotaId);
     quota.SetMaxBytes(maxBytes);
     quota.SetMaxNodes(maxNodes);
-    quota.SetCreationTimestampUs(
-        existing ? existing->GetCreationTimestampUs() : now.MicroSeconds());
+    if (existing) {
+        quota.SetCreationTimestampUs(existing->GetCreationTimestampUs());
+        // TODO(6608): add a UT for NodeId preservation once AttachQuota
+        // exists and can populate it
+        *quota.MutableNodeId() = existing->GetNodeId();
+    } else {
+        quota.SetCreationTimestampUs(now.MicroSeconds());
+    }
 
     db.WriteQuota(quota);
     Impl->Quotas.UpdateQuota(quota);
