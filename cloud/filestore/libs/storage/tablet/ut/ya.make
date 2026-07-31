@@ -4,6 +4,7 @@ INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/medium.inc)
 
 SRCS(
     helpers_ut.cpp
+    quota_ut.cpp
     rebase_logic_ut.cpp
     subsessions_ut.cpp
     tablet_database_ut.cpp

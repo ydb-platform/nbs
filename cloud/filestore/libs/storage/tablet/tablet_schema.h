@@ -596,6 +596,38 @@ struct TIndexTabletSchema
         using StoragePolicy = TStoragePolicy<IndexChannel>;
     };
 
+    struct Quotas: TTableSchema<30>
+    {
+        struct QuotaId : Column<1, NKikimr::NScheme::NTypeIds::Uint32> {};
+        struct Proto   : ProtoColumn<2, NProto::TQuota> {};
+
+        using TKey = TableKey<QuotaId>;
+
+        using TColumns = TableColumns<
+            QuotaId,
+            Proto
+        >;
+
+        using StoragePolicy = TStoragePolicy<IndexChannel>;
+    };
+
+    struct QuotaUsage: TTableSchema<31>
+    {
+        struct QuotaId   : Column<1, NKikimr::NScheme::NTypeIds::Uint32> {};
+        struct UsedBytes : Column<2, NKikimr::NScheme::NTypeIds::Uint64> {};
+        struct UsedNodes : Column<3, NKikimr::NScheme::NTypeIds::Uint64> {};
+
+        using TKey = TableKey<QuotaId>;
+
+        using TColumns = TableColumns<
+            QuotaId,
+            UsedBytes,
+            UsedNodes
+        >;
+
+        using StoragePolicy = TStoragePolicy<IndexChannel>;
+    };
+
     using TTables = SchemaTables<
         FileSystem,
         Sessions,
@@ -625,7 +657,9 @@ struct TIndexTabletSchema
         LargeDeletionMarkers,
         OrphanNodes,
         ResponseLog,
-        UnconfirmedData
+        UnconfirmedData,
+        Quotas,
+        QuotaUsage
     >;
 
     using TSettings = SchemaSettings<

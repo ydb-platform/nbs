@@ -9,6 +9,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/snapshot"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 )
 
@@ -24,6 +25,7 @@ func RegisterForExecution(
 	storage storage.Storage,
 	legacyStorage storage.Storage,
 	metricsRegistry metrics.Registry,
+	snapshotStorageQuotaReporter snapshot.SnapshotStorageQuotaReporter,
 	urlMetricsRegistry metrics.Registry,
 	migrationDstStorage storage.Storage,
 	useS3InMigration bool,
@@ -242,6 +244,7 @@ func RegisterForExecution(
 			return &collectSnapshotMetricsTask{
 				registry:                  metricsRegistry,
 				storage:                   storage,
+				storageQuotaReporter:      snapshotStorageQuotaReporter,
 				metricsCollectionInterval: snapshotMetricsCollectionInterval,
 			}
 		},

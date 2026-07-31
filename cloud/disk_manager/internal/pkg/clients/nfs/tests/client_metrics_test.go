@@ -1,9 +1,12 @@
 package tests
 
 import (
+	"bytes"
 	"context"
 	"testing"
 
+	"github.com/golang/protobuf/jsonpb"
+	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -11,6 +14,7 @@ import (
 	client_metrics_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/metrics/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	private_protos "github.com/ydb-platform/nbs/cloud/filestore/private/api/unsafe_protos"
 	protos "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos"
 	nfs_client "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
 	nfs_client_mocks "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client/mocks"
@@ -49,6 +53,26 @@ func setupRequestMocks(
 	} else {
 		errorsCounter.On("Inc").Once()
 	}
+}
+
+func marshalActionResponse(t *testing.T, response proto.Message) []byte {
+	t.Helper()
+
+	output, err := new(jsonpb.Marshaler).MarshalToString(response)
+	require.NoError(t, err)
+	return []byte(output)
+}
+
+func matchesActionRequest(message proto.Message) interface{} {
+	return mock.MatchedBy(func(input []byte) bool {
+		actual := proto.Clone(message)
+		actual.Reset()
+		err := new(jsonpb.Unmarshaler).Unmarshal(
+			bytes.NewReader(input),
+			actual,
+		)
+		return err == nil && proto.Equal(message, actual)
+	})
 }
 
 func newTestClient(
@@ -140,6 +164,112 @@ func TestClientCreateFileStoreSuccess(t *testing.T) {
 		BlocksCount: 100,
 	})
 	require.NoError(t, err)
+
+	nfsMock.AssertExpectations(t)
+	registryMock.AssertAllExpectations(t)
+}
+
+func TestClientFreezeTabletSuccess(t *testing.T) {
+	ctx := context.Background()
+	registryMock := metrics_mocks.NewRegistryMock()
+	setupRequestMocks(registryMock, "FreezeTablet", true)
+
+	nfsMock := nfs_client_mocks.NewClientInterfaceMock()
+	nfsMock.On(
+		"ExecuteAction",
+		mock.Anything,
+		"unsafechangetabletstate",
+		matchesActionRequest(
+			&private_protos.TUnsafeChangeTabletStateRequest{
+				FileSystemId: "fs-1",
+				Frozen:       proto.Bool(true),
+			},
+		),
+	).Return(
+		marshalActionResponse(
+			t,
+			&private_protos.TUnsafeChangeTabletStateResponse{},
+		),
+		nil,
+	).Once()
+
+	c := newTestClient(nfsMock, registryMock)
+	err := c.FreezeTablet(ctx, "fs-1")
+	require.NoError(t, err)
+
+	nfsMock.AssertExpectations(t)
+	registryMock.AssertAllExpectations(t)
+}
+
+func TestClientFreezeTabletError(t *testing.T) {
+	ctx := context.Background()
+	registryMock := metrics_mocks.NewRegistryMock()
+	setupRequestMocks(registryMock, "FreezeTablet", false)
+
+	nfsMock := nfs_client_mocks.NewClientInterfaceMock()
+	nfsMock.On(
+		"ExecuteAction",
+		mock.Anything,
+		"unsafechangetabletstate",
+		mock.Anything,
+	).Return(nil, testError).Once()
+
+	c := newTestClient(nfsMock, registryMock)
+	err := c.FreezeTablet(ctx, "fs-1")
+	require.ErrorIs(t, err, testError)
+
+	nfsMock.AssertExpectations(t)
+	registryMock.AssertAllExpectations(t)
+}
+
+func TestClientUnfreezeTabletSuccess(t *testing.T) {
+	ctx := context.Background()
+	registryMock := metrics_mocks.NewRegistryMock()
+	setupRequestMocks(registryMock, "UnfreezeTablet", true)
+
+	nfsMock := nfs_client_mocks.NewClientInterfaceMock()
+	nfsMock.On(
+		"ExecuteAction",
+		mock.Anything,
+		"unsafechangetabletstate",
+		matchesActionRequest(
+			&private_protos.TUnsafeChangeTabletStateRequest{
+				FileSystemId: "fs-1",
+				Frozen:       proto.Bool(false),
+			},
+		),
+	).Return(
+		marshalActionResponse(
+			t,
+			&private_protos.TUnsafeChangeTabletStateResponse{},
+		),
+		nil,
+	).Once()
+
+	c := newTestClient(nfsMock, registryMock)
+	err := c.UnfreezeTablet(ctx, "fs-1")
+	require.NoError(t, err)
+
+	nfsMock.AssertExpectations(t)
+	registryMock.AssertAllExpectations(t)
+}
+
+func TestClientUnfreezeTabletError(t *testing.T) {
+	ctx := context.Background()
+	registryMock := metrics_mocks.NewRegistryMock()
+	setupRequestMocks(registryMock, "UnfreezeTablet", false)
+
+	nfsMock := nfs_client_mocks.NewClientInterfaceMock()
+	nfsMock.On(
+		"ExecuteAction",
+		mock.Anything,
+		"unsafechangetabletstate",
+		mock.Anything,
+	).Return(nil, testError).Once()
+
+	c := newTestClient(nfsMock, registryMock)
+	err := c.UnfreezeTablet(ctx, "fs-1")
+	require.ErrorIs(t, err, testError)
 
 	nfsMock.AssertExpectations(t)
 	registryMock.AssertAllExpectations(t)
@@ -754,6 +884,62 @@ func TestClientCreateFileStoreWrappedError(t *testing.T) {
 
 	nfsMock.AssertExpectations(t)
 	metricsMock.AssertExpectations(t)
+}
+
+func TestClientTabletStateWrappedErrors(t *testing.T) {
+	testCases := []struct {
+		name       string
+		metricName string
+		call       func(nfs.Client) error
+	}{
+		{
+			name:       "freeze",
+			metricName: "FreezeTablet",
+			call: func(client nfs.Client) error {
+				return client.FreezeTablet(context.Background(), "fs-1")
+			},
+		},
+		{
+			name:       "unfreeze",
+			metricName: "UnfreezeTablet",
+			call: func(client nfs.Client) error {
+				return client.UnfreezeTablet(context.Background(), "fs-1")
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			metricsMock := client_metrics_mocks.NewMetricsMock()
+			metricsMock.On(
+				"StatRequest",
+				testCase.metricName,
+			).Return(func(err *error) {
+				require.Error(t, *err)
+				var clientErr *nfs_client.ClientError
+				require.ErrorAs(t, *err, &clientErr)
+				require.ErrorIs(t, *err, retriableError)
+			}).Once()
+
+			nfsMock := nfs_client_mocks.NewClientInterfaceMock()
+			nfsMock.On(
+				"ExecuteAction",
+				mock.Anything,
+				"unsafechangetabletstate",
+				mock.Anything,
+			).Return(nil, testNfsClientError).Once()
+
+			c := newTestClientWithMetricsMock(nfsMock, metricsMock)
+			err := testCase.call(c)
+			require.Error(t, err)
+			var clientErr *nfs_client.ClientError
+			require.ErrorAs(t, err, &clientErr)
+			require.ErrorIs(t, err, retriableError)
+
+			nfsMock.AssertExpectations(t)
+			metricsMock.AssertExpectations(t)
+		})
+	}
 }
 
 func TestClientDestroyFileStoreWrappedError(t *testing.T) {
@@ -1371,6 +1557,64 @@ func TestClientCreateSessionNonRetriableError(t *testing.T) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+func TestClientTabletStateNonRetriableErrors(t *testing.T) {
+	testCases := []struct {
+		name       string
+		metricName string
+		call       func(nfs.Client) error
+	}{
+		{
+			name:       "freeze",
+			metricName: "FreezeTablet",
+			call: func(client nfs.Client) error {
+				return client.FreezeTablet(context.Background(), "fs-1")
+			},
+		},
+		{
+			name:       "unfreeze",
+			metricName: "UnfreezeTablet",
+			call: func(client nfs.Client) error {
+				return client.UnfreezeTablet(context.Background(), "fs-1")
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			metricsMock := client_metrics_mocks.NewMetricsMock()
+			metricsMock.On(
+				"StatRequest",
+				testCase.metricName,
+			).Return(func(err *error) {
+				require.Error(t, *err)
+				var clientErr *nfs_client.ClientError
+				require.ErrorAs(t, *err, &clientErr)
+				require.NotErrorIs(t, *err, retriableError)
+				require.ErrorIs(t, *err, testNfsClientNonRetriableError)
+			}).Once()
+
+			nfsMock := nfs_client_mocks.NewClientInterfaceMock()
+			nfsMock.On(
+				"ExecuteAction",
+				mock.Anything,
+				"unsafechangetabletstate",
+				mock.Anything,
+			).Return(nil, testNfsClientNonRetriableError).Once()
+
+			c := newTestClientWithMetricsMock(nfsMock, metricsMock)
+			err := testCase.call(c)
+			require.Error(t, err)
+			var clientErr *nfs_client.ClientError
+			require.ErrorAs(t, err, &clientErr)
+			require.NotErrorIs(t, err, retriableError)
+			require.ErrorIs(t, err, testNfsClientNonRetriableError)
+
+			nfsMock.AssertExpectations(t)
+			metricsMock.AssertExpectations(t)
+		})
+	}
+}
 
 func TestSessionCreateCheckpointNonRetriableError(t *testing.T) {
 	ctx := context.Background()

@@ -6,6 +6,7 @@
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 
+#include <util/digest/city.h>
 #include <util/folder/dirut.h>
 #include <util/generic/yexception.h>
 #include <util/stream/file.h>
@@ -13,6 +14,15 @@
 namespace NCloud {
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+ui64 RootCaFingerprint(TStringBuf rootCa)
+{
+    // Dynamic counters export gauges as double. Keep only 53 bits to avoid
+    // precision loss while preserving a high-quality fingerprint.
+    return CityHash64(rootCa) & ((1ULL << 53) - 1);
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -98,12 +108,20 @@ public:
 private:
     void InitCounters()
     {
-        if (!ServerGroup || Certificates.empty()) {
+        if (!ServerGroup) {
             return;
         }
 
         auto tlsMetricsGroup =
             ServerGroup->GetSubgroup("subsystem", "certificates");
+
+        if (RootCaPair.RootCaPath) {
+            auto rootMetrics = tlsMetricsGroup->GetSubgroup(
+                "cert",
+                GetBaseName(RootCaPair.RootCaPath));
+            *rootMetrics->GetCounter("Fingerprint", false) =
+                RootCaFingerprint(RootCaPair.RootCa);
+        }
 
         for (const auto& cert: Certificates) {
             auto certMetrics = tlsMetricsGroup->GetSubgroup(

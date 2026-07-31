@@ -1,6 +1,8 @@
 #include "tablet_actor.h"
 #include "shard_request_actor.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
@@ -62,6 +64,8 @@ void TIndexTabletActor::HandleResetSession(
         std::move(requestInfo),
         sessionId,
         seqNo,
+        Config->GetMaxDeleteSessionHandlesPerTx(),
+        false /* isContinuation */,
         std::move(msg->Record));
 }
 
@@ -92,27 +96,11 @@ bool TIndexTabletActor::PrepareTx_ResetSession(
 
     auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
-    bool ready = true;
-    auto commitId = GetCurrentCommitId();
-    args.Nodes.reserve(session->Handles.Size());
-    for (const auto& handle: session->Handles) {
-        if (args.Nodes.contains(handle.GetNodeId())) {
-            continue;
-        }
-
-        TMaybe<INodeIndexTabletDatabase::TNode> node;
-        if (!ReadNode(*db, handle.GetNodeId(), commitId, node)) {
-            ready = false;
-        } else {
-            TABLET_VERIFY(node);
-            if (node->Attrs.GetLinks() == 0) {
-                // candidate to be removed
-                args.Nodes.insert(*node);
-            }
-        }
-    }
-
-    return ready;
+    return ReadNodesToRemoveForSessionHandles(
+        *db,
+        *session,
+        args.MaxHandlesPerTx,
+        args.Nodes);
 }
 
 void TIndexTabletActor::ExecuteTx_ResetSession(
@@ -124,55 +112,54 @@ void TIndexTabletActor::ExecuteTx_ResetSession(
 
     auto* session = FindSession(args.SessionId);
     if (!session) {
+        if (args.IsContinuation) {
+            args.Error = MakeError(
+                E_REJECTED,
+                "session reset interrupted: session destroyed");
+            ReportResetSessionInterrupted(TStringBuilder()
+                << LogTag << " ResetSession s:" << args.SessionId
+                << " n:" << args.SessionSeqNo
+                << " interrupted: session destroyed");
+        }
+        args.Completed = true;
         return;
     }
 
     if (!CheckSessionForDestroy(session, args.SessionSeqNo)) {
+        if (args.IsContinuation) {
+            args.Error = MakeError(
+                E_REJECTED,
+                "session reset interrupted: session recovered");
+            ReportResetSessionInterrupted(TStringBuilder()
+                << LogTag << " ResetSession s:" << args.SessionId
+                << " n:" << args.SessionSeqNo
+                << " interrupted: session recovered");
+        }
+        args.Completed = true;
         return;
     }
 
     auto commitId = GenerateCommitId();
     if (commitId == InvalidCommitId) {
         args.OnCommitIdOverflow();
+        args.Completed = true;
         return;
     }
 
-    auto handle = session->Handles.begin();
-    while (handle != session->Handles.end()) {
-        auto nodeId = handle->GetNodeId();
-        DestroyHandle(*db, &*(handle++));
+    DestroySessionHandlesAndRemoveNodes(
+        *db,
+        ctx,
+        session,
+        commitId,
+        args.MaxHandlesPerTx,
+        args.IsContinuation,
+        args.Nodes,
+        "session reset");
 
-        LOG_INFO(ctx, TFileStoreComponents::TABLET,
-            "%s Removing handle upon session reset s:%s n:%lu",
-            LogTag.c_str(),
-            args.SessionId.c_str(),
-            nodeId);
-
-        auto it = args.Nodes.find(nodeId);
-        if (it != args.Nodes.end() && !HasOpenHandles(nodeId)) {
-            LOG_INFO(ctx, TFileStoreComponents::TABLET,
-                "%s Removing node upon session reset s:%s n:%lu (size %lu)",
-                LogTag.c_str(),
-                args.SessionId.c_str(),
-                nodeId,
-                it->Attrs.GetSize());
-
-            auto e = RemoveNode(
-                *db,
-                *it,
-                it->MinCommitId,
-                commitId);
-
-            if (HasError(e)) {
-                WriteOrphanNode(*db, TStringBuilder()
-                    << "DestroySession: " << args.SessionId
-                    << ", RemoveNode: " << nodeId
-                    << ", Error: " << FormatError(e), nodeId);
-            }
-        }
+    if (session->Handles.Empty()) {
+        ResetSession(*db, session, args.Request.GetSessionState());
+        args.Completed = true;
     }
-
-    ResetSession(*db, session, args.Request.GetSessionState());
 
     EnqueueTruncateIfNeeded(ctx);
 }
@@ -181,6 +168,24 @@ void TIndexTabletActor::CompleteTx_ResetSession(
     const TActorContext& ctx,
     TTxIndexTablet::TResetSession& args)
 {
+    if (!args.Completed) {
+        LOG_INFO(ctx, TFileStoreComponents::TABLET,
+            "%s Reset session s:%s n:%lu continues in the next tx",
+            LogTag.c_str(),
+            args.SessionId.c_str(),
+            args.SessionSeqNo);
+
+        ExecuteTx<TResetSession>(
+            ctx,
+            std::move(args.RequestInfo),
+            args.SessionId,
+            args.SessionSeqNo,
+            args.MaxHandlesPerTx,
+            true /* isContinuation */,
+            std::move(args.Request));
+        return;
+    }
+
     RemoveInFlightRequest(*args.RequestInfo);
 
     auto response =

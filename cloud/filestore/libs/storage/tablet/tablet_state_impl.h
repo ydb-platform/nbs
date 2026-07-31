@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include "quota.h"
 #include "tablet_schema.h"
 #include "tablet_state.h"
 #include "tablet_state_cache.h"
@@ -79,6 +80,7 @@ struct TIndexTabletState::TImpl
         TInternalRequestIdHash> InternalResponses;
 
     TCheckpointStore Checkpoints;
+    TQuotaStore Quotas;
     TChannels Channels;
 
     IBlockLocation2RangeIndexPtr RangeIdHasher;

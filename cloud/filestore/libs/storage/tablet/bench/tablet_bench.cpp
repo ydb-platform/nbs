@@ -29,7 +29,28 @@ constexpr ui64 MixedBlocksOffloadedRangesCapacity = 1000000;
 // multi-overwrite mixed file.
 constexpr ui32 MaxOverwrites = 4;
 
-struct TTabletSetup
+// Write size used to build the fresh file. It must stay below
+// WriteBlobThreshold (128KiB by default) so that the data lands in the fresh
+// blocks table instead of going down the blob write path.
+constexpr ui64 FreshWriteSize = 64_KB;
+
+// The read ahead file is separate from the 1MiB files above: read ahead only
+// does anything across *consecutive* requests, and with a 1MiB file the very
+// first window would already cover the whole file, so every later request
+// would be a cache hit and nothing would ever be described again.
+constexpr ui64 ReadAheadFileSize = 16_MB;
+
+// ReadAheadRangeSize == 0 leaves the read ahead cache disabled, which is what
+// the non-read-ahead benchmarks use.
+//
+// Read ahead is deliberately NOT enabled in the shared setup:
+// IsCloseToSequential accepts a run of identical 1MiB describes as sequential
+// (their spanned length is exactly 1MiB), so any RangeSize above 1MiB would
+// make the existing 1MiB benchmarks start populating and then hitting the read
+// ahead cache, silently changing what they measure. The read ahead benchmarks
+// get their own tablets.
+template <ui32 ReadAheadRangeSize>
+struct TTabletSetupT
 {
     TTestEnv Env;
     std::unique_ptr<TIndexTabletClient> TabletClient;
@@ -58,7 +79,18 @@ struct TTabletSetup
     ui64 OverwriteFileHandle = 0;
     ui64 OverwriteNodeId = 0;
 
-    TTabletSetup()
+    // A file whose blocks are all still in the fresh blocks table: it is
+    // written in sub-WriteBlobThreshold chunks and never flushed, so nothing
+    // is backed by a blob. Describing it has to ship every block's content
+    // inline in the response, unlike blob-backed files which are described by
+    // reference.
+    ui64 FreshFileHandle = 0;
+
+    // A ReadAheadFileSize long blob-backed file used only by the read ahead
+    // benchmarks.
+    ui64 ReadAheadFileHandle = 0;
+
+    TTabletSetupT()
         : Env(TTestEnvConfig{
             // Turn off logging in order to reduce performance overhead
             .LogPriority_NFS = NActors::NLog::PRI_ALERT,
@@ -97,6 +129,20 @@ struct TTabletSetup
         storageConfig.SetFlushThreshold(Max<ui32>());
         storageConfig.SetFlushBytesThreshold(Max<ui64>());
 
+        if (ReadAheadRangeSize) {
+            storageConfig.SetReadAheadCacheRangeSize(ReadAheadRangeSize);
+
+            // Keep only the most recent widened window. The benchmarks scan
+            // the same file over and over, and with the default of 32 retained
+            // results the cache would hold every window of the file after the
+            // first pass, so every later pass would be served entirely from
+            // the cache and nothing would be described again. Retaining one
+            // window makes wrapping around behave like moving forward into a
+            // not yet described region, so the steady state stays at one
+            // describe per window.
+            storageConfig.SetReadAheadCacheMaxResultsPerNode(1);
+        }
+
         Env.UpdateStorageConfig(std::move(storageConfig));
 
         Env.GetRuntime().SetDispatchedEventsLimit(Max<ui64>());
@@ -115,7 +161,7 @@ struct TTabletSetup
         // the first time each benchmark runs.
     }
 
-    ~TTabletSetup()
+    ~TTabletSetupT()
     {
         // HACK(svartmetal): awful hack to prevent a crash in 'verify' during
         // process cleanup:
@@ -260,19 +306,92 @@ struct TTabletSetup
         }
     }
 
-    void DescribeData(ui64 handle, ui64 offset, ui64 length)
+    // Writes the file in sub-WriteBlobThreshold chunks and does not flush, so
+    // every block stays in the fresh blocks table.
+    void EnsureFreshFileCreated()
+    {
+        if (FreshFileHandle) {
+            return;
+        }
+
+        auto nodeId = CreateNode(
+            *TabletClient,
+            TCreateNodeArgs::File(RootNodeId, "fresh"));
+
+        auto handle = CreateHandle(*TabletClient, nodeId);
+
+        static_assert(FreshWriteSize < FileSize);
+
+        for (ui64 offset = 0; offset < FileSize; offset += FreshWriteSize) {
+            TabletClient->WriteData(handle, offset, FreshWriteSize, '3');
+        }
+
+        FreshFileHandle = handle;
+    }
+
+    void EnsureReadAheadFileCreated()
+    {
+        if (ReadAheadFileHandle) {
+            return;
+        }
+
+        auto nodeId = CreateNode(
+            *TabletClient,
+            TCreateNodeArgs::File(RootNodeId, "read_ahead"));
+
+        auto handle = CreateHandle(*TabletClient, nodeId);
+
+        static_assert(FileSize < ReadAheadFileSize);
+
+        for (ui64 offset = 0; offset < ReadAheadFileSize; offset += FileSize) {
+            TabletClient->WriteData(handle, offset, FileSize, '4');
+        }
+        TabletClient->Flush();
+
+        ReadAheadFileHandle = handle;
+    }
+
+    void DescribeData(
+        ui64 handle,
+        ui64 offset,
+        ui64 length,
+        ui64 expectedFileSize = FileSize)
     {
         auto response = TabletClient->DescribeData(handle, offset, length);
-        Y_ABORT_UNLESS(FileSize == response->Record.GetFileSize());
+        Y_ABORT_UNLESS(expectedFileSize == response->Record.GetFileSize());
     }
 };
 
+using TTabletSetup = TTabletSetupT<0>;
+
+// A 1MiB window is the smallest one that a 512KiB request can trigger:
+// RegisterDescribeImpl only widens a request shorter than RangeSize.
+using TReadAheadTabletSetup512KiB = TTabletSetupT<1_MB>;
+
+// A 1MiB request needs a window wider than 1MiB to be widened at all.
+using TReadAheadTabletSetup1MiB = TTabletSetupT<4_MB>;
+
+// Ensure these singletons are destroyed before any other singletons or static
+// variables to avoid a crash
+constexpr ui64 SingletonPriority = Max<ui64>();
+
 TTabletSetup* GetOrCreateTablet()
 {
-    // Ensure this singleton is destroyed before any other singletons or static
-    // variables to avoid a crash
-    constexpr ui64 Priority = Max<ui64>();
-    return SingletonWithPriority<TTabletSetup, Priority>();
+    return SingletonWithPriority<TTabletSetup, SingletonPriority>();
+}
+
+TReadAheadTabletSetup512KiB* GetOrCreateReadAheadTablet512KiB()
+{
+    return SingletonWithPriority<
+        TReadAheadTabletSetup512KiB,
+        SingletonPriority>();
+}
+
+TReadAheadTabletSetup1MiB* GetOrCreateReadAheadTablet1MiB()
+{
+    return SingletonWithPriority<
+        TReadAheadTabletSetup1MiB,
+        SingletonPriority>();
 }
 
 }   // namespace
@@ -287,6 +406,17 @@ Y_CPU_BENCHMARK(TTablet_DescribeData_Merged_1MiB_RequestSize, iface)
 
     for (size_t i = 0; i < iface.Iterations(); ++i) {
         tablet->DescribeData(tablet->MergedFileHandle, 0, 1_MB);
+    }
+}
+
+Y_CPU_BENCHMARK(TTablet_DescribeData_Merged_512KiB_RequestSize, iface)
+{
+    auto* tablet = GetOrCreateTablet();
+
+    tablet->EnsureMergedFileCreated();
+
+    for (size_t i = 0; i < iface.Iterations(); ++i) {
+        tablet->DescribeData(tablet->MergedFileHandle, 0, 512_KB);
     }
 }
 
@@ -309,6 +439,17 @@ Y_CPU_BENCHMARK(TTablet_DescribeData_Mixed_1MiB_RequestSize, iface)
 
     for (size_t i = 0; i < iface.Iterations(); ++i) {
         tablet->DescribeData(tablet->MixedFileHandle, 0, 1_MB);
+    }
+}
+
+Y_CPU_BENCHMARK(TTablet_DescribeData_Mixed_512KiB_RequestSize, iface)
+{
+    auto* tablet = GetOrCreateTablet();
+
+    tablet->EnsureMixedFileCreated();
+
+    for (size_t i = 0; i < iface.Iterations(); ++i) {
+        tablet->DescribeData(tablet->MixedFileHandle, 0, 512_KB);
     }
 }
 
@@ -336,6 +477,19 @@ Y_CPU_BENCHMARK(TTablet_DescribeData_MixedMultiOverwrite_1MiB_RequestSize, iface
     }
 }
 
+Y_CPU_BENCHMARK(
+    TTablet_DescribeData_MixedMultiOverwrite_512KiB_RequestSize,
+    iface)
+{
+    auto* tablet = GetOrCreateTablet();
+
+    tablet->EnsureMixedMultiOverwriteFileCreated();
+
+    for (size_t i = 0; i < iface.Iterations(); ++i) {
+        tablet->DescribeData(tablet->OverwriteFileHandle, 0, 512_KB);
+    }
+}
+
 Y_CPU_BENCHMARK(TTablet_DescribeData_MixedMultiOverwrite_4KiB_RequestSize, iface)
 {
     auto* tablet = GetOrCreateTablet();
@@ -346,5 +500,86 @@ Y_CPU_BENCHMARK(TTablet_DescribeData_MixedMultiOverwrite_4KiB_RequestSize, iface
 
     for (size_t i = 0; i < iface.Iterations(); ++i) {
         tablet->DescribeData(tablet->OverwriteFileHandle, startOffset, 4_KB);
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Fresh blocks. Nothing is blob backed, so the whole described range is
+// returned inline as fresh data ranges instead of by blob reference.
+
+Y_CPU_BENCHMARK(TTablet_DescribeData_Fresh_1MiB_RequestSize, iface)
+{
+    auto* tablet = GetOrCreateTablet();
+
+    tablet->EnsureFreshFileCreated();
+
+    for (size_t i = 0; i < iface.Iterations(); ++i) {
+        tablet->DescribeData(tablet->FreshFileHandle, 0, 1_MB);
+    }
+}
+
+Y_CPU_BENCHMARK(TTablet_DescribeData_Fresh_512KiB_RequestSize, iface)
+{
+    auto* tablet = GetOrCreateTablet();
+
+    tablet->EnsureFreshFileCreated();
+
+    for (size_t i = 0; i < iface.Iterations(); ++i) {
+        tablet->DescribeData(tablet->FreshFileHandle, 0, 512_KB);
+    }
+}
+
+Y_CPU_BENCHMARK(TTablet_DescribeData_Fresh_4KiB_RequestSize, iface)
+{
+    auto* tablet = GetOrCreateTablet();
+
+    tablet->EnsureFreshFileCreated();
+
+    for (size_t i = 0; i < iface.Iterations(); ++i) {
+        tablet->DescribeData(tablet->FreshFileHandle, 0, 4_KB);
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Read ahead. The file is scanned sequentially so that the access pattern
+// stays close to sequential and read ahead keeps firing: a request that
+// triggers it describes the whole widened window and clips the response down,
+// and the requests that fall inside that window are served from the cache.
+// With a window of RangeSize and requests of RequestSize, one request out of
+// every RangeSize / RequestSize describes, the rest hit the cache.
+
+Y_CPU_BENCHMARK(TTablet_DescribeData_ReadAhead_512KiB_RequestSize, iface)
+{
+    auto* tablet = GetOrCreateReadAheadTablet512KiB();
+
+    tablet->EnsureReadAheadFileCreated();
+
+    constexpr ui64 RequestSize = 512_KB;
+    constexpr ui64 PositionCount = ReadAheadFileSize / RequestSize;
+
+    for (size_t i = 0; i < iface.Iterations(); ++i) {
+        tablet->DescribeData(
+            tablet->ReadAheadFileHandle,
+            (i % PositionCount) * RequestSize,
+            RequestSize,
+            ReadAheadFileSize);
+    }
+}
+
+Y_CPU_BENCHMARK(TTablet_DescribeData_ReadAhead_1MiB_RequestSize, iface)
+{
+    auto* tablet = GetOrCreateReadAheadTablet1MiB();
+
+    tablet->EnsureReadAheadFileCreated();
+
+    constexpr ui64 RequestSize = 1_MB;
+    constexpr ui64 PositionCount = ReadAheadFileSize / RequestSize;
+
+    for (size_t i = 0; i < iface.Iterations(); ++i) {
+        tablet->DescribeData(
+            tablet->ReadAheadFileHandle,
+            (i % PositionCount) * RequestSize,
+            RequestSize,
+            ReadAheadFileSize);
     }
 }

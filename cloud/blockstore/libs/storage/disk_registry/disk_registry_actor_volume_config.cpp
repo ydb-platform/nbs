@@ -78,12 +78,16 @@ void TUpdateActor::Bootstrap(const TActorContext& ctx)
     DescribeVolume(ctx, Config.GetDiskId());
 }
 
-void TUpdateActor::DescribeVolume(const TActorContext& ctx, const TString& diskId)
+void TUpdateActor::DescribeVolume(
+    const TActorContext& ctx,
+    const TString& diskId)
 {
     NCloud::Send(
         ctx,
         MakeSSProxyServiceId(),
-        std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(diskId));
+        std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(
+            diskId,
+            /*exactDiskIdMatch=*/true));
 }
 
 void TUpdateActor::HandleDescribeVolumeResponse(

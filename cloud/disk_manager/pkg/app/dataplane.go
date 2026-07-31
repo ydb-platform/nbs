@@ -16,6 +16,8 @@ import (
 	snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/auth"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/snapshot"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
@@ -26,6 +28,8 @@ func initDataplane(
 	ctx context.Context,
 	config *server_config.ServerConfig,
 	mon *monitoring.Monitoring,
+	creds auth.Credentials,
+	newSnapshotStorageQuotaReporter snapshot.NewSnapshotStorageQuotaReporterFunc,
 	snapshotDB *persistence.YDBClient,
 	taskRegistry *tasks.Registry,
 	taskScheduler tasks.Scheduler,
@@ -45,6 +49,14 @@ func initDataplane(
 
 	snapshotMetricsRegistry := mon.NewRegistry("snapshot_storage")
 	urlMetricsRegistry := mon.NewRegistry("url_source")
+	snapshotStorageQuotaReporter, err := newSnapshotStorageQuotaReporter(
+		snapshotMetricsRegistry,
+		snapshotConfig,
+		creds,
+	)
+	if err != nil {
+		return err
+	}
 
 	snapshotStorage, err := snapshot_storage.NewStorage(
 		snapshotConfig,
@@ -89,6 +101,7 @@ func initDataplane(
 		snapshotStorage,
 		snapshotLegacyStorage,
 		snapshotMetricsRegistry,
+		snapshotStorageQuotaReporter,
 		urlMetricsRegistry,
 		migrationDstStorage,
 		useS3InSnapshotMigration,

@@ -111,6 +111,24 @@ func (c *ClientMock) CreateSessionWithClientID(
 	return res, args.Error(1)
 }
 
+func (c *ClientMock) FreezeTablet(
+	ctx context.Context,
+	filesystemID string,
+) error {
+
+	args := c.Called(ctx, filesystemID)
+	return args.Error(0)
+}
+
+func (c *ClientMock) UnfreezeTablet(
+	ctx context.Context,
+	filesystemID string,
+) error {
+
+	args := c.Called(ctx, filesystemID)
+	return args.Error(0)
+}
+
 func (c *ClientMock) UnsafeCreateNode(
 	ctx context.Context,
 	filesystemID string,

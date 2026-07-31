@@ -76,9 +76,10 @@ def start_server(args, index):
         append_recipe_err_files(
             ERR_LOG_FILE_NAMES_FILE, virtiofs.daemon.stderr_file_name
         )
+        virtiofs.wait_for_socket(tag)
 
         recipe_set_env("VIRTIOFS_PID_{}".format(tag),
-                       str(virtiofs.virtiofs_server.daemon.process.pid),
+                       str(virtiofs.pid),
                        index)
 
 

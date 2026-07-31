@@ -237,8 +237,10 @@ class Qemu:
             status = self.qmp.command("query-status")
         self.qmp.command("cont")
 
-    def migrate(self, id, vhost_socket):
+    def migrate(self, id, vhost_socket, before_restore=None):
         self._save_to_file()
+        if before_restore:
+            before_restore()
         self._restore_from_file(id, vhost_socket)
         self.seqno += 1
 

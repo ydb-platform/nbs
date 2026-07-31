@@ -512,6 +512,38 @@ Y_UNIT_TEST_SUITE(TVerifyRecreatedBlobMetaTest)
             });
     }
 
+    Y_UNIT_TEST(ShouldRejectLeakedBlocksInRecreatedMixedMetaOnlyIfBlobIdMatches)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([](TPartitionDatabase db) { db.InitSchema(); });
+
+        TPartialBlobId blobId;
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                blobId = executor.MakeBlobId(1);
+
+                auto anotherBlobId = executor.MakeBlobId(1);
+                db.WriteMixedBlock({anotherBlobId, 1, 0, 0, 0});
+            });
+
+        const auto blobMeta = MakeMixedBlobMeta({0}, {1});
+        const auto recreatedBlobMeta = MakeMixedBlobMeta({}, {});
+
+        executor.ReadTx(
+            [&](TPartitionDatabase db)
+            {
+                const auto result = VerifyRecreatedBlobMeta(
+                    db,
+                    blobId,
+                    blobMeta,
+                    recreatedBlobMeta);
+
+                UNIT_ASSERT(result.Ready);
+                UNIT_ASSERT(!HasError(result.Error));
+            });
+    }
+
     Y_UNIT_TEST(ShouldRejectExtraBlocksInRecreatedMixedMeta)
     {
         TTestExecutor executor;
