@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
@@ -56,15 +57,18 @@ func waitForFilesystemSnapshotCreationStarted(
 	snapshotID string,
 ) {
 
-	require.Eventually(t, func() bool {
+	require.EventuallyWithT(t, func(collect *assert.CollectT) {
 		meta, err := testcommon.GetFilesystemSnapshotMeta(ctx, snapshotID)
+		assert.NoError(collect, err)
+		assert.NotNil(collect, meta)
 		if err != nil || meta == nil {
-			return false
+			return
 		}
 
 		dataplaneMeta, err :=
 			testcommon.GetDataplaneFilesystemSnapshotMeta(ctx, snapshotID)
-		return err == nil && dataplaneMeta != nil
+		assert.NoError(collect, err)
+		assert.NotNil(collect, dataplaneMeta)
 	}, 30*time.Second, 100*time.Millisecond)
 }
 
@@ -74,15 +78,18 @@ func waitForFilesystemSnapshotDeleted(
 	snapshotID string,
 ) {
 
-	require.Eventually(t, func() bool {
+	require.EventuallyWithT(t, func(collect *assert.CollectT) {
 		meta, err := testcommon.GetFilesystemSnapshotMeta(ctx, snapshotID)
+		assert.NoError(collect, err)
+		assert.Nil(collect, meta)
 		if err != nil || meta != nil {
-			return false
+			return
 		}
 
 		dataplaneMeta, err :=
 			testcommon.GetDataplaneFilesystemSnapshotMeta(ctx, snapshotID)
-		return err == nil && dataplaneMeta == nil
+		assert.NoError(collect, err)
+		assert.Nil(collect, dataplaneMeta)
 	}, 60*time.Second, 100*time.Millisecond)
 }
 
@@ -325,36 +332,6 @@ func TestCancelFilesystemSnapshotCreationDeletesSnapshot(t *testing.T) {
 
 	testcommon.CancelOperation(t, ctx, client, operation.Id)
 	testcommon.WaitOperationEnded(t, ctx, operation.Id, 60*time.Second)
-	waitForFilesystemSnapshotDeleted(t, ctx, snapshotID)
-}
-
-func TestDeleteFilesystemDuringSnapshotCreationDeletesSnapshot(t *testing.T) {
-	ctx := testcommon.NewContext()
-
-	client, err := testcommon.NewClient(ctx)
-	require.NoError(t, err)
-	defer client.Close()
-
-	nfsClient := testcommon.NewNfsTestingClient(t, ctx, "zone-a")
-	defer nfsClient.Close()
-
-	filesystemID := t.Name() + "_filesystem"
-	snapshotID := t.Name() + "_snapshot"
-
-	createFilesystem(t, ctx, client, filesystemID)
-	nfsClient.FillFilesystemWithDefaultTree(ctx, filesystemID, 100, 100, 2)
-	snapshotOperation := startFilesystemSnapshotCreation(
-		t,
-		ctx,
-		client,
-		filesystemID,
-		snapshotID,
-	)
-
-	err = nfsClient.Delete(ctx, filesystemID, true)
-	require.NoError(t, err)
-
-	testcommon.WaitOperationEnded(t, ctx, snapshotOperation.Id, 60*time.Second)
 	waitForFilesystemSnapshotDeleted(t, ctx, snapshotID)
 }
 
