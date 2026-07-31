@@ -1911,7 +1911,19 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                 {Device("dev-1", "uuid-2.1", "rack-2", 10_GB),
                  Device("dev-2", "uuid-2.2", "rack-2", 10_GB)})};
 
-        auto runtime = TTestRuntimeBuilder().WithAgents(agents).Build();
+        NMonitoring::TDynamicCountersPtr counters =
+            new NMonitoring::TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto critCounter = counters->GetCounter(
+            "AppCriticalEvents/DiskRegistryWrongMigratedDeviceOwnership",
+            true);
+        UNIT_ASSERT_VALUES_EQUAL(0, critCounter->Val());
+
+        auto config = CreateDefaultStorageConfig();
+        config.SetDiskRegistryInitialAgentRejectionThreshold(100.0);
+
+        auto runtime =
+            TTestRuntimeBuilder().WithAgents(agents).With(config).Build();
 
         // Don't drop EvStartMigrationRequest
         runtime->SetScheduledEventFilter(
@@ -1949,7 +1961,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             return msg.GetDevices(0).GetDeviceUUID();
         }();
 
-        auto getMigration = [&]
+        auto getDisk = [&]
         {
             auto response = diskRegistry.AllocateDisk("disk-1", 20_GB);
             const auto& msg = response->Record;
@@ -1968,31 +1980,64 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         WaitForAgent(*runtime, 0);
 
         // Request migration of the first device in the new generation. The
-        // only possible target lives on agent-2 which has NOT finished its registration yet
+        // only possible target lives on agent-2 which has NOT finished its
+        // registration yet.
         diskRegistry.ChangeDeviceState(
             sourceDevice,
             NProto::DEVICE_STATE_WARNING);
         runtime->DispatchEvents({}, 10ms);
 
-        UNIT_ASSERT_VALUES_EQUAL(0, getMigration().MigrationsSize());
+        const auto migrationCountBeforeRejection = getDisk().MigrationsSize();
+        UNIT_ASSERT_VALUES_EQUAL(0, migrationCountBeforeRejection);
 
-        // Sanity check: once the target agent finishes its registration the
-        // migration is started normally and its target lives on agent-2.
+        // Wait until the initial agent rejection phase marks agent-2 as
+        // UNAVAILABLE. If a migration to agent-2 was started above, changing
+        // its state cancels that migration but keeps the target allocated
+        // until the volume acknowledges the reallocation request.
+        runtime->AdvanceCurrentTime(15s);
+        runtime->DispatchEvents({}, 10ms);
+
+        {
+            auto response =
+                diskRegistry.BackupDiskRegistryState(NProto::BDRSS_MEMORY);
+            const auto& backupAgents =
+                response->Record.GetMemoryBackup().GetAgents();
+            const auto it = FindIf(
+                backupAgents,
+                [](const auto& agent)
+                { return agent.GetAgentId() == "agent-2"; });
+
+            UNIT_ASSERT(it != backupAgents.end());
+            UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<ui32>(NProto::AGENT_STATE_UNAVAILABLE),
+                static_cast<ui32>(it->GetState()));
+        }
+
+        // Registration changes the agent state from UNAVAILABLE to WARNING.
+        // ApplyAgentStateChange must not treat the canceled migration target
+        // as a source device belonging to the disk.
         RegisterAgent(*runtime, 1);
         WaitForAgent(*runtime, 1);
+        UNIT_ASSERT_VALUES_EQUAL(0, critCounter->Val());
+
+        // Sanity check: once the target agent is ONLINE the migration is
+        // started normally and its target lives on agent-2.
+        diskRegistry.ChangeAgentState("agent-2", NProto::AGENT_STATE_ONLINE);
 
         NProto::TAllocateDiskResponse msg;
         for (int i = 0; i != 5 && !msg.MigrationsSize(); ++i) {
             runtime->AdvanceCurrentTime(5s);
             runtime->DispatchEvents({}, 10ms);
 
-            msg = getMigration();
+            msg = getDisk();
         }
 
         UNIT_ASSERT_VALUES_EQUAL(1, msg.MigrationsSize());
-        const auto& m = msg.GetMigrations(0);
-        UNIT_ASSERT_VALUES_EQUAL(sourceDevice, m.GetSourceDeviceId());
-        UNIT_ASSERT_VALUES_EQUAL("agent-2", m.GetTargetDevice().GetAgentId());
+        const auto& migration = msg.GetMigrations(0);
+        UNIT_ASSERT_VALUES_EQUAL(sourceDevice, migration.GetSourceDeviceId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "agent-2",
+            migration.GetTargetDevice().GetAgentId());
     }
 }
 
