@@ -321,22 +321,6 @@ private:
             CreateDataProcessor(Args.Version);
             return;
         }
-
-        // WriteBackCache needs functionality of V5+ (tags) for entries created
-        // in older version (V4) - we need to make migration immediately to
-        // at least V5 in order to provide this functionality.
-        // Transition V4 -> V5 can be made without emptying the buffer.
-        if (Header()->Version == EVersion::V4 && Args.Version > EVersion::V4) {
-            // Parse entry headers using newer version
-            CreateDataProcessor(EVersion::V5);
-
-            // In the new version, the highest bits of the entry size are
-            // treated as a tag value - need to ensure that they are not used
-            VisitEntries([](const TEntryInfo& e)
-                         { Y_ABORT_UNLESS(e.Header.Tag == 0); });
-
-            Header()->Version = EVersion::V5;
-        }
     }
 
     void ResizeMetadata(ui64 desiredMetadataCapacity)

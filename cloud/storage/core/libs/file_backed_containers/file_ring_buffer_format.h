@@ -48,13 +48,6 @@ enum class EFileRingBufferVersion : ui32
     NotInitialized = 0,
 
     // Entry headers are not aligned
-    // Maximum allocation size is 2^31-1
-    // Free flag is supported
-    // Tags are not supported
-    // Checksum is calculated over entry data only
-    V4 = 4,
-
-    // Entry headers are not aligned
     // Maximum allocation size is 2^28-1
     // Free flag is supported
     // Tags are supported - small values [0-7]
