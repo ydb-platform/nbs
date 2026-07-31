@@ -1,6 +1,7 @@
 import logging
 import os
 import pathlib
+import pytest
 import requests
 import tempfile
 import time
@@ -337,6 +338,7 @@ def create_filesystem_and_start_endpoint(
     return vhost_socket
 
 
+@pytest.mark.skip(reason="MYAGKOV: fix after migration to ydb 25-1")
 def test_vhost_lease_expiration():
     ydb_binary_path = common.binary_path("contrib/ydb/apps/ydbd/ydbd")
     ydb_configurator, ydb_cluster = setup_ydb(ydb_binary_path)
