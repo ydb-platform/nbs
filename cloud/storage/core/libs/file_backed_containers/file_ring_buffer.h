@@ -16,13 +16,6 @@ namespace NCloud {
 class TFileRingBuffer
 {
 public:
-    struct TBrokenFileEntry
-    {
-        TString Data;
-        ui32 ExpectedChecksum = 0;
-        ui32 ActualChecksum = 0;
-    };
-
     using TVisitor =
         std::function<void(ui32 checksum, ui32 tag, TStringBuf entry)>;
 
@@ -86,7 +79,7 @@ public:
     void PopFront();
     ui64 Size() const;
     bool Empty() const;
-    TVector<TBrokenFileEntry> Validate();
+    bool Validate();
     void Visit(const TVisitor& visitor);
     bool IsCorrupted() const;
     void SetCorrupted();
@@ -105,7 +98,6 @@ public:
     // Returns zero if the buffer is corrupted.
     ui64 GetMaxSupportedAllocationByteCount() const;
 
-    bool ValidateMetadata() const;
     TStringBuf GetMetadata() const;
     bool SetMetadata(TStringBuf data);
 };

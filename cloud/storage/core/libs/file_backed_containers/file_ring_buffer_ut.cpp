@@ -32,23 +32,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TString Dump(const TVector<TFileRingBuffer::TBrokenFileEntry>& entries)
-{
-    TStringBuilder sb;
-
-    for (ui32 i = 0; i < entries.size(); ++i) {
-        if (i) {
-            sb << ", ";
-        }
-
-        sb << "data=" << entries[i].Data
-            << " ecsum=" << entries[i].ExpectedChecksum
-            << " csum=" << entries[i].ActualChecksum;
-    }
-
-    return sb;
-}
-
 TString Dump(const TVector<TString>& entries)
 {
     TStringBuilder sb;
@@ -212,9 +195,9 @@ struct TReferenceImplementation
         return Q.size();
     }
 
-    auto Validate() const
+    bool Validate() const
     {
-        return TVector<TFileRingBuffer::TBrokenFileEntry>();
+        return true;
     }
 };
 
@@ -260,38 +243,38 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT(rb.PushBack("petya2"));
         UNIT_ASSERT(!rb.PushBack("vasya3"));        // out of space
 
-        UNIT_ASSERT_VALUES_EQUAL("", Dump(rb.Validate()));
+        UNIT_ASSERT(rb.Validate());
         UNIT_ASSERT_VALUES_EQUAL(4, rb.Size());
         UNIT_ASSERT_VALUES_EQUAL("vasya", rb.Front());
         rb.PopFront();
 
-        UNIT_ASSERT_VALUES_EQUAL("", Dump(rb.Validate()));
+        UNIT_ASSERT(rb.Validate());
         UNIT_ASSERT_VALUES_EQUAL(3, rb.Size());
         UNIT_ASSERT(!rb.PushBack("vasya3"));
 
         UNIT_ASSERT_VALUES_EQUAL("petya", rb.Front());
         rb.PopFront();
 
-        UNIT_ASSERT_VALUES_EQUAL("", Dump(rb.Validate()));
+        UNIT_ASSERT(rb.Validate());
         UNIT_ASSERT_VALUES_EQUAL(2, rb.Size());
         UNIT_ASSERT(rb.PushBack("vasya3"));
 
-        UNIT_ASSERT_VALUES_EQUAL("", Dump(rb.Validate()));
+        UNIT_ASSERT(rb.Validate());
         UNIT_ASSERT_VALUES_EQUAL(3, rb.Size());
         UNIT_ASSERT_VALUES_EQUAL("vasya2", rb.Front());
         rb.PopFront();
 
-        UNIT_ASSERT_VALUES_EQUAL("", Dump(rb.Validate()));
+        UNIT_ASSERT(rb.Validate());
         UNIT_ASSERT_VALUES_EQUAL(2, rb.Size());
         UNIT_ASSERT_VALUES_EQUAL("petya2", rb.Front());
         rb.PopFront();
 
-        UNIT_ASSERT_VALUES_EQUAL("", Dump(rb.Validate()));
+        UNIT_ASSERT(rb.Validate());
         UNIT_ASSERT_VALUES_EQUAL(1, rb.Size());
         UNIT_ASSERT_VALUES_EQUAL("vasya3", rb.Front());
         rb.PopFront();
 
-        UNIT_ASSERT_VALUES_EQUAL("", Dump(rb.Validate()));
+        UNIT_ASSERT(rb.Validate());
         UNIT_ASSERT_VALUES_EQUAL(0, rb.Size());
         UNIT_ASSERT(rb.Empty());
     }
@@ -330,7 +313,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
 
         rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 0, ver);
 
-        UNIT_ASSERT_VALUES_EQUAL("", Dump(rb->Validate()));
+        UNIT_ASSERT(rb->Validate());
         UNIT_ASSERT_VALUES_EQUAL(4, rb->Size());
 
         UNIT_ASSERT_VALUES_EQUAL("vasya2, petya2, vasya3, xxx", PopAll(*rb));
@@ -347,22 +330,13 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT(rb.PushBack("vasya2"));
         UNIT_ASSERT(rb.PushBack("petya2"));
 
-        UNIT_ASSERT_VALUES_EQUAL("", Dump(rb.Validate()));
+        UNIT_ASSERT(rb.Validate());
         TFileMap m(f.GetName(), TMemoryMapCommon::oRdWr);
         m.Map(0, len);
         char* data = static_cast<char*>(m.Ptr());
         data[260] = 'A';
 
-        if (ver >= EVersion::V6) {
-            // In V6, checksum is additionally XOR-ed with the header checksum
-            UNIT_ASSERT_VALUES_EQUAL(
-                "data=vasya ecsum=3387363625 csum=3387363646",
-                Dump(rb.Validate()));
-        } else {
-            UNIT_ASSERT_VALUES_EQUAL(
-                "data=vasya ecsum=3387363649 csum=3387363646",
-                Dump(rb.Validate()));
-        }
+        UNIT_ASSERT(!rb.Validate());
     }
 
     Y_UNIT_TEST(ShouldIgnoreSlackSpaceSmallerThanEntryHeader)
@@ -391,7 +365,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
          *  hhhhhhhhccccccccccccccccccccc0hhhhhhhhbbbbbbbbbbbbbbbbbbbbb00000
          */
 
-        UNIT_ASSERT_VALUES_EQUAL("", Dump(rb.Validate()));
+        UNIT_ASSERT(rb.Validate());
     }
 
     void DoRandomizedPushPopRestore(
@@ -463,7 +437,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
 
             UNIT_ASSERT_VALUES_EQUAL(ri.Size(), rb->Size());
             UNIT_ASSERT_VALUES_EQUAL(ri.Empty(), rb->Empty());
-            UNIT_ASSERT_VALUES_EQUAL("", Dump(rb->Validate()));
+            UNIT_ASSERT(rb->Validate());
             UNIT_ASSERT(!rb->IsCorrupted());
         }
     }
@@ -596,8 +570,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         for (int i = 0; i <= 32; i++) {
             TStateWithCorruptedEntryLength s(i);
             UNIT_ASSERT(!s.RingBuffer.IsCorrupted());
-            auto brokenEntries = s.RingBuffer.Validate();
-            UNIT_ASSERT_VALUES_EQUAL(i != 2, s.RingBuffer.IsCorrupted());
+            UNIT_ASSERT_VALUES_EQUAL(i == 2, s.RingBuffer.Validate());
         }
     }
 
@@ -765,14 +738,13 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT_VALUES_EQUAL("AAA", rb->Front());
     }
 
-    FILE_RING_BUFFER_TEST(ShouldValidateMetadata)
+    FILE_RING_BUFFER_TEST(ShouldValidateMetadataWithCorruptedData)
     {
         const auto f = TTempFileHandle();
         const ui32 len = 36;
 
         auto rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 8, ver);
         UNIT_ASSERT(rb->SetMetadata("1234"));
-        UNIT_ASSERT(rb->ValidateMetadata());
 
         {
             // Corrupt metadata
@@ -782,12 +754,20 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             data[68] ^= 1;
         }
 
-        UNIT_ASSERT(!rb->ValidateMetadata());
+        UNIT_ASSERT(!rb->Validate());
 
         rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 8, ver);
-        UNIT_ASSERT(!rb->ValidateMetadata());
+        UNIT_ASSERT(rb->IsCorrupted());
+        UNIT_ASSERT(!rb->SetMetadata("1234"));
+    }
+
+    FILE_RING_BUFFER_TEST(ShouldValidateMetadataWithCorruptedSize)
+    {
+        const auto f = TTempFileHandle();
+        const ui32 len = 36;
+
+        auto rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 8, ver);
         UNIT_ASSERT(rb->SetMetadata("1234"));
-        UNIT_ASSERT(rb->ValidateMetadata());
 
         {
             // Corrupt metadata Length
@@ -797,12 +777,11 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             data[64] = 100;
         }
 
-        UNIT_ASSERT(!rb->ValidateMetadata());
+        UNIT_ASSERT(!rb->Validate());
 
         rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 8, ver);
-        UNIT_ASSERT(!rb->ValidateMetadata());
-        UNIT_ASSERT(rb->SetMetadata("1234"));
-        UNIT_ASSERT(rb->ValidateMetadata());
+        UNIT_ASSERT(rb->IsCorrupted());
+        UNIT_ASSERT(!rb->SetMetadata("1234"));
     }
 
     FILE_RING_BUFFER_TEST(ShouldResizeMetadata)
@@ -1216,7 +1195,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
                 8,
                 dstVersion);
 
-            UNIT_ASSERT(rb->Validate().empty());
+            UNIT_ASSERT(rb->Validate());
 
             UNIT_ASSERT_VALUES_EQUAL("abc", rb->GetMetadata());
             UNIT_ASSERT_VALUES_EQUAL("123, 4, xz", Dump(*rb));
@@ -1242,7 +1221,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
                 static_cast<ui32>(dstVersion),
                 rb->GetVersion());
 
-            UNIT_ASSERT(rb->Validate().empty());
+            UNIT_ASSERT(rb->Validate());
         };
 
         // Version upgrade

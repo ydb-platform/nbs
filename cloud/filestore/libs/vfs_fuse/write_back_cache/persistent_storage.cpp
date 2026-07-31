@@ -50,18 +50,6 @@ public:
             return MakeError(E_FAIL, "Data structure is corrupted");
         }
 
-        if (!Storage.ValidateMetadata()) {
-            Storage.SetCorrupted();
-            SetCounters();
-            return MakeError(E_FAIL, "Metadata is corrupted");
-        }
-
-        if (Config.EnableChecksumValidation && !Storage.Validate().empty()) {
-            Storage.SetCorrupted();
-            SetCounters();
-            return MakeError(E_FAIL, "Data entries are corrupted");
-        }
-
         NJsonWriter::TBuf json;
         json.BeginObject()
             .WriteKey("FilePath")
