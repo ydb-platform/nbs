@@ -75,7 +75,6 @@ struct TPersistentStorageConfig
     TString FilePath;
     ui64 DataCapacity = 0;
     ui64 MetadataCapacity = 0;
-    bool EnableChecksumValidation = false;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
