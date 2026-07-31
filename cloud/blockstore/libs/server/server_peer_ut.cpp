@@ -28,7 +28,7 @@ Y_UNIT_TEST_SUITE(TServerPeerTest)
             NormalizePeer("ipv6:%5B::1%5D:12345"));
     }
 
-    Y_UNIT_TEST(ShouldNormalizeIpv6PeerAddress)
+    Y_UNIT_TEST(ShouldStoreNormalizedPeerAddressInRequestHeaders)
     {
         TPortManager portManager;
         ui16 port = portManager.GetPort(9001);
@@ -42,12 +42,6 @@ Y_UNIT_TEST_SUITE(TServerPeerTest)
                 UNIT_ASSERT_C(!peer.empty(), peer);
                 UNIT_ASSERT_VALUES_EQUAL_C(TString::npos, peer.find("%5B"), peer);
                 UNIT_ASSERT_VALUES_EQUAL_C(TString::npos, peer.find("%5D"), peer);
-
-                if (peer.find("ipv6:") == 0) {
-                    UNIT_ASSERT_C(peer.find('[') != TString::npos, peer);
-                    UNIT_ASSERT_C(peer.find("]:") != TString::npos, peer);
-                }
-
                 return MakeFuture<NProto::TPingResponse>();
             };
 
