@@ -100,6 +100,7 @@ func Run(
 
 	rootCmd.AddCommand(
 		newOperationsCmd(clientConfig),
+		newFilesystemSnapshotsCmd(clientConfig),
 	)
 
 	commandsWhichRequireServerConfig := []*cobra.Command{
