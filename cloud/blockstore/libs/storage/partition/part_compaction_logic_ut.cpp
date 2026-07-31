@@ -162,7 +162,7 @@ TPrepareCompleteResult RunPrepareAndComplete(
                 TTestExecutor::TabletId,
                 true,    // readBlockMaskOnCompactionOptimizationEnabled
                 false,   // useRecreatedBlobMetasOnCleanup
-                false,   // mixedBlocksBloomFilterEnabled
+                false,   // mixedIndexBlocksFilterEnabled
                 ready,
                 db,
                 state,
@@ -241,7 +241,7 @@ Y_UNIT_TEST_SUITE(TApplyBlobsSkippingTest)
         ApplyBlobsSkipping(
             *config,
             2,
-            true,   // mixedBlocksBloomFilterEnabled
+            true,   // mixedIndexBlocksFilterEnabled
             state,
             args);
 
@@ -301,7 +301,7 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
                     TTestExecutor::TabletId,
                     false,   // readBlockMaskOnCompactionOptimizationEnabled
                     false,   // useRecreatedBlobMetasOnCleanup
-                    false,   // mixedBlocksBloomFilterEnabled
+                    false,   // mixedIndexBlocksFilterEnabled
                     ready,
                     db,
                     state,
@@ -351,7 +351,7 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
                     TTestExecutor::TabletId,
                     true,    // readBlockMaskOnCompactionOptimizationEnabled
                     false,   // useRecreatedBlobMetasOnCleanup
-                    false,   // mixedBlocksBloomFilterEnabled
+                    false,   // mixedIndexBlocksFilterEnabled
                     ready,
                     db,
                     state,
@@ -402,7 +402,7 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
                     TTestExecutor::TabletId,
                     true,    // readBlockMaskOnCompactionOptimizationEnabled
                     false,   // useRecreatedBlobMetasOnCleanup
-                    false,   // mixedBlocksBloomFilterEnabled
+                    false,   // mixedIndexBlocksFilterEnabled
                     ready,
                     db,
                     state,
@@ -454,7 +454,7 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
                     TTestExecutor::TabletId,
                     false,   // readBlockMaskOnCompactionOptimizationEnabled
                     false,   // useRecreatedBlobMetasOnCleanup
-                    false,   // mixedBlocksBloomFilterEnabled
+                    false,   // mixedIndexBlocksFilterEnabled
                     ready,
                     db,
                     state,
@@ -506,7 +506,7 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
                     TTestExecutor::TabletId,
                     true,
                     false,   // useRecreatedBlobMetasOnCleanup
-                    false,   // mixedBlocksBloomFilterEnabled
+                    false,   // mixedIndexBlocksFilterEnabled
                     ready,
                     db,
                     state,
@@ -557,7 +557,7 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
                     TTestExecutor::TabletId,
                     true,    // readBlockMaskOnCompactionOptimizationEnabled
                     false,   // useRecreatedBlobMetasOnCleanup
-                    false,   // mixedBlocksBloomFilterEnabled
+                    false,   // mixedIndexBlocksFilterEnabled
                     ready,
                     db,
                     state,
@@ -615,7 +615,7 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
                     TTestExecutor::TabletId,
                     false,   // readBlockMaskOnCompactionOptimizationEnabled
                     true,    // useRecreatedBlobMetasOnCleanup
-                    false,   // mixedBlocksBloomFilterEnabled
+                    false,   // mixedIndexBlocksFilterEnabled
                     ready,
                     db,
                     state,

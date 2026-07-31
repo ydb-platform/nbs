@@ -1085,7 +1085,7 @@ bool TPartitionActor::PrepareReadBlocks(
 
     bool ready = true;
 
-    if (auto* mixedIndexBlocksFilter = State->AccessMixedIndexBlocksFilter();
+    if (const auto* mixedIndexBlocksFilter = State->GetMixedIndexBlocksFilter();
         !mixedIndexBlocksFilter ||
         mixedIndexBlocksFilter->MayHaveBlocksInMixedIndex(
             args.ReadRange,

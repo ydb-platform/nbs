@@ -381,7 +381,7 @@ void ApplyMixedBlocksSkipping(
     THashMap<TPartialBlobId, ui32, TPartialBlobIdHash>& blobsToSkip,
     TTxPartition::TRangeCompaction& args)
 {
-    // we should not skip mixed blocks for range compaction, because of bloom
+    // we should not skip mixed blocks for range compaction, because of blocks
     // filter
     TVector<TPartialBlobId> mixedBlobIds;
     for (const auto& liveBlock: blobsToSkip) {
@@ -645,7 +645,7 @@ TBlobPatchingResult ResolveBlobPatchingCandidate(
 void ApplyBlobsSkipping(
     const TStorageConfig& config,
     const ui32 maxSkippedBlobs,
-    const bool mixedBlocksBloomFilterEnabled,
+    const bool mixedIndexBlocksFilterEnabled,
     TPartitionState& state,
     TTxPartition::TRangeCompaction& args)
 {
@@ -662,7 +662,7 @@ void ApplyBlobsSkipping(
         state.GetBlockSize(),
         config);
 
-    if (mixedBlocksBloomFilterEnabled) {
+    if (mixedIndexBlocksFilterEnabled) {
         ApplyMixedBlocksSkipping(blobsToSkip, args);
     }
 
