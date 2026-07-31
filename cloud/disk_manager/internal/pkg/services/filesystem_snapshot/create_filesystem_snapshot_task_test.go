@@ -87,3 +87,55 @@ func TestCreateFilesystemSnapshotTask(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "dataplane", task.state.DataplaneTaskID)
 }
+
+func TestCancelCreateFilesystemSnapshotTaskDeletesSnapshot(t *testing.T) {
+	ctx := context.Background()
+	storage := resources_mocks.NewStorageMock()
+	scheduler := tasks_mocks.NewSchedulerMock()
+	execCtx := newExecutionContextMock()
+
+	task := &createFilesystemSnapshotTask{
+		storage:   storage,
+		scheduler: scheduler,
+		request: &protos.CreateFilesystemSnapshotRequest{
+			DstSnapshotId: "snapshot",
+		},
+		state: &protos.CreateFilesystemSnapshotTaskState{},
+	}
+
+	storage.On(
+		"DeleteFilesystemSnapshot",
+		ctx,
+		"snapshot",
+		"toplevel_task_id",
+		mock.Anything,
+	).Return(&resources.FilesystemSnapshotMeta{
+		ID:           "snapshot",
+		DeleteTaskID: "toplevel_task_id",
+	}, nil)
+	scheduler.On(
+		"ScheduleTask",
+		headers.SetIncomingIdempotencyKey(ctx, "toplevel_task_id_cancel"),
+		"dataplane.DeleteFilesystemSnapshot",
+		"",
+		&dataplane_protos.DeleteFilesystemSnapshotRequest{
+			SnapshotId: "snapshot",
+		},
+	).Return("delete_dataplane", nil)
+	scheduler.On(
+		"WaitTask",
+		ctx,
+		execCtx,
+		"delete_dataplane",
+	).Return(nil, nil)
+	storage.On(
+		"FilesystemSnapshotDeleted",
+		ctx,
+		"snapshot",
+		mock.Anything,
+	).Return(nil)
+
+	err := task.Cancel(ctx, execCtx)
+	mock.AssertExpectationsForObjects(t, storage, scheduler, execCtx)
+	require.NoError(t, err)
+}
