@@ -63,7 +63,9 @@ TPartitionState::TPartitionState(
         ui32 maxBlobsPerUnit,
         ui32 maxBlobsPerRange,
         ui32 compactionRangeCountPerRun,
-        TPartitionThreadSafeStatePtr threadSafeState)
+        TPartitionThreadSafeStatePtr threadSafeState,
+        ui64 tabletId,
+        const bool mixedIndexBlocksFilterEnabled)
     : TPartitionChannelsState(
           meta.GetConfig(),
           freeSpaceConfig,
@@ -96,6 +98,12 @@ TPartitionState::TPartitionState(
     , CleanupQueue(GetBlockSize())
     , CleanupScoreHistory(cleanupScoreHistorySize)
 {
+    if (mixedIndexBlocksFilterEnabled) {
+        MixedIndexBlocksFilter.emplace(
+            tabletId,
+            GetMaxBlocksInBlob(),
+            Config.GetBlocksCount());
+    }
     InitChannels();
 }
 
@@ -419,6 +427,13 @@ void TPartitionState::WriteMixedBlock(
 {
     const ui32 rangeIdx = CompactionMap.GetRangeIndex(block.BlockIndex);
     MixedIndexCache.InsertBlockIfHot(rangeIdx, block);
+
+    if (MixedIndexBlocksFilter) {
+        MixedIndexBlocksFilter->BlocksAddedToMixedIndex(
+            TBlockRange32::WithLength(block.BlockIndex, 1),
+            block.CommitId);
+    }
+
     db.WriteMixedBlock(block);
 }
 
@@ -440,6 +455,13 @@ void TPartitionState::WriteMixedBlocks(
              blockIndex,
              blobOffset,
              compactionRangeCount});
+
+        if (MixedIndexBlocksFilter) {
+            MixedIndexBlocksFilter->BlocksAddedToMixedIndex(
+                TBlockRange32::WithLength(blockIndex, 1),
+                commitId);
+        }
+
         ++blobOffset;
     }
 

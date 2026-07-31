@@ -108,6 +108,15 @@ struct TBlobCompactionRequest
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void ApplyBlobsSkipping(
+    const TStorageConfig& config,
+    const ui32 maxSkippedBlobs,
+    const bool mixedBlocksBloomFilterEnabled,
+    TPartitionState& state,
+    TTxPartition::TRangeCompaction& args);
+
+////////////////////////////////////////////////////////////////////////////////
+
 void RecreateBlobMetas(TTxPartition::TRangeCompaction& args, ui64 commitId);
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -119,6 +128,7 @@ void PrepareRangeCompaction(
     const ui64 tabletId,
     const bool readBlockMaskOnCompactionOptimizationEnabled,
     const bool useRecreatedBlobMetasOnCleanup,
+    const bool mixedIndexBlocksFilterEnabled,
     bool& ready,
     TPartitionDatabase& db,
     TPartitionState& state,

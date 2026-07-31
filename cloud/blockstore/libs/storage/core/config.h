@@ -447,6 +447,11 @@ public:
         const TString& folderId,
         const TString& diskId) const;
 
+    [[nodiscard]] bool IsMixedIndexBlocksFilterFeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
+
     TDuration GetMaxTimedOutDeviceStateDurationFeatureValue(
         const TString& cloudId,
         const TString& folderId,
@@ -865,6 +870,8 @@ public:
     [[nodiscard]] bool GetUseRecreatedBlobMetasOnCleanup() const;
 
     [[nodiscard]] bool GetAllowGentlePreemptionForRebindVolumesAction() const;
+
+    [[nodiscard]] bool GetMixedIndexBlocksFilterEnabled() const;
 };
 
 ui64 GetAllocationUnit(

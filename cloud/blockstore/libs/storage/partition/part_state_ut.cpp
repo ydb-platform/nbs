@@ -117,7 +117,9 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             100,    // maxBlobsPerUnit
             10,     // maxBlobsPerRange,
             1,      // compactionRangeCountPerRun
-            threadSafeState
+            threadSafeState,
+            0,      // tabletId
+            false   // mixedIndexBlocksFilterEnabled
         );
 
         const auto initialBackpressure = state.CalculateCurrentBackpressure();
@@ -187,7 +189,9 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             100,    // maxBlobsPerUnit
             10,     // maxBlobsPerRange,
             1,      // compactionRangeCountPerRun
-            threadSafeState
+            threadSafeState,
+            0,      // tabletId
+            false   // mixedIndexBlocksFilterEnabled
         );
 
         state.GetCompactionMap().Update(0, 30, 30, 30, 0, false);
@@ -223,7 +227,9 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             100,    // maxBlobsPerUnit
             10,     // maxBlobsPerRange,
             1,      // compactionRangeCountPerRun
-            threadSafeState
+            threadSafeState,
+            0,      // tabletId
+            false   // mixedIndexBlocksFilterEnabled
         );
 
         state.GetLogicalUsedBlocks().Set(0, 9);
@@ -309,7 +315,9 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             100,    // maxBlobsPerUnit
             10,     // maxBlobsPerRange,
             1,      // compactionRangeCountPerRun
-            threadSafeState
+            threadSafeState,
+            0,      // tabletId
+            false   // mixedIndexBlocksFilterEnabled
         );
 
         state.IncrementMergedBlocksCount(5_GB / DefaultBlockSize);
@@ -353,7 +361,9 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             100,    // maxBlobsPerUnit
             10,     // maxBlobsPerRange,
             1,      // compactionRangeCountPerRun
-            threadSafeState
+            threadSafeState,
+            0,      // tabletId
+            false   // mixedIndexBlocksFilterEnabled
         );
 
         TTestExecutor executor;
@@ -493,7 +503,9 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             maxBlobsPerUnit, // maxBlobsPerUnit
             10,  // maxBlobsPerRange,
             1,   // compactionRangeCountPerRun
-            threadSafeState
+            threadSafeState,
+            0,      // tabletId
+            false   // mixedIndexBlocksFilterEnabled
         );
         UNIT_ASSERT_VALUES_EQUAL(maxBlobsPerDisk, state.GetMaxBlobsPerDisk());
     }
@@ -527,7 +539,9 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             100,    // maxBlobsPerUnit
             10,     // maxBlobsPerRange,
             1,      // compactionRangeCountPerRun
-            threadSafeState
+            threadSafeState,
+            0,      // tabletId
+            false   // mixedIndexBlocksFilterEnabled
         );
 
         TCleanupQueueItem b1 {{1, 1, 4, 4_MB, 0, 0}, 111, {}};
@@ -573,7 +587,9 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             100,    // maxBlobsPerUnit
             10,     // maxBlobsPerRange,
             1,      // compactionRangeCountPerRun
-            threadSafeState
+            threadSafeState,
+            0,      // tabletId
+            false   // mixedIndexBlocksFilterEnabled
         );
 
         const ui32 blockIndex = 0;
