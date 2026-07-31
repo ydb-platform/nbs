@@ -13,7 +13,6 @@ namespace {
 TVector<EFileRingBufferVersion> GetVersionsForTest()
 {
     return {
-        EFileRingBufferVersion::V4,
         EFileRingBufferVersion::V5,
         EFileRingBufferVersion::V6};
 }

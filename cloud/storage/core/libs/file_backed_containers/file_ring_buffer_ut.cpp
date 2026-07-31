@@ -19,10 +19,6 @@ namespace {
 
 #define FILE_RING_BUFFER_TEST(name)                                            \
     void TestImpl##name(EVersion ver);                                         \
-    Y_UNIT_TEST(name##V4)                                                      \
-    {                                                                          \
-        TestImpl##name(EVersion::V4);                                          \
-    }                                                                          \
     Y_UNIT_TEST(name##V5)                                                      \
     {                                                                          \
         TestImpl##name(EVersion::V5);                                          \
@@ -809,46 +805,6 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT(rb->ValidateMetadata());
     }
 
-    Y_UNIT_TEST(ShouldBackwardSupportFileFormat_V4_to_V5)
-    {
-        const auto f = TTempFileHandle();
-        const ui32 dataLen = 36;
-        const ui32 metadataLen = 8;
-
-        auto rb = std::make_unique<TFileRingBuffer>(
-            f.GetName(),
-            dataLen,
-            metadataLen,
-            EVersion::V4);
-
-        rb->SetMetadata("FormatV4");
-        rb->PushBack("SomeData");
-
-        {
-            TFileMap m(f.GetName(), TMemoryMapCommon::oRdWr);
-            m.ResizeAndRemap(0, m.Length());
-            // Check version before migration
-            UNIT_ASSERT_VALUES_EQUAL(4, *reinterpret_cast<ui32*>(m.Ptr()));
-        }
-
-        rb = std::make_unique<TFileRingBuffer>(
-            f.GetName(),
-            dataLen,
-            metadataLen,
-            EVersion::V5);
-
-        UNIT_ASSERT(!rb->IsCorrupted());
-        UNIT_ASSERT_VALUES_EQUAL("FormatV4", rb->GetMetadata());
-        UNIT_ASSERT_VALUES_EQUAL("SomeData", rb->Front());
-
-        {
-            TFileMap m(f.GetName(), TMemoryMapCommon::oRdWr);
-            m.ResizeAndRemap(0, m.Length());
-            // Check version after migration
-            UNIT_ASSERT_VALUES_EQUAL(5, *reinterpret_cast<ui32*>(m.Ptr()));
-        }
-    }
-
     FILE_RING_BUFFER_TEST(ShouldResizeMetadata)
     {
         const auto f = TTempFileHandle();
@@ -1234,8 +1190,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
     Y_UNIT_TEST(ShouldMigrate)
     {
         auto check = [](EVersion srcVersion,
-                        EVersion dstVersion,
-                        bool immediateMigration)
+                        EVersion dstVersion)
         {
             const auto f = TTempFileHandle();
             const ui32 len = 128;
@@ -1266,27 +1221,19 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             UNIT_ASSERT_VALUES_EQUAL("abc", rb->GetMetadata());
             UNIT_ASSERT_VALUES_EQUAL("123, 4, xz", Dump(*rb));
 
-            UNIT_ASSERT_VALUES_EQUAL(immediateMigration, rb->PushBack("!"));
+            // New entries can be added only after the migration is completed
+            UNIT_ASSERT(!rb->PushBack("!"));
 
-            if (immediateMigration) {
-                // Migration happened with non-empty buffer
-                UNIT_ASSERT_VALUES_EQUAL("123, 4, xz, !", Dump(*rb));
+            // Migration didn't happen - need to empty the buffer first
+            UNIT_ASSERT_VALUES_EQUAL(0, rb->GetAvailableByteCount());
 
-                rb->PopFront();
-                rb->PopFront();
-                rb->PopFront();
-            } else {
-                // Migration didn't happen - need to empty the buffer first
-                UNIT_ASSERT_VALUES_EQUAL(0, rb->GetAvailableByteCount());
+            rb->PopFront();
+            rb->PopFront();
+            rb->PopFront();
 
-                rb->PopFront();
-                rb->PopFront();
-                rb->PopFront();
+            UNIT_ASSERT_LT(0, rb->GetAvailableByteCount());
 
-                UNIT_ASSERT_LT(0, rb->GetAvailableByteCount());
-
-                UNIT_ASSERT(rb->PushBack("!"));
-            }
+            UNIT_ASSERT(rb->PushBack("!"));
 
             UNIT_ASSERT_VALUES_EQUAL("!", Dump(*rb));
             UNIT_ASSERT_VALUES_EQUAL("abc", rb->GetMetadata());
@@ -1299,14 +1246,10 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         };
 
         // Version upgrade
-        check(EVersion::V4, EVersion::V5, true);
-        check(EVersion::V4, EVersion::V6, false);
-        check(EVersion::V5, EVersion::V6, false);
+        check(EVersion::V5, EVersion::V6);
 
         // Version downgrade
-        check(EVersion::V6, EVersion::V5, false);
-        check(EVersion::V6, EVersion::V4, false);
-        check(EVersion::V5, EVersion::V4, false);
+        check(EVersion::V6, EVersion::V5);
     }
 }
 
