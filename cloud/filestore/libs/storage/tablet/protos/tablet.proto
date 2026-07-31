@@ -6,7 +6,6 @@ import "cloud/filestore/public/api/protos/data.proto";
 import "cloud/filestore/public/api/protos/fs.proto";
 import "cloud/filestore/public/api/protos/locks.proto";
 import "cloud/filestore/public/api/protos/node.proto";
-import "cloud/filestore/public/api/protos/quota.proto";
 
 import "cloud/storage/core/protos/media.proto";
 

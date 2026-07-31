@@ -40,6 +40,17 @@ void TIndexTabletActor::HandleSetQuota(
         return;
     }
 
+    if (!msg->Record.GetQuotaId()) {
+        auto response =
+            std::make_unique<TEvIndexTablet::TEvSetQuotaResponse>(MakeError(
+                E_ARGUMENT,
+                "quotaId must be non-zero"));
+        NCloud::Reply(ctx, *requestInfo, std::move(response));
+        return;
+    }
+
+    // TODO(6608): add limit for the number of quotas per file system
+
     AddInFlightRequest<TEvIndexTablet::TSetQuotaMethod>(*requestInfo);
 
     ExecuteTx<TSetQuota>(

@@ -1,5 +1,7 @@
 #include "quota.h"
 
+#include <util/generic/algorithm.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -26,6 +28,10 @@ TVector<NProto::TQuota> TQuotaStore::GetQuotas() const
     for (const auto& [quotaId, quota]: QuotaById) {
         quotas.push_back(quota);
     }
+    // Make sure the quotas are returned in a deterministic order
+    Sort(quotas.begin(), quotas.end(), [](const auto& lhs, const auto& rhs) {
+        return lhs.GetQuotaId() < rhs.GetQuotaId();
+    });
 
     return quotas;
 }

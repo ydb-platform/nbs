@@ -6,6 +6,7 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/generic/hash.h>
 #include <util/generic/size_literals.h>
 
 namespace NCloud::NFileStore::NStorage {
@@ -88,6 +89,18 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Quotas)
         auto quota = tablet.SetQuota(1, 2_GB, 200)->Record.GetQuota();
         UNIT_ASSERT_VALUES_EQUAL(2_GB, quota.GetMaxBytes());
         UNIT_ASSERT_VALUES_EQUAL(200u, quota.GetMaxNodes());
+    }
+
+    Y_UNIT_TEST(ShouldRejectZeroQuotaId)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+
+        tablet.AssertSetQuotaFailed(0, 1_GB, 100);
     }
 
     Y_UNIT_TEST(ShouldPersistQuotasAcrossReboot)
