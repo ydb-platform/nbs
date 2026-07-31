@@ -872,6 +872,8 @@ public:
     [[nodiscard]] bool GetAllowGentlePreemptionForRebindVolumesAction() const;
 
     [[nodiscard]] bool GetMixedBlocksFilterEnabled() const;
+
+    [[nodiscard]] bool GetWaitForFreshWritesBeforeFlushEnabled() const;
 };
 
 ui64 GetAllocationUnit(
