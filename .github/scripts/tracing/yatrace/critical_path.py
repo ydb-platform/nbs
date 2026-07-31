@@ -10,17 +10,17 @@ from ..otlp import (
     Ns,
     Span,
     Trace,
-    decode_attributes,
     update_span_attributes,
 )
 from .metrics import _number
+from .test_chunk import TestChunk
 
 if TYPE_CHECKING:
     from .evlog_record import YaEvlogRecord
+    from .node import ClassifiedNode
 
 CRITICAL_TASK_SUFFIX_RE = re.compile(r"(?:(?:-CACHED|-DYN_UID_CACHE))+$")
 TEST_NODE_MARKERS = frozenset({"TA", "TL", "TM", "TS"})
-_ChunkSpan = tuple[Span, dict[str, Any], Interval]
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,17 +144,17 @@ class YaCriticalPath:
 
     def match_build(
         self,
-        build_records: Sequence[tuple[YaEvlogRecord, str, str]],
+        build_records: Sequence[ClassifiedNode],
         critical_entries: Sequence[YaCriticalPathEntry],
     ) -> dict[int, YaCriticalPathEntry]:
         available = {
             index
-            for index, (_, kind, _) in enumerate(build_records)
-            if kind != "cache_store"
+            for index, node in enumerate(build_records)
+            if node.kind != "cache_store"
         }
         records_by_uid: dict[str, list[int]] = defaultdict(list)
         for index in available:
-            uid = build_records[index][0].uid
+            uid = build_records[index].uid
             if uid:
                 records_by_uid[uid].append(index)
 
@@ -172,8 +172,8 @@ class YaCriticalPath:
                 for index in candidate_indices
                 if (
                     score := self._critical_record_score(
-                        build_records[index][0],
-                        build_records[index][2],
+                        build_records[index].record,
+                        build_records[index].tool,
                         entry,
                     )
                 )
@@ -228,26 +228,16 @@ class YaCriticalPath:
         )
 
     def mark_test_spans(self, trace: Trace) -> dict[str, int]:
-        chunks: list[_ChunkSpan] = []
-        chunks_by_identity: dict[tuple[str, str], list[_ChunkSpan]] = defaultdict(list)
-        chunks_by_suite: dict[str, list[_ChunkSpan]] = defaultdict(list)
+        chunks: list[TestChunk] = []
+        chunks_by_identity: dict[tuple[str, str], list[TestChunk]] = defaultdict(list)
+        chunks_by_suite: dict[str, list[TestChunk]] = defaultdict(list)
         for span in trace.spans("ya.chunk"):
-            attributes = decode_attributes(span.attributes)
-            item = (
-                span,
-                attributes,
-                Interval(
-                    Ns(span.start_time_unix_nano or 0),
-                    Ns(span.end_time_unix_nano or 0),
-                ),
-            )
-            chunks.append(item)
-            suite = str(attributes.get("test.suite", ""))
-            result_folder = str(attributes.get("ya.test_results.folder", ""))
-            if suite:
-                chunks_by_suite[suite].append(item)
-                if result_folder:
-                    chunks_by_identity[(suite, result_folder)].append(item)
+            chunk = TestChunk.from_span(span)
+            chunks.append(chunk)
+            if chunk.suite:
+                chunks_by_suite[chunk.suite].append(chunk)
+                if chunk.identity is not None:
+                    chunks_by_identity[chunk.identity].append(chunk)
         test_nodes = [
             record for record in self.nodes if record.kind_and_tool[0] == "test_execute"
         ]
@@ -280,22 +270,21 @@ class YaCriticalPath:
                     or chunks_by_suite.get(identity[0])
                     or chunks
                 )
-            candidates = [item for item in candidate_pool if interval.overlap(item[2])]
+            candidates = [chunk for chunk in candidate_pool if chunk.overlap(interval)]
             if not candidates:
                 continue
 
-            chunk, _, _ = max(
+            chunk = max(
                 candidates,
-                key=lambda item: (
-                    bool(item[1].get("test.suite"))
-                    and str(item[1]["test.suite"]) in entry.text,
-                    interval.overlap(item[2]),
+                key=lambda candidate: (
+                    bool(candidate.suite) and candidate.suite in entry.text,
+                    candidate.overlap(interval),
                 ),
             )
             attributes = entry.span_attributes(test=True)
-            update_span_attributes(chunk, attributes)
-            marked_chunks.add(chunk.span_id)
-            for test_span in tests_by_parent.get(chunk.span_id, []):
+            update_span_attributes(chunk.span, attributes)
+            marked_chunks.add(chunk.span.span_id)
+            for test_span in tests_by_parent.get(chunk.span.span_id, []):
                 update_span_attributes(test_span, attributes)
                 marked_tests.add(test_span.span_id)
 

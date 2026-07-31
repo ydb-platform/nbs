@@ -11,11 +11,13 @@ from pathlib import Path
 from typing import Iterable
 
 from ..helpers import get_workflow_jobs, github_client
-from .trace_report import (
+from .trace_io import (
     MAX_INPUT_BYTES,
     MAX_SPANS,
-    add_artifact_url_arguments,
     read_otlp_jsonl,
+)
+from .trace_report import (
+    add_artifact_url_arguments,
     write_trace_bundle,
 )
 from .workflow_trace import build_workflow_trace, timestamp_ns

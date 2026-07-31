@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import re
+from copy import deepcopy
 from collections import Counter, defaultdict
 from dataclasses import dataclass
-from typing import Any, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Mapping, Sequence
 
 from . import limits
 from .critical_path import YaCriticalPathEntry
-from .evlog_record import YaEvlogRecord
 from .metrics import _metric_name, _number
+
+if TYPE_CHECKING:
+    from .node import ClassifiedNode
 
 SAFE_TOOL_RE = re.compile(r"^[a-zA-Z0-9_.+-]{1,32}$")
 
@@ -16,6 +19,10 @@ SAFE_TOOL_RE = re.compile(r"^[a-zA-Z0-9_.+-]{1,32}$")
 @dataclass(frozen=True, slots=True)
 class YaBuildStatistics:
     values: Mapping[str, Any]
+
+    @classmethod
+    def from_raw(cls, values: Mapping[str, Any] | None = None) -> YaBuildStatistics:
+        return cls(deepcopy(dict(values or {})))
 
     def graph_attributes(self) -> dict[str, Any]:
         attributes: dict[str, Any] = {}
@@ -93,7 +100,7 @@ class YaBuildStatistics:
 
     def build_attributes(
         self,
-        build_records: Sequence[tuple[YaEvlogRecord, str, str]],
+        build_records: Sequence[ClassifiedNode],
         critical_entries: Sequence[YaCriticalPathEntry],
     ) -> tuple[
         dict[str, Any],
@@ -101,9 +108,11 @@ class YaBuildStatistics:
     ]:
         attributes: dict[str, Any] = {}
         tool_counts: dict[str, Counter[str]] = defaultdict(Counter)
-        for _, kind, tool in build_records:
-            if kind in {"cache_restore", "execute"} and SAFE_TOOL_RE.fullmatch(tool):
-                tool_counts[_metric_name(tool)][kind] += 1
+        for node in build_records:
+            if node.kind in {"cache_restore", "execute"} and SAFE_TOOL_RE.fullmatch(
+                node.tool
+            ):
+                tool_counts[_metric_name(node.tool)][node.kind] += 1
         ranked_tools = sorted(
             tool_counts,
             key=lambda tool: (

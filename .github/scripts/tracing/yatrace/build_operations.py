@@ -9,191 +9,224 @@ from ..otlp import Interval, Ns, Span, SpanWriter, make_span, stable_span_id
 from . import limits
 from .critical_path import YaCriticalPath, YaCriticalPathEntry
 from .evlog_record import YaEvlogRecord
+from .node import ClassifiedNode
 from .statistics import YaBuildStatistics
-
-BuildRecord = tuple[YaEvlogRecord, str, str]
 
 
 @dataclass(frozen=True, slots=True)
 class BuildCandidate:
     source_index: int
-    record: YaEvlogRecord
-    kind: str
-    tool: str
+    node: ClassifiedNode
     critical_entry: YaCriticalPathEntry | None
     failed: bool
+
+    @property
+    def record(self) -> YaEvlogRecord:
+        return self.node.record
 
 
 @dataclass(frozen=True, slots=True)
 class BuildCommandCandidate:
     parent: BuildCandidate
-    parent_span: Span
     detail: YaEvlogRecord
     detail_index: int
 
 
 @dataclass(frozen=True, slots=True)
+class BuildEnvelope:
+    start_ns: Ns
+    end_ns: Ns
+    span_id: bytes
+    records: list[ClassifiedNode]
+
+
+@dataclass(frozen=True, slots=True)
+class BuildSelection:
+    candidates: list[BuildCandidate]
+    dropped: int
+    critical_dropped: int
+    failed_dropped: int
+
+
+@dataclass(frozen=True, slots=True)
+class BuildFailures:
+    uids: set[str]
+    representatives: set[int]
+
+
+@dataclass(frozen=True, slots=True)
+class CommandSelection:
+    commands: list[BuildCommandCandidate]
+    total: int
+
+    @property
+    def dropped(self) -> int:
+        return self.total - len(self.commands)
+
+
+@dataclass(frozen=True, slots=True)
+class BuildPlan:
+    envelope: BuildEnvelope
+    attributes: dict[str, Any]
+    selection: BuildSelection
+    commands: CommandSelection
+    failed_uids: set[str]
+
+
+@dataclass(frozen=True, slots=True)
 class YaBuildOperations:
-    records: Sequence[BuildRecord]
+    records: Sequence[ClassifiedNode]
     failures: Mapping[str, int | None]
     statistics: YaBuildStatistics
     critical_path: YaCriticalPath
     test_starts: Sequence[Ns]
 
-    def build(
-        self,
-        *,
-        writer: SpanWriter,
-        trace_id: bytes,
-        parent_span_id: bytes,
-    ) -> dict[str, Any]:
-        timed_records = [
-            record
-            for record in self.records
-            if record[1] in {"cache_restore", "execute", "materialize"}
+    def _envelope(self, trace_id: bytes) -> BuildEnvelope | None:
+        timed = [
+            node
+            for node in self.records
+            if node.kind in {"cache_restore", "execute", "materialize"}
         ]
-        metadata: dict[str, Any] = {"ya.build.node.count": 0}
-        if not timed_records:
-            return metadata
-
-        build_start_ns = min(record.start_ns for record, _, _ in timed_records)
-        build_end_ns = max(record.end_ns for record, _, _ in timed_records)
-        build_interval = Interval(build_start_ns, build_end_ns)
-        build_records = [
-            (clipped, kind, tool)
-            for record, kind, tool in self.records
-            if (clipped := record.clipped(build_interval)) is not None
-        ]
-        metadata["ya.build.node.count"] = len(build_records)
-        counts = Counter(kind for _, kind, _ in build_records)
-        cumulative_ns = Ns(sum(len(record.interval) for record, _, _ in build_records))
-        build_span_id = stable_span_id(
-            trace_id,
-            "ya.build",
-            build_start_ns,
-            build_end_ns,
+        if not timed:
+            return None
+        start_ns = min(node.start_ns for node in timed)
+        end_ns = max(node.end_ns for node in timed)
+        interval = Interval(start_ns, end_ns)
+        return BuildEnvelope(
+            start_ns=start_ns,
+            end_ns=end_ns,
+            span_id=stable_span_id(trace_id, "ya.build", start_ns, end_ns),
+            records=[
+                clipped
+                for node in self.records
+                if (clipped := node.clipped(interval)) is not None
+            ],
         )
+
+    def _base_attributes(self, envelope: BuildEnvelope) -> dict[str, Any]:
+        records = envelope.records
         attributes: dict[str, Any] = {
             "ya.build.wall_time.kind": "worker-node-execution-envelope",
-            "ya.build.node.count": len(build_records),
-            "ya.build.cumulative_node_seconds": cumulative_ns.to_s(),
+            "ya.build.node.count": len(records),
+            "ya.build.cumulative_node_seconds": Ns(
+                sum(len(node.interval) for node in records)
+            ).to_s(),
         }
-        command_details = [
+        commands = [
             detail
-            for record, _, _ in build_records
-            for detail in record.details
+            for node in records
+            for detail in node.record.details
             if detail.tag == "exec_cmd"
         ]
-        if command_details:
-            attributes["ya.build.command.count"] = len(command_details)
-            attributes["ya.build.cumulative_command_seconds"] = Ns(
-                sum(len(detail.interval) for detail in command_details)
-            ).to_s()
-        for kind, count in sorted(counts.items()):
+        if commands:
+            attributes.update(
+                {
+                    "ya.build.command.count": len(commands),
+                    "ya.build.cumulative_command_seconds": Ns(
+                        sum(len(detail.interval) for detail in commands)
+                    ).to_s(),
+                }
+            )
+        for kind, count in sorted(Counter(node.kind for node in records).items()):
             attributes[f"ya.build.node.{kind}.count"] = count
         if self.test_starts:
             attributes["ya.build.first_test_node_offset_seconds"] = Ns(
-                max(0, min(self.test_starts) - build_start_ns)
+                max(0, min(self.test_starts) - envelope.start_ns)
             ).to_s()
+        statistics, _ = self.statistics.build_attributes(
+            records,
+            self.critical_path.build_entries,
+        )
+        attributes.update(statistics)
+        return attributes
 
-        critical_entries = self.critical_path.build_entries
-        statistics_attributes, _ = self.statistics.build_attributes(
-            build_records,
-            critical_entries,
-        )
-        attributes.update(statistics_attributes)
-        critical_matches = self.critical_path.match_build(
-            build_records,
-            critical_entries,
-        )
+    def _failed_representatives(
+        self,
+        records: Sequence[ClassifiedNode],
+    ) -> BuildFailures:
         failed_uids = {
-            record.uid
-            for record, _, _ in build_records
-            if record.uid and record.uid in self.failures
+            node.uid for node in records if node.uid and node.uid in self.failures
         }
-        if failed_uids:
-            attributes["ya.build.failed_node.count"] = len(failed_uids)
-        failed_representatives = {
+        representatives = {
             max(
-                (
-                    index
-                    for index, (record, _, _) in enumerate(build_records)
-                    if record.uid == uid
-                ),
+                (index for index, node in enumerate(records) if node.uid == uid),
                 key=lambda index: (
-                    build_records[index][1] == "execute",
-                    len(build_records[index][0].interval),
-                    build_records[index][0].end_ns,
+                    records[index].kind == "execute",
+                    len(records[index].interval),
+                    records[index].end_ns,
                 ),
             )
             for uid in failed_uids
         }
+        return BuildFailures(failed_uids, representatives)
 
+    @staticmethod
+    def _trim_candidates(candidates: list[BuildCandidate]) -> BuildSelection:
+        if len(candidates) <= limits.MAX_BUILD_NODE_SPANS:
+            return BuildSelection(candidates, 0, 0, 0)
+        protected = [
+            candidate
+            for candidate in candidates
+            if candidate.critical_entry is not None or candidate.failed
+        ]
+        other = [
+            candidate
+            for candidate in candidates
+            if candidate.critical_entry is None and not candidate.failed
+        ]
+        protected.sort(
+            key=lambda candidate: (
+                not candidate.failed,
+                (
+                    candidate.critical_entry.index
+                    if candidate.critical_entry is not None
+                    else math.inf
+                ),
+                candidate.record.start_ns,
+                candidate.record.end_ns,
+            )
+        )
+        selected = protected[: limits.MAX_BUILD_NODE_SPANS]
+        selected += sorted(
+            other,
+            key=lambda candidate: len(candidate.record.interval),
+            reverse=True,
+        )[: max(0, limits.MAX_BUILD_NODE_SPANS - len(selected))]
+        selected_indexes = {candidate.source_index for candidate in selected}
+        return BuildSelection(
+            candidates=selected,
+            dropped=len(candidates) - len(selected),
+            critical_dropped=sum(
+                candidate.critical_entry is not None for candidate in protected
+            )
+            - sum(candidate.critical_entry is not None for candidate in selected),
+            failed_dropped=sum(
+                candidate.failed and candidate.source_index not in selected_indexes
+                for candidate in candidates
+            ),
+        )
+
+    def _select_candidates(
+        self,
+        records: list[ClassifiedNode],
+        failed_representatives: set[int],
+    ) -> BuildSelection:
+        critical_matches = self.critical_path.match_build(
+            records,
+            self.critical_path.build_entries,
+        )
         candidates = [
             BuildCandidate(
                 source_index=index,
-                record=record,
-                kind=kind,
-                tool=tool,
+                node=node,
                 critical_entry=critical_matches.get(index),
                 failed=index in failed_representatives,
             )
-            for index, (record, kind, tool) in enumerate(build_records)
-            if kind != "cache_store" or index in failed_representatives
+            for index, node in enumerate(records)
+            if node.kind != "cache_store" or index in failed_representatives
         ]
-        dropped = max(0, len(candidates) - limits.MAX_BUILD_NODE_SPANS)
-        if dropped:
-            protected = [
-                candidate
-                for candidate in candidates
-                if candidate.critical_entry is not None or candidate.failed
-            ]
-            other = [
-                candidate
-                for candidate in candidates
-                if candidate.critical_entry is None and not candidate.failed
-            ]
-            protected.sort(
-                key=lambda candidate: (
-                    not candidate.failed,
-                    (
-                        candidate.critical_entry.index
-                        if candidate.critical_entry is not None
-                        else math.inf
-                    ),
-                    candidate.record.start_ns,
-                    candidate.record.end_ns,
-                )
-            )
-            selected_protected = protected[: limits.MAX_BUILD_NODE_SPANS]
-            remaining = max(
-                0,
-                limits.MAX_BUILD_NODE_SPANS - len(selected_protected),
-            )
-            candidates = (
-                selected_protected
-                + sorted(
-                    other,
-                    key=lambda candidate: len(candidate.record.interval),
-                    reverse=True,
-                )[:remaining]
-            )
-            dropped = len(protected) + len(other) - len(candidates)
-            attributes["ya.build.node_spans.dropped"] = dropped
-            critical_dropped = sum(
-                candidate.critical_entry is not None for candidate in protected
-            ) - sum(candidate.critical_entry is not None for candidate in candidates)
-            if critical_dropped:
-                attributes["ya.build.critical_path.node_spans.dropped"] = (
-                    critical_dropped
-                )
-            failed_dropped = len(
-                failed_representatives
-                - {candidate.source_index for candidate in candidates}
-            )
-            if failed_dropped:
-                attributes["ya.build.failed_node_spans.dropped"] = failed_dropped
-        candidates.sort(
+        selection = self._trim_candidates(candidates)
+        selection.candidates.sort(
             key=lambda candidate: (
                 candidate.record.start_ns,
                 candidate.record.end_ns,
@@ -201,29 +234,19 @@ class YaBuildOperations:
                 candidate.record.tag,
             )
         )
-        attributes["ya.build.node_spans.rendered"] = len(candidates)
+        return selection
 
-        node_spans: list[Span] = []
-        commands: list[BuildCommandCandidate] = []
-        for index, candidate in enumerate(candidates):
-            record = candidate.record
-            node_span = record.build_node_span(
-                trace_id=trace_id,
-                parent_span_id=build_span_id,
-                kind=candidate.kind,
-                tool=candidate.tool,
-                index=index,
-                critical_entry=candidate.critical_entry,
-                failed=candidate.failed,
-                exit_code=(self.failures.get(record.uid) if candidate.failed else None),
-            )
-            node_spans.append(node_span)
-            commands.extend(
-                BuildCommandCandidate(candidate, node_span, detail, detail_index)
-                for detail_index, detail in enumerate(record.details)
-                if detail.tag == "exec_cmd"
-            )
-
+    @staticmethod
+    def _select_commands(
+        selection: BuildSelection,
+        total: int,
+    ) -> CommandSelection:
+        commands = [
+            BuildCommandCandidate(candidate, detail, detail_index)
+            for candidate in selection.candidates
+            for detail_index, detail in enumerate(candidate.record.details)
+            if detail.tag == "exec_cmd"
+        ]
         commands.sort(
             key=lambda command: (
                 not command.parent.failed,
@@ -232,55 +255,123 @@ class YaBuildOperations:
                 command.detail.start_ns,
             )
         )
-        selected_commands = commands[: limits.MAX_BUILD_COMMAND_SPANS]
-        selected_commands.sort(
+        selected = commands[: limits.MAX_BUILD_COMMAND_SPANS]
+        selected.sort(
             key=lambda command: (
                 command.detail.start_ns,
                 command.detail.end_ns,
                 command.parent.record.name,
             )
         )
-        command_dropped = len(command_details) - len(selected_commands)
-        if command_details:
-            attributes["ya.build.command_spans.rendered"] = len(selected_commands)
-        if command_dropped:
-            attributes["ya.build.command_spans.dropped"] = command_dropped
+        return CommandSelection(selected, total)
 
+    def _plan(self, trace_id: bytes) -> BuildPlan | None:
+        envelope = self._envelope(trace_id)
+        if envelope is None:
+            return None
+        attributes = self._base_attributes(envelope)
+        failures = self._failed_representatives(envelope.records)
+        selection = self._select_candidates(
+            envelope.records,
+            failures.representatives,
+        )
+        commands = self._select_commands(
+            selection,
+            sum(
+                detail.tag == "exec_cmd"
+                for node in envelope.records
+                for detail in node.record.details
+            ),
+        )
+        attributes["ya.build.node_spans.rendered"] = len(selection.candidates)
+        if failures.uids:
+            attributes["ya.build.failed_node.count"] = len(failures.uids)
+        for key, value in {
+            "ya.build.node_spans.dropped": selection.dropped,
+            "ya.build.critical_path.node_spans.dropped": selection.critical_dropped,
+            "ya.build.failed_node_spans.dropped": selection.failed_dropped,
+            "ya.build.command_spans.dropped": commands.dropped,
+        }.items():
+            if value:
+                attributes[key] = value
+        if commands.total:
+            attributes["ya.build.command_spans.rendered"] = len(commands.commands)
+        return BuildPlan(envelope, attributes, selection, commands, failures.uids)
+
+    def _emit(
+        self,
+        plan: BuildPlan,
+        *,
+        writer: SpanWriter,
+        trace_id: bytes,
+        parent_span_id: bytes,
+    ) -> None:
+        envelope = plan.envelope
         writer.add(
             make_span(
                 trace_id=trace_id,
-                span_id=build_span_id,
+                span_id=envelope.span_id,
                 parent_span_id=parent_span_id,
                 name="build operations",
-                start_ns=build_start_ns,
-                end_ns=build_end_ns,
-                attributes=attributes,
-                status_code=2 if failed_uids else 0,
+                start_ns=envelope.start_ns,
+                end_ns=envelope.end_ns,
+                attributes=plan.attributes,
+                status_code=2 if plan.failed_uids else 0,
                 status_message=(
-                    "one or more build nodes failed" if failed_uids else ""
+                    "one or more build nodes failed" if plan.failed_uids else ""
                 ),
             ),
             scope_name="ya.build",
         )
-
-        for node_span in node_spans:
-            writer.add(node_span, scope_name="ya.build.node")
-        for command in selected_commands:
+        node_spans: dict[int, Span] = {}
+        for index, candidate in enumerate(plan.selection.candidates):
+            record = candidate.record
+            span = record.build_node_span(
+                trace_id=trace_id,
+                parent_span_id=envelope.span_id,
+                kind=candidate.node.kind,
+                tool=candidate.node.tool,
+                index=index,
+                critical_entry=candidate.critical_entry,
+                failed=candidate.failed,
+                exit_code=self.failures.get(record.uid) if candidate.failed else None,
+            )
+            node_spans[candidate.source_index] = span
+            writer.add(span, scope_name="ya.build.node")
+        for command in plan.commands.commands:
             candidate = command.parent
             writer.add(
                 candidate.record.build_command_span(
                     command.detail,
                     trace_id=trace_id,
-                    parent_span_id=command.parent_span.span_id,
-                    tool=candidate.tool,
+                    parent_span_id=node_spans[candidate.source_index].span_id,
+                    tool=candidate.node.tool,
                     index=command.detail_index,
                     failed=candidate.failed,
                 ),
                 scope_name="ya.build.command",
             )
 
-        metadata["ya.build.node.span_count"] = len(candidates)
-        metadata["ya.build.node.span_dropped_count"] = dropped
-        metadata["ya.build.command.span_count"] = len(selected_commands)
-        metadata["ya.build.command.span_dropped_count"] = command_dropped
-        return metadata
+    def build(
+        self,
+        *,
+        writer: SpanWriter,
+        trace_id: bytes,
+        parent_span_id: bytes,
+    ) -> dict[str, Any]:
+        plan = self._plan(trace_id)
+        if plan is None:
+            return {"ya.build.node.count": 0}
+        self._emit(
+            plan,
+            writer=writer,
+            trace_id=trace_id,
+            parent_span_id=parent_span_id,
+        )
+        return {
+            "ya.build.node.count": len(plan.envelope.records),
+            "ya.build.node.span_count": len(plan.selection.candidates),
+            "ya.build.node.span_dropped_count": plan.selection.dropped,
+            "ya.build.command.span_count": len(plan.commands.commands),
+            "ya.build.command.span_dropped_count": plan.commands.dropped,
+        }

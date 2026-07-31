@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any
+from dataclasses import dataclass
+from types import MappingProxyType
+from typing import Any, Mapping, Sequence
 
 from ..otlp import (
     Interval,
@@ -16,6 +17,7 @@ from ..otlp import (
 from .build_operations import YaBuildOperations
 from .critical_path import YaCriticalPath
 from .evlog_record import YaEvlogRecord
+from .node import ClassifiedNode
 from .statistics import YaBuildStatistics
 from .test_operations import YaTestOperations
 
@@ -30,16 +32,35 @@ RENDERED_STAGE_NAMES = {
 }
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class YaEvlog:
-    stages: list[YaEvlogRecord]
-    nodes: list[YaEvlogRecord]
-    statistics: dict[str, Any] = field(default_factory=dict)
-    failures: dict[str, int | None] = field(default_factory=dict)
+    stages: tuple[YaEvlogRecord, ...]
+    nodes: tuple[YaEvlogRecord, ...]
+    statistics: YaBuildStatistics
+    critical_path: YaCriticalPath
+    failures: Mapping[str, int | None]
 
-    @property
-    def critical_path(self) -> YaCriticalPath:
-        return YaCriticalPath.from_evlog(self.statistics, self.nodes)
+    @classmethod
+    def from_raw(
+        cls,
+        *,
+        stages: Sequence[YaEvlogRecord] = (),
+        nodes: Sequence[YaEvlogRecord] = (),
+        statistics: Mapping[str, Any] | None = None,
+        failures: Mapping[str, int | None] | None = None,
+    ) -> YaEvlog:
+        finalized_nodes = tuple(nodes)
+        finalized_statistics = YaBuildStatistics.from_raw(statistics)
+        return cls(
+            stages=tuple(stages),
+            nodes=finalized_nodes,
+            statistics=finalized_statistics,
+            critical_path=YaCriticalPath.from_evlog(
+                finalized_statistics.values,
+                finalized_nodes,
+            ),
+            failures=MappingProxyType(dict(failures or {})),
+        )
 
     def build_spans(
         self,
@@ -100,17 +121,13 @@ class YaEvlog:
             )
             is not None
         ]
-        classified = [(record, *record.kind_and_tool) for record in clipped_nodes]
-        build_records = [
-            record for record in classified if not record[1].startswith("test_")
-        ]
+        classified = [ClassifiedNode.from_record(record) for record in clipped_nodes]
+        build_records = [node for node in classified if not node.is_test]
         test_starts = [
-            record.start_ns for record, kind, _ in classified if kind == "test_execute"
+            node.start_ns for node in classified if node.kind == "test_execute"
         ]
         metadata: dict[str, Any] = {"ya.phase.count": len(stages)}
-        critical_path = self.critical_path
-        statistics = YaBuildStatistics(self.statistics)
-        graph_attributes = statistics.graph_attributes()
+        graph_attributes = self.statistics.graph_attributes()
         if dispatch_span is not None:
             update_span_attributes(dispatch_span, graph_attributes)
         else:
@@ -126,8 +143,8 @@ class YaEvlog:
             YaBuildOperations(
                 build_records,
                 self.failures,
-                statistics,
-                critical_path,
+                self.statistics,
+                self.critical_path,
                 test_starts,
             ).build(
                 writer=writer,

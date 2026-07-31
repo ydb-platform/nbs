@@ -158,6 +158,59 @@ class YaTraceSpanBuilder:
             )
         return result
 
+    def _suite_span(
+        self,
+        *,
+        trace_id: bytes,
+        root_span_id: bytes,
+        root: Interval,
+        trace_index: int,
+    ) -> Span | None:
+        source = self.source
+        suite_event = source.suite_event()
+        if suite_event is None:
+            return None
+        timestamps = [
+            event.timestamp_ns
+            for event in source.events
+            if event.name == "suite-event" and event.timestamp_ns is not None
+        ]
+        start_ns = root.clamp(min(timestamps) if timestamps else root.start)
+        end_ns = Ns(
+            max(
+                start_ns,
+                root.clamp(max(timestamps) if timestamps else start_ns),
+            )
+        )
+        status_code = 2 if suite_event.failing_errors else 0
+        status = suite_event.failing_errors[0][0] or "error" if status_code else ""
+        attributes: dict[str, Any] = {
+            "test.suite": source.suite,
+            "ya.test_results.folder": source.result_folder,
+            **suite_event.error_attributes("ya.suite"),
+            **_metric_attributes(
+                suite_event.value.get("metrics"),
+                prefix="ya.suite.metric",
+            ),
+        }
+        return make_span(
+            trace_id=trace_id,
+            span_id=stable_span_id(
+                trace_id,
+                "ya.suite",
+                source.suite,
+                source.result_folder,
+                trace_index,
+            ),
+            parent_span_id=root_span_id,
+            name=f"{source.suite} [{source.result_folder} suite]",
+            start_ns=start_ns,
+            end_ns=end_ns,
+            attributes=attributes,
+            status_code=status_code,
+            status_message=status,
+        )
+
     def build(
         self,
         *,
@@ -172,58 +225,14 @@ class YaTraceSpanBuilder:
         source = self.source
         writer = trace.writer(resource)
         root = Interval(root_start_ns, root_end_ns)
-        suite_event = source.suite_event()
-        if suite_event is not None:
-            timestamps = [
-                event.timestamp_ns
-                for event in source.events
-                if event.name == "suite-event" and event.timestamp_ns is not None
-            ]
-            suite_start_ns = root.clamp(min(timestamps) if timestamps else root.start)
-            suite_end_ns = Ns(
-                max(
-                    suite_start_ns,
-                    root.clamp(
-                        max(timestamps) if timestamps else suite_start_ns,
-                    ),
-                )
-            )
-            suite_status = ""
-            suite_status_code = 0
-            if suite_event.failing_errors:
-                suite_status_code = 2
-                suite_status = suite_event.failing_errors[0][0] or "error"
-            suite_attributes: dict[str, Any] = {
-                "test.suite": source.suite,
-                "ya.test_results.folder": source.result_folder,
-            }
-            suite_attributes.update(suite_event.error_attributes("ya.suite"))
-            suite_attributes.update(
-                _metric_attributes(
-                    suite_event.value.get("metrics"),
-                    prefix="ya.suite.metric",
-                )
-            )
-            writer.add(
-                make_span(
-                    trace_id=trace_id,
-                    span_id=stable_span_id(
-                        trace_id,
-                        "ya.suite",
-                        source.suite,
-                        source.result_folder,
-                        trace_index,
-                    ),
-                    parent_span_id=root_span_id,
-                    name=f"{source.suite} [{source.result_folder} suite]",
-                    start_ns=suite_start_ns,
-                    end_ns=suite_end_ns,
-                    attributes=suite_attributes,
-                    status_code=suite_status_code,
-                    status_message=suite_status if suite_status_code == 2 else "",
-                ),
-                scope_name="ya.suite",
-            )
+        suite_span = self._suite_span(
+            trace_id=trace_id,
+            root_span_id=root_span_id,
+            root=root,
+            trace_index=trace_index,
+        )
+        if suite_span is not None:
+            writer.add(suite_span, scope_name="ya.suite")
 
         chunk_records = source.chunk_records()
         for record_index, (chunk_event, chunk_events) in enumerate(chunk_records):

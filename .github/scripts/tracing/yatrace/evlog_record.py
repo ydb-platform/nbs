@@ -121,10 +121,6 @@ class YaEvlogRecord:
         return "orchestration", self.tag
 
     @property
-    def is_test(self) -> bool:
-        return self.kind_and_tool[0].startswith("test_")
-
-    @property
     def test_size(self) -> str:
         kind, tool = self.kind_and_tool
         return TEST_SIZE_BY_TAG.get(tool, "") if kind == "test_execute" else ""

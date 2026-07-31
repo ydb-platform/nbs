@@ -75,12 +75,24 @@ def _selected_evlog_statistics(value: Any) -> dict[str, Any]:
 
 
 def load_ya_evlog(path: Path | None) -> YaEvlog:
-    result = YaEvlog(stages=[], nodes=[])
+    stages: list[YaEvlogRecord] = []
+    nodes: list[YaEvlogRecord] = []
+    statistics: dict[str, Any] = {}
+    failures: dict[str, int | None] = {}
+
+    def finalize() -> YaEvlog:
+        return YaEvlog.from_raw(
+            stages=stages,
+            nodes=nodes,
+            statistics=statistics,
+            failures=failures,
+        )
+
     if path is None:
-        return result
+        return finalize()
     if not path.is_file():
         LOGGER.warning("Ya event log does not exist: %s", path)
-        return result
+        return finalize()
     if path.stat().st_size > limits.MAX_YA_EVLOG_BYTES:
         raise ValueError(f"Ya event log exceeds {limits.MAX_YA_EVLOG_BYTES} bytes")
 
@@ -123,7 +135,7 @@ def load_ya_evlog(path: Path | None) -> YaEvlog:
                 and isinstance(raw_value, Mapping)
                 and raw_value.get("key") == "stats"
             ):
-                result.statistics = _selected_evlog_statistics(raw_value.get("value"))
+                statistics = _selected_evlog_statistics(raw_value.get("value"))
                 continue
             if (
                 namespace == "devtools.ya.build.reports.failed_node_info"
@@ -139,7 +151,7 @@ def load_ya_evlog(path: Path | None) -> YaEvlog:
                     else None
                 )
                 if uid:
-                    result.failures[uid] = exit_code
+                    failures[uid] = exit_code
                 continue
             raw_thread_name = raw.get("thread_name")
             thread_name = raw_thread_name if isinstance(raw_thread_name, str) else ""
@@ -178,9 +190,9 @@ def load_ya_evlog(path: Path | None) -> YaEvlog:
             if record is None:
                 continue
             if namespace == "stages":
-                result.stages.append(record)
+                stages.append(record)
             else:
-                result.nodes.append(record)
+                nodes.append(record)
                 if thread_name:
                     last_finished_by_thread[thread_name] = record
-    return result
+    return finalize()

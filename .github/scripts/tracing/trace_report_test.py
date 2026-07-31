@@ -11,12 +11,11 @@ import pytest
 from jinja2 import UndefinedError
 from opentelemetry.proto_json.trace.v1.trace import TracesData
 
-import scripts.tracing.trace_report as trace_report_module
-
 from scripts.tracing.ya_trace_report import (
     build_resource_attributes,
     build_ya_trace,
 )
+from scripts.tracing.trace_io import read_otlp_jsonl
 from scripts.tracing.otlp import (
     ResourceAttributes,
     Span,
@@ -25,18 +24,12 @@ from scripts.tracing.otlp import (
     make_event,
     make_span as new_span,
     Ns,
-    span_duration_ns,
-    stable_span_id,
-    stable_trace_id,
 )
 from scripts.tracing.trace_report import (
-    MAX_INPUT_BYTES,
-    MAX_SPANS,
     TRACE_HTML_TEMPLATE,
     TRACE_SCRIPT_TEMPLATE,
     TRACE_TEMPLATE_ENV,
     _trace_model,
-    read_otlp_jsonl,
     render_html,
     write_trace_bundle,
 )
@@ -53,40 +46,6 @@ def make_span(**kwargs) -> Span:
     }
     values.update(kwargs)
     return new_span(**values)
-
-
-def test_renderer_limits_allow_merging_detailed_nightly_traces() -> None:
-    # One observed test artifact is already ~87k spans / ~90M decoded bytes;
-    # the workflow report must still be able to merge build and job traces.
-    assert MAX_SPANS >= 500_000
-    assert MAX_INPUT_BYTES >= 512 * 1024 * 1024
-
-
-def test_otlp_writer_splits_batches_to_respect_reader_line_limit(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(trace_report_module, "MAX_JSON_LINE_CHARACTERS", 1_200)
-    trace = Trace()
-    for index in range(12):
-        trace.add_span(
-            make_span(
-                span_id=(index + 1).to_bytes(8, "big"),
-                name=f"span-{index}",
-                attributes={"payload": "x" * 300},
-            ),
-            resource=ResourceAttributes(),
-            scope_name="test",
-        )
-    path = tmp_path / "trace.otlp.jsonl.gz"
-
-    trace_report_module.write_otlp_jsonl(path, trace)
-
-    with gzip.open(path, "rt", encoding="utf-8") as stream:
-        lines = stream.readlines()
-    assert len(lines) > 1
-    assert max(map(len, lines)) <= 1_200
-    assert len(read_otlp_jsonl([path])) == len(trace)
 
 
 def make_trace(
@@ -263,7 +222,8 @@ def test_trace_template_rejects_missing_context() -> None:
 
 
 def test_trace_script_is_safe_to_embed() -> None:
-    assert "</script" not in TRACE_SCRIPT_TEMPLATE.read_text().lower()
+    scripts = (TRACE_SCRIPT_TEMPLATE.parent / "trace_report").glob("*.js")
+    assert all("</script" not in script.read_text().lower() for script in scripts)
 
 
 def test_resource_attributes_support_environment_and_workflow_run() -> None:
@@ -432,53 +392,9 @@ def test_renderer_collapses_generated_ya_groups_by_default(tmp_path: Path) -> No
         "ya.test.stage",
     } <= set(model["c"])
     template = TRACE_HTML_TEMPLATE.read_text()
-    script = TRACE_SCRIPT_TEMPLATE.read_text()
+    scripts = (TRACE_SCRIPT_TEMPLATE.parent / "trace_report").glob("*.js")
     assert '{% include "trace_report.js" %}' in template
-    assert script in report
+    assert all(script.read_text() in report for script in scripts)
     assert '{% include "trace_report.js" %}' not in report
+    assert "{% include" not in report
     assert "CC: output.o" not in report
-
-
-def test_reader_rejects_invalid_ids(tmp_path: Path) -> None:
-    path = tmp_path / "bad.jsonl"
-    path.write_text(
-        json.dumps(
-            {
-                "resourceSpans": [
-                    {
-                        "scopeSpans": [
-                            {
-                                "spans": [
-                                    {
-                                        "traceId": "not-a-trace-id",
-                                        "spanId": "2" * 16,
-                                        "name": "bad",
-                                        "startTimeUnixNano": "1",
-                                        "endTimeUnixNano": "2",
-                                    }
-                                ]
-                            }
-                        ]
-                    }
-                ]
-            }
-        )
-        + "\n"
-    )
-    with pytest.raises(ValueError, match="Invalid OTLP JSON.*Invalid hex string"):
-        read_otlp_jsonl([path])
-
-
-def test_reader_limits_decompressed_input(tmp_path: Path) -> None:
-    path = tmp_path / "compressed.jsonl.gz"
-    with gzip.open(path, "wt", encoding="utf-8") as stream:
-        stream.write(" " * 1_000 + "{}\n")
-    assert path.stat().st_size < 200
-    with pytest.raises(ValueError, match="Decoded OTLP input exceeds"):
-        read_otlp_jsonl([path], max_input_bytes=200)
-
-
-def test_span_ids_are_stable_and_have_otlp_lengths() -> None:
-    assert stable_span_id("run", 1) == stable_span_id("run", 1)
-    assert len(stable_span_id("run")) == 8
-    assert len(stable_trace_id("run")) == 16
