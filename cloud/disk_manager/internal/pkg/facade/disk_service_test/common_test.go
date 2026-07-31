@@ -111,7 +111,7 @@ func testCreateDiskFromImageWithZoneID(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	diskMeta, err := testcommon.GetDiskMeta(ctx, diskID)
+	diskMeta, err := testcommon.GetDiskMeta(t, ctx, diskID)
 	require.NoError(t, err)
 	// We should provide correct zone for NBS client because only unsharded
 	// zones and shards are configured in the NBS client config.
@@ -251,7 +251,7 @@ func testDiskServiceCreateDiskFromSnapshotWithZoneID(
 	err = nbsClient.ValidateCrc32(ctx, diskID1, diskContentInfo)
 	require.NoError(t, err)
 
-	diskMeta, err := testcommon.GetDiskMeta(ctx, diskID2)
+	diskMeta, err := testcommon.GetDiskMeta(t, ctx, diskID2)
 	require.NoError(t, err)
 	// We should provide correct zone for NBS client because only unsharded
 	// zones and shards are configured in the NBS client config.

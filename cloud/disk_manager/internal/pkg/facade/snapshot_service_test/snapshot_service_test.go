@@ -59,7 +59,7 @@ func testCreateSnapshotFromDiskWithZoneID(
 	require.NoError(t, err)
 
 	// Disk cell is not determined, when creating in sharded zone.
-	diskMeta, err := testcommon.GetDiskMeta(ctx, diskID)
+	diskMeta, err := testcommon.GetDiskMeta(t, ctx, diskID)
 	require.NoError(t, err)
 	nbsClient := testcommon.NewNbsTestingClient(t, ctx, diskMeta.ZoneID)
 	_, err = nbsClient.FillDisk(ctx, diskID, 64*4096)
@@ -202,7 +202,7 @@ func TestSnapshotServiceCancelCreateSnapshotFromDisk(t *testing.T) {
 	testcommon.CancelOperation(t, ctx, client, operation.Id)
 	testcommon.WaitOperationEnded(t, ctx, operation.Id, 10*time.Second)
 
-	snapshotMeta, err := testcommon.GetSnapshotMeta(ctx, snapshotID)
+	snapshotMeta, err := testcommon.GetSnapshotMeta(t, ctx, snapshotID)
 
 	// If snapshot creation was cancelled, checkpoint should be deleted.
 	// Otherwise, there should be a checkpoint from snapshot.
@@ -748,7 +748,7 @@ func TestSnapshotServiceDeleteIncrementalSnapshotWhileCreating(t *testing.T) {
 	// TestSnapshotServiceDeleteIncrementalSnapshotBeforeCreating and
 	// TestSnapshotServiceDeleteIncrementalSnapshotAfterCreating.
 	if creationErr != nil {
-		snapshotID, _, err := testcommon.GetIncremental(ctx, &types.Disk{
+		snapshotID, _, err := testcommon.GetIncremental(t, ctx, &types.Disk{
 			ZoneId: defaultZoneID,
 			DiskId: diskID,
 		})

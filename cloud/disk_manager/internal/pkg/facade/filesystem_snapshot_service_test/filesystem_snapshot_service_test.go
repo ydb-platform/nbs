@@ -58,7 +58,7 @@ func waitForFilesystemSnapshotCreationStarted(
 ) {
 
 	require.EventuallyWithT(t, func(collect *assert.CollectT) {
-		meta, err := testcommon.GetFilesystemSnapshotMeta(ctx, snapshotID)
+		meta, err := testcommon.GetFilesystemSnapshotMeta(t, ctx, snapshotID)
 		assert.NoError(collect, err)
 		assert.NotNil(collect, meta)
 		if err != nil || meta == nil {
@@ -66,7 +66,7 @@ func waitForFilesystemSnapshotCreationStarted(
 		}
 
 		dataplaneMeta, err :=
-			testcommon.GetDataplaneFilesystemSnapshotMeta(ctx, snapshotID)
+			testcommon.GetDataplaneFilesystemSnapshotMeta(t, ctx, snapshotID)
 		assert.NoError(collect, err)
 		assert.NotNil(collect, dataplaneMeta)
 	}, 30*time.Second, 100*time.Millisecond)
@@ -79,7 +79,7 @@ func waitForFilesystemSnapshotDeleted(
 ) {
 
 	require.EventuallyWithT(t, func(collect *assert.CollectT) {
-		meta, err := testcommon.GetFilesystemSnapshotMeta(ctx, snapshotID)
+		meta, err := testcommon.GetFilesystemSnapshotMeta(t, ctx, snapshotID)
 		assert.NoError(collect, err)
 		assert.Nil(collect, meta)
 		if err != nil || meta != nil {
@@ -87,7 +87,7 @@ func waitForFilesystemSnapshotDeleted(
 		}
 
 		dataplaneMeta, err :=
-			testcommon.GetDataplaneFilesystemSnapshotMeta(ctx, snapshotID)
+			testcommon.GetDataplaneFilesystemSnapshotMeta(t, ctx, snapshotID)
 		assert.NoError(collect, err)
 		assert.Nil(collect, dataplaneMeta)
 	}, 60*time.Second, 100*time.Millisecond)
