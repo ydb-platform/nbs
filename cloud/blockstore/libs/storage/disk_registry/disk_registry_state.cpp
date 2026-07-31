@@ -1722,8 +1722,7 @@ bool TDiskRegistryState::UpdatePlacementGroup(
 
 TDeviceList::TAllocationQuery TDiskRegistryState::MakeMigrationQuery(
     const TDiskId& sourceDiskId,
-    const NProto::TDeviceConfig& sourceDevice,
-    const THashSet<ui32>& forbiddenNodeIds)
+    const NProto::TDeviceConfig& sourceDevice)
 {
     TDiskState& disk = Disks[sourceDiskId];
 
@@ -1739,8 +1738,7 @@ TDeviceList::TAllocationQuery TDiskRegistryState::MakeMigrationQuery(
         .LogicalBlockSize = disk.LogicalBlockSize,
         .BlockCount = logicalBlockCount,
         .PoolName = sourceDevice.GetPoolName(),
-        .PoolKind = GetDevicePoolKind(sourceDevice.GetPoolName()),
-        .ForbiddenNodeIds = forbiddenNodeIds
+        .PoolKind = GetDevicePoolKind(sourceDevice.GetPoolName())
     };
 
     if (query.PoolKind == NProto::DEVICE_POOL_KIND_LOCAL) {
@@ -1880,8 +1878,7 @@ TResultOrError<NProto::TDeviceConfig> TDiskRegistryState::StartDeviceMigration(
     TInstant now,
     TDiskRegistryDatabase& db,
     const TDiskId& sourceDiskId,
-    const TDeviceId& sourceDeviceId,
-    const THashSet<ui32>& forbiddenNodeIds)
+    const TDeviceId& sourceDeviceId)
 {
     try {
         if (auto error = ValidateStartDeviceMigration(
@@ -1894,8 +1891,7 @@ TResultOrError<NProto::TDeviceConfig> TDiskRegistryState::StartDeviceMigration(
         TDeviceList::TAllocationQuery query =
             MakeMigrationQuery(
                 sourceDiskId,
-                *DeviceList.FindDevice(sourceDeviceId),
-                forbiddenNodeIds);
+                *DeviceList.FindDevice(sourceDeviceId));
 
         NProto::TDeviceConfig targetDevice
             = DeviceList.AllocateDevice(sourceDiskId, query);
@@ -1917,8 +1913,7 @@ TResultOrError<NProto::TDeviceConfig> TDiskRegistryState::StartDeviceMigration(
     TDiskRegistryDatabase& db,
     const TDiskId& sourceDiskId,
     const TDeviceId& sourceDeviceId,
-    const TDeviceId& targetDeviceId,
-    const THashSet<ui32>& forbiddenNodeIds)
+    const TDeviceId& targetDeviceId)
 {
     try {
         if (auto error = ValidateStartDeviceMigration(
@@ -1931,8 +1926,7 @@ TResultOrError<NProto::TDeviceConfig> TDiskRegistryState::StartDeviceMigration(
         TDeviceList::TAllocationQuery query =
             MakeMigrationQuery(
                 sourceDiskId,
-                *DeviceList.FindDevice(sourceDeviceId),
-                forbiddenNodeIds);
+                *DeviceList.FindDevice(sourceDeviceId));
 
         const NProto::TDeviceConfig* targetDevice =
             DeviceList.FindDevice(targetDeviceId);
@@ -6575,18 +6569,26 @@ bool TDiskRegistryState::RestartDeviceMigration(
     const TDeviceId& targetId)
 {
     auto it = disk.MigrationTarget2Source.find(targetId);
+    if (it != disk.MigrationTarget2Source.end()) {
+        const TDeviceId sourceId = it->second;
 
-    if (it == disk.MigrationTarget2Source.end()) {
-        return false;
+        CancelDeviceMigration(now, db, diskId, disk, sourceId);
+        AddMigration(disk, diskId, sourceId);
+
+        return true;
     }
 
-    TDeviceId sourceId = it->second;
-
-    CancelDeviceMigration(now, db, diskId, disk, sourceId);
-
-    AddMigration(disk, diskId, sourceId);
-
-    return true;
+    // A device can be in state described below and
+    // it must not be assumed as migration's source device.
+    // For example, we can see this when DA restarted and
+    // didn't finished its registration yet.
+    return AnyOf(
+        disk.FinishedMigrations,
+        [&] (const auto& migration)
+        {
+            return migration.DeviceId == targetId &&
+                   migration.IsCanceled;
+        });
 }
 
 void TDiskRegistryState::DeleteAllDeviceMigrations(const TDiskId& diskId)
@@ -6635,6 +6637,8 @@ void TDiskRegistryState::CancelDeviceMigration(
 
     const ui64 seqNo = AddReallocateRequest(db, diskId);
 
+    // We push there a device which is not a part of the disk anymore and
+    // must be released later in RemoveFinishedMigrations after Volume's ack.
     disk.FinishedMigrations.push_back(
         {.DeviceId = targetId, .SeqNo = seqNo, .IsCanceled = true});
 

@@ -1546,6 +1546,108 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
         UNIT_ASSERT_VALUES_EQUAL(2, migrationsAfterSecondRequest.size());
     }
 
+    Y_UNIT_TEST(ShouldNotTreatCanceledMigrationTargetAsSource)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
+
+        const TVector agents = CreateSeveralAgents();
+
+        auto statePtr = CreateTestState(agents);
+        TDiskRegistryState& state = *statePtr;
+
+        NMonitoring::TDynamicCountersPtr counters =
+            new NMonitoring::TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto critCounter = counters->GetCounter(
+            "AppCriticalEvents/DiskRegistryWrongMigratedDeviceOwnership",
+            true);
+        UNIT_ASSERT_VALUES_EQUAL(0, critCounter->Val());
+
+        // Put uuid-1.1 into the migration queue.
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db) mutable
+            {
+                TString affectedDisk;
+                UNIT_ASSERT_SUCCESS(state.UpdateDeviceState(
+                    db,
+                    "uuid-1.1",
+                    NProto::DEVICE_STATE_WARNING,
+                    Now(),
+                    "test",
+                    affectedDisk));
+                UNIT_ASSERT_VALUES_EQUAL("disk-1", affectedDisk);
+            });
+
+        const auto migrations = state.BuildMigrationList();
+        UNIT_ASSERT_VALUES_EQUAL(1, migrations.size());
+        UNIT_ASSERT_VALUES_EQUAL("disk-1", migrations[0].DiskId);
+        UNIT_ASSERT_VALUES_EQUAL("uuid-1.1", migrations[0].SourceDeviceId);
+
+        // Start migration to a target device on agent-2.
+        TString targetId;
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db) mutable
+            {
+                auto [target, error] = state.StartDeviceMigration(
+                    Now(),
+                    db,
+                    migrations[0].DiskId,
+                    migrations[0].SourceDeviceId);
+
+                UNIT_ASSERT_SUCCESS(error);
+                UNIT_ASSERT_VALUES_EQUAL("agent-2", target.GetAgentId());
+                targetId = target.GetDeviceUUID();
+            });
+
+        // Make the target agent unavailable.
+        // This cancels the active migration and requeues its source device.
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db) mutable
+            {
+                ChangeAgentState(
+                    state,
+                    db,
+                    agents[1],
+                    NProto::AGENT_STATE_UNAVAILABLE);
+            });
+
+        // The active migration is gone, but its canceled target remains in
+        // FinishedMigrations until the volume acknowledges disk reallocation.
+        {
+            TDiskInfo diskInfo;
+            UNIT_ASSERT_SUCCESS(state.GetDiskInfo("disk-1", diskInfo));
+            UNIT_ASSERT_VALUES_EQUAL(0, diskInfo.Migrations.size());
+            UNIT_ASSERT_VALUES_EQUAL(1, diskInfo.FinishedMigrations.size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                targetId,
+                diskInfo.FinishedMigrations[0].DeviceId);
+            UNIT_ASSERT(diskInfo.FinishedMigrations[0].IsCanceled);
+        }
+
+        // Move the target agent from UNAVAILABLE to WARNING.
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db) mutable
+            {
+                ChangeAgentState(
+                    state,
+                    db,
+                    agents[1],
+                    NProto::AGENT_STATE_WARNING);
+            });
+
+        UNIT_ASSERT_VALUES_EQUAL(0, critCounter->Val());
+        // The canceled target must not be treated as a new migration source.
+        // Only the original source device remains in the migration queue.
+        {
+            const auto pendingMigrations = state.BuildMigrationList();
+            UNIT_ASSERT_VALUES_EQUAL(1, pendingMigrations.size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "uuid-1.1",
+                pendingMigrations[0].SourceDeviceId);
+        }
+    }
+
     Y_UNIT_TEST(ShouldNotStartAlreadyFinishedMigrationDevice)
     {
         TTestExecutor executor;

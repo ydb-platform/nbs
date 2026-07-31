@@ -398,23 +398,8 @@ void TDiskRegistryActor::ExecuteStartMigration(
 {
     TDiskRegistryDatabase db(tx.DB);
 
-    // Collect nodes of agents that have not finished their registration in the
-    // current Disk Registry generation yet.
-    THashSet<ui32> forbiddenNodeIds;
-    for (const auto& agent: State->GetAgents()) {
-        const auto* regInfo = AgentRegInfo.FindPtr(agent.GetAgentId());
-        if (!regInfo || !regInfo->Connected) {
-            forbiddenNodeIds.insert(agent.GetNodeId());
-        }
-    }
-
     for (const auto& [diskId, deviceId]: State->BuildMigrationList()) {
-        const auto result = State->StartDeviceMigration(
-            ctx.Now(),
-            db,
-            diskId,
-            deviceId,
-            forbiddenNodeIds);
+        const auto result = State->StartDeviceMigration(ctx.Now(), db, diskId, deviceId);
 
         if (HasError(result)) {
             LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY,
