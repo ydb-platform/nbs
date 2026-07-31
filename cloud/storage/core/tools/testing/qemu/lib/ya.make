@@ -12,6 +12,7 @@ PY_SRCS(
 
 PEERDIR(
     cloud/storage/core/tests/common
+    cloud/storage/core/tools/testing/virtiofs_server/lib
 
     contrib/python/PyYAML
     contrib/python/retrying
