@@ -2711,7 +2711,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             UNIT_ASSERT(response.GetStrictFileSystemSizeEnforcementEnabled());
         };
 
-        testFileSystemTopology(0, fsConfig.FsId, {});
+        testFileSystemTopology(0, fsConfig.FsId, fsConfig.FsId);
         testFileSystemTopology(1, fsConfig.Shard1Id, fsConfig.FsId);
         testFileSystemTopology(2, fsConfig.Shard2Id, fsConfig.FsId);
     }

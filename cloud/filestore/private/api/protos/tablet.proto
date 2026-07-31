@@ -884,7 +884,7 @@ message TGetFileSystemTopologyResponse
 
     bool CompressNodeRef = 9;
 
-    // Main FileSystem identifier (if this fs is a shard itself).
+    // Main FileSystem identifier.
     string MainFileSystemId = 10;
 }
 
