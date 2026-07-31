@@ -12,8 +12,11 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
+#include <library/cpp/logger/stream.h>
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
+
+#include <util/stream/str.h>
 
 namespace NCloud::NBlockStore {
 
@@ -375,6 +378,50 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
     {
         DoTestShouldCountHwProblems(
             NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_HDD_NONREPLICATED);
+    }
+
+    Y_UNIT_TEST(ShouldNotUnescapeAlreadyNormalizedPeerInLogs)
+    {
+        TStringStream logStream;
+        TLog log {MakeHolder<TStreamLogBackend>(&logStream)};
+
+        auto timer = std::make_shared<TTestTimer>();
+        auto monitoring = CreateMonitoringServiceStub();
+
+        auto serverStats = CreateServerStats(
+            std::make_shared<TTestDumpable>(),
+            std::make_shared<TDiagnosticsConfig>(),
+            monitoring,
+            CreateProfileLogStub(),
+            CreateServerRequestStats(
+                monitoring->GetCounters(),
+                timer,
+                EHistogramCounterOption::ReportMultipleCounters,
+                {}),
+            CreateVolumeStatsStub());
+
+        TMetricRequest request {EBlockStoreRequest::DescribeVolume};
+        request.Peer = "ipv6:[fe80::1%42]:12345";
+        serverStats->PrepareMetricRequest(
+            request,
+            "client",
+            "volume",
+            0,
+            0,
+            false);
+
+        auto callContext = MakeIntrusive<TCallContext>();
+        serverStats->RequestStarted(log, request, *callContext, "");
+        serverStats->RequestCompleted(log, request, *callContext, MakeError(S_OK));
+
+        const auto logOutput = logStream.Str();
+        UNIT_ASSERT_STRING_CONTAINS(
+            logOutput,
+            "peer: ipv6:[fe80::1%42]:12345");
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            TString::npos,
+            logOutput.find("peer: ipv6:[fe80::1B]:12345"),
+            logOutput);
     }
 
     Y_UNIT_TEST(ShouldNotReportErrorsForCellRequests)
