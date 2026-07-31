@@ -158,7 +158,7 @@ private:
         *r.MutableHeaders() = w.GetHeaders();
         for (const auto& pg: w.GetPageGroups()) {
             auto* rpg = r.AddPageGroupRefs();
-            rpg->SetPageSize(pg.ContentSize() ? pg.GetContent(0).Size() : 0);
+            rpg->SetPageSize(pg.ContentSize() ? pg.GetContent(0).size() : 0);
             rpg->SetPageCount(pg.ContentSize());
             rpg->SetFirstPageNo(pg.GetFirstPageNo());
         }
