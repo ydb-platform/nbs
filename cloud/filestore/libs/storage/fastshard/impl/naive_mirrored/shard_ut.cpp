@@ -601,7 +601,7 @@ TEST(NaiveMirroredShardTest, WritesAndReadsLongUnalignedRangesWithHoles)
         {
             TWriteDataRequest request;
             request.SetHandle(handle);
-            request.SetOffset(page1.Size());
+            request.SetOffset(page1.size());
             *request.MutableBuffer() = page2;
             auto f = shard->WriteData(request);
             auto response = f.GetValueSync();
