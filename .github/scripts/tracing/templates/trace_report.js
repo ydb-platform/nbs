@@ -21,6 +21,16 @@ const NAME_COLUMN_STORAGE_KEY = "trace-report.name-column-width";
 const MIN_NAME_COLUMN_WIDTH_PX = 240;
 const MIN_OTHER_COLUMNS_WIDTH_PX = 400;
 const NAME_COLUMN_KEYBOARD_STEP_PX = 24;
+const MIN_TIMELINE_BAR_PERCENT = 0.15;
+const TIMELINE_MODES = Object.freeze({
+  GLOBAL: "global",
+  LOCAL: "local",
+});
+const LOCAL_TIMELINE_ROOT_SCOPES = new Set([
+  "ya.test.worker",
+  "ya.test.node",
+  "ya.chunk",
+]);
 const COLLAPSED_SCOPES = new Set([
   "ya.build",
   "ya.chunk",
@@ -29,6 +39,25 @@ const COLLAPSED_SCOPES = new Set([
   "ya.test.worker",
 ]);
 const TEST_SIZES = Object.freeze(["small", "medium", "large"]);
+const TEST_PHASE_DEFINITIONS = Object.freeze([
+  Object.freeze({
+    scope: "ya.test.stage",
+    attribute: "ya.test.stage.name",
+    label: "Test stage",
+    ownerScopes: Object.freeze(["ya.chunk"]),
+  }),
+  Object.freeze({
+    scope: "ya.test.worker.phase",
+    attribute: "ya.test.worker.phase",
+    label: "Worker phase",
+    ownerScopes: Object.freeze(["ya.test.worker", "ya.test.node"]),
+  }),
+]);
+const TEST_PHASE_NAME_LABELS = Object.freeze({
+  exec_cmd: "exec command",
+  post_cmd: "post command",
+  node_result: "node result",
+});
 const TEST_WORKER_PHASE_BAR_CLASSES = Object.freeze({
   setup: "bar-worker-setup",
   exec_cmd: "bar-worker-exec-cmd",
@@ -44,12 +73,17 @@ const TEST_STAGE_BAR_CLASSES = Object.freeze({
 
 let rowsElement;
 let filterElement;
+let clearFilterElement;
 let filterStatus;
 let failedOnlyElement;
 let topTestsOnlyElement;
 let minimumDurationElement;
+let clearMinimumDurationElement;
+let testPhaseElement;
 let testSizeElements;
+let clearFiltersElement;
 let rowLoadSizeElement;
+let timelineModeElement;
 let rowLoader;
 let rowLoadButton;
 let rowStatus;
@@ -67,6 +101,7 @@ let visible;
 let selected = null;
 let searchCache = [];
 let rowBudget = INITIAL_ROW_BUDGET;
+let filterTimer;
 
 function clampNameColumnWidth(width, containerWidth) {
   const availableWidth = Number(containerWidth);
@@ -222,6 +257,134 @@ function parseMinimumDurationNs(value) {
   return Math.round(seconds * 1e9);
 }
 
+function testPhaseDefinition(scope) {
+  return TEST_PHASE_DEFINITIONS.find(
+    (definition) => definition.scope === scope,
+  );
+}
+
+function encodeTestPhaseSelection(scope, name = null) {
+  return JSON.stringify([scope, name]);
+}
+
+function parseTestPhaseSelection(value) {
+  if (typeof value !== "string" || !value) return null;
+  try {
+    const decoded = JSON.parse(value);
+    if (
+      !Array.isArray(decoded) ||
+      decoded.length !== 2 ||
+      typeof decoded[0] !== "string" ||
+      (decoded[1] !== null &&
+        (typeof decoded[1] !== "string" || !decoded[1])) ||
+      !testPhaseDefinition(decoded[0])
+    ) {
+      return null;
+    }
+    return { scope: decoded[0], name: decoded[1] };
+  } catch (_error) {
+    return null;
+  }
+}
+
+function humanizeTestPhaseName(name) {
+  return (
+    TEST_PHASE_NAME_LABELS[name] ||
+    name.replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim()
+  );
+}
+
+function testPhaseOptions(sourceSpans, scopes) {
+  const phases = new Map();
+  const availableScopes = new Set();
+  sourceSpans.forEach((span) => {
+    const scope = scopes[span[SCOPE]];
+    const definition = testPhaseDefinition(scope);
+    if (!definition) return;
+    availableScopes.add(scope);
+    const name = span[ATTRS][definition.attribute];
+    if (typeof name !== "string" || !name) return;
+    const value = encodeTestPhaseSelection(scope, name);
+    phases.set(value, {
+      value,
+      scope,
+      name,
+      label: `${definition.label}: ${humanizeTestPhaseName(name)}`,
+    });
+  });
+  const scopeOptions = TEST_PHASE_DEFINITIONS.filter(({ scope }) =>
+    availableScopes.has(scope),
+  ).map(({ scope, label }) => ({
+    value: encodeTestPhaseSelection(scope),
+    scope,
+    name: null,
+    label: `Any ${label.toLowerCase()}`,
+  }));
+  const exactOptions = [...phases.values()].sort(
+    (left, right) =>
+      TEST_PHASE_DEFINITIONS.findIndex(
+        (definition) => definition.scope === left.scope,
+      ) -
+        TEST_PHASE_DEFINITIONS.findIndex(
+          (definition) => definition.scope === right.scope,
+        ) || left.label.localeCompare(right.label),
+  );
+  return [...scopeOptions, ...exactOptions];
+}
+
+function spanMatchesTestPhase(span, scopes, selection) {
+  const scope = scopes[span[SCOPE]];
+  if (scope !== selection.scope) return false;
+  if (selection.name === null) return true;
+  const definition = testPhaseDefinition(scope);
+  return Boolean(
+    definition && span[ATTRS][definition.attribute] === selection.name,
+  );
+}
+
+function spanOrAncestorMatches(index, sourceSpans, predicate) {
+  let current = index;
+  const seen = new Set();
+  while (
+    current >= 0 &&
+    current < sourceSpans.length &&
+    !seen.has(current)
+  ) {
+    seen.add(current);
+    if (predicate(sourceSpans[current], current)) return true;
+    current = sourceSpans[current][PARENT];
+  }
+  return false;
+}
+
+function testPhaseOrOwnerMatches(
+  index,
+  sourceSpans,
+  scopes,
+  selection,
+  predicate,
+) {
+  const definition = testPhaseDefinition(selection.scope);
+  if (!definition) return false;
+  if (predicate(sourceSpans[index], index)) return true;
+
+  let current = sourceSpans[index][PARENT];
+  const seen = new Set([index]);
+  while (
+    current >= 0 &&
+    current < sourceSpans.length &&
+    !seen.has(current)
+  ) {
+    seen.add(current);
+    const candidate = sourceSpans[current];
+    if (definition.ownerScopes.includes(scopes[candidate[SCOPE]])) {
+      return predicate(candidate, current);
+    }
+    current = candidate[PARENT];
+  }
+  return false;
+}
+
 function timelineBarClass(scope, attributes) {
   const values =
     attributes && typeof attributes === "object" ? attributes : {};
@@ -241,6 +404,118 @@ function timelineBarClass(scope, attributes) {
       : "bar-stage-other";
   }
   return "bar-default";
+}
+
+function timelineModeFromValue(value) {
+  return value === TIMELINE_MODES.GLOBAL
+    ? TIMELINE_MODES.GLOBAL
+    : TIMELINE_MODES.LOCAL;
+}
+
+function globalTimelineBarGeometry(span, traceDuration) {
+  const duration = Number(traceDuration);
+  if (!Number.isFinite(duration) || duration <= 0) {
+    return { left: 0, width: 100, relativeTo: -1 };
+  }
+  return boundedTimelineBarGeometry(span, 0, duration, -1);
+}
+
+function boundedTimelineBarGeometry(
+  span,
+  timelineStart,
+  timelineDuration,
+  relativeTo,
+) {
+  const spanStart = Number(span[START]);
+  const spanDuration = Math.max(0, Number(span[DURATION]));
+  if (!Number.isFinite(spanStart) || !Number.isFinite(spanDuration)) {
+    return { left: 0, width: 0, relativeTo };
+  }
+  const spanEnd = spanStart + spanDuration;
+  const timelineEnd = timelineStart + timelineDuration;
+  const clippedStart = Math.max(timelineStart, spanStart);
+  const clippedEnd = Math.min(timelineEnd, spanEnd);
+  const clippedDuration = Math.max(0, clippedEnd - clippedStart);
+  const instantWithinTimeline =
+    spanDuration === 0 &&
+    spanStart >= timelineStart &&
+    spanStart <= timelineEnd;
+  const exactLeft = Math.min(
+    100,
+    Math.max(0, (100 * (clippedStart - timelineStart)) / timelineDuration),
+  );
+  if (!clippedDuration && !instantWithinTimeline) {
+    return { left: exactLeft, width: 0, relativeTo };
+  }
+  const width = Math.min(
+    100,
+    Math.max(
+      MIN_TIMELINE_BAR_PERCENT,
+      (100 * clippedDuration) / timelineDuration,
+    ),
+  );
+  return {
+    left: Math.min(exactLeft, 100 - width),
+    width,
+    relativeTo,
+  };
+}
+
+function nearestLocalTimelineRoot(index, sourceSpans, scopes) {
+  const seen = new Set([index]);
+  let current = sourceSpans[index]?.[PARENT];
+  while (
+    Number.isInteger(current) &&
+    current >= 0 &&
+    current < sourceSpans.length &&
+    !seen.has(current)
+  ) {
+    if (LOCAL_TIMELINE_ROOT_SCOPES.has(scopes[sourceSpans[current][SCOPE]])) {
+      return current;
+    }
+    seen.add(current);
+    current = sourceSpans[current][PARENT];
+  }
+  return -1;
+}
+
+function timelineBarGeometry(
+  index,
+  sourceSpans,
+  scopes,
+  traceDuration,
+  timelineMode = TIMELINE_MODES.LOCAL,
+) {
+  const span = sourceSpans[index];
+  if (timelineModeFromValue(timelineMode) === TIMELINE_MODES.GLOBAL) {
+    return globalTimelineBarGeometry(span, traceDuration);
+  }
+
+  const scope = scopes[span[SCOPE]];
+  if (LOCAL_TIMELINE_ROOT_SCOPES.has(scope)) {
+    const localDuration = Number(span[DURATION]);
+    if (!Number.isFinite(localDuration) || localDuration <= 0) {
+      return globalTimelineBarGeometry(span, traceDuration);
+    }
+    return { left: 0, width: 100, relativeTo: index };
+  }
+
+  const timelineRootIndex = nearestLocalTimelineRoot(index, sourceSpans, scopes);
+  if (timelineRootIndex < 0) {
+    return globalTimelineBarGeometry(span, traceDuration);
+  }
+  const timelineRoot = sourceSpans[timelineRootIndex];
+  const timelineDuration = Number(timelineRoot[DURATION]);
+  if (!Number.isFinite(timelineDuration) || timelineDuration <= 0) {
+    return globalTimelineBarGeometry(span, traceDuration);
+  }
+
+  return boundedTimelineBarGeometry(
+    span,
+    Number(timelineRoot[START]),
+    timelineDuration,
+    timelineRootIndex,
+  );
 }
 
 function buildHierarchy(sourceSpans) {
@@ -314,6 +589,8 @@ function filterVisibility(
     topTestsOnly = false,
     minimumDurationNs = null,
     testSizes = new Set(),
+    testPhase = null,
+    scopes = [],
   } = {},
   cache = [],
 ) {
@@ -325,8 +602,21 @@ function filterVisibility(
   );
   const hasMinimumDuration =
     Number.isFinite(minimumDurationNs) && minimumDurationNs >= 0;
+  const selectedTestPhase =
+    typeof testPhase === "string"
+      ? parseTestPhaseSelection(testPhase)
+      : testPhase &&
+          testPhaseDefinition(testPhase.scope) &&
+          (testPhase.name === null ||
+            (typeof testPhase.name === "string" && testPhase.name))
+        ? { scope: testPhase.scope, name: testPhase.name }
+        : null;
   const hasSelectionFilter = Boolean(
-    failedOnly || topTestsOnly || hasMinimumDuration || normalizedSizes.size,
+    failedOnly ||
+      topTestsOnly ||
+      hasMinimumDuration ||
+      normalizedSizes.size ||
+      selectedTestPhase,
   );
   const active = Boolean(normalizedQuery || hasSelectionFilter);
   if (!active) return { visible: null, matches: 0 };
@@ -335,16 +625,60 @@ function filterVisibility(
   const directMatches = [];
   let matches = 0;
   sourceSpans.forEach((span, index) => {
-    if (normalizedQuery) {
-      if (!cache[index]) cache[index] = spanSearchText(span);
-      if (!cache[index].includes(normalizedQuery)) return;
+    if (
+      selectedTestPhase &&
+      !spanMatchesTestPhase(span, scopes, selectedTestPhase)
+    ) {
+      return;
     }
-    if (failedOnly && span[STATUS] !== 2) return;
+    if (normalizedQuery) {
+      const matchesQuery = (_candidate, candidateIndex) => {
+        if (cache[candidateIndex] === undefined) {
+          cache[candidateIndex] = spanSearchText(sourceSpans[candidateIndex]);
+        }
+        return cache[candidateIndex].includes(normalizedQuery);
+      };
+      const queryMatches = selectedTestPhase
+        ? spanOrAncestorMatches(index, sourceSpans, matchesQuery)
+        : matchesQuery(span, index);
+      if (!queryMatches) return;
+    }
+    if (
+      failedOnly &&
+      (selectedTestPhase
+        ? !testPhaseOrOwnerMatches(
+            index,
+            sourceSpans,
+            scopes,
+            selectedTestPhase,
+            (candidate) => candidate[STATUS] === 2,
+          )
+        : span[STATUS] !== 2)
+    ) {
+      return;
+    }
     if (topTestsOnly && longestTestRank(span) === null) return;
     if (hasMinimumDuration && span[DURATION] < minimumDurationNs) return;
     if (normalizedSizes.size) {
-      const size = String(span[ATTRS]["test.size"] || "").toLowerCase();
-      if (!normalizedSizes.has(size)) return;
+      const matchesSize = (candidate) => {
+        const size = String(
+          candidate[ATTRS]["test.size"] || "",
+        ).toLowerCase();
+        return normalizedSizes.has(size);
+      };
+      if (
+        selectedTestPhase
+          ? !testPhaseOrOwnerMatches(
+              index,
+              sourceSpans,
+              scopes,
+              selectedTestPhase,
+              matchesSize,
+            )
+          : !matchesSize(span)
+      ) {
+        return;
+      }
     }
     matches += 1;
     directMatches.push(index);
@@ -496,6 +830,77 @@ function selectedTestSizes() {
   );
 }
 
+function filterControlActivity(
+  {
+    query = "",
+    failedOnly = false,
+    topTestsOnly = false,
+    minimumDurationValue = "",
+    minimumDurationBadInput = false,
+    testPhaseValue = "",
+    testSizes = new Set(),
+  } = {},
+) {
+  const hasQuery = String(query ?? "").length > 0;
+  const hasMinimumDuration =
+    String(minimumDurationValue ?? "").length > 0 ||
+    Boolean(minimumDurationBadInput);
+  const hasTestPhase = String(testPhaseValue ?? "").length > 0;
+  const hasTestSizes =
+    testSizes instanceof Set
+      ? testSizes.size > 0
+      : Array.isArray(testSizes) && testSizes.length > 0;
+  return {
+    query: hasQuery,
+    minimumDuration: hasMinimumDuration,
+    any: Boolean(
+      hasQuery ||
+        failedOnly ||
+        topTestsOnly ||
+        hasMinimumDuration ||
+        hasTestPhase ||
+        hasTestSizes
+    ),
+  };
+}
+
+function clearedFilterControlState(state = {}) {
+  return {
+    ...state,
+    query: "",
+    failedOnly: false,
+    topTestsOnly: false,
+    minimumDurationValue: "",
+    minimumDurationBadInput: false,
+    testPhaseValue: "",
+    testSizes: new Set(),
+  };
+}
+
+function currentFilterControlState() {
+  return {
+    query: filterElement.value,
+    failedOnly: isPressed(failedOnlyElement),
+    topTestsOnly: isPressed(topTestsOnlyElement),
+    minimumDurationValue: minimumDurationElement.value,
+    minimumDurationBadInput: Boolean(
+      minimumDurationElement.validity?.badInput,
+    ),
+    testPhaseValue: testPhaseElement.value,
+    testSizes: selectedTestSizes(),
+  };
+}
+
+function updateFilterClearControls() {
+  const activity = filterControlActivity(currentFilterControlState());
+  clearFilterElement.hidden = !activity.query;
+  clearFilterElement.disabled = filterElement.disabled || !activity.query;
+  clearMinimumDurationElement.hidden = !activity.minimumDuration;
+  clearMinimumDurationElement.disabled =
+    minimumDurationElement.disabled || !activity.minimumDuration;
+  clearFiltersElement.disabled = filterElement.disabled || !activity.any;
+}
+
 function currentFilters() {
   return {
     query: filterElement.value,
@@ -503,10 +908,71 @@ function currentFilters() {
     topTestsOnly: isPressed(topTestsOnlyElement),
     minimumDurationNs: parseMinimumDurationNs(minimumDurationElement.value),
     testSizes: selectedTestSizes(),
+    testPhase: parseTestPhaseSelection(testPhaseElement.value),
+    scopes: model.c,
   };
 }
 
+function populateTestPhaseOptions() {
+  const previousValue = testPhaseElement.value;
+  testPhaseElement.replaceChildren();
+  const anyPhase = document.createElement("option");
+  anyPhase.value = "";
+  anyPhase.textContent = "Any matching span";
+  testPhaseElement.append(anyPhase);
+  testPhaseOptions(spans, model.c).forEach(({ value, label }) => {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    testPhaseElement.append(option);
+  });
+  if (
+    [...testPhaseElement.options].some(({ value }) => value === previousValue)
+  ) {
+    testPhaseElement.value = previousValue;
+  }
+}
+
+function applyFilterImmediately() {
+  clearTimeout(filterTimer);
+  filterTimer = undefined;
+  applyFilter();
+}
+
+function clearTextFilter() {
+  filterElement.value = "";
+  updateFilterClearControls();
+  applyFilterImmediately();
+  filterElement.focus();
+}
+
+function clearMinimumDurationFilter() {
+  minimumDurationElement.value = "";
+  updateFilterClearControls();
+  applyFilterImmediately();
+  minimumDurationElement.focus();
+}
+
+function clearAllFilters() {
+  const cleared = clearedFilterControlState(currentFilterControlState());
+  filterElement.value = cleared.query;
+  failedOnlyElement.setAttribute("aria-pressed", String(cleared.failedOnly));
+  topTestsOnlyElement.setAttribute(
+    "aria-pressed",
+    String(cleared.topTestsOnly),
+  );
+  minimumDurationElement.value = cleared.minimumDurationValue;
+  testPhaseElement.value = cleared.testPhaseValue;
+  testSizeElements.forEach((element) => {
+    element.setAttribute("aria-pressed", "false");
+  });
+  updateFilterClearControls();
+  applyFilterImmediately();
+  filterElement.focus();
+}
+
 function applyFilter() {
+  updateFilterClearControls();
   const result = filterVisibility(spans, currentFilters(), searchCache);
   if (result.visible === null) {
     visible = null;
@@ -526,7 +992,7 @@ function applyFilter() {
 
 function toggleFilter(element) {
   element.setAttribute("aria-pressed", String(!isPressed(element)));
-  applyFilter();
+  applyFilterImmediately();
 }
 
 function flattenRows() {
@@ -650,11 +1116,32 @@ function spanRow(item) {
     model.c[span[SCOPE]],
     span[ATTRS],
   )}`;
-  bar.style.left = `${(100 * Math.max(0, span[START])) / model.d}%`;
-  bar.style.width = `${Math.max(
-    0.15,
-    (100 * span[DURATION]) / model.d,
-  )}%`;
+  const timelineMode = timelineModeFromValue(timelineModeElement?.value);
+  const geometry = timelineBarGeometry(
+    item.index,
+    spans,
+    model.c,
+    model.d,
+    timelineMode,
+  );
+  bar.style.left = `${geometry.left}%`;
+  bar.style.width = `${geometry.width}%`;
+  if (geometry.width === 0) bar.hidden = true;
+  if (geometry.relativeTo >= 0) {
+    const localTimeline = spans[geometry.relativeTo];
+    const localTimelineDescription =
+      geometry.relativeTo === item.index
+        ? `Local timeline root; full width is ${formatDuration(
+            localTimeline[DURATION],
+          )}. Descendants are positioned relative to this interval.`
+        : `Local timeline relative to ${
+            localTimeline[NAME]
+          }; full width is ${formatDuration(localTimeline[DURATION])}.`;
+    track.classList.add("local-timeline");
+    track.dataset.relativeTo = String(geometry.relativeTo);
+    track.title = localTimelineDescription;
+    track.setAttribute("aria-label", localTimelineDescription);
+  }
   track.append(bar);
   row.append(nameCell, duration, track);
   return row;
@@ -1038,16 +1525,20 @@ function initialize(decoded) {
   spans = model.s;
   ({ children, roots } = buildHierarchy(spans));
   resetDefaults();
+  populateTestPhaseOptions();
   filterElement.disabled = false;
   failedOnlyElement.disabled = false;
   topTestsOnlyElement.disabled = false;
   minimumDurationElement.disabled = false;
+  testPhaseElement.disabled = false;
   testSizeElements.forEach((element) => {
     element.disabled = false;
   });
   rowLoadSizeElement.disabled = false;
+  timelineModeElement.disabled = false;
   document.getElementById("expand").disabled = false;
   document.getElementById("collapse").disabled = false;
+  updateFilterClearControls();
   renderRows();
 }
 
@@ -1057,26 +1548,41 @@ function startTraceReport() {
   columnResizerElement = document.getElementById("column-resizer");
   rowsElement = document.getElementById("rows");
   filterElement = document.getElementById("filter");
+  clearFilterElement = document.getElementById("clear-filter");
   filterStatus = document.getElementById("filter-status");
   failedOnlyElement = document.getElementById("failed-only");
   topTestsOnlyElement = document.getElementById("top-tests-only");
   minimumDurationElement = document.getElementById("minimum-duration");
+  clearMinimumDurationElement = document.getElementById(
+    "clear-minimum-duration",
+  );
+  testPhaseElement = document.getElementById("test-phase");
   testSizeElements = document.querySelectorAll("[data-test-size]");
+  clearFiltersElement = document.getElementById("clear-filters");
   rowLoadSizeElement = document.getElementById("row-load-size");
+  timelineModeElement = document.getElementById("timeline-mode");
   rowLoader = document.getElementById("row-loader");
   rowLoadButton = document.getElementById("load-rows");
   rowStatus = document.getElementById("row-status");
   initializeColumnResizer();
 
-  let filterTimer;
   filterElement.addEventListener("input", () => {
+    updateFilterClearControls();
     clearTimeout(filterTimer);
     filterTimer = setTimeout(applyFilter, 120);
   });
   minimumDurationElement.addEventListener("input", () => {
+    updateFilterClearControls();
     clearTimeout(filterTimer);
     filterTimer = setTimeout(applyFilter, 120);
   });
+  clearFilterElement.addEventListener("click", clearTextFilter);
+  clearMinimumDurationElement.addEventListener(
+    "click",
+    clearMinimumDurationFilter,
+  );
+  clearFiltersElement.addEventListener("click", clearAllFilters);
+  testPhaseElement.addEventListener("change", applyFilterImmediately);
   failedOnlyElement.addEventListener("click", () => {
     toggleFilter(failedOnlyElement);
   });
@@ -1087,6 +1593,9 @@ function startTraceReport() {
     element.addEventListener("click", () => toggleFilter(element));
   });
   rowLoadSizeElement.addEventListener("change", () => {
+    renderRows();
+  });
+  timelineModeElement.addEventListener("change", () => {
     renderRows();
   });
   rowLoadButton.addEventListener("click", () => {
@@ -1132,15 +1641,25 @@ const traceReportApi = {
   LOAD_SIZE_OPTIONS,
   INITIAL_ROW_BUDGET,
   NAME_COLUMN_STORAGE_KEY,
+  TIMELINE_MODES,
+  LOCAL_TIMELINE_ROOT_SCOPES,
   COLLAPSED_SCOPES,
   TEST_SIZES,
+  TEST_PHASE_DEFINITIONS,
   formatDuration,
   childCountLabel,
   directChildCountLabel,
   isCriticalPathTest,
   longestTestRank,
   parseMinimumDurationNs,
+  filterControlActivity,
+  clearedFilterControlState,
+  encodeTestPhaseSelection,
+  parseTestPhaseSelection,
+  testPhaseOptions,
   timelineBarClass,
+  timelineModeFromValue,
+  timelineBarGeometry,
   buildHierarchy,
   defaultExpanded,
   spanSearchText,

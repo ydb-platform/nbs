@@ -231,6 +231,28 @@ def test_renderer_marks_error_spans_and_supports_empty_input() -> None:
     assert '<option value="200" selected>200</option>' in report
     assert '<option value="1000">1,000</option>' in report
     assert '<option value="5000">5,000</option>' in report
+    assert (
+        'id="filter" class="text-filter" type="search" aria-label="Filter spans or attributes"'
+        in report
+    )
+    assert 'id="clear-filter" class="inline-clear" type="button"' in report
+    assert (
+        'aria-label="Clear text filter" title="Clear text filter" hidden disabled'
+        in report
+    )
+    assert 'id="clear-minimum-duration" class="inline-clear" type="button"' in report
+    assert (
+        'aria-label="Clear minimum duration" title="Clear minimum duration" hidden disabled'
+        in report
+    )
+    assert 'id="clear-filters" type="button" aria-label="Clear filters"' in report
+    assert 'title="Clear all filters" disabled>Clear filters</button>' in report
+    assert '<select id="test-phase"' in report
+    assert '<option value="">Any matching span</option>' in report
+    assert '<label class="timeline-mode-control" for="timeline-mode">Timeline' in report
+    assert '<select id="timeline-mode"' in report
+    assert '<option value="global">Global trace</option>' in report
+    assert '<option value="local" selected>Local test intervals</option>' in report
     assert 'id="load-rows"' in report
     assert "Load next 200 rows" in report
     assert 'id="row-status"' in report

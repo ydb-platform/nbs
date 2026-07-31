@@ -7,6 +7,8 @@ const {
   LOAD_SIZE_OPTIONS,
   INITIAL_ROW_BUDGET,
   NAME_COLUMN_STORAGE_KEY,
+  TIMELINE_MODES,
+  LOCAL_TIMELINE_ROOT_SCOPES,
   clampNameColumnWidth,
   readStoredNameColumnWidth,
   writeStoredNameColumnWidth,
@@ -16,11 +18,18 @@ const {
   isCriticalPathTest,
   longestTestRank,
   timelineBarClass,
+  timelineModeFromValue,
+  timelineBarGeometry,
   buildHierarchy,
   defaultExpanded,
   matchingVisibility,
   filterVisibility,
   parseMinimumDurationNs,
+  filterControlActivity,
+  clearedFilterControlState,
+  encodeTestPhaseSelection,
+  parseTestPhaseSelection,
+  testPhaseOptions,
   flattenTraceRows,
   loadSizeFromValue,
   nextRowLimit,
@@ -41,13 +50,14 @@ function makeSpan({
   attributes = {},
   statusMessage = "",
   status = 0,
+  start = 0,
   duration = 1_000_000,
 }) {
   const span = Array(13).fill("");
   span[FIELDS.ID] = id;
   span[FIELDS.PARENT] = parent;
   span[FIELDS.NAME] = name;
-  span[FIELDS.START] = 0;
+  span[FIELDS.START] = start;
   span[FIELDS.DURATION] = duration;
   span[FIELDS.ATTRS] = attributes;
   span[FIELDS.EVENTS] = [];
@@ -108,6 +118,62 @@ function testCustomMinimumDurationUsesSeconds() {
   assert.strictEqual(parseMinimumDurationNs("600"), 600_000_000_000);
 }
 
+function testFilterClearStateUsesRawValuesAndPreservesDisplayControls() {
+  assert.deepStrictEqual(filterControlActivity(), {
+    query: false,
+    minimumDuration: false,
+    any: false,
+  });
+  assert.deepStrictEqual(
+    filterControlActivity({ query: "   ", minimumDurationValue: "0" }),
+    { query: true, minimumDuration: true, any: true },
+  );
+  assert.deepStrictEqual(
+    filterControlActivity({ minimumDurationValue: "not-a-number" }),
+    { query: false, minimumDuration: true, any: true },
+  );
+  assert.deepStrictEqual(
+    filterControlActivity({ minimumDurationBadInput: true }),
+    { query: false, minimumDuration: true, any: true },
+  );
+  for (const activeState of [
+    { failedOnly: true },
+    { topTestsOnly: true },
+    { testPhaseValue: '["ya.test.stage",null]' },
+    { testSizes: new Set(["small"]) },
+  ]) {
+    assert.strictEqual(filterControlActivity(activeState).any, true);
+  }
+
+  const original = {
+    query: "local-endpoints",
+    failedOnly: true,
+    topTestsOnly: true,
+    minimumDurationValue: "15",
+    minimumDurationBadInput: false,
+    testPhaseValue: '["ya.test.stage","prepare_recipes"]',
+    testSizes: new Set(["medium", "large"]),
+    timelineMode: "global",
+    rowLoadSize: "5000",
+    rowBudget: 5000,
+  };
+  const cleared = clearedFilterControlState(original);
+  assert.deepStrictEqual(cleared, {
+    query: "",
+    failedOnly: false,
+    topTestsOnly: false,
+    minimumDurationValue: "",
+    minimumDurationBadInput: false,
+    testPhaseValue: "",
+    testSizes: new Set(),
+    timelineMode: "global",
+    rowLoadSize: "5000",
+    rowBudget: 5000,
+  });
+  assert.strictEqual(original.query, "local-endpoints");
+  assert.deepStrictEqual(original.testSizes, new Set(["medium", "large"]));
+}
+
 function testTimelineBarClassesAreSafeAndDeterministic() {
   for (const [phase, expected] of Object.entries({
     setup: "bar-worker-setup",
@@ -158,6 +224,463 @@ function testTimelineBarClassesAreSafeAndDeterministic() {
     "bar-default",
   );
   assert.strictEqual(timelineBarClass("ya.test.stage", null), "bar-stage-other");
+}
+
+function testTimelineModesAreValidatedAndLocalRootsAreExplicit() {
+  assert.strictEqual(timelineModeFromValue("global"), TIMELINE_MODES.GLOBAL);
+  assert.strictEqual(timelineModeFromValue("local"), TIMELINE_MODES.LOCAL);
+  assert.strictEqual(
+    timelineModeFromValue("unexpected"),
+    TIMELINE_MODES.LOCAL,
+  );
+  assert.deepStrictEqual(
+    [...LOCAL_TIMELINE_ROOT_SCOPES],
+    ["ya.test.worker", "ya.test.node", "ya.chunk"],
+  );
+}
+
+function testGlobalModeKeepsAllRowsOnTheWorkflowTimeline() {
+  const second = 1_000_000_000;
+  const scopes = [
+    "workflow",
+    "ya.test.node",
+    "ya.test.worker.phase",
+    "ya.chunk",
+    "ya.test.stage",
+  ];
+  const spans = [
+    makeSpan({
+      id: "workflow",
+      name: "workflow",
+      scope: 0,
+      duration: 1000 * second,
+    }),
+    makeSpan({
+      id: "node",
+      parent: 0,
+      name: "test result aggregation",
+      scope: 1,
+      start: 100 * second,
+      duration: 400 * second,
+    }),
+    makeSpan({
+      id: "phase",
+      parent: 1,
+      name: "worker setup",
+      scope: 2,
+      start: 120 * second,
+      duration: 20 * second,
+    }),
+    makeSpan({
+      id: "chunk",
+      parent: 1,
+      name: "chunk",
+      scope: 3,
+      start: 200 * second,
+      duration: 100 * second,
+    }),
+    makeSpan({
+      id: "stage",
+      parent: 3,
+      name: "prepare recipes",
+      scope: 4,
+      start: 210 * second,
+      duration: 10 * second,
+    }),
+  ];
+
+  for (const [index, expected] of [
+    [1, { left: 10, width: 40, relativeTo: -1 }],
+    [2, { left: 12, width: 2, relativeTo: -1 }],
+    [3, { left: 20, width: 10, relativeTo: -1 }],
+    [4, { left: 21, width: 1, relativeTo: -1 }],
+  ]) {
+    assert.deepStrictEqual(
+      timelineBarGeometry(
+        index,
+        spans,
+        scopes,
+        spans[0][FIELDS.DURATION],
+        TIMELINE_MODES.GLOBAL,
+      ),
+      expected,
+    );
+  }
+}
+
+function testWorkerNodeAndChunkResetTheLocalTimeline() {
+  const second = 1_000_000_000;
+  const scopes = [
+    "workflow",
+    "ya.test.node",
+    "ya.test.worker.phase",
+    "ya.test.worker",
+    "ya.chunk",
+    "ya.test.stage",
+    "group",
+  ];
+  const spans = [
+    makeSpan({
+      id: "workflow",
+      name: "workflow",
+      scope: 0,
+      duration: 1000 * second,
+    }),
+    makeSpan({
+      id: "node",
+      parent: 0,
+      name: "test result aggregation",
+      scope: 1,
+      start: 100 * second,
+      duration: 400 * second,
+    }),
+    makeSpan({
+      id: "node-phase",
+      parent: 1,
+      name: "node setup",
+      scope: 2,
+      start: 120 * second,
+      duration: 20 * second,
+    }),
+    makeSpan({
+      id: "worker",
+      parent: 1,
+      name: "test worker",
+      scope: 3,
+      start: 150 * second,
+      duration: 300 * second,
+    }),
+    makeSpan({
+      id: "worker-phase",
+      parent: 3,
+      name: "worker setup",
+      scope: 2,
+      start: 165 * second,
+      duration: 15 * second,
+    }),
+    makeSpan({
+      id: "chunk",
+      parent: 3,
+      name: "chunk",
+      scope: 4,
+      start: 200 * second,
+      duration: 100 * second,
+    }),
+    makeSpan({
+      id: "group",
+      parent: 5,
+      name: "preparation",
+      scope: 6,
+      start: 200 * second,
+      duration: 100 * second,
+    }),
+    makeSpan({
+      id: "stage",
+      parent: 6,
+      name: "prepare recipes",
+      scope: 5,
+      start: 210 * second,
+      duration: 10 * second,
+    }),
+  ];
+  const traceDuration = spans[0][FIELDS.DURATION];
+
+  for (const index of [1, 3, 5]) {
+    assert.deepStrictEqual(
+      timelineBarGeometry(
+        index,
+        spans,
+        scopes,
+        traceDuration,
+        TIMELINE_MODES.LOCAL,
+      ),
+      { left: 0, width: 100, relativeTo: index },
+    );
+  }
+  assert.deepStrictEqual(
+    timelineBarGeometry(
+      2,
+      spans,
+      scopes,
+      traceDuration,
+      TIMELINE_MODES.LOCAL,
+    ),
+    { left: 5, width: 5, relativeTo: 1 },
+  );
+  assert.deepStrictEqual(
+    timelineBarGeometry(
+      4,
+      spans,
+      scopes,
+      traceDuration,
+      TIMELINE_MODES.LOCAL,
+    ),
+    { left: 5, width: 5, relativeTo: 3 },
+  );
+  assert.deepStrictEqual(
+    timelineBarGeometry(
+      7,
+      spans,
+      scopes,
+      traceDuration,
+      TIMELINE_MODES.LOCAL,
+    ),
+    { left: 10, width: 10, relativeTo: 5 },
+  );
+}
+
+function testChunkDescendantsUseTheChunkAsTheirTimeline() {
+  const second = 1_000_000_000;
+  const scopes = [
+    "workflow",
+    "ya.chunk",
+    "group",
+    "ya.test.stage",
+    "ya.test",
+    "ya.test.worker.phase",
+  ];
+  const chunkStart = 60 * 60 * second;
+  const chunkDuration = 258.2 * second;
+  const spans = [
+    makeSpan({
+      id: "workflow",
+      name: "three hour workflow",
+      scope: 0,
+      duration: 3 * 60 * 60 * second,
+    }),
+    makeSpan({
+      id: "chunk",
+      parent: 0,
+      name: "cloud/blockstore/tests/loadtest/local-endpoints [py3test chunk 2/8]",
+      scope: 1,
+      start: chunkStart,
+      duration: chunkDuration,
+    }),
+    makeSpan({
+      id: "group",
+      parent: 1,
+      name: "preparation",
+      scope: 2,
+      start: chunkStart,
+      duration: chunkDuration,
+    }),
+    makeSpan({
+      id: "stage",
+      parent: 2,
+      name: "prepare recipes",
+      scope: 3,
+      start: chunkStart + second,
+      duration: 15 * second,
+    }),
+    makeSpan({
+      id: "direct-stage",
+      parent: 1,
+      name: "wrapper execution",
+      scope: 3,
+      start: chunkStart + 16 * second,
+      duration: second,
+    }),
+    makeSpan({
+      id: "test",
+      parent: 1,
+      name: "test case",
+      scope: 4,
+      start: chunkStart + second,
+      duration: 15 * second,
+    }),
+    makeSpan({
+      id: "worker-phase",
+      parent: 0,
+      name: "worker setup",
+      scope: 5,
+      start: chunkStart + second,
+      duration: 15 * second,
+    }),
+  ];
+  const traceDuration = spans[0][FIELDS.DURATION];
+
+  assert.deepStrictEqual(
+    timelineBarGeometry(1, spans, scopes, traceDuration),
+    { left: 0, width: 100, relativeTo: 1 },
+  );
+  const stage = timelineBarGeometry(3, spans, scopes, traceDuration);
+  assert.strictEqual(stage.relativeTo, 1);
+  assert(Math.abs(stage.left - (100 * 1) / 258.2) < 1e-9);
+  assert(Math.abs(stage.width - (100 * 15) / 258.2) < 1e-9);
+  const directStage = timelineBarGeometry(4, spans, scopes, traceDuration);
+  assert.strictEqual(directStage.relativeTo, 1);
+  assert(Math.abs(directStage.left - (100 * 16) / 258.2) < 1e-9);
+  assert(Math.abs(directStage.width - 100 / 258.2) < 1e-9);
+
+  const test = timelineBarGeometry(5, spans, scopes, traceDuration);
+  assert.strictEqual(test.relativeTo, 1);
+  assert(Math.abs(test.left - (100 * 1) / 258.2) < 1e-9);
+  assert(Math.abs(test.width - (100 * 15) / 258.2) < 1e-9);
+
+  const workerPhase = timelineBarGeometry(6, spans, scopes, traceDuration);
+  assert.strictEqual(workerPhase.relativeTo, -1);
+  assert(Math.abs(workerPhase.left - (100 * 3601) / 10800) < 1e-9);
+  assert.strictEqual(workerPhase.width, 0.15);
+}
+
+function testNearestChunkWinsAndLocalIntervalsAreClipped() {
+  const second = 1_000_000_000;
+  const scopes = ["workflow", "ya.chunk", "ya.test.stage", "ya.test"];
+  const spans = [
+    makeSpan({
+      id: "workflow",
+      name: "workflow",
+      scope: 0,
+      duration: 100 * second,
+    }),
+    makeSpan({
+      id: "outer-chunk",
+      parent: 0,
+      name: "outer chunk",
+      scope: 1,
+      start: 10 * second,
+      duration: 80 * second,
+    }),
+    makeSpan({
+      id: "inner-chunk",
+      parent: 1,
+      name: "inner chunk",
+      scope: 1,
+      start: 20 * second,
+      duration: 20 * second,
+    }),
+    makeSpan({
+      id: "inner-test",
+      parent: 2,
+      name: "inner test",
+      scope: 3,
+      start: 25 * second,
+      duration: 5 * second,
+    }),
+    makeSpan({
+      id: "overrunning-stage",
+      parent: 2,
+      name: "overrunning stage",
+      scope: 2,
+      start: 35 * second,
+      duration: 10 * second,
+    }),
+    makeSpan({
+      id: "outside-stage",
+      parent: 2,
+      name: "outside stage",
+      scope: 2,
+      start: 45 * second,
+      duration: second,
+    }),
+    makeSpan({
+      id: "instant-test",
+      parent: 2,
+      name: "instant test",
+      scope: 3,
+      start: 25 * second,
+      duration: 0,
+    }),
+    makeSpan({
+      id: "tiny-tail-stage",
+      parent: 2,
+      name: "tiny stage at the end",
+      scope: 2,
+      start: 40 * second - 1_000_000,
+      duration: 1_000_000,
+    }),
+    makeSpan({
+      id: "instant-at-end",
+      parent: 2,
+      name: "instant at the end",
+      scope: 3,
+      start: 40 * second,
+      duration: 0,
+    }),
+  ];
+
+  assert.deepStrictEqual(timelineBarGeometry(3, spans, scopes, 100 * second), {
+    left: 25,
+    width: 25,
+    relativeTo: 2,
+  });
+  assert.deepStrictEqual(timelineBarGeometry(4, spans, scopes, 100 * second), {
+    left: 75,
+    width: 25,
+    relativeTo: 2,
+  });
+  assert.deepStrictEqual(timelineBarGeometry(5, spans, scopes, 100 * second), {
+    left: 100,
+    width: 0,
+    relativeTo: 2,
+  });
+  assert.deepStrictEqual(timelineBarGeometry(6, spans, scopes, 100 * second), {
+    left: 25,
+    width: 0.15,
+    relativeTo: 2,
+  });
+  assert.deepStrictEqual(timelineBarGeometry(7, spans, scopes, 100 * second), {
+    left: 99.85,
+    width: 0.15,
+    relativeTo: 2,
+  });
+  assert.deepStrictEqual(timelineBarGeometry(8, spans, scopes, 100 * second), {
+    left: 99.85,
+    width: 0.15,
+    relativeTo: 2,
+  });
+}
+
+function testStageWithoutAUsableChunkKeepsTheGlobalTimeline() {
+  const second = 1_000_000_000;
+  const scopes = ["workflow", "ya.chunk", "ya.test.stage"];
+  const spans = [
+    makeSpan({
+      id: "workflow",
+      name: "workflow",
+      scope: 0,
+      duration: 100 * second,
+    }),
+    makeSpan({
+      id: "zero-chunk",
+      parent: 0,
+      name: "zero length chunk",
+      scope: 1,
+      start: 10 * second,
+      duration: 0,
+    }),
+    makeSpan({
+      id: "stage",
+      parent: 1,
+      name: "stage",
+      scope: 2,
+      start: 10 * second,
+      duration: second,
+    }),
+    makeSpan({
+      id: "orphan-stage",
+      name: "orphan stage",
+      scope: 2,
+      start: 20 * second,
+      duration: 2 * second,
+    }),
+  ];
+
+  assert.deepStrictEqual(timelineBarGeometry(1, spans, scopes, 100 * second), {
+    left: 10,
+    width: 0.15,
+    relativeTo: -1,
+  });
+  assert.deepStrictEqual(timelineBarGeometry(2, spans, scopes, 100 * second), {
+    left: 10,
+    width: 1,
+    relativeTo: -1,
+  });
+  assert.deepStrictEqual(timelineBarGeometry(3, spans, scopes, 100 * second), {
+    left: 20,
+    width: 2,
+    relativeTo: -1,
+  });
 }
 
 function testMetadataDetailsAreInsertedLocallyAndToggleExclusively() {
@@ -514,6 +1037,284 @@ function testDurationFormatting() {
   assert.strictEqual(formatDuration(2_500_000_000), "2.500 s");
   assert.strictEqual(formatDuration(65_000_000_000), "1m 5.0s");
   assert.strictEqual(formatDuration(3_665_000_000_000), "1h 1m 5s");
+}
+
+function testPhaseOptionsAreScopedAndHumanReadable() {
+  const scopes = ["workflow", "ya.test.stage", "ya.test.worker.phase"];
+  const spans = [
+    makeSpan({ id: "root", name: "root" }),
+    makeSpan({
+      id: "prepare",
+      parent: 0,
+      name: "prepare_recipes",
+      scope: 1,
+      attributes: { "ya.test.stage.name": "prepare_recipes" },
+    }),
+    makeSpan({
+      id: "prepare-duplicate",
+      parent: 0,
+      name: "prepare_recipes",
+      scope: 1,
+      attributes: { "ya.test.stage.name": "prepare_recipes" },
+    }),
+    makeSpan({
+      id: "stage-setup",
+      parent: 0,
+      name: "setup",
+      scope: 1,
+      attributes: { "ya.test.stage.name": "setup" },
+    }),
+    makeSpan({
+      id: "worker-setup",
+      parent: 0,
+      name: "setup",
+      scope: 2,
+      attributes: { "ya.test.worker.phase": "setup" },
+    }),
+    makeSpan({
+      id: "worker-exec",
+      parent: 0,
+      name: "exec_cmd",
+      scope: 2,
+      attributes: { "ya.test.worker.phase": "exec_cmd" },
+    }),
+  ];
+
+  const options = testPhaseOptions(spans, scopes);
+  assert.deepStrictEqual(
+    options.map(({ label, scope, name }) => ({ label, scope, name })),
+    [
+      {
+        label: "Any test stage",
+        scope: "ya.test.stage",
+        name: null,
+      },
+      {
+        label: "Any worker phase",
+        scope: "ya.test.worker.phase",
+        name: null,
+      },
+      {
+        label: "Test stage: prepare recipes",
+        scope: "ya.test.stage",
+        name: "prepare_recipes",
+      },
+      {
+        label: "Test stage: setup",
+        scope: "ya.test.stage",
+        name: "setup",
+      },
+      {
+        label: "Worker phase: exec command",
+        scope: "ya.test.worker.phase",
+        name: "exec_cmd",
+      },
+      {
+        label: "Worker phase: setup",
+        scope: "ya.test.worker.phase",
+        name: "setup",
+      },
+    ],
+  );
+  assert.deepStrictEqual(parseTestPhaseSelection(options[0].value), {
+    scope: "ya.test.stage",
+    name: null,
+  });
+  assert.deepStrictEqual(parseTestPhaseSelection(options[3].value), {
+    scope: "ya.test.stage",
+    name: "setup",
+  });
+  assert.deepStrictEqual(parseTestPhaseSelection(options[5].value), {
+    scope: "ya.test.worker.phase",
+    name: "setup",
+  });
+  assert.notStrictEqual(options[3].value, options[5].value);
+  assert.strictEqual(parseTestPhaseSelection(""), null);
+  assert.strictEqual(parseTestPhaseSelection("not JSON"), null);
+  assert.strictEqual(
+    parseTestPhaseSelection(JSON.stringify(["unknown.scope", "setup"])),
+    null,
+  );
+}
+
+function testPhaseDurationFilterMayMatchAParentTarget() {
+  const second = 1_000_000_000;
+  const scopes = [
+    "workflow",
+    "ya.test.stage",
+    "ya.test.worker.phase",
+    "ya.chunk",
+    "ya.test.worker",
+  ];
+  const spans = [
+    makeSpan({ id: "root", name: "root", status: 2 }),
+    makeSpan({
+      id: "target",
+      parent: 0,
+      name: "cloud/blockstore/tests/loadtest/local-endpoints [py3test]",
+      scope: 3,
+      status: 2,
+      attributes: {
+        "test.size": "medium",
+        "ya.test.duration.rank": 1,
+      },
+    }),
+    makeSpan({
+      id: "slow-prepare",
+      parent: 1,
+      name: "prepare_recipes",
+      scope: 1,
+      duration: 15 * second,
+      attributes: { "ya.test.stage.name": "prepare_recipes" },
+    }),
+    makeSpan({
+      id: "short-prepare",
+      parent: 1,
+      name: "prepare_recipes",
+      scope: 1,
+      duration: 5 * second,
+      attributes: { "ya.test.stage.name": "prepare_recipes" },
+    }),
+    makeSpan({
+      id: "long-wrapper",
+      parent: 1,
+      name: "wrapper_execution",
+      scope: 1,
+      duration: 60 * second,
+      attributes: { "ya.test.stage.name": "wrapper_execution" },
+    }),
+    makeSpan({
+      id: "worker-exec",
+      parent: 1,
+      name: "exec command",
+      scope: 2,
+      duration: 30 * second,
+      attributes: { "ya.test.worker.phase": "exec_cmd" },
+    }),
+    makeSpan({
+      id: "other-target",
+      parent: 0,
+      name: "another target",
+      scope: 3,
+    }),
+    makeSpan({
+      id: "other-prepare",
+      parent: 6,
+      name: "prepare_recipes",
+      scope: 1,
+      duration: 45 * second,
+      attributes: { "ya.test.stage.name": "prepare_recipes" },
+    }),
+    makeSpan({
+      id: "passing-worker",
+      parent: 0,
+      name: "passing worker",
+      scope: 4,
+    }),
+    makeSpan({
+      id: "passing-worker-setup",
+      parent: 8,
+      name: "worker phase: setup",
+      scope: 2,
+      attributes: { "ya.test.worker.phase": "setup" },
+    }),
+    makeSpan({
+      id: "failed-worker",
+      parent: 0,
+      name: "failed worker",
+      scope: 4,
+      status: 2,
+    }),
+    makeSpan({
+      id: "failed-worker-setup",
+      parent: 10,
+      name: "worker phase: setup",
+      scope: 2,
+      attributes: { "ya.test.worker.phase": "setup" },
+    }),
+  ];
+  const testPhase = encodeTestPhaseSelection(
+    "ya.test.stage",
+    "prepare_recipes",
+  );
+
+  const byParent = filterVisibility(spans, {
+    query: "cloud/blockstore/tests/loadtest/local-endpoints",
+    minimumDurationNs: 10 * second,
+    testPhase,
+    scopes,
+  });
+  assert.strictEqual(byParent.matches, 1);
+  assert.deepStrictEqual([...byParent.visible], [2, 1, 0]);
+
+  const withContextualPredicates = filterVisibility(spans, {
+    query: "cloud/blockstore/tests/loadtest/local-endpoints",
+    failedOnly: true,
+    testSizes: new Set(["medium"]),
+    minimumDurationNs: 10 * second,
+    testPhase,
+    scopes,
+  });
+  assert.strictEqual(withContextualPredicates.matches, 1);
+  assert.deepStrictEqual([...withContextualPredicates.visible], [2, 1, 0]);
+
+  const failedStages = filterVisibility(spans, {
+    failedOnly: true,
+    testPhase,
+    scopes,
+  });
+  assert.strictEqual(failedStages.matches, 2);
+  assert.deepStrictEqual([...failedStages.visible], [2, 1, 0, 3]);
+  assert.strictEqual(failedStages.visible.has(7), false);
+
+  const bySelectedSpan = filterVisibility(spans, {
+    query: "ya.test.stage.name=prepare_recipes",
+    minimumDurationNs: 10 * second,
+    testPhase,
+    scopes,
+  });
+  assert.strictEqual(bySelectedSpan.matches, 2);
+  assert.deepStrictEqual([...bySelectedSpan.visible], [2, 1, 0, 7, 6]);
+
+  const anyTestStage = filterVisibility(spans, {
+    minimumDurationNs: 10 * second,
+    testPhase: encodeTestPhaseSelection("ya.test.stage"),
+    scopes,
+  });
+  assert.strictEqual(anyTestStage.matches, 3);
+  assert.strictEqual(anyTestStage.visible.has(5), false);
+
+  const workerExec = filterVisibility(spans, {
+    query: "cloud/blockstore/tests/loadtest/local-endpoints",
+    minimumDurationNs: 20 * second,
+    testPhase: encodeTestPhaseSelection(
+      "ya.test.worker.phase",
+      "exec_cmd",
+    ),
+    scopes,
+  });
+  assert.strictEqual(workerExec.matches, 1);
+  assert.deepStrictEqual([...workerExec.visible], [5, 1, 0]);
+
+  const failedWorkerPhases = filterVisibility(spans, {
+    failedOnly: true,
+    testPhase: encodeTestPhaseSelection(
+      "ya.test.worker.phase",
+      "setup",
+    ),
+    scopes,
+  });
+  assert.strictEqual(failedWorkerPhases.matches, 1);
+  assert.deepStrictEqual([...failedWorkerPhases.visible], [11, 10, 0]);
+  assert.strictEqual(failedWorkerPhases.visible.has(9), false);
+
+  const strictTopTen = filterVisibility(spans, {
+    topTestsOnly: true,
+    testPhase,
+    scopes,
+  });
+  assert.strictEqual(strictTopTen.matches, 0);
+  assert.deepStrictEqual([...strictTopTen.visible], []);
 }
 
 function testLoadSizesAreProgressiveIncrements() {
@@ -1024,8 +1825,17 @@ for (const test of [
   testNameColumnWidthIsClampedToAUsableLayout,
   testNameColumnWidthPersistenceHasSafeFallbacks,
   testDurationFormatting,
+  testPhaseOptionsAreScopedAndHumanReadable,
+  testPhaseDurationFilterMayMatchAParentTarget,
   testCustomMinimumDurationUsesSeconds,
+  testFilterClearStateUsesRawValuesAndPreservesDisplayControls,
   testTimelineBarClassesAreSafeAndDeterministic,
+  testTimelineModesAreValidatedAndLocalRootsAreExplicit,
+  testGlobalModeKeepsAllRowsOnTheWorkflowTimeline,
+  testWorkerNodeAndChunkResetTheLocalTimeline,
+  testChunkDescendantsUseTheChunkAsTheirTimeline,
+  testNearestChunkWinsAndLocalIntervalsAreClipped,
+  testStageWithoutAUsableChunkKeepsTheGlobalTimeline,
   testMetadataDetailsAreInsertedLocallyAndToggleExclusively,
   testFailedYaArtifactPathsBecomeSafeLinks,
   testFailureFilterKeepsAncestorsButNotAggregateDescendants,
