@@ -716,15 +716,15 @@ void TClientEndpoint::CreateQP()
         Verbs->RdmaCreateQP(Connection.get(), &qp_attrs);
     }
 
-    int sendAccessFlags = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ;
-    int recvAccessFlags = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE;
-    if (Config.UseMemoryWindows) {
-        sendAccessFlags |= IBV_ACCESS_MW_BIND;
-        recvAccessFlags |= IBV_ACCESS_MW_BIND;
-    }
+    SendBuffers.Init(
+        Verbs,
+        Connection->pd,
+        IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ);
 
-    SendBuffers.Init(Verbs, Connection->pd, sendAccessFlags);
-    RecvBuffers.Init(Verbs, Connection->pd, recvAccessFlags);
+    RecvBuffers.Init(
+        Verbs,
+        Connection->pd,
+        IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
 
     SendBuffer = SendBuffers.AcquireBuffer(
         Config.SendQueueSize * sizeof(TRequestMessage), true);
@@ -860,16 +860,12 @@ TResultOrError<TClientRequestPtr> TClientEndpoint::AllocateRequest(
         with_lock (AllocationLock) {
             if (requestBytes) {
                 req->InBuffer = SendBuffers.AcquireBuffer(requestBytes);
-                if (Config.UseMemoryWindows) {
-                    req->InMemoryWindow = Verbs->CreateMemoryWindow(Connection->pd);
-                }
+                req->InMemoryWindow = Verbs->CreateMemoryWindow(Connection->pd);
             }
 
             if (responseBytes) {
                 req->OutBuffer = RecvBuffers.AcquireBuffer(responseBytes);
-                if (Config.UseMemoryWindows) {
-                    req->OutMemoryWindow = Verbs->CreateMemoryWindow(Connection->pd);
-                }
+                req->OutMemoryWindow = Verbs->CreateMemoryWindow(Connection->pd);
             }
         }
     } catch (...) {
@@ -1265,7 +1261,7 @@ void TClientEndpoint::BindInBuffer(TRequest* req, TSendWr* send) noexcept
 
     try {
         Verbs->PostSend(Connection->qp, &wr);
-        RDMA_TRACE("bind request " << req->ReqId << " input buffer");
+        RDMA_TRACE("bind request " << reqId << " input buffer");
         RDMA_TRACE(wr << "[request=" << req->ReqId << "]" << " posted");
     }
     catch (const TServiceError& e) {
@@ -1361,13 +1357,9 @@ void TClientEndpoint::BindCompleted(TSendWr* send) noexcept
                 RDMA_ERROR(
                     "bind " << send->wr << " completed in unexpected state "
                             << req->State);
-                SendQueue.Push(send);
-                Disconnect();
         }
-        return;
     }
-    // request has been cancelled/aborted before bind completed
-    SendQueue.Push(send);
+    // request has been cancelled before bind completed
 }
 
 void TClientEndpoint::SendRequest(TRequest* req, TSendWr* send) noexcept
@@ -1575,11 +1567,6 @@ bool TClientEndpoint::FlushHanging() const
 
 void TClientEndpoint::FreeRequest(TRequest* req) noexcept
 {
-    // Memory windows must be deallocated before releasing pooled buffers/MRs
-    // they were bound to.
-    req->InMemoryWindow = NVerbs::NullPtr;
-    req->OutMemoryWindow = NVerbs::NullPtr;
-
     with_lock (AllocationLock) {
         SendBuffers.ReleaseBuffer(req->InBuffer);
         RecvBuffers.ReleaseBuffer(req->OutBuffer);
