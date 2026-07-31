@@ -45,6 +45,7 @@
 #include <contrib/ydb/library/actors/prof/tag.h>
 
 #include <library/cpp/deprecated/atomic/atomic.h>
+#include <library/cpp/string_utils/quote/quote.h>
 
 #include <util/generic/deque.h>
 #include <util/generic/hash_set.h>
@@ -437,7 +438,7 @@ void TAppContext::ValidateRequest(
 
     internal.Clear();
     internal.SetRequestSource(*source);
-    internal.SetPeer(TString(context.peer()));
+    internal.SetPeer(UrlUnescapeRet(TString(context.peer())));
 
     // don't override a value set earlier
     if (internal.GetRequestOrigin() ==

@@ -60,13 +60,6 @@ namespace NCloud::NBlockStore::NServer {
 using namespace NMonitoring;
 using namespace NThreading;
 
-////////////////////////////////////////////////////////////////////////////////
-
-TString NormalizePeer(TString peer)
-{
-    return UrlUnescapeRet(peer);
-}
-
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -89,11 +82,6 @@ const TRequestSourceKinds RequestSourceKinds = {
     { "FD_DATA_CHANNEL",          NProto::SOURCE_FD_DATA_CHANNEL },
     { "FD_CONTROL_CHANNEL",       NProto::SOURCE_FD_CONTROL_CHANNEL },
 };
-
-TString GetNormalizedPeer(const grpc::ServerContext& context)
-{
-    return NormalizePeer(TString(context.peer()));
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -713,7 +701,7 @@ private:
         auto& internal = *Request->MutableHeaders()->MutableInternal();
         internal.Clear();
         internal.SetRequestSource(*source);
-        internal.SetPeer(GetNormalizedPeer(*Context));
+        internal.SetPeer(UrlUnescapeRet(TString(Context->peer())));
 
         // we will only get token from secure control channel
         if (source == NProto::SOURCE_SECURE_CONTROL_CHANNEL) {
@@ -751,7 +739,7 @@ private:
             message = TStringBuilder() << *Request;
         }
 
-        MetricRequest.Peer = GetNormalizedPeer(*Context);
+        MetricRequest.Peer = UrlUnescapeRet(TString(Context->peer()));
 
         AppCtx.ServerStats->RequestStarted(
             AppCtx.Log,
