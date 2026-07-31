@@ -46,7 +46,7 @@ class VirtioFsServer:
             self.virtiofs_server_binary,
             "--socket-path", self.socket_path,
             "--shared-dir", self.fspath,
-            "--log-level", "trace",
+            # For debug: "--log-level", "trace",
         ]
 
         self.virtiofs_server = Daemon(

@@ -221,11 +221,12 @@ VERSION=${TAG#v}
 BINARY="${TARGET_DIR}/virtiofsd"
 OUTPUT="./virtiofsd_${VERSION}_${ARCH}"
 
-if ldd "$BINARY" 2>&1 | grep -Eq "not a dynamic executable|statically linked"; then
+LDD_OUTPUT=$(ldd "$BINARY" 2>&1 || true)
+if grep -Eq "not a dynamic executable|statically linked" <<< "$LDD_OUTPUT"; then
     :
 else
     echo "error: $BINARY is not static" >&2
-    ldd "$BINARY" >&2
+    echo "$LDD_OUTPUT" >&2
     exit 1
 fi
 
