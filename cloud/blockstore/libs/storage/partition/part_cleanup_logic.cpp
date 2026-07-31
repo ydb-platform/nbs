@@ -298,7 +298,9 @@ bool ShouldSkipCleanupDueToCheckpoint(
     ui64 maxCheckpointCommitId)
 {
     if (item.CommitId < minCheckpointCommitId) {
-        // Blob was added to the cleanup queue before any checkpoint.
+        // The blob was added to the cleanup queue before any checkpoint.
+        // Therefore, it is covered by one or more blobs visible to all
+        // checkpoints.
         return false;
     }
 
@@ -346,17 +348,17 @@ void ExecuteCleanupTransaction(
         const auto& item = args.CleanupQueue[i];
         const auto& blobMeta = args.BlobsMeta[i];
 
-        if (args.WithCheckpoint &&
-            ShouldSkipCleanupDueToCheckpoint(
-                item,
-                blobMeta,
-                args.MinCheckpointCommitId,
-                args.MaxCheckpointCommitId))
+        if (args.WithCheckpoint && ShouldSkipCleanupDueToCheckpoint(
+                                       item,
+                                       blobMeta,
+                                       args.MinCheckpointCommitId,
+                                       args.MaxCheckpointCommitId))
         {
             LOG_DEBUG(
                 *actorSystem,
                 TBlockStoreComponents::PARTITION,
-                "%s ExecuteCleanupTransaction: skipping blob=%s: deletionCommitId=%lu "
+                "%s ExecuteCleanupTransaction: skipping blob=%s: "
+                "deletionCommitId=%lu "
                 "minCheckpointCommitId=%lu maxCheckpointCommitId=%lu",
                 logTitle.GetWithTime().c_str(),
                 ToString(MakeBlobId(tabletId, item.BlobId)).Quote().c_str(),
