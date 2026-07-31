@@ -39,6 +39,10 @@ IF (NFS_TRACE_SAMPLING_RATE)
     SET_APPEND(RECIPE_ARGS --trace-sampling-rate $NFS_TRACE_SAMPLING_RATE)
 ENDIF()
 
+IF (NFS_BS_FAILURE_PROBABILITY)
+    SET_APPEND(RECIPE_ARGS --bs-failure-probability $NFS_BS_FAILURE_PROBABILITY)
+ENDIF()
+
 USE_RECIPE(
     cloud/filestore/tests/recipes/vhost/vhost-recipe
     ${RECIPE_ARGS}
