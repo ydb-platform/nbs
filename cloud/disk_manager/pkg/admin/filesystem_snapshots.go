@@ -1,14 +1,138 @@
 package admin
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
 	client_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/client/config"
+	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
 )
+
+////////////////////////////////////////////////////////////////////////////////
+
+type getFilesystemSnapshot struct {
+	clientConfig *client_config.ClientConfig
+	serverConfig *server_config.ServerConfig
+	snapshotID   string
+}
+
+func (c *getFilesystemSnapshot) run() error {
+	ctx := newContext(c.clientConfig)
+
+	resourceStorage, db, err := newResourceStorage(ctx, c.serverConfig)
+	if err != nil {
+		return err
+	}
+	defer db.Close(ctx)
+
+	snapshot, err := resourceStorage.GetFilesystemSnapshotMeta(ctx, c.snapshotID)
+	if err != nil {
+		return err
+	}
+
+	j, err := json.Marshal(snapshot)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println(string(j))
+
+	return nil
+}
+
+func newGetFilesystemSnapshotCmd(
+	clientConfig *client_config.ClientConfig,
+	serverConfig *server_config.ServerConfig,
+) *cobra.Command {
+
+	c := &getFilesystemSnapshot{
+		clientConfig: clientConfig,
+		serverConfig: serverConfig,
+	}
+
+	cmd := &cobra.Command{
+		Use: "get",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.run()
+		},
+	}
+
+	cmd.Flags().StringVar(
+		&c.snapshotID,
+		"id",
+		"",
+		"ID of filesystem snapshot to get; required",
+	)
+	if err := cmd.MarkFlagRequired("id"); err != nil {
+		log.Fatalf("Error setting flag id as required: %v", err)
+	}
+
+	return cmd
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+type listFilesystemSnapshots struct {
+	clientConfig *client_config.ClientConfig
+	serverConfig *server_config.ServerConfig
+	folderID     string
+}
+
+func (c *listFilesystemSnapshots) run() error {
+	ctx := newContext(c.clientConfig)
+
+	resourceStorage, db, err := newResourceStorage(ctx, c.serverConfig)
+	if err != nil {
+		return err
+	}
+	defer db.Close(ctx)
+
+	ids, err := resourceStorage.ListFilesystemSnapshots(
+		ctx,
+		c.folderID,
+		time.Now(),
+	)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println(strings.Join(ids, "\n"))
+
+	return nil
+}
+
+func newListFilesystemSnapshotsCmd(
+	clientConfig *client_config.ClientConfig,
+	serverConfig *server_config.ServerConfig,
+) *cobra.Command {
+
+	c := &listFilesystemSnapshots{
+		clientConfig: clientConfig,
+		serverConfig: serverConfig,
+	}
+
+	cmd := &cobra.Command{
+		Use: "list",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.run()
+		},
+	}
+
+	cmd.Flags().StringVar(
+		&c.folderID,
+		"folder-id",
+		"",
+		"ID of folder where filesystem snapshots are located; optional",
+	)
+
+	return cmd
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -175,6 +299,7 @@ func newDeleteFilesystemSnapshotCmd(
 
 func newFilesystemSnapshotsCmd(
 	clientConfig *client_config.ClientConfig,
+	serverConfig *server_config.ServerConfig,
 ) *cobra.Command {
 
 	cmd := &cobra.Command{
@@ -187,6 +312,8 @@ func newFilesystemSnapshotsCmd(
 	}
 
 	cmd.AddCommand(
+		newGetFilesystemSnapshotCmd(clientConfig, serverConfig),
+		newListFilesystemSnapshotsCmd(clientConfig, serverConfig),
 		newCreateFilesystemSnapshotCmd(clientConfig),
 		newDeleteFilesystemSnapshotCmd(clientConfig),
 	)
