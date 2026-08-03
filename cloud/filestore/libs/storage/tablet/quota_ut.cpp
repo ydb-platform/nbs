@@ -2,6 +2,7 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/generic/hash_set.h>
 #include <util/generic/size_literals.h>
 
 namespace NCloud::NFileStore::NStorage {
@@ -108,6 +109,27 @@ Y_UNIT_TEST_SUITE(TQuotaStoreTest)
 
         UNIT_ASSERT(!store.FindQuota(1));
         UNIT_ASSERT(store.FindQuota(2));
+    }
+
+    Y_UNIT_TEST(ShouldGetAllQuotas)
+    {
+        TQuotaStore store;
+
+        store.UpdateQuota(MakeQuota(1, 100, 1_GB));
+        store.UpdateQuota(MakeQuota(2, 200, 2_GB));
+        store.UpdateQuota(MakeQuota(3, 300, 3_GB));
+
+        auto quotas = store.GetQuotas();
+        UNIT_ASSERT_VALUES_EQUAL(3u, quotas.size());
+
+        THashSet<ui32> quotaIds;
+        for (const auto& quota: quotas) {
+            quotaIds.insert(quota.GetQuotaId());
+        }
+        UNIT_ASSERT_VALUES_EQUAL(3u, quotaIds.size());
+        UNIT_ASSERT(quotaIds.contains(1));
+        UNIT_ASSERT(quotaIds.contains(2));
+        UNIT_ASSERT(quotaIds.contains(3));
     }
 }
 

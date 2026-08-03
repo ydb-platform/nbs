@@ -58,6 +58,7 @@ SRCS(
     tablet_actor_monitoring_directory_viewer.cpp
     tablet_actor_monitoring_locks.cpp
     tablet_actor_oplog.cpp
+    tablet_actor_quota.cpp
     tablet_actor_readblob.cpp
     tablet_actor_readdata.cpp
     tablet_actor_readlink.cpp
@@ -100,6 +101,7 @@ SRCS(
     tablet_state_checkpoints.cpp
     tablet_state_data.cpp
     tablet_state_nodes.cpp
+    tablet_state_quotas.cpp
     tablet_state_sessions.cpp
     tablet_state_throttling.cpp
     tablet_tx.cpp

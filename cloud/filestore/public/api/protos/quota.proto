@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package NCloud.NFileStore.NProto;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TQuota
+{
+    uint32 QuotaId = 1;
+    uint64 MaxBytes = 2;
+    uint64 MaxNodes = 3;
+
+    repeated uint64 NodeId = 4;
+    uint64 CreationTimestampUs = 5;
+}

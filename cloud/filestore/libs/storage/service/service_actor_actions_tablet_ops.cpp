@@ -308,4 +308,43 @@ IActorPtr TStorageServiceActor::CreateListNodesInternalActor(
         std::move(input));
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// Quotas
+
+IActorPtr TStorageServiceActor::CreateSetQuotaActionActor(
+    TRequestInfoPtr requestInfo,
+    TString input)
+{
+    using TSetQuotaActor = TTabletActionActor<
+        TEvIndexTablet::TEvSetQuotaRequest,
+        TEvIndexTablet::TEvSetQuotaResponse>;
+    return std::make_unique<TSetQuotaActor>(
+        std::move(requestInfo),
+        std::move(input));
+}
+
+IActorPtr TStorageServiceActor::CreateDeleteQuotaActionActor(
+    TRequestInfoPtr requestInfo,
+    TString input)
+{
+    using TDeleteQuotaActor = TTabletActionActor<
+        TEvIndexTablet::TEvDeleteQuotaRequest,
+        TEvIndexTablet::TEvDeleteQuotaResponse>;
+    return std::make_unique<TDeleteQuotaActor>(
+        std::move(requestInfo),
+        std::move(input));
+}
+
+IActorPtr TStorageServiceActor::CreateListQuotasActionActor(
+    TRequestInfoPtr requestInfo,
+    TString input)
+{
+    using TListQuotasActor = TTabletActionActor<
+        TEvIndexTablet::TEvListQuotasRequest,
+        TEvIndexTablet::TEvListQuotasResponse>;
+    return std::make_unique<TListQuotasActor>(
+        std::move(requestInfo),
+        std::move(input));
+}
+
 }   // namespace NCloud::NFileStore::NStorage

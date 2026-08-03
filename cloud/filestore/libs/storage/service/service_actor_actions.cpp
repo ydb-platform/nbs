@@ -160,6 +160,18 @@ void TStorageServiceActor::HandleExecuteAction(
             "listnodesinternal",
             &TStorageServiceActor::CreateListNodesInternalActor
         },
+        {
+            "setquota",
+            &TStorageServiceActor::CreateSetQuotaActionActor
+        },
+        {
+            "deletequota",
+            &TStorageServiceActor::CreateDeleteQuotaActionActor
+        },
+        {
+            "listquotas",
+            &TStorageServiceActor::CreateListQuotasActionActor
+        },
     };
 
     using TInstantAction = void (TStorageServiceActor::*)(
