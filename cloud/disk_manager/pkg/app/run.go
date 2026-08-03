@@ -251,6 +251,7 @@ func run(
 				availabilityMonitoringStorage,
 				availabilityMonitoringMetricsRegistry,
 			)
+			defer availabilityMonitoring.Close()
 
 			s3, err = persistence.NewS3ClientFromConfig(
 				s3Config,
