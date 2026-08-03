@@ -1,4 +1,5 @@
 RECURSE_FOR_TESTS(
+    max-file-count-test
     service-kikimr-auth-test
     service-kikimr-datashard-like-test
     service-kikimr-emergency-test
