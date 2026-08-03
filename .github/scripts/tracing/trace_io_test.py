@@ -68,6 +68,24 @@ def test_otlp_writer_splits_batches_to_respect_reader_line_limit(
     assert len(read_otlp_jsonl([path])) == len(trace)
 
 
+def test_otlp_writer_rejects_duplicate_span_ids_before_creating_output(
+    tmp_path: Path,
+) -> None:
+    trace = Trace()
+    for name in ("first", "second"):
+        trace.add_span(
+            make_span(name=name),
+            resource=ResourceAttributes(),
+            scope_name="test",
+        )
+    path = tmp_path / "trace.otlp.jsonl.gz"
+
+    with pytest.raises(ValueError, match="Duplicate OTLP span ID"):
+        trace_io_module.write_otlp_jsonl(path, trace)
+
+    assert not path.exists()
+
+
 def test_reader_rejects_invalid_ids(tmp_path: Path) -> None:
     path = tmp_path / "bad.jsonl"
     path.write_text(

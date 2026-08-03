@@ -41,6 +41,7 @@ def _write_otlp_batch(stream, trace: Trace) -> None:
 
 
 def write_otlp_jsonl(path: Path, trace: Trace) -> None:
+    trace.validate()
     path.parent.mkdir(parents=True, exist_ok=True)
     with _open_text(path, "wt") as stream:
         wrote_batch = False
