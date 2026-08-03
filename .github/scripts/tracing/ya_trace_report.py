@@ -219,8 +219,6 @@ def main() -> None:
         json.dumps(input_manifest, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
-    input_manifest_path.chmod(0o644)
-    os.utime(input_manifest_path, ns=(0, 0))
     (args.output_dir / "trace-inputs.files").write_bytes(trace_inputs.tar_file_list())
     trace_collection = trace_inputs.parse()
     traces = trace_collection.traces

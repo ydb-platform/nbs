@@ -133,6 +133,11 @@ def test_report_preserves_raw_input_list_when_trace_parsing_fails(
     trace_path.parent.mkdir(parents=True)
     trace_path.write_text("{}\n")
     output_dir = tmp_path / "summary"
+    output_dir.mkdir()
+    manifest_path = output_dir / "trace-inputs.manifest.json"
+    manifest_path.write_text("")
+    manifest_path.chmod(0o600)
+    os.utime(manifest_path, ns=(1, 1))
 
     monkeypatch.setattr(yatrace_limits, "MAX_YA_TRACE_BYTES", 1)
     monkeypatch.setattr(
@@ -156,8 +161,10 @@ def test_report_preserves_raw_input_list_when_trace_parsing_fails(
     with pytest.raises(ValueError, match="Ya traces exceed 1 bytes"):
         ya_trace_report_module.main()
 
-    manifest = json.loads((output_dir / "trace-inputs.manifest.json").read_text())
+    manifest = json.loads(manifest_path.read_text())
     assert manifest["ya_trace_file_count"] == 1
+    assert manifest_path.stat().st_mode & 0o777 == 0o600
+    assert manifest_path.stat().st_mtime_ns > 1
     assert (output_dir / "trace-inputs.files").read_bytes() == (
         b"./cloud/example/tests/test-results/unittest/ytest.report.trace\0"
     )
