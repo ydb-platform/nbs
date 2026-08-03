@@ -37,6 +37,10 @@ struct IEndpointManager
 #undef ENDPOINT_DECLARE_METHOD
 
     virtual NThreading::TFuture<void> RestoreEndpoints() = 0;
+
+    virtual NThreading::TFuture<NProto::TError> RefreshEndpointIfNeeded(
+        const TString& diskId,
+        const TString& reason) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

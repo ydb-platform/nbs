@@ -625,6 +625,9 @@ public:
     TFuture<NProto::TError> SwitchEndpointIfNeeded(
         const TString& diskId,
         const TString& reason) override;
+    TFuture<NProto::TError> RefreshEndpointIfNeeded(
+        const TString& diskId,
+        const TString& reason) override;
 
     TFuture<void> RestoreEndpoints() override
     {
@@ -684,6 +687,10 @@ private:
     NProto::TError SwitchEndpointImpl(
         TCallContextPtr ctx,
         std::shared_ptr<TSwitchEndpointRequest> request);
+
+    NProto::TError RefreshEndpointIfNeededImpl(
+        const TString& diskId,
+        const TString& reason);
 
     NProto::TError AlterEndpoint(
         TCallContextPtr ctx,
@@ -1411,6 +1418,68 @@ NProto::TRefreshEndpointResponse TEndpointManager::RefreshEndpointImpl(
 
     const auto refreshError = listener->RefreshEndpoint(socketPath, sessionInfo.Volume);
     return TErrorResponse(refreshError);
+}
+
+TFuture<NProto::TError> TEndpointManager::RefreshEndpointIfNeeded(
+    const TString& diskId,
+    const TString& reason)
+{
+    return Executor->Execute([
+        weakSelf = weak_from_this(),
+        diskId,
+        reason] {
+        auto self = weakSelf.lock();
+        if (!self) {
+            return MakeError(E_FAIL, "EndpointManager is destroyed");
+        }
+
+        return self->RefreshEndpointIfNeededImpl(diskId, reason);
+    });
+}
+
+NProto::TError TEndpointManager::RefreshEndpointIfNeededImpl(
+    const TString& diskId,
+    const TString& reason)
+{
+    struct TEndpointToRefresh
+    {
+        TString SocketPath;
+        NProto::THeaders Headers;
+    };
+
+    TVector<TEndpointToRefresh> endpointsToRefresh;
+    for (const auto& [socketPath, endpoint]: Endpoints) {
+        if (endpoint->Request->GetDiskId() == diskId) {
+            endpointsToRefresh.push_back({
+                .SocketPath = socketPath,
+                .Headers = endpoint->Request->GetHeaders(),
+            });
+        }
+    }
+
+    if (endpointsToRefresh.empty()) {
+        return MakeError(S_OK);
+    }
+
+    STORAGE_INFO(
+        "Refreshing endpoints"
+        << ", reason=" << reason
+        << ", disk=" << diskId
+        << ", count=" << endpointsToRefresh.size());
+
+    for (const auto& endpoint: endpointsToRefresh) {
+        auto request = std::make_shared<NProto::TRefreshEndpointRequest>();
+        request->SetUnixSocketPath(endpoint.SocketPath);
+        request->MutableHeaders()->CopyFrom(endpoint.Headers);
+
+        auto response =
+            DoRefreshEndpoint(MakeIntrusive<TCallContext>(), std::move(request));
+        if (HasError(response.GetError())) {
+            return response.GetError();
+        }
+    }
+
+    return MakeError(S_OK);
 }
 
 void TEndpointManager::ProcessException(

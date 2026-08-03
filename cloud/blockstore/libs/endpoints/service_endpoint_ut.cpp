@@ -209,6 +209,60 @@ struct TTestSessionManager final
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TTestEndpointManager final
+    : public IEndpointManager
+{
+    ui32 RefreshEndpointCounter = 0;
+    TString LastDiskId;
+    TString LastRefreshReason;
+    TPromise<NProto::TError> RefreshEndpointResult = NewPromise<NProto::TError>();
+
+    void Start() override
+    {}
+
+    void Stop() override
+    {}
+
+    size_t CollectRequests(
+        const TIncompleteRequestsCollector& collector) override
+    {
+        Y_UNUSED(collector);
+        return 0;
+    }
+
+#define ENDPOINT_IMPLEMENT_METHOD(name, ...)                                   \
+    TFuture<NProto::T##name##Response> name(                                   \
+        TCallContextPtr ctx,                                                   \
+        std::shared_ptr<NProto::T##name##Request> request) override            \
+    {                                                                          \
+        Y_UNUSED(ctx);                                                         \
+        Y_UNUSED(request);                                                     \
+        return MakeFuture(NProto::T##name##Response());                        \
+    }                                                                          \
+// ENDPOINT_IMPLEMENT_METHOD
+
+    BLOCKSTORE_ENDPOINT_SERVICE(ENDPOINT_IMPLEMENT_METHOD)
+
+#undef ENDPOINT_IMPLEMENT_METHOD
+
+    TFuture<void> RestoreEndpoints() override
+    {
+        return MakeFuture();
+    }
+
+    TFuture<NProto::TError> RefreshEndpointIfNeeded(
+        const TString& diskId,
+        const TString& reason) override
+    {
+        ++RefreshEndpointCounter;
+        LastDiskId = diskId;
+        LastRefreshReason = reason;
+        return RefreshEndpointResult;
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 NProto::TKickEndpointResponse KickEndpoint(
     IEndpointManager& service,
     ui32 keyringId,
@@ -313,6 +367,48 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
         }
 
         executor->Stop();
+    }
+
+    Y_UNIT_TEST(ShouldRefreshEndpointAfterResizeVolume)
+    {
+        const TString diskId = "testDiskId";
+        const ui64 blocksCount = 42;
+
+        auto service = std::make_shared<TTestService>();
+        service->ResizeVolumeHandler =
+            [&] (std::shared_ptr<NProto::TResizeVolumeRequest> request)
+            {
+                UNIT_ASSERT_VALUES_EQUAL(diskId, request->GetDiskId());
+                UNIT_ASSERT_VALUES_EQUAL(blocksCount, request->GetBlocksCount());
+                return MakeFuture(NProto::TResizeVolumeResponse());
+            };
+
+        auto endpointManager = std::make_shared<TTestEndpointManager>();
+        auto endpointService = CreateMultipleEndpointService(
+            service,
+            CreateWallClockTimer(),
+            CreateSchedulerStub(),
+            endpointManager);
+
+        auto request = std::make_shared<NProto::TResizeVolumeRequest>();
+        request->SetDiskId(diskId);
+        request->SetBlocksCount(blocksCount);
+
+        auto future = endpointService->ResizeVolume(
+            MakeIntrusive<TCallContext>(),
+            std::move(request));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, endpointManager->RefreshEndpointCounter);
+        UNIT_ASSERT_VALUES_EQUAL(diskId, endpointManager->LastDiskId);
+        UNIT_ASSERT_VALUES_EQUAL(
+            "volume resize",
+            endpointManager->LastRefreshReason);
+        UNIT_ASSERT(!future.HasValue());
+
+        endpointManager->RefreshEndpointResult.SetValue(MakeError(S_OK));
+
+        auto response = future.GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(!HasError(response), response);
     }
 
     Y_UNIT_TEST(ShouldTimeoutFrozenRequest)

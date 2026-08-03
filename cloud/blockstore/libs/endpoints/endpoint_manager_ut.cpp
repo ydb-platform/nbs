@@ -220,16 +220,17 @@ private:
 
     TMap<TString, TTestEndpoint> Endpoints;
 
-public:
-    ui32 AlterEndpointCounter = 0;
-    ui32 SwitchEndpointCounter = 0;
-    NProto::TError AlterEndpointError;
-
     using TStartEndpointHandler = std::function<TFuture<NProto::TError>(
         const NProto::TStartEndpointRequest& request,
         NClient::ISessionPtr session)>;
 
 public:
+    ui32 AlterEndpointCounter = 0;
+    ui32 RefreshEndpointCounter = 0;
+    ui32 SwitchEndpointCounter = 0;
+    NProto::TError AlterEndpointError;
+    NProto::TError RefreshEndpointError;
+
     TTestEndpointListener(
             TFuture<NProto::TError> result = MakeFuture<NProto::TError>())
         : Result(std::move(result))
@@ -287,7 +288,9 @@ public:
     {
         Y_UNUSED(socketPath);
         Y_UNUSED(volume);
-        return {};
+        ++RefreshEndpointCounter;
+
+        return RefreshEndpointError;
     }
 
     TFuture<NProto::TError> SwitchEndpoint(
@@ -1429,6 +1432,63 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
                 error.GetCode(),
                 error);
             UNIT_ASSERT_VALUES_EQUAL(1, listener->SwitchEndpointCounter);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldRefreshEndpointWhenEndpointStarted)
+    {
+        TBootstrap bootstrap;
+        TMap<TString, NProto::TMountVolumeRequest> mountedVolumes;
+        bootstrap.Service = CreateTestService(mountedVolumes);
+
+        auto listener = std::make_shared<TTestEndpointListener>();
+        bootstrap.EndpointListeners = {{ NProto::IPC_VHOST, listener }};
+
+        auto manager = CreateEndpointManager(bootstrap);
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+        manager->RestoreEndpoints().Wait(5s);
+
+        TTempDir dir;
+        auto socketPath = (dir.Path() / "testSocket").GetPath();
+        auto diskId = "testDiskId";
+
+        {
+            auto future = manager->RefreshEndpointIfNeeded(diskId, "test");
+            auto error = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                error);
+            UNIT_ASSERT_VALUES_EQUAL(0, listener->RefreshEndpointCounter);
+        }
+
+        NProto::TStartEndpointRequest startRequest;
+        SetDefaultHeaders(startRequest);
+        startRequest.SetUnixSocketPath(socketPath);
+        startRequest.SetDiskId(diskId);
+        startRequest.SetClientId(TestClientId);
+        startRequest.SetIpcType(NProto::IPC_VHOST);
+
+        {
+            auto future = StartEndpoint(*manager, startRequest);
+            auto response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response.GetError().GetCode(),
+                response.GetError());
+        }
+
+        {
+            auto future = manager->RefreshEndpointIfNeeded(diskId, "test");
+            auto error = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                error);
+            UNIT_ASSERT_VALUES_EQUAL(1, listener->RefreshEndpointCounter);
         }
     }
 
