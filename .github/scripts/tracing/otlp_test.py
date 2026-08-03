@@ -1,6 +1,13 @@
 from __future__ import annotations
 
 import pytest
+from opentelemetry.proto_json.common.v1.common import InstrumentationScope
+from opentelemetry.proto_json.resource.v1.resource import Resource
+from opentelemetry.proto_json.trace.v1.trace import (
+    ResourceSpans,
+    ScopeSpans,
+    TracesData,
+)
 
 from scripts.tracing.otlp import (
     Interval,
@@ -8,6 +15,7 @@ from scripts.tracing.otlp import (
     Span,
     Trace,
     decode_attributes,
+    encode_attributes,
     make_event,
     make_span,
     MILLISECOND,
@@ -157,6 +165,36 @@ def test_trace_groups_resources_independent_of_attribute_order() -> None:
 
     assert len(trace.data.resource_spans) == 1
     assert len(trace.data.resource_spans[0].scope_spans[0].spans) == 2
+
+
+def test_trace_batching_preserves_instrumentation_scope_metadata() -> None:
+    scope = InstrumentationScope(
+        name="tests",
+        version="2",
+        attributes=encode_attributes({"library": "ya"}),
+        dropped_attributes_count=3,
+    )
+    span = make_span(
+        trace_id=stable_trace_id("trace"),
+        span_id=stable_span_id("span"),
+        name="operation",
+        start_ns=1_000,
+        end_ns=2_000,
+    )
+    source = Trace(
+        TracesData(
+            resource_spans=[
+                ResourceSpans(
+                    resource=Resource(),
+                    scope_spans=[ScopeSpans(scope=scope, spans=[span])],
+                )
+            ]
+        )
+    )
+
+    scope = next(source.batches(1)).data.resource_spans[0].scope_spans[0].scope
+    assert decode_attributes(scope.attributes) == {"library": "ya"}
+    assert scope.dropped_attributes_count == 3
 
 
 def test_trace_rejects_duplicate_span_ids_within_one_trace() -> None:

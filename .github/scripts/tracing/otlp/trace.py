@@ -24,7 +24,7 @@ class Trace:
     def __init__(self, data: TracesData | None = None) -> None:
         self.data = data or TracesData()
         self._resources: dict[str, ResourceSpans] = {}
-        self._scopes: dict[tuple[str, str, str], ScopeSpans] = {}
+        self._scopes: dict[tuple[str, str], ScopeSpans] = {}
         self._index()
 
     @classmethod
@@ -37,19 +37,17 @@ class Trace:
     def _index(self) -> None:
         for resource_spans in self.data.resource_spans:
             resource = resource_spans.resource or Resource()
-            resource_key = self._resource_key(resource)
+            resource_key = self._message_key(resource)
             self._resources[resource_key] = resource_spans
             for scope_spans in resource_spans.scope_spans:
                 scope = scope_spans.scope or InstrumentationScope()
-                self._scopes[
-                    (resource_key, str(scope.name or ""), str(scope.version or ""))
-                ] = scope_spans
+                self._scopes[(resource_key, self._message_key(scope))] = scope_spans
                 for span in scope_spans.spans:
                     normalize_span_times(span)
 
     @staticmethod
-    def _resource_key(resource: Resource) -> str:
-        value = resource.to_dict()
+    def _message_key(message: Resource | InstrumentationScope) -> str:
+        value = message.to_dict()
         attributes = value.get("attributes")
         if isinstance(attributes, list):
             attributes.sort(
@@ -76,25 +74,28 @@ class Trace:
         span: Span,
         *,
         resource: ResourceAttributes | Resource,
-        scope_name: str,
+        scope_name: str = "",
         scope_version: str = "",
+        scope: InstrumentationScope | None = None,
     ) -> None:
         normalize_span_times(span)
         validate_span(span)
         otlp_resource = self._resource(resource)
-        resource_key = self._resource_key(otlp_resource)
+        resource_key = self._message_key(otlp_resource)
         resource_spans = self._resources.get(resource_key)
         if resource_spans is None:
             resource_spans = ResourceSpans(resource=otlp_resource)
             self.data.resource_spans.append(resource_spans)
             self._resources[resource_key] = resource_spans
 
-        scope_key = (resource_key, scope_name, scope_version)
+        otlp_scope = scope or InstrumentationScope(
+            name=scope_name,
+            version=scope_version,
+        )
+        scope_key = (resource_key, self._message_key(otlp_scope))
         scope_spans = self._scopes.get(scope_key)
         if scope_spans is None:
-            scope_spans = ScopeSpans(
-                scope=InstrumentationScope(name=scope_name, version=scope_version)
-            )
+            scope_spans = ScopeSpans(scope=otlp_scope)
             resource_spans.scope_spans.append(scope_spans)
             self._scopes[scope_key] = scope_spans
         scope_spans.spans.append(span)
@@ -120,8 +121,7 @@ class Trace:
             self.add_span(
                 span,
                 resource=resource,
-                scope_name=str(scope.name or ""),
-                scope_version=str(scope.version or ""),
+                scope=scope,
             )
 
     def batches(self, size: int) -> Iterator[Trace]:
@@ -132,8 +132,7 @@ class Trace:
             batch.add_span(
                 span,
                 resource=resource,
-                scope_name=str(scope.name or ""),
-                scope_version=str(scope.version or ""),
+                scope=scope,
             )
             if index % size == 0:
                 yield batch

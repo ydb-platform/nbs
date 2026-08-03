@@ -247,8 +247,7 @@ def _merge_imported_spans(
                 attributes=encode_attributes(attributes),
             ),
             resource=resource,
-            scope_name=str(scope.name or ""),
-            scope_version=str(scope.version or ""),
+            scope=scope,
         )
 
 
