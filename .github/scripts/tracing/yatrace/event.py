@@ -52,6 +52,9 @@ class YaEvent:
             order=order,
         )
 
+    def timestamp_or(self, fallback: Ns) -> Ns:
+        return fallback if self.timestamp_ns is None else self.timestamp_ns
+
     @staticmethod
     def parse_chunk_key(value: Mapping[str, Any]) -> tuple[int, int] | None:
         try:

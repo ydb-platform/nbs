@@ -29,7 +29,7 @@ class YaTestTiming:
         only_test: bool,
     ) -> YaTestTiming | None:
         if start is not None:
-            start_ns = chunk.clamp(start.timestamp_ns or chunk.start)
+            start_ns = chunk.clamp(start.timestamp_or(chunk.start))
             if finish is None:
                 return cls(
                     interval=Interval(start_ns, chunk.end),
@@ -45,7 +45,7 @@ class YaTestTiming:
                 max(
                     start_ns,
                     chunk.clamp(
-                        finish.timestamp_ns or Ns(start_ns + duration_ns),
+                        finish.timestamp_or(Ns(start_ns + duration_ns)),
                     ),
                 )
             )
@@ -75,7 +75,7 @@ class YaTestTiming:
             )
             source = "chunk-delay-and-test-duration"
         else:
-            end_ns = chunk.clamp(finish.timestamp_ns or chunk.end)
+            end_ns = chunk.clamp(finish.timestamp_or(chunk.end))
             start_ns = Ns(max(chunk.start, end_ns - duration_ns))
             source = "finish-event-and-test-duration"
         return cls(

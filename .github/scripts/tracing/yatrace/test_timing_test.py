@@ -1,6 +1,9 @@
+from scripts.tracing.yatrace.test_timing import YaTestTiming
 from scripts.tracing.yatrace_test_support import (
+    Interval,
     Ns,
     Path,
+    YaEvent,
     _attributes,
     _chunk,
     _render_ya_trace,
@@ -9,6 +12,23 @@ from scripts.tracing.yatrace_test_support import (
     span_duration_ns,
     span_status_code,
 )
+
+
+def test_test_timing_preserves_explicit_zero_event_timestamp() -> None:
+    start = YaEvent("subtest-started", Ns(0), {}, 0)
+    finish = YaEvent("subtest-finished", Ns(0), {"time": 5}, 1)
+
+    timing = YaTestTiming.resolve(
+        start,
+        finish,
+        chunk=Interval(Ns(0), Ns.from_s_or_zero(10)),
+        inferred_start=None,
+        only_test=False,
+    )
+
+    assert timing is not None
+    assert timing.interval == Interval(Ns(0), Ns(0))
+    assert timing.inferred is False
 
 
 def test_finish_only_test_clamps_end_before_applying_duration(
