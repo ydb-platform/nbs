@@ -56,6 +56,7 @@ public:
     bool UpdateAccessStats(ui64 nodeId, TInstant now);
 
     TVector<TNodeAccessStats> GetStats(TInstant now, ui32 n) const;
+
 };
 
 }   // namespace NCloud::NFileStore::NStorage
