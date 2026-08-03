@@ -136,6 +136,7 @@ public:
             nodeRows,
             [](const TNodeRow& l, const TNodeRow& r)
             {
+                // AccessScore DESC, ShardId ASC, NodeId ASC
                 return std::tie(r.AccessScore, l.ShardId, l.NodeId) <
                        std::tie(l.AccessScore, r.ShardId, r.NodeId);
             });
@@ -144,15 +145,9 @@ public:
             rows,
             [](const TShardRow& l, const TShardRow& r)
             {
-                if (l.CurrentLoad != r.CurrentLoad) {
-                    return l.CurrentLoad > r.CurrentLoad;
-                }
-
-                if (l.Suffer != r.Suffer) {
-                    return l.Suffer > r.Suffer;
-                }
-
-                return l.ShardId < r.ShardId;
+                // CurrentLoad DESC, Suffer DESC, ShardId ASC
+                return std::tie(r.CurrentLoad, r.Suffer, l.ShardId) <
+                       std::tie(l.CurrentLoad, l.Suffer, r.ShardId);
             });
 
         const size_t limit = Min<size_t>(Top, rows.size());
