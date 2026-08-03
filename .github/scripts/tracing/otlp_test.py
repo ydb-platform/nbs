@@ -125,6 +125,31 @@ def test_trace_owns_resource_and_scope_hierarchy() -> None:
     assert resource_spans.scope_spans[0].spans[0].name == "operation"
 
 
+def test_trace_length_and_truthiness_do_not_walk_spans(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    trace = Trace()
+    trace.add_span(
+        make_span(
+            trace_id=stable_trace_id("trace"),
+            span_id=stable_span_id("span"),
+            name="operation",
+            start_ns=1_000,
+            end_ns=2_000,
+        ),
+        resource=ResourceAttributes(),
+        scope_name="tests",
+    )
+
+    def fail_if_walked(*_args, **_kwargs):
+        raise AssertionError("walked")
+
+    monkeypatch.setattr(trace, "spans", fail_if_walked)
+
+    assert len(trace) == 1
+    assert trace
+
+
 def test_trace_default_scope_matches_an_unversioned_imported_scope() -> None:
     trace = Trace()
     resource = ResourceAttributes({"service.name": "test"})

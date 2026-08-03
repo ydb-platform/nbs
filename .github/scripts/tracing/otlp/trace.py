@@ -25,6 +25,9 @@ class Trace:
         self.data = data or TracesData()
         self._resources: dict[tuple[str, str], ResourceSpans] = {}
         self._scopes: dict[tuple[str, str, str, str], ScopeSpans] = {}
+        self._span_count = 0
+        self._span_index: dict[tuple[bytes, bytes], Span] = {}
+        self._duplicate_spans: dict[tuple[bytes, bytes], tuple[Span, Span]] = {}
         self._index()
 
     @classmethod
@@ -52,6 +55,18 @@ class Trace:
                 self._scopes[scope_key] = scope_spans
                 for span in scope_spans.spans:
                     normalize_span_times(span)
+                    self._index_span(span)
+
+    def _index_span(self, span: Span) -> None:
+        identity = bytes(span.trace_id), bytes(span.span_id)
+        if identity in self._span_index:
+            self._duplicate_spans.setdefault(
+                identity,
+                (self._span_index[identity], span),
+            )
+        else:
+            self._span_index[identity] = span
+        self._span_count += 1
 
     @staticmethod
     def _message_key(message: Resource | InstrumentationScope) -> str:
@@ -115,6 +130,7 @@ class Trace:
             resource_spans.scope_spans.append(scope_spans)
             self._scopes[scope_key] = scope_spans
         scope_spans.spans.append(span)
+        self._index_span(span)
 
     def writer(self, resource: ResourceAttributes | Resource) -> SpanWriter:
         return SpanWriter(self, resource)
@@ -167,20 +183,19 @@ class Trace:
             yield batch
 
     def validate(self) -> None:
-        seen: dict[tuple[bytes, bytes], str] = {}
         parents: dict[tuple[bytes, bytes], tuple[bytes, bytes]] = {}
         for span in self.spans():
             validate_span(span)
             identity = bytes(span.trace_id), bytes(span.span_id)
-            if identity in seen:
-                previous = seen[identity]
-                raise ValueError(
-                    f"Duplicate OTLP span ID {span.span_id.hex()} in trace "
-                    f"{span.trace_id.hex()} for {previous!r} and {span.name!r}"
-                )
-            seen[identity] = str(span.name or "")
             if span.parent_span_id:
                 parents[identity] = bytes(span.trace_id), bytes(span.parent_span_id)
+
+        if self._duplicate_spans:
+            identity, (previous, duplicate) = next(iter(self._duplicate_spans.items()))
+            raise ValueError(
+                f"Duplicate OTLP span ID {identity[1].hex()} in trace "
+                f"{identity[0].hex()} for {previous.name!r} and {duplicate.name!r}"
+            )
 
         validated: set[tuple[bytes, bytes]] = set()
         for identity in parents:
@@ -200,13 +215,13 @@ class Trace:
         return self.spans()
 
     def __len__(self) -> int:
-        return sum(1 for _ in self.spans())
+        return self._span_count
 
     def __getitem__(self, index: int | slice) -> Span | list[Span]:
         return list(self.spans())[index]
 
     def __bool__(self) -> bool:
-        return any(True for _ in self.spans())
+        return self._span_count > 0
 
 
 @dataclass(frozen=True, slots=True)
