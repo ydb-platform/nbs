@@ -112,6 +112,7 @@ bool TIndexTabletActor::PrepareTx_LoadState(
         db->ReadNewBlobs(args.NewBlobs),
         db->ReadGarbageBlobs(args.GarbageBlobs),
         db->ReadCheckpoints(args.Checkpoints),
+        db->ReadQuotas(args.Quotas),
         db->ReadTruncateQueue(args.TruncateQueue),
         db->ReadStorageConfig(args.StorageConfig),
         db->ReadSessionHistoryEntries(args.SessionHistory),
@@ -288,8 +289,8 @@ void TIndexTabletActor::CompleteAdapterLoadState(
             fastShardConfig.GetMemConfig());
     }
 
-    NMetrics::Store(Metrics.OpLogEntryCount, GetOpLogEntryCount());
-    NMetrics::Store(Metrics.ResponseLogEntryCount, GetResponseLogEntryCount());
+    NMetrics::Store(Metrics->OpLogEntryCount, GetOpLogEntryCount());
+    NMetrics::Store(Metrics->ResponseLogEntryCount, GetResponseLogEntryCount());
 
     LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
         LogTag << " Loading tablet sessions");
@@ -412,8 +413,8 @@ void TIndexTabletActor::CompleteTx_LoadState(
         config);
     UpdateLogTag();
 
-    NMetrics::Store(Metrics.OpLogEntryCount, GetOpLogEntryCount());
-    NMetrics::Store(Metrics.ResponseLogEntryCount, GetResponseLogEntryCount());
+    NMetrics::Store(Metrics->OpLogEntryCount, GetOpLogEntryCount());
+    NMetrics::Store(Metrics->ResponseLogEntryCount, GetResponseLogEntryCount());
 
     LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
         LogTag << " Loading tablet sessions");
@@ -448,6 +449,11 @@ void TIndexTabletActor::CompleteTx_LoadState(
         LogTag << " Loading tablet checkpoints: "
             << args.Checkpoints.size());
     LoadCheckpoints(args.Checkpoints);
+
+    LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
+        LogTag << " Loading tablet quotas: "
+            << args.Quotas.size());
+    LoadQuotas(args.Quotas);
 
     LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
         LogTag << " Loading fresh bytes: "

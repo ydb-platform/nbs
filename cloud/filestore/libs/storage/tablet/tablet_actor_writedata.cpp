@@ -214,9 +214,9 @@ void TIndexTabletActor::HandleWriteDataCompleted(
     WorkerActors.erase(ev->Sender);
     EnqueueBlobIndexOpIfNeeded(ctx);
 
-    Metrics.WriteData.Update(msg->Count, msg->Size, msg->Time);
+    Metrics->WriteData.Update(msg->Count, msg->Size, msg->Time);
     if (msg->IsOverloaded) {
-        Metrics.OverloadedCount.fetch_add(1, std::memory_order_relaxed);
+        Metrics->OverloadedCount.fetch_add(1, std::memory_order_relaxed);
     }
 }
 
@@ -447,7 +447,7 @@ void TIndexTabletActor::CompleteTx_WriteData(
         EnqueueFlushIfNeeded(ctx);
         EnqueueBlobIndexOpIfNeeded(ctx);
 
-        Metrics.WriteData.Update(
+        Metrics->WriteData.Update(
             1,
             args.ByteRange.Length,
             ctx.Now() - args.RequestInfo->StartedTs);
@@ -510,7 +510,7 @@ void TIndexTabletActor::CompleteTx_WriteData(
         *Config,
         *SystemCounters,
         GetFileSystemId(),
-        Metrics.CPUUsageRate,
+        Metrics->CPUUsageRate,
         &backendInfo);
 
     auto actor = std::make_unique<TWriteDataActor>(

@@ -286,17 +286,17 @@ void TIndexTabletActor::ReplyListNodes(
             record.SetCookie(args.Next);
         }
 
-        Metrics.ListNodes.Update(
+        Metrics->ListNodes.Update(
             1,
             requestBytes,
             ctx.Now() - args.RequestInfo->StartedTs);
-        Metrics.ListNodesExtra.RequestedBytesPrecharge.fetch_add(
+        Metrics->ListNodesExtra.RequestedBytesPrecharge.fetch_add(
             args.BytesToPrecharge,
             std::memory_order_relaxed);
-        Metrics.ListNodesExtra.PrepareAttempts.fetch_add(
+        Metrics->ListNodesExtra.PrepareAttempts.fetch_add(
             args.PrepareAttempts,
             std::memory_order_relaxed);
-        Metrics.ListNodesExtra.ResponseNodeRefs.fetch_add(
+        Metrics->ListNodesExtra.ResponseNodeRefs.fetch_add(
             args.ChildRefs.size(),
             std::memory_order_relaxed);
     }
@@ -392,17 +392,17 @@ void TIndexTabletActor::ReplyListNodesInternal(
             record.SetCookie(args.Next);
         }
 
-        Metrics.ListNodes.Update(
+        Metrics->ListNodes.Update(
             1,
             nameBufferSize,
             ctx.Now() - args.RequestInfo->StartedTs);
-        Metrics.ListNodesExtra.RequestedBytesPrecharge.fetch_add(
+        Metrics->ListNodesExtra.RequestedBytesPrecharge.fetch_add(
             args.BytesToPrecharge,
             std::memory_order_relaxed);
-        Metrics.ListNodesExtra.PrepareAttempts.fetch_add(
+        Metrics->ListNodesExtra.PrepareAttempts.fetch_add(
             args.PrepareAttempts,
             std::memory_order_relaxed);
-        Metrics.ListNodesExtra.ResponseNodeRefs.fetch_add(
+        Metrics->ListNodesExtra.ResponseNodeRefs.fetch_add(
             args.ChildRefs.size(),
             std::memory_order_relaxed);
     }

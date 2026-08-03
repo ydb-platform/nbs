@@ -471,7 +471,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
                     Config->GetGuestCachingType() == NProto::GCT_ANY_READ);
             args.Response.SetGuestKeepCache(keepCache);
 
-            Metrics.CreateHandleExtra.GuestKeepCacheSet.fetch_add(
+            Metrics->CreateHandleExtra.GuestKeepCacheSet.fetch_add(
                 keepCache,
                 std::memory_order_relaxed);
         }
@@ -600,7 +600,7 @@ void TIndexTabletActor::CompleteCreateHandle(
         response->Record = std::move(args.Response);
     }
     auto& requestMetrics = args.ProfileLogRequest.GetBehaveAsShard()
-        ? Metrics.CreateHandleInShard : Metrics.CreateHandle;
+        ? Metrics->CreateHandleInShard : Metrics->CreateHandle;
     requestMetrics.Update(1, 0, ctx.Now() - args.RequestInfo->StartedTs);
 
     CompleteResponse<TEvService::TCreateHandleMethod>(

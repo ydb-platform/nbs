@@ -105,6 +105,9 @@ namespace NCloud::NFileStore::NStorage {
     xxx(CreateCheckpoint,                   __VA_ARGS__)                       \
     xxx(DeleteCheckpoint,                   __VA_ARGS__)                       \
                                                                                \
+    xxx(SetQuota,                           __VA_ARGS__)                       \
+    xxx(DeleteQuota,                        __VA_ARGS__)                       \
+                                                                               \
     xxx(CreateNode,                         __VA_ARGS__)                       \
     xxx(UnlinkNode,                         __VA_ARGS__)                       \
     xxx(CompleteUnlinkNode,                 __VA_ARGS__)                       \
@@ -357,6 +360,7 @@ struct TTxIndexTablet
         TVector<TPartialBlobId> NewBlobs;
         TVector<TPartialBlobId> GarbageBlobs;
         TVector<NProto::TCheckpoint> Checkpoints;
+        TVector<NProto::TQuota> Quotas;
         TVector<NProto::TDupCacheEntry> DupCache;
         TVector<NProto::TTruncateEntry> TruncateQueue;
         TMaybe<NProto::TStorageConfig> StorageConfig;
@@ -383,6 +387,7 @@ struct TTxIndexTablet
             NewBlobs.clear();
             GarbageBlobs.clear();
             Checkpoints.clear();
+            Quotas.clear();
             DupCache.clear();
             TruncateQueue.clear();
             StorageConfig.Clear();
@@ -704,6 +709,64 @@ struct TTxIndexTablet
 
             Blobs.clear();
             MixedBlobs.clear();
+        }
+    };
+
+    //
+    // SetQuota
+    //
+
+    struct TSetQuota
+        : TTxIndexTabletBase
+        , TErrorAware
+    {
+        const TRequestInfoPtr RequestInfo;
+        const ui32 QuotaId;
+        const ui64 MaxBytes;
+        const ui64 MaxNodes;
+
+        NProto::TQuota Quota;
+
+        TSetQuota(
+                TRequestInfoPtr requestInfo,
+                ui32 quotaId,
+                ui64 maxBytes,
+                ui64 maxNodes)
+            : RequestInfo(std::move(requestInfo))
+            , QuotaId(quotaId)
+            , MaxBytes(maxBytes)
+            , MaxNodes(maxNodes)
+        {}
+
+        void Clear() override
+        {
+            TErrorAware::Clear();
+
+            Quota.Clear();
+        }
+    };
+
+    //
+    // DeleteQuota
+    //
+
+    struct TDeleteQuota
+        : TTxIndexTabletBase
+        , TErrorAware
+    {
+        const TRequestInfoPtr RequestInfo;
+        const ui32 QuotaId;
+
+        TDeleteQuota(
+                TRequestInfoPtr requestInfo,
+                ui32 quotaId)
+            : RequestInfo(std::move(requestInfo))
+            , QuotaId(quotaId)
+        {}
+
+        void Clear() override
+        {
+            TErrorAware::Clear();
         }
     };
 

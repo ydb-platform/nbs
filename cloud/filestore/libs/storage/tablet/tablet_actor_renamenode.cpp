@@ -807,7 +807,7 @@ void TIndexTabletActor::CompleteTx_RenameNode(
 
     RemoveInFlightRequest(*args.RequestInfo);
 
-    Metrics.RenameNode.Update(
+    Metrics->RenameNode.Update(
         1,
         0,
         ctx.Now() - args.RequestInfo->StartedTs);

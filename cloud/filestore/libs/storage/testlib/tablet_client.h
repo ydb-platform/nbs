@@ -299,6 +299,29 @@ public:
         return request;
     }
 
+    auto CreateSetQuotaRequest(ui32 quotaId, ui64 maxBytes, ui64 maxNodes = 0)
+    {
+        auto request =
+            std::make_unique<TEvIndexTablet::TEvSetQuotaRequest>();
+        request->Record.SetQuotaId(quotaId);
+        request->Record.SetMaxBytes(maxBytes);
+        request->Record.SetMaxNodes(maxNodes);
+        return request;
+    }
+
+    auto CreateDeleteQuotaRequest(ui32 quotaId)
+    {
+        auto request =
+            std::make_unique<TEvIndexTablet::TEvDeleteQuotaRequest>();
+        request->Record.SetQuotaId(quotaId);
+        return request;
+    }
+
+    auto CreateListQuotasRequest()
+    {
+        return std::make_unique<TEvIndexTablet::TEvListQuotasRequest>();
+    }
+
     auto CreateDestroySessionRequest(ui64 seqNo = 0)
     {
         auto request = std::make_unique<TEvIndexTablet::TEvDestroySessionRequest>();

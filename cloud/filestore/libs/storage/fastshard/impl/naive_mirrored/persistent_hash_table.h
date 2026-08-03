@@ -204,6 +204,9 @@ public:
         , Hash(std::move(hash))
     {
         Y_ABORT_UNLESS(sizeof(TValue) <= SlotSize);
+
+        const TValue emptySlot{};
+        Y_ABORT_UNLESS(TombstoneKey != MakeKey(emptySlot));
     }
 
 public:
@@ -218,6 +221,10 @@ public:
         TVector<TPageGroup>& pageGroups)
     {
         auto k = MakeKey(v);
+        if (k == TombstoneKey) {
+            return MakeError(E_ARGUMENT, "attempt to put a tombstone");
+        }
+
         TValue existing{};
         ui64 slotNo = 0;
         auto error = AllocateSlot(lsn, k, &existing, &slotNo);

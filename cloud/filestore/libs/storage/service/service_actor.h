@@ -343,6 +343,18 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
+    NActors::IActorPtr CreateSetQuotaActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
+    NActors::IActorPtr CreateDeleteQuotaActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
+    NActors::IActorPtr CreateListQuotasActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
     void PerformToggleServiceStateAction(
         const NActors::TActorContext& ctx,
         TRequestInfoPtr requestInfo,

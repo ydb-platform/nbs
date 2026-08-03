@@ -1302,6 +1302,26 @@ private:
         const TPartialBlobId& blobId);
 
     //
+    // Quotas
+    //
+
+public:
+    void LoadQuotas(const TVector<NProto::TQuota>& quotas);
+
+    TVector<NProto::TQuota> GetQuotas() const;
+
+    const NProto::TQuota* FindQuota(ui32 quotaId) const;
+
+    const NProto::TQuota& SetQuota(
+        IIndexTabletDatabase& db,
+        ui32 quotaId,
+        ui64 maxBytes,
+        ui64 maxNodes,
+        TInstant now);
+
+    void DeleteQuota(IIndexTabletDatabase& db, ui32 quotaId);
+
+    //
     // Background operations
     //
 

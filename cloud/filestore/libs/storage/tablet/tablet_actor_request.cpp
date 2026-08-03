@@ -63,7 +63,7 @@ bool TIndexTabletActor::AcceptRequestNoSession(
             msg->CallContext->LWOrbit);
     }
 
-    Metrics.BusyIdleCalc.OnRequestStarted();
+    Metrics->BusyIdleCalc.OnRequestStarted();
 
     FILESTORE_TRACK(
         RequestReceived_Tablet,
@@ -93,7 +93,12 @@ bool TIndexTabletActor::AcceptRequestNoSession(
 }
 
 template <typename TMethod>
-void TIndexTabletActor::CompleteResponse(
+void CompleteResponse(
+    const TStorageConfig& config,
+    const ITraceSerializerPtr& traceSerializer,
+    TSystemCounters& systemCounters,
+    const TString& fileSystemId,
+    TTabletMetrics& metrics,
     typename TMethod::TResponse::ProtoRecordType& response,
     const TCallContextPtr& callContext,
     bool* builtTraceInfo)
@@ -110,24 +115,41 @@ void TIndexTabletActor::CompleteResponse(
         TMethod::Name);
 
     *builtTraceInfo = BuildTraceInfo(
-        TraceSerializer,
+        traceSerializer,
         callContext,
         response);
     BuildThrottlerInfo(*callContext, response);
     BuildBackendInfo(
-        *Config,
-        *SystemCounters,
-        GetFileSystemId(),
-        Metrics.CPUUsageRate,
+        config,
+        systemCounters,
+        fileSystemId,
+        metrics.CPUUsageRate,
         response);
     if constexpr (HasResponseHeaders<decltype(response)>()) {
         const auto& responseHeaders = response.GetHeaders();
         if (responseHeaders.GetBackendInfo().GetIsOverloaded()) {
-            Metrics.OverloadedCount.fetch_add(1, std::memory_order_relaxed);
+            metrics.OverloadedCount.fetch_add(1, std::memory_order_relaxed);
         }
     }
 
-    Metrics.BusyIdleCalc.OnRequestCompleted();
+    metrics.BusyIdleCalc.OnRequestCompleted();
+}
+
+template <typename TMethod>
+void TIndexTabletActor::CompleteResponse(
+    typename TMethod::TResponse::ProtoRecordType& response,
+    const TCallContextPtr& callContext,
+    bool* builtTraceInfo)
+{
+    NStorage::CompleteResponse<TMethod>(
+        *Config,
+        TraceSerializer,
+        *SystemCounters,
+        GetFileSystemId(),
+        *Metrics,
+        response,
+        callContext,
+        builtTraceInfo);
 }
 
 template <typename TMethod>

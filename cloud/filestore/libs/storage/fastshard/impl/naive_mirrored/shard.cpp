@@ -33,7 +33,9 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 // inode table layout
 
-constexpr ui64 NodeSlotSize = 100;
+constexpr ui64 NodeSlotSize = 96; // bigger than the current slot struct - in
+                                  // order not to drop all data if we decide to
+                                  // add something to the slot struct
 constexpr ui32 PageSize = 4_KB;
 constexpr ui64 NodeTableSize = 512_MB;
 
@@ -52,6 +54,7 @@ struct TNodeTableSlot
 };
 
 static_assert(sizeof(TNodeTableSlot) <= NodeSlotSize);
+static_assert(NodeSlotSize % alignof(TNodeTableSlot) == 0);
 
 ////////////////////////////////////////////////////////////////////////////////
 // name table layout
@@ -215,7 +218,7 @@ public:
 class TNodeTable
 {
 private:
-    static constexpr ui64 SlotsPerPage = 40;
+    static constexpr ui64 SlotsPerPage = 42;
     static_assert(SlotsPerPage * NodeSlotSize <= PageSize);
 
     using THt = TPersistentHashTable<ui64, TNodeTableSlot>;
@@ -324,6 +327,12 @@ public:
             slot.CTime = update.GetCTime();
         }
         if (HasFlag(flags, NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE)) {
+            if (slot.Size > update.GetSize()) {
+                //
+                // TODO(#5894): deallocate pages and delete them from page index
+                //
+            }
+
             slot.Size = update.GetSize();
         }
 
@@ -381,6 +390,7 @@ private:
     static_assert(SlotsPerPage * NameSlotSize <= PageSize);
 
     using THt = TPersistentHashTable<TStringBuf, TNameTableSlot>;
+    TNameTableSlot Tombstone{};
     std::unique_ptr<THt> Slots;
 
 public:
@@ -392,14 +402,15 @@ public:
         const ui64 pageCount = Min(
             RoundUp(config.GetNodesPerGroup(), SlotsPerPage),
             (NodeTableSize / PageSize) * SlotsPerPage) / SlotsPerPage;
-        TNameTableSlot tombstone{};
-        tombstone.NodeId = Max<ui64>();
+        // Tombstone key needs to be different from an empty slot key
+        memset(Tombstone.Name, 1, NameCapacity - 1);
+        Tombstone.NodeId = Max<ui64>();
         Slots = std::make_unique<THt>(
             firstPageNo,
             pageCount,
             PageSize,
             NameSlotSize,
-            tombstone,
+            Tombstone,
             std::move(pageStore),
             [] (const TNameTableSlot& s) -> TStringBuf
             {
@@ -564,7 +575,7 @@ ui64 CalcPageClusterCount(
 {
     const ui64 dataPageCount = Min(
         config.GetExpectedGroupCapacity() / PageSize,
-        MaxNodePageClusterTableSize / PageSize);
+        MaxSpacePerStorageGroup / PageSize);
     return RoundUp(dataPageCount, PageClusterPageCount) / PageClusterPageCount;
 }
 
@@ -1283,7 +1294,9 @@ public:
                 storagePageClusterIdsToWrite.push_back(storagePageClusterId);
             }
 
-            bufferOffset += PageClusterSize;
+            const ui64 nextFileOffset =
+                RoundDown(fileOffset + PageClusterSize, PageClusterSize);
+            bufferOffset += nextFileOffset - fileOffset;
         }
 
         if (HasError(error)) {
@@ -1423,6 +1436,10 @@ public:
         }
 
         if (HasError(error)) {
+            PageAllocator.RollbackAllocation(
+                newStoragePageClusterIds,
+                writeContext);
+
             *response.MutableError() = std::move(error);
             return response;
         }
@@ -1435,6 +1452,10 @@ public:
         error = Nodes.ResizeNode(nodeId, endOffset, writeContext);
 
         if (HasError(error)) {
+            PageAllocator.RollbackAllocation(
+                newStoragePageClusterIds,
+                writeContext);
+
             *response.MutableError() = std::move(error);
             return response;
         }
@@ -1458,9 +1479,12 @@ public:
             // after that we can rollback the pages.
             //
 
+            l.lock();
             PageAllocator.RollbackAllocation(
                 newStoragePageClusterIds,
                 writeContext);
+            l.unlock();
+
             PageStore->RollbackPages(pages);
 
             return response;

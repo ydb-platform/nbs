@@ -46,7 +46,7 @@ void TIndexTabletActor::ReplayOpLog(
                                      << request.ShortUtf8DebugString().Quote());
             }
 
-            Metrics.ReplayedCreateNodeInShardRequestsCount.fetch_add(
+            Metrics->ReplayedCreateNodeInShardRequestsCount.fetch_add(
                 1,
                 std::memory_order_relaxed);
 

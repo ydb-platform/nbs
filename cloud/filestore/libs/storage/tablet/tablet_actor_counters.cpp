@@ -369,190 +369,198 @@ void TIndexTabletActor::UpdateMetrics(
 {
     const ui32 blockSize = fileSystem.GetBlockSize();
 
-    Store(Metrics.TotalBytesCount, fileSystem.GetBlocksCount() * blockSize);
-    Store(Metrics.UsedBytesCount, stats.GetUsedBlocksCount() * blockSize);
+    Store(Metrics->TotalBytesCount, fileSystem.GetBlocksCount() * blockSize);
+    Store(Metrics->UsedBytesCount, stats.GetUsedBlocksCount() * blockSize);
 
-    Store(Metrics.TotalNodesCount, fileSystem.GetNodesCount());
-    Store(Metrics.UsedNodesCount, stats.GetUsedNodesCount());
+    Store(Metrics->TotalNodesCount, fileSystem.GetNodesCount());
+    Store(Metrics->UsedNodesCount, stats.GetUsedNodesCount());
 
-    Store(Metrics.UsedSessionsCount, stats.GetUsedSessionsCount());
-    Store(Metrics.UsedHandlesCount, stats.GetUsedHandlesCount());
-    Store(Metrics.UsedDirectHandlesCount, handlesStats.UsedDirectHandlesCount);
-    Store(Metrics.SevenBytesHandlesCount, handlesStats.SevenBytesHandlesCount);
-    Store(Metrics.UsedLocksCount, stats.GetUsedLocksCount());
+    Store(Metrics->UsedSessionsCount, stats.GetUsedSessionsCount());
+    Store(Metrics->UsedHandlesCount, stats.GetUsedHandlesCount());
+    Store(Metrics->UsedDirectHandlesCount, handlesStats.UsedDirectHandlesCount);
+    Store(Metrics->SevenBytesHandlesCount, handlesStats.SevenBytesHandlesCount);
+    Store(Metrics->UsedLocksCount, stats.GetUsedLocksCount());
 
     Store(
-        Metrics.StrictFileSystemSizeEnforcementEnabled,
+        Metrics->StrictFileSystemSizeEnforcementEnabled,
         fileSystem.GetStrictFileSystemSizeEnforcementEnabled());
     Store(
-        Metrics.DirectoryCreationInShardsEnabled,
+        Metrics->DirectoryCreationInShardsEnabled,
         fileSystem.GetDirectoryCreationInShardsEnabled());
 
-    Store(Metrics.FreshBytesCount, stats.GetFreshBytesCount());
-    Store(Metrics.FreshBytesItemCount, stats.GetFreshBytesItemCount());
-    Store(Metrics.DeletedFreshBytesCount, stats.GetDeletedFreshBytesCount());
-    Store(Metrics.MixedBytesCount, stats.GetMixedBlocksCount() * blockSize);
-    Store(Metrics.MixedBlobsCount, stats.GetMixedBlobsCount());
-    Store(Metrics.DeletionMarkersCount, stats.GetDeletionMarkersCount());
+    Store(Metrics->FreshBytesCount, stats.GetFreshBytesCount());
+    Store(Metrics->FreshBytesItemCount, stats.GetFreshBytesItemCount());
+    Store(Metrics->DeletedFreshBytesCount, stats.GetDeletedFreshBytesCount());
+    Store(Metrics->MixedBytesCount, stats.GetMixedBlocksCount() * blockSize);
+    Store(Metrics->MixedBlobsCount, stats.GetMixedBlobsCount());
+    Store(Metrics->DeletionMarkersCount, stats.GetDeletionMarkersCount());
     Store(
-        Metrics.LargeDeletionMarkersCount,
+        Metrics->LargeDeletionMarkersCount,
         stats.GetLargeDeletionMarkersCount());
-    Store(Metrics.GarbageQueueSize, stats.GetGarbageQueueSize());
-    Store(Metrics.GarbageBytesCount, stats.GetGarbageBlocksCount() * blockSize);
-    Store(Metrics.FreshBlocksCount, stats.GetFreshBlocksCount());
-    Store(Metrics.CMMixedBlobsCount, compactionStats.TotalBlobsCount);
-    Store(Metrics.CMDeletionMarkersCount, compactionStats.TotalDeletionsCount);
+    Store(Metrics->GarbageQueueSize, stats.GetGarbageQueueSize());
     Store(
-        Metrics.CMGarbageBlocksCount,
+        Metrics->GarbageBytesCount,
+        stats.GetGarbageBlocksCount() * blockSize);
+    Store(Metrics->FreshBlocksCount, stats.GetFreshBlocksCount());
+    Store(Metrics->CMMixedBlobsCount, compactionStats.TotalBlobsCount);
+    Store(Metrics->CMDeletionMarkersCount, compactionStats.TotalDeletionsCount);
+    Store(
+        Metrics->CMGarbageBlocksCount,
         compactionStats.TotalGarbageBlocksCount);
-    Store(Metrics.CollectCommitId, GetCollectCommitId());
+    Store(Metrics->CollectCommitId, GetCollectCommitId());
 
     TString backpressureReason;
     Store(
-        Metrics.IsWriteAllowed,
+        Metrics->IsWriteAllowed,
         TIndexTabletActor::IsWriteAllowed(
             backpressureThresholds,
             backpressureValues,
             &backpressureReason));
 
-    Store(Metrics.FlushBackpressureValue, backpressureValues.Flush);
-    Store(Metrics.FlushBackpressureThreshold, backpressureThresholds.Flush);
-    Store(Metrics.FlushBytesBackpressureValue, backpressureValues.FlushBytes);
+    Store(Metrics->FlushBackpressureValue, backpressureValues.Flush);
+    Store(Metrics->FlushBackpressureThreshold, backpressureThresholds.Flush);
+    Store(Metrics->FlushBytesBackpressureValue, backpressureValues.FlushBytes);
     Store(
-        Metrics.FlushBytesBackpressureThreshold,
+        Metrics->FlushBytesBackpressureThreshold,
         backpressureThresholds.FlushBytes);
     Store(
-        Metrics.FlushBytesItemCountBackpressureValue,
+        Metrics->FlushBytesItemCountBackpressureValue,
         backpressureValues.FlushBytesItemCount);
     Store(
-        Metrics.FlushBytesItemCountBackpressureThreshold,
+        Metrics->FlushBytesItemCountBackpressureThreshold,
         backpressureThresholds.FlushBytesItemCount);
     Store(
-        Metrics.CompactionBackpressureValue,
+        Metrics->CompactionBackpressureValue,
         backpressureValues.CompactionScore);
     Store(
-        Metrics.CompactionBackpressureThreshold,
+        Metrics->CompactionBackpressureThreshold,
         backpressureThresholds.CompactionScore);
-    Store(Metrics.CleanupBackpressureValue, backpressureValues.CleanupScore);
+    Store(Metrics->CleanupBackpressureValue, backpressureValues.CleanupScore);
     Store(
-        Metrics.CleanupBackpressureThreshold,
+        Metrics->CleanupBackpressureThreshold,
         backpressureThresholds.CleanupScore);
     Store(
-        Metrics.CollectGarbageBackpressureValue,
+        Metrics->CollectGarbageBackpressureValue,
         backpressureValues.CollectGarbage);
     Store(
-        Metrics.CollectGarbageBackpressureThreshold,
+        Metrics->CollectGarbageBackpressureThreshold,
         backpressureThresholds.CollectGarbage);
 
-    Store(Metrics.MaxReadIops, performanceProfile.GetMaxReadIops());
-    Store(Metrics.MaxWriteIops, performanceProfile.GetMaxWriteIops());
-    Store(Metrics.MaxReadBandwidth, performanceProfile.GetMaxReadBandwidth());
-    Store(Metrics.MaxWriteBandwidth, performanceProfile.GetMaxWriteBandwidth());
+    Store(Metrics->MaxReadIops, performanceProfile.GetMaxReadIops());
+    Store(Metrics->MaxWriteIops, performanceProfile.GetMaxWriteIops());
+    Store(Metrics->MaxReadBandwidth, performanceProfile.GetMaxReadBandwidth());
+    Store(
+        Metrics->MaxWriteBandwidth,
+        performanceProfile.GetMaxWriteBandwidth());
 
     Store(
-        Metrics.AllocatedCompactionRangesCount,
+        Metrics->AllocatedCompactionRangesCount,
         compactionStats.AllocatedRangesCount);
-    Store(Metrics.UsedCompactionRangesCount, compactionStats.UsedRangesCount);
+    Store(Metrics->UsedCompactionRangesCount, compactionStats.UsedRangesCount);
 
     if (compactionStats.TopRangesByCompactionScore.empty()) {
-        Store(Metrics.MaxBlobsInRange, 0);
+        Store(Metrics->MaxBlobsInRange, 0);
     } else {
         Store(
-            Metrics.MaxBlobsInRange,
+            Metrics->MaxBlobsInRange,
             compactionStats.TopRangesByCompactionScore.front()
                 .Stats.BlobsCount);
     }
     if (compactionStats.TopRangesByCleanupScore.empty()) {
-        Store(Metrics.MaxDeletionsInRange, 0);
+        Store(Metrics->MaxDeletionsInRange, 0);
     } else {
         Store(
-            Metrics.MaxDeletionsInRange,
+            Metrics->MaxDeletionsInRange,
             compactionStats.TopRangesByCleanupScore.front()
                 .Stats.DeletionsCount);
     }
     if (compactionStats.TopRangesByGarbageScore.empty()) {
-        Store(Metrics.MaxGarbageBlocksInRange, 0);
+        Store(Metrics->MaxGarbageBlocksInRange, 0);
     } else {
         Store(
-            Metrics.MaxGarbageBlocksInRange,
+            Metrics->MaxGarbageBlocksInRange,
             compactionStats.TopRangesByGarbageScore.front()
                 .Stats.GarbageBlocksCount);
     }
 
-    Store(Metrics.StatefulSessionsCount, sessionsStats.StatefulSessionsCount);
-    Store(Metrics.StatelessSessionsCount, sessionsStats.StatelessSessionsCount);
-    Store(Metrics.ActiveSessionsCount, sessionsStats.ActiveSessionsCount);
-    Store(Metrics.OrphanSessionsCount, sessionsStats.OrphanSessionsCount);
+    Store(Metrics->StatefulSessionsCount, sessionsStats.StatefulSessionsCount);
     Store(
-        Metrics.HandleStatsByNodeMaxSize,
+        Metrics->StatelessSessionsCount,
+        sessionsStats.StatelessSessionsCount);
+    Store(Metrics->ActiveSessionsCount, sessionsStats.ActiveSessionsCount);
+    Store(Metrics->OrphanSessionsCount, sessionsStats.OrphanSessionsCount);
+    Store(
+        Metrics->HandleStatsByNodeMaxSize,
         sessionsStats.HandleStatsByNodeMaxSize);
     Store(
-        Metrics.HandleStatsByNodeSumSize,
+        Metrics->HandleStatsByNodeSumSize,
         sessionsStats.HandleStatsByNodeSumSize);
     Store(
-        Metrics.HandleStatsByNodeMaxTotalSize,
+        Metrics->HandleStatsByNodeMaxTotalSize,
         sessionsStats.HandleStatsByNodeMaxTotalSize);
     Store(
-        Metrics.HandleStatsByNodeSumTotalSize,
+        Metrics->HandleStatsByNodeSumTotalSize,
         sessionsStats.HandleStatsByNodeSumTotalSize);
-    Store(Metrics.WritableChannelCount, channelsStats.WritableChannelCount);
-    Store(Metrics.UnwritableChannelCount, channelsStats.UnwritableChannelCount);
-    Store(Metrics.ChannelsToMoveCount, channelsStats.ChannelsToMoveCount);
-    Store(Metrics.ReadAheadCacheNodeCount, readAheadStats.NodeCount);
-    Store(Metrics.ReadNodeCacheBypassCount, GetReadNodeCacheBypassCount());
-    Store(Metrics.ReadAheadCacheBypassCount, GetReadAheadCacheBypassCount());
+    Store(Metrics->WritableChannelCount, channelsStats.WritableChannelCount);
+    Store(
+        Metrics->UnwritableChannelCount,
+        channelsStats.UnwritableChannelCount);
+    Store(Metrics->ChannelsToMoveCount, channelsStats.ChannelsToMoveCount);
+    Store(Metrics->ReadAheadCacheNodeCount, readAheadStats.NodeCount);
+    Store(Metrics->ReadNodeCacheBypassCount, GetReadNodeCacheBypassCount());
+    Store(Metrics->ReadAheadCacheBypassCount, GetReadAheadCacheBypassCount());
 
     Store(
-        Metrics.InMemoryIndexStateNodesCount,
+        Metrics->InMemoryIndexStateNodesCount,
         inMemoryIndexStateStats.NodesCount);
     Store(
-        Metrics.InMemoryIndexStateNodesCapacity,
+        Metrics->InMemoryIndexStateNodesCapacity,
         inMemoryIndexStateStats.NodesCapacity);
     Store(
-        Metrics.InMemoryIndexStateNodeRefsCount,
+        Metrics->InMemoryIndexStateNodeRefsCount,
         inMemoryIndexStateStats.NodeRefsCount);
     Store(
-        Metrics.InMemoryIndexStateNodeRefsCapacity,
+        Metrics->InMemoryIndexStateNodeRefsCapacity,
         inMemoryIndexStateStats.NodeRefsCapacity);
     Store(
-        Metrics.InMemoryIndexStateNodeAttrsCount,
+        Metrics->InMemoryIndexStateNodeAttrsCount,
         inMemoryIndexStateStats.NodeAttrsCount);
     Store(
-        Metrics.InMemoryIndexStateNodeAttrsCapacity,
+        Metrics->InMemoryIndexStateNodeAttrsCapacity,
         inMemoryIndexStateStats.NodeAttrsCapacity);
     Store(
-        Metrics.InMemoryIndexStateNodeRefsExhaustivenessCount,
+        Metrics->InMemoryIndexStateNodeRefsExhaustivenessCount,
         inMemoryIndexStateStats.NodeRefsExhaustivenessCount);
     Store(
-        Metrics.InMemoryIndexStateNodeRefsExhaustivenessCapacity,
+        Metrics->InMemoryIndexStateNodeRefsExhaustivenessCapacity,
         inMemoryIndexStateStats.NodeRefsExhaustivenessCapacity);
     Store(
-        Metrics.InMemoryIndexStateIsExhaustive,
+        Metrics->InMemoryIndexStateIsExhaustive,
         inMemoryIndexStateStats.IsNodeRefsExhaustive);
 
-    Store(Metrics.MixedIndexLoadedRanges, blobMetaMapStats.LoadedRanges);
-    Store(Metrics.MixedIndexOffloadedRanges, blobMetaMapStats.OffloadedRanges);
+    Store(Metrics->MixedIndexLoadedRanges, blobMetaMapStats.LoadedRanges);
+    Store(Metrics->MixedIndexOffloadedRanges, blobMetaMapStats.OffloadedRanges);
 
     Store(
-        Metrics.NodesOpenForWritingBySingleSession,
+        Metrics->NodesOpenForWritingBySingleSession,
         nodeToSessionCounters.NodesOpenForWritingBySingleSession);
     Store(
-        Metrics.NodesOpenForWritingByMultipleSessions,
+        Metrics->NodesOpenForWritingByMultipleSessions,
         nodeToSessionCounters.NodesOpenForWritingByMultipleSessions);
     Store(
-        Metrics.NodesOpenForReadingBySingleSession,
+        Metrics->NodesOpenForReadingBySingleSession,
         nodeToSessionCounters.NodesOpenForReadingBySingleSession);
     Store(
-        Metrics.NodesOpenForReadingByMultipleSessions,
+        Metrics->NodesOpenForReadingByMultipleSessions,
         nodeToSessionCounters.NodesOpenForReadingByMultipleSessions);
 
-    Store(Metrics.OrphanNodesCount, miscNodeStats.OrphanNodesCount);
+    Store(Metrics->OrphanNodesCount, miscNodeStats.OrphanNodesCount);
 
-    Metrics.BusyIdleCalc.OnUpdateStats();
-    Metrics.UpdatePerformanceMetrics(now, diagConfig, fileSystem);
+    Metrics->BusyIdleCalc.OnUpdateStats();
+    Metrics->UpdatePerformanceMetrics(now, diagConfig, fileSystem);
 
 #define FILESTORE_TABLET_UPDATE_REQUEST_METRICS(name, ...)                     \
-    Metrics.name.UpdatePrev(now);                                              \
+    Metrics->name.UpdatePrev(now);                                             \
 // FILESTORE_TABLET_METRICS_REQUEST
 
     FILESTORE_TABLET_METRICS_REQUESTS(FILESTORE_TABLET_UPDATE_REQUEST_METRICS)
@@ -615,13 +623,17 @@ void TIndexTabletActor::RegisterStatCounters(TInstant now)
 
     // TabletStartTimestamp should be set only once
     i64 expected = 0;
-    Metrics.TabletStartTimestamp.compare_exchange_strong(
+    Metrics->TabletStartTimestamp.compare_exchange_strong(
         expected,
         now.MicroSeconds());
-    Metrics.TabletId.store(TabletID());
-    Metrics.TabletGeneration.store(GetGeneration());
+    Metrics->TabletId.store(TabletID());
+    Metrics->TabletGeneration.store(GetGeneration());
 
-    Metrics.Register(fsId, fs.GetCloudId(), fs.GetFolderId(), storageMediaKind);
+    Metrics->Register(
+        fsId,
+        fs.GetCloudId(),
+        fs.GetFolderId(),
+        storageMediaKind);
 }
 
 void TIndexTabletActor::ScheduleUpdateCounters(const TActorContext& ctx)
@@ -643,7 +655,7 @@ void TIndexTabletActor::SendMetricsToExecutor(const TActorContext& ctx)
 {
     auto* resourceMetrics = Executor()->GetResourceMetrics();
     resourceMetrics->Network.Increment(
-        Metrics.CalculateNetworkRequestBytes(
+        Metrics->CalculateNetworkRequestBytes(
             Config->GetNonNetworkMetricsBalancingFactor()),
         ctx.Now());
     resourceMetrics->TryUpdate(ctx);
@@ -652,21 +664,21 @@ void TIndexTabletActor::SendMetricsToExecutor(const TActorContext& ctx)
 void TIndexTabletActor::CalculateActorCPUUsage(const TActorContext& ctx)
 {
     const i64 curUsageMicros =
-        Metrics.CPUUsageMicros.load(std::memory_order_relaxed);
+        Metrics->CPUUsageMicros.load(std::memory_order_relaxed);
     const TInstant ts = ctx.Now();
-    if (Metrics.PrevCPUUsageMicrosTs) {
-        const auto timeDiff = ts - Metrics.PrevCPUUsageMicrosTs;
+    if (Metrics->PrevCPUUsageMicrosTs) {
+        const auto timeDiff = ts - Metrics->PrevCPUUsageMicrosTs;
         if (timeDiff) {
             const double usageDiff =
-                curUsageMicros - Metrics.PrevCPUUsageMicros;
-            Metrics.CPUUsageRate.store(
+                curUsageMicros - Metrics->PrevCPUUsageMicros;
+            Metrics->CPUUsageRate.store(
                 100 * (usageDiff / timeDiff.MicroSeconds()),
                 std::memory_order_relaxed);
         }
     }
 
-    Metrics.PrevCPUUsageMicrosTs = ts;
-    Metrics.PrevCPUUsageMicros = curUsageMicros;
+    Metrics->PrevCPUUsageMicrosTs = ts;
+    Metrics->PrevCPUUsageMicros = curUsageMicros;
 }
 
 void TIndexTabletActor::HandleUpdateCounters(
@@ -695,8 +707,8 @@ void TIndexTabletActor::HandleUpdateCounters(
     CalculateActorCPUUsage(ctx);
     SendMetricsToExecutor(ctx);
 
-    Store(Metrics.OpLogEntryCount, GetOpLogEntryCount());
-    Store(Metrics.ResponseLogEntryCount, GetResponseLogEntryCount());
+    Store(Metrics->OpLogEntryCount, GetOpLogEntryCount());
+    Store(Metrics->ResponseLogEntryCount, GetResponseLogEntryCount());
 
     UpdateCountersScheduled = false;
     ScheduleUpdateCounters(ctx);
@@ -728,10 +740,10 @@ void TIndexTabletActor::HandleUpdateCounters(
                 CachedAggregateStatsTs = ctx.Now();
             }
             Store(
-                Metrics.AggregateUsedBytesCount,
+                Metrics->AggregateUsedBytesCount,
                 CachedAggregateStats.GetUsedBlocksCount() * GetBlockSize());
             Store(
-                Metrics.AggregateUsedNodesCount,
+                Metrics->AggregateUsedNodesCount,
                 CachedAggregateStats.GetUsedNodesCount());
 
             return;
@@ -786,14 +798,14 @@ void TIndexTabletActor::FillSelfStorageStats(
     stats->SetCollectGarbageState(static_cast<ui32>(
         CollectGarbageState.GetOperationState()));
 
-    stats->SetCurrentLoad(Metrics.CurrentLoad.load(std::memory_order_relaxed));
-    stats->SetSuffer(Metrics.Suffer.load(std::memory_order_relaxed));
+    stats->SetCurrentLoad(Metrics->CurrentLoad.load(std::memory_order_relaxed));
+    stats->SetSuffer(Metrics->Suffer.load(std::memory_order_relaxed));
 
     stats->SetTotalBlocksCount(GetFileSystem().GetBlocksCount());
 
     stats->SetFreshBytesItemCount(GetFreshBytesItemCount());
 
-    stats->SetSevenBytesHandlesCount(Metrics.SevenBytesHandlesCount);
+    stats->SetSevenBytesHandlesCount(Metrics->SevenBytesHandlesCount);
 
     stats->SetUnconfirmedDataCount(
         UnconfirmedData.size() + UnconfirmedDataInProgress.size());
@@ -808,7 +820,7 @@ void TIndexTabletActor::HandleGetStorageStats(
         std::make_unique<TEvIndexTablet::TEvGetStorageStatsResponse>();
     response->Record.SetMediaKind(GetFileSystem().GetStorageMediaKind());
     const i64 tabletStartTimestamp =
-        Metrics.TabletStartTimestamp.load(std::memory_order_relaxed);
+        Metrics->TabletStartTimestamp.load(std::memory_order_relaxed);
     if (tabletStartTimestamp) {
         const auto now = ctx.Now();
         const auto tabletStartTs = TInstant::MicroSeconds(tabletStartTimestamp);
@@ -870,8 +882,8 @@ void TIndexTabletActor::HandleGetStorageStats(
     }
 
     if (allowCache || shardIds.empty()) {
-        Metrics.StatFileStore.Update(1, 0, TDuration::Zero());
-        Metrics.GetStorageStats.Update(1, 0, TDuration::Zero());
+        Metrics->StatFileStore.Update(1, 0, TDuration::Zero());
+        Metrics->GetStorageStats.Update(1, 0, TDuration::Zero());
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }
@@ -930,10 +942,10 @@ void TIndexTabletActor::HandleAggregateStatsCompleted(
 
     if (!HasError(msg->Error)) {
         if (msg->IsBackgroundRequest) {
-            Metrics.GetStorageStats.Update(1, 0, backgroundRequestDuration);
+            Metrics->GetStorageStats.Update(1, 0, backgroundRequestDuration);
         } else {
-            Metrics.StatFileStore.Update(1, 0, ctx.Now() - msg->StartedTs);
-            Metrics.GetStorageStats.Update(1, 0, ctx.Now() - msg->StartedTs);
+            Metrics->StatFileStore.Update(1, 0, ctx.Now() - msg->StartedTs);
+            Metrics->GetStorageStats.Update(1, 0, ctx.Now() - msg->StartedTs);
         }
         CachedAggregateStats = std::move(msg->AggregateStats);
         // TIndexTabletActor can reply to a GetStorageStats request from cache
@@ -953,7 +965,7 @@ void TIndexTabletActor::HandleAggregateStatsCompleted(
                 LogTag.c_str(),
                 FormatError(error).Quote().c_str());
 
-            Metrics.ShardBalancerUpdateErrorCount.fetch_add(
+            Metrics->ShardBalancerUpdateErrorCount.fetch_add(
                 1,
                 std::memory_order_relaxed);
         } else {
@@ -966,10 +978,10 @@ void TIndexTabletActor::HandleAggregateStatsCompleted(
         }
 
         Store(
-            Metrics.AggregateUsedBytesCount,
+            Metrics->AggregateUsedBytesCount,
             CachedAggregateStats.GetUsedBlocksCount() * GetBlockSize());
         Store(
-            Metrics.AggregateUsedNodesCount,
+            Metrics->AggregateUsedNodesCount,
             CachedAggregateStats.GetUsedNodesCount());
     }
 

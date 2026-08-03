@@ -17,3 +17,7 @@ PEERDIR(
 SIZE(MEDIUM)
 
 END()
+
+RECURSE(
+    dummy-daemon
+)

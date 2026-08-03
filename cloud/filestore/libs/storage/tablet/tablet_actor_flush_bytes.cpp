@@ -941,7 +941,7 @@ void TIndexTabletActor::HandleFlushBytesCompleted(
         LogTag.c_str(),
         FormatError(msg->GetError()).c_str());
 
-    Metrics.FlushBytes.Update(1, msg->Size, msg->Time);
+    Metrics->FlushBytes.Update(1, msg->Size, msg->Time);
 
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
@@ -1007,7 +1007,7 @@ void TIndexTabletActor::CompleteTx_TrimBytes(
         args.RequestInfo->CallContext,
         "TrimBytes");
 
-    Metrics.TrimBytes.Update(
+    Metrics->TrimBytes.Update(
         1,
         args.TrimmedBytes,
         ctx.Now() - args.RequestInfo->StartedTs);

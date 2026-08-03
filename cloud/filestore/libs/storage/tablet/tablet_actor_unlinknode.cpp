@@ -637,7 +637,7 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
     EnqueueBlobIndexOpIfNeeded(ctx);
 
     auto& requestMetrics = args.ProfileLogRequest.GetBehaveAsShard()
-        ? Metrics.UnlinkNodeInShard : Metrics.UnlinkNode;
+        ? Metrics->UnlinkNodeInShard : Metrics->UnlinkNode;
     requestMetrics.Update(
         1,
         0,
@@ -820,7 +820,7 @@ void TIndexTabletActor::CompleteTx_CompleteUnlinkNode(
     }
 
     auto& requestMetrics = args.ProfileLogRequest.GetBehaveAsShard()
-        ? Metrics.UnlinkNodeInShard : Metrics.UnlinkNode;
+        ? Metrics->UnlinkNodeInShard : Metrics->UnlinkNode;
     requestMetrics.Update(1, 0, ctx.Now() - args.RequestInfo->StartedTs);
 
     auto response = std::make_unique<TEvService::TEvUnlinkNodeResponse>(
@@ -867,7 +867,7 @@ void TIndexTabletActor::HandleNodeUnlinkedInShard(
                 msg->RequestInfo->CallContext,
                 ctx);
 
-            Metrics.RenameNode.Update(
+            Metrics->RenameNode.Update(
                 1,
                 0,
                 ctx.Now() - msg->RequestInfo->StartedTs);
@@ -885,7 +885,7 @@ void TIndexTabletActor::HandleNodeUnlinkedInShard(
                 msg->RequestInfo->CallContext,
                 ctx);
 
-            Metrics.RenameNode.Update(
+            Metrics->RenameNode.Update(
                 1,
                 0,
                 ctx.Now() - msg->RequestInfo->StartedTs);
@@ -906,7 +906,7 @@ void TIndexTabletActor::HandleNodeUnlinkedInShard(
                     ctx);
 
                 auto& requestMetrics = msg->ProfileLogRequest.GetBehaveAsShard()
-                    ? Metrics.UnlinkNodeInShard : Metrics.UnlinkNode;
+                    ? Metrics->UnlinkNodeInShard : Metrics->UnlinkNode;
                 requestMetrics.Update(
                     1,
                     0,

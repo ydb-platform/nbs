@@ -705,9 +705,9 @@ void TIndexTabletActor::HandleReadDataCompleted(
     TABLET_VERIFY(TryReleaseCollectBarrier(msg->CommitId));
     WorkerActors.erase(ev->Sender);
 
-    Metrics.ReadData.Update(msg->Count, msg->Size, msg->Time);
+    Metrics->ReadData.Update(msg->Count, msg->Size, msg->Time);
     if (msg->IsOverloaded) {
-        Metrics.OverloadedCount.fetch_add(1, std::memory_order_relaxed);
+        Metrics->OverloadedCount.fetch_add(1, std::memory_order_relaxed);
     }
 }
 
@@ -801,8 +801,8 @@ void TIndexTabletActor::HandleDescribeData(
 
         NCloud::Reply(ctx, *requestInfo, std::move(response));
 
-        Metrics.ReadAheadCacheHitCount.fetch_add(1, std::memory_order_relaxed);
-        Metrics.DescribeData.Update(
+        Metrics->ReadAheadCacheHitCount.fetch_add(1, std::memory_order_relaxed);
+        Metrics->DescribeData.Update(
             1,
             byteRange.Length,
             ctx.Now() - requestInfo->StartedTs);
@@ -1055,7 +1055,7 @@ void TIndexTabletActor::CompleteTx_ReadData(
 
         NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
-        Metrics.DescribeData.Update(
+        Metrics->DescribeData.Update(
             1,
             args.OriginByteRange.Length,
             ctx.Now() - args.RequestInfo->StartedTs);
@@ -1154,7 +1154,7 @@ void TIndexTabletActor::CompleteTx_ReadData(
         *Config,
         *SystemCounters,
         GetFileSystemId(),
-        Metrics.CPUUsageRate,
+        Metrics->CPUUsageRate,
         &backendInfo);
 
     auto actor = std::make_unique<TReadDataActor>(
@@ -1262,7 +1262,7 @@ void TIndexTabletActor::HandleFakeDescribeData(
 
     NCloud::Reply(ctx, *requestInfo, std::move(response));
 
-    Metrics.DescribeData.Update(
+    Metrics->DescribeData.Update(
         1,
         byteRange.Length,
         ctx.Now() - requestInfo->StartedTs);

@@ -402,7 +402,7 @@ void TIndexTabletActor::HandleFlushCompleted(
     EnqueueFlushIfNeeded(ctx);
     EnqueueBlobIndexOpIfNeeded(ctx);
 
-    Metrics.Flush.Update(msg->Count, msg->Size, msg->Time);
+    Metrics->Flush.Update(msg->Count, msg->Size, msg->Time);
 }
 
 }   // namespace NCloud::NFileStore::NStorage
