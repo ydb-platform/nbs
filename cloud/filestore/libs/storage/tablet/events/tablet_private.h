@@ -347,7 +347,6 @@ struct TEvIndexTabletPrivate
     {
         const ui64 NodeId;
         const bool IsOverloaded;
-        const ui64 NodeId;
 
         TReadWriteCompleted(
                 TSet<ui32> mixedBlocksRanges,
@@ -365,7 +364,6 @@ struct TEvIndexTabletPrivate
                 d)
             , NodeId(nodeId)
             , IsOverloaded(isOverloaded)
-            , NodeId(nodeId)
         {
         }
     };
