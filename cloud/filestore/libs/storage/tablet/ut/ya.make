@@ -29,7 +29,6 @@ SRCS(
     tablet_ut_throttling.cpp
     tablet_ut_state_cache.cpp
     tablet_ut_unconfirmed_data.cpp
-    tablet_ut_node_stats.cpp
 )
 
 PEERDIR(

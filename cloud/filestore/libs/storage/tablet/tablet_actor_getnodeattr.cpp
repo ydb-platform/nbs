@@ -169,11 +169,6 @@ bool TIndexTabletActor::PrepareTx_GetNodeAttr(
         return true;
     }
 
-    if (!args.RequestInfo->NodeDiagnosticStatsStarted) {
-        NodeRequestStarted(args.TargetNodeId, ctx.Now());
-        args.RequestInfo->NodeDiagnosticStatsStarted = true;
-    }
-
     // TODO: AccessCheck
     TABLET_VERIFY(args.TargetNode);
 
