@@ -121,6 +121,44 @@ function testTraceIndexPrecomputesHierarchyScopesAndPhaseOwners() {
   assert.deepStrictEqual(index.ancestors(2), [2, 1, 0]);
 }
 
+function testTraceIndexBuildsPhaseOwnersWithoutRepeatedAncestorWalks() {
+  let parentReads = 0;
+  const spans = [];
+  function addSpan(parent, scope) {
+    const span = makeSpan({
+      id: `span-${spans.length}`,
+      parent,
+      name: `span ${spans.length}`,
+      scope,
+    });
+    Object.defineProperty(span, PARENT, {
+      configurable: true,
+      get() {
+        parentReads += 1;
+        return parent;
+      },
+    });
+    spans.push(span);
+    return spans.length - 1;
+  }
+
+  const chunk = addSpan(-1, 0);
+  let parent = chunk;
+  for (let depth = 0; depth < 80; depth += 1) parent = addSpan(parent, 2);
+  const stages = Array.from({ length: 100 }, () => addSpan(parent, 1));
+
+  const index = new TraceIndex(spans, [
+    "ya.chunk",
+    "ya.test.stage",
+    "other",
+  ]);
+
+  assert.ok(parentReads <= spans.length * 2, `${parentReads} parent reads`);
+  stages.forEach((stage) => {
+    assert.strictEqual(index.phaseOwner(stage, "ya.test.stage"), chunk);
+  });
+}
+
 function testFilterNormalizationIsSeparateAndDeterministic() {
   const normalized = normalizeFilterSpec({
     query: "  FAILED Test  ",
@@ -336,6 +374,7 @@ for (const test of [
   testCustomMinimumDurationUsesSeconds,
   testFilterClearStateUsesRawValuesAndPreservesDisplayControls,
   testTraceIndexPrecomputesHierarchyScopesAndPhaseOwners,
+  testTraceIndexBuildsPhaseOwnersWithoutRepeatedAncestorWalks,
   testFilterNormalizationIsSeparateAndDeterministic,
   testFailureFilterKeepsAncestorsButNotAggregateDescendants,
   testTextSearchDescendantsDoNotBypassComposedFilters,
@@ -345,4 +384,3 @@ for (const test of [
 ]) {
   test();
 }
-

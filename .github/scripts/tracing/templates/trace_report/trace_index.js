@@ -5,19 +5,7 @@ class TraceIndex {
     this.searchTexts = searchTexts;
     ({ children: this.children, roots: this.roots } =
       TraceIndex.buildHierarchy(sourceSpans));
-    this.phaseOwners = new Map(
-      TEST_PHASE_DEFINITIONS.map(({ scope, ownerScopes }) => {
-        const owners = new Set(ownerScopes);
-        return [
-          scope,
-          sourceSpans.map((_span, index) =>
-            this.scope(index) === scope
-              ? this.nearestAncestorInScopes(index, owners)
-              : -1,
-          ),
-        ];
-      }),
-    );
+    this.phaseOwners = this.buildPhaseOwners();
   }
 
   static buildHierarchy(sourceSpans) {
@@ -56,6 +44,30 @@ class TraceIndex {
     return this.scopes[this.spans[index][SCOPE]];
   }
 
+  buildPhaseOwners() {
+    return new Map(
+      TEST_PHASE_DEFINITIONS.map(({ scope: phaseScope, ownerScopes }) => {
+        const result = this.spans.map(() => -1);
+        const owners = new Set(ownerScopes);
+        const seen = new Set();
+        const pending = this.roots.map((index) => [index, -1]);
+        while (pending.length) {
+          const [index, inheritedOwner] = pending.pop();
+          if (seen.has(index)) continue;
+          seen.add(index);
+
+          const scope = this.scope(index);
+          if (scope === phaseScope) result[index] = inheritedOwner;
+          const descendantOwner = owners.has(scope) ? index : inheritedOwner;
+          this.children[index].forEach((child) => {
+            pending.push([child, descendantOwner]);
+          });
+        }
+        return [phaseScope, result];
+      }),
+    );
+  }
+
   ancestors(index, includeSelf = true) {
     const result = [];
     const seen = new Set();
@@ -71,22 +83,6 @@ class TraceIndex {
       current = this.spans[current][PARENT];
     }
     return result;
-  }
-
-  nearestAncestorInScopes(index, ownerScopes) {
-    const seen = new Set([index]);
-    let current = this.spans[index]?.[PARENT];
-    while (
-      Number.isInteger(current) &&
-      current >= 0 &&
-      current < this.spans.length &&
-      !seen.has(current)
-    ) {
-      if (ownerScopes.has(this.scope(current))) return current;
-      seen.add(current);
-      current = this.spans[current][PARENT];
-    }
-    return -1;
   }
 
   phaseOwner(index, phaseScope) {
