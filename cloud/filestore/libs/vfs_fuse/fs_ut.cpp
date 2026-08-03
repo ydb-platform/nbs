@@ -3456,36 +3456,21 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
     Y_UNIT_TEST(ShouldDrainHandleOpsQueueAfterAsyncDestroyDisabled)
     {
-        const TString sessionId = CreateGuidAsString();
         const ui64 queuedNodeId = 10;
         const ui64 queuedHandle = 2;
         const ui64 directNodeId = 11;
         const ui64 directHandle = 3;
 
         auto createBootstrap =
-            [&](bool asyncDestroyHandleEnabled, ISchedulerPtr scheduler)
+            [](bool asyncDestroyHandleEnabled, ISchedulerPtr scheduler)
         {
             NProto::TFileStoreFeatures features;
             features.SetAsyncDestroyHandleEnabled(asyncDestroyHandleEnabled);
 
-            TBootstrap bootstrap(
+            return TBootstrap(
                 CreateWallClockTimer(),
                 std::move(scheduler),
                 features);
-
-            bootstrap.Service->CreateSessionHandler =
-                [features, &sessionId](auto, auto)
-            {
-                NProto::TCreateSessionResponse result;
-                result.MutableSession()->SetSessionId(sessionId);
-                result.MutableFileStore()->SetBlockSize(4096);
-                result.MutableFileStore()->MutableFeatures()->CopyFrom(
-                    features);
-                result.MutableFileStore()->SetFileSystemId(FileSystemId);
-                return MakeFuture(result);
-            };
-
-            return bootstrap;
         };
 
         {
