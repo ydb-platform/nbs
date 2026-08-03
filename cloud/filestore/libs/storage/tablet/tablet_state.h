@@ -28,6 +28,7 @@
 #include <cloud/filestore/libs/storage/tablet/model/verify.h>
 #include <cloud/filestore/libs/storage/tablet/protos/tablet.pb.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
+#include <cloud/filestore/libs/storage/tablet/model/node_access_stats.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/tablet/model/commit.h>
@@ -43,7 +44,6 @@
 #include <util/generic/vector.h>
 
 #include <functional>
-#include <map>
 
 namespace NCloud::NFileStore::NProto {
 
@@ -211,70 +211,6 @@ struct TTrackedUnconfirmedData
     TString SessionId;
     // Tablet-pipe server actor that accepted GenerateBlobIds for this data.
     NActors::TActorId PipeServerId;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TNodeAccessStats
-{
-    ui64 NodeId = 0;
-    ui64 RequestCount = 0;
-    double AccessScore = 0;
-    TInstant LastAccessed;
-};
-
-class TNodeAccessStatsTracker
-{
-private:
-    struct TNodeAccessComparator
-    {
-        bool operator()(
-            const TNodeAccessStats& lhs,
-            const TNodeAccessStats& rhs) const
-        {
-            const auto comparisonTime = Max(lhs.LastAccessed, rhs.LastAccessed);
-            const double lhsScore = DecayedScore(lhs, comparisonTime);
-            const double rhsScore = DecayedScore(rhs, comparisonTime);
-
-            if (lhsScore == rhsScore) {
-                return lhs.NodeId < rhs.NodeId;
-            }
-            return lhsScore < rhsScore;
-        }
-    };
-
-    using TStatsSet = TSet<TNodeAccessStats, TNodeAccessComparator>;
-    size_t MaxEntries = 0;
-    THashMap<ui64, TStatsSet::iterator> NodeId2StatsIter;
-    TStatsSet StatsRanking;
-
-    void EvictLeastUsedNodes()
-    {
-        while (StatsRanking.size() > MaxEntries) {
-            auto leastAccessed = StatsRanking.begin();
-            const ui64 nodeId = leastAccessed->NodeId;
-
-            NodeId2StatsIter.erase(nodeId);
-            StatsRanking.erase(leastAccessed);
-        }
-    }
-
-public:
-    void Initialise(size_t maxEntries);
-    void RequestStarted(ui64 nodeId, TInstant now);
-    static double DecayedScore(const TNodeAccessStats& stats, TInstant now);
-
-    TVector<TNodeAccessStats> GetStats(TInstant now) const
-    {
-        TVector<TNodeAccessStats> result;
-        result.reserve(StatsRanking.size());
-        for (auto it = StatsRanking.rbegin(); it != StatsRanking.rend(); ++it) {
-            auto stats = *it;
-            stats.AccessScore = DecayedScore(stats, now);
-            result.push_back(stats);
-        }
-        return result;
-    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
