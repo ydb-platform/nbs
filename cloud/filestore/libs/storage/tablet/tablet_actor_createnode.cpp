@@ -942,7 +942,7 @@ void TIndexTabletActor::CompleteTx_CreateNode(
         ctx);
 
     auto& requestMetrics = args.ProfileLogRequest.GetBehaveAsShard()
-        ? Metrics.CreateNodeInShard : Metrics.CreateNode;
+        ? Metrics->CreateNodeInShard : Metrics->CreateNode;
     requestMetrics.Update(
         1,
         0,
@@ -977,10 +977,10 @@ void TIndexTabletActor::HandleNodeCreatedInShard(
 
     UnlockNodeRef(msg->OriginalNodeRefKey);
 
-    Metrics.NodeExistsWhileCreatingInShardCount.fetch_add(
+    Metrics->NodeExistsWhileCreatingInShardCount.fetch_add(
         msg->NodeAlreadyExists,
         std::memory_order_relaxed);
-    Metrics.CreateNodeInShardRetryCount.fetch_add(
+    Metrics->CreateNodeInShardRetryCount.fetch_add(
         msg->CreateNodeRetryCount,
         std::memory_order_relaxed);
 
@@ -1003,7 +1003,7 @@ void TIndexTabletActor::HandleNodeCreatedInShard(
                 ctx);
 
             auto& requestMetrics = msg->ProfileLogRequest.GetBehaveAsShard()
-                ? Metrics.CreateNodeInShard : Metrics.CreateNode;
+                ? Metrics->CreateNodeInShard : Metrics->CreateNode;
             requestMetrics.Update(
                 1,
                 0,
@@ -1034,7 +1034,7 @@ void TIndexTabletActor::HandleNodeCreatedInShard(
                 ctx);
 
             auto& requestMetrics = msg->ProfileLogRequest.GetBehaveAsShard()
-                ? Metrics.CreateHandleInShard : Metrics.CreateHandle;
+                ? Metrics->CreateHandleInShard : Metrics->CreateHandle;
             requestMetrics.Update(
                 1,
                 0,

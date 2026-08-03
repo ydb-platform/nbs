@@ -79,7 +79,7 @@ void TIndexTabletActor::HandleGetNodeAttr(
     requestInfo->StartedTs = ctx.Now();
 
     auto& requestMetrics = behaveAsShard
-        ? Metrics.GetNodeAttrInShard : Metrics.GetNodeAttr;
+        ? Metrics->GetNodeAttrInShard : Metrics->GetNodeAttr;
 
     AddInFlightRequest<TMethod>(*requestInfo);
 
@@ -383,11 +383,11 @@ void TIndexTabletActor::CompleteTx_GetNodeAttrBatch(
     if (!HasError(args.Error)) {
         response->Record = std::move(args.Response);
 
-        Metrics.GetNodeAttrInShard.Update(
+        Metrics->GetNodeAttrInShard.Update(
             args.Request.NamesSize(),
             0,
             ctx.Now() - args.RequestInfo->StartedTs);
-        Metrics.GetNodeAttrBatch.Update(
+        Metrics->GetNodeAttrBatch.Update(
             1,
             0,
             ctx.Now() - args.RequestInfo->StartedTs);

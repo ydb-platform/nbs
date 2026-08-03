@@ -289,8 +289,8 @@ void TIndexTabletActor::CompleteAdapterLoadState(
             fastShardConfig.GetMemConfig());
     }
 
-    NMetrics::Store(Metrics.OpLogEntryCount, GetOpLogEntryCount());
-    NMetrics::Store(Metrics.ResponseLogEntryCount, GetResponseLogEntryCount());
+    NMetrics::Store(Metrics->OpLogEntryCount, GetOpLogEntryCount());
+    NMetrics::Store(Metrics->ResponseLogEntryCount, GetResponseLogEntryCount());
 
     LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
         LogTag << " Loading tablet sessions");
@@ -413,8 +413,8 @@ void TIndexTabletActor::CompleteTx_LoadState(
         config);
     UpdateLogTag();
 
-    NMetrics::Store(Metrics.OpLogEntryCount, GetOpLogEntryCount());
-    NMetrics::Store(Metrics.ResponseLogEntryCount, GetResponseLogEntryCount());
+    NMetrics::Store(Metrics->OpLogEntryCount, GetOpLogEntryCount());
+    NMetrics::Store(Metrics->ResponseLogEntryCount, GetResponseLogEntryCount());
 
     LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
         LogTag << " Loading tablet sessions");

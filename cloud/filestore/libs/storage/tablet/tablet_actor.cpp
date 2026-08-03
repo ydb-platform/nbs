@@ -74,7 +74,8 @@ TIndexTabletActor::TIndexTabletActor(
         ITxReschedulerPtr txRescheduler)
     : TActor(&TThis::StateBoot)
     , TTabletBase(owner, std::move(storage), std::move(txRescheduler))
-    , Metrics{std::move(metricsRegistry)}
+    , Metrics(MakeIntrusive<TTabletMetrics>(std::move(metricsRegistry)))
+    , CPUUsageTimer(Metrics->CPUUsageMicros)
     , ProfileLog(std::move(profileLog))
     , TraceSerializer(std::move(traceSerializer))
     , SystemCounters(std::move(systemCounters))
@@ -218,7 +219,7 @@ void TIndexTabletActor::ReassignDataChannelsIfNeeded(
             sb.c_str());
     }
 
-    Metrics.ReassignCount.fetch_add(
+    Metrics->ReassignCount.fetch_add(
         channels.size(),
         std::memory_order_relaxed);
 
@@ -677,7 +678,7 @@ bool TIndexTabletActor::IsTabletConsideredOverloaded() const
         return false;
     }
 
-    return IsTabletOverloaded(*Config, *SystemCounters, Metrics.CPUUsageRate);
+    return IsTabletOverloaded(*Config, *SystemCounters, Metrics->CPUUsageRate);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -873,7 +874,7 @@ bool TIndexTabletActor::ShouldThrottleCleanup(
 
     const auto now = ctx.Now();
     const double cleanupCpu =
-        Metrics.Cleanup.AverageSecondsPerSecond(now) * 100.0;
+        Metrics->Cleanup.AverageSecondsPerSecond(now) * 100.0;
     return cleanupCpu > Config->GetCleanupCpuThrottlingThresholdPercentage();
 }
 
@@ -1806,12 +1807,12 @@ bool TIndexTabletActor::HasBlocksLeft(ui64 blocksRequired) const
     } else {
         // A new way to count available space that always takes into account the
         // byte count aggregated by all shards.
-        TABLET_VERIFY(Metrics.AggregateUsedBytesCount >= 0);
-        TABLET_VERIFY(Metrics.TotalBytesCount >= 0);
+        TABLET_VERIFY(Metrics->AggregateUsedBytesCount >= 0);
+        TABLET_VERIFY(Metrics->TotalBytesCount >= 0);
         const ui64 aggregateBytes =
-            static_cast<ui64>(Max<i64>(0, Metrics.AggregateUsedBytesCount));
+            static_cast<ui64>(Max<i64>(0, Metrics->AggregateUsedBytesCount));
         const ui64 totalBytes =
-            static_cast<ui64>(Max<i64>(0, Metrics.TotalBytesCount));
+            static_cast<ui64>(Max<i64>(0, Metrics->TotalBytesCount));
         // It makes sense for shardless filesystems, as it eliminates 15s delay
         // in AggregateUsedBytesCount calculation.
         const ui64 usedBytes =
@@ -1845,7 +1846,7 @@ bool TIndexTabletActor::HasNodesLeft() const
     // A new way to count available nodes uses the count aggregated across all
     // shards.
 
-    if (Metrics.AggregateUsedNodesCount < 0) {
+    if (Metrics->AggregateUsedNodesCount < 0) {
         ReportCounterIsNegative(
             TStringBuilder() << "FileSystem: " << GetFileSystemId()
                              << ". TMetrics::AggregateUsedNodesCount should "
@@ -1856,7 +1857,7 @@ bool TIndexTabletActor::HasNodesLeft() const
     // It makes sense for shardless filesystems, as it eliminates 15s delay
     // in AggregateUsedNodesCount calculation.
     const ui64 usedNodes = Max<ui64>(
-        static_cast<ui64>(Metrics.AggregateUsedNodesCount.load()),
+        static_cast<ui64>(Metrics->AggregateUsedNodesCount.load()),
         GetUsedNodesCount());
 
     return usedNodes < GetNodesCount();

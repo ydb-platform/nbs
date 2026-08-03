@@ -316,7 +316,7 @@ void TIndexTabletActor::CompleteTx_AbortUnlinkDirectoryNode(
     EnqueueBlobIndexOpIfNeeded(ctx);
 
     if (!HasError(args.Error)) {
-        Metrics.AbortUnlinkDirectoryNodeInShard.Update(
+        Metrics->AbortUnlinkDirectoryNodeInShard.Update(
             1,
             0,
             ctx.Now() - args.RequestInfo->StartedTs);

@@ -558,7 +558,7 @@ bool TIndexTabletActor::PrepareTx_RenameNodeInDestination(
         }
 
         if (!args.NewChildRef->IsExternal()) {
-            Metrics.RenameNotSupportedErrorCount.fetch_add(
+            Metrics->RenameNotSupportedErrorCount.fetch_add(
                 1,
                 std::memory_order_relaxed);
 
@@ -840,7 +840,7 @@ void TIndexTabletActor::CompleteTx_RenameNodeInDestination(
 
     RemoveInFlightRequest(*args.RequestInfo);
 
-    Metrics.RenameNodeInDestination.Update(
+    Metrics->RenameNodeInDestination.Update(
         1,
         0,
         ctx.Now() - args.RequestInfo->StartedTs);
@@ -916,7 +916,7 @@ void TIndexTabletActor::HandleUnlinkDirectoryNodeAbortedInShard(
             renameNodeRequest.GetNodeId(),
             renameNodeRequest.GetName()});
 
-        Metrics.RenameNode.Update(
+        Metrics->RenameNode.Update(
             1,
             0,
             ctx.Now() - msg->RequestInfo->StartedTs);
@@ -929,7 +929,7 @@ void TIndexTabletActor::HandleUnlinkDirectoryNodeAbortedInShard(
             ctx);
         NCloud::Reply(ctx, *msg->RequestInfo, std::move(response));
     } else {
-        Metrics.RenameNodeInDestination.Update(
+        Metrics->RenameNodeInDestination.Update(
             1,
             0,
             ctx.Now() - msg->RequestInfo->StartedTs);

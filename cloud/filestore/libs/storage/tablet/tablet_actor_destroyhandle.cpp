@@ -161,7 +161,7 @@ void TIndexTabletActor::CompleteDestroyHandle(
     RemoveInFlightRequest(*args.RequestInfo);
 
     if (!HasError(args.Error)) {
-        Metrics.DestroyHandle.Update(
+        Metrics->DestroyHandle.Update(
             1,
             0,
             ctx.Now() - args.RequestInfo->StartedTs);

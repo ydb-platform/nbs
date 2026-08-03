@@ -275,7 +275,7 @@ void TIndexTabletActor::CompleteTx_AddData(
         *Config,
         *SystemCounters,
         GetFileSystemId(),
-        Metrics.CPUUsageRate,
+        Metrics->CPUUsageRate,
         &backendInfo);
 
     auto actor = std::make_unique<TAddDataActor>(
@@ -452,7 +452,7 @@ void TIndexTabletActor::HandleGenerateBlobIds(
             generateBlobIdsBytes += part.GetContent().size();
         }
     }
-    Metrics.GenerateBlobIds.Update(
+    Metrics->GenerateBlobIds.Update(
         1,
         generateBlobIdsBytes,
         ctx.Now() - startedTs);
@@ -687,9 +687,9 @@ void TIndexTabletActor::HandleAddDataCompleted(
             LogTag.c_str(),
             FormatError(msg->Error).Quote().c_str());
     } else {
-        Metrics.AddData.Update(msg->Count, msg->Size, msg->Time);
+        Metrics->AddData.Update(msg->Count, msg->Size, msg->Time);
         if (msg->IsOverloaded) {
-            Metrics.OverloadedCount.fetch_add(1, std::memory_order_relaxed);
+            Metrics->OverloadedCount.fetch_add(1, std::memory_order_relaxed);
         }
     }
 

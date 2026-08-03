@@ -119,6 +119,19 @@ MakeRenameNodeInDestinationRequest(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template <typename TMethod>
+void CompleteResponse(
+    const TStorageConfig& config,
+    const ITraceSerializerPtr& traceSerializer,
+    TSystemCounters& systemCounters,
+    const TString& fileSystemId,
+    TTabletMetrics& metrics,
+    typename TMethod::TResponse::ProtoRecordType& response,
+    const TCallContextPtr& callContext,
+    bool* builtTraceInfo);
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TIndexTabletActor final
     : public NActors::TActor<TIndexTabletActor>
     , public TTabletBase<TIndexTabletActor>
@@ -144,8 +157,8 @@ class TIndexTabletActor final
     };
 
 private:
-    TTabletMetrics Metrics;
-    TCPUUsageTimer CPUUsageTimer{Metrics.CPUUsageMicros};
+    TTabletMetricsPtr Metrics;
+    TCPUUsageTimer CPUUsageTimer;
 
     NProtoPrivate::TStorageStats CachedAggregateStats;
     TInstant CachedStatsFetchingStartTs;
@@ -377,12 +390,12 @@ private:
         }
 
         if (indexState && TryExecuteTx(ctx, *indexState, tx)) {
-            Metrics.InMemoryIndexStateROCacheHitCount.fetch_add(
+            Metrics->InMemoryIndexStateROCacheHitCount.fetch_add(
                 1,
                 std::memory_order_relaxed);
             return;
         }
-        Metrics.InMemoryIndexStateROCacheMissCount.fetch_add(
+        Metrics->InMemoryIndexStateROCacheMissCount.fetch_add(
             1,
             std::memory_order_relaxed);
         TTabletBase<TIndexTabletActor>::ExecuteTx<TTx>(ctx, tx);
@@ -393,7 +406,7 @@ private:
         const NActors::TActorContext& ctx,
         TArgs&&... args)
     {
-        Metrics.InMemoryIndexStateRWCount.fetch_add(
+        Metrics->InMemoryIndexStateRWCount.fetch_add(
             1,
             std::memory_order_relaxed);
         TTabletBase<TIndexTabletActor>::ExecuteTx<TTx>(

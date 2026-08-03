@@ -745,11 +745,11 @@ void TIndexTabletActor::CompleteTx_Compaction(
 
         CompleteBlobIndexOp();
         EnqueueBlobIndexOpIfNeeded(ctx);
-        Metrics.Compaction.Update(
+        Metrics->Compaction.Update(
             1,  // count
             0,  // requestBytes
             ctx.Now() - args.RequestInfo->StartedTs);
-        Metrics.CompactionExtra.DudCount.fetch_add(
+        Metrics->CompactionExtra.DudCount.fetch_add(
             1,
             std::memory_order_relaxed);
         return;
@@ -848,7 +848,7 @@ void TIndexTabletActor::HandleCompactionCompleted(
     EnqueueBlobIndexOpIfNeeded(ctx);
     EnqueueCollectGarbageIfNeeded(ctx);
 
-    Metrics.Compaction.Update(msg->Count, msg->Size, msg->Time);
+    Metrics->Compaction.Update(msg->Count, msg->Size, msg->Time);
 
     WorkerActors.erase(ev->Sender);
 }

@@ -63,7 +63,7 @@ void TIndexTabletActor::SendPendingConfirmAddDataResponse(
 
     for (auto& pending: pendingRequests) {
         if (!HasError(error)) {
-            Metrics.ConfirmAddData.Update(1, 0, ctx.Now() - pending.DeferredTs);
+            Metrics->ConfirmAddData.Update(1, 0, ctx.Now() - pending.DeferredTs);
         }
 
         SendDeferredConfirmAddDataResponse(ctx, std::move(pending), error);
@@ -194,7 +194,7 @@ void TIndexTabletActor::HandleConfirmAddData(
         UnconfirmedDataInProgress.end())
     {
         deferReply();
-        Metrics.ConfirmAddDataExtra.DeferredCount.fetch_add(
+        Metrics->ConfirmAddDataExtra.DeferredCount.fetch_add(
             1,
             std::memory_order_relaxed);
         return;
@@ -241,7 +241,7 @@ void TIndexTabletActor::HandleCancelAddData(
 
         finalizeProfile(responseError);
 
-        Metrics.CancelAddData.Update(1, 0, ctx.Now() - startedTs);
+        Metrics->CancelAddData.Update(1, 0, ctx.Now() - startedTs);
     };
 
     auto validator = [&](const TEvIndexTablet::TCancelAddDataMethod::TRequest::
@@ -256,7 +256,7 @@ void TIndexTabletActor::HandleCancelAddData(
             validator))
     {
         finalizeProfile(MakeError(E_REJECTED, "not accepted"));
-        Metrics.CancelAddData.Update(1, 0, ctx.Now() - startedTs);
+        Metrics->CancelAddData.Update(1, 0, ctx.Now() - startedTs);
         return;
     }
 
