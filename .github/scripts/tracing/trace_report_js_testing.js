@@ -27,7 +27,8 @@ function loadTraceReportApi() {
   return loadedModule.exports;
 }
 
-Object.assign(globalThis, loadTraceReportApi(), { assert });
+const api = loadTraceReportApi();
+Object.assign(globalThis, api, api.FIELDS, { assert });
 
 function makeSpan({
   id,
@@ -64,4 +65,3 @@ function spanIndexes(rows) {
 }
 
 Object.assign(globalThis, { makeSpan, spanIndexes });
-

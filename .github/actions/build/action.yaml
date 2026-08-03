@@ -327,11 +327,18 @@ runs:
             TRACE_OTLP_URL="${S3_REPORTS_WEBSITE_PREFIX}/${COMPONENT_DIR}build/trace.otlp.jsonl.gz"
             TRACE_INPUTS_URL="${S3_REPORTS_WEBSITE_PREFIX}/${COMPONENT_DIR}build/trace-inputs.tar.gz"
         fi
-        TRACE_REPORT_AVAILABLE=0
-        if python3 -m scripts.tracing.ya_trace_report \
+        bash "$GITHUB_WORKSPACE/.github/scripts/tracing/render_ya_trace_bundle.sh" \
+            --warning-title "Build trace" \
+            --report-dir "$TMP_DIR" \
             --ya-out "$TMP_DIR" \
             --evlog "$TMP_DIR/ya_evlog.jsonl" \
-            --output-dir "$TMP_DIR" \
+            --html-url "$TRACE_REPORT_URL" \
+            --otlp-url "$TRACE_OTLP_URL" \
+            --inputs-url "$TRACE_INPUTS_URL" \
+            --summary "$GITHUB_STEP_SUMMARY" \
+            --summary-heading "Build trace" \
+            --github-output "$GITHUB_OUTPUT" \
+            -- \
             --attempt-start-ns "$TRACE_START_TIME_NS" \
             --attempt-end-ns "$TRACE_END_TIME_NS" \
             --exit-code "$YA_MAKE_EXIT_CODE" \
@@ -340,44 +347,7 @@ runs:
             --build-preset "$BUILD_PRESET" \
             --build-target "$BUILD_TARGET" \
             --retry "$YA_BUILD_ATTEMPT" \
-            --operation build; then
-            TRACE_REPORT_AVAILABLE=1
-            {
-                echo "html_url=$TRACE_REPORT_URL"
-                echo "otlp_url=$TRACE_OTLP_URL"
-            } >> "$GITHUB_OUTPUT"
-        else
-            echo "::warning title=Build trace::Unable to generate the ya build OTLP trace bundle"
-        fi
-
-        TRACE_INPUT_ARCHIVE="$TMP_DIR/trace-inputs.tar.gz"
-        if ! bash "$GITHUB_WORKSPACE/.github/scripts/tracing/pack_ya_trace_inputs.sh" \
-            "$TMP_DIR" \
-            "$TMP_DIR" \
-            "$TMP_DIR/ya_evlog.jsonl"; then
-            echo "::warning title=Build trace::Unable to archive the raw ya trace inputs"
-        fi
-
-        if [ -f "$TRACE_INPUT_ARCHIVE" ]; then
-            echo "inputs_url=$TRACE_INPUTS_URL" >> "$GITHUB_OUTPUT"
-        fi
-        if [ "$TRACE_REPORT_AVAILABLE" -eq 1 ]; then
-            {
-                echo "### Build trace"
-                echo
-                if [ -f "$TRACE_INPUT_ARCHIVE" ]; then
-                    echo "[Execution trace]($TRACE_REPORT_URL) ([raw OTLP JSONL]($TRACE_OTLP_URL), [raw trace inputs]($TRACE_INPUTS_URL))"
-                else
-                    echo "[Execution trace]($TRACE_REPORT_URL) ([raw OTLP JSONL]($TRACE_OTLP_URL))"
-                fi
-            } >> "$GITHUB_STEP_SUMMARY"
-        elif [ -f "$TRACE_INPUT_ARCHIVE" ]; then
-            {
-                echo "### Build trace"
-                echo
-                echo "[Raw trace inputs]($TRACE_INPUTS_URL)"
-            } >> "$GITHUB_STEP_SUMMARY"
-        fi
+            --operation build
     - name: Summarize build errors
       id: build-errors
       if: env.YA_MAKE_EXIT_CODE != '' && env.YA_MAKE_EXIT_CODE != '0'
@@ -412,7 +382,6 @@ runs:
         aws s3 sync --acl public-read --no-progress \
             --exclude ".trace-inputs.*.tar.gz.tmp" \
             --exclude "trace-inputs.files" \
-            --exclude "trace-inputs.manifest.json" \
             "$TMP_DIR/" \
             "$S3_BUCKET_PATH/build_logs/${COMPONENT_DIR}"
         if [ -n "${S3_REPORTS_BUCKET_PATH:-}" ]; then

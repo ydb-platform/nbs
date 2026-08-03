@@ -1,1 +1,1 @@
-"""Trace collection, OTLP encoding, and static report rendering."""
+"""Experimental tracing implementation for side-by-side design evaluation."""

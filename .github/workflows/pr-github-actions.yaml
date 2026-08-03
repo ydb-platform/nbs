@@ -310,7 +310,7 @@ jobs:
               --self-contained-html \
               .github/scripts/*_test.py \
               .github/scripts/tests \
-              .github/scripts/tracing/*_test.py
+              .github/scripts/tracing
       - name: trace report JavaScript tests
         run: node .github/scripts/tracing/trace_report_js_test.js
       - name: Upload pytest test results artifact

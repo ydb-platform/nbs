@@ -1,240 +1,124 @@
 from __future__ import annotations
 
-__test__ = False
-
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
-from ..otlp import (
-    Ns,
-    Span,
-    SpanWriter,
-    Trace,
-    make_span,
-    span_status_code,
-    stable_span_id,
-    update_span_attributes,
-)
-from .evlog_record import YaEvlogRecord
-from .node import ClassifiedNode
-from .test_chunk import TestChunk
-from .worker_spans import WorkerSpanFactory
+from ..otlp import Interval, Ns, Span, span_status_code, update_span_attributes
+from ..projector import SpanProjector
+from .node import YaNode
+from .span_chunk import TestChunk
+from .worker_spans import WorkerSpanProjector
 
 
-@dataclass(frozen=True, slots=True, order=True)
-class TestChunkScore:
-    identity_matches: int
-    index_matches: int
-    overlap_ns: int
-    negative_boundary_distance_ns: int
+def _chunk_score(node: YaNode, chunk: TestChunk) -> tuple[int, int, int, int] | None:
+    identity_matches = bool(node.test_identity and node.test_identity == chunk.identity)
+    overlap = chunk.overlap(node.interval)
+    if (node.test_identity is not None and not identity_matches) or (
+        node.test_identity is None and not overlap
+    ):
+        return None
+    index_matches = (
+        node.test_chunk_index is not None and node.test_chunk_index == chunk.chunk_index
+    )
+    if (
+        node.test_chunk_index is not None
+        and chunk.chunk_index is not None
+        and not index_matches
+    ):
+        return None
+    return (
+        int(identity_matches),
+        int(index_matches),
+        overlap,
+        -node.interval.boundary_distance(chunk.interval),
+    )
 
 
-@dataclass(frozen=True, slots=True, order=True)
-class TestChunkMatch:
-    score: TestChunkScore
-    chunk_index: int
+def _match_chunks(
+    nodes: Sequence[YaNode], chunks: Sequence[TestChunk]
+) -> tuple[dict[int, int], set[int]]:
+    by_identity: dict[tuple[str, str], list[int]] = defaultdict(list)
+    by_chunk: dict[tuple[str, str, int], list[int]] = defaultdict(list)
+    for index, chunk in enumerate(chunks):
+        if chunk.identity is None:
+            continue
+        by_identity[chunk.identity].append(index)
+        if chunk.chunk_index is not None:
+            by_chunk[(*chunk.identity, chunk.chunk_index)].append(index)
 
-
-@dataclass(frozen=True, slots=True)
-class TestChunkIndexes:
-    by_identity: Mapping[tuple[str, str], list[int]]
-    by_identity_and_index: Mapping[tuple[str, str, int], list[int]]
-
-
-@dataclass(frozen=True, slots=True)
-class TestOperationPlan:
-    chunks: list[TestChunk]
-    graph_nodes: list[ClassifiedNode]
-    test_nodes: list[ClassifiedNode]
-    indexes: TestChunkIndexes
-    start_ns: Ns
-    end_ns: Ns
-    span_id: bytes
-
-
-@dataclass(frozen=True, slots=True)
-class TestOperationMatches:
-    by_test_node: dict[int, int]
-    available_chunks: set[int]
+    available = set(range(len(chunks)))
+    matches: dict[int, int] = {}
+    for node_index, node in enumerate(nodes):
+        if node.test_identity is None:
+            indexes: Sequence[int] = tuple(available)
+        elif node.test_chunk_index is None:
+            indexes = by_identity.get(node.test_identity, ())
+        else:
+            indexes = by_chunk.get((*node.test_identity, node.test_chunk_index), ())
+        candidates = [
+            (score, chunk_index)
+            for chunk_index in indexes
+            if chunk_index in available
+            if (score := _chunk_score(node, chunks[chunk_index])) is not None
+        ]
+        if candidates:
+            chunk_index = max(candidates)[1]
+            matches[node_index] = chunk_index
+            available.remove(chunk_index)
+    return matches, available
 
 
 @dataclass(frozen=True, slots=True)
 class YaTestOperations:
-    classified: Sequence[ClassifiedNode]
+    nodes: Sequence[YaNode]
     failures: Mapping[str, int | None]
 
-    @staticmethod
-    def _chunk_indexes(chunks: list[TestChunk]) -> TestChunkIndexes:
-        by_identity: dict[tuple[str, str], list[int]] = defaultdict(list)
-        by_identity_and_index: dict[tuple[str, str, int], list[int]] = defaultdict(list)
-        for index, chunk in enumerate(chunks):
-            if chunk.identity is None:
-                continue
-            by_identity[chunk.identity].append(index)
-            if chunk.chunk_index is not None:
-                by_identity_and_index[(*chunk.identity, chunk.chunk_index)].append(
-                    index
-                )
-        return TestChunkIndexes(by_identity, by_identity_and_index)
-
-    def _plan(self, trace: Trace, trace_id: bytes) -> TestOperationPlan | None:
-        chunks = [TestChunk.from_span(span) for span in trace.spans("ya.chunk")]
-        graph_nodes = [node for node in self.classified if node.is_test]
-        if not chunks and not graph_nodes:
-            return None
-        test_nodes = [node for node in graph_nodes if node.kind == "test_execute"]
-        intervals = [
-            *[node.interval for node in graph_nodes],
-            *[chunk.interval for chunk in chunks],
-        ]
-        start_ns = min(interval.start for interval in intervals)
-        end_ns = max(interval.end for interval in intervals)
-        return TestOperationPlan(
-            chunks=chunks,
-            graph_nodes=graph_nodes,
-            test_nodes=test_nodes,
-            indexes=self._chunk_indexes(chunks),
-            start_ns=start_ns,
-            end_ns=end_ns,
-            span_id=stable_span_id(
-                trace_id,
-                "ya.test.operations",
-                start_ns,
-                end_ns,
-            ),
-        )
-
-    @staticmethod
-    def _chunk_match_score(
-        record: YaEvlogRecord,
-        chunk: TestChunk,
-    ) -> TestChunkScore | None:
-        identity = record.test_result_identity
-        identity_matches = bool(identity and identity == chunk.identity)
-        overlap = chunk.overlap(record.interval)
-        if (identity is not None and not identity_matches) or (
-            identity is None and not overlap
-        ):
-            return None
-        record_chunk_index = record.test_result_chunk_index
-        index_matches = (
-            record_chunk_index is not None and record_chunk_index == chunk.chunk_index
-        )
-        if (
-            record_chunk_index is not None
-            and chunk.chunk_index is not None
-            and not index_matches
-        ):
-            return None
-        return TestChunkScore(
-            int(identity_matches),
-            int(index_matches),
-            overlap,
-            -record.interval.boundary_distance(chunk.interval),
-        )
-
-    @staticmethod
-    def _candidate_chunk_indexes(
-        record: YaEvlogRecord,
-        plan: TestOperationPlan,
-        available: set[int],
-    ) -> Sequence[int]:
-        identity = record.test_result_identity
-        chunk_index = record.test_result_chunk_index
-        if identity is None:
-            return available
-        if chunk_index is None:
-            return plan.indexes.by_identity.get(identity, ())
-        return plan.indexes.by_identity_and_index.get((*identity, chunk_index), ())
-
-    def _match_chunks(self, plan: TestOperationPlan) -> TestOperationMatches:
-        available = set(range(len(plan.chunks)))
-        matches: dict[int, int] = {}
-        for record_index, node in enumerate(plan.test_nodes):
-            candidates = [
-                TestChunkMatch(score, chunk_index)
-                for chunk_index in self._candidate_chunk_indexes(
-                    node.record,
-                    plan,
-                    available,
-                )
-                if chunk_index in available
-                if (
-                    score := self._chunk_match_score(
-                        node.record,
-                        plan.chunks[chunk_index],
-                    )
-                )
-                is not None
-            ]
-            if not candidates:
-                continue
-            chunk_index = max(candidates).chunk_index
-            matches[record_index] = chunk_index
-            available.remove(chunk_index)
-        return TestOperationMatches(matches, available)
-
-    @staticmethod
-    def _add_worker_phases(
-        writer: SpanWriter,
-        record: YaEvlogRecord,
-        *,
-        trace_id: bytes,
-        parent_span_id: bytes,
-    ) -> None:
-        for index, detail in enumerate(record.details):
-            writer.add(
-                WorkerSpanFactory(record).test_worker_phase_span(
-                    detail,
-                    trace_id=trace_id,
-                    parent_span_id=parent_span_id,
-                    index=index,
-                ),
-                scope_name="ya.test.worker.phase",
-            )
-
-    def _add_test_node(
+    def _node(
         self,
-        writer: SpanWriter,
-        node: ClassifiedNode,
+        node: YaNode,
+        parent: SpanProjector,
         *,
-        trace_id: bytes,
-        parent_span_id: bytes,
         index: int,
         unmatched: bool,
     ) -> None:
         failed = bool(node.uid and node.uid in self.failures)
-        span = WorkerSpanFactory(node.record).test_node_span(
-            trace_id=trace_id,
-            parent_span_id=parent_span_id,
+        span = WorkerSpanProjector(node, parent).test_node(
             index=index,
             unmatched=unmatched,
             failed=failed,
             exit_code=self.failures.get(node.uid) if failed else None,
         )
-        writer.add(span, scope_name="ya.test.node")
-        self._add_worker_phases(
-            writer,
-            node.record,
-            trace_id=trace_id,
-            parent_span_id=span.span_id,
-        )
+        WorkerSpanProjector(node, parent.under(span)).test_worker_phases()
 
-    def _emit_matched_workers(
-        self,
-        plan: TestOperationPlan,
-        matches: TestOperationMatches,
-        tests_by_parent: Mapping[bytes, Sequence[Span]],
-        *,
-        writer: SpanWriter,
-        trace_id: bytes,
-    ) -> None:
-        for record_index, chunk_index in matches.by_test_node.items():
-            node = plan.test_nodes[record_index]
-            chunk_span = plan.chunks[chunk_index].span
-            factory = WorkerSpanFactory(node.record)
-            worker_attributes = factory.test_worker_attributes()
+    def project(self, parent: SpanProjector) -> dict[str, Any]:
+        chunks = [TestChunk.from_span(span) for span in parent.trace.spans("ya.chunk")]
+        graph_nodes = [node for node in self.nodes if node.is_test]
+        if not chunks and not graph_nodes:
+            return {}
+        test_nodes = [node for node in graph_nodes if node.kind == "test_execute"]
+        intervals = [
+            *[node.interval for node in graph_nodes],
+            *[chunk.interval for chunk in chunks],
+        ]
+        interval = Interval(
+            min(item.start for item in intervals),
+            max(item.end for item in intervals),
+        )
+        operation_id = parent.span_id(
+            "ya.test.operations", interval.start, interval.end
+        )
+        context = parent.under(operation_id)
+        matches, available = _match_chunks(test_nodes, chunks)
+        tests_by_parent: dict[bytes, list[Span]] = defaultdict(list)
+        for span in parent.trace.spans("ya.test"):
+            tests_by_parent[span.parent_span_id].append(span)
+
+        for node_index, chunk_index in matches.items():
+            node = test_nodes[node_index]
+            chunk_span = chunks[chunk_index].span
+            worker = WorkerSpanProjector(node, context)
+            worker_attributes = worker.test_attributes()
             update_span_attributes(chunk_span, worker_attributes)
             if test_size := worker_attributes.get("test.size"):
                 for test_span in tests_by_parent.get(chunk_span.span_id, ()):
@@ -243,132 +127,62 @@ class YaTestOperations:
                 (node.uid and node.uid in self.failures)
                 or span_status_code(chunk_span) == 2
             )
-            worker_span = factory.matched_test_worker_span(
-                trace_id=trace_id,
-                parent_span_id=plan.span_id,
-                chunk_span=chunk_span,
-                index=record_index,
+            worker_span = worker.matched_test_worker(
+                chunk_span,
+                index=node_index,
                 failed=failed,
                 exit_code=self.failures.get(node.uid) if node.uid else None,
             )
             chunk_span.parent_span_id = worker_span.span_id
-            writer.add(worker_span, scope_name="ya.test.worker")
-            self._add_worker_phases(
-                writer,
-                node.record,
-                trace_id=trace_id,
-                parent_span_id=worker_span.span_id,
-            )
+            WorkerSpanProjector(node, context.under(worker_span)).test_worker_phases()
 
-    def _emit_graph_nodes(
-        self,
-        plan: TestOperationPlan,
-        matches: TestOperationMatches,
-        *,
-        writer: SpanWriter,
-        trace_id: bytes,
-    ) -> int:
+        for chunk_index in available:
+            chunks[chunk_index].span.parent_span_id = operation_id
+        for suite_span in parent.trace.spans("ya.suite"):
+            suite_span.parent_span_id = operation_id
         unmatched = [
             (index, node)
-            for index, node in enumerate(plan.test_nodes)
-            if index not in matches.by_test_node
+            for index, node in enumerate(test_nodes)
+            if index not in matches
         ]
         for index, node in unmatched:
-            self._add_test_node(
-                writer,
-                node,
-                trace_id=trace_id,
-                parent_span_id=plan.span_id,
-                index=index,
-                unmatched=True,
-            )
-        processing = [node for node in plan.graph_nodes if node.kind != "test_execute"]
-        for index, node in enumerate(processing, start=len(plan.test_nodes)):
-            self._add_test_node(
-                writer,
-                node,
-                trace_id=trace_id,
-                parent_span_id=plan.span_id,
-                index=index,
-                unmatched=False,
-            )
-        return len(unmatched)
+            self._node(node, context, index=index, unmatched=True)
+        processing = [node for node in graph_nodes if node.kind != "test_execute"]
+        for index, node in enumerate(processing, start=len(test_nodes)):
+            self._node(node, context, index=index, unmatched=False)
 
-    def _operation_attributes(
-        self,
-        plan: TestOperationPlan,
-        unmatched_count: int,
-    ) -> dict[str, Any]:
+        failed = any(
+            node.uid and node.uid in self.failures for node in graph_nodes
+        ) or any(span_status_code(chunk.span) == 2 for chunk in chunks)
         attributes = {
             "ya.test.wall_time.kind": "worker-node-execution-envelope",
-            "ya.test.worker.execute.count": len(plan.test_nodes),
-            "ya.test.worker.unmatched.count": unmatched_count,
+            "ya.test.worker.execute.count": len(test_nodes),
+            "ya.test.worker.unmatched.count": len(unmatched),
             "ya.test.worker.cumulative_seconds": Ns(
-                sum(len(node.interval) for node in plan.test_nodes)
+                sum(len(node.interval) for node in test_nodes)
             ).to_s(),
-            "ya.test.chunk.count": len(plan.chunks),
+            "ya.test.chunk.count": len(chunks),
         }
-        counts = Counter(
-            node.kind.removeprefix("test_")
-            for node in plan.graph_nodes
-            if node.kind != "test_execute"
-        )
-        for kind, count in sorted(counts.items()):
+        for kind, count in sorted(
+            Counter(
+                node.kind.removeprefix("test_")
+                for node in graph_nodes
+                if node.kind != "test_execute"
+            ).items()
+        ):
             attributes[f"ya.test.graph_node.{kind}.count"] = count
-        return attributes
-
-    def build(
-        self,
-        *,
-        writer: SpanWriter,
-        trace_id: bytes,
-        parent_span_id: bytes,
-    ) -> dict[str, Any]:
-        trace = writer.trace
-        plan = self._plan(trace, trace_id)
-        if plan is None:
-            return {}
-        matches = self._match_chunks(plan)
-        tests_by_parent: dict[bytes, list[Span]] = defaultdict(list)
-        for span in trace.spans("ya.test"):
-            tests_by_parent[span.parent_span_id].append(span)
-        self._emit_matched_workers(
-            plan,
-            matches,
-            tests_by_parent,
-            writer=writer,
-            trace_id=trace_id,
-        )
-        for chunk_index in matches.available_chunks:
-            plan.chunks[chunk_index].span.parent_span_id = plan.span_id
-        for suite_span in trace.spans("ya.suite"):
-            suite_span.parent_span_id = plan.span_id
-        unmatched_count = self._emit_graph_nodes(
-            plan,
-            matches,
-            writer=writer,
-            trace_id=trace_id,
-        )
-        failed = any(
-            node.uid and node.uid in self.failures for node in plan.graph_nodes
-        ) or any(span_status_code(chunk.span) == 2 for chunk in plan.chunks)
-        attributes = self._operation_attributes(plan, unmatched_count)
-        writer.add(
-            make_span(
-                trace_id=trace_id,
-                span_id=plan.span_id,
-                parent_span_id=parent_span_id,
-                name="test operations",
-                start_ns=plan.start_ns,
-                end_ns=plan.end_ns,
-                attributes=attributes,
-                status_code=2 if failed else 0,
-                status_message="one or more test operations failed" if failed else "",
-            ),
-            scope_name="ya.test.operations",
+        parent.scoped("ya.test.operations").emit(
+            "ya.test.operations",
+            interval.start,
+            interval.end,
+            name="test operations",
+            interval=interval,
+            attributes=attributes,
+            status_code=2 if failed else 0,
+            status_message=("one or more test operations failed" if failed else ""),
         )
         return {
-            "ya.test.worker.execute.count": len(plan.test_nodes),
-            "ya.test.worker.unmatched.count": unmatched_count,
-            "ya.test.chunk.count": len(plan.chunks),
+            "ya.test.worker.execute.count": len(test_nodes),
+            "ya.test.worker.unmatched.count": len(unmatched),
+            "ya.test.chunk.count": len(chunks),
         }

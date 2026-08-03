@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Mapping, Sequence
+from typing import Any, Mapping, Sequence
 
 from ..otlp import (
     Interval,
@@ -13,14 +13,10 @@ from ..otlp import (
     update_span_attributes,
 )
 from .metrics import finite_number
-from .test_chunk import TestChunk
-
-if TYPE_CHECKING:
-    from .evlog_record import YaEvlogRecord
-    from .node import ClassifiedNode
+from .node import TEST_NODE_MARKERS, YaNode
+from .span_chunk import TestChunk
 
 CRITICAL_TASK_SUFFIX_RE = re.compile(r"(?:(?:-CACHED|-DYN_UID_CACHE))+$")
-TEST_NODE_MARKERS = frozenset({"TA", "TL", "TM", "TS"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,13 +98,13 @@ class YaCriticalPathEntry:
 @dataclass(frozen=True, slots=True)
 class YaCriticalPath:
     entries: tuple[YaCriticalPathEntry, ...]
-    nodes: Sequence[YaEvlogRecord]
+    nodes: Sequence[YaNode]
 
     @classmethod
     def from_evlog(
         cls,
         statistics: Mapping[str, Any],
-        nodes: Sequence[YaEvlogRecord],
+        nodes: Sequence[YaNode],
     ) -> YaCriticalPath:
         entries = tuple(
             YaCriticalPathEntry.from_raw(index, entry)
@@ -125,26 +121,25 @@ class YaCriticalPath:
     def test_entries(self) -> tuple[YaCriticalPathEntry, ...]:
         return tuple(entry for entry in self.entries if entry.is_test)
 
-    def _critical_record_score(
+    def _node_score(
         self,
-        record: YaEvlogRecord,
-        tool: str,
+        node: YaNode,
         entry: YaCriticalPathEntry,
     ) -> tuple[int, int, int, int] | None:
         if entry.interval is None:
             return None
-        overlap_ns = entry.interval.overlap(record.interval)
-        distance_ns = entry.interval.boundary_distance(record.interval)
+        overlap_ns = entry.interval.overlap(node.interval)
+        distance_ns = entry.interval.boundary_distance(node.interval)
         return (
-            int(entry.base_type in {tool, record.tag}),
+            int(entry.base_type in {node.tool, node.tag}),
             overlap_ns,
             -distance_ns,
-            len(record.interval),
+            len(node.interval),
         )
 
     def match_build(
         self,
-        build_records: Sequence[ClassifiedNode],
+        build_records: Sequence[YaNode],
         critical_entries: Sequence[YaCriticalPathEntry],
     ) -> dict[int, YaCriticalPathEntry]:
         available = {
@@ -170,13 +165,7 @@ class YaCriticalPath:
             scored = (
                 (score, index)
                 for index in candidate_indices
-                if (
-                    score := self._critical_record_score(
-                        build_records[index].record,
-                        build_records[index].tool,
-                        entry,
-                    )
-                )
+                if (score := self._node_score(build_records[index], entry))
                 if score is not None and (uid or score[1] > 0)
             )
             match = max(scored, default=None)
@@ -190,9 +179,9 @@ class YaCriticalPath:
     def match_test_node(
         self,
         entry: YaCriticalPathEntry,
-        test_nodes: Sequence[YaEvlogRecord],
-        test_nodes_by_uid: Mapping[str, Sequence[YaEvlogRecord]],
-    ) -> YaEvlogRecord | None:
+        test_nodes: Sequence[YaNode],
+        test_nodes_by_uid: Mapping[str, Sequence[YaNode]],
+    ) -> YaNode | None:
         interval = entry.interval
         if entry.uid:
             matching_uid = test_nodes_by_uid.get(entry.uid, ())
@@ -219,10 +208,7 @@ class YaCriticalPath:
         return max(
             overlapping,
             key=lambda record: (
-                bool(
-                    record.test_result_identity
-                    and record.test_result_identity[0] in entry.text
-                ),
+                bool(record.test_identity and record.test_identity[0] in entry.text),
                 interval.overlap(record.interval),
             ),
         )
@@ -238,13 +224,11 @@ class YaCriticalPath:
                 chunks_by_suite[chunk.suite].append(chunk)
                 if chunk.identity is not None:
                     chunks_by_identity[chunk.identity].append(chunk)
-        test_nodes = [
-            record for record in self.nodes if record.kind_and_tool[0] == "test_execute"
-        ]
-        test_nodes_by_uid: dict[str, list[YaEvlogRecord]] = defaultdict(list)
-        for record in test_nodes:
-            if record.uid:
-                test_nodes_by_uid[record.uid].append(record)
+        test_nodes = [node for node in self.nodes if node.kind == "test_execute"]
+        test_nodes_by_uid: dict[str, list[YaNode]] = defaultdict(list)
+        for node in test_nodes:
+            if node.uid:
+                test_nodes_by_uid[node.uid].append(node)
         tests_by_parent: dict[bytes, list[Span]] = defaultdict(list)
         for span in trace.spans("ya.test"):
             tests_by_parent[span.parent_span_id].append(span)
@@ -262,7 +246,7 @@ class YaCriticalPath:
             if interval is None:
                 continue
 
-            identity = node.test_result_identity if node is not None else None
+            identity = node.test_identity if node is not None else None
             candidate_pool = chunks
             if identity is not None:
                 candidate_pool = (

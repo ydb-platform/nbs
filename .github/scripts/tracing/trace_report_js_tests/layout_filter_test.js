@@ -50,62 +50,6 @@ function testCustomMinimumDurationUsesSeconds() {
   assert.strictEqual(parseMinimumDurationNs("600"), 600_000_000_000);
 }
 
-function testFilterClearStateUsesRawValuesAndPreservesDisplayControls() {
-  assert.deepStrictEqual(filterControlActivity(), {
-    query: false,
-    minimumDuration: false,
-    any: false,
-  });
-  assert.deepStrictEqual(
-    filterControlActivity({ query: "   ", minimumDurationValue: "0" }),
-    { query: true, minimumDuration: true, any: true },
-  );
-  assert.deepStrictEqual(
-    filterControlActivity({ minimumDurationValue: "not-a-number" }),
-    { query: false, minimumDuration: true, any: true },
-  );
-  assert.deepStrictEqual(
-    filterControlActivity({ minimumDurationBadInput: true }),
-    { query: false, minimumDuration: true, any: true },
-  );
-  for (const activeState of [
-    { failedOnly: true },
-    { topTestsOnly: true },
-    { testPhaseValue: '["ya.test.stage",null]' },
-    { testSizes: new Set(["small"]) },
-  ]) {
-    assert.strictEqual(filterControlActivity(activeState).any, true);
-  }
-
-  const original = {
-    query: "local-endpoints",
-    failedOnly: true,
-    topTestsOnly: true,
-    minimumDurationValue: "15",
-    minimumDurationBadInput: false,
-    testPhaseValue: '["ya.test.stage","prepare_recipes"]',
-    testSizes: new Set(["medium", "large"]),
-    timelineMode: "global",
-    rowLoadSize: "5000",
-    rowBudget: 5000,
-  };
-  const cleared = clearedFilterControlState(original);
-  assert.deepStrictEqual(cleared, {
-    query: "",
-    failedOnly: false,
-    topTestsOnly: false,
-    minimumDurationValue: "",
-    minimumDurationBadInput: false,
-    testPhaseValue: "",
-    testSizes: new Set(),
-    timelineMode: "global",
-    rowLoadSize: "5000",
-    rowBudget: 5000,
-  });
-  assert.strictEqual(original.query, "local-endpoints");
-  assert.deepStrictEqual(original.testSizes, new Set(["medium", "large"]));
-}
-
 function testTraceIndexPrecomputesHierarchyScopesAndPhaseOwners() {
   const spans = [
     makeSpan({ id: "chunk", name: "chunk", scope: 0 }),
@@ -372,7 +316,6 @@ for (const test of [
   testNameColumnWidthIsClampedToAUsableLayout,
   testNameColumnWidthPersistenceHasSafeFallbacks,
   testCustomMinimumDurationUsesSeconds,
-  testFilterClearStateUsesRawValuesAndPreservesDisplayControls,
   testTraceIndexPrecomputesHierarchyScopesAndPhaseOwners,
   testTraceIndexBuildsPhaseOwnersWithoutRepeatedAncestorWalks,
   testFilterNormalizationIsSeparateAndDeterministic,

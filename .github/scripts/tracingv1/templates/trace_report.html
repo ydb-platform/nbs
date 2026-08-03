@@ -1,0 +1,232 @@
+<!doctype html>
+<!-- Static OTLP trace report template. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<title>{{ title }}</title>
+<style>
+:root { color-scheme:light dark; --bg:#fff; --fg:#172033; --muted:#667085;
+  --line:#d8dee9; --panel:#f7f8fa; --bar:#6d5ce7; --bad:#d92d20;
+  --selected:#eef2ff; --critical:#b54708; --critical-bg:#fff4e5;
+  --longest:#175cd3; --longest-bg:#eff8ff;
+  --bar-worker-setup:#0f766e; --bar-worker-exec-cmd:#2563eb;
+  --bar-worker-post-cmd:#d97706; --bar-worker-node-result:#7c3aed;
+  --bar-worker-finalize:#475569; --bar-stage-prepare-recipes:#16a34a;
+  --bar-stage-wrapper-execution:#0891b2; --bar-stage-stop-recipes:#e11d48;
+  --bar-stage-other:#a16207; }
+@media (prefers-color-scheme:dark) { :root { --bg:#11151c; --fg:#e8edf5;
+  --muted:#9ca9bd; --line:#344054; --panel:#1b2230; --bar:#9b8cff;
+  --bad:#ff6b64; --selected:#252d47; --critical:#fdb022;
+  --critical-bg:#3b2b13; --longest:#84adff; --longest-bg:#17264a;
+  --bar-worker-setup:#2dd4bf; --bar-worker-exec-cmd:#60a5fa;
+  --bar-worker-post-cmd:#fbbf24; --bar-worker-node-result:#a78bfa;
+  --bar-worker-finalize:#94a3b8; --bar-stage-prepare-recipes:#4ade80;
+  --bar-stage-wrapper-execution:#22d3ee; --bar-stage-stop-recipes:#fb7185;
+  --bar-stage-other:#facc15; } }
+* { box-sizing:border-box } body { margin:0; background:var(--bg); color:var(--fg);
+  font:14px/1.45 system-ui,sans-serif } main { max-width:1800px; margin:auto; padding:1.5rem }
+h1 { margin:.2rem 0 } .muted { color:var(--muted) } .toolbar { position:sticky;
+  top:0; z-index:2; display:flex; flex-wrap:wrap; align-items:center; gap:.6rem;
+  padding:.7rem 0; background:var(--bg) }
+input,button,select { color:inherit; background:var(--panel); border:1px solid var(--line);
+  border-radius:6px; padding:.45rem .7rem }
+.search-filter { min-width:20rem; flex:1 1 24rem }
+.text-filter { width:100%; min-width:0 }
+.text-filter::-webkit-search-cancel-button { appearance:none }
+.clearable-input { position:relative; display:inline-flex; align-items:center; min-width:0 }
+.clearable-input input { padding-right:2rem }
+.inline-clear { position:absolute; right:.25rem; display:inline-grid; place-items:center;
+  width:1.5rem; height:1.5rem; padding:0; border:0; border-radius:4px;
+  color:var(--muted); background:transparent; font-size:1.1rem; line-height:1;
+  cursor:pointer }
+.inline-clear:not(:disabled):hover,.inline-clear:not(:disabled):focus-visible {
+  color:var(--fg); background:var(--selected) }
+.filter-toggle[aria-pressed="true"] { color:var(--fg); background:var(--selected);
+  border-color:var(--bar); box-shadow:inset 0 0 0 1px var(--bar) }
+.duration-filter,.test-size-filter,.test-phase-filter { display:flex; align-items:center; gap:.35rem;
+  color:var(--muted); white-space:nowrap }
+.duration-filter input { width:7rem; min-width:0; font-variant-numeric:tabular-nums }
+.duration-filter input[type="number"] { appearance:textfield }
+.duration-filter input::-webkit-inner-spin-button,
+.duration-filter input::-webkit-outer-spin-button { appearance:none; margin:0 }
+.test-phase-filter select { max-width:20rem }
+.test-size-filter { padding-left:.2rem }
+.test-size-filter .filter-toggle { padding-inline:.55rem }
+.row-load-control { display:flex; align-items:center; gap:.35rem; color:var(--muted);
+  white-space:nowrap }
+.timeline-mode-control { display:flex; align-items:center; gap:.35rem; color:var(--muted);
+  white-space:nowrap }
+.trace { --name-column-width:38%; border:1px solid var(--line); border-radius:8px;
+  overflow:hidden }
+.trace-head,.span-row { display:grid;
+  grid-template-columns:minmax(15rem,var(--name-column-width)) 7rem minmax(15rem,1fr);
+  align-items:center; gap:.7rem; min-height:2.25rem; padding:.35rem .6rem }
+.trace-head { position:relative; color:var(--muted); background:var(--panel); font-size:.8rem;
+  font-weight:600; text-transform:uppercase }
+.column-resizer { position:absolute; z-index:1; top:0; bottom:0;
+  left:calc(.95rem + var(--name-column-width)); width:.8rem; padding:0;
+  border:0; border-radius:0; background:transparent; cursor:col-resize;
+  touch-action:none; transform:translateX(-50%) }
+.column-resizer::before { content:""; display:block; width:3px; height:1.5rem;
+  margin:auto; border-radius:999px; background:var(--line) }
+.column-resizer:hover::before,.column-resizer:focus-visible::before {
+  background:var(--bar) }
+.column-resizer:focus-visible { outline:2px solid var(--bar); outline-offset:-2px }
+.resizing-columns,.resizing-columns * { cursor:col-resize!important; user-select:none!important }
+.span-row { border-top:1px solid var(--line) } .span-row:hover { background:var(--panel) }
+.span-row.selected { background:var(--selected) }
+.name-cell { display:flex; align-items:center; min-width:0 }
+.toggle,.metadata-button { display:inline-grid; place-items:center; flex:none; width:2.25rem;
+  height:2.25rem; padding:0; border:1px solid transparent; background:transparent;
+  border-radius:6px }
+.toggle { font-size:1.15rem; font-weight:700 }
+.toggle:not(:disabled):hover,.metadata-button:hover { border-color:var(--line);
+  background:var(--selected) }
+.toggle:disabled { opacity:0; cursor:default }
+.span-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis;
+  white-space:nowrap; padding:.35rem .25rem; border:0; background:transparent;
+  text-align:left; cursor:default }
+.group-name { cursor:pointer } .group-name:not(:disabled):hover { text-decoration:underline }
+.child-count,.critical-badge,.longest-badge { flex:none; margin-left:.3rem; padding:.12rem .45rem;
+  border-radius:999px; font-size:.75rem; white-space:nowrap }
+.child-count { color:var(--muted); background:var(--panel); border:1px solid var(--line) }
+.critical-badge { color:var(--critical); background:var(--critical-bg);
+  border:1px solid currentColor; font-weight:650 }
+.longest-badge { color:var(--longest); background:var(--longest-bg);
+  border:1px solid currentColor; font-weight:650 }
+.metadata-button { color:var(--muted); font-size:1.05rem; cursor:pointer }
+.duration { text-align:right; font-variant-numeric:tabular-nums }
+.track { position:relative; height:.8rem; overflow:hidden; background:var(--panel); border-radius:4px }
+.track.local-timeline { box-shadow:inset 0 0 0 1px var(--line) }
+.bar { position:absolute; top:0; bottom:0; border-radius:4px; background:var(--bar);
+  min-width:2px }
+.bar-worker-setup { background:var(--bar-worker-setup) }
+.bar-worker-exec-cmd { background:var(--bar-worker-exec-cmd) }
+.bar-worker-post-cmd { background:var(--bar-worker-post-cmd) }
+.bar-worker-node-result { background:var(--bar-worker-node-result) }
+.bar-worker-finalize { background:var(--bar-worker-finalize) }
+.bar-stage-prepare-recipes { background:var(--bar-stage-prepare-recipes) }
+.bar-stage-wrapper-execution { background:var(--bar-stage-wrapper-execution) }
+.bar-stage-stop-recipes { background:var(--bar-stage-stop-recipes) }
+.bar-stage-other { background:var(--bar-stage-other) }
+.error .bar { background:var(--bad) }
+.critical:not(.error) .bar { background:var(--critical) }
+.error .span-name { color:var(--bad) }
+.more-row { border-top:1px solid var(--line); padding:.35rem .6rem }
+.more-row button { margin-left:var(--indent) }
+.global-loader { display:flex; align-items:center; gap:.6rem }
+.row-status { min-height:1.5rem; margin:.35rem .6rem }
+.inline-detail { padding:1rem; border-top:1px solid var(--line);
+  background:var(--panel); overflow:auto }
+.detail-head { display:flex; align-items:start; justify-content:space-between; gap:1rem }
+.detail-head h2 { margin:0; font-size:1.1rem } .detail-facts { margin:.4rem 0 }
+table { border-collapse:collapse }
+th,td { border-bottom:1px solid var(--line); padding:.25rem .5rem; text-align:left;
+  vertical-align:top } th { color:var(--muted); white-space:nowrap } td { word-break:break-word }
+.attributes { width:100%; max-width:100rem } code { font-family:ui-monospace,monospace }
+.events { padding-left:1.5rem } h3,h4 { margin:.8rem 0 .3rem }
+#loading { padding:1rem } [hidden] { display:none!important }
+@media (max-width:850px) { .trace-head,.span-row { grid-template-columns:1fr 6rem }
+  .column-resizer,.timeline-mode-control { display:none }
+  .track,.waterfall-heading { display:none } .search-filter { min-width:8rem; flex:1 }
+  .toolbar { flex-wrap:wrap } }
+</style>
+</head>
+<body><main>
+<h1>{{ title }}</h1>
+<p class="muted">{{ summary }}</p>
+<details><summary>Run metadata</summary>
+{% if metadata %}
+<table class="attributes">
+{% for key, value in metadata | dictsort %}
+  <tr><th>{{ key }}</th><td>
+  {% if value is string and (value.startswith("https://") or value.startswith("http://")) %}
+    <a rel="noopener noreferrer" href="{{ value }}">{{ value }}</a>
+  {% elif value is string %}
+    {{ value }}
+  {% else %}
+    {{ value | tojson }}
+  {% endif %}
+  </td></tr>
+{% endfor %}
+</table>
+{% else %}
+<p class="muted">No attributes</p>
+{% endif %}
+</details>
+<div class="toolbar">
+  <span class="clearable-input search-filter">
+    <input id="filter" class="text-filter" type="search" aria-label="Filter spans or attributes"
+      placeholder="Filter spans or attributes" disabled>
+    <button id="clear-filter" class="inline-clear" type="button"
+      aria-label="Clear text filter" title="Clear text filter" hidden disabled>&times;</button>
+  </span>
+  <button id="failed-only" class="filter-toggle" type="button" aria-pressed="false" disabled>Failed only</button>
+  <button id="top-tests-only" class="filter-toggle" type="button" aria-pressed="false" disabled>Top 10 tests</button>
+  <label class="test-phase-filter" for="test-phase">Duration of
+    <select id="test-phase"
+      title="Measure an exact or any test stage or worker phase; text, failure, and test size may match its owning test"
+      disabled>
+      <option value="">Any matching span</option>
+    </select>
+  </label>
+  <span class="duration-filter">
+    <label for="minimum-duration">Minimum duration</label>
+    <span class="clearable-input">
+      <input id="minimum-duration" type="number" min="0" step="any" inputmode="decimal"
+        placeholder="seconds" title="Minimum span duration in seconds; for example, 0.1 means 100 ms" disabled>
+      <button id="clear-minimum-duration" class="inline-clear" type="button"
+        aria-label="Clear minimum duration" title="Clear minimum duration" hidden disabled>&times;</button>
+    </span>
+    <span>seconds</span>
+  </span>
+  <span class="test-size-filter" role="group" aria-label="Test size">
+    <span>Test size</span>
+    <button class="filter-toggle" type="button" data-test-size="small" aria-pressed="false" disabled>Small</button>
+    <button class="filter-toggle" type="button" data-test-size="medium" aria-pressed="false" disabled>Medium</button>
+    <button class="filter-toggle" type="button" data-test-size="large" aria-pressed="false" disabled>Large</button>
+  </span>
+  <button id="clear-filters" type="button" aria-label="Clear filters"
+    title="Clear all filters" disabled>Clear filters</button>
+  <label class="row-load-control" for="row-load-size">Rows per load
+    <select id="row-load-size" disabled>
+      <option value="200" selected>200</option>
+      <option value="1000">1,000</option>
+      <option value="5000">5,000</option>
+    </select>
+  </label>
+  <label class="timeline-mode-control" for="timeline-mode">Timeline
+    <select id="timeline-mode"
+      title="Use the complete trace scale or expand each test worker, test operation, and test chunk to its own scale"
+      disabled>
+      <option value="global">Global trace</option>
+      <option value="local" selected>Local test intervals</option>
+    </select>
+  </label>
+  <button id="expand" type="button" disabled>Expand all</button>
+  <button id="collapse" type="button" disabled>Collapse all</button>
+  <span id="filter-status" class="muted"></span>
+</div>
+<section id="trace" class="trace">
+  <div id="trace-head" class="trace-head">
+    <span>Name</span><span>Duration</span><span class="waterfall-heading">Waterfall</span>
+    <button id="column-resizer" class="column-resizer" type="button" role="separator"
+      aria-label="Resize name and waterfall columns" aria-orientation="vertical"
+      aria-controls="rows"
+      title="Drag to resize the name and waterfall columns; use Left and Right arrow keys for precise adjustment"></button>
+  </div>
+  <div id="rows"><p id="loading" class="muted">Loading compressed trace data…</p></div>
+  <div id="row-loader" class="global-loader more-row" hidden>
+    <span class="muted">More rows are available.</span>
+    <button id="load-rows" type="button" aria-controls="rows" disabled>Load next 200 rows</button>
+  </div>
+  <p id="row-status" class="row-status muted" role="status" aria-live="polite"></p>
+</section>
+</main>
+<script id="trace-data" type="application/octet-stream">{{ payload }}</script>
+<script>
+{% include "trace_report.js" %}
+</script>
+</body></html>

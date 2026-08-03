@@ -22,94 +22,34 @@ function resetDefaults() {
   rowBudget = INITIAL_ROW_BUDGET;
 }
 
-function isPressed(element) {
-  return element.getAttribute("aria-pressed") === "true";
-}
-
-function selectedTestSizes() {
-  return new Set(
-    [...testSizeElements]
-      .filter((element) => isPressed(element))
-      .map((element) => element.dataset.testSize),
-  );
-}
-
-function filterControlActivity(
-  {
-    query = "",
-    failedOnly = false,
-    topTestsOnly = false,
-    minimumDurationValue = "",
-    minimumDurationBadInput = false,
-    testPhaseValue = "",
-    testSizes = new Set(),
-  } = {},
-) {
-  const hasQuery = String(query ?? "").length > 0;
-  const hasMinimumDuration =
-    String(minimumDurationValue ?? "").length > 0 ||
-    Boolean(minimumDurationBadInput);
-  const hasTestPhase = String(testPhaseValue ?? "").length > 0;
-  const hasTestSizes = Boolean(testSizes?.size || testSizes?.length);
+function currentFilters() {
+  const values = new FormData(filterForm);
   return {
-    query: hasQuery,
-    minimumDuration: hasMinimumDuration,
-    any: Boolean(
-      hasQuery ||
-        failedOnly ||
-        topTestsOnly ||
-        hasMinimumDuration ||
-        hasTestPhase ||
-        hasTestSizes
+    query: values.get("query") || "",
+    failedOnly: values.has("failed"),
+    topTestsOnly: values.has("top-tests"),
+    minimumDurationNs: parseMinimumDurationNs(
+      values.get("minimum-duration") || "",
     ),
-  };
-}
-
-function clearedFilterControlState(state = {}) {
-  return {
-    ...state,
-    query: "",
-    failedOnly: false,
-    topTestsOnly: false,
-    minimumDurationValue: "",
-    minimumDurationBadInput: false,
-    testPhaseValue: "",
-    testSizes: new Set(),
-  };
-}
-
-function currentFilterControlState() {
-  return {
-    query: filterElement.value,
-    failedOnly: isPressed(failedOnlyElement),
-    topTestsOnly: isPressed(topTestsOnlyElement),
-    minimumDurationValue: minimumDurationElement.value,
-    minimumDurationBadInput: Boolean(minimumDurationElement.validity?.badInput),
-    testPhaseValue: testPhaseElement.value,
-    testSizes: selectedTestSizes(),
+    testSizes: new Set(values.getAll("test-size")),
+    testPhase: values.get("phase") || "",
+    scopes: model.c,
   };
 }
 
 function updateFilterClearControls() {
-  const activity = filterControlActivity(currentFilterControlState());
-  clearFilterElement.hidden = !activity.query;
-  clearFilterElement.disabled = filterElement.disabled || !activity.query;
-  clearMinimumDurationElement.hidden = !activity.minimumDuration;
+  const filters = normalizeFilterSpec(currentFilters());
+  const hasQuery = filterElement.value.length > 0;
+  const hasMinimum =
+    minimumDurationElement.value.length > 0 ||
+    Boolean(minimumDurationElement.validity?.badInput);
+  clearFilterElement.hidden = !hasQuery;
+  clearFilterElement.disabled = filterElement.disabled || !hasQuery;
+  clearMinimumDurationElement.hidden = !hasMinimum;
   clearMinimumDurationElement.disabled =
-    minimumDurationElement.disabled || !activity.minimumDuration;
-  clearFiltersElement.disabled = filterElement.disabled || !activity.any;
-}
-
-function currentFilters() {
-  return {
-    query: filterElement.value,
-    failedOnly: isPressed(failedOnlyElement),
-    topTestsOnly: isPressed(topTestsOnlyElement),
-    minimumDurationNs: parseMinimumDurationNs(minimumDurationElement.value),
-    testSizes: selectedTestSizes(),
-    testPhase: testPhaseElement.value,
-    scopes: model.c,
-  };
+    minimumDurationElement.disabled || !hasMinimum;
+  clearFiltersElement.disabled =
+    filterElement.disabled || !(filters.active || hasQuery || hasMinimum);
 }
 
 function populateTestPhaseOptions() {
@@ -150,21 +90,6 @@ function clearMinimumDurationFilter() {
   minimumDurationElement.focus();
 }
 
-function clearAllFilters() {
-  const cleared = clearedFilterControlState(currentFilterControlState());
-  filterElement.value = cleared.query;
-  failedOnlyElement.setAttribute("aria-pressed", String(cleared.failedOnly));
-  topTestsOnlyElement.setAttribute("aria-pressed", String(cleared.topTestsOnly));
-  minimumDurationElement.value = cleared.minimumDurationValue;
-  testPhaseElement.value = cleared.testPhaseValue;
-  testSizeElements.forEach((element) => {
-    element.setAttribute("aria-pressed", "false");
-  });
-  updateFilterClearControls();
-  applyFilterImmediately();
-  filterElement.focus();
-}
-
 function applyFilter() {
   updateFilterClearControls();
   const result = filterVisibility(
@@ -187,11 +112,6 @@ function applyFilter() {
     result.matches === 1 ? "" : "s"
   }`;
   renderRows();
-}
-
-function toggleFilter(element) {
-  element.setAttribute("aria-pressed", String(!isPressed(element)));
-  applyFilterImmediately();
 }
 
 function flattenRows() {

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator
-from dataclasses import dataclass
 from typing import Any
 
 from opentelemetry.proto_json.common.v1.common import InstrumentationScope
@@ -132,9 +131,6 @@ class Trace:
         scope_spans.spans.append(span)
         self._index_span(span)
 
-    def writer(self, resource: ResourceAttributes | Resource) -> SpanWriter:
-        return SpanWriter(self, resource)
-
     def walk_groups(self) -> Iterator[tuple[ResourceSpans, ScopeSpans, Span]]:
         for resource_spans in self.data.resource_spans:
             for scope_spans in resource_spans.scope_spans:
@@ -222,24 +218,3 @@ class Trace:
 
     def __bool__(self) -> bool:
         return self._span_count > 0
-
-
-@dataclass(frozen=True, slots=True)
-class SpanWriter:
-    trace: Trace
-    resource: ResourceAttributes | Resource
-
-    def add(
-        self,
-        span: Span,
-        *,
-        scope_name: str,
-        scope_version: str = "",
-    ) -> Span:
-        self.trace.add_span(
-            span,
-            resource=self.resource,
-            scope_name=scope_name,
-            scope_version=scope_version,
-        )
-        return span

@@ -7,9 +7,9 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from . import limits
-from .evlog import YaEvlog
-from .evlog_record import YaEvlogRecord
+from .evlog_data import YaEvlog
 from .metrics import finite_number
+from .node import YaNode
 
 LOGGER = logging.getLogger(__name__)
 MALFORMED_LINE_PREVIEW_CHARACTERS = 1_024
@@ -87,8 +87,8 @@ def _selected_evlog_statistics(value: Any) -> dict[str, Any]:
 
 
 def load_ya_evlog(path: Path | None) -> YaEvlog:
-    stages: list[YaEvlogRecord] = []
-    nodes: list[YaEvlogRecord] = []
+    stages: list[YaNode] = []
+    nodes: list[YaNode] = []
     statistics: dict[str, Any] = {}
     failures: dict[str, int | None] = {}
     malformed_json_count = 0
@@ -111,7 +111,7 @@ def load_ya_evlog(path: Path | None) -> YaEvlog:
         raise ValueError(f"Ya event log exceeds {limits.MAX_YA_EVLOG_BYTES} bytes")
 
     event_count = 0
-    last_finished_by_thread: dict[str, YaEvlogRecord] = {}
+    last_finished_by_thread: dict[str, YaNode] = {}
     with path.open(encoding="utf-8", errors="replace") as stream:
         line_number = 0
         while True:
@@ -187,9 +187,9 @@ def load_ya_evlog(path: Path | None) -> YaEvlog:
                 parent = last_finished_by_thread.get(thread_name)
                 if parent is None or raw_value.get("tag") not in WORKER_DETAIL_TAGS:
                     continue
-                detail = YaEvlogRecord.from_raw(
+                detail = YaNode.from_raw(
                     raw_value,
-                    thread_name=thread_name,
+                    thread=thread_name,
                 )
                 if (
                     detail is not None
@@ -203,9 +203,9 @@ def load_ya_evlog(path: Path | None) -> YaEvlog:
                 ("worker_threads", "node-finished"),
             } or not isinstance(raw_value, Mapping):
                 continue
-            record = YaEvlogRecord.from_raw(
+            record = YaNode.from_raw(
                 raw_value,
-                thread_name=thread_name,
+                thread=thread_name,
             )
             if record is None:
                 continue

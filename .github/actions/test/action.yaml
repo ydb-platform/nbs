@@ -576,37 +576,6 @@ runs:
                 TRACE_OTLP_URL="$S3_REPORTS_WEBSITE_PREFIX/${COMPONENT_DIR}${i}/trace.otlp.jsonl.gz"
                 TRACE_INPUTS_URL="$S3_REPORTS_WEBSITE_PREFIX/${COMPONENT_DIR}${i}/trace-inputs.tar.gz"
             fi
-            if PYTHONPATH="$PYTHONPATH:$GITHUB_WORKSPACE/.github" \
-                python3 -m scripts.tracing.ya_trace_report \
-                --ya-out "$OUT_DIR" \
-                --evlog "$LOG_DIR/${i}/ya_evlog.jsonl" \
-                --output-dir "$REPORT_DIR" \
-                --attempt-start-ns "$TRACE_START_TIME_NS" \
-                --attempt-end-ns "$TRACE_END_TIME_NS" \
-                --exit-code "$RC" \
-                --result-code "$FAIL_CHECKER_RC" \
-                --component "${COMPONENT_DIR%/}" \
-                --build-preset "$BUILD_PRESET" \
-                --test-target "$TEST_TARGET" \
-                --test-type "$TEST_TYPE" \
-                --test-size "$TEST_SIZE" \
-                --retry "$i" \
-                --test-log-url-prefix "$S3_WEBSITE_PREFIX/logs/${COMPONENT_DIR}${i}/" \
-                --test-data-url-prefix "$S3_WEBSITE_PREFIX/test_data/${COMPONENT_DIR}${i}$GITHUB_WORKSPACE/"; then
-                TRACE_REPORT_AVAILABLE=1
-            else
-                TRACE_REPORT_AVAILABLE=0
-                echo "::warning title=Trace report::Unable to generate the ya OTLP trace bundle"
-            fi
-
-            TRACE_INPUT_ARCHIVE="$REPORT_DIR/trace-inputs.tar.gz"
-            if ! bash "$GITHUB_WORKSPACE/.github/scripts/tracing/pack_ya_trace_inputs.sh" \
-                "$REPORT_DIR" \
-                "$OUT_DIR" \
-                "$LOG_DIR/${i}/ya_evlog.jsonl"; then
-                echo "::warning title=Trace report::Unable to archive the raw ya trace inputs"
-            fi
-
             export SUMMARY_OUT_ENV_PATH=$(mktemp -p /home/github)
             PYTHONPATH="$PYTHONPATH:$GITHUB_WORKSPACE/.github" \
                 python3 -m scripts.tests.generate_summary \
@@ -627,21 +596,29 @@ runs:
                     echo "[Extracted build errors]($BUILD_ERROR_LOG_URL_FOR_ITERATION)"
                 } >> "$SUMMARY_OUT_ENV_PATH"
             fi
-            if [ "$TRACE_REPORT_AVAILABLE" -eq 1 ]; then
-                {
-                    echo
-                    if [ -f "$TRACE_INPUT_ARCHIVE" ]; then
-                        echo "[Execution trace]($TRACE_REPORT_URL) ([raw OTLP JSONL]($TRACE_OTLP_URL), [raw trace inputs]($TRACE_INPUTS_URL))"
-                    else
-                        echo "[Execution trace]($TRACE_REPORT_URL) ([raw OTLP JSONL]($TRACE_OTLP_URL))"
-                    fi
-                } >> "$SUMMARY_OUT_ENV_PATH"
-            elif [ -f "$TRACE_INPUT_ARCHIVE" ]; then
-                {
-                    echo
-                    echo "[Raw trace inputs]($TRACE_INPUTS_URL)"
-                } >> "$SUMMARY_OUT_ENV_PATH"
-            fi
+            PYTHONPATH="$PYTHONPATH:$GITHUB_WORKSPACE/.github" \
+                bash "$GITHUB_WORKSPACE/.github/scripts/tracing/render_ya_trace_bundle.sh" \
+                --warning-title "Trace report" \
+                --report-dir "$REPORT_DIR" \
+                --ya-out "$OUT_DIR" \
+                --evlog "$LOG_DIR/${i}/ya_evlog.jsonl" \
+                --html-url "$TRACE_REPORT_URL" \
+                --otlp-url "$TRACE_OTLP_URL" \
+                --inputs-url "$TRACE_INPUTS_URL" \
+                --summary "$SUMMARY_OUT_ENV_PATH" \
+                -- \
+                --attempt-start-ns "$TRACE_START_TIME_NS" \
+                --attempt-end-ns "$TRACE_END_TIME_NS" \
+                --exit-code "$RC" \
+                --result-code "$FAIL_CHECKER_RC" \
+                --component "${COMPONENT_DIR%/}" \
+                --build-preset "$BUILD_PRESET" \
+                --test-target "$TEST_TARGET" \
+                --test-type "$TEST_TYPE" \
+                --test-size "$TEST_SIZE" \
+                --retry "$i" \
+                --test-log-url-prefix "$S3_WEBSITE_PREFIX/logs/${COMPONENT_DIR}${i}/" \
+                --test-data-url-prefix "$S3_WEBSITE_PREFIX/test_data/${COMPONENT_DIR}${i}$GITHUB_WORKSPACE/"
             cat $SUMMARY_OUT_ENV_PATH | tee -a $GITHUB_STEP_SUMMARY
             echo "::endgroup::"
 
@@ -660,7 +637,6 @@ runs:
             aws s3 sync --acl public-read --follow-symlinks --no-progress \
                 --exclude "*.trace-inputs.*.tar.gz.tmp" \
                 --exclude "*trace-inputs.files" \
-                --exclude "*trace-inputs.manifest.json" \
                 "$ARTIFACTS_DIR/" \
                 "$S3_BUCKET_PATH/"
             if [ -n "${S3_REPORTS_BUCKET_PATH:-}" ]; then

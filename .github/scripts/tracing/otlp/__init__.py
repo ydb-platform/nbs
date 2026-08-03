@@ -28,4 +28,4 @@ from .span import (
     validate_span,
 )
 from .time import MILLISECOND, SECOND, Interval, Ns
-from .trace import SpanWriter, Trace
+from .trace import Trace

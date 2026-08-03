@@ -4,14 +4,12 @@ import re
 from copy import deepcopy
 from collections import Counter, defaultdict
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Mapping, Sequence
+from typing import Any, Mapping, Sequence
 
 from . import limits
 from .critical_path import YaCriticalPathEntry
 from .metrics import finite_number, normalize_metric_name
-
-if TYPE_CHECKING:
-    from .node import ClassifiedNode
+from .node import YaNode
 
 SAFE_TOOL_RE = re.compile(r"^[a-zA-Z0-9_.+-]{1,32}$")
 CACHE_ATTRIBUTE_FIELDS = {
@@ -107,7 +105,7 @@ class YaBuildStatistics:
 
     def build_attributes(
         self,
-        build_records: Sequence[ClassifiedNode],
+        build_records: Sequence[YaNode],
         critical_entries: Sequence[YaCriticalPathEntry],
     ) -> dict[str, Any]:
         attributes: dict[str, Any] = {}

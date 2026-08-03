@@ -1,13 +1,11 @@
 let rowsElement;
+let filterForm;
 let filterElement;
 let clearFilterElement;
 let filterStatus;
-let failedOnlyElement;
-let topTestsOnlyElement;
 let minimumDurationElement;
 let clearMinimumDurationElement;
 let testPhaseElement;
-let testSizeElements;
 let clearFiltersElement;
 let rowLoadSizeElement;
 let timelineModeElement;

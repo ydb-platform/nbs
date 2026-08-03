@@ -88,67 +88,53 @@ function filterVisibility(
     });
   }
 
-  sourceSpans.forEach((span, spanIndex) => {
-    if (
-      filters.testPhase &&
-      !spanMatchesTestPhase(span, filters.scopes, filters.testPhase)
-    ) {
-      return;
-    }
-    if (
-      filters.query &&
-      !(filters.testPhase
-        ? index
-            .ancestors(spanIndex)
-            .some((candidate) => matchesQuery(sourceSpans[candidate], candidate))
-        : matchesQuery(span, spanIndex))
-    ) {
-      return;
-    }
-    if (
-      filters.failedOnly &&
-      !(filters.testPhase
-        ? phaseOrOwnerMatches(
-            spanIndex,
-            index,
-            filters.testPhase,
-            (candidate) => candidate[STATUS] === 2,
-          )
-        : span[STATUS] === 2)
-    ) {
-      return;
-    }
-    if (
-      filters.topTestsOnly &&
-      !(filters.testPhase
-        ? matchesTopTest(span) ||
-          topTestAncestors.has(
-            index.phaseOwner(spanIndex, filters.testPhase.scope),
-          )
-        : matchesTopTest(span))
-    ) {
-      return;
-    }
-    if (
-      filters.minimumDurationNs !== null &&
-      span[DURATION] < filters.minimumDurationNs
-    ) {
-      return;
-    }
-    if (
-      filters.testSizes.size &&
-      !(filters.testPhase
-        ? phaseOrOwnerMatches(
-            spanIndex,
-            index,
-            filters.testPhase,
-            matchesSize,
-          )
-        : matchesSize(span))
-    ) {
-      return;
-    }
+  const predicates = [
+    filters.testPhase &&
+      ((span) =>
+        spanMatchesTestPhase(span, filters.scopes, filters.testPhase)),
+    filters.query &&
+      ((span, spanIndex) =>
+        filters.testPhase
+          ? index
+              .ancestors(spanIndex)
+              .some((candidate) =>
+                matchesQuery(sourceSpans[candidate], candidate),
+              )
+          : matchesQuery(span, spanIndex)),
+    filters.failedOnly &&
+      ((span, spanIndex) =>
+        filters.testPhase
+          ? phaseOrOwnerMatches(
+              spanIndex,
+              index,
+              filters.testPhase,
+              (candidate) => candidate[STATUS] === 2,
+            )
+          : span[STATUS] === 2),
+    filters.topTestsOnly &&
+      ((span, spanIndex) =>
+        filters.testPhase
+          ? matchesTopTest(span) ||
+            topTestAncestors.has(
+              index.phaseOwner(spanIndex, filters.testPhase.scope),
+            )
+          : matchesTopTest(span)),
+    filters.minimumDurationNs !== null &&
+      ((span) => span[DURATION] >= filters.minimumDurationNs),
+    filters.testSizes.size &&
+      ((span, spanIndex) =>
+        filters.testPhase
+          ? phaseOrOwnerMatches(
+              spanIndex,
+              index,
+              filters.testPhase,
+              matchesSize,
+            )
+          : matchesSize(span)),
+  ].filter(Boolean);
 
+  sourceSpans.forEach((span, spanIndex) => {
+    if (!predicates.every((predicate) => predicate(span, spanIndex))) return;
     directMatches.push(spanIndex);
     index.addAncestors(result, spanIndex);
   });

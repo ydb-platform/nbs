@@ -7,14 +7,9 @@ function initialize(decoded) {
   resetDefaults();
   populateTestPhaseOptions();
   [
-    filterElement,
-    failedOnlyElement,
-    topTestsOnlyElement,
-    minimumDurationElement,
-    testPhaseElement,
+    ...filterForm.elements,
     rowLoadSizeElement,
     timelineModeElement,
-    ...testSizeElements,
     document.getElementById("expand"),
     document.getElementById("collapse"),
   ].forEach((element) => {
@@ -35,17 +30,15 @@ function startTraceReport() {
   traceHeadElement = document.getElementById("trace-head");
   columnResizerElement = document.getElementById("column-resizer");
   rowsElement = document.getElementById("rows");
+  filterForm = document.getElementById("filters");
   filterElement = document.getElementById("filter");
   clearFilterElement = document.getElementById("clear-filter");
   filterStatus = document.getElementById("filter-status");
-  failedOnlyElement = document.getElementById("failed-only");
-  topTestsOnlyElement = document.getElementById("top-tests-only");
   minimumDurationElement = document.getElementById("minimum-duration");
   clearMinimumDurationElement = document.getElementById(
     "clear-minimum-duration",
   );
   testPhaseElement = document.getElementById("test-phase");
-  testSizeElements = document.querySelectorAll("[data-test-size]");
   clearFiltersElement = document.getElementById("clear-filters");
   rowLoadSizeElement = document.getElementById("row-load-size");
   timelineModeElement = document.getElementById("timeline-mode");
@@ -54,24 +47,24 @@ function startTraceReport() {
   rowStatus = document.getElementById("row-status");
   initializeColumnResizer();
 
-  filterElement.addEventListener("input", scheduleFilter);
-  minimumDurationElement.addEventListener("input", scheduleFilter);
+  filterForm.addEventListener("input", ({ target }) => {
+    if (target === filterElement || target === minimumDurationElement) {
+      scheduleFilter();
+    }
+  });
+  filterForm.addEventListener("submit", (event) => event.preventDefault());
+  filterForm.addEventListener("change", applyFilterImmediately);
+  filterForm.addEventListener("reset", () => {
+    setTimeout(() => {
+      applyFilterImmediately();
+      filterElement.focus();
+    });
+  });
   clearFilterElement.addEventListener("click", clearTextFilter);
   clearMinimumDurationElement.addEventListener(
     "click",
     clearMinimumDurationFilter,
   );
-  clearFiltersElement.addEventListener("click", clearAllFilters);
-  testPhaseElement.addEventListener("change", applyFilterImmediately);
-  failedOnlyElement.addEventListener("click", () =>
-    toggleFilter(failedOnlyElement),
-  );
-  topTestsOnlyElement.addEventListener("click", () =>
-    toggleFilter(topTestsOnlyElement),
-  );
-  testSizeElements.forEach((element) => {
-    element.addEventListener("click", () => toggleFilter(element));
-  });
   rowLoadSizeElement.addEventListener("change", renderRows);
   timelineModeElement.addEventListener("change", renderRows);
   rowsElement.addEventListener("click", handleRowsClick);
@@ -131,8 +124,6 @@ const traceReportApi = {
   criticalPathBadge,
   longestTestRank,
   parseMinimumDurationNs,
-  filterControlActivity,
-  clearedFilterControlState,
   encodeTestPhaseSelection,
   parseTestPhaseSelection,
   testPhaseOptions,

@@ -1,11 +1,12 @@
-"""Build a trace from GitHub workflow timing and imported OTLP spans."""
+"""Experimental workflow trace projection using a bound span context."""
 
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from datetime import datetime, timezone
-from typing import Any, Mapping, Sequence
+from typing import Any
 
 from github.WorkflowJob import WorkflowJob
 
@@ -13,17 +14,16 @@ from .otlp import (
     Interval,
     Ns,
     ResourceAttributes,
-    Span,
-    SpanWriter,
     SECOND,
+    Span,
     Trace,
     decode_attributes,
     encode_attributes,
-    make_span,
     span_duration_ns,
-    stable_span_id,
     stable_trace_id,
 )
+
+from .projector import SpanProjector
 
 ERROR_CONCLUSIONS = frozenset(
     {"action_required", "cancelled", "failure", "startup_failure", "timed_out"}
@@ -34,67 +34,57 @@ UNIX_EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
 def timestamp_ns(value: Any) -> Ns | None:
     if not value:
         return None
-    text = str(value).replace("Z", "+00:00")
     try:
-        parsed = datetime.fromisoformat(text)
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
         if parsed.tzinfo is None:
             parsed = parsed.replace(tzinfo=timezone.utc)
         delta = parsed.astimezone(timezone.utc) - UNIX_EPOCH
-        seconds = delta.days * 86_400 + delta.seconds
-        return Ns(seconds * SECOND + delta.microseconds * 1_000)
+        return Ns(
+            (delta.days * 86_400 + delta.seconds) * SECOND + delta.microseconds * 1_000
+        )
     except ValueError:
         return None
 
 
-def _status_code(conclusion: Any) -> int:
-    value = str(conclusion or "").lower()
-    if value == "success":
-        return 1
-    return 2 if value in ERROR_CONCLUSIONS else 0
+def _status(conclusion: Any) -> tuple[int, str]:
+    value = str(conclusion or "")
+    normalized = value.lower()
+    code = 1 if normalized == "success" else 2 if normalized in ERROR_CONCLUSIONS else 0
+    return code, value if code == 2 else ""
 
 
-def _bounded_times(
+def _interval(
     start: Ns | None,
     end: Ns | None,
-    default_start: Ns,
-    default_end: Ns,
-) -> tuple[Ns, Ns]:
-    start_ns = Ns(default_start if start is None else start)
-    end_ns = Ns(default_end if end is None else end)
-    return start_ns, Ns(max(start_ns, end_ns))
+    default: Interval,
+) -> Interval:
+    start_ns = default.start if start is None else start
+    end_ns = default.end if end is None else end
+    return Interval(start_ns, Ns(max(start_ns, end_ns)))
 
 
-def _job_and_step_spans(
+def _job_spans(
     jobs: Sequence[WorkflowJob],
-    *,
-    writer: SpanWriter,
-    trace_id: bytes,
-    root_span_id: bytes,
-    workflow_start_ns: Ns,
-    workflow_end_ns: Ns,
+    workflow: SpanProjector,
+    workflow_interval: Interval,
 ) -> list[Span]:
-    job_spans: list[Span] = []
+    spans = []
     for job_index, job in enumerate(jobs):
         created_ns = timestamp_ns(job.created_at)
         started_ns = timestamp_ns(job.started_at)
-        completed_ns = timestamp_ns(job.completed_at)
-        job_start_ns, job_end_ns = _bounded_times(
+        job_interval = _interval(
             created_ns if created_ns is not None else started_ns,
-            completed_ns,
-            workflow_start_ns,
-            workflow_end_ns,
+            timestamp_ns(job.completed_at),
+            workflow_interval,
         )
         job_id = job.id if job.id is not None else job_index
-        job_span_id = stable_span_id(trace_id, "job", job_id)
         conclusion = str(job.conclusion or "")
-        status_code = _status_code(conclusion)
-        job_span = make_span(
-            trace_id=trace_id,
-            span_id=job_span_id,
-            parent_span_id=root_span_id,
+        status_code, status_message = _status(conclusion)
+        span = workflow.emit(
+            "job",
+            job_id,
             name=f"job: {job.name or job_id}",
-            start_ns=job_start_ns,
-            end_ns=job_end_ns,
+            interval=job_interval,
             attributes={
                 "github.job.id": job_id,
                 "github.job.name": job.name or "",
@@ -106,74 +96,64 @@ def _job_and_step_spans(
                 "github.job.url": job.html_url or "",
             },
             status_code=status_code,
-            status_message=conclusion if status_code == 2 else "",
+            status_message=status_message,
         )
-        writer.add(job_span, scope_name="github.actions")
-        job_spans.append(job_span)
+        spans.append(span)
+        job_context = workflow.under(span)
 
-        if started_ns is not None and job_start_ns < started_ns:
-            writer.add(
-                make_span(
-                    trace_id=trace_id,
-                    span_id=stable_span_id(trace_id, "job-queue", job_id),
-                    parent_span_id=job_span_id,
-                    name="queued for runner",
-                    start_ns=job_start_ns,
-                    end_ns=min(started_ns, job_end_ns),
-                    attributes={
-                        "ci.queue.scope": "job",
-                        "ci.queue.timing_source": (
-                            "job.created_at"
-                            if created_ns is not None
-                            else "workflow.run_started_at"
-                        ),
-                    },
+        if started_ns is not None and job_interval.start < started_ns:
+            job_context.emit(
+                "job-queue",
+                job_id,
+                name="queued for runner",
+                interval=Interval(
+                    job_interval.start, min(started_ns, job_interval.end)
                 ),
-                scope_name="github.actions",
+                attributes={
+                    "ci.queue.scope": "job",
+                    "ci.queue.timing_source": (
+                        "job.created_at"
+                        if created_ns is not None
+                        else "workflow.run_started_at"
+                    ),
+                },
             )
 
         for step_index, step in enumerate(job.steps or []):
-            step_start_ns, step_end_ns = _bounded_times(
+            step_interval = _interval(
                 timestamp_ns(step.started_at),
                 timestamp_ns(step.completed_at),
-                started_ns if started_ns is not None else job_start_ns,
-                job_end_ns,
+                Interval(
+                    started_ns if started_ns is not None else job_interval.start,
+                    job_interval.end,
+                ),
             )
             step_conclusion = str(step.conclusion or "")
-            step_status_code = _status_code(step_conclusion)
+            step_status_code, step_status_message = _status(step_conclusion)
             step_number = step.number if step.number is not None else step_index
-            writer.add(
-                make_span(
-                    trace_id=trace_id,
-                    span_id=stable_span_id(
-                        trace_id,
-                        "step",
-                        job_id,
-                        step_number,
-                    ),
-                    parent_span_id=job_span_id,
-                    name=f"step: {step.name or step_index}",
-                    start_ns=step_start_ns,
-                    end_ns=step_end_ns,
-                    attributes={
-                        "github.job.id": job_id,
-                        "github.step.number": step_number,
-                        "github.step.name": step.name or "",
-                        "github.step.status": step.status or "",
-                        "github.step.conclusion": step_conclusion,
-                    },
-                    status_code=step_status_code,
-                    status_message=(step_conclusion if step_status_code == 2 else ""),
-                ),
-                scope_name="github.actions",
+            job_context.emit(
+                "step",
+                job_id,
+                step_number,
+                name=f"step: {step.name or step_index}",
+                interval=step_interval,
+                attributes={
+                    "github.job.id": job_id,
+                    "github.step.number": step_number,
+                    "github.step.name": step.name or "",
+                    "github.step.status": step.status or "",
+                    "github.step.conclusion": step_conclusion,
+                },
+                status_code=step_status_code,
+                status_message=step_status_message,
             )
-    return job_spans
+    return spans
 
 
-def _parent_job(imported_root: Span, job_spans: Sequence[Span]) -> Span | None:
+def _parent_job(imported: Span, jobs: Sequence[Span]) -> Span | None:
     imported_interval = Interval(
-        Ns(imported_root.start_time_unix_nano or 0),
-        Ns(imported_root.end_time_unix_nano or 0),
+        Ns(imported.start_time_unix_nano or 0),
+        Ns(imported.end_time_unix_nano or 0),
     )
     candidates = [
         (
@@ -183,67 +163,61 @@ def _parent_job(imported_root: Span, job_spans: Sequence[Span]) -> Span | None:
                 Ns(job.end_time_unix_nano or 0),
             ),
         )
-        for job in job_spans
+        for job in jobs
     ]
-    containing = [
+    matches = [
         job
         for job, interval in candidates
         if interval.start <= imported_interval.start
         and imported_interval.end <= interval.end
-    ]
-    if not containing:
-        overlapping = [
-            job for job, interval in candidates if interval.overlap(imported_interval)
-        ]
-        containing = overlapping
-    return min(containing, key=span_duration_ns, default=None)
+    ] or [job for job, interval in candidates if interval.overlap(imported_interval)]
+    return min(matches, key=span_duration_ns, default=None)
 
 
-def _merge_imported_spans(
+def _merge_imported(
     imported: Trace,
-    *,
-    result: Trace,
-    trace_id: bytes,
-    root_span_id: bytes,
+    workflow: SpanProjector,
     job_spans: Sequence[Span],
 ) -> None:
     imported_ids = {(span.trace_id, span.span_id) for span in imported}
     if len(imported_ids) != len(imported):
         raise ValueError("Imported OTLP contains duplicate span IDs")
+
     roots = [
         span
         for span in imported
         if not span.parent_span_id
         or (span.trace_id, span.parent_span_id) not in imported_ids
     ]
-    root_parents = {}
-    for span in roots:
-        parent_job = _parent_job(span, job_spans)
-        root_parents[(span.trace_id, span.span_id)] = (
-            parent_job.span_id if parent_job is not None else root_span_id
+    root_parents = {
+        (span.trace_id, span.span_id): (
+            parent.span_id
+            if (parent := _parent_job(span, job_spans))
+            else workflow.parent_span_id
         )
+        for span in roots
+    }
     id_map = {
-        (span.trace_id, span.span_id): stable_span_id(
-            trace_id, "import", span.trace_id, span.span_id
+        (span.trace_id, span.span_id): workflow.span_id(
+            "import", span.trace_id, span.span_id
         )
         for span in imported
     }
 
     for resource_spans, scope_spans, span in imported.walk_groups():
-        old_key = (span.trace_id, span.span_id)
-        old_parent_key = (span.trace_id, span.parent_span_id)
-        parent_span_id = id_map.get(
-            old_parent_key,
-            root_parents.get(old_key, root_span_id),
-        )
+        key = span.trace_id, span.span_id
+        parent_key = span.trace_id, span.parent_span_id
         attributes = decode_attributes(span.attributes)
         attributes["ci.trace.source"] = "ya-otlp"
-        result.add_span(
+        workflow.trace.add_span(
             replace(
                 span,
-                trace_id=trace_id,
-                span_id=id_map[old_key],
-                parent_span_id=parent_span_id,
+                trace_id=workflow.trace_id,
+                span_id=id_map[key],
+                parent_span_id=id_map.get(
+                    parent_key,
+                    root_parents.get(key, workflow.parent_span_id),
+                ),
                 attributes=encode_attributes(attributes),
             ),
             resource=resource_spans.resource or ResourceAttributes(),
@@ -263,74 +237,54 @@ def build_workflow_trace(
         workflow_run=workflow_run,
     )
     created_ns = timestamp_ns(workflow_run.get("created_at"))
-    run_started_ns = timestamp_ns(workflow_run.get("run_started_at"))
+    started_ns = timestamp_ns(workflow_run.get("run_started_at"))
     updated_ns = timestamp_ns(workflow_run.get("updated_at"))
     if updated_ns is None:
         raise ValueError("workflow_run is missing usable timestamps")
-    start_ns, end_ns = _bounded_times(
-        created_ns if created_ns is not None else run_started_ns,
+    interval = _interval(
+        created_ns if created_ns is not None else started_ns,
         updated_ns,
-        Ns(0),
-        Ns(0),
+        Interval(Ns(0), Ns(0)),
     )
 
-    trace_id = stable_trace_id(
-        metadata.get("github.repository", ""),
-        metadata.get("github.run.id", ""),
-        metadata.get("github.run.attempt", ""),
+    trace = Trace()
+    projector = SpanProjector(
+        trace=trace,
+        trace_id=stable_trace_id(
+            metadata.get("github.repository", ""),
+            metadata.get("github.run.id", ""),
+            metadata.get("github.run.attempt", ""),
+        ),
+        resource=metadata.with_attributes({"service.name": "github-actions"}),
+        scope_name="github.actions",
     )
-    root_span_id = stable_span_id(trace_id, "workflow")
     conclusion = str(workflow_run.get("conclusion") or "")
-    status_code = _status_code(conclusion)
-    resource = metadata.with_attributes({"service.name": "github-actions"})
-    root = make_span(
-        trace_id=trace_id,
-        span_id=root_span_id,
+    status_code, status_message = _status(conclusion)
+    root = projector.emit(
+        "workflow",
         name=f"workflow: {workflow_run.get('name', 'unknown')}",
-        start_ns=start_ns,
-        end_ns=end_ns,
+        interval=interval,
         attributes={
             "github.run.status": workflow_run.get("status", ""),
             "github.run.conclusion": conclusion,
             "ci.imported_ya_span_count": len(imported),
         },
         status_code=status_code,
-        status_message=conclusion if status_code == 2 else "",
+        status_message=status_message,
     )
-    trace = Trace()
-    writer = trace.writer(resource)
-    writer.add(root, scope_name="github.actions")
+    workflow = projector.under(root)
 
-    if run_started_ns is not None and start_ns < run_started_ns:
-        writer.add(
-            make_span(
-                trace_id=trace_id,
-                span_id=stable_span_id(trace_id, "workflow-queue"),
-                parent_span_id=root_span_id,
-                name="workflow queue",
-                start_ns=start_ns,
-                end_ns=min(run_started_ns, end_ns),
-                attributes={
-                    "ci.queue.scope": "workflow",
-                    "ci.queue.timing_source": "workflow_run.created_at",
-                },
-            ),
-            scope_name="github.actions",
+    if started_ns is not None and interval.start < started_ns:
+        workflow.emit(
+            "workflow-queue",
+            name="workflow queue",
+            interval=Interval(interval.start, min(started_ns, interval.end)),
+            attributes={
+                "ci.queue.scope": "workflow",
+                "ci.queue.timing_source": "workflow_run.created_at",
+            },
         )
 
-    job_spans = _job_and_step_spans(
-        jobs,
-        writer=writer,
-        trace_id=trace_id,
-        root_span_id=root_span_id,
-        workflow_start_ns=start_ns,
-        workflow_end_ns=end_ns,
-    )
-    _merge_imported_spans(
-        imported,
-        result=trace,
-        trace_id=trace_id,
-        root_span_id=root_span_id,
-        job_spans=job_spans,
-    )
+    job_spans = _job_spans(jobs, workflow, interval)
+    _merge_imported(imported, workflow, job_spans)
     return trace, metadata
