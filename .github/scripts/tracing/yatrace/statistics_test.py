@@ -1,3 +1,4 @@
+import scripts.tracing.yatrace.statistics as ya_statistics
 from scripts.tracing.yatrace.statistics import YaBuildStatistics
 from scripts.tracing.yatrace_test_support import (
     Ns,
@@ -14,6 +15,33 @@ from scripts.tracing.yatrace_test_support import (
     load_ya_evlog,
     span_duration_ns,
 )
+
+
+def test_copy_numeric_attributes_filters_non_numbers() -> None:
+    attributes = {"existing": "value"}
+
+    ya_statistics.copy_numeric_attributes(
+        {
+            "count": 3,
+            "ratio": 1.5,
+            "enabled": True,
+            "invalid": float("inf"),
+        },
+        attributes,
+        {
+            "count": "output.count",
+            "ratio": "output.ratio",
+            "enabled": "output.enabled",
+            "invalid": "output.invalid",
+            "missing": "output.missing",
+        },
+    )
+
+    assert attributes == {
+        "existing": "value",
+        "output.count": 3,
+        "output.ratio": 1.5,
+    }
 
 
 def test_build_statistics_returns_attributes_dictionary() -> None:

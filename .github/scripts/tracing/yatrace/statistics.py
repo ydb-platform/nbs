@@ -14,6 +14,34 @@ if TYPE_CHECKING:
     from .node import ClassifiedNode
 
 SAFE_TOOL_RE = re.compile(r"^[a-zA-Z0-9_.+-]{1,32}$")
+CACHE_ATTRIBUTE_FIELDS = {
+    "run_tasks": "ya.build.task.total.count",
+    "executed_tasks": "ya.build.task.considered.count",
+    "cached_tasks": "ya.build.cache.considered_task.hit.count",
+    "dyn_cached_tasks": "ya.build.cache.considered_task.dynamic_hit.count",
+    "not_cached_tasks": "ya.build.cache.considered_task.miss.count",
+    "tests_tasks": "ya.build.task.uncached_test.count",
+    "failed_tasks": "ya.build.task.failed.count",
+    "ok_tasks": "ya.build.task.uncached_non_test.count",
+    "avoided_tasks": "ya.build.task.avoided.count",
+}
+DIST_CACHE_ATTRIBUTE_FIELDS = {
+    "get_count": "ya.build.dist_cache.get.count",
+    "get_data_size": "ya.build.dist_cache.get.bytes",
+    "put_count": "ya.build.dist_cache.put.count",
+    "put_data_size": "ya.build.dist_cache.put.bytes",
+}
+
+
+def copy_numeric_attributes(
+    source: Mapping[str, Any],
+    destination: dict[str, Any],
+    fields: Mapping[str, str],
+) -> None:
+    for source_name, attribute_name in fields.items():
+        value = _number(source.get(source_name))
+        if value is not None:
+            destination[attribute_name] = value
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,23 +61,7 @@ class YaBuildStatistics:
                 attributes["ya.build.cache.considered_task.hit.ratio"] = (
                     cache_hit_percent / 100
                 )
-            cache_fields = {
-                "run_tasks": "ya.build.task.total.count",
-                "executed_tasks": "ya.build.task.considered.count",
-                "cached_tasks": "ya.build.cache.considered_task.hit.count",
-                "dyn_cached_tasks": (
-                    "ya.build.cache.considered_task.dynamic_hit.count"
-                ),
-                "not_cached_tasks": "ya.build.cache.considered_task.miss.count",
-                "tests_tasks": "ya.build.task.uncached_test.count",
-                "failed_tasks": "ya.build.task.failed.count",
-                "ok_tasks": "ya.build.task.uncached_non_test.count",
-                "avoided_tasks": "ya.build.task.avoided.count",
-            }
-            for source, destination in cache_fields.items():
-                value = _number(cache.get(source))
-                if value is not None:
-                    attributes[destination] = value
+            copy_numeric_attributes(cache, attributes, CACHE_ATTRIBUTE_FIELDS)
             total_tasks = _number(cache.get("run_tasks"))
             cached_tasks = _number(cache.get("cached_tasks"))
             avoided_tasks = _number(cache.get("avoided_tasks"))
@@ -67,16 +79,11 @@ class YaBuildStatistics:
 
         dist_cache = self.values.get("dist_cache_stat")
         if isinstance(dist_cache, Mapping):
-            dist_cache_fields = {
-                "get_count": "ya.build.dist_cache.get.count",
-                "get_data_size": "ya.build.dist_cache.get.bytes",
-                "put_count": "ya.build.dist_cache.put.count",
-                "put_data_size": "ya.build.dist_cache.put.bytes",
-            }
-            for source, destination in dist_cache_fields.items():
-                value = _number(dist_cache.get(source))
-                if value is not None:
-                    attributes[destination] = value
+            copy_numeric_attributes(
+                dist_cache,
+                attributes,
+                DIST_CACHE_ATTRIBUTE_FIELDS,
+            )
 
         execution_stages = self.values.get("execution_stages_msec")
         if isinstance(execution_stages, Mapping):
