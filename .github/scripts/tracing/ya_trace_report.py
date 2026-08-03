@@ -118,7 +118,7 @@ def build_ya_trace(
         status_message=(
             ""
             if effective_result_code == 0
-            else f"ya test result code {effective_result_code}"
+            else f"ya make {operation} result code {effective_result_code}"
         ),
     )
     result = Trace()
