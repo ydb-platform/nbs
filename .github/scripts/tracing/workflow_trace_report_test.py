@@ -58,6 +58,41 @@ def test_bounded_times_preserve_zero_timestamps() -> None:
     assert _bounded_times(Ns(0), Ns(0), Ns(10), Ns(20)) == (Ns(0), Ns(0))
 
 
+def test_workflow_trace_preserves_epoch_created_at() -> None:
+    trace, _ = build_workflow_trace(
+        {
+            "id": 1,
+            "name": "epoch",
+            "created_at": "1970-01-01T00:00:00Z",
+            "run_started_at": "1970-01-01T00:00:01Z",
+            "updated_at": "1970-01-01T00:00:02Z",
+        },
+        [],
+        Trace(),
+    )
+
+    spans = {span.name: span for span in trace}
+    assert spans["workflow: epoch"].start_time_unix_nano == Ns(0)
+    assert span_duration_ns(spans["workflow queue"]) == Ns.from_s_or_zero(1)
+
+
+def test_workflow_trace_accepts_zero_duration_at_epoch() -> None:
+    trace, _ = build_workflow_trace(
+        {
+            "id": 1,
+            "name": "epoch",
+            "created_at": "1970-01-01T00:00:00Z",
+            "updated_at": "1970-01-01T00:00:00Z",
+        },
+        [],
+        Trace(),
+    )
+
+    root = next(trace.spans("github.actions"))
+    assert root.start_time_unix_nano == Ns(0)
+    assert root.end_time_unix_nano == Ns(0)
+
+
 def test_workflow_trace_adds_queue_job_step_and_imported_ya_spans() -> None:
     workflow_run = {
         "id": 123,

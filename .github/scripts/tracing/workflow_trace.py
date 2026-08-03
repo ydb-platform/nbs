@@ -79,7 +79,7 @@ def _job_and_step_spans(
         started_ns = timestamp_ns(job.started_at)
         completed_ns = timestamp_ns(job.completed_at)
         job_start_ns, job_end_ns = _bounded_times(
-            created_ns or started_ns,
+            created_ns if created_ns is not None else started_ns,
             completed_ns,
             workflow_start_ns,
             workflow_end_ns,
@@ -111,7 +111,7 @@ def _job_and_step_spans(
         writer.add(job_span, scope_name="github.actions")
         job_spans.append(job_span)
 
-        if started_ns and job_start_ns < started_ns:
+        if started_ns is not None and job_start_ns < started_ns:
             writer.add(
                 make_span(
                     trace_id=trace_id,
@@ -136,7 +136,7 @@ def _job_and_step_spans(
             step_start_ns, step_end_ns = _bounded_times(
                 timestamp_ns(step.started_at),
                 timestamp_ns(step.completed_at),
-                started_ns or job_start_ns,
+                started_ns if started_ns is not None else job_start_ns,
                 job_end_ns,
             )
             step_conclusion = str(step.conclusion or "")
@@ -262,15 +262,17 @@ def build_workflow_trace(
         environment=os.environ,
         workflow_run=workflow_run,
     )
+    created_ns = timestamp_ns(workflow_run.get("created_at"))
+    run_started_ns = timestamp_ns(workflow_run.get("run_started_at"))
+    updated_ns = timestamp_ns(workflow_run.get("updated_at"))
+    if updated_ns is None:
+        raise ValueError("workflow_run is missing usable timestamps")
     start_ns, end_ns = _bounded_times(
-        timestamp_ns(workflow_run.get("created_at"))
-        or timestamp_ns(workflow_run.get("run_started_at")),
-        timestamp_ns(workflow_run.get("updated_at")),
+        created_ns if created_ns is not None else run_started_ns,
+        updated_ns,
         Ns(0),
         Ns(0),
     )
-    if end_ns == 0:
-        raise ValueError("workflow_run is missing usable timestamps")
 
     trace_id = stable_trace_id(
         metadata.get("github.repository", ""),
@@ -299,8 +301,7 @@ def build_workflow_trace(
     writer = trace.writer(resource)
     writer.add(root, scope_name="github.actions")
 
-    run_started_ns = timestamp_ns(workflow_run.get("run_started_at"))
-    if run_started_ns and start_ns < run_started_ns:
+    if run_started_ns is not None and start_ns < run_started_ns:
         writer.add(
             make_span(
                 trace_id=trace_id,
