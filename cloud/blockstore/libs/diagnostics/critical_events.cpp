@@ -151,7 +151,8 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
 
 #undef BLOCKSTORE_INIT_CRITICAL_EVENT_COUNTER
 
-// deprecated: keeps existing AppCriticalEvents/ metrics alive
+// deprecated: keeps existing AppCriticalEvents/ * for new
+// VolumeCriticalEvents/ * metrics alive
 #define BLOCKSTORE_INIT_DEPRECATED_CRITICAL_EVENT_COUNTER(name) \
     *counters->GetCounter(GetDeprecatedCriticalEventFor##name(), true) = 0;
 
@@ -172,6 +173,14 @@ void InitVolumeCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
 NCloud::IStatsHandlerPtr CreateCriticalEventsStatsHandler()
 {
     return std::make_shared<TCriticalEventsStatsHandler>();
+}
+
+// For unit test purposes
+void ResetVolumeCriticalEventsCounter()
+{
+    TWriteGuard guard(VolumeCriticalEvents.Lock);
+    VolumeCriticalEvents.Counters.clear();
+    VolumeCriticalEvents.CountersRoot.Reset();
 }
 
 #define BLOCKSTORE_DEFINE_CRITICAL_EVENT_ROUTINE(name)                         \

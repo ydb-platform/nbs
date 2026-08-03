@@ -1032,6 +1032,7 @@ void TBootstrapBase::Start()
     START_COMMON_COMPONENT(GrpcEndpointListener);
     START_COMMON_COMPONENT(Executor);
     START_COMMON_COMPONENT(Server);
+    START_COMMON_COMPONENT(CriticalEventsStatsUpdater);
     START_COMMON_COMPONENT(ServerStatsUpdater);
     START_COMMON_COMPONENT(BackgroundThreadPool);
     START_COMMON_COMPONENT(RdmaClient);
@@ -1103,6 +1104,7 @@ void TBootstrapBase::Stop()
     STOP_COMMON_COMPONENT(GetTraceServiceClient());
     STOP_COMMON_COMPONENT(RdmaClient);
     STOP_COMMON_COMPONENT(BackgroundThreadPool);
+    STOP_COMMON_COMPONENT(CriticalEventsStatsUpdater);
     STOP_COMMON_COMPONENT(ServerStatsUpdater);
     STOP_COMMON_COMPONENT(Server);
     STOP_COMMON_COMPONENT(CertificateProvider);
