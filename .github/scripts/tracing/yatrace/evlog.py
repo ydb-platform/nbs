@@ -40,6 +40,15 @@ class YaEvlog:
     critical_path: YaCriticalPath
     failures: Mapping[str, int | None]
 
+    @staticmethod
+    def _bound_reported_tests(trace: Trace, bounds: Interval) -> None:
+        for scope_name in ("ya.suite", "ya.chunk", "ya.test", "ya.test.stage"):
+            for span in trace.spans(scope_name):
+                span.start_time_unix_nano = bounds.clamp(
+                    Ns(span.start_time_unix_nano or 0)
+                )
+                span.end_time_unix_nano = bounds.clamp(Ns(span.end_time_unix_nano or 0))
+
     @classmethod
     def from_raw(
         cls,
@@ -110,6 +119,9 @@ class YaEvlog:
                 dispatch_span = stage_span
                 dispatch_interval = record.interval
             writer.add(stage_span, scope_name="ya.phase")
+
+        if dispatch_interval is not None:
+            self._bound_reported_tests(trace, dispatch_interval)
 
         clipped_nodes = [
             clipped

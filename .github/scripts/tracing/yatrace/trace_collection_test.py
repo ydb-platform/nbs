@@ -232,6 +232,43 @@ def test_test_operations_group_enriches_chunks_and_renders_inferred_stages(
     assert all(_attributes(stage)["test.timing.inferred"] is True for stage in stages)
 
 
+def test_test_operation_hierarchy_is_bounded_by_dispatch(tmp_path: Path) -> None:
+    trace = _render_ya_trace(
+        tmp_path,
+        [
+            _subtest("case", timestamp=12, duration=12),
+            _chunk(
+                0,
+                1,
+                timestamp=12,
+                metrics={
+                    "suite_start_timestamp": 0,
+                    "suite_finish_timestamp": 12,
+                },
+            ),
+        ],
+        evlog_events=[
+            _stage("dispatch_build", 2, 10),
+            _worker(
+                "Run(testuid$(BUILD_ROOT)/suite/test-results/unittest/meta.json)",
+                "TM",
+                3,
+                9,
+            ),
+        ],
+        root_end_s=13,
+    )
+
+    dispatch = next(trace.spans("ya.phase"))
+    descendants = [
+        next(trace.spans(scope))
+        for scope in ("ya.test.operations", "ya.test.worker", "ya.chunk", "ya.test")
+    ]
+    assert [
+        (span.start_time_unix_nano, span.end_time_unix_nano) for span in descendants
+    ] == [(dispatch.start_time_unix_nano, dispatch.end_time_unix_nano)] * 4
+
+
 def test_unmatched_failed_test_worker_is_preserved(tmp_path: Path) -> None:
     trace = _render_ya_trace(
         tmp_path,
