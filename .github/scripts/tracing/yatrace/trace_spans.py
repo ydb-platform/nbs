@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Iterable, Mapping
+from typing import Any, Iterable, Mapping
 
 from ..otlp import (
     Interval,
@@ -24,9 +24,7 @@ from .event_export import (
 )
 from .metrics import _metric_attributes
 from .test_timing import YaTestTiming
-
-if TYPE_CHECKING:
-    from .trace_file import YaTraceFile
+from .trace_file import YaTraceFile
 
 
 @dataclass(frozen=True, slots=True)

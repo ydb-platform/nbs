@@ -28,6 +28,7 @@ from .yatrace import (
     YaTraceInputs,
     load_ya_evlog,
 )
+from .yatrace.trace_spans import YaTraceSpanBuilder
 
 
 def build_resource_attributes(args: argparse.Namespace) -> ResourceAttributes:
@@ -126,7 +127,7 @@ def build_ya_trace(
 
     chunk_count = 0
     for trace_index, ya_trace in enumerate(traces):
-        chunk_count += ya_trace.build_spans(
+        chunk_count += YaTraceSpanBuilder(ya_trace).build(
             trace=result,
             trace_id=trace_id,
             root_span_id=root_span_id,

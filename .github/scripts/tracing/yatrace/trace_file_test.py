@@ -14,6 +14,10 @@ from scripts.tracing.yatrace_test_support import (
 )
 
 
+def test_ya_trace_file_does_not_export_spans() -> None:
+    assert "build_spans" not in vars(YaTraceFile)
+
+
 def test_yatool_nul_padding_is_accepted(tmp_path: Path) -> None:
     ya_out = tmp_path / "out"
     trace_path = ya_out / "suite" / "test-results" / "unittest" / "ytest.report.trace"

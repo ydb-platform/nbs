@@ -7,9 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-from ..otlp import Interval, Ns, ResourceAttributes, SECOND, Trace
+from ..otlp import Interval, Ns, SECOND
 from .event import YaEvent
-from .trace_spans import YaTraceSpanBuilder
 
 
 @dataclass(slots=True)
@@ -187,24 +186,3 @@ class YaTraceFile:
         start_ns = root.clamp(start_ns)
         end_ns = Ns(max(start_ns, root.clamp(end_ns)))
         return Interval(start_ns, end_ns), chunk_value
-
-    def build_spans(
-        self,
-        *,
-        trace: Trace,
-        trace_id: bytes,
-        root_span_id: bytes,
-        root_start_ns: Ns,
-        root_end_ns: Ns,
-        resource: ResourceAttributes,
-        trace_index: int,
-    ) -> int:
-        return YaTraceSpanBuilder(self).build(
-            trace=trace,
-            trace_id=trace_id,
-            root_span_id=root_span_id,
-            root_start_ns=root_start_ns,
-            root_end_ns=root_end_ns,
-            resource=resource,
-            trace_index=trace_index,
-        )
