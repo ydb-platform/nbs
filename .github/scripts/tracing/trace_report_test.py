@@ -212,6 +212,10 @@ def test_renderer_marks_error_spans_and_supports_empty_input() -> None:
     assert 'id="row-status"' in report
     assert 'role="status" aria-live="polite"' in report
     assert "All (may be slow)" not in report
+    assert (
+        "The containing test chunk is on the ya critical path; ya does not identify "
+        "this individual test as critical"
+    ) in report
     assert "No spans found" in render_html(Trace())
 
 

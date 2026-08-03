@@ -52,6 +52,39 @@ function testChildCountsAndCriticalPathMarker() {
     isCriticalPathTest(makeSpan({ id: "regular", name: "regular test" })),
     false,
   );
+  assert.deepStrictEqual(
+    criticalPathBadge(
+      makeSpan({
+        id: "inferred",
+        name: "inferred test",
+        attributes: {
+          "ya.test.critical_path": true,
+          "ya.test.critical_path.inferred": true,
+          "ya.test.critical_path.granularity": "test-chunk",
+        },
+      }),
+      "ya.test",
+    ),
+    {
+      label: "★ in critical chunk",
+      title:
+        "The containing test chunk is on the ya critical path; ya does not identify this individual test as critical",
+    },
+  );
+  assert.deepStrictEqual(
+    criticalPathBadge(
+      makeSpan({
+        id: "chunk",
+        name: "critical chunk",
+        attributes: { "ya.test.critical_path": true },
+      }),
+      "ya.chunk",
+    ),
+    {
+      label: "★ critical",
+      title: "Test chunk is on the ya critical path",
+    },
+  );
 }
 
 function testChunkChildCountExcludesPreparationStages() {
@@ -266,4 +299,3 @@ for (const test of [
 ]) {
   test();
 }
-

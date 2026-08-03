@@ -1,10 +1,10 @@
 function spanRow(item) {
   const span = spans[item.index];
-  const criticalPathTest = isCriticalPathTest(span);
+  const criticalPath = criticalPathBadge(span, model.c[span[SCOPE]]);
   const durationRank = longestTestRank(span);
   const row = document.createElement("div");
   row.className = `span-row${span[STATUS] === 2 ? " error" : ""}${
-    criticalPathTest ? " critical" : ""
+    criticalPath ? " critical" : ""
   }${selected === item.index ? " selected" : ""}`;
   row.dataset.index = String(item.index);
 
@@ -46,10 +46,10 @@ function spanRow(item) {
     childCount.title = `${children[item.index].length.toLocaleString()} direct child spans; badge summarizes contained work`;
   }
   const critical = document.createElement("span");
-  if (criticalPathTest) {
+  if (criticalPath) {
     critical.className = "critical-badge";
-    critical.textContent = "★ critical";
-    critical.title = "Test is on the ya critical path";
+    critical.textContent = criticalPath.label;
+    critical.title = criticalPath.title;
   }
   const longest = document.createElement("span");
   if (durationRank !== null) {
@@ -71,7 +71,7 @@ function spanRow(item) {
   metadata.setAttribute("aria-controls", detailElementId(item.index));
   nameCell.append(toggle, name);
   if (hasChildren) nameCell.append(childCount);
-  if (criticalPathTest) nameCell.append(critical);
+  if (criticalPath) nameCell.append(critical);
   if (durationRank !== null) nameCell.append(longest);
   nameCell.append(metadata);
 

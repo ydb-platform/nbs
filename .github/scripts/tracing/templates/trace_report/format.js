@@ -140,6 +140,29 @@ function isCriticalPathTest(span) {
   return span[ATTRS]["ya.test.critical_path"] === true;
 }
 
+function criticalPathBadge(span, scope) {
+  if (!isCriticalPathTest(span)) return null;
+  const attributes = span[ATTRS];
+  if (
+    scope === "ya.test" &&
+    (attributes["ya.test.critical_path.inferred"] === true ||
+      attributes["ya.test.critical_path.granularity"] === "test-chunk")
+  ) {
+    return {
+      label: "★ in critical chunk",
+      title:
+        "The containing test chunk is on the ya critical path; ya does not identify this individual test as critical",
+    };
+  }
+  return {
+    label: "★ critical",
+    title:
+      scope === "ya.chunk"
+        ? "Test chunk is on the ya critical path"
+        : "Span is on the ya critical path",
+  };
+}
+
 function longestTestRank(span) {
   const rank = Number(span[ATTRS]["ya.test.duration.rank"]);
   return Number.isInteger(rank) && rank >= 1 && rank <= 10 ? rank : null;

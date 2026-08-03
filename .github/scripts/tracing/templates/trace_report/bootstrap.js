@@ -128,6 +128,7 @@ const traceReportApi = {
   childCountLabel,
   directChildCountLabel,
   isCriticalPathTest,
+  criticalPathBadge,
   longestTestRank,
   parseMinimumDurationNs,
   filterControlActivity,
