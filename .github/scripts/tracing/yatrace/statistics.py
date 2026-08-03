@@ -102,10 +102,7 @@ class YaBuildStatistics:
         self,
         build_records: Sequence[ClassifiedNode],
         critical_entries: Sequence[YaCriticalPathEntry],
-    ) -> tuple[
-        dict[str, Any],
-        Sequence[YaCriticalPathEntry],
-    ]:
+    ) -> dict[str, Any]:
         attributes: dict[str, Any] = {}
         tool_counts: dict[str, Counter[str]] = defaultdict(Counter)
         for node in build_records:
@@ -147,4 +144,4 @@ class YaBuildStatistics:
             attributes["ya.build.critical_path.summary"] = [
                 entry.summary for entry in critical_entries[:128]
             ]
-        return attributes, critical_entries
+        return attributes

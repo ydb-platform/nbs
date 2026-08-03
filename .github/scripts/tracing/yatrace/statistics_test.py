@@ -1,3 +1,4 @@
+from scripts.tracing.yatrace.statistics import YaBuildStatistics
 from scripts.tracing.yatrace_test_support import (
     Ns,
     Path,
@@ -13,6 +14,10 @@ from scripts.tracing.yatrace_test_support import (
     load_ya_evlog,
     span_duration_ns,
 )
+
+
+def test_build_statistics_returns_attributes_dictionary() -> None:
+    assert YaBuildStatistics.from_raw().build_attributes([], []) == {}
 
 
 def test_build_statistics_and_test_critical_path_are_preserved(

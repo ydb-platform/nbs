@@ -134,11 +134,12 @@ class YaBuildOperations:
             attributes["ya.build.first_test_node_offset_seconds"] = Ns(
                 max(0, min(self.test_starts) - envelope.start_ns)
             ).to_s()
-        statistics, _ = self.statistics.build_attributes(
-            records,
-            self.critical_path.build_entries,
+        attributes.update(
+            self.statistics.build_attributes(
+                records,
+                self.critical_path.build_entries,
+            )
         )
-        attributes.update(statistics)
         return attributes
 
     def _failed_representatives(
