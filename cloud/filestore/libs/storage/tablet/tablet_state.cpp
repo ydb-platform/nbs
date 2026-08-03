@@ -16,6 +16,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+constexpr size_t MaxNodeDiagnosticEntries = 10'000;
+
 IBlockLocation2RangeIndexPtr CreateHasher(const NProto::TFileSystem& fs)
 {
     auto hasher = CreateRangeIdHasher(fs.GetRangeIdHasherType());
@@ -180,6 +182,7 @@ void TIndexTabletState::LoadState(
     const TVector<NProtoPrivate::TResponseLogEntry>& responseLog,
     const TThrottlerConfig& throttlerConfig)
 {
+    NodeAccessStatsTracker.Initialize(MaxNodeDiagnosticEntries);
     Generation = generation;
     // https://github.com/ydb-platform/nbs/issues/1714
     // because of possible race in vdisks we should not start with 0
@@ -253,6 +256,17 @@ void TIndexTabletState::LoadState(
     }
 
     InitShardBalancer(config);
+}
+
+void TIndexTabletState::NodeRequestStarted(ui64 nodeId, TInstant now)
+{
+    NodeAccessStatsTracker.RequestStarted(nodeId, now);
+}
+
+TVector<TNodeAccessStats> TIndexTabletState::GetNodeAccessStats(
+    TInstant now) const
+{
+    return NodeAccessStatsTracker.GetStats(now);
 }
 
 void TIndexTabletState::UpdateConfig(
