@@ -20,6 +20,18 @@ from scripts.tracing.yatrace_test_support import (
 )
 
 
+def test_evlog_record_model_has_no_span_factories() -> None:
+    assert {
+        "build_command_span",
+        "build_node_span",
+        "matched_test_worker_span",
+        "span_name",
+        "test_node_span",
+        "test_worker_attributes",
+        "test_worker_phase_span",
+    }.isdisjoint(vars(YaEvlogRecord))
+
+
 def test_worker_operations_do_not_claim_cache_hit_or_miss(
     tmp_path: Path,
 ) -> None:

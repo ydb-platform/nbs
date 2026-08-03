@@ -19,6 +19,7 @@ from ..otlp import (
 from .evlog_record import YaEvlogRecord
 from .node import ClassifiedNode
 from .test_chunk import TestChunk
+from .worker_spans import WorkerSpanFactory
 
 
 @dataclass(frozen=True, slots=True, order=True)
@@ -184,7 +185,7 @@ class YaTestOperations:
     ) -> None:
         for index, detail in enumerate(record.details):
             writer.add(
-                record.test_worker_phase_span(
+                WorkerSpanFactory(record).test_worker_phase_span(
                     detail,
                     trace_id=trace_id,
                     parent_span_id=parent_span_id,
@@ -204,7 +205,7 @@ class YaTestOperations:
         unmatched: bool,
     ) -> None:
         failed = bool(node.uid and node.uid in self.failures)
-        span = node.record.test_node_span(
+        span = WorkerSpanFactory(node.record).test_node_span(
             trace_id=trace_id,
             parent_span_id=parent_span_id,
             index=index,
@@ -232,7 +233,8 @@ class YaTestOperations:
         for record_index, chunk_index in matches.by_test_node.items():
             node = plan.test_nodes[record_index]
             chunk_span = plan.chunks[chunk_index].span
-            worker_attributes = node.record.test_worker_attributes()
+            factory = WorkerSpanFactory(node.record)
+            worker_attributes = factory.test_worker_attributes()
             update_span_attributes(chunk_span, worker_attributes)
             if test_size := worker_attributes.get("test.size"):
                 for test_span in tests_by_parent.get(chunk_span.span_id, ()):
@@ -241,7 +243,7 @@ class YaTestOperations:
                 (node.uid and node.uid in self.failures)
                 or span_status_code(chunk_span) == 2
             )
-            worker_span = node.record.matched_test_worker_span(
+            worker_span = factory.matched_test_worker_span(
                 trace_id=trace_id,
                 parent_span_id=plan.span_id,
                 chunk_span=chunk_span,

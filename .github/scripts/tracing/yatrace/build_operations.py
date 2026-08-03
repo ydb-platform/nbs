@@ -11,6 +11,7 @@ from .critical_path import YaCriticalPath, YaCriticalPathEntry
 from .evlog_record import YaEvlogRecord
 from .node import ClassifiedNode
 from .statistics import YaBuildStatistics
+from .worker_spans import WorkerSpanFactory
 
 
 @dataclass(frozen=True, slots=True)
@@ -326,7 +327,7 @@ class YaBuildOperations:
         node_spans: dict[int, Span] = {}
         for index, candidate in enumerate(plan.selection.candidates):
             record = candidate.record
-            span = record.build_node_span(
+            span = WorkerSpanFactory(record).build_node_span(
                 trace_id=trace_id,
                 parent_span_id=envelope.span_id,
                 kind=candidate.node.kind,
@@ -341,7 +342,7 @@ class YaBuildOperations:
         for command in plan.commands.commands:
             candidate = command.parent
             writer.add(
-                candidate.record.build_command_span(
+                WorkerSpanFactory(candidate.record).build_command_span(
                     command.detail,
                     trace_id=trace_id,
                     parent_span_id=node_spans[candidate.source_index].span_id,
