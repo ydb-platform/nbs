@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include <cloud/storage/core/libs/common/timer.h>
+
 #include <library/cpp/deprecated/atomic/atomic.h>
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 
@@ -102,17 +104,29 @@ public:
 template <TBusyIdleTimeStorage T>
 class TBusyIdleTimeCalculator
 {
-    std::array<TAtomic, EState::MAX> State;
-    TAtomic InflightCount = 0;
+    struct TFields
+    {
+        ui32 Gen = 0;
+        ui32 Inflight = 0;
+        ui64 Started = 0;
+    };
+
+    static_assert(sizeof(TFields) == 16);
+    static_assert(std::is_trivially_copyable_v<TFields>);
+    static_assert(std::atomic<TFields>::is_always_lock_free);
+
+    std::atomic<TFields> Fields;
+
     T Storage;
+    ITimerPtr Timer;
 
 public:
-    TBusyIdleTimeCalculator()
+    explicit TBusyIdleTimeCalculator(ITimerPtr timer = CreateWallClockTimer())
+        : Timer(std::move(timer))
     {
-        for (auto& e : State) {
-            AtomicSet(e, 0);
-        }
-        StartState(IDLE);
+        auto fields = Fields.load();
+        fields.Started = Timer->Now().MicroSeconds();
+        Fields.store(fields);
     }
 
     template <typename... Args>
@@ -123,17 +137,61 @@ public:
 
     void OnRequestStarted()
     {
-        if (AtomicIncrement(InflightCount) == 1) {
-            FinishState(IDLE);
-            StartState(BUSY);
+        auto fields = Fields.load(std::memory_order_acquire);
+
+        for (;;) {
+            auto newFields = fields;
+            ++newFields.Inflight;
+            ++newFields.Gen;
+            ui64 val = 0;
+            if (fields.Inflight == 0) {
+                ui64 now = Timer->Now().MicroSeconds();
+                val = now - fields.Started;
+                newFields.Started = now;
+            }
+
+            const bool success = Fields.compare_exchange_weak(
+                fields,
+                newFields,
+                std::memory_order_release,
+                std::memory_order_acquire);
+            if (success) {
+                if (val) {
+                    Storage.IncrementState(val, EState::IDLE);
+                }
+
+                break;
+            }
         }
     }
 
     void OnRequestCompleted()
     {
-        if (AtomicDecrement(InflightCount) == 0) {
-            FinishState(BUSY);
-            StartState(IDLE);
+        auto fields = Fields.load(std::memory_order_acquire);
+
+        for (;;) {
+            auto newFields = fields;
+            --newFields.Inflight;
+            ++newFields.Gen;
+            ui64 val = 0;
+            if (newFields.Inflight == 0) {
+                ui64 now = Timer->Now().MicroSeconds();
+                val = now - fields.Started;
+                newFields.Started = now;
+            }
+
+            const bool success = Fields.compare_exchange_weak(
+                fields,
+                newFields,
+                std::memory_order_release,
+                std::memory_order_acquire);
+            if (success) {
+                if (val) {
+                    Storage.IncrementState(val, EState::BUSY);
+                }
+
+                break;
+            }
         }
     }
 
@@ -144,28 +202,44 @@ public:
     }
 
 private:
-    void FinishState(EState state)
-    {
-        ui64 val = MicroSeconds() - AtomicSwap(&State[state], 0);
-        Storage.IncrementState(val, state);
-    }
-
-    void StartState(EState state)
-    {
-        AtomicSet(State[state], MicroSeconds());
-    }
-
     void UpdateProgress(EState state)
     {
         for (;;) {
-            ui64 started = AtomicGet(State[state]);
-            if (!started) {
-                return;
+            auto fields = Fields.load(std::memory_order_acquire);
+            auto newFields = fields;
+            ui64 value = 0;
+            switch (state) {
+                case EState::BUSY: {
+                    if (fields.Inflight == 0) {
+                        return;
+                    }
+
+                    break;
+                }
+
+                case EState::IDLE: {
+                    if (fields.Inflight != 0) {
+                        return;
+                    }
+
+                    break;
+                }
+
+                case EState::MAX: {
+                    Y_DEBUG_ABORT_UNLESS(false);
+                    return;
+                }
             }
 
-            auto now = MicroSeconds();
-            if (AtomicCas(&State[state], now, started)) {
-                ui64 value = now - started;
+            newFields.Started = Timer->Now().MicroSeconds();
+            value = newFields.Started - fields.Started;
+
+            const bool success = Fields.compare_exchange_weak(
+                fields,
+                newFields,
+                std::memory_order_release,
+                std::memory_order_acquire);
+            if (success) {
                 Storage.IncrementState(value, state);
                 return;
             }
