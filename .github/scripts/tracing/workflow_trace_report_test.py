@@ -14,7 +14,11 @@ from scripts.tracing.otlp import (
     make_span,
     span_duration_ns,
 )
-from scripts.tracing.workflow_trace import _parent_job, build_workflow_trace
+from scripts.tracing.workflow_trace import (
+    _parent_job,
+    build_workflow_trace,
+    timestamp_ns,
+)
 from scripts.tracing.workflow_trace_report import download_s3_trace_inputs
 
 
@@ -35,6 +39,17 @@ def make_trace(
 
 def attributes(span: Span) -> dict:
     return decode_attributes(span.attributes)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "2026-01-01T00:00:00.000001Z",
+        "2026-01-01T01:00:00.000001+01:00",
+    ],
+)
+def test_github_timestamp_conversion_preserves_microseconds(value: str) -> None:
+    assert timestamp_ns(value) == 1_767_225_600_000_001_000
 
 
 def test_workflow_trace_adds_queue_job_step_and_imported_ya_spans() -> None:

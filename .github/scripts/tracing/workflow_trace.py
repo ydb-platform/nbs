@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import replace
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Mapping, Sequence
 
 from github.WorkflowJob import WorkflowJob
@@ -15,6 +15,7 @@ from .otlp import (
     ResourceAttributes,
     Span,
     SpanWriter,
+    SECOND,
     Trace,
     decode_attributes,
     encode_attributes,
@@ -27,6 +28,7 @@ from .otlp import (
 ERROR_CONCLUSIONS = frozenset(
     {"action_required", "cancelled", "failure", "startup_failure", "timed_out"}
 )
+UNIX_EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
 
 
 def timestamp_ns(value: Any) -> Ns | None:
@@ -34,7 +36,12 @@ def timestamp_ns(value: Any) -> Ns | None:
         return None
     text = str(value).replace("Z", "+00:00")
     try:
-        return Ns(datetime.fromisoformat(text).timestamp() * 1_000_000_000)
+        parsed = datetime.fromisoformat(text)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        delta = parsed.astimezone(timezone.utc) - UNIX_EPOCH
+        seconds = delta.days * 86_400 + delta.seconds
+        return Ns(seconds * SECOND + delta.microseconds * 1_000)
     except ValueError:
         return None
 
