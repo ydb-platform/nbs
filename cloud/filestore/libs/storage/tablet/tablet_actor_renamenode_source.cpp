@@ -460,7 +460,7 @@ bool TIndexTabletActor::PrepareTx_PrepareRenameNodeInSource(
     }
 
     if (!args.ChildRef->IsExternal()) {
-        Metrics.RenameNotSupportedErrorCount.fetch_add(
+        Metrics->RenameNotSupportedErrorCount.fetch_add(
             1,
             std::memory_order_relaxed);
 
@@ -594,7 +594,7 @@ void TIndexTabletActor::CompleteTx_PrepareRenameNodeInSource(
 
     UnlockNodeRef({args.ParentNodeId, args.Name});
 
-    Metrics.RenameNode.Update(
+    Metrics->RenameNode.Update(
         1,
         0,
         ctx.Now() - args.RequestInfo->StartedTs);
@@ -827,7 +827,7 @@ void TIndexTabletActor::CompleteTx_CommitRenameNodeInSource(
         return;
     }
 
-    Metrics.RenameNode.Update(
+    Metrics->RenameNode.Update(
         1,
         0,
         ctx.Now() - args.RequestInfo->StartedTs);

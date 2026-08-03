@@ -86,8 +86,8 @@ void TIndexTabletActor::HandleUpdateLeakyBucketCounters(
     const ui64 currentRate = std::ceil(
         GetThrottlingPolicy().CalculateCurrentSpentBudgetShare(ctx.Now()) * 100);
 
-    Metrics.MaxUsedQuota.Record(currentRate);
-    NMetrics::Add(Metrics.UsedQuota, currentRate);
+    Metrics->MaxUsedQuota.Record(currentRate);
+    NMetrics::Add(Metrics->UsedQuota, currentRate);
 
     UpdateLeakyBucketCountersScheduled = false;
     ScheduleUpdateCounters(ctx);
@@ -99,11 +99,11 @@ void TIndexTabletActor::UpdateDelayCounter(
 {
     switch (opType) {
         case TThrottlingPolicy::EOpType::Read: {
-            Metrics.ReadDataPostponed.Record(time.MicroSeconds());
+            Metrics->ReadDataPostponed.Record(time.MicroSeconds());
             return;
         }
         case TThrottlingPolicy::EOpType::Write: {
-            Metrics.WriteDataPostponed.Record(time.MicroSeconds());
+            Metrics->WriteDataPostponed.Record(time.MicroSeconds());
             return;
         }
         default:
@@ -140,14 +140,14 @@ NProto::TError TIndexTabletActor::Throttle(
 
     switch (status) {
         case ETabletThrottlerStatus::POSTPONED: {
-            NMetrics::Inc(Metrics.PostponedRequests);
+            NMetrics::Inc(Metrics->PostponedRequests);
             break;
         }
         case ETabletThrottlerStatus::ADVANCED: {
             break;
         }
         case ETabletThrottlerStatus::REJECTED: {
-            NMetrics::Inc(Metrics.RejectedRequests);
+            NMetrics::Inc(Metrics->RejectedRequests);
             return err;
         }
         default:

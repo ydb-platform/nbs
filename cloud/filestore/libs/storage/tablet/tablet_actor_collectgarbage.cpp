@@ -496,7 +496,7 @@ void TIndexTabletActor::HandleCollectGarbageCompleted(
     WorkerActors.erase(ev->Sender);
     EnqueueCollectGarbageIfNeeded(ctx);
 
-    Metrics.CollectGarbage.Update(msg->Count, msg->Size, msg->Time);
+    Metrics->CollectGarbage.Update(msg->Count, msg->Size, msg->Time);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -122,7 +122,14 @@ TTabletCountersPtr CreateIndexTabletCounters();
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTabletMetrics
+/**
+ * This data structure holds index tablet actor-level metrics. Tracking new
+ * requests is thread-safe. Initialization/registration and complex functions
+ * that iterate various metrics are supposed to be called only by the tablet
+ * actor and are not thread-safe. So it's ok to pass a smart pointer to this
+ * structure to some other thread/actor for request completion tracking.
+ */
+struct TTabletMetrics: TAtomicRefCount<TTabletMetrics>
 {
     bool Initialized{false};
 
@@ -339,5 +346,7 @@ struct TTabletMetrics
 
     i64 CalculateNetworkRequestBytes(ui32 nonNetworkMetricsBalancingFactor);
 };
+
+using TTabletMetricsPtr = TIntrusivePtr<TTabletMetrics>;
 
 }   // namespace NCloud::NFileStore::NStorage

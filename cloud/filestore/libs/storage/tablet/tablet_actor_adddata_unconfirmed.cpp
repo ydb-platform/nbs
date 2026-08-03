@@ -97,7 +97,7 @@ void TIndexTabletActor::CompleteTx_AddDataUnconfirmed(
             ProfileLog);
 
         if (!HasError(args.Error)) {
-            Metrics.AddDataUnconfirmed.Update(
+            Metrics->AddDataUnconfirmed.Update(
                 1,
                 requestBytes,
                 ctx.Now() - args.RequestInfo->StartedTs);

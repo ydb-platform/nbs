@@ -466,7 +466,7 @@ void TIndexTabletActor::HandleReadBlobCompleted(
 
     WorkerActors.erase(ev->Sender);
 
-    Metrics.ReadBlob.Update(msg->Count, msg->Size, msg->Time);
+    Metrics->ReadBlob.Update(msg->Count, msg->Size, msg->Time);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

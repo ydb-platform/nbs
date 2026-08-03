@@ -152,7 +152,7 @@ void TIndexTabletActor::CompleteTx_Cleanup(
     EnqueueBlobIndexOpIfNeeded(ctx);
     EnqueueCollectGarbageIfNeeded(ctx);
 
-    Metrics.Cleanup.Update(
+    Metrics->Cleanup.Update(
         1,
         args.ProcessedDeletionMarkerCount * GetBlockSize(),
         ctx.Now() - args.RequestInfo->StartedTs);

@@ -476,7 +476,7 @@ void TIndexTabletActor::HandleCleanupSessions(
 
     CleanupSessionsScheduled = false;
 
-    Metrics.SessionCleanupAttempts.fetch_add(
+    Metrics->SessionCleanupAttempts.fetch_add(
         1,
         std::memory_order_relaxed);
 
@@ -491,7 +491,7 @@ void TIndexTabletActor::HandleCleanupSessions(
         return;
     }
 
-    Metrics.SessionTimeouts.fetch_add(
+    Metrics->SessionTimeouts.fetch_add(
         sessions.size(),
         std::memory_order_relaxed);
 
