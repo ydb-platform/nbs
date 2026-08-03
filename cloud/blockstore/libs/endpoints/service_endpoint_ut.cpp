@@ -212,11 +212,6 @@ struct TTestSessionManager final
 struct TTestEndpointManager final
     : public IEndpointManager
 {
-    ui32 RefreshEndpointCounter = 0;
-    TString LastDiskId;
-    TString LastRefreshReason;
-    TPromise<NProto::TError> RefreshEndpointResult = NewPromise<NProto::TError>();
-
     void Start() override
     {}
 
@@ -252,12 +247,13 @@ struct TTestEndpointManager final
 
     TFuture<NProto::TError> RefreshEndpointIfNeeded(
         const TString& diskId,
-        const TString& reason) override
+        const TString& reason,
+        const NProto::TVolume* volume) override
     {
-        ++RefreshEndpointCounter;
-        LastDiskId = diskId;
-        LastRefreshReason = reason;
-        return RefreshEndpointResult;
+        Y_UNUSED(diskId);
+        Y_UNUSED(reason);
+        Y_UNUSED(volume);
+        return MakeFuture(MakeError(S_OK));
     }
 };
 
@@ -367,48 +363,6 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
         }
 
         executor->Stop();
-    }
-
-    Y_UNIT_TEST(ShouldRefreshEndpointAfterResizeVolume)
-    {
-        const TString diskId = "testDiskId";
-        const ui64 blocksCount = 42;
-
-        auto service = std::make_shared<TTestService>();
-        service->ResizeVolumeHandler =
-            [&] (std::shared_ptr<NProto::TResizeVolumeRequest> request)
-            {
-                UNIT_ASSERT_VALUES_EQUAL(diskId, request->GetDiskId());
-                UNIT_ASSERT_VALUES_EQUAL(blocksCount, request->GetBlocksCount());
-                return MakeFuture(NProto::TResizeVolumeResponse());
-            };
-
-        auto endpointManager = std::make_shared<TTestEndpointManager>();
-        auto endpointService = CreateMultipleEndpointService(
-            service,
-            CreateWallClockTimer(),
-            CreateSchedulerStub(),
-            endpointManager);
-
-        auto request = std::make_shared<NProto::TResizeVolumeRequest>();
-        request->SetDiskId(diskId);
-        request->SetBlocksCount(blocksCount);
-
-        auto future = endpointService->ResizeVolume(
-            MakeIntrusive<TCallContext>(),
-            std::move(request));
-
-        UNIT_ASSERT_VALUES_EQUAL(1, endpointManager->RefreshEndpointCounter);
-        UNIT_ASSERT_VALUES_EQUAL(diskId, endpointManager->LastDiskId);
-        UNIT_ASSERT_VALUES_EQUAL(
-            "volume resize",
-            endpointManager->LastRefreshReason);
-        UNIT_ASSERT(!future.HasValue());
-
-        endpointManager->RefreshEndpointResult.SetValue(MakeError(S_OK));
-
-        auto response = future.GetValue(TDuration::Seconds(5));
-        UNIT_ASSERT_C(!HasError(response), response);
     }
 
     Y_UNIT_TEST(ShouldTimeoutFrozenRequest)

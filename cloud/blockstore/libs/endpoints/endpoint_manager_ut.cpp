@@ -228,6 +228,7 @@ public:
     ui32 AlterEndpointCounter = 0;
     ui32 RefreshEndpointCounter = 0;
     ui32 SwitchEndpointCounter = 0;
+    NProto::TVolume LastRefreshVolume;
     NProto::TError AlterEndpointError;
     NProto::TError RefreshEndpointError;
 
@@ -287,7 +288,7 @@ public:
         const NProto::TVolume& volume) override
     {
         Y_UNUSED(socketPath);
-        Y_UNUSED(volume);
+        LastRefreshVolume.CopyFrom(volume);
         ++RefreshEndpointCounter;
 
         return RefreshEndpointError;
@@ -1456,7 +1457,9 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
         auto diskId = "testDiskId";
 
         {
-            auto future = manager->RefreshEndpointIfNeeded(diskId, "test");
+            auto future = bootstrap.EndpointEventHandler->RefreshEndpointIfNeeded(
+                diskId,
+                "test");
             auto error = future.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
@@ -1482,13 +1485,39 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
         }
 
         {
-            auto future = manager->RefreshEndpointIfNeeded(diskId, "test");
+            auto future = bootstrap.EndpointEventHandler->RefreshEndpointIfNeeded(
+                diskId,
+                "test");
             auto error = future.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 error.GetCode(),
                 error);
             UNIT_ASSERT_VALUES_EQUAL(1, listener->RefreshEndpointCounter);
+        }
+
+        NProto::TVolume volume;
+        volume.SetDiskId(diskId);
+        volume.SetBlocksCount(42);
+        volume.SetBlockSize(DefaultBlockSize);
+
+        {
+            auto future = bootstrap.EndpointEventHandler->RefreshEndpointIfNeeded(
+                diskId,
+                "test",
+                &volume);
+            auto error = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                error);
+            UNIT_ASSERT_VALUES_EQUAL(2, listener->RefreshEndpointCounter);
+            UNIT_ASSERT_VALUES_EQUAL(
+                volume.GetBlocksCount(),
+                listener->LastRefreshVolume.GetBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                volume.GetBlockSize(),
+                listener->LastRefreshVolume.GetBlockSize());
         }
     }
 

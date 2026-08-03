@@ -422,5 +422,6 @@ struct TEvService
 ////////////////////////////////////////////////////////////////////////////////
 
 NActors::TActorId MakeStorageServiceId();
+NActors::TActorId MakeStorageServiceId(ui32 nodeId);
 
 }   // namespace NCloud::NBlockStore::NStorage

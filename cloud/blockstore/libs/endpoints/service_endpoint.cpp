@@ -3,13 +3,10 @@
 #include "endpoint_manager.h"
 
 #include <cloud/blockstore/libs/service/context.h>
-#include <cloud/blockstore/libs/service/service_method.h>
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
-
-#include <type_traits>
 
 namespace NCloud::NBlockStore::NServer {
 
@@ -61,10 +58,7 @@ public:
         TCallContextPtr ctx,                                                   \
         std::shared_ptr<NProto::T##name##Request> request) override            \
     {                                                                          \
-        using TMethod = TBlockStore##name##Method;                             \
-        return ExecuteStorageRequest<TMethod>(                                 \
-            std::move(ctx),                                                    \
-            std::move(request));                                               \
+        return Service->name(std::move(ctx), std::move(request));              \
     }                                                                          \
 // STORAGE_IMPLEMENT_METHOD
 
@@ -89,49 +83,6 @@ public:
 #undef ENDPOINT_IMPLEMENT_METHOD
 
 private:
-    template <typename TMethod>
-    TFuture<typename TMethod::TResponse> ExecuteStorageRequest(
-        TCallContextPtr ctx,
-        std::shared_ptr<typename TMethod::TRequest> request)
-    {
-        if constexpr (std::is_same_v<TMethod, TBlockStoreResizeVolumeMethod>) {
-            const auto diskId = request->GetDiskId();
-            const bool shouldRefreshEndpoint = request->GetBlocksCount() != 0;
-
-            auto future = TMethod::Execute(
-                Service.get(),
-                std::move(ctx),
-                std::move(request));
-
-            return future.Apply([
-                endpointManager = EndpointManager,
-                diskId,
-                shouldRefreshEndpoint] (const auto& f)
-            {
-                auto response = f.GetValue();
-                if (!shouldRefreshEndpoint ||
-                    response.GetError().GetCode() != S_OK ||
-                    !endpointManager)
-                {
-                    return MakeFuture(std::move(response));
-                }
-
-                return endpointManager
-                    ->RefreshEndpointIfNeeded(diskId, "volume resize")
-                    .Apply([response = std::move(response)] (const auto& f) mutable
-                    {
-                        Y_UNUSED(f.GetValue());
-                        return response;
-                    });
-            });
-        } else {
-            return TMethod::Execute(
-                Service.get(),
-                std::move(ctx),
-                std::move(request));
-        }
-    }
-
     template <typename T>
     TFuture<T> CreateTimeoutFuture(const TFuture<T>& future, TDuration timeout)
     {

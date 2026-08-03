@@ -14,7 +14,9 @@ TEST_SRCS(
     test.py
 )
 
-INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/service-local/service-local.inc)
+SET(LOCAL_KIKIMR_SERVER_COUNT 2)
+
+INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/local-kikimr/local-kikimr.inc)
 INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/endpoint/vhost-endpoint.inc)
 INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/qemu.inc)
 

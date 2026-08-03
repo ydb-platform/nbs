@@ -23,6 +23,7 @@
 #include <library/cpp/lwtrace/protos/lwtrace.pb.h>
 #include <library/cpp/lwtrace/signature.h>
 
+#include <util/generic/hash_set.h>
 #include <util/stream/str.h>
 #include <util/string/builder.h>
 
@@ -44,6 +45,30 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr TInstant DRTabletIdRequestRetryInterval = TInstant::Seconds(3);
+
+THashSet<ui32> GetStorageServiceNodeIdsForConfigUpdate(
+    const TVolumeState& state,
+    ui32 localNodeId)
+{
+    THashSet<ui32> nodeIds;
+    nodeIds.insert(localNodeId);
+
+    for (const auto& [clientId, client]: state.GetClients()) {
+        Y_UNUSED(clientId);
+
+        for (const auto& [serverId, pipe]: client.GetPipes()) {
+            Y_UNUSED(serverId);
+
+            if (pipe.State != TVolumeClientState::EPipeState::DEACTIVATED &&
+                pipe.SenderNodeId != 0)
+            {
+                nodeIds.insert(pipe.SenderNodeId);
+            }
+        }
+    }
+
+    return nodeIds;
+}
 
 bool ShapingThrottlerEnabled(
     const TStorageConfigPtr& config,
@@ -555,11 +580,17 @@ void TVolumeActor::SendVolumeConfigUpdated(const TActorContext& ctx)
         State->GetMeta().GetVolumeConfig(),
         State->GetPrincipalDiskId(),
         volume);
-    {
+
+    const auto storageServiceNodeIds =
+        GetStorageServiceNodeIdsForConfigUpdate(*State, SelfId().NodeId());
+    for (const auto nodeId: storageServiceNodeIds) {
         auto request = std::make_unique<TEvService::TEvVolumeConfigUpdated>(
             State->GetDiskId(),
             volume);
-        NCloud::Send(ctx, MakeStorageServiceId(), std::move(request));
+        const auto recipient = nodeId == SelfId().NodeId()
+            ? MakeStorageServiceId()
+            : MakeStorageServiceId(nodeId);
+        NCloud::Send(ctx, recipient, std::move(request));
     }
 
     {

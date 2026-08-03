@@ -5,6 +5,7 @@
 #include <cloud/blockstore/public/api/protos/volume.pb.h>
 
 #include <cloud/blockstore/libs/diagnostics/public.h>
+#include <cloud/blockstore/libs/endpoints/public.h>
 #include <cloud/blockstore/libs/kikimr/public.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/ss_proxy/public.h>
@@ -82,6 +83,12 @@ public:
         const TString& name,
         TStorageConfigPtr storageConfig,
         TDiagnosticsConfigPtr diagnosticsConfig,
+        NServer::IEndpointEventHandlerPtr endpointEventHandler);
+
+    ui32 CreateBlockStoreNode(
+        const TString& name,
+        TStorageConfigPtr storageConfig,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         TManuallyPreemptedVolumesPtr manuallyPreemptedVolumes);
 
     ui32 CreateBlockStoreNode(
@@ -90,6 +97,14 @@ public:
         TDiagnosticsConfigPtr diagnosticsConfig,
         NYdbStats::IYdbVolumesStatsUploaderPtr ydbStatsUploader,
         TManuallyPreemptedVolumesPtr manuallyPreemptedVolumes);
+
+    ui32 CreateBlockStoreNode(
+        const TString& name,
+        TStorageConfigPtr storageConfig,
+        TDiagnosticsConfigPtr diagnosticsConfig,
+        NYdbStats::IYdbVolumesStatsUploaderPtr ydbStatsUploader,
+        TManuallyPreemptedVolumesPtr manuallyPreemptedVolumes,
+        NServer::IEndpointEventHandlerPtr endpointEventHandler);
 
     TString UpdatePrivateCacheSize(ui64 tabletId, ui64 cacheSize);
     ui64 GetPrivateCacheSize(ui64 tabletId);

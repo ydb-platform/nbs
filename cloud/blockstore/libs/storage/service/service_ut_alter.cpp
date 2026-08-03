@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/config/storage.pb.h>
 
+#include <cloud/blockstore/libs/endpoints/endpoint_events.h>
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
@@ -14,6 +15,63 @@ namespace NCloud::NBlockStore::NStorage {
 using namespace NActors;
 
 using namespace NKikimr;
+
+////////////////////////////////////////////////////////////////////////////////
+
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TTestEndpointEventHandler final
+    : public NServer::IEndpointEventHandler
+{
+    ui32 RefreshEndpointCount = 0;
+    TString LastRefreshDiskId;
+    TString LastRefreshReason;
+    bool LastRefreshHasVolume = false;
+    ui64 LastRefreshBlocksCount = 0;
+
+    NThreading::TFuture<NProto::TError> SwitchEndpointIfNeeded(
+        const TString& diskId,
+        const TString& reason) override
+    {
+        Y_UNUSED(diskId);
+        Y_UNUSED(reason);
+
+        return NThreading::MakeFuture(MakeError(S_OK));
+    }
+
+    NThreading::TFuture<NProto::TError> RefreshEndpointIfNeeded(
+        const TString& diskId,
+        const TString& reason,
+        const NProto::TVolume* volume) override
+    {
+        ++RefreshEndpointCount;
+        LastRefreshDiskId = diskId;
+        LastRefreshReason = reason;
+        LastRefreshHasVolume = volume != nullptr;
+        if (volume) {
+            LastRefreshBlocksCount = volume->GetBlocksCount();
+        }
+
+        return NThreading::MakeFuture(MakeError(S_OK));
+    }
+};
+
+ui32 SetupTestEnvWithEndpointEvents(
+    TTestEnv& env,
+    NServer::IEndpointEventHandlerPtr endpointEventHandler)
+{
+    env.CreateSubDomain("nbs");
+
+    return env.CreateBlockStoreNode(
+        "nbs",
+        CreateTestStorageConfig({}),
+        CreateTestDiagnosticsConfig(),
+        std::move(endpointEventHandler));
+}
+
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -854,6 +912,61 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
                 NProto::VOLUME_MOUNT_REMOTE);
             UNIT_ASSERT(response->Record.GetVolume().GetBlocksCount() == newBlocksCount);
         }
+    }
+
+    Y_UNIT_TEST(ShouldRefreshEndpointOnLocalMountHostAfterResizeFromAnotherHost)
+    {
+        TTestEnv env(1, 2, 10);
+        auto endpointEvents1 = std::make_shared<TTestEndpointEventHandler>();
+        auto endpointEvents2 = std::make_shared<TTestEndpointEventHandler>();
+
+        ui32 nodeIdx1 = SetupTestEnvWithEndpointEvents(env, endpointEvents1);
+        ui32 nodeIdx2 = SetupTestEnvWithEndpointEvents(env, endpointEvents2);
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service1(runtime, nodeIdx1);
+        TServiceClient service2(runtime, nodeIdx2);
+
+        const ui64 blocksCount = 1024;
+        service1.CreateVolume(DefaultDiskId, blocksCount);
+
+        {
+            auto response = service1.MountVolume(DefaultDiskId);
+            UNIT_ASSERT_VALUES_EQUAL(
+                blocksCount,
+                response->Record.GetVolume().GetBlocksCount());
+        }
+
+        {
+            auto response = service2.MountVolume(
+                DefaultDiskId,
+                "",
+                "",
+                NProto::IPC_GRPC,
+                NProto::VOLUME_ACCESS_READ_ONLY,
+                NProto::VOLUME_MOUNT_REMOTE);
+            UNIT_ASSERT_VALUES_EQUAL(
+                blocksCount,
+                response->Record.GetVolume().GetBlocksCount());
+        }
+
+        const ui64 newBlocksCount = blocksCount * 2;
+        service2.ResizeVolume(DefaultDiskId, newBlocksCount);
+
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(2));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, endpointEvents1->RefreshEndpointCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            DefaultDiskId,
+            endpointEvents1->LastRefreshDiskId);
+        UNIT_ASSERT_VALUES_EQUAL(
+            "volume config updated",
+            endpointEvents1->LastRefreshReason);
+        UNIT_ASSERT(endpointEvents1->LastRefreshHasVolume);
+        UNIT_ASSERT_VALUES_EQUAL(
+            newBlocksCount,
+            endpointEvents1->LastRefreshBlocksCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, endpointEvents2->RefreshEndpointCount);
     }
 
     Y_UNIT_TEST(ShouldAllocateFreshChannelOnAlter)

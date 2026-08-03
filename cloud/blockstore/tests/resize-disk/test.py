@@ -39,6 +39,18 @@ def _get_nbs_endpoint():
     return "{}:{}".format(_get_nbs_host(), _get_nbs_port())
 
 
+def _get_resize_endpoint():
+    endpoint = os.getenv("NBS_RESIZE_ENDPOINT")
+    if endpoint:
+        return endpoint
+
+    port = os.getenv("NBS_RESIZE_SERVER_PORT")
+    if port:
+        return "{}:{}".format(_get_nbs_host(), port)
+
+    return _get_nbs_endpoint()
+
+
 def _get_device_size(device_path):
     ex = common.execute(
         ["sudo", "blockdev", "--getsize64", device_path])
@@ -77,12 +89,17 @@ def test_resize_disk():
         volume = nbs_client.describe_volume(disk_id)
         assert volume.BlocksCount == OLD_BLOCKS_COUNT
 
+    with client.CreateClient(_get_resize_endpoint()) as nbs_client:
         nbs_client.resize_volume(
             disk_id=disk_id,
             blocks_count=NEW_BLOCKS_COUNT,
             channels_count=0,
             config_version=None)
 
+        volume = nbs_client.describe_volume(disk_id)
+        assert volume.BlocksCount == NEW_BLOCKS_COUNT
+
+    with client.CreateClient(_get_nbs_endpoint()) as nbs_client:
         volume = nbs_client.describe_volume(disk_id)
         assert volume.BlocksCount == NEW_BLOCKS_COUNT
 

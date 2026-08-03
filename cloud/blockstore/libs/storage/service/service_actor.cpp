@@ -1,6 +1,7 @@
 #include "service_actor.h"
 
 #include <cloud/blockstore/libs/diagnostics/public.h>
+#include <cloud/blockstore/libs/endpoints/endpoint_events.h>
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
 #include <cloud/storage/core/libs/common/alloc.h>
@@ -197,7 +198,24 @@ void TServiceActor::HandleVolumeConfigUpdated(
             msg->DiskId.Quote().data());
         return;
     }
+
+    const auto oldBlocksCount =
+        volume->VolumeInfo ? volume->VolumeInfo->GetBlocksCount() : 0;
+    const auto newBlocksCount = msg->Config.GetBlocksCount();
+    const auto refreshEndpoint =
+        oldBlocksCount &&
+        newBlocksCount &&
+        oldBlocksCount != newBlocksCount &&
+        volume->IsLocallyMounted();
+
     volume->VolumeInfo = msg->Config;
+
+    if (refreshEndpoint) {
+        EndpointEventHandler->RefreshEndpointIfNeeded(
+            msg->DiskId,
+            "volume config updated",
+            &msg->Config);
+    }
 }
 
 void TServiceActor::HandleUnregisterVolume(

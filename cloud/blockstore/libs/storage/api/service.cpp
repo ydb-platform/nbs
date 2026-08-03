@@ -8,7 +8,12 @@ using namespace NActors;
 
 TActorId MakeStorageServiceId()
 {
-    return TActorId(0, "blk-service");
+    return MakeStorageServiceId(0);
+}
+
+TActorId MakeStorageServiceId(ui32 nodeId)
+{
+    return TActorId(nodeId, "blk-service");
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

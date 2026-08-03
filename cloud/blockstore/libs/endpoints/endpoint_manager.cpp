@@ -627,7 +627,8 @@ public:
         const TString& reason) override;
     TFuture<NProto::TError> RefreshEndpointIfNeeded(
         const TString& diskId,
-        const TString& reason) override;
+        const TString& reason,
+        const NProto::TVolume* volume = nullptr) override;
 
     TFuture<void> RestoreEndpoints() override
     {
@@ -682,7 +683,8 @@ private:
 
     NProto::TRefreshEndpointResponse RefreshEndpointImpl(
         TCallContextPtr ctx,
-        std::shared_ptr<NProto::TRefreshEndpointRequest> request);
+        std::shared_ptr<NProto::TRefreshEndpointRequest> request,
+        const NProto::TVolume* volume = nullptr);
 
     NProto::TError SwitchEndpointImpl(
         TCallContextPtr ctx,
@@ -690,7 +692,8 @@ private:
 
     NProto::TError RefreshEndpointIfNeededImpl(
         const TString& diskId,
-        const TString& reason);
+        const TString& reason,
+        const NProto::TVolume* volume);
 
     NProto::TError AlterEndpoint(
         TCallContextPtr ctx,
@@ -1380,7 +1383,8 @@ NProto::TRefreshEndpointResponse TEndpointManager::DoRefreshEndpoint(
 
 NProto::TRefreshEndpointResponse TEndpointManager::RefreshEndpointImpl(
     TCallContextPtr ctx,
-    std::shared_ptr<NProto::TRefreshEndpointRequest> request)
+    std::shared_ptr<NProto::TRefreshEndpointRequest> request,
+    const NProto::TVolume* volume)
 {
     const auto& socketPath = request->GetUnixSocketPath();
     const auto& headers = request->GetHeaders();
@@ -1399,47 +1403,64 @@ NProto::TRefreshEndpointResponse TEndpointManager::RefreshEndpointImpl(
         socketPath);
     const auto& listener = listenerIt->second;
 
-    auto future = SessionManager->GetSession(std::move(ctx), socketPath, headers);
-    const auto& [sessionInfo, getSessionError] = Executor->WaitFor(future);
+    NProto::TVolume endpointVolume;
+    if (volume) {
+        endpointVolume.CopyFrom(*volume);
+    } else {
+        auto future = SessionManager->GetSession(
+            std::move(ctx),
+            socketPath,
+            headers);
+        const auto& [sessionInfo, getSessionError] = Executor->WaitFor(future);
 
-    if (HasError(getSessionError)) {
-        return TErrorResponse(getSessionError);
+        if (HasError(getSessionError)) {
+            return TErrorResponse(getSessionError);
+        }
+
+        endpointVolume.CopyFrom(sessionInfo.Volume);
     }
 
-    it->second->Volume.SetBlocksCount(sessionInfo.Volume.GetBlocksCount());
-    it->second->Volume.SetBlockSize(sessionInfo.Volume.GetBlockSize());
+    it->second->Volume.SetBlocksCount(endpointVolume.GetBlocksCount());
+    it->second->Volume.SetBlockSize(endpointVolume.GetBlockSize());
 
     auto error = it->second->Device->Resize(
-        sessionInfo.Volume.GetBlocksCount() *
-        sessionInfo.Volume.GetBlockSize()).GetValueSync();
+        endpointVolume.GetBlocksCount() *
+        endpointVolume.GetBlockSize()).GetValueSync();
     if (HasError(error)) {
         return TErrorResponse(error);
     }
 
-    const auto refreshError = listener->RefreshEndpoint(socketPath, sessionInfo.Volume);
+    const auto refreshError = listener->RefreshEndpoint(socketPath, endpointVolume);
     return TErrorResponse(refreshError);
 }
 
 TFuture<NProto::TError> TEndpointManager::RefreshEndpointIfNeeded(
     const TString& diskId,
-    const TString& reason)
+    const TString& reason,
+    const NProto::TVolume* volume)
 {
+    auto volumeCopy = volume
+        ? std::make_shared<NProto::TVolume>(*volume)
+        : nullptr;
+
     return Executor->Execute([
         weakSelf = weak_from_this(),
         diskId,
-        reason] {
+        reason,
+        volume = std::move(volumeCopy)] {
         auto self = weakSelf.lock();
         if (!self) {
             return MakeError(E_FAIL, "EndpointManager is destroyed");
         }
 
-        return self->RefreshEndpointIfNeededImpl(diskId, reason);
+        return self->RefreshEndpointIfNeededImpl(diskId, reason, volume.get());
     });
 }
 
 NProto::TError TEndpointManager::RefreshEndpointIfNeededImpl(
     const TString& diskId,
-    const TString& reason)
+    const TString& reason,
+    const NProto::TVolume* volume)
 {
     struct TEndpointToRefresh
     {
@@ -1473,7 +1494,10 @@ NProto::TError TEndpointManager::RefreshEndpointIfNeededImpl(
         request->MutableHeaders()->CopyFrom(endpoint.Headers);
 
         auto response =
-            DoRefreshEndpoint(MakeIntrusive<TCallContext>(), std::move(request));
+            RefreshEndpointImpl(
+                MakeIntrusive<TCallContext>(),
+                std::move(request),
+                volume);
         if (HasError(response.GetError())) {
             return response.GetError();
         }
