@@ -73,6 +73,7 @@ func TestAvailabilityMonitoringShouldSendMetric(t *testing.T) {
 		storage,
 		registry,
 	)
+	defer monitoring.Close()
 	gaugeSetWg.Wait()
 
 	monitoring.AccountQuery(nil)
