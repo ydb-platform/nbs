@@ -1,7 +1,10 @@
+from scripts.tracing.yatrace import YaTraceFile
 from scripts.tracing.yatrace_test_support import (
+    Interval,
     Ns,
     Path,
     ResourceAttributes,
+    YaEvent,
     YaTraceCollection,
     _attributes,
     _render_ya_trace,
@@ -452,6 +455,26 @@ def test_chunk_uses_precise_event_timestamp_when_consistent_with_metrics(
     chunk = next(trace.spans("ya.chunk"))
     assert chunk.start_time_unix_nano == 100_500_000_000
     assert chunk.end_time_unix_nano == 110_750_000_000
+
+
+def test_chunk_uses_explicit_zero_wall_time() -> None:
+    interval, _ = YaTraceFile._chunk_interval(
+        YaEvent(
+            "chunk-event",
+            Ns.from_s_or_zero(5),
+            {
+                "metrics": {
+                    "suite_finish_timestamp": 5,
+                    "wall_time": 0,
+                }
+            },
+            0,
+        ),
+        [],
+        Interval(Ns(0), Ns.from_s_or_zero(10)),
+    )
+
+    assert interval == Interval(Ns.from_s_or_zero(5), Ns.from_s_or_zero(5))
 
 
 def test_chunk_uses_feasible_precise_wall_time_when_event_is_late(

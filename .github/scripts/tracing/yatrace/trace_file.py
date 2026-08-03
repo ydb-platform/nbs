@@ -141,15 +141,15 @@ class YaTraceFile:
         metrics = chunk_value.get("metrics", {})
         start_ns = None
         end_ns = None
-        wall_time_ns = Ns(0)
+        wall_time_ns = None
         if isinstance(metrics, Mapping):
             start_ns = Ns.from_s(metrics.get("suite_start_timestamp"))
             end_ns = Ns.from_s(metrics.get("suite_finish_timestamp"))
-            wall_time_ns = Ns.from_s_or_zero(metrics.get("wall_time"))
+            wall_time_ns = Ns.from_s(metrics.get("wall_time"))
             if (
                 start_ns is not None
                 and end_ns is not None
-                and wall_time_ns
+                and wall_time_ns is not None
                 and start_ns.is_second_aligned()
                 and end_ns.is_second_aligned()
                 and chunk_event is not None
@@ -167,9 +167,9 @@ class YaTraceFile:
                     else:
                         end_ns = Ns(earliest_end_ns)
                     start_ns = Ns(end_ns - wall_time_ns)
-            elif end_ns is not None and start_ns is None and wall_time_ns:
+            elif end_ns is not None and start_ns is None and wall_time_ns is not None:
                 start_ns = end_ns - wall_time_ns
-            elif start_ns is not None and end_ns is None and wall_time_ns:
+            elif start_ns is not None and end_ns is None and wall_time_ns is not None:
                 end_ns = start_ns + wall_time_ns
 
         timestamps = [
