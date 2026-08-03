@@ -1,8 +1,9 @@
+from pathlib import Path
+
 import scripts.tracing.yatrace.statistics as ya_statistics
 from scripts.tracing.yatrace.statistics import YaBuildStatistics
 from scripts.tracing.yatrace_test_support import (
     Ns,
-    Path,
     ResourceAttributes,
     _attributes,
     _chunk,

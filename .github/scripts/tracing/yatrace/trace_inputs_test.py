@@ -1,11 +1,13 @@
+import json
+import os
+import sys
+from pathlib import Path
+
+import pytest
+
 from scripts.tracing.yatrace_test_support import (
-    Path,
     YaEvlog,
     YaTraceInputs,
-    json,
-    os,
-    pytest,
-    sys,
     ya_trace_report_module,
     yatrace_limits,
 )

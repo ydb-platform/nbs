@@ -1,14 +1,16 @@
+from pathlib import Path
+
+import pytest
+
 from scripts.tracing.yatrace.test_timing import YaTestTiming
 from scripts.tracing.yatrace_test_support import (
     Interval,
     Ns,
-    Path,
     YaEvent,
     _attributes,
     _chunk,
     _render_ya_trace,
     _subtest,
-    pytest,
     span_duration_ns,
     span_status_code,
 )

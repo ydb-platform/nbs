@@ -1,7 +1,9 @@
+import json
+from pathlib import Path
+
 from scripts.tracing.yatrace.event_export import event_log_attributes
 from scripts.tracing.yatrace_test_support import (
     Ns,
-    Path,
     YaEvent,
     YaTraceCollection,
     _attributes,
@@ -13,7 +15,6 @@ from scripts.tracing.yatrace_test_support import (
     _worker,
     _worker_detail,
     _write_jsonl,
-    json,
     span_duration_ns,
     span_status_code,
 )

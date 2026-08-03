@@ -1,11 +1,7 @@
 from __future__ import annotations
 
 import json
-import os
-import sys
 from pathlib import Path
-
-import pytest
 
 import scripts.tracing.ya_trace_report as ya_trace_report_module
 import scripts.tracing.yatrace.limits as yatrace_limits
@@ -195,43 +191,3 @@ def _render_ya_trace(
         resource=ResourceAttributes(),
         evlog=evlog,
     )
-
-
-__all__ = [
-    "ClassifiedNode",
-    "Interval",
-    "Ns",
-    "Path",
-    "ResourceAttributes",
-    "TestChunk",
-    "YaCriticalPathEntry",
-    "YaEvent",
-    "YaEvlog",
-    "YaEvlogRecord",
-    "YaTraceCollection",
-    "YaTraceInputs",
-    "_attributes",
-    "_chunk",
-    "_failed_node",
-    "_node_started",
-    "_render_ya_trace",
-    "_run_worker",
-    "_stage",
-    "_statistics",
-    "_subtest",
-    "_worker",
-    "_worker_detail",
-    "_write_jsonl",
-    "build_ya_trace",
-    "decode_attributes",
-    "json",
-    "load_ya_evlog",
-    "make_span",
-    "os",
-    "pytest",
-    "span_duration_ns",
-    "span_status_code",
-    "sys",
-    "ya_trace_report_module",
-    "yatrace_limits",
-]

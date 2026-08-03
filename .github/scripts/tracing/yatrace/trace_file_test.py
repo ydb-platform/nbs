@@ -1,15 +1,16 @@
+import json
+from pathlib import Path
+
 from scripts.tracing.yatrace import YaTraceFile
 from scripts.tracing.yatrace_test_support import (
     Interval,
     Ns,
-    Path,
     ResourceAttributes,
     YaEvent,
     YaTraceCollection,
     _attributes,
     _render_ya_trace,
     build_ya_trace,
-    json,
     span_status_code,
 )
 

@@ -1,6 +1,10 @@
+import json
+from pathlib import Path
+
+import pytest
+
 from scripts.tracing.yatrace_test_support import (
     Ns,
-    Path,
     YaEvlogRecord,
     _attributes,
     _failed_node,
@@ -11,9 +15,7 @@ from scripts.tracing.yatrace_test_support import (
     _statistics,
     _worker,
     _worker_detail,
-    json,
     load_ya_evlog,
-    pytest,
     span_duration_ns,
     span_status_code,
     yatrace_limits,

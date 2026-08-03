@@ -1,8 +1,11 @@
+from pathlib import Path
+
+import pytest
+
 from scripts.tracing.yatrace_test_support import (
     ClassifiedNode,
     Interval,
     Ns,
-    Path,
     TestChunk,
     YaCriticalPathEntry,
     YaEvlog,
@@ -15,7 +18,6 @@ from scripts.tracing.yatrace_test_support import (
     _write_jsonl,
     load_ya_evlog,
     make_span,
-    pytest,
     yatrace_limits,
 )
 
