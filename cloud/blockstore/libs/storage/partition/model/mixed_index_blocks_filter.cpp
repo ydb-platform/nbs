@@ -58,36 +58,27 @@ bool TMixedBlocksFilter::MayHaveBlocksInMixedIndex(
     return false;
 }
 
-void TMixedBlocksFilter::BlocksAddedToMixedIndex(
-    TBlockRange32 blockRange,
-    ui64 commitId)
+void TMixedBlocksFilter::BlocksAddedToMixedIndex(ui64 blockIndex, ui64 commitId)
 {
     STORAGE_VERIFY(
-        blockRange.End < BlockCount,
+        blockIndex < BlockCount,
         TWellKnownEntityTypes::TABLET,
         TabletId);
 
-    const ui64 endBlockIndex = static_cast<ui64>(blockRange.End) + 1;
-    for (ui64 rangeStart = blockRange.Start; rangeStart < endBlockIndex;) {
-        const ui32 compactionRangeIndex = rangeStart / BlocksPerRange;
-        const ui64 rangeEnd =
-            Min(endBlockIndex, (compactionRangeIndex + 1) * BlocksPerRange);
-        STORAGE_VERIFY(
-            compactionRangeIndex < CompactionRangeCommitIds.size(),
-            TWellKnownEntityTypes::TABLET,
-            TabletId);
+    const ui32 compactionRangeIndex = blockIndex / BlocksPerRange;
+    STORAGE_VERIFY(
+        compactionRangeIndex < CompactionRangeCommitIds.size(),
+        TWellKnownEntityTypes::TABLET,
+        TabletId);
 
-        const auto compactionRangeCommitId =
-            CompactionRangeCommitIds[compactionRangeIndex];
+    const auto compactionRangeCommitId =
+        CompactionRangeCommitIds[compactionRangeIndex];
 
-        // Blocks older than the compaction baseline are not visible at or
-        // after that baseline. Tracking them would only introduce false
-        // positives in MayHaveBlocksInMixedIndex.
-        if (!compactionRangeCommitId || *compactionRangeCommitId <= commitId) {
-            BlocksFilter.Set(rangeStart, rangeEnd);
-        }
-
-        rangeStart = rangeEnd;
+    // Blocks older than the compaction baseline are not visible at or
+    // after that baseline. Tracking them would only introduce false
+    // positives in MayHaveBlocksInMixedIndex.
+    if (!compactionRangeCommitId || *compactionRangeCommitId <= commitId) {
+        BlocksFilter.Set(blockIndex, blockIndex + 1);
     }
 
     for (auto& compaction: Compactions) {
@@ -96,23 +87,13 @@ void TMixedBlocksFilter::BlocksAddedToMixedIndex(
             break;
         }
 
-        for (ui64 rangeStart = blockRange.Start; rangeStart < endBlockIndex;) {
-            const ui32 compactionRangeIndex = rangeStart / BlocksPerRange;
-            const ui64 rangeEnd =
-                Min(endBlockIndex, (compactionRangeIndex + 1) * BlocksPerRange);
-            const bool hasRangeIndex = BinarySearch(
-                compaction.RangeIndices.begin(),
-                compaction.RangeIndices.end(),
-                compactionRangeIndex);
+        const bool hasRangeIndex = BinarySearch(
+            compaction.RangeIndices.begin(),
+            compaction.RangeIndices.end(),
+            compactionRangeIndex);
 
-            if (hasRangeIndex) {
-                for (ui64 i = rangeStart; i < rangeEnd; ++i) {
-                    compaction.MixedBlocksAddedDuringCompaction.insert(
-                        static_cast<ui32>(i));
-                }
-            }
-
-            rangeStart = rangeEnd;
+        if (hasRangeIndex) {
+            compaction.MixedBlocksAddedDuringCompaction.insert(blockIndex);
         }
     }
 }

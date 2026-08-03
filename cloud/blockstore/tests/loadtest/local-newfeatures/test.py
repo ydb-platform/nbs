@@ -184,7 +184,7 @@ def storage_config_with_ignoring_zeroed_compaction_enabled():
 
 def storage_config_with_mixed_index_blocks_filter_enabled():
     storage = ordinary_prod_storage_config()
-    storage.MixedIndexBlocksFilterEnabled = True
+    storage.MixedBlocksFilterEnabled = True
 
     return storage
 
@@ -196,7 +196,7 @@ def storage_config_with_new_features_enabled():
     storage.FreshChannelZeroRequestsEnabled = True
     storage.FreshBlocksWriterEnabled = True
     storage.IgnoringZeroedCompactionEnabled = True
-    storage.MixedIndexBlocksFilterEnabled = True
+    storage.MixedBlocksFilterEnabled = True
 
     return storage
 

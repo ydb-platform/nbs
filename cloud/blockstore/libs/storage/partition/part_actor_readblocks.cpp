@@ -1085,11 +1085,8 @@ bool TPartitionActor::PrepareReadBlocks(
 
     bool ready = true;
 
-    if (const auto* mixedIndexBlocksFilter = State->GetMixedIndexBlocksFilter();
-        !mixedIndexBlocksFilter ||
-        mixedIndexBlocksFilter->MayHaveBlocksInMixedIndex(
-            args.ReadRange,
-            commitId))
+    const auto* filter = State->GetMixedBlocksFilter();
+    if (!filter || filter->MayHaveBlocksInMixedIndex(args.ReadRange, commitId))
     {
         ready &= db.FindMixedBlocks(
             visitor,

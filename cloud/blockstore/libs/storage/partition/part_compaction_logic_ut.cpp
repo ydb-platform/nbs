@@ -59,7 +59,7 @@ TFreeSpaceConfig DefaultFreeSpaceConfig()
     return {0.25, 0.15};
 }
 
-TPartitionState MakeState(size_t blockCount = 2048)
+TPartitionState MakeState(size_t blockCount = 2048, bool mixedIndexBlocksFilterEnabled = false)
 {
     auto threadSafeState = std::make_shared<TPartitionThreadSafeState>();
     return TPartitionState(
@@ -82,7 +82,7 @@ TPartitionState MakeState(size_t blockCount = 2048)
         1,             // compactionRangeCountPerRun
         std::move(threadSafeState),
         TTestExecutor::TabletId,
-        false);        // mixedIndexBlocksFilterEnabled
+        mixedIndexBlocksFilterEnabled);   // mixedIndexBlocksFilterEnabled
 }
 
 std::shared_ptr<TStorageConfig> MakeStorageConfig(
@@ -162,7 +162,6 @@ TPrepareCompleteResult RunPrepareAndComplete(
                 TTestExecutor::TabletId,
                 true,    // readBlockMaskOnCompactionOptimizationEnabled
                 false,   // useRecreatedBlobMetasOnCleanup
-                false,   // mixedIndexBlocksFilterEnabled
                 ready,
                 db,
                 state,
@@ -205,7 +204,11 @@ Y_UNIT_TEST_SUITE(TApplyBlobsSkippingTest)
 {
     Y_UNIT_TEST(ShouldNotSkipMixedBlobs)
     {
-        auto state = MakeState();
+        auto state = MakeState(
+            2048,   // blockCount
+            true    // mixedIndexBlocksFilterEnabled
+        );
+
         auto config = MakeStorageConfig(
             0,   // diskPrefixLength
             0);  // targetCompactionBytesPerOp
@@ -241,7 +244,6 @@ Y_UNIT_TEST_SUITE(TApplyBlobsSkippingTest)
         ApplyBlobsSkipping(
             *config,
             2,
-            true,   // mixedIndexBlocksFilterEnabled
             state,
             args);
 
@@ -301,7 +303,6 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
                     TTestExecutor::TabletId,
                     false,   // readBlockMaskOnCompactionOptimizationEnabled
                     false,   // useRecreatedBlobMetasOnCleanup
-                    false,   // mixedIndexBlocksFilterEnabled
                     ready,
                     db,
                     state,
@@ -351,7 +352,6 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
                     TTestExecutor::TabletId,
                     true,    // readBlockMaskOnCompactionOptimizationEnabled
                     false,   // useRecreatedBlobMetasOnCleanup
-                    false,   // mixedIndexBlocksFilterEnabled
                     ready,
                     db,
                     state,
@@ -402,7 +402,6 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
                     TTestExecutor::TabletId,
                     true,    // readBlockMaskOnCompactionOptimizationEnabled
                     false,   // useRecreatedBlobMetasOnCleanup
-                    false,   // mixedIndexBlocksFilterEnabled
                     ready,
                     db,
                     state,
@@ -454,7 +453,6 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
                     TTestExecutor::TabletId,
                     false,   // readBlockMaskOnCompactionOptimizationEnabled
                     false,   // useRecreatedBlobMetasOnCleanup
-                    false,   // mixedIndexBlocksFilterEnabled
                     ready,
                     db,
                     state,
@@ -506,7 +504,6 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
                     TTestExecutor::TabletId,
                     true,
                     false,   // useRecreatedBlobMetasOnCleanup
-                    false,   // mixedIndexBlocksFilterEnabled
                     ready,
                     db,
                     state,
@@ -557,7 +554,6 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
                     TTestExecutor::TabletId,
                     true,    // readBlockMaskOnCompactionOptimizationEnabled
                     false,   // useRecreatedBlobMetasOnCleanup
-                    false,   // mixedIndexBlocksFilterEnabled
                     ready,
                     db,
                     state,
@@ -615,7 +611,6 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
                     TTestExecutor::TabletId,
                     false,   // readBlockMaskOnCompactionOptimizationEnabled
                     true,    // useRecreatedBlobMetasOnCleanup
-                    false,   // mixedIndexBlocksFilterEnabled
                     ready,
                     db,
                     state,

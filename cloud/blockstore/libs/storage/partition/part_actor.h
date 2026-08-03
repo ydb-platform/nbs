@@ -494,7 +494,7 @@ private:
     [[nodiscard]] bool IsVerifyRecreatedBlobMetasOnCleanupEnabled() const;
     [[nodiscard]] bool IsUseRecreatedBlobMetasOnCleanupEnabled() const;
     [[nodiscard]] bool IsDynamicGarbageCompactionThrottlingEnabled() const;
-    [[nodiscard]] bool IsMixedIndexBlocksFilterEnabled() const;
+    [[nodiscard]] bool IsMixedBlocksFilterEnabled() const;
 
     void ProcessStorageStatusFlags(
         const NActors::TActorContext& ctx,

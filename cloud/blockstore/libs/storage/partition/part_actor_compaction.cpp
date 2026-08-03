@@ -1998,14 +1998,12 @@ void TPartitionActor::HandleCompaction(
             PartitionConfig.GetFolderId(),
             PartitionConfig.GetDiskId());
 
-    if (auto* mixedIndexBlocksFilter = State->AccessMixedIndexBlocksFilter()) {
+    if (auto* filter = State->AccessMixedBlocksFilter()) {
         TVector<ui32> rangeIndices;
         for (auto& range: ranges) {
             rangeIndices.push_back(range.first);
         }
-        mixedIndexBlocksFilter->CompactionStarted(
-            std::move(rangeIndices),
-            commitId);
+        filter->CompactionStarted(std::move(rangeIndices), commitId);
     }
 
     auto tx = CreateTx<TCompaction>(
@@ -2048,11 +2046,11 @@ void TPartitionActor::HandleCompactionCompleted(
             FormatError(msg->GetError()).c_str());
     }
 
-    if (auto* mixedIndexBlocksFilter = State->AccessMixedIndexBlocksFilter()) {
+    if (auto* filter = State->AccessMixedBlocksFilter()) {
         if (HasError(msg->GetError())) {
-            mixedIndexBlocksFilter->CompactionFailed();
+            filter->CompactionFailed();
         } else {
-            mixedIndexBlocksFilter->CompactionFinished();
+            filter->CompactionFinished();
         }
     }
 
@@ -2165,7 +2163,6 @@ bool TPartitionActor::PrepareCompaction(
             TabletID(),
             IsReadBlockMaskOnCompactionOptimizationEnabled(),
             IsUseRecreatedBlobMetasOnCleanupEnabled(),
-            State->GetMixedIndexBlocksFilter() != nullptr,
             ready,
             db,
             *State,

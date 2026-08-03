@@ -645,7 +645,6 @@ TBlobPatchingResult ResolveBlobPatchingCandidate(
 void ApplyBlobsSkipping(
     const TStorageConfig& config,
     const ui32 maxSkippedBlobs,
-    const bool mixedIndexBlocksFilterEnabled,
     TPartitionState& state,
     TTxPartition::TRangeCompaction& args)
 {
@@ -662,7 +661,7 @@ void ApplyBlobsSkipping(
         state.GetBlockSize(),
         config);
 
-    if (mixedIndexBlocksFilterEnabled) {
+    if (state.GetMixedBlocksFilter()) {
         ApplyMixedBlocksSkipping(blobsToSkip, args);
     }
 
@@ -740,7 +739,6 @@ void PrepareRangeCompaction(
     const ui64 tabletId,
     const bool readBlockMaskOnCompactionOptimizationEnabled,
     const bool useRecreatedBlobMetasOnCleanup,
-    const bool mixedIndexBlocksFilterEnabled,
     bool& ready,
     TPartitionDatabase& db,
     TPartitionState& state,
@@ -771,7 +769,6 @@ void PrepareRangeCompaction(
         ApplyBlobsSkipping(
             config,
             maxSkippedBlobs,
-            mixedIndexBlocksFilterEnabled,
             state,
             args);
     }

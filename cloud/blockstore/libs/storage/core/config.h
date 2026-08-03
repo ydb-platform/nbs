@@ -447,7 +447,7 @@ public:
         const TString& folderId,
         const TString& diskId) const;
 
-    [[nodiscard]] bool IsMixedIndexBlocksFilterFeatureEnabled(
+    [[nodiscard]] bool IsMixedBlocksFilterFeatureEnabled(
         const TString& cloudId,
         const TString& folderId,
         const TString& diskId) const;
@@ -871,7 +871,7 @@ public:
 
     [[nodiscard]] bool GetAllowGentlePreemptionForRebindVolumesAction() const;
 
-    [[nodiscard]] bool GetMixedIndexBlocksFilterEnabled() const;
+    [[nodiscard]] bool GetMixedBlocksFilterEnabled() const;
 };
 
 ui64 GetAllocationUnit(

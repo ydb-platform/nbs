@@ -560,7 +560,7 @@ public:
 private:
     TProfilingAllocator MixedIndexCacheAllocator;
     TMixedIndexCache MixedIndexCache;
-    std::optional<TMixedBlocksFilter> MixedIndexBlocksFilter;
+    std::optional<TMixedBlocksFilter> MixedBlocksFilter;
 
 public:
     void WriteMixedBlock(TPartitionDatabase& db, TMixedBlock block);
@@ -584,14 +584,14 @@ public:
 
     ui64 GetMixedIndexCacheMemSize() const;
 
-    const TMixedBlocksFilter* GetMixedIndexBlocksFilter() const
+    const TMixedBlocksFilter* GetMixedBlocksFilter() const
     {
-        return MixedIndexBlocksFilter ? &*MixedIndexBlocksFilter : nullptr;
+        return MixedBlocksFilter ? &*MixedBlocksFilter : nullptr;
     }
 
-    TMixedBlocksFilter* AccessMixedIndexBlocksFilter()
+    TMixedBlocksFilter* AccessMixedBlocksFilter()
     {
-        return MixedIndexBlocksFilter ? &*MixedIndexBlocksFilter : nullptr;
+        return MixedBlocksFilter ? &*MixedBlocksFilter : nullptr;
     }
 
     //

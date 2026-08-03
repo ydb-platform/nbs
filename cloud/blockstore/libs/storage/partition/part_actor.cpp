@@ -1086,10 +1086,10 @@ bool TPartitionActor::IsDynamicGarbageCompactionThrottlingEnabled() const
                PartitionConfig.GetDiskId());
 }
 
-bool TPartitionActor::IsMixedIndexBlocksFilterEnabled() const
+bool TPartitionActor::IsMixedBlocksFilterEnabled() const
 {
-    return Config->GetMixedIndexBlocksFilterEnabled() ||
-           Config->IsMixedIndexBlocksFilterFeatureEnabled(
+    return Config->GetMixedBlocksFilterEnabled() ||
+           Config->IsMixedBlocksFilterFeatureEnabled(
                PartitionConfig.GetCloudId(),
                PartitionConfig.GetFolderId(),
                PartitionConfig.GetDiskId());

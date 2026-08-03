@@ -99,7 +99,7 @@ TPartitionState::TPartitionState(
     , CleanupScoreHistory(cleanupScoreHistorySize)
 {
     if (mixedIndexBlocksFilterEnabled) {
-        MixedIndexBlocksFilter.emplace(
+        MixedBlocksFilter.emplace(
             tabletId,
             GetMaxBlocksInBlob(),
             Config.GetBlocksCount());
@@ -428,9 +428,9 @@ void TPartitionState::WriteMixedBlock(
     const ui32 rangeIdx = CompactionMap.GetRangeIndex(block.BlockIndex);
     MixedIndexCache.InsertBlockIfHot(rangeIdx, block);
 
-    if (MixedIndexBlocksFilter) {
-        MixedIndexBlocksFilter->BlocksAddedToMixedIndex(
-            TBlockRange32::WithLength(block.BlockIndex, 1),
+    if (MixedBlocksFilter) {
+        MixedBlocksFilter->BlocksAddedToMixedIndex(
+            block.BlockIndex,
             block.CommitId);
     }
 
@@ -456,9 +456,9 @@ void TPartitionState::WriteMixedBlocks(
              blobOffset,
              compactionRangeCount});
 
-        if (MixedIndexBlocksFilter) {
-            MixedIndexBlocksFilter->BlocksAddedToMixedIndex(
-                TBlockRange32::WithLength(blockIndex, 1),
+        if (MixedBlocksFilter) {
+            MixedBlocksFilter->BlocksAddedToMixedIndex(
+                blockIndex,
                 commitId);
         }
 
