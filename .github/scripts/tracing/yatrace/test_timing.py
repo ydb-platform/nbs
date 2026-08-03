@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 from ..otlp import Interval, Ns
 from .event import YaEvent
@@ -89,12 +88,3 @@ class YaTestTiming:
     @property
     def status(self) -> tuple[str, int]:
         return ("incomplete", 2) if self.incomplete else self.event.status
-
-    def attributes(self, test_class: str, subtest: str) -> dict[str, Any]:
-        return self.event.test_attributes(
-            test_class,
-            subtest,
-            inferred=self.inferred,
-            timing_source=self.source,
-            incomplete=self.incomplete,
-        )

@@ -1,3 +1,4 @@
+from scripts.tracing.yatrace.event_export import event_log_attributes
 from scripts.tracing.yatrace_test_support import (
     Ns,
     Path,
@@ -99,9 +100,15 @@ def test_log_attributes_keep_only_safe_build_root_relative_paths() -> None:
         },
     )
 
-    assert event.log_attributes("ya.test") == {
+    assert event_log_attributes(event, "ya.test") == {
         "ya.test.log.stdout.path": "suite/output.log"
     }
+
+
+def test_ya_event_model_has_no_otlp_attribute_builders() -> None:
+    assert {"error_attributes", "log_attributes", "test_attributes"}.isdisjoint(
+        vars(YaEvent)
+    )
 
 
 def test_raw_test_class_names_do_not_collapse_into_one_test(tmp_path: Path) -> None:

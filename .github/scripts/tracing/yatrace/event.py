@@ -7,7 +7,6 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Mapping, Sequence
 
 from ..otlp import Ns
-from .metrics import _metric_attributes, _metric_name
 
 PASS_STATUSES = {"good", "pass", "passed", "success", "xfail", "xpass"}
 ERROR_STATUSES = {
@@ -99,9 +98,21 @@ class YaEvent:
         return (
             test_class,
             subtest,
-            str(self.value.get("type") or ""),
-            str(self.value.get("path") or ""),
+            self.test_type,
+            self.test_path,
         )
+
+    @property
+    def test_type(self) -> str:
+        return str(self.value.get("type") or "")
+
+    @property
+    def test_path(self) -> str:
+        return str(self.value.get("path") or "")
+
+    @property
+    def metrics(self) -> Any:
+        return self.value.get("metrics")
 
     @property
     def status(self) -> tuple[str, int]:
@@ -133,16 +144,6 @@ class YaEvent:
             for status, message in self.errors
             if status in ERROR_STATUSES
         ]
-
-    def error_attributes(self, prefix: str) -> dict[str, Any]:
-        errors = self.errors
-        if not errors:
-            return {}
-        return {
-            f"{prefix}.error.count": len(errors),
-            f"{prefix}.error.statuses": [status for status, _ in errors],
-            f"{prefix}.error.messages": [message for _, message in errors],
-        }
 
     @classmethod
     def merged(cls, events: Sequence[YaEvent]) -> YaEvent:
@@ -188,44 +189,6 @@ class YaEvent:
             order=ordered[-1].order,
         )
 
-    def test_attributes(
-        self,
-        test_class: str,
-        subtest: str,
-        *,
-        inferred: bool,
-        timing_source: str = "",
-        incomplete: bool = False,
-    ) -> dict[str, Any]:
-        status, _ = self.status
-        attributes: dict[str, Any] = {
-            "test.framework": "ya",
-            "test.suite": test_class,
-            "test.name": subtest,
-            "test.status": status,
-        }
-        test_type = str(self.value.get("type") or "")
-        if test_type:
-            attributes["test.type"] = test_type
-        test_path = str(self.value.get("path") or "")
-        if test_path:
-            attributes["test.path"] = test_path
-        if inferred:
-            attributes["test.timing.inferred"] = True
-        if timing_source:
-            attributes["test.timing.source"] = timing_source
-        if incomplete:
-            attributes["test.incomplete"] = True
-        attributes.update(
-            _metric_attributes(
-                self.value.get("metrics"),
-                prefix="ya.test.metric",
-            )
-        )
-        attributes.update(self.error_attributes("ya.test"))
-        attributes.update(self.log_attributes("ya.test"))
-        return attributes
-
     @property
     def log_paths(self) -> dict[str, str]:
         logs = self.value.get("logs")
@@ -242,7 +205,7 @@ class YaEvent:
         }
 
     @staticmethod
-    def _relative_build_path(path: str) -> str | None:
+    def relative_build_path(path: str) -> str | None:
         prefix = "$(BUILD_ROOT)/"
         if "\x00" in path or not path.startswith(prefix):
             return None
@@ -257,24 +220,9 @@ class YaEvent:
         normalized = parsed.as_posix()
         return normalized if normalized not in {"", "."} else None
 
-    def log_attributes(self, prefix: str) -> dict[str, str]:
-        """Return portable build-root-relative paths, never runner-local URLs."""
-        attributes: dict[str, str] = {}
-        for name, path in list(self.log_paths.items())[:32]:
-            relative = self._relative_build_path(path)
-            if relative is None:
-                continue
-            if name == "logsdir":
-                attributes[f"{prefix}.logs_directory.path"] = relative
-                continue
-            normalized = _metric_name(name)
-            if normalized:
-                attributes[f"{prefix}.log.{normalized}.path"] = relative
-        return attributes
-
     @property
     def logs_directory(self) -> str | None:
         logs_directory = self.log_paths.get("logsdir")
         if logs_directory is None:
             return None
-        return self._relative_build_path(logs_directory)
+        return self.relative_build_path(logs_directory)

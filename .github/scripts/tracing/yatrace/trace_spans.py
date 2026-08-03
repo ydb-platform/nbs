@@ -17,6 +17,11 @@ from ..otlp import (
     update_span_attributes,
 )
 from .event import YaEvent
+from .event_export import (
+    event_error_attributes,
+    event_log_attributes,
+    test_event_attributes,
+)
 from .metrics import _metric_attributes
 from .test_timing import YaTestTiming
 
@@ -162,7 +167,14 @@ class YaTraceSpanBuilder:
                         name=f"{test_class}::{subtest}",
                         start_ns=timing.interval.start,
                         end_ns=timing.interval.end,
-                        attributes=timing.attributes(test_class, subtest),
+                        attributes=test_event_attributes(
+                            timing.event,
+                            test_class,
+                            subtest,
+                            inferred=timing.inferred,
+                            timing_source=timing.source,
+                            incomplete=timing.incomplete,
+                        ),
                         status_code=status_code,
                         status_message=status if status_code == 2 else "",
                     )
@@ -198,9 +210,9 @@ class YaTraceSpanBuilder:
         attributes: dict[str, Any] = {
             "test.suite": source.suite,
             "ya.test_results.folder": source.result_folder,
-            **suite_event.error_attributes("ya.suite"),
+            **event_error_attributes(suite_event, "ya.suite"),
             **_metric_attributes(
-                suite_event.value.get("metrics"),
+                suite_event.metrics,
                 prefix="ya.suite.metric",
             ),
         }
@@ -268,8 +280,8 @@ class YaTraceSpanBuilder:
             if chunk_event is not None and chunk_event.chunk_filename:
                 attributes["ya.chunk.filename"] = chunk_event.chunk_filename
             if chunk_event is not None:
-                attributes.update(chunk_event.error_attributes("ya.chunk"))
-                attributes.update(chunk_event.log_attributes("ya.chunk"))
+                attributes.update(event_error_attributes(chunk_event, "ya.chunk"))
+                attributes.update(event_log_attributes(chunk_event, "ya.chunk"))
             attributes.update(
                 _metric_attributes(
                     chunk_value.get("metrics"),
