@@ -67,7 +67,7 @@ class Trace:
         *,
         resource: ResourceAttributes | Resource,
         scope_name: str,
-        scope_version: str = "1",
+        scope_version: str = "",
     ) -> None:
         normalize_span_times(span)
         validate_span(span)
@@ -167,7 +167,7 @@ class SpanWriter:
         span: Span,
         *,
         scope_name: str,
-        scope_version: str = "1",
+        scope_version: str = "",
     ) -> Span:
         self.trace.add_span(
             span,

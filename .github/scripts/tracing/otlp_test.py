@@ -117,6 +117,29 @@ def test_trace_owns_resource_and_scope_hierarchy() -> None:
     assert resource_spans.scope_spans[0].spans[0].name == "operation"
 
 
+def test_trace_default_scope_matches_an_unversioned_imported_scope() -> None:
+    trace = Trace()
+    resource = ResourceAttributes({"service.name": "test"})
+    for index, scope_version in enumerate(("", None), start=1):
+        kwargs = {"scope_version": scope_version} if scope_version is not None else {}
+        trace.add_span(
+            make_span(
+                trace_id=stable_trace_id("trace"),
+                span_id=stable_span_id("span", index),
+                name=f"operation {index}",
+                start_ns=1_000,
+                end_ns=2_000,
+            ),
+            resource=resource,
+            scope_name="tests",
+            **kwargs,
+        )
+
+    scope_spans = trace.data.resource_spans[0].scope_spans
+    assert len(scope_spans) == 1
+    assert scope_spans[0].scope.version == ""
+
+
 def test_trace_rejects_duplicate_span_ids_within_one_trace() -> None:
     trace = Trace()
     writer = trace.writer(ResourceAttributes())
@@ -163,6 +186,8 @@ def test_resource_attributes_clean_and_extend_github_metadata() -> None:
             "GITHUB_SERVER_URL": "https://github.example",
             "GITHUB_REPOSITORY": "example/repo",
             "GITHUB_RUN_ID": "123",
+            "GITHUB_RUN_NUMBER": "45",
+            "GITHUB_RUN_ATTEMPT": "2",
             "GITHUB_SHA": "abc123",
         }
     ).with_attributes(
@@ -174,6 +199,9 @@ def test_resource_attributes_clean_and_extend_github_metadata() -> None:
 
     assert attributes["service.name"] == "test"
     assert "empty" not in attributes
+    assert attributes["github.run.id"] == 123
+    assert attributes["github.run.number"] == 45
+    assert attributes["github.run.attempt"] == 2
     assert attributes["github.run.url"] == (
         "https://github.example/example/repo/actions/runs/123"
     )

@@ -45,6 +45,13 @@ def _without_empty(values: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _optional_int(value: Any) -> int | None:
+    try:
+        return int(value) if value not in (None, "") else None
+    except (TypeError, ValueError):
+        return None
+
+
 class ResourceAttributes(dict[str, Any]):
     """Normalized OTLP resource attributes with common construction helpers."""
 
@@ -75,9 +82,13 @@ class ResourceAttributes(dict[str, Any]):
                 "github.workflow": environment.get("GITHUB_WORKFLOW", ""),
                 "github.workflow.ref": environment.get("GITHUB_WORKFLOW_REF", ""),
                 "github.job": environment.get("GITHUB_JOB", ""),
-                "github.run.id": environment.get("GITHUB_RUN_ID", ""),
-                "github.run.number": environment.get("GITHUB_RUN_NUMBER", ""),
-                "github.run.attempt": environment.get("GITHUB_RUN_ATTEMPT", ""),
+                "github.run.id": _optional_int(environment.get("GITHUB_RUN_ID")),
+                "github.run.number": _optional_int(
+                    environment.get("GITHUB_RUN_NUMBER")
+                ),
+                "github.run.attempt": _optional_int(
+                    environment.get("GITHUB_RUN_ATTEMPT")
+                ),
                 "github.event.name": environment.get("GITHUB_EVENT_NAME", ""),
                 "github.actor": environment.get("GITHUB_ACTOR", ""),
                 "github.sha": environment.get("GITHUB_SHA", ""),
@@ -101,9 +112,9 @@ class ResourceAttributes(dict[str, Any]):
                 or environment.get("GITHUB_REPOSITORY", ""),
                 "github.workflow": workflow_run.get("name", ""),
                 "github.workflow.path": workflow_run.get("path", ""),
-                "github.run.id": workflow_run.get("id", ""),
-                "github.run.number": workflow_run.get("run_number", ""),
-                "github.run.attempt": workflow_run.get("run_attempt", 1),
+                "github.run.id": _optional_int(workflow_run.get("id")),
+                "github.run.number": _optional_int(workflow_run.get("run_number")),
+                "github.run.attempt": _optional_int(workflow_run.get("run_attempt", 1)),
                 "github.run.url": workflow_run.get("html_url", ""),
                 "github.event.name": workflow_run.get("event", ""),
                 "github.actor": actor.get("login", ""),
@@ -111,9 +122,10 @@ class ResourceAttributes(dict[str, Any]):
                 "github.sha": workflow_run.get("head_sha", ""),
                 "github.ref.name": workflow_run.get("head_branch", ""),
                 "github.pull_request.number": [
-                    item.get("number")
+                    number
                     for item in pull_requests
-                    if isinstance(item, Mapping) and item.get("number") is not None
+                    if isinstance(item, Mapping)
+                    and (number := _optional_int(item.get("number"))) is not None
                 ],
                 "ci.conclusion": workflow_run.get("conclusion", ""),
                 "ci.display_title": workflow_run.get("display_title", ""),
