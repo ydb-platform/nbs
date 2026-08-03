@@ -55,16 +55,33 @@ class YaTraceFile:
         for event in test_events:
             grouped_tests[event.chunk_identity].append(event)
 
+        assigned: dict[tuple[int, int, str] | None, list[YaEvent]] = defaultdict(list)
+        unassigned: list[YaEvent] = []
+        for test_identity, events in grouped_tests.items():
+            if test_identity in grouped_chunks:
+                assigned[test_identity].extend(events)
+                continue
+
+            candidates = (
+                list(grouped_chunks)
+                if test_identity is None
+                else [
+                    identity
+                    for identity in grouped_chunks
+                    if identity is not None and identity[:2] == test_identity[:2]
+                ]
+            )
+            if len(candidates) == 1:
+                assigned[candidates[0]].extend(events)
+            else:
+                unassigned.extend(events)
+
         records: list[tuple[YaEvent | None, list[YaEvent]]] = []
         for chunk_identity, snapshots in grouped_chunks.items():
-            chunk_event = YaEvent.merged(snapshots)
-            matching = grouped_tests.pop(chunk_identity, [])
-            if len(grouped_chunks) == 1 and chunk_identity is not None:
-                matching.extend(grouped_tests.pop(None, []))
-                matching.sort(key=lambda event: event.order)
-            records.append((chunk_event, matching))
+            matching = assigned[chunk_identity]
+            matching.sort(key=lambda event: event.order)
+            records.append((YaEvent.merged(snapshots), matching))
 
-        unassigned = [event for events in grouped_tests.values() for event in events]
         if unassigned:
             unassigned.sort(key=lambda event: event.order)
             records.append((None, unassigned))

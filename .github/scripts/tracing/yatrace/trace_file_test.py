@@ -204,6 +204,43 @@ def test_chunk_filename_is_part_of_chunk_identity(tmp_path: Path) -> None:
     } == chunk_ids
 
 
+def test_test_without_filename_matches_unique_chunk_by_index(tmp_path: Path) -> None:
+    trace = _render_ya_trace(
+        tmp_path,
+        [
+            {
+                "name": "subtest-finished",
+                "timestamp": 3,
+                "value": {
+                    "class": "Suite",
+                    "subtest": "test",
+                    "status": "good",
+                    "time": 1,
+                    "chunk_index": 0,
+                    "nchunks": 1,
+                },
+            },
+            {
+                "name": "chunk-event",
+                "timestamp": 4,
+                "value": {
+                    "chunk_index": 0,
+                    "nchunks": 1,
+                    "chunk_filename": "chunk.cpp",
+                },
+            },
+        ],
+        root_end_s=10,
+    )
+
+    chunks = list(trace.spans("ya.chunk"))
+    tests = list(trace.spans("ya.test"))
+    assert len(chunks) == 1
+    assert len(tests) == 1
+    assert _attributes(chunks[0])["ya.chunk.filename"] == "chunk.cpp"
+    assert tests[0].parent_span_id == chunks[0].span_id
+
+
 def test_test_identity_includes_type_and_path(tmp_path: Path) -> None:
     trace = _render_ya_trace(
         tmp_path,
