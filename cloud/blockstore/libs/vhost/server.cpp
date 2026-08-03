@@ -14,6 +14,7 @@
 
 #include <util/generic/hash.h>
 #include <util/generic/map.h>
+#include <util/generic/utility.h>
 #include <util/generic/vector.h>
 #include <util/string/builder.h>
 #include <util/system/mutex.h>
@@ -166,11 +167,26 @@ TFuture<NProto::TError> TServer::StartEndpoint(
 
     // Number of virtqueues exposed to the guest.
     const ui32 vhostQueuesCount = Max<ui32>(1, options.VhostQueuesCount);
-    // Number of executors that will serve the endpoint. libvhost spreads the
-    // guest's virtqueues over their request queues, so the endpoint is not
-    // limited by a single thread anymore. There is no point in taking more
-    // executors than there are virtqueues (and libvhost forbids it).
-    const ui32 executorsCount = Min<ui32>(vhostQueuesCount, Executors.size());
+    // Upper bound for the number of executors serving the endpoint. libvhost
+    // spreads the guest's virtqueues over the request queues of these
+    // executors, so there is no point in taking more executors than there are
+    // virtqueues (and libvhost forbids it). The thread pool size is the other
+    // hard limit.
+    const ui32 maxExecutorsCount =
+        Min<ui32>(vhostQueuesCount, Executors.size());
+    // Number of executors that will actually serve the endpoint. The requested
+    // value is clamped instead of being rejected: it comes from the server
+    // config and a too large value should not break endpoint startup.
+    const ui32 executorsCount =
+        std::clamp<ui32>(options.ThreadCount, 1, maxExecutorsCount);
+
+    if (options.ThreadCount > maxExecutorsCount) {
+        STORAGE_WARN("Endpoint " << socketPath.Quote()
+            << " requested " << options.ThreadCount << " threads"
+            << ", but only " << maxExecutorsCount << " can be used"
+            << " (vhost queues: " << vhostQueuesCount
+            << ", thread pool size: " << Executors.size() << ")");
+    }
 
     // Single device handler shared by all executors of this endpoint. The
     // whole storage-wrapper chain is built once per endpoint.
@@ -211,7 +227,8 @@ TFuture<NProto::TError> TServer::StartEndpoint(
 
     STORAGE_INFO("Start endpoint " << socketPath.Quote()
         << " with " << vhostQueuesCount << " vhost queues"
-        << " served by " << executorsCount << " executors");
+        << " served by " << executorsCount << " executors"
+        << " (" << options.ThreadCount << " requested)");
 
     auto vhostDevice = VhostQueueFactory->CreateDevice(
         socketPath,

@@ -54,11 +54,11 @@ using TRequestPtr = TIntrusivePtr<TRequest>;
 // keeps track of the requests in flight.
 //
 // The endpoint exposes VhostQueuesCount virtqueues to the guest. These are
-// spread over the executors assigned to the endpoint (their number is capped
-// by the executor pool size), so requests of a single endpoint are processed
-// by several threads simultaneously. All of them share one IDeviceHandler and
-// therefore the same storage-wrapper chain, which is safe to call from
-// multiple threads at once.
+// spread over the executors assigned to the endpoint (their number is
+// requested via TStorageOptions::ThreadCount), so requests of a single
+// endpoint may be processed by several threads simultaneously. All of them
+// share one IDeviceHandler and therefore the same storage-wrapper chain, which
+// is safe to call from multiple threads at once.
 class TEndpoint final
     : public IRequestProcessor
     , public std::enable_shared_from_this<TEndpoint>

@@ -148,6 +148,18 @@ NVhost::TServerConfig CreateVhostServerConfig(const TServerAppConfig& config)
     };
 }
 
+TVhostEndpointThreadCounts CreateVhostEndpointThreadCounts(
+    const TServerAppConfig& config)
+{
+    return TVhostEndpointThreadCounts{
+        .SSD = config.GetVhostEndpointThreadCountSSD(),
+        .HDD = config.GetVhostEndpointThreadCountHDD(),
+        .NonReplicated = config.GetVhostEndpointThreadCountNonReplicated(),
+        .Mirror2 = config.GetVhostEndpointThreadCountMirror2(),
+        .Mirror3 = config.GetVhostEndpointThreadCountMirror3(),
+    };
+}
+
 NBD::TServerConfig CreateNbdServerConfig(const TServerAppConfig& config)
 {
     return NBD::TServerConfig {
@@ -510,6 +522,7 @@ void TBootstrapBase::Init()
         auto vhostEndpointListener = CreateVhostEndpointListener(
             VhostServer,
             checksumFlags,
+            CreateVhostEndpointThreadCounts(*Configs->ServerConfig),
             Configs->ServerConfig->GetVhostDiscardEnabled() ||
                 Configs->ServerConfig->GetVhostDiscardOnlyEnabled(),
             Configs->ServerConfig->GetVhostDiscardEnabled() ||

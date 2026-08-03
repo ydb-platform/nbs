@@ -151,6 +151,11 @@ public:
     bool GetEnableRequestSplitter() const;
     ui64 GetExternalVhostServerThreadPoolSize() const;
     TDuration GetRefreshCertsPeriod() const;
+    ui32 GetVhostEndpointThreadCountSSD() const;
+    ui32 GetVhostEndpointThreadCountHDD() const;
+    ui32 GetVhostEndpointThreadCountNonReplicated() const;
+    ui32 GetVhostEndpointThreadCountMirror2() const;
+    ui32 GetVhostEndpointThreadCountMirror3() const;
 
     void Dump(IOutputStream& out) const override;
     void DumpHtml(IOutputStream& out) const override;
