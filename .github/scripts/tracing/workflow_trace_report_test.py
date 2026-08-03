@@ -7,6 +7,7 @@ import pytest
 from github.WorkflowJob import WorkflowJob
 
 from scripts.tracing.otlp import (
+    Ns,
     ResourceAttributes,
     Span,
     Trace,
@@ -15,6 +16,7 @@ from scripts.tracing.otlp import (
     span_duration_ns,
 )
 from scripts.tracing.workflow_trace import (
+    _bounded_times,
     _parent_job,
     build_workflow_trace,
     timestamp_ns,
@@ -50,6 +52,10 @@ def attributes(span: Span) -> dict:
 )
 def test_github_timestamp_conversion_preserves_microseconds(value: str) -> None:
     assert timestamp_ns(value) == 1_767_225_600_000_001_000
+
+
+def test_bounded_times_preserve_zero_timestamps() -> None:
+    assert _bounded_times(Ns(0), Ns(0), Ns(10), Ns(20)) == (Ns(0), Ns(0))
 
 
 def test_workflow_trace_adds_queue_job_step_and_imported_ya_spans() -> None:

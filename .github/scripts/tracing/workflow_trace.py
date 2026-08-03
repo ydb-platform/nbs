@@ -59,8 +59,8 @@ def _bounded_times(
     default_start: Ns,
     default_end: Ns,
 ) -> tuple[Ns, Ns]:
-    start_ns = start or Ns(default_start)
-    end_ns = end or Ns(default_end)
+    start_ns = Ns(default_start if start is None else start)
+    end_ns = Ns(default_end if end is None else end)
     return start_ns, Ns(max(start_ns, end_ns))
 
 
