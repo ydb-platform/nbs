@@ -157,6 +157,57 @@ def test_incremental_snapshots_merge_chunks_and_tests(
     assert span_status_code(tests[0]) == 1
 
 
+def test_repeated_test_executions_create_separate_spans(tmp_path: Path) -> None:
+    trace = _render_ya_trace(
+        tmp_path,
+        [
+            {
+                "name": "subtest-started",
+                "timestamp": 2,
+                "value": {"class": "Suite", "subtest": "test"},
+            },
+            {
+                "name": "subtest-finished",
+                "timestamp": 3,
+                "value": {
+                    "class": "Suite",
+                    "subtest": "test",
+                    "status": "failed",
+                    "time": 1,
+                },
+            },
+            {
+                "name": "subtest-started",
+                "timestamp": 8,
+                "value": {"class": "Suite", "subtest": "test"},
+            },
+            {
+                "name": "subtest-finished",
+                "timestamp": 9,
+                "value": {
+                    "class": "Suite",
+                    "subtest": "test",
+                    "status": "good",
+                    "time": 1,
+                },
+            },
+            {
+                "name": "chunk-event",
+                "timestamp": 10,
+                "value": {"chunk_index": 0, "nchunks": 1},
+            },
+        ],
+        root_end_s=10,
+    )
+
+    tests = list(trace.spans("ya.test"))
+    assert [(test.start_time_unix_nano, test.end_time_unix_nano) for test in tests] == [
+        (2_000_000_000, 3_000_000_000),
+        (8_000_000_000, 9_000_000_000),
+    ]
+    assert [span_status_code(test) for test in tests] == [2, 1]
+
+
 def test_chunk_filename_is_part_of_chunk_identity(tmp_path: Path) -> None:
     events = []
     for index, filename in enumerate(("first.cpp", "second.cpp"), 1):

@@ -29,6 +29,19 @@ class YaTraceSpanBuilder:
     source: YaTraceFile
 
     @staticmethod
+    def _test_attempts(events: Iterable[YaEvent]) -> list[list[YaEvent]]:
+        attempts: list[list[YaEvent]] = []
+        current: list[YaEvent] = []
+        for event in sorted(events, key=lambda item: item.order):
+            if event.name == "subtest-started" and current:
+                attempts.append(current)
+                current = []
+            current.append(event)
+        if current:
+            attempts.append(current)
+        return attempts
+
+    @staticmethod
     def _stage_spans(
         trace_id: bytes,
         chunk_span_id: bytes,
@@ -101,61 +114,59 @@ class YaTraceSpanBuilder:
             test_type,
             test_path,
         ), test_events in sorted(grouped.items()):
-            starts = sorted(
-                (event for event in test_events if event.name == "subtest-started"),
-                key=lambda event: event.order,
-            )
-            finishes = [
-                event for event in test_events if event.name == "subtest-finished"
-            ]
-            finishes.sort(key=lambda event: event.order)
-            start = starts[0] if starts else None
-            finish = None
-            for candidate in finishes:
-                if (
-                    finish is None
-                    or finish.status[0] in {"crashed", "deselected", "not_launched"}
-                    or candidate.status[0] != "deselected"
-                ):
-                    finish = candidate
-            if finish is not None and finish.status[0] in {
-                "deselected",
-                "not_launched",
-            }:
-                start = None
-
-            timing = YaTestTiming.resolve(
-                start,
-                finish,
-                chunk=chunk,
-                inferred_start=inferred_test_start_ns,
-                only_test=len(grouped) == 1,
-            )
-            if timing is None:
-                continue
-            status, status_code = timing.status
-
-            result.append(
-                make_span(
-                    trace_id=trace_id,
-                    span_id=stable_span_id(
-                        trace_id,
-                        identity,
-                        test_class,
-                        subtest,
-                        test_type,
-                        test_path,
-                        timing.order,
-                    ),
-                    parent_span_id=chunk_span_id,
-                    name=f"{test_class}::{subtest}",
-                    start_ns=timing.interval.start,
-                    end_ns=timing.interval.end,
-                    attributes=timing.attributes(test_class, subtest),
-                    status_code=status_code,
-                    status_message=status if status_code == 2 else "",
+            for attempt in YaTraceSpanBuilder._test_attempts(test_events):
+                start = next(
+                    (event for event in attempt if event.name == "subtest-started"),
+                    None,
                 )
-            )
+                finish = None
+                for candidate in (
+                    event for event in attempt if event.name == "subtest-finished"
+                ):
+                    if (
+                        finish is None
+                        or finish.status[0] in {"crashed", "deselected", "not_launched"}
+                        or candidate.status[0] != "deselected"
+                    ):
+                        finish = candidate
+                if finish is not None and finish.status[0] in {
+                    "deselected",
+                    "not_launched",
+                }:
+                    start = None
+
+                timing = YaTestTiming.resolve(
+                    start,
+                    finish,
+                    chunk=chunk,
+                    inferred_start=inferred_test_start_ns,
+                    only_test=len(grouped) == 1,
+                )
+                if timing is None:
+                    continue
+                status, status_code = timing.status
+
+                result.append(
+                    make_span(
+                        trace_id=trace_id,
+                        span_id=stable_span_id(
+                            trace_id,
+                            identity,
+                            test_class,
+                            subtest,
+                            test_type,
+                            test_path,
+                            timing.order,
+                        ),
+                        parent_span_id=chunk_span_id,
+                        name=f"{test_class}::{subtest}",
+                        start_ns=timing.interval.start,
+                        end_ns=timing.interval.end,
+                        attributes=timing.attributes(test_class, subtest),
+                        status_code=status_code,
+                        status_message=status if status_code == 2 else "",
+                    )
+                )
         return result
 
     def _suite_span(
