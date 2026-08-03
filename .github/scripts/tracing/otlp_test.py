@@ -266,6 +266,28 @@ def test_trace_allows_same_span_id_in_different_traces() -> None:
     trace.validate()
 
 
+def test_trace_rejects_cyclic_parent_relationships() -> None:
+    trace = Trace()
+    writer = trace.writer(ResourceAttributes())
+    trace_id = stable_trace_id("trace")
+    span_ids = [stable_span_id("span", index) for index in range(2)]
+    for index, span_id in enumerate(span_ids):
+        writer.add(
+            make_span(
+                trace_id=trace_id,
+                span_id=span_id,
+                parent_span_id=span_ids[1 - index],
+                name=f"operation {index}",
+                start_ns=1_000,
+                end_ns=2_000,
+            ),
+            scope_name="tests",
+        )
+
+    with pytest.raises(ValueError, match="Cyclic OTLP parent relationship"):
+        trace.validate()
+
+
 def test_resource_attributes_clean_and_extend_github_metadata() -> None:
     attributes = ResourceAttributes.from_github(
         environment={

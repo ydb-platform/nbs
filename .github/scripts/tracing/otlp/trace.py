@@ -168,6 +168,7 @@ class Trace:
 
     def validate(self) -> None:
         seen: dict[tuple[bytes, bytes], str] = {}
+        parents: dict[tuple[bytes, bytes], tuple[bytes, bytes]] = {}
         for span in self.spans():
             validate_span(span)
             identity = bytes(span.trace_id), bytes(span.span_id)
@@ -178,6 +179,22 @@ class Trace:
                     f"{span.trace_id.hex()} for {previous!r} and {span.name!r}"
                 )
             seen[identity] = str(span.name or "")
+            if span.parent_span_id:
+                parents[identity] = bytes(span.trace_id), bytes(span.parent_span_id)
+
+        validated: set[tuple[bytes, bytes]] = set()
+        for identity in parents:
+            chain: set[tuple[bytes, bytes]] = set()
+            current = identity
+            while current in parents and current not in validated:
+                if current in chain:
+                    raise ValueError(
+                        "Cyclic OTLP parent relationship at span "
+                        f"{current[1].hex()} in trace {current[0].hex()}"
+                    )
+                chain.add(current)
+                current = parents[current]
+            validated.update(chain)
 
     def __iter__(self) -> Iterator[Span]:
         return self.spans()
