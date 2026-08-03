@@ -644,6 +644,11 @@ private:
         const NActors::TActorContext& ctx,
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);
+    void RenderHttpInfo_OverviewTab(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        IOutputStream& out);
+    void RenderHttpInfo_QuotasTab(IOutputStream& out);
     void HandleHttpInfo_ForceOperation(
         const NActors::TActorContext& ctx,
         const TCgiParameters& params,

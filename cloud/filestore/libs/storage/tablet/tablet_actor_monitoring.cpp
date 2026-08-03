@@ -1049,13 +1049,11 @@ void TIndexTabletActor::HandleHttpInfo(
         std::make_unique<NMon::TEvRemoteHttpInfoRes>(std::move(out.Str())));
 }
 
-void TIndexTabletActor::HandleHttpInfo_Default(
+void TIndexTabletActor::RenderHttpInfo_OverviewTab(
     const NActors::TActorContext& ctx,
     const TCgiParameters& params,
-    TRequestInfoPtr requestInfo)
+    IOutputStream& out)
 {
-    TStringStream out;
-
     HTML(out) {
         DumpDefaultHeader(out, TabletID(), SelfId().NodeId());
 
@@ -1335,6 +1333,84 @@ void TIndexTabletActor::HandleHttpInfo_Default(
         DumpSessionHistory(out, GetSessionHistoryList());
 
         GenerateActionsJS(out);
+    }
+}
+
+void TIndexTabletActor::RenderHttpInfo_QuotasTab(IOutputStream& out)
+{
+    HTML(out) {
+        const auto quotas = GetQuotas();
+        TAG(TH3) { out << "Quotas"; }
+        if (quotas.size()) {
+            TABLE_SORTABLE_CLASS("table table-bordered") {
+                TABLEHEAD() {
+                    TABLER() {
+                        TABLEH() { out << "QuotaId"; }
+                        TABLEH() { out << "MaxBytes"; }
+                        TABLEH() { out << "MaxNodes"; }
+                        TABLEH() { out << "CreatedAt"; }
+                    }
+                }
+
+                for (const auto& quota: quotas) {
+                    TABLER() {
+                        TABLED() { out << quota.GetQuotaId(); }
+                        TABLED() { out << FormatByteSize(quota.GetMaxBytes()); }
+                        TABLED() { out << quota.GetMaxNodes(); }
+                        TABLED() {
+                            out << TInstant::MicroSeconds(
+                                quota.GetCreationTimestampUs());
+                        }
+                    }
+                }
+            }
+        } else {
+            out << "No quotas defined.";
+        }
+    }
+}
+
+void TIndexTabletActor::HandleHttpInfo_Default(
+    const NActors::TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    TStringStream out;
+
+    const char* overviewTabName = "Overview";
+    const char* quotasTabName = "Quotas";
+
+    const char* activeTabClass = "tab-pane active";
+    const char* inactiveTabClass = "tab-pane";
+
+    const char* overviewTab = activeTabClass;
+    const char* quotasTab = inactiveTabClass;
+
+    if (params.Get("tab") == quotasTabName) {
+        overviewTab = inactiveTabClass;
+        quotasTab = activeTabClass;
+    }
+
+    HTML(out) {
+        DIV_CLASS_ID("container-fluid", "tabs") {
+            out << "<ul class='nav nav-tabs' id='Tabs'>"
+                << "<li class='active'>"
+                << "<a href='#" << overviewTabName << "' data-toggle='tab'>"
+                << overviewTabName << "</a></li>"
+                << "<li><a href='#" << quotasTabName << "' data-toggle='tab'>"
+                << quotasTabName << "</a></li>"
+                << "</ul>";
+
+            DIV_CLASS("tab-content") {
+                DIV_CLASS_ID(overviewTab, overviewTabName) {
+                    RenderHttpInfo_OverviewTab(ctx, params, out);
+                }
+
+                DIV_CLASS_ID(quotasTab, quotasTabName) {
+                    RenderHttpInfo_QuotasTab(out);
+                }
+            }
+        }
     }
 
     NCloud::Reply(
