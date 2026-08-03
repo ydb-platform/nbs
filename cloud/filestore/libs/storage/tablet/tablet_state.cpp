@@ -14,9 +14,9 @@ namespace NCloud::NFileStore::NStorage {
 
 namespace {
 
-constexpr size_t MaxNodeDiagnosticEntries = 10'000;
-
 ////////////////////////////////////////////////////////////////////////////////
+
+constexpr size_t MaxNodeDiagnosticEntries = 10'000;
 
 IBlockLocation2RangeIndexPtr CreateHasher(const NProto::TFileSystem& fs)
 {
@@ -67,50 +67,6 @@ ui64 CalculateInMemoryIndexCacheCapacity(
 }
 
 }   // namespace
-
-////////////////////////////////////////////////////////////////////////////////
-
-void TNodeAccessStatsTracker::Initialise(size_t maxEntries)
-{
-    MaxEntries = maxEntries;
-    NodeId2StatsIter.clear();
-    StatsRanking.clear();
-}
-
-double TNodeAccessStatsTracker::DecayedScore(
-    const TNodeAccessStats& stats,
-    TInstant now)
-{
-    const auto elapsed = now >= stats.LastAccessed ? now - stats.LastAccessed
-                                                   : TDuration::Zero();
-
-    // Access Score has a half-life of 10 minutes
-    return stats.AccessScore * exp(-log(2.0) * elapsed.GetValue() /
-                                   TDuration::Minutes(10).MicroSeconds());
-}
-
-void TNodeAccessStatsTracker::RequestStarted(ui64 nodeId, TInstant now)
-{
-    auto it = NodeId2StatsIter.find(nodeId);
-    TNodeAccessStats stats;
-
-    if (it != NodeId2StatsIter.end()) {
-        stats = *it->second;
-        StatsRanking.erase(it->second);
-    } else {
-        stats.NodeId = nodeId;
-    }
-
-    ++stats.RequestCount;
-    stats.AccessScore = DecayedScore(stats, now) + 1;
-    stats.LastAccessed = now;
-
-    auto [newStatsIt, inserted] = StatsRanking.insert(stats);
-    Y_ABORT_UNLESS(inserted);
-    NodeId2StatsIter[nodeId] = newStatsIt;
-
-    EvictLeastUsedNodes();
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -226,7 +182,7 @@ void TIndexTabletState::LoadState(
     const TVector<NProtoPrivate::TResponseLogEntry>& responseLog,
     const TThrottlerConfig& throttlerConfig)
 {
-    NodeAccessStatsTracker.Initialise(MaxNodeDiagnosticEntries);
+    NodeAccessStatsTracker.Initialize(MaxNodeDiagnosticEntries);
     Generation = generation;
     // https://github.com/ydb-platform/nbs/issues/1714
     // because of possible race in vdisks we should not start with 0
