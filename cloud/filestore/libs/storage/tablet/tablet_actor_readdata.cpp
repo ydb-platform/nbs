@@ -728,7 +728,7 @@ void TIndexTabletActor::HandleReadDataCompleted(
         Metrics->OverloadedCount.fetch_add(1, std::memory_order_relaxed);
     }
 
-    UpdateLatencyStats(msg->NodeId, EFileStoreRequest::DescribeData, ctx.Now(), msg->Time);
+    UpdateLatencyStats(msg->NodeId, EFileStoreRequest::ReadData, ctx.Now(), msg->Time);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

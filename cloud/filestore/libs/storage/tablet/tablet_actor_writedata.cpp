@@ -227,6 +227,8 @@ void TIndexTabletActor::HandleWriteDataCompleted(
     if (msg->IsOverloaded) {
         Metrics->OverloadedCount.fetch_add(1, std::memory_order_relaxed);
     }
+
+    UpdateLatencyStats(msg->NodeId, EFileStoreRequest::WriteData, ctx.Now(), msg->Time);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
