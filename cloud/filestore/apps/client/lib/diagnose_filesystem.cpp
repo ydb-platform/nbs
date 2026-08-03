@@ -136,15 +136,8 @@ public:
             nodeRows,
             [](const TNodeRow& l, const TNodeRow& r)
             {
-                if (l.AccessScore != r.AccessScore) {
-                    return l.AccessScore > r.AccessScore;
-                }
-
-                if (l.ShardId != r.ShardId) {
-                    return l.ShardId < r.ShardId;
-                }
-
-                return l.NodeId < r.NodeId;
+                return std::tie(r.AccessScore, l.ShardId, l.NodeId) <
+                       std::tie(l.AccessScore, r.ShardId, r.NodeId);
             });
 
         Sort(
