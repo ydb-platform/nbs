@@ -32,11 +32,32 @@ def span_attribute(span: Span, key: str, default: Any = None) -> Any:
     return decode_attributes(span.attributes).get(key, default)
 
 
+def _stable_id_part(part: object) -> tuple[bytes, bytes]:
+    if isinstance(part, bytes):
+        return b"bytes", part
+    if isinstance(part, str):
+        return b"str", part.encode()
+    if isinstance(part, bool):
+        return b"bool", str(part).encode()
+    if isinstance(part, int):
+        return b"int", str(part).encode()
+    if isinstance(part, float):
+        return b"float", repr(part).encode()
+    if part is None:
+        return b"none", b""
+    kind = f"{type(part).__module__}.{type(part).__qualname__}".encode()
+    return kind, str(part).encode()
+
+
 def _stable_id(*parts: object, size: int) -> bytes:
-    text = "\0".join(
-        part.hex() if isinstance(part, bytes) else str(part) for part in parts
-    )
-    return hashlib.sha256(text.encode()).digest()[:size]
+    digest = hashlib.sha256()
+    for part in parts:
+        kind, value = _stable_id_part(part)
+        digest.update(len(kind).to_bytes(4, "big"))
+        digest.update(kind)
+        digest.update(len(value).to_bytes(8, "big"))
+        digest.update(value)
+    return digest.digest()[:size]
 
 
 def stable_trace_id(*parts: object) -> bytes:

@@ -89,6 +89,16 @@ def test_official_span_uses_byte_ids_and_nanosecond_values() -> None:
     assert isinstance(event.time_unix_nano, Ns)
 
 
+def test_stable_ids_encode_part_boundaries_and_types() -> None:
+    left = ("a\0b", "c")
+    right = ("a", "b\0c")
+
+    assert stable_span_id(*left) != stable_span_id(*right)
+    assert stable_trace_id(*left) != stable_trace_id(*right)
+    assert stable_span_id(1) != stable_span_id("1")
+    assert stable_span_id(Ns(1)) == stable_span_id(1)
+
+
 def test_trace_owns_resource_and_scope_hierarchy() -> None:
     trace = Trace()
     span = make_span(
