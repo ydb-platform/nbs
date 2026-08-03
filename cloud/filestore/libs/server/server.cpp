@@ -438,7 +438,7 @@ void TAppContext::ValidateRequest(
 
     internal.Clear();
     internal.SetRequestSource(*source);
-    internal.SetPeer(UrlUnescapeRet(TString(context.peer())));
+    internal.SetPeer(UrlUnescapeRet(context.peer()));
 
     // don't override a value set earlier
     if (internal.GetRequestOrigin() ==

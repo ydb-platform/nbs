@@ -701,7 +701,7 @@ private:
         auto& internal = *Request->MutableHeaders()->MutableInternal();
         internal.Clear();
         internal.SetRequestSource(*source);
-        internal.SetPeer(UrlUnescapeRet(TString(Context->peer())));
+        internal.SetPeer(UrlUnescapeRet(Context->peer()));
 
         // we will only get token from secure control channel
         if (source == NProto::SOURCE_SECURE_CONTROL_CHANNEL) {
@@ -739,7 +739,7 @@ private:
             message = TStringBuilder() << *Request;
         }
 
-        MetricRequest.Peer = UrlUnescapeRet(TString(Context->peer()));
+        MetricRequest.Peer = UrlUnescapeRet(Context->peer());
 
         AppCtx.ServerStats->RequestStarted(
             AppCtx.Log,
