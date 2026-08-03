@@ -14,7 +14,7 @@ from scripts.tracing.otlp import (
     make_span,
     span_duration_ns,
 )
-from scripts.tracing.workflow_trace import build_workflow_trace
+from scripts.tracing.workflow_trace import _parent_job, build_workflow_trace
 from scripts.tracing.workflow_trace_report import download_s3_trace_inputs
 
 
@@ -108,6 +108,28 @@ def test_workflow_trace_adds_queue_job_step_and_imported_ya_spans() -> None:
     assert by_name["ya make tests"].trace_id == by_name["workflow: PR-check"].trace_id
     assert attributes(by_name["ya make tests"])["ci.trace.source"] == "ya-otlp"
     assert metadata["github.pull_request.number"] == [42]
+
+
+def test_imported_span_touching_job_endpoints_has_no_job_parent() -> None:
+    imported = make_span(
+        trace_id=bytes.fromhex("1" * 32),
+        span_id=bytes.fromhex("1" * 16),
+        name="imported",
+        start_ns=10,
+        end_ns=20,
+    )
+    jobs = [
+        make_span(
+            trace_id=bytes.fromhex("2" * 32),
+            span_id=bytes.fromhex(f"{index}" * 16),
+            name=f"job {index}",
+            start_ns=start,
+            end_ns=end,
+        )
+        for index, (start, end) in enumerate(((0, 10), (20, 30)), start=2)
+    ]
+
+    assert _parent_job(imported, jobs) is None
 
 
 def test_s3_trace_discovery_accepts_an_empty_prefix(

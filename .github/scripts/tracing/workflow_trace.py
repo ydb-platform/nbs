@@ -10,6 +10,7 @@ from typing import Any, Mapping, Sequence
 from github.WorkflowJob import WorkflowJob
 
 from .otlp import (
+    Interval,
     Ns,
     ResourceAttributes,
     Span,
@@ -163,20 +164,29 @@ def _job_and_step_spans(
 
 
 def _parent_job(imported_root: Span, job_spans: Sequence[Span]) -> Span | None:
+    imported_interval = Interval(
+        Ns(imported_root.start_time_unix_nano or 0),
+        Ns(imported_root.end_time_unix_nano or 0),
+    )
+    candidates = [
+        (
+            job,
+            Interval(
+                Ns(job.start_time_unix_nano or 0),
+                Ns(job.end_time_unix_nano or 0),
+            ),
+        )
+        for job in job_spans
+    ]
     containing = [
         job
-        for job in job_spans
-        if (job.start_time_unix_nano or 0) <= (imported_root.start_time_unix_nano or 0)
-        and (imported_root.end_time_unix_nano or 0) <= (job.end_time_unix_nano or 0)
+        for job, interval in candidates
+        if interval.start <= imported_interval.start
+        and imported_interval.end <= interval.end
     ]
     if not containing:
         overlapping = [
-            job
-            for job in job_spans
-            if (job.start_time_unix_nano or 0)
-            <= (imported_root.end_time_unix_nano or 0)
-            and (imported_root.start_time_unix_nano or 0)
-            <= (job.end_time_unix_nano or 0)
+            job for job, interval in candidates if interval.overlap(imported_interval)
         ]
         containing = overlapping
     return min(containing, key=span_duration_ns, default=None)
