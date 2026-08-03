@@ -33,7 +33,9 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 // inode table layout
 
-constexpr ui64 NodeSlotSize = 100;
+constexpr ui64 NodeSlotSize = 96; // bigger than the current slot struct - in
+                                  // order not to drop all data if we decide to
+                                  // add something to the slot struct
 constexpr ui32 PageSize = 4_KB;
 constexpr ui64 NodeTableSize = 512_MB;
 
@@ -52,6 +54,7 @@ struct TNodeTableSlot
 };
 
 static_assert(sizeof(TNodeTableSlot) <= NodeSlotSize);
+static_assert(NodeSlotSize % alignof(TNodeTableSlot) == 0);
 
 ////////////////////////////////////////////////////////////////////////////////
 // name table layout
@@ -215,7 +218,7 @@ public:
 class TNodeTable
 {
 private:
-    static constexpr ui64 SlotsPerPage = 40;
+    static constexpr ui64 SlotsPerPage = 42;
     static_assert(SlotsPerPage * NodeSlotSize <= PageSize);
 
     using THt = TPersistentHashTable<ui64, TNodeTableSlot>;
