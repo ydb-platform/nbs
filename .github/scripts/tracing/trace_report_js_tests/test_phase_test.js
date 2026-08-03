@@ -116,6 +116,7 @@ function testPhaseDurationFilterMayMatchAParentTarget() {
     "ya.test.worker.phase",
     "ya.chunk",
     "ya.test.worker",
+    "ya.test",
   ];
   const spans = [
     makeSpan({ id: "root", name: "root", status: 2 }),
@@ -127,7 +128,6 @@ function testPhaseDurationFilterMayMatchAParentTarget() {
       status: 2,
       attributes: {
         "test.size": "medium",
-        "ya.test.duration.rank": 1,
       },
     }),
     makeSpan({
@@ -202,6 +202,13 @@ function testPhaseDurationFilterMayMatchAParentTarget() {
       name: "worker phase: setup",
       scope: 2,
       attributes: { "ya.test.worker.phase": "setup" },
+    }),
+    makeSpan({
+      id: "ranked-test",
+      parent: 1,
+      name: "Suite::slow_test",
+      scope: 5,
+      attributes: { "ya.test.duration.rank": 1 },
     }),
   ];
   const testPhase = encodeTestPhaseSelection(
@@ -279,13 +286,22 @@ function testPhaseDurationFilterMayMatchAParentTarget() {
   assert.deepStrictEqual([...failedWorkerPhases.visible], [11, 10, 0]);
   assert.strictEqual(failedWorkerPhases.visible.has(9), false);
 
-  const strictTopTen = filterVisibility(spans, {
+  const topTenStages = filterVisibility(spans, {
     topTestsOnly: true,
     testPhase,
     scopes,
   });
-  assert.strictEqual(strictTopTen.matches, 0);
-  assert.deepStrictEqual([...strictTopTen.visible], []);
+  assert.strictEqual(topTenStages.matches, 2);
+  assert.deepStrictEqual([...topTenStages.visible], [2, 1, 0, 3]);
+
+  const slowTopTenStages = filterVisibility(spans, {
+    topTestsOnly: true,
+    minimumDurationNs: 10 * second,
+    testPhase,
+    scopes,
+  });
+  assert.strictEqual(slowTopTenStages.matches, 1);
+  assert.deepStrictEqual([...slowTopTenStages.visible], [2, 1, 0]);
 }
 
 for (const test of [
@@ -295,4 +311,3 @@ for (const test of [
 ]) {
   test();
 }
-

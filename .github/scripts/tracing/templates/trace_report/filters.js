@@ -76,6 +76,17 @@ function filterVisibility(
     index.searchText(candidate).includes(filters.query);
   const matchesSize = (span) =>
     filters.testSizes.has(String(span[ATTRS]["test.size"] || "").toLowerCase());
+  const matchesTopTest = (span) => longestTestRank(span) !== null;
+  const topTestAncestors = new Set();
+  if (filters.topTestsOnly && filters.testPhase) {
+    sourceSpans.forEach((span, spanIndex) => {
+      if (matchesTopTest(span)) {
+        index
+          .ancestors(spanIndex)
+          .forEach((ancestor) => topTestAncestors.add(ancestor));
+      }
+    });
+  }
 
   sourceSpans.forEach((span, spanIndex) => {
     if (
@@ -107,7 +118,17 @@ function filterVisibility(
     ) {
       return;
     }
-    if (filters.topTestsOnly && longestTestRank(span) === null) return;
+    if (
+      filters.topTestsOnly &&
+      !(filters.testPhase
+        ? matchesTopTest(span) ||
+          topTestAncestors.has(
+            index.phaseOwner(spanIndex, filters.testPhase.scope),
+          )
+        : matchesTopTest(span))
+    ) {
+      return;
+    }
     if (
       filters.minimumDurationNs !== null &&
       span[DURATION] < filters.minimumDurationNs
