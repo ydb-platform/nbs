@@ -12,9 +12,21 @@ from .evlog_record import YaEvlogRecord
 from .metrics import _number
 
 LOGGER = logging.getLogger(__name__)
+MALFORMED_LINE_PREVIEW_CHARACTERS = 1_024
 WORKER_DETAIL_TAGS = frozenset(
     {"setup", "exec_cmd", "post_cmd", "node_result", "finalize"}
 )
+
+
+def _malformed_line_preview(line: str) -> str:
+    line = line.rstrip("\r\n")
+    if len(line) <= MALFORMED_LINE_PREVIEW_CHARACTERS:
+        return line
+    marker = "... characters omitted ..."
+    retained = MALFORMED_LINE_PREVIEW_CHARACTERS - len(marker)
+    prefix = (retained + 1) // 2
+    suffix = retained - prefix
+    return line[:prefix] + marker + line[-suffix:]
 
 
 def _safe_statistics_mapping(value: Any) -> dict[str, Any]:
@@ -79,6 +91,8 @@ def load_ya_evlog(path: Path | None) -> YaEvlog:
     nodes: list[YaEvlogRecord] = []
     statistics: dict[str, Any] = {}
     failures: dict[str, int | None] = {}
+    malformed_json_count = 0
+    first_malformed: tuple[int, str, str] | None = None
 
     def finalize() -> YaEvlog:
         return YaEvlog.from_raw(
@@ -121,7 +135,13 @@ def load_ya_evlog(path: Path | None) -> YaEvlog:
             try:
                 raw = json.loads(line)
             except json.JSONDecodeError as error:
-                LOGGER.warning("Skipping %s:%s: %s", path, line_number, error)
+                malformed_json_count += 1
+                if first_malformed is None:
+                    first_malformed = (
+                        line_number,
+                        str(error),
+                        _malformed_line_preview(line),
+                    )
                 continue
             if not isinstance(raw, Mapping):
                 LOGGER.warning("Skipping non-object event in %s:%s", path, line_number)
@@ -195,4 +215,17 @@ def load_ya_evlog(path: Path | None) -> YaEvlog:
                 nodes.append(record)
                 if thread_name:
                     last_finished_by_thread[thread_name] = record
+    if first_malformed is not None:
+        line_number, error, preview = first_malformed
+        record_label = "record" if malformed_json_count == 1 else "records"
+        LOGGER.warning(
+            "Ya event log %s contains %s malformed JSON %s; first at line %s: "
+            "%s; line=%r",
+            path,
+            malformed_json_count,
+            record_label,
+            line_number,
+            error,
+            preview,
+        )
     return finalize()
