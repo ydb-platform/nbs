@@ -197,6 +197,35 @@ def test_trace_batching_preserves_instrumentation_scope_metadata() -> None:
     assert scope.dropped_attributes_count == 3
 
 
+def test_trace_batching_preserves_resource_and_scope_schema_urls() -> None:
+    span = make_span(
+        trace_id=stable_trace_id("trace"),
+        span_id=stable_span_id("span"),
+        name="operation",
+        start_ns=1_000,
+        end_ns=2_000,
+    )
+    source = Trace(
+        TracesData(
+            resource_spans=[
+                ResourceSpans(
+                    schema_url="https://resource.schema/v1",
+                    scope_spans=[
+                        ScopeSpans(
+                            schema_url="https://scope.schema/v1",
+                            spans=[span],
+                        )
+                    ],
+                )
+            ]
+        )
+    )
+
+    resource_spans = next(source.batches(1)).data.resource_spans[0]
+    assert resource_spans.schema_url == "https://resource.schema/v1"
+    assert resource_spans.scope_spans[0].schema_url == "https://scope.schema/v1"
+
+
 def test_trace_rejects_duplicate_span_ids_within_one_trace() -> None:
     trace = Trace()
     writer = trace.writer(ResourceAttributes())

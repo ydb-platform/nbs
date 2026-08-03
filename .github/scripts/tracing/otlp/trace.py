@@ -23,8 +23,8 @@ class Trace:
 
     def __init__(self, data: TracesData | None = None) -> None:
         self.data = data or TracesData()
-        self._resources: dict[str, ResourceSpans] = {}
-        self._scopes: dict[tuple[str, str], ScopeSpans] = {}
+        self._resources: dict[tuple[str, str], ResourceSpans] = {}
+        self._scopes: dict[tuple[str, str, str, str], ScopeSpans] = {}
         self._index()
 
     @classmethod
@@ -37,11 +37,19 @@ class Trace:
     def _index(self) -> None:
         for resource_spans in self.data.resource_spans:
             resource = resource_spans.resource or Resource()
-            resource_key = self._message_key(resource)
+            resource_key = (
+                self._message_key(resource),
+                str(resource_spans.schema_url or ""),
+            )
             self._resources[resource_key] = resource_spans
             for scope_spans in resource_spans.scope_spans:
                 scope = scope_spans.scope or InstrumentationScope()
-                self._scopes[(resource_key, self._message_key(scope))] = scope_spans
+                scope_key = (
+                    *resource_key,
+                    self._message_key(scope),
+                    str(scope_spans.schema_url or ""),
+                )
+                self._scopes[scope_key] = scope_spans
                 for span in scope_spans.spans:
                     normalize_span_times(span)
 
@@ -77,14 +85,19 @@ class Trace:
         scope_name: str = "",
         scope_version: str = "",
         scope: InstrumentationScope | None = None,
+        resource_schema_url: str = "",
+        scope_schema_url: str = "",
     ) -> None:
         normalize_span_times(span)
         validate_span(span)
         otlp_resource = self._resource(resource)
-        resource_key = self._message_key(otlp_resource)
+        resource_key = (self._message_key(otlp_resource), resource_schema_url)
         resource_spans = self._resources.get(resource_key)
         if resource_spans is None:
-            resource_spans = ResourceSpans(resource=otlp_resource)
+            resource_spans = ResourceSpans(
+                resource=otlp_resource,
+                schema_url=resource_schema_url,
+            )
             self.data.resource_spans.append(resource_spans)
             self._resources[resource_key] = resource_spans
 
@@ -92,10 +105,13 @@ class Trace:
             name=scope_name,
             version=scope_version,
         )
-        scope_key = (resource_key, self._message_key(otlp_scope))
+        scope_key = (*resource_key, self._message_key(otlp_scope), scope_schema_url)
         scope_spans = self._scopes.get(scope_key)
         if scope_spans is None:
-            scope_spans = ScopeSpans(scope=otlp_scope)
+            scope_spans = ScopeSpans(
+                scope=otlp_scope,
+                schema_url=scope_schema_url,
+            )
             resource_spans.scope_spans.append(scope_spans)
             self._scopes[scope_key] = scope_spans
         scope_spans.spans.append(span)
@@ -103,13 +119,31 @@ class Trace:
     def writer(self, resource: ResourceAttributes | Resource) -> SpanWriter:
         return SpanWriter(self, resource)
 
-    def walk(self) -> Iterator[tuple[Resource, InstrumentationScope, Span]]:
+    def walk_groups(self) -> Iterator[tuple[ResourceSpans, ScopeSpans, Span]]:
         for resource_spans in self.data.resource_spans:
-            resource = resource_spans.resource or Resource()
             for scope_spans in resource_spans.scope_spans:
-                scope = scope_spans.scope or InstrumentationScope()
                 for span in scope_spans.spans:
-                    yield resource, scope, span
+                    yield resource_spans, scope_spans, span
+
+    def _add_grouped_span(
+        self,
+        resource_spans: ResourceSpans,
+        scope_spans: ScopeSpans,
+        span: Span,
+    ) -> None:
+        self.add_span(
+            span,
+            resource=resource_spans.resource or Resource(),
+            scope=scope_spans.scope or InstrumentationScope(),
+            resource_schema_url=str(resource_spans.schema_url or ""),
+            scope_schema_url=str(scope_spans.schema_url or ""),
+        )
+
+    def walk(self) -> Iterator[tuple[Resource, InstrumentationScope, Span]]:
+        for resource_spans, scope_spans, span in self.walk_groups():
+            resource = resource_spans.resource or Resource()
+            scope = scope_spans.scope or InstrumentationScope()
+            yield resource, scope, span
 
     def spans(self, scope_name: str | None = None) -> Iterator[Span]:
         for _, scope, span in self.walk():
@@ -117,23 +151,15 @@ class Trace:
                 yield span
 
     def extend(self, other: Trace) -> None:
-        for resource, scope, span in other.walk():
-            self.add_span(
-                span,
-                resource=resource,
-                scope=scope,
-            )
+        for grouped_span in other.walk_groups():
+            self._add_grouped_span(*grouped_span)
 
     def batches(self, size: int) -> Iterator[Trace]:
         if size < 1:
             raise ValueError("batch size must be positive")
         batch = Trace()
-        for index, (resource, scope, span) in enumerate(self.walk(), start=1):
-            batch.add_span(
-                span,
-                resource=resource,
-                scope=scope,
-            )
+        for index, grouped_span in enumerate(self.walk_groups(), start=1):
+            batch._add_grouped_span(*grouped_span)
             if index % size == 0:
                 yield batch
                 batch = Trace()

@@ -229,7 +229,7 @@ def _merge_imported_spans(
         for span in imported
     }
 
-    for resource, scope, span in imported.walk():
+    for resource_spans, scope_spans, span in imported.walk_groups():
         old_key = (span.trace_id, span.span_id)
         old_parent_key = (span.trace_id, span.parent_span_id)
         parent_span_id = id_map.get(
@@ -246,8 +246,10 @@ def _merge_imported_spans(
                 parent_span_id=parent_span_id,
                 attributes=encode_attributes(attributes),
             ),
-            resource=resource,
-            scope=scope,
+            resource=resource_spans.resource or ResourceAttributes(),
+            scope=scope_spans.scope,
+            resource_schema_url=str(resource_spans.schema_url or ""),
+            scope_schema_url=str(scope_spans.schema_url or ""),
         )
 
 
