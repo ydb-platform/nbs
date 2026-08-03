@@ -107,6 +107,46 @@ def test_trace_owns_resource_and_scope_hierarchy() -> None:
     assert resource_spans.scope_spans[0].spans[0].name == "operation"
 
 
+def test_trace_rejects_duplicate_span_ids_within_one_trace() -> None:
+    trace = Trace()
+    writer = trace.writer(ResourceAttributes())
+    trace_id = stable_trace_id("trace")
+    span_id = stable_span_id("duplicate")
+    for name in ("first", "second"):
+        writer.add(
+            make_span(
+                trace_id=trace_id,
+                span_id=span_id,
+                name=name,
+                start_ns=1_000,
+                end_ns=2_000,
+            ),
+            scope_name="tests",
+        )
+
+    with pytest.raises(ValueError, match="Duplicate OTLP span ID"):
+        trace.validate()
+
+
+def test_trace_allows_same_span_id_in_different_traces() -> None:
+    trace = Trace()
+    writer = trace.writer(ResourceAttributes())
+    span_id = stable_span_id("shared")
+    for name in ("first", "second"):
+        writer.add(
+            make_span(
+                trace_id=stable_trace_id(name),
+                span_id=span_id,
+                name=name,
+                start_ns=1_000,
+                end_ns=2_000,
+            ),
+            scope_name="tests",
+        )
+
+    trace.validate()
+
+
 def test_resource_attributes_clean_and_extend_github_metadata() -> None:
     attributes = ResourceAttributes.from_github(
         environment={

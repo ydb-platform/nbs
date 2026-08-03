@@ -132,8 +132,17 @@ class Trace:
             yield batch
 
     def validate(self) -> None:
+        seen: dict[tuple[bytes, bytes], str] = {}
         for span in self.spans():
             validate_span(span)
+            identity = bytes(span.trace_id), bytes(span.span_id)
+            if identity in seen:
+                previous = seen[identity]
+                raise ValueError(
+                    f"Duplicate OTLP span ID {span.span_id.hex()} in trace "
+                    f"{span.trace_id.hex()} for {previous!r} and {span.name!r}"
+                )
+            seen[identity] = str(span.name or "")
 
     def __iter__(self) -> Iterator[Span]:
         return self.spans()
