@@ -22,6 +22,7 @@ TWriteDataActor::TWriteDataActor(
         ITraceSerializerPtr traceSerializer,
         TString logTag,
         TString fileSystemId,
+        ui64 nodeId,
         TActorId tablet,
         TRequestInfoPtr requestInfo,
         ui64 commitId,
@@ -33,6 +34,7 @@ TWriteDataActor::TWriteDataActor(
     : TraceSerializer(std::move(traceSerializer))
     , LogTag(std::move(logTag))
     , FileSystemId(std::move(fileSystemId))
+    , NodeId(nodeId)
     , Tablet(tablet)
     , RequestInfo(std::move(requestInfo))
     , CommitId(commitId)
@@ -137,6 +139,7 @@ void TWriteDataActor::ReplyAndDie(
             error,
             TSet<ui32>(),
             CommitId,
+            NodeId,
             1,
             BlobsSize,
             ctx.Now() - RequestInfo->StartedTs,

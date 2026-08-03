@@ -282,6 +282,7 @@ void TIndexTabletActor::CompleteTx_AddData(
         TraceSerializer,
         LogTag,
         GetFileSystemId(),
+        args.NodeId,
         ctx.SelfID,
         args.RequestInfo,
         args.CommitId,
@@ -691,6 +692,7 @@ void TIndexTabletActor::HandleAddDataCompleted(
         if (msg->IsOverloaded) {
             Metrics->OverloadedCount.fetch_add(1, std::memory_order_relaxed);
         }
+        UpdateLatencyStats(msg->NodeId, EFileStoreRequest::AddData, ctx.Now(), msg->Time);
     }
 
     // We try to release commit barrier twice: once for the lock

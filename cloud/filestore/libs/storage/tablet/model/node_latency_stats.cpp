@@ -6,7 +6,6 @@
 
 namespace NCloud::NFileStore::NStorage {
 
-
 void TNodeLatencyStatsTracker::Initialize(size_t maxEntries)
 {
     MaxEntries = maxEntries;
@@ -14,25 +13,29 @@ void TNodeLatencyStatsTracker::Initialize(size_t maxEntries)
     IdAndRequest2Stats.clear();
 }
 
-void TNodeLatencyStatsTracker::CalculateLatencyDecay(TNodeLatencyStats& stats, TInstant now) const
+void TNodeLatencyStatsTracker::CalculateLatencyDecay(
+    TNodeLatencyStats& stats,
+    TInstant now) const
 {
     const auto elapsedUs = now >= stats.LastAccessed ? now - stats.LastAccessed
-                                                   : TDuration::Zero();
-    stats.AverageLatencyDecayedMs *= exp(-log(2) * elapsedUs.GetValue() / TDuration::Minutes(10).MicroSeconds());
+                                                     : TDuration::Zero();
+    stats.AverageLatencyDecayedMs *= exp(
+        -log(2) * elapsedUs.GetValue() / TDuration::Minutes(10).MicroSeconds());
 }
 
-void TNodeLatencyStatsTracker::UpdateLatencyStats(ui64 nodeId, EFileStoreRequest requestType, TInstant now, TDuration latency)
+void TNodeLatencyStatsTracker::UpdateLatencyStats(
+    ui64 nodeId,
+    EFileStoreRequest requestType,
+    TInstant now,
+    TDuration latency)
 {
     LatencyKey key = {nodeId, requestType};
     auto it = IdAndRequest2Stats.find(key);
     TNodeLatencyStats stats;
-    if(it != IdAndRequest2Stats.end())
-    {
+    if (it != IdAndRequest2Stats.end()) {
         stats = *it->second;
         IdAndRequest2Stats.erase(it->second);
-    }
-    else
-    {
+    } else {
         stats.Key = key;
     }
     CalculateLatencyDecay(stats, now);

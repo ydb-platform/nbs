@@ -25,6 +25,7 @@ private:
 
     const TString LogTag;
     const TString FileSystemId;
+    const ui64 NodeId;
     const TActorId Tablet;
     const TRequestInfoPtr RequestInfo;
 
@@ -41,6 +42,7 @@ public:
         ITraceSerializerPtr traceSerializer,
         TString logTag,
         TString fileSystemId,
+        ui64 nodeId,
         TActorId tablet,
         TRequestInfoPtr requestInfo,
         ui64 commitId,

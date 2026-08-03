@@ -376,16 +376,19 @@ struct TEvIndexTabletPrivate
     {
         const ui64 CommitId;
         const bool IsOverloaded;
+        const ui64 NodeId;
 
         TAddDataCompleted(
                 ui32 requestCount,
                 ui32 requestBytes,
                 TDuration d,
                 ui64 commitId,
-                bool isOverloaded)
+                bool isOverloaded,
+                ui64 nodeId)
             : TDataOperationCompleted(requestCount, requestBytes, d)
             , CommitId(commitId)
             , IsOverloaded(isOverloaded)
+            , NodeId(nodeId)
         {
         }
     };
