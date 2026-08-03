@@ -49,8 +49,18 @@ class Trace:
 
     @staticmethod
     def _resource_key(resource: Resource) -> str:
+        value = resource.to_dict()
+        attributes = value.get("attributes")
+        if isinstance(attributes, list):
+            attributes.sort(
+                key=lambda attribute: json.dumps(
+                    attribute,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+            )
         return json.dumps(
-            resource.to_dict(),
+            value,
             sort_keys=True,
             separators=(",", ":"),
         )

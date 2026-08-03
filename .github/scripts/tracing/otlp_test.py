@@ -140,6 +140,25 @@ def test_trace_default_scope_matches_an_unversioned_imported_scope() -> None:
     assert scope_spans[0].scope.version == ""
 
 
+def test_trace_groups_resources_independent_of_attribute_order() -> None:
+    trace = Trace()
+    for index, attributes in enumerate(({"a": 1, "b": 2}, {"b": 2, "a": 1})):
+        trace.add_span(
+            make_span(
+                trace_id=stable_trace_id("trace"),
+                span_id=stable_span_id("span", index),
+                name=f"operation {index}",
+                start_ns=1_000,
+                end_ns=2_000,
+            ),
+            resource=ResourceAttributes(attributes),
+            scope_name="tests",
+        )
+
+    assert len(trace.data.resource_spans) == 1
+    assert len(trace.data.resource_spans[0].scope_spans[0].spans) == 2
+
+
 def test_trace_rejects_duplicate_span_ids_within_one_trace() -> None:
     trace = Trace()
     writer = trace.writer(ResourceAttributes())
