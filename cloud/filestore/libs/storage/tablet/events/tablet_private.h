@@ -346,10 +346,12 @@ struct TEvIndexTabletPrivate
     struct TReadWriteCompleted: TOperationCompleted
     {
         const bool IsOverloaded;
+        const ui64 NodeId;
 
         TReadWriteCompleted(
                 TSet<ui32> mixedBlocksRanges,
                 ui64 commitId,
+                ui64 nodeId,
                 ui32 requestCount,
                 ui32 requestBytes,
                 TDuration d,
@@ -361,6 +363,7 @@ struct TEvIndexTabletPrivate
                 requestBytes,
                 d)
             , IsOverloaded(isOverloaded)
+            , NodeId(nodeId)
         {
         }
     };

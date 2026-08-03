@@ -339,6 +339,7 @@ private:
     const ITraceSerializerPtr TraceSerializer;
     const TString LogTag;
     const TString FileSystemId;
+    const ui64 NodeId;
     const bool ShouldCalculateChecksums;
     const ui32 BlockSize;
     const TActorId Tablet;
@@ -361,6 +362,7 @@ public:
         ITraceSerializerPtr traceSerializer,
         TString logTag,
         TString fileSystemId,
+        ui64 nodeId,
         bool shouldCalculateChecksums,
         ui32 blockSize,
         TActorId tablet,
@@ -403,6 +405,7 @@ TReadDataActor::TReadDataActor(
         ITraceSerializerPtr traceSerializer,
         TString logTag,
         TString fileSystemId,
+        ui64 nodeId,
         bool shouldCalculateChecksums,
         ui32 blockSize,
         TActorId tablet,
@@ -422,6 +425,7 @@ TReadDataActor::TReadDataActor(
     : TraceSerializer(std::move(traceSerializer))
     , LogTag(std::move(logTag))
     , FileSystemId(std::move(fileSystemId))
+    , NodeId(nodeId)
     , ShouldCalculateChecksums(shouldCalculateChecksums)
     , BlockSize(blockSize)
     , Tablet(tablet)
@@ -518,6 +522,7 @@ void TReadDataActor::ReplyAndDie(
             error,
             std::move(MixedBlocksRanges),
             CommitId,
+            NodeId,
             1,
             OriginByteRange.Length,
             ctx.Now() - RequestInfo->StartedTs,
@@ -697,7 +702,7 @@ void TIndexTabletActor::HandleReadData(
 
 void TIndexTabletActor::HandleReadDataCompleted(
     const TEvIndexTabletPrivate::TEvReadDataCompleted::TPtr& ev,
-    const TActorContext&)
+    const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
 
@@ -709,6 +714,8 @@ void TIndexTabletActor::HandleReadDataCompleted(
     if (msg->IsOverloaded) {
         Metrics->OverloadedCount.fetch_add(1, std::memory_order_relaxed);
     }
+
+    UpdateLatencyStats(msg->NodeId, EFileStoreRequest::DescribeData, ctx.Now(), msg->Time);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1137,6 +1144,8 @@ void TIndexTabletActor::CompleteTx_ReadData(
 
         NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
+        UpdateLatencyStats(args.NodeId, EFileStoreRequest::ReadData, ctx.Now(), ctx.Now() - args.RequestInfo->StartedTs);
+
         FinalizeProfileLogRequestInfo(
             std::move(args.ProfileLogRequest),
             ctx.Now(),
@@ -1161,6 +1170,7 @@ void TIndexTabletActor::CompleteTx_ReadData(
         TraceSerializer,
         LogTag,
         GetFileSystemId(),
+        args.NodeId,
         Config->GetBlockChecksumsInProfileLogEnabled(),
         GetBlockSize(),
         ctx.SelfID,
