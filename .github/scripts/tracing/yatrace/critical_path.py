@@ -12,7 +12,7 @@ from ..otlp import (
     Trace,
     update_span_attributes,
 )
-from .metrics import _number
+from .metrics import finite_number
 from .test_chunk import TestChunk
 
 if TYPE_CHECKING:
@@ -58,9 +58,9 @@ class YaCriticalPathEntry:
             raw_type=raw_type,
             text=text,
             uid=str(value.get("uid", "")),
-            elapsed_ms=_number(value.get("elapsed")),
-            start_ms=_number(value.get("start_ts")),
-            end_ms=_number(value.get("end_ts")),
+            elapsed_ms=finite_number(value.get("elapsed")),
+            start_ms=finite_number(value.get("start_ts")),
+            end_ms=finite_number(value.get("end_ts")),
             interval=interval,
             is_test=base_type in TEST_NODE_MARKERS or "/test-results/" in text,
         )

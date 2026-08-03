@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, Mapping, Sequence
 
 from . import limits
 from .critical_path import YaCriticalPathEntry
-from .metrics import _metric_name, _number
+from .metrics import finite_number, normalize_metric_name
 
 if TYPE_CHECKING:
     from .node import ClassifiedNode
@@ -39,7 +39,7 @@ def copy_numeric_attributes(
     fields: Mapping[str, str],
 ) -> None:
     for source_name, attribute_name in fields.items():
-        value = _number(source.get(source_name))
+        value = finite_number(source.get(source_name))
         if value is not None:
             destination[attribute_name] = value
 
@@ -56,15 +56,15 @@ class YaBuildStatistics:
         attributes: dict[str, Any] = {}
         cache = self.values.get("cache_hit")
         if isinstance(cache, Mapping):
-            cache_hit_percent = _number(cache.get("cache_hit"))
+            cache_hit_percent = finite_number(cache.get("cache_hit"))
             if cache_hit_percent is not None:
                 attributes["ya.build.cache.considered_task.hit.ratio"] = (
                     cache_hit_percent / 100
                 )
             copy_numeric_attributes(cache, attributes, CACHE_ATTRIBUTE_FIELDS)
-            total_tasks = _number(cache.get("run_tasks"))
-            cached_tasks = _number(cache.get("cached_tasks"))
-            avoided_tasks = _number(cache.get("avoided_tasks"))
+            total_tasks = finite_number(cache.get("run_tasks"))
+            cached_tasks = finite_number(cache.get("cached_tasks"))
+            avoided_tasks = finite_number(cache.get("avoided_tasks"))
             if (
                 total_tasks is not None
                 and total_tasks > 0
@@ -88,13 +88,13 @@ class YaBuildStatistics:
         execution_stages = self.values.get("execution_stages_msec")
         if isinstance(execution_stages, Mapping):
             for name, value in execution_stages.items():
-                milliseconds = _number(value)
-                normalized = _metric_name(name)
+                milliseconds = finite_number(value)
+                normalized = normalize_metric_name(name)
                 if milliseconds is not None and normalized:
                     attributes[f"ya.build.execution.stage.{normalized}.seconds"] = (
                         milliseconds / 1_000
                     )
-        task_execution_msec = _number(self.values.get("task_execution_msec"))
+        task_execution_msec = finite_number(self.values.get("task_execution_msec"))
         if task_execution_msec is not None:
             attributes["ya.build.execution.total.seconds"] = task_execution_msec / 1_000
 
@@ -116,7 +116,7 @@ class YaBuildStatistics:
             if node.kind in {"cache_restore", "execute"} and SAFE_TOOL_RE.fullmatch(
                 node.tool
             ):
-                tool_counts[_metric_name(node.tool)][node.kind] += 1
+                tool_counts[normalize_metric_name(node.tool)][node.kind] += 1
         ranked_tools = sorted(
             tool_counts,
             key=lambda tool: (

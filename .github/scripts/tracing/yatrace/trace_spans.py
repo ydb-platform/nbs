@@ -22,7 +22,7 @@ from .event_export import (
     event_log_attributes,
     test_event_attributes,
 )
-from .metrics import _metric_attributes
+from .metrics import metric_attributes
 from .test_timing import YaTestTiming
 from .trace_file import YaTraceFile
 
@@ -209,7 +209,7 @@ class YaTraceSpanBuilder:
             "test.suite": source.suite,
             "ya.test_results.folder": source.result_folder,
             **event_error_attributes(suite_event, "ya.suite"),
-            **_metric_attributes(
+            **metric_attributes(
                 suite_event.metrics,
                 prefix="ya.suite.metric",
             ),
@@ -281,7 +281,7 @@ class YaTraceSpanBuilder:
                 attributes.update(event_error_attributes(chunk_event, "ya.chunk"))
                 attributes.update(event_log_attributes(chunk_event, "ya.chunk"))
             attributes.update(
-                _metric_attributes(
+                metric_attributes(
                     chunk_value.get("metrics"),
                     prefix="ya.chunk.metric",
                 )

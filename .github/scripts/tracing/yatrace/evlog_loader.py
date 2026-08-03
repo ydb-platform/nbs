@@ -9,7 +9,7 @@ from typing import Any, Mapping
 from . import limits
 from .evlog import YaEvlog
 from .evlog_record import YaEvlogRecord
-from .metrics import _number
+from .metrics import finite_number
 
 LOGGER = logging.getLogger(__name__)
 MALFORMED_LINE_PREVIEW_CHARACTERS = 1_024
@@ -56,7 +56,7 @@ def _selected_evlog_statistics(value: Any) -> dict[str, Any]:
         selected = _safe_statistics_mapping(value.get(key))
         if selected:
             result[key] = selected
-    task_execution_msec = _number(value.get("task_execution_msec"))
+    task_execution_msec = finite_number(value.get("task_execution_msec"))
     if task_execution_msec is not None:
         result["task_execution_msec"] = task_execution_msec
 
