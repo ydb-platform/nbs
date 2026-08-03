@@ -799,11 +799,6 @@ void TIndexTabletActor::HandleDescribeData(
             requestInfo->CallContext,
             ctx);
 
-        if (!requestInfo->NodeDiagnosticStatsStarted) {
-            NodeRequestStarted(nodeId, ctx.Now());
-            requestInfo->NodeDiagnosticStatsStarted = true;
-        }
-
         NCloud::Reply(ctx, *requestInfo, std::move(response));
 
         Metrics.ReadAheadCacheHitCount.fetch_add(1, std::memory_order_relaxed);
@@ -965,12 +960,6 @@ bool TIndexTabletActor::PrepareTx_ReadData(
         return false;
     }
 
-    if (args.Node->Attrs.GetType() == NProto::ENodeType::E_REGULAR_NODE &&
-        !args.RequestInfo->NodeDiagnosticStatsStarted)
-    {
-        NodeRequestStarted(args.NodeId, ctx.Now());
-        args.RequestInfo->NodeDiagnosticStatsStarted = true;
-    }
     //
     // NodeId might be missing in the original request but at this stage we
     // have already read the Node and we can properly set NodeId in all request
