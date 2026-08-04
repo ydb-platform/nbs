@@ -89,6 +89,11 @@ public:
         return *VhostQueueFactory;
     }
 
+    NProto::TError UpdateEndpoint(ui64 blocksCount)
+    {
+        return VhostServer->UpdateEndpoint(SocketPath.GetPath(), blocksCount);
+    }
+
     bool DequeueRequest(TTestRequest& request)
     {
         return RequestQueue.Dequeue(&request);
@@ -304,6 +309,20 @@ Y_UNIT_TEST_SUITE(TServerTest)
         }
 
         vhostServer->Stop();
+    }
+
+    Y_UNIT_TEST(ShouldReturnErrorWhenUpdateEndpointFails)
+    {
+        TTestEnvironment env(DefaultBlockSize);
+
+        auto expectedError = MakeError(E_FAIL, "update failed");
+        env.GetVhostDevice()->SetUpdateError(expectedError);
+
+        const auto error = env.UpdateEndpoint(512);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            expectedError.GetCode(),
+            error.GetCode(),
+            error);
     }
 
     Y_UNIT_TEST(ShouldStopVhostServerWithStartedEndpoints)

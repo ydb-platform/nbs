@@ -25,6 +25,8 @@ struct ITestVhostDevice
 
     virtual void DisableAutostop(bool disable) = 0;
 
+    virtual void SetUpdateError(NProto::TError error) = 0;
+
     [[nodiscard]] virtual ui32 GetOptimalIoSize() const = 0;
 };
 

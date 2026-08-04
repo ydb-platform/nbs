@@ -62,6 +62,7 @@ private:
 
     TMutex Lock;
     TVector<TFuture<TVhostRequest::EResult>> Futures;
+    NProto::TError UpdateError;
 
     std::atomic_flag Stopped = 0;
 
@@ -95,9 +96,12 @@ public:
         });
     }
 
-    void Update(ui64 blocksCount) override
+    NProto::TError Update(ui64 blocksCount) override
     {
         Y_UNUSED(blocksCount);
+        with_lock (Lock) {
+            return UpdateError;
+        }
     }
 
     bool IsStopped() override
@@ -112,6 +116,13 @@ public:
             Autostop.Swap(promise);
         } else {
             Autostop.SetValue();
+        }
+    }
+
+    void SetUpdateError(NProto::TError error) override
+    {
+        with_lock (Lock) {
+            UpdateError = std::move(error);
         }
     }
 

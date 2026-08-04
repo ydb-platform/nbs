@@ -219,12 +219,12 @@ public:
         return future;
     }
 
-    void Update(ui64 blocksCount)
+    NProto::TError Update(ui64 blocksCount)
     {
         TLog& Log = AppCtx.Log;
         STORAGE_INFO("Update vhost endpoint " << SocketPath.Quote()
             << " with blocks count = " << blocksCount);
-        VhostDevice->Update(blocksCount);
+        return VhostDevice->Update(blocksCount);
     }
 
     ui32 GetVhostQueuesCount() const
@@ -806,7 +806,7 @@ NProto::TError TServer::UpdateEndpoint(
     }
 
     if (endpoint) {
-        endpoint->Update(blocksCount);
+        return endpoint->Update(blocksCount);
     }
     return NProto::TError{};
 }
