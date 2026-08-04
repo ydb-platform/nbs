@@ -309,7 +309,7 @@ Fiber::~Fiber() noexcept
 
     if (stack)
     {
-        int r = ::munmap(stack, FiberScheduler::getOptions().fiberStackSize + 2 * getPageSize());
+        int r = ::munmap(stack, FiberScheduler::getOptions().fiberStackSize + 2 * kPageSize);
         SILK_ASSERT(!r);
     }
 }
@@ -331,21 +331,20 @@ bool Fiber::initialize(
     result = 0;
 
     uint64_t fiberStackSize = FiberScheduler::getOptions().fiberStackSize;
-    const uint64_t pageSize = getPageSize();
 
     if (!stack)
     {
-        stack = ::mmap(nullptr, fiberStackSize + 2 * pageSize, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        stack = ::mmap(nullptr, fiberStackSize + 2 * kPageSize, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
         if (stack == MAP_FAILED) [[unlikely]]
         {
             stack = nullptr;
             return false;
         }
 
-        int r = ::mprotect(stack, pageSize, PROT_NONE);
+        int r = ::mprotect(stack, kPageSize, PROT_NONE);
         SILK_ASSERT(!r);
 
-        r = ::mprotect(static_cast<uint8_t *>(stack) + pageSize + fiberStackSize, pageSize, PROT_NONE);
+        r = ::mprotect(static_cast<uint8_t *>(stack) + kPageSize + fiberStackSize, kPageSize, PROT_NONE);
         SILK_ASSERT(!r);
     }
 
@@ -361,7 +360,7 @@ bool Fiber::initialize(
 
     fiberMain = fiberMain_;
     parametersDtor = parametersDtor_;
-    fiberContext = make_fcontext(static_cast<uint8_t *>(stack) + pageSize + fiberStackSize, fiberStackSize, fiberContextMain);
+    fiberContext = make_fcontext(static_cast<uint8_t *>(stack) + kPageSize + fiberStackSize, fiberStackSize, fiberContextMain);
 
     return true;
 }
@@ -386,7 +385,7 @@ void Fiber::switchToFiberContext() noexcept
 #if defined(__SANITIZE_ADDRESS__)
     void * schedulerFakeStack = nullptr;
     __sanitizer_start_switch_fiber(
-        &schedulerFakeStack, static_cast<uint8_t *>(stack) + getPageSize(), FiberScheduler::getOptions().fiberStackSize);
+        &schedulerFakeStack, static_cast<uint8_t *>(stack) + kPageSize, FiberScheduler::getOptions().fiberStackSize);
 #endif
 
 #if defined(__SANITIZE_THREAD__)
@@ -1133,8 +1132,7 @@ void FiberScheduler::initialize(const Options * userOptions) noexcept
         options = *userOptions;
     }
 
-    const uint64_t pageSize = getPageSize();
-    SILK_ASSERT(options.fiberStackSize >= pageSize && (options.fiberStackSize % pageSize) == 0);
+    SILK_ASSERT(options.fiberStackSize >= kPageSize && (options.fiberStackSize % kPageSize) == 0);
     SILK_ASSERT(options.readyQueueCapacity >= 2 && (options.readyQueueCapacity & (options.readyQueueCapacity - 1)) == 0);
     SILK_ASSERT(options.readyDispatchBatch >= 1);
     SILK_ASSERT(options.ioUringQueueSize >= 2 && (options.ioUringQueueSize & (options.ioUringQueueSize - 1)) == 0);
