@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+import json
 
 import pytest
 
@@ -42,6 +43,34 @@ def test_fetch_repo_variable_returns_repo_and_variable():
 
     assert isinstance(repo, FakeRepo)
     assert result is variable
+
+
+def test_fetch_repo_variable_retries_github_failures(monkeypatch):
+    variable = object()
+    calls = []
+    sleeps = []
+
+    class FakeRepo:
+        def get_variable(self, name):
+            assert name == "RUNNER_VERSION"
+            return variable
+
+    class FakeGithub:
+        def get_repo(self, repository):
+            assert repository == "owner/repo"
+            calls.append(repository)
+            if len(calls) == 1:
+                raise h.GithubException(502, {"message": "bad gateway"})
+            return FakeRepo()
+
+    monkeypatch.setattr(h.time, "sleep", sleeps.append)
+
+    repo, result = h.fetch_repo_variable(FakeGithub(), "owner/repo", "RUNNER_VERSION")
+
+    assert isinstance(repo, FakeRepo)
+    assert result is variable
+    assert calls == ["owner/repo", "owner/repo"]
+    assert sleeps == [h.GITHUB_API_RETRY_INTERVAL_SEC]
 
 
 def test_fetch_github_team_public_keys_fetches_member_keys():
@@ -443,6 +472,68 @@ def test_get_jobs_raw_fetches_workflow_jobs_with_pygithub(monkeypatch):
     monkeypatch.setattr(h, "github_client", fake_github_client)
 
     assert h.get_jobs_raw("token", "owner/repo", 123) == jobs
+
+
+def test_get_jobs_raw_retries_pygithub_failures(monkeypatch):
+    jobs = [SimpleNamespace(name="job-1")]
+    attempts = []
+    sleeps = []
+
+    class FakeRun:
+        def jobs(self):
+            return jobs
+
+    class FakeRepo:
+        def get_workflow_run(self, run_id):
+            assert run_id == 123
+            attempts.append(run_id)
+            if len(attempts) == 1:
+                raise h.requests.exceptions.Timeout("temporary")
+            return FakeRun()
+
+    class FakeGithub:
+        def get_repo(self, repo):
+            assert repo == "owner/repo"
+            return FakeRepo()
+
+    def fake_github_client(token):
+        assert token == "token"
+        return FakeGithub()
+
+    monkeypatch.setattr(h, "github_client", fake_github_client)
+    monkeypatch.setattr(h.time, "sleep", sleeps.append)
+
+    assert h.get_jobs_raw("token", "owner/repo", 123) == jobs
+    assert attempts == [123, 123]
+    assert sleeps == [h.GITHUB_API_RETRY_INTERVAL_SEC]
+
+
+def test_parse_actions_job_url_extracts_run_and_job_ids() -> None:
+    assert h.parse_actions_job_url(
+        "https://github.com/org/repo/actions/runs/28388298305/job/84109112950"
+    ) == (28388298305, 84109112950)
+    assert h.parse_actions_job_url("https://github.com/org/repo/actions/runs/1") is None
+
+
+def test_load_github_event(monkeypatch, tmp_path):
+    event_path = tmp_path / "event.json"
+    event_path.write_text(json.dumps({"pull_request": {"number": 42}}))
+    monkeypatch.setenv("GITHUB_EVENT_PATH", str(event_path))
+
+    assert h.load_github_event() == {"pull_request": {"number": 42}}
+
+
+def test_pull_request_from_event_uses_github_event_payload():
+    event = {"pull_request": {"number": 42}}
+
+    class FakeGithub:
+        def create_from_raw_data(self, cls, data):
+            assert cls.__name__ == "PullRequest"
+            return SimpleNamespace(number=data["number"])
+
+    pr = h.pull_request_from_event(FakeGithub(), event)
+
+    assert pr.number == 42
 
 
 def test_resolve_github_runner_release_treats_empty_as_latest(monkeypatch):

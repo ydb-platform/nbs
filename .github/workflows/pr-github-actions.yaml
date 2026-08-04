@@ -32,6 +32,7 @@ on:
           - "no"
 
 permissions:
+  actions: read
   contents: read
   pull-requests: write
   issues: write
