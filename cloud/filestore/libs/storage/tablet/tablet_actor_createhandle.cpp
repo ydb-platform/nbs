@@ -629,4 +629,19 @@ void TIndexTabletActor::CompleteTx_CreateHandle(
     CompleteCreateHandle(ctx, args);
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::HandleConfirmCreateHandle(
+    const TEvService::TEvConfirmCreateHandleRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto response =
+        std::make_unique<TEvService::TEvConfirmCreateHandleResponse>(
+            MakeError(
+                E_NOT_IMPLEMENTED,
+                "ConfirmCreateHandle is not implemented by the tablet"));
+
+    NCloud::Reply(ctx, *ev, std::move(response));
+}
+
 }   // namespace NCloud::NFileStore::NStorage

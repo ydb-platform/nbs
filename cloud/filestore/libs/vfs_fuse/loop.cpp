@@ -64,6 +64,13 @@ static constexpr TStringBuf HandleOpsQueueFileName = "handle_ops_queue";
 static constexpr TStringBuf WriteBackCacheFileName = "write_back_cache";
 static constexpr TStringBuf DirectoryHandleStorageFileName = "directory_handles_storage";
 
+bool ShouldCreateHandleOpsQueue(const TFileSystemConfig& config)
+{
+    return config.GetAsyncDestroyHandleEnabled() ||
+        config.GetAsyncDestroyReadOnlyHandleEnabled() ||
+        config.GetAsyncCreateHandleEnabled();
+}
+
 NProto::TError CreateAndLockFile(
     const TString& dir,
     const TStringBuf& fileName,
@@ -992,15 +999,11 @@ private:
             SessionId = response.GetSession().GetSessionId();
 
             THandleOpsQueuePtr handleOpsQueue;
-            const bool asyncOpsEnabled =
-                FileSystemConfig->GetAsyncDestroyHandleEnabled() ||
-                FileSystemConfig->GetAsyncDestroyReadOnlyHandleEnabled() ||;
-                FileSystemConfig->GetAsyncCreateHandleEnabled()
             if (Config->GetHandleOpsQueuePath()) {
                 const auto path = TFsPath(Config->GetHandleOpsQueuePath()) /
                                   FileSystemConfig->GetFileSystemId() /
                                   SessionId;
-                if (path.Exists() || asyncOpsEnabled) {
+                if (path.Exists() || ShouldCreateHandleOpsQueue(*FileSystemConfig)) {
                     auto error = CreateAndLockFile(
                         path,
                         HandleOpsQueueFileName,
@@ -1021,7 +1024,7 @@ private:
                         Config->GetHandleOpsQueueSize());
                     HandleOpsQueueInitialized = true;
                 }
-            } else if (asyncDestroyEnabled) {
+            } else if (ShouldCreateHandleOpsQueue(*FileSystemConfig)) {
                 ReportHandleOpsQueueCreatingOrDeletingError(Sprintf(
                     "[f:%s][c:%s] Error initializing HandleOpsQueue: "
                     "HandleOpsQueuePath is not set",

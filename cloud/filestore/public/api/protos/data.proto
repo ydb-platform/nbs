@@ -102,6 +102,11 @@ message TCreateHandleResponse
     TResponseHeaders Headers = 1000;
 }
 
+// Persists a handle returned by CreateHandle with HandleCreatedAsync set.
+// The client must save this request before returning the handle to its caller
+// and retry it until it succeeds. Repeating the request is safe. If the
+// original CreateHandle was not persisted, this request creates the same
+// handle again.
 message TConfirmCreateHandleRequest
 {
     // Optional request headers.

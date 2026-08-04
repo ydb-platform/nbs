@@ -388,11 +388,7 @@ void TFileSystem::CompleteAsyncDestroyHandle(
         ReportAsyncDestroyHandleFailed();
     }
 
-    with_lock (HandleOpsQueueLock) {
-        HandleOpsQueue->PopFront();
-    }
-    RetryDelayedRelease();
-    ScheduleProcessHandleOpsQueue();
+    CompleteHandleOpsQueueEntry();
 }
 
 void TFileSystem::CompleteAsyncCreateHandle(
@@ -418,14 +414,19 @@ void TFileSystem::CompleteAsyncCreateHandle(
             << " error: " << FormatError(error));
     }
 
+    CompleteHandleOpsQueueEntry();
+}
+
+void TFileSystem::CompleteHandleOpsQueueEntry()
+{
     with_lock (HandleOpsQueueLock) {
         HandleOpsQueue->PopFront();
     }
-    RetryDelayedRelease();
+    ProcessDelayedRelease();
     ScheduleProcessHandleOpsQueue();
 }
 
-void TFileSystem::RetryDelayedRelease()
+void TFileSystem::ProcessDelayedRelease()
 {
     with_lock (DelayedReleaseQueueLock) {
         if (!DelayedReleaseQueue.empty()) {
@@ -451,7 +452,7 @@ void TFileSystem::ProcessHandleOpsQueue()
         // completion has already checked it. Retry here as well to avoid
         // leaving that release stranded until another entry completes.
         g.Release();
-        RetryDelayedRelease();
+        ProcessDelayedRelease();
         ScheduleProcessHandleOpsQueue();
         return;
     }
@@ -494,7 +495,7 @@ void TFileSystem::ProcessHandleOpsQueue()
                 });
     } else if (entry.HasQueuedCreateHandleRequest()) {
         const auto& requestInfo = entry.GetQueuedCreateHandleRequest();
-        auto request = CreateConfirmRequest(
+        auto request = CreateConfirmCreateHandleRequest(
             requestInfo.GetRequest(),
             requestInfo.GetNodeId(),
             requestInfo.GetHandle(),

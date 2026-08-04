@@ -15,8 +15,7 @@ message TQueuedCreateHandleRequest
 message TQueueEntry
 {
      oneof Request {
-          TCreateHandleRequest CreateHandleRequest = 1;
+          TQueuedCreateHandleRequest QueuedCreateHandleRequest = 1;
           TDestroyHandleRequest DestroyHandleRequest = 2;
-          TQueuedCreateHandleRequest QueuedCreateHandleRequest = 3;
     }
 }

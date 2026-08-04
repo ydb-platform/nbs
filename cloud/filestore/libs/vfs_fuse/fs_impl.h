@@ -367,16 +367,16 @@ private:
     }
 
     static std::shared_ptr<NProto::TConfirmCreateHandleRequest>
-    CreateConfirmRequest(
+    CreateConfirmCreateHandleRequest(
         const NProto::TCreateHandleRequest& createRequest,
         ui64 nodeId,
         ui64 handle,
         ui64 requestId);
 
-    void ConfirmCreateHandleForOpen(
+    void ConfirmCreateHandleAndCompleteOpen(
         TCallContextPtr callContext,
         fuse_req_t req,
-        NProto::TCreateHandleRequest createRequest,
+        const NProto::TCreateHandleRequest& createRequest,
         ui64 nodeId,
         ui64 handle,
         ui64 requestId,
@@ -510,7 +510,8 @@ private:
     void CompleteAsyncCreateHandle(
         TCallContext& callContext,
         const NProto::TConfirmCreateHandleResponse& response);
-    void RetryDelayedRelease();
+    void CompleteHandleOpsQueueEntry();
+    void ProcessDelayedRelease();
 
     void ClearDirectoryCache();
 

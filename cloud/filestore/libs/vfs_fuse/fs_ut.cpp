@@ -3282,6 +3282,90 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_VALUES_EQUAL(0U, confirmCalled.load());
     }
 
+    Y_UNIT_TEST(ShouldSynchronouslyConfirmUnexpectedAsyncCreateHandleResponse)
+    {
+        auto scheduler = std::make_shared<TTestScheduler>();
+        TBootstrap bootstrap(CreateWallClockTimer(), scheduler);
+
+        const ui64 nodeId = 10;
+        const ui64 handle = 2;
+        ui64 requestId = 0;
+        ui32 flags = 0;
+        TString fileSystemId;
+        TString headers;
+        std::atomic_uint confirmCalled = 0;
+        auto confirmPromise =
+            NewPromise<NProto::TConfirmCreateHandleResponse>();
+
+        bootstrap.Service->SetHandlerCreateHandle(
+            [&](auto callContext, auto request)
+            {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    FileSystemId,
+                    callContext->FileSystemId);
+                UNIT_ASSERT_VALUES_EQUAL(nodeId, request->GetNodeId());
+                UNIT_ASSERT(!request->GetAllowAsyncCreateHandle());
+
+                requestId = request->GetHeaders().GetRequestId()
+                    ? request->GetHeaders().GetRequestId()
+                    : callContext->RequestId;
+                flags = request->GetFlags();
+                fileSystemId = request->GetFileSystemId();
+                headers = request->GetHeaders().SerializeAsString();
+
+                NProto::TCreateHandleResponse response;
+                response.SetHandle(handle);
+                response.SetHandleCreatedAsync(true);
+                response.MutableNodeAttr()->SetId(nodeId);
+                response.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
+                return MakeFuture(response);
+            });
+
+        bootstrap.Service->SetHandlerConfirmCreateHandle(
+            [&, confirmPromise](auto callContext, auto request)
+            {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    FileSystemId,
+                    callContext->FileSystemId);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    fileSystemId,
+                    request->GetFileSystemId());
+                UNIT_ASSERT_VALUES_EQUAL(nodeId, request->GetNodeId());
+                UNIT_ASSERT_VALUES_EQUAL(handle, request->GetHandle());
+                UNIT_ASSERT_VALUES_EQUAL(flags, request->GetFlags());
+                UNIT_ASSERT_VALUES_EQUAL(requestId, request->GetRequestId());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    headers,
+                    request->GetHeaders().SerializeAsString());
+                ++confirmCalled;
+                return confirmPromise;
+            });
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        auto future = bootstrap.Fuse->SendRequest<TOpenHandleRequest>(nodeId);
+        UNIT_ASSERT_EXCEPTION(
+            future.GetValue(ExceptionWaitTimeout),
+            yexception);
+        UNIT_ASSERT_VALUES_EQUAL(1U, confirmCalled.load());
+
+        auto errorCounter =
+            bootstrap.Counters->GetSubgroup("component", "fs_ut")
+                ->GetCounter(
+                    "AppCriticalEvents/UnexpectedAsyncCreateHandleResponse",
+                    true);
+        UNIT_ASSERT_VALUES_EQUAL(1, static_cast<int>(*errorCounter));
+
+        confirmPromise.SetValue(NProto::TConfirmCreateHandleResponse{});
+        UNIT_ASSERT_VALUES_EQUAL(handle, future.GetValue(WaitTimeout));
+
+        scheduler->RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(1U, confirmCalled.load());
+    }
+
     void CheckIneligibleRequestDoesNotUseAsyncCreate(
         bool create,
         int systemFlags,
@@ -3672,7 +3756,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_VALUES_EQUAL(1U, confirmCalled.load());
     }
 
-    Y_UNIT_TEST(ShouldRetryOverflowAsyncCreateConfirmationOnRetriableError)
+    Y_UNIT_TEST(ShouldNotRetryOverflowAsyncCreateConfirmationOrCleanupErrors)
     {
         NProto::TFileStoreFeatures features;
         features.SetAsyncCreateHandleEnabled(true);
@@ -3685,6 +3769,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         const ui64 nodeId = 10;
         const ui64 handle = 2;
         std::atomic_uint confirmCalled = 0;
+        std::atomic_uint destroyCalled = 0;
 
         bootstrap.Service->SetHandlerCreateHandle(
             [&](auto callContext, auto request)
@@ -3711,13 +3796,22 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                     SessionId,
                     request->GetHeaders().GetSessionId());
 
-                if (++confirmCalled < 3) {
-                    NProto::TConfirmCreateHandleResponse response =
-                        TErrorResponse(E_REJECTED, "retriable");
-                    return MakeFuture(response);
-                }
+                ++confirmCalled;
+                NProto::TConfirmCreateHandleResponse response =
+                    TErrorResponse(E_REJECTED, "retriable");
+                return MakeFuture(response);
+            });
 
-                return MakeFuture(NProto::TConfirmCreateHandleResponse{});
+        bootstrap.Service->SetHandlerDestroyHandle(
+            [&](auto callContext, auto request)
+            {
+                UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+                UNIT_ASSERT_VALUES_EQUAL(nodeId, request->GetNodeId());
+                UNIT_ASSERT_VALUES_EQUAL(handle, request->GetHandle());
+                ++destroyCalled;
+                NProto::TDestroyHandleResponse response =
+                    TErrorResponse(E_REJECTED, "retriable");
+                return MakeFuture(response);
             });
 
         bootstrap.Start();
@@ -3726,20 +3820,31 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         };
 
         auto future = bootstrap.Fuse->SendRequest<TOpenHandleRequest>(nodeId);
-        UNIT_ASSERT_EXCEPTION(
-            future.GetValue(ExceptionWaitTimeout),
-            yexception);
+        UNIT_ASSERT_EXCEPTION(future.GetValue(WaitTimeout), yexception);
         UNIT_ASSERT_VALUES_EQUAL(1U, confirmCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(1U, destroyCalled.load());
 
-        scheduler->RunAllScheduledTasks();
-        UNIT_ASSERT_EXCEPTION(
-            future.GetValue(ExceptionWaitTimeout),
-            yexception);
-        UNIT_ASSERT_VALUES_EQUAL(2U, confirmCalled.load());
+        auto errorCounter =
+            bootstrap.Counters->GetSubgroup("component", "fs_ut")
+                ->GetCounter(
+                    "AppCriticalEvents/ConfirmCreateHandleFailed",
+                    true);
+        UNIT_ASSERT_VALUES_EQUAL(1, static_cast<int>(*errorCounter));
 
+        auto cleanupErrorCounter =
+            bootstrap.Counters->GetSubgroup("component", "fs_ut")
+                ->GetCounter(
+                    "AppCriticalEvents/AsyncCreateHandleCleanupFailed",
+                    true);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            static_cast<int>(*cleanupErrorCounter));
+
+        // Retriable errors are handled by the durable client. The synchronous
+        // fallback and cleanup must not add their own retry loops.
         scheduler->RunAllScheduledTasks();
-        UNIT_ASSERT_VALUES_EQUAL(handle, future.GetValue(WaitTimeout));
-        UNIT_ASSERT_VALUES_EQUAL(3U, confirmCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(1U, confirmCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(1U, destroyCalled.load());
     }
 
     Y_UNIT_TEST(ShouldFailOpenIfOverflowAsyncCreateConfirmationFails)

@@ -152,6 +152,7 @@ static const TString RequestNames[] = {
     "WriteBlob",
     "ConfirmAddData",
     "CancelAddData",
+    "ConfirmCreateHandle",
 };
 
 static_assert(
