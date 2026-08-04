@@ -125,6 +125,7 @@ func (s *AvailabilityMonitoringStorageYDB) getAvailabilityMonitoringResultsTx(
 		pragma TablePathPrefix = "%v";
 		declare $component as Utf8;
 		declare $host as Utf8;
+		declare $created_at as Timestamp;
 
 		select *
 		from availability_monitoring
@@ -154,6 +155,7 @@ func (s *AvailabilityMonitoringStorageYDB) getAvailabilityMonitoringResults(
 		pragma TablePathPrefix = "%v";
 		declare $component as Utf8;
 		declare $host as Utf8;
+		declare $created_at as Timestamp;
 
 		select *
 		from availability_monitoring
