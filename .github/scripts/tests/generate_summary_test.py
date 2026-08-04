@@ -957,7 +957,109 @@ def test_update_pr_comment_workload_check_retries_lost_concurrent_edit(
     assert gs.get_comment_revision(existing.body) == 2
 
 
-def test_update_workload_check_block_does_not_downgrade_completed_status() -> None:
+def test_update_pr_comment_workload_check_retries_lost_rerun_reset(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(gs, "WORKLOAD_COMMENT_EDIT_VERIFY_DELAY_SECONDS", 0)
+
+    class FakeHead:
+        sha = "abc123"
+
+    class FakeComment:
+        id = 1001
+
+        def __init__(self, body: str) -> None:
+            self.body = body
+            self.edits = []
+
+        def edit(self, body: str) -> None:
+            self.edits.append(body)
+            self.body = initial_body if len(self.edits) == 1 else body
+
+    class FakePR:
+        number = 77
+        head = FakeHead()
+
+        def __init__(self, comment: FakeComment) -> None:
+            self._comment = comment
+
+        def get_issue_comments(self) -> list[FakeComment]:
+            return [self._comment]
+
+        def create_issue_comment(self, body: str) -> None:  # noqa: U100
+            raise AssertionError("should not create a new comment")
+
+    initial_body = "\n".join(
+        [
+            (
+                "<!-- status pr=77, run=12, build_preset=linux, "
+                "dry_run=False, revision=0 -->"
+            ),
+            gs.WORKLOAD_CHECKS_START,
+            gs.get_workload_check_line(
+                "blockstore",
+                "completed",
+                "https://github.example/job/old",
+            ),
+            gs.WORKLOAD_CHECKS_END,
+        ]
+    )
+    existing = FakeComment(initial_body)
+    pr = FakePR(existing)
+
+    gs.update_pr_comment_workload_check(
+        run_number=12,
+        pr=pr,
+        build_preset="linux",
+        component="blockstore",
+        is_dry_run=False,
+        workload_check_status="running",
+        job_url="https://github.example/job/new",
+    )
+
+    assert len(existing.edits) == 2
+    assert gs.get_workload_check_status(existing.body, "blockstore") == "running"
+    assert "https://github.example/job/new" in existing.body
+    assert "https://github.example/job/old" not in existing.body
+
+
+def test_workload_check_reset_verification_requires_exact_status_and_job_url() -> None:
+    running_body = "\n".join(
+        [
+            gs.WORKLOAD_CHECKS_START,
+            gs.get_workload_check_line(
+                "blockstore",
+                "running",
+                "https://github.example/job/old",
+            ),
+            gs.WORKLOAD_CHECKS_END,
+        ]
+    )
+
+    assert not gs.is_workload_check_update_applied(
+        running_body,
+        "blockstore",
+        "running",
+        "https://github.example/job/new",
+        require_exact_match=True,
+    )
+
+    cancelled_body = "\n".join(
+        [
+            gs.WORKLOAD_CHECKS_START,
+            gs.get_workload_check_line("blockstore", "cancelled"),
+            gs.WORKLOAD_CHECKS_END,
+        ]
+    )
+    assert not gs.is_workload_check_update_applied(
+        cancelled_body,
+        "blockstore",
+        "completed",
+        require_exact_match=True,
+    )
+
+
+def test_update_workload_check_block_allows_rerun_to_reset_completed_status() -> None:
     body = "\n".join(
         [
             gs.WORKLOAD_CHECKS_START,
@@ -973,7 +1075,34 @@ def test_update_workload_check_block_does_not_downgrade_completed_status() -> No
         "https://github.example/job/123",
     )
 
-    assert updated == body
+    assert gs.get_workload_check_status(updated, "blockstore") == "running"
+    assert "https://github.example/job/123" in updated
+
+
+def test_update_workload_check_block_allows_successful_rerun_to_clear_cancelled_status() -> (
+    None
+):
+    body = "\n".join(
+        [
+            gs.WORKLOAD_CHECKS_START,
+            gs.get_workload_check_line(
+                "blockstore",
+                "cancelled",
+                "https://github.example/job/old",
+            ),
+            gs.WORKLOAD_CHECKS_END,
+        ]
+    )
+
+    updated = gs.update_workload_check_block(
+        body,
+        "blockstore",
+        "completed",
+        "https://github.example/job/new",
+    )
+
+    assert gs.get_workload_check_status(updated, "blockstore") == "completed"
+    assert "https://github.example/job/new" in updated
 
 
 def test_complete_workload_checks_block_preserves_failed_build_rows() -> None:
@@ -998,9 +1127,118 @@ def test_complete_workload_checks_block_preserves_failed_build_rows() -> None:
 
     assert ":red_circle:" in updated
     assert "build failed" in updated
-    assert ":white_check_mark:" in updated
+    assert "report update failed" in updated
     assert "https://github.example/job/123" in updated
     assert "https://github.example/job/456" in updated
+
+
+def test_complete_workload_checks_block_marks_cancelled_stale_row() -> None:
+    job_url = "https://github.com/org/repo/actions/runs/1/job/123"
+    body = "\n".join(
+        [
+            gs.WORKLOAD_CHECKS_START,
+            gs.get_workload_check_line(
+                "blockstore",
+                "running",
+                job_url,
+            ),
+            gs.WORKLOAD_CHECKS_END,
+        ]
+    )
+
+    def resolve_job_conclusion(url: str, component: str) -> str:
+        assert url == job_url
+        assert component == "blockstore"
+        return "cancelled"
+
+    updated = gs.complete_workload_checks_block(
+        body,
+        job_conclusion_resolver=resolve_job_conclusion,
+    )
+
+    assert gs.get_workload_check_status(updated, "blockstore") == "cancelled"
+    assert "cancelled or timed out before reporting completion" in updated
+    assert job_url in updated
+
+
+def test_complete_workload_checks_block_resolves_row_without_job_url() -> None:
+    body = "\n".join(
+        [
+            gs.WORKLOAD_CHECKS_START,
+            gs.get_workload_check_line("blockstore", "pending"),
+            gs.WORKLOAD_CHECKS_END,
+        ]
+    )
+
+    def resolve_job_conclusion(url: str, component: str) -> str:
+        assert url == ""
+        assert component == "blockstore"
+        return "skipped"
+
+    updated = gs.complete_workload_checks_block(
+        body,
+        job_conclusion_resolver=resolve_job_conclusion,
+    )
+
+    assert gs.get_workload_check_status(updated, "blockstore") == "skipped"
+
+
+def test_complete_workload_checks_block_marks_failed_stale_row() -> None:
+    job_url = "https://github.com/org/repo/actions/runs/1/job/123"
+    body = "\n".join(
+        [
+            gs.WORKLOAD_CHECKS_START,
+            gs.get_workload_check_line(
+                "blockstore",
+                "running",
+                job_url,
+            ),
+            gs.WORKLOAD_CHECKS_END,
+        ]
+    )
+
+    def resolve_job_conclusion(url: str, component: str) -> str:
+        assert url == job_url
+        assert component == "blockstore"
+        return "failure"
+
+    updated = gs.complete_workload_checks_block(
+        body,
+        job_conclusion_resolver=resolve_job_conclusion,
+    )
+
+    assert gs.get_workload_check_status(updated, "blockstore") == "failed"
+    assert "job failed before reporting completion" in updated
+
+
+def test_complete_workload_checks_block_marks_successful_stale_row_as_report_failed() -> (
+    None
+):
+    job_url = "https://github.com/org/repo/actions/runs/1/job/123"
+    body = "\n".join(
+        [
+            gs.WORKLOAD_CHECKS_START,
+            gs.get_workload_check_line(
+                "blockstore",
+                "running",
+                job_url,
+            ),
+            gs.WORKLOAD_CHECKS_END,
+        ]
+    )
+
+    def resolve_job_conclusion(url: str, component: str) -> str:
+        assert url == job_url
+        assert component == "blockstore"
+        return "success"
+
+    updated = gs.complete_workload_checks_block(
+        body,
+        job_conclusion_resolver=resolve_job_conclusion,
+    )
+
+    assert gs.get_workload_check_status(updated, "blockstore") == "report_failed"
+    assert "job finished but report update failed" in updated
 
 
 def test_update_workload_check_block_adds_failed_build_log_link() -> None:

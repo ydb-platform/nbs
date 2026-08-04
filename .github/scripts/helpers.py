@@ -11,13 +11,14 @@ import inspect
 import time
 from dataclasses import dataclass
 import datetime
-from typing import Callable, List, Tuple
+from typing import Any, Callable, List, Tuple
 from urllib.parse import quote, urlparse
 
 from github import Auth as GithubAuth, Github
 from github.GithubException import GithubException
 from github.GitRelease import GitRelease
 from github.NamedUser import NamedUser
+from github.PullRequest import PullRequest
 from github.Team import Team
 from github.WorkflowJob import WorkflowJob
 
@@ -50,6 +51,7 @@ SAN_PRESET = {
 
 SAN_PRESETS = {"release-asan", "release-tsan", "release-msan", "release-ubsan"}
 SAN_SUFFIX = {"asan": "-asan", "tsan": "-tsan", "msan": "-msan", "ubsan": "-ubsan"}
+BUILD_AND_TEST_JOB_NAME_PREFIX = "Build and test"
 SAN_PRESET_BY_SAN = {
     "asan": "release-asan",
     "tsan": "release-tsan",
@@ -124,14 +126,6 @@ def get_run_url() -> str:
     return f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
 
 
-def fetch_jobs() -> list[WorkflowJob]:
-    repo = github_client(os.environ["GITHUB_TOKEN"]).get_repo(
-        os.environ["GITHUB_REPOSITORY"]
-    )
-    run = repo.get_workflow_run(int(os.environ["GITHUB_RUN_ID"]))
-    return list(run.jobs())
-
-
 def job_name_matches(expected_name: str, actual_name: str) -> bool:
     if actual_name == expected_name:
         return True
@@ -145,8 +139,12 @@ def job_name_matches(expected_name: str, actual_name: str) -> bool:
 
 def find_current_job_url(current_job_name: str, runner_name: str) -> str:
     try:
-        jobs = fetch_jobs()
-    except GithubException:
+        jobs = get_jobs_raw(
+            os.environ["GITHUB_TOKEN"],
+            os.environ["GITHUB_REPOSITORY"],
+            int(os.environ["GITHUB_RUN_ID"]),
+        )
+    except PYGITHUB_RETRY_EXCEPTIONS:
         return get_run_url()
 
     matching_jobs = [
@@ -346,6 +344,11 @@ def retry(
     return decorator
 
 
+@retry(
+    attempts=GITHUB_API_RETRY_ATTEMPTS,
+    interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
+    retry_exceptions=PYGITHUB_RETRY_EXCEPTIONS,
+)
 def fetch_repo_variable(github_client, github_repository: str, variable_name: str):
     repo = github_client.get_repo(github_repository)
     return repo, repo.get_variable(variable_name)
@@ -479,6 +482,15 @@ def github_client_from_env() -> Github:
 
 def github_runner_repo(github: Github):
     return github.get_repo("actions/runner")
+
+
+def load_github_event() -> dict[str, Any]:
+    with open(os.environ["GITHUB_EVENT_PATH"], encoding="utf-8") as fp:
+        return json.load(fp)
+
+
+def pull_request_from_event(github: Github, event: dict[str, Any]) -> PullRequest:
+    return github.create_from_raw_data(PullRequest, event["pull_request"])
 
 
 def git_release_payload(release: GitRelease) -> dict:
@@ -762,8 +774,8 @@ def classify_runner(labels):
 
 def compact_job_name(job_name: str) -> str:
     """Convert a job name to a compact format."""
-    if job_name.startswith("Build and test"):
-        return job_name.replace("Build and test", "").strip()
+    if job_name.startswith(BUILD_AND_TEST_JOB_NAME_PREFIX):
+        return job_name.replace(BUILD_AND_TEST_JOB_NAME_PREFIX, "").strip()
     if "(" in job_name:
         return job_name.split("(")[0].strip()
     if ".yaml" in job_name or ".yml" in job_name:
@@ -795,6 +807,25 @@ def date_to_hms(date: datetime.datetime) -> str:
         return f"{age_minutes}m"
 
 
+def parse_actions_job_url(job_url: str) -> tuple[int, int] | None:
+    if not job_url:
+        return None
+
+    match = re.search(
+        r"/actions/runs/(?P<run_id>\d+)/job/(?P<job_id>\d+)",
+        urlparse(job_url).path,
+    )
+    if match is None:
+        return None
+
+    return int(match.group("run_id")), int(match.group("job_id"))
+
+
+@retry(
+    attempts=GITHUB_API_RETRY_ATTEMPTS,
+    interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
+    retry_exceptions=PYGITHUB_RETRY_EXCEPTIONS,
+)
 def get_jobs_raw(token, repo_full_name, run_id) -> list[WorkflowJob]:
     repo = github_client(token).get_repo(repo_full_name)
     return list(repo.get_workflow_run(run_id).jobs())
