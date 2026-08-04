@@ -4,9 +4,9 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 
-#include <util/string/builder.h>
-
 #include <silk/fibers/fiber.h>
+
+#include <util/string/builder.h>
 
 #include <memory>
 
@@ -29,6 +29,7 @@ struct TSendParams
     std::unique_ptr<TRequest> Request;
     NThreading::TPromise<TResponse> Promise;
 };
+
 static_assert(sizeof(TSendParams) <= silk::FIBER_PARAMETERS_SIZE);
 
 int SendFiberMain(TSendParams* params) noexcept
@@ -64,9 +65,10 @@ struct TAsyncEndpoint: IAsyncEndpoint
             nullptr);
         if (r) {
             TResponse resp;
-            *resp.MutableError() = MakeError(E_FAIL, TStringBuilder()
-                << "Failed to run fiber, code: " << r
-                << ", message: " << ::strerror(r));
+            *resp.MutableError() = MakeError(
+                E_FAIL,
+                TStringBuilder() << "Failed to run fiber, code: " << r
+                                 << ", message: " << ::strerror(r));
             promise.SetValue(std::move(resp));
         }
 
@@ -87,6 +89,7 @@ struct TConnectParams
     ui16 Port;
     NThreading::TPromise<IAsyncEndpointPtr> Promise;
 };
+
 static_assert(sizeof(TConnectParams) <= silk::FIBER_PARAMETERS_SIZE);
 
 int ConnectFiberMain(TConnectParams* params) noexcept

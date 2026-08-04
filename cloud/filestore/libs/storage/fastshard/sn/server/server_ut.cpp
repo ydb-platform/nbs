@@ -4,20 +4,19 @@
 #include <cloud/filestore/libs/storage/fastshard/testlib/fake_storage_node.h>
 #include <cloud/filestore/libs/storage/fastshard/testlib/silk_env.h>
 
-#include <library/cpp/testing/common/network.h>
-
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/protos/device.pb.h>
 
 #include <silk/fibers/fiber.h>
 #include <silk/fibers/future.h>
 
-#include <gtest/gtest.h>
+#include <library/cpp/testing/common/network.h>
 
 #include <util/generic/string.h>
 #include <util/string/builder.h>
 
 #include <arpa/inet.h>
+#include <gtest/gtest.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <poll.h>
@@ -41,8 +40,7 @@ namespace {
 
 int ConnectTo(ui16 port)
 {
-    int fd =
-        ::socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
+    int fd = ::socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
     if (fd < 0) {
         return -1;
     }
@@ -130,7 +128,8 @@ struct TServerFixture
 TEST(ServerTest, RoundTripsAcquireDevices)
 {
     const int r = FiberScheduler::run(
-        +[](int*) noexcept -> int {
+        +[](int*) noexcept -> int
+        {
             TServerFixture fx;
 
             int fd = ConnectTo(fx.Port);
@@ -161,7 +160,8 @@ TEST(ServerTest, RoundTripsAcquireDevices)
 TEST(ServerTest, RoundTripsReleaseDevices)
 {
     const int r = FiberScheduler::run(
-        +[](int*) noexcept -> int {
+        +[](int*) noexcept -> int
+        {
             TServerFixture fx;
 
             int fd = ConnectTo(fx.Port);
@@ -188,7 +188,8 @@ TEST(ServerTest, RoundTripsReleaseDevices)
 TEST(ServerTest, RoundTripsReadPages)
 {
     const int r = FiberScheduler::run(
-        +[](int*) noexcept -> int {
+        +[](int*) noexcept -> int
+        {
             TServerFixture fx;
 
             // Preload the canned response with a distinguishable payload.
@@ -244,7 +245,8 @@ TEST(ServerTest, RoundTripsReadPages)
 TEST(ServerTest, RoundTripsWriteLogRecord)
 {
     const int r = FiberScheduler::run(
-        +[](int*) noexcept -> int {
+        +[](int*) noexcept -> int
+        {
             TServerFixture fx;
 
             int fd = ConnectTo(fx.Port);
@@ -265,9 +267,7 @@ TEST(ServerTest, RoundTripsWriteLogRecord)
             EXPECT_TRUE(resp.HasWriteLogRecord());
             EXPECT_EQ(1u, fx.Storage->WriteCalls.size());
             EXPECT_EQ("dev-99", fx.Storage->WriteCalls[0].GetDeviceUUID());
-            EXPECT_EQ(
-                1234u,
-                fx.Storage->WriteCalls[0].GetLogSequenceNumber());
+            EXPECT_EQ(1234u, fx.Storage->WriteCalls[0].GetLogSequenceNumber());
             EXPECT_EQ(1u, fx.Storage->WriteCalls[0].PageGroupsSize());
             EXPECT_EQ(
                 "payload",
@@ -282,7 +282,8 @@ TEST(ServerTest, RoundTripsWriteLogRecord)
 TEST(ServerTest, ReturnsProtocolErrorForEmptyRequest)
 {
     const int r = FiberScheduler::run(
-        +[](int*) noexcept -> int {
+        +[](int*) noexcept -> int
+        {
             TServerFixture fx;
 
             int fd = ConnectTo(fx.Port);
@@ -313,7 +314,8 @@ TEST(ServerTest, ReturnsProtocolErrorForEmptyRequest)
 TEST(ServerTest, HandlesMultipleRequestsPerConnection)
 {
     const int r = FiberScheduler::run(
-        +[](int*) noexcept -> int {
+        +[](int*) noexcept -> int
+        {
             TServerFixture fx;
 
             int fd = ConnectTo(fx.Port);
@@ -354,7 +356,8 @@ TEST(ServerTest, StopClosesIdleConnection)
     // test hangs (RecvAll on the client side never gets EOF because the
     // server never shuts down cfd).
     const int r = FiberScheduler::run(
-        +[](int*) noexcept -> int {
+        +[](int*) noexcept -> int
+        {
             int fd;
             {
                 TServerFixture fx;

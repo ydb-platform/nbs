@@ -78,8 +78,9 @@ public:
         return MirrorRequest<
             NProto::TAcquireDevicesRequest,
             NProto::TAcquireDevicesResponse,
-            TAcquireDevicesParams
-        >(AcquireDevicesFiberMain, NProto::TAcquireDevicesRequest{});
+            TAcquireDevicesParams>(
+            AcquireDevicesFiberMain,
+            NProto::TAcquireDevicesRequest{});
     }
 
     NProto::TError ReleaseDevices() override
@@ -87,8 +88,9 @@ public:
         return MirrorRequest<
             NProto::TReleaseDevicesRequest,
             NProto::TReleaseDevicesResponse,
-            TReleaseDevicesParams
-        >(ReleaseDevicesFiberMain, NProto::TReleaseDevicesRequest{});
+            TReleaseDevicesParams>(
+            ReleaseDevicesFiberMain,
+            NProto::TReleaseDevicesRequest{});
     }
 
     NProto::TError WriteLogRecord(
@@ -111,8 +113,7 @@ public:
         return MirrorRequest<
             NProto::TWriteLogRecordRequest,
             NProto::TWriteLogRecordResponse,
-            TWriteLogRecordParams
-        >(WriteLogRecordFiberMain, std::move(request));
+            TWriteLogRecordParams>(WriteLogRecordFiberMain, std::move(request));
     }
 
     NProto::TError ReadPages(

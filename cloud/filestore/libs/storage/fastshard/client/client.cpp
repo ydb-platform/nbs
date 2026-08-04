@@ -87,7 +87,8 @@ std::shared_ptr<IEndpoint> TClient::Connect(const TString& host, ui16 port)
         return nullptr;
     }
 
-    Y_DEFER {
+    Y_DEFER
+    {
         ::freeaddrinfo(res);
     };
 

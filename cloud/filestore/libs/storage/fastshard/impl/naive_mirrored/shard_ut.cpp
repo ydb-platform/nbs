@@ -9,15 +9,15 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 
-#include <library/cpp/testing/common/network.h>
-
 #include <silk/fibers/fiber.h>
 #include <silk/fibers/future.h>
 #include <silk/util/logger.h>
 
-#include <gtest/gtest.h>
+#include <library/cpp/testing/common/network.h>
 
 #include <util/system/tempfile.h>
+
+#include <gtest/gtest.h>
 
 using namespace NCloud;
 using namespace NFileStore;
@@ -379,10 +379,9 @@ TEST(NaiveMirroredShardTest, WritesAndReadsFiles)
     const TString file1 = "file1";
     const ui32 mode = 0644;
 
-    const ui32 createHandleFlags
-        = ProtoFlag(TCreateHandleRequest::E_CREATE)
-        | ProtoFlag(TCreateHandleRequest::E_READ)
-        | ProtoFlag(TCreateHandleRequest::E_WRITE);
+    const ui32 createHandleFlags = ProtoFlag(TCreateHandleRequest::E_CREATE) |
+                                   ProtoFlag(TCreateHandleRequest::E_READ) |
+                                   ProtoFlag(TCreateHandleRequest::E_WRITE);
 
     ui64 nodeId = 0;
     {
@@ -456,10 +455,9 @@ TEST(NaiveMirroredShardTest, WritesAndReadsLongUnalignedRangesWithHoles)
     const ui64 uid = 111;
     const ui64 gid = 222;
 
-    const ui32 createHandleFlags
-        = ProtoFlag(TCreateHandleRequest::E_CREATE)
-        | ProtoFlag(TCreateHandleRequest::E_READ)
-        | ProtoFlag(TCreateHandleRequest::E_WRITE);
+    const ui32 createHandleFlags = ProtoFlag(TCreateHandleRequest::E_CREATE) |
+                                   ProtoFlag(TCreateHandleRequest::E_READ) |
+                                   ProtoFlag(TCreateHandleRequest::E_WRITE);
 
     ui64 nodeId = 0;
     ui64 handle = 0;
@@ -560,8 +558,8 @@ TEST(NaiveMirroredShardTest, WritesAndReadsLongUnalignedRangesWithHoles)
 
     {
         // covers 4 page clusters
-        const ui64 readOffset = 48_KB; // mid-cluster
-        const ui64 readLength = 32_KB; // cross-cluster read
+        const ui64 readOffset = 48_KB;   // mid-cluster
+        const ui64 readLength = 32_KB;   // cross-cluster read
 
         TString expectedData(readLength, 0);
 
@@ -682,10 +680,9 @@ TEST(NaiveMirroredShardTest, UnalignedAppend)
     const ui64 uid = 111;
     const ui64 gid = 222;
 
-    const ui32 createHandleFlags
-        = ProtoFlag(TCreateHandleRequest::E_CREATE)
-        | ProtoFlag(TCreateHandleRequest::E_READ)
-        | ProtoFlag(TCreateHandleRequest::E_WRITE);
+    const ui32 createHandleFlags = ProtoFlag(TCreateHandleRequest::E_CREATE) |
+                                   ProtoFlag(TCreateHandleRequest::E_READ) |
+                                   ProtoFlag(TCreateHandleRequest::E_WRITE);
 
     ui64 nodeId = 0;
     ui64 handle = 0;
