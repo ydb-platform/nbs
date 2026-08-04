@@ -144,9 +144,7 @@ void TPartitionActor::HandleTrimFreshLog(
         Executor()->Generation(),
         nextPerGenerationCounter,
         std::move(freshChannels),
-        PartitionConfig.GetDiskId(),
-        PartitionConfig.GetCloudId(),
-        PartitionConfig.GetFolderId(),
+        VolumeId,
         Config->GetTrimFreshLogTimeout());
 
     Actors.Insert(actor);

@@ -4,6 +4,7 @@
 
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
+#include <cloud/blockstore/libs/common/volume_id.h>
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
@@ -26,9 +27,7 @@ private:
     const ui32 RecordGeneration;
     const ui32 PerGenerationCounter;
     const TVector<ui32> FreshChannels;
-    const TString DiskId;
-    const TString CloudId;
-    const TString FolderId;
+    const TVolumeIdConstPtr VolumeId;
     const TDuration Timeout;
 
     ui32 RequestsInFlight = 0;
@@ -43,9 +42,7 @@ public:
         ui32 recordGeneration,
         ui32 perGenerationCounter,
         TVector<ui32> freshChannels,
-        TString diskId,
-        TString cloudId,
-        TString folderId,
+        TVolumeIdConstPtr volumeId,
         TDuration timeout);
 
     void Bootstrap(const NActors::TActorContext& ctx);

@@ -3,6 +3,7 @@
 #include "events_private.h"
 
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
+#include <cloud/blockstore/libs/common/volume_id.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 
@@ -59,9 +60,7 @@ private:
     const bool IsZeroRequest;
     const bool WaitForAddFreshBlocksResponseBeforeResponse;
     const ui64 TabletId;
-    const TString DiskId;
-    const TString CloudId;
-    const TString FolderId;
+    const TVolumeIdConstPtr VolumeId;
 
     TPartitionThreadSafeStatePtr SharedState;
 
@@ -88,9 +87,7 @@ public:
         IBlockDigestGeneratorPtr blockDigestGenerator,
         bool waitForAddFreshBlocksResponseBeforeResponse,
         ui64 tabletId,
-        TString diskId,
-        TString cloudId,
-        TString folderId,
+        TVolumeIdConstPtr volumeId,
         TPartitionThreadSafeStatePtr sharedState);
 
     void Bootstrap(const NActors::TActorContext& ctx);

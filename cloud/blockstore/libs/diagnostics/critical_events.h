@@ -4,6 +4,9 @@
 
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/common/printable_params.h>
+#include <cloud/blockstore/libs/common/volume_id.h>
+
+#include <utility>
 
 namespace NCloud::NBlockStore {
 
@@ -204,9 +207,26 @@ void ResetVolumeCriticalEventsCounter();
         const TString& cloudId,                                                \
         const TString& folderId,                                               \
         const TCritEventParams& keyValues);                                    \
+    template <typename... TArgs>                                               \
+    TString Report##name(const TVolumeId& volumeId, TArgs&&... args)           \
+    {                                                                          \
+        return Report##name(                                                   \
+            volumeId.DiskId,                                                   \
+            volumeId.CloudId,                                                  \
+            volumeId.FolderId,                                                 \
+            std::forward<TArgs>(args)...);                                     \
+    }                                                                          \
+    template <typename... TArgs>                                               \
+    TString Report##name(                                                      \
+        const TVolumeIdConstPtr& volumeId,                                     \
+        TArgs&&... args)                                                       \
+    {                                                                          \
+        Y_DEBUG_ABORT_UNLESS(volumeId);                                        \
+        return Report##name(*volumeId, std::forward<TArgs>(args)...);          \
+    }                                                                          \
     const TString GetCriticalEventFor##name();                                 \
     const TString GetDeprecatedCriticalEventFor##name();                       \
-// BLOCKSTORE_DECLARE_VOLUME_CRITICAL_EVENT_ROUTINE
+    // BLOCKSTORE_DECLARE_VOLUME_CRITICAL_EVENT_ROUTINE
 
     BLOCKSTORE_VOLUME_CRITICAL_EVENTS(\
         BLOCKSTORE_DECLARE_VOLUME_CRITICAL_EVENT_ROUTINE)

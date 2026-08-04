@@ -78,6 +78,10 @@ TFreshBlocksWriterActor::TFreshBlocksWriterActor(
         IProfileLogPtr profileLog)
     : Config(std::move(config))
     , PartitionConfig(std::move(partitionConfig))
+    , VolumeId(MakeVolumeId(
+          PartitionConfig.GetDiskId(),
+          PartitionConfig.GetCloudId(),
+          PartitionConfig.GetFolderId()))
     , StorageAccessMode(storageAccessMode)
     , PartitionTabletID(partitionTabletId)
     , PartitionActorId(partitionActorId)

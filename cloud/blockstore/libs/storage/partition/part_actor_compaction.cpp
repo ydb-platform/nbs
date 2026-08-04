@@ -143,9 +143,7 @@ private:
     const TRequestInfoPtr RequestInfo;
 
     const ui64 TabletId;
-    const TString DiskId;
-    const TString CloudId;
-    const TString FolderId;
+    const TVolumeIdConstPtr VolumeId;
     const TActorId Tablet;
     const ui32 BlockSize;
     const ui32 MaxAffectedBlocksPerCompaction;
@@ -201,9 +199,7 @@ public:
     TCompactionActor(
         TRequestInfoPtr requestInfo,
         ui64 tabletId,
-        TString diskId,
-        TString cloudId,
-        TString folderId,
+        TVolumeIdConstPtr volumeId,
         const TActorId& tablet,
         ui32 blockSize,
         ui32 maxAffectedBlocksPerCompaction,
@@ -279,9 +275,7 @@ private:
 TCompactionActor::TCompactionActor(
         TRequestInfoPtr requestInfo,
         ui64 tabletId,
-        TString diskId,
-        TString cloudId,
-        TString folderId,
+        TVolumeIdConstPtr volumeId,
         const TActorId& tablet,
         ui32 blockSize,
         ui32 maxAffectedBlocksPerCompaction,
@@ -299,9 +293,7 @@ TCompactionActor::TCompactionActor(
         TVector<TPartialBlobId> blobsToReadBlobMetas)
     : RequestInfo(std::move(requestInfo))
     , TabletId(tabletId)
-    , DiskId(std::move(diskId))
-    , CloudId(std::move(cloudId))
-    , FolderId(std::move(folderId))
+    , VolumeId(std::move(volumeId))
     , Tablet(tablet)
     , BlockSize(blockSize)
     , MaxAffectedBlocksPerCompaction(maxAffectedBlocksPerCompaction)
@@ -392,9 +384,9 @@ NProto::TError TCompactionActor::VerifyBlockChecksums()
                 r->BlockIndex,
                 r->BlobOffset,
                 expectedChecksum,
-                DiskId,
-                CloudId,
-                FolderId);
+                VolumeId->DiskId,
+                VolumeId->CloudId,
+                VolumeId->FolderId);
 
             if (HasError(error)) {
                 return error;
@@ -2268,9 +2260,7 @@ void TPartitionActor::CompleteCompaction(
         ctx,
         args.RequestInfo,
         TabletID(),
-        PartitionConfig.GetDiskId(),
-        PartitionConfig.GetCloudId(),
-        PartitionConfig.GetFolderId(),
+        VolumeId,
         SelfId(),
         State->GetBlockSize(),
         Config->GetMaxAffectedBlocksPerCompaction(),

@@ -25,21 +25,14 @@ TIntrusivePtr<TDynamicCounters> FindNestedGroup(
     return group;
 }
 
-struct TVolumePath
-{
-    TString DiskId;
-    TString CloudId;
-    TString FolderId;
-};
-
 // Resolves the per-disk counter group under component=service_volume.
 TIntrusivePtr<TDynamicCounters> FindVolumeGroup(
     TDynamicCountersPtr serviceVolumeGroup,
-    const TVolumePath& p)
+    const TVolumeId& v)
 {
     return FindNestedGroup(
         serviceVolumeGroup,
-        {{"volume", p.DiskId}, {"cloud", p.CloudId}, {"folder", p.FolderId}});
+        {{"volume", v.DiskId}, {"cloud", v.CloudId}, {"folder", v.FolderId}});
 }
 
 TString GetSensorName()
@@ -121,22 +114,14 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
 
         auto handler = CreateCriticalEventsStatsHandler();
 
-        const TVolumePath p{
+        const TVolumeId v{
             .DiskId = "disk-1",
             .CloudId = "cloud-1",
             .FolderId = "folder-1"};
 
-        auto ret1 = ReportBlockDigestMismatchInBlob(
-            p.DiskId,
-            p.CloudId,
-            p.FolderId,
-            "some msg");
+        auto ret1 = ReportBlockDigestMismatchInBlob(v, "some msg");
 
-        ReportBlockDigestMismatchInBlob(
-            p.DiskId,
-            p.CloudId,
-            p.FolderId,
-            "some msg");
+        ReportBlockDigestMismatchInBlob(v, "some msg");
 
         // The returned log line carries the per-disk prefix.
         UNIT_ASSERT_STRING_CONTAINS(ret1, "disk-1");
@@ -145,7 +130,7 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
 
         // Before the flush the per-disk GAUGE is not yet materialized:
         // the hot path only bumps the Internal accumulator.
-        auto volumeGroup = FindVolumeGroup(serviceVolumeGroup, p);
+        auto volumeGroup = FindVolumeGroup(serviceVolumeGroup, v);
         UNIT_ASSERT(!volumeGroup || !volumeGroup->FindCounter(GetSensorName()));
 
         // Deprecated counter is bumped synchronously.
@@ -157,7 +142,7 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
         // Flush materializes and writes the GAUGE.
         handler->UpdateStats(true);
 
-        volumeGroup = FindVolumeGroup(serviceVolumeGroup, p);
+        volumeGroup = FindVolumeGroup(serviceVolumeGroup, v);
         UNIT_ASSERT(volumeGroup);
         auto volumeCounter = volumeGroup->FindCounter(GetSensorName());
         UNIT_ASSERT(volumeCounter);
@@ -182,27 +167,23 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
 
         auto handler = CreateCriticalEventsStatsHandler();
 
-        const TVolumePath p{
+        const TVolumeId v{
             .DiskId = "disk-1",
             .CloudId = "cloud-1",
             .FolderId = "folder-1"};
 
-        ReportBlockDigestMismatchInBlob(
-            p.DiskId,
-            p.CloudId,
-            p.FolderId,
-            "some msg");
+        ReportBlockDigestMismatchInBlob(v, "some msg");
 
         // Tick without the interval finished -> no flush.
         handler->UpdateStats(false);
 
-        auto volumeGroup = FindVolumeGroup(serviceVolumeGroup, p);
+        auto volumeGroup = FindVolumeGroup(serviceVolumeGroup, v);
         UNIT_ASSERT(!volumeGroup || !volumeGroup->FindCounter(GetSensorName()));
 
         // Interval finished -> flush writes 1.
         handler->UpdateStats(true);
 
-        volumeGroup = FindVolumeGroup(serviceVolumeGroup, p);
+        volumeGroup = FindVolumeGroup(serviceVolumeGroup, v);
         UNIT_ASSERT(volumeGroup);
         auto volumeCounter = volumeGroup->FindCounter(GetSensorName());
         UNIT_ASSERT(volumeCounter);
@@ -224,26 +205,18 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
 
         auto handler = CreateCriticalEventsStatsHandler();
 
-        const TVolumePath p{
+        const TVolumeId v{
             .DiskId = "disk-1",
             .CloudId = "cloud-1",
             .FolderId = "folder-1"};
 
-        ReportBlockDigestMismatchInBlob(
-            p.DiskId,
-            p.CloudId,
-            p.FolderId,
-            "some msg");
+        ReportBlockDigestMismatchInBlob(v, "some msg");
 
-        ReportBlockDigestMismatchInBlob(
-            p.DiskId,
-            p.CloudId,
-            p.FolderId,
-            "some msg");
+        ReportBlockDigestMismatchInBlob(v, "some msg");
 
         handler->UpdateStats(true);
 
-        auto volumeGroup = FindVolumeGroup(serviceVolumeGroup, p);
+        auto volumeGroup = FindVolumeGroup(serviceVolumeGroup, v);
         UNIT_ASSERT(volumeGroup);
         UNIT_ASSERT_VALUES_EQUAL(
             2,
@@ -271,44 +244,32 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
 
         auto handler = CreateCriticalEventsStatsHandler();
 
-        const TVolumePath p1{
+        const TVolumeId v1{
             .DiskId = "disk-1",
             .CloudId = "cloud-1",
             .FolderId = "folder-1"};
 
-        const TVolumePath p2{
+        const TVolumeId v2{
             .DiskId = "disk-2",
             .CloudId = "cloud-1",
             .FolderId = "folder-1"};
 
-        ReportBlockDigestMismatchInBlob(
-            p1.DiskId,
-            p1.CloudId,
-            p1.FolderId,
-            "some msg 1");
+        ReportBlockDigestMismatchInBlob(v1, "some msg 1");
 
-        ReportBlockDigestMismatchInBlob(
-            p1.DiskId,
-            p1.CloudId,
-            p1.FolderId,
-            "some msg 1");
+        ReportBlockDigestMismatchInBlob(v1, "some msg 1");
 
-        ReportBlockDigestMismatchInBlob(
-            p2.DiskId,
-            p2.CloudId,
-            p2.FolderId,
-            "some msg 2");
+        ReportBlockDigestMismatchInBlob(v2, "some msg 2");
 
         handler->UpdateStats(true);
 
         UNIT_ASSERT_VALUES_EQUAL(
             2,
-            FindVolumeGroup(serviceVolumeGroup, p1)
+            FindVolumeGroup(serviceVolumeGroup, v1)
                 ->FindCounter(GetSensorName())
                 ->Val());
         UNIT_ASSERT_VALUES_EQUAL(
             1,
-            FindVolumeGroup(serviceVolumeGroup, p2)
+            FindVolumeGroup(serviceVolumeGroup, v2)
                 ->FindCounter(GetSensorName())
                 ->Val());
 
@@ -335,7 +296,7 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
 
         auto handler = CreateCriticalEventsStatsHandler();
 
-        const TVolumePath p{
+        const TVolumeId v{
             .DiskId = "disk-1",
             .CloudId = "cloud-1",
             .FolderId = "folder-1"};
@@ -343,11 +304,7 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
         // CountersRoot is null -> entry created with Exported=null,
         // Internal accumulates to 3.
         for (int i = 0; i < 3; ++i) {
-            ReportBlockDigestMismatchInBlob(
-                p.DiskId,
-                p.CloudId,
-                p.FolderId,
-                "some msg");
+            ReportBlockDigestMismatchInBlob(v, "some msg");
         }
 
         // Root becomes available -> the next flush lazily materializes
@@ -355,11 +312,11 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
         InitVolumeCriticalEventsCounter(serviceVolumeGroup);
         handler->UpdateStats(true);
 
-        auto voluemGroup = FindVolumeGroup(serviceVolumeGroup, p);
-        UNIT_ASSERT(voluemGroup);
+        auto volumeGroup = FindVolumeGroup(serviceVolumeGroup, v);
+        UNIT_ASSERT(volumeGroup);
         UNIT_ASSERT_VALUES_EQUAL(
             3,
-            voluemGroup->FindCounter(GetSensorName())->Val());
+            volumeGroup->FindCounter(GetSensorName())->Val());
 
         // Deprecated counter reflects the dual emission (3 synchronous
         // Inc()'s).
@@ -369,15 +326,91 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
 
         // One more event on the hot path (Exported is now non-null,
         // Internal -> 1) is flushed on the next tick.
-        ReportBlockDigestMismatchInBlob(
-            p.DiskId,
-            p.CloudId,
-            p.FolderId,
-            "some msg");
+        ReportBlockDigestMismatchInBlob(v, "some msg");
         handler->UpdateStats(true);
         UNIT_ASSERT_VALUES_EQUAL(
             1,
-            voluemGroup->FindCounter(GetSensorName())->Val());
+            volumeGroup->FindCounter(GetSensorName())->Val());
+    }
+
+    // All Report...() overloads works
+    Y_UNIT_TEST(ShouldProperlyImplementAllReportOverloads)
+    {
+        ResetVolumeCriticalEventsCounter();
+
+        auto root = MakeIntrusive<TDynamicCounters>();
+        auto serverGroup = root->GetSubgroup("component", "server");
+        auto serviceVolumeGroup =
+            root->GetSubgroup("component", "service_volume");
+
+        InitCriticalEventsCounter(serverGroup);
+        InitVolumeCriticalEventsCounter(serviceVolumeGroup);
+
+        auto handler = CreateCriticalEventsStatsHandler();
+
+        const TString diskId = "disk-1";
+        const TString cloudId = "cloud-1";
+        const TString folderId = "folder-1";
+
+        const TString msg = "some msg";
+        const auto params = TCritEventParams{{"a", "1"}, {"b", "2"}};
+
+        // Report...(TString, TString, TString, ...)
+        {
+            ReportBlockDigestMismatchInBlob(diskId, cloudId, folderId);
+            ReportBlockDigestMismatchInBlob(diskId, cloudId, folderId, msg);
+            ReportBlockDigestMismatchInBlob(diskId, cloudId, folderId, params);
+            ReportBlockDigestMismatchInBlob(
+                diskId,
+                cloudId,
+                folderId,
+                msg,
+                params);
+        }
+
+        // Report...(TVolumeId, ...)
+        {
+            const auto v = TVolumeId{
+                .DiskId = diskId,
+                .CloudId = cloudId,
+                .FolderId = folderId};
+
+            ReportBlockDigestMismatchInBlob(v);
+            ReportBlockDigestMismatchInBlob(v, msg);
+            ReportBlockDigestMismatchInBlob(v, params);
+            ReportBlockDigestMismatchInBlob(v, msg, params);
+        }
+
+        // Report...(TVolumeIdConstPtr, ...)
+        {
+            const auto v = MakeVolumeId(diskId, cloudId, folderId);
+
+            ReportBlockDigestMismatchInBlob(v);
+            ReportBlockDigestMismatchInBlob(v, msg);
+            ReportBlockDigestMismatchInBlob(v, params);
+            ReportBlockDigestMismatchInBlob(v, msg, params);
+        }
+
+        const auto v = TVolumeId{
+            .DiskId = diskId,
+            .CloudId = cloudId,
+            .FolderId = folderId};
+
+        auto deprecatedCounter =
+            serverGroup->FindCounter(GetDeprecatedSensorName());
+        UNIT_ASSERT(deprecatedCounter);
+        // Deprecated counter should contain summary immediatly
+        UNIT_ASSERT_VALUES_EQUAL(12, deprecatedCounter->Val());
+
+        handler->UpdateStats(true);
+
+        auto volumeGroup = FindVolumeGroup(serviceVolumeGroup, v);
+        UNIT_ASSERT(volumeGroup);
+        UNIT_ASSERT_VALUES_EQUAL(
+            12,
+            volumeGroup->FindCounter(GetSensorName())->Val());
+
+        UNIT_ASSERT_VALUES_EQUAL(12, deprecatedCounter->Val());
     }
 }
 

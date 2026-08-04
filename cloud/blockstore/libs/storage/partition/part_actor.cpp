@@ -69,6 +69,10 @@ TPartitionActor::TPartitionActor(
     , TTabletBase(owner, std::move(storage), &TransactionTimeTracker)
     , Config(std::move(config))
     , PartitionConfig(std::move(partitionConfig))
+    , VolumeId(MakeVolumeId(
+          PartitionConfig.GetDiskId(),
+          PartitionConfig.GetCloudId(),
+          PartitionConfig.GetFolderId()))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , ProfileLog(std::move(profileLog))
     , BlockDigestGenerator(std::move(blockDigestGenerator))

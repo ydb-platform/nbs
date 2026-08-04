@@ -135,9 +135,7 @@ void TPartitionActor::WriteFreshBlocks(
             BlockDigestGenerator,
             true,   // waitForAddFreshBlocksResponseBeforeResponse
             TabletID(),
-            PartitionConfig.GetDiskId(),
-            PartitionConfig.GetCloudId(),
-            PartitionConfig.GetFolderId(),
+            VolumeId,
             nullptr);   // sharedState
 
         Actors.Insert(actor);
@@ -524,9 +522,7 @@ void TPartitionActor::ZeroFreshBlocks(
             BlockDigestGenerator,
             true,   // waitForAddFreshBlocksResponseBeforeResponse
             TabletID(),
-            PartitionConfig.GetDiskId(),
-            PartitionConfig.GetCloudId(),
-            PartitionConfig.GetFolderId(),
+            VolumeId,
             nullptr);   // sharedState
 
         Actors.Insert(actor);

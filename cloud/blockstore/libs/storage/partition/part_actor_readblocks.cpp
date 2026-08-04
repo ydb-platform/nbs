@@ -264,9 +264,7 @@ public:
     };
 
 private:
-    const TString DiskId;
-    const TString CloudId;
-    const TString FolderId;
+    const TVolumeIdConstPtr VolumeId;
 
     const TRequestInfoPtr RequestInfo;
 
@@ -299,9 +297,7 @@ private:
 
 public:
     TReadBlocksActor(
-        TString diskId,
-        TString cloudId,
-        TString folderId,
+        TVolumeIdConstPtr volumeId,
         TRequestInfoPtr requestInfo,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         ui32 blockSize,
@@ -365,9 +361,7 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TReadBlocksActor::TReadBlocksActor(
-        TString diskId,
-        TString cloudId,
-        TString folderId,
+        TVolumeIdConstPtr volumeId,
         TRequestInfoPtr requestInfo,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         ui32 blockSize,
@@ -382,9 +376,7 @@ TReadBlocksActor::TReadBlocksActor(
         TReadBlocksRequests ownRequests,
         TVector<IProfileLog::TBlockInfo> blockInfos,
         bool waitBaseDiskRequests)
-    : DiskId(std::move(diskId))
-    , CloudId(std::move(cloudId))
-    , FolderId(std::move(folderId))
+    : VolumeId(std::move(volumeId))
     , RequestInfo(std::move(requestInfo))
     , BlockDigestGenerator(blockDigestGenerator)
     , BlockSize(blockSize)
@@ -586,9 +578,9 @@ bool TReadBlocksActor::VerifyChecksums(
             batch.Requests[i],
             batch.BlobOffsets[i],
             batch.Checksums[i],
-            DiskId,
-            CloudId,
-            FolderId);
+            VolumeId->DiskId,
+            VolumeId->CloudId,
+            VolumeId->FolderId);
 
         if (HasError(error)) {
             HandleError(ctx, error);
@@ -1228,9 +1220,7 @@ void TPartitionActor::CompleteReadBlocks(
     if (describeBlocksRange.Defined() || requests) {
         const auto readBlocksActorId = NCloud::Register<TReadBlocksActor>(
             ctx,
-            PartitionConfig.GetDiskId(),
-            PartitionConfig.GetCloudId(),
-            PartitionConfig.GetFolderId(),
+            VolumeId,
             args.RequestInfo,
             BlockDigestGenerator,
             State->GetBlockSize(),

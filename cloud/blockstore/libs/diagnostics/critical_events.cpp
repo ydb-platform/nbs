@@ -33,15 +33,13 @@ struct TVolumeCriticalEventCounter
 
 struct TVolumeCriticalEventKey
 {
-    TString Event;      // "VolumeCriticalEvent/<event>"
-    TString DiskId;     // exported as the `volume` metric label
-    TString CloudId;    // exported as the `cloud` metric label
-    TString FolderId;   // exported as the `folder` metric label
+    TString Event;        // "VolumeCriticalEvent/<event>"
+    TVolumeId VolumeId;   // exported as the 'volume', 'cloud' and 'folder'
+                          // metric labels
 
     bool operator==(const TVolumeCriticalEventKey& rhs) const
     {
-        return std::tie(Event, DiskId, CloudId, FolderId) ==
-               std::tie(rhs.Event, rhs.DiskId, rhs.CloudId, rhs.FolderId);
+        return std::tie(Event, VolumeId) == std::tie(rhs.Event, rhs.VolumeId);
     }
 };
 
@@ -54,7 +52,7 @@ struct THash<NCloud::NBlockStore::TVolumeCriticalEventKey>
     size_t operator()(
         const NCloud::NBlockStore::TVolumeCriticalEventKey& val) const
     {
-        auto a = std::tie(val.Event, val.DiskId, val.CloudId, val.FolderId);
+        const auto& a = std::tie(val.Event, val.VolumeId);
         return THash<std::decay_t<decltype(a)>>{}(a);
     }
 };
@@ -93,9 +91,9 @@ void WriteVolumeCriticalEventCounters()
             // before InitVolumeCriticalEventsCounter) - materialize the
             // exported GAUGE now so the accumulated Internal can be flushed.
             e->Exported = VolumeCriticalEvents.CountersRoot
-                              ->GetSubgroup("volume", k.DiskId)
-                              ->GetSubgroup("cloud", k.CloudId)
-                              ->GetSubgroup("folder", k.FolderId)
+                              ->GetSubgroup("volume", k.VolumeId.DiskId)
+                              ->GetSubgroup("cloud", k.VolumeId.CloudId)
+                              ->GetSubgroup("folder", k.VolumeId.FolderId)
                               ->GetCounter(k.Event, /*derivative=*/false);
         }
         auto v = e->Internal.exchange(0);
@@ -335,9 +333,10 @@ void ResetVolumeCriticalEventsCounter()
                                                                                \
             auto key = TVolumeCriticalEventKey{                                \
                 .Event    = GetCriticalEventFor##name(),                       \
-                .DiskId   = diskId,                                            \
-                .CloudId  = cloudId,                                           \
-                .FolderId = folderId                                           \
+                .VolumeId = {                                                  \
+                    .DiskId   = diskId,                                        \
+                    .CloudId  = cloudId,                                       \
+                    .FolderId = folderId}                                      \
             };                                                                 \
                                                                                \
             /* Hot path - counter already exists */                            \
