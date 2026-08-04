@@ -11,9 +11,7 @@ import socket
 import string
 import sys
 import tarfile
-
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+import urllib2
 
 import retry
 
@@ -124,12 +122,12 @@ def setup_logging(args, base_name):
 
 def is_temporary(e):
     def is_broken(e):
-        return isinstance(e, HTTPError) and e.code in (410, 404)
+        return isinstance(e, urllib2.HTTPError) and e.code in (410, 404)
 
     if is_broken(e):
         return False
 
-    if isinstance(e, (BadChecksumFetchError, IncompleteFetchError, URLError, socket.error)):
+    if isinstance(e, (BadChecksumFetchError, IncompleteFetchError, urllib2.URLError, socket.error)):
         return True
 
     import error
@@ -149,13 +147,13 @@ def report_to_snowden(value):
             'value': json.dumps(value),
         }
 
-        urlopen(
+        urllib2.urlopen(
             'https://back-snowden.qloud.yandex-team.ru/report/add',
             json.dumps(
                 [
                     body,
                 ]
-            ).encode(),
+            ),
             timeout=5,
         )
 
@@ -200,8 +198,8 @@ def git_like_hash_with_size(filepath):
             file_size += len(block)
             sha.update(block)
 
-    sha.update(b'\0')
-    sha.update(str(file_size).encode())
+    sha.update('\0')
+    sha.update(str(file_size))
 
     return sha.hexdigest(), file_size
 
@@ -215,10 +213,8 @@ def size_printer(display_name, size):
         now = dt.datetime.now()
         if last_stamp[0] + dt.timedelta(seconds=10) < now:
             if size:
-                sys.stderr.write(
-                    "##status##{} - [[imp]]{:.1f}%[[rst]]\n".format(
-                        display_name, 100.0 * sz[0] / size if size else 0
-                    )
+                print >> sys.stderr, "##status##{} - [[imp]]{:.1f}%[[rst]]".format(
+                    display_name, 100.0 * sz[0] / size if size else 0
                 )
             last_stamp[0] = now
 
@@ -229,10 +225,9 @@ def fetch_url(url, unpack, resource_file_name, expected_md5=None, expected_sha1=
     logging.info('Downloading from url %s name %s and expected md5 %s', url, resource_file_name, expected_md5)
     tmp_file_name = uniq_string_generator()
 
-    request = Request(url, headers={'User-Agent': make_user_agent()})
-    req = retry.retry_func(lambda: urlopen(request, timeout=30), tries=tries, delay=5, backoff=1.57079)
-    response_headers = dict(req.headers.items())
-    logging.debug('Headers: %s', response_headers)
+    request = urllib2.Request(url, headers={'User-Agent': make_user_agent()})
+    req = retry.retry_func(lambda: urllib2.urlopen(request, timeout=30), tries=tries, delay=5, backoff=1.57079)
+    logging.debug('Headers: %s', req.headers.headers)
     expected_file_size = int(req.headers.get('Content-Length', 0))
     real_md5 = hashlib.md5()
     real_sha1 = hashlib.sha1()
@@ -249,8 +244,8 @@ def fetch_url(url, unpack, resource_file_name, expected_md5=None, expected_sha1=
 
     real_md5 = real_md5.hexdigest()
     real_file_size = os.path.getsize(tmp_file_name)
-    real_sha1.update(b'\0')
-    real_sha1.update(str(real_file_size).encode())
+    real_sha1.update('\0')
+    real_sha1.update(str(real_file_size))
     real_sha1 = real_sha1.hexdigest()
 
     if unpack:
@@ -267,7 +262,7 @@ def fetch_url(url, unpack, resource_file_name, expected_md5=None, expected_sha1=
     logging.info('File sha1 %s (expected %s)', real_sha1, expected_sha1)
 
     if expected_md5 and real_md5 != expected_md5:
-        report_to_snowden({'headers': response_headers, 'expected_md5': expected_md5, 'real_md5': real_md5})
+        report_to_snowden({'headers': req.headers.headers, 'expected_md5': expected_md5, 'real_md5': real_md5})
 
         raise BadChecksumFetchError(
             'Downloaded {}, but expected {} for {}'.format(
@@ -278,7 +273,7 @@ def fetch_url(url, unpack, resource_file_name, expected_md5=None, expected_sha1=
         )
 
     if expected_sha1 and real_sha1 != expected_sha1:
-        report_to_snowden({'headers': response_headers, 'expected_sha1': expected_sha1, 'real_sha1': real_sha1})
+        report_to_snowden({'headers': req.headers.headers, 'expected_sha1': expected_sha1, 'real_sha1': real_sha1})
 
         raise BadChecksumFetchError(
             'Downloaded {}, but expected {} for {}'.format(
@@ -289,7 +284,7 @@ def fetch_url(url, unpack, resource_file_name, expected_md5=None, expected_sha1=
         )
 
     if expected_file_size and expected_file_size != real_file_size:
-        report_to_snowden({'headers': response_headers, 'file_size': real_file_size})
+        report_to_snowden({'headers': req.headers.headers, 'file_size': real_file_size})
 
         raise IncompleteFetchError(
             'Downloaded {}, but expected {} for {}'.format(
