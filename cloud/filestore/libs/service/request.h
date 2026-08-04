@@ -40,7 +40,7 @@ namespace NCloud::NFileStore {
     xxx(ExecuteAction,                      __VA_ARGS__)                       \
 // FILESTORE_SERVICE_METHODS
 
-#define FILESTORE_DATA_METHODS(xxx, ...)                                       \
+#define FILESTORE_LEGACY_DATA_METHODS(xxx, ...)                                \
     xxx(StatFileStore,                      __VA_ARGS__)                       \
                                                                                \
     xxx(SubscribeSession,                   __VA_ARGS__)                       \
@@ -72,6 +72,10 @@ namespace NCloud::NFileStore {
     xxx(ReadData,                           __VA_ARGS__)                       \
     xxx(WriteData,                          __VA_ARGS__)                       \
     xxx(AllocateData,                       __VA_ARGS__)                       \
+// FILESTORE_LEGACY_DATA_METHODS
+
+#define FILESTORE_DATA_METHODS(xxx, ...)                                       \
+    FILESTORE_LEGACY_DATA_METHODS(xxx,      __VA_ARGS__)                       \
     xxx(ConfirmCreateHandle,                __VA_ARGS__)                       \
 // FILESTORE_DATA_METHODS
 
@@ -130,7 +134,7 @@ namespace NCloud::NFileStore {
     xxx(Ping,                               __VA_ARGS__)                       \
     xxx(PingSession,                        __VA_ARGS__)                       \
     FILESTORE_SERVICE_METHODS(xxx,          __VA_ARGS__)                       \
-    FILESTORE_DATA_METHODS(xxx,             __VA_ARGS__)                       \
+    FILESTORE_LEGACY_DATA_METHODS(xxx,      __VA_ARGS__)                       \
     FILESTORE_LOCAL_DATA_METHODS(xxx,       __VA_ARGS__)                       \
     xxx(GetSessionEventsStream,             __VA_ARGS__)                       \
     FILESTORE_ENDPOINT_METHODS(xxx,         __VA_ARGS__)                       \
@@ -159,6 +163,7 @@ enum class EFileStoreRequest
     WriteBlob,
     ConfirmAddData,
     CancelAddData,
+    ConfirmCreateHandle,
     MAX
 };
 
