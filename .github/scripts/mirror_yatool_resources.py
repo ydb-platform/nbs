@@ -273,15 +273,6 @@ def get_existing_md5(s3: Any, bucket: str, key: str) -> str:
     if md5:
         return md5
 
-    try:
-        sidecar = s3.get_object(Bucket=bucket, Key=f"{key}.md5")
-        sidecar_md5 = sidecar["Body"].read().decode("utf-8").strip()
-        if sidecar_md5:
-            return sidecar_md5
-    except ClientError as error:
-        if not is_not_found(error):
-            raise
-
     etag = str(head.get("ETag", "")).strip('"')
     return etag if "-" not in etag else ""
 
@@ -296,13 +287,6 @@ def upload_resource(s3: Any, bucket: str, key: str, path: Path, md5: str) -> Non
             "Metadata": {"md5": md5},
             "ContentType": "application/octet-stream",
         },
-    )
-    s3.put_object(
-        Bucket=bucket,
-        Key=f"{key}.md5",
-        Body=(md5 + "\n").encode("utf-8"),
-        ACL="public-read",
-        ContentType="text/plain",
     )
 
 
