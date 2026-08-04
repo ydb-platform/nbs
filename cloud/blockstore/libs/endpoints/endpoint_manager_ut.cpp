@@ -1500,6 +1500,7 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
         volume.SetDiskId(diskId);
         volume.SetBlocksCount(42);
         volume.SetBlockSize(DefaultBlockSize);
+        volume.SetConfigVersion(2);
 
         {
             auto future = bootstrap.EndpointEventHandler->RefreshEndpointIfNeeded(
@@ -1518,6 +1519,34 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 volume.GetBlockSize(),
                 listener->LastRefreshVolume.GetBlockSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                volume.GetConfigVersion(),
+                listener->LastRefreshVolume.GetConfigVersion());
+        }
+
+        NProto::TVolume staleVolume;
+        staleVolume.SetDiskId(diskId);
+        staleVolume.SetBlocksCount(13);
+        staleVolume.SetBlockSize(DefaultBlockSize);
+        staleVolume.SetConfigVersion(1);
+
+        {
+            auto future = bootstrap.EndpointEventHandler->RefreshEndpointIfNeeded(
+                diskId,
+                "test",
+                &staleVolume);
+            auto error = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                error);
+            UNIT_ASSERT_VALUES_EQUAL(2, listener->RefreshEndpointCounter);
+            UNIT_ASSERT_VALUES_EQUAL(
+                volume.GetBlocksCount(),
+                listener->LastRefreshVolume.GetBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                volume.GetConfigVersion(),
+                listener->LastRefreshVolume.GetConfigVersion());
         }
     }
 

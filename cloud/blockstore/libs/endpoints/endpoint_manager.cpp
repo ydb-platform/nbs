@@ -179,6 +179,18 @@ bool CompareRequests(
     return left.GetUnixSocketPath() == right.GetUnixSocketPath();
 }
 
+bool IsStaleVolumeConfig(
+    const NProto::TVolume& volume,
+    const NProto::TVolume& cachedVolume)
+{
+    const auto volumeConfigVersion = volume.GetConfigVersion();
+    const auto cachedConfigVersion = cachedVolume.GetConfigVersion();
+
+    return volumeConfigVersion &&
+        cachedConfigVersion &&
+        volumeConfigVersion < cachedConfigVersion;
+}
+
 void UpdateRequest(
     NProto::TStartEndpointRequest& dstReq,
     const NProto::TStartEndpointRequest& srcReq)
@@ -1420,8 +1432,23 @@ NProto::TRefreshEndpointResponse TEndpointManager::RefreshEndpointImpl(
         endpointVolume.CopyFrom(sessionInfo.Volume);
     }
 
+    if (IsStaleVolumeConfig(endpointVolume, it->second->Volume)) {
+        STORAGE_WARN(
+            "Skip endpoint refresh with stale volume config"
+            << ", socket=" << socketPath.Quote()
+            << ", disk=" << endpointVolume.GetDiskId().Quote()
+            << ", configVersion=" << endpointVolume.GetConfigVersion()
+            << ", cachedConfigVersion="
+            << it->second->Volume.GetConfigVersion());
+
+        return TErrorResponse(S_OK);
+    }
+
     it->second->Volume.SetBlocksCount(endpointVolume.GetBlocksCount());
     it->second->Volume.SetBlockSize(endpointVolume.GetBlockSize());
+    if (endpointVolume.GetConfigVersion()) {
+        it->second->Volume.SetConfigVersion(endpointVolume.GetConfigVersion());
+    }
 
     auto error = it->second->Device->Resize(
         endpointVolume.GetBlocksCount() *
