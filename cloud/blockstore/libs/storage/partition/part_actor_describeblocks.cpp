@@ -39,11 +39,11 @@ public:
 
     bool Visit(const TFreshBlock& block) override
     {
-        Args.MarkBlock(
+        Args.MarkWithFreshBlock(
             block.Meta.BlockIndex,
             block.Meta.CommitId,
-            block.Content,
-            block.BlobId);
+            block.BlobId,
+            block.Content);
         return true;
     }
 
@@ -53,7 +53,11 @@ public:
         const TPartialBlobId& blobId,
         ui16 blobOffset) override
     {
-        Args.MarkBlock(blockIndex, commitId, blobId, blobOffset);
+        Args.MarkWithBlob(
+            blockIndex,
+            commitId,
+            blobId,
+            blobOffset);
         return true;
     }
 
@@ -65,7 +69,11 @@ public:
         ui8 compactionRangeCount) override
     {
         Y_UNUSED(compactionRangeCount);
-        Args.MarkBlock(blockIndex, commitId, blobId, blobOffset);
+        Args.MarkWithBlob(
+            blockIndex,
+            commitId,
+            blobId,
+            blobOffset);
         return true;
     }
 };
@@ -325,33 +333,80 @@ void TPartitionActor::FillDescribeBlocksResponse(
     TTxPartition::TDescribeBlocks& args,
     TEvVolume::TEvDescribeBlocksResponse* response)
 {
+    using TBlockMark = TTxPartition::TDescribeBlocks::TBlockMark;
+    using TFreshMark = TTxPartition::TDescribeBlocks::TFreshMark;
+    using TBlobMark = TTxPartition::TDescribeBlocks::TBlobMark;
+    using TEmptyMark = TTxPartition::TDescribeBlocks::TEmptyMark;
+
     for (auto& mark: args.Marks) {
-        if (!mark.Content) {
+        if (!std::holds_alternative<TFreshMark>(
+                mark))
+        {
+            continue;
+        }
+        const auto& freshMark =
+            std::get<TFreshMark>(mark);
+
+        if (!freshMark.Content) {
             continue;
         }
 
         auto* range = response->Record.AddFreshBlockRanges();
-        range->SetStartIndex(mark.BlockIndex);
+        range->SetStartIndex(freshMark.BlockIndex);
         // TODO(svartmetal): should be optimized.
         range->SetBlocksCount(1);
         if (!args.IndexOnly) {
-            range->SetBlocksContent(std::move(mark.Content));
+            range->SetBlocksContent(std::move(freshMark.Content));
         }
-        if (mark.BlobId) {
+        if (freshMark.BlobId) {
             if (args.IndexOnly) {
                 LogoBlobIDFromLogoBlobID(
-                    MakeBlobId(TabletID(), mark.BlobId),
+                    MakeBlobId(TabletID(), freshMark.BlobId),
                     range->MutableBlobId());
             }
-            mark.BlobId = {};
         }
     }
 
-    EraseIf(args.Marks, [] (const auto& m) { return IsDeletionMarker(m.BlobId); });
-    Sort(args.Marks);
+    auto toDelete = [](const TBlockMark& mark)
+    {
+        if (std::holds_alternative<TFreshMark>(
+                mark) ||
+            std::holds_alternative<TEmptyMark>(
+                mark))
+        {
+            return true;
+        }
 
-    auto iter = args.Marks.begin();
-    while (iter != args.Marks.end()) {
+        const auto& blobMark =
+            std::get<TBlobMark>(mark);
+
+        return IsDeletionMarker(blobMark.BlobId);
+    };
+
+    EraseIf(args.Marks, toDelete);
+
+    auto cmp = [](const TBlockMark& a, const TBlockMark& b)
+    {
+        const auto& aBlobMark =
+            std::get<TBlobMark>(a);
+        const auto& bBlobMark =
+            std::get<TBlobMark>(b);
+        return aBlobMark.BlobId < bBlobMark.BlobId ||
+            (aBlobMark.BlobId == bBlobMark.BlobId &&
+                aBlobMark.BlobOffset < bBlobMark.BlobOffset);
+    };
+
+    Sort(args.Marks, cmp);
+
+    TVector<TBlobMark> blobMarks;
+    blobMarks.reserve(args.Marks.size());
+    for (const auto& mark: args.Marks) {
+        Y_ABORT_UNLESS(std::holds_alternative<TBlobMark>(mark));
+        blobMarks.push_back(std::get<TBlobMark>(mark));
+    }
+
+    auto iter = blobMarks.begin();
+    while (iter != blobMarks.end()) {
         const auto& blobId = iter->BlobId;
         auto* blobPiece = response->Record.AddBlobPieces();
 
@@ -373,7 +428,7 @@ void TPartitionActor::FillDescribeBlocksResponse(
 
             ++iter;
             while (
-                iter != args.Marks.end() &&
+                iter != blobMarks.end() &&
                 iter->BlobId == blobId &&
                 iter->BlobOffset == blobOffset + 1 &&
                 iter->BlockIndex == blockIndex + 1
@@ -384,7 +439,7 @@ void TPartitionActor::FillDescribeBlocksResponse(
                 ++iter;
             }
             range->SetBlocksCount(blocksCount);
-        } while (iter != args.Marks.end() && iter->BlobId == blobId);
+        } while (iter != blobMarks.end() && iter->BlobId == blobId);
     }
 }
 
