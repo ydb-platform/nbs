@@ -79,9 +79,16 @@ void PostSend(TTestContextPtr context, ibv_qp* qp, ibv_send_wr* wr)
 {
     Y_UNUSED(qp);
     with_lock (context->CompletionLock) {
-        const auto* msg = reinterpret_cast<M*>(wr->sg_list[0].addr);
-        context->ReqIds.push_back(msg->ReqId);
-        context->SendEvents.push_back(new ibv_send_wr(*wr));
+        for (auto* current = wr; current; current = current->next) {
+            if (current->opcode == IBV_WR_SEND &&
+                current->sg_list &&
+                current->num_sge > 0)
+            {
+                const auto* msg = reinterpret_cast<M*>(current->sg_list[0].addr);
+                context->ReqIds.push_back(msg->ReqId);
+            }
+            context->SendEvents.push_back(new ibv_send_wr(*current));
+        }
         context->CompletionHandle.Set();
     }
 }

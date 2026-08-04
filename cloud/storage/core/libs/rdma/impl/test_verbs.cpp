@@ -163,10 +163,31 @@ struct TTestVerbs
         };
     }
 
+    struct TMemoryWindow
+        : ibv_mw
+    {
+        explicit TMemoryWindow(ibv_pd* ibvPd)
+        {
+            static std::atomic<ui32> NextRKey{1};
+
+            pd = ibvPd;
+            rkey = NextRKey.fetch_add(0x100u);
+            type = IBV_MW_TYPE_2;
+        }
+
+        static int Destroy(ibv_mw* mw)
+        {
+            delete static_cast<TMemoryWindow*>(mw);
+            return 0;
+        }
+    };
+
     TMemoryWindowPtr CreateMemoryWindow(ibv_pd* pd) override
     {
-        Y_UNUSED(pd);
-        return NullPtr;
+        return {
+            static_cast<ibv_mw*>(new TMemoryWindow(pd)),
+            TMemoryWindow::Destroy,
+        };
     }
 
     struct TCompletionChannel
@@ -276,6 +297,12 @@ struct TTestVerbs
                     break;
                 case IBV_WR_RDMA_WRITE:
                     handleEvent(x->wr_id, IBV_WC_RDMA_WRITE);
+                    break;
+                case IBV_WR_BIND_MW:
+                    handleEvent(x->wr_id, IBV_WC_BIND_MW);
+                    break;
+                case IBV_WR_LOCAL_INV:
+                    handleEvent(x->wr_id, IBV_WC_LOCAL_INV);
                     break;
                 default:
                     handleEvent(x->wr_id, IBV_WC_SEND);
