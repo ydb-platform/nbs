@@ -2,11 +2,11 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 
-#include <gtest/gtest.h>
-
 #include <util/generic/bitmap.h>
 #include <util/generic/hash_set.h>
 #include <util/random/fast.h>
+
+#include <gtest/gtest.h>
 
 using namespace NCloud;
 using namespace NFileStore;
@@ -153,10 +153,8 @@ TEST(PersistentBitmapTest, OutOfSpace)
 
     for (ui64 i = 0; i < cap; ++i) {
         ui64 bit = 0;
-        auto error = fx.Bitmap->Allocate(
-            fx.PageStore->AllocateLsn(),
-            &bit,
-            pageGroups);
+        auto error =
+            fx.Bitmap->Allocate(fx.PageStore->AllocateLsn(), &bit, pageGroups);
         ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
         Flush(pageGroups, *fx.PageStore);
 
@@ -165,10 +163,8 @@ TEST(PersistentBitmapTest, OutOfSpace)
     }
 
     ui64 bit = 0;
-    auto error = fx.Bitmap->Allocate(
-        fx.PageStore->AllocateLsn(),
-        &bit,
-        pageGroups);
+    auto error =
+        fx.Bitmap->Allocate(fx.PageStore->AllocateLsn(), &bit, pageGroups);
     ASSERT_EQ(E_FS_OUT_OF_SPACE, error.GetCode()) << FormatError(error);
     Rollback(pageGroups, *fx.PageStore);
 
@@ -177,10 +173,7 @@ TEST(PersistentBitmapTest, OutOfSpace)
     Flush(pageGroups, *fx.PageStore);
 
     bit = 0;
-    error = fx.Bitmap->Allocate(
-        fx.PageStore->AllocateLsn(),
-        &bit,
-        pageGroups);
+    error = fx.Bitmap->Allocate(fx.PageStore->AllocateLsn(), &bit, pageGroups);
     ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
     Flush(pageGroups, *fx.PageStore);
     ASSERT_EQ(1000ULL, bit);

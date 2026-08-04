@@ -4,17 +4,17 @@
 #include <cloud/filestore/libs/storage/fastshard/testlib/fake_storage_node.h>
 #include <cloud/filestore/libs/storage/fastshard/testlib/silk_env.h>
 
-#include <library/cpp/testing/common/network.h>
-
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/protos/device.pb.h>
 
 #include <silk/fibers/fiber.h>
 
-#include <gtest/gtest.h>
+#include <library/cpp/testing/common/network.h>
 
 #include <util/generic/string.h>
 #include <util/string/cast.h>
+
+#include <gtest/gtest.h>
 
 using namespace NCloud::NFileStore::NStorage::NFastShard;
 using silk::FiberScheduler;
@@ -81,7 +81,8 @@ struct TUnreachableFixture
 TEST(ClientTest, AcquireDevicesRoundTrip)
 {
     const int r = FiberScheduler::run(
-        +[](int*) noexcept -> int {
+        +[](int*) noexcept -> int
+        {
             TFixture fx;
 
             NCloud::NProto::TAcquireDevicesRequest req;
@@ -104,7 +105,8 @@ TEST(ClientTest, AcquireDevicesRoundTrip)
 TEST(ClientTest, ReleaseDevicesRoundTrip)
 {
     const int r = FiberScheduler::run(
-        +[](int*) noexcept -> int {
+        +[](int*) noexcept -> int
+        {
             TFixture fx;
 
             NCloud::NProto::TReleaseDevicesRequest req;
@@ -124,7 +126,8 @@ TEST(ClientTest, ReleaseDevicesRoundTrip)
 TEST(ClientTest, ReadPagesRoundTrip)
 {
     const int r = FiberScheduler::run(
-        +[](int*) noexcept -> int {
+        +[](int*) noexcept -> int
+        {
             TFixture fx;
 
             //
@@ -172,7 +175,8 @@ TEST(ClientTest, ReadPagesRoundTrip)
 TEST(ClientTest, WriteLogRecordRoundTrip)
 {
     const int r = FiberScheduler::run(
-        +[](int*) noexcept -> int {
+        +[](int*) noexcept -> int
+        {
             TFixture fx;
 
             NCloud::NProto::TWriteLogRecordRequest req;
@@ -182,15 +186,12 @@ TEST(ClientTest, WriteLogRecordRoundTrip)
             pg->SetFirstPageNo(0);
             pg->AddContent("payload");
 
-            auto resp =
-                fx.Client->WriteLogRecord(std::move(req));
+            auto resp = fx.Client->WriteLogRecord(std::move(req));
 
             EXPECT_EQ(0u, resp.GetError().GetCode());
             EXPECT_EQ(1u, fx.Storage->WriteCalls.size());
             EXPECT_EQ("dev-99", fx.Storage->WriteCalls[0].GetDeviceUUID());
-            EXPECT_EQ(
-                1234u,
-                fx.Storage->WriteCalls[0].GetLogSequenceNumber());
+            EXPECT_EQ(1234u, fx.Storage->WriteCalls[0].GetLogSequenceNumber());
             EXPECT_EQ(1u, fx.Storage->WriteCalls[0].PageGroupsSize());
             EXPECT_EQ(
                 "payload",
@@ -204,7 +205,8 @@ TEST(ClientTest, WriteLogRecordRoundTrip)
 TEST(ClientTest, StorageErrorPassesThrough)
 {
     const int r = FiberScheduler::run(
-        +[](int*) noexcept -> int {
+        +[](int*) noexcept -> int
+        {
             TFixture fx;
 
             //
@@ -212,8 +214,8 @@ TEST(ClientTest, StorageErrorPassesThrough)
             // the Error field verbatim on the concrete response type.
             //
 
-            *fx.Storage->AcquireResp.MutableError() = NCloud::MakeError(
-                NCloud::E_FS_IO, "disk on fire");
+            *fx.Storage->AcquireResp.MutableError() =
+                NCloud::MakeError(NCloud::E_FS_IO, "disk on fire");
 
             NCloud::NProto::TAcquireDevicesRequest req;
             req.AddDeviceUUIDs("dev-a");
@@ -232,7 +234,8 @@ TEST(ClientTest, StorageErrorPassesThrough)
 TEST(ClientTest, ConnectFailureReturnsRejected)
 {
     const int r = FiberScheduler::run(
-        +[](int*) noexcept -> int {
+        +[](int*) noexcept -> int
+        {
             TUnreachableFixture fx;
 
             NCloud::NProto::TAcquireDevicesRequest req;
@@ -251,7 +254,8 @@ TEST(ClientTest, ConnectFailureReturnsRejected)
 TEST(ClientTest, ReusesConnectionAcrossSequentialCalls)
 {
     const int r = FiberScheduler::run(
-        +[](int*) noexcept -> int {
+        +[](int*) noexcept -> int
+        {
             TFixture fx;
 
             //
@@ -265,8 +269,7 @@ TEST(ClientTest, ReusesConnectionAcrossSequentialCalls)
             for (ui32 i = 1; i <= 3; ++i) {
                 NCloud::NProto::TAcquireDevicesRequest req;
                 req.AddDeviceUUIDs(TString("dev-") + ToString(i));
-                auto resp =
-                    fx.Client->AcquireDevices(std::move(req));
+                auto resp = fx.Client->AcquireDevices(std::move(req));
                 EXPECT_EQ(0u, resp.GetError().GetCode());
             }
 

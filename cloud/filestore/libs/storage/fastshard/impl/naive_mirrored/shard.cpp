@@ -10,7 +10,6 @@
 #include <cloud/filestore/libs/storage/fastshard/sn/client/client.h>
 #include <cloud/filestore/libs/storage/fastshard/sn/quorum/storage_group.h>
 #include <cloud/filestore/libs/storage/model/utils.h>
-
 #include <cloud/filestore/private/api/unsafe_protos/unsafe.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -22,9 +21,9 @@
 #include <util/random/random.h>
 #include <util/string/builder.h>
 
-#include <mutex>
-
 #include <sys/stat.h>
+
+#include <mutex>
 
 namespace NCloud::NFileStore::NStorage::NFastShard {
 
@@ -33,9 +32,9 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 // inode table layout
 
-constexpr ui64 NodeSlotSize = 96; // bigger than the current slot struct - in
-                                  // order not to drop all data if we decide to
-                                  // add something to the slot struct
+constexpr ui64 NodeSlotSize = 96;   // bigger than the current slot struct - in
+                                    // order not to drop all data if we decide
+                                    // to add something to the slot struct
 constexpr ui32 PageSize = 4_KB;
 constexpr ui64 NodeTableSize = 512_MB;
 
@@ -230,9 +229,10 @@ public:
         ui64 firstPageNo,
         IPageStorePtr pageStore)
     {
-        const ui64 pageCount = Min(
-            RoundUp(config.GetNodesPerGroup(), SlotsPerPage),
-            (NodeTableSize / PageSize) * SlotsPerPage) / SlotsPerPage;
+        const ui64 pageCount =
+            Min(RoundUp(config.GetNodesPerGroup(), SlotsPerPage),
+                (NodeTableSize / PageSize) * SlotsPerPage) /
+            SlotsPerPage;
         const TNodeTableSlot tombstone{.Id = Max<ui64>()};
         Slots = std::make_unique<THt>(
             firstPageNo,
@@ -241,12 +241,8 @@ public:
             NodeSlotSize,
             tombstone,
             std::move(pageStore),
-            [] (const TNodeTableSlot& s) -> ui64
-            {
-                return s.Id;
-            },
-            [] (const ui64& nodeId) -> ui64
-            {
+            [](const TNodeTableSlot& s) -> ui64 { return s.Id; },
+            [](const ui64& nodeId) -> ui64 {
                 return CityHash64(
                     reinterpret_cast<const char*>(&nodeId),
                     sizeof(nodeId));
@@ -273,10 +269,8 @@ public:
         }
     }
 
-    NProto::TError ResizeNode(
-        ui64 nodeId,
-        ui64 newSize,
-        TWriteContext& writeContext)
+    NProto::TError
+    ResizeNode(ui64 nodeId, ui64 newSize, TWriteContext& writeContext)
     {
         TNodeTableSlot slot{};
         ui64 slotNo = 0;
@@ -287,11 +281,8 @@ public:
 
         slot.Size = Max(slot.Size, newSize);
 
-        return Slots->Update(
-            writeContext.Lsn,
-            slot,
-            slotNo,
-            writeContext.PageGroups);
+        return Slots
+            ->Update(writeContext.Lsn, slot, slotNo, writeContext.PageGroups);
     }
 
     NProto::TError UpdateNode(
@@ -360,11 +351,8 @@ public:
     NProto::TError DeleteNode(ui64 nodeId, TWriteContext& writeContext)
     {
         TNodeTableSlot slot{};
-        return Slots->Delete(
-            writeContext.Lsn,
-            nodeId,
-            &slot,
-            writeContext.PageGroups);
+        return Slots
+            ->Delete(writeContext.Lsn, nodeId, &slot, writeContext.PageGroups);
     }
 
     NProto::TError GetNode(ui64 nodeId, NProto::TNodeAttr* attr) const
@@ -399,9 +387,10 @@ public:
         ui64 firstPageNo,
         IPageStorePtr pageStore)
     {
-        const ui64 pageCount = Min(
-            RoundUp(config.GetNodesPerGroup(), SlotsPerPage),
-            (NodeTableSize / PageSize) * SlotsPerPage) / SlotsPerPage;
+        const ui64 pageCount =
+            Min(RoundUp(config.GetNodesPerGroup(), SlotsPerPage),
+                (NodeTableSize / PageSize) * SlotsPerPage) /
+            SlotsPerPage;
         // Tombstone key needs to be different from an empty slot key
         memset(Tombstone.Name, 1, NameCapacity - 1);
         Tombstone.NodeId = Max<ui64>();
@@ -412,22 +401,16 @@ public:
             NameSlotSize,
             Tombstone,
             std::move(pageStore),
-            [] (const TNameTableSlot& s) -> TStringBuf
-            {
-                return {s.Name, strlen(s.Name)};
-            },
-            [] (const TStringBuf& name) -> ui64
-            {
-                return CityHash64(name.data(), name.size());
-            });
+            [](const TNameTableSlot& s) -> TStringBuf
+            { return {s.Name, strlen(s.Name)}; },
+            [](const TStringBuf& name) -> ui64
+            { return CityHash64(name.data(), name.size()); });
 
         return pageCount;
     }
 
-    NProto::TError Put(
-        const TString& name,
-        ui64 nodeId,
-        TWriteContext& writeContext)
+    NProto::TError
+    Put(const TString& name, ui64 nodeId, TWriteContext& writeContext)
     {
         if (name.size() >= NameCapacity) {
             return ErrorNameTooLong(name);
@@ -443,11 +426,8 @@ public:
     NProto::TError Delete(const TString& name, TWriteContext& writeContext)
     {
         TNameTableSlot slot{};
-        return Slots->Delete(
-            writeContext.Lsn,
-            name,
-            &slot,
-            writeContext.PageGroups);
+        return Slots
+            ->Delete(writeContext.Lsn, name, &slot, writeContext.PageGroups);
     }
 
     NProto::TError Get(const TString& name, ui64* nodeId) const
@@ -482,9 +462,11 @@ public:
         IPageStorePtr pageStore)
     {
         const ui64 maxHandlesPerFile = 10;
-        const ui64 pageCount = RoundUp(
-            maxHandlesPerFile * config.GetNodesPerGroup(),
-            SlotsPerPage) / SlotsPerPage;
+        const ui64 pageCount =
+            RoundUp(
+                maxHandlesPerFile * config.GetNodesPerGroup(),
+                SlotsPerPage) /
+            SlotsPerPage;
         THandleSlot tombstone{};
         tombstone.Handle = Max<ui64>();
         Slots = std::make_unique<THt>(
@@ -494,12 +476,8 @@ public:
             HandleSlotSize,
             tombstone,
             std::move(pageStore),
-            [] (const THandleSlot& s) -> ui64
-            {
-                return s.Handle;
-            },
-            [] (const ui64& handle) -> ui64
-            {
+            [](const THandleSlot& s) -> ui64 { return s.Handle; },
+            [](const ui64& handle) -> ui64 {
                 return CityHash64(
                     reinterpret_cast<const char*>(&handle),
                     sizeof(handle));
@@ -573,9 +551,9 @@ public:
 ui64 CalcPageClusterCount(
     const NProtoPrivate::TPersistentFastShardConfig& config)
 {
-    const ui64 dataPageCount = Min(
-        config.GetExpectedGroupCapacity() / PageSize,
-        MaxSpacePerStorageGroup / PageSize);
+    const ui64 dataPageCount =
+        Min(config.GetExpectedGroupCapacity() / PageSize,
+            MaxSpacePerStorageGroup / PageSize);
     return RoundUp(dataPageCount, PageClusterPageCount) / PageClusterPageCount;
 }
 
@@ -606,11 +584,9 @@ public:
             NodePageClusterSlotSize,
             tombstone,
             std::move(pageStore),
-            [] (const TNodePageClusterSlot& s) -> TNodePageClusterKey
-            {
-                return s.Key;
-            },
-            [] (const TNodePageClusterKey& k) -> ui64
+            [](const TNodePageClusterSlot& s) -> TNodePageClusterKey
+            { return s.Key; },
+            [](const TNodePageClusterKey& k) -> ui64
             {
                 return CityHash64(
                     reinterpret_cast<const char*>(&k),
@@ -630,11 +606,8 @@ public:
         TWriteContext& writeContext)
     {
         TNodePageClusterSlot slot{};
-        return Slots->Delete(
-            writeContext.Lsn,
-            k,
-            &slot,
-            writeContext.PageGroups);
+        return Slots
+            ->Delete(writeContext.Lsn, k, &slot, writeContext.PageGroups);
     }
 
     NProto::TError Get(
@@ -678,8 +651,8 @@ public:
             std::move(pageStore));
         firstPageNo += bitmapPageCount;
         FirstStoragePageClusterId =
-            RoundUp(firstPageNo + bitmapPageCount, PageClusterPageCount)
-            / PageClusterPageCount;
+            RoundUp(firstPageNo + bitmapPageCount, PageClusterPageCount) /
+            PageClusterPageCount;
 
         return bitmapPageCount + pageClusterCount * PageClusterPageCount;
     }
@@ -817,8 +790,8 @@ private:
 
 public:
     TFiberShardImpl(
-            ui32 shardNo,
-            NProtoPrivate::TPersistentFastShardConfig config)
+        ui32 shardNo,
+        NProtoPrivate::TPersistentFastShardConfig config)
         : ShardNo(shardNo)
         , Config(std::move(config))
     {
@@ -842,46 +815,36 @@ public:
 
         ui64 firstPageNo = 0;
         SILK_INFO("node table offset=%lu", firstPageNo * PageSize);
-        const ui64 nodeTablePageCount = Nodes.Init(
-            Config,
-            firstPageNo,
-            PageStore);
+        const ui64 nodeTablePageCount =
+            Nodes.Init(Config, firstPageNo, PageStore);
         firstPageNo += nodeTablePageCount;
 
         SILK_INFO("name table offset=%lu", firstPageNo * PageSize);
-        const ui64 nameTablePageCount = Names.Init(
-            Config,
-            firstPageNo,
-            PageStore);
+        const ui64 nameTablePageCount =
+            Names.Init(Config, firstPageNo, PageStore);
         firstPageNo += nameTablePageCount;
 
         SILK_INFO("handle table offset=%lu", firstPageNo * PageSize);
-        const ui64 handleTablePageCount = Handles.Init(
-            Config,
-            firstPageNo,
-            PageStore);
+        const ui64 handleTablePageCount =
+            Handles.Init(Config, firstPageNo, PageStore);
         firstPageNo += handleTablePageCount;
 
         SILK_INFO("page index offset=%lu", firstPageNo * PageSize);
-        const ui64 pageIndexPageCount = PageIndex.Init(
-            Config,
-            firstPageNo,
-            PageStore);
+        const ui64 pageIndexPageCount =
+            PageIndex.Init(Config, firstPageNo, PageStore);
         firstPageNo += pageIndexPageCount;
 
         SILK_INFO("page allocator offset=%lu", firstPageNo * PageSize);
-        const ui64 pageAllocatorPageCount = PageAllocator.Init(
-            Config,
-            firstPageNo,
-            PageStore);
+        const ui64 pageAllocatorPageCount =
+            PageAllocator.Init(Config, firstPageNo, PageStore);
         firstPageNo += pageAllocatorPageCount;
 
         SILK_INFO("slack space offset=%lu", firstPageNo * PageSize);
     }
 
 public:
-    NProtoPrivate::TGetNodeAttrBatchResponse
-    GetNodeAttrBatch(NProtoPrivate::TGetNodeAttrBatchRequest request)
+    NProtoPrivate::TGetNodeAttrBatchResponse GetNodeAttrBatch(
+        NProtoPrivate::TGetNodeAttrBatchRequest request)
     {
         NProtoPrivate::TGetNodeAttrBatchResponse response;
         if (request.GetNodeId() != RootNodeId) {
@@ -919,8 +882,8 @@ public:
         return Nodes.GetNode(nodeId, attr);
     }
 
-    NProto::TGetNodeAttrResponse
-    GetNodeAttr(NProto::TGetNodeAttrRequest request)
+    NProto::TGetNodeAttrResponse GetNodeAttr(
+        NProto::TGetNodeAttrRequest request)
     {
         NProto::TGetNodeAttrResponse response;
         if (request.GetNodeId() != RootNodeId && !request.GetName().empty()) {
@@ -939,8 +902,8 @@ public:
         return response;
     }
 
-    NProto::TSetNodeAttrResponse
-    SetNodeAttr(NProto::TSetNodeAttrRequest request)
+    NProto::TSetNodeAttrResponse SetNodeAttr(
+        NProto::TSetNodeAttrRequest request)
     {
         NProto::TSetNodeAttrResponse response;
 
@@ -1004,8 +967,7 @@ public:
         return Names.Put(name, attr->GetId(), writeContext);
     }
 
-    NProto::TCreateNodeResponse
-    CreateNode(NProto::TCreateNodeRequest request)
+    NProto::TCreateNodeResponse CreateNode(NProto::TCreateNodeRequest request)
     {
         NProto::TCreateNodeResponse response;
         if (request.GetNodeId() != RootNodeId) {
@@ -1056,8 +1018,7 @@ public:
         return response;
     }
 
-    NProto::TUnlinkNodeResponse
-    UnlinkNode(NProto::TUnlinkNodeRequest request)
+    NProto::TUnlinkNodeResponse UnlinkNode(NProto::TUnlinkNodeRequest request)
     {
         NProto::TUnlinkNodeResponse response;
         if (request.GetNodeId() != RootNodeId) {
@@ -1113,8 +1074,8 @@ public:
         return response;
     }
 
-    NProto::TCreateHandleResponse
-    CreateHandle(NProto::TCreateHandleRequest request)
+    NProto::TCreateHandleResponse CreateHandle(
+        NProto::TCreateHandleRequest request)
     {
         NProto::TCreateHandleResponse response;
         if (request.GetNodeId() != RootNodeId && !request.GetName().empty()) {
@@ -1186,9 +1147,7 @@ public:
 
         handle = ShardedId(handle, ShardNo);
 
-        error = Handles.Put(
-            {.Handle = handle, .NodeId = nodeId},
-            writeContext);
+        error = Handles.Put({.Handle = handle, .NodeId = nodeId}, writeContext);
         if (HasError(error)) {
             *response.MutableError() = std::move(error);
             return response;
@@ -1213,8 +1172,8 @@ public:
         return response;
     }
 
-    NProto::TDestroyHandleResponse
-    DestroyHandle(NProto::TDestroyHandleRequest request)
+    NProto::TDestroyHandleResponse DestroyHandle(
+        NProto::TDestroyHandleRequest request)
     {
         NProto::TDestroyHandleResponse response;
 
@@ -1275,8 +1234,8 @@ public:
 
         ui64 bufferOffset = request.GetBufferOffset();
         while (bufferOffset < request.GetBuffer().size()) {
-            const ui64 fileOffset = bufferOffset - request.GetBufferOffset()
-                + request.GetOffset();
+            const ui64 fileOffset =
+                bufferOffset - request.GetBufferOffset() + request.GetOffset();
             const ui64 pageClusterId = fileOffset / PageClusterSize;
 
             ui64 storagePageClusterId = 0;
@@ -1324,16 +1283,17 @@ public:
                 return response;
             }
 
-            Y_ABORT_UNLESS(newStoragePageClusterIds.size()
-                == pageClusterIdsToAllocate);
+            Y_ABORT_UNLESS(
+                newStoragePageClusterIds.size() == pageClusterIdsToAllocate);
         }
 
         //
         // Updating index and writing pages.
         //
 
-        const ui64 endOffset = request.GetOffset() + request.GetBuffer().size()
-            - request.GetBufferOffset();
+        const ui64 endOffset = request.GetOffset() +
+                               request.GetBuffer().size() -
+                               request.GetBufferOffset();
 
         bufferOffset = request.GetBufferOffset();
 
@@ -1344,15 +1304,16 @@ public:
             // Updating page index.
             //
 
-            const ui64 fileOffset = bufferOffset - request.GetBufferOffset()
-                + request.GetOffset();
+            const ui64 fileOffset =
+                bufferOffset - request.GetBufferOffset() + request.GetOffset();
             const ui64 pageClusterId = fileOffset / PageClusterSize;
 
-            Y_ABORT_UNLESS(storagePageClusterIdIt
-                != storagePageClusterIdsToWrite.end());
+            Y_ABORT_UNLESS(
+                storagePageClusterIdIt != storagePageClusterIdsToWrite.end());
             if (*storagePageClusterIdIt == InvalidStoragePageClusterId) {
-                Y_ABORT_UNLESS(newStoragePageClusterIdIt
-                    != newStoragePageClusterIds.end());
+                Y_ABORT_UNLESS(
+                    newStoragePageClusterIdIt !=
+                    newStoragePageClusterIds.end());
                 *storagePageClusterIdIt = *newStoragePageClusterIdIt;
                 ++newStoragePageClusterIdIt;
 
@@ -1378,12 +1339,13 @@ public:
             ui32 pageNoInCluster = pageNoOffsetInCluster;
             while (pageNoInCluster < PageClusterPageCount) {
                 const ui64 storagePageNo = firstPageInCluster + pageNoInCluster;
-                const ui64 pageStart = RoundDown(fileOffset, PageSize)
-                    + (pageNoInCluster - pageNoOffsetInCluster) * PageSize;
+                const ui64 pageStart =
+                    RoundDown(fileOffset, PageSize) +
+                    (pageNoInCluster - pageNoOffsetInCluster) * PageSize;
                 const ui64 pageEnd = pageStart + PageSize;
                 const bool isUnalignedHead =
-                    pageNoInCluster == pageNoOffsetInCluster
-                    && pageStart != fileOffset;
+                    pageNoInCluster == pageNoOffsetInCluster &&
+                    pageStart != fileOffset;
                 const bool isUnalignedTail = pageEnd > endOffset;
 
                 if (pageStart >= endOffset) {
@@ -1406,7 +1368,8 @@ public:
 
                 const ui64 offsetInPage =
                     pageNoInCluster == pageNoOffsetInCluster
-                    ? fileOffset - pageStart : 0;
+                        ? fileOffset - pageStart
+                        : 0;
                 const ui64 toCopy =
                     Min(pageEnd, endOffset) - (pageStart + offsetInPage);
                 memcpy(
@@ -1533,9 +1496,9 @@ public:
                 // part of the buffer with zeroes.
                 //
 
-                const ui64 toSet = Min(
-                    PageClusterSize - pageClusterOffset,
-                    buffer.size() - bufferOffset);
+                const ui64 toSet =
+                    Min(PageClusterSize - pageClusterOffset,
+                        buffer.size() - bufferOffset);
                 memset(buffer.begin() + bufferOffset, 0, toSet);
                 bufferOffset += toSet;
                 error = {};
@@ -1557,8 +1520,9 @@ public:
             ui32 pageNoInCluster = pageNoOffsetInCluster;
             while (pageNoInCluster < PageClusterPageCount) {
                 const ui64 storagePageNo = firstPageInCluster + pageNoInCluster;
-                const ui64 pageStart = RoundDown(fileOffset, PageSize)
-                    + (pageNoInCluster - pageNoOffsetInCluster) * PageSize;
+                const ui64 pageStart =
+                    RoundDown(fileOffset, PageSize) +
+                    (pageNoInCluster - pageNoOffsetInCluster) * PageSize;
                 const ui64 pageEnd = pageStart + PageSize;
 
                 if (pageStart >= endOffset) {
@@ -1574,7 +1538,8 @@ public:
 
                 const ui64 offsetInPage =
                     pageNoInCluster == pageNoOffsetInCluster
-                    ? fileOffset - pageStart : 0;
+                        ? fileOffset - pageStart
+                        : 0;
                 const ui64 toCopy =
                     Min(pageEnd, endOffset) - (pageStart + offsetInPage);
                 memcpy(
@@ -1603,15 +1568,14 @@ public:
     // Access/Allocate API is deliberately no-op in prototype.
     //
 
-    NProto::TAccessNodeResponse
-    AccessNode(NProto::TAccessNodeRequest request)
+    NProto::TAccessNodeResponse AccessNode(NProto::TAccessNodeRequest request)
     {
         Y_UNUSED(request);
         return {};
     }
 
-    NProto::TAllocateDataResponse
-    AllocateData(NProto::TAllocateDataRequest request)
+    NProto::TAllocateDataResponse AllocateData(
+        NProto::TAllocateDataRequest request)
     {
         Y_UNUSED(request);
         return {};
@@ -1621,20 +1585,19 @@ public:
     // Ok to keep locks API unsupported in prototype.
     //
 
-    NProto::TAcquireLockResponse
-    AcquireLock(NProto::TAcquireLockRequest request)
+    NProto::TAcquireLockResponse AcquireLock(
+        NProto::TAcquireLockRequest request)
     {
         return NotImplemented<NProto::TAcquireLockResponse>(std::move(request));
     }
 
-    NProto::TReleaseLockResponse
-    ReleaseLock(NProto::TReleaseLockRequest request)
+    NProto::TReleaseLockResponse ReleaseLock(
+        NProto::TReleaseLockRequest request)
     {
         return NotImplemented<NProto::TReleaseLockResponse>(std::move(request));
     }
 
-    NProto::TTestLockResponse
-    TestLock(NProto::TTestLockRequest request)
+    NProto::TTestLockResponse TestLock(NProto::TTestLockRequest request)
     {
         return NotImplemented<NProto::TTestLockResponse>(std::move(request));
     }
@@ -1643,26 +1606,26 @@ public:
     // Ok to keep xattr API unsupported in prototype.
     //
 
-    NProto::TRemoveNodeXAttrResponse
-    RemoveNodeXAttr(NProto::TRemoveNodeXAttrRequest request)
+    NProto::TRemoveNodeXAttrResponse RemoveNodeXAttr(
+        NProto::TRemoveNodeXAttrRequest request)
     {
         return NotImplemented<NProto::TRemoveNodeXAttrResponse>(request);
     }
 
-    NProto::TGetNodeXAttrResponse
-    GetNodeXAttr(NProto::TGetNodeXAttrRequest request)
+    NProto::TGetNodeXAttrResponse GetNodeXAttr(
+        NProto::TGetNodeXAttrRequest request)
     {
         return NotImplemented<NProto::TGetNodeXAttrResponse>(request);
     }
 
-    NProto::TSetNodeXAttrResponse
-    SetNodeXAttr(NProto::TSetNodeXAttrRequest request)
+    NProto::TSetNodeXAttrResponse SetNodeXAttr(
+        NProto::TSetNodeXAttrRequest request)
     {
         return NotImplemented<NProto::TSetNodeXAttrResponse>(request);
     }
 
-    NProto::TListNodeXAttrResponse
-    ListNodeXAttr(NProto::TListNodeXAttrRequest request)
+    NProto::TListNodeXAttrResponse ListNodeXAttr(
+        NProto::TListNodeXAttrRequest request)
     {
         return NotImplemented<NProto::TListNodeXAttrResponse>(request);
     }
@@ -1695,10 +1658,10 @@ private:
         params->Promise.SetValue(std::move(response));                         \
         return 0;                                                              \
     }                                                                          \
-// FAST_SHARD_DEFINE_METHOD
+    // FAST_SHARD_DEFINE_METHOD
 
-    FAST_SHARD_PRIVATE_METHODS(FAST_SHARD_DEFINE_METHOD, NProtoPrivate)
-    FAST_SHARD_PUBLIC_METHODS(FAST_SHARD_DEFINE_METHOD, NProto)
+FAST_SHARD_PRIVATE_METHODS(FAST_SHARD_DEFINE_METHOD, NProtoPrivate)
+FAST_SHARD_PUBLIC_METHODS(FAST_SHARD_DEFINE_METHOD, NProto)
 
 #undef FAST_SHARD_DEFINE_METHOD
 
@@ -1715,12 +1678,11 @@ private:
 
 public:
     TNaiveMirroredFileSystemShard(
-            ui32 shardNo,
-            NProtoPrivate::TPersistentFastShardConfig config)
+        ui32 shardNo,
+        NProtoPrivate::TPersistentFastShardConfig config)
         : FiberShard(
-            std::make_shared<TFiberShardImpl>(shardNo, std::move(config)))
-    {
-    }
+              std::make_shared<TFiberShardImpl>(shardNo, std::move(config)))
+    {}
 
 public:
 #define FAST_SHARD_DEFINE_METHOD(name, ns, ...)                                \
@@ -1734,21 +1696,23 @@ public:
             name##FiberMain,                                                   \
             TFiberShard##name##Params{                                         \
                 .FiberShard = FiberShard,                                      \
-                .Request =                                                     \
-                    std::make_shared<ns::T##name##Request>(std::move(request)),\
+                .Request = std::make_shared<ns::T##name##Request>(             \
+                    std::move(request)),                                       \
                 .Promise = promise,                                            \
             },                                                                 \
             nullptr /* future */);                                             \
         if (r) {                                                               \
             ns::T##name##Response response;                                    \
-            *response.MutableError() = MakeError(E_FAIL, TStringBuilder()      \
-                << "failed to spawn fiber: " << ::strerror(r));                \
+            *response.MutableError() = MakeError(                              \
+                E_FAIL,                                                        \
+                TStringBuilder()                                               \
+                    << "failed to spawn fiber: " << ::strerror(r));            \
             promise.SetValue(std::move(response));                             \
         }                                                                      \
                                                                                \
         return future;                                                         \
     }                                                                          \
-// FAST_SHARD_DEFINE_METHOD
+    // FAST_SHARD_DEFINE_METHOD
 
     FAST_SHARD_PRIVATE_METHODS(FAST_SHARD_DEFINE_METHOD, NProtoPrivate)
     FAST_SHARD_PUBLIC_METHODS(FAST_SHARD_DEFINE_METHOD, NProto)

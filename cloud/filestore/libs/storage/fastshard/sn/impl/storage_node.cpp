@@ -12,9 +12,10 @@
 #include <util/string/builder.h>
 #include <util/system/file.h>
 
+#include <sys/uio.h>
+
 #include <cerrno>
 #include <cstring>
-#include <sys/uio.h>
 
 namespace NCloud::NFileStore::NStorage::NFastShard {
 
@@ -58,8 +59,8 @@ NCloud::NProto::TError ValidateReadRequest(
                 E_ARGUMENT,
                 TStringBuilder()
                     << "sn/impl read: PageCount * PageSize overflows ui64"
-                       " at ref " << i
-                    << " (PageCount=" << pageCount
+                       " at ref "
+                    << i << " (PageCount=" << pageCount
                     << ", PageSize=" << pageSize << ")");
         }
         if (MulOverflowsU64(firstPageNo, pageSize)) {
@@ -67,8 +68,8 @@ NCloud::NProto::TError ValidateReadRequest(
                 E_ARGUMENT,
                 TStringBuilder()
                     << "sn/impl read: FirstPageNo * PageSize overflows"
-                       " ui64 at ref " << i
-                    << " (FirstPageNo=" << firstPageNo
+                       " ui64 at ref "
+                    << i << " (FirstPageNo=" << firstPageNo
                     << ", PageSize=" << pageSize << ")");
         }
     }
@@ -118,8 +119,8 @@ NCloud::NProto::TError ValidateWriteRequest(
                     E_ARGUMENT,
                     TStringBuilder()
                         << "sn/impl write: page size mismatch: expected "
-                        << pageSize << ", got " << sz
-                        << " at group " << i << " content " << k);
+                        << pageSize << ", got " << sz << " at group " << i
+                        << " content " << k);
             }
         }
         const ui64 firstPageNo = pg.GetFirstPageNo();
@@ -128,8 +129,8 @@ NCloud::NProto::TError ValidateWriteRequest(
                 E_ARGUMENT,
                 TStringBuilder()
                     << "sn/impl write: FirstPageNo * pageSize overflows"
-                       " ui64 at group " << i
-                    << " (FirstPageNo=" << firstPageNo
+                       " ui64 at group "
+                    << i << " (FirstPageNo=" << firstPageNo
                     << ", pageSize=" << pageSize << ")");
         }
         if (AddOverflowsU64(firstPageNo, static_cast<ui64>(pageCount))) {
@@ -137,8 +138,8 @@ NCloud::NProto::TError ValidateWriteRequest(
                 E_ARGUMENT,
                 TStringBuilder()
                     << "sn/impl write: FirstPageNo + pageCount overflows"
-                       " ui64 at group " << i
-                    << " (FirstPageNo=" << firstPageNo
+                       " ui64 at group "
+                    << i << " (FirstPageNo=" << firstPageNo
                     << ", pageCount=" << pageCount << ")");
         }
         const ui64 endPageNo = firstPageNo + pageCount;
@@ -148,21 +149,20 @@ NCloud::NProto::TError ValidateWriteRequest(
     if (intervals.size() > 1) {
         Sort(
             intervals,
-            [](const TInterval& a, const TInterval& b) {
-                return a.Start < b.Start;
-            });
+            [](const TInterval& a, const TInterval& b)
+            { return a.Start < b.Start; });
         for (size_t i = 1; i < intervals.size(); ++i) {
             if (intervals[i].Start < intervals[i - 1].End) {
                 return MakeError(
                     E_ARGUMENT,
                     TStringBuilder()
                         << "sn/impl write: overlapping page intervals:"
-                           " group " << intervals[i - 1].GroupIndex
-                        << " [" << intervals[i - 1].Start << ", "
+                           " group "
+                        << intervals[i - 1].GroupIndex << " ["
+                        << intervals[i - 1].Start << ", "
                         << intervals[i - 1].End << ") vs group "
-                        << intervals[i].GroupIndex
-                        << " [" << intervals[i].Start << ", "
-                        << intervals[i].End << ")");
+                        << intervals[i].GroupIndex << " [" << intervals[i].Start
+                        << ", " << intervals[i].End << ")");
             }
         }
     }
@@ -181,8 +181,8 @@ public:
     {
         Y_ENSURE(
             File.IsOpen(),
-            "sn/impl: failed to open " << Path.Quote()
-                << ": " << ::strerror(errno));
+            "sn/impl: failed to open " << Path.Quote() << ": "
+                                       << ::strerror(errno));
     }
 
     NCloud::NProto::TAcquireDevicesResponse AcquireDevices(
@@ -291,11 +291,10 @@ public:
             if (op.BytesRead != op.Iov.iov_len) {
                 *resp.MutableError() = MakeError(
                     E_IO,
-                    TStringBuilder()
-                        << "sn/impl read: short read at offset "
-                        << op.FirstPageNo * op.PageSize
-                        << ": got " << op.BytesRead
-                        << " of " << op.Iov.iov_len << " bytes");
+                    TStringBuilder() << "sn/impl read: short read at offset "
+                                     << op.FirstPageNo * op.PageSize << ": got "
+                                     << op.BytesRead << " of " << op.Iov.iov_len
+                                     << " bytes");
                 return resp;
             }
         }
@@ -304,10 +303,9 @@ public:
             auto* pg = resp.AddPageGroups();
             pg->SetFirstPageNo(op.FirstPageNo);
             for (ui64 i = 0; i < op.PageCount; ++i) {
-                pg->AddContent(
-                    op.Buffer.substr(
-                        static_cast<size_t>(i) * op.PageSize,
-                        op.PageSize));
+                pg->AddContent(op.Buffer.substr(
+                    static_cast<size_t>(i) * op.PageSize,
+                    op.PageSize));
             }
         }
         return resp;
@@ -422,9 +420,8 @@ public:
                 *resp.MutableError() = MakeError(
                     E_IO,
                     TStringBuilder()
-                        << "sn/impl write: short write: "
-                        << op.BytesWritten << " of "
-                        << op.TotalLen << " bytes");
+                        << "sn/impl write: short write: " << op.BytesWritten
+                        << " of " << op.TotalLen << " bytes");
                 return resp;
             }
         }

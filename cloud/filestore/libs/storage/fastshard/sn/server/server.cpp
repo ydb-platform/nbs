@@ -14,10 +14,6 @@
 #include <util/generic/yexception.h>
 #include <util/system/spinlock.h>
 
-#include <cerrno>
-#include <cstring>
-#include <memory>
-
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
@@ -25,6 +21,10 @@
 #include <sys/eventfd.h>
 #include <sys/socket.h>
 #include <unistd.h>
+
+#include <cerrno>
+#include <cstring>
+#include <memory>
 
 namespace NCloud::NFileStore::NStorage::NFastShard {
 
@@ -165,13 +165,13 @@ TDeviceProtocolResponse Dispatch(
 
     switch (req.GetRequestCase()) {
 #define DISPATCH_REQUEST(name, ...)                                            \
-        case TDeviceProtocolRequest::k##name: {                                \
-            *resp.Mutable##name() = storage.name(req.Get##name());             \
-            break;                                                             \
-        }                                                                      \
-// DISPATCH_REQUEST
+    case TDeviceProtocolRequest::k##name: {                                    \
+        *resp.Mutable##name() = storage.name(req.Get##name());                 \
+        break;                                                                 \
+    }                                                                          \
+        // DISPATCH_REQUEST
 
-    SN_METHODS(DISPATCH_REQUEST)
+        SN_METHODS(DISPATCH_REQUEST)
 
 #undef DISPATCH_REQUEST
 
@@ -194,6 +194,7 @@ struct TConnParams
     int Fd;
     std::weak_ptr<IStorageNode> Storage;
 };
+
 static_assert(sizeof(TConnParams) <= silk::FIBER_PARAMETERS_SIZE);
 
 int ConnFiberMain(TConnParams* params) noexcept
@@ -240,19 +241,13 @@ int ConnFiberMain(TConnParams* params) noexcept
         TString reqBuf;
         reqBuf.ReserveAndResize(len);
         if (int r = RecvAll(fd, reqBuf.begin(), len); r) {
-            SILK_WARN(
-                "conn fd=%d: recv body: %s",
-                fd,
-                ::strerror(r));
+            SILK_WARN("conn fd=%d: recv body: %s", fd, ::strerror(r));
             return r;
         }
 
         TDeviceProtocolRequest req;
         if (!req.ParseFromString(reqBuf)) {
-            SILK_WARN(
-                "conn fd=%d: parse request failed, len=%u",
-                fd,
-                len);
+            SILK_WARN("conn fd=%d: parse request failed, len=%u", fd, len);
             return EBADMSG;
         }
 
@@ -266,24 +261,16 @@ int ConnFiberMain(TConnParams* params) noexcept
         TString respBuf;
         const bool serialized = resp.SerializeToString(&respBuf);
         if (!serialized) {
-            SILK_ERROR(
-                "conn fd=%d: failed to serialize response",
-                fd);
+            SILK_ERROR("conn fd=%d: failed to serialize response", fd);
         }
 
         ui32 respLenBe = htonl(static_cast<ui32>(respBuf.size()));
         if (int r = SendAll(fd, &respLenBe, sizeof(respLenBe)); r) {
-            SILK_WARN(
-                "conn fd=%d: send resp length: %s",
-                fd,
-                ::strerror(r));
+            SILK_WARN("conn fd=%d: send resp length: %s", fd, ::strerror(r));
             return r;
         }
         if (int r = SendAll(fd, respBuf.data(), respBuf.size()); r) {
-            SILK_WARN(
-                "conn fd=%d: send resp body: %s",
-                fd,
-                ::strerror(r));
+            SILK_WARN("conn fd=%d: send resp body: %s", fd, ::strerror(r));
             return r;
         }
     }
@@ -299,6 +286,7 @@ struct TAcceptParams
     std::weak_ptr<IStorageNode> Storage;
     std::weak_ptr<THandlerRegistry> Handlers;
 };
+
 static_assert(sizeof(TAcceptParams) <= silk::FIBER_PARAMETERS_SIZE);
 
 void RegisterHandler(
@@ -504,10 +492,8 @@ public:
 private:
     int MakeListenSocket()
     {
-        int fd = ::socket(
-            AF_INET,
-            SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC,
-            0);
+        int fd =
+            ::socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
         if (fd < 0) {
             SILK_ERROR("socket: %s", ::strerror(errno));
             return -1;
@@ -521,9 +507,7 @@ private:
         addr.sin_port = htons(Port);
         addr.sin_addr.s_addr = INADDR_ANY;
 
-        if (::bind(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr))
-            < 0)
-        {
+        if (::bind(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) {
             SILK_ERROR("bind: %s", ::strerror(errno));
             ::close(fd);
             return -1;

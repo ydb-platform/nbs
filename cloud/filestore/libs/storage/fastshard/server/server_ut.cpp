@@ -1,12 +1,9 @@
 #include <cloud/filestore/libs/storage/fastshard/client/async_client.h>
 #include <cloud/filestore/libs/storage/fastshard/client/client.h>
-#include <cloud/filestore/libs/storage/fastshard/server/server.h>
-#include <cloud/filestore/libs/storage/fastshard/server/protos/fastshard.pb.h>
 #include <cloud/filestore/libs/storage/fastshard/impl/mem/memshard.h>
+#include <cloud/filestore/libs/storage/fastshard/server/protos/fastshard.pb.h>
+#include <cloud/filestore/libs/storage/fastshard/server/server.h>
 #include <cloud/filestore/libs/storage/fastshard/testlib/silk_env.h>
-
-#include <library/cpp/testing/common/network.h>
-
 #include <cloud/filestore/private/api/unsafe_protos/unsafe.pb.h>
 #include <cloud/filestore/public/api/protos/node.pb.h>
 
@@ -14,6 +11,8 @@
 
 #include <silk/fibers/fiber.h>
 #include <silk/fibers/future.h>
+
+#include <library/cpp/testing/common/network.h>
 
 #include <gtest/gtest.h>
 
@@ -53,10 +52,12 @@ struct TServerFixture
         {
             IServer* Srv;
         };
+
         static_assert(sizeof(Params) <= silk::FIBER_PARAMETERS_SIZE);
 
         (void)FiberScheduler::run(
-            +[](Params* p) noexcept -> int {
+            +[](Params* p) noexcept -> int
+            {
                 p->Srv->Start();
                 return 0;
             },
@@ -65,7 +66,7 @@ struct TServerFixture
 
         // Give the server a moment to bind.
         FiberScheduler::SleepFuture sf;
-        FiberScheduler::sleep(50'000'000, &sf);  // 50ms
+        FiberScheduler::sleep(50'000'000, &sf);   // 50ms
         sf.wait();
     }
 
@@ -83,7 +84,8 @@ struct TServerFixture
 TEST(ServerTest, CreateNodeAndGetAttr)
 {
     int result = FiberScheduler::run(
-        +[](int*) noexcept -> int {
+        +[](int*) noexcept -> int
+        {
             NCloud::NFileStore::NProtoPrivate::TMemFastShardConfig cfg;
             cfg.SetCreateNodeUponAccess(true);
             auto shard = CreateMemFileSystemShard(1, cfg);
@@ -128,7 +130,8 @@ TEST(ServerTest, CreateNodeAndGetAttr)
 TEST(ServerTest, UnknownShardReturnsEmptyResponse)
 {
     int result = FiberScheduler::run(
-        +[](int*) noexcept -> int {
+        +[](int*) noexcept -> int
+        {
             NCloud::NFileStore::NProtoPrivate::TMemFastShardConfig cfg;
             auto shard = CreateMemFileSystemShard(1, cfg);
 

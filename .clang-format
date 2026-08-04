@@ -27,7 +27,7 @@ AlignConsecutiveMacros:
   AcrossComments:  false
   AlignCompound:   false
   PadOperators:    false
-AlignEscapedNewlines: Left
+AlignEscapedNewlines: Right
 AlignOperands:   Align
 AlignTrailingComments:
   Kind:            Always
@@ -190,6 +190,10 @@ IncludeCategories:
     CaseSensitive:   false
   - Regex:           '^<ydb/.*\.h>'
     Priority:        30
+    SortPriority:    0
+    CaseSensitive:   false
+  - Regex:           '^<silk/.*\.h>'
+    Priority:        35
     SortPriority:    0
     CaseSensitive:   false
   - Regex:           '^<contrib/.*\.h>'

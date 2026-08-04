@@ -10,6 +10,7 @@ PEERDIR(
 )
 
 SRCS(
+    busy_idle_calculator_ut.cpp
     cgroup_stats_fetcher_ut.cpp
     histogram_types_ut.cpp
     logging_ut.cpp

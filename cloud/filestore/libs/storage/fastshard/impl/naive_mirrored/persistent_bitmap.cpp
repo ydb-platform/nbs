@@ -29,8 +29,8 @@ bool GetBit(TString& bitmapPage, ui64 bit)
 {
     Y_ABORT_UNLESS(bitmapPage.size() % sizeof(ui64) == 0);
 
-    ui64* word = reinterpret_cast<ui64*>(bitmapPage.begin())
-        + bit / BitsPerWord;
+    ui64* word =
+        reinterpret_cast<ui64*>(bitmapPage.begin()) + bit / BitsPerWord;
     return (*word & (1ULL << (bit % BitsPerWord))) != 0;
 }
 
@@ -38,8 +38,8 @@ void SetBit(TString& bitmapPage, ui64 bit, bool isReset)
 {
     Y_ABORT_UNLESS(bitmapPage.size() % sizeof(ui64) == 0);
 
-    ui64* word = reinterpret_cast<ui64*>(bitmapPage.begin())
-        + bit / BitsPerWord;
+    ui64* word =
+        reinterpret_cast<ui64*>(bitmapPage.begin()) + bit / BitsPerWord;
     if (isReset) {
         *word &= ~(1ULL << (bit % BitsPerWord));
     } else {
@@ -68,8 +68,11 @@ ui64 FindFirstFreeBit(const TString& bitmapPage)
 bool TPersistentBitmap::Validate(ui64 bit, NProto::TError* error) const
 {
     if (bit >= PageCount * BitsPerPage) {
-        *error = MakeError(E_ARGUMENT, TStringBuilder() << "out of bounds"
-            " bitmap access: " << bit << " >= " << (PageCount * BitsPerPage));
+        *error = MakeError(
+            E_ARGUMENT,
+            TStringBuilder() << "out of bounds"
+                                " bitmap access: "
+                             << bit << " >= " << (PageCount * BitsPerPage));
         return false;
     }
 
@@ -93,10 +96,8 @@ NProto::TError TPersistentBitmap::Get(ui64 bit, bool* result) const
     return {};
 }
 
-NProto::TError TPersistentBitmap::Set(
-    ui64 lsn,
-    ui64 bit,
-    TVector<TPageGroup>& pageGroups)
+NProto::TError
+TPersistentBitmap::Set(ui64 lsn, ui64 bit, TVector<TPageGroup>& pageGroups)
 {
     NProto::TError error;
     if (!Validate(bit, &error)) {
@@ -112,17 +113,12 @@ NProto::TError TPersistentBitmap::Set(
     SetBit(BitmapPages[bitmapPageNo], bit % BitsPerPage, false /* isReset */);
 
     const ui64 pageNo = FirstPageNo + bitmapPageNo;
-    return PageStore->WritePage(
-        lsn,
-        pageNo,
-        BitmapPages[bitmapPageNo],
-        pageGroups);
+    return PageStore
+        ->WritePage(lsn, pageNo, BitmapPages[bitmapPageNo], pageGroups);
 }
 
-NProto::TError TPersistentBitmap::Reset(
-    ui64 lsn,
-    ui64 bit,
-    TVector<TPageGroup>& pageGroups)
+NProto::TError
+TPersistentBitmap::Reset(ui64 lsn, ui64 bit, TVector<TPageGroup>& pageGroups)
 {
     NProto::TError error;
     if (!Validate(bit, &error)) {
@@ -144,11 +140,8 @@ NProto::TError TPersistentBitmap::Reset(
     }
 
     const ui64 pageNo = FirstPageNo + bitmapPageNo;
-    return PageStore->WritePage(
-        lsn,
-        pageNo,
-        BitmapPages[bitmapPageNo],
-        pageGroups);
+    return PageStore
+        ->WritePage(lsn, pageNo, BitmapPages[bitmapPageNo], pageGroups);
 }
 
 NProto::TError TPersistentBitmap::Allocate(

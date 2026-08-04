@@ -7,12 +7,11 @@
 
 #include <silk/fibers/fiber.h>
 
-#include <gtest/gtest.h>
-
 #include <util/generic/string.h>
 #include <util/generic/yexception.h>
 #include <util/system/tempfile.h>
 
+#include <gtest/gtest.h>
 
 using namespace NCloud::NFileStore::NStorage::NFastShard;
 using NCloud::HasError;
@@ -69,7 +68,8 @@ TString Pattern(char c, size_t len)
 TEST(NaiveFileStorageNodeTest, AcquireDevicesReturnsSuccess)
 {
     const int r = FiberScheduler::run(
-        +[](int*) noexcept -> int {
+        +[](int*) noexcept -> int
+        {
             TFixture fx;
             NCloud::NProto::TAcquireDevicesRequest req;
             req.AddDeviceUUIDs("dev-x");
@@ -84,7 +84,8 @@ TEST(NaiveFileStorageNodeTest, AcquireDevicesReturnsSuccess)
 TEST(NaiveFileStorageNodeTest, ReleaseDevicesReturnsSuccess)
 {
     const int r = FiberScheduler::run(
-        +[](int*) noexcept -> int {
+        +[](int*) noexcept -> int
+        {
             TFixture fx;
             NCloud::NProto::TReleaseDevicesRequest req;
             req.AddDeviceUUIDs("dev-x");
@@ -99,7 +100,8 @@ TEST(NaiveFileStorageNodeTest, ReleaseDevicesReturnsSuccess)
 TEST(NaiveFileStorageNodeTest, RoundTripsSinglePage)
 {
     const int r = FiberScheduler::run(
-        +[](int*) noexcept -> int {
+        +[](int*) noexcept -> int
+        {
             TFixture fx;
 
             NCloud::NProto::TWriteLogRecordRequest wreq;
@@ -131,7 +133,8 @@ TEST(NaiveFileStorageNodeTest, RoundTripsSinglePage)
 TEST(NaiveFileStorageNodeTest, RoundTripsMultiPageGroup)
 {
     const int r = FiberScheduler::run(
-        +[](int*) noexcept -> int {
+        +[](int*) noexcept -> int
+        {
             TFixture fx;
 
             NCloud::NProto::TWriteLogRecordRequest wreq;
@@ -166,7 +169,8 @@ TEST(NaiveFileStorageNodeTest, RoundTripsMultiPageGroup)
 TEST(NaiveFileStorageNodeTest, RoundTripsMultipleGroups)
 {
     const int r = FiberScheduler::run(
-        +[](int*) noexcept -> int {
+        +[](int*) noexcept -> int
+        {
             TFixture fx;
 
             NCloud::NProto::TWriteLogRecordRequest wreq;
@@ -217,7 +221,8 @@ TEST(NaiveFileStorageNodeTest, LaterWriteOverridesEarlier)
 {
     // Second write to the same offset must be readable back.
     const int r = FiberScheduler::run(
-        +[](int*) noexcept -> int {
+        +[](int*) noexcept -> int
+        {
             TFixture fx;
 
             for (char c: {'1', '2'}) {
@@ -249,7 +254,8 @@ TEST(NaiveFileStorageNodeTest, LaterWriteOverridesEarlier)
 TEST(NaiveFileStorageNodeTest, EmptyReadReturnsSuccessWithNoGroups)
 {
     const int r = FiberScheduler::run(
-        +[](int*) noexcept -> int {
+        +[](int*) noexcept -> int
+        {
             TFixture fx;
             NCloud::NProto::TReadPagesRequest rreq;
             auto rresp = fx.Node->ReadPages(std::move(rreq));
@@ -264,7 +270,8 @@ TEST(NaiveFileStorageNodeTest, EmptyReadReturnsSuccessWithNoGroups)
 TEST(NaiveFileStorageNodeTest, EmptyWriteReturnsSuccess)
 {
     const int r = FiberScheduler::run(
-        +[](int*) noexcept -> int {
+        +[](int*) noexcept -> int
+        {
             TFixture fx;
             NCloud::NProto::TWriteLogRecordRequest wreq;
             auto wresp = fx.Node->WriteLogRecord(std::move(wreq));
@@ -292,7 +299,8 @@ TEST(NaiveFileStorageNodeTest, ReadPagesReturnsErrorOnShortRead)
     // mismatch and surface E_IO instead of returning a half-populated
     // response.
     const int r = FiberScheduler::run(
-        +[](int*) noexcept -> int {
+        +[](int*) noexcept -> int
+        {
             TFixture fx(PageSize /* backingSize */);
 
             NCloud::NProto::TReadPagesRequest rreq;
@@ -320,7 +328,8 @@ TEST(NaiveFileStorageNodeTest, ReadPagesReportsErrorOnPartialFailure)
     // the UAF would be caught; the observable contract is (a) no crash
     // (b) error surfaced (c) no partial page data.
     const int r = FiberScheduler::run(
-        +[](int*) noexcept -> int {
+        +[](int*) noexcept -> int
+        {
             TFixture fx;
 
             NCloud::NProto::TReadPagesRequest rreq;
@@ -344,7 +353,8 @@ TEST(NaiveFileStorageNodeTest, ReadPagesReportsErrorOnPartialFailure)
 TEST(NaiveFileStorageNodeTest, ReadPagesRejectsPageCountPageSizeOverflow)
 {
     const int r = FiberScheduler::run(
-        +[](int*) noexcept -> int {
+        +[](int*) noexcept -> int
+        {
             TFixture fx;
             NCloud::NProto::TReadPagesRequest rreq;
             auto* ref = rreq.AddPageGroupRefs();
@@ -368,7 +378,8 @@ TEST(NaiveFileStorageNodeTest, ReadPagesRejectsPageCountPageSizeOverflow)
 TEST(NaiveFileStorageNodeTest, ReadPagesRejectsFirstPageNoPageSizeOverflow)
 {
     const int r = FiberScheduler::run(
-        +[](int*) noexcept -> int {
+        +[](int*) noexcept -> int
+        {
             TFixture fx;
             NCloud::NProto::TReadPagesRequest rreq;
             auto* ref = rreq.AddPageGroupRefs();
@@ -391,7 +402,8 @@ TEST(NaiveFileStorageNodeTest, ReadPagesRejectsFirstPageNoPageSizeOverflow)
 TEST(NaiveFileStorageNodeTest, WriteLogRecordRejectsFirstPageNoPageSizeOverflow)
 {
     const int r = FiberScheduler::run(
-        +[](int*) noexcept -> int {
+        +[](int*) noexcept -> int
+        {
             TFixture fx;
             NCloud::NProto::TWriteLogRecordRequest wreq;
             auto* pg = wreq.AddPageGroups();
@@ -417,7 +429,8 @@ TEST(NaiveFileStorageNodeTest, WriteLogRecordRejectsMixedPageSizes)
     // offsets from a single page size; letting mixed sizes through would
     // silently misplace the second group's bytes on disk.
     const int r = FiberScheduler::run(
-        +[](int*) noexcept -> int {
+        +[](int*) noexcept -> int
+        {
             TFixture fx;
             NCloud::NProto::TWriteLogRecordRequest wreq;
             auto* g0 = wreq.AddPageGroups();
@@ -441,7 +454,8 @@ TEST(NaiveFileStorageNodeTest, WriteLogRecordRejectsMixedPageSizesWithinGroup)
 {
     // Two content pages of one group disagree in size.
     const int r = FiberScheduler::run(
-        +[](int*) noexcept -> int {
+        +[](int*) noexcept -> int
+        {
             TFixture fx;
             NCloud::NProto::TWriteLogRecordRequest wreq;
             auto* pg = wreq.AddPageGroups();
@@ -465,7 +479,8 @@ TEST(NaiveFileStorageNodeTest, WriteLogRecordRejectsOverlappingIntervals)
     // They overlap on page 2 -- concurrent writes to the same range
     // have unspecified ordering, so the request must be rejected.
     const int r = FiberScheduler::run(
-        +[](int*) noexcept -> int {
+        +[](int*) noexcept -> int
+        {
             TFixture fx;
             NCloud::NProto::TWriteLogRecordRequest wreq;
             auto* g0 = wreq.AddPageGroups();
@@ -493,7 +508,8 @@ TEST(NaiveFileStorageNodeTest, WriteLogRecordAcceptsAdjacentIntervals)
 {
     // Adjacent (touching but not overlapping) intervals must be allowed.
     const int r = FiberScheduler::run(
-        +[](int*) noexcept -> int {
+        +[](int*) noexcept -> int
+        {
             TFixture fx;
             NCloud::NProto::TWriteLogRecordRequest wreq;
             auto* g0 = wreq.AddPageGroups();
@@ -518,7 +534,8 @@ TEST(NaiveFileStorageNodeTest, WriteLogRecordReportsErrorOnPartialFailure)
     // WriteLogRecord waits for every submitted op before returning so
     // io_uring can't touch freed op state.
     const int r = FiberScheduler::run(
-        +[](int*) noexcept -> int {
+        +[](int*) noexcept -> int
+        {
             TFixture fx;
 
             NCloud::NProto::TWriteLogRecordRequest wreq;

@@ -565,6 +565,61 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         }
     }
 
+    SERVICE_TEST(ShouldPropagateQuotasToShards)
+    {
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        auto listQuotas = [&](const TString& fileSystemId)
+        {
+            NProtoPrivate::TListQuotasRequest request;
+            request.SetFileSystemId(fileSystemId);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            auto jsonResponse = service.ExecuteAction("listquotas", buf);
+            NProtoPrivate::TListQuotasResponse response;
+            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                jsonResponse->Record.GetOutput(), &response).ok());
+
+            return response.GetQuotas();
+        };
+
+        {
+            NProtoPrivate::TSetQuotaRequest request;
+            request.SetFileSystemId(fsConfig.FsId);
+            request.SetQuotaId(42);
+            request.SetMaxBytes(1_GB);
+            request.SetMaxNodes(100);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.ExecuteAction("setquota", buf);
+        }
+
+        for (const auto& id: fsConfig.MainAndShardIds()) {
+            const auto quotas = listQuotas(id);
+            UNIT_ASSERT_VALUES_EQUAL_C(1, quotas.size(), id);
+            UNIT_ASSERT_VALUES_EQUAL_C(42u, quotas[0].GetQuotaId(), id);
+            UNIT_ASSERT_VALUES_EQUAL_C(1_GB, quotas[0].GetMaxBytes(), id);
+            UNIT_ASSERT_VALUES_EQUAL_C(100u, quotas[0].GetMaxNodes(), id);
+        }
+
+        {
+            NProtoPrivate::TDeleteQuotaRequest request;
+            request.SetFileSystemId(fsConfig.FsId);
+            request.SetQuotaId(42);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.ExecuteAction("deletequota", buf);
+        }
+
+        for (const auto& id: fsConfig.MainAndShardIds()) {
+            UNIT_ASSERT_VALUES_EQUAL_C(0, listQuotas(id).size(), id);
+        }
+    }
+
     SERVICE_TEST(ShouldCheckForShardsInAdapterModeUponSessionCreationInShards)
     {
         //

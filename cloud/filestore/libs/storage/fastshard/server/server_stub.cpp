@@ -15,12 +15,10 @@ public:
     }
 
     void Start() override
-    {
-    }
+    {}
 
     void Stop() override
-    {
-    }
+    {}
 
     void RegisterShard(
         const TString& fileSystemId,

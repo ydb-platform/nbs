@@ -1,5 +1,9 @@
 #include "tablet_actor.h"
 
+#include "shard_request_actor.h"
+
+#include <util/string/join.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
@@ -29,16 +33,6 @@ void TIndexTabletActor::HandleSetQuota(
         ev->Cookie,
         MakeIntrusive<TCallContext>());
     requestInfo->StartedTs = ctx.Now();
-
-    if (!IsMainTablet()) {
-        // TODO(6608): propagate knowledge of the quota to all shards
-        auto response =
-            std::make_unique<TEvIndexTablet::TEvSetQuotaResponse>(MakeError(
-                E_ARGUMENT,
-                "quotas can only be set on the main tablet"));
-        NCloud::Reply(ctx, *requestInfo, std::move(response));
-        return;
-    }
 
     if (!msg->Record.GetQuotaId()) {
         auto response =
@@ -104,7 +98,42 @@ void TIndexTabletActor::CompleteTx_SetQuota(
         *response->Record.MutableQuota() = args.Quota;
     }
 
-    NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+    if (HasError(args.Error) ||
+        GetFileSystem().GetShardFileSystemIds().empty() || !IsMainTablet())
+    {
+        NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+        return;
+    }
+
+    TVector<TString> shardIds;
+    for (const auto& shardId: GetFileSystem().GetShardFileSystemIds()) {
+        shardIds.push_back(shardId);
+    }
+
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::TABLET,
+        "%s Propagating SetQuota to shards (%s)",
+        LogTag.c_str(),
+        JoinSeq(",", shardIds).c_str());
+
+    NProtoPrivate::TSetQuotaRequest request;
+    request.SetQuotaId(args.QuotaId);
+    request.SetMaxBytes(args.MaxBytes);
+    request.SetMaxNodes(args.MaxNodes);
+
+    auto actor = std::make_unique<TShardRequestActor<
+        TEvIndexTablet::TEvSetQuotaRequest,
+        TEvIndexTablet::TEvSetQuotaResponse>>(
+        LogTag,
+        SelfId(),
+        std::move(args.RequestInfo),
+        std::move(request),
+        std::move(shardIds),
+        std::move(response));
+
+    auto actorId = NCloud::Register(ctx, std::move(actor));
+    WorkerActors.insert(actorId);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -127,16 +156,6 @@ void TIndexTabletActor::HandleDeleteQuota(
         ev->Cookie,
         MakeIntrusive<TCallContext>());
     requestInfo->StartedTs = ctx.Now();
-
-    if (!IsMainTablet()) {
-        // TODO(6608): propagate deletion of the quota to all shards
-        auto response =
-            std::make_unique<TEvIndexTablet::TEvDeleteQuotaResponse>(MakeError(
-                E_ARGUMENT,
-                "quotas can only be deleted on the main tablet"));
-        NCloud::Reply(ctx, *requestInfo, std::move(response));
-        return;
-    }
 
     AddInFlightRequest<TEvIndexTablet::TDeleteQuotaMethod>(*requestInfo);
 
@@ -183,7 +202,40 @@ void TIndexTabletActor::CompleteTx_DeleteQuota(
     auto response =
         std::make_unique<TEvIndexTablet::TEvDeleteQuotaResponse>(args.Error);
 
-    NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+    if (HasError(args.Error) ||
+        GetFileSystem().GetShardFileSystemIds().empty() || !IsMainTablet())
+    {
+        NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+        return;
+    }
+
+    TVector<TString> shardIds;
+    for (const auto& shardId: GetFileSystem().GetShardFileSystemIds()) {
+        shardIds.push_back(shardId);
+    }
+
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::TABLET,
+        "%s Propagating DeleteQuota to shards (%s)",
+        LogTag.c_str(),
+        JoinSeq(",", shardIds).c_str());
+
+    NProtoPrivate::TDeleteQuotaRequest request;
+    request.SetQuotaId(args.QuotaId);
+
+    auto actor = std::make_unique<TShardRequestActor<
+        TEvIndexTablet::TEvDeleteQuotaRequest,
+        TEvIndexTablet::TEvDeleteQuotaResponse>>(
+        LogTag,
+        SelfId(),
+        std::move(args.RequestInfo),
+        std::move(request),
+        std::move(shardIds),
+        std::move(response));
+
+    auto actorId = NCloud::Register(ctx, std::move(actor));
+    WorkerActors.insert(actorId);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

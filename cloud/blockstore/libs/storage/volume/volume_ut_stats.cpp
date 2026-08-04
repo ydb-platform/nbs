@@ -2024,6 +2024,84 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         runtime->DispatchEvents(options);
 
     }
+
+    Y_UNIT_TEST(ShouldPullStatisticsAfterPartitionStopped)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetUsePullSchemeForVolumeStatistics(true);
+
+        auto state = MakeIntrusive<TDiskRegistryState>();
+
+        auto runtime = PrepareTestActorRuntime(config, state);
+        TVolumeClient volume(*runtime);
+
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            1024,
+            "vol0",
+            "cloud",
+            "folder",
+            1   // partitionCount
+        );
+
+        volume.WaitReady();
+
+        auto pullStatistics = [&](TAutoPtr<IEventHandle>& handle)
+        {
+            volume.SendToPipe(
+                std::make_unique<
+                    TEvStatsService::TEvGetServiceStatisticsRequest>());
+
+            auto* response = runtime->GrabEdgeEventRethrow<
+                TEvStatsService::TEvGetServiceStatisticsResponse>(
+                handle,
+                TDuration::Seconds(5));
+            UNIT_ASSERT(handle);
+            return response;
+        };
+
+        ui32 partCountersRequestCount = 0;
+        auto observer = runtime->AddObserver<
+            TEvNonreplPartitionPrivate::
+                TEvGetDiskRegistryBasedPartCountersRequest>(
+            [&](TEvNonreplPartitionPrivate::
+                    TEvGetDiskRegistryBasedPartCountersRequest::TPtr& ev)
+            {
+                Y_UNUSED(ev);
+                ++partCountersRequestCount;
+            });
+
+        // Warm up the cached counters.
+        {
+            TAutoPtr<IEventHandle> handle;
+            auto* response = pullStatistics(handle);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(1, response->PartsCounters.size());
+            UNIT_ASSERT_VALUES_EQUAL(1, partCountersRequestCount);
+        }
+
+        // The partition gets stopped before the volume destruction.
+        volume.GracefulShutdown();
+
+        partCountersRequestCount = 0;
+
+        // The volume should reply with the cached counters instead of asking
+        // the already stopped partition.
+        {
+            TAutoPtr<IEventHandle> handle;
+            auto* response = pullStatistics(handle);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(1, response->PartsCounters.size());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(0, partCountersRequestCount);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

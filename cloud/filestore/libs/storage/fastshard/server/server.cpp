@@ -18,10 +18,6 @@
 #include <util/string/builder.h>
 #include <util/system/spinlock.h>
 
-#include <cerrno>
-#include <cstring>
-#include <memory>
-
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
@@ -29,6 +25,10 @@
 #include <sys/eventfd.h>
 #include <sys/socket.h>
 #include <unistd.h>
+
+#include <cerrno>
+#include <cstring>
+#include <memory>
 
 namespace NCloud::NFileStore::NStorage::NFastShard {
 
@@ -163,9 +163,7 @@ template <typename T>
 T WaitFiber(const NThreading::TFuture<T>& future)
 {
     FiberFuture fiberFuture;
-    future.Subscribe([&fiberFuture](const auto&) {
-        fiberFuture.set(0);
-    });
+    future.Subscribe([&fiberFuture](const auto&) { fiberFuture.set(0); });
     fiberFuture.wait();
     return future.GetValue();
 }
@@ -180,20 +178,19 @@ TResponse Dispatch(IFileSystemShard& shard, const TRequest& req)
     switch (req.GetBodyCase()) {
 #define DISPATCH_REQUEST(name, ...)                                            \
     case TRequest::k##name: {                                                  \
-        auto result = WaitFiber(                                               \
-            shard.name(req.Get##name()));                                      \
+        auto result = WaitFiber(shard.name(req.Get##name()));                  \
         *resp.Mutable##name() = std::move(result);                             \
         break;                                                                 \
     }                                                                          \
-// DISPATCH_REQUEST
+        // DISPATCH_REQUEST
 
-    FAST_SHARD_PRIVATE_METHODS(DISPATCH_REQUEST)
-    FAST_SHARD_PUBLIC_METHODS(DISPATCH_REQUEST)
+        FAST_SHARD_PRIVATE_METHODS(DISPATCH_REQUEST)
+        FAST_SHARD_PUBLIC_METHODS(DISPATCH_REQUEST)
 
 #undef DISPATCH_REQUEST
 
-    case TRequest::BODY_NOT_SET:
-        break;
+        case TRequest::BODY_NOT_SET:
+            break;
     }
 
     return resp;
@@ -237,6 +234,7 @@ struct TConnParams
     int Fd;
     std::weak_ptr<TShardRegistry> Registry;
 };
+
 static_assert(sizeof(TConnParams) <= silk::FIBER_PARAMETERS_SIZE);
 
 int ConnFiberMain(TConnParams* params) noexcept
@@ -291,8 +289,8 @@ int ConnFiberMain(TConnParams* params) noexcept
             auto* err = resp.MutableError();
             err->SetCode(E_NOT_FOUND);
             err->SetMessage(
-                TStringBuilder() << "no shard registered for "
-                    << req.GetFileSystemId());
+                TStringBuilder()
+                << "no shard registered for " << req.GetFileSystemId());
         } else {
             resp = Dispatch(*shard, req);
         }
@@ -326,6 +324,7 @@ struct TAcceptParams
     std::weak_ptr<TShardRegistry> Registry;
     std::weak_ptr<THandlerRegistry> Handlers;
 };
+
 static_assert(sizeof(TAcceptParams) <= silk::FIBER_PARAMETERS_SIZE);
 
 void RegisterHandler(
@@ -481,10 +480,7 @@ public:
                 .Handlers = Handlers,
             },
             &AcceptFuture);
-        Y_ENSURE(
-            r == 0,
-            "failed to spawn accept fiber: "
-                << ::strerror(r));
+        Y_ENSURE(r == 0, "failed to spawn accept fiber: " << ::strerror(r));
         AcceptFiberSpawned = true;
     }
 
@@ -493,9 +489,7 @@ public:
         if (ShutdownFd >= 0) {
             uint64_t one = 1;
             if (::write(ShutdownFd, &one, sizeof(one)) < 0) {
-                SILK_ERROR(
-                    "shutdown write: %s",
-                    ::strerror(errno));
+                SILK_ERROR("shutdown write: %s", ::strerror(errno));
             }
         }
 
@@ -536,10 +530,8 @@ public:
 private:
     int MakeListenSocket()
     {
-        int fd = ::socket(
-            AF_INET,
-            SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC,
-            0);
+        int fd =
+            ::socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
         if (fd < 0) {
             SILK_ERROR("socket: %s", ::strerror(errno));
             return -1;
@@ -553,9 +545,7 @@ private:
         addr.sin_port = htons(Port);
         addr.sin_addr.s_addr = INADDR_ANY;
 
-        if (::bind(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr))
-            < 0)
-        {
+        if (::bind(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) {
             SILK_ERROR("bind: %s", ::strerror(errno));
             ::close(fd);
             return -1;

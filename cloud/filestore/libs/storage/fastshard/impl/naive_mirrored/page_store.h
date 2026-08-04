@@ -22,10 +22,8 @@ public:
         ui64 pageNo,
         TString page,
         TVector<TPageGroup>& logRecord) = 0;
-    [[nodiscard]] virtual NProto::TError ReadPage(
-        ui64 lsn,
-        ui64 pageNo,
-        TString* page) const = 0;
+    [[nodiscard]] virtual NProto::TError
+    ReadPage(ui64 lsn, ui64 pageNo, TString* page) const = 0;
 };
 
 using IPageStorePtr = std::shared_ptr<IPageStore>;
