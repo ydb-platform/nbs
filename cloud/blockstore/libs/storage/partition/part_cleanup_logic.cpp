@@ -340,8 +340,8 @@ void ExecuteCleanupTransaction(
     size_t mixedBlobsCount = 0;
     size_t mergedBlobsCount = 0;
 
-    TVector<TCleanupQueueItem> deletedItems;
-    deletedItems.reserve(args.CleanupQueue.size());
+    TVector<TCleanupQueueItem> filteredCleanupQueue;
+    filteredCleanupQueue.reserve(args.CleanupQueue.size());
 
     Y_ABORT_UNLESS(args.CleanupQueue.size() == args.BlobsMeta.size());
     for (size_t i = 0; i < args.CleanupQueue.size(); ++i) {
@@ -444,13 +444,13 @@ void ExecuteCleanupTransaction(
             db.WriteGarbageBlob(item.BlobId);
         }
 
-        deletedItems.push_back(item);
+        filteredCleanupQueue.push_back(item);
     }
 
     if (args.WithCheckpoint) {
-        args.CleanupQueue = std::move(deletedItems);
+        args.CleanupQueue = std::move(filteredCleanupQueue);
     } else {
-        Y_DEBUG_ABORT_UNLESS(deletedItems.size() == args.CleanupQueue.size());
+        Y_DEBUG_ABORT_UNLESS(filteredCleanupQueue.size() == args.CleanupQueue.size());
     }
 
     // Updating counters
