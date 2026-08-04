@@ -1,4 +1,4 @@
-#include "mixed_index_blocks_filter.h"
+#include "mixed_blocks_filter.h"
 
 #include <cloud/storage/core/libs/common/verify.h>
 

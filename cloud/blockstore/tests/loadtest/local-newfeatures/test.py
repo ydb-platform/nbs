@@ -182,7 +182,7 @@ def storage_config_with_ignoring_zeroed_compaction_enabled():
     return storage
 
 
-def storage_config_with_mixed_index_blocks_filter_enabled():
+def storage_config_with_mixed_blocks_filter_enabled():
     storage = ordinary_prod_storage_config()
     storage.MixedBlocksFilterEnabled = True
 
@@ -388,10 +388,10 @@ TESTS = [
         None,
     ),
     TestCase(
-        "version1-mixed-index-blocks-filter",
+        "version1-mixed-blocks-filter",
         "cloud/blockstore/tests/loadtest/local-newfeatures/local-tablet-version-1-multiple-ranges.txt",
         [
-            storage_config_with_mixed_index_blocks_filter_enabled(),
+            storage_config_with_mixed_blocks_filter_enabled(),
         ],
         None,
     ),

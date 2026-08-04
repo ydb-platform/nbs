@@ -59,7 +59,7 @@ TFreeSpaceConfig DefaultFreeSpaceConfig()
     return {0.25, 0.15};
 }
 
-TPartitionState MakeState(size_t blockCount = 2048, bool mixedIndexBlocksFilterEnabled = false)
+TPartitionState MakeState(size_t blockCount = 2048, bool mixedBlocksFilterEnabled = false)
 {
     auto threadSafeState = std::make_shared<TPartitionThreadSafeState>();
     return TPartitionState(
@@ -82,7 +82,7 @@ TPartitionState MakeState(size_t blockCount = 2048, bool mixedIndexBlocksFilterE
         1,             // compactionRangeCountPerRun
         std::move(threadSafeState),
         TTestExecutor::TabletId,
-        mixedIndexBlocksFilterEnabled);   // mixedIndexBlocksFilterEnabled
+        mixedBlocksFilterEnabled);   // mixedBlocksFilterEnabled
 }
 
 std::shared_ptr<TStorageConfig> MakeStorageConfig(
@@ -206,7 +206,7 @@ Y_UNIT_TEST_SUITE(TApplyBlobsSkippingTest)
     {
         auto state = MakeState(
             2048,   // blockCount
-            true    // mixedIndexBlocksFilterEnabled
+            true    // mixedBlocksFilterEnabled
         );
 
         auto config = MakeStorageConfig(

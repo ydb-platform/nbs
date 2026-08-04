@@ -65,7 +65,7 @@ TPartitionState::TPartitionState(
         ui32 compactionRangeCountPerRun,
         TPartitionThreadSafeStatePtr threadSafeState,
         ui64 tabletId,
-        const bool mixedIndexBlocksFilterEnabled)
+        const bool mixedBlocksFilterEnabled)
     : TPartitionChannelsState(
           meta.GetConfig(),
           freeSpaceConfig,
@@ -98,7 +98,7 @@ TPartitionState::TPartitionState(
     , CleanupQueue(GetBlockSize())
     , CleanupScoreHistory(cleanupScoreHistorySize)
 {
-    if (mixedIndexBlocksFilterEnabled) {
+    if (mixedBlocksFilterEnabled) {
         MixedBlocksFilter.emplace(
             tabletId,
             GetMaxBlocksInBlob(),

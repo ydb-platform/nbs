@@ -24,7 +24,7 @@
 #include <cloud/blockstore/libs/storage/partition/model/cleanup_queue.h>
 #include <cloud/blockstore/libs/storage/partition/model/commit_queue.h>
 #include <cloud/blockstore/libs/storage/partition/model/garbage_queue.h>
-#include <cloud/blockstore/libs/storage/partition/model/mixed_index_blocks_filter.h>
+#include <cloud/blockstore/libs/storage/partition/model/mixed_blocks_filter.h>
 #include <cloud/blockstore/libs/storage/partition/model/mixed_index_cache.h>
 #include <cloud/blockstore/libs/storage/partition/model/operation_status.h>
 #include <cloud/blockstore/libs/storage/partition/model/part_counters_wrapper.h>
@@ -319,7 +319,7 @@ public:
         ui32 compactionRangeCountPerRun,
         TPartitionThreadSafeStatePtr threadSafeState,
         ui64 tabletId,
-        const bool mixedIndexBlocksFilterEnabled);
+        const bool mixedBlocksFilterEnabled);
 
 private:
     bool LoadStateFinished = false;

@@ -1,4 +1,4 @@
-#include "mixed_index_blocks_filter.h"
+#include "mixed_blocks_filter.h"
 
 #include <library/cpp/testing/unittest/registar.h>
 
