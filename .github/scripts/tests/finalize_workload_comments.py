@@ -26,12 +26,14 @@ WorkflowRunId = int
 JobUrl = str
 BuildPreset = str
 Component = str
+TargetPlatform = str
 JobConclusion = str | None
 WorkflowJobs = list[WorkflowJob]
 JobsCache = dict[WorkflowRunId, WorkflowJobs]
-JobsConclusionCacheKey = tuple[JobUrl, BuildPreset, Component]
+JobsConclusionCacheKey = tuple[JobUrl, BuildPreset, Component, TargetPlatform]
 JobsConclusionCache = dict[JobsConclusionCacheKey, JobConclusion]
 JobsForRun = Callable[[WorkflowRunId], WorkflowJobs]
+NATIVE_TARGET_PLATFORM = "native"
 
 
 def platform_name_for_target(default_platform_name: str, target_platform: str) -> str:
@@ -45,16 +47,16 @@ def iter_full_build_presets(
 ) -> list[str]:
     return [
         full_build_preset
-        for full_build_preset, _ in iter_build_preset_pairs(
+        for full_build_preset, _, _ in iter_build_preset_contexts(
             matrix_include,
             default_platform_name,
         )
     ]
 
 
-def iter_build_preset_pairs(
+def iter_build_preset_contexts(
     matrix_include: str, default_platform_name: str
-) -> list[tuple[str, str]]:
+) -> list[tuple[str, str, str]]:
     if not matrix_include.strip():
         return []
 
@@ -64,22 +66,32 @@ def iter_build_preset_pairs(
             (
                 f"{platform_name_for_target(default_platform_name, entry.get('target_platform', ''))}-{entry['build_preset']}",
                 entry["build_preset"],
+                entry.get("target_platform", "") or NATIVE_TARGET_PLATFORM,
             )
             for entry in matrix.get("include", [])
         }
     )
 
 
-def workload_job_marker(build_preset: str, component: str) -> str:
-    return f"[build_preset={build_preset} component={component}]"
+def workload_job_marker(
+    build_preset: str,
+    component: str,
+    target_platform: str,
+) -> str:
+    target_platform = target_platform or NATIVE_TARGET_PLATFORM
+    return (
+        f"[build_preset={build_preset} component={component} "
+        f"target_platform={target_platform}]"
+    )
 
 
 def find_workload_job_conclusion(
     jobs: WorkflowJobs,
     build_preset: BuildPreset,
     component: Component,
+    target_platform: TargetPlatform,
 ) -> JobConclusion:
-    marker = workload_job_marker(build_preset, component)
+    marker = workload_job_marker(build_preset, component, target_platform)
     matches = []
     for job in jobs:
         job_name = getattr(job, "name", None) or ""
@@ -94,6 +106,7 @@ def resolve_job_conclusion(
     job_url: JobUrl,
     build_preset: BuildPreset,
     component: Component,
+    target_platform: TargetPlatform,
     current_run_id: WorkflowRunId,
     jobs_for_run: JobsForRun,
 ) -> JobConclusion:
@@ -116,6 +129,7 @@ def resolve_job_conclusion(
         jobs_for_run(current_run_id),
         build_preset,
         component,
+        target_platform,
     )
 
 
@@ -175,31 +189,50 @@ def main() -> None:
         job_url: JobUrl,
         build_preset: BuildPreset,
         component: Component,
+        target_platform: TargetPlatform,
     ) -> JobConclusion:
-        cache_key: JobsConclusionCacheKey = (job_url, build_preset, component)
+        cache_key: JobsConclusionCacheKey = (
+            job_url,
+            build_preset,
+            component,
+            target_platform,
+        )
         if cache_key in job_conclusion_cache:
             return job_conclusion_cache[cache_key]
         conclusion = resolve_job_conclusion(
             job_url,
             build_preset,
             component,
+            target_platform,
             current_run_id,
             jobs_for_run,
         )
         job_conclusion_cache[cache_key] = conclusion
         return conclusion
 
-    for full_build_preset, build_preset in iter_build_preset_pairs(
+    for full_build_preset, build_preset, target_platform in iter_build_preset_contexts(
         args.matrix_include, args.platform_name
     ):
+
+        def job_conclusion_resolver(
+            job_url: JobUrl,
+            component: Component,
+            preset: BuildPreset = build_preset,
+            platform: TargetPlatform = target_platform,
+        ) -> JobConclusion:
+            return cached_job_conclusion(
+                job_url,
+                preset,
+                component,
+                platform,
+            )
+
         gs.complete_pr_comment_workload_checks(
             run_number=run_number,
             pr=pr,
             build_preset=full_build_preset,
             is_dry_run=args.is_dry_run,
-            job_conclusion_resolver=lambda job_url, component, preset=build_preset: (
-                cached_job_conclusion(job_url, preset, component)
-            ),
+            job_conclusion_resolver=job_conclusion_resolver,
         )
         gs.update_pr_comment_workload_status(
             run_number=run_number,

@@ -24,10 +24,14 @@ def test_iter_full_build_presets_uses_target_platform() -> None:
         "linux-x86_64-release-asan",
         "linux-x86_64-relwithdebinfo",
     ]
-    assert fwc.iter_build_preset_pairs(matrix_include, "linux-x86_64") == [
-        ("linux-arm64-relwithdebinfo", "relwithdebinfo"),
-        ("linux-x86_64-release-asan", "release-asan"),
-        ("linux-x86_64-relwithdebinfo", "relwithdebinfo"),
+    assert fwc.iter_build_preset_contexts(matrix_include, "linux-x86_64") == [
+        (
+            "linux-arm64-relwithdebinfo",
+            "relwithdebinfo",
+            "default-linux-armv9a_grace",
+        ),
+        ("linux-x86_64-release-asan", "release-asan", "native"),
+        ("linux-x86_64-relwithdebinfo", "relwithdebinfo", "native"),
     ]
 
 
@@ -42,7 +46,8 @@ def test_resolve_job_conclusion_falls_back_to_workload_job_name() -> None:
             id=123,
             name=(
                 "On-demand build and test / Build and test "
-                "[build_preset=relwithdebinfo component=blockstore]"
+                "[build_preset=relwithdebinfo component=blockstore "
+                "target_platform=native]"
             ),
             conclusion="failure",
         )
@@ -58,6 +63,7 @@ def test_resolve_job_conclusion_falls_back_to_workload_job_name() -> None:
             "",
             "relwithdebinfo",
             "blockstore",
+            "native",
             456,
             jobs_for_run,
         )
@@ -70,7 +76,10 @@ def test_resolve_job_conclusion_prefers_job_url() -> None:
     jobs = [
         SimpleNamespace(
             id=123,
-            name="Build and test [build_preset=other component=other]",
+            name=(
+                "Build and test [build_preset=other component=other "
+                "target_platform=native]"
+            ),
             conclusion="cancelled",
         )
     ]
@@ -84,6 +93,7 @@ def test_resolve_job_conclusion_prefers_job_url() -> None:
             "https://github.com/org/repo/actions/runs/456/job/123",
             "relwithdebinfo",
             "blockstore",
+            "native",
             456,
             jobs_for_run,
         )
@@ -92,7 +102,10 @@ def test_resolve_job_conclusion_prefers_job_url() -> None:
 
 
 def test_find_workload_job_conclusion_rejects_ambiguous_matches() -> None:
-    name = "Build and test [build_preset=relwithdebinfo component=blockstore]"
+    name = (
+        "Build and test [build_preset=relwithdebinfo component=blockstore "
+        "target_platform=native]"
+    )
     jobs = [
         SimpleNamespace(name=name, conclusion="failure"),
         SimpleNamespace(name=name, conclusion="skipped"),
@@ -103,6 +116,7 @@ def test_find_workload_job_conclusion_rejects_ambiguous_matches() -> None:
             jobs,
             "relwithdebinfo",
             "blockstore",
+            "native",
         )
         is None
     )
@@ -113,7 +127,8 @@ def test_find_workload_job_conclusion_matches_skipped_reusable_job() -> None:
         SimpleNamespace(
             name=(
                 "On-demand build and test / Build and test NBS "
-                "[build_preset=relwithdebinfo component=blockstore]"
+                "[build_preset=relwithdebinfo component=blockstore "
+                "target_platform=native]"
             ),
             conclusion="skipped",
         )
@@ -124,6 +139,36 @@ def test_find_workload_job_conclusion_matches_skipped_reusable_job() -> None:
             jobs,
             "relwithdebinfo",
             "blockstore",
+            "native",
         )
         == "skipped"
+    )
+
+
+def test_find_workload_job_conclusion_distinguishes_target_platforms() -> None:
+    jobs = [
+        SimpleNamespace(
+            name=(
+                "Build and test [build_preset=relwithdebinfo component=blockstore "
+                "target_platform=native]"
+            ),
+            conclusion="failure",
+        ),
+        SimpleNamespace(
+            name=(
+                "Build and test [build_preset=relwithdebinfo component=blockstore "
+                "target_platform=default-linux-armv9a_grace]"
+            ),
+            conclusion="cancelled",
+        ),
+    ]
+
+    assert (
+        fwc.find_workload_job_conclusion(
+            jobs,
+            "relwithdebinfo",
+            "blockstore",
+            "default-linux-armv9a_grace",
+        )
+        == "cancelled"
     )

@@ -110,7 +110,7 @@ jobs:
           fi
           echo "LABELS_LIST=${LABELS_LIST}" | tee -a "$GITHUB_OUTPUT"
   build-and-test:
-    name: Build and test [build_preset=${{ inputs.build_preset }} component=${{ inputs.component == '' && 'all' || inputs.component }}]
+    name: Build and test [build_preset=${{ inputs.build_preset }} component=${{ inputs.component == '' && 'all' || inputs.component }} target_platform=${{ inputs.target_platform == '' && 'native' || inputs.target_platform }}]
     runs-on: ${{ fromJson(needs.calculate-runs-on.outputs.runs-on) }}
     timeout-minutes: 480
     needs: calculate-runs-on
@@ -196,7 +196,7 @@ jobs:
         target_platform: ${{ inputs.target_platform }}
         component: ${{ inputs.component == '' && 'all' || inputs.component }}
         workload_check_status: running
-        current_job_name: Build and test [build_preset=${{ inputs.build_preset }} component=${{ inputs.component == '' && 'all' || inputs.component }}]
+        current_job_name: Build and test [build_preset=${{ inputs.build_preset }} component=${{ inputs.component == '' && 'all' || inputs.component }} target_platform=${{ inputs.target_platform == '' && 'native' || inputs.target_platform }}]
         runner_name: ${{ runner.name }}
         add_summary_link: yes
 
@@ -281,6 +281,7 @@ jobs:
       with:
         command: update
         build_preset: ${{ inputs.build_preset }}
+        target_platform: ${{ inputs.target_platform }}
         component: ${{ inputs.component == '' && 'all' || inputs.component }}
         workload_check_status: cancelled
 
@@ -333,7 +334,7 @@ jobs:
           test_failed_is_empty: ${{ needs.build-and-test.outputs.test_failed == '' }}
 
   test-retry:
-    name: Retry tests
+    name: Retry tests [build_preset=${{ inputs.build_preset }} component=${{ inputs.component == '' && 'all' || inputs.component }} target_platform=${{ inputs.target_platform == '' && 'native' || inputs.target_platform }}]
     runs-on: ${{ fromJson(needs.calculate-runs-on.outputs.runs-on) }}
     timeout-minutes: 480
     needs: 
@@ -416,9 +417,10 @@ jobs:
         with:
           command: update
           build_preset: ${{ inputs.build_preset }}
+          target_platform: ${{ inputs.target_platform }}
           component: ${{ inputs.component == '' && 'all' || inputs.component }}
           workload_check_status: running
-          current_job_name: Retry tests
+          current_job_name: Retry tests [build_preset=${{ inputs.build_preset }} component=${{ inputs.component == '' && 'all' || inputs.component }} target_platform=${{ inputs.target_platform == '' && 'native' || inputs.target_platform }}]
           runner_name: ${{ runner.name }}
           add_summary_link: yes
 
@@ -460,6 +462,7 @@ jobs:
         with:
           command: update
           build_preset: ${{ inputs.build_preset }}
+          target_platform: ${{ inputs.target_platform }}
           component: ${{ inputs.component == '' && 'all' || inputs.component }}
           workload_check_status: cancelled
 
@@ -469,5 +472,6 @@ jobs:
         with:
           command: update
           build_preset: ${{ inputs.build_preset }}
+          target_platform: ${{ inputs.target_platform }}
           component: ${{ inputs.component == '' && 'all' || inputs.component }}
           workload_check_status: completed
