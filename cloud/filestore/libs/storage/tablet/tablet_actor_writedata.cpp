@@ -222,7 +222,12 @@ void TIndexTabletActor::HandleWriteDataCompleted(
     if (msg->IsOverloaded) {
         Metrics->OverloadedCount.fetch_add(1, std::memory_order_relaxed);
     }
-
+    // LOG_INFO(
+    //     ctx,
+    //     TFileStoreComponents::TABLET,
+    //     "Tracking WriteData: node=%lu latency=%s",
+    //     msg->NodeId,
+    //     msg->Time.ToString().c_str());
     UpdateLatencyStats(msg->NodeId, EFileStoreRequest::WriteData, ctx.Now(), msg->Time);
 }
 
@@ -461,6 +466,7 @@ void TIndexTabletActor::CompleteTx_WriteData(
         if (!UpdateAccessStats(args.NodeId, ctx.Now())) {
             ReportDiagnosticStatsInsertFailed();
         }
+        UpdateLatencyStats(args.NodeId, EFileStoreRequest::WriteData, ctx.Now(), ctx.Now() - args.RequestInfo->StartedTs);
 
         return;
     }
