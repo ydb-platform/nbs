@@ -213,6 +213,16 @@ def test_build_matrix_large_tests_propagates_to_all_rows():
         assert row["test_size"] == "small,medium,large"
 
 
+def test_build_matrix_leaves_timeout_to_downstream_plan():
+    inp = mk_inputs(
+        contains={"blockstore": True, "filestore": True},
+        san={"asan": True},
+        large_tests=True,
+    )
+
+    assert all("test_timeout_minutes" not in row for row in build_matrix(inp))
+
+
 def test_build_matrix_skips_empty_san_targets():
     # tasks is not SAN-eligible; SAN targets become empty and should be ignored
     inp = mk_inputs(

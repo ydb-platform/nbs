@@ -532,6 +532,90 @@ def vm_suffix_for_component(component: str) -> str:
     return f"-{component}"
 
 
+TEST_TIMEOUT_COMPONENT_DEFAULT = "default"
+TEST_TIMEOUT_COMPONENTS_BY_KEY = {
+    "blockstore": frozenset({"blockstore"}),
+    "filestore": frozenset({"filestore"}),
+    "disk_manager": frozenset({"disk_manager"}),
+    "tasks": frozenset({"tasks"}),
+    "storage": frozenset({"storage"}),
+    "tasks_storage": frozenset({"tasks", "storage"}),
+}
+TEST_TIMEOUT_MINUTES_BY_SIZE_AND_COMPONENT = {
+    "large": {
+        "blockstore": 300,
+        "filestore": 300,
+        "disk_manager": 120,
+        "tasks": 60,
+        "storage": 60,
+        "tasks_storage": 60,
+        TEST_TIMEOUT_COMPONENT_DEFAULT: 300,
+    },
+    "medium": {
+        "blockstore": 90,
+        "filestore": 90,
+        "disk_manager": 60,
+        "tasks": 60,
+        "storage": 60,
+        "tasks_storage": 60,
+        TEST_TIMEOUT_COMPONENT_DEFAULT: 120,
+    },
+    "small": {
+        TEST_TIMEOUT_COMPONENT_DEFAULT: 60,
+    },
+}
+TEST_TIMEOUT_SIZE_PRIORITY = ("large", "medium", "small")
+
+
+def test_timeout_minutes_for(
+    test_size: str, test_target: str, component: str = ""
+) -> int:
+    size = _test_timeout_size_key(test_size)
+    component_key = _test_timeout_component_key(test_target, component)
+    component_timeouts = TEST_TIMEOUT_MINUTES_BY_SIZE_AND_COMPONENT[size]
+    return component_timeouts.get(
+        component_key,
+        component_timeouts[TEST_TIMEOUT_COMPONENT_DEFAULT],
+    )
+
+
+def _test_timeout_size_key(test_size: str) -> str:
+    sizes = set(split_csv(test_size))
+    for size in TEST_TIMEOUT_SIZE_PRIORITY:
+        if size in sizes:
+            return size
+    return "small"
+
+
+def _test_timeout_component_key(test_target: str, component: str = "") -> str:
+    if component in TEST_TIMEOUT_COMPONENTS_BY_KEY:
+        return component
+
+    components = _components_for_test_timeout(test_target, component)
+    for key, key_components in TEST_TIMEOUT_COMPONENTS_BY_KEY.items():
+        if components == key_components:
+            return key
+
+    return TEST_TIMEOUT_COMPONENT_DEFAULT
+
+
+def _components_for_test_timeout(
+    test_target: str, component: str = ""
+) -> frozenset[str]:
+    if component in TEST_TIMEOUT_COMPONENTS_BY_KEY:
+        return TEST_TIMEOUT_COMPONENTS_BY_KEY[component]
+
+    targets = split_csv(test_target)
+    components: set[str] = set()
+    for name, _, test_root in COMPONENTS:
+        if test_root in targets or any(
+            target.startswith(test_root) for target in targets
+        ):
+            components.add(name)
+
+    return frozenset(components)
+
+
 def is_san_preset(build_preset: str) -> bool:
     return (build_preset or "").strip() in SAN_PRESETS
 
