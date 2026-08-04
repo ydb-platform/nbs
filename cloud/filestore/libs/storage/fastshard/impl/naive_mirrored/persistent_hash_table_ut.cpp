@@ -2,10 +2,10 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 
-#include <gtest/gtest.h>
-
 #include <util/generic/hash.h>
 #include <util/random/fast.h>
+
+#include <gtest/gtest.h>
 
 using namespace NCloud;
 using namespace NFileStore;
@@ -61,18 +61,14 @@ struct TFixture
 
     TFixture()
         : Ht(
-            FirstPageNo,
-            PageCount,
-            PageSize,
-            SlotSize,
-            tombstone,
-            PageStore,
-            [] (const TSlot& slot) {
-                return slot.B;
-            },
-            [] (const ui64& key) {
-                return IntHash(key);
-            })
+              FirstPageNo,
+              PageCount,
+              PageSize,
+              SlotSize,
+              tombstone,
+              PageStore,
+              [](const TSlot& slot) { return slot.B; },
+              [](const ui64& key) { return IntHash(key); })
     {}
 };
 
@@ -109,11 +105,8 @@ TEST(PersistentHashTableTest, PutGetUpdate)
     EXPECT_EQ(100U, slot.B);
     EXPECT_EQ(3U, slot.C);
 
-    error = fx.Ht.Update(
-        lsn,
-        TSlot{.A = 2, .B = 100, .C = 10},
-        slotNo,
-        pageGroups);
+    error =
+        fx.Ht.Update(lsn, TSlot{.A = 2, .B = 100, .C = 10}, slotNo, pageGroups);
     EXPECT_EQ(S_OK, error.GetCode()) << FormatError(error);
 
     error = fx.Ht.Get(0 /* lsn */, 100, &slot, &slotNo);
@@ -225,7 +218,8 @@ TEST(PersistentHashTableTest, PutGetUpdateRandomized)
 
     const ui64 maxKey = 1'000'000;
 
-    auto makeSlot = [&] () {
+    auto makeSlot = [&]()
+    {
         return TSlot{
             .A = static_cast<ui32>(rng.GenRand()),
             .B = rng.Uniform(0, maxKey),
@@ -329,11 +323,10 @@ TEST(PersistentHashTableTest, PutGetUpdateRandomized)
             error = fx.Ht.CollectStats(&stats);
             ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
             Cerr << "values=" << stats.ValueCount << "/" << stats.SlotCount
-                << " tombstones=" << stats.TombstoneCount
-                << "/" << stats.SlotCount
-                << " misplaced=" << stats.MisplacedValueCount
-                << "/" << stats.ValueCount
-                << Endl;
+                 << " tombstones=" << stats.TombstoneCount << "/"
+                 << stats.SlotCount
+                 << " misplaced=" << stats.MisplacedValueCount << "/"
+                 << stats.ValueCount << Endl;
         }
     }
 }

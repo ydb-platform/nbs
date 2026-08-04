@@ -21,8 +21,7 @@ struct IServer: public IStartable
 
     // Unregister a previously registered shard. Subsequent requests
     // for this filesystem id will fail.
-    virtual void UnregisterShard(
-        const TString& fileSystemId) = 0;
+    virtual void UnregisterShard(const TString& fileSystemId) = 0;
 };
 
 using IServerPtr = std::shared_ptr<IServer>;

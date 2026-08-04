@@ -9,10 +9,10 @@
 #include <silk/fibers/fiber.h>
 #include <silk/fibers/future.h>
 
-#include <gtest/gtest.h>
-
 #include <util/generic/string.h>
 #include <util/string/builder.h>
+
+#include <gtest/gtest.h>
 
 using namespace NCloud;
 using namespace NFileStore::NStorage::NFastShard;
@@ -64,7 +64,8 @@ struct TStorageFixture
 TEST(NaiveGroupTest, MirrorsAcquireReleaseRequests)
 {
     const int r = FiberScheduler::run(
-        +[](int*) noexcept -> int {
+        +[](int*) noexcept -> int
+        {
             TStorageFixture fx;
 
             {
@@ -114,7 +115,8 @@ TEST(NaiveGroupTest, MirrorsAcquireReleaseRequests)
 TEST(NaiveGroupTest, MirrorsWrites)
 {
     const int r = FiberScheduler::run(
-        +[](int*) noexcept -> int {
+        +[](int*) noexcept -> int
+        {
             TStorageFixture fx;
 
             {
@@ -150,7 +152,8 @@ TEST(NaiveGroupTest, MirrorsWrites)
 TEST(NaiveGroupTest, RoundRobinsRead)
 {
     const int r = FiberScheduler::run(
-        +[](int*) noexcept -> int {
+        +[](int*) noexcept -> int
+        {
             TStorageFixture fx;
 
             TVector<NProto::TReadPagesResponse> readResponses(
@@ -183,14 +186,16 @@ TEST(NaiveGroupTest, RoundRobinsRead)
                         readResponses[snIndex].PageGroupsSize(),
                         pageGroups.size());
                     for (ui64 j = 0; j < pageGroups.size(); ++j) {
-                        const auto& epg = readResponses[snIndex].GetPageGroups(j);
+                        const auto& epg =
+                            readResponses[snIndex].GetPageGroups(j);
                         EXPECT_EQ(
                             epg.GetFirstPageNo(),
                             pageGroups[j].FirstPageNo);
                         EXPECT_EQ(
                             epg.ContentSize(),
                             pageGroups[j].Content.size());
-                        for (ui64 k = 0; k < pageGroups[j].Content.size(); ++k) {
+                        for (ui64 k = 0; k < pageGroups[j].Content.size(); ++k)
+                        {
                             EXPECT_STREQ(
                                 epg.GetContent(k).c_str(),
                                 pageGroups[j].Content[k].c_str());

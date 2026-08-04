@@ -39,13 +39,10 @@ private:
     ui64 Lsn = 0;
 
 public:
-    TPageStore(
-            IStorageGroupPtr storage,
-            ui64 pageSize)
+    TPageStore(IStorageGroupPtr storage, ui64 pageSize)
         : Storage(std::move(storage))
         , PageSize(pageSize)
-    {
-    }
+    {}
 
 public:
     ui64 AllocateLsn() override;
@@ -56,10 +53,8 @@ public:
         ui64 pageNo,
         TString page,
         TVector<TPageGroup>& logRecord) override;
-    NProto::TError ReadPage(
-        ui64 lsn,
-        ui64 pageNo,
-        TString* page) const override;
+    NProto::TError
+    ReadPage(ui64 lsn, ui64 pageNo, TString* page) const override;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -108,8 +103,9 @@ NProto::TError TPageStore::WritePage(
 
         return MakeError(
             E_REJECTED,
-            TStringBuilder() << "dirty page (" << pageNo
-                << ") with different lsn (" << p.Lsn << " != " << lsn << ")");
+            TStringBuilder()
+                << "dirty page (" << pageNo << ") with different lsn (" << p.Lsn
+                << " != " << lsn << ")");
     }
 
     //
@@ -128,10 +124,8 @@ NProto::TError TPageStore::WritePage(
     }
 
     if (!found) {
-        logRecord.push_back({
-            .FirstPageNo = pageNo,
-            .Content = TVector<TString>({page})
-        });
+        logRecord.push_back(
+            {.FirstPageNo = pageNo, .Content = TVector<TString>({page})});
     }
 
     //
@@ -142,19 +136,12 @@ NProto::TError TPageStore::WritePage(
         Y_ABORT_UNLESS(p.Lsn <= lsn);
     }
 
-    p = {
-        .Content = std::move(page),
-        .Lsn = lsn,
-        .Dirty = true
-    };
+    p = {.Content = std::move(page), .Lsn = lsn, .Dirty = true};
 
     return {};
 }
 
-NProto::TError TPageStore::ReadPage(
-    ui64 lsn,
-    ui64 pageNo,
-    TString* page) const
+NProto::TError TPageStore::ReadPage(ui64 lsn, ui64 pageNo, TString* page) const
 {
     page->clear();
 
@@ -172,8 +159,8 @@ NProto::TError TPageStore::ReadPage(
             if (cachedPage->second.Dirty && cachedPage->second.Lsn != lsn) {
                 return MakeError(
                     E_REJECTED,
-                    TStringBuilder() << "dirty page (" << pageNo
-                        << ") with different lsn ("
+                    TStringBuilder()
+                        << "dirty page (" << pageNo << ") with different lsn ("
                         << cachedPage->second.Lsn << " != " << lsn << ")");
             }
 
@@ -188,7 +175,8 @@ NProto::TError TPageStore::ReadPage(
             insertCtx);
     }
 
-    Y_DEFER {
+    Y_DEFER
+    {
         std::lock_guard g(Mutex);
 
         if (page->empty()) {
@@ -217,10 +205,8 @@ NProto::TError TPageStore::ReadPage(
 
     TVector<TPageGroup> pageGroups;
 
-    auto error = Storage->ReadPages(
-        {} /* headers */,
-        pageGroupRefs,
-        &pageGroups);
+    auto error =
+        Storage->ReadPages({} /* headers */, pageGroupRefs, &pageGroups);
     if (HasError(error)) {
         return error;
     }
@@ -228,23 +214,22 @@ NProto::TError TPageStore::ReadPage(
     if (pageGroups.size() != 1) {
         return MakeError(
             E_BADMSG,
-            TStringBuilder() << "unexpected pg count: "
-                << pageGroups.size());
+            TStringBuilder() << "unexpected pg count: " << pageGroups.size());
     }
 
     auto& rpg = pageGroups[0];
     if (rpg.Content.size() != 1) {
         return MakeError(
             E_BADMSG,
-            TStringBuilder() << "unexpected page count: "
-                << rpg.Content.size());
+            TStringBuilder()
+                << "unexpected page count: " << rpg.Content.size());
     }
 
     if (rpg.Content[0].size() < PageSize) {
         return MakeError(
             E_BADMSG,
-            TStringBuilder() << "unexpected page size: "
-                << rpg.Content[0].size());
+            TStringBuilder()
+                << "unexpected page size: " << rpg.Content[0].size());
     }
 
     *page = std::move(rpg.Content[0]);
@@ -258,8 +243,7 @@ class TMemPageStore: public TPageStore
 public:
     explicit TMemPageStore(ui64 pageSize)
         : TPageStore(nullptr /* storage */, pageSize)
-    {
-    }
+    {}
 
     NProto::TError ReadPage(ui64 lsn, ui64 pageNo, TString* page) const override
     {

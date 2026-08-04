@@ -1,10 +1,9 @@
 #include "memshard.h"
 
-#include <cloud/filestore/libs/storage/fastshard/iface/fs.h>
-#include <cloud/filestore/libs/storage/model/utils.h>
 #include <cloud/filestore/libs/service/error.h>
 #include <cloud/filestore/libs/service/filestore.h>
-
+#include <cloud/filestore/libs/storage/fastshard/iface/fs.h>
+#include <cloud/filestore/libs/storage/model/utils.h>
 #include <cloud/filestore/private/api/unsafe_protos/unsafe.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -84,15 +83,15 @@ private:
 
 public:
     TMemFileSystemShard(
-            ui32 shardNo,
-            const NProtoPrivate::TMemFastShardConfig& config)
+        ui32 shardNo,
+        const NProtoPrivate::TMemFastShardConfig& config)
         : ShardNo(shardNo)
         , Config(config)
     {}
 
 public:
-    TFuture<NProtoPrivate::TGetNodeAttrBatchResponse>
-    GetNodeAttrBatch(NProtoPrivate::TGetNodeAttrBatchRequest request) override
+    TFuture<NProtoPrivate::TGetNodeAttrBatchResponse> GetNodeAttrBatch(
+        NProtoPrivate::TGetNodeAttrBatchRequest request) override
     {
         auto g = Guard(Lock);
 
@@ -124,8 +123,8 @@ public:
         return MakeFuture(std::move(response));
     }
 
-    TFuture<NProto::TGetNodeAttrResponse>
-    GetNodeAttr(NProto::TGetNodeAttrRequest request) override
+    TFuture<NProto::TGetNodeAttrResponse> GetNodeAttr(
+        NProto::TGetNodeAttrRequest request) override
     {
         auto g = Guard(Lock);
 
@@ -160,8 +159,8 @@ public:
         return MakeFuture(std::move(response));
     }
 
-    TFuture<NProto::TSetNodeAttrResponse>
-    SetNodeAttr(NProto::TSetNodeAttrRequest request) override
+    TFuture<NProto::TSetNodeAttrResponse> SetNodeAttr(
+        NProto::TSetNodeAttrRequest request) override
     {
         auto g = Guard(Lock);
 
@@ -201,15 +200,15 @@ public:
         return MakeFuture(std::move(response));
     }
 
-    TFuture<NProto::TAccessNodeResponse>
-    AccessNode(NProto::TAccessNodeRequest request) override
+    TFuture<NProto::TAccessNodeResponse> AccessNode(
+        NProto::TAccessNodeRequest request) override
     {
         Y_UNUSED(request);
         return MakeFuture<NProto::TAccessNodeResponse>();
     }
 
-    TFuture<NProto::TCreateNodeResponse>
-    CreateNode(NProto::TCreateNodeRequest request) override
+    TFuture<NProto::TCreateNodeResponse> CreateNode(
+        NProto::TCreateNodeRequest request) override
     {
         auto g = Guard(Lock);
 
@@ -239,8 +238,8 @@ public:
         return MakeFuture(std::move(response));
     }
 
-    TFuture<NProto::TUnlinkNodeResponse>
-    UnlinkNode(NProto::TUnlinkNodeRequest request) override
+    TFuture<NProto::TUnlinkNodeResponse> UnlinkNode(
+        NProto::TUnlinkNodeRequest request) override
     {
         auto g = Guard(Lock);
 
@@ -273,8 +272,8 @@ public:
         return MakeFuture(std::move(response));
     }
 
-    TFuture<NProto::TCreateHandleResponse>
-    CreateHandle(NProto::TCreateHandleRequest request) override
+    TFuture<NProto::TCreateHandleResponse> CreateHandle(
+        NProto::TCreateHandleRequest request) override
     {
         auto g = Guard(Lock);
 
@@ -303,9 +302,9 @@ public:
                         request.GetMode(),
                         request.GetUid(),
                         request.GetGid());
-                    const bool inserted = Root.Name2Id.insert({
-                        request.GetName(),
-                        a->GetId()}).second;
+                    const bool inserted =
+                        Root.Name2Id.insert({request.GetName(), a->GetId()})
+                            .second;
                     Y_ABORT_UNLESS(inserted);
                 } else if (Config.GetCreateNodeUponAccess()) {
                     a = &CreateDefaultNode(request.GetName());
@@ -337,8 +336,8 @@ public:
         return MakeFuture(std::move(response));
     }
 
-    TFuture<NProto::TDestroyHandleResponse>
-    DestroyHandle(NProto::TDestroyHandleRequest request) override
+    TFuture<NProto::TDestroyHandleResponse> DestroyHandle(
+        NProto::TDestroyHandleRequest request) override
     {
         auto g = Guard(Lock);
 
@@ -362,8 +361,8 @@ public:
         return MakeFuture(std::move(response));
     }
 
-    TFuture<NProto::TAllocateDataResponse>
-    AllocateData(NProto::TAllocateDataRequest request) override
+    TFuture<NProto::TAllocateDataResponse> AllocateData(
+        NProto::TAllocateDataRequest request) override
     {
         auto g = Guard(Lock);
 
@@ -381,12 +380,13 @@ public:
         const ui32 flags = request.GetFlags();
         const ui64 size = request.GetOffset() + request.GetLength();
         const ui64 minBorder = Min(size, a.GetSize());
-        const bool needExtend = a.GetSize() < size &&
+        const bool needExtend =
+            a.GetSize() < size &&
             !HasFlag(flags, NProto::TAllocateDataRequest::F_KEEP_SIZE);
 
         const bool shouldZero =
             (HasFlag(flags, NProto::TAllocateDataRequest::F_PUNCH_HOLE) ||
-            HasFlag(flags, NProto::TAllocateDataRequest::F_ZERO_RANGE)) &&
+             HasFlag(flags, NProto::TAllocateDataRequest::F_ZERO_RANGE)) &&
             minBorder > request.GetOffset();
 
         const ui64 dataSize = f.Data.size();
@@ -414,26 +414,26 @@ public:
         return MakeFuture(std::move(response));
     }
 
-    TFuture<NProto::TAcquireLockResponse>
-    AcquireLock(NProto::TAcquireLockRequest request) override
+    TFuture<NProto::TAcquireLockResponse> AcquireLock(
+        NProto::TAcquireLockRequest request) override
     {
         return NotImplemented<NProto::TAcquireLockResponse>(request);
     }
 
-    TFuture<NProto::TReleaseLockResponse>
-    ReleaseLock(NProto::TReleaseLockRequest request) override
+    TFuture<NProto::TReleaseLockResponse> ReleaseLock(
+        NProto::TReleaseLockRequest request) override
     {
         return NotImplemented<NProto::TReleaseLockResponse>(request);
     }
 
-    TFuture<NProto::TTestLockResponse>
-    TestLock(NProto::TTestLockRequest request) override
+    TFuture<NProto::TTestLockResponse> TestLock(
+        NProto::TTestLockRequest request) override
     {
         return NotImplemented<NProto::TTestLockResponse>(request);
     }
 
-    TFuture<NProto::TWriteDataResponse>
-    WriteData(NProto::TWriteDataRequest request) override
+    TFuture<NProto::TWriteDataResponse> WriteData(
+        NProto::TWriteDataRequest request) override
     {
         auto g = Guard(Lock);
 
@@ -448,8 +448,8 @@ public:
         auto& a = *hit->second.Attr;
         auto& f = *hit->second.FileNode;
 
-        const ui64 end = request.GetOffset()
-            + request.GetBuffer().size() - request.GetBufferOffset();
+        const ui64 end = request.GetOffset() + request.GetBuffer().size() -
+                         request.GetBufferOffset();
         if (f.Data.size() < end) {
             const ui64 prevEnd = f.Data.size();
             f.Data.Resize(end);
@@ -473,8 +473,8 @@ public:
         return MakeFuture(std::move(response));
     }
 
-    TFuture<NProto::TReadDataResponse>
-    ReadData(NProto::TReadDataRequest request) override
+    TFuture<NProto::TReadDataResponse> ReadData(
+        NProto::TReadDataRequest request) override
     {
         auto g = Guard(Lock);
 
@@ -505,26 +505,26 @@ public:
         return MakeFuture(std::move(response));
     }
 
-    TFuture<NProto::TRemoveNodeXAttrResponse>
-    RemoveNodeXAttr(NProto::TRemoveNodeXAttrRequest request) override
+    TFuture<NProto::TRemoveNodeXAttrResponse> RemoveNodeXAttr(
+        NProto::TRemoveNodeXAttrRequest request) override
     {
         return NotImplemented<NProto::TRemoveNodeXAttrResponse>(request);
     }
 
-    TFuture<NProto::TGetNodeXAttrResponse>
-    GetNodeXAttr(NProto::TGetNodeXAttrRequest request) override
+    TFuture<NProto::TGetNodeXAttrResponse> GetNodeXAttr(
+        NProto::TGetNodeXAttrRequest request) override
     {
         return NotImplemented<NProto::TGetNodeXAttrResponse>(request);
     }
 
-    TFuture<NProto::TSetNodeXAttrResponse>
-    SetNodeXAttr(NProto::TSetNodeXAttrRequest request) override
+    TFuture<NProto::TSetNodeXAttrResponse> SetNodeXAttr(
+        NProto::TSetNodeXAttrRequest request) override
     {
         return NotImplemented<NProto::TSetNodeXAttrResponse>(request);
     }
 
-    TFuture<NProto::TListNodeXAttrResponse>
-    ListNodeXAttr(NProto::TListNodeXAttrRequest request) override
+    TFuture<NProto::TListNodeXAttrResponse> ListNodeXAttr(
+        NProto::TListNodeXAttrRequest request) override
     {
         return NotImplemented<NProto::TListNodeXAttrResponse>(request);
     }
@@ -544,12 +544,7 @@ private:
     {
         const ui64 nodeId = ShardedId(++LastNodeId, ShardNo);
         auto& a = Attrs[nodeId];
-        a = CreateAttrs(
-            nodeId,
-            mode,
-            0 /* size */,
-            uid,
-            gid);
+        a = CreateAttrs(nodeId, mode, 0 /* size */, uid, gid);
         Files[nodeId];
         return a;
     }

@@ -24,26 +24,23 @@ private:
 
 public:
     TPersistentBitmap(
-            ui64 firstPageNo,
-            ui64 pageCount,
-            ui64 pageSize,
-            IPageStorePtr pageStore)
+        ui64 firstPageNo,
+        ui64 pageCount,
+        ui64 pageSize,
+        IPageStorePtr pageStore)
         : FirstPageNo(firstPageNo)
         , PageCount(pageCount)
         , PageSize(pageSize)
         , BitsPerPage(CalcBitsPerPage(pageSize))
         , PageStore(std::move(pageStore))
-    {
-    }
+    {}
 
 public:
     NProto::TError Get(ui64 bit, bool* result) const;
     NProto::TError Set(ui64 lsn, ui64 bit, TVector<TPageGroup>& pageGroups);
     NProto::TError Reset(ui64 lsn, ui64 bit, TVector<TPageGroup>& pageGroups);
-    NProto::TError Allocate(
-        ui64 lsn,
-        ui64* bit,
-        TVector<TPageGroup>& pageGroups);
+    NProto::TError
+    Allocate(ui64 lsn, ui64* bit, TVector<TPageGroup>& pageGroups);
 
     [[nodiscard]] static ui64 CalcBitsPerPage(ui64 pageSize)
     {

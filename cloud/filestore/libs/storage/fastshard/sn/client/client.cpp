@@ -13,12 +13,6 @@
 #include <util/generic/string.h>
 #include <util/string/builder.h>
 
-#include <atomic>
-#include <cerrno>
-#include <cstring>
-#include <memory>
-#include <mutex>
-
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <netinet/in.h>
@@ -26,6 +20,12 @@
 #include <poll.h>
 #include <sys/socket.h>
 #include <unistd.h>
+
+#include <atomic>
+#include <cerrno>
+#include <cstring>
+#include <memory>
+#include <mutex>
 
 namespace NCloud::NFileStore::NStorage::NFastShard {
 
@@ -57,7 +57,8 @@ int OpenTcp(const TString& host, ui16 port)
     if (::getaddrinfo(host.c_str(), portStr, &hints, &res) != 0) {
         return -1;
     }
-    Y_DEFER {
+    Y_DEFER
+    {
         ::freeaddrinfo(res);
     };
 
@@ -126,8 +127,7 @@ public:
                                                                                \
         NCloud::NProto::T##name##Response out;                                 \
         if (resp.HasProtocolError()) {                                         \
-            *out.MutableError() = std::move(                                   \
-                *resp.MutableProtocolError());                                 \
+            *out.MutableError() = std::move(*resp.MutableProtocolError());     \
         } else if (resp.Has##name()) {                                         \
             out = std::move(*resp.Mutable##name());                            \
         } else {                                                               \
@@ -137,7 +137,7 @@ public:
         }                                                                      \
         return out;                                                            \
     }                                                                          \
-// SN_CLIENT_METHOD
+    // SN_CLIENT_METHOD
 
     SN_METHODS(SN_CLIENT_METHOD)
 
@@ -160,8 +160,8 @@ private:
                 return MakeErrorResponse(
                     req.GetRequestId(),
                     E_REJECTED,
-                    TStringBuilder() << "sn client: connect to "
-                        << Host << ":" << Port << " failed");
+                    TStringBuilder() << "sn client: connect to " << Host << ":"
+                                     << Port << " failed");
             }
         }
 
@@ -190,32 +190,25 @@ private:
 
         TDeviceProtocolResponse resp;
         if (!resp.ParseFromString(respBuf)) {
-            return CloseAndError(
-                req.GetRequestId(), EBADMSG, "parse response");
+            return CloseAndError(req.GetRequestId(), EBADMSG, "parse response");
         }
         return resp;
     }
 
-    TDeviceProtocolResponse CloseAndError(
-        ui64 requestId,
-        int err,
-        const char* op)
+    TDeviceProtocolResponse
+    CloseAndError(ui64 requestId, int err, const char* op)
     {
-        SILK_WARN(
-            "sn client fd=%d: %s: %s", Fd, op, ::strerror(err));
+        SILK_WARN("sn client fd=%d: %s: %s", Fd, op, ::strerror(err));
         ::close(Fd);
         Fd = -1;
         return MakeErrorResponse(
             requestId,
             E_REJECTED,
-            TStringBuilder() << "sn client: " << op << ": "
-                << ::strerror(err));
+            TStringBuilder() << "sn client: " << op << ": " << ::strerror(err));
     }
 
-    static TDeviceProtocolResponse MakeErrorResponse(
-        ui64 requestId,
-        ui32 code,
-        const TString& msg)
+    static TDeviceProtocolResponse
+    MakeErrorResponse(ui64 requestId, ui32 code, const TString& msg)
     {
         TDeviceProtocolResponse resp;
         resp.SetRequestId(requestId);

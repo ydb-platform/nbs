@@ -20,7 +20,7 @@ public:
         *response.MutableError() = MakeError(E_NOT_IMPLEMENTED);               \
         return response;                                                       \
     }                                                                          \
-// SN_STUB_METHOD
+    // SN_STUB_METHOD
 
     SN_METHODS(SN_STUB_METHOD)
 

@@ -9,10 +9,11 @@ namespace NCloud::NFileStore::NStorage::NFastShard {
 ////////////////////////////////////////////////////////////////////////////////
 
 #define SN_METHODS(xxx, ...)                                                   \
-    xxx(AcquireDevices,   __VA_ARGS__)                                         \
-    xxx(ReleaseDevices,   __VA_ARGS__)                                         \
-    xxx(ReadPages,        __VA_ARGS__)                                         \
-    xxx(WriteLogRecord,   __VA_ARGS__)                                         \
+    xxx(AcquireDevices, __VA_ARGS__)                                           \
+    xxx(ReleaseDevices, __VA_ARGS__)                                           \
+    xxx(ReadPages, __VA_ARGS__)                                                \
+    xxx(WriteLogRecord, __VA_ARGS__)
+
 // SN_METHODS
 
 /**
@@ -33,7 +34,7 @@ struct IStorageNode
 #define SN_DECLARE_METHOD(name, ...)                                           \
     virtual NCloud::NProto::T##name##Response name(                            \
         NCloud::NProto::T##name##Request request) = 0;                         \
-// SN_DECLARE_METHOD
+    // SN_DECLARE_METHOD
 
     SN_METHODS(SN_DECLARE_METHOD)
 
