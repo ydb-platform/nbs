@@ -201,7 +201,15 @@ void TIndexTabletActor::CompleteTx_GetNodeAttr(
             0,
             ctx.Now() - args.RequestInfo->StartedTs);
 
-        UpdateLatencyStats(args.NodeId, EFileStoreRequest::GetNodeAttr, ctx.Now(), ctx.Now() - args.RequestInfo->StartedTs);
+        const auto latency = ctx.Now() - args.RequestInfo->StartedTs;
+
+        // LOG_INFO(
+        //     ctx,
+        //     TFileStoreComponents::TABLET,
+        //     "Tracking GetNodeAttr: node=%lu latency=%s",
+        //     args.NodeId,
+        //     latency.ToString().c_str());
+        UpdateLatencyStats(args.NodeId, EFileStoreRequest::GetNodeAttr, ctx.Now(), latency);
     }
 
     CompleteResponse<TEvService::TGetNodeAttrMethod>(

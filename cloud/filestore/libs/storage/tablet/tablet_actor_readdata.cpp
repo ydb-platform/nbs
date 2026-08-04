@@ -715,6 +715,13 @@ void TIndexTabletActor::HandleReadDataCompleted(
         Metrics->OverloadedCount.fetch_add(1, std::memory_order_relaxed);
     }
 
+    // LOG_INFO(
+    //   ctx,
+    //   TFileStoreComponents::TABLET,
+    //   "Tracking ReadData: node=%lu latency=%s",
+    //   msg->NodeId,
+    //   msg->Time.ToString().c_str());
+
     UpdateLatencyStats(msg->NodeId, EFileStoreRequest::ReadData, ctx.Now(), msg->Time);
 }
 

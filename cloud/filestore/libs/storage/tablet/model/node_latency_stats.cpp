@@ -34,14 +34,18 @@ void TNodeLatencyStatsTracker::UpdateLatencyStats(
     TNodeLatencyStats stats;
     if (it != IdAndRequest2Stats.end()) {
         stats = *it->second;
-        IdAndRequest2Stats.erase(it->second);
+        NodeLatencyStats.erase(it->second);
     } else {
-        stats.Key = key;
+        stats.NodeId = nodeId;
+        stats.RequestType = requestType;
     }
+
     CalculateLatencyDecay(stats, now);
+
     ++stats.RequestCount;
     stats.TotalLatencyMs += latency.GetValue();
     stats.AverageLatencyDecayedMs = stats.TotalLatencyMs / stats.RequestCount;
+    stats.LastAccessed = now;
 
     auto [newLatencyIterator, inserted] = NodeLatencyStats.insert(stats);
     Y_ABORT_UNLESS(inserted);

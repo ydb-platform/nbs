@@ -3,6 +3,7 @@
 #include <cloud/filestore/libs/service/request.h>
 
 #include <util/datetime/base.h>
+#include <util/digest/multi.h>
 #include <util/generic/hash.h>
 #include <util/generic/hash_set.h>
 #include <util/generic/maybe.h>
@@ -12,40 +13,54 @@
 
 namespace NCloud::NFileStore::NStorage {
 
+// struct TNodeLatencyStatsKey
+// {
+//     ui64 NodeId = 0;
+//     EFileStoreRequest RequestType = EFileStoreRequest::MAX;
+
+//     bool operator==(const TNodeLatencyStatsKey&) const = default;
+// };
+
+// struct TNodeLatencyStatsKeyHash
+// {
+//     size_t operator()(const TNodeLatencyStatsKey& key) const noexcept
+//     {
+//         return MultiHash(
+//             key.NodeId,
+//             static_cast<ui32>(key.RequestType));
+//     }
+// };
+
 struct TNodeLatencyStats
 {
-    struct TNodeLatencyStatsKey
-    {
-        ui64 NodeId = 0;
-        EFileStoreRequest RequestType = EFileStoreRequest::MAX;
-    } Key;
+    // TNodeLatencyStatsKey Key;
+    ui64 NodeId = 0;
+    EFileStoreRequest RequestType = EFileStoreRequest::MAX;
     ui64 RequestCount = 0;
     ui64 TotalLatencyMs = 0;
     double AverageLatencyDecayedMs = 0.0;
     TInstant LastAccessed;
 };
 
-class TNodeLatencyStatsComparator
-{
-public:
-    bool operator()(
-        const TNodeLatencyStats& lhs,
-        const TNodeLatencyStats& rhs) const
-    {
-        if (lhs.AverageLatencyDecayedMs == rhs.AverageLatencyDecayedMs) {
-            return lhs.Key.NodeId < rhs.Key.NodeId;
-        }
-        return lhs.AverageLatencyDecayedMs < rhs.AverageLatencyDecayedMs;
-    }
-};
-
 class TNodeLatencyStatsTracker
 {
 private:
-    //using LatencyKey = std::pair<ui64, EFileStoreRequest>;
+    struct TNodeLatencyStatsComparator
+    {
+        bool operator()(
+            const TNodeLatencyStats& lhs,
+            const TNodeLatencyStats& rhs) const
+        {
+            if(lhs.AverageLatencyDecayedMs == rhs.AverageLatencyDecayedMs) {
+                return lhs.NodeId < rhs.NodeId;
+            }
+            return lhs.AverageLatencyDecayedMs < rhs.AverageLatencyDecayedMs;
+        }
+    };
+    using LatencyKey = std::pair<ui64, EFileStoreRequest>;
     size_t MaxEntries = 0;
     using LatencyRanking = TSet<TNodeLatencyStats, TNodeLatencyStatsComparator>;
-    using LatencyKey = TNodeLatencyStats::TNodeLatencyStatsKey;
+    //using LatencyKey = TNodeLatencyStatsKey;
     THashMap<LatencyKey, LatencyRanking::iterator> IdAndRequest2Stats;
     LatencyRanking NodeLatencyStats;
 
@@ -54,7 +69,8 @@ private:
         while(NodeLatencyStats.size() > MaxEntries)
         {
             auto it = NodeLatencyStats.begin();
-            IdAndRequest2Stats.erase(it->Key);
+            LatencyKey key = {it->NodeId, it->RequestType};
+            IdAndRequest2Stats.erase(key);
             NodeLatencyStats.erase(it);
         }
     };
