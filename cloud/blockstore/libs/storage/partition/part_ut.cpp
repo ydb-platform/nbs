@@ -15380,6 +15380,15 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         partition.WriteBlocks(writeRange, char(1));
         partition.ZeroBlocks(zeroRange);
 
+        runtime->SetEventFilter(
+            [](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                return event->GetTypeRewrite() ==
+                    TEvPartitionPrivate::EvFlushRequest;
+            });
+        partition.RebootTablet();
+        partition.WaitReady();
+
         const auto response = partition.DescribeBlocks(writeRange);
         const auto& record = response->Record;
 
