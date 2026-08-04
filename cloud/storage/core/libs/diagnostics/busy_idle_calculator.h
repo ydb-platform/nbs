@@ -204,8 +204,9 @@ public:
 private:
     void UpdateProgress(EState state)
     {
+        auto fields = Fields.load(std::memory_order_acquire);
+
         for (;;) {
-            auto fields = Fields.load(std::memory_order_acquire);
             auto newFields = fields;
             ui64 value = 0;
             switch (state) {
