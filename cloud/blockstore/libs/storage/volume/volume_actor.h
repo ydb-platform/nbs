@@ -718,6 +718,8 @@ private:
     void SendStatisticRequestForDiskRegistryBasedPartition(
         const NActors::TActorContext& ctx);
 
+    bool CanRequestStatisticsFromPartitions() const;
+
     void CleanupHistory(
         const NActors::TActorContext& ctx,
         TRequestInfoPtr requestInfo);

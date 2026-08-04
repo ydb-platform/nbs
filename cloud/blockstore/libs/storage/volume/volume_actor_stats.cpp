@@ -9,6 +9,7 @@
 #include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/media.h>
 #include <cloud/storage/core/libs/common/verify.h>
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 #include <util/generic/hash_set.h>
 #include <util/system/hostname.h>
@@ -829,6 +830,21 @@ void TVolumeActor::CleanupHistory(
         std::move(requestInfo),
         oldestEntry,
         Config->GetVolumeHistoryCleanupItemCount());
+}
+
+bool TVolumeActor::CanRequestStatisticsFromPartitions() const
+{
+    STORAGE_CHECK_PRECONDITION(Config->GetUsePullSchemeForVolumeStatistics());
+
+    if (!State || GetVolumeStatus() == EStatus::STATUS_INACTIVE) {
+        return false;
+    }
+
+    if (State->IsDiskRegistryMediaKind()) {
+        return static_cast<bool>(State->GetDiskRegistryBasedPartitionActor());
+    }
+
+    return !State->GetPartitions().empty();
 }
 
 void TVolumeActor::SendStatisticRequestsForYDBBasedPartitions(
