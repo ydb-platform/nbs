@@ -1998,6 +1998,14 @@ void TPartitionActor::HandleCompaction(
             PartitionConfig.GetFolderId(),
             PartitionConfig.GetDiskId());
 
+    if (auto* filter = State->AccessMixedBlocksFilter()) {
+        TVector<ui32> rangeIndices;
+        for (auto& range: ranges) {
+            rangeIndices.push_back(range.first);
+        }
+        filter->CompactionStarted(std::move(rangeIndices), commitId);
+    }
+
     auto tx = CreateTx<TCompaction>(
         requestInfo,
         commitId,
@@ -2036,6 +2044,14 @@ void TPartitionActor::HandleCompactionCompleted(
             LogTitle.GetWithTime().c_str(),
             commitId,
             FormatError(msg->GetError()).c_str());
+    }
+
+    if (auto* filter = State->AccessMixedBlocksFilter()) {
+        if (HasError(msg->GetError())) {
+            filter->CompactionFailed();
+        } else {
+            filter->CompactionFinished();
+        }
     }
 
     UpdateStats(msg->Stats);

@@ -1082,11 +1082,19 @@ bool TPartitionActor::PrepareReadBlocks(
         args
     );
     State->FindFreshBlocks(visitor, args.ReadRange, commitId);
-    auto ready = db.FindMixedBlocks(
-        visitor,
-        args.ReadRange,
-        false,   // precharge
-        commitId);
+
+    bool ready = true;
+
+    const auto* filter = State->GetMixedBlocksFilter();
+    if (!filter || filter->MayHaveBlocksInMixedIndex(args.ReadRange, commitId))
+    {
+        ready &= db.FindMixedBlocks(
+            visitor,
+            args.ReadRange,
+            false,   // precharge
+            commitId);
+    }
+
     ready &= db.FindMergedBlocks(
         visitor,
         args.ReadRange,

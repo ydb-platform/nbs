@@ -145,6 +145,7 @@ struct TAffectedBlob
     ui64 MinCommitIdInCompactionRange = Max<ui64>();
     // Filled only for merged blobs.
     TMaybe<TMergedBlobsSpecificInfo> MergedBlobsSpecificInfo;
+    std::optional<EChannelDataKind> IndexKind;
 
     TVector<ui16> Offsets;
 

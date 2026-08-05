@@ -63,7 +63,9 @@ TPartitionState::TPartitionState(
         ui32 maxBlobsPerUnit,
         ui32 maxBlobsPerRange,
         ui32 compactionRangeCountPerRun,
-        TPartitionThreadSafeStatePtr threadSafeState)
+        TPartitionThreadSafeStatePtr threadSafeState,
+        ui64 tabletId,
+        const bool mixedBlocksFilterEnabled)
     : TPartitionChannelsState(
           meta.GetConfig(),
           freeSpaceConfig,
@@ -96,6 +98,12 @@ TPartitionState::TPartitionState(
     , CleanupQueue(GetBlockSize())
     , CleanupScoreHistory(cleanupScoreHistorySize)
 {
+    if (mixedBlocksFilterEnabled) {
+        MixedBlocksFilter.emplace(
+            tabletId,
+            GetMaxBlocksInBlob(),
+            Config.GetBlocksCount());
+    }
     InitChannels();
 }
 
@@ -413,13 +421,18 @@ void TPartitionState::DeleteFreshBlockFromDb(
 ////////////////////////////////////////////////////////////////////////////////
 // Mixed blocks
 
-void TPartitionState::WriteMixedBlock(
-    TPartitionDatabase& db,
-    TMixedBlock block)
+void TPartitionState::WriteMixedBlock(TPartitionDatabase& db, TMixedBlock block)
 {
     const ui32 rangeIdx = CompactionMap.GetRangeIndex(block.BlockIndex);
     MixedIndexCache.InsertBlockIfHot(rangeIdx, block);
+
     db.WriteMixedBlock(block);
+
+    if (MixedBlocksFilter) {
+        MixedBlocksFilter->BlocksAddedToMixedIndex(
+            block.BlockIndex,
+            block.CommitId);
+    }
 }
 
 void TPartitionState::WriteMixedBlocks(
@@ -435,15 +448,18 @@ void TPartitionState::WriteMixedBlocks(
         const ui32 rangeIdx = CompactionMap.GetRangeIndex(blockIndex);
         MixedIndexCache.InsertBlockIfHot(
             rangeIdx,
-            {blobId,
-             commitId,
-             blockIndex,
-             blobOffset,
-             compactionRangeCount});
+            {blobId, commitId, blockIndex, blobOffset, compactionRangeCount});
+
         ++blobOffset;
     }
 
     db.WriteMixedBlocks(blobId, blockIndices, compactionRangeCount);
+
+    if (MixedBlocksFilter) {
+        for (const ui32 blockIndex: blockIndices) {
+            MixedBlocksFilter->BlocksAddedToMixedIndex(blockIndex, commitId);
+        }
+    }
 }
 
 void TPartitionState::DeleteMixedBlock(

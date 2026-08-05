@@ -1651,4 +1651,9 @@ message TStorageServiceConfig
     // Applies when EnableDynamicGarbageCompactionThrottling is enabled and disk
     // usage is below ThrottleGarbageCompactionBelowFillPercentage.
     optional uint32 MinGarbageCompactionExecTimePerSecond = 519;
+
+    // Enables filter for mixed blocks. For read requests we check with filter
+    // if block is present in mixed index. If filter says that block is not present
+    // in mixed index, we skip reading mixed index.
+    optional bool MixedBlocksFilterEnabled = 520;
 }

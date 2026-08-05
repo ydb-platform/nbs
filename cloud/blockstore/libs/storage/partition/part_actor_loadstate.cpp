@@ -233,7 +233,9 @@ void TPartitionActor::CompleteLoadState(
         maxBlobsPerUnit,
         maxBlobsPerRange,
         Config->GetCompactionRangeCountPerRun(),
-        SharedState);
+        SharedState,
+        TabletID(),
+        IsMixedBlocksFilterEnabled());
 
     CreateFreshBlocksCompanionClient();
 
