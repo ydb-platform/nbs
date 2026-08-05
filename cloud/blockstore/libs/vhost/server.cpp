@@ -481,7 +481,8 @@ public:
             options.WriteZeroesEnabled,
             options.OptimalIoSize,
             endpoint.get(),
-            AppCtx.Callbacks);
+            AppCtx.Callbacks,
+            options.ReadOnly);
         endpoint->SetVhostDevice(std::move(vhostDevice));
 
         return endpoint;

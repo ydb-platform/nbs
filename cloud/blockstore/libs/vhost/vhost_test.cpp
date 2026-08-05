@@ -220,7 +220,8 @@ public:
         bool writeZeroesEnabled,
         ui32 optimalIoSize,
         void* cookie,
-        const TVhostCallbacks& callbacks) override
+        const TVhostCallbacks& callbacks,
+        bool readOnly) override
     {
         Y_UNUSED(deviceName);
         Y_UNUSED(blockSize);
@@ -229,6 +230,7 @@ public:
         Y_UNUSED(discardEnabled);
         Y_UNUSED(writeZeroesEnabled);
         Y_UNUSED(callbacks);
+        Y_UNUSED(readOnly);
 
         auto vhostDevice = std::make_shared<TTestVhostDevice>(
             std::move(socketPath),
