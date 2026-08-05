@@ -125,7 +125,7 @@ message TConfirmCreateHandleRequest
     uint32 Flags = 5;
 
     // Original CreateHandle request id.
-    uint64 RequestId = 6;
+    uint64 OriginalRequestId = 6;
 }
 
 message TConfirmCreateHandleResponse

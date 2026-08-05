@@ -91,7 +91,7 @@ TFileSystem::CreateConfirmCreateHandleRequest(
     const NProto::TCreateHandleRequest& createRequest,
     ui64 nodeId,
     ui64 handle,
-    ui64 requestId)
+    ui64 originalRequestId)
 {
     auto request = std::make_shared<NProto::TConfirmCreateHandleRequest>();
     *request->MutableHeaders() = createRequest.GetHeaders();
@@ -99,24 +99,26 @@ TFileSystem::CreateConfirmCreateHandleRequest(
     request->SetNodeId(nodeId);
     request->SetHandle(handle);
     request->SetFlags(createRequest.GetFlags());
-    request->SetRequestId(requestId);
+    request->SetOriginalRequestId(originalRequestId);
     return request;
 }
 
-void TFileSystem::ConfirmCreateHandleAndCompleteOpen(
+void TFileSystem::ConfirmCreateHandleAndReplyOpen(
     TCallContextPtr callContext,
     fuse_req_t req,
     const NProto::TCreateHandleRequest& createRequest,
     ui64 nodeId,
     ui64 handle,
-    ui64 requestId,
     fuse_file_info fi)
 {
+    const auto originalRequestId = createRequest.GetHeaders().GetRequestId()
+        ? createRequest.GetHeaders().GetRequestId()
+        : callContext->RequestId;
     auto confirmRequest = CreateConfirmCreateHandleRequest(
         createRequest,
         nodeId,
         handle,
-        requestId);
+        originalRequestId);
 
     Session->ConfirmCreateHandle(callContext, std::move(confirmRequest))
         .Subscribe(
@@ -377,23 +379,18 @@ void TFileSystem::Open(
                                 << self->Config->GetFileSystemId()
                                 << " #" << ino << " @" << response.GetHandle());
 
-                        const auto requestId =
-                            requestForQueue->GetHeaders().GetRequestId()
-                                ? requestForQueue->GetHeaders().GetRequestId()
-                                : callContext->RequestId;
                         auto fi = MakeFuseFileInfo(response, *self->Config);
-                        self->ConfirmCreateHandleAndCompleteOpen(
+                        self->ConfirmCreateHandleAndReplyOpen(
                             callContext,
                             req,
                             *requestForQueue,
                             ino,
                             response.GetHandle(),
-                            requestId,
                             fi);
                         return;
                     }
 
-                    self->ProcessAsyncCreateHandle(
+                    self->ProcessAsyncCreateHandleResponse(
                         callContext,
                         req,
                         ino,
@@ -408,31 +405,31 @@ void TFileSystem::Open(
         });
 }
 
-void TFileSystem::ProcessAsyncCreateHandle(
+void TFileSystem::ProcessAsyncCreateHandleResponse(
     TCallContextPtr callContext,
     fuse_req_t req,
     fuse_ino_t ino,
-    const NProto::TCreateHandleRequest& createRequest,
-    const NProto::TCreateHandleResponse& response)
+    const NProto::TCreateHandleRequest& originalRequest,
+    const NProto::TCreateHandleResponse& asyncResponse)
 {
-    const auto requestId = createRequest.GetHeaders().GetRequestId()
-        ? createRequest.GetHeaders().GetRequestId()
+    const auto originalRequestId = originalRequest.GetHeaders().GetRequestId()
+        ? originalRequest.GetHeaders().GetRequestId()
         : callContext->RequestId;
 
     THandleOpsQueue::EResult result;
     with_lock (HandleOpsQueueLock) {
         result = HandleOpsQueue->AddCreateRequest(
-            createRequest,
+            originalRequest,
             ino,
-            response.GetHandle(),
-            requestId);
+            asyncResponse.GetHandle(),
+            originalRequestId);
     }
 
     if (result == THandleOpsQueue::EResult::Ok) {
         STORAGE_DEBUG(
             "Create handle request added to queue #"
-            << ino << " @" << response.GetHandle());
-        auto fi = MakeFuseFileInfo(response, *Config);
+            << ino << " @" << asyncResponse.GetHandle());
+        auto fi = MakeFuseFileInfo(asyncResponse, *Config);
         ReplyOpen(*callContext, MakeError(S_OK), req, &fi);
         return;
     }
@@ -441,12 +438,12 @@ void TFileSystem::ProcessAsyncCreateHandle(
         TStringBuilder msg;
         msg << "Unable to add CreateHandleRequest to "
             << "HandleOpsQueue #" << ino << " @"
-            << response.GetHandle()
+            << asyncResponse.GetHandle()
             << ". Serialization failed";
         ReportHandleOpsQueueProcessError(msg);
 
         auto destroyRequest = StartRequest<NProto::TDestroyHandleRequest>(ino);
-        destroyRequest->SetHandle(response.GetHandle());
+        destroyRequest->SetHandle(asyncResponse.GetHandle());
         Session->DestroyHandle(callContext, std::move(destroyRequest));
         ReplyError(*callContext, MakeError(E_FAIL, msg), req, EIO);
         return;
@@ -456,16 +453,15 @@ void TFileSystem::ProcessAsyncCreateHandle(
     STORAGE_DEBUG(
         "HandleOpsQueue overflow, synchronously "
         "confirming create handle #"
-        << ino << " @" << response.GetHandle());
+        << ino << " @" << asyncResponse.GetHandle());
 
-    const auto fi = MakeFuseFileInfo(response, *Config);
-    ConfirmCreateHandleAndCompleteOpen(
+    const auto fi = MakeFuseFileInfo(asyncResponse, *Config);
+    ConfirmCreateHandleAndReplyOpen(
         std::move(callContext),
         req,
-        createRequest,
+        originalRequest,
         ino,
-        response.GetHandle(),
-        requestId,
+        asyncResponse.GetHandle(),
         fi);
 }
 

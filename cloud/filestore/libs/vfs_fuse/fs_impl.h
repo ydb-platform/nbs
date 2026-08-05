@@ -371,15 +371,14 @@ private:
         const NProto::TCreateHandleRequest& createRequest,
         ui64 nodeId,
         ui64 handle,
-        ui64 requestId);
+        ui64 originalRequestId);
 
-    void ConfirmCreateHandleAndCompleteOpen(
+    void ConfirmCreateHandleAndReplyOpen(
         TCallContextPtr callContext,
         fuse_req_t req,
         const NProto::TCreateHandleRequest& createRequest,
         ui64 nodeId,
         ui64 handle,
-        ui64 requestId,
         fuse_file_info fi);
 
     void CleanupFailedCreateHandle(
@@ -485,12 +484,12 @@ private:
         const NProto::TNodeAttr& attrs,
         ui64 version);
 
-    void ProcessAsyncCreateHandle(
+    void ProcessAsyncCreateHandleResponse(
         TCallContextPtr callContext,
         fuse_req_t req,
         fuse_ino_t ino,
-        const NProto::TCreateHandleRequest& createRequest,
-        const NProto::TCreateHandleResponse& response);
+        const NProto::TCreateHandleRequest& originalRequest,
+        const NProto::TCreateHandleResponse& asyncResponse);
     bool ProcessAsyncRelease(
         TCallContextPtr callContext,
         fuse_req_t req,

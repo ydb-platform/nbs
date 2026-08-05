@@ -448,11 +448,6 @@ void TFileSystem::ProcessHandleOpsQueue()
 {
     TGuard g{HandleOpsQueueLock};
     if (HandleOpsQueue->Empty()) {
-        // A release can be appended to DelayedReleaseQueue after a queue
-        // completion has already checked it. Retry here as well to avoid
-        // leaving that release stranded until another entry completes.
-        g.Release();
-        ProcessDelayedRelease();
         ScheduleProcessHandleOpsQueue();
         return;
     }
@@ -499,7 +494,7 @@ void TFileSystem::ProcessHandleOpsQueue()
             requestInfo.GetRequest(),
             requestInfo.GetNodeId(),
             requestInfo.GetHandle(),
-            requestInfo.GetRequestId());
+            requestInfo.GetOriginalRequestId());
 
         STORAGE_DEBUG(
             "Process create handle confirmation request: "
