@@ -3333,7 +3333,9 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 UNIT_ASSERT_VALUES_EQUAL(nodeId, request->GetNodeId());
                 UNIT_ASSERT_VALUES_EQUAL(handle, request->GetHandle());
                 UNIT_ASSERT_VALUES_EQUAL(flags, request->GetFlags());
-                UNIT_ASSERT_VALUES_EQUAL(requestId, request->GetRequestId());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    requestId,
+                    request->GetOriginalRequestId());
                 UNIT_ASSERT_VALUES_EQUAL(
                     headers,
                     request->GetHeaders().SerializeAsString());
@@ -4000,11 +4002,11 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                     UNIT_ASSERT_VALUES_EQUAL(
                         sessionId,
                         request->GetHeaders().GetSessionId());
-                    UNIT_ASSERT(request->GetRequestId());
+                    UNIT_ASSERT(request->GetOriginalRequestId());
                     UNIT_ASSERT_VALUES_EQUAL(
                         ProtoFlag(NProto::TCreateHandleRequest::E_READ),
                         request->GetFlags());
-                    requestId = request->GetRequestId();
+                    requestId = request->GetOriginalRequestId();
                     ++confirmCalled;
 
                     NProto::TConfirmCreateHandleResponse response =
@@ -4063,7 +4065,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                         request->GetHeaders().GetSessionId());
                     UNIT_ASSERT_VALUES_EQUAL(
                         requestId.load(),
-                        request->GetRequestId());
+                        request->GetOriginalRequestId());
                     UNIT_ASSERT_VALUES_EQUAL(
                         ProtoFlag(NProto::TCreateHandleRequest::E_READ),
                         request->GetFlags());
@@ -4370,7 +4372,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         *queued->MutableRequest() = createRequest;
         queued->SetHandle(handle);
         queued->SetNodeId(nodeId);
-        queued->SetRequestId(createRequest.GetHeaders().GetRequestId());
+        queued->SetOriginalRequestId(
+            createRequest.GetHeaders().GetRequestId());
 
         NProto::TQueueEntry destroyEntry;
         destroyEntry.MutableDestroyHandleRequest()->SetHandle(handle);

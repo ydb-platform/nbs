@@ -22,14 +22,14 @@ THandleOpsQueue::EResult THandleOpsQueue::AddCreateRequest(
     const NProto::TCreateHandleRequest& createHandleRequest,
     ui64 nodeId,
     ui64 handle,
-    ui64 requestId)
+    ui64 originalRequestId)
 {
     NProto::TQueueEntry request;
     auto* queued = request.MutableQueuedCreateHandleRequest();
     *queued->MutableRequest() = createHandleRequest;
     queued->SetHandle(handle);
     queued->SetNodeId(nodeId);
-    queued->SetRequestId(requestId);
+    queued->SetOriginalRequestId(originalRequestId);
 
     TString result;
     if (!request.SerializeToString(&result)) {
