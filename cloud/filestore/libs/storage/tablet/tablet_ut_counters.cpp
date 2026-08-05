@@ -1285,6 +1285,61 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         tablet.DestroyHandle(handle2);
         checkHandlesCounters(0, 0);
     }
+
+    Y_UNIT_TEST(ShouldReportWriteBackCacheConfig)
+    {
+        NProto::TStorageConfig config;
+        config.SetServerWriteBackCacheEnabled(false);
+        config.SetServerWriteBackCacheFlushWritesInParallelEnabled(false);
+
+        TTestEnv env({}, std::move(config));
+        auto registry = env.GetRegistry();
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto checkWriteBackCacheConfig =
+            [&](i64 expectedEnabled, i64 expectedParallelWritesEnabled)
+        {
+            TTestRegistryVisitor visitor;
+            tablet.SendRequest(tablet.CreateUpdateCounters());
+            env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+            registry->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters(
+                {{{{"sensor", "ServerWriteBackCacheEnabled"}}, expectedEnabled},
+                 {{{"sensor",
+                    "ServerWriteBackCacheFlushWritesInParallelEnabled"}},
+                  expectedParallelWritesEnabled}});
+        };
+
+        NProto::TStorageConfig patch1;
+        patch1.SetServerWriteBackCacheEnabled(true);
+
+        tablet.ChangeStorageConfig(std::move(patch1));
+        tablet.RebootTablet();
+
+        checkWriteBackCacheConfig(1, 0);
+
+        NProto::TStorageConfig patch2;
+        patch1.SetServerWriteBackCacheFlushWritesInParallelEnabled(true);
+
+        tablet.ChangeStorageConfig(std::move(patch2));
+        tablet.RebootTablet();
+
+        checkWriteBackCacheConfig(1, 1);
+
+        NProto::TStorageConfig patch3;
+        patch3.SetServerWriteBackCacheEnabled(false);
+        patch3.SetServerWriteBackCacheFlushWritesInParallelEnabled(false);
+
+        tablet.ChangeStorageConfig(std::move(patch3));
+        tablet.RebootTablet();
+
+        checkWriteBackCacheConfig(0, 0);
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

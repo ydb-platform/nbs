@@ -155,6 +155,8 @@ struct TTabletMetrics: TAtomicRefCount<TTabletMetrics>
 
     std::atomic<i64> StrictFileSystemSizeEnforcementEnabled{0};
     std::atomic<i64> DirectoryCreationInShardsEnabled{0};
+    std::atomic<i64> ServerWriteBackCacheEnabled{0};
+    std::atomic<i64> ServerWriteBackCacheFlushWritesInParallelEnabled{0};
 
     // Session stats
     std::atomic<i64> StatefulSessionsCount{0};
