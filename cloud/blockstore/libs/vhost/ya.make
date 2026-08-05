@@ -1,6 +1,8 @@
 LIBRARY()
 
 SRCS(
+    endpoint.cpp
+    executor.cpp
     server.cpp
     vhost.cpp
     vhost_test.cpp
