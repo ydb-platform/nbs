@@ -58,8 +58,8 @@ static_assert(NodeSlotSize % alignof(TNodeTableSlot) == 0);
 ////////////////////////////////////////////////////////////////////////////////
 // name table layout
 
-constexpr ui64 NameSlotSize = 32;
-constexpr ui32 NameCapacity = 20;
+constexpr ui64 NameSlotSize = 48;
+constexpr ui32 NameCapacity = 36;
 
 struct TNameTableSlot
 {
@@ -251,6 +251,11 @@ public:
         return pageCount;
     }
 
+    [[nodiscard]] ui64 GetSlotCount() const
+    {
+        return Slots->GetSlotCount();
+    }
+
     NProto::TError AllocateNodeId(ui64* nodeId)
     {
         while (true) {
@@ -374,7 +379,7 @@ public:
 class TNameTable
 {
 private:
-    static constexpr ui64 SlotsPerPage = 128;
+    static constexpr ui64 SlotsPerPage = PageSize / NameSlotSize;
     static_assert(SlotsPerPage * NameSlotSize <= PageSize);
 
     using THt = TPersistentHashTable<TStringBuf, TNameTableSlot>;
@@ -407,6 +412,11 @@ public:
             { return CityHash64(name.data(), name.size()); });
 
         return pageCount;
+    }
+
+    [[nodiscard]] ui64 GetSlotCount() const
+    {
+        return Slots->GetSlotCount();
     }
 
     NProto::TError
@@ -484,6 +494,11 @@ public:
             });
 
         return pageCount;
+    }
+
+    [[nodiscard]] ui64 GetSlotCount() const
+    {
+        return Slots->GetSlotCount();
     }
 
     NProto::TError AllocateHandle(ui64* handle)
@@ -596,6 +611,11 @@ public:
         return indexPageCount;
     }
 
+    [[nodiscard]] ui64 GetSlotCount() const
+    {
+        return Slots->GetSlotCount();
+    }
+
     NProto::TError Put(TNodePageClusterSlot v, TWriteContext& writeContext)
     {
         return Slots->Put(writeContext.Lsn, v, writeContext.PageGroups);
@@ -633,6 +653,7 @@ class TPageAllocator
 private:
     std::unique_ptr<TPersistentBitmap> Bitmap;
     ui64 FirstStoragePageClusterId = 0;
+    ui64 BitCount = 0;
 
 public:
     ui64 Init(
@@ -642,8 +663,8 @@ public:
     {
         const ui64 pageClusterCount = CalcPageClusterCount(config);
         const ui64 bitsPerPage = TPersistentBitmap::CalcBitsPerPage(PageSize);
-        const ui64 bitmapPageCount =
-            RoundUp(pageClusterCount, bitsPerPage) / bitsPerPage;
+        BitCount = RoundUp(pageClusterCount, bitsPerPage);
+        const ui64 bitmapPageCount = BitCount / bitsPerPage;
         Bitmap = std::make_unique<TPersistentBitmap>(
             firstPageNo,
             bitmapPageCount,
@@ -655,6 +676,11 @@ public:
             PageClusterPageCount;
 
         return bitmapPageCount + pageClusterCount * PageClusterPageCount;
+    }
+
+    [[nodiscard]] ui64 GetBitCount() const
+    {
+        return BitCount;
     }
 
     NProto::TError Allocate(
@@ -780,6 +806,7 @@ private:
     const NProtoPrivate::TPersistentFastShardConfig Config;
 
     IStorageGroupPtr Storage;
+    std::atomic<bool> Acquired = false;
     IPageStorePtr PageStore;
     TNodeTable Nodes;
     TNameTable Names;
@@ -840,6 +867,12 @@ public:
         firstPageNo += pageAllocatorPageCount;
 
         SILK_INFO("slack space offset=%lu", firstPageNo * PageSize);
+
+        SILK_INFO("node table slots=%lu", Nodes.GetSlotCount());
+        SILK_INFO("name table slots=%lu", Names.GetSlotCount());
+        SILK_INFO("handle table slots=%lu", Handles.GetSlotCount());
+        SILK_INFO("page index table slots=%lu", PageIndex.GetSlotCount());
+        SILK_INFO("page allocator bits=%lu", PageAllocator.GetBitCount());
     }
 
 public:
@@ -847,6 +880,10 @@ public:
         NProtoPrivate::TGetNodeAttrBatchRequest request)
     {
         NProtoPrivate::TGetNodeAttrBatchResponse response;
+        if (!AcquireIfNeeded(response)) {
+            return response;
+        }
+
         if (request.GetNodeId() != RootNodeId) {
             *response.MutableError() = ErrorInvalidParent(request.GetNodeId());
             return response;
@@ -886,6 +923,10 @@ public:
         NProto::TGetNodeAttrRequest request)
     {
         NProto::TGetNodeAttrResponse response;
+        if (!AcquireIfNeeded(response)) {
+            return response;
+        }
+
         if (request.GetNodeId() != RootNodeId && !request.GetName().empty()) {
             *response.MutableError() = ErrorInvalidParent(request.GetNodeId());
             return response;
@@ -906,6 +947,9 @@ public:
         NProto::TSetNodeAttrRequest request)
     {
         NProto::TSetNodeAttrResponse response;
+        if (!AcquireIfNeeded(response)) {
+            return response;
+        }
 
         TWriteContext writeContext;
         TWriteContextGuard wcg(writeContext, *PageStore);
@@ -970,6 +1014,10 @@ public:
     NProto::TCreateNodeResponse CreateNode(NProto::TCreateNodeRequest request)
     {
         NProto::TCreateNodeResponse response;
+        if (!AcquireIfNeeded(response)) {
+            return response;
+        }
+
         if (request.GetNodeId() != RootNodeId) {
             *response.MutableError() = ErrorInvalidParent(request.GetNodeId());
             return response;
@@ -1021,6 +1069,10 @@ public:
     NProto::TUnlinkNodeResponse UnlinkNode(NProto::TUnlinkNodeRequest request)
     {
         NProto::TUnlinkNodeResponse response;
+        if (!AcquireIfNeeded(response)) {
+            return response;
+        }
+
         if (request.GetNodeId() != RootNodeId) {
             *response.MutableError() = ErrorInvalidParent(request.GetNodeId());
             return response;
@@ -1078,6 +1130,10 @@ public:
         NProto::TCreateHandleRequest request)
     {
         NProto::TCreateHandleResponse response;
+        if (!AcquireIfNeeded(response)) {
+            return response;
+        }
+
         if (request.GetNodeId() != RootNodeId && !request.GetName().empty()) {
             *response.MutableError() = ErrorInvalidParent(request.GetNodeId());
             return response;
@@ -1176,6 +1232,9 @@ public:
         NProto::TDestroyHandleRequest request)
     {
         NProto::TDestroyHandleResponse response;
+        if (!AcquireIfNeeded(response)) {
+            return response;
+        }
 
         TWriteContext writeContext;
         TWriteContextGuard wcg(writeContext, *PageStore);
@@ -1215,6 +1274,9 @@ public:
     NProto::TWriteDataResponse WriteData(NProto::TWriteDataRequest request)
     {
         NProto::TWriteDataResponse response;
+        if (!AcquireIfNeeded(response)) {
+            return response;
+        }
 
         std::unique_lock l(Mutex);
 
@@ -1461,6 +1523,9 @@ public:
     NProto::TReadDataResponse ReadData(NProto::TReadDataRequest request)
     {
         NProto::TReadDataResponse response;
+        if (!AcquireIfNeeded(response)) {
+            return response;
+        }
 
         std::lock_guard l(Mutex);
 
@@ -1637,8 +1702,30 @@ private:
         Y_UNUSED(request);
 
         TResponse response;
-        *response.MutableError() = MakeError(E_NOT_IMPLEMENTED);
+        *response.MutableError() = MakeError(E_FS_NOTSUPP);
         return response;
+    }
+
+    template <typename TResponse>
+    bool AcquireIfNeeded(TResponse& response)
+    {
+        if (Acquired) {
+            return true;
+        }
+
+        std::lock_guard g(Mutex);
+        if (Acquired) {
+            return true;
+        }
+
+        auto error = Storage->AcquireDevices();
+        if (HasError(error)) {
+            *response.MutableError() = std::move(error);
+            return false;
+        }
+
+        Acquired = true;
+        return true;
     }
 };
 

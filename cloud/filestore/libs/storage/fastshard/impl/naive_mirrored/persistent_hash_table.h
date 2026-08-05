@@ -369,6 +369,7 @@ private:
         }
 
         ui64 candidateSlotNo = InvalidSlotNo;
+        ui64 tombstoneCount = 0;
         while (true) {
             bool success = LookupSlot(it.GetRaw(), v);
             if (!success) {
@@ -403,7 +404,11 @@ private:
             }
 
             if (it.SlotNo == firstSlotNo) {
-                return MakeError(E_FS_OUT_OF_SPACE, "no free node slot");
+                return MakeError(E_FS_OUT_OF_SPACE, TStringBuilder()
+                    << "no free slot"
+                    << ", firstSlotNo=" << firstSlotNo
+                    << ", tombstoneCount=" << tombstoneCount
+                    << ", slotCount=" << SlotCount);
             }
         }
 
