@@ -1086,6 +1086,15 @@ bool TPartitionActor::IsDynamicGarbageCompactionThrottlingEnabled() const
                PartitionConfig.GetDiskId());
 }
 
+bool TPartitionActor::IsMixedBlocksFilterEnabled() const
+{
+    return Config->GetMixedBlocksFilterEnabled() ||
+           Config->IsMixedBlocksFilterFeatureEnabled(
+               PartitionConfig.GetCloudId(),
+               PartitionConfig.GetFolderId(),
+               PartitionConfig.GetDiskId());
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 STFUNC(TPartitionActor::StateBoot)

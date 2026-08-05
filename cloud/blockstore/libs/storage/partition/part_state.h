@@ -10,6 +10,7 @@
 #include <cloud/blockstore/libs/diagnostics/downtime_history.h>
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/core/bs_group_operation_tracker.h>
+#include <cloud/blockstore/libs/storage/core/channel_permissions.h>
 #include <cloud/blockstore/libs/storage/core/compaction_map.h>
 #include <cloud/blockstore/libs/storage/core/compaction_type.h>
 #include <cloud/blockstore/libs/storage/core/request_buffer.h>
@@ -17,13 +18,13 @@
 #include <cloud/blockstore/libs/storage/core/ts_ring_buffer.h>
 #include <cloud/blockstore/libs/storage/core/write_buffer_request.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
-#include <cloud/blockstore/libs/storage/core/channel_permissions.h>
 #include <cloud/blockstore/libs/storage/partition/model/blob_to_confirm.h>
 #include <cloud/blockstore/libs/storage/partition/model/block_index.h>
 #include <cloud/blockstore/libs/storage/partition/model/checkpoint.h>
 #include <cloud/blockstore/libs/storage/partition/model/cleanup_queue.h>
 #include <cloud/blockstore/libs/storage/partition/model/commit_queue.h>
 #include <cloud/blockstore/libs/storage/partition/model/garbage_queue.h>
+#include <cloud/blockstore/libs/storage/partition/model/mixed_blocks_filter.h>
 #include <cloud/blockstore/libs/storage/partition/model/mixed_index_cache.h>
 #include <cloud/blockstore/libs/storage/partition/model/operation_status.h>
 #include <cloud/blockstore/libs/storage/partition/model/part_counters_wrapper.h>
@@ -316,7 +317,9 @@ public:
         ui32 maxBlobsPerUnit,
         ui32 maxBLobsPerRange,
         ui32 compactionRangeCountPerRun,
-        TPartitionThreadSafeStatePtr threadSafeState);
+        TPartitionThreadSafeStatePtr threadSafeState,
+        ui64 tabletId,
+        const bool mixedBlocksFilterEnabled);
 
 private:
     bool LoadStateFinished = false;
@@ -557,6 +560,7 @@ public:
 private:
     TProfilingAllocator MixedIndexCacheAllocator;
     TMixedIndexCache MixedIndexCache;
+    std::optional<TMixedBlocksFilter> MixedBlocksFilter;
 
 public:
     void WriteMixedBlock(TPartitionDatabase& db, TMixedBlock block);
@@ -579,6 +583,16 @@ public:
     void RaiseRangeTemperature(ui32 rangeIndex);
 
     ui64 GetMixedIndexCacheMemSize() const;
+
+    const TMixedBlocksFilter* GetMixedBlocksFilter() const
+    {
+        return MixedBlocksFilter ? &*MixedBlocksFilter : nullptr;
+    }
+
+    TMixedBlocksFilter* AccessMixedBlocksFilter()
+    {
+        return MixedBlocksFilter ? &*MixedBlocksFilter : nullptr;
+    }
 
     //
     // Compaction

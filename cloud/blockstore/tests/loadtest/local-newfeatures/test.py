@@ -182,6 +182,13 @@ def storage_config_with_ignoring_zeroed_compaction_enabled():
     return storage
 
 
+def storage_config_with_mixed_blocks_filter_enabled():
+    storage = ordinary_prod_storage_config()
+    storage.MixedBlocksFilterEnabled = True
+
+    return storage
+
+
 def storage_config_with_new_features_enabled():
     storage = ordinary_prod_storage_config()
     storage.ReadBlockMaskOnCompactionOptimizationEnabled = True
@@ -189,6 +196,7 @@ def storage_config_with_new_features_enabled():
     storage.FreshChannelZeroRequestsEnabled = True
     storage.FreshBlocksWriterEnabled = True
     storage.IgnoringZeroedCompactionEnabled = True
+    storage.MixedBlocksFilterEnabled = True
 
     return storage
 
@@ -376,6 +384,14 @@ TESTS = [
         "cloud/blockstore/tests/loadtest/local-newfeatures/local-tablet-version-1-ignoring-zeroed-compaction.txt",
         [
             storage_config_with_ignoring_zeroed_compaction_enabled(),
+        ],
+        None,
+    ),
+    TestCase(
+        "version1-mixed-blocks-filter",
+        "cloud/blockstore/tests/loadtest/local-newfeatures/local-tablet-version-1-multiple-ranges.txt",
+        [
+            storage_config_with_mixed_blocks_filter_enabled(),
         ],
         None,
     ),
