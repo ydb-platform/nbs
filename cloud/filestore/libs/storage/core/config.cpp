@@ -365,6 +365,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
                                                                                \
     xxx(FastShardServerPort,                    ui32,   0                     )\
     xxx(FastShardRuntimeEnabled,                bool,   false                 )\
+    xxx(FastShardExtendedVerificationEnabled,   bool,   false                 )\
                                                                                \
     xxx(EnableNodeRefCompression,               bool,   false                 )\
                                                                                \

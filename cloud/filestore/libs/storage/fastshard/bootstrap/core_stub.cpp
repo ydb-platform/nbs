@@ -10,4 +10,7 @@ void Init()
 void Destroy()
 {}
 
+void EnableDebugLogging()
+{}
+
 }   // namespace NCloud::NFileStore::NStorage::NFastShard
