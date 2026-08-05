@@ -283,3 +283,104 @@ func TestCommonAcquireAndReleaseUnitsAndSlots(t *testing.T) {
 	require.Equal(t, uint64(4), baseDisk.freeSlots())
 	require.True(t, baseDisk.hasFreeSlots())
 }
+
+func TestCommonIdleSinceTracking(t *testing.T) {
+	ctx := newContext()
+
+	disk := &baseDisk{
+		maxActiveSlots: 4,
+		units:          6,
+		fromPool:       true,
+		status:         baseDiskStatusReady,
+	}
+
+	require.True(t, isTimestampUnset(disk.idleSince))
+
+	slot1 := &slot{}
+	err := acquireUnitsAndSlots(ctx, nil, disk, slot1)
+	disk.applyInvariants()
+	require.NoError(t, err)
+	require.True(t, isTimestampUnset(disk.idleSince))
+
+	slot2 := &slot{}
+	err = acquireUnitsAndSlots(ctx, nil, disk, slot2)
+	disk.applyInvariants()
+	require.NoError(t, err)
+	require.True(t, isTimestampUnset(disk.idleSince))
+
+	err = releaseUnitsAndSlots(ctx, nil, disk, *slot1)
+	disk.applyInvariants()
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), disk.activeUnits)
+	require.True(t, isTimestampUnset(disk.idleSince))
+
+	err = releaseUnitsAndSlots(ctx, nil, disk, *slot2)
+	disk.applyInvariants()
+	require.NoError(t, err)
+	require.Equal(t, uint64(0), disk.activeUnits)
+	require.False(t, isTimestampUnset(disk.idleSince))
+
+	firstUnusedAt := disk.idleSince
+
+	slot3 := &slot{}
+	err = acquireUnitsAndSlots(ctx, nil, disk, slot3)
+	disk.applyInvariants()
+	require.NoError(t, err)
+	require.True(t, isTimestampUnset(disk.idleSince))
+
+	err = releaseUnitsAndSlots(ctx, nil, disk, *slot3)
+	disk.applyInvariants()
+	require.NoError(t, err)
+	require.Equal(t, uint64(0), disk.activeUnits)
+	require.False(t, isTimestampUnset(disk.idleSince))
+	require.True(t, disk.idleSince.After(firstUnusedAt) || disk.idleSince.Equal(firstUnusedAt))
+}
+
+func TestCommonIdleSinceSetOncePerIdlePeriod(t *testing.T) {
+	ctx := newContext()
+
+	disk := &baseDisk{
+		maxActiveSlots: 4,
+		units:          6,
+		fromPool:       true,
+		status:         baseDiskStatusReady,
+	}
+
+	slot1 := &slot{}
+	slot2 := &slot{}
+
+	err := acquireUnitsAndSlots(ctx, nil, disk, slot1)
+	require.NoError(t, err)
+	err = acquireUnitsAndSlots(ctx, nil, disk, slot2)
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), disk.activeUnits)
+
+	// Releasing first slot: activeUnits goes to 1, idleSince stays zero.
+	err = releaseUnitsAndSlots(ctx, nil, disk, *slot1)
+	disk.applyInvariants()
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), disk.activeUnits)
+	require.True(t, isTimestampUnset(disk.idleSince))
+
+	// Releasing second slot: activeUnits goes to 0, idleSince gets set.
+	err = releaseUnitsAndSlots(ctx, nil, disk, *slot2)
+	disk.applyInvariants()
+	require.NoError(t, err)
+	require.Equal(t, uint64(0), disk.activeUnits)
+	require.False(t, isTimestampUnset(disk.idleSince))
+}
+
+func TestCommonApplyInvariantsIdlePoolDisk(t *testing.T) {
+	disk := &baseDisk{
+		activeUnits: 0,
+		fromPool:    true,
+		status:      baseDiskStatusReady,
+	}
+
+	disk.applyInvariants()
+	require.Equal(t, baseDiskStatusReady, disk.status)
+
+	disk.fromPool = false
+	disk.applyInvariants()
+	require.Equal(t, baseDiskStatusDeleting, disk.status)
+}
