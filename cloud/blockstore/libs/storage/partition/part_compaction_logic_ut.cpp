@@ -59,7 +59,7 @@ TFreeSpaceConfig DefaultFreeSpaceConfig()
     return {0.25, 0.15};
 }
 
-TPartitionState MakeState(size_t blockCount = 2048)
+TPartitionState MakeState(size_t blockCount = 2048, bool mixedBlocksFilterEnabled = false)
 {
     auto threadSafeState = std::make_shared<TPartitionThreadSafeState>();
     return TPartitionState(
@@ -80,13 +80,18 @@ TPartitionState MakeState(size_t blockCount = 2048)
         100,           // maxBlobsPerUnit
         10,            // maxBlobsPerRange
         1,             // compactionRangeCountPerRun
-        std::move(threadSafeState));
+        std::move(threadSafeState),
+        TTestExecutor::TabletId,
+        mixedBlocksFilterEnabled);   // mixedBlocksFilterEnabled
 }
 
-std::shared_ptr<TStorageConfig> MakeStorageConfig(ui64 diskPrefixLength = 0)
+std::shared_ptr<TStorageConfig> MakeStorageConfig(
+    ui64 diskPrefixLength = 0,
+    ui64 targetCompactionBytesPerOp = 64_KB)
 {
     NProto::TStorageServiceConfig proto;
     proto.SetDiskPrefixLengthWithBlockChecksumsInBlobs(diskPrefixLength);
+    proto.SetTargetCompactionBytesPerOp(targetCompactionBytesPerOp);
     return std::make_shared<TStorageConfig>(
         std::move(proto),
         std::make_shared<NFeatures::TFeaturesConfig>());
@@ -192,6 +197,71 @@ TPrepareCompleteResult RunPrepareAndComplete(
 ////////////////////////////////////////////////////////////////////////////////
 
 }   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+Y_UNIT_TEST_SUITE(TApplyBlobsSkippingTest)
+{
+    Y_UNIT_TEST(ShouldNotSkipMixedBlobs)
+    {
+        auto state = MakeState(
+            2048,   // blockCount
+            true    // mixedBlocksFilterEnabled
+        );
+
+        auto config = MakeStorageConfig(
+            0,   // diskPrefixLength
+            0);  // targetCompactionBytesPerOp
+
+        const TPartialBlobId mixedBlobId(
+            1,
+            1,
+            3,
+            2 * DefaultBlockSize,
+            1,
+            0);
+        const TPartialBlobId mergedBlobId(
+            1,
+            1,
+            3,
+            DefaultBlockSize,
+            2,
+            0);
+
+        TTxPartition::TRangeCompaction args(
+            0,
+            TBlockRange32::MakeClosedInterval(0, 2));
+
+        args.MarkBlock(0, CommitId, mixedBlobId, 0, true);
+        args.MarkBlock(1, CommitId, mixedBlobId, 1, true);
+        args.MarkBlock(2, CommitId, mergedBlobId, 0, true);
+
+        args.AffectedBlobs[mixedBlobId].IndexKind =
+            EChannelDataKind::Mixed;
+        args.AffectedBlobs[mergedBlobId].IndexKind =
+            EChannelDataKind::Merged;
+
+        ApplyBlobsSkipping(
+            *config,
+            2,
+            state,
+            args);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, args.BlobsSkipped);
+        UNIT_ASSERT_VALUES_EQUAL(1, args.BlocksSkipped);
+
+        UNIT_ASSERT(args.AffectedBlobs.contains(mixedBlobId));
+        UNIT_ASSERT(!args.AffectedBlobs.contains(mergedBlobId));
+
+        UNIT_ASSERT_VALUES_EQUAL(2, args.AffectedBlocks.size());
+        UNIT_ASSERT_VALUES_EQUAL(0, args.AffectedBlocks[0].BlockIndex);
+        UNIT_ASSERT_VALUES_EQUAL(1, args.AffectedBlocks[1].BlockIndex);
+
+        UNIT_ASSERT_VALUES_EQUAL(mixedBlobId, args.BlockMarks[0].BlobId);
+        UNIT_ASSERT_VALUES_EQUAL(mixedBlobId, args.BlockMarks[1].BlobId);
+        UNIT_ASSERT(!args.BlockMarks[2].CommitId);
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 

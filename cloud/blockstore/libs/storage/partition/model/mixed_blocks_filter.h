@@ -86,12 +86,12 @@ public:
         ui64 commitId) const;
 
     /**
-     * Records consecutive blocks added to the mixed index.
+     * Records block added to the mixed index.
      *
-     * @param blockRange - Closed logical block range that was added.
-     * @param commitId - Commit ID at which the blocks were added.
+     * @param blockIndex - Block index that was added.
+     * @param commitId - Commit ID at which the block was added.
      */
-    void BlocksAddedToMixedIndex(TBlockRange32 blockRange, ui64 commitId);
+    void BlocksAddedToMixedIndex(ui64 blockIndex, ui64 commitId);
 
     /**
      * Registers an in-flight compaction. Compactions must be registered in
