@@ -125,8 +125,8 @@ bool TIndexTabletActor::PrepareTx_SetNodeAttr(
     }
 
     if (HasFlag(flags, NProto::TSetNodeAttrRequest::F_SET_ATTR_QUOTA_ID)) {
-        const auto currentQuotaId = args.Node->Attrs.GetQuotaId();
-        const auto newQuotaId = update.GetQuotaId();
+        const ui32 currentQuotaId = args.Node->Attrs.GetQuotaId();
+        const ui32 newQuotaId = update.GetQuotaId();
 
         if (currentQuotaId == newQuotaId) {
             // no-op: this exact quota is already attached, nothing to
@@ -135,7 +135,10 @@ bool TIndexTabletActor::PrepareTx_SetNodeAttr(
             // already attached to a *different* quota - no nested/
             // multi-domain quotas
             args.Error = ErrorInvalidArgument(
-                "node is already attached to a different quota");
+                TStringBuilder()
+                << "node " << args.NodeId
+                << " is already attached to a different quota: "
+                << currentQuotaId);
             return true;
         } else if (args.Node->Attrs.GetType() != NProto::E_DIRECTORY_NODE) {
             args.Error = ErrorIsNotDirectory(args.NodeId);
