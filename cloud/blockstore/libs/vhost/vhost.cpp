@@ -144,7 +144,8 @@ public:
             bool writeZeroesEnabled,
             ui32 optimalIoSize,
             void* cookie,
-            const TVhostCallbacks& callbacks)
+            const TVhostCallbacks& callbacks,
+            bool readOnly)
         : VhdQueue(vhdQueue)
         , SocketPath(std::move(socketPath))
         , DeviceName(std::move(deviceName))
@@ -164,6 +165,9 @@ public:
         }
         if (writeZeroesEnabled) {
             VhdBdevInfo.features |= VHD_BDEV_F_WRITE_ZEROES;
+        }
+        if (readOnly) {
+            VhdBdevInfo.features |= VHD_BDEV_F_READONLY;
         }
     }
 
@@ -265,7 +269,8 @@ public:
         bool writeZeroesEnabled,
         ui32 optimalIoSize,
         void* cookie,
-        const TVhostCallbacks& callbacks) override
+        const TVhostCallbacks& callbacks,
+        bool readOnly) override
     {
         return std::make_shared<TVhostDevice>(
             VhdRequestQueue,
@@ -278,7 +283,8 @@ public:
             writeZeroesEnabled,
             optimalIoSize,
             cookie,
-            callbacks);
+            callbacks,
+            readOnly);
     }
 
     TVhostRequestPtr DequeueRequest() override
