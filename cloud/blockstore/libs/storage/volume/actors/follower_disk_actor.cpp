@@ -398,7 +398,7 @@ void TFollowerDiskActor::HandlePropagateLeadershipToFollowerResponse(
             LogTitle.GetWithTime().c_str(),
             FormatError(msg->GetError()).c_str());
 
-        if (IsNotFoundSchemeShardError(error)) {
+        if (IsDiskNotFoundError(error)) {
             // If it is not possible to transfer leadership because there is no
             // follower disk, then we should go into an error state.
             auto newFollowerInfo = FollowerDiskInfo;
