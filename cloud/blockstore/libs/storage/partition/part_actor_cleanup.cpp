@@ -181,7 +181,10 @@ void TPartitionActor::HandleCleanup(
         commitId,
         IsUseRecreatedBlobMetasOnCleanupEnabled(),
         IsVerifyRecreatedBlobMetasOnCleanupEnabled(),
-        std::move(cleanupQueue));
+        std::move(cleanupQueue),
+        false,              // withCheckpoint
+        InvalidCommitId,    // minCheckpointCommitId
+        InvalidCommitId);   // maxCheckpointCommitId
 
     ExecuteTx(ctx, std::move(tx));
 }
