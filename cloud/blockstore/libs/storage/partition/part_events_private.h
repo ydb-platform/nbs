@@ -146,6 +146,7 @@ struct TAffectedBlob
     ui64 MinCommitIdInCompactionRange = Max<ui64>();
     // Filled only for merged blobs.
     TMaybe<TMergedBlobsSpecificInfo> MergedBlobsSpecificInfo;
+
     std::optional<EChannelDataKind> IndexKind;
 
     TVector<ui16> Offsets;
@@ -809,6 +810,15 @@ struct TEvPartitionPrivate
     };
 
     //
+    // LoadMixedBlocksFilterChunkRequest
+    //
+
+    struct TLoadMixedBlocksFilterChunkRequest
+    {
+        TBlockRange32 Range;
+    };
+
+    //
     // ZeroBlocksCompleted
     //
 
@@ -862,6 +872,7 @@ struct TEvPartitionPrivate
         EvAddConfirmedBlobsCompleted,
         EvConfirmBlobsCompleted,
         EvLoadCompactionMapChunkRequest,
+        EvLoadMixedBlocksFilterChunkRequest,
         EvUpdateResourceMetrics,
         EvResumeFlush,
 
@@ -878,6 +889,7 @@ struct TEvPartitionPrivate
     using TEvSendBackpressureReport = TRequestEvent<TEmpty, EvSendBackpressureReport>;
     using TEvProcessWriteQueue = TRequestEvent<TEmpty, EvProcessWriteQueue>;
     using TEvLoadCompactionMapChunkRequest = TRequestEvent<TLoadCompactionMapChunkRequest, EvLoadCompactionMapChunkRequest>;
+    using TEvLoadMixedBlocksFilterChunkRequest = TRequestEvent<TLoadMixedBlocksFilterChunkRequest, EvLoadMixedBlocksFilterChunkRequest>;
 
     using TEvReadBlocksCompleted = TResponseEvent<TReadBlocksCompleted, EvReadBlocksCompleted>;
     using TEvWriteBlocksCompleted = TResponseEvent<TWriteBlocksCompleted, EvWriteBlocksCompleted>;

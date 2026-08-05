@@ -25,6 +25,7 @@
 #include <cloud/blockstore/libs/storage/partition/model/commit_queue.h>
 #include <cloud/blockstore/libs/storage/partition/model/garbage_queue.h>
 #include <cloud/blockstore/libs/storage/partition/model/mixed_blocks_filter.h>
+#include <cloud/blockstore/libs/storage/partition/model/mixed_blocks_filter_load_state.h>
 #include <cloud/blockstore/libs/storage/partition/model/mixed_index_cache.h>
 #include <cloud/blockstore/libs/storage/partition/model/operation_status.h>
 #include <cloud/blockstore/libs/storage/partition/model/part_counters_wrapper.h>
@@ -319,7 +320,9 @@ public:
         ui32 compactionRangeCountPerRun,
         TPartitionThreadSafeStatePtr threadSafeState,
         ui64 tabletId,
-        const bool mixedBlocksFilterEnabled);
+        const bool mixedBlocksFilterEnabled,
+        const ui64 mixedBlocksFilterRangesToLoadPerTx,
+        const TDuration mixedBlocksFilterAllowedCpuTimePerSecond);
 
 private:
     bool LoadStateFinished = false;
@@ -566,6 +569,8 @@ private:
     TProfilingAllocator MixedIndexCacheAllocator;
     TMixedIndexCache MixedIndexCache;
     std::optional<TMixedBlocksFilter> MixedBlocksFilter;
+    std::optional<TMixedBlocksFilterLoadState>
+        MixedBlocksFilterLoadState;
 
 public:
     void WriteMixedBlock(TPartitionDatabase& db, TMixedBlock block);
@@ -597,6 +602,17 @@ public:
     TMixedBlocksFilter* AccessMixedBlocksFilter()
     {
         return MixedBlocksFilter ? &*MixedBlocksFilter : nullptr;
+    }
+
+    TMixedBlocksFilterLoadState* AccessMixedBlocksFilterLoadState()
+    {
+        return MixedBlocksFilterLoadState ? &*MixedBlocksFilterLoadState
+                                          : nullptr;
+    }
+
+    void FinishMixedBlocksFilterLoad()
+    {
+        MixedBlocksFilterLoadState = std::nullopt;
     }
 
     //

@@ -13321,6 +13321,45 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         UNIT_ASSERT_GE(rangesLoaded, rangeCount);
     }
 
+    Y_UNIT_TEST(ShouldLoadMixedBlocksFilterByCompactionRanges)
+    {
+        constexpr ui32 rangeSize = 1024;
+
+        auto config = DefaultConfig();
+        config.SetMixedBlocksFilterEnabled(true);
+        config.SetMixedBlocksFilterRangesToLoadPerTx(2);
+
+        auto runtime = PrepareTestActorRuntime(config, 5 * rangeSize);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 1), 1);
+        partition.WriteBlocks(TBlockRange32::WithLength(4 * rangeSize, 1), 2);
+        partition.Flush();
+
+        TVector<TBlockRange32> ranges;
+        auto observer = runtime->AddObserver<
+            TEvPartitionPrivate::TEvLoadMixedBlocksFilterChunkRequest>(
+            [&](TEvPartitionPrivate::TEvLoadMixedBlocksFilterChunkRequest::TPtr&
+                    event)
+            {
+                ranges.push_back(event->Get()->Range);
+            });
+
+        partition.RebootTablet();
+        partition.WaitReady();
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(3, ranges.size());
+        UNIT_ASSERT_VALUES_EQUAL(0, ranges[0].Start);
+        UNIT_ASSERT_VALUES_EQUAL(2, ranges[0].Size());
+        UNIT_ASSERT_VALUES_EQUAL(2, ranges[1].Start);
+        UNIT_ASSERT_VALUES_EQUAL(2, ranges[1].Size());
+        UNIT_ASSERT_VALUES_EQUAL(4, ranges[2].Start);
+        UNIT_ASSERT_VALUES_EQUAL(1, ranges[2].Size());
+    }
+
     Y_UNIT_TEST(ShouldRejectWriteIfCompactionMapIsNotLoaded1)
     {
         const ui32 rangeSize = 1024;
