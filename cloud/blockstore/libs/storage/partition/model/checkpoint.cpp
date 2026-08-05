@@ -130,6 +130,14 @@ ui64 TCheckpointStore::GetMinCommitId() const
     return CommitIds.front();
 }
 
+ui64 TCheckpointStore::GetMaxCommitId() const
+{
+    if (CommitIds.empty()) {
+        return 0;
+    }
+    return CommitIds.back();
+}
+
 void TCheckpointStore::GetCommitIds(TVector<ui64>& result) const
 {
     for (auto commitId: CommitIds) {
@@ -282,6 +290,19 @@ ui64 TCheckpointsInFlight::GetMinCommitId() const
         minCommitId = Min(minCommitId, txCommitId);
     }
     return minCommitId;
+}
+
+ui64 TCheckpointsInFlight::GetMaxCommitId() const
+{
+    ui64 maxCommitId = 0;
+    for (const auto& [_, txPair]: PendingTransactions) {
+        const auto& txCommitId = txPair.CommitId;
+        if (!txCommitId) {
+            continue;
+        }
+        maxCommitId = Max(maxCommitId, txCommitId);
+    }
+    return maxCommitId;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

@@ -51,11 +51,25 @@ public:
 
     [[nodiscard]] bool HasBlob(const TPartialBlobId& blobId) const;
 
-    size_t GetCount(ui64 maxCommitId = InvalidCommitId) const;
+    size_t GetCount(ui64 toCommitId = InvalidCommitId) const;
+
+    // Count items after (fromCommitId, fromBlobId) with CommitId <= toCommitId.
+    size_t GetCount(
+        ui64 fromCommitId,
+        const TPartialBlobId& fromBlobId,
+        ui64 toCommitId) const;
 
     TVector<TCleanupQueueItem> GetItems(
-        ui64 maxCommitId = InvalidCommitId,
+        ui64 toCommitId = InvalidCommitId,
         size_t limit = 100) const;
+
+    // Return items after (fromCommitId, fromBlobId) with CommitId <=
+    // toCommitId, up to limit.
+    TVector<TCleanupQueueItem> GetItems(
+        ui64 fromCommitId,
+        const TPartialBlobId& fromBlobId,
+        ui64 toCommitId,
+        size_t limit) const;
 
     ui64 GetQueueBytes() const;
     ui64 GetQueueBlocks() const;

@@ -4103,6 +4103,325 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldCheckpointAwareCleanupEnabled)
+    {
+        auto config = DefaultConfig();
+        config.SetCheckpointAwareCleanupEnabled(true);
+        // Keep background cleanup/GC from interfering with the scenario.
+        config.SetCleanupThreshold(999999);
+        config.SetCollectGarbageThreshold(999999);
+        // Process the entire cleanup queue at once.
+        config.SetMaxBlobsToCleanup(999999);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(TBlockRange32::WithLength(0, MaxBlocksCount), 1);
+        partition.WriteBlocks(TBlockRange32::WithLength(0, MaxBlocksCount), 2);
+        partition.Compaction();
+        partition.WriteBlocks(TBlockRange32::WithLength(0, MaxBlocksCount), 3);
+        partition.CreateCheckpoint("c1");
+        partition.Compaction();
+        partition.WriteBlocks(TBlockRange32::WithLength(0, MaxBlocksCount), 4);
+        partition.Compaction();
+        partition.WriteBlocks(TBlockRange32::WithLength(0, MaxBlocksCount), 5);
+        partition.CreateCheckpoint("c2");
+        partition.Compaction();
+        partition.WriteBlocks(TBlockRange32::WithLength(0, MaxBlocksCount), 6);
+        partition.Compaction();
+
+        ui64 initialCleanupQueueSize = 10;
+
+        auto assertCleanupQueueSize = [&](ui32 expectedSize)
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedSize + 1,
+                stats.GetMergedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedSize * MaxBlocksCount * DefaultBlockSize,
+                stats.GetCleanupQueueBytes());
+            UNIT_ASSERT_VALUES_EQUAL(
+                initialCleanupQueueSize - expectedSize,
+                stats.GetGarbageQueueSize());
+        };
+
+        assertCleanupQueueSize(initialCleanupQueueSize);
+
+        partition.Cleanup();
+        assertCleanupQueueSize(6);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(3),
+            GetBlockContent(partition.ReadBlocks(0, "c1")));
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(5),
+            GetBlockContent(partition.ReadBlocks(0, "c2")));
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(6),
+            GetBlockContent(partition.ReadBlocks(0)));
+
+        partition.DeleteCheckpoint("c1");
+        partition.Cleanup();
+        assertCleanupQueueSize(2);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(5),
+            GetBlockContent(partition.ReadBlocks(0, "c2")));
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(6),
+            GetBlockContent(partition.ReadBlocks(0)));
+
+        partition.DeleteCheckpoint("c2");
+        partition.Cleanup();
+        assertCleanupQueueSize(0);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(6),
+            GetBlockContent(partition.ReadBlocks(0)));
+    }
+
+    Y_UNIT_TEST(ShouldCheckpointAwareCleanupEnabledInBatches)
+    {
+        auto config = DefaultConfig();
+        config.SetCheckpointAwareCleanupEnabled(true);
+        // Keep background cleanup/GC from interfering with the scenario.
+        config.SetCleanupThreshold(999999);
+        config.SetCollectGarbageThreshold(999999);
+        // Process the cleanup in batches of 2 items.
+        config.SetMaxBlobsToCleanup(2);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(TBlockRange32::WithLength(0, MaxBlocksCount), 1);
+        partition.WriteBlocks(TBlockRange32::WithLength(0, MaxBlocksCount), 2);
+        partition.Compaction();
+        partition.WriteBlocks(TBlockRange32::WithLength(0, MaxBlocksCount), 3);
+        partition.CreateCheckpoint("c1");
+        partition.Compaction();
+        partition.WriteBlocks(TBlockRange32::WithLength(0, MaxBlocksCount), 4);
+        partition.Compaction();
+        partition.WriteBlocks(TBlockRange32::WithLength(0, MaxBlocksCount), 5);
+        partition.CreateCheckpoint("c2");
+        partition.Compaction();
+        partition.WriteBlocks(TBlockRange32::WithLength(0, MaxBlocksCount), 6);
+        partition.Compaction();
+
+        auto assertCleanupQueueSize =
+            [&](ui32 expectedCleanupQueueSize, ui32 expectedGarbageQueueSize)
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedCleanupQueueSize + 1,
+                stats.GetMergedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedCleanupQueueSize * MaxBlocksCount * DefaultBlockSize,
+                stats.GetCleanupQueueBytes());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedGarbageQueueSize,
+                stats.GetGarbageQueueSize());
+        };
+
+        assertCleanupQueueSize(10, 0);
+
+        partition.Cleanup();
+        assertCleanupQueueSize(8, 2);
+        // Should skip the next 6 items.
+        partition.Cleanup();
+        assertCleanupQueueSize(8, 2);
+        partition.Cleanup();
+        assertCleanupQueueSize(8, 2);
+        partition.Cleanup();
+        assertCleanupQueueSize(8, 2);
+        partition.Cleanup();
+        assertCleanupQueueSize(6, 4);
+        // No more items to cleanup.
+        partition.Cleanup();
+        assertCleanupQueueSize(6, 4);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(3),
+            GetBlockContent(partition.ReadBlocks(0, "c1")));
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(5),
+            GetBlockContent(partition.ReadBlocks(0, "c2")));
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(6),
+            GetBlockContent(partition.ReadBlocks(0)));
+
+        partition.DeleteCheckpoint("c2");
+
+        // Should skip the first two items.
+        partition.Cleanup();
+        assertCleanupQueueSize(6, 4);
+
+        // Should not process the skipped items again after the tablet reboot.
+        partition.RebootTablet();
+        // Garbage is automatically collected after the tablet reboot.
+        assertCleanupQueueSize(6, 0);
+
+        partition.Cleanup();
+        assertCleanupQueueSize(4, 2);
+
+        partition.Cleanup();
+        assertCleanupQueueSize(2, 4);
+        // No more items to cleanup.
+        partition.Cleanup();
+        assertCleanupQueueSize(2, 4);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(3),
+            GetBlockContent(partition.ReadBlocks(0, "c1")));
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(6),
+            GetBlockContent(partition.ReadBlocks(0)));
+
+        partition.DeleteCheckpoint("c1");
+
+        partition.Cleanup();
+        assertCleanupQueueSize(0, 6);
+        // No more items to cleanup.
+        partition.Cleanup();
+        assertCleanupQueueSize(0, 6);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(6),
+            GetBlockContent(partition.ReadBlocks(0)));
+    }
+
+    Y_UNIT_TEST(
+        ShouldTriggerCleanupWithRespectToCleanupThresholdWhenCheckpointAwareCleanupEnabled)
+    {
+        auto config = DefaultConfig();
+        config.SetCheckpointAwareCleanupEnabled(true);
+        // Should not trigger cleanup if there are less than 3 items in the
+        // cleanup queue.
+        config.SetCleanupThreshold(3);
+        // Keep background GC from interfering with the scenario.
+        config.SetCollectGarbageThreshold(999999);
+        // Process the cleanup in batches of 3 items.
+        config.SetMaxBlobsToCleanup(3);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(TBlockRange32::WithLength(0, MaxBlocksCount), 1);
+        partition.WriteBlocks(TBlockRange32::WithLength(0, MaxBlocksCount), 2);
+        partition.CreateCheckpoint("c1");
+        partition.Compaction();
+        partition.WriteBlocks(TBlockRange32::WithLength(0, MaxBlocksCount), 3);
+        partition.Compaction();
+
+        // Wait for background operations completion.
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(
+                3 * MaxBlocksCount * DefaultBlockSize,
+                stats.GetCleanupQueueBytes());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetGarbageQueueSize());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(2),
+            GetBlockContent(partition.ReadBlocks(0, "c1")));
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(3),
+            GetBlockContent(partition.ReadBlocks(0)));
+
+        partition.WriteBlocks(TBlockRange32::WithLength(0, MaxBlocksCount), 4);
+        partition.Compaction();
+
+        // Wait for background operations completion.
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(
+                2 * MaxBlocksCount * DefaultBlockSize,
+                stats.GetCleanupQueueBytes());
+            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetGarbageQueueSize());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(2),
+            GetBlockContent(partition.ReadBlocks(0, "c1")));
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(4),
+            GetBlockContent(partition.ReadBlocks(0)));
+
+        partition.WriteBlocks(TBlockRange32::WithLength(0, MaxBlocksCount), 5);
+        partition.Compaction();
+
+        // Wait for background operations completion.
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(
+                4 * MaxBlocksCount * DefaultBlockSize,
+                stats.GetCleanupQueueBytes());
+            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetGarbageQueueSize());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(2),
+            GetBlockContent(partition.ReadBlocks(0, "c1")));
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(5),
+            GetBlockContent(partition.ReadBlocks(0)));
+
+        partition.DeleteCheckpoint("c1");
+
+        // Wait for background operations completion.
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(
+                1 * MaxBlocksCount * DefaultBlockSize,
+                stats.GetCleanupQueueBytes());
+            UNIT_ASSERT_VALUES_EQUAL(7, stats.GetGarbageQueueSize());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(5),
+            GetBlockContent(partition.ReadBlocks(0)));
+
+        partition.WriteBlocks(TBlockRange32::WithLength(0, MaxBlocksCount), 6);
+        partition.Compaction();
+
+        // Wait for background operations completion.
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(
+                0 * MaxBlocksCount * DefaultBlockSize,
+                stats.GetCleanupQueueBytes());
+            UNIT_ASSERT_VALUES_EQUAL(10, stats.GetGarbageQueueSize());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(6),
+            GetBlockContent(partition.ReadBlocks(0)));
+    }
+
     Y_UNIT_TEST(ShouldReadFromCheckpoint)
     {
         auto runtime = PrepareTestActorRuntime();

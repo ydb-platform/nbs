@@ -1674,4 +1674,10 @@ message TStorageServiceConfig
     // If set and valid, HiveProxy fallback mode reads tablet boot infos from
     // this file. Otherwise, it uses TabletBootInfoBackupFilePath.
     optional string GoldenTabletBootInfoBackupFilePath = 525;
+
+    // If true, cleanup may remove blobs that were added to the cleanup queue
+    // after a checkpoint but are not actually needed by any checkpoint.
+    // If false (default), cleanup removes only blobs that were added to the
+    // cleanup queue before all checkpoints.
+    optional bool CheckpointAwareCleanupEnabled = 526;
 }
