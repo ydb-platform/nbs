@@ -21,7 +21,17 @@ type AvailabilityMonitoring struct {
 	registry                     metrics.Registry
 	successRateReportingInterval time.Duration
 
-	mutex sync.Mutex
+	mutex     sync.Mutex
+	closeOnce sync.Once
+	cancel    context.CancelFunc
+	done      chan struct{}
+}
+
+func (m *AvailabilityMonitoring) Close() {
+	m.closeOnce.Do(func() {
+		m.cancel()
+		<-m.done
+	})
 }
 
 func (m *AvailabilityMonitoring) AccountQuery(err error) {
@@ -70,6 +80,8 @@ func NewAvailabilityMonitoring(
 	registry metrics.Registry,
 ) *AvailabilityMonitoring {
 
+	ctx, cancel := context.WithCancel(ctx)
+
 	subRegistry := registry.WithTags(map[string]string{
 		"component": component,
 		"host":      host,
@@ -82,9 +94,14 @@ func NewAvailabilityMonitoring(
 		storage:                      storage,
 		registry:                     subRegistry,
 		successRateReportingInterval: successRateReportingInterval,
+
+		cancel: cancel,
+		done:   make(chan struct{}),
 	}
 
 	go func() {
+		defer close(m.done)
+
 		ticker := time.NewTicker(m.successRateReportingInterval)
 		defer ticker.Stop()
 
