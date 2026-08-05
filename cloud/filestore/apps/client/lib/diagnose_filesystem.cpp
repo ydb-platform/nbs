@@ -238,7 +238,7 @@ public:
             {
                 // AverageNodeLatencyMs DESC, LastUsedTimestampUs DESC
                 return std::tie(r.AverageNodeLatencyMs, r.LastUsedTimestampUs) <
-                       std::tie(l.AverageNodeLatencyMs, r.LastUsedTimestampUs);
+                       std::tie(l.AverageNodeLatencyMs, l.LastUsedTimestampUs);
             });
 
         Sort(
