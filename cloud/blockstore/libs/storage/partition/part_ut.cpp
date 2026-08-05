@@ -15365,6 +15365,51 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldNotDescribeZeroedBlocksFromFreshChannel)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        config.SetFreshChannelZeroRequestsEnabled(true);
+
+        auto runtime = PrepareTestActorRuntime(config);
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        const auto writeRange = TBlockRange32::WithLength(1, 4);
+        const auto zeroRange = TBlockRange32::WithLength(2, 2);
+        partition.WriteBlocks(writeRange, char(1));
+        partition.ZeroBlocks(zeroRange);
+
+        runtime->SetEventFilter(
+            [](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                return event->GetTypeRewrite() ==
+                    TEvPartitionPrivate::EvFlushRequest;
+            });
+        partition.RebootTablet();
+        partition.WaitReady();
+
+        const auto response = partition.DescribeBlocks(writeRange);
+        const auto& record = response->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(2, record.FreshBlockRangesSize());
+        UNIT_ASSERT_VALUES_EQUAL(0, record.BlobPiecesSize());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            writeRange.Start,
+            record.GetFreshBlockRanges(0).GetStartIndex());
+        UNIT_ASSERT_VALUES_EQUAL(
+            writeRange.End,
+            record.GetFreshBlockRanges(1).GetStartIndex());
+        for (const auto& range: record.GetFreshBlockRanges()) {
+            UNIT_ASSERT_VALUES_EQUAL(1, range.GetBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent(char(1)),
+                range.GetBlocksContent());
+            UNIT_ASSERT(!zeroRange.Contains(range.GetStartIndex()));
+        }
+    }
+
     Y_UNIT_TEST(ShouldReturnBlobIdForFreshBlocksInDescribeWhenIndexOnlyIsTrue)
     {
         auto config = DefaultConfig();
