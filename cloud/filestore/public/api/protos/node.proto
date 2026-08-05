@@ -420,6 +420,10 @@ message TSetNodeAttrRequest
         F_SET_ATTR_ATIME = 5;
         F_SET_ATTR_MTIME = 6;
         F_SET_ATTR_CTIME = 7;
+
+        // Attach the node (must be an empty directory) to the quota identified
+        // by TUpdate.QuotaId.
+        F_SET_ATTR_QUOTA_ID = 8;
     }
 
     message TUpdate
@@ -431,6 +435,7 @@ message TSetNodeAttrRequest
         uint64 ATime = 5;
         uint64 MTime = 6;
         uint64 CTime = 7;
+        uint32 QuotaId = 8;
     }
 
     // Optional request headers.
