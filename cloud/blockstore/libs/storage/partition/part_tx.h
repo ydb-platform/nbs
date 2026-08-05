@@ -1064,63 +1064,47 @@ struct TTxPartition
         const TBlockRange32 DescribeRange;
         const bool IndexOnly;
 
-        struct TBlockMark
+        struct TEmptyMark
         {
-            TBlockMark() = default;
+            ui32 BlockIndex = 0;
+        };
 
-            TBlockMark(
-                    ui32 blockIndex,
-                    ui64 commitId,
-                    TString content,
-                    TPartialBlobId blobId)
-                : BlockIndex(blockIndex)
-                , CommitId(commitId)
-                , BlobId(blobId)
-                , Content(std::move(content))
-            {}
-
-            TBlockMark(
-                    ui32 blockIndex,
-                    ui64 commitId,
-                    const TPartialBlobId& blobId,
-                    ui16 blobOffset)
-                : BlockIndex(blockIndex)
-                , CommitId(commitId)
-                , BlobId(blobId)
-                , BlobOffset(blobOffset)
-            {}
-
-            bool operator <(const TBlockMark& other) const
-            {
-                return BlobId < other.BlobId ||
-                    (BlobId == other.BlobId && BlobOffset < other.BlobOffset);
-            }
-
+        struct TBlobMark
+        {
             ui32 BlockIndex = 0;
             ui64 CommitId = 0;
             TPartialBlobId BlobId;
             ui16 BlobOffset = 0;
+        };
+
+        struct TFreshMark
+        {
+            ui32 BlockIndex = 0;
+            ui64 CommitId = 0;
+            TPartialBlobId BlobId;
             TString Content;
         };
+
+        using TBlockMark = std::variant<TEmptyMark, TBlobMark, TFreshMark>;
 
         TVector<TBlockMark> Marks;
         bool Interrupted = false;
 
         TDescribeBlocks(
-                TRequestInfoPtr requestInfo,
-                ui64 commitId,
-                const TBlockRange32& describeRange,
-                bool indexOnly)
+            TRequestInfoPtr requestInfo,
+            ui64 commitId,
+            const TBlockRange32& describeRange,
+            bool indexOnly)
             : RequestInfo(std::move(requestInfo))
             , CommitId(commitId)
             , DescribeRange(describeRange)
             , IndexOnly(indexOnly)
-            , Marks(DescribeRange.Size())
+            , Marks(DescribeRange.Size(), TEmptyMark{})
         {}
 
         void Clear()
         {
-            std::fill(Marks.begin(), Marks.end(), TBlockMark());
+            std::fill(Marks.begin(), Marks.end(), TEmptyMark());
         }
 
         ui32 GetBlockMarkIndex(ui32 blockIndex)
@@ -1129,29 +1113,50 @@ struct TTxPartition
             return blockIndex - DescribeRange.Start;
         }
 
-        void MarkBlock(
+        static ui64 GetMarkCommitId(const TBlockMark& mark)
+        {
+            return std::visit(
+                [](const auto& m) -> ui64
+                {
+                    using T = std::decay_t<decltype(m)>;
+                    if constexpr (std::is_same_v<T, TEmptyMark>) {
+                        return 0;
+                    } else {
+                        return m.CommitId;
+                    }
+                },
+                mark);
+        }
+
+        void MarkWithFreshBlock(
             ui32 blockIndex,
             ui64 commitId,
-            TStringBuf content,
-            TPartialBlobId blobId)
+            TPartialBlobId blobId,
+            TStringBuf content)
         {
             auto& mark = Marks[GetBlockMarkIndex(blockIndex)];
-
-            if (mark.CommitId < commitId) {
-                mark = TBlockMark(blockIndex, commitId, TString{content}, blobId);
+            if (GetMarkCommitId(mark) < commitId) {
+                mark = TFreshMark{
+                    .BlockIndex = blockIndex,
+                    .CommitId = commitId,
+                    .BlobId = blobId,
+                    .Content = TString(content)};
             }
         }
 
-        void MarkBlock(
+        void MarkWithBlob(
             ui32 blockIndex,
             ui64 commitId,
-            const TPartialBlobId& blobId,
+            TPartialBlobId blobId,
             ui16 blobOffset)
         {
             auto& mark = Marks[GetBlockMarkIndex(blockIndex)];
-
-            if (mark.CommitId < commitId) {
-                mark = TBlockMark(blockIndex, commitId, blobId, blobOffset);
+            if (GetMarkCommitId(mark) < commitId) {
+                mark = TBlobMark{
+                    .BlockIndex = blockIndex,
+                    .CommitId = commitId,
+                    .BlobId = blobId,
+                    .BlobOffset = blobOffset};
             }
         }
     };
