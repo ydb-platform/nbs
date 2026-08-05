@@ -1656,4 +1656,10 @@ message TStorageServiceConfig
     // if block is present in mixed index. If filter says that block is not present
     // in mixed index, we skip reading mixed index.
     optional bool MixedBlocksFilterEnabled = 520;
+
+    // If true, cleanup may remove blobs that were added to the cleanup queue
+    // after a checkpoint but are not actually needed by any checkpoint.
+    // If false (default), cleanup removes only blobs that were added to the
+    // cleanup queue before all checkpoints.
+    optional bool CheckpointAwareCleanupEnabled = 521;
 }

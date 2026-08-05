@@ -135,6 +135,21 @@ message TPartitionStats
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Progress marker for checkpoint-aware cleanup.
+message TCleanupMilestone
+{
+    // Last processed cleanup queue position (deletion CommitId, BlobId).
+    uint64 CommitId = 1;
+    uint64 BlobCommitId = 2;
+    uint64 BlobUniqueId = 3;
+
+    // Checkpoint commit id range for which this milestone is valid.
+    uint64 MinCheckpointCommitId = 4;
+    uint64 MaxCheckpointCommitId = 5;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 message TPartitionMeta
 {
     // Partition configuration.
@@ -152,6 +167,9 @@ message TPartitionMeta
     // Commit id up to which it's safe to trim fresh log (valid only for
     // partition v1).
     uint64 TrimFreshLogToCommitId = 5;
+
+    // Progress marker for checkpoint-aware cleanup.
+    TCleanupMilestone CleanupMilestone = 6;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

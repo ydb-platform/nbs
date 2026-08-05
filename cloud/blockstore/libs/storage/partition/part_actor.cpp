@@ -1095,6 +1095,15 @@ bool TPartitionActor::IsMixedBlocksFilterEnabled() const
                PartitionConfig.GetDiskId());
 }
 
+bool TPartitionActor::IsCheckpointAwareCleanupEnabled() const
+{
+    return Config->GetCheckpointAwareCleanupEnabled() ||
+           Config->IsCheckpointAwareCleanupFeatureEnabled(
+               PartitionConfig.GetCloudId(),
+               PartitionConfig.GetFolderId(),
+               PartitionConfig.GetDiskId());
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 STFUNC(TPartitionActor::StateBoot)

@@ -726,6 +726,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(AllowGentlePreemptionForRebindVolumesAction,    bool,   false         )\
                                                                                \
     xxx(MixedBlocksFilterEnabled,                   bool,       false         )\
+    xxx(CheckpointAwareCleanupEnabled,              bool,       false         )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 // clang-format on
@@ -769,6 +770,7 @@ BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_STORAGE_DECLARE_CONFIG)
     xxx(UseRecreatedBlobMetasOnCleanup)                                        \
     xxx(DynamicGarbageCompactionThrottling)                                    \
     xxx(MixedBlocksFilter)                                                     \
+    xxx(CheckpointAwareCleanup)                                                \
 
 // BLOCKSTORE_BINARY_FEATURES
 
