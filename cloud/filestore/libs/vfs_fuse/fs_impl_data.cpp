@@ -334,8 +334,10 @@ void TFileSystem::Release(
 {
     auto handle = fi->fh;
     const bool readOnly = (fi->flags & O_ACCMODE) == O_RDONLY;
-    const bool processAsynchronously = Config->GetAsyncDestroyHandleEnabled() ||
-        (Config->GetAsyncDestroyReadOnlyHandleEnabled() && readOnly);
+    const bool processAsynchronously =
+        HandleOpsQueue &&
+        (Config->GetAsyncDestroyHandleEnabled() ||
+         (Config->GetAsyncDestroyReadOnlyHandleEnabled() && readOnly));
 
     STORAGE_DEBUG("Release #" << ino << " @" << handle);
 
