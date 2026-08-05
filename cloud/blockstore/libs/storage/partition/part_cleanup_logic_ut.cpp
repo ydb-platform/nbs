@@ -258,14 +258,20 @@ TTxPartition::TCleanup MakeCleanupArgs(
     const TVector<TCleanupQueueItem>& cleanupQueue,
     ui64 cleanupCommitId,
     bool useRecreatedBlobMeta,
-    bool verifyRecreatedBlobMetasOnCleanup)
+    bool verifyRecreatedBlobMetasOnCleanup,
+    bool withCheckpoint,
+    ui64 minCheckpointCommitId,
+    ui64 maxCheckpointCommitId)
 {
     return TTxPartition::TCleanup(
         MakeIntrusive<TRequestInfo>(),
         cleanupCommitId,
         useRecreatedBlobMeta,
         verifyRecreatedBlobMetasOnCleanup,
-        cleanupQueue);
+        cleanupQueue,
+        withCheckpoint,
+        minCheckpointCommitId,
+        maxCheckpointCommitId);
 }
 
 void RunPrepareAndExecute(
@@ -601,8 +607,10 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
             state.GetCleanupQueue().GetItems(cleanupCommitId),
             cleanupCommitId,
             false,   // useRecreatedBlobMeta
-            false    // verifyRecreatedBlobMetasOnCleanup
-        );
+            false,   // verifyRecreatedBlobMetasOnCleanup
+            false,   // withCheckpoint
+            InvalidCommitId,
+            InvalidCommitId);
 
         executor.ReadTx(
             [&](TPartitionDatabase db)
@@ -674,8 +682,10 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
             cleanupQueue,
             cleanupCommitId,
             false,   // useRecreatedBlobMeta
-            true     // verifyRecreatedBlobMetasOnCleanup
-        );
+            true,    // verifyRecreatedBlobMetasOnCleanup
+            false,   // withCheckpoint
+            InvalidCommitId,
+            InvalidCommitId);
 
         RunPrepareAndExecute(executor, env, state, args);
 
@@ -719,9 +729,11 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
         auto args = MakeCleanupArgs(
             cleanupQueue,
             cleanupCommitId,
-            true,   // useRecreatedBlobMeta
-            false   // verifyRecreatedBlobMetasOnCleanup
-        );
+            true,    // useRecreatedBlobMeta
+            false,   // verifyRecreatedBlobMetasOnCleanup
+            false,   // withCheckpoint
+            InvalidCommitId,
+            InvalidCommitId);
         RunPrepareAndExecute(executor, env, state, args);
 
         UNIT_ASSERT_VALUES_EQUAL(2, args.CleanupQueue.size());
@@ -772,9 +784,11 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
         auto args = MakeCleanupArgs(
             cleanupQueue,
             cleanupCommitId,
-            true,   // useRecreatedBlobMeta
-            false   // verifyRecreatedBlobMetasOnCleanup
-        );
+            true,    // useRecreatedBlobMeta
+            false,   // verifyRecreatedBlobMetasOnCleanup
+            false,   // withCheckpoint
+            InvalidCommitId,
+            InvalidCommitId);
         RunPrepareAndExecute(executor, env, state, args);
 
         UNIT_ASSERT_VALUES_EQUAL(2, args.CleanupQueue.size());
@@ -793,6 +807,294 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
                 UNIT_ASSERT(!HasMergedBlob(db, setup.MergedBlobId, 10, 13));
                 UNIT_ASSERT(HasGarbageBlob(db, setup.MixedBlobId));
                 UNIT_ASSERT(HasGarbageBlob(db, setup.MergedBlobId));
+            });
+    }
+
+    Y_UNIT_TEST(ShouldRespectCheckpointCommitIdBoundsDuringCleanup)
+    {
+        auto state = MakeState();
+        TTestExecutor executor;
+        TTestEnv env;
+
+        executor.WriteTx([](TPartitionDatabase db) { db.InitSchema(); });
+
+        const ui64 minCheckpointCommitId = MakeCommitId(0, 40);
+        const ui64 maxCheckpointCommitId = MakeCommitId(0, 60);
+        const ui64 cleanupCommitId = MakeCommitId(0, 100);
+
+        // deletionCommitId < minCheckpointCommitId => blobs with such
+        // deletion commit id should be cleaned up.
+        const ui64 beforeCheckpointsDeletionCommitId = MakeCommitId(0, 30);
+        // deletionCommitId > minCheckpointCommitId => blobs with such deletion
+        // commit id might be still needed. We should check blob's commit id.
+        const ui64 afterCheckpointsdeletionCommitId = MakeCommitId(0, 80);
+        const ui64 betweenCheckpointsdeletionCommitId = MakeCommitId(0, 50);
+
+        struct TMergedTestCase
+        {
+            ui64 DeletionCommitId = 0;
+            ui64 BlobCommitId = 0;
+            ui32 StartIndex = 0;
+            ui32 EndIndex = 0;
+            bool ShouldBeCleanedUp = false;
+        };
+
+        struct TMixedTestCase
+        {
+            ui64 DeletionCommitId = 0;
+            ui64 BlobCommitId = 0;
+            TVector<ui64> CommitIds;
+            TVector<ui32> BlockIndices;
+            bool ShouldBeCleanedUp = false;
+        };
+
+        const TVector<TMergedTestCase> mergedTestCases = {
+            // DeletionCommitId < minCheckpointCommitId
+            {
+                .DeletionCommitId = beforeCheckpointsDeletionCommitId,
+                .BlobCommitId = MakeCommitId(0, 20),
+                .StartIndex = 0,
+                .EndIndex = 3,
+                .ShouldBeCleanedUp = true,
+            },
+            // BlobCommitId > maxCheckpointCommitId
+            {
+                .DeletionCommitId = afterCheckpointsdeletionCommitId,
+                .BlobCommitId = MakeCommitId(0, 70),
+                .StartIndex = 10,
+                .EndIndex = 13,
+                .ShouldBeCleanedUp = true,
+            },
+            // BlobCommitId < maxCheckpointCommitId
+            {
+                .DeletionCommitId = afterCheckpointsdeletionCommitId,
+                .BlobCommitId = MakeCommitId(0, 50),
+                .StartIndex = 20,
+                .EndIndex = 23,
+                .ShouldBeCleanedUp = false,
+            },
+            // This blob is not needed neither for minCheckpoint nor for
+            // maxCheckpoint. But it might be needed if some other checkpoints
+            // exist.
+            {
+                .DeletionCommitId = betweenCheckpointsdeletionCommitId,
+                .BlobCommitId = MakeCommitId(0, 45),
+                .StartIndex = 30,
+                .EndIndex = 33,
+                .ShouldBeCleanedUp = false,
+            },
+        };
+
+        const TVector<TMixedTestCase> mixedTestCases = {
+            // DeletionCommitId < minCheckpointCommitId.
+            {
+                .DeletionCommitId = beforeCheckpointsDeletionCommitId,
+                .BlobCommitId = MakeCommitId(0, 25),
+                .CommitIds = {MakeCommitId(0, 20), MakeCommitId(0, 21)},
+                .BlockIndices = {4, 5},
+                .ShouldBeCleanedUp = true,
+            },
+            // BlobCommitId > maxCheckpointCommitId.
+            {
+                .DeletionCommitId = afterCheckpointsdeletionCommitId,
+                .BlobCommitId = MakeCommitId(0, 75),
+                .CommitIds = {},
+                .BlockIndices = {14, 15},
+                .ShouldBeCleanedUp = true,
+            },
+            // BlobCommitId < maxCheckpointCommitId.
+            {
+                .DeletionCommitId = afterCheckpointsdeletionCommitId,
+                .BlobCommitId = MakeCommitId(0, 55),
+                .CommitIds = {},
+                .BlockIndices = {24, 25},
+                .ShouldBeCleanedUp = false,
+            },
+            // Commit ids of all blocks > maxCheckpointCommitId.
+            {
+                .DeletionCommitId = afterCheckpointsdeletionCommitId,
+                .BlobCommitId = MakeCommitId(0, 76),
+                .CommitIds = {MakeCommitId(0, 70), MakeCommitId(0, 71)},
+                .BlockIndices = {16, 17},
+                .ShouldBeCleanedUp = true,
+            },
+            // Commit id of some block < maxCheckpointCommitId.
+            {
+                .DeletionCommitId = afterCheckpointsdeletionCommitId,
+                .BlobCommitId = MakeCommitId(0, 77),
+                .CommitIds = {MakeCommitId(0, 50), MakeCommitId(0, 70)},
+                .BlockIndices = {26, 27},
+                .ShouldBeCleanedUp = false,
+            },
+        };
+
+        TVector<TPartialBlobId> mergedBlobIds;
+        TVector<TPartialBlobId> mixedBlobIds;
+
+        for (const auto& tc: mergedTestCases) {
+            mergedBlobIds.push_back(executor.MakeBlobIdWithCommitId(
+                tc.BlobCommitId,
+                tc.EndIndex - tc.StartIndex + 1));
+        }
+        for (const auto& tc: mixedTestCases) {
+            mixedBlobIds.push_back(executor.MakeBlobIdWithCommitId(
+                tc.BlobCommitId,
+                tc.BlockIndices.size()));
+        }
+
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                for (size_t i = 0; i < mergedTestCases.size(); ++i) {
+                    const auto& tc = mergedTestCases[i];
+                    const auto& blobId = mergedBlobIds[i];
+                    db.WriteMergedBlocks(
+                        blobId,
+                        TBlockRange32::MakeClosedInterval(
+                            tc.StartIndex,
+                            tc.EndIndex),
+                        TBlockMask{});
+                    db.WriteBlobMeta(
+                        blobId,
+                        MakeMergedBlobMeta(tc.StartIndex, tc.EndIndex));
+                    db.WriteCleanupQueue(blobId, tc.DeletionCommitId);
+                }
+
+                for (size_t i = 0; i < mixedTestCases.size(); ++i) {
+                    const auto& tc = mixedTestCases[i];
+                    const auto& blobId = mixedBlobIds[i];
+                    if (tc.CommitIds.empty()) {
+                        state.WriteMixedBlocks(db, blobId, tc.BlockIndices, 1);
+                    } else {
+                        Y_ABORT_UNLESS(
+                            tc.CommitIds.size() == tc.BlockIndices.size());
+                        for (size_t j = 0; j < tc.BlockIndices.size(); ++j) {
+                            db.WriteMixedBlock(TMixedBlock(
+                                blobId,
+                                tc.CommitIds[j],
+                                tc.BlockIndices[j],
+                                j,
+                                1));
+                        }
+                    }
+                    db.WriteBlobMeta(
+                        blobId,
+                        MakeMixedBlobMeta(tc.BlockIndices, tc.CommitIds));
+                    db.WriteCleanupQueue(blobId, tc.DeletionCommitId);
+                }
+            });
+
+        ui64 mergedBlocksCount = 0;
+        ui64 mixedBlocksCount = 0;
+        size_t cleanedUpCount = 0;
+        size_t remainingMergedBlobs = 0;
+        size_t remainingMixedBlobs = 0;
+
+        for (size_t i = 0; i < mergedTestCases.size(); ++i) {
+            const auto& tc = mergedTestCases[i];
+            state.GetCleanupQueue().Add(
+                {mergedBlobIds[i], tc.DeletionCommitId, {}});
+            mergedBlocksCount += tc.EndIndex - tc.StartIndex + 1;
+            if (tc.ShouldBeCleanedUp) {
+                ++cleanedUpCount;
+            } else {
+                ++remainingMergedBlobs;
+            }
+        }
+        for (size_t i = 0; i < mixedTestCases.size(); ++i) {
+            const auto& tc = mixedTestCases[i];
+            state.GetCleanupQueue().Add(
+                {mixedBlobIds[i], tc.DeletionCommitId, {}});
+            mixedBlocksCount += tc.BlockIndices.size();
+            if (tc.ShouldBeCleanedUp) {
+                ++cleanedUpCount;
+            } else {
+                ++remainingMixedBlobs;
+            }
+        }
+
+        state.IncrementMergedBlocksCount(mergedBlocksCount);
+        state.IncrementMergedBlobsCount(mergedTestCases.size());
+        state.IncrementMixedBlocksCount(mixedBlocksCount);
+        state.IncrementMixedBlobsCount(mixedTestCases.size());
+
+        auto args = MakeCleanupArgs(
+            state.GetCleanupQueue().GetItems(cleanupCommitId),
+            cleanupCommitId,
+            false,   // useRecreatedBlobMeta
+            false,   // verifyRecreatedBlobMetasOnCleanup
+            true,    // withCheckpoint
+            minCheckpointCommitId,
+            maxCheckpointCommitId);
+
+        RunPrepareAndExecute(executor, env, state, args);
+
+        const size_t remainingCount =
+            remainingMergedBlobs + remainingMixedBlobs;
+        UNIT_ASSERT_VALUES_EQUAL(cleanedUpCount, args.CleanupQueue.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            remainingCount,
+            state.GetCleanupQueue().GetCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            remainingMergedBlobs,
+            state.GetMergedBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            remainingMixedBlobs,
+            state.GetMixedBlobsCount());
+
+        executor.ReadTx(
+            [&](TPartitionDatabase db)
+            {
+                for (size_t i = 0; i < mergedTestCases.size(); ++i) {
+                    const auto& tc = mergedTestCases[i];
+                    const auto& blobId = mergedBlobIds[i];
+                    if (tc.ShouldBeCleanedUp) {
+                        UNIT_ASSERT(!HasMergedBlob(
+                            db,
+                            blobId,
+                            tc.StartIndex,
+                            tc.EndIndex));
+                        UNIT_ASSERT(HasGarbageBlob(db, blobId));
+                    } else {
+                        UNIT_ASSERT(HasMergedBlob(
+                            db,
+                            blobId,
+                            tc.StartIndex,
+                            tc.EndIndex));
+                        UNIT_ASSERT(!HasGarbageBlob(db, blobId));
+
+                        TMaybe<NProto::TBlobMeta> blobMeta;
+                        UNIT_ASSERT(db.ReadBlobMeta(blobId, blobMeta));
+                        UNIT_ASSERT(blobMeta.Defined());
+                    }
+                }
+
+                for (size_t i = 0; i < mixedTestCases.size(); ++i) {
+                    const auto& tc = mixedTestCases[i];
+                    const auto& blobId = mixedBlobIds[i];
+                    const ui64 commitId = tc.CommitIds.empty()
+                                              ? blobId.CommitId()
+                                              : tc.CommitIds[0];
+                    if (tc.ShouldBeCleanedUp) {
+                        UNIT_ASSERT(
+                            !HasMixedBlock(db, tc.BlockIndices[0], commitId));
+                        UNIT_ASSERT(HasGarbageBlob(db, blobId));
+                    } else {
+                        UNIT_ASSERT(
+                            HasMixedBlock(db, tc.BlockIndices[0], commitId));
+                        UNIT_ASSERT(!HasGarbageBlob(db, blobId));
+
+                        TMaybe<NProto::TBlobMeta> blobMeta;
+                        UNIT_ASSERT(db.ReadBlobMeta(blobId, blobMeta));
+                        UNIT_ASSERT(blobMeta.Defined());
+                    }
+                }
+
+                TVector<TCleanupQueueItem> cleanupQueueItems;
+                UNIT_ASSERT(db.ReadCleanupQueue(cleanupQueueItems));
+                UNIT_ASSERT_VALUES_EQUAL(
+                    remainingCount,
+                    cleanupQueueItems.size());
             });
     }
 }
