@@ -205,6 +205,7 @@ jobs:
         clean_ya_dir: ${{ inputs.clean_ya_dir }}
         use_network_cache: ${{ inputs.use_network_cache }}
         target_platform: ${{ inputs.target_platform }}
+        ya_registry_endpoint: ${{ vars.NEBIUS_YA_TOOL_MIRROR || 'https://devtools-registry.s3.yandex.net' }}
 
     - name: Run tests
       uses: ./.github/actions/test
@@ -230,6 +231,7 @@ jobs:
         test_timeout_minutes: ${{ inputs.test_timeout_minutes || '390' }}
         build_duration_seconds: ${{ steps.build.outputs.build_duration_seconds || '0' }}
         truncate_enabled: ${{ inputs.truncate_enabled }}
+        ya_registry_endpoint: ${{ vars.NEBIUS_YA_TOOL_MIRROR || 'https://devtools-registry.s3.yandex.net' }}
 
     - name: mark workload build failed
       if: ${{ failure() && steps.build.outcome == 'failure' && (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') }}
