@@ -23,6 +23,7 @@ type BaseDisk struct {
 	CreateTaskID        string
 	Size                uint64
 	Units               uint64
+	FreeSlots           uint64
 	Ready               bool
 }
 
@@ -192,4 +193,16 @@ type Storage interface {
 	// Used in tests and SRE tools.
 	// Executes both CheckPoolsConsistency and CheckBaseDisksConsistency.
 	CheckConsistency(ctx context.Context) error
+
+	// Returns base disks with imageID and zoneID that belong to a pool,
+	// have zero active units, have been idle longer than |idleDuration|.
+	GetIdleBaseDisks(
+		ctx context.Context,
+		imageID string,
+		zoneID string,
+		idleDuration time.Duration,
+		limit uint64,
+	) ([]BaseDisk, error)
+
+	InitializeIdleTimestamps(ctx context.Context) error
 }

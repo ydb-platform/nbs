@@ -476,6 +476,43 @@ func (s *storageYDB) CheckConsistency(ctx context.Context) error {
 	)
 }
 
+func (s *storageYDB) GetIdleBaseDisks(
+	ctx context.Context,
+	imageID string,
+	zoneID string,
+	idleDuration time.Duration,
+	limit uint64,
+) ([]BaseDisk, error) {
+
+	var baseDisks []BaseDisk
+
+	err := s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			var err error
+			baseDisks, err = s.getIdleBaseDisks(
+				ctx,
+				imageID,
+				zoneID,
+				session,
+				idleDuration,
+				limit,
+			)
+			return err
+		},
+	)
+	return baseDisks, err
+}
+
+func (s *storageYDB) InitializeIdleTimestamps(ctx context.Context) error {
+	return s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			return s.initializeIdleTimestamps(ctx, session)
+		},
+	)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewStorage(
