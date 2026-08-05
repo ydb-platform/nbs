@@ -48,6 +48,10 @@ inputs:
     required: false
     default: ""
     description: "ya make target platform"
+  ya_registry_endpoint:
+    required: false
+    default: "https://devtools-registry.s3.yandex.net"
+    description: "Ya tool mirror endpoint"
 outputs:
   build_error_log_url:
     description: "URL to Markdown summary of ya build errors"
@@ -96,6 +100,7 @@ runs:
       id: build
       shell: bash --noprofile --norc -eo pipefail -x {0}
       env:
+        YA_REGISTRY_ENDPOINT: ${{ inputs.ya_registry_endpoint }}
         NETWORK_RETRY_ATTEMPTS: ${{ inputs.network_retry_attempts }}
         BUILD_PRESET: ${{ inputs.build_preset }}
         BUILD_TARGET: ${{ inputs.build_target }}
