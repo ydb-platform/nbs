@@ -442,11 +442,11 @@ struct TRequestResources
         Drop,
     };
 
-    enum class EOutInvalidationMode
+    enum class EOutMode
     {
         None,
-        Remote,
-        Local,
+        RemoteInvalidate,
+        LocalInvalidate,
     };
 
     TPooledBuffer InBuffer{};
@@ -456,12 +456,10 @@ struct TRequestResources
     NVerbs::TMemoryWindowPtr OutMemoryWindow = NVerbs::NullPtr;
 
     ERecyclePolicy RecyclePolicy = ERecyclePolicy::Recycle;
-    EOutInvalidationMode OutInvalidationMode = EOutInvalidationMode::None;
-    ui32 ExpectedInvalidatedRKey = 0;
+    EOutMode OutMode = EOutMode::None;
+    ui32 RKey = 0;
     ui64 BufferPoolGeneration = 0;
-    bool AbortPending = false;
-    ui32 AbortError = RDMA_PROTO_FAIL;
-    TString AbortMessage;
+    NProto::TError Error;
 
     ui32 Status = RDMA_PROTO_FAIL;
     ui32 ResponseBytes = 0;
@@ -641,20 +639,44 @@ public:
     int GetNegotiatedProtocolVersion() const;
 
 private:
+    enum class EAbortCounter
+    {
+        None,
+        Dequeued,
+        Aborted,
+    };
+
+private:
     // called from CQ thread
+
+    // Request scheduling and completion flow.
     void HandleQueuedRequests() noexcept;
-    void ReleaseRequestResources(TRequestResourcesPtr resources) noexcept;
     void SendRequest(TRequestPtr req, TSendWr* send) noexcept;
     void SendRequest(TRequest* req, TSendWr* send) noexcept;
     void SendRequestCompleted(TSendWr* send) noexcept;
+    int ValidateCompletion(ibv_wc* wc) noexcept;
+    void RecvResponse(TRecvWr* recv) noexcept;
+    void RecvResponseCompleted(TRecvWr* recv, ibv_wc* wc) noexcept;
     void FinalizeRequest(TRequestPtr req) noexcept;
+
+    // Abort/defer flow.
+    void TryAbortRequest(
+        TRequestPtr& req,
+        NProto::TError error) noexcept;
+    void AbortRequest(ui32 reqId) noexcept;
+    void AbortRequest(TRequestPtr req, const NProto::TError& error) noexcept;
+    void AbortRequest(
+        TRequestPtr req,
+        EAbortCounter counter,
+        const NProto::TError& error) noexcept;
+
+    // Invalidation flow.
     void FinalizeInvalidationRequest(TInvalidationRequest* req, bool keepAlive) noexcept;
-    void DrainInvalidationRequestsOnDisconnect() noexcept;
+    void DrainInvalidationRequests() noexcept;
     void PostNextPendingInvalidation(TSendWr* send) noexcept;
     void PostLocalInvalidation(TInvalidationRequest* req, TSendWr* send) noexcept;
     void HandlePendingInvalidationRequests() noexcept;
     void LocalInvalidationCompleted(TSendWr* send) noexcept;
-    void ResetInvalidationState(TRequestResources& resources) noexcept;
     void ConfigureOutInvalidation(
         TRequestResources& resources,
         TRequestMessage* msg,
@@ -665,35 +687,15 @@ private:
         ibv_wc* wc,
         TRequestResources& resources) noexcept;
     bool NeedLocalInvalidation(const TRequestResources& resources) const noexcept;
-    bool ConsumeDeferredAbortIfAny(
-        TRequestResources& resources,
-        ui32& err,
-        TString& msg) noexcept;
-    void AbortRequestWithAccounting(
-        TRequestPtr req,
-        ui32 err,
-        TString msg) noexcept;
-    void AbortDequeuedRequest(
-        TRequestPtr req,
-        ui32 err,
-        TString msg) noexcept;
-    bool TryDeferAbortUntilSendCompletion(
-        TRequestPtr& req,
-        ui32 err,
-        TString msg) noexcept;
-    void AbortActiveRequestOrDefer(
-        TRequestPtr& req,
-        ui32 err,
-        TString msg) noexcept;
-    void FinalizeDeferredAbort(ui32 reqId) noexcept;
-    void RecvResponse(TRecvWr* recv) noexcept;
-    void RecvResponseCompleted(TRecvWr* recv, ibv_wc* wc) noexcept;
-    void AbortRequest(TRequestPtr req, ui32 err, const TString& msg) noexcept;
+
+    // Resource lifetime and allocation helpers.
+    void ReleaseRequestResources(TRequestResourcesPtr resources) noexcept;
     void FreeRequest(TRequest* creq) noexcept;
     NVerbs::TMemoryWindowPtr AcquireMemoryWindowLocked();
     void RecycleMemoryWindowLocked(NVerbs::TMemoryWindowPtr& memoryWindow);
     static ui32 GetNextMemoryWindowRKey(ibv_mw* memoryWindow);
-    int ValidateCompletion(ibv_wc* wc) noexcept;
+
+    // Misc.
     ui64 GetNewReqId() noexcept;
 };
 
@@ -1036,7 +1038,9 @@ ui64 TClientEndpoint::SendRequest(
     req->ClientReqId = clientReqId;
 
     if (!CheckState(EEndpointState::Connected)) {
-        AbortRequest(std::move(req), E_RDMA_UNAVAILABLE, "endpoint is unavailable");
+        AbortRequest(
+            std::move(req),
+            MakeError(E_RDMA_UNAVAILABLE, "endpoint is unavailable"));
         return clientReqId;
     }
 
@@ -1095,17 +1099,17 @@ void TClientEndpoint::HandleQueuedRequests() noexcept
             SendRequest(std::move(req), send);
         }
         else {
-            DrainInvalidationRequestsOnDisconnect();
+            DrainInvalidationRequests();
 
             auto req = QueuedRequests.Dequeue();
             if (!req) {
                 break;
             }
 
-            AbortDequeuedRequest(
+            AbortRequest(
                 std::move(req),
-                E_RDMA_UNAVAILABLE,
-                "endpoint is unavailable");
+                EAbortCounter::Dequeued,
+                MakeError(E_RDMA_UNAVAILABLE, "endpoint is unavailable"));
         }
     }
 }
@@ -1165,20 +1169,19 @@ bool TClientEndpoint::HandleCancelRequests() noexcept
     cancelled.Append(QueuedRequests.DequeueIf(wasCancelled));
     while (auto req = cancelled.Dequeue()) {
         RDMA_TRACE("request " << req->ReqId << " cancelled");
-        AbortDequeuedRequest(
+        AbortRequest(
             std::move(req),
-            E_CANCELLED,
-            "request was cancelled");
+            EAbortCounter::Dequeued,
+            MakeError(E_CANCELLED, "request was cancelled"));
     }
 
     // cancel active requests
     cancelled.Append(ActiveRequests.PopCancelledRequests(clientRequestIdToCancel));
     while (auto req = cancelled.Dequeue()) {
         RDMA_TRACE("request " << req->ReqId << " cancelled");
-        AbortActiveRequestOrDefer(
+        TryAbortRequest(
             req,
-            E_CANCELLED,
-            "request was cancelled");
+            MakeError(E_CANCELLED, "request was cancelled"));
     }
 
     if (!requests) {
@@ -1209,10 +1212,10 @@ void TClientEndpoint::AbortRequests() noexcept
         auto req = QueuedRequests.Dequeue();
         Y_ABORT_UNLESS(req);
         RDMA_DEBUG("abort request " << req->ReqId);
-        AbortDequeuedRequest(
+        AbortRequest(
             std::move(req),
-            E_RDMA_UNAVAILABLE,
-            "endpoint is unavailable");
+            EAbortCounter::Dequeued,
+            MakeError(E_RDMA_UNAVAILABLE, "endpoint is unavailable"));
     }
 
     TSimpleList<TRequest> activeRequests;
@@ -1222,27 +1225,25 @@ void TClientEndpoint::AbortRequests() noexcept
 
     while (auto req = activeRequests.Dequeue()) {
         RDMA_DEBUG("abort request " << req->ReqId);
-        AbortActiveRequestOrDefer(
+        TryAbortRequest(
             req,
-            E_RDMA_UNAVAILABLE,
-            "endpoint is unavailable");
+            MakeError(E_RDMA_UNAVAILABLE, "endpoint is unavailable"));
     }
 
-    DrainInvalidationRequestsOnDisconnect();
+    DrainInvalidationRequests();
 }
 
 void TClientEndpoint::AbortRequest(
     TRequestPtr req,
-    ui32 err, const
-    TString& msg) noexcept
+    const NProto::TError& error) noexcept
 {
     // For timed out/cancelled/aborted requests we cannot guarantee that remote
     // peer invalidated keys, so force MW deallocation instead of recycling.
     req->Resources->RecyclePolicy = TRequestResources::ERecyclePolicy::Drop;
 
     auto len = SerializeError(
-        err,
-        msg,
+        error.GetCode(),
+        error.GetMessage(),
         static_cast<TStringBuf>(req->Resources->OutBuffer));
 
     auto* handler = req->Handler.get();
@@ -1281,79 +1282,97 @@ int TClientEndpoint::ValidateCompletion(ibv_wc* wc) noexcept
 
     if (id.Magic == SendMagic && id.Index < SendWrs.size()) {
         auto* send = &SendWrs[id.Index];
-        const bool isRequestSend = wc->opcode == IBV_WC_SEND;
-        const bool isLocalInvalidate = wc->opcode == IBV_WC_LOCAL_INV;
-        const bool isBindMw = wc->opcode == IBV_WC_BIND_MW;
-
-        if (wc->status == IBV_WC_WR_FLUSH_ERR) {
-            RDMA_TRACE(send << " " << NVerbs::GetStatusString(wc->status));
-            if (isLocalInvalidate) {
-                send->context = nullptr;
-                SendQueue.Push(send);
-            }
-            if (isRequestSend) {
-                const ui32 reqId =
-                    SafeCast<ui32>(reinterpret_cast<uintptr_t>(send->context));
-                Counters->SendRequestCompleted();
-                SendQueue.Push(send);
-                FinalizeDeferredAbort(reqId);
-            }
-            return -1;
-        }
-        if (wc->status != IBV_WC_SUCCESS) {
-            RDMA_ERROR(send << " " << NVerbs::GetStatusString(wc->status));
-            Counters->Error();
-            if (isLocalInvalidate) {
-                send->context = nullptr;
-                SendQueue.Push(send);
-            }
-            if (isRequestSend) {
-                const ui32 reqId =
-                    SafeCast<ui32>(reinterpret_cast<uintptr_t>(send->context));
-                Counters->SendRequestCompleted();
-                SendQueue.Push(send);
-                FinalizeDeferredAbort(reqId);
-            }
-            return -1;
-        }
-        if (!isRequestSend && !isBindMw && !isLocalInvalidate) {
-            RDMA_ERROR(
-                send << " unexpected opcode "
-                     << NVerbs::GetOpcodeName(wc->opcode));
-            Counters->Error();
+        auto handleLocalInvalidationCompletion = [&] {
+            send->context = nullptr;
+            SendQueue.Push(send);
+        };
+        auto handleRequestSendCompletion = [&] {
+            const ui32 reqId =
+                SafeCast<ui32>(reinterpret_cast<uintptr_t>(send->context));
             Counters->SendRequestCompleted();
             SendQueue.Push(send);
-            return -1;
+            AbortRequest(reqId);
+        };
+
+        switch (wc->status) {
+            case IBV_WC_WR_FLUSH_ERR:
+                RDMA_TRACE(send << " " << NVerbs::GetStatusString(wc->status));
+                switch (wc->opcode) {
+                    case IBV_WC_LOCAL_INV:
+                        handleLocalInvalidationCompletion();
+                        break;
+                    case IBV_WC_SEND:
+                        handleRequestSendCompletion();
+                        break;
+                    default:
+                        break;
+                }
+                return -1;
+
+            case IBV_WC_SUCCESS:
+                switch (wc->opcode) {
+                    case IBV_WC_SEND:
+                    case IBV_WC_BIND_MW:
+                    case IBV_WC_LOCAL_INV:
+                        return 0;
+                    default:
+                        RDMA_ERROR(
+                            send << " unexpected opcode "
+                                 << NVerbs::GetOpcodeName(wc->opcode));
+                        Counters->Error();
+                        Counters->SendRequestCompleted();
+                        SendQueue.Push(send);
+                        return -1;
+                }
+
+            default:
+                RDMA_ERROR(send << " " << NVerbs::GetStatusString(wc->status));
+                Counters->Error();
+                switch (wc->opcode) {
+                    case IBV_WC_LOCAL_INV:
+                        handleLocalInvalidationCompletion();
+                        break;
+                    case IBV_WC_SEND:
+                        handleRequestSendCompletion();
+                        break;
+                    default:
+                        break;
+                }
+                return -1;
         }
-        return 0;
     }
 
     if (id.Magic == RecvMagic && id.Index < RecvWrs.size()) {
         auto* recv = &RecvWrs[id.Index];
 
-        if (wc->status == IBV_WC_WR_FLUSH_ERR) {
-            RDMA_TRACE(recv << " " << NVerbs::GetStatusString(wc->status));
-            Counters->RecvResponseCompleted();
-            RecvQueue.Push(recv);
-            return -1;
+        switch (wc->status) {
+            case IBV_WC_WR_FLUSH_ERR:
+                RDMA_TRACE(recv << " " << NVerbs::GetStatusString(wc->status));
+                Counters->RecvResponseCompleted();
+                RecvQueue.Push(recv);
+                return -1;
+
+            case IBV_WC_SUCCESS:
+                switch (wc->opcode) {
+                    case IBV_WC_RECV:
+                        return 0;
+                    default:
+                        RDMA_ERROR(
+                            recv << " unexpected opcode "
+                                 << NVerbs::GetOpcodeName(wc->opcode));
+                        Counters->Error();
+                        Counters->RecvResponseCompleted();
+                        RecvQueue.Push(recv);
+                        return -1;
+                }
+
+            default:
+                RDMA_ERROR(recv << " " << NVerbs::GetStatusString(wc->status));
+                Counters->Error();
+                Counters->RecvResponseCompleted();
+                RecvQueue.Push(recv);
+                return -1;
         }
-        if (wc->status != IBV_WC_SUCCESS) {
-            RDMA_ERROR(recv << " " << NVerbs::GetStatusString(wc->status));
-            Counters->Error();
-            Counters->RecvResponseCompleted();
-            RecvQueue.Push(recv);
-            return -1;
-        }
-        if (wc->opcode != IBV_WC_RECV) {
-            RDMA_ERROR(
-                recv << " unexpected opcode "
-                     << NVerbs::GetOpcodeName(wc->opcode));
-            Counters->Error();
-            Counters->RecvResponseCompleted();
-            RecvQueue.Push(recv);
-            return -1;
-        }
-        return 0;
     }
 
     RDMA_ERROR("unexpected wr_id " << NVerbs::PrintCompletion(wc));
@@ -1430,7 +1449,8 @@ void TClientEndpoint::SendRequest(TRequest* req, TSendWr* send) noexcept
 {
     req->State = ERequestState::SendRequest;
     auto* msg = send->Message();
-    ResetInvalidationState(*req->Resources);
+    req->Resources->OutMode = TRequestResources::EOutMode::None;
+    req->Resources->RKey = 0;
     Counters->SendRequestStarted();
 
     // We only expect SEND completion with sq_sig_all=0.
@@ -1443,7 +1463,7 @@ void TClientEndpoint::SendRequest(TRequest* req, TSendWr* send) noexcept
     ibv_send_wr bindOut = {};
 
     if (Config.UseMemoryWindows) {
-        if (req->Resources->InMemoryWindow && req->Resources->InBuffer.Length) {
+        if (req->Resources->InMemoryWindow) {
             if (req->CallContext) {
                 LWTRACK(
                     BindInBufferStarted,
@@ -1468,7 +1488,7 @@ void TClientEndpoint::SendRequest(TRequest* req, TSendWr* send) noexcept
             tail = &bindIn;
         }
 
-        if (req->Resources->OutMemoryWindow && req->Resources->OutBuffer.Length) {
+        if (req->Resources->OutMemoryWindow) {
             if (req->CallContext) {
                 LWTRACK(
                     BindOutBufferStarted,
@@ -1515,10 +1535,10 @@ void TClientEndpoint::SendRequest(TRequest* req, TSendWr* send) noexcept
         // so no completion/flush can arrive for this request.
         Counters->SendRequestCompleted();
         if (auto failedReq = ActiveRequests.Pop(req->ReqId)) {
-            AbortRequestWithAccounting(
+            AbortRequest(
                 std::move(failedReq),
-                E_RDMA_UNAVAILABLE,
-                "failed to post send request");
+                EAbortCounter::Aborted,
+                MakeError(E_RDMA_UNAVAILABLE, "failed to post send request"));
         }
         Counters->Error();
         Disconnect();
@@ -1534,13 +1554,6 @@ void TClientEndpoint::SendRequest(TRequest* req, TSendWr* send) noexcept
 
 }
 
-void TClientEndpoint::ResetInvalidationState(
-    TRequestResources& resources) noexcept
-{
-    resources.OutInvalidationMode = TRequestResources::EOutInvalidationMode::None;
-    resources.ExpectedInvalidatedRKey = 0;
-}
-
 void TClientEndpoint::ConfigureOutInvalidation(
     TRequestResources& resources,
     TRequestMessage* msg,
@@ -1548,12 +1561,12 @@ void TClientEndpoint::ConfigureOutInvalidation(
 {
     if (PeerSupportsSendWithInvalidate) {
         msg->Unused |= RDMA_REQUEST_FLAG_USE_MEMORY_WINDOWS;
-        resources.OutInvalidationMode =
-            TRequestResources::EOutInvalidationMode::Remote;
-        resources.ExpectedInvalidatedRKey = outRKey;
+        resources.OutMode =
+            TRequestResources::EOutMode::RemoteInvalidate;
+        resources.RKey = outRKey;
     } else {
-        resources.OutInvalidationMode =
-            TRequestResources::EOutInvalidationMode::Local;
+        resources.OutMode =
+            TRequestResources::EOutMode::LocalInvalidate;
     }
 }
 
@@ -1563,8 +1576,8 @@ bool TClientEndpoint::ValidateRemoteInvalidation(
     ibv_wc* wc,
     TRequestResources& resources) noexcept
 {
-    if (resources.OutInvalidationMode !=
-        TRequestResources::EOutInvalidationMode::Remote)
+    if (resources.OutMode !=
+        TRequestResources::EOutMode::RemoteInvalidate)
     {
         return true;
     }
@@ -1577,10 +1590,10 @@ bool TClientEndpoint::ValidateRemoteInvalidation(
         return false;
     }
 
-    if (wc->invalidated_rkey != resources.ExpectedInvalidatedRKey) {
+    if (wc->invalidated_rkey != resources.RKey) {
         RDMA_WARN(
             recv << " unexpected invalidated rkey for request " << reqId
-                 << ", expected " << resources.ExpectedInvalidatedRKey
+                 << ", expected " << resources.RKey
                  << ", got " << wc->invalidated_rkey);
         resources.RecyclePolicy = TRequestResources::ERecyclePolicy::Drop;
         Counters->Error();
@@ -1595,97 +1608,63 @@ bool TClientEndpoint::NeedLocalInvalidation(
 {
     return Config.UseMemoryWindows &&
         resources.RecyclePolicy == TRequestResources::ERecyclePolicy::Recycle &&
-        ((resources.InMemoryWindow && resources.InBuffer.Length) ||
-         (resources.OutInvalidationMode ==
-              TRequestResources::EOutInvalidationMode::Local &&
-          resources.OutMemoryWindow &&
-          resources.OutBuffer.Length));
+        (resources.InMemoryWindow ||
+         (resources.OutMode ==
+              TRequestResources::EOutMode::LocalInvalidate &&
+          resources.OutMemoryWindow));
 }
 
-// Deferred-abort helpers for requests still in SendRequest stage.
-bool TClientEndpoint::ConsumeDeferredAbortIfAny(
-    TRequestResources& resources,
-    ui32& err,
-    TString& msg) noexcept
-{
-    if (!resources.AbortPending) {
-        return false;
-    }
-
-    err = resources.AbortError;
-    msg = std::move(resources.AbortMessage);
-    resources.AbortPending = false;
-    resources.AbortMessage.clear();
-    resources.AbortError = RDMA_PROTO_FAIL;
-    return true;
-}
-
-void TClientEndpoint::AbortRequestWithAccounting(
+void TClientEndpoint::AbortRequest(
     TRequestPtr req,
-    ui32 err,
-    TString msg) noexcept
+    EAbortCounter counter,
+    const NProto::TError& error) noexcept
 {
     if (!req) {
         return;
     }
 
-    Counters->RequestAborted();
-    AbortRequest(std::move(req), err, msg);
-}
-
-void TClientEndpoint::AbortDequeuedRequest(
-    TRequestPtr req,
-    ui32 err,
-    TString msg) noexcept
-{
-    if (!req) {
-        return;
+    switch (counter) {
+        case EAbortCounter::Dequeued:
+            Counters->RequestDequeued();
+            break;
+        case EAbortCounter::Aborted:
+            Counters->RequestAborted();
+            break;
+        case EAbortCounter::None:
+            break;
     }
 
-    Counters->RequestDequeued();
-    AbortRequest(std::move(req), err, msg);
+    AbortRequest(std::move(req), error);
 }
 
-bool TClientEndpoint::TryDeferAbortUntilSendCompletion(
+void TClientEndpoint::TryAbortRequest(
     TRequestPtr& req,
-    ui32 err,
-    TString msg) noexcept
+    NProto::TError error) noexcept
 {
-    if (!req ||
-        !Config.UseMemoryWindows ||
-        req->State != ERequestState::SendRequest ||
-        !req->Resources)
+    if (req &&
+        Config.UseMemoryWindows &&
+        req->State == ERequestState::SendRequest &&
+        req->Resources)
     {
-        return false;
-    }
+        auto& resources = *req->Resources;
+        if (!HasError(resources.Error)) {
+            resources.Error = std::move(error);
+        }
 
-    auto& resources = *req->Resources;
-    if (!resources.AbortPending) {
-        resources.AbortPending = true;
-        resources.AbortError = err;
-        resources.AbortMessage = std::move(msg);
-    }
-
-    ActiveRequests.Push(std::move(req));
-    return true;
-}
-
-void TClientEndpoint::AbortActiveRequestOrDefer(
-    TRequestPtr& req,
-    ui32 err,
-    TString msg) noexcept
-{
-    if (TryDeferAbortUntilSendCompletion(req, err, msg)) {
+        ActiveRequests.Push(std::move(req));
         return;
     }
 
-    AbortRequestWithAccounting(std::move(req), err, std::move(msg));
+    AbortRequest(
+        std::move(req),
+        EAbortCounter::Aborted,
+        std::move(error));
 }
 
-void TClientEndpoint::FinalizeDeferredAbort(ui32 reqId) noexcept
+void TClientEndpoint::AbortRequest(ui32 reqId) noexcept
 {
     auto* req = ActiveRequests.Get(reqId);
-    if (!req || !req->Resources || !req->Resources->AbortPending) {
+    if (!req || !req->Resources || !HasError(req->Resources->Error)) {
         return;
     }
 
@@ -1694,13 +1673,16 @@ void TClientEndpoint::FinalizeDeferredAbort(ui32 reqId) noexcept
         return;
     }
 
-    ui32 err = RDMA_PROTO_FAIL;
-    TString msg;
-    if (!ConsumeDeferredAbortIfAny(*abortedReq->Resources, err, msg)) {
+    if (!HasError(abortedReq->Resources->Error)) {
         return;
     }
+    auto error = std::move(abortedReq->Resources->Error);
+    abortedReq->Resources->Error = NProto::TError();
 
-    AbortRequestWithAccounting(std::move(abortedReq), err, std::move(msg));
+    AbortRequest(
+        std::move(abortedReq),
+        EAbortCounter::Aborted,
+        error);
 }
 
 void TClientEndpoint::SendRequestCompleted(TSendWr* send) noexcept
@@ -1713,7 +1695,7 @@ void TClientEndpoint::SendRequestCompleted(TSendWr* send) noexcept
 
     if (auto* req = ActiveRequests.Get(reqId)) {
         if (Config.UseMemoryWindows) {
-            if (req->Resources->InMemoryWindow && req->Resources->InBuffer.Length) {
+            if (req->Resources->InMemoryWindow) {
                 if (req->CallContext) {
                     LWTRACK(
                         BindInBufferCompleted,
@@ -1721,7 +1703,7 @@ void TClientEndpoint::SendRequestCompleted(TSendWr* send) noexcept
                         req->CallContext->RequestId);
                 }
             }
-            if (req->Resources->OutMemoryWindow && req->Resources->OutBuffer.Length) {
+            if (req->Resources->OutMemoryWindow) {
                 if (req->CallContext) {
                     LWTRACK(
                         BindOutBufferCompleted,
@@ -1739,7 +1721,7 @@ void TClientEndpoint::SendRequestCompleted(TSendWr* send) noexcept
         }
 
         req->State = ERequestState::RecvResponse;
-        FinalizeDeferredAbort(reqId);
+        AbortRequest(reqId);
     }
     // request has already been completed
     HandlePendingInvalidationRequests();
@@ -1797,13 +1779,16 @@ void TClientEndpoint::RecvResponseCompleted(TRecvWr* recv, ibv_wc* wc) noexcept
         return;
     }
 
-    ui32 abortErr = RDMA_PROTO_FAIL;
-    TString abortMsg;
-    if (req->Resources &&
-        ConsumeDeferredAbortIfAny(*req->Resources, abortErr, abortMsg))
+    NProto::TError abortError;
+    if (req->Resources && HasError(req->Resources->Error))
     {
+        abortError = std::move(req->Resources->Error);
+        req->Resources->Error = NProto::TError();
         RecvResponse(recv);
-        AbortRequestWithAccounting(std::move(req), abortErr, std::move(abortMsg));
+        AbortRequest(
+            std::move(req),
+            EAbortCounter::Aborted,
+            abortError);
         return;
     }
 
@@ -2004,7 +1989,7 @@ void TClientEndpoint::FinalizeInvalidationRequest(
     }
 }
 
-void TClientEndpoint::DrainInvalidationRequestsOnDisconnect() noexcept
+void TClientEndpoint::DrainInvalidationRequests() noexcept
 {
     while (PendingInvalidationRequests) {
         auto* req = PendingInvalidationRequests.PopFront();
@@ -2035,15 +2020,15 @@ void TClientEndpoint::PostLocalInvalidation(
     Y_ABORT_UNLESS(req->Resources);
     auto* resources = req->Resources.Get();
     const bool needLocalInvalidateOut =
-        resources->OutInvalidationMode ==
-        TRequestResources::EOutInvalidationMode::Local;
+        resources->OutMode ==
+        TRequestResources::EOutMode::LocalInvalidate;
 
     ibv_send_wr* head = nullptr;
     ibv_send_wr* tail = nullptr;
     ibv_send_wr invIn = {};
     ibv_send_wr invOut = {};
 
-    if (resources->InMemoryWindow && resources->InBuffer.Length) {
+    if (resources->InMemoryWindow) {
         invIn.wr_id = send->wr.wr_id;
         invIn.opcode = IBV_WR_LOCAL_INV;
         invIn.invalidate_rkey = resources->InMemoryWindow->rkey;
@@ -2053,8 +2038,7 @@ void TClientEndpoint::PostLocalInvalidation(
     }
 
     if (needLocalInvalidateOut &&
-        resources->OutMemoryWindow &&
-        resources->OutBuffer.Length)
+        resources->OutMemoryWindow)
     {
         invOut.wr_id = send->wr.wr_id;
         invOut.opcode = IBV_WR_LOCAL_INV;
@@ -2571,7 +2555,7 @@ private:
             for (auto& request: requests) {
                 const ui32 reqId = request->ReqId;
                 const bool alreadyPendingAbort =
-                    request->Resources && request->Resources->AbortPending;
+                    request->Resources && HasError(request->Resources->Error);
                 if (!alreadyPendingAbort) {
                     RDMA_DEBUG(endpoint->Log, "request " << reqId << " timed out");
                 }
@@ -2580,18 +2564,9 @@ private:
                     << "[peer=" << endpoint->Host << ":"
                     << endpoint->Port << "]";
 
-                if (endpoint->TryDeferAbortUntilSendCompletion(
-                        request,
-                        E_TIMEOUT,
-                        timeoutMessage))
-                {
-                    continue;
-                }
-
-                endpoint->AbortRequestWithAccounting(
-                    std::move(request),
-                    E_TIMEOUT,
-                    std::move(timeoutMessage));
+                endpoint->TryAbortRequest(
+                    request,
+                    MakeError(E_TIMEOUT, std::move(timeoutMessage)));
             }
         }
     }
