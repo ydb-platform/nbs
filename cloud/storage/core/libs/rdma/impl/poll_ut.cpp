@@ -20,7 +20,9 @@ TEST(TTimerHandleTest, ShouldTrigger)
 
     size_t signaled = pollHandle.Wait(TDuration::Seconds(1));
     ASSERT_EQ(signaled, 1u);
-    ASSERT_EQ(pollHandle.GetEvent(0).data.ptr, &timerHandle);
+
+    const void* eventData = pollHandle.GetEvent(0).data.ptr;
+    ASSERT_EQ(eventData, static_cast<const void*>(&timerHandle));
 
     signaled = pollHandle.Wait(TDuration::Seconds(1));
     ASSERT_EQ(signaled, 0u);
