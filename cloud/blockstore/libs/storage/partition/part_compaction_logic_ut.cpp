@@ -82,7 +82,10 @@ TPartitionState MakeState(size_t blockCount = 2048, bool mixedBlocksFilterEnable
         1,             // compactionRangeCountPerRun
         std::move(threadSafeState),
         TTestExecutor::TabletId,
-        mixedBlocksFilterEnabled);   // mixedBlocksFilterEnabled
+        mixedBlocksFilterEnabled,   // mixedBlocksFilterEnabled
+        0,                          // mixedBlocksFilterRangesToLoadPerTx
+        TDuration::Zero()           // mixedBlocksFilterAllowedCpuTimePerSecond
+    );
 }
 
 std::shared_ptr<TStorageConfig> MakeStorageConfig(

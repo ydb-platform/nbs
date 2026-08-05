@@ -1656,4 +1656,10 @@ message TStorageServiceConfig
     // if block is present in mixed index. If filter says that block is not present
     // in mixed index, we skip reading mixed index.
     optional bool MixedBlocksFilterEnabled = 520;
+
+    // Maximum number of compaction ranges to load per 1 transaction.
+    optional uint64 MixedBlocksFilterRangesToLoadPerTx = 521;
+
+    // Allowed CPU time spent on loading filter per second (in ms).
+    optional uint64 MixedBlocksFilterAllowedCpuTimePerSecond = 522;
 }

@@ -65,7 +65,9 @@ TPartitionState::TPartitionState(
         ui32 compactionRangeCountPerRun,
         TPartitionThreadSafeStatePtr threadSafeState,
         ui64 tabletId,
-        const bool mixedBlocksFilterEnabled)
+        const bool mixedBlocksFilterEnabled,
+        const ui64 mixedBlocksFilterRangesToLoadPerTx,
+        const TDuration mixedBlocksFilterAllowedCpuTimePerSecond)
     : TPartitionChannelsState(
           meta.GetConfig(),
           freeSpaceConfig,
@@ -103,6 +105,14 @@ TPartitionState::TPartitionState(
             tabletId,
             GetMaxBlocksInBlob(),
             Config.GetBlocksCount());
+
+        if (mixedBlocksFilterRangesToLoadPerTx) {
+            MixedBlocksFilterLoadState.emplace(
+                *MixedBlocksFilter,
+                CeilDiv<ui64>(Config.GetBlocksCount(), GetMaxBlocksInBlob()),
+                mixedBlocksFilterRangesToLoadPerTx,
+                mixedBlocksFilterAllowedCpuTimePerSecond);
+        }
     }
     InitChannels();
 }
