@@ -358,6 +358,42 @@ Y_UNIT_TEST_SUITE(TSideChannelTest)
             E_UNAVAILABLE,
             writeResponse.GetValue().GetError().GetCode(),
             writeResponse.GetValue().GetError().GetMessage());
+
+        writeResponse = NewPromise<NProto::TWriteDataResponse>();
+        success = sideChannel->ExecuteRequest(
+            CC(),
+            WriteReq(1, 1_KB, TString(1_KB, 'a')),
+            writeResponse);
+        UNIT_ASSERT(!success);
+
+        writeResponse = NewPromise<NProto::TWriteDataResponse>();
+        sideChannel->Update(BackendInfo());
+
+        auto e = client->CompleteConnection(&connInfo);
+        UNIT_ASSERT(e);
+        UNIT_ASSERT_VALUES_EQUAL("h1", connInfo.Host);
+        UNIT_ASSERT_VALUES_EQUAL(111, connInfo.Port);
+
+        UNIT_ASSERT(!client->CompleteConnection(&connInfo));
+
+        success = sideChannel->ExecuteRequest(
+            CC(),
+            WriteReq(1, 0, TString(1_KB, 'a')),
+            writeResponse);
+        UNIT_ASSERT(success);
+        UNIT_ASSERT(e->RequestReceived);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TString(1_KB, 'a'),
+            e->Req.GetWriteData().GetBuffer());
+        UNIT_ASSERT(!writeResponse.HasValue());
+
+        UNIT_ASSERT(e->Reply(WriteResp(MakeError(S_ALREADY))));
+
+        UNIT_ASSERT(writeResponse.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_ALREADY,
+            writeResponse.GetValue().GetError().GetCode(),
+            writeResponse.GetValue().GetError().GetMessage());
     }
 
     Y_UNIT_TEST(ShouldSendRequestsToCorrectEndpoint)
