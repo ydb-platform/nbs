@@ -992,14 +992,14 @@ private:
             SessionId = response.GetSession().GetSessionId();
 
             THandleOpsQueuePtr handleOpsQueue;
-            if (FileSystemConfig->GetAsyncDestroyHandleEnabled() ||
-                FileSystemConfig->GetAsyncDestroyReadOnlyHandleEnabled())
-            {
-                if (Config->GetHandleOpsQueuePath()) {
-                    auto path = TFsPath(Config->GetHandleOpsQueuePath()) /
-                        FileSystemConfig->GetFileSystemId() /
-                        SessionId;
-
+            const bool asyncDestroyEnabled =
+                FileSystemConfig->GetAsyncDestroyHandleEnabled() ||
+                FileSystemConfig->GetAsyncDestroyReadOnlyHandleEnabled();
+            if (Config->GetHandleOpsQueuePath()) {
+                const auto path = TFsPath(Config->GetHandleOpsQueuePath()) /
+                                  FileSystemConfig->GetFileSystemId() /
+                                  SessionId;
+                if (path.Exists() || asyncDestroyEnabled) {
                     auto error = CreateAndLockFile(
                         path,
                         HandleOpsQueueFileName,
@@ -1019,13 +1019,13 @@ private:
                         path / HandleOpsQueueFileName,
                         Config->GetHandleOpsQueueSize());
                     HandleOpsQueueInitialized = true;
-                } else {
-                    ReportHandleOpsQueueCreatingOrDeletingError(Sprintf(
-                        "[f:%s][c:%s] Error initializing HandleOpsQueue: "
-                        "HandleOpsQueuePath is not set",
-                        Config->GetFileSystemId().Quote().c_str(),
-                        Config->GetClientId().Quote().c_str()));
                 }
+            } else if (asyncDestroyEnabled) {
+                ReportHandleOpsQueueCreatingOrDeletingError(Sprintf(
+                    "[f:%s][c:%s] Error initializing HandleOpsQueue: "
+                    "HandleOpsQueuePath is not set",
+                    Config->GetFileSystemId().Quote().c_str(),
+                    Config->GetClientId().Quote().c_str()));
             }
 
             if (Config->GetWriteBackCachePath()) {
