@@ -46,7 +46,6 @@ private:
         double TotalNodeLatencyMs = 0;
         double AverageNodeLatencyMs = 0;
         ui64 LastUsedTimestampUs = 0;
-        ui64 NodeStatsCount = 0;
     };
 
     struct TShardLatencyRow
@@ -56,7 +55,6 @@ private:
         double TotalNodeLatencyMs = 0;
         double AverageNodeLatencyMs = 0;
         ui64 LastUsedTimestampUs = 0;
-        ui64 NodeStatsCount = 0;
     };
 
     struct TRequestLatencyComparator
@@ -65,10 +63,9 @@ private:
             const TRequestLatencyRow& lhs,
             const TRequestLatencyRow& rhs) const
         {
-            if (lhs.AverageNodeLatencyMs == rhs.AverageNodeLatencyMs) {
-                return lhs.LastUsedTimestampUs > rhs.LastUsedTimestampUs;
-            }
-            return lhs.AverageNodeLatencyMs < rhs.AverageNodeLatencyMs;
+            // TotalNodeLatencyMs DESC, LastUsedTimestamp DESC
+            return std::tie(rhs.TotalNodeLatencyMs, rhs.LastUsedTimestampUs) <
+                   std::tie(lhs.TotalNodeLatencyMs, lhs.LastUsedTimestampUs);
         }
     };
 
@@ -193,14 +190,14 @@ public:
                 latencyRow.ShardId = latencyStats.GetShardId();
             }
             latencyRow.RequestCount += latencyStats.GetRequestCount();
-            ++latencyRow.NodeStatsCount;
             latencyRow.LastUsedTimestampUs =
                 Max(latencyRow.LastUsedTimestampUs,
                     latencyStats.GetLastAccessedTimestampUs());
             latencyRow.TotalNodeLatencyMs +=
-                latencyStats.GetAverageLatencyDecayedMs();
+                latencyStats.GetAverageLatencyDecayedMs() *
+                latencyStats.GetRequestCount();
             latencyRow.AverageNodeLatencyMs =
-                latencyRow.TotalNodeLatencyMs / latencyRow.NodeStatsCount;
+                latencyRow.TotalNodeLatencyMs / latencyRow.RequestCount;
 
             auto [newRequestLatencyIt, inserted] =
                 requestRanking.insert(latencyRow);
@@ -215,15 +212,14 @@ public:
                 shardLatencyRow.ShardId = latencyStats.GetShardId();
             }
             shardLatencyRow.RequestCount += latencyStats.GetRequestCount();
-            ++shardLatencyRow.NodeStatsCount;
             shardLatencyRow.LastUsedTimestampUs =
                 Max(shardLatencyRow.LastUsedTimestampUs,
                     latencyStats.GetLastAccessedTimestampUs());
             shardLatencyRow.TotalNodeLatencyMs +=
-                latencyStats.GetAverageLatencyDecayedMs();
+                latencyStats.GetAverageLatencyDecayedMs() *
+                latencyStats.GetRequestCount();
             shardLatencyRow.AverageNodeLatencyMs =
-                shardLatencyRow.TotalNodeLatencyMs /
-                shardLatencyRow.NodeStatsCount;
+                shardLatencyRow.TotalNodeLatencyMs / latencyRow.RequestCount;
 
             shard2Latency[latencyStats.GetShardId()] = shardLatencyRow;
         }
@@ -237,8 +233,8 @@ public:
             [](const TShardLatencyRow& l, const TShardLatencyRow& r)
             {
                 // AverageNodeLatencyMs DESC, LastUsedTimestampUs DESC
-                return std::tie(r.AverageNodeLatencyMs, r.LastUsedTimestampUs) <
-                       std::tie(l.AverageNodeLatencyMs, l.LastUsedTimestampUs);
+                return std::tie(r.TotalNodeLatencyMs, r.LastUsedTimestampUs) <
+                       std::tie(l.TotalNodeLatencyMs, l.LastUsedTimestampUs);
             });
 
         Sort(
