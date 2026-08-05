@@ -41,6 +41,11 @@ message CreateSnapshotFromDiskTaskState {
     optional bool ProxyOverlayDiskCreated = 10;
     string BaseSnapshotId = 12;
     string BaseCheckpointId = 13;
+    // Bitmap of the current batch in batched transfer mode: one bit per chunk of
+    // the batch that starts at MilestoneChunkIndex, a set bit means the chunk is
+    // already written. Lets a rescheduled task redo only the not-yet-written
+    // chunks of the current batch. Empty in streaming mode.
+    bytes CurrentBatchBitmap = 14;
 }
 
 message CreateSnapshotFromDiskMetadata {
