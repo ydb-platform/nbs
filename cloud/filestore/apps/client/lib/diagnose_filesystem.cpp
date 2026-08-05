@@ -232,7 +232,7 @@ public:
             shardLatencyRows,
             [](const TShardLatencyRow& l, const TShardLatencyRow& r)
             {
-                // AverageNodeLatencyMs DESC, LastUsedTimestampUs DESC
+                // TotalNodeLatencyMs DESC, LastUsedTimestampUs DESC
                 return std::tie(r.TotalNodeLatencyMs, r.LastUsedTimestampUs) <
                        std::tie(l.TotalNodeLatencyMs, l.LastUsedTimestampUs);
             });
