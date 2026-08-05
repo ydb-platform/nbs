@@ -1,6 +1,7 @@
 #include "tablet_actor.h"
 
 #include "helpers.h"
+#include "tablet_bsproxy_interceptor.h"
 #include "tablet_schema.h"
 
 #include <cloud/filestore/libs/storage/fastshard/impl/mem/memshard.h>
@@ -363,6 +364,8 @@ void TIndexTabletActor::CompleteTx_LoadState(
     }
 
     ScheduleUpdateCounters(ctx);
+
+    EnsureBSProxyInterceptors(ctx, *Info());
 
     if (args.FileSystem.GetIsFastShard()) {
         BecomeAux(ctx, STATE_ADAPTER);

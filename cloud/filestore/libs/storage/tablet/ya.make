@@ -89,6 +89,7 @@ SRCS(
     tablet_actor_writedata.cpp
     tablet_actor_write_compactionmap.cpp
     tablet_actor_zerorange.cpp
+    tablet_bsproxy_interceptor.cpp
     tablet_cache_read_bypass.cpp
     tablet_counters.cpp
     tablet_database.cpp
