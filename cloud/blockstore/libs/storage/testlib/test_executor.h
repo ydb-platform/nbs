@@ -57,6 +57,18 @@ struct TTestExecutor
             Cookie++,
             0);
     }
+
+    TPartialBlobId MakeBlobIdWithCommitId(ui64 commitId, ui32 blocksCount)
+    {
+        const auto [gen, step] = ParseCommitId(commitId);
+        return TPartialBlobId(
+            gen,
+            step,
+            Channel,
+            blocksCount * DefaultBlockSize,
+            Cookie++,
+            0);
+    }
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
