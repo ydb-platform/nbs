@@ -339,7 +339,7 @@ jobs:
     name: Retry tests [build_preset=${{ inputs.build_preset }} component=${{ inputs.component == '' && 'all' || inputs.component }} target_platform=${{ inputs.target_platform == '' && 'native' || inputs.target_platform }}]
     runs-on: ${{ fromJson(needs.calculate-runs-on.outputs.runs-on) }}
     timeout-minutes: 480
-    needs: 
+    needs:
       - calculate-runs-on
       - build-and-test
     # we can only rely on fact that test_failed can be null
