@@ -21,10 +21,10 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define STORAGE_JOURNALLED_DEVICE_SERVER(xxx, ...) \
-    xxx(AcquireDevices, __VA_ARGS__)               \
-    xxx(ReleaseDevices, __VA_ARGS__)               \
-    xxx(ReadPages, __VA_ARGS__)                    \
+#define STORAGE_JOURNALLED_DEVICE_SERVER(xxx, ...)                             \
+    xxx(AcquireDevices, __VA_ARGS__)                                           \
+    xxx(ReleaseDevices, __VA_ARGS__)                                           \
+    xxx(ReadPages, __VA_ARGS__)                                                \
     xxx(WriteLogRecord, __VA_ARGS__)
 
 // STORAGE_JOURNALLED_DEVICE_SERVER
@@ -61,17 +61,17 @@ struct TServerMethod
     }
 };
 
-#define STORAGE_DECLARE_METHOD(name, ...)                      \
-    struct T##name##Method                                     \
-        : TServerMethod<                                       \
-              NProto::T##name##Request,                        \
-              NProto::T##name##Response,                       \
-              &IServerBackend::name,                           \
-              &NProto::TDeviceProtocolRequest::Mutable##name,  \
-              &NProto::TDeviceProtocolResponse::Mutable##name> \
-    {                                                          \
-        constexpr static TStringBuf Name = #name;              \
-    };                                                         \
+#define STORAGE_DECLARE_METHOD(name, ...)                                      \
+    struct T##name##Method                                                     \
+        : TServerMethod<                                                       \
+              NProto::T##name##Request,                                        \
+              NProto::T##name##Response,                                       \
+              &IServerBackend::name,                                           \
+              &NProto::TDeviceProtocolRequest::Mutable##name,                  \
+              &NProto::TDeviceProtocolResponse::Mutable##name>                 \
+    {                                                                          \
+        constexpr static TStringBuf Name = #name;                              \
+    };                                                                         \
     // STORAGE_DECLARE_METHOD
 
 STORAGE_JOURNALLED_DEVICE_SERVER(STORAGE_DECLARE_METHOD)
@@ -136,6 +136,7 @@ class TServer final
     , public TContListener::ICallBack
 {
 private:
+    const TString LoggingComponentName;
     const TNetworkAddress ListenAddress;
     const ILoggingServicePtr Logging;
     const TExecutorPtr Executor;
@@ -228,7 +229,7 @@ TServer::TServer(
 
 void TServer::Start()
 {
-    Log = Logging->CreateLog("DEVICE_SERVER");
+    Log = Logging->CreateLog(LoggingComponentName);
 
     auto future = Executor->Execute([this] { StartListen(); });
     future.GetValueSync();
@@ -436,12 +437,14 @@ void TServer::HandleRequest(
 
 std::shared_ptr<IStartable> CreateServer(
     const TNetworkAddress& listenAddress,
+    TString loggingComponentName,
     ILoggingServicePtr logging,
     TExecutorPtr executor,
     IServerBackendPtr backend)
 {
     return std::make_shared<TServer>(
         listenAddress,
+        std::move(loggingComponentName),
         std::move(logging),
         std::move(executor),
         std::move(backend));

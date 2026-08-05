@@ -45,6 +45,7 @@ struct IServerBackend
 
 std::shared_ptr<IStartable> CreateServer(
     const TNetworkAddress& listenAddress,
+    TString loggingComponentName,
     ILoggingServicePtr logging,
     TExecutorPtr executor,
     IServerBackendPtr backend);
