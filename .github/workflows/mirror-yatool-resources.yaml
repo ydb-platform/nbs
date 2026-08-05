@@ -1,0 +1,81 @@
+name: Mirror yatool resources
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload_resources:
+        type: boolean
+        default: false
+        description: "Upload refreshed resources to S3"
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  YATOOL_RESOURCES_BUCKET: nbs-yatool-resources
+
+jobs:
+  mirror:
+    runs-on: [self-hosted, "self-hosted", "runner_light"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          submodules: false
+          sparse-checkout: |
+            .github/actions/s3cmd
+            .github/actions/mirror_yatool_resources
+            .github/scripts
+            build/mapping.conf.json
+            ya
+          fetch-depth: 1
+          clean: true
+          ref: ${{ github.sha }}
+
+      - name: disable sparse checkout (workaround for actions/checkout/issues/2249)
+        if: ${{ always() }}
+        run: git config core.sparseCheckout false
+        continue-on-error: true
+
+      - name: Prepare AWS CLI
+        if: ${{ inputs.upload_resources }}
+        uses: ./.github/actions/s3cmd
+        with:
+          s3_bucket: ${{ env.YATOOL_RESOURCES_BUCKET }}
+          s3_endpoint: ${{ vars.POOLED_LIGHT_AWS_ENDPOINT }}
+          s3_website_suffix: ${{ vars.POOLED_LIGHT_AWS_WEBSITE_SUFFIX }}
+          s3_key_id: ${{ secrets.POOLED_LIGHT_AWS_KEY_ID }}
+          s3_key_secret: ${{ secrets.POOLED_LIGHT_AWS_SECRET_KEY }}
+          folder_prefix: yatool-resources-
+          build_preset: relwithdebinfo
+          install: false
+
+      - name: Mirror resources and generate patch
+        uses: ./.github/actions/mirror_yatool_resources
+        with:
+          mapping: build/mapping.conf.json
+          bootstrap_script: ya
+          bucket: ${{ env.YATOOL_RESOURCES_BUCKET }}
+          endpoint_url: ${{ vars.POOLED_LIGHT_AWS_ENDPOINT }}
+          local_base_url: https://${{ env.YATOOL_RESOURCES_BUCKET }}.${{ vars.POOLED_LIGHT_AWS_WEBSITE_SUFFIX }}
+          output_dir: ${{ runner.temp }}/yatool-resource-mirror
+          skip_upload: ${{ inputs.upload_resources && 'false' || 'true' }}
+
+      - name: Upload generated patch
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: yatool-resource-localization-patch
+          path: |
+            ${{ runner.temp }}/yatool-resource-mirror/localize-yatool-resources.patch
+            ${{ runner.temp }}/yatool-resource-mirror/summary.md
+
+      - name: Show summary
+        if: ${{ always() }}
+        run: |
+          if [ -f "$RUNNER_TEMP/yatool-resource-mirror/summary.md" ]; then
+              cat "$RUNNER_TEMP/yatool-resource-mirror/summary.md" >> "$GITHUB_STEP_SUMMARY"
+          fi
