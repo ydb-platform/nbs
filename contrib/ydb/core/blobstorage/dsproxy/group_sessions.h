@@ -23,7 +23,6 @@ namespace NKikimr {
                     TIntrusivePtr<NBackpressure::TFlowRecord> FlowRecord;
                     std::optional<bool> ExtraBlockChecksSupport;
                     std::shared_ptr<const TCostModel> CostModel = nullptr;
-                    volatile bool IsConnected = false;
                 };
                 TQueue PutTabletLog;
                 TQueue PutAsyncBlob;
