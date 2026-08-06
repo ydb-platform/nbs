@@ -6,10 +6,70 @@
 
 namespace NThreading {
     namespace NImpl {
+
+template <class>
+class TMoveOnlyFunction;
+
+template <class R, class... Args>
+class TMoveOnlyFunction<R(Args...)> {
+private:
+    struct ICallable {
+        virtual ~ICallable() = default;
+        virtual R Invoke(Args&&... args) = 0;
+    };
+
+    template <class F>
+    struct TCallable final : ICallable {
+        F Func;
+
+        template <class Fn>
+        explicit TCallable(Fn&& fn)
+            : Func(std::forward<Fn>(fn))
+        {
+        }
+
+        R Invoke(Args&&... args) override {
+            return Func(std::forward<Args>(args)...);
+        }
+    };
+
+    std::unique_ptr<ICallable> Callable_;
+
+public:
+    TMoveOnlyFunction() = default;
+    TMoveOnlyFunction(std::nullptr_t) {}
+
+    template <
+        class F,
+        class = std::enable_if_t<
+            !std::is_same_v<std::decay_t<F>, TMoveOnlyFunction>
+        >
+    >
+    TMoveOnlyFunction(F&& f)
+        : Callable_(std::make_unique<TCallable<std::decay_t<F>>>(
+              std::forward<F>(f)))
+    {
+    }
+
+    TMoveOnlyFunction(TMoveOnlyFunction&&) noexcept = default;
+    TMoveOnlyFunction& operator=(TMoveOnlyFunction&&) noexcept = default;
+
+    TMoveOnlyFunction(const TMoveOnlyFunction&) = delete;
+    TMoveOnlyFunction& operator=(const TMoveOnlyFunction&) = delete;
+
+    explicit operator bool() const noexcept {
+        return static_cast<bool>(Callable_);
+    }
+
+    R operator()(Args... args) {
+        return Callable_->Invoke(std::forward<Args>(args)...);
+    }
+};
+
         ////////////////////////////////////////////////////////////////////////////////
 
         template <typename T>
-        using TCallback = std::function<void(const TFuture<T>&)>;
+        using TCallback = TMoveOnlyFunction<void(const TFuture<T>&)>;
 
         template <typename T>
         using TCallbackList = TVector<TCallback<T>>; // TODO: small vector
