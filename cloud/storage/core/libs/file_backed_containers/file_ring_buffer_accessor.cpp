@@ -6,6 +6,7 @@
 
 #include <util/generic/algorithm.h>
 #include <util/string/printf.h>
+#include <util/system/align.h>
 
 namespace NCloud {
 
@@ -46,7 +47,7 @@ NProto::TError ValidateHeader(
     }
 
     if (header.MetadataOffset % sizeof(ui64) != 0) {
-        // Note: metadata offset aligned is enforced regardless of whether
+        // Note: metadata offset alignment is enforced regardless of whether
         // entries are aligned
         return MakeError(Sprintf(
             "Invalid file ring buffer metadata offset %lu (expected to be "
@@ -312,12 +313,6 @@ TFileRingBufferAccessor::TFileRingBufferAccessor(
     : ValidationMode(mode)
 {}
 
-void TFileRingBufferAccessor::UpdateRawData(std::span<char> rawData)
-{
-    RawData = rawData;
-    ResetValidationState();
-}
-
 std::span<char> TFileRingBufferAccessor::GetRawData(ui64 offset, ui64 byteCount)
 {
     Y_ABORT_UNLESS(offset <= RawData.size());
@@ -342,6 +337,12 @@ EValidationStatus TFileRingBufferAccessor::ValidateAndInitialize()
     return status;
 }
 
+void TFileRingBufferAccessor::UpdateRawData(std::span<char> rawData)
+{
+    RawData = rawData;
+    ResetValidationState();
+}
+
 EValidationStatus TFileRingBufferAccessor::DoValidateAndInitialize()
 {
     ResetValidationState();
@@ -349,6 +350,15 @@ EValidationStatus TFileRingBufferAccessor::DoValidateAndInitialize()
     if (RawData.empty()) {
         LastValidationError = MakeError("File is empty");
         return EValidationStatus::NotInitialized;
+    }
+
+    if (AlignDown(RawData.data(), sizeof(ui64)) != RawData.data()) {
+        // Memory mapping is done in multiples of the page size, which is a
+        // multiple of 8 bytes on all supported platforms.
+        // Therefore, the raw data size should be aligned to 8 bytes.
+        LastValidationError =
+            MakeError("Buffer is not aligned to 8 bytes");
+        return EValidationStatus::Failed;
     }
 
     if (RawData.size() < sizeof(TFileRingBufferHeader)) {
@@ -475,9 +485,8 @@ NProto::TError TFileMapFileRingBufferAccessor::ProcessMap()
         static_cast<char*>(FileMap->Ptr()),
         FileMap->MappedSize());
 
-    UpdateRawData(rawData);
-
     if (rawData.size() != fileSize) {
+        UpdateRawData({});
         return MakeError(
             E_IO,
             Sprintf(
@@ -485,6 +494,8 @@ NProto::TError TFileMapFileRingBufferAccessor::ProcessMap()
                 fileSize,
                 rawData.size()));
     }
+
+    UpdateRawData(rawData);
 
     return {};
 }

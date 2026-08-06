@@ -125,6 +125,19 @@ private:
     }
 };
 
+struct TTestFileRingBufferAccessor: public TFileRingBufferAccessor
+{
+public:
+    TTestFileRingBufferAccessor()
+        : TFileRingBufferAccessor(EFileRingBufferAccessorValidationMode::Debug)
+    {}
+
+    void SetRawData(std::span<char> rawData)
+    {
+        UpdateRawData(rawData);
+    }
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -141,6 +154,20 @@ Y_UNIT_TEST_SUITE(TFileRingBufferAccessorTest)
 
         UNIT_ASSERT(b.Accessor.GetHeader() == nullptr);
         UNIT_ASSERT(b.Accessor.GetDataProcessor() == nullptr);
+    }
+
+    Y_UNIT_TEST(ShouldNotValidateNonAlignedBuffer)
+    {
+        TTestFileRingBufferAccessor accessor;
+        ui64 value = 0;
+        auto span = std::span(reinterpret_cast<char*>(&value) + 1, 2);
+
+        accessor.SetRawData(span);
+        auto status = accessor.ValidateAndInitialize();
+        UNIT_ASSERT_VALUES_EQUAL(status, EValidationStatus::Failed);
+        UNIT_ASSERT_STRING_CONTAINS(
+            accessor.GetLastValidationError().GetMessage(),
+            "Buffer is not aligned");
     }
 
     Y_UNIT_TEST(ShouldValidateFileWithZeroHeader)

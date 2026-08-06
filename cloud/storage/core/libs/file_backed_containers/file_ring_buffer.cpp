@@ -263,12 +263,12 @@ private:
 
     bool IsMigrationNeeded() const
     {
-        return Header()->Version != Args.Version;
+        return !IsCorrupted() && Header()->Version != Args.Version;
     }
 
     void TryMigrate()
     {
-        if (!IsMigrationNeeded() || IsCorrupted()) {
+        if (!IsMigrationNeeded()) {
             return;
         }
 
@@ -386,6 +386,7 @@ private:
             Header()->WritePos = 0;
             std::atomic_signal_fence(std::memory_order_seq_cst);
             Header()->ReadPos = 0;
+            std::atomic_signal_fence(std::memory_order_seq_cst);
         }
     }
 
