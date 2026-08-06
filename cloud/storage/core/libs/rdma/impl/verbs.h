@@ -91,7 +91,10 @@ struct IVerbs
         ibv_cq* cq,
         ICompletionHandler* handler) = 0;
 
-    virtual void PostSend(ibv_qp* qp, ibv_send_wr* wr) = 0;
+    virtual void PostSend(
+        ibv_qp* qp,
+        ibv_send_wr* wr,
+        ibv_send_wr** badWr = nullptr) = 0;
     virtual void PostRecv(ibv_qp* qp, ibv_recv_wr* wr) = 0;
 
     // connection manager

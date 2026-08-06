@@ -461,6 +461,11 @@ struct TRequestResources
     ui64 BufferPoolGeneration = 0;
     NProto::TError Error;
 
+    // Cleanup is performed only after the user releases TRequest and every
+    // posted WR chain has either completed or been destroyed with its QP.
+    bool UserReleased = false;
+    ui32 HardwareOwners = 0;
+
     ui32 Status = RDMA_PROTO_FAIL;
     ui32 ResponseBytes = 0;
 };
@@ -565,12 +570,18 @@ private:
     TEventHandle DisconnectEvent;
 
     TSimpleList<TRequest> QueuedRequests;
+    TSimpleList<TRequest> PartiallyPostedRequests;
+    // Send slots whose terminal CQE is no longer required because the current
+    // QP is committed to destruction.
+    std::atomic<size_t> QpOwnedSendSlots = 0;
     TIntrusiveListWithAutoDelete<TInvalidationRequest, TInvalidationRequestDelete>
         PendingInvalidationRequests;
     TIntrusiveListWithAutoDelete<TInvalidationRequest, TInvalidationRequestDelete>
         InflightInvalidationRequests;
     TIntrusiveListWithAutoDelete<TInvalidationRequest, TInvalidationRequestDelete>
         RetiredInvalidationRequests;
+    TIntrusiveListWithAutoDelete<TInvalidationRequest, TInvalidationRequestDelete>
+        PartiallyPostedInvalidationRequests;
     TActiveRequests ActiveRequests;
 
     std::atomic<ui64> ReqIdPool{0};
@@ -664,6 +675,7 @@ private:
         TRequestPtr& req,
         NProto::TError error) noexcept;
     void AbortRequest(ui32 reqId) noexcept;
+    void AbortRequest(ui32 reqId, NProto::TError error) noexcept;
     void AbortRequest(TRequestPtr req, const NProto::TError& error) noexcept;
     void AbortRequest(
         TRequestPtr req,
@@ -690,6 +702,9 @@ private:
 
     // Resource lifetime and allocation helpers.
     void ReleaseRequestResources(TRequestResourcesPtr resources) noexcept;
+    void AcquireHardwareResources(const TRequestResourcesPtr& resources) noexcept;
+    void ReleaseHardwareResources(const TRequestResourcesPtr& resources) noexcept;
+    void CleanupRequestResourcesLocked(TRequestResources& resources) noexcept;
     void FreeRequest(TRequest* creq) noexcept;
     NVerbs::TMemoryWindowPtr AcquireMemoryWindowLocked();
     void RecycleMemoryWindowLocked(NVerbs::TMemoryWindowPtr& memoryWindow);
@@ -912,13 +927,8 @@ void TClientEndpoint::SetupQP()
 
 void TClientEndpoint::DestroyQP() noexcept
 {
-    RetiredInvalidationRequests.Clear();
-
-    with_lock (AllocationLock) {
-        MaxFreeMemoryWindows = 0;
-        FreeMemoryWindows.clear();
-    }
-
+    // QP destruction is the lifetime boundary for every MW which may have
+    // been referenced by a posted WQE.
     if (Connection && Connection->qp) {
         if (Config.VerbsQP) {
             Verbs->DestroyQP(Connection->qp);
@@ -927,6 +937,34 @@ void TClientEndpoint::DestroyQP() noexcept
             Verbs->RdmaDestroyQP(Connection.get());
             Connection->qp = nullptr;
         }
+    }
+
+    while (RetiredInvalidationRequests) {
+        auto* req = RetiredInvalidationRequests.PopFront();
+        Y_ABORT_UNLESS(req);
+        ReleaseHardwareResources(req->Resources);
+        delete req;
+    }
+
+    while (auto req = PartiallyPostedRequests.Dequeue()) {
+        AbortRequest(
+            std::move(req),
+            EAbortCounter::Aborted,
+            MakeError(E_RDMA_UNAVAILABLE, "failed to post complete send chain"));
+    }
+
+    while (PartiallyPostedInvalidationRequests) {
+        auto* req = PartiallyPostedInvalidationRequests.PopFront();
+        Y_ABORT_UNLESS(req);
+        ReleaseHardwareResources(req->Resources);
+        FinalizeInvalidationRequest(req, false);
+    }
+    QpOwnedSendSlots = 0;
+
+    // No WQE can reference windows from the endpoint-local pool anymore.
+    with_lock (AllocationLock) {
+        MaxFreeMemoryWindows = 0;
+        FreeMemoryWindows.clear();
     }
 
     CompletionQueue.reset();
@@ -1283,15 +1321,19 @@ int TClientEndpoint::ValidateCompletion(ibv_wc* wc) noexcept
     if (id.Magic == SendMagic && id.Index < SendWrs.size()) {
         auto* send = &SendWrs[id.Index];
         auto handleLocalInvalidationCompletion = [&] {
+            if (!send->context) {
+                RDMA_TRACE(send << " local invalidate completion already handled");
+                return;
+            }
             send->context = nullptr;
             SendQueue.Push(send);
         };
-        auto handleRequestSendCompletion = [&] {
+        auto handleRequestSendCompletion = [&] (NProto::TError error) {
             const ui32 reqId =
                 SafeCast<ui32>(reinterpret_cast<uintptr_t>(send->context));
             Counters->SendRequestCompleted();
             SendQueue.Push(send);
-            AbortRequest(reqId);
+            AbortRequest(reqId, std::move(error));
         };
 
         switch (wc->status) {
@@ -1302,7 +1344,11 @@ int TClientEndpoint::ValidateCompletion(ibv_wc* wc) noexcept
                         handleLocalInvalidationCompletion();
                         break;
                     case IBV_WC_SEND:
-                        handleRequestSendCompletion();
+                        handleRequestSendCompletion(MakeError(
+                            E_RDMA_UNAVAILABLE,
+                            TStringBuilder()
+                                << "send request flushed: "
+                                << NVerbs::GetStatusString(wc->status)));
                         break;
                     default:
                         break;
@@ -1333,7 +1379,11 @@ int TClientEndpoint::ValidateCompletion(ibv_wc* wc) noexcept
                         handleLocalInvalidationCompletion();
                         break;
                     case IBV_WC_SEND:
-                        handleRequestSendCompletion();
+                        handleRequestSendCompletion(MakeError(
+                            E_RDMA_UNAVAILABLE,
+                            TStringBuilder()
+                                << "send request failed: "
+                                << NVerbs::GetStatusString(wc->status)));
                         break;
                     default:
                         break;
@@ -1520,25 +1570,37 @@ void TClientEndpoint::SendRequest(TRequest* req, TSendWr* send) noexcept
     }
 
     if (tail) {
+        // BIND_MW is asynchronous on HCA, SEND must be fenced to ensure
+        // memory window bindings become visible before request delivery.
+        send->wr.send_flags |= IBV_SEND_FENCE;
         tail->next = &send->wr;
     }
 
+    ibv_send_wr* badWr = nullptr;
     try {
-        Verbs->PostSend(Connection->qp, head);
+        Verbs->PostSend(Connection->qp, head, &badWr);
         RDMA_TRACE(send << " posted");
     }
     catch (const TServiceError& e) {
         RDMA_ERROR(send << " " << e.what());
-        SendQueue.Push(send);
-        // PostSend failed synchronously before any CQE could be produced.
-        // Roll back ActiveSend and complete request locally: no WQE was posted,
-        // so no completion/flush can arrive for this request.
         Counters->SendRequestCompleted();
         if (auto failedReq = ActiveRequests.Pop(req->ReqId)) {
-            AbortRequest(
-                std::move(failedReq),
-                EAbortCounter::Aborted,
-                MakeError(E_RDMA_UNAVAILABLE, "failed to post send request"));
+            if (badWr == head) {
+                // The first WR was rejected, hence nothing from this chain can
+                // still reference the request resources.
+                SendQueue.Push(send);
+                AbortRequest(
+                    std::move(failedReq),
+                    EAbortCounter::Aborted,
+                    MakeError(E_RDMA_UNAVAILABLE, "failed to post send request"));
+            } else {
+                // ibv_post_send may accept a prefix of a linked list. Keep all
+                // resources alive until the QP has been destroyed.
+                failedReq->Resources->RecyclePolicy =
+                    TRequestResources::ERecyclePolicy::Drop;
+                PartiallyPostedRequests.Enqueue(std::move(failedReq));
+                ++QpOwnedSendSlots;
+            }
         }
         Counters->Error();
         Disconnect();
@@ -1663,9 +1725,21 @@ void TClientEndpoint::TryAbortRequest(
 
 void TClientEndpoint::AbortRequest(ui32 reqId) noexcept
 {
+    AbortRequest(reqId, NProto::TError());
+}
+
+void TClientEndpoint::AbortRequest(ui32 reqId, NProto::TError error) noexcept
+{
     auto* req = ActiveRequests.Get(reqId);
-    if (!req || !req->Resources || !HasError(req->Resources->Error)) {
+    if (!req || !req->Resources) {
         return;
+    }
+
+    if (!HasError(req->Resources->Error)) {
+        if (!HasError(error)) {
+            return;
+        }
+        req->Resources->Error = std::move(error);
     }
 
     auto abortedReq = ActiveRequests.Pop(reqId);
@@ -1674,15 +1748,22 @@ void TClientEndpoint::AbortRequest(ui32 reqId) noexcept
     }
 
     if (!HasError(abortedReq->Resources->Error)) {
+        if (!HasError(error)) {
+            return;
+        }
+        abortedReq->Resources->Error = std::move(error);
+    }
+
+    if (!HasError(abortedReq->Resources->Error)) {
         return;
     }
-    auto error = std::move(abortedReq->Resources->Error);
+    auto abortError = std::move(abortedReq->Resources->Error);
     abortedReq->Resources->Error = NProto::TError();
 
     AbortRequest(
         std::move(abortedReq),
         EAbortCounter::Aborted,
-        error);
+        abortError);
 }
 
 void TClientEndpoint::SendRequestCompleted(TSendWr* send) noexcept
@@ -1899,7 +1980,8 @@ bool TClientEndpoint::ClientRequestsFlushed() const
 
 bool TClientEndpoint::WorkRequestsFlushed() const
 {
-    return SendQueue.Size() == Config.SendQueueSize
+    return SendQueue.Size() + QpOwnedSendSlots.load() ==
+            Config.SendQueueSize
         && RecvQueue.Size() == Config.RecvQueueSize
         && !PendingInvalidationRequests
         && !InflightInvalidationRequests;
@@ -1919,34 +2001,68 @@ void TClientEndpoint::ReleaseRequestResources(TRequestResourcesPtr resources) no
     }
 
     with_lock (AllocationLock) {
-        const ui64 currentBufferPoolGeneration = BufferPoolGeneration.load();
-        const bool sameBufferPoolGeneration =
-            resources->BufferPoolGeneration == currentBufferPoolGeneration;
+        resources->UserReleased = true;
+        if (resources->HardwareOwners == 0) {
+            CleanupRequestResourcesLocked(*resources);
+        }
+    }
+}
 
-        if (sameBufferPoolGeneration) {
-            if (Config.UseMemoryWindows &&
-                resources->RecyclePolicy == TRequestResources::ERecyclePolicy::Recycle &&
-                CheckState(EEndpointState::Connected))
-            {
-                RecycleMemoryWindowLocked(resources->InMemoryWindow);
-                RecycleMemoryWindowLocked(resources->OutMemoryWindow);
-            } else {
-                resources->InMemoryWindow = NVerbs::NullPtr;
-                resources->OutMemoryWindow = NVerbs::NullPtr;
-            }
+void TClientEndpoint::AcquireHardwareResources(
+    const TRequestResourcesPtr& resources) noexcept
+{
+    Y_ABORT_UNLESS(resources);
+    with_lock (AllocationLock) {
+        ++resources->HardwareOwners;
+    }
+}
 
-            SendBuffers.ReleaseBuffer(resources->InBuffer);
-            RecvBuffers.ReleaseBuffer(resources->OutBuffer);
-            return;
+void TClientEndpoint::ReleaseHardwareResources(
+    const TRequestResourcesPtr& resources) noexcept
+{
+    if (!resources) {
+        return;
+    }
+
+    with_lock (AllocationLock) {
+        Y_ABORT_UNLESS(resources->HardwareOwners > 0);
+        --resources->HardwareOwners;
+        if (resources->HardwareOwners == 0 && resources->UserReleased) {
+            CleanupRequestResourcesLocked(*resources);
+        }
+    }
+}
+
+void TClientEndpoint::CleanupRequestResourcesLocked(
+    TRequestResources& resources) noexcept
+{
+    const ui64 currentBufferPoolGeneration = BufferPoolGeneration.load();
+    const bool sameBufferPoolGeneration =
+        resources.BufferPoolGeneration == currentBufferPoolGeneration;
+
+    if (sameBufferPoolGeneration) {
+        if (Config.UseMemoryWindows &&
+            resources.RecyclePolicy == TRequestResources::ERecyclePolicy::Recycle &&
+            CheckState(EEndpointState::Connected))
+        {
+            RecycleMemoryWindowLocked(resources.InMemoryWindow);
+            RecycleMemoryWindowLocked(resources.OutMemoryWindow);
+        } else {
+            resources.InMemoryWindow = NVerbs::NullPtr;
+            resources.OutMemoryWindow = NVerbs::NullPtr;
         }
 
-        // Late request destruction after reconnect: buffers belong to an older
-        // pool generation and cannot be safely released via current pool.
-        resources->InMemoryWindow = NVerbs::NullPtr;
-        resources->OutMemoryWindow = NVerbs::NullPtr;
-        resources->InBuffer = {};
-        resources->OutBuffer = {};
+        SendBuffers.ReleaseBuffer(resources.InBuffer);
+        RecvBuffers.ReleaseBuffer(resources.OutBuffer);
+        return;
     }
+
+    // Late cleanup after reconnect: buffers belong to an older pool generation
+    // and cannot be released through the current pool.
+    resources.InMemoryWindow = NVerbs::NullPtr;
+    resources.OutMemoryWindow = NVerbs::NullPtr;
+    resources.InBuffer = {};
+    resources.OutBuffer = {};
 }
 
 void TClientEndpoint::FinalizeRequest(TRequestPtr req) noexcept
@@ -1979,12 +2095,13 @@ void TClientEndpoint::FinalizeInvalidationRequest(
     if (req->Resources) {
         req->Resources->RecyclePolicy = TRequestResources::ERecyclePolicy::Drop;
     }
-    FinalizeRequest(std::move(req->Request));
-
     if (keepAlive) {
         req->Stage = TInvalidationRequest::EStage::Retired;
         RetiredInvalidationRequests.PushBack(req);
+        ++QpOwnedSendSlots;
+        FinalizeRequest(std::move(req->Request));
     } else {
+        FinalizeRequest(std::move(req->Request));
         delete req;
     }
 }
@@ -2062,17 +2179,34 @@ void TClientEndpoint::PostLocalInvalidation(
     req->Stage = TInvalidationRequest::EStage::Inflight;
     InflightInvalidationRequests.PushBack(req);
     send->context = req;
+    Y_ABORT_UNLESS(tail);
+    tail->send_flags |= IBV_SEND_SIGNALED;
+    AcquireHardwareResources(req->Resources);
 
+    ibv_send_wr* badWr = nullptr;
     try {
-        Verbs->PostSend(Connection->qp, head);
+        Verbs->PostSend(Connection->qp, head, &badWr);
         RDMA_TRACE(send << " local invalidate posted");
     } catch (const TServiceError& e) {
         RDMA_ERROR(send << " " << e.what());
         send->context = nullptr;
-        SendQueue.Push(send);
         Counters->Error();
         InflightInvalidationRequests.Remove(req);
-        FinalizeInvalidationRequest(req, true);
+        if (badWr == head) {
+            ReleaseHardwareResources(req->Resources);
+            SendQueue.Push(send);
+            FinalizeInvalidationRequest(req, false);
+        } else {
+            // At least one invalidation was accepted. Its MW must remain alive
+            // until QP destruction even though no terminal WR was posted.
+            req->Stage = TInvalidationRequest::EStage::Retired;
+            if (req->Resources) {
+                req->Resources->RecyclePolicy =
+                    TRequestResources::ERecyclePolicy::Drop;
+            }
+            PartiallyPostedInvalidationRequests.PushBack(req);
+            ++QpOwnedSendSlots;
+        }
         Disconnect();
     }
 }
@@ -2092,17 +2226,18 @@ void TClientEndpoint::HandlePendingInvalidationRequests() noexcept
 void TClientEndpoint::LocalInvalidationCompleted(TSendWr* send) noexcept
 {
     auto* rawReq = static_cast<TInvalidationRequest*>(send->context);
-    send->context = nullptr;
-    SendQueue.Push(send);
-
     if (!rawReq) {
-        RDMA_WARN(send << " local invalidation request not found");
+        RDMA_TRACE(send << " duplicate local invalidation completion");
         return;
     }
+
+    send->context = nullptr;
+    SendQueue.Push(send);
 
     switch (rawReq->Stage) {
         case TInvalidationRequest::EStage::Inflight:
             InflightInvalidationRequests.Remove(rawReq);
+            ReleaseHardwareResources(rawReq->Resources);
             if (!rawReq->Finalized) {
                 FinalizeRequest(std::move(rawReq->Request));
             }
@@ -2112,6 +2247,9 @@ void TClientEndpoint::LocalInvalidationCompleted(TSendWr* send) noexcept
 
         case TInvalidationRequest::EStage::Retired:
             RetiredInvalidationRequests.Remove(rawReq);
+            Y_ABORT_UNLESS(QpOwnedSendSlots.load() > 0);
+            --QpOwnedSendSlots;
+            ReleaseHardwareResources(rawReq->Resources);
             delete rawReq;
             return;
 

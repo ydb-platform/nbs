@@ -167,13 +167,23 @@ struct TVerbs
         return gotWorkCompletions;
     }
 
-    void PostSend(ibv_qp* qp, ibv_send_wr* wr) override
+    void PostSend(
+        ibv_qp* qp,
+        ibv_send_wr* wr,
+        ibv_send_wr** badWr = nullptr) override
     {
         ibv_send_wr* bad = nullptr;
 
         int res = rdma_seterrno(ibv_post_send(qp, wr, &bad));
         if (res < 0) {
+            if (badWr) {
+                *badWr = bad;
+            }
             RDMA_THROW_ERROR("ibv_post_send");
+        }
+
+        if (badWr) {
+            *badWr = nullptr;
         }
     }
 

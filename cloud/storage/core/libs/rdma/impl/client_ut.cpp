@@ -726,6 +726,106 @@ TEST(TRdmaClientTest, ShouldInvalidateMemoryWindowsOnSuccessButNotOnTimeout)
         completeOneRequest(RDMA_PROTO_OK);
 }
 
+TEST(TRdmaClientTest, ShouldKeepInvalidationResourcesUntilQpDestroy)
+{
+        auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+        testContext->AllowConnect = true;
+
+        auto clientConfig = std::make_shared<TClientConfig>();
+        clientConfig->UseMemoryWindows = true;
+        clientConfig->MaxReconnectDelay = 100ms;
+        clientConfig->FlushTimeout = 5s;
+
+        auto client = CreateTestClient(
+            NVerbs::CreateTestVerbs(testContext),
+            CreateLoggingService("console", TLogSettings{TLOG_RESOURCES}),
+            CreateMonitoringServiceStub(),
+            clientConfig);
+
+        client->Start();
+        Y_DEFER {
+            client->Stop();
+        };
+
+        std::atomic<ui32> invalidatedRKey1 = 0;
+        std::atomic<ui32> invalidatedRKey2 = 0;
+        std::atomic<bool> qpDestroyed = false;
+        std::atomic<size_t> prematureMwDestructions = 0;
+        TManualEvent invalidationPosted;
+        TManualEvent qpDestroyedEvent;
+
+        testContext->PostSend = [&](ibv_qp* qp, ibv_send_wr* wr)
+        {
+            if (wr->opcode == IBV_WR_LOCAL_INV) {
+                invalidatedRKey1 = wr->invalidate_rkey;
+                if (wr->next) {
+                    invalidatedRKey2 = wr->next->invalidate_rkey;
+                }
+                // Keep LOCAL_INV in the simulated SQ without producing CQE.
+                invalidationPosted.Signal();
+                return;
+            }
+            PostSend<TRequestMessage>(testContext, qp, wr);
+        };
+        testContext->DestroyQP = [&](rdma_cm_id*) {
+            qpDestroyed = true;
+            qpDestroyedEvent.Signal();
+        };
+        testContext->DestroyMemoryWindow = [&](ibv_mw* mw) {
+            Y_UNUSED(mw);
+            if (!qpDestroyed.load()) {
+                ++prematureMwDestructions;
+            }
+        };
+
+        auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
+
+        TManualEvent responseReceived;
+        auto ctx = std::make_unique<TRequestContext>();
+        ctx->Handler = [&](TStringBuf, TStringBuf, ui32, size_t) {
+            responseReceived.Signal();
+        };
+
+        auto request = endpoint->AllocateRequest(
+            std::make_shared<TClientHandler>(),
+            std::move(ctx),
+            4096,
+            4096);
+        ASSERT_FALSE(HasError(request.GetError()));
+        endpoint->SendRequest(
+            request.ExtractResult(),
+            MakeIntrusive<TCallContextBase>(0u));
+
+        while (true) {
+            with_lock (testContext->CompletionLock) {
+                if (testContext->RecvEvents && testContext->ReqIds) {
+                    auto* recv = testContext->RecvEvents.front();
+                    auto* msg = reinterpret_cast<TResponseMessage*>(
+                        recv->sg_list[0].addr);
+                    Zero(*msg);
+                    InitMessageHeader(msg, RDMA_PROTO_VERSION);
+                    msg->ReqId = testContext->ReqIds.front();
+                    msg->Status = RDMA_PROTO_OK;
+
+                    testContext->ReqIds.pop_front();
+                    testContext->RecvEvents.pop_front();
+                    testContext->ProcessedRecvEvents.push_back(recv);
+                    testContext->CompletionHandle.Set();
+                    break;
+                }
+            }
+        }
+
+        ASSERT_TRUE(invalidationPosted.WaitT(5s));
+        NVerbs::Disconnect(testContext);
+        ASSERT_TRUE(responseReceived.WaitT(5s));
+
+        // Retired LOCAL_INV owns the missing send slot, so teardown must not
+        // wait for FlushTimeout when its terminal CQE never arrives.
+        ASSERT_TRUE(qpDestroyedEvent.WaitT(1s));
+        ASSERT_EQ(0u, prematureMwDestructions.load());
+}
+
 TEST(TRdmaClientTest, ShouldDeferCancelUntilTerminalSendCompletionWithMemoryWindows)
 {
         auto testContext = MakeIntrusive<NVerbs::TTestContext>();
@@ -943,6 +1043,199 @@ TEST(TRdmaClientTest, ShouldDeferTimeoutUntilTerminalSendCompletionWithMemoryWin
 
         NProto::TError error = ParseError(response.Buffer.Head(response.Bytes));
         ASSERT_EQ(E_TIMEOUT, error.GetCode());
+}
+
+TEST(TRdmaClientTest, ShouldAbortOnFirstSendFlushCompletionWithMemoryWindows)
+{
+        auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+        testContext->AllowConnect = true;
+
+        auto verbs = NVerbs::CreateTestVerbs(testContext);
+        auto monitoring = CreateMonitoringServiceStub();
+        auto clientConfig = std::make_shared<TClientConfig>();
+        clientConfig->UseMemoryWindows = true;
+        clientConfig->MaxReconnectDelay = 5s;
+        clientConfig->MaxResponseDelay = 30s;
+
+        auto logging = CreateLoggingService(
+            "console",
+            TLogSettings{TLOG_RESOURCES});
+
+        auto client = CreateTestClient(
+            verbs,
+            logging,
+            monitoring,
+            clientConfig);
+
+        client->Start();
+        Y_DEFER {
+            client->Stop();
+        };
+
+        TManualEvent sendPosted;
+        ibv_send_wr* delayedSend = nullptr;
+
+        testContext->PostSend = [&](ibv_qp* qp, ibv_send_wr* wr)
+        {
+            Y_UNUSED(qp);
+
+            with_lock (testContext->CompletionLock) {
+                for (auto* current = wr; current; current = current->next) {
+                    auto* copy = new ibv_send_wr(*current);
+                    copy->next = nullptr;
+
+                    if (current->opcode == IBV_WR_SEND) {
+                        delayedSend = copy;
+                        sendPosted.Signal();
+                    } else {
+                        testContext->SendEvents.push_back(copy);
+                    }
+                }
+
+                if (testContext->SendEvents) {
+                    testContext->CompletionHandle.Set();
+                }
+            }
+        };
+
+        auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
+
+        struct TResponse
+        {
+            bool Received = false;
+            TStringBuf Buffer;
+            ui32 Status = 0;
+            size_t Bytes = 0;
+        };
+
+        TManualEvent done;
+        TResponse response;
+        auto ctx = std::make_unique<TRequestContext>();
+        ctx->Handler = [&](TStringBuf requestBuffer,
+                           TStringBuf responseBuffer,
+                           ui32 status,
+                           size_t responseBytes)
+        {
+            Y_UNUSED(requestBuffer);
+            response = TResponse{true, responseBuffer, status, responseBytes};
+            done.Signal();
+        };
+
+        auto request = endpoint->AllocateRequest(
+            std::make_shared<TClientHandler>(),
+            std::move(ctx),
+            4096,
+            4096);
+        ASSERT_FALSE(HasError(request.GetError()));
+
+        endpoint->SendRequest(
+            request.ExtractResult(),
+            MakeIntrusive<TCallContextBase>(0u));
+
+        ASSERT_TRUE(sendPosted.WaitT(5s));
+
+        const ui64 delayedSendWrId = delayedSend->wr_id;
+        testContext->HandleCompletionEvent = [&](ibv_wc* wc)
+        {
+            if (wc->wr_id == delayedSendWrId &&
+                wc->opcode == IBV_WC_SEND)
+            {
+                wc->status = IBV_WC_WR_FLUSH_ERR;
+            }
+        };
+
+        {
+            with_lock (testContext->CompletionLock) {
+                ASSERT_NE(nullptr, delayedSend);
+                testContext->SendEvents.push_back(delayedSend);
+                delayedSend = nullptr;
+                testContext->CompletionHandle.Set();
+            }
+        }
+
+        ASSERT_TRUE(done.WaitT(5s));
+        ASSERT_TRUE(response.Received);
+        ASSERT_EQ(static_cast<ui32>(RDMA_PROTO_FAIL), response.Status);
+
+        NProto::TError error = ParseError(response.Buffer.Head(response.Bytes));
+        ASSERT_EQ(E_RDMA_UNAVAILABLE, error.GetCode());
+}
+
+TEST(TRdmaClientTest, ShouldKeepResourcesUntilQpDestroyOnPartialPostSend)
+{
+        auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+        testContext->AllowConnect = true;
+
+        auto clientConfig = std::make_shared<TClientConfig>();
+        clientConfig->UseMemoryWindows = true;
+        clientConfig->MaxReconnectDelay = 5s;
+        clientConfig->FlushTimeout = 1s;
+
+        auto client = CreateTestClient(
+            NVerbs::CreateTestVerbs(testContext),
+            CreateLoggingService("console", TLogSettings{TLOG_RESOURCES}),
+            CreateMonitoringServiceStub(),
+            clientConfig);
+
+        client->Start();
+        Y_DEFER {
+            client->Stop();
+        };
+
+        std::atomic<bool> failPartially = true;
+        testContext->PostSend = [&](ibv_qp* qp, ibv_send_wr* wr)
+        {
+            if (failPartially.load() && wr->next) {
+                // Emulate a provider which accepted the first BIND_MW only.
+                with_lock (testContext->CompletionLock) {
+                    auto* accepted = new ibv_send_wr(*wr);
+                    accepted->next = nullptr;
+                    testContext->SendEvents.push_back(accepted);
+                    testContext->CompletionHandle.Set();
+                }
+                return;
+            }
+            PostSend<TRequestMessage>(testContext, qp, wr);
+        };
+        testContext->GetBadSendWr = [&](ibv_send_wr* wr)
+        {
+            if (failPartially.exchange(false)) {
+                return wr->next;
+            }
+            return static_cast<ibv_send_wr*>(nullptr);
+        };
+
+        auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
+
+        TManualEvent done;
+        ui32 status = 0;
+        NProto::TError error;
+        auto ctx = std::make_unique<TRequestContext>();
+        ctx->Handler = [&](TStringBuf requestBuffer,
+                           TStringBuf responseBuffer,
+                           ui32 responseStatus,
+                           size_t responseBytes)
+        {
+            Y_UNUSED(requestBuffer);
+            status = responseStatus;
+            error = ParseError(responseBuffer.Head(responseBytes));
+            done.Signal();
+        };
+
+        auto request = endpoint->AllocateRequest(
+            std::make_shared<TClientHandler>(),
+            std::move(ctx),
+            4096,
+            4096);
+        ASSERT_FALSE(HasError(request.GetError()));
+
+        endpoint->SendRequest(
+            request.ExtractResult(),
+            MakeIntrusive<TCallContextBase>(0u));
+
+        ASSERT_TRUE(done.WaitT(5s));
+        ASSERT_EQ(static_cast<ui32>(RDMA_PROTO_FAIL), status);
+        ASSERT_EQ(E_RDMA_UNAVAILABLE, error.GetCode());
 }
 
 TEST(TRdmaClientTest, ShouldUseSendWithInvalidateForOutMemoryWindow)

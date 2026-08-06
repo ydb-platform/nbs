@@ -166,7 +166,10 @@ struct TTestVerbs
     struct TMemoryWindow
         : ibv_mw
     {
-        explicit TMemoryWindow(ibv_pd* ibvPd)
+        TTestContextPtr Context;
+
+        TMemoryWindow(ibv_pd* ibvPd, TTestContextPtr context)
+            : Context(std::move(context))
         {
             static std::atomic<ui32> NextRKey{1};
 
@@ -177,7 +180,11 @@ struct TTestVerbs
 
         static int Destroy(ibv_mw* mw)
         {
-            delete static_cast<TMemoryWindow*>(mw);
+            auto* window = static_cast<TMemoryWindow*>(mw);
+            if (window->Context->DestroyMemoryWindow) {
+                window->Context->DestroyMemoryWindow(mw);
+            }
+            delete window;
             return 0;
         }
     };
@@ -185,7 +192,7 @@ struct TTestVerbs
     TMemoryWindowPtr CreateMemoryWindow(ibv_pd* pd) override
     {
         return {
-            static_cast<ibv_mw*>(new TMemoryWindow(pd)),
+            static_cast<ibv_mw*>(new TMemoryWindow(pd, TestContext)),
             TMemoryWindow::Destroy,
         };
     }
@@ -276,7 +283,7 @@ struct TTestVerbs
             TestContext->ProcessedRecvEvents.clear();
         }
 
-        auto handleEvent = [&] (ui64 id, ibv_wc_opcode opcode) {
+        auto buildCompletion = [&] (ui64 id, ibv_wc_opcode opcode) {
             ibv_wc wc = {
                 .wr_id = id,
                 .status = IBV_WC_SUCCESS,
@@ -287,41 +294,66 @@ struct TTestVerbs
                     TestContext->HandleCompletionEvent(&wc);
                 }
             }
-            handler->HandleCompletionEvent(&wc);
+            return wc;
         };
 
         for (const auto& x: sends) {
+            ibv_wc_opcode opcode = IBV_WC_SEND;
             switch (x->opcode) {
                 case IBV_WR_RDMA_READ:
-                    handleEvent(x->wr_id, IBV_WC_RDMA_READ);
+                    opcode = IBV_WC_RDMA_READ;
                     break;
                 case IBV_WR_RDMA_WRITE:
-                    handleEvent(x->wr_id, IBV_WC_RDMA_WRITE);
+                    opcode = IBV_WC_RDMA_WRITE;
                     break;
                 case IBV_WR_BIND_MW:
-                    handleEvent(x->wr_id, IBV_WC_BIND_MW);
+                    opcode = IBV_WC_BIND_MW;
                     break;
                 case IBV_WR_LOCAL_INV:
-                    handleEvent(x->wr_id, IBV_WC_LOCAL_INV);
+                    opcode = IBV_WC_LOCAL_INV;
                     break;
                 default:
-                    handleEvent(x->wr_id, IBV_WC_SEND);
+                    opcode = IBV_WC_SEND;
+                    break;
+            }
+
+            auto wc = buildCompletion(x->wr_id, opcode);
+            const bool signaled = x->send_flags & IBV_SEND_SIGNALED;
+            if (signaled || wc.status != IBV_WC_SUCCESS) {
+                handler->HandleCompletionEvent(&wc);
             }
             delete x;
         }
 
         for (const auto& x: recvs) {
-            handleEvent(x->wr_id, IBV_WC_RECV);
+            auto wc = buildCompletion(x->wr_id, IBV_WC_RECV);
+            handler->HandleCompletionEvent(&wc);
         }
 
         return true;
     }
 
-    void PostSend(ibv_qp* qp, ibv_send_wr* wr) override
+    void PostSend(
+        ibv_qp* qp,
+        ibv_send_wr* wr,
+        ibv_send_wr** badWr = nullptr) override
     {
+        if (badWr) {
+            *badWr = nullptr;
+        }
+
         if (TestContext->PostSend) {
             TestContext->PostSend(qp, wr);
-            return;
+        }
+
+        if (TestContext->GetBadSendWr) {
+            auto* bad = TestContext->GetBadSendWr(wr);
+            if (bad) {
+                if (badWr) {
+                    *badWr = bad;
+                }
+                throw TServiceError(E_FAIL) << "ibv_post_send error";
+            }
         }
     }
 
