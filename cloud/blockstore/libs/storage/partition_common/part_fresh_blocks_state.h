@@ -62,8 +62,6 @@ public:
             return false;
         }
 
-        Y_ABORT_UNLESS(
-            OperationState.Status == NPartition::EOperationStatus::Idle);
         OperationState.SetStatus(
             NPartition::EOperationStatus::Enqueued,
             timestamp);
@@ -152,12 +150,12 @@ public:
         return UntrimmedFreshBlobByteCount;
     }
 
-    [[nodiscard]] ui32 GetUnflushedFreshBlobCount() const
+    [[nodiscard]] ui64 GetUnflushedFreshBlobCount() const
     {
         return UnflushedFreshBlobCount;
     }
 
-    [[nodiscard]] ui32 GetUnflushedFreshBlobByteCount() const
+    [[nodiscard]] ui64 GetUnflushedFreshBlobByteCount() const
     {
         return UnflushedFreshBlobByteCount;
     }
