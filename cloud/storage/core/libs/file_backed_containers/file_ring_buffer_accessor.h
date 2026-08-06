@@ -20,7 +20,7 @@ enum class EFileRingBufferAccessorValidationMode
     // validation
     Normal,
 
-    // Header and DataProcessor will be initialzed even if validation fails.
+    // Header and DataProcessor will be initialized even if validation fails.
     // This mode is intended for repairing corrupted state.
     Debug
 };
@@ -67,10 +67,6 @@ private:
 public:
     explicit TFileRingBufferAccessor(
         EFileRingBufferAccessorValidationMode validationMode);
-
-    // Updating raw data invalidates memory references.
-    // The object must be re-initialized by calling ValidateAndInitialize()
-    void UpdateRawData(std::span<char> rawData);
 
     // Validates raw data and initializes Header, DataProcessor, RawMetadata and
     // Capabilities depending on the validation result and mode
@@ -127,6 +123,11 @@ public:
     {
         return Capabilities;
     }
+
+protected:
+    // Updating raw data invalidates memory references.
+    // The object must be re-initialized by calling ValidateAndInitialize()
+    void UpdateRawData(std::span<char> rawData);
 
 private:
     EFileRingBufferAccessorValidationStatus DoValidateAndInitialize();
