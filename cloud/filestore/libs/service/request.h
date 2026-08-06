@@ -40,9 +40,7 @@ namespace NCloud::NFileStore {
     xxx(ExecuteAction,                      __VA_ARGS__)                       \
 // FILESTORE_SERVICE_METHODS
 
-// New methods must be added outside this macro to preserve
-// EFileStoreRequest values stored in profile logs.
-#define FILESTORE_DATA_METHODS_FIXED_ORDER(xxx, ...)                           \
+#define FILESTORE_DATA_METHODS(xxx, ...)                                       \
     xxx(StatFileStore,                      __VA_ARGS__)                       \
                                                                                \
     xxx(SubscribeSession,                   __VA_ARGS__)                       \
@@ -65,6 +63,7 @@ namespace NCloud::NFileStore {
     xxx(RemoveNodeXAttr,                    __VA_ARGS__)                       \
                                                                                \
     xxx(CreateHandle,                       __VA_ARGS__)                       \
+    xxx(ConfirmCreateHandle,                __VA_ARGS__)                       \
     xxx(DestroyHandle,                      __VA_ARGS__)                       \
                                                                                \
     xxx(AcquireLock,                        __VA_ARGS__)                       \
@@ -74,11 +73,6 @@ namespace NCloud::NFileStore {
     xxx(ReadData,                           __VA_ARGS__)                       \
     xxx(WriteData,                          __VA_ARGS__)                       \
     xxx(AllocateData,                       __VA_ARGS__)                       \
-// FILESTORE_DATA_METHODS_FIXED_ORDER
-
-#define FILESTORE_DATA_METHODS(xxx, ...)                                       \
-    FILESTORE_DATA_METHODS_FIXED_ORDER(xxx, __VA_ARGS__)                       \
-    xxx(ConfirmCreateHandle,                __VA_ARGS__)                       \
 // FILESTORE_DATA_METHODS
 
 #define FILESTORE_LOCAL_DATA_METHODS(xxx, ...)                                 \
@@ -136,7 +130,7 @@ namespace NCloud::NFileStore {
     xxx(Ping,                               __VA_ARGS__)                       \
     xxx(PingSession,                        __VA_ARGS__)                       \
     FILESTORE_SERVICE_METHODS(xxx,          __VA_ARGS__)                       \
-    FILESTORE_DATA_METHODS_FIXED_ORDER(xxx, __VA_ARGS__)                       \
+    FILESTORE_DATA_METHODS(xxx,             __VA_ARGS__)                       \
     FILESTORE_LOCAL_DATA_METHODS(xxx,       __VA_ARGS__)                       \
     xxx(GetSessionEventsStream,             __VA_ARGS__)                       \
     FILESTORE_ENDPOINT_METHODS(xxx,         __VA_ARGS__)                       \
@@ -153,23 +147,72 @@ namespace NCloud::NFileStore {
     FILESTORE_ENDPOINT_METHODS(xxx,         __VA_ARGS__)                       \
 // FILESTORE_PROTO_REQUESTS
 
-#define FILESTORE_DECLARE_REQUEST(name, ...) name,
-
 enum class EFileStoreRequest
 {
-    FILESTORE_REQUESTS(FILESTORE_DECLARE_REQUEST)
-    DescribeData,
-    GenerateBlobIds,
-    AddData,
-    ReadBlob,
-    WriteBlob,
-    ConfirmAddData,
-    CancelAddData,
-    ConfirmCreateHandle,
-    MAX
+    // These values are stored in profile logs and must not be changed.
+    Ping = 0,
+    PingSession = 1,
+    CreateFileStore = 2,
+    DestroyFileStore = 3,
+    AlterFileStore = 4,
+    ResizeFileStore = 5,
+    DescribeFileStoreModel = 6,
+    GetFileStoreInfo = 7,
+    ListFileStores = 8,
+    CreateSession = 9,
+    DestroySession = 10,
+    AddClusterNode = 11,
+    RemoveClusterNode = 12,
+    ListClusterNodes = 13,
+    AddClusterClients = 14,
+    RemoveClusterClients = 15,
+    ListClusterClients = 16,
+    UpdateCluster = 17,
+    CreateCheckpoint = 18,
+    DestroyCheckpoint = 19,
+    ExecuteAction = 20,
+    StatFileStore = 21,
+    SubscribeSession = 22,
+    GetSessionEvents = 23,
+    ResetSession = 24,
+    ResolvePath = 25,
+    CreateNode = 26,
+    UnlinkNode = 27,
+    RenameNode = 28,
+    AccessNode = 29,
+    ListNodes = 30,
+    ReadLink = 31,
+    SetNodeAttr = 32,
+    GetNodeAttr = 33,
+    SetNodeXAttr = 34,
+    GetNodeXAttr = 35,
+    ListNodeXAttr = 36,
+    RemoveNodeXAttr = 37,
+    CreateHandle = 38,
+    DestroyHandle = 39,
+    AcquireLock = 40,
+    ReleaseLock = 41,
+    TestLock = 42,
+    ReadData = 43,
+    WriteData = 44,
+    AllocateData = 45,
+    Fsync = 46,
+    FsyncDir = 47,
+    GetSessionEventsStream = 48,
+    StartEndpoint = 49,
+    StopEndpoint = 50,
+    ListEndpoints = 51,
+    KickEndpoint = 52,
+    DescribeData = 53,
+    GenerateBlobIds = 54,
+    AddData = 55,
+    ReadBlob = 56,
+    WriteBlob = 57,
+    ConfirmAddData = 58,
+    CancelAddData = 59,
+    ConfirmCreateHandle = 60,
+    MAX = 61,
 };
-
-#undef FILESTORE_DECLARE_REQUEST
 
 constexpr size_t FileStoreRequestCount = static_cast<size_t>(EFileStoreRequest::MAX);
 

@@ -381,10 +381,6 @@ void TFileSystem::CompleteAsyncDestroyHandle(
             "DestroyHandle request failed: "
             << "filesystem " << Config->GetFileSystemId()
             << " error: " << FormatError(error));
-        if (GetErrorKind(error) == EErrorKind::ErrorRetriable) {
-            ScheduleProcessHandleOpsQueue();
-            return;
-        }
         ReportAsyncDestroyHandleFailed();
     }
 
@@ -403,10 +399,6 @@ void TFileSystem::CompleteAsyncCreateHandle(
             "ConfirmCreateHandle request failed: "
             << "filesystem " << Config->GetFileSystemId()
             << " error: " << FormatError(error));
-        if (GetErrorKind(error) == EErrorKind::ErrorRetriable) {
-            ScheduleProcessHandleOpsQueue();
-            return;
-        }
         ReportHandleOpsQueueProcessError(
             TStringBuilder()
             << "ConfirmCreateHandle failed permanently, filesystem: "
