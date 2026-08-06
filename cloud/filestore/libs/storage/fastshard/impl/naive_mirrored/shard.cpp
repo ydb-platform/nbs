@@ -58,8 +58,8 @@ static_assert(NodeSlotSize % alignof(TNodeTableSlot) == 0);
 ////////////////////////////////////////////////////////////////////////////////
 // name table layout
 
-constexpr ui64 NameSlotSize = 32;
-constexpr ui32 NameCapacity = 20;
+constexpr ui64 NameSlotSize = 48;
+constexpr ui32 NameCapacity = 36;
 
 struct TNameTableSlot
 {
@@ -251,6 +251,11 @@ public:
         return pageCount;
     }
 
+    [[nodiscard]] ui64 GetSlotCount() const
+    {
+        return Slots->GetSlotCount();
+    }
+
     NProto::TError AllocateNodeId(ui64* nodeId)
     {
         while (true) {
@@ -374,7 +379,7 @@ public:
 class TNameTable
 {
 private:
-    static constexpr ui64 SlotsPerPage = 128;
+    static constexpr ui64 SlotsPerPage = PageSize / NameSlotSize;
     static_assert(SlotsPerPage * NameSlotSize <= PageSize);
 
     using THt = TPersistentHashTable<TStringBuf, TNameTableSlot>;
@@ -407,6 +412,11 @@ public:
             { return CityHash64(name.data(), name.size()); });
 
         return pageCount;
+    }
+
+    [[nodiscard]] ui64 GetSlotCount() const
+    {
+        return Slots->GetSlotCount();
     }
 
     NProto::TError
@@ -484,6 +494,11 @@ public:
             });
 
         return pageCount;
+    }
+
+    [[nodiscard]] ui64 GetSlotCount() const
+    {
+        return Slots->GetSlotCount();
     }
 
     NProto::TError AllocateHandle(ui64* handle)
@@ -596,6 +611,11 @@ public:
         return indexPageCount;
     }
 
+    [[nodiscard]] ui64 GetSlotCount() const
+    {
+        return Slots->GetSlotCount();
+    }
+
     NProto::TError Put(TNodePageClusterSlot v, TWriteContext& writeContext)
     {
         return Slots->Put(writeContext.Lsn, v, writeContext.PageGroups);
@@ -633,6 +653,7 @@ class TPageAllocator
 private:
     std::unique_ptr<TPersistentBitmap> Bitmap;
     ui64 FirstStoragePageClusterId = 0;
+    ui64 BitCount = 0;
 
 public:
     ui64 Init(
@@ -642,8 +663,8 @@ public:
     {
         const ui64 pageClusterCount = CalcPageClusterCount(config);
         const ui64 bitsPerPage = TPersistentBitmap::CalcBitsPerPage(PageSize);
-        const ui64 bitmapPageCount =
-            RoundUp(pageClusterCount, bitsPerPage) / bitsPerPage;
+        BitCount = RoundUp(pageClusterCount, bitsPerPage);
+        const ui64 bitmapPageCount = BitCount / bitsPerPage;
         Bitmap = std::make_unique<TPersistentBitmap>(
             firstPageNo,
             bitmapPageCount,
@@ -655,6 +676,11 @@ public:
             PageClusterPageCount;
 
         return bitmapPageCount + pageClusterCount * PageClusterPageCount;
+    }
+
+    [[nodiscard]] ui64 GetBitCount() const
+    {
+        return BitCount;
     }
 
     NProto::TError Allocate(
@@ -780,6 +806,7 @@ private:
     const NProtoPrivate::TPersistentFastShardConfig Config;
 
     IStorageGroupPtr Storage;
+    std::atomic<bool> Acquired = false;
     IPageStorePtr PageStore;
     TNodeTable Nodes;
     TNameTable Names;
@@ -840,6 +867,12 @@ public:
         firstPageNo += pageAllocatorPageCount;
 
         SILK_INFO("slack space offset=%lu", firstPageNo * PageSize);
+
+        SILK_INFO("node table slots=%lu", Nodes.GetSlotCount());
+        SILK_INFO("name table slots=%lu", Names.GetSlotCount());
+        SILK_INFO("handle table slots=%lu", Handles.GetSlotCount());
+        SILK_INFO("page index table slots=%lu", PageIndex.GetSlotCount());
+        SILK_INFO("page allocator bits=%lu", PageAllocator.GetBitCount());
     }
 
 public:
@@ -847,6 +880,10 @@ public:
         NProtoPrivate::TGetNodeAttrBatchRequest request)
     {
         NProtoPrivate::TGetNodeAttrBatchResponse response;
+        if (!AcquireIfNeeded(response)) {
+            return response;
+        }
+
         if (request.GetNodeId() != RootNodeId) {
             *response.MutableError() = ErrorInvalidParent(request.GetNodeId());
             return response;
@@ -856,6 +893,9 @@ public:
             NProto::TNodeAttr attr;
             auto error = GetNodeAttr(request.GetNodeId(), name, &attr);
             if (HasError(error)) {
+                SILK_DEBUG(
+                    "GetNodeAttrBatch::GetNodeAttr error=%s",
+                    FormatError(error).c_str());
                 *response.MutableError() = std::move(error);
                 return response;
             }
@@ -886,6 +926,10 @@ public:
         NProto::TGetNodeAttrRequest request)
     {
         NProto::TGetNodeAttrResponse response;
+        if (!AcquireIfNeeded(response)) {
+            return response;
+        }
+
         if (request.GetNodeId() != RootNodeId && !request.GetName().empty()) {
             *response.MutableError() = ErrorInvalidParent(request.GetNodeId());
             return response;
@@ -894,6 +938,9 @@ public:
         NProto::TNodeAttr attr;
         auto error = GetNodeAttr(request.GetNodeId(), request.GetName(), &attr);
         if (HasError(error)) {
+            SILK_DEBUG(
+                "GetNodeAttr::GetNodeAttr error=%s",
+                FormatError(error).c_str());
             *response.MutableError() = std::move(error);
         } else {
             *response.MutableNode() = std::move(attr);
@@ -906,6 +953,9 @@ public:
         NProto::TSetNodeAttrRequest request)
     {
         NProto::TSetNodeAttrResponse response;
+        if (!AcquireIfNeeded(response)) {
+            return response;
+        }
 
         TWriteContext writeContext;
         TWriteContextGuard wcg(writeContext, *PageStore);
@@ -920,6 +970,9 @@ public:
                 response.MutableNode(),
                 writeContext);
             if (HasError(error)) {
+                SILK_DEBUG(
+                    "SetNodeAttr::Nodes.UpdateNode error=%s",
+                    FormatError(error).c_str());
                 *response.MutableError() = std::move(error);
             }
         }
@@ -929,6 +982,9 @@ public:
             std::move(writeContext.Headers),
             std::move(writeContext.PageGroups));
         if (HasError(error)) {
+            SILK_DEBUG(
+                "SetNodeAttr::WriteLogRecord error=%s",
+                FormatError(error).c_str());
             *response.MutableError() = std::move(error);
             PageStore->RollbackPages(pages);
         } else {
@@ -949,6 +1005,9 @@ public:
         ui64 nodeId = 0;
         auto error = Nodes.AllocateNodeId(&nodeId);
         if (HasError(error)) {
+            SILK_DEBUG(
+                "CreateNodeImpl::Nodes.AllocateNodeId error=%s",
+                FormatError(error).c_str());
             return error;
         }
 
@@ -961,6 +1020,9 @@ public:
 
         error = Nodes.PutNode(*attr, writeContext);
         if (HasError(error)) {
+            SILK_DEBUG(
+                "CreateNodeImpl::Nodes.PutNode error=%s",
+                FormatError(error).c_str());
             return error;
         }
 
@@ -970,6 +1032,10 @@ public:
     NProto::TCreateNodeResponse CreateNode(NProto::TCreateNodeRequest request)
     {
         NProto::TCreateNodeResponse response;
+        if (!AcquireIfNeeded(response)) {
+            return response;
+        }
+
         if (request.GetNodeId() != RootNodeId) {
             *response.MutableError() = ErrorInvalidParent(request.GetNodeId());
             return response;
@@ -999,6 +1065,9 @@ public:
         }
 
         if (HasError(error)) {
+            SILK_DEBUG(
+                "CreateNode::CreateNodeImpl error=%s",
+                FormatError(error).c_str());
             *response.MutableError() = std::move(error);
             return response;
         }
@@ -1008,6 +1077,9 @@ public:
             std::move(writeContext.Headers),
             std::move(writeContext.PageGroups));
         if (HasError(error)) {
+            SILK_DEBUG(
+                "CreateNode::WriteLogRecord error=%s",
+                FormatError(error).c_str());
             *response.MutableError() = std::move(error);
             PageStore->RollbackPages(pages);
             return response;
@@ -1021,6 +1093,10 @@ public:
     NProto::TUnlinkNodeResponse UnlinkNode(NProto::TUnlinkNodeRequest request)
     {
         NProto::TUnlinkNodeResponse response;
+        if (!AcquireIfNeeded(response)) {
+            return response;
+        }
+
         if (request.GetNodeId() != RootNodeId) {
             *response.MutableError() = ErrorInvalidParent(request.GetNodeId());
             return response;
@@ -1039,18 +1115,27 @@ public:
             ui64 nodeId = 0;
             auto error = Names.Get(request.GetName(), &nodeId);
             if (HasError(error)) {
+                SILK_DEBUG(
+                    "UnlinkNode::Names.Get error=%s",
+                    FormatError(error).c_str());
                 *response.MutableError() = std::move(error);
                 return response;
             }
 
             error = Names.Delete(request.GetName(), writeContext);
             if (HasError(error)) {
+                SILK_DEBUG(
+                    "UnlinkNode::Names.Delete error=%s",
+                    FormatError(error).c_str());
                 *response.MutableError() = std::move(error);
                 return response;
             }
 
             error = Nodes.DeleteNode(nodeId, writeContext);
             if (HasError(error)) {
+                SILK_DEBUG(
+                    "UnlinkNode::Nodes.DeleteNode error=%s",
+                    FormatError(error).c_str());
                 *response.MutableError() = std::move(error);
                 return response;
             }
@@ -1065,6 +1150,9 @@ public:
             std::move(writeContext.Headers),
             std::move(writeContext.PageGroups));
         if (HasError(error)) {
+            SILK_DEBUG(
+                "UnlinkNode::WriteLogRecord error=%s",
+                FormatError(error).c_str());
             *response.MutableError() = std::move(error);
             PageStore->RollbackPages(pages);
             return response;
@@ -1078,6 +1166,10 @@ public:
         NProto::TCreateHandleRequest request)
     {
         NProto::TCreateHandleResponse response;
+        if (!AcquireIfNeeded(response)) {
+            return response;
+        }
+
         if (request.GetNodeId() != RootNodeId && !request.GetName().empty()) {
             *response.MutableError() = ErrorInvalidParent(request.GetNodeId());
             return response;
@@ -1097,6 +1189,9 @@ public:
         if (request.GetName().empty()) {
             auto error = Nodes.GetNode(nodeId, &attr);
             if (HasError(error)) {
+                SILK_DEBUG(
+                    "CreateHandle::Nodes.GetNode error=%s",
+                    FormatError(error).c_str());
                 *response.MutableError() = std::move(error);
             }
         } else {
@@ -1111,6 +1206,9 @@ public:
                         writeContext,
                         &attr);
                     if (HasError(error)) {
+                        SILK_DEBUG(
+                            "CreateHandle::CreateNodeImpl error=%s",
+                            FormatError(error).c_str());
                         *response.MutableError() = std::move(error);
                     }
 
@@ -1128,12 +1226,18 @@ public:
 
                 auto error = Nodes.GetNode(nodeId, &attr);
                 if (HasError(error)) {
+                    SILK_DEBUG(
+                        "CreateHandle::Nodes.GetNode error=%s",
+                        FormatError(error).c_str());
                     *response.MutableError() = std::move(error);
                 }
             }
         }
 
         if (HasError(response.GetError())) {
+            SILK_DEBUG(
+                "CreateHandle error=%s",
+                FormatError(response.GetError()).c_str());
             return response;
         }
 
@@ -1141,6 +1245,9 @@ public:
         ui64 handle = 0;
         auto error = Handles.AllocateHandle(&handle);
         if (HasError(error)) {
+            SILK_DEBUG(
+                "CreateHandle::Handles.AllocateHandle error=%s",
+                FormatError(error).c_str());
             *response.MutableError() = std::move(error);
             return response;
         }
@@ -1149,6 +1256,9 @@ public:
 
         error = Handles.Put({.Handle = handle, .NodeId = nodeId}, writeContext);
         if (HasError(error)) {
+            SILK_DEBUG(
+                "CreateHandle::Handles.Put error=%s",
+                FormatError(error).c_str());
             *response.MutableError() = std::move(error);
             return response;
         }
@@ -1160,6 +1270,9 @@ public:
             std::move(writeContext.Headers),
             std::move(writeContext.PageGroups));
         if (HasError(error)) {
+            SILK_DEBUG(
+                "CreateHandle::WriteLogRecord error=%s",
+                FormatError(error).c_str());
             *response.MutableError() = std::move(error);
             PageStore->RollbackPages(pages);
             return response;
@@ -1176,6 +1289,9 @@ public:
         NProto::TDestroyHandleRequest request)
     {
         NProto::TDestroyHandleResponse response;
+        if (!AcquireIfNeeded(response)) {
+            return response;
+        }
 
         TWriteContext writeContext;
         TWriteContextGuard wcg(writeContext, *PageStore);
@@ -1185,6 +1301,9 @@ public:
 
             auto error = Handles.Delete(request.GetHandle(), writeContext);
             if (HasError(error)) {
+                SILK_DEBUG(
+                    "DestroyHandle::Handles.Delete error=%s",
+                    FormatError(error).c_str());
                 *response.MutableError() = std::move(error);
             }
 
@@ -1194,6 +1313,9 @@ public:
         }
 
         if (HasError(response.GetError())) {
+            SILK_DEBUG(
+                "DestroyHandle error=%s",
+                FormatError(response.GetError()).c_str());
             return response;
         }
 
@@ -1202,6 +1324,9 @@ public:
             std::move(writeContext.Headers),
             std::move(writeContext.PageGroups));
         if (HasError(error)) {
+            SILK_DEBUG(
+                "DestroyHandle::WriteLogRecord error=%s",
+                FormatError(error).c_str());
             *response.MutableError() = std::move(error);
             PageStore->RollbackPages(pages);
             return response;
@@ -1215,12 +1340,18 @@ public:
     NProto::TWriteDataResponse WriteData(NProto::TWriteDataRequest request)
     {
         NProto::TWriteDataResponse response;
+        if (!AcquireIfNeeded(response)) {
+            return response;
+        }
 
         std::unique_lock l(Mutex);
 
         ui64 nodeId = 0;
         auto error = Handles.Get(request.GetHandle(), &nodeId);
         if (HasError(error)) {
+            SILK_DEBUG(
+                "WriteData::Handles.Get error=%s",
+                FormatError(error).c_str());
             *response.MutableError() = std::move(error);
             return response;
         }
@@ -1248,6 +1379,9 @@ public:
                     InvalidStoragePageClusterId);
                 error = {};
             } else if (HasError(error)) {
+                SILK_DEBUG(
+                    "WriteData::PageIndex.Get error=%s",
+                    FormatError(error).c_str());
                 break;
             } else {
                 storagePageClusterIdsToWrite.push_back(storagePageClusterId);
@@ -1259,6 +1393,7 @@ public:
         }
 
         if (HasError(error)) {
+            SILK_DEBUG("WriteData error=%s", FormatError(error).c_str());
             *response.MutableError() = std::move(error);
             return response;
         }
@@ -1279,6 +1414,9 @@ public:
                 &newStoragePageClusterIds,
                 writeContext);
             if (HasError(error)) {
+                SILK_DEBUG(
+                    "WriteData::PageAllocator.Allocate error=%s",
+                    FormatError(error).c_str());
                 *response.MutableError() = std::move(error);
                 return response;
             }
@@ -1323,6 +1461,9 @@ public:
                 slot.StoragePageClusterId = *storagePageClusterIdIt;
                 error = PageIndex.Put(slot, writeContext);
                 if (HasError(error)) {
+                    SILK_DEBUG(
+                        "WriteData::PageIndex.Put error=%s",
+                        FormatError(error).c_str());
                     break;
                 }
             }
@@ -1360,6 +1501,9 @@ public:
                         &page);
 
                     if (HasError(error)) {
+                        SILK_DEBUG(
+                            "WriteData::PageStore.ReadPage error=%s",
+                            FormatError(error).c_str());
                         break;
                     }
                 } else {
@@ -1384,6 +1528,9 @@ public:
                     writeContext.PageGroups);
 
                 if (HasError(error)) {
+                    SILK_DEBUG(
+                        "WriteData::PageStore.WritePage error=%s",
+                        FormatError(error).c_str());
                     break;
                 }
 
@@ -1392,6 +1539,7 @@ public:
             }
 
             if (HasError(error)) {
+                SILK_DEBUG("WriteData error=%s", FormatError(error).c_str());
                 break;
             }
 
@@ -1399,6 +1547,8 @@ public:
         }
 
         if (HasError(error)) {
+            SILK_DEBUG("WriteData error=%s", FormatError(error).c_str());
+
             PageAllocator.RollbackAllocation(
                 newStoragePageClusterIds,
                 writeContext);
@@ -1415,6 +1565,10 @@ public:
         error = Nodes.ResizeNode(nodeId, endOffset, writeContext);
 
         if (HasError(error)) {
+            SILK_DEBUG(
+                "WriteData::Nodes.ResizeNode error=%s",
+                FormatError(error).c_str());
+
             PageAllocator.RollbackAllocation(
                 newStoragePageClusterIds,
                 writeContext);
@@ -1434,6 +1588,9 @@ public:
             std::move(writeContext.Headers),
             std::move(writeContext.PageGroups));
         if (HasError(error)) {
+            SILK_DEBUG(
+                "WriteData::WriteLogRecord error=%s",
+                FormatError(error).c_str());
             *response.MutableError() = std::move(error);
 
             //
@@ -1461,12 +1618,18 @@ public:
     NProto::TReadDataResponse ReadData(NProto::TReadDataRequest request)
     {
         NProto::TReadDataResponse response;
+        if (!AcquireIfNeeded(response)) {
+            return response;
+        }
 
         std::lock_guard l(Mutex);
 
         ui64 nodeId = 0;
         auto error = Handles.Get(request.GetHandle(), &nodeId);
         if (HasError(error)) {
+            SILK_DEBUG(
+                "ReadData::Handles.Get error=%s",
+                FormatError(error).c_str());
             *response.MutableError() = std::move(error);
             return response;
         }
@@ -1506,6 +1669,9 @@ public:
             }
 
             if (HasError(error)) {
+                SILK_DEBUG(
+                    "ReadData::PageIndex.Get error=%s",
+                    FormatError(error).c_str());
                 break;
             }
 
@@ -1533,6 +1699,9 @@ public:
                 error = PageStore->ReadPage(0 /* lsn */, storagePageNo, &page);
 
                 if (HasError(error)) {
+                    SILK_DEBUG(
+                        "ReadData::PageStore.ReadPage error=%s",
+                        FormatError(error).c_str());
                     break;
                 }
 
@@ -1552,11 +1721,13 @@ public:
             }
 
             if (HasError(error)) {
+                SILK_DEBUG("ReadData error=%s", FormatError(error).c_str());
                 break;
             }
         }
 
         if (HasError(error)) {
+            SILK_DEBUG("ReadData error=%s", FormatError(error).c_str());
             buffer.clear();
             *response.MutableError() = std::move(error);
         }
@@ -1637,8 +1808,33 @@ private:
         Y_UNUSED(request);
 
         TResponse response;
-        *response.MutableError() = MakeError(E_NOT_IMPLEMENTED);
+        *response.MutableError() = MakeError(E_FS_NOTSUPP);
         return response;
+    }
+
+    template <typename TResponse>
+    bool AcquireIfNeeded(TResponse& response)
+    {
+        if (Acquired) {
+            return true;
+        }
+
+        std::lock_guard g(Mutex);
+        if (Acquired) {
+            return true;
+        }
+
+        auto error = Storage->AcquireDevices();
+        if (HasError(error)) {
+            SILK_DEBUG(
+                "AcquireIfNeeded::Storage.AcquireDevices error=%s",
+                FormatError(error).c_str());
+            *response.MutableError() = std::move(error);
+            return false;
+        }
+
+        Acquired = true;
+        return true;
     }
 };
 

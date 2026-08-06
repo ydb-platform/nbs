@@ -6,6 +6,10 @@ SRCS(
     json_generator.cpp
 )
 
+CFLAGS(
+    -DBUILDING_LIBCURL
+)
+
 PEERDIR(
     cloud/blockstore/libs/common
     cloud/blockstore/libs/diagnostics
