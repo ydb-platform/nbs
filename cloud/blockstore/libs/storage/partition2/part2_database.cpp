@@ -27,6 +27,16 @@ ui32 SafeAdd(ui32 start, ui32 count)
     }
 }
 
+ui32 AlignToRangeEnd(ui32 blockIndex, ui64 rangeSize)
+{
+    Y_ABORT_UNLESS(rangeSize);
+
+    const ui64 rangeEnd =
+        (static_cast<ui64>(blockIndex) / rangeSize + 1) * rangeSize - 1;
+    return static_cast<ui32>(
+        Min<ui64>(rangeEnd, TBlockRange32::MaxIndex));
+}
+
 static constexpr ui32 ScanRangeSize = 100;
 
 TVector<TBlockRange32> SplitInRanges(
@@ -1147,6 +1157,147 @@ TPartitionDatabaseImpl<TCounters>::FindBlocksInBlobsIndex(
         }
     }
     return result;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <typename TCounters>
+void TPartitionDatabaseImpl<TCounters>::WriteL0Blob(
+    const TPartialBlobId& blobId,
+    const TBlockRange32& blockRange,
+    const NProto::TBlobMeta& blobMeta)
+{
+    using TTable = TPartitionSchema::L0Index;
+
+    Y_ABORT_UNLESS(!blobMeta.HasMergedBlocks());
+    Y_ABORT_UNLESS(blobMeta.HasMixedBlocks());
+
+    Table<TTable>()
+        .Key(
+            blockRange.Start,
+            blockRange.End,
+            blobId.CommitId(),
+            blobId.UniqueId())
+        .template Update<TTable::BlobMeta>(blobMeta);
+}
+
+template <typename TTable, typename TCounters>
+static bool FindBlocksInLevelIndex(
+    TPartitionDatabaseImpl<TCounters>& db,
+    IBlocksIndexVisitor& visitor,
+    const TBlockRange32& blockRange,
+    ui64 maxCommitId,
+    ui64 rangeSize)
+{
+    auto it = db.template Table<TTable>()
+                  .GreaterOrEqual(blockRange.Start)
+                  .LessOrEqual(AlignToRangeEnd(blockRange.End, rangeSize))
+                  .Select();
+
+    if (!it.IsReady()) {
+        return false;   // not ready
+    }
+
+    while (it.IsValid()) {
+        const auto blobRange = TBlockRange32::MakeClosedInterval(
+            it.template GetValue<typename TTable::RangeStart>(),
+            it.template GetValue<typename TTable::RangeEnd>());
+
+        if (blobRange.Overlaps(blockRange)) {
+            const auto blobMeta =
+                it.template GetValue<typename TTable::BlobMeta>();
+
+            Y_ABORT_UNLESS(!blobMeta.HasMergedBlocks());
+            Y_ABORT_UNLESS(blobMeta.HasMixedBlocks());
+
+            const auto& mixedBlocks = blobMeta.GetMixedBlocks();
+            Y_ABORT_UNLESS(
+                mixedBlocks.CommitIdsSize() == 0 ||
+                mixedBlocks.CommitIdsSize() == mixedBlocks.BlocksSize());
+
+            const auto blobId = MakePartialBlobId(
+                it.template GetValue<typename TTable::BlobCommitId>(),
+                it.template GetValue<typename TTable::BlobId>());
+
+            for (size_t i = 0; i < mixedBlocks.BlocksSize(); ++i) {
+                const ui32 blockIndex = mixedBlocks.GetBlocks(i);
+                const ui64 commitId = mixedBlocks.CommitIdsSize()
+                    ? mixedBlocks.GetCommitIds(i)
+                    : blobId.CommitId();
+
+                if (blockRange.Contains(blockIndex) &&
+                    commitId <= maxCommitId &&
+                    !visitor.Visit(
+                        blockIndex,
+                        commitId,
+                        blobId,
+                        static_cast<ui16>(i)))
+                {
+                    return true;   // interrupted
+                }
+            }
+        }
+
+        if (!it.Next()) {
+            return false;   // not ready
+        }
+    }
+
+    return true;
+}
+
+template <typename TCounters>
+bool TPartitionDatabaseImpl<TCounters>::FindBlocksInL0Index(
+    IBlocksIndexVisitor& visitor,
+    const TBlockRange32& blockRange,
+    ui64 maxCommitId)
+{
+    Y_ABORT_UNLESS(L0RangeSize);
+
+    return FindBlocksInLevelIndex<TPartitionSchema::L0Index>(
+        *this,
+        visitor,
+        blockRange,
+        maxCommitId,
+        L0RangeSize);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <typename TCounters>
+void TPartitionDatabaseImpl<TCounters>::WriteL1Blob(
+    const TPartialBlobId& blobId,
+    const TBlockRange32& blockRange,
+    const NProto::TBlobMeta& blobMeta)
+{
+    using TTable = TPartitionSchema::L1Index;
+
+    Y_ABORT_UNLESS(!blobMeta.HasMergedBlocks());
+    Y_ABORT_UNLESS(blobMeta.HasMixedBlocks());
+
+    Table<TTable>()
+        .Key(
+            blockRange.Start,
+            blockRange.End,
+            blobId.CommitId(),
+            blobId.UniqueId())
+        .template Update<TTable::BlobMeta>(blobMeta);
+}
+
+template <typename TCounters>
+bool TPartitionDatabaseImpl<TCounters>::FindBlocksInL1Index(
+    IBlocksIndexVisitor& visitor,
+    const TBlockRange32& blockRange,
+    ui64 maxCommitId)
+{
+    Y_ABORT_UNLESS(L1RangeSize);
+
+    return FindBlocksInLevelIndex<TPartitionSchema::L1Index>(
+        *this,
+        visitor,
+        blockRange,
+        maxCommitId,
+        L1RangeSize);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
