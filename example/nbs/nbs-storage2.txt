@@ -1,4 +1,4 @@
-SchemeShardDir: "/Root/NBS"
+SchemeShardDir: "/Root/NBS2"
 AuthorizationMode: AUTHORIZATION_IGNORE
 ManuallyPreemptedVolumesFile: "backups.2/nbs-preempted-volumes.json"
 

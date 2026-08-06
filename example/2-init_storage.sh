@@ -11,6 +11,8 @@ echo "BindRootStorageRequest-Root"
 ydbd -s grpc://localhost:9001 db schema execute dynamic/BindRootStorageRequest-Root.txt
 echo "CreateTenant"
 ydbd -s grpc://localhost:9001 admin console execute --domain=Root --retry=10 dynamic/CreateTenant.txt
+echo "CreateTenant2"
+ydbd -s grpc://localhost:9001 admin console execute --domain=Root --retry=10 dynamic/CreateTenant2.txt
 echo "Configure-Root"
 ydbd -s grpc://localhost:9001 admin console execute --domain=Root --retry=10 dynamic/Configure-Root.txt
 

@@ -1,0 +1,145 @@
+1. Создайте новый чистый runtime:
+PERSISTENT_TMP_DIR=/home/yudovmaksim/nbs/build/example-runtime \
+    ./0-setup.sh
+
+2. Запустить YDB
+./1-start_storage.sh
+
+проверить порт:
+ss -ltn | grep ':9001\b'
+
+3. Инициализировать оба tenant
+./2-init_storage.sh
+
+проверка:
+
+source ./prepare_binaries.sh
+ydb \
+    -e grpc://localhost:9001 \
+    -d /Root \
+    scheme ls -l /Root
+// в выводе должны быть
+// sub-domain ... NBS
+// sub-domain ... NBS2
+
+4. Запустить nbs c cell's (shards)
+4.1 cell-a
+./3-start_nbs.sh
+Порты:
+    control:    9766
+    data:       9767
+    secure:     9768
+    monitoring: 8766
+    YDB path:   /Root/NBS
+    CellId:     cell-a
+Лог:
+    logs/nbs.1.log
+
+4.2 cell-b
+./3-start_nbs2.sh
+Порты:
+    control:    9786
+    data:       9787
+    secure:     9788
+    monitoring: 8786
+    YDB path:   /Root/NBS2
+    CellId:     cell-b
+Лог:
+    logs/nbs.2.log
+
+4.3 проверка
+./blockstore-client.sh ping \
+    --host localhost \
+    --port 9766
+./blockstore-client.sh ping \
+    --host localhost \
+    --port 9786
+
+5. Создать volume в каждой cell
+
+Volume в cell-a:
+./5-create_disk.sh \
+    --cell cell-a \
+    --kind ssd \
+    --disk-id vol-a
+
+Volume в cell-b:
+./5-create_disk.sh \
+    --cell cell-b \
+    --kind ssd \
+    --disk-id vol-b
+
+
+Проверить владельцев:
+./blockstore-client.sh describevolume \
+    --host localhost \
+    --port 9766 \
+    --disk-id vol-a
+
+./blockstore-client.sh describevolume \
+    --host localhost \
+    --port 9786 \
+    --disk-id vol-b
+
+
+6. Проверка cross-cell через NBD
+vol-b принадлежит cell-b, но StartEndpoint будет отправлен в cell-a
+
+./6-attach_disk.sh \
+    --cell cell-a \
+    --disk-id vol-b \
+    --device /dev/nbd0
+
+проверить запись/чтение
+#sudo dd oflag=direct if=/dev/urandom of=/dev/nbd0 count=50 bs=4096
+#sudo dd iflag=direct if=/dev/nbd0 of=./result.bin count=50 bs=4096
+
+В списке должен присутствовать vol-b.
+./blockstore-client.sh listendpoints \
+    --host localhost \
+    --port 9766
+
+Проверить логи:
+egrep  -n \
+    'vol-b|CellId: "cell-b"|StartEndpoint|MountVolume' \
+    logs/nbs.1.log \
+    logs/nbs.2.log \
+    | egrep -i DescribeVolume
+В логе cell-b должен быть удалённый DescribeVolume:
+
+
+Не должно быть:
+egrep -n \
+    'cell id mismatch|Describe timeout|Not all cells available' \
+    logs/nbs.1.log \
+    logs/nbs.2.log
+
+// обратное направление
+
+./6-attach_disk.sh \
+    --cell cell-b \
+    --disk-id vol-a \
+    --device /dev/nbd1
+
+Признак удалённого cells-запроса — поле Headers.CellId.
+
+
+7. qemu (альтернатива ./6-attach_disk.sh)
+Делается без ./6-attach_disk.sh
+// !!! порты/аргументы ниже валидны пока qemu не поддерживает параметр cells (идет строго в cell-a)
+
+После выхода из QEMU скрипт endpoint автоматически не останавливает.
+Удалите его вручную:
+./blockstore-client.sh stopendpoint \
+    --host localhost \
+    --port 9766 \
+    --socket "$PWD/vol-b-vhost.sock"
+
+8. TEMPORARILY. Нагрузка в qemu.
+// в одном шарде немного быстрее
+
+между шардами
+Jobs: 1 (f=1): [V(1)][100.0%][r=9761KiB/s,w=7895KiB/s][r=425,w=307 IOPS][eta 00m:00s]
+
+в одном шарде
+Jobs: 1 (f=1): [V(1)][100.0%][r=9728KiB/s,w=10.4MiB/s][r=367,w=416 IOPS][eta 00m:00s]

@@ -31,6 +31,7 @@ nbsd \
     --diag-file          nbs/nbs-diag.txt \
     --features-file      nbs/nbs-features.txt \
     --auth-file          nbs/nbs-auth.txt \
+    --cells-file         nbs/nbs-cells2.txt \
     --dr-proxy-file      nbs/nbs-dr-proxy.txt \
     --rdma-file          nbs/nbs-rdma.txt \
     --service            kikimr \

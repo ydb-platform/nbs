@@ -34,6 +34,14 @@ Run the following command in a new tab:
 ./3-start_nbs.sh
 ```
 
+Run the second NBS cell in another tab:
+```bash
+./3-start_nbs2.sh
+```
+
+The first server belongs to `cell-a` and stores volumes in `/Root/NBS`. The
+second server belongs to `cell-b` and stores volumes in `/Root/NBS2`.
+
 ## Configure and start disk agent (optional, used only by nonreplicated disks)
 ```bash
 ./4-start_disk_agent.sh
@@ -44,6 +52,11 @@ Run the following command in a new tab to create new disk:
 ```bash
 ./5-create_disk.sh -k ssd
 ```
+Use `--cell` to create a disk in a particular cell:
+```bash
+./5-create_disk.sh --cell cell-a -k ssd --disk-id vol-a
+./5-create_disk.sh --cell cell-b -k ssd --disk-id vol-b
+```
 Storage kind may by overridden by ```-k``` option, following values are supported:
 * **ssd** (default) - replicated network disk, ```id=vol0```
 * **nonreplicated** - nonreplicated disk, ```id=nbr0```
@@ -53,6 +66,14 @@ Storage kind may by overridden by ```-k``` option, following values are supporte
 Run the following command to attach created disk to your machine via nbd:
 ```bash
 ./6-attach_disk.sh --disk-id vol0 -d /dev/nbd0
+```
+
+The `--cell` argument of the attach script selects the NBS server through which
+the endpoint is started. To exercise cross-cell routing, attach a disk through
+the other cell:
+```bash
+./6-attach_disk.sh --cell cell-a --disk-id vol-b -d /dev/nbd0
+./6-attach_disk.sh --cell cell-b --disk-id vol-a -d /dev/nbd1
 ```
 
 For example, nonreplicated disk could be created and attached with the following commands:

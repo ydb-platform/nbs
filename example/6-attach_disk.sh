@@ -9,9 +9,10 @@ source ./prepare_binaries.sh || exit 1
 
 show_help() {
     cat << EOF
-Usage: ./6-attach_disk.sh [-hvd]
+Usage: ./6-attach_disk.sh [OPTIONS]
 Creates disk with requested kind and attach it to device
 -h, --help         Display help
+--cell             NBS cell to connect through: cell-a|cell-b (default: cell-a)
 -v, --disk-id      Disk id
 -d, --device       Device name to attach to (default: /dev/nbd0)
 -e, --encrypted    Encrypt disk with default encryption key
@@ -21,7 +22,8 @@ EOF
 #defaults
 disk_id="nrd0"
 device="/dev/nbd0"
-options=$(getopt -l "help,disk-id:,device:,encrypted" -o "hv:d:e" -a -- "$@")
+cell="cell-a"
+options=$(getopt -l "help,cell:,disk-id:,device:,encrypted" -o "hv:d:e" -a -- "$@")
 encryption=""
 
 if [ $? != 0 ] ; then
@@ -41,6 +43,10 @@ do
         disk_id=${2}
         shift 2
         ;;
+    --cell )
+        cell=${2}
+        shift 2
+        ;;
     -d | --device )
         device=${2}
         shift 2
@@ -55,18 +61,31 @@ do
     esac
 done
 
+case "$cell" in
+"cell-a")
+    nbs_port=9766;;
+"cell-b")
+    nbs_port=9786;;
+*)
+    echo "Unknown cell: $cell"
+    show_help
+    exit 1
+    ;;
+esac
+
 if ! [[ $device == /dev/nbd[0-9] ]]; then
     echo "Device name should match pattern '/dev/nbd[0-9]', provided: $device"
     exit 1
 fi
 
 # attach disk
-echo "Attaching disk $disk_id to $device"
+echo "Attaching disk $disk_id to $device through $cell"
 SOCK="$BIN_DIR/$disk_id.sock"
 
 sudo modprobe nbd
 touch $SOCK
-sudo-blockstore-nbd --device-mode endpoint --disk-id $disk_id --access-mode rw \
+sudo-blockstore-nbd --host localhost --port $nbs_port \
+    --device-mode endpoint --disk-id $disk_id --access-mode rw \
     --mount-mode local --connect-device $device --listen-path $SOCK \
     $encryption
 

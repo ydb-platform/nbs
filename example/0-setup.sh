@@ -19,6 +19,8 @@ for dir in $DATA_DIRS; do
     ln -svfT "$PERSISTENT_TMP_DIR/$dir" "$BIN_DIR/$dir"
 done
 
+mkdir -p "$BIN_DIR/data/endpoints" "$BIN_DIR/data/endpoints2"
+
 generate_cert() {
     local pass="pass123"
     local name="$1"

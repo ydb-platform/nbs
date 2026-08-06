@@ -9,9 +9,10 @@ source ./prepare_binaries.sh || exit 1
 
 show_help() {
     cat << EOF
-Usage: ./5-create_disk.sh [-hkd]
+Usage: ./5-create_disk.sh [OPTIONS]
 Creates disk with requested kind and attach it to device
 -h, --help                     Display help
+--cell                         NBS cell: cell-a|cell-b (default: cell-a)
 -k, --kind                     Kind of disk ssd|hdd|hybrid|nonreplicated|mirror2|mirror3|local (default: ssd)
 -d, --disk-id                  disk-id
 --cloud-id                     cloud-id
@@ -27,7 +28,8 @@ kind="ssd"
 disk_id=""
 cloud_id="test-cloud"
 folder_id="test-folder"
-options=$(getopt -l "help,kind:,disk-id:,encrypted,base-disk-id:,base-disk-checkpoint-id:,cloud-id:,folder-id:" -o "hk:d:eb:c:" -a -- "$@")
+cell="cell-a"
+options=$(getopt -l "help,cell:,kind:,disk-id:,encrypted,base-disk-id:,base-disk-checkpoint-id:,cloud-id:,folder-id:" -o "hk:d:eb:c:" -a -- "$@")
 block_size=4096
 encryption=""
 base_disk_id=""
@@ -48,6 +50,10 @@ do
         ;;
     -k | --kind )
         kind=${2}
+        shift 2
+        ;;
+    --cell )
+        cell=${2}
         shift 2
         ;;
     -d | --disk-id )
@@ -80,6 +86,18 @@ do
     esac
 done
 
+case "$cell" in
+"cell-a")
+    nbs_port=9766;;
+"cell-b")
+    nbs_port=9786;;
+*)
+    echo "Unknown cell: $cell"
+    show_help
+    exit 1
+    ;;
+esac
+
 case $kind in
 "ssd")
     default_id="vol0"; blocks_count=262144;;
@@ -102,7 +120,7 @@ case $kind in
     ;;
 esac
 
-if [ $disk_id == ""] ; then
+if [ -z "$disk_id" ] ; then
   disk_id=$default_id
 fi
 
@@ -113,8 +131,10 @@ if [ ! -z "$base_disk_id" ] ; then
 fi
 
 # create disk
-echo "Creating disk $disk_id in $kind mode"
+echo "Creating disk $disk_id in $kind mode in $cell"
 blockstore-client createvolume \
+    --host localhost \
+    --port $nbs_port \
     --storage-media-kind $kind \
     --blocks-count $blocks_count \
     --block-size $block_size \
