@@ -39,7 +39,7 @@ INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/stats-collector.inc)
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/vhost-endpoint.inc)
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/qemu.inc)
 
-SET(FILESTORE_TABLETS_RESTART_INTERVAL 5)
+DEFAULT(FILESTORE_TABLETS_RESTART_INTERVAL 5)
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/tablets-restarter.inc)
 
 END()
