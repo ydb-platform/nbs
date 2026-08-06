@@ -5,21 +5,26 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/spf13/cobra"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/auth"
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
 	client_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/client/config"
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/exporter"
+	snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
+	logzap "github.com/ydb-platform/nbs/library/go/core/log/zap"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -315,6 +320,163 @@ func newDeleteSnapshotCmd(clientConfig *client_config.ClientConfig) *cobra.Comma
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type exportSnapshot struct {
+	serverConfig    *server_config.ServerConfig
+	snapshotID      string
+	readWorkerCount int
+	verbose         bool
+}
+
+const exportSnapshotLong = `Export a ready snapshot or image directly from dataplane snapshot storage
+to stdout as a raw disk image stream.
+
+This command does not call the Disk Manager service and does not require a
+valid client config. It uses --server-config and reads DataplaneConfig.
+SnapshotConfig plus AuthConfig from that file. The host must have network
+access to the dataplane YDB database and, when configured, S3. Read-only
+access is enough: the command reads snapshot metadata, chunk maps, chunk blobs
+and S3 objects.
+
+Incremental snapshots are exported the same way as full snapshots: their chunk
+map is complete, unchanged chunks are shallow copies of base snapshot chunks.
+Snapshots of encrypted disks are exported as stored, so the output stream is
+ciphertext. Legacy snapshot storage configured by LegacyStorageFolder is not
+supported.
+
+The output stream is not sparse: zero chunks are written explicitly because
+stdout is sequential. The chunk map is streamed, so it does not have to fit in
+memory; memory usage is bounded by the read-ahead window of
+--read-workers * 4 chunk read buffers, 4 MiB each.`
+
+const exportSnapshotExample = `  disk-manager-admin \
+      --server-config /etc/disk-manager/server-config.txt \
+      snapshots export --id <snapshot-or-image-id> > image.raw
+
+  qemu-img info image.raw
+  qemu-img convert -f raw -O qcow2 image.raw image.qcow2`
+
+func newExportSnapshotLogger(level logging.Level) logging.Logger {
+	config := logzap.ConsoleConfig(level)
+	config.OutputPaths = []string{"stderr"}
+	return logzap.Must(config)
+}
+
+func (c *exportSnapshot) run() error {
+	level := logging.InfoLevel
+	if c.verbose {
+		level = logging.DebugLevel
+	}
+
+	ctx := logging.SetLogger(
+		context.Background(),
+		newExportSnapshotLogger(level),
+	)
+
+	snapshotConfig := c.serverConfig.GetDataplaneConfig().GetSnapshotConfig()
+	if snapshotConfig == nil {
+		return fmt.Errorf("dataplane snapshot config is missing in the server config file")
+	}
+
+	creds := auth.NewCredentials(ctx, c.serverConfig.GetAuthConfig())
+	db, err := persistence.NewYDBClient(
+		ctx,
+		snapshotConfig.GetPersistenceConfig(),
+		metrics.NewEmptyRegistry(),
+		persistence.WithCredentials(creds),
+	)
+	if err != nil {
+		return err
+	}
+	defer db.Close(ctx)
+
+	s3Config := snapshotConfig.GetPersistenceConfig().GetS3Config()
+	var s3 *persistence.S3Client
+	if s3Config != nil {
+		s3, err = persistence.NewS3ClientFromConfig(
+			s3Config,
+			metrics.NewEmptyRegistry(),
+			nil, // availabilityMonitoring
+		)
+		if err != nil {
+			return err
+		}
+	}
+
+	snapshotStorage, err := snapshot_storage.NewStorage(
+		snapshotConfig,
+		metrics.NewEmptyRegistry(),
+		db,
+		s3,
+	)
+	if err != nil {
+		return err
+	}
+
+	stats, err := exporter.ExportSnapshot(
+		ctx,
+		snapshotStorage,
+		c.snapshotID,
+		os.Stdout,
+		c.readWorkerCount,
+	)
+	if err != nil {
+		return err
+	}
+
+	logging.Info(
+		ctx,
+		"exported snapshot %v to stdout: size %v bytes, %v data chunks, %v zero chunks",
+		c.snapshotID,
+		stats.Size,
+		stats.DataChunkCount,
+		stats.ZeroChunkCount,
+	)
+	return nil
+}
+
+func newExportSnapshotCmd(serverConfig *server_config.ServerConfig) *cobra.Command {
+	c := &exportSnapshot{
+		serverConfig:    serverConfig,
+		readWorkerCount: exporter.DefaultStreamReadWorkerCount,
+	}
+
+	cmd := &cobra.Command{
+		Use:     "export",
+		Short:   "Exports a snapshot from dataplane storage to stdout as a raw image stream",
+		Long:    exportSnapshotLong,
+		Example: exportSnapshotExample,
+		Annotations: map[string]string{
+			skipClientConfigParsingAnnotation: "true",
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.run()
+		},
+	}
+
+	cmd.Flags().StringVar(&c.snapshotID, "id", "", "ID of snapshot to export; required")
+	if err := cmd.MarkFlagRequired("id"); err != nil {
+		log.Fatalf("Error setting flag id as required: %v", err)
+	}
+
+	cmd.Flags().IntVar(
+		&c.readWorkerCount,
+		"read-workers",
+		exporter.DefaultStreamReadWorkerCount,
+		"Number of parallel chunk read workers; each worker uses one 4 MiB read buffer",
+	)
+	cmd.Flags().BoolVarP(
+		&c.verbose,
+		"verbose",
+		"v",
+		false,
+		"Enable verbose logging",
+	)
+
+	return cmd
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 // TODO: Remove this command after getting rid of legacy snapshot storage.
 type scheduleCreateSnapshotFromLegacySnapshotTask struct {
 	commandWithScheduler
@@ -510,6 +672,7 @@ func newSnapshotsCmd(
 		newListSnapshotsCmd(clientConfig, serverConfig),
 		newCreateSnapshotCmd(clientConfig),
 		newDeleteSnapshotCmd(clientConfig),
+		newExportSnapshotCmd(serverConfig),
 		// TODO: Remove this command after getting rid of legacy snapshot storage.
 		newScheduleCreateSnapshotFromLegacySnapshotTaskCmd(
 			clientConfig,
