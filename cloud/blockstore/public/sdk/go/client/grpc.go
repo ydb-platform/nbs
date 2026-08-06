@@ -933,6 +933,24 @@ func (client *grpcClient) ReleaseNVMeDevice(
 	return resp.(*protos.TReleaseNVMeDeviceResponse), err
 }
 
+func (client *grpcClient) QueryKnownStorage(
+	ctx context.Context,
+	req *protos.TQueryKnownStorageRequest,
+) (*protos.TQueryKnownStorageResponse, error) {
+
+	if req.Headers == nil {
+		req.Headers = &protos.THeaders{}
+	}
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.QueryKnownStorage(ctx, req)
+		})
+
+	return resp.(*protos.TQueryKnownStorageResponse), err
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 type GrpcClientOpts struct {
